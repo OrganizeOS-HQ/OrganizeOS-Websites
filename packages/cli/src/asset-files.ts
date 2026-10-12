@@ -1,4 +1,4 @@
-import { constants, createWriteStream } from "node:fs";
+import { constants, createWriteStream, type WriteStream } from "node:fs";
 import { copyFile, readFile, rename, rm } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -75,6 +75,7 @@ const downloadUrlToFile = async (url: string, filePath: string) => {
 
   await createFolderIfNotExists(dirname(filePath));
 
+  let writableStream: WriteStream | undefined;
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -84,7 +85,7 @@ const downloadUrlToFile = async (url: string, filePath: string) => {
       throw new Error(`Failed to fetch ${url}: response body is empty`);
     }
 
-    const writableStream = createWriteStream(tempFilePath);
+    writableStream = createWriteStream(tempFilePath);
     await pipeline(
       response.body as unknown as NodeJS.ReadableStream,
       writableStream
@@ -92,6 +93,17 @@ const downloadUrlToFile = async (url: string, filePath: string) => {
 
     await rename(tempFilePath, filePath);
   } catch (error) {
+    // The stream opens its file asynchronously, and a download that fails at
+    // once can reject before that open lands. Wait for the stream to close, so
+    // the temp file exists (and is released) before it is removed.
+    if (writableStream !== undefined && writableStream.closed === false) {
+      const stream = writableStream;
+      const closed = new Promise<void>((resolve) =>
+        stream.once("close", () => resolve())
+      );
+      stream.destroy();
+      await closed;
+    }
     await rm(tempFilePath, { force: true });
     throw error;
   }
