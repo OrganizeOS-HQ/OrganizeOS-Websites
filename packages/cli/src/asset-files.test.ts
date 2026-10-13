@@ -3,6 +3,7 @@ import {
   access,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   writeFile,
@@ -115,6 +116,38 @@ test("removes temporary files when asset download fails", async () => {
 
   await expect(access("public/assets/image.png")).rejects.toThrow();
   await expect(access("public/assets/image.png.tmp")).rejects.toThrow();
+});
+
+test("leaves no temporary file when many downloads fail at once", async () => {
+  // A download that fails immediately used to remove its temp file before the
+  // write stream had opened (and so created) it. Under load the open landed
+  // afterwards and left a .tmp behind. Many concurrent failures expose it.
+  globalThis.fetch = vi.fn(
+    async () =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            controller.error(new Error("download failed"));
+          },
+        })
+      )
+  );
+  const names = Array.from({ length: 200 }, (_, index) => `image-${index}.png`);
+
+  const results = await Promise.allSettled(
+    names.map((name) =>
+      materializeAssetFile({
+        asset: { ...asset, id: name, name },
+        origin: "https://example.com",
+        targetAssetsDirectory: "public/assets",
+      })
+    )
+  );
+
+  expect(results.every((result) => result.status === "rejected")).toBe(true);
+  // Give any stray open time to land before looking.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await expect(readdir("public/assets")).resolves.toEqual([]);
 });
 
 test("fails clearly when asset download response has no body", async () => {
