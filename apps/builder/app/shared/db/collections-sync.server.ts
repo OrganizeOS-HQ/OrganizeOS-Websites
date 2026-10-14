@@ -72,7 +72,7 @@ export const syncOrgCollectionPresets = async (
 
     // The request carries no token: reuse the base and Authorization header of
     // a static preset the provision already seeded into this build.
-    const seed = readV1PresetSeed({
+    const seed = await readV1PresetSeed({
       projectId,
       resources: existingResources,
     });
@@ -80,7 +80,7 @@ export const syncOrgCollectionPresets = async (
       return { status: "no-presets" };
     }
 
-    const presets = buildCollectionResourcePresets({
+    const presets = await buildCollectionResourcePresets({
       projectId,
       apiBase: seed.apiBase,
       authHeaderExpression: seed.authHeaderExpression,

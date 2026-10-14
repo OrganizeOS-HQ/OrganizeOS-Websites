@@ -44,6 +44,7 @@ import css from "__CSS__?url";
 import { sitemap } from "__SITEMAP__";
 import { assets } from "__ASSETS__";
 import { authRoutes } from "__AUTH__";
+import { siteResourceCache } from "../organizeos-resource-cache";
 
 /**
  * A realm the browser can show to the site's own visitors.
@@ -134,7 +135,14 @@ const customFetch: typeof fetch = (input, init) => {
     return Promise.resolve(response);
   }
 
-  return cachedFetch(projectId, input, init);
+  // OrganizeOS fork: through the site's in-memory resource cache
+  // (organizeos-resource-cache.ts), one per server instance for every route,
+  // which keeps each response only as long as its own Cache-Control allows.
+  // Behind it is the cachedFetch upstream calls here, so a request that opts
+  // into the Cache API still reaches it.
+  return siteResourceCache(input, init, (input, init) =>
+    cachedFetch(projectId, input, init)
+  );
 };
 
 export const loader = async (arg: LoaderFunctionArgs) => {
@@ -195,8 +203,10 @@ export const loader = async (arg: LoaderFunctionArgs) => {
         "Cache-Control":
           // OrganizeOS: always no-store. Pages carry live data via server-side
           // Resources, and the upstream edge honors this header, so max-age=600
-          // would serve ten-minute-stale HTML to the platform reverse proxy
-          // (the /v1 edge cache is the single caching layer).
+          // would serve ten-minute-stale HTML to the platform reverse proxy.
+          // The single caching layer is the resource cache in
+          // organizeos-resource-cache.ts, which keeps each resource only as
+          // long as its own Cache-Control allows.
           "no-store",
       },
     }

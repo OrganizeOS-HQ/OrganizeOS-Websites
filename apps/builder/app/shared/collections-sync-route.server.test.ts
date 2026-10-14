@@ -20,7 +20,10 @@ vi.mock("@webstudio-is/postgrest/index.server", () => ({
 
 import { action } from "~/routes/internal.collections-sync";
 import { deriveProjectId } from "~/shared/db/provision.server";
-import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
+import {
+  buildOrgResourcePresets,
+  V1_RESOURCE_PRESETS,
+} from "~/shared/db/resource-presets.server";
 import collectionsFixture from "~/shared/db/__fixtures__/v1/collections.json";
 
 const organizationId = "org-1";
@@ -39,7 +42,25 @@ type FakeState = {
   writes: number;
 };
 
-const presets = buildOrgResourcePresets({
+// What a provision writes: the "always" presets. Forms is "when-present" (the
+// OrganizeOS panel adds it when a block first uses it), so a freshly
+// provisioned build does not have it.
+const provisionedPresets = async (
+  args: Parameters<typeof buildOrgResourcePresets>[0]
+) => {
+  const all = await buildOrgResourcePresets(args);
+  const names = new Set(
+    V1_RESOURCE_PRESETS.filter((preset) => preset.seeding === "always").map(
+      (preset) => preset.label
+    )
+  );
+  return {
+    dataSources: all.dataSources.filter((item) => names.has(item.name)),
+    resources: all.resources.filter((item) => names.has(item.name)),
+  };
+};
+
+const presets = await provisionedPresets({
   projectId,
   apiBaseUrl: "https://app.example.org/api/public/v1",
   readToken: "osk_secrettoken",

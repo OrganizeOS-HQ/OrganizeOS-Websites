@@ -12,6 +12,7 @@ import { assetBaseUrl, imageLoader } from "__CONSTANTS__";
 import { sitemap } from "__SITEMAP__";
 import { assets } from "__ASSETS__";
 import { authRoutes } from "__AUTH__";
+import { siteResourceCache } from "../organizeos-resource-cache";
 
 const authenticateProductionRequest = (request: Request) => {
   const host =
@@ -67,7 +68,11 @@ const customFetch: typeof fetch = (input, init) => {
     return Promise.resolve(response);
   }
 
-  return fetch(input, init);
+  // OrganizeOS fork: through the site's in-memory resource cache
+  // (organizeos-resource-cache.ts), one per server instance for every route,
+  // which keeps each response only as long as its own Cache-Control allows.
+  // Behind it is the global fetch, as before.
+  return siteResourceCache(input, init);
 };
 
 export const loader = async (arg: LoaderFunctionArgs) => {

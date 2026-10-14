@@ -1,6 +1,13 @@
-import { createHash } from "node:crypto";
-import type { DataSource, Resource } from "@webstudio-is/sdk";
+import {
+  type DataSource,
+  type Resource,
+  ROOT_INSTANCE_ID,
+} from "@webstudio-is/sdk";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
+import {
+  FORMS_PRESET_NAME,
+  getResourcePresetIds,
+} from "../organizeos-preset-ids";
 
 /**
  * OrganizeOS Websites 2.0 Phase 4d: seed a provisioned org's project with
@@ -21,37 +28,65 @@ import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
  *
  * All ids are derived DETERMINISTICALLY from (projectId, key) so seeding is
  * idempotent: re-provisioning updates the same Resource/variable in place
- * (e.g. rotating the token value) instead of duplicating presets.
+ * (e.g. rotating the token value) instead of duplicating presets. The
+ * derivation lives in shared/organizeos-preset-ids.ts, because the builder's
+ * OrganizeOS panel derives the same ids in the browser: it adds the Forms
+ * preset when a block first uses it, and a re-provision then rewrites that
+ * same preset.
  */
 
-// Fixed namespace for preset-derived ids. Do not change: it would orphan the
-// presets already seeded into live projects.
-const PRESET_NAMESPACE = "3f2a1b7c-8d5e-45a1-9b2c-6e0d1a2b3c4d";
-
-/** RFC 4122 v5 (SHA-1, namespaced) UUID, deterministic per name. */
-const uuidV5 = (name: string): string => {
-  const namespaceBytes = Buffer.from(PRESET_NAMESPACE.replace(/-/g, ""), "hex");
-  const bytes = createHash("sha1")
-    .update(namespaceBytes)
-    .update(Buffer.from(name, "utf8"))
-    .digest()
-    .subarray(0, 16);
-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = bytes.toString("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+type V1ResourcePreset = {
+  /** The id derivation's key (organizeos-preset-ids.ts). */
+  key: string;
+  /** The name of the preset's Resource and DataSource. */
+  label: string;
+  path: string;
+  /**
+   * Which builds a provision writes the preset to:
+   * - "always": every org project, on every provision;
+   * - "when-present": only a build that already has it (its binding id or its
+   *   resource id), where both records are rewritten whole. It is never added:
+   *   the OrganizeOS panel creates it when a block first uses it.
+   */
+  seeding: "always" | "when-present";
+  /** The DataSource's scope; none when absent. */
+  scopeInstanceId?: DataSource["scopeInstanceId"];
 };
 
 /**
  * The /v1 read endpoints exposed as data-binding presets. These are the frozen
  * public GET DTOs from Phase 1 (see the OrganizeOS ledger repo). Write surfaces
  * (donate/signup form submission) are a separate mechanism and not seeded here.
+ * Forms is the org's published forms, which the OrganizeOS Signup Form block
+ * reads through its `data` prop.
+ *
+ * Webstudio loads a data source, in the builder and on a published page, only
+ * when its scope is on the page or is `:root`, so an unscoped preset never
+ * loads. Forms is scoped at `:root`, the global scope. A `:root` resource is
+ * fetched on every page of the site, on every request, and nothing caches
+ * those fetches, so Forms is seeded only where a block uses it. Events,
+ * Fundraisers and Stats stay unscoped until the owner decides how a site pays
+ * for loading them (spec section 12).
  */
-export const V1_RESOURCE_PRESETS = [
-  { key: "events", label: "Events", path: "/events" },
-  { key: "fundraisers", label: "Fundraisers", path: "/fundraisers" },
-  { key: "stats", label: "Stats", path: "/stats" },
-] as const;
+export const V1_RESOURCE_PRESETS: readonly V1ResourcePreset[] = [
+  { key: "events", label: "Events", path: "/events", seeding: "always" },
+  {
+    key: "fundraisers",
+    label: "Fundraisers",
+    path: "/fundraisers",
+    seeding: "always",
+  },
+  { key: "stats", label: "Stats", path: "/stats", seeding: "always" },
+  // "when-present" is temporary for Forms: the starter signup page of spec
+  // decision 8, if adopted, needs Forms seeded.
+  {
+    key: "forms",
+    label: FORMS_PRESET_NAME,
+    path: "/forms",
+    seeding: "when-present",
+    scopeInstanceId: ROOT_INSTANCE_ID,
+  },
+];
 
 export type OrgResourcePresets = {
   dataSources: DataSource[];
@@ -60,9 +95,11 @@ export type OrgResourcePresets = {
 
 /**
  * Build the preset Resources + DataSources for an org's project. Pure: returns
- * the objects to merge into a build, touches no I/O.
+ * the objects to merge into a build, touches no I/O (async only because the id
+ * derivation is). It builds every preset, whatever its seeding mode;
+ * seedProjectResourcePresets decides which of them a build gets.
  */
-export const buildOrgResourcePresets = ({
+export const buildOrgResourcePresets = async ({
   projectId,
   apiBaseUrl,
   readToken,
@@ -70,7 +107,7 @@ export const buildOrgResourcePresets = ({
   projectId: string;
   apiBaseUrl: string;
   readToken: string;
-}): OrgResourcePresets => {
+}): Promise<OrgResourcePresets> => {
   const base = apiBaseUrl.replace(/\/+$/, "");
 
   // The token is inlined as a LITERAL header expression, not routed through a
@@ -86,8 +123,10 @@ export const buildOrgResourcePresets = ({
   const dataSources: DataSource[] = [];
 
   for (const preset of V1_RESOURCE_PRESETS) {
-    const resourceId = uuidV5(`${projectId}:v1:${preset.key}:resource`);
-    const bindingId = uuidV5(`${projectId}:v1:${preset.key}:binding`);
+    const { resourceId, bindingId } = await getResourcePresetIds(
+      projectId,
+      preset.key
+    );
 
     resources.push({
       id: resourceId,
@@ -98,12 +137,16 @@ export const buildOrgResourcePresets = ({
       headers: [{ name: "Authorization", value: authHeaderExpression }],
     });
 
-    dataSources.push({
+    const binding: DataSource = {
       type: "resource",
       id: bindingId,
       name: preset.label,
       resourceId,
-    });
+    };
+    if (preset.scopeInstanceId !== undefined) {
+      binding.scopeInstanceId = preset.scopeInstanceId;
+    }
+    dataSources.push(binding);
   }
 
   return { dataSources, resources };
@@ -136,16 +179,17 @@ export type V1PresetSeed = {
  * token already lives, so the collection presets are seeded from them. Returns
  * the first preset that yields both, or undefined when none does (a project
  * provisioned without a read token, or presets the admin rewrote by hand).
+ * Async only because the id derivation is.
  */
-export const readV1PresetSeed = ({
+export const readV1PresetSeed = async ({
   projectId,
   resources,
 }: {
   projectId: string;
   resources: Resource[];
-}): V1PresetSeed | undefined => {
+}): Promise<V1PresetSeed | undefined> => {
   for (const preset of V1_RESOURCE_PRESETS) {
-    const resourceId = uuidV5(`${projectId}:v1:${preset.key}:resource`);
+    const { resourceId } = await getResourcePresetIds(projectId, preset.key);
     const resource = resources.find((item) => item.id === resourceId);
     if (resource === undefined) {
       continue;
@@ -181,14 +225,14 @@ export const readV1PresetSeed = ({
 /**
  * Build one Resource + binding DataSource per public collection, so a
  * collection's items can be bound in the builder's data panel like the static
- * presets. Pure. Ids derive from (projectId, slug), so a rename keeps them and
- * only updates the names.
+ * presets. Pure (async only because the id derivation is). Ids derive from
+ * (projectId, slug), so a rename keeps them and only updates the names.
  *
  * A slug listed twice keeps the last entry. A platform collection that a
  * static preset already covers (events, fundraisers, stats) is skipped; a
  * platform collection with any other slug is seeded like any other.
  */
-export const buildCollectionResourcePresets = ({
+export const buildCollectionResourcePresets = async ({
   projectId,
   apiBase,
   authHeaderExpression,
@@ -198,7 +242,7 @@ export const buildCollectionResourcePresets = ({
   apiBase: string;
   authHeaderExpression: string;
   collections: CollectionPresetInput[];
-}): OrgResourcePresets => {
+}): Promise<OrgResourcePresets> => {
   const base = apiBase.replace(/\/+$/, "");
   const bySlug = new Map(
     collections.map((collection) => [collection.slug, collection])
@@ -215,11 +259,11 @@ export const buildCollectionResourcePresets = ({
       continue;
     }
 
-    const resourceId = uuidV5(
-      `${projectId}:v1:collection:${collection.slug}:resource`
-    );
-    const bindingId = uuidV5(
-      `${projectId}:v1:collection:${collection.slug}:binding`
+    // `${projectId}:v1:collection:<slug>:resource|binding`, as before the
+    // derivation moved to organizeos-preset-ids.ts.
+    const { resourceId, bindingId } = await getResourcePresetIds(
+      projectId,
+      `collection:${collection.slug}`
     );
 
     resources.push({
@@ -272,6 +316,11 @@ const mergeById = <Type extends { id: string }>(
  * project's dev build (the one with no deployment), merges the presets by their
  * deterministic ids, and writes back. Idempotent: safe to run on every
  * provision. Does nothing observable beyond the presets already present.
+ *
+ * A "when-present" preset is merged only into a build that already has its
+ * binding or its resource, and then both records are written whole, as every
+ * preset is (a designer's rename or added search parameter is reset). A build
+ * with neither never gets it.
  */
 export const seedProjectResourcePresets = async (
   context: AppContext,
@@ -300,17 +349,43 @@ export const seedProjectResourcePresets = async (
     build.data.resources ?? "[]"
   ) as Resource[];
 
-  const presets = buildOrgResourcePresets({ projectId, apiBaseUrl, readToken });
+  const presets = await buildOrgResourcePresets({
+    projectId,
+    apiBaseUrl,
+    readToken,
+  });
+
+  const absentIds = new Set<string>();
+  for (const preset of V1_RESOURCE_PRESETS) {
+    if (preset.seeding === "always") {
+      continue;
+    }
+    const { resourceId, bindingId } = await getResourcePresetIds(
+      projectId,
+      preset.key
+    );
+    const isPresent =
+      existingDataSources.some((dataSource) => dataSource.id === bindingId) ||
+      existingResources.some((resource) => resource.id === resourceId);
+    if (isPresent === false) {
+      absentIds.add(bindingId);
+      absentIds.add(resourceId);
+    }
+  }
+  const seededDataSources = presets.dataSources.filter(
+    (dataSource) => absentIds.has(dataSource.id) === false
+  );
+  const seededResources = presets.resources.filter(
+    (resource) => absentIds.has(resource.id) === false
+  );
 
   const update = await client
     .from("Build")
     .update({
       dataSources: JSON.stringify(
-        mergeById(existingDataSources, presets.dataSources)
+        mergeById(existingDataSources, seededDataSources)
       ),
-      resources: JSON.stringify(
-        mergeById(existingResources, presets.resources)
-      ),
+      resources: JSON.stringify(mergeById(existingResources, seededResources)),
     })
     .eq("id", build.data.id);
   if (update.error) {

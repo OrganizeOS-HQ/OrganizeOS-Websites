@@ -2,7 +2,11 @@ import { describe, expect, test } from "vitest";
 import type { DataSource, Resource } from "@webstudio-is/sdk";
 import { syncOrgCollectionPresets } from "./collections-sync.server";
 import { deriveProjectId } from "./provision.server";
-import { buildOrgResourcePresets, upsertById } from "./resource-presets.server";
+import {
+  buildOrgResourcePresets,
+  upsertById,
+  V1_RESOURCE_PRESETS,
+} from "./resource-presets.server";
 import collectionsFixture from "./__fixtures__/v1/collections.json";
 
 const organizationId = "org-1";
@@ -98,7 +102,25 @@ const makeContext = ({
   return { context: { postgrest: { client } } as never, state };
 };
 
-const staticPresets = buildOrgResourcePresets({
+// What a provision writes: the "always" presets. Forms is "when-present" (the
+// OrganizeOS panel adds it when a block first uses it), so a freshly
+// provisioned build does not have it.
+const provisionedPresets = async (
+  args: Parameters<typeof buildOrgResourcePresets>[0]
+) => {
+  const all = await buildOrgResourcePresets(args);
+  const names = new Set(
+    V1_RESOURCE_PRESETS.filter((preset) => preset.seeding === "always").map(
+      (preset) => preset.label
+    )
+  );
+  return {
+    dataSources: all.dataSources.filter((item) => names.has(item.name)),
+    resources: all.resources.filter((item) => names.has(item.name)),
+  };
+};
+
+const staticPresets = await provisionedPresets({
   projectId,
   apiBaseUrl,
   readToken: "osk_secrettoken",
@@ -344,7 +366,7 @@ describe("syncOrgCollectionPresets", () => {
     await syncOrgCollectionPresets(context, { organizationId, collections });
 
     // Provisioning with a new token rewrites the static presets in place.
-    const rotated = buildOrgResourcePresets({
+    const rotated = await provisionedPresets({
       projectId,
       apiBaseUrl,
       readToken: "osk_rotated",

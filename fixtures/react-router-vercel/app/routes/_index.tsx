@@ -45,6 +45,7 @@ import css from "../__generated__/index.css?url";
 import { sitemap } from "../__generated__/$resources.sitemap.xml";
 import { assets } from "../__generated__/$resources.assets";
 import { authRoutes } from "../__generated__/$resources.wsauth.server";
+import { siteResourceCache } from "../organizeos-resource-cache";
 
 const authenticateProductionRequest = (request: Request) => {
   const host =
@@ -100,7 +101,14 @@ const customFetch: typeof fetch = (input, init) => {
     return Promise.resolve(response);
   }
 
-  return cachedFetch(projectId, input, init);
+  // OrganizeOS fork: through the site's in-memory resource cache
+  // (organizeos-resource-cache.ts), one per server instance for every route,
+  // which keeps each response only as long as its own Cache-Control allows.
+  // Behind it is the cachedFetch upstream calls here, so a request that opts
+  // into the Cache API still reaches it.
+  return siteResourceCache(input, init, (input, init) =>
+    cachedFetch(projectId, input, init)
+  );
 };
 
 export const loader = async (arg: LoaderFunctionArgs) => {
