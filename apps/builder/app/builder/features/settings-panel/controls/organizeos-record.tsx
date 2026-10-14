@@ -33,11 +33,11 @@ import { PropertyLabel } from "../property-label";
  * forms instead of typed.
  *
  * The forms come from the block's own computed `data`, which insert binds to
- * the project's Forms preset. The builder already loads every resource bound
- * at the page or at `:root` through its resources loader
- * (`subscribeResources`) and computes the block's props from that cache, so
- * the picker reads the selected block's computed `data` and makes no request
- * of its own.
+ * a Forms binding scoped to the block's root and referencing the project's
+ * Forms catalog Resource. The builder loads every resource bound to an
+ * instance on the page through its resources loader (`subscribeResources`)
+ * and computes the block's props from that cache, so the picker reads the
+ * selected block's computed `data` and makes no request of its own.
  */
 
 /**

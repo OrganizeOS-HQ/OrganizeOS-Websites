@@ -309,8 +309,10 @@ export const createResourceCache = (
     // A hung request would hold every render waiting on this refresh. Past
     // the deadline it is aborted and fails as a network error does, which a
     // stale entry answers, so the deadline is short while one can.
+    // Short only when the stale entry can still answer once it fires.
     const timeoutSeconds =
-      stale !== undefined && requestedAt < stale.staleUntil
+      stale !== undefined &&
+      requestedAt + STALE_REQUEST_TIMEOUT_SECONDS * 1000 < stale.staleUntil
         ? STALE_REQUEST_TIMEOUT_SECONDS
         : REQUEST_TIMEOUT_SECONDS;
     const deadline = AbortSignal.timeout(timeoutSeconds * 1000);
