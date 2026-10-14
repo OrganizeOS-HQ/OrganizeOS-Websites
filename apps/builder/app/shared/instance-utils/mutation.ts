@@ -32,6 +32,7 @@ import {
 import { $instances, $project, $props } from "../sync/data-stores";
 import { removeByMutable } from "../array-utils";
 import { serverSyncStore } from "../sync/sync-stores";
+import { isPresetId } from "../organizeos-preset-ids";
 import {
   findAvailableVariables,
   rebindTreeVariablesMutable,
@@ -399,7 +400,11 @@ export const deleteInstanceMutable = (
   for (const dataSource of dataSources.values()) {
     if (instanceIds.has(dataSource.scopeInstanceId ?? "")) {
       dataSources.delete(dataSource.id);
-      if (dataSource.type === "resource") {
+      // OrganizeOS fork: an org catalog Resource outlives its bindings.
+      if (
+        dataSource.type === "resource" &&
+        isPresetId(dataSource.resourceId) === false
+      ) {
         resources.delete(dataSource.resourceId);
       }
     }

@@ -15,10 +15,12 @@ import {
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
 import {
+  $organizeosSite,
   $propValuesByInstanceSelector,
   $registeredComponentMetas,
   $variableValuesByInstanceSelector,
   getInstanceKey,
+  getInstancePath,
   registerComponentLibrary,
   selectInstance,
   subscribeResources,
@@ -44,6 +46,9 @@ import {
   getResourceKey,
 } from "~/shared/resources";
 import { getComponentTemplateData } from "~/shared/instance-utils/insert";
+import { updateWebstudioData } from "~/shared/instance-utils/data";
+import { deleteInstanceMutable } from "~/shared/instance-utils/mutation";
+import { deleteVariableMutable } from "~/shared/data-variables";
 import { instanceText } from "~/shared/copy-paste/plugin-instance";
 import { emitCommand } from "~/builder/shared/commands";
 import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
@@ -99,8 +104,10 @@ const signupForm = "@organizeos/site-components:SignupForm";
 const projectId = "project-1";
 const refusal =
   "Cannot add Signup Form: this site's link to your organization's data was removed or changed. Contact OrganizeOS support to restore it.";
+const notOnAllowlist =
+  "Cannot add Signup Form: OrganizeOS blocks are not available for this site yet.";
 
-// Every preset provisioning builds for this project, Forms included, so the
+// The catalog provisioning builds for this project, Forms included, so the
 // panel's view of a project is the real one.
 const provisioned = await buildOrgResourcePresets({
   projectId,
@@ -111,39 +118,17 @@ const { events, forms } = await getOrganizeosPresetIds(projectId);
 const formsResource = provisioned.resources.find(
   (resource) => resource.id === forms.resourceId
 ) as Resource;
-const formsBinding = provisioned.dataSources.find(
-  (dataSource) => dataSource.id === forms.bindingId
-) as DataSource;
 const eventsResource = provisioned.resources.find(
   (resource) => resource.id === events.resourceId
 ) as Resource;
 
-// The Forms preset as both writers write it: scoped at :root, so it loads,
-// and named so that a copy of a block is not rebound to a user's "Forms".
-const scopedFormsResource: Resource = {
+// The Forms catalog Resource as both writers write it.
+const expectedFormsResource: Resource = {
   id: forms.resourceId,
   name: "OrganizeOS Forms",
   method: "get",
   url: `"https://staging.example.org/api/public/v1/forms"`,
   headers: [{ name: "Authorization", value: `"Bearer osk_eventstoken"` }],
-};
-const scopedFormsBinding: DataSource = {
-  type: "resource",
-  id: forms.bindingId,
-  scopeInstanceId: ROOT_INSTANCE_ID,
-  name: "OrganizeOS Forms",
-  resourceId: forms.resourceId,
-};
-// The Forms preset as it was written before it was scoped and renamed.
-const unscopedFormsResource: Resource = {
-  ...scopedFormsResource,
-  name: "Forms",
-};
-const unscopedFormsBinding: DataSource = {
-  type: "resource",
-  id: forms.bindingId,
-  name: "Forms",
-  resourceId: forms.resourceId,
 };
 
 // An admin's own variables named "Forms", global and on the page.
@@ -167,18 +152,20 @@ const withoutForms = {
   resources: provisioned.resources.filter(
     (resource) => resource.id !== forms.resourceId
   ),
-  dataSources: provisioned.dataSources.filter(
-    (dataSource) => dataSource.id !== forms.bindingId
-  ),
+  dataSources: [] as DataSource[],
 };
+const withForms = { resources: provisioned.resources, dataSources: [] };
 
-const setProject = ({
-  resources,
-  dataSources,
-}: {
-  resources: Resource[];
-  dataSources: DataSource[];
-}) => {
+const setProject = (
+  {
+    resources,
+    dataSources,
+  }: {
+    resources: Resource[];
+    dataSources: DataSource[];
+  },
+  { blocksEnabled = true }: { blocksEnabled?: boolean } = {}
+) => {
   const data = renderData(<$.Body ws:id="bodyId"></$.Body>);
   $instances.set(data.instances);
   $props.set(data.props);
@@ -196,46 +183,105 @@ const setProject = ({
   $selectedPageId.set(pages.homePageId);
   selectInstance(["bodyId"]);
   $project.set({ id: projectId } as Project);
+  $organizeosSite.set({
+    organizationId: "org-1",
+    manageUrl: "https://app.example.org/dashboard",
+    platformUrl: "https://app.example.org",
+    blocksEnabled,
+  });
 };
 
-const getBlockDataProps = () => {
-  const roots = [...$instances.get().values()].filter(
+const getBlockRoots = () =>
+  [...$instances.get().values()].filter(
     (instance) => instance.component === signupForm
   );
-  return roots.map((root) =>
+
+const getBlockDataProps = () =>
+  getBlockRoots().map((root) =>
     [...$props.get().values()].find(
       (prop) => prop.instanceId === root.id && prop.name === "data"
     )
   );
+
+// The resource bindings scoped to each block's root.
+const getBlockBindings = () =>
+  getBlockRoots().map((root) =>
+    [...$dataSources.get().values()].filter(
+      (dataSource) =>
+        dataSource.type === "resource" && dataSource.scopeInstanceId === root.id
+    )
+  );
+
+// Each block's `data` bound, by id, to the `.data` of the one binding its root
+// brings, which references the Forms catalog Resource (or, for a copy, the copy
+// of it Webstudio made).
+const expectBoundToOwnBinding = ({ copies = 0 } = {}) => {
+  const roots = getBlockRoots();
+  const bindings = getBlockBindings();
+  const props = getBlockDataProps();
+  roots.forEach((root, index) => {
+    expect(bindings[index]).toEqual([
+      {
+        type: "resource",
+        id: expect.any(String),
+        scopeInstanceId: root.id,
+        name: "OrganizeOS Forms",
+        resourceId: expect.any(String),
+      },
+    ]);
+    const [binding] = bindings[index] as [
+      Extract<DataSource, { type: "resource" }>,
+    ];
+    expect(props[index]).toEqual({
+      id: expect.any(String),
+      instanceId: root.id,
+      name: "data",
+      type: "expression",
+      value: `${encodeDataSourceVariable(binding.id)}.data`,
+    });
+  });
+  const resourceIds = bindings.map(
+    ([binding]) => (binding as { resourceId: string }).resourceId
+  );
+  expect(
+    resourceIds.filter((resourceId) => resourceId === forms.resourceId)
+  ).toHaveLength(roots.length - copies);
+  for (const resourceId of resourceIds) {
+    expect($resources.get().get(resourceId)).toEqual({
+      ...expectedFormsResource,
+      id: resourceId,
+    });
+  }
+  // never page-wide
+  expect(
+    [...$dataSources.get().values()].filter(
+      (dataSource) =>
+        dataSource.type === "resource" &&
+        (dataSource.scopeInstanceId === ROOT_INSTANCE_ID ||
+          dataSource.scopeInstanceId === "bodyId" ||
+          dataSource.scopeInstanceId === undefined)
+    )
+  ).toEqual([]);
 };
 
 // Each block's `data` as the canvas renders it.
 const getBlockDataValues = () => {
   const propValues = $propValuesByInstanceSelector.get();
-  return getBlockDataProps().map((prop) =>
-    propValues
-      .get(getInstanceKey([prop?.instanceId ?? "", "bodyId"]))
-      ?.get("data")
+  return getBlockRoots().map((root) =>
+    propValues.get(getInstanceKey([root.id, "bodyId"]))?.get("data")
   );
 };
 
-// The value of the Forms preset in each block's variable scope, which the
+// The value of each block's binding in its root's variable scope, which the
 // Settings panel's expression editor and Variables section read.
 const getBlockScopeFormsValues = () => {
   const variableValues = $variableValuesByInstanceSelector.get();
-  return getBlockDataProps().map((prop) =>
+  const bindings = getBlockBindings();
+  return getBlockRoots().map((root, index) =>
     variableValues
-      .get(getInstanceKey([prop?.instanceId ?? "", "bodyId", ROOT_INSTANCE_ID]))
-      ?.get(forms.bindingId)
+      .get(getInstanceKey([root.id, "bodyId", ROOT_INSTANCE_ID]))
+      ?.get(bindings[index]?.[0]?.id ?? "")
   );
-};
-
-const boundToFormsPreset = {
-  id: expect.any(String),
-  instanceId: expect.any(String),
-  name: "data",
-  type: "expression",
-  value: `${encodeDataSourceVariable(forms.bindingId)}.data`,
 };
 
 // GET /v1/forms's body, and the loader's result for it.
@@ -260,6 +306,11 @@ const formsBody = {
 };
 const formsResult = { ok: true, status: 200, statusText: "", data: formsBody };
 
+const cacheFormsResult = () => {
+  const request = computeResourceRequest(expectedFormsResource, new Map());
+  $resourcesCache.set(new Map([[getResourceKey(request), formsResult]]));
+};
+
 const getStores = () => ({
   instances: $instances.get(),
   props: $props.get(),
@@ -270,6 +321,13 @@ const getStores = () => ({
   styleSourceSelections: $styleSourceSelections.get(),
   breakpoints: $breakpoints.get(),
 });
+
+const expectNothingWritten = (before: ReturnType<typeof getStores>) => {
+  const after = getStores();
+  for (const [name, store] of Object.entries(before)) {
+    expect(after[name as keyof typeof after], name).toBe(store);
+  }
+};
 
 beforeEach(() => {
   toastError.mockClear();
@@ -283,66 +341,55 @@ afterEach(() => {
 });
 
 describe("insertOrganizeosBlock", () => {
-  test("binds an existing Forms preset by id, to the response body", async () => {
-    setProject(provisioned);
+  test("gives the block its own binding, scoped to its root, of the existing Forms Resource", async () => {
+    setProject(withForms);
 
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
 
-    const [dataProp] = getBlockDataProps();
-    expect(dataProp).toEqual(boundToFormsPreset);
-    const root = $instances.get().get(dataProp?.instanceId ?? "");
-    expect(root?.component).toBe(signupForm);
+    expectBoundToOwnBinding();
+    const [root] = getBlockRoots();
     expect($instances.get().get("bodyId")?.children).toEqual([
-      { type: "id", value: root?.id },
+      { type: "id", value: root.id },
     ]);
-    // the preset is used as it is, never rewritten or copied
+    // the Resource is used as it is, never rewritten or copied
     expect($resources.get()).toEqual(
       new Map(provisioned.resources.map((resource) => [resource.id, resource]))
     );
-    expect($dataSources.get().get(forms.bindingId)).toBe(formsBinding);
-    expect(
-      [...$dataSources.get().values()].filter(
-        (dataSource) => dataSource.type === "resource"
-      )
-    ).toEqual(provisioned.dataSources);
     expect(toastError).not.toHaveBeenCalled();
   });
 
-  test("creates a missing Forms preset with the deterministic ids and the Events header, and never a second", async () => {
+  test("creates a missing Forms Resource with the deterministic id and the Events header, and never a second", async () => {
     setProject(withoutForms);
 
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
 
-    // scoped at :root and named "OrganizeOS Forms", from the Events base with
-    // /forms and the Events Authorization header: exactly what provisioning
-    // writes for this project
-    expect($resources.get().get(forms.resourceId)).toEqual(scopedFormsResource);
-    expect($dataSources.get().get(forms.bindingId)).toEqual(scopedFormsBinding);
-    expect(scopedFormsResource.headers).toEqual(eventsResource.headers);
-    expect(formsResource).toEqual(scopedFormsResource);
-    expect(formsBinding).toEqual(scopedFormsBinding);
-    expect(getBlockDataProps()).toEqual([boundToFormsPreset]);
+    // from the Events base with /forms and the Events Authorization header:
+    // exactly what provisioning writes for this project
+    expect($resources.get().get(forms.resourceId)).toEqual(
+      expectedFormsResource
+    );
+    expect(expectedFormsResource.headers).toEqual(eventsResource.headers);
+    expect(formsResource).toEqual(expectedFormsResource);
+    expectBoundToOwnBinding();
 
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
 
-    expect(getBlockDataProps()).toEqual([
-      boundToFormsPreset,
-      boundToFormsPreset,
-    ]);
+    expect(getBlockRoots()).toHaveLength(2);
+    expectBoundToOwnBinding();
     expect($resources.get().size).toBe(provisioned.resources.length);
-    expect(
-      [...$resources.get().values()].filter(
-        (resource) => resource.name === "OrganizeOS Forms"
-      )
-    ).toEqual([scopedFormsResource]);
-    expect(
-      [...$dataSources.get().values()].filter(
-        (dataSource) => dataSource.type === "resource"
-      )
-    ).toHaveLength(provisioned.dataSources.length);
   });
 
-  test("keeps a Forms preset that appeared while the ids were derived", async () => {
+  test("adds the block, its binding and the Forms Resource in one undoable step", async () => {
+    setProject(withoutForms);
+    const before = getStores();
+
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    emitCommand("undo");
+
+    expect(getStores()).toEqual(before);
+  });
+
+  test("keeps a Forms Resource that appeared while the ids were derived", async () => {
     setProject(withoutForms);
     const inserting = insertOrganizeosBlock(signupForm);
     // e.g. a second click, or a re-provision synced in meanwhile
@@ -353,59 +400,44 @@ describe("insertOrganizeosBlock", () => {
     expect($resources.get().get(forms.resourceId)).toBe(edited);
   });
 
-  describe("scopes a Forms preset written with no scope at :root, and changes nothing else", () => {
-    test("when the project has it", async () => {
-      setProject({
-        resources: [...withoutForms.resources, unscopedFormsResource],
-        dataSources: [...withoutForms.dataSources, unscopedFormsBinding],
-      });
+  test("keeps a Forms Resource that appeared between the completion and the transaction", async () => {
+    setProject(withoutForms);
+    const edited = { ...formsResource, name: "Forms (edited)" };
+    beforeNextTransaction.run = () => {
+      $resources.set(new Map($resources.get()).set(edited.id, edited));
+    };
 
-      expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
 
-      expect($dataSources.get().get(forms.bindingId)).toEqual({
-        ...unscopedFormsBinding,
-        scopeInstanceId: ROOT_INSTANCE_ID,
-      });
-      expect($resources.get().get(forms.resourceId)).toBe(
-        unscopedFormsResource
-      );
-      expect(getBlockDataProps()).toEqual([boundToFormsPreset]);
-    });
+    expect(beforeNextTransaction.run).toBeUndefined();
+    expect($resources.get().get(forms.resourceId)).toBe(edited);
+    expect(getBlockBindings()[0]).toEqual([
+      expect.objectContaining({ resourceId: forms.resourceId }),
+    ]);
+  });
 
-    // e.g. a re-provision by an older builder, synced in just then
-    test.each([
-      ["the completion saw no preset", withoutForms],
-      ["the completion saw it scoped", provisioned],
-    ])(
-      "when it appears between the completion and the transaction, and %s",
-      async (_case, project) => {
-        setProject(project);
-        beforeNextTransaction.run = () => {
-          $dataSources.set(
-            new Map($dataSources.get()).set(
-              unscopedFormsBinding.id,
-              unscopedFormsBinding
-            )
-          );
-        };
+  test("leaves a Forms binding an older builder scoped at :root alone, and binds the block to its own", async () => {
+    const rootBinding: DataSource = {
+      type: "resource",
+      id: forms.bindingId,
+      scopeInstanceId: ROOT_INSTANCE_ID,
+      name: "OrganizeOS Forms",
+      resourceId: forms.resourceId,
+    };
+    setProject({ ...withForms, dataSources: [rootBinding] });
 
-        expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
 
-        expect(beforeNextTransaction.run).toBeUndefined();
-        expect($dataSources.get().get(forms.bindingId)).toEqual({
-          ...unscopedFormsBinding,
-          scopeInstanceId: ROOT_INSTANCE_ID,
-        });
-        expect($resources.get().get(forms.resourceId)).toEqual(
-          scopedFormsResource
-        );
-        expect(getBlockDataProps()).toEqual([boundToFormsPreset]);
-      }
+    expect($dataSources.get().get(forms.bindingId)).toBe(rootBinding);
+    const [[binding]] = getBlockBindings();
+    expect(binding.id).not.toBe(forms.bindingId);
+    expect(getBlockDataProps()[0]?.value).toBe(
+      `${encodeDataSourceVariable(binding.id)}.data`
     );
   });
 
   test("inserts at the drop target it is given", async () => {
-    setProject(provisioned);
+    setProject(withForms);
     const data = renderData(
       <$.Body ws:id="bodyId">
         <$.Box ws:id="boxId"></$.Box>
@@ -420,10 +452,10 @@ describe("insertOrganizeosBlock", () => {
       })
     ).toBe(true);
 
-    const [dataProp] = getBlockDataProps();
-    expect(dataProp).toEqual(boundToFormsPreset);
+    expectBoundToOwnBinding();
+    const [root] = getBlockRoots();
     expect($instances.get().get("bodyId")?.children).toEqual([
-      { type: "id", value: dataProp?.instanceId },
+      { type: "id", value: root.id },
       { type: "id", value: "boxId" },
     ]);
   });
@@ -440,7 +472,7 @@ describe("insertOrganizeosBlock", () => {
 
     test.each([
       [
-        "the Events preset is missing",
+        "the Events Resource is missing",
         {
           ...withoutForms,
           resources: withoutForms.resources.filter(
@@ -449,21 +481,21 @@ describe("insertOrganizeosBlock", () => {
         },
       ],
       [
-        "the Events preset is missing but Forms is there",
+        "the Events Resource is missing but Forms is there",
         {
-          ...provisioned,
-          resources: provisioned.resources.filter(
+          ...withForms,
+          resources: withForms.resources.filter(
             (resource) => resource.id !== events.resourceId
           ),
         },
       ],
-      ["the Events preset has no headers", withEvents([])],
+      ["the Events Resource has no headers", withEvents([])],
       [
-        "the Events preset has a blank Authorization header",
+        "the Events Resource has a blank Authorization header",
         withEvents([{ name: "Authorization", value: `""` }]),
       ],
       [
-        "the Events preset has another header only",
+        "the Events Resource has another header only",
         withEvents([{ name: "Cache-Control", value: `"max-age=60"` }]),
       ],
       [
@@ -476,42 +508,73 @@ describe("insertOrganizeosBlock", () => {
 
       expect(await insertOrganizeosBlock(signupForm)).toBe(false);
 
-      const after = getStores();
-      for (const [name, store] of Object.entries(before)) {
-        expect(after[name as keyof typeof after], name).toBe(store);
-      }
+      expectNothingWritten(before);
       expect(toastError).toHaveBeenCalledTimes(1);
       expect(toastError).toHaveBeenCalledWith(refusal);
     });
 
     test("when there is no project", async () => {
-      setProject(provisioned);
+      setProject(withForms);
       $project.set(undefined);
       const before = getStores();
 
       expect(await insertOrganizeosBlock(signupForm)).toBe(false);
 
-      const after = getStores();
-      for (const [name, store] of Object.entries(before)) {
-        expect(after[name as keyof typeof after], name).toBe(store);
+      expectNothingWritten(before);
+    });
+
+    test.each([
+      ["clicked", undefined],
+      ["dropped", { parentSelector: ["bodyId"], position: 0 }],
+    ] as const)(
+      "when the org is not on the blocks' allowlist, %s",
+      async (_case, insertable) => {
+        setProject(withForms, { blocksEnabled: false });
+        const before = getStores();
+
+        expect(
+          await insertOrganizeosBlock(
+            signupForm,
+            insertable === undefined
+              ? undefined
+              : {
+                  ...insertable,
+                  parentSelector: [...insertable.parentSelector],
+                }
+          )
+        ).toBe(false);
+
+        expectNothingWritten(before);
+        expect(toastError).toHaveBeenCalledWith(notOnAllowlist);
       }
+    );
+
+    test("when the project is not an org's", async () => {
+      setProject(withForms);
+      $organizeosSite.set(undefined);
+      const before = getStores();
+
+      expect(await insertOrganizeosBlock(signupForm)).toBe(false);
+
+      expectNothingWritten(before);
+      expect(toastError).toHaveBeenCalledWith(notOnAllowlist);
     });
   });
 
   test.each([
-    ["exists", provisioned],
+    ["exists", withForms],
     ["is created", withoutForms],
   ])(
-    "binds the preset, not a user variable named Forms, when the preset %s",
+    "binds the block's own binding, not a user variable named Forms, when the Forms Resource %s",
     async (_case, project) => {
       setProject({
         resources: project.resources,
-        dataSources: [...project.dataSources, globalForms, pageForms],
+        dataSources: [globalForms, pageForms],
       });
 
       expect(await insertOrganizeosBlock(signupForm)).toBe(true);
 
-      expect(getBlockDataProps()).toEqual([boundToFormsPreset]);
+      expectBoundToOwnBinding();
       expect($dataSources.get().get(globalForms.id)).toBe(globalForms);
       expect($dataSources.get().get(pageForms.id)).toBe(pageForms);
     }
@@ -519,7 +582,7 @@ describe("insertOrganizeosBlock", () => {
 });
 
 describe("the inserted block's data", () => {
-  test("the builder's loader requests the Forms preset, and the block renders its body", async () => {
+  test("the builder's loader requests Forms for the page with the block, and the block renders its body", async () => {
     setProject(withoutForms);
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
     loaderFetch.mockImplementation(async (_url: string, init: RequestInit) => {
@@ -536,7 +599,7 @@ describe("the inserted block's data", () => {
     await vi.advanceTimersByTimeAsync(1000);
     unsubscribe();
 
-    // Forms alone: Events, Fundraisers and Stats are unscoped, so unloaded
+    // Forms alone: nothing else in the catalog is used on the page
     expect(loaderFetch).toHaveBeenCalledTimes(1);
     const [url, init] = loaderFetch.mock.calls[0];
     expect(url).toBe("/rest/resources-loader");
@@ -553,54 +616,136 @@ describe("the inserted block's data", () => {
     expect(getBlockScopeFormsValues()).toEqual([formsResult]);
   });
 
-  test("keeps the preset's value with a :root variable named Forms listed after it", async () => {
+  test("the builder loads nothing on a page without a block", async () => {
+    setProject(withoutForms);
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    const pages = $pages.get()!;
+    const other = {
+      ...pages.pages.get(pages.homePageId)!,
+      id: "other",
+      path: "/other",
+      rootInstanceId: "otherBody",
+    };
+    $instances.set(
+      new Map($instances.get()).set("otherBody", {
+        type: "instance",
+        id: "otherBody",
+        component: "Body",
+        children: [],
+      })
+    );
+    $pages.set({ ...pages, pages: new Map(pages.pages).set("other", other) });
+    $selectedPageId.set("other");
+
+    vi.useFakeTimers();
+    const unsubscribe = subscribeResources();
+    await vi.advanceTimersByTimeAsync(1000);
+    unsubscribe();
+
+    expect(loaderFetch).not.toHaveBeenCalled();
+  });
+
+  test("keeps the binding's value with a :root variable named Forms listed after it", async () => {
     setProject(withoutForms);
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
     $dataSources.set(
       new Map($dataSources.get()).set(globalForms.id, globalForms)
     );
     expect([...$dataSources.get().keys()].slice(-1)).toEqual([globalForms.id]);
-    const request = computeResourceRequest(
-      $resources.get().get(forms.resourceId) as Resource,
-      new Map()
-    );
-    $resourcesCache.set(new Map([[getResourceKey(request), formsResult]]));
+    cacheFormsResult();
 
     expect(getBlockDataValues()).toEqual([formsBody]);
     expect(getBlockScopeFormsValues()).toEqual([formsResult]);
   });
 });
 
-describe("a copy of an inserted block stays bound to the preset, with a page variable named Forms", () => {
+describe("a copy of an inserted block, with a page variable named Forms", () => {
   const insertNextToPageForms = async () => {
-    setProject({
-      resources: provisioned.resources,
-      dataSources: [...provisioned.dataSources, pageForms],
-    });
+    setProject({ ...withForms, dataSources: [pageForms] });
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    cacheFormsResult();
   };
 
-  test("when it is duplicated", async () => {
+  test("keeps its own binding when it is duplicated, and reads the same forms", async () => {
     await insertNextToPageForms();
 
     emitCommand("duplicateInstance");
 
-    expect(getBlockDataProps()).toEqual([
-      boundToFormsPreset,
-      boundToFormsPreset,
-    ]);
+    // Webstudio copies the binding with the block, and gives the copy its
+    // own copy of the Resource
+    expect(getBlockRoots()).toHaveLength(2);
+    expectBoundToOwnBinding({ copies: 1 });
+    expect(getBlockDataValues()).toEqual([formsBody, formsBody]);
   });
 
-  test("when it is copied and pasted", async () => {
+  test("keeps its own binding when it is copied and pasted", async () => {
     await insertNextToPageForms();
 
     const clipboardData = instanceText.onCopy?.() ?? "";
     expect(await instanceText.onPaste?.(clipboardData)).toBe(true);
 
-    expect(getBlockDataProps()).toEqual([
-      boundToFormsPreset,
-      boundToFormsPreset,
-    ]);
+    expect(getBlockRoots()).toHaveLength(2);
+    expectBoundToOwnBinding({ copies: 1 });
+    expect(getBlockDataValues()).toEqual([formsBody, formsBody]);
+  });
+});
+
+describe("deleting what uses the catalog", () => {
+  test("a deleted block takes its binding, and leaves the Forms Resource", async () => {
+    setProject(withoutForms);
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    const [first, second] = getBlockRoots();
+    const [[firstBinding]] = getBlockBindings();
+
+    updateWebstudioData((data) => {
+      deleteInstanceMutable(
+        data,
+        getInstancePath([first.id, "bodyId"], data.instances)
+      );
+    });
+
+    expect($dataSources.get().has(firstBinding.id)).toBe(false);
+    expect($resources.get().get(forms.resourceId)).toEqual(
+      expectedFormsResource
+    );
+    // so the other block still reads it
+    cacheFormsResult();
+    expect(getBlockRoots()).toEqual([second]);
+    expect(getBlockDataValues()).toEqual([formsBody]);
+  });
+
+  test("a deleted copy takes its own copy of the Resource", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    emitCommand("duplicateInstance");
+    const [, copy] = getBlockRoots();
+    const [, [copyBinding]] = getBlockBindings();
+    const copiedResourceId = (copyBinding as { resourceId: string }).resourceId;
+    expect(copiedResourceId).not.toBe(forms.resourceId);
+
+    updateWebstudioData((data) => {
+      deleteInstanceMutable(
+        data,
+        getInstancePath([copy.id, "bodyId"], data.instances)
+      );
+    });
+
+    expect($resources.get().has(copiedResourceId)).toBe(false);
+    expect($resources.get().has(forms.resourceId)).toBe(true);
+  });
+
+  test("a binding deleted in the data panel leaves the catalog Resource", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    const [[binding]] = getBlockBindings();
+
+    updateWebstudioData((data) => {
+      deleteVariableMutable(data, binding.id);
+    });
+
+    expect($dataSources.get().has(binding.id)).toBe(false);
+    expect($resources.get().get(forms.resourceId)).toBe(formsResource);
   });
 });
 
@@ -608,18 +753,9 @@ describe("completeOrganizeosFragment", () => {
   const presets = {
     presetIds: { events, forms },
     resources: new Map(provisioned.resources.map((item) => [item.id, item])),
-    dataSources: new Map(
-      provisioned.dataSources.map((item) => [item.id, item])
-    ),
   };
-  const getDataProps = (
-    completion: ReturnType<typeof completeOrganizeosFragment>
-  ) =>
-    completion.status === "ready"
-      ? completion.fragment.props.filter((prop) => prop.name === "data")
-      : [];
 
-  test("binds a copy, leaving the registered template unbound", () => {
+  test("leaves the registered template unbound, and names the Forms Resource", () => {
     const template = getComponentTemplateData(signupForm);
     const props = template.props;
 
@@ -628,36 +764,30 @@ describe("completeOrganizeosFragment", () => {
       ...presets,
     });
 
-    expect(getDataProps(completion)).toEqual([
-      { ...boundToFormsPreset, instanceId: template.instances[0].id },
-    ]);
+    expect(completion).toEqual({
+      status: "ready",
+      fragment: expect.anything(),
+      forms: { resourceId: forms.resourceId, resource: undefined },
+    });
     expect(template.props).toBe(props);
     expect(template.props.some((prop) => prop.name === "data")).toBe(false);
   });
 
-  test("adds the Forms preset a project lacks as provisioning builds it, scoped at :root", () => {
+  test("adds the Forms Resource a project lacks as provisioning builds it", () => {
     const completion = completeOrganizeosFragment({
       fragment: getComponentTemplateData(signupForm),
       presetIds: { events, forms },
       resources: new Map(withoutForms.resources.map((item) => [item.id, item])),
-      dataSources: new Map(
-        withoutForms.dataSources.map((item) => [item.id, item])
-      ),
     });
 
     expect(completion).toEqual({
       status: "ready",
       fragment: expect.anything(),
-      resources: [scopedFormsResource],
-      dataSources: [scopedFormsBinding],
-      formsBindingId: forms.bindingId,
+      forms: { resourceId: forms.resourceId, resource: expectedFormsResource },
     });
-    // the records provisioning builds for this project
-    expect(scopedFormsResource).toEqual(formsResource);
-    expect(scopedFormsBinding).toEqual(formsBinding);
   });
 
-  test("replaces a data prop the template binds by name", () => {
+  test("drops a data prop the template binds by name", () => {
     const template = getComponentTemplateData(signupForm);
     const rootId = template.instances[0].id;
     const byName = {
@@ -679,9 +809,10 @@ describe("completeOrganizeosFragment", () => {
       ...presets,
     });
 
-    expect(getDataProps(completion)).toEqual([
-      { ...boundToFormsPreset, instanceId: rootId },
-    ]);
+    expect(
+      completion.status === "ready" &&
+        completion.fragment.props.filter((prop) => prop.name === "data")
+    ).toEqual([]);
   });
 
   test("leaves a fragment whose root reads no platform data alone", () => {
@@ -691,8 +822,7 @@ describe("completeOrganizeosFragment", () => {
         fragment,
         presetIds: { events, forms },
         resources: new Map(),
-        dataSources: new Map(),
       })
-    ).toEqual({ status: "ready", fragment, resources: [], dataSources: [] });
+    ).toEqual({ status: "ready", fragment });
   });
 });

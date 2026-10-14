@@ -250,6 +250,48 @@ describe("parts", () => {
     expect(phone.getAttribute("autocomplete")).toBe("tel");
   });
 
+  test("a typed value stops at the platform's 2000 characters, or at the designer's shorter maxLength", () => {
+    render(
+      <Sdk renderer={undefined}>
+        <SignupForm record={contactFormId} data={forms}>
+          <TestField name="name" label="Name" />
+          <TestField name="email" label="Email" />
+          <TestField name="topic" label="Topic" />
+          <TestField name="message" label="Message" />
+        </SignupForm>
+        <SignupForm record={newsletterId} data={forms}>
+          <TestField name="volunteer_interest" label="I want to volunteer" />
+        </SignupForm>
+        <SignupForm data={forms}>
+          <TestField name="phone" label="Phone" />
+          <Field field="first_name">
+            <FieldLabel>First name</FieldLabel>
+            <FieldInput maxLength={50} />
+          </Field>
+          <Field field="last_name">
+            <FieldLabel>Last name</FieldLabel>
+            <FieldInput maxLength={5000} />
+          </Field>
+        </SignupForm>
+      </Sdk>
+    );
+    // text, email, textarea, tel, and a designer's longer maxLength
+    for (const label of ["Name", "Email", "Message", "Phone", "Last name"]) {
+      expect(screen.getByLabelText(label).getAttribute("maxlength")).toBe(
+        "2000"
+      );
+    }
+    expect(screen.getByLabelText("First name").getAttribute("maxlength")).toBe(
+      "50"
+    );
+    // a select's and a checkbox's values are the form's own
+    for (const label of ["Topic", "I want to volunteer"]) {
+      expect(screen.getByLabelText(label).hasAttribute("maxlength")).toBe(
+        false
+      );
+    }
+  });
+
   test("the root renders a native-validating form with a hidden honeypot outside the designer's content", () => {
     const { container } = render(<Block />);
     const form = getForm(container);
@@ -561,6 +603,49 @@ describe("unavailable", () => {
       );
       fireEvent.submit(getForm(container));
       expect(fetchMock).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    ["no Field", false],
+    ["a Field with no Field Input", true],
+  ])(
+    "when a field the form requires has %s: reported at submit on a published site, and nothing posts",
+    async (_case, withField) => {
+      const fetchMock = answerWith(responseReceived);
+      const onStateChange = vi.fn();
+      const { container } = render(
+        <Sdk renderer={undefined}>
+          <SignupForm
+            record={contactFormId}
+            data={forms}
+            onStateChange={onStateChange}
+          >
+            <TestField name="name" label="Name" />
+            <TestField name="email" label="Email" />
+            {withField && (
+              <Field field="message">
+                <FieldLabel>Message</FieldLabel>
+                <FieldMessage />
+              </Field>
+            )}
+            <SubmitButton>Send</SubmitButton>
+          </SignupForm>
+        </Sdk>
+      );
+      fill("Name", "Ada Lovelace");
+      fill("Email", "ada@example.org");
+      expect(onStateChange).not.toHaveBeenCalled();
+      fireEvent.submit(getForm(container));
+      await waitFor(() =>
+        expect(onStateChange).toHaveBeenCalledWith(
+          "unavailable",
+          "This form is not available right now."
+        )
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(onStateChange).toHaveBeenCalledTimes(1);
     }
   );
 

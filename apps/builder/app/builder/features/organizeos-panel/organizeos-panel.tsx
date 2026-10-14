@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import type { WsComponentMeta } from "@webstudio-is/sdk";
 import type { GeneratedTemplateMeta } from "@webstudio-is/template";
 import {
   theme,
+  Button,
   ComponentCard,
   Flex,
   Link,
@@ -24,6 +25,11 @@ import {
 } from "~/shared/nano-states";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
 import { platformName, platformUrl } from "~/shared/branding";
+import {
+  type CatalogEntry,
+  findCatalogResources,
+} from "~/shared/organizeos-preset-ids";
+import { $dataSources, $project, $resources } from "~/shared/sync/data-stores";
 import { CollapsibleSection } from "~/builder/shared/collapsible-section";
 import {
   getInstanceLabel,
@@ -37,13 +43,27 @@ import {
   insertOrganizeosBlock,
   organizeosNamespace,
 } from "./insert-organizeos-block";
+import {
+  addCatalogResourceToPage,
+  isCatalogResourceOnPage,
+} from "./organizeos-data";
 
 /**
  * The OrganizeOS panel (spec section 3.1): the blocks registered under the
  * @organizeos/site-components namespace, in sections. Their metas are hidden,
  * so the Components panel never lists them; this one does, and inserts each
  * through insertOrganizeosBlock so it arrives bound to the project's data.
+ * Then the org's data catalog, which a page can add (organizeos-data.ts).
+ *
+ * Offered only to orgs on the rollout allowlist: the sidebar hides the tab
+ * otherwise ($isOrganizeosPanelAvailable).
  */
+
+/** Whether the sidebar offers the panel: the org is on the blocks' allowlist. */
+export const $isOrganizeosPanelAvailable = computed(
+  $organizeosSite,
+  (site) => site?.blocksEnabled === true
+);
 
 type Section = {
   label: string;
@@ -139,6 +159,76 @@ export const getWorkspaceAreaUrl = (
   return `${site.platformUrl}/${site.subdomain}/${path}`;
 };
 
+/**
+ * The project's catalog, found by its deterministic ids, which take a hash to
+ * derive, so it is refreshed asynchronously whenever the resources change.
+ */
+const useCatalog = () => {
+  const project = useStore($project);
+  const resources = useStore($resources);
+  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
+  useEffect(() => {
+    if (project === undefined) {
+      setCatalog([]);
+      return;
+    }
+    let isCurrent = true;
+    findCatalogResources(project.id, resources.values()).then(
+      (entries) => {
+        if (isCurrent) {
+          setCatalog(entries);
+        }
+      },
+      (error) => console.error(error)
+    );
+    return () => {
+      isCurrent = false;
+    };
+  }, [project, resources]);
+  return catalog;
+};
+
+const DataSection = () => {
+  const catalog = useCatalog();
+  const dataSources = useStore($dataSources);
+  const page = useStore($selectedPage);
+  if (catalog.length === 0 || page === undefined) {
+    return;
+  }
+  return (
+    <CollapsibleSection label="Data" fullWidth>
+      <Flex
+        direction="column"
+        gap="1"
+        css={{ paddingInline: theme.panel.paddingInline }}
+      >
+        {catalog.map(({ resource }) => (
+          <Flex key={resource.id} align="center" justify="between" gap="2">
+            <Text truncate>{resource.name}</Text>
+            {isCatalogResourceOnPage({
+              page,
+              dataSources,
+              resourceId: resource.id,
+            }) ? (
+              <Text color="subtle" css={{ flexShrink: 0 }}>
+                On this page
+              </Text>
+            ) : (
+              <Button
+                color="neutral"
+                css={{ flexShrink: 0 }}
+                onClick={() => addCatalogResourceToPage(resource.id)}
+              >
+                Add to this page
+              </Button>
+            )}
+          </Flex>
+        ))}
+      </Flex>
+    </CollapsibleSection>
+  );
+};
+
 const $blockSections = computed(
   [$registeredTemplates, $registeredComponentMetas],
   groupOrganizeosBlocks
@@ -178,13 +268,13 @@ export const OrganizeosPanel = ({
       <PanelTitle>{platformName}</PanelTitle>
       <Separator />
 
-      {selectedPage?.meta.documentType === "xml" ? (
-        <Text color="subtle" css={{ padding: theme.panel.padding }}>
-          {platformName} blocks go on HTML pages.
-        </Text>
-      ) : (
-        <ScrollArea ref={draggableContainerRef}>
-          {blockSections.map((section) => (
+      <ScrollArea ref={draggableContainerRef}>
+        {selectedPage?.meta.documentType === "xml" ? (
+          <Text color="subtle" css={{ padding: theme.panel.padding }}>
+            {platformName} blocks go on HTML pages.
+          </Text>
+        ) : (
+          blockSections.map((section) => (
             <CollapsibleSection
               label={section.label}
               key={section.label}
@@ -242,10 +332,11 @@ export const OrganizeosPanel = ({
                 </Text>
               )}
             </CollapsibleSection>
-          ))}
-          {dragCard}
-        </ScrollArea>
-      )}
+          ))
+        )}
+        <DataSection />
+        {dragCard}
+      </ScrollArea>
     </>
   );
 };

@@ -94,8 +94,31 @@ describe("resolveOrganizeosSite", () => {
       siteUrl: "https://acme.example.org",
       manageUrl: "https://app.example.org/acme/website",
       platformUrl: "https://app.example.org",
+      blocksEnabled: false,
     });
   });
+
+  test.each([
+    [undefined, false],
+    ["", false],
+    [" , ", false],
+    ["org-a,org-b", false],
+    [ORG_ID, true],
+    [`org-a, ${ORG_ID} ,org-b`, true],
+    [`${ORG_ID.toUpperCase()}`, false],
+  ])(
+    "offers the blocks when ORGANIZEOS_BLOCKS_ORG_IDS is %j: %s",
+    (blocksOrgIds, expected) => {
+      expect(
+        resolveOrganizeosSite({
+          ...base,
+          owner: SERVICE_OWNER,
+          projectDomain: "acme",
+          blocksOrgIds,
+        })?.blocksEnabled
+      ).toBe(expected);
+    }
+  );
 
   test("an org project still on the placeholder has no site URL", () => {
     const site = resolveOrganizeosSite({

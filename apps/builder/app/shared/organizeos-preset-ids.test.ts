@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto";
 import { describe, expect, test } from "vitest";
-import { getResourcePresetIds, uuidV5 } from "./organizeos-preset-ids";
+import type { Resource } from "@webstudio-is/sdk";
+import {
+  findCatalogResources,
+  getResourcePresetIds,
+  isPresetId,
+  parseCollectionUrl,
+  uuidV5,
+} from "./organizeos-preset-ids";
 
 // The implementation provisioning used before the helper moved here, verbatim
 // (node:crypto). Live projects carry ids it derived, so the shared helper must
@@ -68,5 +75,86 @@ describe("getResourcePresetIds", () => {
       resourceId: nodeUuidV5("project-1:v1:events:resource"),
       bindingId: nodeUuidV5("project-1:v1:events:binding"),
     });
+  });
+});
+
+describe("isPresetId", () => {
+  test("tells the derived ids from Webstudio's nanoids", async () => {
+    expect(isPresetId(await uuidV5("project-1:v1:forms:resource"))).toBe(true);
+    expect(isPresetId("V1StGXR8_Z5jdHi6B-myT")).toBe(false);
+    // a v4 UUID is not one of ours
+    expect(isPresetId("f0e1d2c3-b4a5-4697-8877-665544332211")).toBe(false);
+  });
+});
+
+describe("parseCollectionUrl", () => {
+  test("reads the API base and slug of a collection url", () => {
+    expect(
+      parseCollectionUrl(`"https://app.example.org/v1/collections/blog/items"`)
+    ).toEqual({ apiBase: "https://app.example.org/v1", slug: "blog" });
+  });
+
+  test.each([
+    `"https://app.example.org/v1/events"`,
+    `"https://app.example.org/v1/collections/blog"`,
+    `"/collections/blog/items"`,
+    `"https://app.example.org/v1/collections/" + slug + "/items"`,
+    "not json",
+    "42",
+  ])("ignores %s", (url) => {
+    expect(parseCollectionUrl(url)).toBeUndefined();
+  });
+});
+
+describe("findCatalogResources", () => {
+  const resource = (id: string, name: string, path: string): Resource => ({
+    id,
+    name,
+    method: "get",
+    url: JSON.stringify(`https://app.example.org/v1${path}`),
+    headers: [],
+  });
+
+  test("lists the catalog by id: the static ones, the collections in build order, then Forms", async () => {
+    const id = async (key: string) =>
+      (await getResourcePresetIds("project-1", key)).resourceId;
+    const forms = resource(await id("forms"), "OrganizeOS Forms", "/forms");
+    const team = resource(
+      await id("collection:team"),
+      "Team",
+      "/collections/team/items"
+    );
+    const stats = resource(await id("stats"), "Stats", "/stats");
+    const blog = resource(
+      await id("collection:blog"),
+      "Blog",
+      "/collections/blog/items"
+    );
+    const events = resource(await id("events"), "Events", "/events");
+    // same urls, other ids: an admin's, or a copy Webstudio made
+    const lookalikes = [
+      resource("copy-of-events", "Events", "/events"),
+      resource("copy-of-blog", "Blog", "/collections/blog/items"),
+    ];
+
+    const catalog = await findCatalogResources("project-1", [
+      forms,
+      team,
+      ...lookalikes,
+      stats,
+      blog,
+      events,
+    ]);
+
+    expect(catalog.map((entry) => [entry.key, entry.resource])).toEqual([
+      ["events", events],
+      ["stats", stats],
+      ["collection:team", team],
+      ["collection:blog", blog],
+      ["forms", forms],
+    ]);
+    expect(catalog[0].bindingId).toBe(
+      (await getResourcePresetIds("project-1", "events")).bindingId
+    );
   });
 });

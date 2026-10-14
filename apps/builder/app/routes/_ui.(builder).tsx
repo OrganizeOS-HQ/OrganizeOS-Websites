@@ -231,8 +231,9 @@ export const loader = async (loaderArgs: LoaderFunctionArgs) => {
     }
 
     // OrganizeOS: a project owned by an org's synthetic service account is an
-    // OrganizeOS site. The chrome then points back at the org's Website area
-    // and the Publish dialog shows the site's real address.
+    // OrganizeOS site. The chrome then points back at the org's Website area,
+    // the Publish dialog shows the site's real address, and the OrganizeOS
+    // panel is offered when the org is on ORGANIZEOS_BLOCKS_ORG_IDS.
     const owner = await context.postgrest.client
       .from("User")
       .select("provider, email")
@@ -253,6 +254,7 @@ export const loader = async (loaderArgs: LoaderFunctionArgs) => {
             projectDomain: project.domain,
             publisherHost: env.PUBLISHER_HOST,
             platformUrl: env.ORGANIZEOS_APP_URL,
+            blocksOrgIds: env.ORGANIZEOS_BLOCKS_ORG_IDS,
           });
 
     const headers = createPrivateNoStoreHeaders();

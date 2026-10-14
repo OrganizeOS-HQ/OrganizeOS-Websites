@@ -56,7 +56,9 @@ import { formatZodIssues } from "./zod-utils";
 import { pinRuntimeDependencies } from "./runtime-version";
 import {
   ORGANIZEOS_DIR,
+  ORGANIZEOS_SOURCE_URL_PLACEHOLDER,
   copyOrganizeosComponents,
+  getOrganizeosSourceUrl,
   resolveOrganizeosComponentsModule,
 } from "./organizeos-components";
 
@@ -270,8 +272,8 @@ export const prebuild = async (options: {
   );
 
   // OrganizeOS fork: a site never installs @organizeos/site-components; its
-  // built components ship inside the site as app source instead
-  // (organizeos-components.ts).
+  // built components ship inside the site as app source instead, with the
+  // package's LICENSE (organizeos-components.ts).
   await copyOrganizeosComponents(appRoot, resolveOrganizeosComponentsModule());
 
   let framework;
@@ -715,6 +717,11 @@ export const prebuild = async (options: {
         .replaceAll(
           "__CSS__",
           importFrom(`./app/__generated__/index.css`, file)
+        )
+        // OrganizeOS fork: the source offer's link (organizeos-components.ts).
+        .replaceAll(
+          ORGANIZEOS_SOURCE_URL_PLACEHOLDER,
+          getOrganizeosSourceUrl()
         );
       await createFileIfNotExists(file, content);
     }

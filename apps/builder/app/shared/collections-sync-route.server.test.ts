@@ -42,9 +42,9 @@ type FakeState = {
   writes: number;
 };
 
-// What a provision writes: the "always" presets. Forms is "when-present" (the
-// OrganizeOS panel adds it when a block first uses it), so a freshly
-// provisioned build does not have it.
+// What a provision writes: the "always" catalog Resources, and no binding.
+// Forms is "when-present" (the OrganizeOS panel adds it when a block first
+// uses it), so a freshly provisioned build does not have it.
 const provisionedPresets = async (
   args: Parameters<typeof buildOrgResourcePresets>[0]
 ) => {
@@ -55,7 +55,6 @@ const provisionedPresets = async (
     )
   );
   return {
-    dataSources: all.dataSources.filter((item) => names.has(item.name)),
     resources: all.resources.filter((item) => names.has(item.name)),
   };
 };
@@ -78,7 +77,7 @@ beforeEach(() => {
   state.build = {
     id: "build-1",
     version: 1,
-    dataSources: JSON.stringify(presets.dataSources),
+    dataSources: "[]",
     resources: JSON.stringify(presets.resources),
   };
   state.losingWrites = 0;

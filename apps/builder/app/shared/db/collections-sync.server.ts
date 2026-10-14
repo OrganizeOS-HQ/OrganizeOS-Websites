@@ -4,17 +4,21 @@ import { deriveProjectId } from "./provision.server";
 import {
   buildCollectionResourcePresets,
   readV1PresetSeed,
+  removeUnusedPresetBindings,
   upsertById,
   type CollectionPresetInput,
 } from "./resource-presets.server";
 
 /**
- * OrganizeOS collections -> builder data presets.
+ * OrganizeOS collections -> the builder's data catalog.
  *
  * OrganizeOS calls this with a full snapshot of an org's PUBLIC collections
- * whenever they change; each one becomes a Resource + binding DataSource in the
- * org's dev build (see buildCollectionResourcePresets), so an admin can bind a
- * collection's items in the data panel. Idempotent: same snapshot, no write.
+ * whenever they change; each one becomes a catalog Resource in the org's dev
+ * build (see buildCollectionResourcePresets), which the OrganizeOS panel lists
+ * so an admin can add it to a page. No binding is written: data loads only
+ * where it is used, and a use brings its own. The unscoped bindings an older
+ * sync wrote are removed where nothing references them. Idempotent: same
+ * snapshot, no write.
  *
  * Collections missing from the snapshot are not removed yet.
  */
@@ -57,7 +61,7 @@ export const syncOrgCollectionPresets = async (
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     const build = await client
       .from("Build")
-      .select("id, version, dataSources, resources")
+      .select("id, version, instances, props, dataSources, resources, pages")
       .eq("projectId", projectId)
       .is("deployment", null)
       .single();
@@ -91,12 +95,20 @@ export const syncOrgCollectionPresets = async (
       collections: presets.resources.length,
     };
 
+    const upserted = upsertById(existingResources, presets.resources);
     const dataSources = JSON.stringify(
-      upsertById(existingDataSources, presets.dataSources)
+      await removeUnusedPresetBindings({
+        projectId,
+        dataSources: existingDataSources,
+        resources: upserted,
+        searchable: [
+          build.data.instances ?? "[]",
+          build.data.props ?? "[]",
+          build.data.pages ?? "",
+        ],
+      })
     );
-    const resources = JSON.stringify(
-      upsertById(existingResources, presets.resources)
-    );
+    const resources = JSON.stringify(upserted);
     if (dataSources === storedDataSources && resources === storedResources) {
       return synced;
     }

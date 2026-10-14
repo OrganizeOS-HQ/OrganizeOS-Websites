@@ -20,4 +20,10 @@ export type OrganizeosSite = {
   manageUrl: string;
   /** OrganizeOS app home, for a plain "back to OrganizeOS" affordance. */
   platformUrl: string;
+  /**
+   * Whether the org is on the rollout allowlist for the OrganizeOS panel and
+   * blocks (`ORGANIZEOS_BLOCKS_ORG_IDS`). When false the panel's tab is hidden
+   * and inserting a block is refused.
+   */
+  blocksEnabled: boolean;
 };

@@ -378,7 +378,11 @@ describe("prebuild", () => {
     const { modules } = await findModuleClosure(entryPath);
     const copied = await getFilePaths(organizeosDir);
     expect(copied.map((path) => relative(organizeosDir, path)).sort()).toEqual(
-      modules.map((path) => relative(dirname(entryPath), path)).sort()
+      [
+        ...modules.map((path) => relative(dirname(entryPath), path)),
+        // the package's, so the copy carries its license
+        "LICENSE",
+      ].sort()
     );
   };
 
@@ -443,6 +447,75 @@ describe("prebuild", () => {
     });
 
     await expectCopyToBeTheClosure();
+  });
+
+  // OrganizeOS fork: a site carries the fork's AGPL code, so the copy ships
+  // its license and every html page links the fork's source
+  // (route-templates/html.tsx, organizeos-components.ts).
+  describe("offers the fork's source", () => {
+    const repository = "https://github.com/OrganizeOS-HQ/websites-builder";
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+
+    /** The generated html route's links function, the head it renders. */
+    const prebuildLinks = async () => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+      const route = await readFile(join("app", "routes", "_index.tsx"), "utf8");
+      const start = route.indexOf("export const links: LinksFunction");
+      return {
+        route,
+        links: route.slice(start, route.indexOf("\n};\n", start)),
+      };
+    };
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    test("every html page links the license and the fork at the commit the publish workflow built", async () => {
+      vi.stubEnv("GITHUB_REPOSITORY", "OrganizeOS-HQ/websites-builder");
+      vi.stubEnv("GITHUB_SHA", sha);
+
+      const { route, links } = await prebuildLinks();
+
+      expect(route).toContain(
+        `const organizeosSourceUrl = "${repository}/tree/${sha}";`
+      );
+      expect(route).not.toContain("__ORGANIZEOS_SOURCE_URL__");
+      expect(links).toContain(
+        `{ rel: "license", href: "https://www.gnu.org/licenses/agpl-3.0.html" },`
+      );
+      expect(links).toContain(
+        `{ rel: "code-repository", href: organizeosSourceUrl }`
+      );
+    });
+
+    test("without a commit it links the fork's repository", async () => {
+      vi.stubEnv("GITHUB_REPOSITORY", undefined);
+      vi.stubEnv("GITHUB_SHA", undefined);
+
+      const { route } = await prebuildLinks();
+
+      expect(route).toContain(`const organizeosSourceUrl = "${repository}";`);
+    });
+
+    test("the copy of the blocks carries the package's LICENSE", async () => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+
+      await expect(
+        readFile(join(organizeosDir, "LICENSE"), "utf8")
+      ).resolves.toEqual(
+        await readFile(
+          new URL("../../sdk-components-organizeos/LICENSE", import.meta.url),
+          "utf8"
+        )
+      );
+    });
   });
 
   // OrganizeOS fork: a page loads a data source only when its scope is on the

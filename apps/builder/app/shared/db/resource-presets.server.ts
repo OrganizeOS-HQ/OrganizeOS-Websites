@@ -1,21 +1,31 @@
 import {
   type DataSource,
   type Resource,
-  ROOT_INSTANCE_ID,
+  encodeDataSourceVariable,
 } from "@webstudio-is/sdk";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import {
   FORMS_PRESET_NAME,
+  findCatalogResources,
+  getCollectionPresetKey,
   getResourcePresetIds,
+  parseCollectionUrl,
 } from "../organizeos-preset-ids";
 
 /**
- * OrganizeOS Websites 2.0 Phase 4d: seed a provisioned org's project with
- * ready-to-bind data Resources pointed at the OrganizeOS public read API (/v1).
+ * OrganizeOS Websites 2.0 Phase 4d: seed a provisioned org's project with its
+ * data catalog, GET Resources pointed at the OrganizeOS public read API (/v1).
  *
- * Each preset is a server-side `Resource` (GET) plus a `resource` DataSource so
- * it shows up in the builder's data panel and can be bound to a Collection with
- * no setup. The per-org read token is inlined as a literal Authorization header
+ * The catalog is Resources only. Webstudio loads a resource DataSource, in the
+ * builder and on a published page, only when its scope is an instance on the
+ * page or `:root`, and data loads only where it is used: a use brings its own
+ * binding, scoped to the instance that uses it (a Signup Form's root, or a
+ * page the OrganizeOS panel adds the Resource to), which references the
+ * catalog Resource by id. Provisioning writes no binding. The unscoped
+ * bindings it used to write never loaded; it removes each one nothing
+ * references, and leaves the rest (removeUnusedPresetBindings).
+ *
+ * The per-org read token is inlined as a literal Authorization header
  * expression on each Resource; resource headers are evaluated only in the
  * SERVER-side getResources() (builder loader / published-page loader) and never
  * shipped to a visitor's browser (Webstudio resolves Resource fetches in the
@@ -27,12 +37,11 @@ import {
  * themselves.
  *
  * All ids are derived DETERMINISTICALLY from (projectId, key) so seeding is
- * idempotent: re-provisioning updates the same Resource/variable in place
- * (e.g. rotating the token value) instead of duplicating presets. The
- * derivation lives in shared/organizeos-preset-ids.ts, because the builder's
- * OrganizeOS panel derives the same ids in the browser: it adds the Forms
- * preset when a block first uses it, and a re-provision then rewrites that
- * same preset.
+ * idempotent: re-provisioning updates the same Resource in place (e.g.
+ * rotating the token value) instead of duplicating it. The derivation lives in
+ * shared/organizeos-preset-ids.ts, because the builder's OrganizeOS panel
+ * derives the same ids in the browser: it adds the Forms Resource when a block
+ * first uses it, and a re-provision then rewrites that same Resource.
  */
 
 type V1ResourcePreset = {
@@ -44,13 +53,11 @@ type V1ResourcePreset = {
   /**
    * Which builds a provision writes the preset to:
    * - "always": every org project, on every provision;
-   * - "when-present": only a build that already has it (its binding id or its
-   *   resource id), where both records are rewritten whole. It is never added:
-   *   the OrganizeOS panel creates it when a block first uses it.
+   * - "when-present": only a build that already has its Resource, which is
+   *   rewritten whole. It is never added: the OrganizeOS panel creates it when
+   *   a block first uses it.
    */
   seeding: "always" | "when-present";
-  /** The DataSource's scope; none when absent. */
-  scopeInstanceId?: DataSource["scopeInstanceId"];
 };
 
 /**
@@ -58,15 +65,7 @@ type V1ResourcePreset = {
  * public GET DTOs from Phase 1 (see the OrganizeOS ledger repo). Write surfaces
  * (donate/signup form submission) are a separate mechanism and not seeded here.
  * Forms is the org's published forms, which the OrganizeOS Signup Form block
- * reads through its `data` prop.
- *
- * Webstudio loads a data source, in the builder and on a published page, only
- * when its scope is on the page or is `:root`, so an unscoped preset never
- * loads. Forms is scoped at `:root`, the global scope. A `:root` resource is
- * fetched on every page of the site, on every request, and nothing caches
- * those fetches, so Forms is seeded only where a block uses it. Events,
- * Fundraisers and Stats stay unscoped until the owner decides how a site pays
- * for loading them (spec section 12).
+ * reads through its `data` prop; the panel creates it on the first insert.
  */
 export const V1_RESOURCE_PRESETS: readonly V1ResourcePreset[] = [
   { key: "events", label: "Events", path: "/events", seeding: "always" },
@@ -77,26 +76,22 @@ export const V1_RESOURCE_PRESETS: readonly V1ResourcePreset[] = [
     seeding: "always",
   },
   { key: "stats", label: "Stats", path: "/stats", seeding: "always" },
-  // "when-present" is temporary for Forms: the starter signup page of spec
-  // decision 8, if adopted, needs Forms seeded.
   {
     key: "forms",
     label: FORMS_PRESET_NAME,
     path: "/forms",
     seeding: "when-present",
-    scopeInstanceId: ROOT_INSTANCE_ID,
   },
 ];
 
 export type OrgResourcePresets = {
-  dataSources: DataSource[];
   resources: Resource[];
 };
 
 /**
- * Build the preset Resources + DataSources for an org's project. Pure: returns
- * the objects to merge into a build, touches no I/O (async only because the id
- * derivation is). It builds every preset, whatever its seeding mode;
+ * Build the catalog Resources for an org's project. Pure: returns the objects
+ * to merge into a build, touches no I/O (async only because the id derivation
+ * is). It builds every preset, whatever its seeding mode;
  * seedProjectResourcePresets decides which of them a build gets.
  */
 export const buildOrgResourcePresets = async ({
@@ -120,13 +115,9 @@ export const buildOrgResourcePresets = async ({
   const authHeaderExpression = JSON.stringify(`Bearer ${readToken}`);
 
   const resources: Resource[] = [];
-  const dataSources: DataSource[] = [];
 
   for (const preset of V1_RESOURCE_PRESETS) {
-    const { resourceId, bindingId } = await getResourcePresetIds(
-      projectId,
-      preset.key
-    );
+    const { resourceId } = await getResourcePresetIds(projectId, preset.key);
 
     resources.push({
       id: resourceId,
@@ -136,20 +127,9 @@ export const buildOrgResourcePresets = async ({
       url: JSON.stringify(`${base}${preset.path}`),
       headers: [{ name: "Authorization", value: authHeaderExpression }],
     });
-
-    const binding: DataSource = {
-      type: "resource",
-      id: bindingId,
-      name: preset.label,
-      resourceId,
-    };
-    if (preset.scopeInstanceId !== undefined) {
-      binding.scopeInstanceId = preset.scopeInstanceId;
-    }
-    dataSources.push(binding);
   }
 
-  return { dataSources, resources };
+  return { resources };
 };
 
 /**
@@ -223,10 +203,10 @@ export const readV1PresetSeed = async ({
 };
 
 /**
- * Build one Resource + binding DataSource per public collection, so a
- * collection's items can be bound in the builder's data panel like the static
- * presets. Pure (async only because the id derivation is). Ids derive from
- * (projectId, slug), so a rename keeps them and only updates the names.
+ * Build one catalog Resource per public collection, which the OrganizeOS panel
+ * lists next to the static ones. Pure (async only because the id derivation
+ * is). Ids derive from (projectId, slug), so a rename keeps them and only
+ * updates the names.
  *
  * A slug listed twice keeps the last entry. A platform collection that a
  * static preset already covers (events, fundraisers, stats) is skipped; a
@@ -249,7 +229,6 @@ export const buildCollectionResourcePresets = async ({
   );
 
   const resources: Resource[] = [];
-  const dataSources: DataSource[] = [];
 
   for (const collection of bySlug.values()) {
     const coveredByStaticPreset = V1_RESOURCE_PRESETS.some(
@@ -259,11 +238,11 @@ export const buildCollectionResourcePresets = async ({
       continue;
     }
 
-    // `${projectId}:v1:collection:<slug>:resource|binding`, as before the
-    // derivation moved to organizeos-preset-ids.ts.
-    const { resourceId, bindingId } = await getResourcePresetIds(
+    // `${projectId}:v1:collection:<slug>:resource`, as before the derivation
+    // moved to organizeos-preset-ids.ts.
+    const { resourceId } = await getResourcePresetIds(
       projectId,
-      `collection:${collection.slug}`
+      getCollectionPresetKey(collection.slug)
     );
 
     resources.push({
@@ -275,22 +254,15 @@ export const buildCollectionResourcePresets = async ({
       ),
       headers: [{ name: "Authorization", value: authHeaderExpression }],
     });
-
-    dataSources.push({
-      type: "resource",
-      id: bindingId,
-      name: collection.name,
-      resourceId,
-    });
   }
 
-  return { dataSources, resources };
+  return { resources };
 };
 
 /**
  * Replace existing entries that share an incoming id where they stand, and
- * append the rest. Unlike mergeById this keeps the order of what is already
- * there, so a re-sync does not reshuffle the builder's data panel.
+ * append the rest, keeping the order of what is already there, so a re-sync
+ * does not reshuffle the build's resources.
  */
 export const upsertById = <Type extends { id: string }>(
   existing: Type[],
@@ -302,25 +274,191 @@ export const upsertById = <Type extends { id: string }>(
   return [...merged, ...incoming.filter((item) => !existingIds.has(item.id))];
 };
 
-/** Replace any existing entries sharing an incoming id, keep the rest, append the incoming. */
-const mergeById = <Type extends { id: string }>(
-  existing: Type[],
-  incoming: Type[]
-): Type[] => {
-  const incomingIds = new Set(incoming.map((item) => item.id));
-  return [...existing.filter((item) => !incomingIds.has(item.id)), ...incoming];
+/**
+ * Remove the bindings older provisioning and collections-sync wrote next to
+ * each catalog Resource (unscoped, so they never loaded; the branch before
+ * this one scoped Forms' at `:root`), where nothing references them. One is
+ * found by its deterministic id, never by name, and counts as referenced when
+ * its id, raw or in its expression form (`$ws$dataSource$...`), appears
+ * anywhere in the build's `searchable` text (instances, props, pages), its
+ * resources or its other data sources: an admin may have bound it. Those are
+ * kept as they are. Everything else is returned untouched and in order.
+ */
+export const removeUnusedPresetBindings = async ({
+  projectId,
+  dataSources,
+  resources,
+  searchable,
+}: {
+  projectId: string;
+  dataSources: DataSource[];
+  resources: Resource[];
+  searchable: string[];
+}): Promise<DataSource[]> => {
+  const presetBindingIds = new Set<string>();
+  for (const preset of V1_RESOURCE_PRESETS) {
+    const { bindingId } = await getResourcePresetIds(projectId, preset.key);
+    presetBindingIds.add(bindingId);
+  }
+  for (const entry of await findCatalogResources(projectId, resources)) {
+    presetBindingIds.add(entry.bindingId);
+  }
+
+  const texts = [...searchable, JSON.stringify(resources)];
+  const isReferenced = (dataSource: DataSource) => {
+    const forms = [dataSource.id, encodeDataSourceVariable(dataSource.id)];
+    const others = JSON.stringify(
+      dataSources.filter((item) => item !== dataSource)
+    );
+    return [...texts, others].some((text) =>
+      forms.some((form) => text.includes(form))
+    );
+  };
+
+  return dataSources.filter(
+    (dataSource) =>
+      presetBindingIds.has(dataSource.id) === false || isReferenced(dataSource)
+  );
+};
+
+const findAuthorizationValues = (resource: Resource) =>
+  resource.headers
+    .filter((header) => header.name.toLowerCase() === "authorization")
+    .map((header) => header.value);
+
+/** The org's dev build, as provisioning reads and writes it. */
+export type DevBuild = {
+  id: string;
+  version: number;
+  instances: string;
+  props: string;
+  dataSources: string;
+  resources: string;
+  pages: string;
+};
+
+type DevBuildContent = Partial<
+  Pick<DevBuild, "instances" | "props" | "dataSources" | "resources" | "pages">
+>;
+
+// A builder save landing between the read and the write costs one retry. The
+// cap keeps the provisioning request short; OrganizeOS retries its failure.
+const MAX_ATTEMPTS = 3;
+
+/**
+ * Rewrite the org's dev build (the one with no deployment) with what `change`
+ * returns for it, as a compare-and-swap on the version it read that also bumps
+ * the version. A builder tab open on the project then gets
+ * `version_mismatched` on its next save and reloads, so it never acts on, or
+ * copies from, records provisioning has replaced (a rotated token). A builder
+ * save that lands between the read and the write costs a re-read and another
+ * try, three attempts in all; then it throws. A change that writes the same
+ * text writes nothing and bumps nothing.
+ *
+ * collections-sync makes the same compare-and-swap without the bump: it runs
+ * often, and a bump makes every open builder reload.
+ */
+export const updateDevBuildWithVersionBump = async (
+  context: AppContext,
+  projectId: string,
+  change: (build: DevBuild) => Promise<DevBuildContent>
+): Promise<void> => {
+  const client = context.postgrest.client;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    const build = await client
+      .from("Build")
+      .select("id, version, instances, props, dataSources, resources, pages")
+      .eq("projectId", projectId)
+      .is("deployment", null)
+      .single();
+    if (build.error) {
+      throw build.error;
+    }
+    const row: DevBuild = {
+      id: build.data.id,
+      version: build.data.version,
+      instances: build.data.instances ?? "[]",
+      props: build.data.props ?? "[]",
+      dataSources: build.data.dataSources ?? "[]",
+      resources: build.data.resources ?? "[]",
+      pages: build.data.pages,
+    };
+
+    const content = await change(row);
+    const changed = Object.entries(content).some(
+      ([column, value]) => row[column as keyof DevBuildContent] !== value
+    );
+    if (changed === false) {
+      return;
+    }
+
+    const update = await client
+      .from("Build")
+      // lastTransactionId is cleared with the bump: a builder save whose
+      // transaction id matched it would otherwise read the new version as its
+      // own already-applied retry (build-patch-core) and skip the reload.
+      .update(
+        { ...content, version: row.version + 1, lastTransactionId: null },
+        { count: "exact" }
+      )
+      .match({ id: row.id, version: row.version });
+    if (update.error) {
+      throw update.error;
+    }
+    if (update.count == null) {
+      throw new Error("Update count is null");
+    }
+    if (update.count > 0) {
+      return;
+    }
+  }
+  throw new Error(
+    `The build of project ${projectId} kept changing; provisioning gave up`
+  );
+};
+
+/** Whether a url expression is a string literal under `base` (a path below it). */
+const isLiteralUrlUnder = (url: string, base: string) => {
+  try {
+    const value: unknown = JSON.parse(url);
+    return typeof value === "string" && value.startsWith(`${base}/`);
+  } catch {
+    return false;
+  }
+};
+
+/** Whether a header expression is a literal `Bearer <token>`. */
+const isBearerLiteral = (value: string) => {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return typeof parsed === "string" && parsed.startsWith("Bearer ");
+  } catch {
+    return false;
+  }
 };
 
 /**
- * Seed (or re-sync) the org's dev build with the /v1 Resource presets. Loads the
- * project's dev build (the one with no deployment), merges the presets by their
- * deterministic ids, and writes back. Idempotent: safe to run on every
- * provision. Does nothing observable beyond the presets already present.
+ * Seed (or re-sync) the org's dev build with its catalog Resources. Merges
+ * them by their deterministic ids, in place and in order (upsertById), and
+ * writes back with updateDevBuildWithVersionBump. Idempotent: safe to run on
+ * every provision; an unchanged catalog writes nothing.
  *
- * A "when-present" preset is merged only into a build that already has its
- * binding or its resource, and then both records are written whole, as every
- * preset is (a designer's rename or added search parameter is reset). A build
- * with neither never gets it.
+ * - Events, Fundraisers and Stats are written whole on every provision (a
+ *   designer's rename or added search parameter is reset).
+ * - Forms ("when-present") is rewritten whole when the build has its
+ *   Resource, and never created.
+ * - Each collection Resource the build has (collections-sync seeds them) gets
+ *   the new Authorization header and API base, keeping its name and position,
+ *   so a rotated token reaches it before the old one is revoked.
+ * - Any other Resource whose Authorization header is a catalog Resource's
+ *   previous one gets the new one: Webstudio gives a copied or duplicated
+ *   block, or page, its own copy of the Resource its binding references. So
+ *   does any Resource whose url is a literal on this org's API base with a
+ *   literal Bearer header: a block pasted from another org's project brings
+ *   that org's token, and this replaces it with this org's.
+ * - The unscoped bindings older provisioning wrote are removed where nothing
+ *   references them (removeUnusedPresetBindings). No binding is written: a
+ *   use brings its own, and a re-provision never touches it.
  */
 export const seedProjectResourcePresets = async (
   context: AppContext,
@@ -330,65 +468,82 @@ export const seedProjectResourcePresets = async (
     readToken,
   }: { projectId: string; apiBaseUrl: string; readToken: string }
 ): Promise<void> => {
-  const client = context.postgrest.client;
-
-  const build = await client
-    .from("Build")
-    .select("id, dataSources, resources")
-    .eq("projectId", projectId)
-    .is("deployment", null)
-    .single();
-  if (build.error) {
-    throw build.error;
-  }
-
-  const existingDataSources = JSON.parse(
-    build.data.dataSources ?? "[]"
-  ) as DataSource[];
-  const existingResources = JSON.parse(
-    build.data.resources ?? "[]"
-  ) as Resource[];
-
   const presets = await buildOrgResourcePresets({
     projectId,
     apiBaseUrl,
     readToken,
   });
+  const apiBase = apiBaseUrl.replace(/\/+$/, "");
+  const authHeaderExpression = JSON.stringify(`Bearer ${readToken}`);
 
-  const absentIds = new Set<string>();
-  for (const preset of V1_RESOURCE_PRESETS) {
-    if (preset.seeding === "always") {
-      continue;
+  await updateDevBuildWithVersionBump(context, projectId, async (build) => {
+    const existingDataSources = JSON.parse(build.dataSources) as DataSource[];
+    const existingResources = JSON.parse(build.resources) as Resource[];
+    const existingIds = new Set(existingResources.map(({ id }) => id));
+    const catalog = await findCatalogResources(projectId, existingResources);
+
+    const seeded: Resource[] = [];
+    for (const preset of V1_RESOURCE_PRESETS) {
+      const { resourceId } = await getResourcePresetIds(projectId, preset.key);
+      const resource = presets.resources.find(({ id }) => id === resourceId);
+      if (
+        resource !== undefined &&
+        (preset.seeding === "always" || existingIds.has(resourceId))
+      ) {
+        seeded.push(resource);
+      }
     }
-    const { resourceId, bindingId } = await getResourcePresetIds(
+
+    const collections = await buildCollectionResourcePresets({
       projectId,
-      preset.key
-    );
-    const isPresent =
-      existingDataSources.some((dataSource) => dataSource.id === bindingId) ||
-      existingResources.some((resource) => resource.id === resourceId);
-    if (isPresent === false) {
-      absentIds.add(bindingId);
-      absentIds.add(resourceId);
-    }
-  }
-  const seededDataSources = presets.dataSources.filter(
-    (dataSource) => absentIds.has(dataSource.id) === false
-  );
-  const seededResources = presets.resources.filter(
-    (resource) => absentIds.has(resource.id) === false
-  );
+      apiBase,
+      authHeaderExpression,
+      collections: catalog.flatMap(({ resource }) => {
+        const collection = parseCollectionUrl(resource.url);
+        return collection === undefined
+          ? []
+          : [{ slug: collection.slug, name: resource.name }];
+      }),
+    });
 
-  const update = await client
-    .from("Build")
-    .update({
-      dataSources: JSON.stringify(
-        mergeById(existingDataSources, seededDataSources)
-      ),
-      resources: JSON.stringify(mergeById(existingResources, seededResources)),
-    })
-    .eq("id", build.data.id);
-  if (update.error) {
-    throw update.error;
-  }
+    const previousAuth = new Set(
+      catalog.flatMap(({ resource }) => findAuthorizationValues(resource))
+    );
+    previousAuth.delete(authHeaderExpression);
+    const resources = upsertById(existingResources, [
+      ...seeded,
+      ...collections.resources,
+    ]).map((resource) => {
+      // A Resource on the OrganizeOS API with another read token: a copy made
+      // before this rotation, or a block pasted from another org's project,
+      // which brings that org's token with it.
+      const onOrgApi = isLiteralUrlUnder(resource.url, apiBase);
+      const replaces = (value: string) =>
+        value !== authHeaderExpression &&
+        (previousAuth.has(value) || (onOrgApi && isBearerLiteral(value)));
+      return findAuthorizationValues(resource).some(replaces)
+        ? {
+            ...resource,
+            headers: resource.headers.map((header) =>
+              header.name.toLowerCase() === "authorization" &&
+              replaces(header.value)
+                ? { ...header, value: authHeaderExpression }
+                : header
+            ),
+          }
+        : resource;
+    });
+
+    const dataSources = await removeUnusedPresetBindings({
+      projectId,
+      dataSources: existingDataSources,
+      resources,
+      searchable: [build.instances, build.props, build.pages],
+    });
+
+    return {
+      dataSources: JSON.stringify(dataSources),
+      resources: JSON.stringify(resources),
+    };
+  });
 };

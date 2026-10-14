@@ -47,6 +47,10 @@ const environment = z.object({
     .optional()
     .transform((value) => (value ?? platformUrl).replace(/\/+$/, "")),
 
+  // Rollout allowlist for the OrganizeOS panel and blocks: comma-separated
+  // organization ids. Unset or empty offers them to no org.
+  ORGANIZEOS_BLOCKS_ORG_IDS: z.string().optional(),
+
   PORT: z
     .string()
     .optional()
@@ -126,6 +130,7 @@ const rawEnv = {
   ORGANIZEOS_PUBLISH_REPO: process.env.ORGANIZEOS_PUBLISH_REPO,
   ORGANIZEOS_PUBLISH_GITHUB_TOKEN: process.env.ORGANIZEOS_PUBLISH_GITHUB_TOKEN,
   ORGANIZEOS_APP_URL: process.env.ORGANIZEOS_APP_URL,
+  ORGANIZEOS_BLOCKS_ORG_IDS: process.env.ORGANIZEOS_BLOCKS_ORG_IDS,
   PORT: process.env.PORT,
   MAX_UPLOAD_SIZE: process.env.MAX_UPLOAD_SIZE,
   S3_ENDPOINT: process.env.S3_ENDPOINT,

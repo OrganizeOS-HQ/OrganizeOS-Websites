@@ -9,6 +9,7 @@ import * as organizeosTemplates from "@organizeos/site-components/templates";
 // The body of GET /v1/forms, the platform's contract fixture.
 import formsBody from "../../../../../../../packages/sdk-components-organizeos/src/__fixtures__/forms.json";
 import {
+  $organizeosSite,
   $registeredComponentMetas,
   $selectedInstanceKey,
   getInstanceKey,
@@ -284,13 +285,7 @@ describe("an inserted Signup Form", () => {
           .map((resource) => [resource.id, resource])
       )
     );
-    $dataSources.set(
-      new Map(
-        provisioned.dataSources
-          .filter((dataSource) => dataSource.id !== forms.bindingId)
-          .map((dataSource) => [dataSource.id, dataSource])
-      )
-    );
+    $dataSources.set(new Map());
     $instances.set(
       new Map([
         [
@@ -310,15 +305,32 @@ describe("an inserted Signup Form", () => {
     $selectedPageId.set(pages.homePageId);
     selectInstance(["bodyId"]);
     $project.set({ id: projectId } as Project);
+    $organizeosSite.set({
+      organizationId: "org-1",
+      manageUrl: "https://app.example.org/dashboard",
+      platformUrl: "https://app.example.org",
+      blocksEnabled: true,
+    });
     $resourcesCache.set(new Map());
 
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
 
-    // insert selects the block, and the picker reads its computed data
+    // insert selects the block, and the picker reads its computed data,
+    // through the block's own binding to the Forms catalog Resource
     const roots = [...$instances.get().values()].filter(
       (instance) => instance.component === signupForm
     );
     expect(roots).toHaveLength(1);
+    expect(
+      [...$dataSources.get().values()].filter(
+        (dataSource) => dataSource.type === "resource"
+      )
+    ).toEqual([
+      expect.objectContaining({
+        scopeInstanceId: roots[0].id,
+        resourceId: forms.resourceId,
+      }),
+    ]);
     expect($selectedInstanceKey.get()).toBe(
       getInstanceKey([roots[0].id, "bodyId"])
     );

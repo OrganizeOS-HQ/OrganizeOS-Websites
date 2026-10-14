@@ -24,6 +24,11 @@
  * names 500, 502, 503 and 504: treating 429 as a failure is this cache's
  * extension, right for /v1, where OrganizeOS owns both ends.
  *
+ * The request of a miss or a refresh, its body read included, has a
+ * deadline: 4 seconds when a stale entry could answer its failure, 10
+ * otherwise. Past it the request is aborted and fails like a network error, so
+ * a hung platform holds the renders that wait on it for that long at most.
+ *
  * Every route of a site uses one instance, siteResourceCache, so a server
  * instance holds one cache, whichever pages it serves. Each route passes the
  * fetch it called before as the third argument.
@@ -82,6 +87,10 @@ const MAX_FRESH_SECONDS = 300;
 const MAX_STALE_IF_ERROR_SECONDS = 3600;
 const MAX_RETRY_AFTER_SECONDS = 60;
 const DEFAULT_RETRY_SECONDS = 10;
+// The deadline of a request, while a stale entry could answer its failure.
+const STALE_REQUEST_TIMEOUT_SECONDS = 4;
+// The deadline of a request nothing stored could stand in for.
+const REQUEST_TIMEOUT_SECONDS = 10;
 
 // RFC 5861's four, and 429 (see above).
 const FAILED_REFRESH_STATUSES = new Set([429, 500, 502, 503, 504]);
@@ -178,6 +187,25 @@ const toResponse = ({ status, statusText, contentType, body }: Snapshot) =>
     status,
     statusText,
     headers: contentType === null ? undefined : { "content-type": contentType },
+  });
+
+/**
+ * Settles with the work, or rejects with the signal's reason once it aborts,
+ * whichever comes first, so work that ignores the signal cannot hang its
+ * caller. Work that settles later is still handled: it never leaves an
+ * unhandled rejection.
+ */
+const settleBy = <T>(signal: AbortSignal, work: () => Promise<T>) =>
+  new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    if (signal.aborted) {
+      abort();
+      return;
+    }
+    signal.addEventListener("abort", abort, { once: true });
+    work()
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", abort));
   });
 
 /** A URL's origin and path for a log line, never its query. */
@@ -278,15 +306,34 @@ export const createResourceCache = (
   ): Promise<Snapshot> => {
     const { url, init, underlyingFetch, hasAuthorization } = request;
     const requestedAt = now();
+    // A hung request would hold every render waiting on this refresh. Past
+    // the deadline it is aborted and fails as a network error does, which a
+    // stale entry answers, so the deadline is short while one can.
+    const timeoutSeconds =
+      stale !== undefined && requestedAt < stale.staleUntil
+        ? STALE_REQUEST_TIMEOUT_SECONDS
+        : REQUEST_TIMEOUT_SECONDS;
+    const deadline = AbortSignal.timeout(timeoutSeconds * 1000);
+    const signal =
+      init?.signal == null
+        ? deadline
+        : AbortSignal.any([init.signal, deadline]);
     let response: Response;
     let body: string;
     try {
-      response = await underlyingFetch(url, init);
-      body = await response.text();
+      // The deadline covers the body too: a response can arrive and its body
+      // never end.
+      ({ response, body } = await settleBy(signal, async () => {
+        const answer = await underlyingFetch(url, { ...init, signal });
+        return { response: answer, body: await answer.text() };
+      }));
     } catch (error) {
+      const failure = deadline.aborted
+        ? `no answer in ${timeoutSeconds} seconds`
+        : "network error";
       if (
         stale !== undefined &&
-        answerWithStale(key, stale, url, "network error", DEFAULT_RETRY_SECONDS)
+        answerWithStale(key, stale, url, failure, DEFAULT_RETRY_SECONDS)
       ) {
         return stale.snapshot;
       }

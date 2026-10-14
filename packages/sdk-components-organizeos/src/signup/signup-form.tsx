@@ -133,6 +133,31 @@ const buildSignupBody = ({
   };
 };
 
+/**
+ * Whether a field the form requires has no Field Input to collect it. The
+ * post would go without it, and the platform's invalid_field answer would
+ * name a field with no Field Message to show it on, so the visitor could
+ * never get past the generic error: the form is unavailable as laid out.
+ */
+const lacksRequiredInput = (
+  fields: readonly FormFieldConfig[],
+  parts: readonly FormPart[]
+) => {
+  const collected = new Set<string>();
+  for (const part of parts) {
+    if (
+      part.kind === "input" &&
+      part.name !== undefined &&
+      part.read !== undefined
+    ) {
+      collected.add(part.name);
+    }
+  }
+  return fields.some(
+    (field) => field.required && collected.has(field.name) === false
+  );
+};
+
 /** What the canvas check reports for a Signup Form. */
 const getProblems = ({
   resolution,
@@ -298,7 +323,11 @@ export const SignupForm = forwardRef<ElementRef<"form">, SignupFormProps>(
         return;
       }
       const { formId, fields } = resolution;
-      if (resolution.unavailable !== undefined || fields === undefined) {
+      if (
+        resolution.unavailable !== undefined ||
+        fields === undefined ||
+        lacksRequiredInput(fields, parts)
+      ) {
         report("unavailable", stateMessages.unavailable);
         return;
       }

@@ -117,21 +117,36 @@ export const organizeosWebsiteAreaUrl = (
 };
 
 /**
+ * The organization ids in `ORGANIZEOS_BLOCKS_ORG_IDS`, a comma-separated list.
+ * Unset or empty means none.
+ */
+export const parseOrgIdList = (value: string | undefined): Set<string> =>
+  new Set(
+    (value ?? "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item !== "")
+  );
+
+/**
  * Describe the OrganizeOS org behind a project, or undefined for a project a
  * human owns (which is not an OrganizeOS site and gets upstream behavior).
- * Pure: the caller supplies the project's owner row and the deployment's
- * publisher host + platform URL.
+ * Pure: the caller supplies the project's owner row, the deployment's
+ * publisher host + platform URL, and the raw `ORGANIZEOS_BLOCKS_ORG_IDS`
+ * allowlist (the panel and blocks are offered to the orgs it lists only).
  */
 export const resolveOrganizeosSite = ({
   owner,
   projectDomain,
   publisherHost,
   platformUrl,
+  blocksOrgIds,
 }: {
   owner: { provider: string | null; email: string | null };
   projectDomain: string;
   publisherHost: string;
   platformUrl: string;
+  blocksOrgIds?: string;
 }): OrganizeosSite | undefined => {
   if (owner.provider !== ORGANIZEOS_SERVICE_PROVIDER || owner.email === null) {
     return undefined;
@@ -157,6 +172,7 @@ export const resolveOrganizeosSite = ({
         : `https://${subdomain}.${publisherHost}`,
     manageUrl: organizeosWebsiteAreaUrl(platformUrl, subdomain),
     platformUrl: platformUrl.replace(/\/+$/, ""),
+    blocksEnabled: parseOrgIdList(blocksOrgIds).has(organizationId),
   };
 };
 

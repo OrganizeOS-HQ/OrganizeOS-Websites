@@ -351,9 +351,18 @@ describe("what it keys on", () => {
     }
 
     expect(network.mock.calls).toHaveLength(requests.length);
-    requests.forEach(([input, init], index) => {
+    requests.forEach(([input], index) => {
       expect(network.mock.calls[index][0]).toBe(input);
-      expect(network.mock.calls[index][1]).toBe(init);
+    });
+    // What the cache requests gets the same init, with its deadline added.
+    requests.slice(0, 2).forEach(([_input, init], index) => {
+      const sent = network.mock.calls[index][1];
+      expect(sent).toEqual({ ...init, signal: expect.any(AbortSignal) });
+      expect(sent?.headers).toBe(init.headers);
+    });
+    // What goes straight through gets the very init.
+    requests.slice(2).forEach(([_input, init], index) => {
+      expect(network.mock.calls[index + 2][1]).toBe(init);
     });
     expect(requests[0][1]).toEqual({
       method: "get",
@@ -781,6 +790,188 @@ describe("backoff after a failed refresh", () => {
     network.mockResolvedValueOnce(reply({ body: "limited", status: 429 }));
     expect(await read(get(cache))).toBe("limited");
     expect(network).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("a deadline on every request", () => {
+  /**
+   * AbortSignal.timeout on Vitest's fake clock, which Node's own timer does
+   * not follow.
+   */
+  const fakeTimeout = () =>
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      const controller = new AbortController();
+      setTimeout(() => {
+        controller.abort(
+          new DOMException("The operation timed out.", "TimeoutError")
+        );
+      }, milliseconds);
+      return controller.signal;
+    });
+
+  /** A fetch that never answers and ignores its signal. */
+  const hang = () => new Promise<Response>(() => {});
+
+  /** A response whose body never ends. */
+  const endlessBody = async () =>
+    new Response(new ReadableStream({ start() {} }));
+
+  /** Tracks whether a promise has settled, without leaving it unhandled. */
+  const track = <T>(promise: Promise<T>) => {
+    const tracked = { settled: false, result: promise };
+    promise.then(
+      () => {
+        tracked.settled = true;
+      },
+      () => {
+        tracked.settled = true;
+      }
+    );
+    return tracked;
+  };
+
+  /** The value a promise resolves with, or the error it rejects with. */
+  const outcome = (promise: Promise<unknown>) =>
+    promise.then(
+      (value) => value,
+      (error: unknown) => error
+    );
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test.each([
+    { name: "a fetch that never answers", fail: hang },
+    { name: "a body that never ends", fail: endlessBody },
+  ])(
+    "serves the stale entry 4 seconds into $name, to everyone waiting",
+    async ({ fail }) => {
+      const timeout = fakeTimeout();
+      const { cache, network, wait } = setup();
+      network.mockResolvedValueOnce(
+        reply({ body: "stored", headers: { "cache-control": staleIfError } })
+      );
+      await read(get(cache));
+      wait(61);
+      network.mockImplementationOnce(fail);
+
+      const waiting = track(Promise.all([read(get(cache)), read(get(cache))]));
+      await vi.advanceTimersByTimeAsync(3999);
+      expect(waiting.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(await waiting.result).toEqual(["stored", "stored"]);
+      expect(timeout).toHaveBeenLastCalledWith(4000);
+      expect(network).toHaveBeenCalledTimes(2);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(`${url} failed (no answer in 4 seconds)`)
+      );
+      // The usual backoff follows: the next request waits for none.
+      expect(await read(get(cache))).toBe("stored");
+      expect(network).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  test("waits the long deadline when the stale entry would expire before the short one fires", async () => {
+    const timeout = fakeTimeout();
+    const { cache, network, wait } = setup();
+    network.mockResolvedValueOnce(
+      reply({ body: "stored", headers: { "cache-control": staleIfError } })
+    );
+    await read(get(cache));
+    // Past freshness and 2 seconds before the end of stale-if-error: a 4 second
+    // deadline would fire after the stale entry is no longer usable.
+    const staleIfErrorSeconds = Number(
+      /stale-if-error=(\d+)/.exec(staleIfError)?.[1]
+    );
+    const maxAgeSeconds = Number(
+      /(?:s-maxage|max-age)=(\d+)/.exec(staleIfError)?.[1]
+    );
+    wait(maxAgeSeconds + staleIfErrorSeconds - 2);
+    network.mockImplementationOnce(hang);
+
+    const waiting = track(read(get(cache)));
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(timeout).toHaveBeenLastCalledWith(10_000);
+    expect(waiting.settled).toBe(true);
+  });
+
+  test.each([
+    { name: "nothing stored", cacheControl: undefined },
+    { name: "a stale entry with no stale-if-error", cacheControl: cacheable },
+  ])(
+    "with $name, a request that hangs fails after 10 seconds, and the next one reaches the network",
+    async ({ cacheControl }) => {
+      const timeout = fakeTimeout();
+      const { cache, network, wait } = setup();
+      if (cacheControl !== undefined) {
+        network.mockResolvedValueOnce(
+          reply({ body: "stored", headers: { "cache-control": cacheControl } })
+        );
+        await read(get(cache));
+        wait(61);
+      }
+      network.mockImplementationOnce(hang);
+
+      const failed = track(outcome(get(cache)));
+      await vi.advanceTimersByTimeAsync(9999);
+      expect(failed.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(await failed.result).toMatchObject({ name: "TimeoutError" });
+      expect(timeout).toHaveBeenLastCalledWith(10_000);
+      network.mockResolvedValueOnce(reply({ body: "forms" }));
+      expect(await read(get(cache))).toBe("forms");
+      expect(network).toHaveBeenCalledTimes(cacheControl === undefined ? 2 : 3);
+    }
+  );
+
+  test("aborts the request it gave up on, which then settles unnoticed", async () => {
+    fakeTimeout();
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const { cache, network } = setup();
+      // Like the real fetch: rejects with the signal's reason once it aborts.
+      network.mockImplementationOnce(
+        (_input, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(init.signal?.reason);
+            });
+          })
+      );
+
+      const failed = outcome(get(cache));
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(network.mock.calls[0][1]?.signal?.aborted).toBe(true);
+      expect(await failed).toMatchObject({ name: "TimeoutError" });
+      vi.useRealTimers();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
+  test("a caller's own signal still aborts the request", async () => {
+    fakeTimeout();
+    const { cache, network } = setup();
+    network.mockImplementationOnce(hang);
+    const caller = new AbortController();
+
+    const failed = outcome(cache(url, { signal: caller.signal }));
+    caller.abort(new Error("the visitor left"));
+
+    expect(await failed).toMatchObject({ message: "the visitor left" });
+    expect(network.mock.calls[0][1]?.signal?.aborted).toBe(true);
   });
 });
 

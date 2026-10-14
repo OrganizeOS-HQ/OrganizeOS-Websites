@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   $allSelectedInstanceSelectors,
+  $organizeosSite,
   $selectedInstanceOutlines,
   $selectedInstanceSelector,
   $selectedPageId,
@@ -246,5 +247,26 @@ describe("createObjectPool", () => {
       ["box", "body"],
       ["heading", "body"],
     ]);
+  });
+
+  // A block dropped on the canvas is inserted there, and the insert reads
+  // whether the org may use the blocks.
+  test("syncs the OrganizeOS site to the canvas", () => {
+    const objectPool = createObjectPool();
+    const site = {
+      organizationId: "org-1",
+      manageUrl: "https://app.example.org/dashboard",
+      platformUrl: "https://app.example.org",
+      blocksEnabled: true,
+    };
+
+    objectPool.applyTransaction({
+      id: "organizeos-site",
+      object: "organizeosSite",
+      payload: site,
+    });
+
+    expect($organizeosSite.get()).toEqual(site);
+    $organizeosSite.set(undefined);
   });
 });

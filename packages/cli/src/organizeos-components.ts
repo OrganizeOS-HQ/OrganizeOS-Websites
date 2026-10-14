@@ -13,6 +13,10 @@
  * depends on (react, react-dom, @webstudio-is/react-sdk, @webstudio-is/sdk),
  * which resolve to the site's own pinned copies: nothing to install, link or
  * pin. organizeos-components.test.ts holds the package's build to that.
+ *
+ * The copy is the fork's AGPL code, as are the resource cache and the patched
+ * route templates, so it carries the package's LICENSE, and the html route
+ * template links the fork's source from every page (getOrganizeosSourceUrl).
  */
 import { existsSync, readFileSync } from "node:fs";
 import { copyFile, mkdir, readFile } from "node:fs/promises";
@@ -33,16 +37,52 @@ export const ORGANIZEOS_DIR = "__organizeos__";
  */
 export const ORGANIZEOS_COMPONENTS_IMPORT = `../${ORGANIZEOS_DIR}/components.js`;
 
-/** The package's built module behind a source file, as its exports name it. */
-const getBuiltModulePath = (sourcePath: string) => {
-  let packageDir = dirname(sourcePath);
+/**
+ * The fork's public repository, where a site's visitors get the Corresponding
+ * Source of the fork's code the site carries (ORGANIZEOS-FORK.md §1).
+ */
+export const ORGANIZEOS_SOURCE_REPOSITORY = "OrganizeOS-HQ/websites-builder";
+
+/** What prebuild replaces with getOrganizeosSourceUrl() in the route templates. */
+export const ORGANIZEOS_SOURCE_URL_PLACEHOLDER = "__ORGANIZEOS_SOURCE_URL__";
+
+/**
+ * The source a site links: the fork's repository at the commit this CLI was
+ * built from when that is known, which in the publish workflow it is (GitHub
+ * Actions sets GITHUB_SHA to the commit it checked out, in the repository
+ * GITHUB_REPOSITORY names), and the repository itself otherwise.
+ */
+export const getOrganizeosSourceUrl = (
+  env: Record<string, string | undefined> = process.env
+) => {
+  const repositoryUrl = `https://github.com/${ORGANIZEOS_SOURCE_REPOSITORY}`;
+  const sha = env.GITHUB_SHA ?? "";
+  if (
+    env.GITHUB_REPOSITORY?.toLowerCase() ===
+      ORGANIZEOS_SOURCE_REPOSITORY.toLowerCase() &&
+    /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sha)
+  ) {
+    return `${repositoryUrl}/tree/${sha}`;
+  }
+  return repositoryUrl;
+};
+
+/** The folder of the package a file belongs to: the closest with a package.json. */
+const getPackageDir = (path: string) => {
+  let packageDir = dirname(path);
   while (existsSync(join(packageDir, "package.json")) === false) {
     const parentDir = dirname(packageDir);
     if (parentDir === packageDir) {
-      throw new Error(`${sourcePath} is not inside a package`);
+      throw new Error(`${path} is not inside a package`);
     }
     packageDir = parentDir;
   }
+  return packageDir;
+};
+
+/** The package's built module behind a source file, as its exports name it. */
+const getBuiltModulePath = (sourcePath: string) => {
+  const packageDir = getPackageDir(sourcePath);
   const { exports } = JSON.parse(
     readFileSync(join(packageDir, "package.json"), "utf8")
   );
@@ -161,10 +201,10 @@ export const findModuleClosure = async (entryPath: string) => {
 
 /**
  * Copy a built components module, and every module it reaches through
- * relative imports, into the site's app/__organizeos__/, keeping their paths.
- * The components module reaches neither metas.js nor templates.js, whose
- * imports (@webstudio-is/template, the icons) a site does not install, so
- * neither is copied.
+ * relative imports, into the site's app/__organizeos__/, keeping their paths,
+ * with its package's LICENSE beside them. The components module reaches
+ * neither metas.js nor templates.js, whose imports (@webstudio-is/template,
+ * the icons) a site does not install, so neither is copied.
  */
 export const copyOrganizeosComponents = async (
   appDir: string,
@@ -177,4 +217,11 @@ export const copyOrganizeosComponents = async (
     await mkdir(dirname(targetPath), { recursive: true });
     await copyFile(modulePath, targetPath);
   }
+  const licensePath = join(getPackageDir(entryPath), "LICENSE");
+  if (existsSync(licensePath) === false) {
+    throw new Error(
+      `${ORGANIZEOS_NAMESPACE} has no LICENSE at ${licensePath}, and its copy cannot ship without one`
+    );
+  }
+  await copyFile(licensePath, join(appDir, ORGANIZEOS_DIR, "LICENSE"));
 };

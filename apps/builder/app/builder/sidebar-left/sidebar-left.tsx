@@ -37,7 +37,10 @@ import {
 } from "~/builder/shared/assets/drag-monitor";
 import { getSetting, setSetting } from "~/builder/shared/client-settings";
 import { ComponentsPanel } from "~/builder/features/components";
-import { OrganizeosPanel } from "~/builder/features/organizeos-panel";
+import {
+  $isOrganizeosPanelAvailable,
+  OrganizeosPanel,
+} from "~/builder/features/organizeos-panel";
 import { OrganizeosIcon } from "~/shared/organizeos-logo";
 import { PagesPanel } from "~/builder/features/pages";
 import { NavigatorPanel } from "~/builder/features/navigator";
@@ -117,7 +120,8 @@ const panels: PanelConfig[] = [
   },
   // OrganizeOS fork: the OrganizeOS blocks (Signup Form and the families after
   // it) are hidden from Components and listed in a panel of their own, which
-  // binds each to the project's data as it inserts it.
+  // binds each to the project's data as it inserts it. Offered only to orgs on
+  // the blocks' allowlist (see getAvailablePanels).
   {
     name: "organizeos",
     label: "OrganizeOS",
@@ -154,6 +158,12 @@ const panels: PanelConfig[] = [
   },
 ];
 
+// OrganizeOS fork: the OrganizeOS panel only where the org may use it.
+const getAvailablePanels = (isOrganizeosPanelAvailable: boolean) =>
+  panels.filter(
+    (panel) => panel.name !== "organizeos" || isOrganizeosPanelAvailable
+  );
+
 const setSidebarPanelWidth = (panelName: string, width: number) => {
   const widths = getSetting("sidebarPanelWidths");
   setSetting("sidebarPanelWidths", { ...widths, [panelName]: width });
@@ -177,7 +187,11 @@ type SidebarLeftProps = {
 export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
   const activePanel = useStore($activeSidebarPanel);
   const dragAndDropState = useStore($dragAndDropState);
-  const { Panel } = panels.find((item) => item.name === activePanel) ?? none;
+  const availablePanels = getAvailablePanels(
+    useStore($isOrganizeosPanelAvailable)
+  );
+  const { Panel } =
+    availablePanels.find((item) => item.name === activePanel) ?? none;
   const isPreviewMode = useStore($isPreviewMode);
   const isContentMode = useStore($isContentMode);
   const selectedPage = useStore($selectedPage);
@@ -248,7 +262,7 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
           <ExternalDragDropMonitor />
           <div ref={tabsWrapperRef} style={{ display: "contents" }}>
             <SidebarTabsList>
-              {panels
+              {availablePanels
                 .filter((panel) => isPanelVisible(panel, modes))
                 .map(({ name, Icon, label, visibility, ariaLabel }) => {
                   const disabled = isPanelDisabled({ visibility }, modes);

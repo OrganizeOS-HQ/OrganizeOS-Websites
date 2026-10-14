@@ -11,6 +11,7 @@ import {
   ORGANIZEOS_NAMESPACE,
   copyOrganizeosComponents,
   findModuleClosure,
+  getOrganizeosSourceUrl,
   resolveOrganizeosComponentsModule,
 } from "./organizeos-components";
 
@@ -163,6 +164,10 @@ describe("the copy of the build", () => {
 describe("findModuleClosure", () => {
   test("follows imports, re-exports and literal dynamic imports, and the copy holds exactly what it reaches", async () => {
     const libDir = join(tempDir, "lib");
+    await writeModules(tempDir, {
+      "package.json": "{}",
+      LICENSE: "the package's license",
+    });
     await writeModules(libDir, {
       "components.js": [
         `import { a } from "./parts/a.js";`,
@@ -206,6 +211,21 @@ describe("findModuleClosure", () => {
       ).resolves.toEqual(await readFile(join(libDir, path), "utf8"));
     }
     expect(existsSync(join("app", "__organizeos__", "metas.js"))).toBe(false);
+    // The package's LICENSE, from its root, comes with the copy.
+    await expect(
+      readFile(join("app", "__organizeos__", "LICENSE"), "utf8")
+    ).resolves.toBe("the package's license");
+  });
+
+  test("refuses a build whose package has no LICENSE", async () => {
+    await writeModules(tempDir, { "package.json": "{}" });
+    await writeModules(join(tempDir, "lib"), {
+      "components.js": "export const a = 1;",
+    });
+
+    await expect(
+      copyOrganizeosComponents("app", join(tempDir, "lib", "components.js"))
+    ).rejects.toThrow(/has no LICENSE/);
   });
 
   test("refuses what it could not copy as it is", async () => {
@@ -231,5 +251,42 @@ describe("findModuleClosure", () => {
     await expect(findModuleClosure(join(libDir, "style.js"))).rejects.toThrow(
       /imports \.\/style\.css, which is not a built module/
     );
+  });
+});
+
+describe("getOrganizeosSourceUrl", () => {
+  const repository = "https://github.com/OrganizeOS-HQ/websites-builder";
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+
+  test.each([
+    {
+      name: "the fork at the commit, in the fork's workflow",
+      env: {
+        GITHUB_REPOSITORY: "OrganizeOS-HQ/websites-builder",
+        GITHUB_SHA: sha,
+      },
+      expected: `${repository}/tree/${sha}`,
+    },
+    {
+      name: "the fork, outside GitHub Actions",
+      env: {},
+      expected: repository,
+    },
+    {
+      // A commit of another repository is no commit of the fork.
+      name: "the fork, in another repository's workflow",
+      env: { GITHUB_REPOSITORY: "someone/site", GITHUB_SHA: sha },
+      expected: repository,
+    },
+    {
+      name: "the fork, for a commit that is not a full SHA",
+      env: {
+        GITHUB_REPOSITORY: "OrganizeOS-HQ/websites-builder",
+        GITHUB_SHA: "main",
+      },
+      expected: repository,
+    },
+  ])("links $name", ({ env, expected }) => {
+    expect(getOrganizeosSourceUrl(env)).toBe(expected);
   });
 });

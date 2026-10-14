@@ -91,6 +91,7 @@ import {
   invalidateResource,
 } from "~/shared/resources";
 import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
+import { isPresetId } from "~/shared/organizeos-preset-ids";
 
 const NameField = ({
   variable,
@@ -337,7 +338,12 @@ const saveVariable = (
   }
   updateWebstudioData((data) => {
     // cleanup resource when value variable is set
-    if (variable?.type === "resource") {
+    // OrganizeOS fork: except an org catalog Resource, which outlives its
+    // bindings.
+    if (
+      variable?.type === "resource" &&
+      isPresetId(variable.resourceId) === false
+    ) {
       data.resources.delete(variable.resourceId);
     }
     data.dataSources.set(dataSourceId, {

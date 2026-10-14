@@ -4,8 +4,13 @@ import type { WsComponentMeta } from "@webstudio-is/sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
 import { platformUrl } from "~/shared/branding";
+import { $organizeosSite } from "~/shared/nano-states";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
-import { getWorkspaceAreaUrl, groupOrganizeosBlocks } from "./organizeos-panel";
+import {
+  $isOrganizeosPanelAvailable,
+  getWorkspaceAreaUrl,
+  groupOrganizeosBlocks,
+} from "./organizeos-panel";
 
 const namespace = "@organizeos/site-components";
 
@@ -91,6 +96,7 @@ describe("getWorkspaceAreaUrl", () => {
     siteUrl: "https://acme.organizeos.org",
     manageUrl: "https://app.organizeos.org/acme/website",
     platformUrl: "https://app.organizeos.org",
+    blocksEnabled: true,
   };
 
   test("links the org's workspace area on the app host", () => {
@@ -115,5 +121,23 @@ describe("getWorkspaceAreaUrl", () => {
 
   test("links the platform home for a project no org owns", () => {
     expect(getWorkspaceAreaUrl(undefined, "pages/embeds")).toBe(platformUrl);
+  });
+});
+
+describe("$isOrganizeosPanelAvailable", () => {
+  const site: OrganizeosSite = {
+    organizationId: "org-1",
+    manageUrl: "https://app.organizeos.org/dashboard",
+    platformUrl: "https://app.organizeos.org",
+    blocksEnabled: true,
+  };
+
+  test.each([
+    ["an org on the blocks' allowlist", site, true],
+    ["an org off it", { ...site, blocksEnabled: false }, false],
+    ["a project no org owns", undefined, false],
+  ])("offers the panel to %s: %s", (_case, value, expected) => {
+    $organizeosSite.set(value);
+    expect($isOrganizeosPanelAvailable.get()).toBe(expected);
   });
 });

@@ -47,6 +47,18 @@ import { assets } from "../__generated__/$resources.assets";
 import { authRoutes } from "../__generated__/$resources.wsauth.server";
 import { siteResourceCache } from "../organizeos-resource-cache";
 
+/**
+ * OrganizeOS fork: the source offer (AGPL-3.0, ORGANIZEOS-FORK.md §1). This
+ * site carries the fork's code: the @organizeos/site-components build in
+ * app/__organizeos__/ (with its LICENSE), organizeos-resource-cache.ts and
+ * these route templates. So every page names that license and links the
+ * fork's source, in its head, leaving the page the org designed unchanged.
+ * Prebuild fills in the link: the fork's repository at the commit the CLI was
+ * built from when it knows it (the publish workflow's GITHUB_SHA), the
+ * repository itself otherwise.
+ */
+const organizeosSourceUrl = "https://github.com/OrganizeOS-HQ/websites-builder";
+
 const authenticateProductionRequest = (request: Request) => {
   const host =
     request.headers.get("x-forwarded-host") ||
@@ -243,6 +255,12 @@ export const links: LinksFunction = () => {
       as: "image",
     });
   }
+
+  // OrganizeOS fork: the source offer (see organizeosSourceUrl).
+  result.push(
+    { rel: "license", href: "https://www.gnu.org/licenses/agpl-3.0.html" },
+    { rel: "code-repository", href: organizeosSourceUrl }
+  );
 
   return result;
 };

@@ -102,6 +102,21 @@ const getAutoComplete = (name: string, type: string) => {
 
 type InputElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
+/**
+ * The longest value the platform takes for a field: it refuses a longer one
+ * with an invalid_request that names no field, so the visitor would see only
+ * the generic error. The browser stops the typing there instead.
+ */
+const maxValueLength = 2000;
+
+/** The designer's own maxLength when it is shorter, else the platform's. */
+const getMaxLength = (designerMaxLength: unknown) => {
+  const length = Number(designerMaxLength);
+  return Number.isInteger(length) && length >= 0 && length < maxValueLength
+    ? length
+    : maxValueLength;
+};
+
 /** A checkbox sends "true" when checked and "" when not, as Website Lite does. */
 const readInputValue = (element: InputElement | null) => {
   if (element === null) {
@@ -122,7 +137,8 @@ type FieldInputProps = Omit<ComponentProps<"input">, "children"> & {
  * Field Input: the input its field's type calls for (a text, email or phone
  * input, a textarea, a select with the form's options, or a checkbox), named
  * and required as the form says. The designer's attributes (placeholder,
- * classes) pass through; name, type, id and required are the form's.
+ * classes) pass through; name, type, id and required are the form's, and a
+ * typed value stops at the platform's limit.
  */
 export const FieldInput = forwardRef<InputElement, FieldInputProps>(
   (
@@ -164,6 +180,7 @@ export const FieldInput = forwardRef<InputElement, FieldInputProps>(
       return (
         <textarea
           {...(common as ComponentProps<"textarea">)}
+          maxLength={getMaxLength(props.maxLength)}
           placeholder={placeholder}
           defaultValue={value ?? defaultValue}
           ref={ref}
@@ -207,6 +224,7 @@ export const FieldInput = forwardRef<InputElement, FieldInputProps>(
       <input
         {...common}
         type={inputType}
+        maxLength={getMaxLength(props.maxLength)}
         autoComplete={
           getAutoComplete(field?.name ?? "", type) ?? props.autoComplete
         }
