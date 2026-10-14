@@ -62,8 +62,10 @@ export const isCatalogResourceOnPage = ({
  * transaction, so a page that already has it (see isCatalogResourceOnPage)
  * gets no second one. Returns whether it added one.
  *
- * Known limit: two builder tabs that add the same Resource at once can both
- * pass that check locally and end with two page-root bindings of it.
+ * Known limit: two builder tabs that add the same Resource at once both pass
+ * that check against their own state, and single-player sync refuses the
+ * second tab's save as a version mismatch, so only with multiplayer on could
+ * both be saved as two page-root bindings.
  */
 export const addCatalogResourceToPage = (resourceId: Resource["id"]) => {
   const page = $selectedPage.get();

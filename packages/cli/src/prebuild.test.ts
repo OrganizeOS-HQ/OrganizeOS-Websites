@@ -519,8 +519,10 @@ describe("prebuild", () => {
   });
 
   // OrganizeOS fork: a page loads a data source only when its scope is on the
-  // page or is :root, so the Forms preset, as the builder writes it, is
-  // scoped at :root.
+  // page or is :root. The builder now scopes a Signup Form's Forms binding to
+  // the block's own root, so only the page that holds the block loads Forms;
+  // older pre-deploy branches wrote it at :root, and an unscoped binding
+  // loads nowhere.
   describe("compiles a Signup Form's data from the Forms preset", () => {
     const formsBinding = {
       type: "resource",
@@ -529,9 +531,33 @@ describe("prebuild", () => {
       resourceId: "forms-resource",
     };
 
-    const writeSignupForm = (binding: Record<string, unknown>) =>
+    // With `secondPage`, the site has a second page without the block.
+    const writeSignupForm = (
+      binding: Record<string, unknown>,
+      { secondPage = false }: { secondPage?: boolean } = {}
+    ) =>
       writeSiteData(
         createSiteData({
+          ...(secondPage && {
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: "Home",
+                path: "",
+                rootInstanceId: "root",
+                meta: {},
+              },
+              {
+                id: "about",
+                name: "About",
+                title: "About",
+                path: "/about",
+                rootInstanceId: "about-root",
+                meta: {},
+              },
+            ],
+          }),
           instances: [
             [
               "root",
@@ -549,6 +575,14 @@ describe("prebuild", () => {
                 children: [],
               },
             ],
+            ...(secondPage
+              ? [
+                  [
+                    "about-root",
+                    { id: "about-root", component: "Box", children: [] },
+                  ] satisfies [string, unknown],
+                ]
+              : []),
           ],
           props: [
             [
@@ -580,17 +614,17 @@ describe("prebuild", () => {
         })
       );
 
-    const prebuildPage = async () => {
+    const prebuildPage = async (pageFile = "_index") => {
       await prebuild({
         assets: false,
         template: ["react-router", "react-router-vercel"],
       });
       const generatedDir = join("app", "__generated__");
       return {
-        page: await readFile(join(generatedDir, "_index.tsx"), "utf8"),
+        page: await readFile(join(generatedDir, `${pageFile}.tsx`), "utf8"),
         // the page's resources module, which its loader runs on the server
         resources: await readFile(
-          join(generatedDir, "_index.server.tsx"),
+          join(generatedDir, `${pageFile}.server.tsx`),
           "utf8"
         ),
       };
@@ -613,6 +647,43 @@ describe("prebuild", () => {
         `{ name: "Authorization", value: "Bearer osk_test" },`
       );
       expect(resources).toContain(`["${request}", ${request}],`);
+    });
+
+    test("to the Forms resource on the page that holds the block, when the binding is scoped to the block's root", async () => {
+      await writeSignupForm(
+        { ...formsBinding, scopeInstanceId: "signup" },
+        { secondPage: true }
+      );
+
+      const { page, resources } = await prebuildPage();
+
+      const [, variable, request] =
+        page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
+      expect(variable).toBeDefined();
+      expect(page).toContain(`data={${variable}?.data}`);
+      expect(resources).toContain(`const ${request}: ResourceRequest = {`);
+      expect(resources).toContain(
+        `url: "https://app.example.org/api/public/v1/forms",`
+      );
+      expect(resources).toContain(
+        `{ name: "Authorization", value: "Bearer osk_test" },`
+      );
+      expect(resources).toContain(`["${request}", ${request}],`);
+    });
+
+    test("to no request on a page without the block, when the binding is scoped to the block's root", async () => {
+      await writeSignupForm(
+        { ...formsBinding, scopeInstanceId: "signup" },
+        { secondPage: true }
+      );
+
+      const { page, resources } = await prebuildPage("[about]._index");
+
+      expect(page).not.toContain("SignupForm");
+      expect(page).not.toContain("useResource(");
+      expect(resources).not.toContain("/v1/forms");
+      expect(resources).not.toContain("OrganizeOS Forms");
+      expect(resources).not.toContain("ResourceRequest = {");
     });
 
     test("to undefined when the binding has no scope", async () => {

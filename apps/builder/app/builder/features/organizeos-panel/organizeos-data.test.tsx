@@ -185,6 +185,24 @@ describe("addCatalogResourceToPage", () => {
     expect($props.get().get(prop.id)).toEqual(prop);
   });
 
+  test("takes the next free name when an unscoped binding has it, which counts as `:root`", () => {
+    // what older provisioning wrote next to each Resource: no scope, so the
+    // builder's variable scope treats it as a `:root` variable
+    const unscoped: DataSource = {
+      type: "resource",
+      id: events.bindingId,
+      name: "Events",
+      resourceId: events.resourceId,
+    };
+    setProject({ dataSources: [unscoped] });
+
+    expect(addCatalogResourceToPage(events.resourceId)).toBe(true);
+    expect(getEventsBindings()).toEqual([
+      unscoped,
+      expect.objectContaining({ name: "Events 2", scopeInstanceId: "bodyId" }),
+    ]);
+  });
+
   test("a name used only inside a block is still free on the page root", () => {
     setProject({
       dataSources: [

@@ -199,7 +199,7 @@ How an org admin's session is wired end to end, and which side owns each step. T
 4. **Publish** (`features/publish/organizeos-publish.tsx`). The dialog shows the site's real address with copy/open, points at OrganizeOS for domains and settings, and has one Publish button. `domain.publish` creates the production build and the OrganizeOS publisher (`services/organizeos-publisher.server.ts`) dispatches `publish-site.yml` with the build and organization ids. A dispatch that never leaves the builder marks the build FAILED at once; a static-export build is refused (it must never be deployed as the live site).
 5. **Execute** (`.github/workflows/publish-site.yml`). Syncs the build with the CLI, builds it, deploys to the `organizeos-sites` Vercel project, POSTs the deployment URL to OrganizeOS's publish callback (which flips the org's ledger pointer, making the site live through the reverse proxy), then reports `PUBLISHED` to the builder's `POST /internal/publish-status`; any failure reports `FAILED`. Without that report the builder's status would read "pending" forever: upstream's cloud publisher used to flip `Build.publishStatus` directly.
 6. **Status.** The dialog polls the project while a build is pending and treats a build as failed only after the executor's 25 minute timeout (`organizeos-publish-status.ts`; upstream assumes 3 minutes). On success it says the site is live and that the proxy can take up to a minute to pick the new deployment up (its target cache).
-7. **Collections** (OrganizeOS → builder, `POST /internal/collections-sync`, `ORGANIZEOS_PROVISION_TOKEN`, authenticated like provision). Sent by an Inngest job (debounced 30 s per org) whenever the org's public CMS collections change: `{ organizationId, collections }`, every public collection as a full snapshot (`slug` and `name`; `singularName`, `kind`, `id`, `contentUrl` and `fields` are optional, and unknown keys are ignored). The builder adds one catalog Resource per collection to the org's dev build (`shared/db/collections-sync.server.ts`): a GET Resource for `<api base>/collections/<slug>/items`, and no binding. The OrganizeOS panel lists it in its Data section, where an admin adds it to a page (§9: data loads only where it is used). Ids derive from the project and the slug, so a rename only updates the name; a platform collection that a static Resource already covers (`events`, `fundraisers`, `stats`) is skipped. Existing entries are replaced where they stand and new ones appended, so the build keeps its order. A sync also removes the unscoped bindings older syncs wrote next to each Resource where nothing references them, and keeps the rest; it never touches a binding a use brought, whatever its scope.
+7. **Collections** (OrganizeOS → builder, `POST /internal/collections-sync`, `ORGANIZEOS_PROVISION_TOKEN`, authenticated like provision). Sent by an Inngest job (debounced 30 s per org) whenever the org's public CMS collections change: `{ organizationId, collections }`, every public collection as a full snapshot (`slug` and `name`; `singularName`, `kind`, `id`, `contentUrl` and `fields` are optional, and unknown keys are ignored). The builder adds one catalog Resource per collection to the org's dev build (`shared/db/collections-sync.server.ts`): a GET Resource for `<api base>/collections/<slug>/items`, and no binding. The OrganizeOS panel lists it in its Data section, where an admin adds it to a page (§9: data loads only where it is used). Ids derive from the project and the slug, so a rename only updates the name; a platform collection that a static Resource already covers (`events`, `fundraisers`, `stats`) is skipped. Existing entries are replaced where they stand and new ones appended, so the build keeps its order. A sync also removes, where nothing references them, the bindings with a preset's deterministic id: the unscoped ones older syncs wrote next to each Resource and the `:root` Forms binding of the pre-deploy branches (§9). It keeps the rest, and never touches a binding with a fresh id, which is what every use brings now, whatever its scope.
 
    The request carries no token: the API base and the `Authorization` header are copied from the static Resources that provisioning seeded. A re-provision rotates the token in every collection Resource itself (new `Authorization` and API base, same name and position), so the old token can be revoked after the next publish without a sync in between; OrganizeOS still fires a sync after provisioning and at builder SSO entry. Idempotent: an unchanged snapshot writes nothing. A write is a compare-and-swap on the build's `version`, which it never bumps (that would make every open builder reload); if a builder save wins the race it re-reads and tries again, three attempts in all.
 
@@ -370,15 +370,17 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
   scoped to the page's root, unless the page already has one there or at
   `:root`; the row then reads "On this page". The binding is named like its
   Resource, or `<name> 2` (and so on) when that name is taken on the page root
-  or at `:root`, because expressions resolve variables by name: a page-root
-  binding masks a `:root` variable of the same name, and the re-resolution
-  that follows the add would point the expressions that read it at the
-  Resource. The data panel
-  lists it on every element of the page except inside a Slot's content, which
-  reaches `:root` variables only: there the panel does not list it and the
-  canvas evaluates it as undefined. The builder loads it while the page is
-  open, and a published site loads it on that page alone. A block's own
-  binding does not count: it is visible inside the block only.
+  or at `:root` (an unscoped variable, such as an older provision's binding,
+  counts as `:root` for the name, though not as the page having the Resource,
+  since it never loads), because expressions resolve variables by name: a
+  page-root binding masks a `:root` variable of the same name, and the
+  re-resolution that follows the add would point the expressions that read it
+  at the Resource. The data panel lists it on every element of the page
+  except inside a Slot's content, which reaches `:root` variables only: there
+  the panel does not list it and the canvas evaluates it as undefined. The
+  builder loads it while the page is open, and a published site loads it on
+  that page alone. A block's own binding does not count: it is visible inside
+  the block only.
 - **Insert completion**, `insert-organizeos-block.ts`. A clicked block and a
   dropped one both go through it: the canvas's drop handler
   (`canvas/shared/use-drag-drop.ts`) has one marked branch for the namespace.
@@ -437,12 +439,13 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
   ("when-present") is rewritten when the build has its Resource and never
   created, and every collection Resource gets the new token and API base.
   Resources are upserted in place and in order. The unscoped bindings older
-  provisioning wrote next to each Resource (and the `:root` Forms binding the
-  panel's pre-deploy branches wrote) never loaded; a provision or a sync
-  removes each one nothing references (its id, raw or as
+  provisioning wrote next to each Resource never loaded, and the `:root` Forms
+  binding the pre-deploy branches wrote loaded on every page; a provision or a
+  sync removes each one nothing references (its id, raw or as
   `$ws$dataSource$...`, appears nowhere in the build's instances, props,
   pages, resources or other data sources) and keeps the rest as they are.
-  Bindings a use brought are never touched.
+  A binding with a fresh id, which is what every use brings now, is never
+  touched.
 - **The starter signup page** (`shared/db/signup-form-preset.server.tsx`,
   spec decision 8): a provision seeds a "Newsletter" page at `/newsletter`
   with a native Form posting to `/v1/signups`. Not `/signup`: every org host
@@ -538,7 +541,7 @@ ships, while a block inserted before they exist can neither load its forms nor
 submit.
 
 **Known limits** (OrganizeOS spec, section 12, items 15 to 18, with the
-options):
+options, and the limits found since in review):
 
 - **Rollout gate.** The panel and the blocks are offered only to the orgs on
   `ORGANIZEOS_BLOCKS_ORG_IDS`. A page with a Signup Form loads
@@ -561,20 +564,26 @@ options):
   not an enforcement boundary: it decides who is offered the panel, and
   nothing more. Pasting or duplicating a block (`insertWebstudioFragmentCopy`)
   is not gated; the canvas registers the namespace for every project; the CLI
-  ships the package into any build that uses it; and removing an org from the
+  copies the package into every site it builds; and removing an org from the
   list changes none of that, leaving its blocks and published sites as they
   are.
 - A block written on the builder's pre-deploy branches keeps the `:root` Forms
-  binding those branches gave it, so its page loads Forms on every page until
-  the block is deleted and inserted again (provisioning keeps a binding
-  something references, and removes it once nothing does). The builder half
-  was never deployed, so only dev and test projects written on those branches
-  can carry such a block; no production site does, and this is not a
-  production migration.
+  binding those branches gave it, so its site loads Forms on every page.
+  Deleting the block does not remove that binding (`deleteInstanceMutable`
+  drops only the bindings scoped to the instances it deletes), and inserting
+  a block again leaves it alone. The next provision or collections sync
+  removes it once nothing references it (`removeUnusedPresetBindings`; the
+  deleted block's `data` prop no longer does), or an admin deletes it in the
+  data panel. Those branches were never deployed, so only dev and test
+  projects written on them can carry such a block; no production site does,
+  and this is not a production migration.
 - Two builder tabs that click "Add to this page" for the same Resource at once
-  can both pass `isCatalogResourceOnPage` against their own state and end with
-  two page-root bindings of it (the designer deletes the extra one in the data
-  panel; the catalog Resource stays). Not fixed.
+  both pass `isCatalogResourceOnPage` against their own state, but
+  single-player sync refuses the second tab's save as a version mismatch and
+  asks it to reload, so one binding is saved. Only with multiplayer on (off by
+  default, and it needs `PUBLIC_COLLAB_RELAY_URL`) could both be saved as two
+  page-root bindings (the designer deletes the extra one in the data panel;
+  the catalog Resource stays). Not fixed.
 - Copies rebind by name. Upstream re-resolves expressions by variable name when
   a block is duplicated, copied, pasted or moved, and when an admin saves a
   variable (`rebindTreeVariablesMutable`). A new block's own binding is scoped
@@ -586,8 +595,8 @@ options):
   added on the block's root itself, which the next re-resolution (saving that
   variable is one) binds in place of the block's binding:
   `validateDataVariableName` compares only `variable`-type sources, so it
-  allows the name beside the binding. Insert binds by id; the re-resolution is upstream behavior, left
-  alone.
+  allows the name beside the binding. Insert binds by id; the re-resolution
+  is upstream behavior, left alone.
 - A catalog Resource is shared: editing it through any binding in the data
   panel edits it for every use, and a provision rewrites Events, Fundraisers,
   Stats, Forms and each collection whole. A copy's own Resource (see Copies)
