@@ -7,7 +7,10 @@ import {
   ROOT_INSTANCE_ID,
 } from "@webstudio-is/sdk";
 import { $selectedPage } from "~/shared/nano-states";
-import { rebindTreeVariablesMutable } from "~/shared/data-variables";
+import {
+  findAvailableVariables,
+  rebindTreeVariablesMutable,
+} from "~/shared/data-variables";
 import { updateWebstudioData } from "~/shared/instance-utils/data";
 import { isOrganizeosBlocksEnabled } from "./insert-organizeos-block";
 
@@ -53,10 +56,14 @@ export const isCatalogResourceOnPage = ({
 
 /**
  * Add a catalog Resource to the selected page: a resource DataSource with a
- * fresh id, named like the Resource, scoped to the page's root and
- * referencing the Resource by id. Decided inside the transaction, so a page
- * that already has it (see isCatalogResourceOnPage) gets no second one.
- * Returns whether it added one.
+ * fresh id, named like the Resource (or "<name> 2", and so on, when a variable
+ * visible at the page root, its own or `:root`'s, has that name), scoped to
+ * the page's root and referencing the Resource by id. Decided inside the
+ * transaction, so a page that already has it (see isCatalogResourceOnPage)
+ * gets no second one. Returns whether it added one.
+ *
+ * Known limit: two builder tabs that add the same Resource at once can both
+ * pass that check locally and end with two page-root bindings of it.
  */
 export const addCatalogResourceToPage = (resourceId: Resource["id"]) => {
   const page = $selectedPage.get();
@@ -76,13 +83,18 @@ export const addCatalogResourceToPage = (resourceId: Resource["id"]) => {
     ) {
       return;
     }
-    // The data panel resolves expressions by name, so a page-root variable
-    // that already has this name keeps it and the new binding takes the next
-    // free one ("Events 2"), as the data panel names a duplicate.
+    // Expressions resolve variables by name, and the rebinding below re-resolves
+    // the page's by name: a binding on the page root masks every variable of
+    // that name visible there, a page-root one and a `:root` one alike, and
+    // would capture the expressions that read it. So the new binding takes the
+    // first name no variable visible at the page root has ("Events 2"), as the
+    // data panel names a duplicate.
     const taken = new Set(
-      Array.from(data.dataSources.values())
-        .filter((item) => item.scopeInstanceId === page.rootInstanceId)
-        .map((item) => item.name)
+      findAvailableVariables({
+        startingInstanceId: page.rootInstanceId,
+        instances: data.instances,
+        dataSources: data.dataSources,
+      }).map((item) => item.name)
     );
     let name = resource.name;
     for (let suffix = 2; taken.has(name); suffix += 1) {

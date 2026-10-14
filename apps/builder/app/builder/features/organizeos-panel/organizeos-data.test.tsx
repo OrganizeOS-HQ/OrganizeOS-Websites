@@ -5,7 +5,9 @@ import { createDefaultPages } from "@webstudio-is/project-build";
 import { $, renderData } from "@webstudio-is/template";
 import {
   ROOT_INSTANCE_ID,
+  encodeDataVariableId,
   type DataSource,
+  type Prop,
   type Resource,
   type ResourceRequest,
 } from "@webstudio-is/sdk";
@@ -149,6 +151,57 @@ describe("addCatalogResourceToPage", () => {
     ]);
     // the designer's own variable keeps its name
     expect($dataSources.get().get("own-events")?.name).toBe("Events");
+  });
+
+  test("takes the next free name when `:root` already has one, and `:root` keeps its expressions", () => {
+    setProject({
+      dataSources: [
+        {
+          type: "variable",
+          id: "root-events",
+          scopeInstanceId: ROOT_INSTANCE_ID,
+          name: "Events",
+          value: { type: "string", value: "" },
+        },
+      ],
+    });
+    // an expression on the page already resolves "Events" to the `:root`
+    // variable: a page-root binding of the same name would mask it, and the
+    // re-resolution that follows the add would then read the Resource
+    const prop: Prop = {
+      id: "title-prop",
+      instanceId: "boxId",
+      name: "title",
+      type: "expression",
+      value: encodeDataVariableId("root-events"),
+    };
+    $props.set(new Map([...$props.get(), [prop.id, prop]]));
+
+    expect(addCatalogResourceToPage(events.resourceId)).toBe(true);
+    expect(getEventsBindings()).toEqual([
+      expect.objectContaining({ name: "Events 2", scopeInstanceId: "bodyId" }),
+    ]);
+    expect($dataSources.get().get("root-events")?.name).toBe("Events");
+    expect($props.get().get(prop.id)).toEqual(prop);
+  });
+
+  test("a name used only inside a block is still free on the page root", () => {
+    setProject({
+      dataSources: [
+        {
+          type: "variable",
+          id: "box-events",
+          scopeInstanceId: "boxId",
+          name: "Events",
+          value: { type: "string", value: "" },
+        },
+      ],
+    });
+
+    expect(addCatalogResourceToPage(events.resourceId)).toBe(true);
+    expect(getEventsBindings()).toEqual([
+      expect.objectContaining({ name: "Events", scopeInstanceId: "bodyId" }),
+    ]);
   });
 
   test("the data panel lists it on the page's elements, and the builder loads it", async () => {

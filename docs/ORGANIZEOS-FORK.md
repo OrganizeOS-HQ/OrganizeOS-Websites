@@ -343,7 +343,8 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
   `insertOrganizeosBlock` refuses with a toast ("OrganizeOS blocks are not
   available for this site yet") and writes nothing, which covers a drop too
   (the canvas receives `organizeosSite` through the sync pool). A project no
-  org owns never gets the panel.
+  org owns never gets the panel. This gate is client-side and is a rollout
+  gate, not an enforcement boundary (known limits).
 - A left-sidebar tab after Components, with the OrganizeOS mark, hidden in
   content mode and disabled on text pages, as Components is. It lists the
   namespace's templates in sections (Phase 1: Signups) with the Components
@@ -368,8 +369,11 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
   "Add to this page" gives the selected page a binding of the Resource,
   scoped to the page's root, unless the page already has one there or at
   `:root`; the row then reads "On this page". The binding is named like its
-  Resource, or `<name> 2` (and so on) when a page-root variable already has
-  that name, because expressions resolve variables by name. The data panel
+  Resource, or `<name> 2` (and so on) when that name is taken on the page root
+  or at `:root`, because expressions resolve variables by name: a page-root
+  binding masks a `:root` variable of the same name, and the re-resolution
+  that follows the add would point the expressions that read it at the
+  Resource. The data panel
   lists it on every element of the page except inside a Slot's content, which
   reaches `:root` variables only: there the panel does not list it and the
   canvas evaluates it as undefined. The builder loads it while the page is
@@ -434,7 +438,7 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
   created, and every collection Resource gets the new token and API base.
   Resources are upserted in place and in order. The unscoped bindings older
   provisioning wrote next to each Resource (and the `:root` Forms binding the
-  panel wrote before this change) never loaded; a provision or a sync
+  panel's pre-deploy branches wrote) never loaded; a provision or a sync
   removes each one nothing references (its id, raw or as
   `$ws$dataSource$...`, appears nowhere in the build's instances, props,
   pages, resources or other data sources) and keeps the rest as they are.
@@ -553,23 +557,36 @@ options):
   published before the builder deploy that ships the cache keeps the old
   loader, one uncached call per page view, until it is republished. So an org
   joins the allowlist only after it has republished on that deploy and its
-  `/v1/forms` call rate has been observed.
-- Blocks inserted before this change keep the `:root` Forms binding the
-  panel gave them, so those sites still load Forms on every page until the
-  block is deleted and inserted again (provisioning keeps a binding something
-  references, and removes it once nothing does).
+  `/v1/forms` call rate has been observed. The allowlist is a rollout gate,
+  not an enforcement boundary: it decides who is offered the panel, and
+  nothing more. Pasting or duplicating a block (`insertWebstudioFragmentCopy`)
+  is not gated; the canvas registers the namespace for every project; the CLI
+  ships the package into any build that uses it; and removing an org from the
+  list changes none of that, leaving its blocks and published sites as they
+  are.
+- A block written on the builder's pre-deploy branches keeps the `:root` Forms
+  binding those branches gave it, so its page loads Forms on every page until
+  the block is deleted and inserted again (provisioning keeps a binding
+  something references, and removes it once nothing does). The builder half
+  was never deployed, so only dev and test projects written on those branches
+  can carry such a block; no production site does, and this is not a
+  production migration.
+- Two builder tabs that click "Add to this page" for the same Resource at once
+  can both pass `isCatalogResourceOnPage` against their own state and end with
+  two page-root bindings of it (the designer deletes the extra one in the data
+  panel; the catalog Resource stays). Not fixed.
 - Copies rebind by name. Upstream re-resolves expressions by variable name when
   a block is duplicated, copied, pasted or moved, and when an admin saves a
   variable (`rebindTreeVariablesMutable`). A new block's own binding is scoped
   to its root, so it masks a variable of the same name in any enclosing scope,
   and a copy remaps it by id: an enclosing-scope variable named exactly
-  "OrganizeOS Forms" can take over `data` only in the blocks inserted before
-  this change, whose binding is at `:root`. What can still capture a new
-  block's `data` is a variable named exactly "OrganizeOS Forms" added on the
-  block's root itself, which the next re-resolution (saving that variable is
-  one) binds in place of the block's binding: `validateDataVariableName`
-  compares only `variable`-type sources, so it allows the name beside the
-  binding. Insert binds by id; the re-resolution is upstream behavior, left
+  "OrganizeOS Forms" can take over `data` only in a block written on the
+  pre-deploy branches (above), whose binding is at `:root`. What can still
+  capture a new block's `data` is a variable named exactly "OrganizeOS Forms"
+  added on the block's root itself, which the next re-resolution (saving that
+  variable is one) binds in place of the block's binding:
+  `validateDataVariableName` compares only `variable`-type sources, so it
+  allows the name beside the binding. Insert binds by id; the re-resolution is upstream behavior, left
   alone.
 - A catalog Resource is shared: editing it through any binding in the data
   panel edits it for every use, and a provision rewrites Events, Fundraisers,
