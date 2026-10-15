@@ -59,6 +59,7 @@ describe("buildOrgResourcePresets", () => {
         `"https://app.example.org/api/public/v1/fundraisers"`,
         `"https://app.example.org/api/public/v1/stats"`,
         `"https://app.example.org/api/public/v1/forms"`,
+        `"https://app.example.org/api/public/v1/events?upcoming=true"`,
       ].sort()
     );
   });
@@ -87,6 +88,29 @@ describe("buildOrgResourcePresets", () => {
     // Derived by the node:crypto implementation this replaced.
     expect(events?.id).toBe("385fcd4c-92f8-5d7c-abfe-cb941b8f2449");
     expect(forms?.id).toBe("5bd1e1fb-1480-5d7a-ad4b-75e9cbeec7dd");
+  });
+
+  test("builds Upcoming Events as Events with the upcoming filter, under the id the panel uses", async () => {
+    const { resources } = await buildOrgResourcePresets(args);
+    const upcoming = resources.find(
+      (resource) => resource.name === "Upcoming Events"
+    );
+    expect(upcoming).toEqual({
+      id: (await getResourcePresetIds(args.projectId, "upcoming-events"))
+        .resourceId,
+      name: "Upcoming Events",
+      method: "get",
+      url: `"https://app.example.org/api/public/v1/events?upcoming=true"`,
+      headers: [{ name: "Authorization", value: `"Bearer osk_secrettoken"` }],
+    });
+    expect(
+      V1_RESOURCE_PRESETS.find((preset) => preset.key === "upcoming-events")
+    ).toEqual({
+      key: "upcoming-events",
+      label: "Upcoming Events",
+      path: "/events?upcoming=true",
+      seeding: "when-present",
+    });
   });
 });
 
@@ -379,6 +403,169 @@ describe("seedProjectResourcePresets", () => {
         resources: [lookalike, ...(await getAlwaysSeeded())],
         // unreferenced, so removed
         dataSources: [],
+      });
+    });
+  });
+
+  describe("Upcoming Events, which only the first Event List or Event Card creates", () => {
+    const getUpcoming = async (token = "osk_secrettoken") => {
+      const { resourceId, bindingId } = await getResourcePresetIds(
+        projectId,
+        "upcoming-events"
+      );
+      const resource: Resource = {
+        id: resourceId,
+        name: "Upcoming Events",
+        method: "get",
+        url: `"https://app.example.org/api/public/v1/events?upcoming=true"`,
+        headers: [{ name: "Authorization", value: `"Bearer ${token}"` }],
+      };
+      return { resource, bindingId };
+    };
+
+    test("is rewritten whole, in place, with the new token, when the build has it", async () => {
+      const upcoming = await getUpcoming("osk_old");
+      const { context, state } = makeBuildContext({
+        build: {
+          resources: JSON.stringify([
+            {
+              ...upcoming.resource,
+              name: "My upcoming events",
+              searchParams: [{ name: "limit", value: `"3"` }],
+            },
+          ]),
+        },
+      });
+      await seedProjectResourcePresets(context, args);
+
+      expect(parseRow(state.row).resources).toEqual([
+        (await getUpcoming()).resource,
+        ...(await getAlwaysSeeded()),
+      ]);
+    });
+
+    test("is never added to a build that lacks it", async () => {
+      const { context, state } = makeBuildContext({ build: {} });
+      await seedProjectResourcePresets(context, args);
+
+      const resources = parseRow(state.row).resources;
+      expect(resources).toEqual(await getAlwaysSeeded());
+      expect(resources.map(({ name }) => name)).not.toContain(
+        "Upcoming Events"
+      );
+    });
+
+    test("is never created from a lookalike under another id", async () => {
+      const lookalike = { ...(await getUpcoming()).resource, id: "user" };
+      const { context, state } = makeBuildContext({
+        build: { resources: JSON.stringify([lookalike]) },
+      });
+      await seedProjectResourcePresets(context, args);
+
+      expect(parseRow(state.row).resources).toEqual([
+        lookalike,
+        ...(await getAlwaysSeeded()),
+      ]);
+    });
+
+    test("leaves Events, Fundraisers and Stats as they are written without it", async () => {
+      const upcoming = await getUpcoming("osk_old");
+      const withIt = makeBuildContext({
+        build: { resources: JSON.stringify([upcoming.resource]) },
+      });
+      const without = makeBuildContext({ build: {} });
+      await seedProjectResourcePresets(withIt.context, args);
+      await seedProjectResourcePresets(without.context, args);
+
+      const [, ...seeded] = parseRow(withIt.state.row).resources;
+      expect(seeded).toEqual(await getAlwaysSeeded());
+      expect(seeded).toEqual(parseRow(without.state.row).resources);
+    });
+
+    test("counts its old unscoped binding as a preset binding: removed where nothing references it", async () => {
+      const upcoming = await getUpcoming();
+      const old: DataSource = {
+        type: "resource",
+        id: upcoming.bindingId,
+        name: "Upcoming Events",
+        resourceId: upcoming.resource.id,
+      };
+      const { context, state } = makeBuildContext({
+        build: {
+          dataSources: JSON.stringify([userVariable, old]),
+          resources: JSON.stringify([upcoming.resource]),
+        },
+      });
+      await seedProjectResourcePresets(context, args);
+
+      expect(parseRow(state.row).dataSources).toEqual([userVariable]);
+    });
+
+    test("counts its old unscoped binding as a preset binding: kept where something references it", async () => {
+      const upcoming = await getUpcoming();
+      const old: DataSource = {
+        type: "resource",
+        id: upcoming.bindingId,
+        name: "Upcoming Events",
+        resourceId: upcoming.resource.id,
+      };
+      const props: Prop[] = [
+        {
+          id: "list",
+          instanceId: "list",
+          name: "data",
+          type: "expression",
+          value: `${encodeDataSourceVariable(old.id)}.data.data`,
+        },
+      ];
+      const { context, state } = makeBuildContext({
+        build: {
+          props: JSON.stringify(props),
+          dataSources: JSON.stringify([old]),
+          resources: JSON.stringify([upcoming.resource]),
+        },
+      });
+      await seedProjectResourcePresets(context, args);
+
+      expect(parseRow(state.row).dataSources).toEqual([old]);
+    });
+
+    test("leaves the binding an Event List brought alone", async () => {
+      const upcoming = await getUpcoming();
+      const use: DataSource = {
+        type: "resource",
+        id: "block-binding",
+        scopeInstanceId: "event-list",
+        name: "OrganizeOS Upcoming Events",
+        resourceId: upcoming.resource.id,
+      };
+      const { context, state } = makeBuildContext({
+        build: {
+          dataSources: JSON.stringify([use]),
+          resources: JSON.stringify([upcoming.resource]),
+        },
+      });
+      await seedProjectResourcePresets(context, args);
+
+      expect(parseRow(state.row).dataSources).toEqual([use]);
+    });
+
+    test("a copy Webstudio made of it gets the new token", async () => {
+      const upcoming = await getUpcoming("osk_t1");
+      const copy: Resource = { ...upcoming.resource, id: "copied-upcoming" };
+      const { context, state } = makeBuildContext({
+        build: { resources: JSON.stringify([upcoming.resource, copy]) },
+      });
+      await seedProjectResourcePresets(context, {
+        ...args,
+        readToken: "osk_t2",
+      });
+
+      const resources = parseRow(state.row).resources;
+      expect(resources[0]).toEqual((await getUpcoming("osk_t2")).resource);
+      expect(resources[1]).toEqual({
+        ...copy,
+        headers: [{ name: "Authorization", value: `"Bearer osk_t2"` }],
       });
     });
   });

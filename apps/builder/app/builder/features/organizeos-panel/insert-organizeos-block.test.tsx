@@ -2,13 +2,20 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { enableMapSet } from "immer";
 import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
-import { $, renderData } from "@webstudio-is/template";
+import {
+  $,
+  Parameter,
+  expression,
+  renderData,
+  ws,
+} from "@webstudio-is/template";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import {
   ROOT_INSTANCE_ID,
   coreMetas,
   encodeDataSourceVariable,
   type DataSource,
+  type Instance,
   type Resource,
   type ResourceRequest,
 } from "@webstudio-is/sdk";
@@ -53,9 +60,15 @@ import { instanceText } from "~/shared/copy-paste/plugin-instance";
 import { emitCommand } from "~/builder/shared/commands";
 import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
 import {
+  UPCOMING_EVENTS_BINDING_NAME,
+  EVENTS_BINDING_NAME,
+} from "~/shared/organizeos-preset-ids";
+import {
+  type BlockData,
   completeOrganizeosFragment,
   getOrganizeosPresetIds,
   insertOrganizeosBlock,
+  organizeosBlockData,
 } from "./insert-organizeos-block";
 
 const { toastError, loaderFetch, beforeNextTransaction } = vi.hoisted(() => ({
@@ -100,7 +113,51 @@ registerComponentLibrary({
   templates: organizeosTemplates,
 });
 
+// Test-only blocks under the namespace, to exercise the completion table
+// without the real templates: a `ws:element` root (not a component of the
+// namespace, like an Event List's) holding a collection and a box, each with a
+// prop of its own that a bind replaces.
+const eventItem = new Parameter("item");
+registerComponentLibrary({
+  namespace: "@organizeos/site-components",
+  components: {},
+  metas: {},
+  templates: {
+    TestEventBlock: {
+      category: "hidden",
+      label: "Test Event Block",
+      template: (
+        <ws.element ws:tag="div" ws:label="Test Event Block">
+          <ws.collection
+            ws:id="events"
+            ws:label="Events"
+            data={[{ title: "made by the template" }]}
+            item={eventItem}
+          >
+            <ws.element ws:tag="p" ws:label="Item">
+              {expression`${eventItem}.title`}
+            </ws.element>
+          </ws.collection>
+          <ws.element
+            ws:tag="p"
+            ws:id="empty"
+            ws:label="Empty"
+            ws:show={false}
+          />
+        </ws.element>
+      ),
+    },
+    TestPlainBlock: {
+      category: "hidden",
+      label: "Test Plain Block",
+      template: <ws.element ws:tag="section" ws:label="Test Plain Block" />,
+    },
+  },
+});
+
 const signupForm = "@organizeos/site-components:SignupForm";
+const testBlock = "@organizeos/site-components:TestEventBlock";
+const plainBlock = "@organizeos/site-components:TestPlainBlock";
 const projectId = "project-1";
 const refusal =
   "Cannot add Signup Form: this site's link to your organization's data was removed or changed. Contact OrganizeOS support to restore it.";
@@ -114,9 +171,13 @@ const provisioned = await buildOrgResourcePresets({
   apiBaseUrl: "https://staging.example.org/api/public/v1",
   readToken: "osk_eventstoken",
 });
-const { events, forms } = await getOrganizeosPresetIds(projectId);
+const { events, forms, upcomingEvents } =
+  await getOrganizeosPresetIds(projectId);
 const formsResource = provisioned.resources.find(
   (resource) => resource.id === forms.resourceId
+) as Resource;
+const upcomingResource = provisioned.resources.find(
+  (resource) => resource.id === upcomingEvents.resourceId
 ) as Resource;
 const eventsResource = provisioned.resources.find(
   (resource) => resource.id === events.resourceId
@@ -128,6 +189,15 @@ const expectedFormsResource: Resource = {
   name: "OrganizeOS Forms",
   method: "get",
   url: `"https://staging.example.org/api/public/v1/forms"`,
+  headers: [{ name: "Authorization", value: `"Bearer osk_eventstoken"` }],
+};
+
+// The Upcoming Events catalog Resource as both writers write it.
+const expectedUpcomingResource: Resource = {
+  id: upcomingEvents.resourceId,
+  name: "Upcoming Events",
+  method: "get",
+  url: `"https://staging.example.org/api/public/v1/events?upcoming=true"`,
   headers: [{ name: "Authorization", value: `"Bearer osk_eventstoken"` }],
 };
 
@@ -155,6 +225,12 @@ const withoutForms = {
   dataSources: [] as DataSource[],
 };
 const withForms = { resources: provisioned.resources, dataSources: [] };
+const withoutUpcoming = {
+  resources: provisioned.resources.filter(
+    (resource) => resource.id !== upcomingEvents.resourceId
+  ),
+  dataSources: [] as DataSource[],
+};
 
 const setProject = (
   {
@@ -329,7 +405,30 @@ const expectNothingWritten = (before: ReturnType<typeof getStores>) => {
   }
 };
 
+// The completion table entry of the test block: what an Event List's will be,
+// with the collection and the empty box named by the ids the template gives.
+const upcomingBlockData: BlockData = {
+  catalog: "upcoming-events",
+  bindingName: UPCOMING_EVENTS_BINDING_NAME,
+  binds: [
+    {
+      instance: "events",
+      prop: "data",
+      value: (variable) =>
+        `${variable}.ok === true ? ${variable}.data.data : []`,
+    },
+    {
+      instance: "empty",
+      prop: "data-ws-show",
+      value: (variable) =>
+        `${variable}.ok === true && ${variable}.data.data.length === 0`,
+    },
+  ],
+};
+
 beforeEach(() => {
+  organizeosBlockData.set(testBlock, upcomingBlockData);
+  organizeosBlockData.delete(plainBlock);
   toastError.mockClear();
   loaderFetch.mockReset();
   beforeNextTransaction.run = undefined;
@@ -749,9 +848,445 @@ describe("deleting what uses the catalog", () => {
   });
 });
 
+// The test block's instances, in the order they were inserted.
+const getTestBlocks = () => {
+  const instances = $instances.get();
+  return [...instances.values()]
+    .filter((instance) => instance.label === "Test Event Block")
+    .map((root) => {
+      const children = root.children.flatMap((child) =>
+        child.type === "id" ? [instances.get(child.value) as Instance] : []
+      );
+      return {
+        root,
+        collection: children.find(
+          (child) => child.component === "ws:collection"
+        ) as Instance,
+        empty: children.find((child) => child.label === "Empty") as Instance,
+      };
+    });
+};
+
+const getInstanceProps = (instanceId: Instance["id"], name: string) =>
+  [...$props.get().values()].filter(
+    (prop) => prop.instanceId === instanceId && prop.name === name
+  );
+
+const getResourceBindings = () =>
+  [...$dataSources.get().values()].filter(
+    (dataSource): dataSource is Extract<DataSource, { type: "resource" }> =>
+      dataSource.type === "resource"
+  );
+
+describe("an Events block, through the completion table", () => {
+  const upcomingResult = (data: unknown, status = 200) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: "",
+    data,
+  });
+  const cacheUpcomingResult = (result: unknown) => {
+    const request = computeResourceRequest(expectedUpcomingResource, new Map());
+    $resourcesCache.set(new Map([[getResourceKey(request), result]]));
+  };
+
+  test("creates a missing Upcoming Events Resource with the deterministic id, the Events header and <base>/events?upcoming=true, and never a second", async () => {
+    setProject(withoutUpcoming);
+
+    expect(await insertOrganizeosBlock(testBlock)).toBe(true);
+
+    // exactly what provisioning writes for this project
+    expect($resources.get().get(upcomingEvents.resourceId)).toEqual(
+      expectedUpcomingResource
+    );
+    expect(expectedUpcomingResource.headers).toEqual(eventsResource.headers);
+    expect(upcomingResource).toEqual(expectedUpcomingResource);
+    expect(getResourceBindings().map((binding) => binding.resourceId)).toEqual([
+      upcomingEvents.resourceId,
+    ]);
+
+    expect(await insertOrganizeosBlock(testBlock)).toBe(true);
+
+    expect(getTestBlocks()).toHaveLength(2);
+    expect(getResourceBindings().map((binding) => binding.resourceId)).toEqual([
+      upcomingEvents.resourceId,
+      upcomingEvents.resourceId,
+    ]);
+    expect($resources.get().size).toBe(provisioned.resources.length);
+    // no Forms, nor anything else the block does not use
+    expect($resources.get().get(forms.resourceId)).toEqual(formsResource);
+  });
+
+  test("uses an Upcoming Events Resource the project has as it is", async () => {
+    setProject(withForms);
+
+    expect(await insertOrganizeosBlock(testBlock)).toBe(true);
+
+    expect($resources.get()).toEqual(
+      new Map(provisioned.resources.map((resource) => [resource.id, resource]))
+    );
+    expect(getResourceBindings()).toEqual([
+      expect.objectContaining({ resourceId: upcomingEvents.resourceId }),
+    ]);
+  });
+
+  test("keeps an Upcoming Events Resource that appeared between the completion and the transaction", async () => {
+    setProject(withoutUpcoming);
+    const edited = { ...upcomingResource, name: "Upcoming (edited)" };
+    beforeNextTransaction.run = () => {
+      $resources.set(new Map($resources.get()).set(edited.id, edited));
+    };
+
+    expect(await insertOrganizeosBlock(testBlock)).toBe(true);
+
+    expect($resources.get().get(upcomingEvents.resourceId)).toBe(edited);
+  });
+
+  test("binds the collection's data and the empty box's show to its own binding, scoped to the block's root, by id", async () => {
+    setProject(withoutUpcoming);
+
+    expect(await insertOrganizeosBlock(testBlock)).toBe(true);
+
+    const [{ root, collection, empty }] = getTestBlocks();
+    expect($instances.get().get("bodyId")?.children).toEqual([
+      { type: "id", value: root.id },
+    ]);
+    const bindings = getResourceBindings();
+    expect(bindings).toEqual([
+      {
+        type: "resource",
+        id: expect.any(String),
+        scopeInstanceId: root.id,
+        name: "OrganizeOS Upcoming Events",
+        resourceId: upcomingEvents.resourceId,
+      },
+    ]);
+    const variable = encodeDataSourceVariable(bindings[0].id);
+    expect(getInstanceProps(collection.id, "data")).toEqual([
+      {
+        id: expect.any(String),
+        instanceId: collection.id,
+        name: "data",
+        type: "expression",
+        value: `${variable}.ok === true ? ${variable}.data.data : []`,
+      },
+    ]);
+    expect(getInstanceProps(empty.id, "data-ws-show")).toEqual([
+      {
+        id: expect.any(String),
+        instanceId: empty.id,
+        name: "data-ws-show",
+        type: "expression",
+        value: `${variable}.ok === true && ${variable}.data.data.length === 0`,
+      },
+    ]);
+    // what the template made under the same names is replaced, and the rest
+    // of the collection's props stay
+    expect(getInstanceProps(collection.id, "item")).toEqual([
+      expect.objectContaining({ type: "parameter" }),
+    ]);
+    // never page-wide
+    expect(
+      getResourceBindings().filter(
+        (binding) =>
+          binding.scopeInstanceId === ROOT_INSTANCE_ID ||
+          binding.scopeInstanceId === "bodyId" ||
+          binding.scopeInstanceId === undefined
+      )
+    ).toEqual([]);
+  });
+
+  test("gives each block its own binding", async () => {
+    setProject(withForms);
+
+    expect(await insertOrganizeosBlock(testBlock)).toBe(true);
+    expect(await insertOrganizeosBlock(testBlock)).toBe(true);
+
+    const blocks = getTestBlocks();
+    const bindings = getResourceBindings();
+    expect(bindings).toHaveLength(2);
+    expect(bindings[0].id).not.toBe(bindings[1].id);
+    blocks.forEach(({ root, collection }) => {
+      const binding = bindings.find(
+        (item) => item.scopeInstanceId === root.id
+      ) as DataSource;
+      expect(getInstanceProps(collection.id, "data")[0]?.value).toBe(
+        `${encodeDataSourceVariable(binding.id)}.ok === true ? ${encodeDataSourceVariable(binding.id)}.data.data : []`
+      );
+    });
+  });
+
+  test("the collection and the boxes read the cached result", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(testBlock)).toBe(true);
+    const [{ root, collection, empty }] = getTestBlocks();
+    const read = (instance: Instance, name: string) =>
+      $propValuesByInstanceSelector
+        .get()
+        .get(getInstanceKey([instance.id, root.id, "bodyId"]))
+        ?.get(name);
+    const body = { data: [{ title: "a" }, { title: "b" }] };
+
+    cacheUpcomingResult(upcomingResult(body));
+    expect(read(collection, "data")).toEqual(body.data);
+    expect(read(empty, "data-ws-show")).toBe(false);
+
+    cacheUpcomingResult(upcomingResult({ data: [] }));
+    expect(read(collection, "data")).toEqual([]);
+    expect(read(empty, "data-ws-show")).toBe(true);
+
+    // a failed read hands over an error body, never a list
+    cacheUpcomingResult(upcomingResult({ error: "unavailable" }, 503));
+    expect(read(collection, "data")).toEqual([]);
+    expect(read(empty, "data-ws-show")).toBe(false);
+  });
+
+  test("one undo removes the block, its binding and an Upcoming Events Resource it created", async () => {
+    setProject(withoutUpcoming);
+    const before = getStores();
+
+    expect(await insertOrganizeosBlock(testBlock)).toBe(true);
+    expect($resources.get().has(upcomingEvents.resourceId)).toBe(true);
+    emitCommand("undo");
+
+    expect(getStores()).toEqual(before);
+  });
+
+  test("inserts a template key with no entry untouched", async () => {
+    // Events is missing: a block that reads no data does not need it
+    setProject({
+      ...withForms,
+      resources: withForms.resources.filter(
+        (resource) => resource.id !== events.resourceId
+      ),
+    });
+    const resources = $resources.get();
+    const dataSources = $dataSources.get();
+
+    expect(await insertOrganizeosBlock(plainBlock)).toBe(true);
+
+    const section = [...$instances.get().values()].filter(
+      (instance) => instance.label === "Test Plain Block"
+    );
+    expect(section).toHaveLength(1);
+    expect($instances.get().get("bodyId")?.children).toEqual([
+      { type: "id", value: section[0].id },
+    ]);
+    expect($resources.get()).toBe(resources);
+    expect($dataSources.get()).toBe(dataSources);
+    expect([...$props.get().values()]).toEqual([]);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("an events entry binds Events as it is, and creates nothing", async () => {
+    organizeosBlockData.set(testBlock, {
+      catalog: "events",
+      bindingName: EVENTS_BINDING_NAME,
+      binds: [
+        { instance: "events", prop: "data", value: (variable) => variable },
+      ],
+    });
+    // neither Forms nor Upcoming Events
+    const project = {
+      resources: provisioned.resources.filter(
+        (resource) =>
+          resource.id !== forms.resourceId &&
+          resource.id !== upcomingEvents.resourceId
+      ),
+      dataSources: [] as DataSource[],
+    };
+    setProject(project);
+
+    expect(await insertOrganizeosBlock(testBlock)).toBe(true);
+
+    expect($resources.get().size).toBe(project.resources.length);
+    expect(getResourceBindings()).toEqual([
+      {
+        type: "resource",
+        id: expect.any(String),
+        scopeInstanceId: getTestBlocks()[0].root.id,
+        name: "OrganizeOS Events",
+        resourceId: events.resourceId,
+      },
+    ]);
+    const [{ collection }] = getTestBlocks();
+    expect(getInstanceProps(collection.id, "data")[0]?.value).toBe(
+      encodeDataSourceVariable(getResourceBindings()[0].id)
+    );
+  });
+
+  describe("refuses, writing nothing", () => {
+    const testRefusal =
+      "Cannot add Test Event Block: this site's link to your organization's data was removed or changed. Contact OrganizeOS support to restore it.";
+    const withEvents = (
+      project: typeof withoutUpcoming,
+      headers: Resource["headers"],
+      url?: string
+    ) => ({
+      ...project,
+      resources: project.resources.map((resource) =>
+        resource.id === events.resourceId
+          ? { ...resource, headers, url: url ?? resource.url }
+          : resource
+      ),
+    });
+
+    test.each([
+      [
+        "Events is missing",
+        {
+          ...withoutUpcoming,
+          resources: withoutUpcoming.resources.filter(
+            (resource) => resource.id !== events.resourceId
+          ),
+        },
+      ],
+      [
+        "Events is missing but Upcoming Events is there",
+        {
+          ...withForms,
+          resources: withForms.resources.filter(
+            (resource) => resource.id !== events.resourceId
+          ),
+        },
+      ],
+      ["Events has no headers", withEvents(withoutUpcoming, [])],
+      [
+        "Events has a blank Authorization header",
+        withEvents(withoutUpcoming, [{ name: "Authorization", value: `""` }]),
+      ],
+      [
+        "Events has another header only",
+        withEvents(withoutUpcoming, [
+          { name: "Cache-Control", value: `"max-age=60"` },
+        ]),
+      ],
+      [
+        "Upcoming Events must be created and the Events URL is not the provisioned one",
+        withEvents(
+          withoutUpcoming,
+          eventsResource.headers,
+          `"https://example.org/" + path`
+        ),
+      ],
+    ])("when %s", async (_case, project) => {
+      setProject(project);
+      const before = getStores();
+
+      expect(await insertOrganizeosBlock(testBlock)).toBe(false);
+
+      expectNothingWritten(before);
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(toastError).toHaveBeenCalledWith(testRefusal);
+    });
+
+    test("for an events entry too, when Events has no Authorization", async () => {
+      organizeosBlockData.set(testBlock, {
+        catalog: "events",
+        bindingName: EVENTS_BINDING_NAME,
+        binds: [
+          { instance: "events", prop: "data", value: (variable) => variable },
+        ],
+      });
+      setProject(withEvents(withForms, []));
+      const before = getStores();
+
+      expect(await insertOrganizeosBlock(testBlock)).toBe(false);
+
+      expectNothingWritten(before);
+      expect(toastError).toHaveBeenCalledWith(testRefusal);
+    });
+
+    test("when a bind names an instance the template does not have", async () => {
+      organizeosBlockData.set(testBlock, {
+        ...upcomingBlockData,
+        binds: [
+          ...upcomingBlockData.binds,
+          { instance: "not-in-the-template", prop: "data", value: () => "1" },
+        ],
+      });
+      setProject(withForms);
+      const before = getStores();
+
+      expect(await insertOrganizeosBlock(testBlock)).toBe(false);
+
+      expectNothingWritten(before);
+      expect(toastError).toHaveBeenCalledTimes(1);
+    });
+
+    test("not when the Events URL is not the literal but Upcoming Events exists", async () => {
+      setProject(
+        withEvents(
+          withForms,
+          eventsResource.headers,
+          `"https://example.org/" + path`
+        )
+      );
+
+      expect(await insertOrganizeosBlock(testBlock)).toBe(true);
+      expect(toastError).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("shared tokens", () => {
+  const getTokens = (name: string) =>
+    [...$styleSources.get().values()].filter(
+      (source) => source.type === "token" && source.name.startsWith(name)
+    );
+
+  test("a second Signup Form after OS Input was restyled uses the restyled token, and adds no OS Input-1", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    const [input] = getTokens("OS Input");
+    expect(getTokens("OS Input")).toHaveLength(1);
+
+    // the designer restyles the token
+    const restyled = { type: "rgb", r: 255, g: 0, b: 0, alpha: 1 } as const;
+    const styles = new Map($styles.get());
+    for (const [key, style] of styles) {
+      if (
+        style.styleSourceId === input.id &&
+        style.property === "backgroundColor"
+      ) {
+        styles.set(key, { ...style, value: restyled });
+      }
+    }
+    $styles.set(styles);
+
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+
+    expect(getBlockRoots()).toHaveLength(2);
+    // one token of each name, the designer's
+    expect(getTokens("OS Input")).toEqual([input]);
+    expect(getTokens("OS Input-1")).toEqual([]);
+    for (const name of ["OS Field", "OS Button", "OS Message"]) {
+      expect(getTokens(name)).toHaveLength(1);
+    }
+    expect(
+      [...$styles.get().values()].filter(
+        (style) =>
+          style.styleSourceId === input.id &&
+          style.property === "backgroundColor"
+      )
+    ).toEqual([expect.objectContaining({ value: restyled })]);
+    // and both blocks' inputs wear it
+    const inputs = [...$instances.get().values()].filter(
+      (instance) =>
+        instance.component === "@organizeos/site-components:FieldInput"
+    );
+    expect(inputs).toHaveLength(4);
+    for (const instance of inputs) {
+      expect($styleSourceSelections.get().get(instance.id)?.values).toContain(
+        input.id
+      );
+    }
+  });
+});
+
 describe("completeOrganizeosFragment", () => {
   const presets = {
-    presetIds: { events, forms },
+    presetIds: { events, forms, upcomingEvents },
     resources: new Map(provisioned.resources.map((item) => [item.id, item])),
   };
 
@@ -760,6 +1295,7 @@ describe("completeOrganizeosFragment", () => {
     const props = template.props;
 
     const completion = completeOrganizeosFragment({
+      component: signupForm,
       fragment: template,
       ...presets,
     });
@@ -767,23 +1303,43 @@ describe("completeOrganizeosFragment", () => {
     expect(completion).toEqual({
       status: "ready",
       fragment: expect.anything(),
-      forms: { resourceId: forms.resourceId, resource: undefined },
+      binding: {
+        resourceId: forms.resourceId,
+        resource: undefined,
+        name: "OrganizeOS Forms",
+        binds: [
+          {
+            instanceId: template.instances[0].id,
+            prop: "data",
+            value: expect.any(Function),
+          },
+        ],
+      },
     });
+    // the bind turns the binding's variable into the root's `data` expression
+    expect(
+      completion.status === "ready" &&
+        completion.binding?.binds[0].value("$ws$dataSource$x")
+    ).toBe("$ws$dataSource$x.data");
     expect(template.props).toBe(props);
     expect(template.props.some((prop) => prop.name === "data")).toBe(false);
   });
 
   test("adds the Forms Resource a project lacks as provisioning builds it", () => {
     const completion = completeOrganizeosFragment({
+      component: signupForm,
       fragment: getComponentTemplateData(signupForm),
-      presetIds: { events, forms },
+      presetIds: { events, forms, upcomingEvents },
       resources: new Map(withoutForms.resources.map((item) => [item.id, item])),
     });
 
     expect(completion).toEqual({
       status: "ready",
       fragment: expect.anything(),
-      forms: { resourceId: forms.resourceId, resource: expectedFormsResource },
+      binding: expect.objectContaining({
+        resourceId: forms.resourceId,
+        resource: expectedFormsResource,
+      }),
     });
   });
 
@@ -805,6 +1361,7 @@ describe("completeOrganizeosFragment", () => {
     };
 
     const completion = completeOrganizeosFragment({
+      component: signupForm,
       fragment: byName,
       ...presets,
     });
@@ -819,8 +1376,9 @@ describe("completeOrganizeosFragment", () => {
     const fragment = getComponentTemplateData("Box");
     expect(
       completeOrganizeosFragment({
+        component: "Box",
         fragment,
-        presetIds: { events, forms },
+        presetIds: { events, forms, upcomingEvents },
         resources: new Map(),
       })
     ).toEqual({ status: "ready", fragment });

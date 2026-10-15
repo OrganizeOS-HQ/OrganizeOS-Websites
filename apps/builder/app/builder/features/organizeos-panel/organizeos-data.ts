@@ -16,8 +16,8 @@ import { isOrganizeosBlocksEnabled } from "./insert-organizeos-block";
 
 /**
  * The OrganizeOS panel's Data section: the org's catalog (Events, Fundraisers,
- * Stats, each public collection, and Forms once a block has added it), one
- * row per Resource, each with "Add to this page".
+ * Stats, each public collection, and Forms and Upcoming Events once a block
+ * has added them), one row per Resource, each with "Add to this page".
  *
  * Data loads only where it is used. A catalog Resource loads nowhere by
  * itself: Webstudio loads a resource DataSource only when its scope is an

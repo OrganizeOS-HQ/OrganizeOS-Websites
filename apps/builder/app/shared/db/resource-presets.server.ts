@@ -6,6 +6,8 @@ import {
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import {
   FORMS_PRESET_NAME,
+  UPCOMING_EVENTS_PRESET_KEY,
+  UPCOMING_EVENTS_RESOURCE_NAME,
   findCatalogResources,
   getCollectionPresetKey,
   getResourcePresetIds,
@@ -66,6 +68,9 @@ type V1ResourcePreset = {
  * (donate/signup form submission) are a separate mechanism and not seeded here.
  * Forms is the org's published forms, which the OrganizeOS Signup Form block
  * reads through its `data` prop; the panel creates it on the first insert.
+ * Upcoming Events is Events without the events already over, which the Event
+ * List and Event Card blocks read; the panel creates it on the first insert,
+ * like Forms.
  */
 export const V1_RESOURCE_PRESETS: readonly V1ResourcePreset[] = [
   { key: "events", label: "Events", path: "/events", seeding: "always" },
@@ -80,6 +85,12 @@ export const V1_RESOURCE_PRESETS: readonly V1ResourcePreset[] = [
     key: "forms",
     label: FORMS_PRESET_NAME,
     path: "/forms",
+    seeding: "when-present",
+  },
+  {
+    key: UPCOMING_EVENTS_PRESET_KEY,
+    label: UPCOMING_EVENTS_RESOURCE_NAME,
+    path: "/events?upcoming=true",
     seeding: "when-present",
   },
 ];
@@ -445,8 +456,9 @@ const isBearerLiteral = (value: string) => {
  *
  * - Events, Fundraisers and Stats are written whole on every provision (a
  *   designer's rename or added search parameter is reset).
- * - Forms ("when-present") is rewritten whole when the build has its
- *   Resource, and never created.
+ * - Forms and Upcoming Events ("when-present") are rewritten whole when the
+ *   build has their Resource, and never created. Their tokens rotate like the
+ *   others', since a url under the API base takes the new token.
  * - Each collection Resource the build has (collections-sync seeds them) gets
  *   the new Authorization header and API base, keeping its name and position,
  *   so a rotated token reaches it before the old one is revoked.

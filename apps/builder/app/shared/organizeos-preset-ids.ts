@@ -9,8 +9,9 @@ import type { Resource } from "@webstudio-is/sdk";
  * time and lists the catalog (`builder/features/organizeos-panel`). Both sides
  * must derive the same id from the same name, so a Resource the panel adds is
  * the one a later re-provision rewrites in place, never a second copy. The
- * Forms Resource's name lives here too, so that both sides give it the same
- * one.
+ * names of the Resources a block creates (Forms, Upcoming Events) and of the
+ * bindings a block brings live here too, so that both sides give them the same
+ * ones.
  *
  * The catalog is GET Resources only. A Resource loads nowhere by itself: a use
  * (a block, or a page the panel adds it to) brings its own resource DataSource,
@@ -37,11 +38,33 @@ import type { Resource } from "@webstudio-is/sdk";
  */
 export const FORMS_PRESET_NAME = "OrganizeOS Forms";
 
+/**
+ * The name of the Upcoming Events catalog Resource, in both writers. The first
+ * Event List or Event Card creates it (`GET /v1/events?upcoming=true`), and
+ * provisioning rewrites it where present, as it does Forms.
+ */
+export const UPCOMING_EVENTS_RESOURCE_NAME = "Upcoming Events";
+
+/**
+ * The names of the bindings the Events blocks bring, distinctive for the same
+ * reason as FORMS_PRESET_NAME. The Events one is for the blocks that bind the
+ * Events Resource as it is (the RSVP Form). A binding the Data section adds to
+ * a page keeps its Resource's name ("Events", "Upcoming Events") instead.
+ */
+export const EVENTS_BINDING_NAME = "OrganizeOS Events";
+export const UPCOMING_EVENTS_BINDING_NAME = "OrganizeOS Upcoming Events";
+
 /** The keys of the static catalog Resources, in the order the panel lists them. */
 export const STATIC_PRESET_KEYS = ["events", "fundraisers", "stats"] as const;
 
 /** The key of the Forms catalog Resource, which the panel creates on first use. */
 export const FORMS_PRESET_KEY = "forms";
+
+/**
+ * The key of the Upcoming Events catalog Resource, which the panel creates on
+ * first use, like Forms.
+ */
+export const UPCOMING_EVENTS_PRESET_KEY = "upcoming-events";
 
 /** The key of a public collection's catalog Resource. */
 export const getCollectionPresetKey = (slug: string) => `collection:${slug}`;
@@ -143,7 +166,7 @@ export type CatalogEntry = {
  * The org's catalog in a build: the Resources found by their deterministic ids,
  * never by name. Events, Fundraisers and Stats first, then the collections in
  * the build's order (a Resource whose url names a collection and whose id is
- * that collection's), then Forms.
+ * that collection's), then Forms, then Upcoming Events.
  */
 export const findCatalogResources = async (
   projectId: string,
@@ -180,5 +203,6 @@ export const findCatalogResources = async (
     }
   }
   entries.push(...(await find(FORMS_PRESET_KEY)));
+  entries.push(...(await find(UPCOMING_EVENTS_PRESET_KEY)));
   return entries;
 };

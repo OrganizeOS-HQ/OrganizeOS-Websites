@@ -357,7 +357,8 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
 - **Data loads only where it is used, never page-wide.** The org's data is a
   catalog of GET Resources with deterministic ids: Events, Fundraisers and
   Stats (provisioning), one per public collection (collections-sync), and
-  Forms once a Signup Form has added it. A Resource loads nowhere by itself:
+  Forms and Upcoming Events once a block has added them. A Resource loads
+  nowhere by itself:
   Webstudio loads a resource DataSource, in the builder (`$computedResourceRequests`)
   and on a published page (the CLI's prebuild), only when its scope is an
   instance on the page or `:root`. So each use brings its own binding: a
@@ -365,7 +366,8 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
   which references the catalog Resource by id. Nothing scopes a binding at
   `:root`, and provisioning and collections-sync write no binding at all.
 - **Data section** (`organizeos-data.ts`): one row per catalog Resource, in
-  that order (collections in the build's order), found by id, never by name.
+  that order (collections in the build's order, then Forms, then Upcoming
+  Events), found by id, never by name.
   "Add to this page" gives the selected page a binding of the Resource,
   scoped to the page's root, unless the page already has one there or at
   `:root`; the row then reads "On this page". The binding is named like its
@@ -384,30 +386,48 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
 - **Insert completion**, `insert-organizeos-block.ts`. A clicked block and a
   dropped one both go through it: the canvas's drop handler
   (`canvas/shared/use-drag-drop.ts`) has one marked branch for the namespace.
+  What a block reads from the catalog is a table, `organizeosBlockData`, keyed
+  by the template's key (the `component` the panel inserts, not the root's
+  component: an Event List's root is a `ws:element`). An entry names the
+  catalog Resource (`events`, `forms` or `upcoming-events`), the name of the
+  block's binding, and the props that read it: an instance (`root`, or the
+  `ws:id` the template gives it), a prop name, and the expression, given the
+  binding's variable. The Signup Form's entry is the Forms Resource, "OrganizeOS
+  Forms", and the root's `data` = `<binding>.data`. A template key with no entry
+  is inserted untouched.
 
   1. Refuse, with a toast and no write, when the org is not on the allowlist.
   2. Find the Events Resource by its deterministic id, never by name. If it is
      missing or has no non-blank `Authorization` header, refuse with a toast
      ("this site's link to your organization's data was removed or changed.
-     Contact OrganizeOS support to restore it.") and write nothing. The same
-     refusal applies when Forms must be created and the Events URL is not the
-     `"<API base>/events"` literal provisioning writes.
+     Contact OrganizeOS support to restore it.") and write nothing, for every
+     entry. The same refusal applies when the entry's Resource must be created
+     and the Events URL is not the `"<API base>/events"` literal provisioning
+     writes, and when an entry binds an instance the template does not have (a
+     template bug, which the template tests catch).
   3. Insert with `insertWebstudioFragmentAt`, and in the same transaction
-     (its `onInsert` option, once the block's root has its id): create the
-     Forms catalog Resource if the project still lacks it, by the id
-     provisioning gives it and in provisioning's shape (named "OrganizeOS
-     Forms", the Events URL with `/forms` for `/events`, the Events
-     `Authorization` header; one that appeared meanwhile is kept); add the
-     block's binding, a resource DataSource with a fresh id scoped to the
-     block's root, named "OrganizeOS Forms", referencing that Resource; and
-     bind the root's `data` by id to the binding's `.data`, the
-     `{ data: [...] }` body of `GET /v1/forms`, so no variable that shares
-     its name captures it at insert (copies are another matter: see the known
-     limits).
+     (its `onInsert` option, once the block's instances have their ids): create
+     the entry's catalog Resource if the project still lacks it, by the id
+     provisioning gives it and in provisioning's shape (Forms: named "OrganizeOS
+     Forms", the Events URL with `/forms` for `/events`; Upcoming Events: named
+     "Upcoming Events", the Events URL with `/events?upcoming=true`; both with
+     the Events `Authorization` header; one that appeared meanwhile is kept; an
+     `events` entry never creates anything); add the block's binding, a
+     resource DataSource with a fresh id scoped to the block's root, named by
+     the entry ("OrganizeOS Forms", "OrganizeOS Upcoming Events", "OrganizeOS
+     Events"), referencing that Resource; and bind each prop the entry names,
+     by id, to an expression over the binding's variable, dropping a prop the
+     template made under that name on that instance, so no variable that shares
+     the binding's name captures it at insert (copies are another matter: see
+     the known limits).
+  4. The insert resolves a token the project already has with "ours": the
+     shared tokens ("OS Input" and the rest) are reused as they stand, so a
+     block inserted after the designer restyled "OS Input" wears the restyled
+     token instead of adding "OS Input-1" with default styles, and restyling a
+     token restyles every block (spec 3.2).
 
-  One transaction, so one undo removes the block, its binding and a Forms
-  Resource it created, and a block with no place to go writes nothing. The
-  forms load on the pages that have a block, and nowhere else.
+  One transaction, so one undo removes the block, its binding and a Resource it
+  created. The data loads on the pages that have a block, and nowhere else.
 
 - **Catalog Resources outlive their bindings.** Upstream deletes a binding's
   Resource with it (deleting an instance or a page, deleting a variable in the
@@ -432,12 +452,16 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
   WebCrypto `uuidV5` that the server and the browser share, pinned by tests to
   the ids the replaced `node:crypto` code produced, and `findCatalogResources`,
   which both sides use to list the catalog. Provisioning and the panel derive
-  the same ids, so a re-provision rewrites the panel's Forms Resource instead
-  of adding a second.
+  the same ids, so a re-provision rewrites the panel's Forms and Upcoming
+  Events Resources instead of adding a second. The names of those two Resources
+  and of the bindings the Events blocks bring live there too.
 - **The catalog in provisioning** (`shared/db/resource-presets.server.ts`):
-  Events, Fundraisers and Stats are written on every provision, Forms
-  ("when-present") is rewritten when the build has its Resource and never
-  created, and every collection Resource gets the new token and API base.
+  Events, Fundraisers and Stats are written on every provision, Forms and
+  Upcoming Events (`/events?upcoming=true`, "when-present") are rewritten when
+  the build has their Resource and never created, and every collection
+  Resource gets the new token and API base. Upcoming Events' token rotates like
+  the others': the check that finds a copy of a catalog Resource is a prefix
+  check on the API base.
   Resources are upserted in place and in order. The unscoped bindings older
   provisioning wrote next to each Resource never loaded, and the `:root` Forms
   binding the pre-deploy branches wrote loaded on every page; a provision or a
@@ -606,7 +630,7 @@ options, and the limits found since in review):
   is upstream behavior, left alone.
 - A catalog Resource is shared: editing it through any binding in the data
   panel edits it for every use, and a provision rewrites Events, Fundraisers,
-  Stats, Forms and each collection whole. A copy's own Resource (see Copies)
+  Stats, Forms, Upcoming Events (where present) and each collection whole. A copy's own Resource (see Copies)
   is the exception, and a provision only rotates its token.
 - No self-serve "Reconnect data": once the builder is enabled, nothing re-seeds
   a project's catalog, so a refused insert needs support to re-provision.
