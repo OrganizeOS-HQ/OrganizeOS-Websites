@@ -89,8 +89,8 @@ const SourceOffer = () => (
     <a
       href={organizeosSourceUrl}
       rel="code-repository"
-      title="Source code of this site's builder (AGPL-3.0)"
-      aria-label="Source code of this site's builder (AGPL-3.0)"
+      title="Source code of this site (AGPL-3.0)"
+      aria-label="Source code of this site (AGPL-3.0)"
       style={{ color: "inherit", textDecoration: "underline" }}
     >
       Source

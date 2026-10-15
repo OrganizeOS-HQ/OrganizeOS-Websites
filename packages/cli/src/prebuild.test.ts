@@ -557,11 +557,9 @@ describe("prebuild", () => {
         // head's license link names the AGPL text)
         expect(offer).toMatch(/<a [^>]*rel="code-repository"/);
         expect(offer).not.toMatch(/rel="[^"]*license/);
+        expect(offer).toContain(`title="Source code of this site (AGPL-3.0)"`);
         expect(offer).toContain(
-          `title="Source code of this site's builder (AGPL-3.0)"`
-        );
-        expect(offer).toContain(
-          `aria-label="Source code of this site's builder (AGPL-3.0)"`
+          `aria-label="Source code of this site (AGPL-3.0)"`
         );
         // the visible text
         expect(offer).toMatch(/>\s*Source\s*<\/a>/);
