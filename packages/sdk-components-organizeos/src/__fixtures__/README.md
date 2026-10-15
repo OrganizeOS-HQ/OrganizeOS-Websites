@@ -1,4 +1,4 @@
-> Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit e924b6de): change both copies together.
+> Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit 1f2105d69): change both copies together.
 
 # Site component contract fixtures
 
@@ -21,3 +21,6 @@ additive, or it ships under a new endpoint version.
   as the Website Lite form sends it.
 - `signups/response-*.json`: `{ "status", "body" }` for each outcome and error.
 - `forms.json`: the body of `GET /v1/forms`.
+- `events.json`: the body of `GET /v1/events`, as the route lists it: soonest
+  first, with the event's own time zone, and the ended event the
+  `?upcoming=true` read leaves out.

@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import { showAttribute } from "@webstudio-is/react-sdk";
 import {
   type DataSource,
   type Instance,
@@ -13,6 +14,7 @@ import { platformName } from "~/shared/branding";
 import {
   FORMS_PRESET_KEY,
   FORMS_PRESET_NAME,
+  UPCOMING_EVENTS_BINDING_NAME,
   UPCOMING_EVENTS_PRESET_KEY,
   UPCOMING_EVENTS_RESOURCE_NAME,
   getResourcePresetIds,
@@ -70,6 +72,52 @@ export type BlockData = {
 };
 
 /**
+ * What the Event List and the Event Card bind (their template:
+ * packages/sdk-components-organizeos `events/event-card.template.tsx`). The
+ * variable is the resources loader's `{ ok, status, statusText, data }`, so
+ * `.data` is the response body and `.data.data` is the DTO's list; `ok` sits on
+ * the variable, not on the body.
+ *
+ * - The collection reads the list only when `ok` is true. A failed read (a
+ *   503, a 429 or a 401) hands over an error body, `{ error }` or a 429's
+ *   `{ error, retryAfter }`, and a collection iterates an object with
+ *   `Object.entries`: an unguarded `.data.data` would render one empty card per
+ *   key of that body.
+ * - The "No upcoming events" box shows for an empty list, and the "Events
+ *   unavailable" box for a failed read.
+ * - While the Resource loads the variable is undefined. Expressions are
+ *   transpiled with optional chaining, so the collection is empty and both
+ *   boxes stay hidden.
+ *
+ * A designer caps the list by editing the collection's `data` expression, for
+ * example `<binding>.data.data.slice(0, 6)` inside the condition.
+ */
+const eventsBlockData = (
+  list: (variable: string) => string
+): Pick<BlockData, "catalog" | "bindingName" | "binds"> => ({
+  catalog: "upcoming-events",
+  bindingName: UPCOMING_EVENTS_BINDING_NAME,
+  binds: [
+    {
+      instance: "events",
+      prop: "data",
+      value: (variable) => `${variable}.ok === true ? ${list(variable)} : []`,
+    },
+    {
+      instance: "empty",
+      prop: showAttribute,
+      value: (variable) =>
+        `${variable}.ok === true && ${variable}.data.data.length === 0`,
+    },
+    {
+      instance: "unavailable",
+      prop: showAttribute,
+      value: (variable) => `${variable}.ok === false`,
+    },
+  ],
+});
+
+/**
  * The blocks that read the org's data. A template key with no entry is
  * inserted untouched. Exported so a test can register a block of its own.
  */
@@ -88,6 +136,15 @@ export const organizeosBlockData = new Map<string, BlockData>([
         },
       ],
     },
+  ],
+  [
+    `${organizeosNamespace}:EventList`,
+    eventsBlockData((variable) => `${variable}.data.data`),
+  ],
+  [
+    // the next upcoming event (plan decision D12): the first of the list
+    `${organizeosNamespace}:EventCard`,
+    eventsBlockData((variable) => `${variable}.data.data.slice(0, 1)`),
   ],
 ]);
 

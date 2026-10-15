@@ -89,7 +89,16 @@ test("states and prop controls", () => {
 });
 
 test("templates and hooks", () => {
-  expect(Object.keys(templates)).toEqual(["SignupForm"]);
-  expect(templates.SignupForm.category).toBe("hidden");
+  expect(Object.keys(templates)).toEqual([
+    "SignupForm",
+    "EventList",
+    "EventCard",
+  ]);
+  for (const template of Object.values(templates)) {
+    expect(template.category).toBe("hidden");
+  }
+  expect(templates.SignupForm.label).toBe("Signup Form");
+  expect(templates.EventList.label).toBe("Event List");
+  expect(templates.EventCard.label).toBe("Event Card");
   expect(hooks).toEqual([]);
 });

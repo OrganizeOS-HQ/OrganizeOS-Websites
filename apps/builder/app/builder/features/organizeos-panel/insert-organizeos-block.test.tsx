@@ -14,6 +14,7 @@ import {
   ROOT_INSTANCE_ID,
   coreMetas,
   encodeDataSourceVariable,
+  lintExpression,
   type DataSource,
   type Instance,
   type Resource,
@@ -59,6 +60,7 @@ import { deleteVariableMutable } from "~/shared/data-variables";
 import { instanceText } from "~/shared/copy-paste/plugin-instance";
 import { emitCommand } from "~/builder/shared/commands";
 import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
+import eventsBody from "../../../../../../packages/sdk-components-organizeos/src/__fixtures__/events.json";
 import {
   UPCOMING_EVENTS_BINDING_NAME,
   EVENTS_BINDING_NAME,
@@ -1281,6 +1283,271 @@ describe("shared tokens", () => {
         input.id
       );
     }
+  });
+});
+
+describe("the inserted Event List's and Event Card's data", () => {
+  const eventList = "@organizeos/site-components:EventList";
+  const eventCard = "@organizeos/site-components:EventCard";
+  const cachedResult = (data: unknown, status = 200) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: "",
+    data,
+  });
+  const cacheUpcoming = (result?: unknown) => {
+    const request = computeResourceRequest(expectedUpcomingResource, new Map());
+    $resourcesCache.set(
+      new Map(result === undefined ? [] : [[getResourceKey(request), result]])
+    );
+  };
+
+  // The block's instances and what the canvas computes for them, by the
+  // selector of the first card's: block root > collection > item 0 > card.
+  const readBlock = (block: Instance["id"]) => {
+    const instances = $instances.get();
+    const byLabel = (label: string) =>
+      [...instances.values()].filter((instance) => instance.label === label);
+    const root = instances.get(block) as Instance;
+    const [collection] = byLabel("Events");
+    const [empty] = byLabel("No upcoming events");
+    const [unavailable] = byLabel("Events unavailable");
+    const [card] = [...instances.values()].filter(
+      (instance) => instance.tag === "article"
+    );
+    const [starts] = byLabel("Starts");
+    const [link] = byLabel("Event link");
+    const [title] = byLabel("Title");
+    const propValues = $propValuesByInstanceSelector.get();
+    const read = (selector: string[], name: string) =>
+      propValues.get(getInstanceKey(selector))?.get(name);
+    const outer = [root.id, "bodyId"];
+    const item = (index: number) => [
+      `${collection.id}[${index}]`,
+      collection.id,
+      ...outer,
+    ];
+    return {
+      root,
+      collection,
+      items: [...propValues.keys()].filter((key) =>
+        key.includes(`${collection.id}[`)
+      ),
+      collectionData: read([collection.id, ...outer], "data"),
+      emptyShown: read([empty.id, ...outer], "data-ws-show"),
+      unavailableShown: read([unavailable.id, ...outer], "data-ws-show"),
+      timeZone: (index: number) =>
+        read([starts.id, card.id, ...item(index)], "timeZone"),
+      datetime: (index: number) =>
+        read([starts.id, card.id, ...item(index)], "datetime"),
+      href: (index: number) => read([link.id, card.id, ...item(index)], "href"),
+      titleExpression: title.children,
+    };
+  };
+  const getRoot = (label: string) =>
+    [...$instances.get().values()].filter(
+      (instance) => instance.label === label && instance.tag === "div"
+    )[0] as Instance;
+
+  test("an Event List brings an Upcoming Events binding scoped to its root, never page-wide", async () => {
+    setProject(withoutUpcoming);
+
+    expect(await insertOrganizeosBlock(eventList)).toBe(true);
+
+    const root = getRoot("Event List");
+    expect($instances.get().get("bodyId")?.children).toEqual([
+      { type: "id", value: root.id },
+    ]);
+    expect(getResourceBindings()).toEqual([
+      {
+        type: "resource",
+        id: expect.any(String),
+        scopeInstanceId: root.id,
+        name: "OrganizeOS Upcoming Events",
+        resourceId: upcomingEvents.resourceId,
+      },
+    ]);
+    expect($resources.get().get(upcomingEvents.resourceId)).toEqual(
+      expectedUpcomingResource
+    );
+    // the card's parameter is the collection's, and nothing else is a binding
+    expect(
+      [...$dataSources.get().values()].map((dataSource) => dataSource.type)
+    ).toEqual(["parameter", "resource"]);
+  });
+
+  test("renders the fixture's events in order, each start time in the event's own zone, with the link to its page", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(eventList)).toBe(true);
+    cacheUpcoming(cachedResult(eventsBody));
+
+    const block = readBlock(getRoot("Event List").id);
+
+    expect(block.collectionData).toEqual(eventsBody.data);
+    expect(block.items.length).toBeGreaterThan(0);
+    eventsBody.data.forEach((event, index) => {
+      expect(block.timeZone(index)).toBe(event.timezone);
+      expect(block.datetime(index)).toBe(event.start_time);
+      expect(block.href(index)).toBe(event.url);
+    });
+    expect(block.timeZone(0)).toBe("America/Chicago");
+    expect(block.timeZone(2)).toBe("America/Los_Angeles");
+    // neither the empty box nor the Unavailable box
+    expect(block.emptyShown).toBe(false);
+    expect(block.unavailableShown).toBe(false);
+  });
+
+  test("shows the empty box, and no item, for an empty list", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(eventList)).toBe(true);
+    cacheUpcoming(cachedResult({ data: [] }));
+
+    const block = readBlock(getRoot("Event List").id);
+
+    expect(block.collectionData).toEqual([]);
+    expect(block.items).toEqual([]);
+    expect(block.emptyShown).toBe(true);
+    expect(block.unavailableShown).toBe(false);
+  });
+
+  test.each([
+    ["a 503", cachedResult({ error: "unavailable" }, 503)],
+    [
+      "a 429, with its retryAfter",
+      cachedResult({ error: "rate_limited", retryAfter: 30 }, 429),
+    ],
+    ["a 401", cachedResult({ error: "unauthorized" }, 401)],
+  ])(
+    "shows the Unavailable box, and not an empty card for each key of the error body, after %s",
+    async (_case, result) => {
+      setProject(withForms);
+      expect(await insertOrganizeosBlock(eventList)).toBe(true);
+      cacheUpcoming(result);
+
+      const block = readBlock(getRoot("Event List").id);
+
+      expect(block.collectionData).toEqual([]);
+      expect(block.items).toEqual([]);
+      expect(block.emptyShown).toBe(false);
+      expect(block.unavailableShown).toBe(true);
+    }
+  );
+
+  test("shows nothing while the Resource has not loaded", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(eventList)).toBe(true);
+    cacheUpcoming();
+
+    const block = readBlock(getRoot("Event List").id);
+
+    expect(block.collectionData).toEqual([]);
+    expect(block.items).toEqual([]);
+    expect(block.emptyShown).toBe(false);
+    expect(block.unavailableShown).toBe(false);
+  });
+
+  test("an Event Card renders the first event only, and the same boxes", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(eventCard)).toBe(true);
+    cacheUpcoming(cachedResult(eventsBody));
+
+    let block = readBlock(getRoot("Event Card").id);
+
+    expect(block.collectionData).toEqual(eventsBody.data.slice(0, 1));
+    expect(block.timeZone(0)).toBe(eventsBody.data[0].timezone);
+    expect(block.href(0)).toBe(eventsBody.data[0].url);
+    expect(block.items.some((key) => key.includes("[1]"))).toBe(false);
+    expect(block.emptyShown).toBe(false);
+
+    cacheUpcoming(cachedResult({ data: [] }));
+    block = readBlock(getRoot("Event Card").id);
+    expect(block.collectionData).toEqual([]);
+    expect(block.emptyShown).toBe(true);
+
+    cacheUpcoming(cachedResult({ error: "unavailable" }, 503));
+    block = readBlock(getRoot("Event Card").id);
+    expect(block.collectionData).toEqual([]);
+    expect(block.unavailableShown).toBe(true);
+  });
+
+  test("the builder's loader requests Upcoming Events for the page, and nothing else", async () => {
+    setProject(withoutUpcoming);
+    expect(await insertOrganizeosBlock(eventList)).toBe(true);
+    loaderFetch.mockImplementation(async (_url: string, init: RequestInit) => {
+      const requests = JSON.parse(String(init.body)) as ResourceRequest[];
+      return {
+        ok: true,
+        json: async () =>
+          requests.map((request) => [
+            getResourceKey(request),
+            cachedResult(eventsBody),
+          ]),
+      };
+    });
+
+    vi.useFakeTimers();
+    const unsubscribe = subscribeResources();
+    await vi.advanceTimersByTimeAsync(1000);
+    unsubscribe();
+
+    expect(loaderFetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(loaderFetch.mock.calls[0][1].body)).toEqual([
+      {
+        name: "Upcoming Events",
+        method: "get",
+        url: "https://staging.example.org/api/public/v1/events?upcoming=true",
+        searchParams: [],
+        headers: [{ name: "Authorization", value: "Bearer osk_eventstoken" }],
+      },
+    ]);
+    expect(readBlock(getRoot("Event List").id).collectionData).toEqual(
+      eventsBody.data
+    );
+  });
+
+  test("one undo removes the Event List, its binding and the Upcoming Events Resource it created", async () => {
+    setProject(withoutUpcoming);
+    const before = getStores();
+
+    expect(await insertOrganizeosBlock(eventList)).toBe(true);
+    emitCommand("undo");
+
+    expect(getStores()).toEqual(before);
+  });
+
+  test("refuses, writing nothing, when Events is missing", async () => {
+    setProject({
+      ...withoutUpcoming,
+      resources: withoutUpcoming.resources.filter(
+        (resource) => resource.id !== events.resourceId
+      ),
+    });
+    const before = getStores();
+
+    expect(await insertOrganizeosBlock(eventCard)).toBe(false);
+
+    expectNothingWritten(before);
+    expect(toastError).toHaveBeenCalledWith(
+      "Cannot add Event Card: this site's link to your organization's data was removed or changed. Contact OrganizeOS support to restore it."
+    );
+  });
+
+  test("every expression the table binds is a valid expression of the binding's variable", () => {
+    const variable = encodeDataSourceVariable("binding-id");
+    let checked = 0;
+    for (const [key, entry] of organizeosBlockData) {
+      for (const bind of entry.binds) {
+        expect(
+          lintExpression({
+            expression: bind.value(variable),
+            availableVariables: new Set([variable]),
+          }),
+          `${key} ${bind.instance}.${bind.prop}`
+        ).toEqual([]);
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThanOrEqual(7);
   });
 });
 
