@@ -378,7 +378,8 @@ Design and plans are in the OrganizeOS repo
 - Events ends with a link to the org's events area,
   `<platform URL>/<subdomain>/events` (the Website area's URL while the builder
   does not know the subdomain), "Manage events in OrganizeOS". The builder
-  depends on that platform route (not yet listed on the OrganizeOS side).
+  depends on that platform route; the OrganizeOS side lists it, beside the
+  Embeds hub's, under "Contract with the fork".
 - Signups ends with a link to the org's Embeds hub,
   `<platform URL>/<subdomain>/pages/embeds`, where the org makes its forms (the
   Website area's URL while the builder does not know the subdomain). The
@@ -606,7 +607,10 @@ control. The Signup Form's `record` is a select:
   and any error to Error, so a frozen build survives new answers.
 - `GET /v1/events?upcoming=true`, through the Upcoming Events catalog Resource
   (the Event List and Event Card): the events not yet over, soonest first,
-  each with the event's `timezone` (always a valid IANA zone). An older
+  each with the event's `timezone`: an IANA-style name (`Area/Location`, as
+  `America/Chicago`, or `UTC`), which is `America/New_York` when the stored
+  zone is unset, invalid, an offset (`+05:30`) or an abbreviation (`EST`), since
+  the event form stores the zone it is sent unchecked. An older
   platform ignores `upcoming`. Before the one public-event rule (plan task P1)
   it also lists members-only and private events, which `is_public` lets through
   by default. Before the display changes (P2) it also lists ended events, with
@@ -624,7 +628,8 @@ control. The Signup Form's `record` is a select:
   view calls the platform again, and without `stale-if-error` a platform
   failure shows at once.
 - The Embeds hub and events area routes the panel links to
-  (`/<subdomain>/pages/embeds`, `/<subdomain>/events`).
+  (`/<subdomain>/pages/embeds`, `/<subdomain>/events`), which the OrganizeOS
+  contract lists with its environment variables.
 - Both sides build to the contract fixtures in OrganizeOS's
   `client/tests/fixtures/site-components/`, which the package copies into
   `src/__fixtures__/` for its tests (`forms.json`, `events.json` and
@@ -701,8 +706,10 @@ options, and the limits found since in review):
   pre-deploy branches (above), whose binding is at `:root`. What can still
   capture a new block's bound props is a variable named exactly like the
   block's binding ("OrganizeOS Forms", "OrganizeOS Upcoming Events") added on
-  the block's root itself, which the next re-resolution (saving that variable
-  is one) binds in place of the block's binding:
+  the block's root, or on an instance that carries a bound prop (for an Event
+  List or Event Card, also the `events` collection and the `empty` and
+  `unavailable` boxes), which the next re-resolution (saving that variable is
+  one) binds in place of the block's binding:
   `validateDataVariableName` compares only `variable`-type sources, so it
   allows the name beside the binding. A Signup Form has one such prop (`data`);
   an Event List or Event Card has three (the collection's `data` and the
