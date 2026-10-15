@@ -1,4 +1,4 @@
-> Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit 363b43484): change both copies together.
+> Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit 7ada55ccb): change both copies together.
 
 # Site component contract fixtures
 
@@ -23,6 +23,8 @@ additive, or it ships under a new endpoint version.
 - `forms.json`: the body of `GET /v1/forms`.
 - `events.json`: the body of `GET /v1/events`, as the route lists it: soonest
   first, with the event's own time zone, and the ended event the
-  `?upcoming=true` read leaves out. Each nullable key but `slug` (NOT NULL in
-  the events table) is null in at least one event, so a copy's schema is held to
-  it.
+  `?upcoming=true` read leaves out. Every nullable key but `slug`, whose null
+  would change `url` to the id fallback, is null in at least one event, so a
+  copy's schema is held to it. (`slug` and `end_time` are both NOT NULL in the
+  events table; the fixture keeps one null `end_time` anyway, to hold the DTO's
+  defensive `.nullable()` and the `?upcoming=true` no-end-time branch.)
