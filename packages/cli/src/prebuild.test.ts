@@ -1065,9 +1065,11 @@ describe("prebuild", () => {
 
   // OrganizeOS fork: an Event List's Upcoming Events binding is scoped to the
   // block's root, so only the page that holds the block loads the events. The
-  // collection reads the list when the loader's `ok` is true (an error body
-  // would iterate into one empty card per key), and the two state boxes show on
-  // `ok` too.
+  // collection reads the list only when the loader's `ok` is true, so it agrees
+  // with the two state boxes, which show on `ok` too. The condition is
+  // parenthesized: the page iterates `Object.entries(<bind> ?? {})`, and `??`
+  // binds tighter than `?:`, so unparenthesized it guards only the `[]` branch
+  // and a 200 without a list throws during render.
   describe("compiles an Event List's data from the Upcoming Events preset", () => {
     const upcomingBinding = {
       type: "resource",
@@ -1082,6 +1084,15 @@ describe("prebuild", () => {
     // The collection's list: an Event List's, or an Event Card's first event.
     const eventListData = `${variable}.data.data`;
     const eventCardData = `${variable}.data.data.slice(0, 1)`;
+
+    // What the page's collection iterates: the argument of its
+    // `Object.entries(`, without the `// @ts-ignore` line before it.
+    const getIterated = (page: string) =>
+      page
+        .match(
+          /Object\.entries\(\s*(?:\/\/[^\n]*\n)?([\s\S]*?)\s*\)\.map\(/
+        )?.[1]
+        .trim();
 
     const writeEventList = ({
       secondPage = false,
@@ -1204,7 +1215,7 @@ describe("prebuild", () => {
                 instanceId: "events",
                 name: "data",
                 type: "expression",
-                value: `${variable}.ok === true ? ${list} : []`,
+                value: `(${variable}.ok === true ? ${list} : [])`,
               },
             ],
             [
@@ -1280,11 +1291,11 @@ describe("prebuild", () => {
       const [, variable, request] =
         page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
       expect(variable).toBeDefined();
-      // the list is read only when the loader says `ok`: an error body would
-      // iterate into one empty card per key
+      // the list is read only when the loader says `ok`, and the whole
+      // condition is what `?? {}` guards
       expect(page).toContain("Object.entries(");
-      expect(page).toContain(
-        `${variable}?.ok === true ? ${variable}?.data?.data : []`
+      expect(getIterated(page)).toBe(
+        `(${variable}?.ok === true ? ${variable}?.data?.data : []) ?? {}`
       );
       expect(page).toContain(".map(([_key, event]: any) => {");
       expect(page).toContain("{renderText(event?.title)}");
@@ -1311,9 +1322,49 @@ describe("prebuild", () => {
 
       const [, variable] =
         page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
-      expect(page).toContain(
-        `${variable}?.ok === true ? ${variable}?.data?.data?.slice?.(0, 1) : []`
+      expect(getIterated(page)).toBe(
+        `(${variable}?.ok === true ? ${variable}?.data?.data?.slice?.(0, 1) : []) ?? {}`
       );
+    });
+
+    // The published page's render must not throw on a body without a list: the
+    // block degrades to nothing, and the page still renders.
+    describe.each([
+      ["an Event List", eventListData, 2],
+      ["an Event Card", eventCardData, 1],
+    ])("%s's iteration", (_case, list, items) => {
+      const iterate = async (result: unknown) => {
+        await writeEventList({ list });
+        const { page } = await prebuildPage();
+        const [, variable] =
+          page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
+        return new Function(
+          variable,
+          `return Object.entries(${getIterated(page)});`
+        )(result) as unknown[];
+      };
+
+      test("covers the events of a successful read", async () => {
+        const events = [{ title: "a" }, { title: "b" }];
+        expect(
+          await iterate({ ok: true, data: { data: events } })
+        ).toHaveLength(items);
+      });
+
+      test.each([
+        ["a 200 whose body is not JSON", { ok: true, data: "<html></html>" }],
+        ["a 200 whose body has no list", { ok: true, data: {} }],
+        ["a 200 whose list is null", { ok: true, data: { data: null } }],
+        ["a 200 whose body is null", { ok: true, data: null }],
+        ["a 503", { ok: false, data: { error: "unavailable" } }],
+        [
+          "a 429, with its retryAfter",
+          { ok: false, data: { error: "rate_limited", retryAfter: 30 } },
+        ],
+        ["a Resource that has not loaded", undefined],
+      ])("is empty, and does not throw, after %s", async (_name, result) => {
+        expect(await iterate(result)).toEqual([]);
+      });
     });
 
     test("to no request on a page without the block", async () => {

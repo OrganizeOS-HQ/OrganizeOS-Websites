@@ -78,11 +78,16 @@ export type BlockData = {
  * `.data` is the response body and `.data.data` is the DTO's list; `ok` sits on
  * the variable, not on the body.
  *
- * - The collection reads the list only when `ok` is true. A failed read (a
- *   503, a 429 or a 401) hands over an error body, `{ error }` or a 429's
- *   `{ error, retryAfter }`, and a collection iterates an object with
- *   `Object.entries`: an unguarded `.data.data` would render one empty card per
- *   key of that body.
+ * - The collection reads the list only when `ok` is true, so it stays on a list
+ *   for a successful read only and agrees with the empty and Unavailable boxes.
+ *   (A failed read hands over an error body, `{ error }` or a 429's
+ *   `{ error, retryAfter }`, whose `.data.data` is undefined and renders no
+ *   card either way. Binding the body itself, `.data`, would iterate one card
+ *   per key of it.)
+ * - The whole condition is parenthesized. A published page iterates
+ *   `Object.entries(<bind> ?? {})`, and `??` binds tighter than `?:`: bare, it
+ *   would guard only the `[]` branch, and a 200 whose body has no list (an HTML
+ *   page after a redirect, `{}`) would throw while the page renders.
  * - The "No upcoming events" box shows for an empty list, and the "Events
  *   unavailable" box for a failed read.
  * - While the Resource loads the variable is undefined. Expressions are
@@ -101,7 +106,7 @@ const eventsBlockData = (
     {
       instance: "events",
       prop: "data",
-      value: (variable) => `${variable}.ok === true ? ${list(variable)} : []`,
+      value: (variable) => `(${variable}.ok === true ? ${list(variable)} : [])`,
     },
     {
       instance: "empty",

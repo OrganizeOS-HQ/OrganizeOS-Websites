@@ -417,7 +417,7 @@ const upcomingBlockData: BlockData = {
       instance: "events",
       prop: "data",
       value: (variable) =>
-        `${variable}.ok === true ? ${variable}.data.data : []`,
+        `(${variable}.ok === true ? ${variable}.data.data : [])`,
     },
     {
       instance: "empty",
@@ -970,7 +970,7 @@ describe("an Events block, through the completion table", () => {
         instanceId: collection.id,
         name: "data",
         type: "expression",
-        value: `${variable}.ok === true ? ${variable}.data.data : []`,
+        value: `(${variable}.ok === true ? ${variable}.data.data : [])`,
       },
     ]);
     expect(getInstanceProps(empty.id, "data-ws-show")).toEqual([
@@ -1013,7 +1013,7 @@ describe("an Events block, through the completion table", () => {
         (item) => item.scopeInstanceId === root.id
       ) as DataSource;
       expect(getInstanceProps(collection.id, "data")[0]?.value).toBe(
-        `${encodeDataSourceVariable(binding.id)}.ok === true ? ${encodeDataSourceVariable(binding.id)}.data.data : []`
+        `(${encodeDataSourceVariable(binding.id)}.ok === true ? ${encodeDataSourceVariable(binding.id)}.data.data : [])`
       );
     });
   });
@@ -1376,6 +1376,42 @@ describe("the inserted Event List's and Event Card's data", () => {
     ).toEqual(["parameter", "resource"]);
   });
 
+  // The published page iterates `Object.entries(<bind> ?? {})`, and `??` binds
+  // tighter than `?:`: the condition has to be parenthesized, or `?? {}` guards
+  // only the `[]` branch and a 200 without a list throws during render.
+  test.each([
+    [
+      "an Event List",
+      eventList,
+      "Event List",
+      (variable: string) => `${variable}.data.data`,
+    ],
+    [
+      "an Event Card",
+      eventCard,
+      "Event Card",
+      (variable: string) => `${variable}.data.data.slice(0, 1)`,
+    ],
+  ])(
+    "binds %s's collection to a parenthesized condition",
+    async (_case, name, label, list) => {
+      setProject(withoutUpcoming);
+      expect(await insertOrganizeosBlock(name)).toBe(true);
+
+      const [binding] = getResourceBindings();
+      const variable = encodeDataSourceVariable(binding.id);
+      const [collection] = [...$instances.get().values()].filter(
+        (instance) => instance.label === "Events"
+      );
+      expect(getRoot(label)).toBeDefined();
+      expect(getInstanceProps(collection.id, "data")).toEqual([
+        expect.objectContaining({
+          value: `(${variable}.ok === true ? ${list(variable)} : [])`,
+        }),
+      ]);
+    }
+  );
+
   test("renders the fixture's events in order, each start time in the event's own zone, with the link to its page", async () => {
     setProject(withForms);
     expect(await insertOrganizeosBlock(eventList)).toBe(true);
@@ -1418,7 +1454,7 @@ describe("the inserted Event List's and Event Card's data", () => {
     ],
     ["a 401", cachedResult({ error: "unauthorized" }, 401)],
   ])(
-    "shows the Unavailable box, and not an empty card for each key of the error body, after %s",
+    "shows the Unavailable box, and no item, after %s",
     async (_case, result) => {
       setProject(withForms);
       expect(await insertOrganizeosBlock(eventList)).toBe(true);

@@ -426,20 +426,26 @@ Design and plans are in the OrganizeOS repo
     the root's `data` = `<v>.data`.
   - The Event List's entry is Upcoming Events under "OrganizeOS Upcoming
     Events", with three binds: the collection's (`events`) `data` =
-    `<v>.ok === true ? <v>.data.data : []`, the empty box's (`empty`)
+    `(<v>.ok === true ? <v>.data.data : [])`, the empty box's (`empty`)
     `data-ws-show` = `<v>.ok === true && <v>.data.data.length === 0`, and the
     unavailable box's (`unavailable`) `data-ws-show` = `<v>.ok === false`. The
     Event Card's entry is the same with `<v>.data.data.slice(0, 1)` for the
     list: the next event.
   - `<v>` is the loader's `{ ok, status, statusText, data }`, so `<v>.data` is
     the response body, `<v>.data.data` is the DTO's list, and `ok` sits on
-    `<v>`, not on the body. A failed read (a 503, a 429 or a 401) hands over an
-    error body, `{ error }` or a 429's `{ error, retryAfter }`, and a
-    collection iterates an object with `Object.entries`, so an unguarded
-    `<v>.data.data` would render one empty card per key of that body: the
-    collection reads the list only when `ok` is true. While the Resource loads,
-    `<v>` is undefined; expressions are transpiled with optional chaining, so
-    the collection is empty and both boxes stay hidden.
+    `<v>`, not on the body. The collection reads the list only when `ok` is
+    true, so it stays on a list for a successful read only and agrees with the
+    empty and Unavailable boxes. (A failed read, a 503, a 429 or a 401, hands
+    over an error body, `{ error }` or a 429's `{ error, retryAfter }`, whose
+    `<v>.data.data` is undefined and renders no card either way; binding the
+    body itself, `<v>.data`, would iterate one card per key of it.) The
+    condition is parenthesized because the published page iterates
+    `Object.entries(<bind> ?? {})` and `??` binds tighter than `?:`: bare, the
+    `?? {}` would guard only the `[]` branch, and a 200 whose body has no list
+    (an HTML page after a redirect, `{}`) would throw while the page renders.
+    While the Resource loads, `<v>` is undefined; expressions are transpiled
+    with optional chaining, so the collection is empty and both boxes stay
+    hidden.
   - A designer caps the list by editing the collection's `data` expression,
     for example `<v>.data.data.slice(0, 6)` inside the condition.
 
