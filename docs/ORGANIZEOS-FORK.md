@@ -450,7 +450,11 @@ Design and plans are in the OrganizeOS repo
     with optional chaining, so the collection is empty and both boxes stay
     hidden.
   - A designer caps the list by editing the collection's `data` expression,
-    for example `<v>.data.data.slice(0, 6)` inside the condition.
+    for example `<v>.data.data.slice(0, 6)` inside the condition. Keep the
+    condition's outer parentheses when editing: a published page iterates
+    `Object.entries(<expr> ?? {})`, and `??` binds tighter than `?:`, so
+    without them the `?? {}` guards only the `[]` branch and a 200 with no list
+    throws on the published page.
 
   1. Refuse, with a toast and no write, when the org is not on the allowlist.
   2. Find the Events Resource by its deterministic id, never by name. If it is
@@ -607,10 +611,12 @@ control. The Signup Form's `record` is a select:
   and any error to Error, so a frozen build survives new answers.
 - `GET /v1/events?upcoming=true`, through the Upcoming Events catalog Resource
   (the Event List and Event Card): the events not yet over, soonest first,
-  each with the event's `timezone`: an IANA-style name (`Area/Location`, as
-  `America/Chicago`, or `UTC`), which is `America/New_York` when the stored
-  zone is unset, invalid, an offset (`+05:30`) or an abbreviation (`EST`), since
-  the event form stores the zone it is sent unchecked. An older
+  each with the event's `timezone`: a tz database name `Intl` accepts, as
+  stored (`America/Chicago`, `UTC`, and the legacy names `EST`, `CET`, `GMT` and
+  `PST8PDT`, which stay as given so the event keeps its hour), and
+  `America/New_York` when the stored zone is unset, invalid, or a numeric offset
+  (`+05:30`, `-0800`), since the event form stores the zone it is sent
+  unchecked. An older
   platform ignores `upcoming`. Before the one public-event rule (plan task P1)
   it also lists members-only and private events, which `is_public` lets through
   by default. Before the display changes (P2) it also lists ended events, with
@@ -706,10 +712,11 @@ options, and the limits found since in review):
   pre-deploy branches (above), whose binding is at `:root`. What can still
   capture a new block's bound props is a variable named exactly like the
   block's binding ("OrganizeOS Forms", "OrganizeOS Upcoming Events") added on
-  the block's root, or on an instance that carries a bound prop (for an Event
-  List or Event Card, also the `events` collection and the `empty` and
-  `unavailable` boxes), which the next re-resolution (saving that variable is
-  one) binds in place of the block's binding:
+  the block's root, or on any instance from a bound prop's own instance up to
+  that root (for an Event List or Event Card as inserted, the `events`
+  collection and the `empty` and `unavailable` boxes), which the next
+  re-resolution (saving that variable is one) binds in place of the block's
+  binding:
   `validateDataVariableName` compares only `variable`-type sources, so it
   allows the name beside the binding. A Signup Form has one such prop (`data`);
   an Event List or Event Card has three (the collection's `data` and the
