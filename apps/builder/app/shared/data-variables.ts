@@ -27,6 +27,7 @@ import {
   isPlainObject,
 } from "@webstudio-is/sdk/runtime";
 import { setUnion } from "./shim";
+import { isPresetId } from "./organizeos-preset-ids";
 
 const allowedJsChars = /[A-Za-z_]/;
 const compiledExpressionCacheLimit = 10_000;
@@ -673,7 +674,11 @@ export const deleteVariableMutable = (
     return;
   }
   data.dataSources.delete(variableId);
-  if (dataSource.type === "resource") {
+  // OrganizeOS fork: an org catalog Resource outlives its bindings.
+  if (
+    dataSource.type === "resource" &&
+    isPresetId(dataSource.resourceId) === false
+  ) {
     data.resources.delete(dataSource.resourceId);
   }
   const unsetNameById = new Map<DataSource["id"], DataSource["name"]>();

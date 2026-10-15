@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import {
+  getPagePath,
   replaceFormActionsWithResources,
   type DataSource,
   type Instance,
@@ -22,6 +22,11 @@ import {
   renderData,
   Variable,
 } from "@webstudio-is/template";
+import { uuidV5 } from "../organizeos-preset-ids";
+import {
+  updateDevBuildWithVersionBump,
+  upsertById,
+} from "./resource-presets.server";
 
 /**
  * OrganizeOS Websites 2.0: a native signup form preset (Phase 4d write side).
@@ -40,28 +45,22 @@ import {
  *    /v1/signups schema (email, first_name, last_name).
  *  - A `formState` variable drives initial/success/error visibility.
  *
- * This module only ASSEMBLES the form data (pure, testable). Persisting it into
- * a project's build (instance merge + a new page) is a separate step so the
- * data shape can be validated against a running builder before it is wired into
- * provisioning.
+ * This module ASSEMBLES the form data (pure, testable), and
+ * seedSignupFormPage merges it into the org's dev build as a "Newsletter" page
+ * at SIGNUP_PAGE_PATH.
  */
 
-// Fixed namespace for signup-form-derived ids (same namespace as the read
-// presets so all preset ids live in one deterministic family).
-const PRESET_NAMESPACE = "3f2a1b7c-8d5e-45a1-9b2c-6e0d1a2b3c4d";
+/**
+ * Where the starter signup page is seeded. Not under any path every org host
+ * redirects to the platform (`/signup` is one, to the account sign-up), where
+ * the page could never render: the guard test lists them.
+ */
+export const SIGNUP_PAGE_PATH = "/newsletter";
+const SIGNUP_PAGE_NAME = "Newsletter";
 
-const uuidV5 = (name: string): string => {
-  const namespaceBytes = Buffer.from(PRESET_NAMESPACE.replace(/-/g, ""), "hex");
-  const bytes = createHash("sha1")
-    .update(namespaceBytes)
-    .update(Buffer.from(name, "utf8"))
-    .digest()
-    .subarray(0, 16);
-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = bytes.toString("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
-};
+// Signup-form ids are derived in the same namespace as the read presets
+// (shared/organizeos-preset-ids.ts), so all preset ids live in one
+// deterministic family.
 
 /** Input `name`s, in lockstep with the /v1/signups request schema. */
 export const SIGNUP_FORM_FIELD_NAMES = [
@@ -133,17 +132,17 @@ export type SignupFormData = {
   data: Omit<WebstudioData, "pages">;
   /** Body instance id: the rootInstanceId for the seeded signup page. */
   bodyId: string;
-  /** Deterministic id for the seeded "Sign up" page. */
+  /** Deterministic id for the seeded page. */
   pageId: string;
 };
 
 /**
  * Assemble the signup form: render the template with deterministic ids, convert
  * the form action into a server-side action resource, inject the org token
- * header as a literal. Pure: no I/O. Deterministic per
- * projectId, so re-seeding converges instead of duplicating.
+ * header as a literal. Pure: no I/O (async only because the id derivation is).
+ * Deterministic per projectId, so re-seeding converges instead of duplicating.
  */
-export const buildSignupFormData = ({
+export const buildSignupFormData = async ({
   projectId,
   apiBaseUrl,
   readToken,
@@ -151,17 +150,27 @@ export const buildSignupFormData = ({
   projectId: string;
   apiBaseUrl: string;
   readToken: string;
-}): SignupFormData => {
+}): Promise<SignupFormData> => {
   const base = apiBaseUrl.replace(/\/+$/, "");
-  const bodyId = uuidV5(`${projectId}:signup:body`);
+  const [bodyId, pageId] = await Promise.all([
+    uuidV5(`${projectId}:signup:body`),
+    uuidV5(`${projectId}:signup:page`),
+  ]);
+  const template = () => signupFormTemplate(`${base}/signups`, bodyId);
 
-  let counter = 0;
-  const generateId = () => uuidV5(`${projectId}:signup:${counter++}`);
-
-  const data = renderData(
-    signupFormTemplate(`${base}/signups`, bodyId),
-    generateId
+  // renderData takes a synchronous id generator, and uuidV5 is async. So count
+  // the ids one render asks for, derive them, and render again handing them
+  // out in order: both renders walk the same template the same way, so the nth
+  // id is uuidV5("{projectId}:signup:{n}"), exactly as before.
+  let count = 0;
+  renderData(template(), () => String(count++));
+  const ids = await Promise.all(
+    Array.from({ length: count }, (_, index) =>
+      uuidV5(`${projectId}:signup:${index}`)
+    )
   );
+  let counter = 0;
+  const data = renderData(template(), () => ids[counter++]);
 
   // Turn the form's string action into a server-side action resource.
   replaceFormActionsWithResources({
@@ -183,16 +192,7 @@ export const buildSignupFormData = ({
     }
   }
 
-  return { data, bodyId, pageId: uuidV5(`${projectId}:signup:page`) };
-};
-
-/** Replace entries sharing an incoming id, keep the rest, append the incoming. */
-const mergeById = <Type extends { id: string }>(
-  existing: Type[],
-  incoming: Type[]
-): Type[] => {
-  const incomingIds = new Set(incoming.map((item) => item.id));
-  return [...existing.filter((item) => !incomingIds.has(item.id)), ...incoming];
+  return { data, bodyId, pageId };
 };
 
 export type BuildContent = {
@@ -204,45 +204,66 @@ export type BuildContent = {
 };
 
 /**
- * Merge the signup form into a build's content and add a "Sign up" page. Pure:
- * mutates only the returned values (pages is mutated in place, so pass a build
- * you own). Only the content maps are merged: the form's PRESET STYLES and
- * breakpoints are intentionally dropped so the seeded fragment never has to
- * reconcile its breakpoints against the build's. The starter form ships
- * unstyled; the org styles it in the builder. Deterministic ids make this
- * idempotent (re-seed replaces in place).
+ * Merge the signup form into a build's content and add a "Newsletter" page at
+ * SIGNUP_PAGE_PATH. Pure: mutates only the returned values (pages is mutated
+ * in place, so pass a build you own). Only the content maps are merged: the
+ * form's PRESET STYLES and breakpoints are intentionally dropped so the seeded
+ * fragment never has to reconcile its breakpoints against the build's. The
+ * starter form ships unstyled; the org styles it in the builder.
+ * Deterministic ids make this idempotent: a re-seed replaces in place, in
+ * order, and moves a page seeded at an older path (`/signup`) to the current
+ * one under the same id.
+ *
+ * When another page already answers at SIGNUP_PAGE_PATH, nothing is moved
+ * there: a page seeded earlier keeps its path and gets its content re-synced
+ * (a rotated token), and a build without one gets nothing.
  */
-export const mergeSignupFormIntoBuild = (
+export const mergeSignupFormIntoBuild = async (
   build: BuildContent,
   {
     projectId,
     apiBaseUrl,
     readToken,
   }: { projectId: string; apiBaseUrl: string; readToken: string }
-): BuildContent => {
-  const { data, bodyId, pageId } = buildSignupFormData({
+): Promise<BuildContent> => {
+  const { data, bodyId, pageId } = await buildSignupFormData({
     projectId,
     apiBaseUrl,
     readToken,
   });
 
-  const instances = mergeById(build.instances, [...data.instances.values()]);
-  const props = mergeById(build.props, [...data.props.values()]);
-  const dataSources = mergeById(build.dataSources, [
+  const pages = build.pages;
+  const seededPage = pages.pages.get(pageId);
+  const pathIsTaken = [...pages.pages.values()].some(
+    (page) =>
+      page.id !== pageId && getPagePath(page.id, pages) === SIGNUP_PAGE_PATH
+  );
+  if (pathIsTaken && seededPage === undefined) {
+    return build;
+  }
+
+  const instances = upsertById(build.instances, [...data.instances.values()]);
+  const props = upsertById(build.props, [...data.props.values()]);
+  const dataSources = upsertById(build.dataSources, [
     ...data.dataSources.values(),
   ]);
-  const resources = mergeById(build.resources, [...data.resources.values()]);
+  const resources = upsertById(build.resources, [...data.resources.values()]);
 
-  const pages = build.pages;
-  pages.pages.set(pageId, {
-    id: pageId,
-    name: "Sign up",
-    path: "/signup",
-    // title is an expression (a quoted string literal), matching createPages.
-    title: `"Sign up"`,
-    meta: {},
-    rootInstanceId: bodyId,
-  });
+  pages.pages.set(
+    pageId,
+    pathIsTaken && seededPage !== undefined
+      ? seededPage
+      : {
+          id: pageId,
+          name: SIGNUP_PAGE_NAME,
+          path: SIGNUP_PAGE_PATH,
+          // title is an expression (a quoted string literal), matching
+          // createPages.
+          title: JSON.stringify(SIGNUP_PAGE_NAME),
+          meta: {},
+          rootInstanceId: bodyId,
+        }
+  );
   const rootFolder = pages.folders.get(pages.rootFolderId);
   if (rootFolder && rootFolder.children.includes(pageId) === false) {
     rootFolder.children.push(pageId);
@@ -252,9 +273,12 @@ export const mergeSignupFormIntoBuild = (
 };
 
 /**
- * Seed (or re-sync) the org's dev build with the signup form + a "Sign up"
- * page. Loads the dev build (deployment is null), merges content-only, writes
- * back. Idempotent. Runs alongside seedProjectResourcePresets at provision time.
+ * Seed (or re-sync) the org's dev build with the signup form and its
+ * "Newsletter" page. Merges content-only and writes back with
+ * updateDevBuildWithVersionBump (a compare-and-swap that bumps the version, so
+ * an open builder reloads rather than keep a replaced token). Idempotent: an
+ * unchanged form writes nothing. Runs after seedProjectResourcePresets at
+ * provision time.
  */
 export const seedSignupFormPage = async (
   context: AppContext,
@@ -264,40 +288,26 @@ export const seedSignupFormPage = async (
     readToken,
   }: { projectId: string; apiBaseUrl: string; readToken: string }
 ): Promise<void> => {
-  const client = context.postgrest.client;
-
-  const build = await client
-    .from("Build")
-    .select("id, instances, props, dataSources, resources, pages")
-    .eq("projectId", projectId)
-    .is("deployment", null)
-    .single();
-  if (build.error) {
-    throw build.error;
-  }
-
-  const merged = mergeSignupFormIntoBuild(
-    {
-      instances: JSON.parse(build.data.instances ?? "[]") as Instance[],
-      props: JSON.parse(build.data.props ?? "[]") as Prop[],
-      dataSources: JSON.parse(build.data.dataSources ?? "[]") as DataSource[],
-      resources: JSON.parse(build.data.resources ?? "[]") as Resource[],
-      pages: parsePages(build.data.pages),
-    },
-    { projectId, apiBaseUrl, readToken }
-  );
-
-  const update = await client
-    .from("Build")
-    .update({
+  await updateDevBuildWithVersionBump(context, projectId, async (build) => {
+    const merged = await mergeSignupFormIntoBuild(
+      {
+        instances: JSON.parse(build.instances) as Instance[],
+        props: JSON.parse(build.props) as Prop[],
+        dataSources: JSON.parse(build.dataSources) as DataSource[],
+        resources: JSON.parse(build.resources) as Resource[],
+        pages: parsePages(build.pages),
+      },
+      { projectId, apiBaseUrl, readToken }
+    );
+    const pages = serializePages(merged.pages);
+    return {
       instances: JSON.stringify(merged.instances),
       props: JSON.stringify(merged.props),
       dataSources: JSON.stringify(merged.dataSources),
       resources: JSON.stringify(merged.resources),
-      pages: serializePages(merged.pages),
-    })
-    .eq("id", build.data.id);
-  if (update.error) {
-    throw update.error;
-  }
+      // Compared as the builder would write them, so pages stored in another
+      // serialization do not count as a change.
+      ...(pages === serializePages(parsePages(build.pages)) ? {} : { pages }),
+    };
+  });
 };

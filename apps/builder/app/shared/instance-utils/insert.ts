@@ -168,7 +168,15 @@ export const insertWebstudioFragmentAt = (
   fragment: WebstudioFragment,
   insertable?: Insertable,
   conflictResolution?: ConflictResolution,
-  options?: { onBreakpointLimitMerge?: () => void }
+  options?: {
+    onBreakpointLimitMerge?: () => void;
+    // OrganizeOS fork: completes the insert in its own transaction, with the
+    // ids the fragment's instances were given.
+    onInsert?: (
+      data: WebstudioData,
+      newInstanceIds: Map<Instance["id"], Instance["id"]>
+    ) => void;
+  }
 ): boolean => {
   const hasChildren = fragment.children.length > 0;
   const hasTokens = fragment.styleSources.length > 0;
@@ -249,6 +257,7 @@ export const insertWebstudioFragmentAt = (
       parentSelector,
       position,
     });
+    options?.onInsert?.(data, newInstanceIds);
     newInstanceSelector = [children[0].value, ...parentSelector];
   });
   if (newInstanceSelector) {

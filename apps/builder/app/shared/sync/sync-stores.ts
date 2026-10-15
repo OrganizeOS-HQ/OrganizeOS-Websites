@@ -38,6 +38,7 @@ import {
   $selectedInstanceOutline,
   $selectedInstanceOutlines,
   $hoveredInstanceOutline,
+  $organizeosSite,
 } from "~/shared/nano-states";
 import { $marketplaceProduct } from "~/shared/sync/data-stores";
 import { $ephemeralStyles } from "~/canvas/stores";
@@ -309,6 +310,9 @@ export const createObjectPool = () => {
     new NanostoresSyncObject("registeredTemplates", $registeredTemplates),
     new NanostoresSyncObject("canvasScrollbarWidth", $canvasScrollbarSize),
     new NanostoresSyncObject("systemDataByPage", $systemDataByPage),
+    // OrganizeOS fork: a block dropped on the canvas inserts there, and the
+    // insert reads whether the org may use the blocks.
+    new NanostoresSyncObject("organizeosSite", $organizeosSite),
   ]);
 };
 

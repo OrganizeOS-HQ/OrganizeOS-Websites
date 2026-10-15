@@ -7,10 +7,35 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { bundleVersion } from "@webstudio-is/protocol";
+import { encodeDataSourceVariable } from "@webstudio-is/sdk";
 import { generateRedirectsModule, prebuild } from "./prebuild";
+import {
+  findModuleClosure,
+  resolveOrganizeosComponentsModule,
+} from "./organizeos-components";
+
+// OrganizeOS fork: Vitest's module runner has no import.meta.resolve, and it
+// resolves @organizeos/site-components with the webstudio condition, to the
+// package's source. Hand the CLI that source: it finds the package's build
+// from there, as it does when it runs from source (organizeos-components.ts).
+vi.mock("./organizeos-components", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./organizeos-components")>();
+  return {
+    ...actual,
+    resolveOrganizeosComponentsModule: () =>
+      actual.resolveOrganizeosComponentsModule(
+        () =>
+          new URL(
+            "../../sdk-components-organizeos/src/components.ts",
+            import.meta.url
+          ).href
+      ),
+  };
+});
 
 const originalCwd = process.cwd();
 const originalFetch = globalThis.fetch;
@@ -59,6 +84,10 @@ const createSiteData = (
     >;
     pageMeta?: Record<string, unknown>;
     redirects?: Redirects;
+    // OrganizeOS fork: the Forms preset cases below set these three.
+    props?: Array<[string, Record<string, unknown>]>;
+    dataSources?: Array<[string, Record<string, unknown>]>;
+    resources?: Array<[string, Record<string, unknown>]>;
   } = {}
 ) => {
   const pages = overrides.pages ?? [
@@ -136,7 +165,7 @@ const createSiteData = (
           },
         ],
       },
-      props: [],
+      props: overrides.props ?? [],
       instances: (
         overrides.instances ?? [
           [
@@ -149,8 +178,8 @@ const createSiteData = (
           ],
         ]
       ).map(([id, instance]) => [id, { type: "instance", ...instance }]),
-      dataSources: [],
-      resources: [],
+      dataSources: overrides.dataSources ?? [],
+      resources: overrides.resources ?? [],
       styleSources: [],
       styleSourceSelections: [],
       styles: [],
@@ -338,6 +367,465 @@ describe("prebuild", () => {
     await expect(
       readFile("app/__generated__/$resources.redirects.ts", "utf8")
     ).resolves.toContain("/dl.php?filename=file.pdf");
+  });
+
+  // OrganizeOS fork: the OrganizeOS blocks ship inside the site as a copy of
+  // their build (organizeos-components.ts).
+  const organizeosDir = join("app", "__organizeos__");
+
+  const expectCopyToBeTheClosure = async () => {
+    const entryPath = resolveOrganizeosComponentsModule();
+    const { modules } = await findModuleClosure(entryPath);
+    const copied = await getFilePaths(organizeosDir);
+    expect(copied.map((path) => relative(organizeosDir, path)).sort()).toEqual(
+      [
+        ...modules.map((path) => relative(dirname(entryPath), path)),
+        // the package's, so the copy carries its license
+        "LICENSE",
+      ].sort()
+    );
+  };
+
+  test("imports the OrganizeOS blocks from the copy of their build", async () => {
+    await writeSiteData(
+      createSiteData({
+        instances: [
+          [
+            "root",
+            {
+              id: "root",
+              component: "Box",
+              children: [{ type: "id", value: "signup" }],
+            },
+          ],
+          [
+            "signup",
+            {
+              id: "signup",
+              component: "@organizeos/site-components:SignupForm",
+              children: [],
+            },
+          ],
+        ],
+      })
+    );
+
+    await prebuild({
+      assets: false,
+      template: ["react-router", "react-router-vercel"],
+    });
+
+    // The page module sits in app/__generated__/ and imports the block by a
+    // path relative to that folder, which reaches the copy.
+    const pagePath = join("app", "__generated__", "_index.tsx");
+    const page = await readFile(pagePath, "utf8");
+    const importSource = page.match(
+      /import \{ SignupForm as \w+ \} from "([^"]+)";/
+    )?.[1];
+    expect(importSource).toBe("../__organizeos__/components.js");
+    await expect(
+      readFile(join(dirname(pagePath), importSource as string), "utf8")
+    ).resolves.toEqual(
+      await readFile(resolveOrganizeosComponentsModule(), "utf8")
+    );
+    // Everything the copy imports came with it, and nothing else did.
+    await expectCopyToBeTheClosure();
+  });
+
+  test("a second prebuild in the same folder leaves no stale file in the OrganizeOS copy", async () => {
+    await prebuild({
+      assets: false,
+      template: ["react-router", "react-router-vercel"],
+    });
+    await writeFile(join(organizeosDir, "stale.js"), "stale", "utf8");
+    await mkdir(join(organizeosDir, "removed"), { recursive: true });
+    await writeFile(join(organizeosDir, "removed", "part.js"), "stale", "utf8");
+
+    await prebuild({
+      assets: false,
+      template: ["react-router", "react-router-vercel"],
+    });
+
+    await expectCopyToBeTheClosure();
+  });
+
+  // OrganizeOS fork: a site carries the fork's AGPL code, so the copy ships
+  // its license and every html page links the fork's source
+  // (route-templates/html.tsx, organizeos-components.ts).
+  describe("offers the fork's source", () => {
+    const repository = "https://github.com/OrganizeOS-HQ/websites-builder";
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+
+    /** The generated html route's links function, the head it renders. */
+    const prebuildLinks = async () => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+      const route = await readFile(join("app", "routes", "_index.tsx"), "utf8");
+      const start = route.indexOf("export const links: LinksFunction");
+      return {
+        route,
+        links: route.slice(start, route.indexOf("\n};\n", start)),
+      };
+    };
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    test("every html page links the license and the fork at the commit the publish workflow built", async () => {
+      vi.stubEnv("GITHUB_REPOSITORY", "OrganizeOS-HQ/websites-builder");
+      vi.stubEnv("GITHUB_SHA", sha);
+
+      const { route, links } = await prebuildLinks();
+
+      expect(route).toContain(
+        `const organizeosSourceUrl = "${repository}/tree/${sha}";`
+      );
+      expect(route).not.toContain("__ORGANIZEOS_SOURCE_URL__");
+      expect(links).toContain(
+        `{ rel: "license", href: "https://www.gnu.org/licenses/agpl-3.0.html" },`
+      );
+      expect(links).toContain(
+        `{ rel: "code-repository", href: organizeosSourceUrl }`
+      );
+    });
+
+    test("without a commit it links the fork's repository", async () => {
+      vi.stubEnv("GITHUB_REPOSITORY", undefined);
+      vi.stubEnv("GITHUB_SHA", undefined);
+
+      const { route } = await prebuildLinks();
+
+      expect(route).toContain(`const organizeosSourceUrl = "${repository}";`);
+    });
+
+    test("the copy of the blocks carries the package's LICENSE", async () => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+
+      await expect(
+        readFile(join(organizeosDir, "LICENSE"), "utf8")
+      ).resolves.toEqual(
+        await readFile(
+          new URL("../../sdk-components-organizeos/LICENSE", import.meta.url),
+          "utf8"
+        )
+      );
+    });
+  });
+
+  // OrganizeOS fork: a page loads a data source only when its scope is on the
+  // page or is :root. The builder now scopes a Signup Form's Forms binding to
+  // the block's own root, so only the page that holds the block loads Forms;
+  // older pre-deploy branches wrote it at :root, and an unscoped binding
+  // loads nowhere.
+  describe("compiles a Signup Form's data from the Forms preset", () => {
+    const formsBinding = {
+      type: "resource",
+      id: "forms-binding",
+      name: "OrganizeOS Forms",
+      resourceId: "forms-resource",
+    };
+
+    // With `secondPage`, the site has a second page without the block.
+    const writeSignupForm = (
+      binding: Record<string, unknown>,
+      { secondPage = false }: { secondPage?: boolean } = {}
+    ) =>
+      writeSiteData(
+        createSiteData({
+          ...(secondPage && {
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: "Home",
+                path: "",
+                rootInstanceId: "root",
+                meta: {},
+              },
+              {
+                id: "about",
+                name: "About",
+                title: "About",
+                path: "/about",
+                rootInstanceId: "about-root",
+                meta: {},
+              },
+            ],
+          }),
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Box",
+                children: [{ type: "id", value: "signup" }],
+              },
+            ],
+            [
+              "signup",
+              {
+                id: "signup",
+                component: "@organizeos/site-components:SignupForm",
+                children: [],
+              },
+            ],
+            ...(secondPage
+              ? [
+                  [
+                    "about-root",
+                    { id: "about-root", component: "Box", children: [] },
+                  ] satisfies [string, unknown],
+                ]
+              : []),
+          ],
+          props: [
+            [
+              "signup-data",
+              {
+                id: "signup-data",
+                instanceId: "signup",
+                name: "data",
+                type: "expression",
+                value: `${encodeDataSourceVariable(formsBinding.id)}.data`,
+              },
+            ],
+          ],
+          dataSources: [[formsBinding.id, binding]],
+          resources: [
+            [
+              "forms-resource",
+              {
+                id: "forms-resource",
+                name: "OrganizeOS Forms",
+                method: "get",
+                url: `"https://app.example.org/api/public/v1/forms"`,
+                headers: [
+                  { name: "Authorization", value: `"Bearer osk_test"` },
+                ],
+              },
+            ],
+          ],
+        })
+      );
+
+    const prebuildPage = async (pageFile = "_index") => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+      const generatedDir = join("app", "__generated__");
+      return {
+        page: await readFile(join(generatedDir, `${pageFile}.tsx`), "utf8"),
+        // the page's resources module, which its loader runs on the server
+        resources: await readFile(
+          join(generatedDir, `${pageFile}.server.tsx`),
+          "utf8"
+        ),
+      };
+    };
+
+    test("to the Forms resource when the binding is scoped at :root", async () => {
+      await writeSignupForm({ ...formsBinding, scopeInstanceId: ":root" });
+
+      const { page, resources } = await prebuildPage();
+
+      const [, variable, request] =
+        page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
+      expect(variable).toBeDefined();
+      expect(page).toContain(`data={${variable}?.data}`);
+      expect(resources).toContain(`const ${request}: ResourceRequest = {`);
+      expect(resources).toContain(
+        `url: "https://app.example.org/api/public/v1/forms",`
+      );
+      expect(resources).toContain(
+        `{ name: "Authorization", value: "Bearer osk_test" },`
+      );
+      expect(resources).toContain(`["${request}", ${request}],`);
+    });
+
+    test("to the Forms resource on the page that holds the block, when the binding is scoped to the block's root", async () => {
+      await writeSignupForm(
+        { ...formsBinding, scopeInstanceId: "signup" },
+        { secondPage: true }
+      );
+
+      const { page, resources } = await prebuildPage();
+
+      const [, variable, request] =
+        page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
+      expect(variable).toBeDefined();
+      expect(page).toContain(`data={${variable}?.data}`);
+      expect(resources).toContain(`const ${request}: ResourceRequest = {`);
+      expect(resources).toContain(
+        `url: "https://app.example.org/api/public/v1/forms",`
+      );
+      expect(resources).toContain(
+        `{ name: "Authorization", value: "Bearer osk_test" },`
+      );
+      expect(resources).toContain(`["${request}", ${request}],`);
+    });
+
+    test("to no request on a page without the block, when the binding is scoped to the block's root", async () => {
+      await writeSignupForm(
+        { ...formsBinding, scopeInstanceId: "signup" },
+        { secondPage: true }
+      );
+
+      const { page, resources } = await prebuildPage("[about]._index");
+
+      expect(page).not.toContain("SignupForm");
+      expect(page).not.toContain("useResource(");
+      expect(resources).not.toContain("/v1/forms");
+      expect(resources).not.toContain("OrganizeOS Forms");
+      expect(resources).not.toContain("ResourceRequest = {");
+    });
+
+    test("to undefined when the binding has no scope", async () => {
+      await writeSignupForm(formsBinding);
+
+      const { page, resources } = await prebuildPage();
+
+      expect(page).toContain("data={undefined?.data}");
+      expect(page).not.toContain("useResource(");
+      expect(resources).not.toContain("/v1/forms");
+      expect(resources).not.toContain("OrganizeOS Forms");
+    });
+  });
+
+  // OrganizeOS fork: every page route's loader fetches its resources through
+  // the site's one in-memory cache, which the react-router template carries
+  // (templates/react-router/app/organizeos-resource-cache.ts).
+  describe("routes resource fetches through the site's resource cache", () => {
+    const cacheModule = join("app", "organizeos-resource-cache.ts");
+    const routes = [
+      {
+        documentType: "html",
+        file: join("app", "routes", "_index.tsx"),
+        // with the cachedFetch it called before behind the cache
+        fallback: `return siteResourceCache(input, init, (input, init) =>\n    cachedFetch(projectId, input, init)\n  );`,
+      },
+      {
+        documentType: "xml",
+        file: join("app", "routes", "[feed.xml]._index.tsx"),
+        fallback: "return siteResourceCache(input, init);",
+      },
+      {
+        documentType: "text",
+        file: join("app", "routes", "[notes.txt]._index.tsx"),
+        fallback: "return siteResourceCache(input, init);",
+      },
+    ];
+
+    /** The last statement of a route's customFetch: its fallback. */
+    const getFallback = (route: string) => {
+      const start = route.indexOf("const customFetch: typeof fetch");
+      const body = route.slice(start, route.indexOf("\n};\n", start));
+      return body.slice(body.lastIndexOf("\n  return ")).trim();
+    };
+
+    beforeEach(async () => {
+      await writeSiteData(
+        createSiteData({
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: "Home",
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+            {
+              id: "feed",
+              name: "Feed",
+              title: "Feed",
+              path: "/feed.xml",
+              rootInstanceId: "xml-root",
+              meta: { documentType: "xml" },
+            },
+            {
+              id: "notes",
+              name: "Notes",
+              title: "Notes",
+              path: "/notes.txt",
+              rootInstanceId: "root",
+              meta: { documentType: "text" },
+            },
+          ],
+          instances: [
+            ["root", { id: "root", component: "Box", children: [] }],
+            [
+              "xml-root",
+              {
+                id: "xml-root",
+                component: "Box",
+                children: [{ type: "id", value: "xml-feed" }],
+              },
+            ],
+            [
+              "xml-feed",
+              {
+                id: "xml-feed",
+                component: elementComponent,
+                tag: "rss",
+                children: [],
+              },
+            ],
+          ],
+        })
+      );
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+    });
+
+    test("copies the cache module into the site unchanged", async () => {
+      await expect(readFile(cacheModule, "utf8")).resolves.toEqual(
+        await readFile(
+          new URL(
+            "../templates/react-router/app/organizeos-resource-cache.ts",
+            import.meta.url
+          ),
+          "utf8"
+        )
+      );
+    });
+
+    test.each(routes)(
+      "the $documentType route falls back to the site's shared cache and makes none of its own",
+      async ({ file, fallback }) => {
+        const route = await readFile(file, "utf8");
+
+        expect(route).toContain(
+          `import { siteResourceCache } from "../organizeos-resource-cache";`
+        );
+        // The import, from app/routes/, reaches the copied module.
+        expect(join(dirname(file), "../organizeos-resource-cache.ts")).toBe(
+          cacheModule
+        );
+        expect(getFallback(route)).toBe(fallback);
+        // One cache per server instance, shared by every route.
+        expect(route).not.toContain("createResourceCache");
+      }
+    );
+
+    test("the form action still posts with plain fetch", async () => {
+      const route = await readFile(routes[0].file, "utf8");
+      const action = route.slice(route.indexOf("export const action"));
+
+      expect(action).toContain(
+        "const { ok, statusText } = await loadResource(fetch, resource);"
+      );
+      expect(action).not.toContain("resourceCache");
+      expect(action).not.toContain("customFetch");
+    });
   });
 
   test("selects ssg templates and skips dynamic routes", async () => {

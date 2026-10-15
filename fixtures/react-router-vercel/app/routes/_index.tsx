@@ -45,6 +45,19 @@ import css from "../__generated__/index.css?url";
 import { sitemap } from "../__generated__/$resources.sitemap.xml";
 import { assets } from "../__generated__/$resources.assets";
 import { authRoutes } from "../__generated__/$resources.wsauth.server";
+import { siteResourceCache } from "../organizeos-resource-cache";
+
+/**
+ * OrganizeOS fork: the source offer (AGPL-3.0, ORGANIZEOS-FORK.md §1). This
+ * site carries the fork's code: the @organizeos/site-components build in
+ * app/__organizeos__/ (with its LICENSE), organizeos-resource-cache.ts and
+ * these route templates. So every page names that license and links the
+ * fork's source, in its head, leaving the page the org designed unchanged.
+ * Prebuild fills in the link: the fork's repository at the commit the CLI was
+ * built from when it knows it (the publish workflow's GITHUB_SHA), the
+ * repository itself otherwise.
+ */
+const organizeosSourceUrl = "https://github.com/OrganizeOS-HQ/websites-builder";
 
 const authenticateProductionRequest = (request: Request) => {
   const host =
@@ -100,7 +113,14 @@ const customFetch: typeof fetch = (input, init) => {
     return Promise.resolve(response);
   }
 
-  return cachedFetch(projectId, input, init);
+  // OrganizeOS fork: through the site's in-memory resource cache
+  // (organizeos-resource-cache.ts), one per server instance for every route,
+  // which keeps each response only as long as its own Cache-Control allows.
+  // Behind it is the cachedFetch upstream calls here, so a request that opts
+  // into the Cache API still reaches it.
+  return siteResourceCache(input, init, (input, init) =>
+    cachedFetch(projectId, input, init)
+  );
 };
 
 export const loader = async (arg: LoaderFunctionArgs) => {
@@ -235,6 +255,12 @@ export const links: LinksFunction = () => {
       as: "image",
     });
   }
+
+  // OrganizeOS fork: the source offer (see organizeosSourceUrl).
+  result.push(
+    { rel: "license", href: "https://www.gnu.org/licenses/agpl-3.0.html" },
+    { rel: "code-repository", href: organizeosSourceUrl }
+  );
 
   return result;
 };

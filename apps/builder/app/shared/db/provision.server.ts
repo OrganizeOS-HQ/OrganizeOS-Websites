@@ -83,9 +83,9 @@ export type ProvisionResult = {
  * converges when the admin later signs in with the same email.
  *
  * When `siteData` is supplied (the org's /v1 read token + API base URL), the
- * project is seeded with the OrganizeOS data Resource presets (Phase 4d). This
- * is idempotent, so it also re-syncs the presets (e.g. a rotated token) on
- * re-provision.
+ * project is seeded with the OrganizeOS data catalog (Phase 4d). This is
+ * idempotent, so it also re-syncs the catalog (e.g. a rotated token, which
+ * reaches the collection Resources too) on re-provision.
  *
  * `entitlements` are the org's paid capabilities as resolved by OrganizeOS.
  * They become the synthetic owner's plan, which is what the builder's own
@@ -222,8 +222,9 @@ export const provisionOrgWorkspace = async (
     });
   }
 
-  // 3b. Seed the OrganizeOS /v1 data Resource presets + a starter signup form
-  //     page (both idempotent re-syncs).
+  // 3b. Seed the OrganizeOS /v1 data catalog + a starter signup form page at
+  //     /newsletter (both idempotent re-syncs; each bumps the build's version
+  //     when it changes something, so an open builder reloads).
   if (siteData !== undefined) {
     await seedProjectResourcePresets(context, {
       projectId,

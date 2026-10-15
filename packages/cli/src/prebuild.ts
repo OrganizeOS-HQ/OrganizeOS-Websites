@@ -54,6 +54,13 @@ import { compareMedia } from "@webstudio-is/css-engine";
 import { materializeAssetFiles } from "./asset-files";
 import { formatZodIssues } from "./zod-utils";
 import { pinRuntimeDependencies } from "./runtime-version";
+import {
+  ORGANIZEOS_DIR,
+  ORGANIZEOS_SOURCE_URL_PLACEHOLDER,
+  copyOrganizeosComponents,
+  getOrganizeosSourceUrl,
+  resolveOrganizeosComponentsModule,
+} from "./organizeos-components";
 
 const createRemixFramework = async () =>
   (await import("./framework-remix")).createFramework();
@@ -238,6 +245,9 @@ export const prebuild = async (options: {
   const routesDir = join(appRoot, "routes");
   await rm(routesDir, { recursive: true, force: true });
 
+  // OrganizeOS fork: the copy of the OrganizeOS blocks, made again below.
+  await rm(join(appRoot, ORGANIZEOS_DIR), { recursive: true, force: true });
+
   // force npm to install with not matching peer dependencies
   await writeFile(join(cwd(), ".npmrc"), npmrc);
 
@@ -260,6 +270,11 @@ export const prebuild = async (options: {
     ),
     "utf8"
   );
+
+  // OrganizeOS fork: a site never installs @organizeos/site-components; its
+  // built components ship inside the site as app source instead, with the
+  // package's LICENSE (organizeos-components.ts).
+  await copyOrganizeosComponents(appRoot, resolveOrganizeosComponentsModule());
 
   let framework;
   if (options.template.includes("ssg")) {
@@ -702,6 +717,11 @@ export const prebuild = async (options: {
         .replaceAll(
           "__CSS__",
           importFrom(`./app/__generated__/index.css`, file)
+        )
+        // OrganizeOS fork: the source offer's link (organizeos-components.ts).
+        .replaceAll(
+          ORGANIZEOS_SOURCE_URL_PLACEHOLDER,
+          getOrganizeosSourceUrl()
         );
       await createFileIfNotExists(file, content);
     }

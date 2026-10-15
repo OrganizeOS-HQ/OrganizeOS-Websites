@@ -1,8 +1,18 @@
 import { describe, expect, test } from "vitest";
-import type { DataSource, Resource } from "@webstudio-is/sdk";
+import {
+  encodeDataSourceVariable,
+  type DataSource,
+  type Resource,
+} from "@webstudio-is/sdk";
+import { getResourcePresetIds } from "../organizeos-preset-ids";
 import { syncOrgCollectionPresets } from "./collections-sync.server";
 import { deriveProjectId } from "./provision.server";
-import { buildOrgResourcePresets, upsertById } from "./resource-presets.server";
+import {
+  buildOrgResourcePresets,
+  seedProjectResourcePresets,
+  upsertById,
+  V1_RESOURCE_PRESETS,
+} from "./resource-presets.server";
 import collectionsFixture from "./__fixtures__/v1/collections.json";
 
 const organizationId = "org-1";
@@ -12,8 +22,11 @@ const apiBaseUrl = "https://app.example.org/api/public/v1";
 type BuildRow = {
   id: string;
   version: number;
+  instances: string;
+  props: string;
   dataSources: string;
   resources: string;
+  pages: string;
 };
 
 type Write = {
@@ -43,8 +56,11 @@ const makeContext = ({
       : {
           id: "build-1",
           version: 7,
+          instances: "[]",
+          props: "[]",
           dataSources: "[]",
           resources: "[]",
+          pages: "{}",
           ...build,
         };
   const state = { row, reads: 0, writes: [] as Write[] };
@@ -98,14 +114,30 @@ const makeContext = ({
   return { context: { postgrest: { client } } as never, state };
 };
 
-const staticPresets = buildOrgResourcePresets({
+// What a provision writes: the "always" catalog Resources, and no binding.
+// Forms is "when-present" (the OrganizeOS panel adds it when a block first
+// uses it), so a freshly provisioned build does not have it.
+const provisionedPresets = async (
+  args: Parameters<typeof buildOrgResourcePresets>[0]
+) => {
+  const all = await buildOrgResourcePresets(args);
+  const names = new Set(
+    V1_RESOURCE_PRESETS.filter((preset) => preset.seeding === "always").map(
+      (preset) => preset.label
+    )
+  );
+  return {
+    resources: all.resources.filter((item) => names.has(item.name)),
+  };
+};
+
+const staticPresets = await provisionedPresets({
   projectId,
   apiBaseUrl,
   readToken: "osk_secrettoken",
 });
 
 const provisionedBuild = (): Partial<BuildRow> => ({
-  dataSources: JSON.stringify(staticPresets.dataSources),
   resources: JSON.stringify(staticPresets.resources),
 });
 
@@ -168,7 +200,7 @@ describe("syncOrgCollectionPresets", () => {
     expect(state.writes).toEqual([]);
   });
 
-  test("seeds one Resource and binding per collection after the static presets", async () => {
+  test("seeds one Resource per collection after the static presets, and no binding", async () => {
     const { context, state } = makeContext({ build: provisionedBuild() });
 
     expect(
@@ -183,25 +215,104 @@ describe("syncOrgCollectionPresets", () => {
       "Blog posts",
       "Team",
     ]);
-    expect(dataSources.map((dataSource) => dataSource.name)).toEqual([
-      "Events",
-      "Fundraisers",
-      "Stats",
-      "Blog posts",
-      "Team",
-    ]);
+    expect(dataSources).toEqual([]);
     // Base and token come from the static presets, verbatim.
     expect(resources[3]).toMatchObject({
       method: "get",
       url: `"${apiBaseUrl}/collections/blog/items"`,
       headers: [{ name: "Authorization", value: `"Bearer osk_secrettoken"` }],
     });
-    const binding = dataSources[3];
-    expect(binding).toMatchObject({
-      type: "resource",
-      resourceId: resources[3].id,
+  });
+
+  test("removes the bindings an older sync or provision wrote where nothing references them", async () => {
+    const blog = await getResourcePresetIds(projectId, "collection:blog");
+    const team = await getResourcePresetIds(projectId, "collection:team");
+    const events = await getResourcePresetIds(projectId, "events");
+    const oldBindings: DataSource[] = [
+      {
+        type: "resource",
+        id: events.bindingId,
+        name: "Events",
+        resourceId: events.resourceId,
+      },
+      {
+        type: "resource",
+        id: blog.bindingId,
+        name: "Blog posts",
+        resourceId: blog.resourceId,
+      },
+      {
+        type: "resource",
+        id: team.bindingId,
+        name: "Team",
+        resourceId: team.resourceId,
+      },
+    ];
+    const { context, state } = makeContext({
+      build: {
+        ...provisionedBuild(),
+        dataSources: JSON.stringify([userVariable, ...oldBindings]),
+        // the admin bound Team's
+        props: JSON.stringify([
+          {
+            id: "prop",
+            instanceId: "list",
+            name: "data",
+            type: "expression",
+            value: `${encodeDataSourceVariable(team.bindingId)}.data`,
+          },
+        ]),
+      },
     });
-    expect(binding).not.toHaveProperty("scopeInstanceId");
+
+    await syncOrgCollectionPresets(context, { organizationId, collections });
+
+    expect(parseRow(state.row).dataSources).toEqual([
+      userVariable,
+      oldBindings[2],
+    ]);
+  });
+
+  test("a re-sync leaves the bindings uses brought, in their scopes", async () => {
+    const seeded = makeContext({ build: provisionedBuild() });
+    await syncOrgCollectionPresets(seeded.context, {
+      organizationId,
+      collections,
+    });
+    const blog = await getResourcePresetIds(projectId, "collection:blog");
+    const uses: DataSource[] = [
+      {
+        type: "resource",
+        id: "page-binding",
+        scopeInstanceId: "page-body",
+        name: "Blog posts",
+        resourceId: blog.resourceId,
+      },
+      {
+        type: "resource",
+        id: "copied-binding",
+        scopeInstanceId: "box",
+        name: "Blog posts",
+        resourceId: "copied-blog",
+      },
+    ];
+    const { context, state } = makeContext({
+      build: {
+        dataSources: JSON.stringify(uses),
+        resources: seeded.state.row?.resources,
+      },
+    });
+
+    await syncOrgCollectionPresets(context, {
+      organizationId,
+      collections: [{ slug: "blog", name: "Journal" }, collections[1]],
+    });
+
+    const after = parseRow(state.row);
+    expect(after.dataSources).toEqual(uses);
+    expect(
+      after.resources.find((resource) => resource.id === blog.resourceId)?.name
+    ).toBe("Journal");
   });
 
   test("writes with compare-and-swap on the version it read, without bumping it", async () => {
@@ -221,23 +332,14 @@ describe("syncOrgCollectionPresets", () => {
   test("keeps user-authored entries untouched and in their order", async () => {
     const { context, state } = makeContext({
       build: {
-        dataSources: JSON.stringify([
-          userVariable,
-          ...staticPresets.dataSources,
-        ]),
+        dataSources: JSON.stringify([userVariable]),
         resources: JSON.stringify([userResource, ...staticPresets.resources]),
       },
     });
     await syncOrgCollectionPresets(context, { organizationId, collections });
 
     const { dataSources, resources } = parseRow(state.row);
-    expect(dataSources.map((dataSource) => dataSource.id)).toEqual([
-      userVariable.id,
-      ...staticPresets.dataSources.map((dataSource) => dataSource.id),
-      expect.any(String),
-      expect.any(String),
-    ]);
-    expect(dataSources[0]).toEqual(userVariable);
+    expect(dataSources).toEqual([userVariable]);
     expect(resources[0]).toEqual(userResource);
     expect(resources.slice(1, 4)).toEqual(staticPresets.resources);
     expect(resources).toHaveLength(6);
@@ -268,14 +370,7 @@ describe("syncOrgCollectionPresets", () => {
       collections: [{ slug: "blog", name: "Journal" }, collections[1]],
     });
     const after = parseRow(state.row);
-    expect(after.dataSources.map((dataSource) => dataSource.name)).toEqual([
-      "Events",
-      "Fundraisers",
-      "Stats",
-      "Journal",
-      "Team",
-      "My variable",
-    ]);
+    expect(after.dataSources).toEqual([userVariable]);
     expect(after.resources.map((resource) => resource.name)).toEqual([
       "Events",
       "Fundraisers",
@@ -300,10 +395,7 @@ describe("syncOrgCollectionPresets", () => {
   test("a rename updates the names in place and keeps the ids and order", async () => {
     const { context, state } = makeContext({
       build: {
-        dataSources: JSON.stringify([
-          userVariable,
-          ...staticPresets.dataSources,
-        ]),
+        dataSources: JSON.stringify([userVariable]),
         resources: provisionedBuild().resources,
       },
     });
@@ -319,9 +411,7 @@ describe("syncOrgCollectionPresets", () => {
     expect(after.resources.map((resource) => resource.id)).toEqual(
       before.resources.map((resource) => resource.id)
     );
-    expect(after.dataSources.map((dataSource) => dataSource.id)).toEqual(
-      before.dataSources.map((dataSource) => dataSource.id)
-    );
+    expect(after.dataSources).toEqual(before.dataSources);
     expect(after.resources.map((resource) => resource.name)).toEqual([
       "Events",
       "Fundraisers",
@@ -329,14 +419,7 @@ describe("syncOrgCollectionPresets", () => {
       "Journal",
       "Team",
     ]);
-    expect(after.dataSources.map((dataSource) => dataSource.name)).toEqual([
-      "My variable",
-      "Events",
-      "Fundraisers",
-      "Stats",
-      "Journal",
-      "Team",
-    ]);
+    expect(after.dataSources).toEqual([userVariable]);
   });
 
   test("follows a token rotated by a re-provision on the next sync", async () => {
@@ -344,7 +427,7 @@ describe("syncOrgCollectionPresets", () => {
     await syncOrgCollectionPresets(context, { organizationId, collections });
 
     // Provisioning with a new token rewrites the static presets in place.
-    const rotated = buildOrgResourcePresets({
+    const rotated = await provisionedPresets({
       projectId,
       apiBaseUrl,
       readToken: "osk_rotated",
@@ -364,6 +447,39 @@ describe("syncOrgCollectionPresets", () => {
         { name: "Authorization", value: `"Bearer osk_rotated"` },
       ]);
     }
+  });
+
+  test("a re-provision rotates the token of the collections a sync seeded", async () => {
+    const { context, state } = makeContext({ build: {} });
+    await seedProjectResourcePresets(context, {
+      projectId,
+      apiBaseUrl,
+      readToken: "osk_t1",
+    });
+    await syncOrgCollectionPresets(context, { organizationId, collections });
+    const before = parseRow(state.row).resources;
+
+    await seedProjectResourcePresets(context, {
+      projectId,
+      apiBaseUrl,
+      readToken: "osk_t2",
+    });
+
+    const after = parseRow(state.row).resources;
+    expect(after.map((resource) => [resource.id, resource.name])).toEqual(
+      before.map((resource) => [resource.id, resource.name])
+    );
+    for (const resource of after) {
+      expect(resource.headers).toEqual([
+        { name: "Authorization", value: `"Bearer osk_t2"` },
+      ]);
+    }
+    // provisioning bumped the version both times, the sync never
+    expect(state.writes.map((write) => write.payload.version)).toEqual([
+      8,
+      undefined,
+      9,
+    ]);
   });
 
   test("skips a platform collection a static preset covers, and counts the rest", async () => {
@@ -460,10 +576,6 @@ describe("syncOrgCollectionPresets", () => {
       `"${apiBaseUrl}/collections/team/items"`,
       `"${apiBaseUrl}/collections/tags/items"`,
     ]);
-    expect(dataSources.slice(3).map((dataSource) => dataSource.name)).toEqual([
-      "Blog posts",
-      "Team",
-      "Tags",
-    ]);
+    expect(dataSources).toEqual([]);
   });
 });
