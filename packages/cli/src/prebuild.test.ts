@@ -516,6 +516,179 @@ describe("prebuild", () => {
         )
       );
     });
+
+    // Owner decision of 2026-10-15: AGPL-3.0 section 13 asks that the offer be
+    // prominent, so besides the head links every html page ends its <body>
+    // with a small visible "Source" link. The <body> is rendered by the
+    // generated Page (its Body component, which the byte-identical
+    // sdk-components-react-router package owns), so the route appends the link
+    // to the children of the element Page returns.
+    describe("ends every html page's body with a visible Source link", () => {
+      /** Code with its whitespace collapsed, so prettier's wrapping is no part of a test. */
+      const compact = (code: string) => code.replace(/\s+/g, " ");
+
+      /** The element the route renders for the link: the wrapper and its anchor. */
+      const getSourceOffer = (route: string) =>
+        compact(route).match(
+          /<div [^>]*data-organizeos-source-offer[^>]*>.*?<\/div>/
+        )?.[0] ?? "";
+
+      /** Where the link goes: the value of the constant its href names. */
+      const getLinkTarget = (route: string) => {
+        const name = getSourceOffer(route).match(/<a [^>]*href=\{(\w+)\}/)?.[1];
+        return route.match(new RegExp(`const ${name} = "([^"]*)";`))?.[1];
+      };
+
+      test("it links the fork at the commit the publish workflow built", async () => {
+        vi.stubEnv("GITHUB_REPOSITORY", "OrganizeOS-HQ/websites-builder");
+        vi.stubEnv("GITHUB_SHA", sha);
+
+        const { route } = await prebuildLinks();
+        const offer = getSourceOffer(route);
+
+        expect(offer).toContain("data-organizeos-source-offer");
+        expect(offer).toMatch(/<a [^>]*rel="code-repository license"/);
+        expect(offer).toContain(
+          `title="Source code of this site's builder (AGPL-3.0)"`
+        );
+        expect(offer).toContain(
+          `aria-label="Source code of this site's builder (AGPL-3.0)"`
+        );
+        // the visible text
+        expect(offer).toMatch(/>\s*Source\s*<\/a>/);
+        expect(getLinkTarget(route)).toBe(`${repository}/tree/${sha}`);
+        expect(route).not.toContain("__ORGANIZEOS_SOURCE_URL__");
+      });
+
+      test("without a commit it links the fork's repository", async () => {
+        vi.stubEnv("GITHUB_REPOSITORY", undefined);
+        vi.stubEnv("GITHUB_SHA", undefined);
+
+        const { route } = await prebuildLinks();
+
+        expect(getSourceOffer(route)).toContain("data-organizeos-source-offer");
+        expect(getLinkTarget(route)).toBe(repository);
+      });
+
+      test("it is the last thing in the body's children, and the page's Body is where it goes", async () => {
+        const { route } = await prebuildLinks();
+        const code = compact(route);
+
+        // The page is rendered through the wrapper that appends the link ...
+        expect(code).toContain(
+          "<PageWithSourceOffer key={url} system={system} />"
+        );
+        expect(code).not.toContain("<Page key={url}");
+        // ... after the page's own children, never before them.
+        const children = code.indexOf("page.props.children");
+        const link = code.indexOf("<SourceOffer", children);
+        expect(children).toBeGreaterThan(-1);
+        expect(link).toBeGreaterThan(children);
+      });
+
+      test("it styles itself inline, small, and never overlays the design", async () => {
+        const { route } = await prebuildLinks();
+        const offer = getSourceOffer(route);
+
+        for (const declaration of [
+          `display: "block"`,
+          `textAlign: "center"`,
+          `fontSize: "12px"`,
+          `lineHeight: 1.5`,
+          `padding: "8px"`,
+          `opacity: 0.7`,
+          `color: "inherit"`,
+        ]) {
+          expect(offer).toContain(declaration);
+        }
+        expect(offer).not.toMatch(/position|zIndex|float|top:|bottom:/);
+        // no class: nothing for the org's CSS to reach, nothing of ours to leak
+        expect(offer).not.toContain("className");
+      });
+
+      test("the head links stay", async () => {
+        const { links } = await prebuildLinks();
+
+        expect(links).toContain(`rel: "license"`);
+        expect(links).toContain(
+          `{ rel: "code-repository", href: organizeosSourceUrl }`
+        );
+      });
+
+      test("the xml and text routes do not carry it", async () => {
+        await writeSiteData(
+          createSiteData({
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: "Home",
+                path: "",
+                rootInstanceId: "root",
+                meta: {},
+              },
+              {
+                id: "feed",
+                name: "Feed",
+                title: "Feed",
+                path: "/feed.xml",
+                rootInstanceId: "xml-root",
+                meta: { documentType: "xml" },
+              },
+              {
+                id: "notes",
+                name: "Notes",
+                title: "Notes",
+                path: "/notes.txt",
+                rootInstanceId: "root",
+                meta: { documentType: "text" },
+              },
+            ],
+            instances: [
+              ["root", { id: "root", component: "Box", children: [] }],
+              [
+                "xml-root",
+                {
+                  id: "xml-root",
+                  component: "Box",
+                  children: [{ type: "id", value: "xml-feed" }],
+                },
+              ],
+              [
+                "xml-feed",
+                {
+                  id: "xml-feed",
+                  component: elementComponent,
+                  tag: "rss",
+                  children: [],
+                },
+              ],
+            ],
+          })
+        );
+        await prebuild({
+          assets: false,
+          template: ["react-router", "react-router-vercel"],
+        });
+
+        const html = await readFile(
+          join("app", "routes", "_index.tsx"),
+          "utf8"
+        );
+        const xml = await readFile(
+          join("app", "routes", "[feed.xml]._index.tsx"),
+          "utf8"
+        );
+        const text = await readFile(
+          join("app", "routes", "[notes.txt]._index.tsx"),
+          "utf8"
+        );
+
+        expect(html).toContain("data-organizeos-source-offer");
+        expect(xml).not.toContain("data-organizeos-source-offer");
+        expect(text).not.toContain("data-organizeos-source-offer");
+      });
+    });
   });
 
   // OrganizeOS fork: a page loads a data source only when its scope is on the
