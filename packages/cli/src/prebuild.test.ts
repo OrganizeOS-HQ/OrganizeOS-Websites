@@ -759,6 +759,10 @@ describe("prebuild", () => {
             html.lastIndexOf("</body>")
           );
           expect(body.match(/data-organizeos-source-offer/g)).toHaveLength(1);
+          // the wrapper is not hidden from sight or from assistive technology
+          expect(body).not.toMatch(
+            /<div data-organizeos-source-offer=""[^>]*\s(hidden|aria-hidden)[\s=>]/
+          );
           // the page's two paragraphs, the link, then the scripts
           expect(body).toMatch(
             /^<body[^>]*><p [^>]*><\/p><p [^>]*><\/p><div data-organizeos-source-offer=""[^>]*><a [^>]*>Source<\/a><\/div><script data-scripts=""><\/script><script data-scroll-restoration=""><\/script>$/
@@ -795,6 +799,11 @@ describe("prebuild", () => {
           expect(offer).toContain(declaration);
         }
         expect(offer).not.toMatch(/position|zIndex|float|top:|bottom:/);
+        // visible: nothing hides it from a sighted visitor or from assistive
+        // technology, which would defeat the point of a prominent offer
+        expect(offer).not.toMatch(
+          /\bhidden\b|visibility|aria-hidden|clip|display: "none"/
+        );
         // no class: nothing for the org's CSS to reach, nothing of ours to leak
         expect(offer).not.toContain("className");
       });
