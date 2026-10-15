@@ -611,15 +611,14 @@ control. The Signup Form's `record` is a select:
   and any error to Error, so a frozen build survives new answers.
 - `GET /v1/events?upcoming=true`, through the Upcoming Events catalog Resource
   (the Event List and Event Card): the events not yet over, soonest first,
-  each with the event's `timezone`: a tz database name `Intl` accepts, as
-  stored (`America/Chicago`, `UTC`, and the legacy names `EST`, `CET`, `GMT` and
-  `PST8PDT`, which stay as given so the event keeps its hour), and
-  `America/New_York` when the stored zone is unset, invalid, or a numeric offset
-  (`+05:30`, `-0800`), since the event form stores the zone it is sent
-  unchecked. An older
-  platform ignores `upcoming`. Before the one public-event rule (plan task P1)
-  it also lists members-only and private events, which `is_public` lets through
-  by default. Before the display changes (P2) it also lists ended events, with
+  each with the event's `timezone`, the zone the platform resolves for it: the
+  stored zone when `Intl` accepts it (a tz database name such as
+  `America/Chicago` or `CET`, or an offset such as `+05:30`),
+  `America/New_York` when unset or invalid (the event form stores the zone it is
+  sent unchecked). A browser that does not know the zone shows the event in UTC
+  (the Time element's fallback). An older platform ignores `upcoming`. Before
+  the one public-event rule (plan task P1) it also lists members-only and
+  private events, which `is_public` lets through by default. Before the display changes (P2) it also lists ended events, with
   no `timezone`. A page published then shows them until the platform deploys,
   which is why OrganizeOS deploys first. The new platform honors `upcoming`
   only when it is exactly `true`. A failed read answers
