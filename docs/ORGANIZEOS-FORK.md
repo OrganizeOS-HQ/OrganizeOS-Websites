@@ -376,7 +376,9 @@ Design and plans are in the OrganizeOS repo
   name that is not registered yet, and a registered block no section names is
   offered after the others, under "More".
 - Events ends with a link to the org's events area,
-  `<platform URL>/<subdomain>/events`, "Manage events in OrganizeOS".
+  `<platform URL>/<subdomain>/events`, "Manage events in OrganizeOS". The
+  builder depends on that platform route; the OrganizeOS side lists it under
+  "Contract with the fork".
 - Signups ends with a link to the org's Embeds hub,
   `<platform URL>/<subdomain>/pages/embeds`, where the org makes its forms (the
   Website area's URL while the builder does not know the subdomain). The
@@ -500,7 +502,8 @@ Design and plans are in the OrganizeOS repo
   open builder tab reloads before it can copy a stale token. A Resource on the
   OrganizeOS API base with another read token (a block pasted from another
   org's project) gets this org's token on the next provision. Until then, a
-  pasted block reads the other org's public forms.
+  pasted block reads the other org's public forms or upcoming events, and a
+  published page shows them.
 - **Preset ids**: `apps/builder/app/shared/organizeos-preset-ids.ts`, one
   WebCrypto `uuidV5` that the server and the browser share, pinned by tests to
   the ids the replaced `node:crypto` code produced, and `findCatalogResources`,
@@ -604,8 +607,10 @@ control. The Signup Form's `record` is a select:
 - `GET /v1/events?upcoming=true`, through the Upcoming Events catalog Resource
   (the Event List and Event Card): the events not yet over, soonest first,
   each with the event's `timezone` (always a valid IANA zone). `upcoming` is
-  honored only when it is exactly `true`, so an older platform lists every
-  event, which matters only for what the canvas shows. A failed read answers
+  honored only when it is exactly `true`, so an older platform (before the one
+  public-event rule) lists every published event, members-only and private
+  ones and ended ones included. A page published then shows them until the
+  platform deploys, which is why OrganizeOS deploys first. A failed read answers
   503 `{ error: "unavailable" }` with no `Cache-Control`, so no cache stores
   "no events"; the blocks show their Unavailable box. Only public, published
   events are listed (one rule for the Website, Website Lite's homepage and
@@ -616,7 +621,8 @@ control. The Signup Form's `record` is a select:
   depends on it: without `s-maxage` (or `public` with `max-age`) every page
   view calls the platform again, and without `stale-if-error` a platform
   failure shows at once.
-- The Embeds hub route the panel links to.
+- The Embeds hub and events area routes the panel links to
+  (`/<subdomain>/pages/embeds`, `/<subdomain>/events`).
 - Both sides build to the contract fixtures in OrganizeOS's
   `client/tests/fixtures/site-components/`, which the package copies into
   `src/__fixtures__/` for its tests (`forms.json`, `events.json` and
@@ -632,9 +638,11 @@ contract table: the builder first, so a new optional field is accepted before
 it is sent). Here the platform half adds new endpoints that nothing calls until
 the builder half ships, while a block inserted before they exist can neither
 load its forms nor submit. Phase 2a (display) adds no endpoint, only
-`?upcoming=true`, a `timezone` key and a 503 to `GET /v1/events`: an Event List
-inserted before the platform deploys works, though it lists every event, with
-its times in UTC, until then.
+`?upcoming=true`, a `timezone` key and a 503 to `GET /v1/events`. Until the
+platform's one public-event rule deploys (plan task P1), that endpoint also
+lists members-only and private events, and until its display changes deploy
+(plan task P2) it lists ended events with times in UTC. So no Event List is
+published before the platform half is live.
 
 **Known limits** (OrganizeOS spec, section 12, items 15 to 18, with the
 options, and the limits found since in review):
@@ -700,9 +708,9 @@ options, and the limits found since in review):
   rotates its token.
 - **Events blocks.** The canvas shows no card when the org has no upcoming
   public events, so designing the cards needs one. The Event Card is the next
-  event, not a chosen one. The events payload grows with the org's history (the
-  list is unbounded; a `limit` or `since` parameter waits until a site needs
-  it), and a designer caps the list in the collection's `data` expression. A
+  event, not a chosen one. The list is unbounded (every upcoming public event; a
+  `limit` parameter waits until a site needs it), and a designer caps it in the
+  collection's `data` expression. A
   card's cover image is an absolute URL the platform sends: check that it loads
   under the platform's CSP on a published page.
 - No self-serve "Reconnect data": once the builder is enabled, nothing re-seeds
