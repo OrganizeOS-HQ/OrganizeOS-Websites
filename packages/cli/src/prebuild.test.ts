@@ -579,7 +579,7 @@ describe("prebuild", () => {
         expect(getLinkTarget(route)).toBe(repository);
       });
 
-      test("it is the last thing in the body's children, and the page's Body is where it goes", async () => {
+      test("it is the last of the page's content in the body, before the scripts the Body appends, and the page's Body is where it goes", async () => {
         const { route } = await prebuildLinks();
         const code = compact(route);
 

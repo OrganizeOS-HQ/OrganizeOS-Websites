@@ -65,11 +65,13 @@ const organizeosSourceUrl = "https://github.com/OrganizeOS-HQ/websites-builder";
 
 /**
  * The visible half of the source offer. Its styles are inline and minimal, so
- * it depends on none of the org's CSS and leaks none into it: a block in the
- * normal flow, small and quiet, never positioned over the design. In a <body>
- * laid out as a grid, gridColumn gives it a whole row instead of the next cell.
- * (A row flex <body> puts it beside the content and one that clips its
- * overflow can hide it, ORGANIZEOS-FORK.md §1.)
+ * no class of the org's CSS reaches it and it leaks none into it (it inherits
+ * the body's color): a block in the normal flow, small and quiet, never
+ * positioned over the design. In a <body> laid out as a grid, gridColumn gives
+ * it a whole row instead of the next cell. (A row flex <body> puts it beside
+ * the content, one that clips its overflow can hide it, and a body color that
+ * does not contrast with the page's end can make it unreadable,
+ * ORGANIZEOS-FORK.md §1.)
  */
 const SourceOffer = () => (
   <div
@@ -98,7 +100,8 @@ const SourceOffer = () => (
 );
 
 /**
- * The page with the source offer as the last child of its <body>.
+ * The page with the source offer as the last of its <body>'s children (before
+ * the scripts Body adds).
  *
  * The <body> is the generated Page's own root, a Body from
  * @webstudio-is/sdk-components-react-router, which stays byte-identical to
