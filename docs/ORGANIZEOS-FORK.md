@@ -376,9 +376,9 @@ Design and plans are in the OrganizeOS repo
   name that is not registered yet, and a registered block no section names is
   offered after the others, under "More".
 - Events ends with a link to the org's events area,
-  `<platform URL>/<subdomain>/events`, "Manage events in OrganizeOS". The
-  builder depends on that platform route; the OrganizeOS side lists it under
-  "Contract with the fork".
+  `<platform URL>/<subdomain>/events` (the Website area's URL while the builder
+  does not know the subdomain), "Manage events in OrganizeOS". The builder
+  depends on that platform route (not yet listed on the OrganizeOS side).
 - Signups ends with a link to the org's Embeds hub,
   `<platform URL>/<subdomain>/pages/embeds`, where the org makes its forms (the
   Website area's URL while the builder does not know the subdomain). The
@@ -606,11 +606,13 @@ control. The Signup Form's `record` is a select:
   and any error to Error, so a frozen build survives new answers.
 - `GET /v1/events?upcoming=true`, through the Upcoming Events catalog Resource
   (the Event List and Event Card): the events not yet over, soonest first,
-  each with the event's `timezone` (always a valid IANA zone). `upcoming` is
-  honored only when it is exactly `true`, so an older platform (before the one
-  public-event rule) lists every published event, members-only and private
-  ones and ended ones included. A page published then shows them until the
-  platform deploys, which is why OrganizeOS deploys first. A failed read answers
+  each with the event's `timezone` (always a valid IANA zone). An older
+  platform ignores `upcoming`. Before the one public-event rule (plan task P1)
+  it also lists members-only and private events, which `is_public` lets through
+  by default. Before the display changes (P2) it also lists ended events, with
+  no `timezone`. A page published then shows them until the platform deploys,
+  which is why OrganizeOS deploys first. The new platform honors `upcoming`
+  only when it is exactly `true`. A failed read answers
   503 `{ error: "unavailable" }` with no `Cache-Control`, so no cache stores
   "no events"; the blocks show their Unavailable box. Only public, published
   events are listed (one rule for the Website, Website Lite's homepage and
@@ -648,25 +650,27 @@ published before the platform half is live.
 options, and the limits found since in review):
 
 - **Rollout gate.** The panel and the blocks are offered only to the orgs on
-  `ORGANIZEOS_BLOCKS_ORG_IDS`. A page with a Signup Form loads
-  `GET /v1/forms` on every view of that page (no longer of every page: the
-  binding is the block's own). Vercel's CDN never caches that request (it
-  carries `Authorization`); the published site's resource cache (§8) does.
-  With `/v1`'s `Cache-Control`, each warm function instance fetches it at
-  most once a minute, however many visitors arrive, and through a platform
-  failure or a 429 keeps serving the last good answer for up to ten
-  minutes (a refresh that hangs counts as a failure after 4 seconds, while that
-  answer can still be served), trying again only after `Retry-After` (at most a minute) or 10
-  seconds. The ceiling is still the platform's `public_read` limit, 120 a
-  minute per org and site egress IP, shared by the site's instances behind
-  that address; on a 429 with nothing stored (a cold instance) a block with a
-  form picked shows Unavailable. A published build is frozen: a site
-  published before the builder deploy that ships the cache keeps the old
-  loader, one uncached call per page view, until it is republished. So an org
-  joins the allowlist only after it has republished on that deploy and its
-  `/v1/forms` call rate has been observed. The allowlist is a rollout gate,
-  not an enforcement boundary: it decides who is offered the panel, and
-  nothing more. Pasting or duplicating a block (`insertWebstudioFragmentCopy`)
+  `ORGANIZEOS_BLOCKS_ORG_IDS`. A page with a Signup Form or an Events block
+  loads its Resource (`GET /v1/forms`, `GET /v1/events?upcoming=true`) on every
+  view of that page (no longer of every page: the binding is the block's own),
+  and a page with both makes both reads. Vercel's CDN never caches those
+  requests (they carry `Authorization`); the published site's resource cache
+  (§8) does, one entry per URL. With `/v1`'s `Cache-Control`, each warm
+  function instance fetches each at most once a minute, however many visitors
+  arrive, and through a platform failure or a 429 keeps serving the last good
+  answer for up to ten minutes (a refresh that hangs counts as a failure after
+  4 seconds, while that answer can still be served), trying again only after
+  `Retry-After` (at most a minute) or 10 seconds. The ceiling is still the
+  platform's `public_read` limit, 120 a minute per org and site egress IP,
+  shared by the site's instances behind that address; on a 429 with nothing
+  stored (a cold instance) a block with a form picked shows Unavailable, and so
+  do the Event List and Event Card. A
+  published build is frozen: a site published before the builder deploy that
+  ships the cache keeps the old loader, one uncached call per page view, until
+  it is republished. So an org joins the allowlist only after it has
+  republished on that deploy and its `/v1` call rate has been observed. The
+  allowlist is a rollout gate, not an enforcement boundary: it decides who is
+  offered the panel, and nothing more. Pasting or duplicating a block (`insertWebstudioFragmentCopy`)
   is not gated; the canvas registers the namespace for every project; the CLI
   copies the package into every site it builds; and removing an org from the
   list changes none of that, leaving its blocks and published sites as they
@@ -695,12 +699,15 @@ options, and the limits found since in review):
   and a copy remaps it by id: an enclosing-scope variable named exactly
   "OrganizeOS Forms" can take over `data` only in a block written on the
   pre-deploy branches (above), whose binding is at `:root`. What can still
-  capture a new block's `data` is a variable named exactly "OrganizeOS Forms"
-  added on the block's root itself, which the next re-resolution (saving that
-  variable is one) binds in place of the block's binding:
+  capture a new block's bound props is a variable named exactly like the
+  block's binding ("OrganizeOS Forms", "OrganizeOS Upcoming Events") added on
+  the block's root itself, which the next re-resolution (saving that variable
+  is one) binds in place of the block's binding:
   `validateDataVariableName` compares only `variable`-type sources, so it
-  allows the name beside the binding. Insert binds by id; the re-resolution
-  is upstream behavior, left alone.
+  allows the name beside the binding. A Signup Form has one such prop (`data`);
+  an Event List or Event Card has three (the collection's `data` and the
+  `data-ws-show` of the `empty` and `unavailable` boxes). Insert binds by id;
+  the re-resolution is upstream behavior, left alone.
 - A catalog Resource is shared: editing it through any binding in the data
   panel edits it for every use, and a provision rewrites Events, Fundraisers,
   Stats, Forms, Upcoming Events (where present) and each collection whole. A
