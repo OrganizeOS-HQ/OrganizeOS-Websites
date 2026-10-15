@@ -46,6 +46,7 @@ import { sitemap } from "../__generated__/$resources.sitemap.xml";
 import { assets } from "../__generated__/$resources.assets";
 import { authRoutes } from "../__generated__/$resources.wsauth.server";
 import { siteResourceCache } from "../organizeos-resource-cache";
+// OrganizeOS fork: the source offer's visible link (PageWithSourceOffer).
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 
 /**
@@ -65,7 +66,10 @@ const organizeosSourceUrl = "https://github.com/OrganizeOS-HQ/websites-builder";
 /**
  * The visible half of the source offer. Its styles are inline and minimal, so
  * it depends on none of the org's CSS and leaks none into it: a block in the
- * normal flow, small and quiet, never positioned over the design.
+ * normal flow, small and quiet, never positioned over the design. In a <body>
+ * laid out as a grid, gridColumn gives it a whole row instead of the next cell.
+ * (A row flex <body> puts it beside the content and one that clips its
+ * overflow can hide it, ORGANIZEOS-FORK.md §1.)
  */
 const SourceOffer = () => (
   <div
@@ -78,11 +82,12 @@ const SourceOffer = () => (
       padding: "8px",
       opacity: 0.7,
       color: "inherit",
+      gridColumn: "1 / -1",
     }}
   >
     <a
       href={organizeosSourceUrl}
-      rel="code-repository license"
+      rel="code-repository"
       title="Source code of this site's builder (AGPL-3.0)"
       aria-label="Source code of this site's builder (AGPL-3.0)"
       style={{ color: "inherit", textDecoration: "underline" }}

@@ -9,6 +9,11 @@ import {
 } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
+import * as React from "react";
+import type { ComponentType } from "react";
+import * as jsxRuntime from "react/jsx-runtime";
+import { renderToStaticMarkup } from "react-dom/server";
+import { transformWithEsbuild } from "vite";
 import { bundleVersion } from "@webstudio-is/protocol";
 import { encodeDataSourceVariable } from "@webstudio-is/sdk";
 import { generateRedirectsModule, prebuild } from "./prebuild";
@@ -547,7 +552,11 @@ describe("prebuild", () => {
         const offer = getSourceOffer(route);
 
         expect(offer).toContain("data-organizeos-source-offer");
-        expect(offer).toMatch(/<a [^>]*rel="code-repository license"/);
+        // the code-repository relation only: the anchor's target is a source
+        // tree, not a license document, so it makes no license claim (the
+        // head's license link names the AGPL text)
+        expect(offer).toMatch(/<a [^>]*rel="code-repository"/);
+        expect(offer).not.toMatch(/rel="[^"]*license/);
         expect(offer).toContain(
           `title="Source code of this site's builder (AGPL-3.0)"`
         );
@@ -586,6 +595,188 @@ describe("prebuild", () => {
         expect(link).toBeGreaterThan(children);
       });
 
+      // The tests above read the route's text. These render it: the
+      // PageWithSourceOffer the site ships, around the generated Page, whose
+      // root is the real Body of @webstudio-is/sdk-components-react-router.
+      // Only react-router's Scripts and ScrollRestoration are stand-ins (the
+      // real ones need a router); they render the <script> elements the real
+      // Body puts after its children.
+      describe("rendered", () => {
+        type Wrapper = ComponentType<{ system: unknown }>;
+
+        /** Runs a TSX module as CommonJS, resolving its imports from `imports`. */
+        const runModule = async (
+          code: string,
+          imports: Record<string, unknown>
+        ): Promise<Record<string, unknown>> => {
+          const { code: js } = await transformWithEsbuild(code, "module.tsx", {
+            loader: "tsx",
+            format: "cjs",
+            jsx: "automatic",
+          });
+          const module = { exports: {} as Record<string, unknown> };
+          const load = (id: string) => {
+            if (id in imports === false) {
+              throw Error(`"${id}" is not available to the module`);
+            }
+            return imports[id];
+          };
+          new Function("module", "exports", "require", js)(
+            module,
+            module.exports,
+            load
+          );
+          return module.exports;
+        };
+
+        /** The route's PageWithSourceOffer, as the site ships it, around `Page`. */
+        const loadWrapper = async (route: string, Page: unknown) => {
+          const start = route.indexOf("const organizeosSourceUrl");
+          const wrapper = route.indexOf("const PageWithSourceOffer", start);
+          const end = route.indexOf("\n};\n", wrapper) + "\n};\n".length;
+          const reactImport = route.match(
+            /import \{[^}]*\bisValidElement\b[^}]*\} from "react";/
+          )?.[0];
+          expect(start).toBeGreaterThan(-1);
+          expect(wrapper).toBeGreaterThan(start);
+          expect(end).toBeGreaterThan(wrapper);
+          expect(reactImport).toBeDefined();
+          const exports = await runModule(
+            [
+              reactImport,
+              `import { Page } from "./page";`,
+              route.slice(start, end),
+              `export { PageWithSourceOffer };`,
+            ].join("\n"),
+            {
+              react: React,
+              "react/jsx-runtime": jsxRuntime,
+              "./page": { Page },
+            }
+          );
+          return exports.PageWithSourceOffer as Wrapper;
+        };
+
+        /** The generated Page of the home page, rendering `Body` as its root. */
+        const loadGeneratedPage = async (Body: unknown) => {
+          const exports = await runModule(
+            await readFile(join("app", "__generated__", "_index.tsx"), "utf8"),
+            {
+              react: React,
+              "react/jsx-runtime": jsxRuntime,
+              "@webstudio-is/react-sdk/runtime": await import(
+                "@webstudio-is/react-sdk/runtime"
+              ),
+              "@webstudio-is/sdk-components-react-router": { Body },
+            }
+          );
+          return exports.Page;
+        };
+
+        /** The real Body, with react-router's script elements stood in. */
+        const importBody = async () => {
+          vi.resetModules();
+          vi.doMock("react-router", async (importOriginal) => ({
+            ...(await importOriginal<typeof import("react-router")>()),
+            Scripts: () =>
+              React.createElement("script", { "data-scripts": "" }),
+            ScrollRestoration: () =>
+              React.createElement("script", { "data-scroll-restoration": "" }),
+          }));
+          const { Body } = await import(
+            "@webstudio-is/sdk-components-react-router"
+          );
+          return Body;
+        };
+
+        afterEach(() => {
+          vi.doUnmock("react-router");
+          vi.resetModules();
+        });
+
+        const renderInHtml = (element: React.ReactElement) =>
+          renderToStaticMarkup(
+            React.createElement(
+              "html",
+              null,
+              React.createElement("head"),
+              element
+            )
+          );
+
+        test("the link is inside the <body>, after the page's content and before the scripts", async () => {
+          await writeSiteData(
+            createSiteData({
+              instances: [
+                [
+                  "root",
+                  {
+                    id: "root",
+                    component: "Body",
+                    children: [
+                      { type: "id", value: "first" },
+                      { type: "id", value: "second" },
+                    ],
+                  },
+                ],
+                [
+                  "first",
+                  {
+                    id: "first",
+                    component: elementComponent,
+                    tag: "p",
+                    children: [],
+                  },
+                ],
+                [
+                  "second",
+                  {
+                    id: "second",
+                    component: elementComponent,
+                    tag: "p",
+                    children: [],
+                  },
+                ],
+              ],
+            })
+          );
+          const { route } = await prebuildLinks();
+          const PageWithSourceOffer = await loadWrapper(
+            route,
+            await loadGeneratedPage(await importBody())
+          );
+
+          const html = renderInHtml(
+            React.createElement(PageWithSourceOffer, { system: {} })
+          );
+
+          // <body> comes right after <head> and nothing follows it: the link
+          // is not a sibling of the page's root under <html>
+          expect(html).toMatch(/^<html><head><\/head><body[ >]/);
+          expect(html).toMatch(/<\/body><\/html>$/);
+          const body = html.slice(
+            html.indexOf("<body"),
+            html.lastIndexOf("</body>")
+          );
+          expect(body.match(/data-organizeos-source-offer/g)).toHaveLength(1);
+          // the page's two paragraphs, the link, then the scripts
+          expect(body).toMatch(
+            /^<body[^>]*><p [^>]*><\/p><p [^>]*><\/p><div data-organizeos-source-offer=""[^>]*><a [^>]*>Source<\/a><\/div><script data-scripts=""><\/script><script data-scroll-restoration=""><\/script>$/
+          );
+        });
+
+        test("it renders what Page renders when that is not an element", async () => {
+          const { route } = await prebuildLinks();
+          const PageWithSourceOffer = await loadWrapper(route, () => null);
+
+          expect(
+            renderToStaticMarkup(
+              React.createElement(PageWithSourceOffer, { system: {} })
+            )
+          ).toBe("");
+        });
+      });
+
       test("it styles itself inline, small, and never overlays the design", async () => {
         const { route } = await prebuildLinks();
         const offer = getSourceOffer(route);
@@ -598,21 +789,14 @@ describe("prebuild", () => {
           `padding: "8px"`,
           `opacity: 0.7`,
           `color: "inherit"`,
+          // in a grid body it fills a whole row instead of the next cell
+          `gridColumn: "1 / -1"`,
         ]) {
           expect(offer).toContain(declaration);
         }
         expect(offer).not.toMatch(/position|zIndex|float|top:|bottom:/);
         // no class: nothing for the org's CSS to reach, nothing of ours to leak
         expect(offer).not.toContain("className");
-      });
-
-      test("the head links stay", async () => {
-        const { links } = await prebuildLinks();
-
-        expect(links).toContain(`rel: "license"`);
-        expect(links).toContain(
-          `{ rel: "code-repository", href: organizeosSourceUrl }`
-        );
       });
 
       test("the xml and text routes do not carry it", async () => {
