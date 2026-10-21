@@ -67,28 +67,51 @@ const serializeChosen = (
 /**
  * A number the way the endpoint reads one: digits with an optional sign and
  * fraction. A number input also takes an exponent ("1e3"), which the endpoint
- * refuses, so one is written out. A value that cannot be written out as exactly
- * the same number (one too small to tell from zero, say) is left as typed, for
- * the platform to refuse.
+ * refuses, so one is written out. The decimal point moves in the typed digits,
+ * not in a double, so no digit is lost or rounded: the plain decimal is the
+ * number typed, exactly, even where a double could not hold it ("1e-400" is
+ * 0.000...1, not 0). A value that cannot be written out within the 5000
+ * characters the endpoint takes, or that is not a number with an exponent at
+ * all, is left as typed, for the platform to refuse.
  */
 const toPlainDecimal = (value: string) => {
-  if (!/e/i.test(value)) {
+  const match = /^([+-]?)(\d*)(?:\.(\d*))?e([+-]?\d+)$/i.exec(value);
+  if (match === null) {
     return value;
   }
-  const number = Number(value);
-  const plain = number.toLocaleString("en-US", {
-    useGrouping: false,
-    maximumFractionDigits: 20,
-  });
-  return Number(plain) === number ? plain : value;
+  const [, sign, whole, fraction = "", exponentText] = match;
+  const digits = whole + fraction;
+  const exponent = Number(exponentText);
+  // an exponent past the limit cannot come out short enough (and `Number` may
+  // not hold it exactly, which then does not matter); no digits is no number
+  if (digits === "" || Math.abs(exponent) > maxAnswerLength) {
+    return value;
+  }
+  // where the decimal point falls in `digits` once the exponent has moved it
+  const point = whole.length + exponent;
+  const padded =
+    point <= 0
+      ? `${"0".repeat(1 - point)}${digits}`
+      : digits.padEnd(point, "0");
+  const at = Math.max(point, 1);
+  const integer = padded.slice(0, at).replace(/^0+(?=\d)/, "");
+  const decimals = padded.slice(at).replace(/0+$/, "");
+  const plain = `${sign}${integer}${decimals === "" ? "" : `.${decimals}`}`;
+  return plain.length <= maxAnswerLength ? plain : value;
 };
 
 /**
  * One answer the way Website Lite sends it (plan decision 12): a multiselect as
- * a JSON array of strings, a checkbox as "true" or "false", anything else as
- * typed. Undefined leaves the question out: a blank optional answer is no
- * answer. A blank required one is sent as it is, so the platform names the
- * question and the visitor sees the message under it.
+ * a JSON array of strings, a checkbox as "true" or "false", a number typed with
+ * an exponent written out as a plain decimal (the strict endpoint refuses an
+ * exponent; Website Lite sends it as typed), anything else as typed. Undefined
+ * leaves the question out: a blank optional answer is no answer. A blank
+ * required one is sent as it is, so the platform names the question and the
+ * visitor sees the message under it.
+ *
+ * Text is cut at the 5000 characters the endpoint takes (a control stops at
+ * 2000, so only a value set another way is cut). A number is never cut: that
+ * would change it, so one too long is sent whole and the platform refuses it.
  */
 const serializeAnswer = (
   question: RsvpQuestion,
@@ -119,8 +142,9 @@ const serializeAnswer = (
       if (value.trim() === "" && !question.required) {
         return;
       }
-      const sent = question.type === "number" ? toPlainDecimal(value) : value;
-      return sent.slice(0, maxAnswerLength);
+      return question.type === "number"
+        ? toPlainDecimal(value)
+        : value.slice(0, maxAnswerLength);
     }
   }
 };

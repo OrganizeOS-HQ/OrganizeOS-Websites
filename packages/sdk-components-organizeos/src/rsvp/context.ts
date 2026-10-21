@@ -55,7 +55,9 @@ export type CollectedShifts = {
 /**
  * What Questions collects: the answers by question id, serialized as Website
  * Lite sends them (a multiselect as a JSON array of strings, a checkbox as
- * "true" or "false", anything else as typed), without the blank optional ones.
+ * "true" or "false", anything else as typed) with one difference, a number
+ * typed with an exponent, which is written out as a plain decimal because the
+ * strict endpoint refuses an exponent. The blank optional ones are left out.
  */
 export type CollectedAnswers = Record<string, string>;
 

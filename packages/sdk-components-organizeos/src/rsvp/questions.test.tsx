@@ -306,14 +306,48 @@ describe("on a published site", () => {
     }
   });
 
-  test("a number too small to write as a plain decimal is sent as typed, for the platform to refuse", () => {
+  test("a number with an exponent is written out digit for digit: what a double cannot hold is not rounded or lost", () => {
     const event = makeEvent({
       questions: [makeQuestion("n", { type: "number" })],
     });
     const { container, collect } = renderPart(<Questions />, { event });
-    // written out it would be 0
-    set(container, "n", "1e-30");
-    expect(collect("questions")).toEqual({ n: "1e-30" });
+    const answers: [string, string][] = [
+      ["1e-30", "0.000000000000000000000000000001"],
+      // past a double's range, and still exactly the number typed
+      ["1e-400", `0.${"0".repeat(399)}1`],
+      ["-1e-400", `-0.${"0".repeat(399)}1`],
+      // past a double's 17 digits
+      ["123456789012345678901e0", "123456789012345678901"],
+      ["1.00000000000000000001e0", "1.00000000000000000001"],
+      ["1.5e-3", "0.0015"],
+      ["100e-2", "1"],
+      [".5e1", "5"],
+      ["0e5", "0"],
+      // a number input holds only a number a double can tell from infinity, so
+      // 1e400 never reaches the part; one that fits a double is written whole
+      ["1e300", `1${"0".repeat(300)}`],
+    ];
+    for (const [typed, sent] of answers) {
+      set(container, "n", typed);
+      expect(collect("questions")).toEqual({ n: sent });
+    }
+  });
+
+  test("a number that cannot be written out in the 5000 characters the endpoint takes is sent as typed, never cut or changed", () => {
+    const event = makeEvent({
+      questions: [makeQuestion("n", { type: "number" })],
+    });
+    const { container, collect } = renderPart(<Questions />, { event });
+    // written out it would be 5001 characters (a double calls it 0)
+    set(container, "n", "1e-4999");
+    expect(collect("questions")).toEqual({ n: "1e-4999" });
+    // and one place less fits, to the character
+    set(container, "n", "1e-4998");
+    expect(collect("questions")).toEqual({ n: `0.${"0".repeat(4997)}1` });
+    // plain, and too long: cut it and it would be another number
+    const long = `0.${"0".repeat(5500)}1`;
+    set(container, "n", long);
+    expect(collect("questions")).toEqual({ n: long });
   });
 
   test("a select answer that is not an option any more is no answer", () => {
