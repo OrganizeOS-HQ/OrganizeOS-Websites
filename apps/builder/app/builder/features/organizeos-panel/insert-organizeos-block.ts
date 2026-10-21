@@ -12,6 +12,7 @@ import {
 import { builderApi } from "~/shared/builder-api";
 import { platformName } from "~/shared/branding";
 import {
+  EVENTS_BINDING_NAME,
   FORMS_PRESET_KEY,
   FORMS_PRESET_NAME,
   UPCOMING_EVENTS_BINDING_NAME,
@@ -133,6 +134,27 @@ export const organizeosBlockData = new Map<string, BlockData>([
       catalog: "forms",
       bindingName: FORMS_PRESET_NAME,
       // GET /v1/forms: `{ data: [...] }`
+      binds: [
+        {
+          instance: "root",
+          prop: "data",
+          value: (variable) => `${variable}.data`,
+        },
+      ],
+    },
+  ],
+  [
+    `${organizeosNamespace}:RsvpForm`,
+    {
+      // The Events Resource itself, never created: provisioning always writes
+      // it. Every item carries the registration details the form reads (when
+      // the event starts and ends, whether it is full, its guests, shifts and
+      // questions), and the block finds its event in the list by `record`.
+      catalog: "events",
+      bindingName: EVENTS_BINDING_NAME,
+      // GET /v1/events: `{ data: [...] }`, the body, as the Signup Form reads
+      // its forms. A failed read hands over an error body, which the form reads
+      // as no data and answers with its Unavailable state.
       binds: [
         {
           instance: "root",

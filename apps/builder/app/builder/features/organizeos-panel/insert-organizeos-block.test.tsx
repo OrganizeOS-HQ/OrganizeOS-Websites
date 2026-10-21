@@ -54,6 +54,7 @@ import {
   getResourceKey,
 } from "~/shared/resources";
 import { getComponentTemplateData } from "~/shared/instance-utils/insert";
+import { isTreeSatisfyingContentModel } from "~/shared/content-model";
 import { updateWebstudioData } from "~/shared/instance-utils/data";
 import { deleteInstanceMutable } from "~/shared/instance-utils/mutation";
 import { deleteVariableMutable } from "~/shared/data-variables";
@@ -1583,7 +1584,456 @@ describe("the inserted Event List's and Event Card's data", () => {
         checked += 1;
       }
     }
-    expect(checked).toBeGreaterThanOrEqual(7);
+    // the Signup Form's one bind, the Event List's and Event Card's three
+    // each, and the RSVP Form's one
+    expect(checked).toBeGreaterThanOrEqual(8);
+  });
+});
+
+describe("the inserted RSVP Form", () => {
+  const rsvpForm = "@organizeos/site-components:RsvpForm";
+  const eventList = "@organizeos/site-components:EventList";
+  const cachedResult = (data: unknown, status = 200) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: "",
+    data,
+  });
+  const cacheEvents = (result?: unknown) => {
+    const request = computeResourceRequest(eventsResource, new Map());
+    $resourcesCache.set(
+      new Map(result === undefined ? [] : [[getResourceKey(request), result]])
+    );
+  };
+  const getRoots = () =>
+    [...$instances.get().values()].filter(
+      (instance) => instance.component === rsvpForm
+    );
+  // the root's `data`, as the canvas computes it
+  const getRootData = (root: Instance) =>
+    $propValuesByInstanceSelector
+      .get()
+      .get(getInstanceKey([root.id, "bodyId"]))
+      ?.get("data");
+  const withoutCatalogExtras = () => ({
+    resources: provisioned.resources.filter(
+      (resource) =>
+        resource.id !== forms.resourceId &&
+        resource.id !== upcomingEvents.resourceId
+    ),
+    dataSources: [] as DataSource[],
+  });
+
+  test("brings an Events binding scoped to its root, never page-wide, and binds data to its body", async () => {
+    setProject(withForms);
+
+    expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+
+    const [root, ...others] = getRoots();
+    expect(others).toEqual([]);
+    expect($instances.get().get("bodyId")?.children).toEqual([
+      { type: "id", value: root.id },
+    ]);
+    expect(getResourceBindings()).toEqual([
+      {
+        type: "resource",
+        id: expect.any(String),
+        scopeInstanceId: root.id,
+        name: "OrganizeOS Events",
+        resourceId: events.resourceId,
+      },
+    ]);
+    const [binding] = getResourceBindings();
+    expect(getInstanceProps(root.id, "data")).toEqual([
+      {
+        id: expect.any(String),
+        instanceId: root.id,
+        name: "data",
+        type: "expression",
+        value: `${encodeDataSourceVariable(binding.id)}.data`,
+      },
+    ]);
+    // the template's rsvpState variable and the binding, and nothing at :root
+    // or on the page
+    expect(
+      [...$dataSources.get().values()].map((dataSource) => [
+        dataSource.type,
+        dataSource.scopeInstanceId,
+      ])
+    ).toEqual([
+      ["variable", root.id],
+      ["resource", root.id],
+    ]);
+    // the template binds the state, and the insert adds the data and the
+    // designer picks the event: no record is set
+    expect(getInstanceProps(root.id, "record")).toEqual([]);
+    expect(
+      [...$props.get().values()]
+        .filter((prop) => prop.instanceId === root.id)
+        .map((prop) => prop.name)
+        .sort()
+    ).toEqual(["data", "onStateChange", "state"]);
+  });
+
+  test("uses the Events Resource as it is and creates no Resource, with neither Forms nor Upcoming Events in the project", async () => {
+    const project = withoutCatalogExtras();
+    setProject(project);
+
+    expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+
+    expect([...$resources.get().values()]).toEqual(project.resources);
+    expect($resources.get().get(events.resourceId)).toBe(eventsResource);
+    expect(getResourceBindings()).toEqual([
+      expect.objectContaining({ resourceId: events.resourceId }),
+    ]);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("gives each RSVP Form a binding of its own, of the same Events Resource", async () => {
+    setProject(withForms);
+
+    expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+    expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+
+    const roots = getRoots();
+    expect(roots).toHaveLength(2);
+    const bindings = getResourceBindings();
+    expect(bindings.map((binding) => binding.scopeInstanceId).sort()).toEqual(
+      roots.map((root) => root.id).sort()
+    );
+    expect(new Set(bindings.map((binding) => binding.id)).size).toBe(2);
+    expect(bindings.map((binding) => binding.resourceId)).toEqual([
+      events.resourceId,
+      events.resourceId,
+    ]);
+    expect($resources.get().size).toBe(withForms.resources.length);
+    for (const root of roots) {
+      const binding = bindings.find(
+        (item) => item.scopeInstanceId === root.id
+      ) as DataSource;
+      expect(getInstanceProps(root.id, "data")[0]).toMatchObject({
+        value: `${encodeDataSourceVariable(binding.id)}.data`,
+      });
+    }
+  });
+
+  test("the root's data is the Events body once the loader has it, and nothing before", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+    const [root] = getRoots();
+
+    cacheEvents();
+    expect(getRootData(root)).toBeUndefined();
+
+    cacheEvents(cachedResult(eventsBody));
+    expect(getRootData(root)).toEqual(eventsBody);
+    // the fixture has the event with shifts and questions the form reads
+    expect(eventsBody.data.some((event) => event.shifts.length > 0)).toBe(true);
+    expect(eventsBody.data.some((event) => event.questions.length > 0)).toBe(
+      true
+    );
+  });
+
+  test.each([
+    ["a 503", cachedResult({ error: "unavailable" }, 503)],
+    [
+      "a 429, with its retryAfter",
+      cachedResult({ error: "rate_limited", retryAfter: 30 }, 429),
+    ],
+    ["a 401", cachedResult({ error: "unauthorized" }, 401)],
+  ])(
+    "the root's data is the error body after %s, which the form reads as no data",
+    async (_case, result) => {
+      setProject(withForms);
+      expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+      const [root] = getRoots();
+
+      cacheEvents(result);
+
+      const data = getRootData(root);
+      expect(data).toEqual(result.data);
+      expect(Array.isArray((data as { data?: unknown }).data)).toBe(false);
+    }
+  );
+
+  test("the builder's loader requests Events for the page, and nothing else", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+    loaderFetch.mockImplementation(async (_url: string, init: RequestInit) => {
+      const requests = JSON.parse(String(init.body)) as ResourceRequest[];
+      return {
+        ok: true,
+        json: async () =>
+          requests.map((request) => [
+            getResourceKey(request),
+            cachedResult(eventsBody),
+          ]),
+      };
+    });
+
+    vi.useFakeTimers();
+    const unsubscribe = subscribeResources();
+    await vi.advanceTimersByTimeAsync(1000);
+    unsubscribe();
+
+    expect(loaderFetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(loaderFetch.mock.calls[0][1].body)).toEqual([
+      {
+        name: "Events",
+        method: "get",
+        url: "https://staging.example.org/api/public/v1/events",
+        searchParams: [],
+        headers: [{ name: "Authorization", value: "Bearer osk_eventstoken" }],
+      },
+    ]);
+    expect(getRootData(getRoots()[0])).toEqual(eventsBody);
+  });
+
+  test("an RSVP Form and an Event List on one page each bring a binding of their own Resource, scoped to their own root", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+    // the insert selects the block it added, and the next goes inside the
+    // selection: the designer clicks the page body to add a sibling
+    selectInstance(["bodyId"]);
+    expect(await insertOrganizeosBlock(eventList)).toBe(true);
+
+    const [form] = getRoots();
+    const [list] = [...$instances.get().values()].filter(
+      (instance) => instance.label === "Event List"
+    );
+    expect($instances.get().get("bodyId")?.children).toEqual([
+      { type: "id", value: form.id },
+      { type: "id", value: list.id },
+    ]);
+    expect(
+      getResourceBindings().map((binding) => [
+        binding.name,
+        binding.scopeInstanceId,
+        binding.resourceId,
+      ])
+    ).toEqual([
+      ["OrganizeOS Events", form.id, events.resourceId],
+      ["OrganizeOS Upcoming Events", list.id, upcomingEvents.resourceId],
+    ]);
+  });
+
+  test("one undo removes the RSVP Form and its binding, and a Resource it did not create is left", async () => {
+    setProject(withForms);
+    const before = getStores();
+
+    expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+    emitCommand("undo");
+
+    expect(getStores()).toEqual(before);
+  });
+
+  test.each([
+    [
+      "Events is missing",
+      {
+        ...withForms,
+        resources: withForms.resources.filter(
+          (resource) => resource.id !== events.resourceId
+        ),
+      },
+    ],
+    [
+      "Events has no Authorization header",
+      {
+        ...withForms,
+        resources: withForms.resources.map((resource) =>
+          resource.id === events.resourceId
+            ? { ...resource, headers: [] }
+            : resource
+        ),
+      },
+    ],
+    [
+      "Events has a blank Authorization header",
+      {
+        ...withForms,
+        resources: withForms.resources.map((resource) =>
+          resource.id === events.resourceId
+            ? {
+                ...resource,
+                headers: [{ name: "Authorization", value: `""` }],
+              }
+            : resource
+        ),
+      },
+    ],
+  ])("refuses, writing nothing, when %s", async (_case, project) => {
+    setProject(project);
+    const before = getStores();
+
+    expect(await insertOrganizeosBlock(rsvpForm)).toBe(false);
+
+    expectNothingWritten(before);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith(
+      "Cannot add RSVP Form: this site's link to your organization's data was removed or changed. Contact OrganizeOS support to restore it."
+    );
+  });
+
+  test("refuses, writing nothing, for an org off the allowlist", async () => {
+    setProject(withForms, { blocksEnabled: false });
+    const before = getStores();
+
+    expect(await insertOrganizeosBlock(rsvpForm)).toBe(false);
+
+    expectNothingWritten(before);
+    expect(toastError).toHaveBeenCalledWith(
+      "Cannot add RSVP Form: OrganizeOS blocks are not available for this site yet."
+    );
+  });
+
+  test("the inserted form satisfies the content model: every part is allowed where the template puts it", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+    const [root] = getRoots();
+    const errors: string[] = [];
+
+    expect(
+      isTreeSatisfyingContentModel({
+        instances: $instances.get(),
+        props: $props.get(),
+        metas: $registeredComponentMetas.get(),
+        instanceSelector: [root.id, "bodyId"],
+        onError: (message) => errors.push(message),
+      }),
+      errors.join("\n")
+    ).toBe(true);
+    expect(errors).toEqual([]);
+    // and it holds all of the form's parts
+    const components = new Set(
+      [...$instances.get().values()].map((instance) => instance.component)
+    );
+    for (const part of [
+      "Field",
+      "FieldLabel",
+      "FieldInput",
+      "FieldMessage",
+      "SubmitButton",
+      "Guests",
+      "ShiftOptions",
+      "Questions",
+      "EmailConsent",
+    ]) {
+      expect(components, part).toContain(`@organizeos/site-components:${part}`);
+    }
+  });
+
+  describe("the shared tokens", () => {
+    const getTokens = (name: string) =>
+      [...$styleSources.get().values()].filter(
+        (source) => source.type === "token" && source.name.startsWith(name)
+      );
+    const descendantsOf = (component: string) => {
+      const instances = $instances.get();
+      const [part] = [...instances.values()].filter(
+        (instance) => instance.component === component
+      );
+      return part.children.flatMap((child) =>
+        child.type === "id" ? [instances.get(child.value) as Instance] : []
+      );
+    };
+    const tokensOf = (instance: Instance) =>
+      $styleSourceSelections.get().get(instance.id)?.values ?? [];
+
+    test("the inner controls of Guests, Shift Options and Questions wear the same OS tokens as the Fields", async () => {
+      setProject(withForms);
+      expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+
+      for (const name of ["OS Field", "OS Input", "OS Button", "OS Message"]) {
+        expect(getTokens(name), name).toHaveLength(1);
+      }
+      const [input] = getTokens("OS Input");
+      const [button] = getTokens("OS Button");
+      const [message] = getTokens("OS Message");
+      const fieldInputs = [...$instances.get().values()].filter(
+        (instance) =>
+          instance.component === "@organizeos/site-components:FieldInput"
+      );
+      expect(fieldInputs).toHaveLength(4);
+      for (const instance of fieldInputs) {
+        expect(tokensOf(instance)).toEqual([input.id]);
+      }
+      for (const part of ["Guests", "ShiftOptions", "Questions"]) {
+        const descendants = descendantsOf(
+          `@organizeos/site-components:${part}`
+        );
+        expect(
+          descendants.map((instance) => [
+            instance.component,
+            getInstanceProps(instance.id, "selector")[0]?.value,
+            tokensOf(instance),
+          ]),
+          part
+        ).toEqual([
+          [
+            "ws:descendant",
+            " :is(input:not([type=checkbox]):not([type=radio]), select, textarea)",
+            [input.id],
+          ],
+          ["ws:descendant", " button", [button.id]],
+          ["ws:descendant", " [data-message]", [message.id]],
+        ]);
+      }
+    });
+
+    test("a Signup Form inserted after an RSVP Form, and the other way round, adds no second token", async () => {
+      setProject(withForms);
+      expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+      expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+      expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+
+      for (const name of ["OS Field", "OS Input", "OS Button", "OS Message"]) {
+        expect(getTokens(name), name).toHaveLength(1);
+      }
+      expect(getTokens("OS ").map((source) => source.type)).toHaveLength(4);
+    });
+
+    test("a second RSVP Form after OS Input was restyled uses the restyled token, on its inner controls too", async () => {
+      setProject(withForms);
+      expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+      const [input] = getTokens("OS Input");
+      const restyled = { type: "rgb", r: 255, g: 0, b: 0, alpha: 1 } as const;
+      const styles = new Map($styles.get());
+      for (const [key, style] of styles) {
+        if (
+          style.styleSourceId === input.id &&
+          style.property === "backgroundColor"
+        ) {
+          styles.set(key, { ...style, value: restyled });
+        }
+      }
+      $styles.set(styles);
+
+      expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+
+      expect(getRoots()).toHaveLength(2);
+      expect(getTokens("OS Input")).toEqual([input]);
+      expect(getTokens("OS Input-1")).toEqual([]);
+      const inputDescendants = [...$instances.get().values()].filter(
+        (instance) =>
+          instance.component === "ws:descendant" &&
+          getInstanceProps(instance.id, "selector")[0]
+            ?.value?.toString()
+            .startsWith(" :is(")
+      );
+      // three parts in each of two forms
+      expect(inputDescendants).toHaveLength(6);
+      for (const instance of inputDescendants) {
+        expect(tokensOf(instance)).toEqual([input.id]);
+      }
+      expect(
+        [...$styles.get().values()].filter(
+          (style) =>
+            style.styleSourceId === input.id &&
+            style.property === "backgroundColor"
+        )
+      ).toEqual([expect.objectContaining({ value: restyled })]);
+    });
   });
 });
 

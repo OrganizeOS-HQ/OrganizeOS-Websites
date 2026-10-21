@@ -296,8 +296,8 @@ one platform call per resource again (§9, the rollout gate).
 Blocks for OrganizeOS's platform features: a block is a root and parts that a
 designer places and styles like any element, while what it does (validation,
 opt-in, tags) stays on the platform, in services Website Lite shares. Phase 1
-ships the Signup Form; phase 2a (display) the Event List and the Event Card.
-Design and plans are in the OrganizeOS repo
+ships the Signup Form; phase 2a (display) the Event List and the Event Card;
+phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
 (`docs/superpowers/specs/2026-10-01-website-builder-platform-components-design.md`,
 `docs/superpowers/plans/2026-10-02-website-builder-signup-form.md`,
 `docs/superpowers/plans/2026-10-14-website-builder-events.md`); its
@@ -322,7 +322,10 @@ Design and plans are in the OrganizeOS repo
   blocks. The **Signup Form template** binds the root's `state` to a
   `formState` variable, shows its state boxes with `ws:show`, styles the parts
   through the tokens "OS Field", "OS Input", "OS Button" and "OS Message", and
-  leaves `data` unbound for the panel.
+  leaves `data` unbound for the panel. The four tokens are defined once, in
+  `src/shared/form-tokens.ts`, for the Signup Form and the RSVP Form alike: a
+  project that has both reuses one token each, so the two templates cannot
+  drift apart.
 - **Event List** and **Event Card** are templates over native elements and a
   collection, with no component of their own (the package registers no
   component for them, and `components.ts` never reaches their template files,
@@ -344,6 +347,99 @@ Design and plans are in the OrganizeOS repo
   than failing. The Event Card is the Event List's template under its own label
   and shows the next upcoming event (one item, see Insert completion); picking
   a specific event waits for the events virtual collection.
+- **RSVP Form** is the root of the Events RSVP block (phase 2b). It renders the
+  `<form>`, finds its event by its `record` prop (an event id) in its `data`
+  prop (the `GET /v1/events` body, from the project's Events Resource), and on
+  a published page posts what its parts collect to
+  `POST /api/public/site/v1/rsvps`. The `GET /v1/events` item carries the
+  registration details the form reads: the event's start and end, its time
+  zone, whether it has a waitlist and whether it is full, how many guests it
+  takes (`max_guests`), its shifts with their roles and its questions. The
+  event is read leniently (`rsvp/events-data.ts`), as the Signup Form's forms
+  are: a published site freezes this code while the DTO can gain fields, so an
+  entry with no string id is skipped, an unknown key is ignored and a question
+  type the build does not know is asked as a line of text.
+  - **Parts.** The Signup Form's **Field** (with **Field Label**, **Field
+    Input** and **Field Message**) and **Submit Button** work unchanged, because
+    they read only the shared form context; the RSVP Form gives its Fields
+    `first_name`, `last_name` and `email` (required) and `phone` (optional),
+    with the endpoint's lengths (100, 100, 320 and 40). Four parts are its own:
+    **Guests** (the guest rows, up to the event's `max_guests`, names only; it
+    renders nothing for an event that takes none), **Shift Options** (a
+    checkbox per shift, and for a single ticked shift with roles a radio group
+    of its roles; a full shift or role is disabled and carries `data-full`),
+    **Questions** (one group per question, with a control for its type) and
+    **Email Consent** (an unchecked checkbox, labelled by the part's own
+    children). The first three render their own controls, because a template
+    cannot know an event's shifts or questions and a component cannot repeat
+    builder children; their inner elements are styled through `ws:descendant`
+    instances (see the template). Each hands the root what it collected, and
+    the root keeps only the keys the endpoint's strict body takes.
+  - **States** are `initial`, `submitting`, `registered`, `waitlisted`, `full`,
+    `ended`, `error` and `unavailable`, on the root's `state` prop and its
+    `onStateChange` action, as the Signup Form's. On a published page the form
+    reports `unavailable` for an event it cannot find (no `record`, no
+    `data`, or the event is not in it), `ended` for an event that is over (its
+    end time, or its start time when it has none, is past) and `full` for a
+    full event with no waitlist, before the visitor can submit.
+  - **What a submit does.** It reports `unavailable` and posts nothing when a
+    Field Input for `first_name`, `last_name` or `email` is missing, or when the
+    event has required questions and no Questions part: the platform's answer
+    would name a field the page has no part to show it on. A value longer than
+    the endpoint takes (set by autofill, say, which `maxlength` does not stop)
+    posts nothing and shows that field's message. The body is `event_id`,
+    `first_name`, `last_name`, `email`, `phone` (left out when blank), `guests`,
+    `shift_ids`, `shift_role_id` and `answers` (each left out when empty),
+    `email_consent` (`false` without the part), `page_path`
+    (`window.location.pathname`) and `website` (the honeypot).
+  - **Answers.** `registered` and `waitlisted` show their states, and a
+    successful RSVP goes to the Page prop's page instead when After submit is
+    set to page (a waitlisted visitor always sees Waitlisted). `ended` and
+    `not_found` show Ended and Unavailable, any other error shows Error, and an
+    outcome the build does not know shows Registered, so a frozen build
+    survives a new answer. `invalid_field` sets a message on the part
+    that shows the field (a Field Message, Guests, Shift Options or Questions).
+    `role_full` keeps the form up with "That role just filled. Pick another."
+    on the role, and marks the chosen role and every other role of the shift
+    that the answer does not list in `open_roles` as full; a role it lists as
+    open is enabled even when the event data, which can be a minute old
+    (`s-maxage=60`), says full. The list may be empty (the platform refuses a
+    role without room whatever its siblings hold), which marks every role of the
+    shift full, and the visitor can still choose no role or another shift. The
+    endpoint also answers `full` for a picked shift with no room and, on an
+    event with no waitlist, for a party that does not fit, so the Full state is
+    for a request the visitor cannot change to fit (no shifts, and no guests on
+    an event with no waitlist). With shifts in the request the form stays up
+    with "That shift just filled. Pick another, or none." on the shifts, and
+    with guests on an event with no waitlist with "There is not room for every
+    guest. Try with fewer." on the guests.
+  - **The canvas check** draws a warning on the root for a form inside another
+    form or root, no event picked, no `data`, an event that is not in it, a
+    missing Field for a required field, a missing Submit Button, required
+    questions with no Questions part, and a Field naming anything but the four
+    fields. It only notes, as not faults, that the event has ended or is full
+    with no waitlist (the live site shows Ended or Full), that it has shifts and
+    no Shift Options, and that it takes guests and no Guests.
+- The **RSVP Form template** (`src/rsvp-form.template.tsx`) binds the root's
+  `state` to an `rsvpState` variable and its `onStateChange` to set it, and
+  leaves `data` unbound for the panel and `record` for the designer. A "Form
+  Content" box, shown in `initial`, `submitting` and `error`, holds a heading,
+  the four Fields, Guests, Shift Options, Questions, Email Consent (placeholder
+  text: "Also email me news from this organization") and a Submit Button
+  ("RSVP"); the state boxes Registered, Waitlisted, Full, Ended, Error and
+  Unavailable follow, each shown on its own state and holding placeholder text
+  the designer edits. Guests, Shift Options and Questions each hold three
+  `ws:descendant` instances, which the CSS generator renders as selectors under
+  the part's class: the text controls (`:is(input:not([type=checkbox]):not([type=radio]), select, textarea)`,
+  one compound inside `:is()` because the generator appends the selector to the
+  part's class and a bare comma list would style every `select` and `textarea`
+  on the page) with "OS Input", ` button` with "OS Button" and
+  ` [data-message]` with "OS Message". They wear the same shared tokens as the
+  Fields, so restyling "OS Input" restyles these controls too. Checkboxes and
+  radios keep the browser's own look. Only Guests renders buttons, and Shift
+  Options renders only checkboxes and radios, so some of these instances match
+  nothing today; the three parts carry the same three, so a designer finds the
+  same ones in each.
 - The canvas and the preview never post. On the canvas a root draws a warning
   on itself for a missing part (an email Field, a Submit Button, a Field for a
   required form field), a Field naming a field its form lacks, a form inside
@@ -441,6 +537,13 @@ Design and plans are in the OrganizeOS repo
     unavailable box's (`unavailable`) `data-ws-show` = `<v>.ok === false`. The
     Event Card's entry is the same with `<v>.data.data.slice(0, 1)` for the
     list: the next event.
+  - The RSVP Form's entry is the Events Resource itself under "OrganizeOS
+    Events", with one bind: the root's `data` = `<v>.data`, the body, as the
+    Signup Form binds its forms. It never creates a Resource (provisioning
+    always writes Events), and it binds the whole list rather than Upcoming
+    Events, because the block finds its event by id, an ended event included,
+    and the record picker lists them. A failed read hands over an error body,
+    which the form reads as no data and answers with Unavailable.
   - `<v>` is the loader's `{ ok, status, statusText, data }`, so `<v>.data` is
     the response body, `<v>.data.data` is the DTO's list, and `ok` sits on
     `<v>`, not on the body. The collection reads the list only when `ok` is
@@ -491,7 +594,8 @@ Design and plans are in the OrganizeOS repo
      shared tokens ("OS Input" and the rest) are reused as they stand, so a
      block inserted after the designer restyled "OS Input" wears the restyled
      token instead of adding "OS Input-1" with default styles, and restyling a
-     token restyles every block (spec 3.2).
+     token restyles every block (spec 3.2). That includes the RSVP Form's
+     `ws:descendant` instances, which wear the same tokens as its Fields.
 
   One transaction, so one undo removes the block, its binding and a Resource it
   created. The data loads on the pages that have a block, and nowhere else.
@@ -552,7 +656,9 @@ Design and plans are in the OrganizeOS repo
 
 **The record picker**, `settings-panel/controls/organizeos-record.tsx`, behind
 one marked branch in `settings-panel/controls/combined.tsx`, before the text
-control. The Signup Form's `record` is a select:
+control. A table, `recordPickers`, maps a block's component to its picker (what
+it lists, and the wording of its hint and placeholder); a `record` prop on any
+other component keeps the text control. The Signup Form's `record` is a select:
 
 - "None (org defaults)" first (an empty `record`), then the forms the block
   takes, as "name (Newsletter)" or "name (Contact)": newsletter
@@ -565,8 +671,31 @@ control. The Signup Form's `record` is a select:
 - A value it cannot find stays listed as "Unavailable form". With no forms data
   (loading, unbound, or the loader's error body) a hint says to reload the
   builder, then to contact support.
-- It keeps the upstream select's binding support. A `record` prop on any other
-  component keeps the text control.
+- It keeps the upstream select's binding support.
+
+The RSVP Form's `record` is a select over the events in its computed `data`
+(its Events binding, the whole list):
+
+- The events not yet over come first, soonest first, then the ended ones, marked
+  "(ended)", the latest first (the Events Resource lists the org's whole
+  history, so the oldest ended events are at the bottom). An event is ended when
+  its end time, or its start time when it has no end time, is past, as the
+  block reads it; one whose start cannot be read is not ended and comes last
+  among the upcoming. Events that start together keep the order the data has.
+- Each is labelled "title, date", the date in the event's own zone (a medium
+  `en-US` date: an event at 02:00 UTC on Nov 14 in Los Angeles is "Nov 13"), in
+  UTC for a missing zone or one the browser does not know, and the title alone
+  when its start cannot be read. A blank title is "Untitled event".
+- There is no "None": a form with no event shows Unavailable on the live site,
+  so the select reads "Pick an event" until one is chosen. Choosing writes the
+  event's id to `record`.
+- It skips what the block cannot find, as the block does: an entry with no
+  string id, a blank or padded id, and a second event with an id it has seen.
+- A value it cannot find stays listed first as "Unavailable event" (the event
+  was unpublished, deleted or made private, or has not loaded). With no events
+  data (loading, unbound, or the loader's error body) a hint says to reload the
+  builder, then to contact support. An empty list is data: the select is empty,
+  and the panel's "Manage events in OrganizeOS" link is where the org makes one.
 
 **Shipping in published sites**, `packages/cli/src/organizeos-components.ts`:
 
@@ -616,6 +745,31 @@ control. The Signup Form's `record` is a select:
   answer is `{ outcome }` (`subscribed`, `confirm_email` or `received`) or
   `{ error, field? }`. The block maps an outcome it does not know to Success
   and any error to Error, so a frozen build survives new answers.
+- `POST /api/public/site/v1/rsvps`, on the same terms (same origin, JSON only,
+  no CORS, the org from the host, no platform cookie read or set). The body
+  has `event_id`, `first_name`, `last_name`, `email`, `phone?`, `guests?`,
+  `shift_ids?`, `shift_role_id?`, `answers?`, `email_consent?`, `page_path` and
+  `website`: `guests` carry names only, `answers` are strings by question id (a
+  multiselect as a JSON array of strings, a checkbox as `"true"` or `"false"`,
+  anything else as typed), and `website` is the honeypot. The answer is `{ outcome }`
+  (`registered` or `waitlisted`, 200) or `{ error, field? }`: `invalid_request`
+  (400), `not_found` (404), `invalid_field` (422, with `first_name`,
+  `last_name`, `email`, `phone`, `guests`, `shift_ids`, `shift_role_id` or
+  `answers.<question id>`), `full`, `ended` and `role_full` (409; `role_full`
+  carries `open_roles: [{ id, name }]`, which may be empty, and no count),
+  `rate_limited` (429, with `Retry-After`) and `unavailable` (503). The block
+  maps an outcome it does not know to Registered and an error it does not know
+  to Error, so a frozen build survives new answers, and a build that predates
+  `ended` shows Error for it. The platform answers a repeat RSVP as it would a
+  new one, so the page tells a holder and a stranger nothing different.
+- `GET /v1/events`, through the Events catalog Resource (the RSVP Form and its
+  picker): every public event, past ones included, soonest first, each with the
+  registration details the form reads on top of the display keys: `waitlist`,
+  `full`, `max_guests`, `shifts` (each with its `roles`, only active or full
+  ones) and `questions`. A shift and a role say only whether they are `full`;
+  no count appears. The list is every event, not the first 1000, and a failed
+  read of any page answers the 503 rather than a list with items missing. The
+  keys are additive, and a build that does not know them ignores them.
 - `GET /v1/events?upcoming=true`, through the Upcoming Events catalog Resource
   (the Event List and Event Card): the events not yet over, soonest first,
   each with the event's `timezone`, the zone the platform resolves for it: the
@@ -644,8 +798,8 @@ control. The Signup Form's `record` is a select:
   contract lists with its environment variables.
 - Both sides build to the contract fixtures in OrganizeOS's
   `client/tests/fixtures/site-components/`, which the package copies into
-  `src/__fixtures__/` for its tests (`forms.json`, `events.json` and
-  `signups/`). To keep them in step, change the OrganizeOS copy first, copy the
+  `src/__fixtures__/` for its tests (`forms.json`, `events.json`, `signups/` and
+  `rsvps/`). To keep them in step, change the OrganizeOS copy first, copy the
   files over unchanged, update the source commit in the note at the top of the
   copy's `README.md`, and check that `diff -r` between the two folders shows
   that note alone. A change is additive or ships under a new endpoint version:
@@ -661,16 +815,23 @@ load its forms nor submit. Phase 2a (display) adds no endpoint, only
 platform's one public-event rule deploys (plan task P1), that endpoint also
 lists members-only and private events, and until its display changes deploy
 (plan task P2) it lists ended events with times in UTC. So no Event List is
-published before the platform half is live.
+published before the platform half is live. Phase 2b (RSVP) adds the rsvps
+endpoint and the registration keys on `GET /v1/events`, with no migration: a
+page published before they exist would find no guests, shifts or questions in
+the event data, which lets a visitor post an RSVP that misses a required
+answer, to an endpoint that is not there. So no RSVP Form is published before
+the platform half is live. The keys are additive, and builds that do not know
+them ignore them.
 
 **Known limits** (OrganizeOS spec, section 12, items 15 to 18, with the
 options, and the limits found since in review):
 
 - **Rollout gate.** The panel and the blocks are offered only to the orgs on
   `ORGANIZEOS_BLOCKS_ORG_IDS`. A page with a Signup Form or an Events block
-  loads its Resource (`GET /v1/forms`, `GET /v1/events?upcoming=true`) on every
-  view of that page (no longer of every page: the binding is the block's own),
-  and a page with both makes both reads. Vercel's CDN never caches those
+  loads its Resource (`GET /v1/forms`, `GET /v1/events?upcoming=true`, and
+  `GET /v1/events` for an RSVP Form) on every view of that page (no longer of
+  every page: the binding is the block's own), and a page with more than one
+  makes each read. Vercel's CDN never caches those
   requests (they carry `Authorization`); the published site's resource cache
   (§8) does, one entry per URL. With `/v1`'s `Cache-Control`, each warm
   function instance fetches each at most once a minute, however many visitors
@@ -681,7 +842,8 @@ options, and the limits found since in review):
   platform's `public_read` limit, 120 a minute per org and site egress IP,
   shared by the site's instances behind that address; on a 429 with nothing
   stored (a cold instance) a block with a form picked shows Unavailable, and so
-  do the Event List and Event Card. A
+  do the Event List and Event Card and an RSVP Form, which cannot find its event
+  without the list. A
   published build is frozen: a site published before the builder deploy that
   ships the cache keeps the old loader, one uncached call per page view, until
   it is republished. So an org joins the allowlist only after it has
@@ -717,15 +879,16 @@ options, and the limits found since in review):
   "OrganizeOS Forms" can take over `data` only in a block written on the
   pre-deploy branches (above), whose binding is at `:root`. What can still
   capture a new block's bound props is a variable named exactly like the
-  block's binding ("OrganizeOS Forms", "OrganizeOS Upcoming Events") added on
+  block's binding ("OrganizeOS Forms", "OrganizeOS Events", "OrganizeOS
+  Upcoming Events") added on
   the block's root, or on any instance from a bound prop's own instance up to
   that root (for an Event List or Event Card as inserted, the `events`
   collection and the `empty` and `unavailable` boxes), which the next
   re-resolution (saving that variable is one) binds in place of the block's
   binding:
   `validateDataVariableName` compares only `variable`-type sources, so it
-  allows the name beside the binding. A Signup Form has one such prop (`data`);
-  an Event List or Event Card has three (the collection's `data` and the
+  allows the name beside the binding. A Signup Form or an RSVP Form has one such
+  prop (`data`); an Event List or Event Card has three (the collection's `data` and the
   `data-ws-show` of the `empty` and `unavailable` boxes). Insert binds by id;
   the re-resolution is upstream behavior, left alone.
 - A catalog Resource is shared: editing it through any binding in the data
@@ -740,5 +903,32 @@ options, and the limits found since in review):
   collection's `data` expression. A
   card's cover image is an absolute URL the platform sends: check that it loads
   under the platform's CSP on a published page.
+- **RSVP Form.**
+  - The published page reads the Events list when it renders, not when it was
+    published, so an event that is unpublished, deleted or made private
+    afterwards shows Unavailable on the live site, and one that is over shows
+    Ended. The list is cached for up to a minute (`s-maxage=60`), so Shift
+    Options can show a filled shift or role as open for that long; the `full`
+    and `role_full` answers keep the visitor on the form with a message.
+  - The Events payload grows with the org's history: the list is unbounded and
+    each item carries its shifts and questions (about 1 to 3 KB for an event
+    with them), though the site's resource cache holds it. A `limit` or `since`
+    parameter waits until a site needs it.
+  - Inner controls of Guests, Shift Options and Questions are styled through
+    `ws:descendant` instances. A descendant's selector is not one of the
+    Settings panel's options (it offers ` p`, ` h1` and the like): the panel
+    shows the selector the template gave it, and a designer styles the instance
+    rather than retyping the selector.
+  - A repeat RSVP takes measurably less time than a new one, since it skips the
+    writes; equal timing waits. At the organization's contact cap the platform
+    refuses every RSVP alike (503 `unavailable`, a holder's repeat included).
+    Website Lite shows a repeat's waitlist confirmation since owner decision D8
+    and keeps its own email consent until D3. Confirmations still go to
+    suppressed addresses (D15), and an anonymous form can restore a deleted
+    contact (D14), as Website Lite does.
+  - The capacity race (D13) is not closed: a burst can overshoot a capacity,
+    and a mailing that links to an RSVP Form makes bursts likelier. An atomic
+    book-and-count function is fixed on the platform before the RSVP Form goes
+    beyond the pilot.
 - No self-serve "Reconnect data": once the builder is enabled, nothing re-seeds
   a project's catalog, so a refused insert needs support to re-provision.

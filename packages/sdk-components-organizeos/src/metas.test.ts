@@ -240,6 +240,7 @@ test("templates and hooks", () => {
     "SignupForm",
     "EventList",
     "EventCard",
+    "RsvpForm",
   ]);
   for (const template of Object.values(templates)) {
     expect(template.category).toBe("hidden");
@@ -247,5 +248,12 @@ test("templates and hooks", () => {
   expect(templates.SignupForm.label).toBe("Signup Form");
   expect(templates.EventList.label).toBe("Event List");
   expect(templates.EventCard.label).toBe("Event Card");
+  expect(templates.RsvpForm.label).toBe("RSVP Form");
+  // every template's label is the label a designer sees in the panel and the
+  // navigator, and a template that is a component's has that component's
+  for (const [name, template] of Object.entries(templates)) {
+    expect(template.label, name).toMatch(labelPattern);
+  }
+  expect(templates.RsvpForm.label).toBe(metas.RsvpForm.label);
   expect(hooks).toEqual([]);
 });
