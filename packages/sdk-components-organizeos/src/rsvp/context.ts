@@ -1,0 +1,51 @@
+import { createContext, useContext } from "react";
+import type { RsvpEvent } from "./events-data";
+
+/**
+ * What the RSVP Form's composite parts (Guests, Shift Options, Questions and
+ * Email Consent) read from their root, besides the `FormRootContext` every
+ * part shares (the field messages, the state, the registry).
+ */
+export type RsvpContextValue = {
+  /** The block's event, undefined while it cannot be found. */
+  event: RsvpEvent | undefined;
+  /**
+   * The roles a `role_full` answer found without room, by id: the chosen role
+   * and every other role of its shift that the answer does not list as open.
+   * Shift Options disables them on top of the roles the event data marks full.
+   */
+  fullRoleIds: ReadonlySet<string>;
+};
+
+export const RsvpContext = createContext<RsvpContextValue | undefined>(
+  undefined
+);
+
+/** The closest RSVP Form's event and role state, undefined outside one. */
+export const useRsvpContext = () => useContext(RsvpContext);
+
+// What each composite part's `collect` returns, which the root reads by shape
+// and puts in the body. The root reads them as `unknown` and keeps only what
+// the endpoint takes, so a part that returns more costs nothing.
+
+/** A guest the visitor named: two names, as the endpoint takes. */
+export type CollectedGuest = { first_name: string; last_name: string };
+
+/** What Guests collects: the rows that are not entirely blank. */
+export type CollectedGuests = CollectedGuest[];
+
+/** What Shift Options collects: the shifts ticked and the role chosen in a single one. */
+export type CollectedShifts = {
+  shift_ids: string[];
+  shift_role_id?: string;
+};
+
+/**
+ * What Questions collects: the answers by question id, serialized as Website
+ * Lite sends them (a multiselect as a JSON array of strings, a checkbox as
+ * "true" or "false", anything else as typed), without the blank optional ones.
+ */
+export type CollectedAnswers = Record<string, string>;
+
+/** What Email Consent collects: whether the box is checked. */
+export type CollectedConsent = boolean;

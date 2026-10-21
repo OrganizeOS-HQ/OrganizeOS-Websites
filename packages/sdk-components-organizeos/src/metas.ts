@@ -6,3 +6,4 @@ export {
   metaFieldMessage as FieldMessage,
 } from "./signup/field.ws";
 export { meta as SubmitButton } from "./signup/submit-button.ws";
+export { meta as RsvpForm } from "./rsvp/rsvp-form.ws";
