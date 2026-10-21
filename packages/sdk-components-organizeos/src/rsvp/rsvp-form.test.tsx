@@ -88,8 +88,9 @@ const TestField = ({
 type PartKind = "guests" | "shifts" | "questions" | "consent";
 
 /**
- * Stands in for one of the composite parts (the real ones are the next task's):
- * it registers with its root and collects the value it is given.
+ * Stands in for one of the composite parts, so the root is tested on its own
+ * (rsvp-parts.test.tsx has the real ones): it registers with its root and
+ * collects the value it is given.
  */
 const StubPart = ({ kind, value }: { kind: PartKind; value: unknown }) => {
   const collect = useCallback(() => value, [value]);

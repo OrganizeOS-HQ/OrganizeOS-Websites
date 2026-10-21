@@ -5,3 +5,7 @@ export { SignupForm } from "./signup/signup-form";
 export { Field, FieldLabel, FieldInput, FieldMessage } from "./signup/field";
 export { SubmitButton } from "./signup/submit-button";
 export { RsvpForm } from "./rsvp/rsvp-form";
+export { Guests } from "./rsvp/guests";
+export { ShiftOptions } from "./rsvp/shift-options";
+export { Questions } from "./rsvp/questions";
+export { EmailConsent } from "./rsvp/email-consent";
