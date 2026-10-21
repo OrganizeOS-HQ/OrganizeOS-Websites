@@ -57,7 +57,7 @@ type RecordOptions = {
 };
 
 /** What a block's record is picked from, and how the control words it. */
-type RecordPicker = {
+export type RecordPicker = {
   getOptions: (data: unknown, value: unknown, now: Date) => RecordOptions;
   /** Under the control while there is no data. */
   noDataHint: string;
@@ -308,6 +308,16 @@ export const isOrganizeosRecordProp = (
 const noPicker = formsPicker(new Map());
 
 /**
+ * The picker a block's `record` is chosen with: what it lists, the hint under
+ * the control while there is no data and the placeholder while nothing is
+ * selected. The control reads its wording from here, so a test of the picker
+ * is a test of what the control shows.
+ */
+export const getOrganizeosRecordPicker = (
+  component: undefined | string
+): RecordPicker => recordPickers.get(component ?? "") ?? noPicker;
+
+/**
  * The options for a block's `record`, from its computed `data`. `now` splits
  * the RSVP Form's events into the upcoming and the ended.
  */
@@ -317,7 +327,7 @@ export const getOrganizeosRecordOptions = (
   value: unknown,
   now: Date = new Date()
 ): RecordOptions =>
-  (recordPickers.get(component ?? "") ?? noPicker).getOptions(data, value, now);
+  getOrganizeosRecordPicker(component).getOptions(data, value, now);
 
 /**
  * The selected instance's computed `data`, where its record is picked from.
@@ -357,7 +367,7 @@ export const OrganizeosRecordControl = ({
     data,
     computedValue
   );
-  const picker = recordPickers.get(component ?? "") ?? noPicker;
+  const picker = getOrganizeosRecordPicker(component);
 
   const label = humanizeAttribute(meta.label || propName);
   const { scope, aliases } = useStore($selectedInstanceScope);

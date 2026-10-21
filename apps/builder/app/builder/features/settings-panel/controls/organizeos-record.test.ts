@@ -49,6 +49,7 @@ import {
   $selectedInstanceDataProp,
   OrganizeosRecordControl,
   getOrganizeosRecordOptions,
+  getOrganizeosRecordPicker,
   isOrganizeosRecordProp,
 } from "./organizeos-record";
 
@@ -611,6 +612,39 @@ describe("getOrganizeosRecordOptions for the RSVP Form", () => {
     expect(
       getOrganizeosRecordOptions(signupForm, eventsBody, undefined, now)
     ).toEqual({ options: [none], selected: none, hasData: true });
+  });
+});
+
+describe("getOrganizeosRecordPicker", () => {
+  // The control shows the picker's `noDataHint` under itself while there is no
+  // data, and its `placeholder` while nothing is selected.
+  test("words the RSVP Form's hint and placeholder for events, and the Signup Form's for forms", () => {
+    expect(getOrganizeosRecordPicker(rsvpForm)).toMatchObject({
+      placeholder: "Pick an event",
+      noDataHint:
+        "Your events load from OrganizeOS. If they do not appear, reload the builder; if they still do not, contact OrganizeOS support.",
+    });
+    expect(getOrganizeosRecordPicker(signupForm)).toMatchObject({
+      placeholder: "Select a form",
+      noDataHint:
+        "Your forms load from OrganizeOS. If they do not appear, reload the builder; if they still do not, contact OrganizeOS support.",
+    });
+  });
+
+  test("is the picker that lists the block's options, so the hint belongs to the data it waits for", () => {
+    // no data: the options say so, and the picker has the hint to show
+    expect(
+      getOrganizeosRecordOptions(rsvpForm, undefined, "", now).hasData
+    ).toBe(false);
+    expect(getOrganizeosRecordPicker(rsvpForm).noDataHint).toMatch(
+      /^Your events /
+    );
+    expect(
+      getOrganizeosRecordOptions(signupForm, undefined, "", now).hasData
+    ).toBe(false);
+    expect(getOrganizeosRecordPicker(signupForm).noDataHint).toMatch(
+      /^Your forms /
+    );
   });
 });
 
