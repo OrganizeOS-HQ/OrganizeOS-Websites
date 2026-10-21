@@ -23,11 +23,30 @@ export type FormFieldConfig = {
  * collects and, on the canvas, which parts it lacks.
  */
 export type FormPart = {
-  kind: "field" | "input" | "submit";
+  /**
+   * field, input and submit are the Signup Form's. The RSVP Form adds the
+   * composite parts: guests, shifts, questions and consent, each of which
+   * renders its own controls.
+   */
+  kind:
+    | "field"
+    | "input"
+    | "submit"
+    | "guests"
+    | "shifts"
+    | "questions"
+    | "consent";
   /** The form field a Field or a Field Input stands for. */
   name?: string;
   /** Reads a Field Input's current value the way the platform expects it. */
   read?: () => string;
+  /**
+   * Reads a composite part's current value, in the shape its root puts in the
+   * body: the rows of Guests, the selection of Shift Options, the answers of
+   * Questions, the box of Email Consent. Like `read`, keep it stable between
+   * renders (`useCallback`): a new function registers the part again.
+   */
+  collect?: () => unknown;
 };
 
 /** What a root shares with its parts. */
@@ -75,10 +94,11 @@ export const useRegisterPart = (part: FormPart | undefined) => {
   const kind = part?.kind;
   const name = part?.name;
   const read = part?.read;
+  const collect = part?.collect;
   useLayoutEffect(() => {
     if (register === undefined || kind === undefined) {
       return;
     }
-    return register({ kind, name, read });
-  }, [register, kind, name, read]);
+    return register({ kind, name, read, collect });
+  }, [register, kind, name, read, collect]);
 };
