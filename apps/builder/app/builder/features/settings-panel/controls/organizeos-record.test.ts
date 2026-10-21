@@ -474,6 +474,24 @@ describe("getOrganizeosRecordOptions for the RSVP Form", () => {
       "City Hall Rally, Dec 5, 2026"
     );
     expect(label({ timezone: "" })).toBe("City Hall Rally, Dec 5, 2026");
+    // 02:00 UTC on Dec 6 is Dec 5 in every US zone, so a fallback to the
+    // platform's New York default, or to this browser's own zone, shows Dec 5.
+    const lateUtc = { start_time: "2026-12-06T02:00:00Z", end_time: null };
+    expect(label({ ...lateUtc, timezone: null })).toBe(
+      "City Hall Rally, Dec 6, 2026"
+    );
+    expect(label({ ...lateUtc, timezone: undefined })).toBe(
+      "City Hall Rally, Dec 6, 2026"
+    );
+    expect(label({ ...lateUtc, timezone: "Not/AZone" })).toBe(
+      "City Hall Rally, Dec 6, 2026"
+    );
+    expect(label({ ...lateUtc, timezone: "" })).toBe(
+      "City Hall Rally, Dec 6, 2026"
+    );
+    expect(label({ ...lateUtc, timezone: "America/New_York" })).toBe(
+      "City Hall Rally, Dec 5, 2026"
+    );
     // 23:00 UTC is Dec 6 in Tokyo
     expect(label({ timezone: "Asia/Tokyo" })).toBe(
       "City Hall Rally, Dec 6, 2026"
