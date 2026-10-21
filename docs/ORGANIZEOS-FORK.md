@@ -906,10 +906,14 @@ options, and the limits found since in review):
 - **RSVP Form.**
   - The published page reads the Events list when it renders, not when it was
     published, so an event that is unpublished, deleted or made private
-    afterwards shows Unavailable on the live site, and one that is over shows
-    Ended. The list is cached for up to a minute (`s-maxage=60`), so Shift
-    Options can show a filled shift or role as open for that long; the `full`
-    and `role_full` answers keep the visitor on the form with a message.
+    afterwards shows Unavailable on the live site once the cached list expires,
+    and one that is over shows Ended. The list is cached for up to a minute
+    (`s-maxage=60`), and while the platform fails or rate-limits the site the
+    cache keeps answering with the stale list for up to ten minutes more
+    (`stale-if-error=600`, §8). So for that long an event made private or
+    unpublished still renders, though the endpoint refuses it (`not_found`), and
+    Shift Options can show a filled shift or role as open; the `full` and
+    `role_full` answers keep the visitor on the form with a message.
   - The Events payload grows with the org's history: the list is unbounded and
     each item carries its shifts and questions (about 1 to 3 KB for an event
     with them), though the site's resource cache holds it. A `limit` or `since`
