@@ -11,10 +11,14 @@ import {
 } from "react";
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import { FormRootContext, useRegisterPart } from "../form/context";
+import { useFormReset } from "../form/use-form-reset";
 import { useRsvpContext, type CollectedShifts } from "./context";
 import type { RsvpRole, RsvpShift } from "./events-data";
 
-/** The most shifts the endpoint's body takes in one RSVP. */
+/**
+ * The most shifts the endpoint's body takes in one RSVP, and so the most that
+ * can be ticked: a 51st would look ticked and not be sent.
+ */
 const maxShiftIds = 50;
 
 // Newer ICU puts a narrow no-break space before AM and PM and older ICU a plain
@@ -120,9 +124,10 @@ type ShiftOptionsProps = ComponentProps<"div">;
  * `data-full`. When exactly one shift is ticked and it has roles, a radio group
  * shows them; a role is disabled when the latest `role_full` answer found it
  * full, or when the event data marks it full and the answer did not list it
- * open. Renders nothing for an event with no shifts, except on the canvas, where
- * the part is always there to select. `collect` returns the shifts ticked and
- * the role chosen.
+ * open. Once 50 are ticked, the most the endpoint takes, the others are disabled
+ * until one is unticked. A form reset unticks them all. Renders nothing for an
+ * event with no shifts, except on the canvas, where the part is always there to
+ * select. `collect` returns the shifts ticked and the role chosen.
  */
 export const ShiftOptions = forwardRef<ElementRef<"div">, ShiftOptionsProps>(
   (
@@ -142,6 +147,11 @@ export const ShiftOptions = forwardRef<ElementRef<"div">, ShiftOptionsProps>(
     const shifts = event?.shifts ?? [];
     const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set());
     const [chosenRoleId, setChosenRoleId] = useState<string>();
+    // a browser's reset unticks the boxes without an onChange
+    const listRef = useFormReset<HTMLDivElement>(() => {
+      setTicked(new Set());
+      setChosenRoleId(undefined);
+    }, ref);
 
     // What is ticked and still on offer, in the event's order: a shift that the
     // data now says is full, or that is gone from it, is neither shown ticked
@@ -208,7 +218,7 @@ export const ShiftOptions = forwardRef<ElementRef<"div">, ShiftOptionsProps>(
     return (
       <div
         {...props}
-        ref={ref}
+        ref={listRef}
         data-full={allFull ? "" : undefined}
         data-invalid={
           shiftMessage === undefined && roleMessage === undefined
@@ -230,7 +240,11 @@ export const ShiftOptions = forwardRef<ElementRef<"div">, ShiftOptionsProps>(
                   name="shift_ids"
                   value={shift.id}
                   checked={selectedIds.has(shift.id)}
-                  disabled={shift.full}
+                  disabled={
+                    shift.full ||
+                    (!selectedIds.has(shift.id) &&
+                      selected.length >= maxShiftIds)
+                  }
                   onChange={() => toggle(shift.id)}
                   aria-describedby={
                     shiftMessage === undefined ? undefined : shiftMessageId

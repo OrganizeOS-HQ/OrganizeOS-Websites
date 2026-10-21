@@ -13,6 +13,7 @@ import {
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import { FormRootContext, useRegisterPart } from "../form/context";
 import { useMergedRef } from "../form/merge-ref";
+import { useFormReset } from "../form/use-form-reset";
 import { useRsvpContext, type CollectedGuests } from "./context";
 
 /** The most characters the endpoint takes of a guest's first or last name. */
@@ -36,8 +37,8 @@ type GuestsProps = ComponentProps<"div"> & {
  * most the endpoint takes of a guest; a Remove button sits on each, and the Add
  * button goes at the event's allowance (`max_guests`). It renders nothing for an
  * event that takes no guests. On the canvas it always renders one sample row,
- * marked `data-sample`, so the part can be styled whatever the event is.
- * `collect` returns the rows that are not entirely blank.
+ * marked `data-sample`, so the part can be styled whatever the event is. A form
+ * reset removes the rows. `collect` returns the rows that are not entirely blank.
  */
 export const Guests = forwardRef<ElementRef<"div">, GuestsProps>(
   (
@@ -89,6 +90,8 @@ export const Guests = forwardRef<ElementRef<"div">, GuestsProps>(
     const addRef = useRef<HTMLButtonElement>(null);
     const listRef = useRef<HTMLDivElement | null>(null);
     const mergedRef = useMergedRef(ref, listRef);
+    // a browser's reset empties the names without an onChange
+    const resetRef = useFormReset<HTMLDivElement>(() => setRows([]), mergedRef);
     const focusNext = useRef<"row" | "add">();
     useEffect(() => {
       const target = focusNext.current;
@@ -161,7 +164,7 @@ export const Guests = forwardRef<ElementRef<"div">, GuestsProps>(
     return (
       <div
         {...props}
-        ref={mergedRef}
+        ref={resetRef}
         data-invalid={message === undefined ? undefined : ""}
       >
         {shown.map((row, index) => (

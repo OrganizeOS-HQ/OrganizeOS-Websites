@@ -345,7 +345,7 @@ describe("on a published site", () => {
     expect(Array.from(view.registered.values())[0].collect).toBe(first);
   });
 
-  test("collect sends at most 50 shifts, the most the endpoint takes", () => {
+  test("at most 50 shifts can be ticked, the most the endpoint takes: the rest are disabled", () => {
     const shifts = Array.from({ length: 60 }, (_, index) =>
       makeShift(`s${String(index).padStart(2, "0")}`)
     );
@@ -353,12 +353,37 @@ describe("on a published site", () => {
       event: makeEvent({ shifts }),
     });
     for (const box of screen.getAllByRole("checkbox")) {
-      fireEvent.click(box);
+      // a visitor cannot click a disabled box
+      if (!(box as HTMLInputElement).disabled) {
+        fireEvent.click(box);
+      }
     }
     const sent = view.collect("shifts") as { shift_ids: string[] };
     expect(sent.shift_ids).toHaveLength(50);
     expect(sent.shift_ids[0]).toBe("s00");
     expect(sent.shift_ids[49]).toBe("s49");
+    // what is shown ticked is what is sent: the 51st is not left looking ticked
+    expect(shiftBox("Shift s49").checked).toBe(true);
+    expect(shiftBox("Shift s50").checked).toBe(false);
+    expect(shiftBox("Shift s50").disabled).toBe(true);
+    expect(
+      screen
+        .getAllByRole("checkbox")
+        .filter((box) => (box as HTMLInputElement).checked)
+    ).toHaveLength(50);
+    // the ticked ones stay enabled, so one can be unticked to make room
+    expect(shiftBox("Shift s49").disabled).toBe(false);
+    // a full shift is the data's, not the limit's
+    expect(
+      shiftBox("Shift s50").closest("[data-full]")?.hasAttribute("data-full")
+    ).toBeFalsy();
+    fireEvent.click(shiftBox("Shift s00"));
+    expect(shiftBox("Shift s50").disabled).toBe(false);
+    fireEvent.click(shiftBox("Shift s50"));
+    const next = view.collect("shifts") as { shift_ids: string[] };
+    expect(next.shift_ids).toHaveLength(50);
+    expect(next.shift_ids).toContain("s50");
+    expect(next.shift_ids).not.toContain("s00");
   });
 
   test("a shift that the data now says is full is shown unticked and not sent", () => {
@@ -548,5 +573,66 @@ describe("on the canvas", () => {
       expect(screen.getByTestId("part")).toBeTruthy();
       cleanup();
     }
+  });
+});
+
+describe("when the form is reset", () => {
+  const Form = () => (
+    <form>
+      <ShiftOptions />
+      <button type="reset">Reset</button>
+    </form>
+  );
+
+  test("the shifts are unticked, the role is dropped and collect says so", () => {
+    // The browser unticks the boxes without an onChange, so what collect
+    // says has to follow the reset.
+    const view = renderPart(<Form />, { event: launch });
+    fireEvent.click(shiftBox("Afternoon canvass"));
+    fireEvent.click(roleBox("Canvasser"));
+    expect(view.collect("shifts")).toEqual({
+      shift_ids: [afternoon.id],
+      shift_role_id: canvasserId,
+    });
+    fireEvent.click(screen.getByText("Reset"));
+    expect(shiftBox("Afternoon canvass").checked).toBe(false);
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(view.collect("shifts")).toEqual({ shift_ids: [] });
+    // ticking again starts from nothing: no role comes back with the shift
+    fireEvent.click(shiftBox("Afternoon canvass"));
+    expect(roleBox("Canvasser").checked).toBe(false);
+    expect(view.collect("shifts")).toEqual({ shift_ids: [afternoon.id] });
+  });
+
+  test("several ticked shifts are all unticked", () => {
+    const event = makeEvent({
+      shifts: [makeShift("a"), makeShift("b"), makeShift("c")],
+    });
+    const view = renderPart(<Form />, { event });
+    fireEvent.click(shiftBox("Shift a"));
+    fireEvent.click(shiftBox("Shift c"));
+    expect(view.collect("shifts")).toEqual({ shift_ids: ["a", "c"] });
+    fireEvent.click(screen.getByText("Reset"));
+    expect(
+      screen
+        .getAllByRole("checkbox")
+        .some((box) => (box as HTMLInputElement).checked)
+    ).toBe(false);
+    expect(view.collect("shifts")).toEqual({ shift_ids: [] });
+  });
+
+  test("a part that was not in a form is not harmed by one around it elsewhere", () => {
+    const view = renderPart(
+      <>
+        <ShiftOptions />
+        <form>
+          <button type="reset">Reset</button>
+        </form>
+      </>,
+      { event: launch }
+    );
+    fireEvent.click(shiftBox("Afternoon canvass"));
+    fireEvent.click(screen.getByText("Reset"));
+    expect(view.collect("shifts")).toEqual({ shift_ids: [afternoon.id] });
   });
 });

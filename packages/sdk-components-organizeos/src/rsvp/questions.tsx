@@ -12,6 +12,7 @@ import {
 } from "react";
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import { FormRootContext, useRegisterPart } from "../form/context";
+import { useFormReset } from "../form/use-form-reset";
 import { useRsvpContext, type CollectedAnswers } from "./context";
 import type { RsvpQuestion } from "./events-data";
 
@@ -90,21 +91,36 @@ const serializeAnswer = (
   }
 };
 
+/**
+ * The answers to send, by question id and in the event's order. Past the 100
+ * the endpoint takes, the required questions' answers are kept first: cutting in
+ * the event's order could drop a required one every time, and the platform would
+ * name it missing however often the visitor filled it in.
+ */
 const serializeAnswers = (
   questions: readonly RsvpQuestion[],
   draft: Draft
 ): CollectedAnswers => {
-  const answers: CollectedAnswers = {};
-  let count = 0;
+  const serialized: { question: RsvpQuestion; value: string }[] = [];
   for (const question of questions) {
-    if (count >= maxAnswers) {
-      break;
-    }
     const value = serializeAnswer(question, draft[question.id]);
     if (value !== undefined) {
-      answers[question.id] = value;
-      count += 1;
+      serialized.push({ question, value });
     }
+  }
+  let kept = serialized;
+  if (serialized.length > maxAnswers) {
+    const first = new Set(
+      [
+        ...serialized.filter((item) => item.question.required),
+        ...serialized.filter((item) => !item.question.required),
+      ].slice(0, maxAnswers)
+    );
+    kept = serialized.filter((item) => first.has(item));
+  }
+  const answers: CollectedAnswers = {};
+  for (const { question, value } of kept) {
+    answers[question.id] = value;
   }
   return answers;
 };
@@ -301,9 +317,9 @@ type QuestionsProps = ComponentProps<"div">;
  * Questions: the event's registration questions, each with its label, help
  * text, required marker, a control for its type and a message for the platform's
  * refusal of its answer. Renders nothing for an event with no questions, except
- * on the canvas, where the part is always there to select. `collect` returns the
- * answers by question id, serialized as Website Lite sends them, without the
- * blank optional ones.
+ * on the canvas, where the part is always there to select. A form reset clears
+ * the answers. `collect` returns the answers by question id, serialized as
+ * Website Lite sends them, without the blank optional ones.
  */
 export const Questions = forwardRef<ElementRef<"div">, QuestionsProps>(
   (
@@ -317,6 +333,8 @@ export const Questions = forwardRef<ElementRef<"div">, QuestionsProps>(
     const event = useRsvpContext()?.event;
     const questions = event?.questions ?? [];
     const [draft, setDraft] = useState<Draft>({});
+    // a browser's reset puts a checkbox or a select back without an onChange
+    const listRef = useFormReset<HTMLDivElement>(() => setDraft({}), ref);
 
     // `collect` is stable, so the part registers once; it reads the latest
     // questions and answers.
@@ -340,7 +358,7 @@ export const Questions = forwardRef<ElementRef<"div">, QuestionsProps>(
     return (
       <div
         {...props}
-        ref={ref}
+        ref={listRef}
         data-invalid={
           messages.some((message) => message !== undefined) ? "" : undefined
         }

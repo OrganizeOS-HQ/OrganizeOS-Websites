@@ -99,4 +99,26 @@ describe("Email Consent", () => {
       false
     );
   });
+
+  test("a form reset unchecks the box and collect says so", () => {
+    // The browser puts the box back to unchecked without an onChange, so what
+    // collect says has to come from the box, not from a copy of it.
+    const view = renderPart(
+      <form>
+        <EmailConsent>{text}</EmailConsent>
+        <button type="reset">Reset</button>
+      </form>,
+      { event: launch }
+    );
+    const box = screen.getByLabelText(text) as HTMLInputElement;
+    fireEvent.click(box);
+    expect(box.checked).toBe(true);
+    expect(view.collect("consent")).toBe(true);
+    fireEvent.click(screen.getByText("Reset"));
+    expect(box.checked).toBe(false);
+    expect(view.collect("consent")).toBe(false);
+    // and it can be checked again
+    fireEvent.click(box);
+    expect(view.collect("consent")).toBe(true);
+  });
 });

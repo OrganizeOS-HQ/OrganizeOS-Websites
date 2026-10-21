@@ -325,6 +325,52 @@ describe("on a published site", () => {
     expect(sent[99]).toBe("q099");
   });
 
+  test("past 100 answers the required ones are kept first, so the platform is never told one is missing", () => {
+    // 110 optional answers and a required question after them: cutting at
+    // 100 in the event's order would drop the required one every time.
+    const ids = Array.from(
+      { length: 120 },
+      (_, index) => `q${String(index).padStart(3, "0")}`
+    );
+    const { container, collect } = renderPart(<Questions />, {
+      event: makeEvent({
+        questions: ids.map((id, index) =>
+          makeQuestion(id, { required: index === 110 || index === 115 })
+        ),
+      }),
+    });
+    for (const id of ids.slice(0, 110)) {
+      set(container, id, "yes");
+    }
+    set(container, "q110", "needed");
+    const sent = collect("questions") as Record<string, string>;
+    const keys = Object.keys(sent);
+    expect(keys).toHaveLength(100);
+    // both required ones, one answered and one blank
+    expect(sent.q110).toBe("needed");
+    expect(sent.q115).toBe("");
+    // the rest are the first optional ones, still in the event's order
+    expect(keys.slice(0, 98)).toEqual(ids.slice(0, 98));
+    expect(keys.slice(98)).toEqual(["q110", "q115"]);
+    expect(sent.q097).toBe("yes");
+    expect(sent).not.toHaveProperty("q098");
+  });
+
+  test("100 answers or fewer are sent whole, required or not", () => {
+    const ids = Array.from({ length: 100 }, (_, index) => `q${index}`);
+    const { container, collect } = renderPart(<Questions />, {
+      event: makeEvent({
+        questions: ids.map((id, index) =>
+          makeQuestion(id, { required: index === 99 })
+        ),
+      }),
+    });
+    for (const id of ids.slice(0, 99)) {
+      set(container, id, "yes");
+    }
+    expect(Object.keys(collect("questions") as object)).toEqual(ids);
+  });
+
   test("a multiselect too long to send whole is cut at an option, so it stays a list", () => {
     const options = Array.from({ length: 10 }, (_, index) =>
       `${index}`.repeat(600)
@@ -460,5 +506,52 @@ describe("on the canvas", () => {
       expect(screen.getByTestId("part")).toBeTruthy();
       cleanup();
     }
+  });
+});
+
+describe("when the form is reset", () => {
+  const Form = () => (
+    <form>
+      <Questions />
+      <button type="reset">Reset</button>
+    </form>
+  );
+
+  test("every control goes back to blank and collect says so", () => {
+    // The browser puts a checkbox or a select back to its default without an
+    // onChange, so what collect says has to follow the reset.
+    const view = renderPart(<Form />, { event: launch });
+    const { container, collect } = view;
+    set(container, howHeard.id, "A friend");
+    set(container, years.id, "4");
+    set(container, tShirt.id, "M");
+    tick("Mandarin");
+    tick("Yes");
+    expect(collect("questions")).toMatchObject({
+      [howHeard.id]: "A friend",
+      [years.id]: "4",
+      [tShirt.id]: "M",
+      [languages.id]: '["Mandarin"]',
+      [conduct.id]: "true",
+    });
+    fireEvent.click(screen.getByText("Reset"));
+    expect((control(container, howHeard.id) as HTMLInputElement).value).toBe(
+      ""
+    );
+    expect(
+      (control(container, tShirt.id) as unknown as HTMLSelectElement).value
+    ).toBe("");
+    expect((control(container, conduct.id) as HTMLInputElement).checked).toBe(
+      false
+    );
+    expect(
+      (screen.getByRole("checkbox", { name: "Mandarin" }) as HTMLInputElement)
+        .checked
+    ).toBe(false);
+    // only the required questions are sent, blank, for the platform to name
+    expect(collect("questions")).toEqual({
+      [tShirt.id]: "",
+      [conduct.id]: "false",
+    });
   });
 });

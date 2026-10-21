@@ -78,10 +78,12 @@ const Block = ({
   record = canvassLaunch.id,
   renderer,
   withParts = true,
+  withReset = false,
 }: {
   record?: string;
   renderer?: Renderer;
   withParts?: boolean;
+  withReset?: boolean;
 }) => (
   <Sdk renderer={renderer}>
     <RsvpForm record={record} data={events}>
@@ -98,6 +100,7 @@ const Block = ({
         </>
       )}
       <SubmitButton>RSVP</SubmitButton>
+      {withReset && <button type="reset">Start over</button>}
     </RsvpForm>
   </Sdk>
 );
@@ -234,6 +237,42 @@ describe("what the real parts collect", () => {
     fireEvent.submit(getForm(container));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(bodyOf(fetchMock, 1).email_consent).toBe(true);
+  });
+});
+
+describe("a reset control in the form", () => {
+  test("what is posted after it is what the controls show: nothing of what was entered before", async () => {
+    const fetchMock = stubFetch(responseRegistered);
+    const { container } = render(<Block withReset />);
+    fillEverything(container);
+    fireEvent.click(screen.getByRole("button", { name: "Start over" }));
+    // every control is back to blank, the consent box among them
+    expect(
+      (screen.getByLabelText(consentText) as HTMLInputElement).checked
+    ).toBe(false);
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: /Afternoon canvass/,
+        }) as HTMLInputElement
+      ).checked
+    ).toBe(false);
+    expect(container.querySelectorAll('[name^="guests."]')).toHaveLength(0);
+    fill("First name", "Ada");
+    fill("Last name", "Lovelace");
+    fill("Email", "ada@example.org");
+    fireEvent.submit(getForm(container));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(bodyOf(fetchMock)).toEqual({
+      event_id: canvassLaunch.id,
+      first_name: "Ada",
+      last_name: "Lovelace",
+      email: "ada@example.org",
+      answers: { [tShirtQuestionId]: "", [conductQuestionId]: "false" },
+      email_consent: false,
+      page_path: "/",
+      website: "",
+    });
   });
 });
 

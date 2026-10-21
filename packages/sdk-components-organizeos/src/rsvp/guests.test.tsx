@@ -290,3 +290,33 @@ describe("on the canvas", () => {
     expect(view.collect("guests")).toEqual([]);
   });
 });
+
+describe("when the form is reset", () => {
+  test("the rows are gone and collect says so", () => {
+    const view = renderPart(
+      <form>
+        <Guests />
+        <button type="reset">Reset</button>
+      </form>,
+      { event: withGuests }
+    );
+    add();
+    add();
+    fill("guests.0.first_name", "Ada");
+    fill("guests.1.last_name", "Babbage");
+    expect(view.collect("guests")).toHaveLength(2);
+    fireEvent.click(screen.getByText("Reset"));
+    expect(view.container.querySelectorAll("input")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Add a guest" })).toBeTruthy();
+    expect(view.collect("guests")).toEqual([]);
+    // and a new row starts blank
+    add();
+    expect(
+      (
+        document.querySelector(
+          'input[name="guests.0.first_name"]'
+        ) as HTMLInputElement
+      ).value
+    ).toBe("");
+  });
+});
