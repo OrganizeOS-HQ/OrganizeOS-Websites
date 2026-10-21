@@ -374,7 +374,16 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     cannot know an event's shifts or questions and a component cannot repeat
     builder children; their inner elements are styled through `ws:descendant`
     instances (see the template). Each hands the root what it collected, and
-    the root keeps only the keys the endpoint's strict body takes.
+    the root keeps only the keys the endpoint's strict body takes, and the
+    parts bound what they collect: a guest's name to the 100 characters the
+    endpoint takes (the input stops there, and `collect` cuts what autofill put
+    in), a text or textarea answer to 2000 characters while typing, as Website
+    Lite's, and to the endpoint's 5000 when collected, and the answers to 100,
+    the required ones kept first. Answers are serialized as Website Lite sends
+    them, with one difference: a number typed with an exponent ("1e3") is
+    written out as a plain decimal, digit for digit, because the strict endpoint
+    refuses an exponent. One that would not fit in 5000 characters is sent as
+    typed, for the platform to refuse, and a number is never cut.
   - **States** are `initial`, `submitting`, `registered`, `waitlisted`, `full`,
     `ended`, `error` and `unavailable`, on the root's `state` prop and its
     `onStateChange` action, as the Signup Form's. On a published page the form
@@ -406,13 +415,22 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     (`s-maxage=60`), says full. The list may be empty (the platform refuses a
     role without room whatever its siblings hold), which marks every role of the
     shift full, and the visitor can still choose no role or another shift. The
-    endpoint also answers `full` for a picked shift with no room and, on an
-    event with no waitlist, for a party that does not fit, so the Full state is
-    for a request the visitor cannot change to fit (no shifts, and no guests on
-    an event with no waitlist). With shifts in the request the form stays up
-    with "That shift just filled. Pick another, or none." on the shifts, and
-    with guests on an event with no waitlist with "There is not room for every
-    guest. Try with fewer." on the guests.
+    platform measures a role's room, and so `open_roles`, for the visitor and
+    their guests together, so with guests in the request the message is "That
+    role has no room for your whole party. Pick another, or bring fewer
+    guests." and no role is marked full (a role that has no room for three may
+    have room for one, and a mark would outlive the guests the visitor removes);
+    the roles the answer lists are still enabled, since room for the party is
+    room for fewer. The endpoint also answers `full` for a picked shift with no
+    room, which it measures for the whole party on any event, and, on an event
+    with no waitlist, for a party that does not fit, so the Full state is for a
+    request the visitor cannot change to fit (no shifts, and no guests on an
+    event with no waitlist). With shifts in the request the form stays up with
+    "That shift just filled. Pick another, or none." on the shifts, and with
+    guests as well, on an event with no waitlist or with shifts in the request,
+    with "There is not room for every guest. Try with fewer." on the guests. On
+    an event with a waitlist and no shifts a party that does not fit is
+    waitlisted, so a `full` there is never about the guests.
   - **The canvas check** draws a warning on the root for a form inside another
     form or root, no event picked, no `data`, an event that is not in it, a
     missing Field for a required field, a missing Submit Button, required
@@ -618,8 +636,11 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   open builder tab reloads before it can copy a stale token. A Resource on the
   OrganizeOS API base with another read token (a block pasted from another
   org's project) gets this org's token on the next provision. Until then, a
-  pasted block reads the other org's public forms or upcoming events, and a
-  published page shows them.
+  pasted block reads the other org's public forms, events (an RSVP Form binds
+  the Events Resource itself, so it reads the whole list, past events included,
+  and its picker offers them) or upcoming events, and a published page shows
+  them. An RSVP Form's posts are refused all the same (`not_found`): the rsvps
+  endpoint takes the org from the host, never from the event.
 - **Preset ids**: `apps/builder/app/shared/organizeos-preset-ids.ts`, one
   WebCrypto `uuidV5` that the server and the browser share, pinned by tests to
   the ids the replaced `node:crypto` code produced, and `findCatalogResources`,
@@ -751,7 +772,8 @@ The RSVP Form's `record` is a select over the events in its computed `data`
   `shift_ids?`, `shift_role_id?`, `answers?`, `email_consent?`, `page_path` and
   `website`: `guests` carry names only, `answers` are strings by question id (a
   multiselect as a JSON array of strings, a checkbox as `"true"` or `"false"`,
-  anything else as typed), and `website` is the honeypot. The answer is `{ outcome }`
+  a number as a plain decimal with no exponent, anything else as typed), and
+  `website` is the honeypot. The answer is `{ outcome }`
   (`registered` or `waitlisted`, 200) or `{ error, field? }`: `invalid_request`
   (400), `not_found` (404), `invalid_field` (422, with `first_name`,
   `last_name`, `email`, `phone`, `guests`, `shift_ids`, `shift_role_id` or
