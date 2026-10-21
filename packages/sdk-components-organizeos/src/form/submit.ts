@@ -16,9 +16,10 @@ export type OpenRole = { id: string; name: string };
  * field?, openRoles? }` on failure. A network failure or an answer this build
  * cannot read is an error too.
  *
- * `openRoles` is a `role_full` answer's `open_roles`. It is undefined when the
- * answer carries none or none that can be read, and an empty list when the
- * answer says that no role has room: the two are not the same.
+ * `openRoles` is a `role_full` answer's `open_roles`, and no other error's: it
+ * is read from that error alone. It is undefined when the answer carries none
+ * or none that can be read, and an empty list when the answer says that no
+ * role has room: the two are not the same.
  */
 export type PlatformAnswer =
   | { outcome: string }
@@ -73,7 +74,12 @@ const readAnswer = async (response: Response): Promise<PlatformAnswer> => {
       if (typeof payload.field === "string") {
         answer.field = payload.field;
       }
-      const openRoles = readOpenRoles(payload.open_roles);
+      // Only a `role_full` answer has a list of open roles: the platform sends
+      // `open_roles` with that error alone, so it is not read from another.
+      const openRoles =
+        payload.error === "role_full"
+          ? readOpenRoles(payload.open_roles)
+          : undefined;
       if (openRoles !== undefined) {
         answer.openRoles = openRoles;
       }
@@ -141,7 +147,7 @@ export type AnswerStates<State extends string> = {
  * outcome the platform adds later lands in the family's success state and an
  * error it adds later in its error state. `field` names the field an
  * `invalid_field` error is about. `openRoles` passes on a `role_full`
- * answer's list of roles with room, when it has one.
+ * answer's list of roles with room, when it has one, and no other error's.
  */
 export const stateForAnswer = <State extends string>(
   answer: PlatformAnswer,
@@ -163,7 +169,7 @@ export const stateForAnswer = <State extends string>(
   if (answer.error === "invalid_field" && answer.field !== undefined) {
     result.field = answer.field;
   }
-  if (answer.openRoles !== undefined) {
+  if (answer.error === "role_full" && answer.openRoles !== undefined) {
     result.openRoles = answer.openRoles;
   }
   return result;

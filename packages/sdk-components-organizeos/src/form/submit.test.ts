@@ -368,6 +368,41 @@ test("open_roles is read from an error answer only, never from a success", async
   ).toEqual({ outcome: "registered" });
 });
 
+test("open_roles is read from a role_full answer only, never from another error", async () => {
+  for (const error of [
+    "full",
+    "ended",
+    "invalid_field",
+    "not_found",
+    "rate_limited",
+    "something_new",
+  ]) {
+    const answer = await readFixture({
+      status: 409,
+      body: { error, open_roles: [{ id: "a", name: "Driver" }] },
+    });
+    expect(answer).toEqual({ error });
+    expect(answer).not.toHaveProperty("openRoles");
+    // an empty list is not passed on either
+    expect(
+      await readFixture({ status: 409, body: { error, open_roles: [] } })
+    ).not.toHaveProperty("openRoles");
+  }
+  // an answer built by hand is held to the same rule where it is mapped
+  expect(
+    stateForAnswer(
+      { error: "invalid_field", field: "email", openRoles: [] },
+      rsvpStates
+    )
+  ).toEqual({ state: "error", field: "email" });
+  expect(
+    stateForAnswer(
+      { error: "full", openRoles: [{ id: "a", name: "Driver" }] },
+      rsvpStates
+    )
+  ).toEqual({ state: "full" });
+});
+
 test("the answer keeps field and open_roles together when both are sent", async () => {
   expect(
     await readFixture({
