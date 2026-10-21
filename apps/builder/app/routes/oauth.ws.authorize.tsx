@@ -7,7 +7,7 @@ import {
   isBuilderUrl,
 } from "~/shared/router-utils/origins";
 import env from "~/env/env.server";
-import { authenticator } from "~/services/auth.server";
+import { readDashboardSession } from "~/services/auth-strategy/organizeos-session.server";
 import { createCodeToken } from "~/services/token.server";
 import { isUserAuthorizedForProject } from "~/services/builder-access.server";
 import {
@@ -161,7 +161,10 @@ export const loader: LoaderFunction = async ({ request }) => {
 
     const oauthParamsData = parsedOAuthParams.data;
 
-    const sessionData = await authenticator.isAuthenticated(request);
+    // OrganizeOS: read through the session binding check, so a dashboard
+    // session whose OrganizeOS session has ended mints no code (and the
+    // builder does not loop back here) but goes to the login page.
+    const sessionData = await readDashboardSession(request);
 
     if (sessionData) {
       const isAuthorized = await isUserAuthorizedForProject(
@@ -209,6 +212,8 @@ export const loader: LoaderFunction = async ({ request }) => {
           userId: sessionData.userId,
           projectId: oauthParamsData.scope.projectId,
           codeChallenge: oauthParamsData.code_challenge,
+          organizeosSid: sessionData.organizeosSid,
+          organizeosUserId: sessionData.organizeosUserId,
         },
         env.AUTH_WS_CLIENT_SECRET,
         { maxAge: 1000 * 60 * 5 }

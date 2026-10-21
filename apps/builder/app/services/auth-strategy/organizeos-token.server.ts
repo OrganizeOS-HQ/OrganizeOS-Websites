@@ -45,6 +45,13 @@ export type OrganizeosSsoClaims = {
    * converges. Optional for the same reason as entitlements.
    */
   subdomain?: string;
+  /**
+   * The OrganizeOS session (GoTrue session id) that minted the token. The
+   * builder session is bound to it and ends when it does
+   * (organizeos-session.server.ts). Optional for the same reason as
+   * entitlements: a token from an older OrganizeOS carries none.
+   */
+  sid?: string;
 };
 
 /**
@@ -75,6 +82,16 @@ const readSubdomain = (value: unknown): string | undefined =>
   typeof value === "string" && SUBDOMAIN_PATTERN.test(value)
     ? value
     : undefined;
+
+/**
+ * A session id is a UUID. Anything else is treated as absent, so a malformed
+ * claim never reaches the liveness RPC.
+ */
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const readSid = (value: unknown): string | undefined =>
+  typeof value === "string" && UUID_PATTERN.test(value) ? value : undefined;
 
 const EXPECTED_ALG = "ES256";
 const EXPECTED_ISS = "organizeos";
@@ -184,5 +201,6 @@ export const verifyOrganizeosSsoToken = (
     jti: payload.jti,
     entitlements: readEntitlements(payload.entitlements),
     subdomain: readSubdomain(payload.subdomain),
+    sid: readSid(payload.sid),
   };
 };

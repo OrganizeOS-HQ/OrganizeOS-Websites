@@ -94,6 +94,29 @@ describe("verifyOrganizeosSsoToken", () => {
     expect(verify(token).subdomain).toBeUndefined();
   });
 
+  test("returns the sid claim when it is a UUID", () => {
+    const sid = "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b";
+    const token = signES256(
+      { alg: "ES256", typ: "JWT" },
+      { ...validClaims(), sid }
+    );
+    expect(verify(token).sid).toBe(sid);
+  });
+
+  test.each([
+    ["absent", undefined],
+    ["a non-string", 42],
+    ["a non-UUID string", "session-1"],
+    ["a UUID with trailing text", "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b;x"],
+    ["an empty string", ""],
+  ])("treats %s sid claim as absent", (_label, sid) => {
+    const token = signES256(
+      { alg: "ES256", typ: "JWT" },
+      { ...validClaims(), ...(sid === undefined ? {} : { sid }) }
+    );
+    expect(verify(token).sid).toBeUndefined();
+  });
+
   test.each([
     ["a non-object", "yes"],
     ["a non-boolean flag", { collections: "true" }],

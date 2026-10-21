@@ -69,7 +69,13 @@ builderAuthenticator.use(
         );
       }
 
-      return await { userId: accessToken.userId, createdAt: Date.now() };
+      return {
+        userId: accessToken.userId,
+        createdAt: Date.now(),
+        // OrganizeOS: carry the session binding into the project-host session.
+        organizeosSid: accessToken.organizeosSid,
+        organizeosUserId: accessToken.organizeosUserId,
+      };
     },
     (request: Request): OAuth2StrategyOptionsOverrides => {
       const origin = getRequestOrigin(request.url);
