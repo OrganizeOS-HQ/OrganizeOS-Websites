@@ -43,9 +43,15 @@ const afternoonShiftId = requestFull.shift_ids[0];
 const canvasserId = requestFull.shift_role_id;
 const driverId = responseRoleFull.body.open_roles[0].id;
 const tShirtQuestionId = Object.keys(requestFull.answers)[4];
+const numberQuestionId = Object.keys(requestFull.answers)[2];
 
 // The fixtures' events have real dates: the tests pin the clock the block reads.
 const today = new Date("2026-10-21T12:00:00Z");
+
+// A number of this many characters that a number input holds: a run of "1"s
+// that long overflows a double, which a browser's number input refuses, so the
+// digits go after the point.
+const numberOfLength = (length: number) => `0.${"0".repeat(length - 3)}1`;
 
 const Sdk = ({
   renderer,
@@ -689,6 +695,137 @@ describe("field lengths", () => {
     );
     expect(readProbe().errors).toEqual({});
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  describe("an answer over the 5000 characters the endpoint takes", () => {
+    // Questions never cuts a number (that would change it), so it is the one
+    // answer that can reach the root that long
+    const answered = (answers: Record<string, string>) => (
+      <StubPart kind="questions" value={answers} />
+    );
+
+    test("posts nothing and shows the error on that answer", async () => {
+      const fetchMock = answerWith(responseRegistered);
+      const onStateChange = vi.fn();
+      const { container } = render(
+        <Block
+          record={canvassLaunch.id}
+          onStateChange={onStateChange}
+          parts={answered({ [numberQuestionId]: numberOfLength(5001) })}
+        />
+      );
+      fillPerson();
+      fireEvent.submit(getForm(container));
+      await waitFor(() =>
+        expect(onStateChange).toHaveBeenLastCalledWith(
+          "error",
+          "Please check the form and try again."
+        )
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(readProbe().errors).toEqual({
+        [`answers.${numberQuestionId}`]: "Check this answer.",
+      });
+      expect(readProbe().state).toBe("error");
+      // nothing was reported but the error: the form never went to submitting
+      expect(onStateChange).toHaveBeenCalledTimes(1);
+    });
+
+    test("posts at 5000", async () => {
+      const fetchMock = answerWith(responseRegistered);
+      const { container } = render(
+        <Block
+          record={canvassLaunch.id}
+          parts={answered({ [numberQuestionId]: numberOfLength(5000) })}
+        />
+      );
+      fillPerson();
+      fireEvent.submit(getForm(container));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      expect(sentBody(fetchMock).answers).toEqual({
+        [numberQuestionId]: numberOfLength(5000),
+      });
+    });
+
+    test("names the first one over, and a field of the root before an answer", async () => {
+      const fetchMock = answerWith(responseRegistered);
+      const { container } = render(
+        <Block
+          record={canvassLaunch.id}
+          parts={answered({
+            [tShirtQuestionId]: "M",
+            [numberQuestionId]: numberOfLength(5001),
+            [Object.keys(requestFull.answers)[0]]: numberOfLength(5001),
+          })}
+        />
+      );
+      fillPerson();
+      fireEvent.submit(getForm(container));
+      await waitFor(() =>
+        expect(readProbe().errors).toEqual({
+          [`answers.${numberQuestionId}`]: "Check this answer.",
+        })
+      );
+      fill("Phone", "1".repeat(41));
+      fireEvent.submit(getForm(container));
+      await waitFor(() =>
+        expect(readProbe().errors).toEqual({
+          phone: "Enter a valid phone number.",
+        })
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    test("the message clears once the answer fits and the visitor submits again", async () => {
+      const fetchMock = answerWith(responseRegistered);
+      const onStateChange = vi.fn();
+      const view = render(
+        <Block
+          record={canvassLaunch.id}
+          onStateChange={onStateChange}
+          parts={answered({ [numberQuestionId]: numberOfLength(5001) })}
+        />
+      );
+      fillPerson();
+      fireEvent.submit(getForm(view.container));
+      await waitFor(() =>
+        expect(readProbe().errors).toHaveProperty(`answers.${numberQuestionId}`)
+      );
+      view.rerender(
+        <Block
+          record={canvassLaunch.id}
+          onStateChange={onStateChange}
+          parts={answered({ [numberQuestionId]: numberOfLength(5000) })}
+        />
+      );
+      fireEvent.submit(getForm(view.container));
+      await waitFor(() =>
+        expect(onStateChange).toHaveBeenLastCalledWith(
+          "registered",
+          expect.any(String)
+        )
+      );
+      expect(readProbe().errors).toEqual({});
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    test("the canvas and the preview still never post or report", async () => {
+      const fetchMock = answerWith(responseRegistered);
+      const onStateChange = vi.fn();
+      const { container } = render(
+        <Block
+          renderer="preview"
+          record={canvassLaunch.id}
+          onStateChange={onStateChange}
+          parts={answered({ [numberQuestionId]: numberOfLength(5001) })}
+        />
+      );
+      fillPerson();
+      fireEvent.submit(getForm(container));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(onStateChange).not.toHaveBeenCalled();
+    });
   });
 
   test("the canvas and the preview still never post or report", async () => {

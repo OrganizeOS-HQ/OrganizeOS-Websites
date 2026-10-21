@@ -14,11 +14,12 @@ import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import { FormRootContext, useRegisterPart } from "../form/context";
 import { useMergedRef } from "../form/merge-ref";
 import { useFormReset } from "../form/use-form-reset";
-import { useRsvpContext, type CollectedAnswers } from "./context";
+import {
+  maxAnswerLength,
+  useRsvpContext,
+  type CollectedAnswers,
+} from "./context";
 import type { RsvpQuestion } from "./events-data";
-
-/** The most characters of an answer the endpoint's body takes. */
-const maxAnswerLength = 5000;
 
 /** The most answers the endpoint's body takes. */
 const maxAnswers = 100;
@@ -72,7 +73,7 @@ const serializeChosen = (
  * number typed, exactly, even where a double could not hold it ("1e-400" is
  * 0.000...1, not 0). A value that cannot be written out within the 5000
  * characters the endpoint takes, or that is not a number with an exponent at
- * all, is left as typed, for the platform to refuse.
+ * all, is left as typed, for the root or the platform to refuse.
  */
 const toPlainDecimal = (value: string) => {
   const match = /^([+-]?)(\d*)(?:\.(\d*))?e([+-]?\d+)$/i.exec(value);
@@ -111,7 +112,8 @@ const toPlainDecimal = (value: string) => {
  *
  * Text is cut at the 5000 characters the endpoint takes (a control stops at
  * 2000, so only a value set another way is cut). A number is never cut: that
- * would change it, so one too long is sent whole and the platform refuses it.
+ * would change it, so one too long is collected whole and the root refuses it
+ * before posting, with the message under its question.
  */
 const serializeAnswer = (
   question: RsvpQuestion,

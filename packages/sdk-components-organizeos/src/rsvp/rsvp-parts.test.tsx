@@ -36,12 +36,18 @@ import { ShiftOptions } from "./shift-options";
 const [, phoneBank, , canvassLaunch] = events.data;
 const [morningShift, afternoonShift] = canvassLaunch.shifts;
 const driverId = responseRoleFull.body.open_roles[0].id;
+const numberQuestionId = Object.keys(requestFull.answers)[2];
 const tShirtQuestionId = Object.keys(requestFull.answers)[4];
 const languagesQuestionId = Object.keys(requestFull.answers)[5];
 const conductQuestionId = Object.keys(requestFull.answers)[6];
 
 // the fixtures' events have real dates: the tests pin the clock the block reads
 const today = new Date("2026-10-21T12:00:00Z");
+
+// A number of this many characters that a number input holds: a run of "1"s
+// that long overflows a double, which a browser's number input refuses, so the
+// digits go after the point.
+const numberOfLength = (length: number) => `0.${"0".repeat(length - 3)}1`;
 
 const Sdk = ({
   renderer,
@@ -426,6 +432,37 @@ describe("what the platform answers", () => {
     expect(
       container.querySelectorAll("[data-question] [data-message]")
     ).toHaveLength(1);
+  });
+
+  test("a number answer over the 5000 characters the endpoint takes posts nothing and shows under its question", async () => {
+    const fetchMock = stubFetch(responseRegistered);
+    const { container } = render(<Block />);
+    fillEverything(container);
+    const control = container.querySelector(
+      `[name="answers.${numberQuestionId}"]`
+    ) as HTMLInputElement;
+    expect(control.type).toBe("number");
+    fireEvent.change(control, { target: { value: numberOfLength(5001) } });
+    fireEvent.submit(getForm(container));
+    const question = control.closest("[data-question]") as HTMLElement;
+    const message = await within(question).findByText("Check this answer.");
+    expect(message.hasAttribute("data-message")).toBe(true);
+    expect(question.hasAttribute("data-invalid")).toBe(true);
+    expect(control.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      container.querySelectorAll("[data-question] [data-message]")
+    ).toHaveLength(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // at 5000 it posts, whole
+    fireEvent.change(control, { target: { value: numberOfLength(5000) } });
+    fireEvent.submit(getForm(container));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(bodyOf(fetchMock).answers[numberQuestionId]).toBe(
+      numberOfLength(5000)
+    );
+    await waitFor(() =>
+      expect(screen.queryByText("Check this answer.")).toBeNull()
+    );
   });
 
   test("invalid_field for the guests shows in Guests", async () => {

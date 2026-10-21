@@ -30,7 +30,7 @@ import {
   type AnswerStates,
   type OpenRole,
 } from "../form/submit";
-import { RsvpContext, type RsvpContextValue } from "./context";
+import { maxAnswerLength, RsvpContext, type RsvpContextValue } from "./context";
 import {
   resolveRsvpEvent,
   type RsvpEvent,
@@ -181,7 +181,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 // returns more, or something else, cannot make the post a 400 for an unknown
 // key. Lengths and counts are the parts' own to bound: Guests holds a name to
 // the 100 characters the endpoint takes, Questions an answer to 5000 and the
-// answers to 100.
+// answers to 100. The one length a part cannot hold is a number's, which it
+// never cuts (that would change the number), so the root checks the answers
+// before posting (findFieldOverLimit).
 const readGuests = (value: unknown) => {
   const guests: Array<{ first_name: string; last_name: string }> = [];
   for (const row of Array.isArray(value) ? (value as unknown[]) : []) {
@@ -347,11 +349,14 @@ const lacksQuestions = (event: RsvpEvent, parts: readonly FormPart[]) =>
   hasPart(parts, "questions") === false;
 
 /**
- * The first of the root's own fields whose value is longer than the endpoint
- * takes. The Field Input stops typing at the limit, but a value that is set
- * another way (autofill, say) is not stopped, and the endpoint's invalid_request
- * names no field. Measured on the body, so a blank phone, which is left out,
- * never counts.
+ * The first field whose value is longer than the endpoint takes, named as the
+ * endpoint's invalid_field names it: the root's own fields first, then the
+ * answers (`answers.<question id>`). The Field Input stops typing at the limit,
+ * but a value that is set another way (autofill, say) is not stopped, and a
+ * number answer is the one answer Questions never cuts, so it can arrive over
+ * 5000 characters. The endpoint's invalid_request names no field, and the
+ * visitor could never find which to fix. Measured on the body, so a blank
+ * phone, which is left out, never counts.
  */
 const findFieldOverLimit = (body: ReturnType<typeof buildRsvpBody>) => {
   const values: Record<string, string | undefined> = {
@@ -360,11 +365,18 @@ const findFieldOverLimit = (body: ReturnType<typeof buildRsvpBody>) => {
     email: body.email,
     phone: body.phone,
   };
-  return rsvpFields.find(
+  const fieldName = rsvpFields.find(
     (field) =>
       field.maxLength !== undefined &&
       (values[field.name]?.length ?? 0) > field.maxLength
   )?.name;
+  if (fieldName !== undefined) {
+    return fieldName;
+  }
+  const questionId = Object.entries(body.answers ?? {}).find(
+    ([, answer]) => answer.length > maxAnswerLength
+  )?.[0];
+  return questionId === undefined ? undefined : `answers.${questionId}`;
 };
 
 /**

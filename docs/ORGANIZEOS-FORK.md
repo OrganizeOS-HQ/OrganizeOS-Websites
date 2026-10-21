@@ -382,8 +382,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     the required ones kept first. Answers are serialized as Website Lite sends
     them, with one difference: a number typed with an exponent ("1e3") is
     written out as a plain decimal, digit for digit, because the strict endpoint
-    refuses an exponent. One that would not fit in 5000 characters is sent as
-    typed, for the platform to refuse, and a number is never cut.
+    refuses an exponent. A number is never cut, and one that would not fit in
+    5000 characters is collected as typed, for the root to refuse (see What a
+    submit does).
   - **States** are `initial`, `submitting`, `registered`, `waitlisted`, `full`,
     `ended`, `error` and `unavailable`, on the root's `state` prop and its
     `onStateChange` action, as the Signup Form's. On a published page the form
@@ -395,11 +396,12 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     Field Input for `first_name`, `last_name` or `email` is missing, or when the
     event has required questions and no Questions part: the platform's answer
     would name a field the page has no part to show it on. A value longer than
-    the endpoint takes (set by autofill, say, which `maxlength` does not stop)
-    posts nothing and shows that field's message. The body is `event_id`,
-    `first_name`, `last_name`, `email`, `phone` (left out when blank), `guests`,
-    `shift_ids`, `shift_role_id` and `answers` (each left out when empty),
-    `email_consent` (`false` without the part), `page_path`
+    the endpoint takes (set by autofill, say, which `maxlength` does not stop,
+    or a number answer, which is never cut) posts nothing and shows that
+    field's message, or the message under that answer's question. The body is
+    `event_id`, `first_name`, `last_name`, `email`, `phone` (left out when
+    blank), `guests`, `shift_ids`, `shift_role_id` and `answers` (each left out
+    when empty), `email_consent` (`false` without the part), `page_path`
     (`window.location.pathname`) and `website` (the honeypot).
   - **Answers.** `registered` and `waitlisted` show their states, and a
     successful RSVP goes to the Page prop's page instead when After submit is

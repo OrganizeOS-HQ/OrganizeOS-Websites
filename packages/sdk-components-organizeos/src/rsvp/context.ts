@@ -61,5 +61,12 @@ export type CollectedShifts = {
  */
 export type CollectedAnswers = Record<string, string>;
 
+/**
+ * The most characters of an answer the endpoint's body takes. Questions bounds
+ * the answers it collects to it (a number is the one it cannot cut), and the
+ * root checks the answers it is handed against it before posting.
+ */
+export const maxAnswerLength = 5000;
+
 /** What Email Consent collects: whether the box is checked. */
 export type CollectedConsent = boolean;
