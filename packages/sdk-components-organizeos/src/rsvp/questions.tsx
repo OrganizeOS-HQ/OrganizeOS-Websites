@@ -12,6 +12,7 @@ import {
 } from "react";
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import { FormRootContext, useRegisterPart } from "../form/context";
+import { useMergedRef } from "../form/merge-ref";
 import { useFormReset } from "../form/use-form-reset";
 import { useRsvpContext, type CollectedAnswers } from "./context";
 import type { RsvpQuestion } from "./events-data";
@@ -35,7 +36,20 @@ type Draft = Readonly<Record<string, Answer>>;
 
 const distinct = (options: readonly string[]) => Array.from(new Set(options));
 
-/** A multiselect as a JSON array in the question's option order, cut at an option if it is too long to send. */
+/**
+ * Whether a multiselect with these options ticked, in the question's option
+ * order, is too long to send whole.
+ */
+const isTooLong = (chosen: readonly string[]) =>
+  JSON.stringify(chosen).length > maxAnswerLength;
+
+/**
+ * A multiselect as a JSON array in the question's option order. The boxes stop
+ * taking options before the array is too long to send, so the cut here, at an
+ * option so that it stays a list, is for what they could not stop: options
+ * ticked before the script ran, or an event whose options changed under an
+ * answer.
+ */
 const serializeChosen = (
   question: RsvpQuestion,
   answer: Answer | undefined
@@ -44,10 +58,29 @@ const serializeChosen = (
   let chosen = distinct(question.options).filter((option) =>
     ticked.includes(option)
   );
-  while (chosen.length > 0 && JSON.stringify(chosen).length > maxAnswerLength) {
+  while (chosen.length > 0 && isTooLong(chosen)) {
     chosen = chosen.slice(0, -1);
   }
   return chosen;
+};
+
+/**
+ * A number the way the endpoint reads one: digits with an optional sign and
+ * fraction. A number input also takes an exponent ("1e3"), which the endpoint
+ * refuses, so one is written out. A value that cannot be written out as exactly
+ * the same number (one too small to tell from zero, say) is left as typed, for
+ * the platform to refuse.
+ */
+const toPlainDecimal = (value: string) => {
+  if (!/e/i.test(value)) {
+    return value;
+  }
+  const number = Number(value);
+  const plain = number.toLocaleString("en-US", {
+    useGrouping: false,
+    maximumFractionDigits: 20,
+  });
+  return Number(plain) === number ? plain : value;
 };
 
 /**
@@ -86,7 +119,8 @@ const serializeAnswer = (
       if (value.trim() === "" && !question.required) {
         return;
       }
-      return value.slice(0, maxAnswerLength);
+      const sent = question.type === "number" ? toPlainDecimal(value) : value;
+      return sent.slice(0, maxAnswerLength);
     }
   }
 };
@@ -197,6 +231,12 @@ const QuestionGroup = ({
       break;
     case "multiselect": {
       const ticked = Array.isArray(answer) ? answer : [];
+      // an option that would make the answer too long to send is not offered,
+      // or it would look ticked and not be sent
+      const wouldOverflow = (option: string) =>
+        isTooLong(
+          options.filter((item) => ticked.includes(item) || item === option)
+        );
       control = (
         <div
           role="group"
@@ -210,6 +250,7 @@ const QuestionGroup = ({
                 name={name}
                 value={option}
                 checked={ticked.includes(option)}
+                disabled={!ticked.includes(option) && wouldOverflow(option)}
                 {...invalid}
                 onChange={(event) =>
                   onChange(
@@ -318,8 +359,11 @@ type QuestionsProps = ComponentProps<"div">;
  * text, required marker, a control for its type and a message for the platform's
  * refusal of its answer. Renders nothing for an event with no questions, except
  * on the canvas, where the part is always there to select. A form reset clears
- * the answers. `collect` returns the answers by question id, serialized as
- * Website Lite sends them, without the blank optional ones.
+ * the answers. A multiselect stops offering options once the answer would be too
+ * long to send. Answers already in the page when it hydrates (a browser restoring
+ * the form, or a visitor who got there first) are kept. `collect` returns the
+ * answers by question id, serialized as Website Lite sends them, without the
+ * blank optional ones.
  */
 export const Questions = forwardRef<ElementRef<"div">, QuestionsProps>(
   (
@@ -333,8 +377,10 @@ export const Questions = forwardRef<ElementRef<"div">, QuestionsProps>(
     const event = useRsvpContext()?.event;
     const questions = event?.questions ?? [];
     const [draft, setDraft] = useState<Draft>({});
+    const ownRef = useRef<HTMLDivElement | null>(null);
+    const mergedRef = useMergedRef(ref, ownRef);
     // a browser's reset puts a checkbox or a select back without an onChange
-    const listRef = useFormReset<HTMLDivElement>(() => setDraft({}), ref);
+    const listRef = useFormReset<HTMLDivElement>(() => setDraft({}), mergedRef);
 
     // `collect` is stable, so the part registers once; it reads the latest
     // questions and answers.
@@ -342,6 +388,46 @@ export const Questions = forwardRef<ElementRef<"div">, QuestionsProps>(
     useLayoutEffect(() => {
       latest.current = { questions, draft };
     });
+    // React keeps what a hydrated control holds and fires no onChange, so an
+    // answer entered before the script ran (a click that came first, or the
+    // browser restoring the form) is in the page and not in the draft, and
+    // would be shown and not sent. This runs after the hydration commit, while
+    // the controls still hold it, and finds nothing on a client render. It
+    // lists the controls and compares their names, so an id is never built
+    // into a selector.
+    useLayoutEffect(() => {
+      const element = ownRef.current;
+      if (element === null) {
+        return;
+      }
+      const all = Array.from(
+        element.querySelectorAll<HTMLInputElement>("input, select, textarea")
+      );
+      const restored: Record<string, Answer> = {};
+      for (const question of latest.current.questions) {
+        const controls = all.filter(
+          (control) => control.name === `answers.${question.id}`
+        );
+        if (question.type === "multiselect") {
+          const ticked = controls
+            .filter((box) => box.checked)
+            .map((box) => box.value);
+          if (ticked.length > 0) {
+            // the boxes past what can be sent are put back by the render this causes
+            restored[question.id] = serializeChosen(question, ticked);
+          }
+        } else if (question.type === "checkbox") {
+          if (controls[0]?.checked === true) {
+            restored[question.id] = true;
+          }
+        } else if (controls[0] !== undefined && controls[0].value !== "") {
+          restored[question.id] = controls[0].value;
+        }
+      }
+      if (Object.keys(restored).length > 0) {
+        setDraft(restored);
+      }
+    }, []);
     const collect = useCallback(
       () => serializeAnswers(latest.current.questions, latest.current.draft),
       []

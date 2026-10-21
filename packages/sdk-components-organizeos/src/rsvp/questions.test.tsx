@@ -285,6 +285,37 @@ describe("on a published site", () => {
     expect(collect("questions")).toEqual({ a: "  Ada ", r: "  " });
   });
 
+  test("a number is sent as a plain decimal: the browser accepts an exponent the platform refuses", () => {
+    const event = makeEvent({
+      questions: [makeQuestion("n", { type: "number" })],
+    });
+    const { container, collect } = renderPart(<Questions />, { event });
+    const answers: [string, string][] = [
+      ["1e3", "1000"],
+      ["1E3", "1000"],
+      ["-2.5e2", "-250"],
+      ["1.5e-3", "0.0015"],
+      // already plain: sent as typed
+      ["12.50", "12.50"],
+      ["-3", "-3"],
+      [".5", ".5"],
+    ];
+    for (const [typed, sent] of answers) {
+      set(container, "n", typed);
+      expect(collect("questions")).toEqual({ n: sent });
+    }
+  });
+
+  test("a number too small to write as a plain decimal is sent as typed, for the platform to refuse", () => {
+    const event = makeEvent({
+      questions: [makeQuestion("n", { type: "number" })],
+    });
+    const { container, collect } = renderPart(<Questions />, { event });
+    // written out it would be 0
+    set(container, "n", "1e-30");
+    expect(collect("questions")).toEqual({ n: "1e-30" });
+  });
+
   test("a select answer that is not an option any more is no answer", () => {
     const event = makeEvent({
       questions: [makeQuestion("s", { type: "select", options: ["S", "M"] })],
@@ -371,7 +402,8 @@ describe("on a published site", () => {
     expect(Object.keys(collect("questions") as object)).toEqual(ids);
   });
 
-  test("a multiselect too long to send whole is cut at an option, so it stays a list", () => {
+  test("a multiselect stops taking options once the answer would be too long to send: what is ticked is what is sent", () => {
+    // 600 characters each: eight fit in the 5000 the endpoint takes, a ninth does not
     const options = Array.from({ length: 10 }, (_, index) =>
       `${index}`.repeat(600)
     );
@@ -381,13 +413,50 @@ describe("on a published site", () => {
       }),
     });
     for (const box of screen.getAllByRole("checkbox")) {
-      fireEvent.click(box);
+      // a visitor cannot click a disabled box
+      if (!(box as HTMLInputElement).disabled) {
+        fireEvent.click(box);
+      }
     }
+    const boxes = screen.getAllByRole("checkbox") as HTMLInputElement[];
     const sent = (collect("questions") as Record<string, string>).m;
     expect(sent.length).toBeLessThanOrEqual(5000);
-    const parsed: unknown = JSON.parse(sent);
-    expect(parsed).toEqual(options.slice(0, (parsed as string[]).length));
-    expect((parsed as string[]).length).toBeGreaterThan(0);
+    const parsed = JSON.parse(sent) as string[];
+    expect(parsed).toEqual(options.slice(0, 8));
+    // every box that shows ticked is in the list, and the first that would not fit is not
+    expect(boxes.filter((box) => box.checked).map((box) => box.value)).toEqual(
+      parsed
+    );
+    expect(boxes[8].checked).toBe(false);
+    expect(boxes[8].disabled).toBe(true);
+    // the ticked ones stay enabled, so one can be unticked to make room
+    expect(boxes[7].disabled).toBe(false);
+    fireEvent.click(boxes[0]);
+    expect(boxes[8].disabled).toBe(false);
+    fireEvent.click(boxes[8]);
+    const next = JSON.parse(
+      (collect("questions") as Record<string, string>).m
+    ) as string[];
+    expect(next).toEqual(options.slice(1, 9));
+    expect(boxes[9].disabled).toBe(true);
+  });
+
+  test("an option too long to ever be sent is not offered", () => {
+    const { collect } = renderPart(<Questions />, {
+      event: makeEvent({
+        questions: [
+          makeQuestion("m", {
+            type: "multiselect",
+            options: ["a".repeat(5000), "fine"],
+          }),
+        ],
+      }),
+    });
+    const [long, fine] = screen.getAllByRole("checkbox") as HTMLInputElement[];
+    expect(long.disabled).toBe(true);
+    expect(fine.disabled).toBe(false);
+    fireEvent.click(fine);
+    expect(collect("questions")).toEqual({ m: '["fine"]' });
   });
 
   test("collect is a stable function, so the part registers once", () => {

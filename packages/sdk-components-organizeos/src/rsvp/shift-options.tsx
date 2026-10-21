@@ -11,6 +11,7 @@ import {
 } from "react";
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import { FormRootContext, useRegisterPart } from "../form/context";
+import { useMergedRef } from "../form/merge-ref";
 import { useFormReset } from "../form/use-form-reset";
 import { useRsvpContext, type CollectedShifts } from "./context";
 import type { RsvpRole, RsvpShift } from "./events-data";
@@ -125,9 +126,11 @@ type ShiftOptionsProps = ComponentProps<"div">;
  * shows them; a role is disabled when the latest `role_full` answer found it
  * full, or when the event data marks it full and the answer did not list it
  * open. Once 50 are ticked, the most the endpoint takes, the others are disabled
- * until one is unticked. A form reset unticks them all. Renders nothing for an
- * event with no shifts, except on the canvas, where the part is always there to
- * select. `collect` returns the shifts ticked and the role chosen.
+ * until one is unticked. Shifts already ticked in the page when it hydrates (a
+ * browser restoring the form, or a visitor who got there first) stay ticked. A
+ * form reset unticks them all. Renders nothing for an event with no shifts,
+ * except on the canvas, where the part is always there to select. `collect`
+ * returns the shifts ticked and the role chosen.
  */
 export const ShiftOptions = forwardRef<ElementRef<"div">, ShiftOptionsProps>(
   (
@@ -147,11 +150,30 @@ export const ShiftOptions = forwardRef<ElementRef<"div">, ShiftOptionsProps>(
     const shifts = event?.shifts ?? [];
     const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set());
     const [chosenRoleId, setChosenRoleId] = useState<string>();
+    const ownRef = useRef<HTMLDivElement | null>(null);
+    const mergedRef = useMergedRef(ref, ownRef);
     // a browser's reset unticks the boxes without an onChange
     const listRef = useFormReset<HTMLDivElement>(() => {
       setTicked(new Set());
       setChosenRoleId(undefined);
-    }, ref);
+    }, mergedRef);
+    // React keeps what a hydrated control holds and fires no onChange, so a box
+    // that was ticked before the script ran (a click that came first, or the
+    // browser restoring the form) is ticked in the page and not in the state,
+    // and would be shown and not sent. This runs after the hydration commit,
+    // while those boxes still hold their ticks, and finds nothing on a client
+    // render. The boxes past the cap are put back by the render it causes.
+    useLayoutEffect(() => {
+      const restored = Array.from(
+        ownRef.current?.querySelectorAll<HTMLInputElement>(
+          'input[name="shift_ids"]:checked'
+        ) ?? [],
+        (box) => box.value
+      );
+      if (restored.length > 0) {
+        setTicked(new Set(restored.slice(0, maxShiftIds)));
+      }
+    }, []);
 
     // What is ticked and still on offer, in the event's order: a shift that the
     // data now says is full, or that is gone from it, is neither shown ticked
