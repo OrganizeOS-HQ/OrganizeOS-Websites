@@ -1,4 +1,4 @@
-> Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit 7ada55ccb): change both copies together.
+> Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit e6146db7b): change both copies together.
 
 # Site component contract fixtures
 
@@ -20,6 +20,24 @@ additive, or it ships under a new endpoint version.
   checkbox field is sent as the string `"true"` when checked and `""` when not,
   as the Website Lite form sends it.
 - `signups/response-*.json`: `{ "status", "body" }` for each outcome and error.
+- `rsvps/request-*.json`: bodies of `POST /api/public/site/v1/rsvps`, for the
+  events of `events.json`. `request-minimal.json` is an event with no shifts,
+  questions or guests; `request-full.json` is the event that has them all: a
+  guest, a shift with a role, one answer of each question type (a multiselect as
+  a JSON array of strings, a checkbox as `"true"`, anything else as typed) and
+  `email_consent: true`.
+- `rsvps/response-*.json`: `{ "status", "body" }` for each outcome and error:
+  `registered` and `waitlisted` (200), `full`, `ended` and `role_full` (409, the
+  latter with its open roles, which may be an empty list), `invalid_field` (422,
+  with the field, here an answer's `answers.<question id>`), `invalid_request`
+  (400), `not_found` (404), `rate_limited` (429) and `unavailable` (503). A
+  `role_full` answer never lists the role the request chose, so
+  `response-role-full.json` answers `request-full.json`'s Canvasser with its
+  sibling Driver: a block marks Canvasser full and leaves Driver open.
+  `events.json` lists Driver as `full` because the listing is a snapshot, and a
+  `role_full` answer reflects the moment of the post. `response-full.json`
+  stands for an event with no room and no waitlist, or a selected shift with no
+  room.
 - `forms.json`: the body of `GET /v1/forms`.
 - `events.json`: the body of `GET /v1/events`, as the route lists it: soonest
   first, with the event's own time zone, and the ended event the
@@ -27,4 +45,12 @@ additive, or it ships under a new endpoint version.
   would change `url` to the id fallback, is null in at least one event, so a
   copy's schema is held to it. (`slug` and `end_time` are both NOT NULL in the
   events table; the fixture keeps one null `end_time` anyway, to hold the DTO's
-  defensive `.nullable()` and the `?upcoming=true` no-end-time branch.)
+  defensive `.nullable()` and the `?upcoming=true` no-end-time branch.) Each
+  event carries its registration details: `waitlist`, `full`, `max_guests`,
+  `shifts` (each with its `roles`) and `questions`. One event has a waitlist,
+  guests allowed, a full shift, a shift with two roles of which one is full, and
+  one question of each type; another is full with no waitlist; the rest have no
+  shifts or questions. A shift, a role and a question each hold a null in the
+  nullable keys (`description`, `help_text`), and no shift or role count, leader
+  or skills appears anywhere (a shift and a role say only whether they are
+  `full`).
