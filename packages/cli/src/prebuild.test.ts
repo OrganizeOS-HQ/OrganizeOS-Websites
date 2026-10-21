@@ -9,6 +9,11 @@ import {
 } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
+import * as React from "react";
+import type { ComponentType } from "react";
+import * as jsxRuntime from "react/jsx-runtime";
+import { renderToStaticMarkup } from "react-dom/server";
+import { transformWithEsbuild } from "vite";
 import { bundleVersion } from "@webstudio-is/protocol";
 import { encodeDataSourceVariable } from "@webstudio-is/sdk";
 import { generateRedirectsModule, prebuild } from "./prebuild";
@@ -515,6 +520,365 @@ describe("prebuild", () => {
           "utf8"
         )
       );
+    });
+
+    // Owner decision of 2026-10-15: AGPL-3.0 section 13 asks that the offer be
+    // prominent, so besides the head links every html page ends its <body>
+    // with a small visible "Source" link. The <body> is rendered by the
+    // generated Page (its Body component, which the byte-identical
+    // sdk-components-react-router package owns), so the route appends the link
+    // to the children of the element Page returns.
+    describe("ends every html page's body with a visible Source link", () => {
+      /** Code with its whitespace collapsed, so prettier's wrapping is no part of a test. */
+      const compact = (code: string) => code.replace(/\s+/g, " ");
+
+      /** The element the route renders for the link: the wrapper and its anchor. */
+      const getSourceOffer = (route: string) =>
+        compact(route).match(
+          /<div [^>]*data-organizeos-source-offer[^>]*>.*?<\/div>/
+        )?.[0] ?? "";
+
+      /** Where the link goes: the value of the constant its href names. */
+      const getLinkTarget = (route: string) => {
+        const name = getSourceOffer(route).match(/<a [^>]*href=\{(\w+)\}/)?.[1];
+        return route.match(new RegExp(`const ${name} = "([^"]*)";`))?.[1];
+      };
+
+      test("it links the fork at the commit the publish workflow built", async () => {
+        vi.stubEnv("GITHUB_REPOSITORY", "OrganizeOS-HQ/websites-builder");
+        vi.stubEnv("GITHUB_SHA", sha);
+
+        const { route } = await prebuildLinks();
+        const offer = getSourceOffer(route);
+
+        expect(offer).toContain("data-organizeos-source-offer");
+        // the code-repository relation only: the anchor's target is a source
+        // tree, not a license document, so it makes no license claim (the
+        // head's license link names the AGPL text)
+        expect(offer).toMatch(/<a [^>]*rel="code-repository"/);
+        expect(offer).not.toMatch(/rel="[^"]*license/);
+        expect(offer).toContain(`title="Source code of this site (AGPL-3.0)"`);
+        expect(offer).toContain(
+          `aria-label="Source code of this site (AGPL-3.0)"`
+        );
+        // the visible text
+        expect(offer).toMatch(/>\s*Source\s*<\/a>/);
+        expect(getLinkTarget(route)).toBe(`${repository}/tree/${sha}`);
+        expect(route).not.toContain("__ORGANIZEOS_SOURCE_URL__");
+      });
+
+      test("without a commit it links the fork's repository", async () => {
+        vi.stubEnv("GITHUB_REPOSITORY", undefined);
+        vi.stubEnv("GITHUB_SHA", undefined);
+
+        const { route } = await prebuildLinks();
+
+        expect(getSourceOffer(route)).toContain("data-organizeos-source-offer");
+        expect(getLinkTarget(route)).toBe(repository);
+      });
+
+      test("it is the last of the page's content in the body, before the scripts the Body appends, and the page's Body is where it goes", async () => {
+        const { route } = await prebuildLinks();
+        const code = compact(route);
+
+        // The page is rendered through the wrapper that appends the link ...
+        expect(code).toContain(
+          "<PageWithSourceOffer key={url} system={system} />"
+        );
+        expect(code).not.toContain("<Page key={url}");
+        // ... after the page's own children, never before them.
+        const children = code.indexOf("page.props.children");
+        const link = code.indexOf("<SourceOffer", children);
+        expect(children).toBeGreaterThan(-1);
+        expect(link).toBeGreaterThan(children);
+      });
+
+      // The tests above read the route's text. These render it: the
+      // PageWithSourceOffer the site ships, around the generated Page, whose
+      // root is the real Body of @webstudio-is/sdk-components-react-router.
+      // Only react-router's Scripts and ScrollRestoration are stand-ins (the
+      // real ones need a router); they render the <script> elements the real
+      // Body puts after its children.
+      describe("rendered", () => {
+        type Wrapper = ComponentType<{ system: unknown }>;
+
+        /** Runs a TSX module as CommonJS, resolving its imports from `imports`. */
+        const runModule = async (
+          code: string,
+          imports: Record<string, unknown>
+        ): Promise<Record<string, unknown>> => {
+          const { code: js } = await transformWithEsbuild(code, "module.tsx", {
+            loader: "tsx",
+            format: "cjs",
+            jsx: "automatic",
+          });
+          const module = { exports: {} as Record<string, unknown> };
+          const load = (id: string) => {
+            if (id in imports === false) {
+              throw Error(`"${id}" is not available to the module`);
+            }
+            return imports[id];
+          };
+          new Function("module", "exports", "require", js)(
+            module,
+            module.exports,
+            load
+          );
+          return module.exports;
+        };
+
+        /** The route's PageWithSourceOffer, as the site ships it, around `Page`. */
+        const loadWrapper = async (route: string, Page: unknown) => {
+          const start = route.indexOf("const organizeosSourceUrl");
+          const wrapper = route.indexOf("const PageWithSourceOffer", start);
+          const end = route.indexOf("\n};\n", wrapper) + "\n};\n".length;
+          const reactImport = route.match(
+            /import \{[^}]*\bisValidElement\b[^}]*\} from "react";/
+          )?.[0];
+          expect(start).toBeGreaterThan(-1);
+          expect(wrapper).toBeGreaterThan(start);
+          expect(end).toBeGreaterThan(wrapper);
+          expect(reactImport).toBeDefined();
+          const exports = await runModule(
+            [
+              reactImport,
+              `import { Page } from "./page";`,
+              route.slice(start, end),
+              `export { PageWithSourceOffer };`,
+            ].join("\n"),
+            {
+              react: React,
+              "react/jsx-runtime": jsxRuntime,
+              "./page": { Page },
+            }
+          );
+          return exports.PageWithSourceOffer as Wrapper;
+        };
+
+        /** The generated Page of the home page, rendering `Body` as its root. */
+        const loadGeneratedPage = async (Body: unknown) => {
+          const exports = await runModule(
+            await readFile(join("app", "__generated__", "_index.tsx"), "utf8"),
+            {
+              react: React,
+              "react/jsx-runtime": jsxRuntime,
+              "@webstudio-is/react-sdk/runtime": await import(
+                "@webstudio-is/react-sdk/runtime"
+              ),
+              "@webstudio-is/sdk-components-react-router": { Body },
+            }
+          );
+          return exports.Page;
+        };
+
+        /** The real Body, with react-router's script elements stood in. */
+        const importBody = async () => {
+          vi.resetModules();
+          vi.doMock("react-router", async (importOriginal) => ({
+            ...(await importOriginal<typeof import("react-router")>()),
+            Scripts: () =>
+              React.createElement("script", { "data-scripts": "" }),
+            ScrollRestoration: () =>
+              React.createElement("script", { "data-scroll-restoration": "" }),
+          }));
+          const { Body } = await import(
+            "@webstudio-is/sdk-components-react-router"
+          );
+          return Body;
+        };
+
+        afterEach(() => {
+          vi.doUnmock("react-router");
+          vi.resetModules();
+        });
+
+        const renderInHtml = (element: React.ReactElement) =>
+          renderToStaticMarkup(
+            React.createElement(
+              "html",
+              null,
+              React.createElement("head"),
+              element
+            )
+          );
+
+        test("the link is inside the <body>, after the page's content and before the scripts", async () => {
+          await writeSiteData(
+            createSiteData({
+              instances: [
+                [
+                  "root",
+                  {
+                    id: "root",
+                    component: "Body",
+                    children: [
+                      { type: "id", value: "first" },
+                      { type: "id", value: "second" },
+                    ],
+                  },
+                ],
+                [
+                  "first",
+                  {
+                    id: "first",
+                    component: elementComponent,
+                    tag: "p",
+                    children: [],
+                  },
+                ],
+                [
+                  "second",
+                  {
+                    id: "second",
+                    component: elementComponent,
+                    tag: "p",
+                    children: [],
+                  },
+                ],
+              ],
+            })
+          );
+          const { route } = await prebuildLinks();
+          const PageWithSourceOffer = await loadWrapper(
+            route,
+            await loadGeneratedPage(await importBody())
+          );
+
+          const html = renderInHtml(
+            React.createElement(PageWithSourceOffer, { system: {} })
+          );
+
+          // <body> comes right after <head> and nothing follows it: the link
+          // is not a sibling of the page's root under <html>
+          expect(html).toMatch(/^<html><head><\/head><body[ >]/);
+          expect(html).toMatch(/<\/body><\/html>$/);
+          const body = html.slice(
+            html.indexOf("<body"),
+            html.lastIndexOf("</body>")
+          );
+          expect(body.match(/data-organizeos-source-offer/g)).toHaveLength(1);
+          // the wrapper is not hidden from sight or from assistive technology
+          expect(body).not.toMatch(
+            /<div data-organizeos-source-offer=""[^>]*\s(hidden|aria-hidden)[\s=>]/
+          );
+          // the page's two paragraphs, the link, then the scripts
+          expect(body).toMatch(
+            /^<body[^>]*><p [^>]*><\/p><p [^>]*><\/p><div data-organizeos-source-offer=""[^>]*><a [^>]*>Source<\/a><\/div><script data-scripts=""><\/script><script data-scroll-restoration=""><\/script>$/
+          );
+        });
+
+        test("it renders what Page renders when that is not an element", async () => {
+          const { route } = await prebuildLinks();
+          const PageWithSourceOffer = await loadWrapper(route, () => null);
+
+          expect(
+            renderToStaticMarkup(
+              React.createElement(PageWithSourceOffer, { system: {} })
+            )
+          ).toBe("");
+        });
+      });
+
+      test("it styles itself inline, small, and never overlays the design", async () => {
+        const { route } = await prebuildLinks();
+        const offer = getSourceOffer(route);
+
+        for (const declaration of [
+          `display: "block"`,
+          `textAlign: "center"`,
+          `fontSize: "12px"`,
+          `lineHeight: 1.5`,
+          `padding: "8px"`,
+          `opacity: 0.7`,
+          `color: "inherit"`,
+          // in a grid body it fills a whole row instead of the next cell
+          `gridColumn: "1 / -1"`,
+        ]) {
+          expect(offer).toContain(declaration);
+        }
+        expect(offer).not.toMatch(/position|zIndex|float|top:|bottom:/);
+        // visible: nothing hides it from a sighted visitor or from assistive
+        // technology, which would defeat the point of a prominent offer
+        expect(offer).not.toMatch(
+          /\bhidden\b|visibility|aria-hidden|clip|display: "none"/
+        );
+        // no class: nothing for the org's CSS to reach, nothing of ours to leak
+        expect(offer).not.toContain("className");
+      });
+
+      test("the xml and text routes do not carry it", async () => {
+        await writeSiteData(
+          createSiteData({
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: "Home",
+                path: "",
+                rootInstanceId: "root",
+                meta: {},
+              },
+              {
+                id: "feed",
+                name: "Feed",
+                title: "Feed",
+                path: "/feed.xml",
+                rootInstanceId: "xml-root",
+                meta: { documentType: "xml" },
+              },
+              {
+                id: "notes",
+                name: "Notes",
+                title: "Notes",
+                path: "/notes.txt",
+                rootInstanceId: "root",
+                meta: { documentType: "text" },
+              },
+            ],
+            instances: [
+              ["root", { id: "root", component: "Box", children: [] }],
+              [
+                "xml-root",
+                {
+                  id: "xml-root",
+                  component: "Box",
+                  children: [{ type: "id", value: "xml-feed" }],
+                },
+              ],
+              [
+                "xml-feed",
+                {
+                  id: "xml-feed",
+                  component: elementComponent,
+                  tag: "rss",
+                  children: [],
+                },
+              ],
+            ],
+          })
+        );
+        await prebuild({
+          assets: false,
+          template: ["react-router", "react-router-vercel"],
+        });
+
+        const html = await readFile(
+          join("app", "routes", "_index.tsx"),
+          "utf8"
+        );
+        const xml = await readFile(
+          join("app", "routes", "[feed.xml]._index.tsx"),
+          "utf8"
+        );
+        const text = await readFile(
+          join("app", "routes", "[notes.txt]._index.tsx"),
+          "utf8"
+        );
+
+        expect(html).toContain("data-organizeos-source-offer");
+        expect(xml).not.toContain("data-organizeos-source-offer");
+        expect(text).not.toContain("data-organizeos-source-offer");
+      });
     });
   });
 
