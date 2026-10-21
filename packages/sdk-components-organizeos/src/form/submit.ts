@@ -17,8 +17,8 @@ export type OpenRole = { id: string; name: string };
  * cannot read is an error too.
  *
  * `openRoles` is a `role_full` answer's `open_roles`. It is undefined when the
- * answer carries none, and an empty list when the answer says that no role has
- * room: the two are not the same.
+ * answer carries none or none that can be read, and an empty list when the
+ * answer says that no role has room: the two are not the same.
  */
 export type PlatformAnswer =
   | { outcome: string }
@@ -32,8 +32,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * the platform moves on. Anything that is not a list is no answer at all
  * (undefined). In a list, an entry without a non-empty string `id` and a
  * string `name` is skipped, and only those two keys are kept: the list is
- * `[{ id, name }]` by contract and anything else in an entry is not ours. So a
- * list with no readable entry is an empty list, which says no role has room.
+ * `[{ id, name }]` by contract and anything else in an entry is not ours. Only
+ * a list that is empty to begin with says no role has room: a list that had
+ * entries but none readable did not say, so it is undefined too.
  */
 const readOpenRoles = (value: unknown): OpenRole[] | undefined => {
   if (Array.isArray(value) === false) {
@@ -50,7 +51,10 @@ const readOpenRoles = (value: unknown): OpenRole[] | undefined => {
       roles.push({ id: entry.id, name: entry.name });
     }
   }
-  return roles;
+  // `[]` says no role has room, so only a literal `[]` may come out as one.
+  return roles.length === 0 && (value as unknown[]).length > 0
+    ? undefined
+    : roles;
 };
 
 const readAnswer = async (response: Response): Promise<PlatformAnswer> => {

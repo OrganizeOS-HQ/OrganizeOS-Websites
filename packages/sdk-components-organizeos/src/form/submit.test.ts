@@ -337,6 +337,25 @@ test("a malformed entry of open_roles is skipped, the others are kept", async ()
   });
 });
 
+test("an open_roles with entries but none readable did not say: it is not an empty list", async () => {
+  for (const openRoles of [
+    [{ role_id: "a", role_name: "x" }],
+    [null],
+    [{}],
+    [{ id: "", name: "Driver" }],
+    [{ id: 3, name: "Driver" }, "Greeter"],
+  ]) {
+    const answer = await readFixture({
+      status: 409,
+      body: { error: "role_full", open_roles: openRoles },
+    });
+    expect(answer).toEqual({ error: "role_full" });
+    expect(answer).not.toHaveProperty("openRoles");
+    // so a family does not read it as "no role has room"
+    expect(stateForAnswer(answer, rsvpStates)).not.toHaveProperty("openRoles");
+  }
+});
+
 test("open_roles is read from an error answer only, never from a success", async () => {
   expect(
     await readFixture({
