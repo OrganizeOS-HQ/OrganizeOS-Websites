@@ -354,7 +354,11 @@ Design and plans are in the OrganizeOS repo
   required field afterwards, and the platform's answer would then name a field
   the page has no Field Message to show it on.
 - Text, email and phone inputs and textareas carry `maxLength` 2000, the
-  platform's per-field limit, or the designer's own shorter `maxLength`.
+  platform's per-field limit, or the designer's own shorter `maxLength`. A root
+  can set a lower limit for a field of its own (the RSVP Form: names 100,
+  email 320, phone 40, the RSVP endpoint's), and the smallest of them wins. The
+  RSVP Form also refuses a longer value before posting, with that field's
+  message, because the endpoint's answer to one names no field.
 - **Registered** by one `registerComponentLibrary` call in `canvas/canvas.tsx`
   under the namespace `@organizeos/site-components`, so the components are
   `@organizeos/site-components:SignupForm` and so on. Every build that uses a

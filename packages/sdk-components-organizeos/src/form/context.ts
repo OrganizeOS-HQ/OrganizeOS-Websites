@@ -16,6 +16,12 @@ export type FormFieldConfig = {
   type: string;
   required: boolean;
   options: readonly string[] | null;
+  /**
+   * The most characters the platform takes for the field, when the root knows a
+   * limit lower than the usual one (`/v1/forms` configs carry none). A Field
+   * Input stops typing there, or at the designer's own shorter `maxLength`.
+   */
+  maxLength?: number;
 };
 
 /**

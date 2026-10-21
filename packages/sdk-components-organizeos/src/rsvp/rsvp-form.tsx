@@ -40,8 +40,10 @@ import { rsvpsPath, type RsvpFormState } from "./states";
 
 /**
  * The fields an RSVP always collects, as the endpoint takes them: the name and
- * email required, the phone optional. The event decides the rest (guests,
- * shifts, questions), through the composite parts.
+ * email required, the phone optional, each with the most characters the
+ * endpoint's body takes (a longer value is refused with an invalid_request that
+ * names no field). The event decides the rest (guests, shifts, questions),
+ * through the composite parts.
  */
 const rsvpFields: readonly FormFieldConfig[] = [
   {
@@ -50,6 +52,7 @@ const rsvpFields: readonly FormFieldConfig[] = [
     type: "text",
     required: true,
     options: null,
+    maxLength: 100,
   },
   {
     name: "last_name",
@@ -57,6 +60,7 @@ const rsvpFields: readonly FormFieldConfig[] = [
     type: "text",
     required: true,
     options: null,
+    maxLength: 100,
   },
   {
     name: "email",
@@ -64,6 +68,7 @@ const rsvpFields: readonly FormFieldConfig[] = [
     type: "email",
     required: true,
     options: null,
+    maxLength: 320,
   },
   {
     name: "phone",
@@ -71,6 +76,7 @@ const rsvpFields: readonly FormFieldConfig[] = [
     type: "phone",
     required: false,
     options: null,
+    maxLength: 40,
   },
 ];
 
@@ -101,6 +107,10 @@ const stateMessages: Record<RsvpFormState, string> = {
 const invalidFieldMessage = "Please check the form and try again.";
 
 const roleFullMessage = "That role just filled. Pick another.";
+
+const shiftFullMessage = "That shift just filled. Pick another, or none.";
+
+const guestsFullMessage = "There is not room for every guest. Try with fewer.";
 
 /** The message for the part that shows a field the platform refused. */
 const fieldErrorMessage = (field: string) => {
@@ -164,8 +174,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && Array.isArray(value) === false;
 
 // The composite parts return their values as `unknown` (FormPart.collect), and
-// the root keeps only what the endpoint's strict body takes: a part that
-// returns more, or something else, cannot make the post a 400.
+// the root keeps only the keys the endpoint's strict body takes: a part that
+// returns more, or something else, cannot make the post a 400 for an unknown
+// key. Lengths and counts are the parts' own to bound.
 const readGuests = (value: unknown) => {
   const guests: Array<{ first_name: string; last_name: string }> = [];
   for (const row of Array.isArray(value) ? (value as unknown[]) : []) {
@@ -331,42 +342,108 @@ const lacksQuestions = (event: RsvpEvent, parts: readonly FormPart[]) =>
   hasPart(parts, "questions") === false;
 
 /**
- * The roles a `role_full` answer found without room. The answer lists the
- * roles of the chosen shift that still have room and never the chosen role, so
- * the chosen role and every other role of its shift that it does not list are
- * full; a later answer for the shift replaces what an earlier one said of it.
- * Without a single known shift the chosen role is all there is to mark.
+ * The first of the root's own fields whose value is longer than the endpoint
+ * takes. The Field Input stops typing at the limit, but a value that is set
+ * another way (autofill, say) is not stopped, and the endpoint's invalid_request
+ * names no field. Measured on the body, so a blank phone, which is left out,
+ * never counts.
  */
-const markFullRoles = ({
+const findFieldOverLimit = (body: ReturnType<typeof buildRsvpBody>) => {
+  const values: Record<string, string | undefined> = {
+    first_name: body.first_name,
+    last_name: body.last_name,
+    email: body.email,
+    phone: body.phone,
+  };
+  return rsvpFields.find(
+    (field) =>
+      field.maxLength !== undefined &&
+      (values[field.name]?.length ?? 0) > field.maxLength
+  )?.name;
+};
+
+/**
+ * What a `full` answer means for the request it answered. The endpoint says
+ * `full` for an event with no room, but also for a picked shift with no room
+ * and, on an event with no waitlist, for a party that does not fit. The visitor
+ * can change those requests, so the form stays and names what to change; on an
+ * event with a waitlist a party that does not fit is waitlisted instead. A
+ * request with no shifts and no guests can only mean the event itself is full:
+ * no errors, and the Full state.
+ */
+const getFullAnswerErrors = ({
+  event,
+  selection,
+  guests,
+}: {
+  event: RsvpEvent;
+  selection: Selection;
+  guests: ReturnType<typeof readGuests>;
+}) => {
+  const errors = new Map<string, string>();
+  if (selection.shiftIds.length > 0) {
+    errors.set("shift_ids", shiftFullMessage);
+  }
+  if (guests.length > 0 && event.waitlist === false) {
+    errors.set("guests", guestsFullMessage);
+  }
+  return errors;
+};
+
+/** What the latest `role_full` answers said of the roles, by id. */
+type RoleMarks = {
+  fullRoleIds: ReadonlySet<string>;
+  openRoleIds: ReadonlySet<string>;
+};
+
+const noRoleMarks: RoleMarks = {
+  fullRoleIds: new Set(),
+  openRoleIds: new Set(),
+};
+
+/**
+ * The roles a `role_full` answer found without room, and the ones it found with.
+ * The answer lists the roles of the chosen shift that still have room and never
+ * the chosen role, so the chosen role and every other role of its shift that it
+ * does not list are full, and the ones it lists are open, whatever the event
+ * data said: a later answer for the shift replaces what an earlier one said of
+ * it. An answer with no readable list says nothing of the siblings, and
+ * without a single known shift the chosen role is all there is to mark.
+ */
+const markRoles = ({
   previous,
   event,
   selection,
   openRoles,
 }: {
-  previous: ReadonlySet<string>;
+  previous: RoleMarks;
   event: RsvpEvent;
   selection: Selection;
   openRoles: OpenRole[] | undefined;
-}) => {
-  const next = new Set(previous);
+}): RoleMarks => {
+  const fullRoleIds = new Set(previous.fullRoleIds);
+  const openRoleIds = new Set(previous.openRoleIds);
   const shift =
     selection.shiftIds.length === 1
       ? event.shifts.find((item) => item.id === selection.shiftIds[0])
       : undefined;
-  if (shift !== undefined) {
-    const open = new Set(openRoles?.map((role) => role.id));
+  if (shift !== undefined && openRoles !== undefined) {
+    const listed = new Set(openRoles.map((role) => role.id));
     for (const role of shift.roles) {
-      next.delete(role.id);
-      // no readable list says nothing about the siblings
-      if (openRoles !== undefined && open.has(role.id) === false) {
-        next.add(role.id);
+      if (listed.has(role.id)) {
+        fullRoleIds.delete(role.id);
+        openRoleIds.add(role.id);
+      } else {
+        openRoleIds.delete(role.id);
+        fullRoleIds.add(role.id);
       }
     }
   }
   if (selection.roleId !== undefined) {
-    next.add(selection.roleId);
+    openRoleIds.delete(selection.roleId);
+    fullRoleIds.add(selection.roleId);
   }
-  return next;
+  return { fullRoleIds, openRoleIds };
 };
 
 const pluralize = (count: number, noun: string) =>
@@ -550,9 +627,7 @@ export const RsvpForm = forwardRef<ElementRef<"form">, RsvpFormProps>(
     const [fieldErrors, setFieldErrors] = useState<ReadonlyMap<string, string>>(
       () => new Map()
     );
-    const [fullRoleIds, setFullRoleIds] = useState<ReadonlySet<string>>(
-      () => new Set()
-    );
+    const [roleMarks, setRoleMarks] = useState<RoleMarks>(noRoleMarks);
 
     const onStateChangeRef = useRef(onStateChange);
     useLayoutEffect(() => {
@@ -605,6 +680,12 @@ export const RsvpForm = forwardRef<ElementRef<"form">, RsvpFormProps>(
         pagePath: window.location.pathname,
         honeypot: honeypotRef.current?.value ?? "",
       });
+      const overLimit = findFieldOverLimit(body);
+      if (overLimit !== undefined) {
+        setFieldErrors(new Map([[overLimit, fieldErrorMessage(overLimit)]]));
+        report("error", invalidFieldMessage);
+        return;
+      }
       submitting.current = true;
       setFieldErrors(new Map());
       report("submitting", stateMessages.submitting);
@@ -614,11 +695,9 @@ export const RsvpForm = forwardRef<ElementRef<"form">, RsvpFormProps>(
           if (answer === undefined) {
             return;
           }
-          const {
-            state: next,
-            field,
-            openRoles,
-          } = stateForAnswer(answer, answerStates);
+          const answered = stateForAnswer(answer, answerStates);
+          const { field, openRoles } = answered;
+          let next = answered.state;
           let message = stateMessages[next];
           if ("error" in answer && answer.error === "role_full") {
             // The visitor can pick another role, another shift or none, so
@@ -626,14 +705,28 @@ export const RsvpForm = forwardRef<ElementRef<"form">, RsvpFormProps>(
             // roles are gone.
             message = roleFullMessage;
             setFieldErrors(new Map([["shift_role_id", roleFullMessage]]));
-            setFullRoleIds((previous) =>
-              markFullRoles({
+            setRoleMarks((previous) =>
+              markRoles({
                 previous,
                 event: rsvpEvent,
                 selection: collected.selection,
                 openRoles,
               })
             );
+          } else if ("error" in answer && answer.error === "full") {
+            // A full answer to a request the visitor can change (another
+            // shift, none, fewer guests) keeps the form and says what to
+            // change; only the event itself being full shows the Full state.
+            const errors = getFullAnswerErrors({
+              event: rsvpEvent,
+              selection: collected.selection,
+              guests: collected.guests,
+            });
+            if (errors.size > 0) {
+              next = "error";
+              message = invalidFieldMessage;
+              setFieldErrors(errors);
+            }
           } else if (field !== undefined) {
             message = invalidFieldMessage;
             setFieldErrors(new Map([[field, fieldErrorMessage(field)]]));
@@ -685,8 +778,12 @@ export const RsvpForm = forwardRef<ElementRef<"form">, RsvpFormProps>(
       [register, fieldErrors, current]
     );
     const rsvp = useMemo<RsvpContextValue>(
-      () => ({ event: resolution.event, fullRoleIds }),
-      [resolution.event, fullRoleIds]
+      () => ({
+        event: resolution.event,
+        fullRoleIds: roleMarks.fullRoleIds,
+        openRoleIds: roleMarks.openRoleIds,
+      }),
+      [resolution.event, roleMarks]
     );
 
     return (

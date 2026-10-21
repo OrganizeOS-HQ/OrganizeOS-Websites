@@ -104,8 +104,10 @@ const Probe = () => {
   return (
     <output data-testid="probe">
       {JSON.stringify({
+        state: root?.state,
         errors: Object.fromEntries(root?.fieldErrors ?? []),
         fullRoleIds: Array.from(rsvp?.fullRoleIds ?? []).sort(),
+        openRoleIds: Array.from(rsvp?.openRoleIds ?? []).sort(),
         event: rsvp?.event?.id,
       })}
     </output>
@@ -114,8 +116,10 @@ const Probe = () => {
 
 const readProbe = () =>
   JSON.parse(screen.getByTestId("probe").textContent ?? "") as {
+    state: string | undefined;
     errors: Record<string, string>;
     fullRoleIds: string[];
+    openRoleIds: string[];
     event: string | undefined;
   };
 
@@ -323,6 +327,41 @@ describe("parts", () => {
     expect(phone.getAttribute("type")).toBe("tel");
     expect(phone.getAttribute("autocomplete")).toBe("tel");
     expect(phone.hasAttribute("required")).toBe(false);
+  });
+
+  test("a Field Input stops at the platform's limit for its field: names 100, email 320, phone 40", () => {
+    render(<Block />);
+    for (const [label, length] of [
+      ["First name", "100"],
+      ["Last name", "100"],
+      ["Email", "320"],
+      ["Phone", "40"],
+    ]) {
+      expect(screen.getByLabelText(label).getAttribute("maxlength")).toBe(
+        length
+      );
+    }
+  });
+
+  test("the designer's shorter maxLength wins over the field's limit, and a longer one does not", () => {
+    render(
+      <Sdk renderer={undefined}>
+        <RsvpForm record={phoneBank.id} data={events}>
+          <Field field="first_name">
+            <FieldLabel>First name</FieldLabel>
+            <FieldInput maxLength={20} />
+          </Field>
+          <Field field="phone">
+            <FieldLabel>Phone</FieldLabel>
+            <FieldInput maxLength={500} />
+          </Field>
+        </RsvpForm>
+      </Sdk>
+    );
+    expect(screen.getByLabelText("First name").getAttribute("maxlength")).toBe(
+      "20"
+    );
+    expect(screen.getByLabelText("Phone").getAttribute("maxlength")).toBe("40");
   });
 
   test("the fields are there before the event is known: no record, no data", () => {
@@ -571,6 +610,98 @@ describe("request body", () => {
     expect(body.shift_ids).toEqual([afternoonShiftId]);
     expect(body.answers).toEqual({ q1: "a", q2: "b" });
     expect(body.email_consent).toBe(true);
+  });
+});
+
+describe("field lengths", () => {
+  // the endpoint's limits: names 100, email 320, phone 40
+  const limits: Array<
+    [name: string, label: string, limit: number, message: string]
+  > = [
+    ["first_name", "First name", 100, "Enter your first name."],
+    ["last_name", "Last name", 100, "Enter your last name."],
+    ["email", "Email", 320, "Enter a valid email address."],
+    ["phone", "Phone", 40, "Enter a valid phone number."],
+  ];
+
+  test.each(limits)(
+    "a %s over its limit posts nothing and shows that field's message",
+    async (name, label, limit, message) => {
+      const fetchMock = answerWith(responseRegistered);
+      const onStateChange = vi.fn();
+      const { container } = render(<Block onStateChange={onStateChange} />);
+      fillPerson();
+      // typing stops at the limit, but autofill and the like can set a longer value
+      fill(label, "a".repeat(limit + 1));
+      fireEvent.submit(getForm(container));
+      await waitFor(() =>
+        expect(onStateChange).toHaveBeenLastCalledWith(
+          "error",
+          "Please check the form and try again."
+        )
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(readProbe().errors).toEqual({ [name]: message });
+      expect(readProbe().state).toBe("error");
+    }
+  );
+
+  test.each(limits)("a %s at its limit posts", async (_name, label, limit) => {
+    const fetchMock = answerWith(responseRegistered);
+    const { container } = render(<Block />);
+    fillPerson();
+    fill(label, "a".repeat(limit));
+    fireEvent.submit(getForm(container));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  });
+
+  test("the first field over its limit is the one named", async () => {
+    const fetchMock = answerWith(responseRegistered);
+    const { container } = render(<Block />);
+    fillPerson();
+    fill("Phone", "1".repeat(41));
+    fill("Last name", "a".repeat(101));
+    fireEvent.submit(getForm(container));
+    await waitFor(() =>
+      expect(readProbe().errors).toEqual({
+        last_name: "Enter your last name.",
+      })
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("the message clears once the value fits and the visitor submits again", async () => {
+    const fetchMock = answerWith(responseRegistered);
+    const onStateChange = vi.fn();
+    const { container } = render(<Block onStateChange={onStateChange} />);
+    fillPerson();
+    fill("Phone", "1".repeat(41));
+    fireEvent.submit(getForm(container));
+    await waitFor(() => expect(readProbe().errors).toHaveProperty("phone"));
+    fill("Phone", "1".repeat(40));
+    fireEvent.submit(getForm(container));
+    await waitFor(() =>
+      expect(onStateChange).toHaveBeenLastCalledWith(
+        "registered",
+        expect.any(String)
+      )
+    );
+    expect(readProbe().errors).toEqual({});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("the canvas and the preview still never post or report", async () => {
+    const fetchMock = answerWith(responseRegistered);
+    const onStateChange = vi.fn();
+    const { container } = render(
+      <Block renderer="preview" onStateChange={onStateChange} />
+    );
+    fillPerson();
+    fill("Phone", "1".repeat(41));
+    fireEvent.submit(getForm(container));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onStateChange).not.toHaveBeenCalled();
   });
 });
 
@@ -860,6 +991,8 @@ describe("role_full", () => {
     );
     expect(driver?.full).toBe(true);
     expect(readProbe().fullRoleIds).toEqual([canvasserId]);
+    // and the answer's list says the Driver has room, whatever the snapshot said
+    expect(readProbe().openRoleIds).toEqual([driverId]);
   });
 
   test("an empty open_roles gives the same message and marks every role of the shift full", async () => {
@@ -872,6 +1005,7 @@ describe("role_full", () => {
       shift_role_id: "That role just filled. Pick another.",
     });
     expect(readProbe().fullRoleIds).toEqual([canvasserId, driverId].sort());
+    expect(readProbe().openRoleIds).toEqual([]);
   });
 
   test("an answer with no readable open_roles marks the chosen role alone", async () => {
@@ -880,9 +1014,68 @@ describe("role_full", () => {
       body: { error: "role_full", open_roles: [{ nonsense: true }] },
     });
     expect(readProbe().fullRoleIds).toEqual([canvasserId]);
+    expect(readProbe().openRoleIds).toEqual([]);
     cleanup();
     await submitRoleFull({ status: 409, body: { error: "role_full" } });
     expect(readProbe().fullRoleIds).toEqual([canvasserId]);
+    expect(readProbe().openRoleIds).toEqual([]);
+  });
+
+  /** Submits the block once per answer, waiting for each to settle. */
+  const submitAnswers = async (bodies: ResponseFixture[]) => {
+    const respond = vi.fn<() => Promise<Response>>();
+    for (const { status, body } of bodies) {
+      respond.mockResolvedValueOnce(Response.json(body, { status }));
+    }
+    stubFetch(respond);
+    const onStateChange = vi.fn();
+    const { container } = render(
+      <Block
+        record={canvassLaunch.id}
+        parts={roleFullParts}
+        onStateChange={onStateChange}
+      />
+    );
+    fillPerson();
+    for (const [index] of bodies.entries()) {
+      fireEvent.submit(getForm(container));
+      // "submitting", then the answer's state
+      await waitFor(() =>
+        expect(onStateChange).toHaveBeenCalledTimes((index + 1) * 2)
+      );
+    }
+  };
+
+  test("an answer with no readable open_roles leaves what an earlier answer said of the siblings", async () => {
+    // none open marks Canvasser and Driver full; a later answer with no list
+    // says nothing about the Driver, so the Driver stays full
+    await submitAnswers([
+      responseRoleFullNoneOpen,
+      { status: 409, body: { error: "role_full" } },
+    ]);
+    expect(readProbe().fullRoleIds).toEqual([canvasserId, driverId].sort());
+    expect(readProbe().openRoleIds).toEqual([]);
+    cleanup();
+    // and the same for a list with no readable entry, and for what was open
+    await submitAnswers([
+      responseRoleFull,
+      {
+        status: 409,
+        body: { error: "role_full", open_roles: [{ nonsense: true }] },
+      },
+    ]);
+    expect(readProbe().fullRoleIds).toEqual([canvasserId]);
+    expect(readProbe().openRoleIds).toEqual([driverId]);
+  });
+
+  test("a role the latest answer marks full is no longer open, and a role it lists open is no longer full", async () => {
+    await submitAnswers([responseRoleFull, responseRoleFullNoneOpen]);
+    expect(readProbe().fullRoleIds).toEqual([canvasserId, driverId].sort());
+    expect(readProbe().openRoleIds).toEqual([]);
+    cleanup();
+    await submitAnswers([responseRoleFullNoneOpen, responseRoleFull]);
+    expect(readProbe().fullRoleIds).toEqual([canvasserId]);
+    expect(readProbe().openRoleIds).toEqual([driverId]);
   });
 
   test("a later answer recomputes that shift's roles", async () => {
@@ -909,8 +1102,10 @@ describe("role_full", () => {
       expect(readProbe().fullRoleIds).toEqual([canvasserId, driverId].sort())
     );
     fireEvent.submit(getForm(container));
+    expect(readProbe().openRoleIds).toEqual([]);
     // the second answer lists the Driver as open again
     await waitFor(() => expect(readProbe().fullRoleIds).toEqual([canvasserId]));
+    expect(readProbe().openRoleIds).toEqual([driverId]);
   });
 
   test("an answer when no single shift is selected marks the chosen role and nothing else", async () => {
@@ -938,6 +1133,7 @@ describe("role_full", () => {
     fireEvent.submit(getForm(container));
     await waitFor(() => expect(onStateChange).toHaveBeenCalledTimes(2));
     expect(readProbe().fullRoleIds).toEqual([canvasserId]);
+    expect(readProbe().openRoleIds).toEqual([]);
     expect(readProbe().errors).toHaveProperty("shift_role_id");
   });
 
@@ -968,6 +1164,168 @@ describe("role_full", () => {
       )
     );
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("a full answer", () => {
+  const shiftMessage = "That shift just filled. Pick another, or none.";
+  const guestsMessage = "There is not room for every guest. Try with fewer.";
+  const questions = <StubPart kind="questions" value={requestFull.answers} />;
+  const shiftPart = (
+    <StubPart kind="shifts" value={{ shift_ids: [afternoonShiftId] }} />
+  );
+  const guestsPart = <StubPart kind="guests" value={requestFull.guests} />;
+  // the Saturday Canvass Launch without its waitlist
+  const noWaitlist = { data: [{ ...canvassLaunch, waitlist: false }] };
+
+  const submitFull = async (options: BlockOptions) => {
+    answerWith(responseFull);
+    const onStateChange = vi.fn();
+    const view = render(<Block {...options} onStateChange={onStateChange} />);
+    fillPerson();
+    fireEvent.submit(getForm(view.container));
+    await waitFor(() => expect(onStateChange).toHaveBeenCalledTimes(2));
+    return { ...view, onStateChange };
+  };
+
+  test("to a request with shifts says the shift just filled, and keeps the form", async () => {
+    const { onStateChange } = await submitFull({
+      record: canvassLaunch.id,
+      parts: (
+        <>
+          {questions}
+          {shiftPart}
+        </>
+      ),
+    });
+    // the event has a waitlist and room: only the shift can be full
+    expect(onStateChange.mock.calls[1]).toEqual([
+      "error",
+      "Please check the form and try again.",
+    ]);
+    expect(readProbe().state).toBe("error");
+    expect(readProbe().errors).toEqual({ shift_ids: shiftMessage });
+    // the form's content shows in the error state, and the visitor can submit again
+    expect(
+      screen.getByRole("button", { name: "RSVP" }).hasAttribute("disabled")
+    ).toBe(false);
+  });
+
+  test("to a request with no shifts and no guests is the Full state", async () => {
+    const { onStateChange } = await submitFull({});
+    expect(onStateChange.mock.calls[1]).toEqual([
+      "full",
+      "This event is full.",
+    ]);
+    expect(readProbe().state).toBe("full");
+    expect(readProbe().errors).toEqual({});
+  });
+
+  test("to a request with guests on an event with no waitlist says there is no room for them", async () => {
+    const { onStateChange } = await submitFull({
+      record: canvassLaunch.id,
+      data: noWaitlist,
+      parts: (
+        <>
+          {questions}
+          {guestsPart}
+        </>
+      ),
+    });
+    expect(onStateChange.mock.calls[1]).toEqual([
+      "error",
+      "Please check the form and try again.",
+    ]);
+    expect(readProbe().state).toBe("error");
+    expect(readProbe().errors).toEqual({ guests: guestsMessage });
+  });
+
+  test("to a request with shifts and guests on an event with no waitlist names both", async () => {
+    await submitFull({
+      record: canvassLaunch.id,
+      data: noWaitlist,
+      parts: (
+        <>
+          {questions}
+          {shiftPart}
+          {guestsPart}
+        </>
+      ),
+    });
+    expect(readProbe().state).toBe("error");
+    expect(readProbe().errors).toEqual({
+      shift_ids: shiftMessage,
+      guests: guestsMessage,
+    });
+  });
+
+  test("on an event with a waitlist a party that does not fit is waitlisted, so guests alone leave the Full state", async () => {
+    const { onStateChange } = await submitFull({
+      record: canvassLaunch.id,
+      parts: (
+        <>
+          {questions}
+          {guestsPart}
+        </>
+      ),
+    });
+    expect(onStateChange.mock.calls[1]).toEqual([
+      "full",
+      "This event is full.",
+    ]);
+    expect(readProbe().errors).toEqual({});
+  });
+
+  test("on an event with a waitlist, shifts and guests name the shift alone", async () => {
+    await submitFull({
+      record: canvassLaunch.id,
+      parts: (
+        <>
+          {questions}
+          {shiftPart}
+          {guestsPart}
+        </>
+      ),
+    });
+    expect(readProbe().state).toBe("error");
+    expect(readProbe().errors).toEqual({ shift_ids: shiftMessage });
+  });
+
+  test("the visitor can submit again without the shift, and a full answer to that is the Full state", async () => {
+    // a Response body reads once: each post gets its own
+    const respond = vi
+      .fn<() => Promise<Response>>()
+      .mockImplementation(async () =>
+        Response.json(responseFull.body, { status: 409 })
+      );
+    stubFetch(respond);
+    const onStateChange = vi.fn();
+    const view = render(
+      <Block
+        record={canvassLaunch.id}
+        parts={
+          <>
+            {questions}
+            {shiftPart}
+          </>
+        }
+        onStateChange={onStateChange}
+      />
+    );
+    fillPerson();
+    fireEvent.submit(getForm(view.container));
+    await waitFor(() => expect(readProbe().state).toBe("error"));
+    view.rerender(
+      <Block
+        record={canvassLaunch.id}
+        parts={questions}
+        onStateChange={onStateChange}
+      />
+    );
+    fireEvent.submit(getForm(view.container));
+    await waitFor(() => expect(readProbe().state).toBe("full"));
+    expect(readProbe().errors).toEqual({});
+    expect(respond).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -1489,6 +1847,19 @@ describe("canvas notes", () => {
     expect(text).toContain("has ended");
     expect(text).toContain("Ended");
     expect(text).not.toContain("needs attention");
+  });
+
+  test("an event that has ended and is full shows the Ended note alone", () => {
+    const { container } = render(
+      <Block
+        renderer="canvas"
+        record={voterDrive.id}
+        data={{ data: [{ ...voterDrive, full: true }] }}
+      />
+    );
+    const text = getCanvasNotes(container)?.textContent ?? "";
+    expect(text).toContain("has ended");
+    expect(text).not.toContain("is full");
   });
 
   test("an event that is full with no waitlist is a note", () => {

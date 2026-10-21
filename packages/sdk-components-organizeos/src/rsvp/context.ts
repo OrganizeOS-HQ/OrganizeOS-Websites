@@ -15,6 +15,15 @@ export type RsvpContextValue = {
    * Shift Options disables them on top of the roles the event data marks full.
    */
   fullRoleIds: ReadonlySet<string>;
+  /**
+   * The roles a `role_full` answer listed as having room, by id. The event data
+   * is a snapshot that can be a minute old and the answer reflects the moment
+   * of the post, so a role the data marks full has room again when it is in
+   * here. Shift Options disables a role when `fullRoleIds` has it, or when the
+   * data marks it full and `openRoleIds` lacks it. Only a readable list of the
+   * shift's open roles puts anything here.
+   */
+  openRoleIds: ReadonlySet<string>;
 };
 
 export const RsvpContext = createContext<RsvpContextValue | undefined>(
