@@ -1138,6 +1138,117 @@ describe("role_full", () => {
     expect(readProbe().errors).toHaveProperty("shift_role_id");
   });
 
+  describe("for a party", () => {
+    // The platform measures a role's room, and the list of open roles, for the
+    // visitor and their guests together.
+    const partyMessage =
+      "That role has no room for your whole party. Pick another, or bring fewer guests.";
+    const partyParts = (
+      <>
+        {roleFullParts}
+        <StubPart kind="guests" value={requestFull.guests} />
+      </>
+    );
+
+    /** Renders the block over queued answers; `submit` posts and waits for the answer. */
+    const startParty = (fixtures: ResponseFixture[], parts: ReactNode) => {
+      const respond = vi.fn<() => Promise<Response>>();
+      for (const { status, body } of fixtures) {
+        respond.mockResolvedValueOnce(Response.json(body, { status }));
+      }
+      stubFetch(respond);
+      const onStateChange = vi.fn();
+      const view = render(
+        <Block
+          record={canvassLaunch.id}
+          parts={parts}
+          onStateChange={onStateChange}
+        />
+      );
+      fillPerson();
+      let posted = 0;
+      const submit = async () => {
+        fireEvent.submit(getForm(view.container));
+        posted += 1;
+        // "submitting", then the answer's state
+        await waitFor(() =>
+          expect(onStateChange).toHaveBeenCalledTimes(posted * 2)
+        );
+      };
+      const withParts = (next: ReactNode) =>
+        view.rerender(
+          <Block
+            record={canvassLaunch.id}
+            parts={next}
+            onStateChange={onStateChange}
+          />
+        );
+      return { submit, withParts, onStateChange };
+    };
+
+    test("says the role has no room for the party, and marks no role full: the visitor may drop the guests", async () => {
+      const { submit, withParts, onStateChange } = startParty(
+        [responseRoleFullNoneOpen],
+        partyParts
+      );
+      await submit();
+      expect(onStateChange.mock.calls[1]).toEqual(["error", partyMessage]);
+      expect(readProbe().errors).toEqual({ shift_role_id: partyMessage });
+      // no room for two says nothing of one: both roles may have room for the
+      // visitor alone
+      expect(readProbe().fullRoleIds).toEqual([]);
+      expect(readProbe().openRoleIds).toEqual([]);
+      // the guests are removed, and no role is disabled
+      withParts(roleFullParts);
+      expect(readProbe().fullRoleIds).toEqual([]);
+    });
+
+    test("marks the roles the answer lists as open, since room for the party is room for fewer", async () => {
+      const { submit } = startParty([responseRoleFull], partyParts);
+      await submit();
+      expect(readProbe().errors).toEqual({ shift_role_id: partyMessage });
+      expect(readProbe().fullRoleIds).toEqual([]);
+      expect(readProbe().openRoleIds).toEqual([driverId]);
+    });
+
+    test("leaves what a party of one was told alone, and moves a role it lists to open", async () => {
+      // a party of one with no room anywhere marks both roles full; then the
+      // guests come back, and an answer for the party says nothing of one
+      const { submit, withParts } = startParty(
+        [responseRoleFullNoneOpen, responseRoleFullNoneOpen, responseRoleFull],
+        roleFullParts
+      );
+      await submit();
+      expect(readProbe().errors).toEqual({
+        shift_role_id: "That role just filled. Pick another.",
+      });
+      expect(readProbe().fullRoleIds).toEqual([canvasserId, driverId].sort());
+      withParts(partyParts);
+      await submit();
+      expect(readProbe().errors).toEqual({ shift_role_id: partyMessage });
+      expect(readProbe().fullRoleIds).toEqual([canvasserId, driverId].sort());
+      // a role with room for the party has room for one
+      await submit();
+      expect(readProbe().fullRoleIds).toEqual([canvasserId]);
+      expect(readProbe().openRoleIds).toEqual([driverId]);
+    });
+
+    test("a party of one gets the plain role message again once the guests are gone", async () => {
+      const { submit, withParts } = startParty(
+        [responseRoleFullNoneOpen, responseRoleFullNoneOpen],
+        partyParts
+      );
+      await submit();
+      expect(readProbe().errors).toEqual({ shift_role_id: partyMessage });
+      withParts(roleFullParts);
+      await submit();
+      expect(readProbe().errors).toEqual({
+        shift_role_id: "That role just filled. Pick another.",
+      });
+      expect(readProbe().fullRoleIds).toEqual([canvasserId, driverId].sort());
+    });
+  });
+
   test("the visitor can still choose no role or another shift: the next post is not blocked", async () => {
     const respond = vi
       .fn<() => Promise<Response>>()
@@ -1277,7 +1388,9 @@ describe("a full answer", () => {
     expect(readProbe().errors).toEqual({});
   });
 
-  test("on an event with a waitlist, shifts and guests name the shift alone", async () => {
+  test("on an event with a waitlist, shifts and guests name both: a shift's room counts the guests", async () => {
+    // the lock fits the party, so the endpoint checks the shift for all of it
+    // and answers full, waitlist or not
     await submitFull({
       record: canvassLaunch.id,
       parts: (
@@ -1289,7 +1402,10 @@ describe("a full answer", () => {
       ),
     });
     expect(readProbe().state).toBe("error");
-    expect(readProbe().errors).toEqual({ shift_ids: shiftMessage });
+    expect(readProbe().errors).toEqual({
+      shift_ids: shiftMessage,
+      guests: guestsMessage,
+    });
   });
 
   test("the visitor can submit again without the shift, and a full answer to that is the Full state", async () => {

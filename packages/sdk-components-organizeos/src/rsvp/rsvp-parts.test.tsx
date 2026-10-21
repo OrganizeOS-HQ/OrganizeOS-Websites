@@ -130,19 +130,24 @@ const stubFetch = (...answers: Array<{ status: number; body: unknown }>) => {
 const bodyOf = (fetchMock: ReturnType<typeof stubFetch>, call = 0) =>
   JSON.parse(String(fetchMock.mock.calls[call][1]?.body));
 
-const fillEverything = (container: HTMLElement) => {
+const fillEverything = (
+  container: HTMLElement,
+  { withGuest = true }: { withGuest?: boolean } = {}
+) => {
   fill("First name", requestFull.first_name);
   fill("Last name", requestFull.last_name);
   fill("Email", requestFull.email);
   fill("Phone", requestFull.phone);
   // a guest
-  fireEvent.click(screen.getByRole("button", { name: "Add a guest" }));
-  fireEvent.change(container.querySelector('[name="guests.0.first_name"]')!, {
-    target: { value: requestFull.guests[0].first_name },
-  });
-  fireEvent.change(container.querySelector('[name="guests.0.last_name"]')!, {
-    target: { value: requestFull.guests[0].last_name },
-  });
+  if (withGuest) {
+    fireEvent.click(screen.getByRole("button", { name: "Add a guest" }));
+    fireEvent.change(container.querySelector('[name="guests.0.first_name"]')!, {
+      target: { value: requestFull.guests[0].first_name },
+    });
+    fireEvent.change(container.querySelector('[name="guests.0.last_name"]')!, {
+      target: { value: requestFull.guests[0].last_name },
+    });
+  }
   // a shift, and a role in it
   fireEvent.click(screen.getByRole("checkbox", { name: /Afternoon canvass/ }));
   fireEvent.click(screen.getByRole("radio", { name: "Canvasser" }));
@@ -280,7 +285,8 @@ describe("what the platform answers", () => {
   test("role_full: the chosen role is gone, a role the answer lists open can be picked again, and the message is in Shift Options", async () => {
     const fetchMock = stubFetch(responseRoleFull, responseRegistered);
     const { container } = render(<Block />);
-    fillEverything(container);
+    // a party of one: the platform measures a role's room for the whole party
+    fillEverything(container, { withGuest: false });
     fireEvent.submit(getForm(container));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const canvasser = await screen.findByRole("radio", { name: "Canvasser" });
@@ -312,7 +318,7 @@ describe("what the platform answers", () => {
   test("role_full with no open role: every role of the shift is gone, and the shift can still be sent without one", async () => {
     const fetchMock = stubFetch(responseRoleFullNoneOpen, responseRegistered);
     const { container } = render(<Block />);
-    fillEverything(container);
+    fillEverything(container, { withGuest: false });
     fireEvent.submit(getForm(container));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() =>
@@ -330,6 +336,50 @@ describe("what the platform answers", () => {
     const second = bodyOf(fetchMock, 1);
     expect(second.shift_ids).toEqual([afternoonShift.id]);
     expect("shift_role_id" in second).toBe(false);
+  });
+
+  test("role_full, to a party: no role is gone for good, and the message says it is the party that does not fit", async () => {
+    const fetchMock = stubFetch(
+      responseRoleFullNoneOpen,
+      responseRoleFullNoneOpen
+    );
+    const { container } = render(<Block />);
+    // the visitor and a guest
+    fillEverything(container);
+    fireEvent.submit(getForm(container));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const message = await screen.findByText(
+      "That role has no room for your whole party. Pick another, or bring fewer guests."
+    );
+    expect(message.hasAttribute("data-message")).toBe(true);
+    // no room for two says nothing of one: the answer disables no role (the
+    // event data, a snapshot, has the Driver full already)
+    expect(
+      (screen.getByRole("radio", { name: "Canvasser" }) as HTMLInputElement)
+        .disabled
+    ).toBe(false);
+    expect(
+      (screen.getByRole("radio", { name: "Canvasser" }) as HTMLInputElement)
+        .checked
+    ).toBe(true);
+    // the guest is removed, and the same answer is now about the visitor alone
+    fireEvent.click(screen.getByRole("button", { name: /^Remove/ }));
+    fireEvent.submit(getForm(container));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect("guests" in bodyOf(fetchMock, 1)).toBe(false);
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("radio", { name: "Canvasser" }) as HTMLInputElement)
+          .disabled
+      ).toBe(true)
+    );
+    expect(
+      (screen.getByRole("radio", { name: "Driver" }) as HTMLInputElement)
+        .disabled
+    ).toBe(true);
+    expect(
+      screen.getByText("That role just filled. Pick another.")
+    ).toBeTruthy();
   });
 
   test("full, to a request with shifts: the form stays and Shift Options says which part to change", async () => {

@@ -13,6 +13,9 @@ export type RsvpContextValue = {
    * The roles a `role_full` answer found without room, by id: the chosen role
    * and every other role of its shift that the answer does not list as open.
    * Shift Options disables them on top of the roles the event data marks full.
+   * Only an answer to a request without guests puts anything here: with guests
+   * the platform measured the roles' room for the whole party, which says
+   * nothing of the visitor alone.
    */
   fullRoleIds: ReadonlySet<string>;
   /**

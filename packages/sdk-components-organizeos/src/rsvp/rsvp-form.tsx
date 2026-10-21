@@ -108,6 +108,9 @@ const invalidFieldMessage = "Please check the form and try again.";
 
 const roleFullMessage = "That role just filled. Pick another.";
 
+const rolePartyFullMessage =
+  "That role has no room for your whole party. Pick another, or bring fewer guests.";
+
 const shiftFullMessage = "That shift just filled. Pick another, or none.";
 
 const guestsFullMessage = "There is not room for every guest. Try with fewer.";
@@ -176,7 +179,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 // The composite parts return their values as `unknown` (FormPart.collect), and
 // the root keeps only the keys the endpoint's strict body takes: a part that
 // returns more, or something else, cannot make the post a 400 for an unknown
-// key. Lengths and counts are the parts' own to bound.
+// key. Lengths and counts are the parts' own to bound: Guests holds a name to
+// the 100 characters the endpoint takes, Questions an answer to 5000 and the
+// answers to 100.
 const readGuests = (value: unknown) => {
   const guests: Array<{ first_name: string; last_name: string }> = [];
   for (const row of Array.isArray(value) ? (value as unknown[]) : []) {
@@ -366,10 +371,15 @@ const findFieldOverLimit = (body: ReturnType<typeof buildRsvpBody>) => {
  * What a `full` answer means for the request it answered. The endpoint says
  * `full` for an event with no room, but also for a picked shift with no room
  * and, on an event with no waitlist, for a party that does not fit. The visitor
- * can change those requests, so the form stays and names what to change; on an
- * event with a waitlist a party that does not fit is waitlisted instead. A
- * request with no shifts and no guests can only mean the event itself is full:
- * no errors, and the Full state.
+ * can change those requests, so the form stays and names what to change.
+ *
+ * A shift's room is measured for the whole party, guests included, whether the
+ * event has a waitlist or not, so with shifts in the request a `full` may be
+ * about the guests too: the guests message shows beside the shift's. Without
+ * shifts, a party that does not fit an event with a waitlist is waitlisted, so
+ * a `full` there is never about the guests. A request with no shifts and no
+ * guests on such an event can only mean the event itself is full: no errors,
+ * and the Full state.
  */
 const getFullAnswerErrors = ({
   event,
@@ -384,7 +394,10 @@ const getFullAnswerErrors = ({
   if (selection.shiftIds.length > 0) {
     errors.set("shift_ids", shiftFullMessage);
   }
-  if (guests.length > 0 && event.waitlist === false) {
+  if (
+    guests.length > 0 &&
+    (event.waitlist === false || selection.shiftIds.length > 0)
+  ) {
     errors.set("guests", guestsFullMessage);
   }
   return errors;
@@ -409,17 +422,27 @@ const noRoleMarks: RoleMarks = {
  * data said: a later answer for the shift replaces what an earlier one said of
  * it. An answer with no readable list says nothing of the siblings, and
  * without a single known shift the chosen role is all there is to mark.
+ *
+ * The platform measures a role's room, and so the list, for the whole party
+ * (the visitor and their guests). With guests, "no room" is about that many
+ * places and says nothing of a smaller party, so nothing is marked full: a
+ * mark would outlive the guests the visitor then removes, and disable roles
+ * that have room for one. A role the answer lists has room for the party, so
+ * for fewer too, and is still marked open.
  */
 const markRoles = ({
   previous,
   event,
   selection,
   openRoles,
+  partySize,
 }: {
   previous: RoleMarks;
   event: RsvpEvent;
   selection: Selection;
   openRoles: OpenRole[] | undefined;
+  /** The visitor and their guests: the places the request asked for. */
+  partySize: number;
 }): RoleMarks => {
   const fullRoleIds = new Set(previous.fullRoleIds);
   const openRoleIds = new Set(previous.openRoleIds);
@@ -433,13 +456,13 @@ const markRoles = ({
       if (listed.has(role.id)) {
         fullRoleIds.delete(role.id);
         openRoleIds.add(role.id);
-      } else {
+      } else if (partySize === 1) {
         openRoleIds.delete(role.id);
         fullRoleIds.add(role.id);
       }
     }
   }
-  if (selection.roleId !== undefined) {
+  if (selection.roleId !== undefined && partySize === 1) {
     openRoleIds.delete(selection.roleId);
     fullRoleIds.add(selection.roleId);
   }
@@ -700,17 +723,20 @@ export const RsvpForm = forwardRef<ElementRef<"form">, RsvpFormProps>(
           let next = answered.state;
           let message = stateMessages[next];
           if ("error" in answer && answer.error === "role_full") {
-            // The visitor can pick another role, another shift or none, so
-            // the form stays as it is and the Shift Options part says which
-            // roles are gone.
-            message = roleFullMessage;
-            setFieldErrors(new Map([["shift_role_id", roleFullMessage]]));
+            // The visitor can pick another role, another shift or none, or
+            // bring fewer guests, so the form stays as it is and the Shift
+            // Options part says which roles are gone. With guests the role
+            // may only lack room for the party, which the message says.
+            const partySize = 1 + collected.guests.length;
+            message = partySize === 1 ? roleFullMessage : rolePartyFullMessage;
+            setFieldErrors(new Map([["shift_role_id", message]]));
             setRoleMarks((previous) =>
               markRoles({
                 previous,
                 event: rsvpEvent,
                 selection: collected.selection,
                 openRoles,
+                partySize,
               })
             );
           } else if ("error" in answer && answer.error === "full") {
