@@ -1,6 +1,5 @@
 import { type AppContext } from "@webstudio-is/trpc-interface/index.server";
 import env from "~/env/env.server";
-import { authenticator } from "~/services/auth.server";
 import { createOrganizeosPublisher } from "~/services/organizeos-publisher.server";
 import { trpcSharedClient } from "~/services/trpc.server";
 import { entryApi } from "./entri/entri-api.server";
@@ -12,7 +11,10 @@ import {
 } from "@webstudio-is/plans/index.server";
 import { staticEnv } from "~/env/env.static.server";
 import { createClient } from "@webstudio-is/postgrest/index.server";
-import { builderAuthenticator } from "~/services/builder-auth.server";
+import {
+  readBuilderSession,
+  readDashboardSession,
+} from "~/services/auth-strategy/organizeos-session.server";
 import { readLoginSessionBloomFilter } from "~/services/session.server";
 import type { BloomFilter } from "~/services/bloom-filter.server";
 import { isBuilder, isCanvas } from "./router-utils";
@@ -34,9 +36,10 @@ export const extractAuthFromRequest = async (request: Request) => {
     request.headers.get("x-auth-token") ??
     undefined;
 
+  // OrganizeOS: both readers check the session's OrganizeOS binding.
   const sessionData = isBuilder(request)
-    ? await builderAuthenticator.isAuthenticated(request)
-    : await authenticator.isAuthenticated(request);
+    ? await readBuilderSession(request)
+    : await readDashboardSession(request);
 
   const isServiceCall = isServiceAuthorization(
     request.headers.get("Authorization")

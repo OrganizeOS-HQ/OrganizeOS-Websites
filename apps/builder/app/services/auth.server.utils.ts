@@ -1,6 +1,11 @@
 export type SessionData = {
   userId: string;
   createdAt: number;
+  // OrganizeOS: the OrganizeOS session (GoTrue session id) and user that
+  // opened this builder session through SSO. Absent for every other login.
+  // Checked on each read by auth-strategy/organizeos-session.server.ts.
+  organizeosSid?: string;
+  organizeosUserId?: string;
 };
 
 export const getSessionCookieNameVersion = () => {
@@ -14,5 +19,9 @@ export const getSessionCookieNameVersion = () => {
 
   // IMPORTANT: Change version in the SaaS platform as well!
   // IMPORTANT: Changing the version will cause all users to be logged out.
-  return "3";
+  // OrganizeOS: a fork-distinct version (the session gained organizeosSid and
+  // organizeosUserId), so upstream's own next bump never reads our cookies
+  // under its shape. Renames both cookies: every builder user signs in again
+  // once, through OrganizeOS.
+  return "4-organizeos";
 };

@@ -158,7 +158,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // Generate a short-lived token, as its sole purpose is to log the user in.
   const accessToken = await createAccessToken(
-    { userId, projectId },
+    {
+      userId,
+      projectId,
+      organizeosSid: codeToken.organizeosSid,
+      organizeosUserId: codeToken.organizeosUserId,
+    },
     env.AUTH_WS_CLIENT_SECRET,
     {
       maxAge,

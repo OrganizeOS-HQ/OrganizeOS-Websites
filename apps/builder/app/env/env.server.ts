@@ -32,6 +32,16 @@ const environment = z.object({
   // organizeos dashboard strategy is registered only when this is set.
   ORGANIZEOS_SSO_PUBLIC_KEY: z.string().optional(),
 
+  // Whether a builder session whose OrganizeOS session has ended still reads
+  // as a session (auth-strategy/organizeos-session.server.ts). `observe`
+  // (default) logs every outcome but `live` and allows; `enforce` refuses a
+  // missing, dead or unverifiable binding. Only consulted when
+  // ORGANIZEOS_SSO_PUBLIC_KEY is set. A blank value reads as unset.
+  ORGANIZEOS_SESSION_BINDING: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.enum(["observe", "enforce"]).default("observe")
+  ),
+
   // Publish executor dispatch (Phase 5): the GitHub repo carrying the
   // publish-site workflow and a fine-grained token with actions:write on it.
   // When both are set, Publish dispatches the executor instead of webstudio's
@@ -127,6 +137,7 @@ const rawEnv = {
   TRPC_SERVER_API_TOKEN: process.env.TRPC_SERVER_API_TOKEN,
   ORGANIZEOS_PROVISION_TOKEN: process.env.ORGANIZEOS_PROVISION_TOKEN,
   ORGANIZEOS_SSO_PUBLIC_KEY: process.env.ORGANIZEOS_SSO_PUBLIC_KEY,
+  ORGANIZEOS_SESSION_BINDING: process.env.ORGANIZEOS_SESSION_BINDING,
   ORGANIZEOS_PUBLISH_REPO: process.env.ORGANIZEOS_PUBLISH_REPO,
   ORGANIZEOS_PUBLISH_GITHUB_TOKEN: process.env.ORGANIZEOS_PUBLISH_GITHUB_TOKEN,
   ORGANIZEOS_APP_URL: process.env.ORGANIZEOS_APP_URL,

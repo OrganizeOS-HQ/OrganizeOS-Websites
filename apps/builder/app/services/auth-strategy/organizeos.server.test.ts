@@ -118,6 +118,36 @@ describe("organizeosSsoLogin", () => {
     expect(insert).toHaveBeenCalledWith({ jti: "nonce-1" });
   });
 
+  test("binds the session to the OrganizeOS session and user", async () => {
+    const insert = vi.fn(async () => ({ error: null }));
+    const context = { postgrest: { client: { from: () => ({ insert }) } } };
+    const sid = "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b";
+
+    const result = await organizeosSsoLogin(
+      context as never,
+      makeToken("nonce-sid", { sid }),
+      publicKeyPem
+    );
+    expect(result).toMatchObject({
+      userId: "resolved-user-id",
+      organizeosSid: sid,
+      organizeosUserId: "user-1",
+    });
+  });
+
+  test("leaves the session unbound when the token carries no sid", async () => {
+    const insert = vi.fn(async () => ({ error: null }));
+    const context = { postgrest: { client: { from: () => ({ insert }) } } };
+
+    const result = await organizeosSsoLogin(
+      context as never,
+      makeToken("nonce-no-sid"),
+      publicKeyPem
+    );
+    expect(result.organizeosSid).toBeUndefined();
+    expect(result.organizeosUserId).toBeUndefined();
+  });
+
   test("rejects an invalid token BEFORE any store access", async () => {
     const from = vi.fn(() => {
       throw new Error("store must not be touched");

@@ -8,11 +8,14 @@ import { AUTH_PROVIDERS } from "~/shared/session";
 import { authCallbackPath, isBuilder } from "~/shared/router-utils";
 import { getUserById } from "~/shared/db/user.server";
 import env from "~/env/env.server";
-import { builderAuthenticator } from "./builder-auth.server";
 import { staticEnv } from "~/env/env.static.server";
 import type { SessionData } from "./auth.server.utils";
 import { createContext } from "~/shared/context.server";
 import { organizeosSsoLogin } from "./auth-strategy/organizeos.server";
+import {
+  readBuilderSession,
+  readDashboardSession,
+} from "./auth-strategy/organizeos-session.server";
 
 const transformRefToAlias = (input: string) => {
   const rawAlias = input.endsWith(".staging") ? input.slice(0, -8) : input;
@@ -155,9 +158,10 @@ if (env.ORGANIZEOS_SSO_PUBLIC_KEY) {
 }
 
 export const findAuthenticatedUser = async (request: Request) => {
+  // OrganizeOS: both readers check the session's OrganizeOS binding.
   const user = isBuilder(request)
-    ? await builderAuthenticator.isAuthenticated(request)
-    : await authenticator.isAuthenticated(request);
+    ? await readBuilderSession(request)
+    : await readDashboardSession(request);
 
   if (user == null) {
     return null;

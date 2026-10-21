@@ -1,4 +1,5 @@
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
+import type { SessionData } from "~/services/auth.server.utils";
 import { resolveOrCreateUserByEmail } from "~/shared/db/user.server";
 import {
   deriveProjectId,
@@ -63,7 +64,7 @@ export const organizeosSsoLogin = async (
   context: AppContext,
   token: string,
   publicKeyPem: string
-): Promise<{ userId: string; createdAt: number }> => {
+): Promise<SessionData> => {
   // 1. Verify signature + algorithm + issuer/audience + exp window + required
   //    claims BEFORE any I/O. Throws on anything unexpected.
   const claims = verifyOrganizeosSsoToken(token, publicKeyPem);
@@ -97,7 +98,16 @@ export const organizeosSsoLogin = async (
   //    builder always shows the site's current public address.
   await refreshOrgSite(context, claims);
 
-  return { userId: user.id, createdAt: Date.now() };
+  // 6. Bind the session to the OrganizeOS session that opened it, so it ends
+  //    when that one does (organizeos-session.server.ts). A token without a
+  //    sid (an older OrganizeOS) yields an unbound session.
+  return {
+    userId: user.id,
+    createdAt: Date.now(),
+    ...(claims.sid === undefined
+      ? {}
+      : { organizeosSid: claims.sid, organizeosUserId: claims.sub }),
+  };
 };
 
 /**

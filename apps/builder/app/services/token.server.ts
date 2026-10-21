@@ -72,10 +72,19 @@ export const verifyChallenge = async (
   return base64Hash === codeChallenge;
 };
 
+// OrganizeOS: the session binding (auth.server.utils.ts SessionData) rides the
+// code and access tokens from the dashboard session to the project-host
+// session. Optional, so tokens minted without it still parse.
+const organizeosBinding = {
+  organizeosSid: z.string().optional(),
+  organizeosUserId: z.string().optional(),
+};
+
 const codeTokenPayload = z.object({
   userId: z.string(),
   projectId: z.string(),
   codeChallenge: z.string(),
+  ...organizeosBinding,
 });
 
 type CodeTokenPayload = z.infer<typeof codeTokenPayload>;
@@ -135,6 +144,7 @@ export const readCodeToken = async (
 const accessTokenPayload = z.object({
   userId: z.string(),
   projectId: z.string(),
+  ...organizeosBinding,
 });
 
 type AccessTokenPayload = z.infer<typeof accessTokenPayload>;
