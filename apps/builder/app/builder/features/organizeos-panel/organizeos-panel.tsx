@@ -73,9 +73,16 @@ type Section = {
   area?: { label: string; path: string };
 };
 
-// Signups, Events, Membership and Donations in the spec; Phase 1 ships the
-// Signup Form.
+// Signups, Events, Membership and Donations in the spec; so far the Signup
+// Form and the Events blocks. A section names its blocks in the order they are
+// listed, and one that is not registered (yet) is skipped.
 const sections: Section[] = [
+  {
+    label: "Events",
+    blocks: ["EventList", "EventCard", "RsvpForm"],
+    // The workspace's events area, where the org makes the events these list.
+    area: { label: `Manage events in ${platformName}`, path: "events" },
+  },
   {
     label: "Signups",
     blocks: ["SignupForm"],

@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import { describe, expect, test } from "vitest";
 import type { Resource } from "@webstudio-is/sdk";
 import {
+  EVENTS_BINDING_NAME,
+  FORMS_PRESET_NAME,
+  UPCOMING_EVENTS_BINDING_NAME,
+  UPCOMING_EVENTS_PRESET_KEY,
+  UPCOMING_EVENTS_RESOURCE_NAME,
   findCatalogResources,
   getResourcePresetIds,
   isPresetId,
@@ -75,6 +80,40 @@ describe("getResourcePresetIds", () => {
       resourceId: nodeUuidV5("project-1:v1:events:resource"),
       bindingId: nodeUuidV5("project-1:v1:events:binding"),
     });
+  });
+});
+
+describe("the Events blocks' names", () => {
+  test("keys and names the panel and provisioning share", () => {
+    expect(UPCOMING_EVENTS_PRESET_KEY).toBe("upcoming-events");
+    expect(UPCOMING_EVENTS_RESOURCE_NAME).toBe("Upcoming Events");
+    expect(EVENTS_BINDING_NAME).toBe("OrganizeOS Events");
+    expect(UPCOMING_EVENTS_BINDING_NAME).toBe("OrganizeOS Upcoming Events");
+  });
+
+  test("a binding's name is distinctive: never its Resource's name", () => {
+    expect(EVENTS_BINDING_NAME).not.toBe("Events");
+    expect(UPCOMING_EVENTS_BINDING_NAME).not.toBe(
+      UPCOMING_EVENTS_RESOURCE_NAME
+    );
+    expect(FORMS_PRESET_NAME).toBe("OrganizeOS Forms");
+  });
+
+  test("Upcoming Events gets a deterministic id of its own", async () => {
+    const upcoming = await getResourcePresetIds(
+      "project-1",
+      UPCOMING_EVENTS_PRESET_KEY
+    );
+    expect(upcoming.resourceId).toBe(
+      await uuidV5("project-1:v1:upcoming-events:resource")
+    );
+    expect(upcoming.bindingId).toBe(
+      await uuidV5("project-1:v1:upcoming-events:binding")
+    );
+    expect(upcoming.resourceId).not.toBe(
+      (await getResourcePresetIds("project-1", "events")).resourceId
+    );
+    expect(isPresetId(upcoming.resourceId)).toBe(true);
   });
 });
 
@@ -156,5 +195,54 @@ describe("findCatalogResources", () => {
     expect(catalog[0].bindingId).toBe(
       (await getResourcePresetIds("project-1", "events")).bindingId
     );
+  });
+
+  test("lists Upcoming Events after Forms, when present, and not when absent", async () => {
+    const id = async (key: string) =>
+      (await getResourcePresetIds("project-1", key)).resourceId;
+    const forms = resource(await id("forms"), "OrganizeOS Forms", "/forms");
+    const upcoming = resource(
+      await id("upcoming-events"),
+      "Upcoming Events",
+      "/events?upcoming=true"
+    );
+    const events = resource(await id("events"), "Events", "/events");
+    const blog = resource(
+      await id("collection:blog"),
+      "Blog",
+      "/collections/blog/items"
+    );
+    // the same url under another id: a copy Webstudio made
+    const copy = resource(
+      "copy-of-upcoming",
+      "Upcoming Events",
+      "/events?upcoming=true"
+    );
+
+    const catalog = await findCatalogResources("project-1", [
+      upcoming,
+      copy,
+      forms,
+      blog,
+      events,
+    ]);
+
+    expect(catalog.map((entry) => entry.key)).toEqual([
+      "events",
+      "collection:blog",
+      "forms",
+      "upcoming-events",
+    ]);
+    expect(catalog.at(-1)).toEqual({
+      key: "upcoming-events",
+      resource: upcoming,
+      bindingId: (await getResourcePresetIds("project-1", "upcoming-events"))
+        .bindingId,
+    });
+    expect(
+      (await findCatalogResources("project-1", [forms, events])).map(
+        (entry) => entry.key
+      )
+    ).toEqual(["events", "forms"]);
   });
 });

@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import { showAttribute } from "@webstudio-is/react-sdk";
 import {
   type DataSource,
   type Instance,
@@ -11,7 +12,11 @@ import {
 import { builderApi } from "~/shared/builder-api";
 import { platformName } from "~/shared/branding";
 import {
+  FORMS_PRESET_KEY,
   FORMS_PRESET_NAME,
+  UPCOMING_EVENTS_BINDING_NAME,
+  UPCOMING_EVENTS_PRESET_KEY,
+  UPCOMING_EVENTS_RESOURCE_NAME,
   getResourcePresetIds,
 } from "~/shared/organizeos-preset-ids";
 import { $organizeosSite } from "~/shared/nano-states";
@@ -27,14 +32,15 @@ import { getInstanceLabel } from "~/builder/shared/instance-label";
  * Inserting an OrganizeOS block (spec section 4.3). A template cannot know a
  * project's catalog ids, so the block is completed at insert time: it brings
  * its own binding, a resource DataSource scoped to the block's root that
- * references the project's Forms catalog Resource, and its root's `data` prop
- * is bound to that binding by id. The Forms Resource is added when the
- * project lacks it, from the Events Resource that provisioning wrote. Click
- * (the OrganizeOS panel) and drop (the canvas's drag and drop) both insert
- * through here.
+ * references one of the project's catalog Resources (Forms, Events or Upcoming
+ * Events), and the props its table entry names are bound to that binding by
+ * id. The Forms and Upcoming Events Resources are added when the project
+ * lacks them, from the Events Resource that provisioning wrote. Click (the
+ * OrganizeOS panel) and drop (the canvas's drag and drop) both insert through
+ * here.
  *
  * Webstudio loads a resource DataSource, in the builder and on a published
- * page, only when its scope is on the page, so the forms load on the pages
+ * page, only when its scope is on the page, so the data loads on the pages
  * that have a block and nowhere else.
  */
 
@@ -44,21 +50,126 @@ export const organizeosNamespace = "@organizeos/site-components";
 export const isOrganizeosBlock = (component: string) =>
   component.startsWith(`${organizeosNamespace}:`);
 
-// Blocks whose root reads the org's published forms through its `data` prop.
-const formsBlocks = new Set([`${organizeosNamespace}:SignupForm`]);
+/**
+ * What a block reads from the org's catalog, and where its template reads it:
+ * the table `organizeosBlockData`, keyed by the template's key (the
+ * `component` the panel inserts, not the root's component: an Event List's root
+ * is a `ws:element`).
+ */
+export type BlockData = {
+  /** The catalog Resource the block's binding references. */
+  catalog: "events" | "forms" | "upcoming-events";
+  /** The name of the block's binding. */
+  bindingName: string;
+  /** The props bound to the binding, by the `ws:id` the template gives. */
+  binds: ReadonlyArray<{
+    /** "root", or the `ws:id` of an instance of the template. */
+    instance: "root" | string;
+    prop: string;
+    /** The expression, given the encoded binding variable. */
+    value: (variable: string) => string;
+  }>;
+};
+
+/**
+ * What the Event List and the Event Card bind (their template:
+ * packages/sdk-components-organizeos `events/event-card.template.tsx`). The
+ * variable is the resources loader's `{ ok, status, statusText, data }`, so
+ * `.data` is the response body and `.data.data` is the DTO's list; `ok` sits on
+ * the variable, not on the body.
+ *
+ * - The collection reads the list only when `ok` is true, so it stays on a list
+ *   for a successful read only and agrees with the empty and Unavailable boxes.
+ *   (A failed read hands over an error body, `{ error }` or a 429's
+ *   `{ error, retryAfter }`, whose `.data.data` is undefined and renders no
+ *   card either way. Binding the body itself, `.data`, would iterate one card
+ *   per key of it.)
+ * - The whole condition is parenthesized. A published page iterates
+ *   `Object.entries(<bind> ?? {})`, and `??` binds tighter than `?:`: bare, it
+ *   would guard only the `[]` branch, and a 200 whose body has no list (an HTML
+ *   page after a redirect, `{}`) would throw while the page renders.
+ * - The "No upcoming events" box shows for an empty list, and the "Events
+ *   unavailable" box for a failed read.
+ * - While the Resource loads the variable is undefined. Expressions are
+ *   transpiled with optional chaining, so the collection is empty and both
+ *   boxes stay hidden.
+ *
+ * A designer caps the list by editing the collection's `data` expression, for
+ * example `<binding>.data.data.slice(0, 6)` inside the condition.
+ */
+const eventsBlockData = (
+  list: (variable: string) => string
+): Pick<BlockData, "catalog" | "bindingName" | "binds"> => ({
+  catalog: "upcoming-events",
+  bindingName: UPCOMING_EVENTS_BINDING_NAME,
+  binds: [
+    {
+      instance: "events",
+      prop: "data",
+      value: (variable) => `(${variable}.ok === true ? ${list(variable)} : [])`,
+    },
+    {
+      instance: "empty",
+      prop: showAttribute,
+      value: (variable) =>
+        `${variable}.ok === true && ${variable}.data.data.length === 0`,
+    },
+    {
+      instance: "unavailable",
+      prop: showAttribute,
+      value: (variable) => `${variable}.ok === false`,
+    },
+  ],
+});
+
+/**
+ * The blocks that read the org's data. A template key with no entry is
+ * inserted untouched. Exported so a test can register a block of its own.
+ */
+export const organizeosBlockData = new Map<string, BlockData>([
+  [
+    `${organizeosNamespace}:SignupForm`,
+    {
+      catalog: "forms",
+      bindingName: FORMS_PRESET_NAME,
+      // GET /v1/forms: `{ data: [...] }`
+      binds: [
+        {
+          instance: "root",
+          prop: "data",
+          value: (variable) => `${variable}.data`,
+        },
+      ],
+    },
+  ],
+  [
+    `${organizeosNamespace}:EventList`,
+    eventsBlockData((variable) => `${variable}.data.data`),
+  ],
+  [
+    // the next upcoming event (plan decision D12): the first of the list
+    `${organizeosNamespace}:EventCard`,
+    eventsBlockData((variable) => `${variable}.data.data.slice(0, 1)`),
+  ],
+]);
 
 type PresetIds = { resourceId: string; bindingId: string };
 
-export type OrganizeosPresetIds = { events: PresetIds; forms: PresetIds };
+export type OrganizeosPresetIds = {
+  events: PresetIds;
+  forms: PresetIds;
+  upcomingEvents: PresetIds;
+};
 
 export const getOrganizeosPresetIds = async (
   projectId: string
 ): Promise<OrganizeosPresetIds> => {
-  const [events, forms] = await Promise.all([
+  const [events, forms, upcomingEvents] = await Promise.all([
     getResourcePresetIds(projectId, "events"),
-    getResourcePresetIds(projectId, "forms"),
+    getResourcePresetIds(projectId, FORMS_PRESET_KEY),
+    getResourcePresetIds(projectId, UPCOMING_EVENTS_PRESET_KEY),
   ]);
-  return { events, forms };
+  return { events, forms, upcomingEvents };
 };
 
 const isBlankExpression = (expression: string) => {
@@ -78,11 +189,11 @@ const findAuthorizationHeader = (resource: Resource) =>
   );
 
 /**
- * The Forms endpoint next to the Events one. Provisioning writes the Events
- * URL as a string literal, `"<API base>/events"`; anything else is not a URL
- * this can derive from.
+ * An endpoint next to the Events one, for a catalog Resource the project lacks.
+ * Provisioning writes the Events URL as a string literal,
+ * `"<API base>/events"`; anything else is not a URL this can derive from.
  */
-const getFormsUrl = (eventsUrl: string) => {
+const getSiblingUrl = (eventsUrl: string, path: string) => {
   let url: unknown;
   try {
     url = JSON.parse(eventsUrl);
@@ -92,44 +203,80 @@ const getFormsUrl = (eventsUrl: string) => {
   if (typeof url !== "string" || url.endsWith("/events") === false) {
     return;
   }
-  return JSON.stringify(`${url.slice(0, -"/events".length)}/forms`);
+  return JSON.stringify(`${url.slice(0, -"/events".length)}${path}`);
 };
+
+// The Resources a block can create, in the shape provisioning writes
+// (buildOrgResourcePresets): their name and their path under the API base.
+const createdResources = {
+  forms: { name: FORMS_PRESET_NAME, path: "/forms" },
+  "upcoming-events": {
+    name: UPCOMING_EVENTS_RESOURCE_NAME,
+    path: "/events?upcoming=true",
+  },
+} as const;
 
 export type OrganizeosBlockCompletion =
   | { status: "refused" }
   | {
       status: "ready";
       fragment: WebstudioFragment;
-      // For a block that reads the org's forms: the Forms catalog Resource
-      // its binding references, and that Resource when the project lacks it.
-      forms?: { resourceId: Resource["id"]; resource?: Resource };
+      // For a block that reads the org's data: the catalog Resource its
+      // binding references, that Resource when the project lacks it, the
+      // binding's name, and the props bound to it (by fragment instance id).
+      binding?: {
+        resourceId: Resource["id"];
+        resource?: Resource;
+        name: string;
+        binds: Array<{
+          instanceId: Instance["id"];
+          prop: string;
+          value: (variable: string) => string;
+        }>;
+      };
     };
-
 /**
  * Complete a block's template fragment against the project's catalog. Pure:
  * reads the given map, returns the fragment to insert and what the insert
  * adds with it (completeOrganizeosInsertMutable), never touches a store.
+ * `component` is the template's key, which names the block's table entry; a
+ * key with no entry is returned as it is.
  */
 export const completeOrganizeosFragment = ({
+  component,
   fragment,
   presetIds,
   resources,
 }: {
+  component: string;
   fragment: WebstudioFragment;
   presetIds: OrganizeosPresetIds;
   resources: Resources;
 }): OrganizeosBlockCompletion => {
+  const entry = organizeosBlockData.get(component);
   const rootChild = fragment.children.find((child) => child.type === "id");
   const root = fragment.instances.find(
     (instance) => instance.id === rootChild?.value
   );
-  if (root === undefined || formsBlocks.has(root.component) === false) {
+  if (entry === undefined || root === undefined) {
     return { status: "ready", fragment };
+  }
+
+  // A bind names an instance of the template by its `ws:id`. One the fragment
+  // lacks is a template bug (the template tests catch it); nothing is written.
+  const instanceIds = new Set(fragment.instances.map(({ id }) => id));
+  const binds = entry.binds.map((bind) => ({
+    instanceId: bind.instance === "root" ? root.id : bind.instance,
+    prop: bind.prop,
+    value: bind.value,
+  }));
+  if (binds.some((bind) => instanceIds.has(bind.instanceId) === false)) {
+    return { status: "refused" };
   }
 
   // The Events Resource, found by its id and never by name, is the project's
   // link to the org's data: its API base and its read token. Without it, or
-  // without the token, a Forms Resource could not authenticate, so nothing is
+  // without the token, a Resource could not authenticate, so nothing is
   // written and the admin is told who can restore it.
   const events = resources.get(presetIds.events.resourceId);
   const authorization =
@@ -138,84 +285,108 @@ export const completeOrganizeosFragment = ({
     return { status: "refused" };
   }
 
-  // Find or create the Forms Resource by the id provisioning gives it, in the
-  // shape provisioning writes (buildOrgResourcePresets), so a re-provision
-  // rewrites this same Resource instead of adding a second one.
-  const { forms } = presetIds;
-  let formsResource: undefined | Resource;
-  if (resources.has(forms.resourceId) === false) {
-    const url = getFormsUrl(events.url);
+  // Find or create the catalog Resource by the id provisioning gives it, in
+  // the shape provisioning writes (buildOrgResourcePresets), so a
+  // re-provision rewrites this same Resource instead of adding a second one.
+  // Events is always there by now, and is never created.
+  const resourceId =
+    entry.catalog === "events"
+      ? presetIds.events.resourceId
+      : entry.catalog === "forms"
+        ? presetIds.forms.resourceId
+        : presetIds.upcomingEvents.resourceId;
+  let resource: undefined | Resource;
+  if (entry.catalog !== "events" && resources.has(resourceId) === false) {
+    const { name, path } = createdResources[entry.catalog];
+    const url = getSiblingUrl(events.url, path);
     if (url === undefined) {
       return { status: "refused" };
     }
-    formsResource = {
-      id: forms.resourceId,
-      name: FORMS_PRESET_NAME,
+    resource = {
+      id: resourceId,
+      name,
       method: "get",
       url,
       headers: [{ name: "Authorization", value: authorization.value }],
     };
   }
 
-  // The root's `data` is bound by the insert, to the block's own binding;
-  // any binding the template made (by name) is dropped.
+  // The insert binds these props to the block's own binding; any binding the
+  // template made under the same names is dropped.
   return {
     status: "ready",
     fragment: {
       ...fragment,
       props: fragment.props.filter(
-        (prop) => prop.instanceId !== root.id || prop.name !== "data"
+        (prop) =>
+          binds.some(
+            (bind) =>
+              bind.instanceId === prop.instanceId && bind.prop === prop.name
+          ) === false
       ),
     },
-    forms: { resourceId: forms.resourceId, resource: formsResource },
+    binding: { resourceId, resource, name: entry.bindingName, binds },
   };
 };
 
 /**
  * What a completion adds, written into the insert's own transaction once the
- * block's root has its id there: the Forms Resource when the project still
- * lacks it (one that appeared meanwhile is kept, never replaced), a resource
- * DataSource with a fresh id scoped to the block's root that references it,
- * and the root's `data` bound to that DataSource's `.data` by id, the
- * `{ data: [...] }` body of GET /v1/forms, so no variable that shares its name
- * captures it at insert (copies are another matter: see the known limits).
+ * block's instances have their ids there (`newInstanceIds` maps each fragment
+ * id to its new one): the catalog Resource when the project still lacks it
+ * (one that appeared meanwhile is kept, never replaced), a resource DataSource
+ * with a fresh id scoped to the block's root that references it, and each
+ * bound prop set to an expression over that DataSource's variable, by id, so
+ * no variable that shares its name captures it at insert (copies are another
+ * matter: see the known limits).
  */
 export const completeOrganizeosInsertMutable = (
   data: Pick<WebstudioData, "resources" | "dataSources" | "props">,
   completion: Extract<OrganizeosBlockCompletion, { status: "ready" }>,
-  rootId: undefined | Instance["id"]
+  newInstanceIds: Map<Instance["id"], Instance["id"]>
 ) => {
-  const { forms } = completion;
-  if (forms === undefined || rootId === undefined) {
+  const { binding: block } = completion;
+  const rootChild = completion.fragment.children.find(
+    (child) => child.type === "id"
+  );
+  const rootId =
+    rootChild === undefined ? undefined : newInstanceIds.get(rootChild.value);
+  if (block === undefined || rootId === undefined) {
     return;
   }
   if (
-    forms.resource !== undefined &&
-    data.resources.has(forms.resourceId) === false
+    block.resource !== undefined &&
+    data.resources.has(block.resourceId) === false
   ) {
-    data.resources.set(forms.resourceId, forms.resource);
+    data.resources.set(block.resourceId, block.resource);
   }
   const binding: DataSource = {
     type: "resource",
     id: nanoid(),
     scopeInstanceId: rootId,
-    name: FORMS_PRESET_NAME,
-    resourceId: forms.resourceId,
+    name: block.name,
+    resourceId: block.resourceId,
   };
   data.dataSources.set(binding.id, binding);
-  for (const prop of data.props.values()) {
-    if (prop.instanceId === rootId && prop.name === "data") {
-      data.props.delete(prop.id);
+  const variable = encodeDataSourceVariable(binding.id);
+  for (const bind of block.binds) {
+    const instanceId = newInstanceIds.get(bind.instanceId);
+    if (instanceId === undefined) {
+      continue;
     }
+    for (const prop of data.props.values()) {
+      if (prop.instanceId === instanceId && prop.name === bind.prop) {
+        data.props.delete(prop.id);
+      }
+    }
+    const prop = {
+      id: nanoid(),
+      instanceId,
+      name: bind.prop,
+      type: "expression" as const,
+      value: bind.value(variable),
+    };
+    data.props.set(prop.id, prop);
   }
-  const dataProp = {
-    id: nanoid(),
-    instanceId: rootId,
-    name: "data",
-    type: "expression" as const,
-    value: `${encodeDataSourceVariable(binding.id)}.data`,
-  };
-  data.props.set(dataProp.id, dataProp);
 };
 
 /**
@@ -257,6 +428,7 @@ export const insertOrganizeosBlock = async (
   }
 
   const completion = completeOrganizeosFragment({
+    component,
     fragment: getComponentTemplateData(component),
     presetIds,
     resources: $resources.get(),
@@ -270,20 +442,13 @@ export const insertOrganizeosBlock = async (
     return false;
   }
 
-  const rootChild = completion.fragment.children.find(
-    (child) => child.type === "id"
-  );
   // Through the same transaction as any insert, so it syncs and undoes as
-  // one step, and writes nothing when the block has no place to go.
-  return insertWebstudioFragmentAt(completion.fragment, insertable, undefined, {
+  // one step, and writes nothing when the block has no place to go. "ours":
+  // a token the project already has (the designer may have restyled "OS
+  // Input") is reused as it stands, never added again as "OS Input-1".
+  return insertWebstudioFragmentAt(completion.fragment, insertable, "ours", {
     onInsert: (data, newInstanceIds) => {
-      completeOrganizeosInsertMutable(
-        data,
-        completion,
-        rootChild === undefined
-          ? undefined
-          : newInstanceIds.get(rootChild.value)
-      );
+      completeOrganizeosInsertMutable(data, completion, newInstanceIds);
     },
   });
 };

@@ -83,7 +83,8 @@ const createSiteData = (
           id: string;
           component: string;
           tag?: string;
-          children: Array<{ type: "id"; value: string }>;
+          // OrganizeOS fork: the Event List cases below hold expressions
+          children: Array<{ type: "id" | "expression"; value: string }>;
         },
       ]
     >;
@@ -1059,6 +1060,323 @@ describe("prebuild", () => {
       expect(page).not.toContain("useResource(");
       expect(resources).not.toContain("/v1/forms");
       expect(resources).not.toContain("OrganizeOS Forms");
+    });
+  });
+
+  // OrganizeOS fork: an Event List's Upcoming Events binding is scoped to the
+  // block's root, so only the page that holds the block loads the events. The
+  // collection reads the list only when the loader's `ok` is true, so it agrees
+  // with the two state boxes, which show on `ok` too. The condition is
+  // parenthesized: the page iterates `Object.entries(<bind> ?? {})`, and `??`
+  // binds tighter than `?:`, so unparenthesized it guards only the `[]` branch
+  // and a 200 without a list throws during render.
+  describe("compiles an Event List's data from the Upcoming Events preset", () => {
+    const upcomingBinding = {
+      type: "resource",
+      id: "upcoming-binding",
+      name: "OrganizeOS Upcoming Events",
+      resourceId: "upcoming-resource",
+      scopeInstanceId: "list",
+    };
+    const variable = encodeDataSourceVariable(upcomingBinding.id);
+    const eventParameter = encodeDataSourceVariable("event-parameter");
+
+    // The collection's list: an Event List's, or an Event Card's first event.
+    const eventListData = `${variable}.data.data`;
+    const eventCardData = `${variable}.data.data.slice(0, 1)`;
+
+    // What the page's collection iterates: the argument of its
+    // `Object.entries(`, without the `// @ts-ignore` line before it.
+    const getIterated = (page: string) =>
+      page
+        .match(
+          /Object\.entries\(\s*(?:\/\/[^\n]*\n)?([\s\S]*?)\s*\)\.map\(/
+        )?.[1]
+        .trim();
+
+    const writeEventList = ({
+      secondPage = false,
+      list = eventListData,
+    }: { secondPage?: boolean; list?: string } = {}) =>
+      writeSiteData(
+        createSiteData({
+          ...(secondPage && {
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: "Home",
+                path: "",
+                rootInstanceId: "root",
+                meta: {},
+              },
+              {
+                id: "about",
+                name: "About",
+                title: "About",
+                path: "/about",
+                rootInstanceId: "about-root",
+                meta: {},
+              },
+            ],
+          }),
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Box",
+                children: [{ type: "id", value: "list" }],
+              },
+            ],
+            [
+              "list",
+              {
+                id: "list",
+                component: "ws:element",
+                tag: "div",
+                children: [
+                  { type: "id", value: "events" },
+                  { type: "id", value: "empty" },
+                  { type: "id", value: "unavailable" },
+                ],
+              },
+            ],
+            [
+              "events",
+              {
+                id: "events",
+                component: "ws:collection",
+                children: [{ type: "id", value: "card" }],
+              },
+            ],
+            [
+              "card",
+              {
+                id: "card",
+                component: "ws:element",
+                tag: "article",
+                children: [{ type: "id", value: "title" }],
+              },
+            ],
+            [
+              "title",
+              {
+                id: "title",
+                component: "ws:element",
+                tag: "h3",
+                children: [
+                  { type: "expression", value: `${eventParameter}.title` },
+                ],
+              },
+            ],
+            [
+              "empty",
+              {
+                id: "empty",
+                component: "ws:element",
+                tag: "p",
+                children: [],
+              },
+            ],
+            [
+              "unavailable",
+              {
+                id: "unavailable",
+                component: "ws:element",
+                tag: "p",
+                children: [],
+              },
+            ],
+            ...(secondPage
+              ? [
+                  [
+                    "about-root",
+                    { id: "about-root", component: "Box", children: [] },
+                  ] satisfies [string, unknown],
+                ]
+              : []),
+          ],
+          props: [
+            [
+              "events-item",
+              {
+                id: "events-item",
+                instanceId: "events",
+                name: "item",
+                type: "parameter",
+                value: "event-parameter",
+              },
+            ],
+            [
+              "events-data",
+              {
+                id: "events-data",
+                instanceId: "events",
+                name: "data",
+                type: "expression",
+                value: `(${variable}.ok === true ? ${list} : [])`,
+              },
+            ],
+            [
+              "empty-show",
+              {
+                id: "empty-show",
+                instanceId: "empty",
+                name: "data-ws-show",
+                type: "expression",
+                value: `${variable}.ok === true && ${variable}.data.data.length === 0`,
+              },
+            ],
+            [
+              "unavailable-show",
+              {
+                id: "unavailable-show",
+                instanceId: "unavailable",
+                name: "data-ws-show",
+                type: "expression",
+                value: `${variable}.ok === false`,
+              },
+            ],
+          ],
+          dataSources: [
+            [upcomingBinding.id, upcomingBinding],
+            [
+              "event-parameter",
+              {
+                type: "parameter",
+                id: "event-parameter",
+                name: "event",
+                scopeInstanceId: "events",
+              },
+            ],
+          ],
+          resources: [
+            [
+              "upcoming-resource",
+              {
+                id: "upcoming-resource",
+                name: "Upcoming Events",
+                method: "get",
+                url: `"https://app.example.org/api/public/v1/events?upcoming=true"`,
+                headers: [
+                  { name: "Authorization", value: `"Bearer osk_test"` },
+                ],
+              },
+            ],
+          ],
+        })
+      );
+
+    const prebuildPage = async (pageFile = "_index") => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+      const generatedDir = join("app", "__generated__");
+      return {
+        page: await readFile(join(generatedDir, `${pageFile}.tsx`), "utf8"),
+        resources: await readFile(
+          join(generatedDir, `${pageFile}.server.tsx`),
+          "utf8"
+        ),
+      };
+    };
+
+    test("to a loader that fetches Upcoming Events, and a collection over the guarded list", async () => {
+      await writeEventList({ secondPage: true });
+
+      const { page, resources } = await prebuildPage();
+
+      const [, variable, request] =
+        page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
+      expect(variable).toBeDefined();
+      // the list is read only when the loader says `ok`, and the whole
+      // condition is what `?? {}` guards
+      expect(page).toContain("Object.entries(");
+      expect(getIterated(page)).toBe(
+        `(${variable}?.ok === true ? ${variable}?.data?.data : []) ?? {}`
+      );
+      expect(page).toContain(".map(([_key, event]: any) => {");
+      expect(page).toContain("{renderText(event?.title)}");
+      // the boxes show on the loader's `ok`
+      expect(page).toContain(
+        `{(${variable}?.ok === true && ${variable}?.data?.data?.length === 0) &&`
+      );
+      expect(page).toContain(`{(${variable}?.ok === false) &&`);
+      // and the loader requests Upcoming Events, query included
+      expect(resources).toContain(`const ${request}: ResourceRequest = {`);
+      expect(resources).toContain(
+        `url: "https://app.example.org/api/public/v1/events?upcoming=true",`
+      );
+      expect(resources).toContain(
+        `{ name: "Authorization", value: "Bearer osk_test" },`
+      );
+      expect(resources).toContain(`["${request}", ${request}],`);
+    });
+
+    test("with an Event Card's first event only", async () => {
+      await writeEventList({ list: eventCardData });
+
+      const { page } = await prebuildPage();
+
+      const [, variable] =
+        page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
+      expect(getIterated(page)).toBe(
+        `(${variable}?.ok === true ? ${variable}?.data?.data?.slice?.(0, 1) : []) ?? {}`
+      );
+    });
+
+    // The published page's render must not throw on a body without a list: the
+    // block degrades to nothing, and the page still renders.
+    describe.each([
+      ["an Event List", eventListData, 2],
+      ["an Event Card", eventCardData, 1],
+    ])("%s's iteration", (_case, list, items) => {
+      const iterate = async (result: unknown) => {
+        await writeEventList({ list });
+        const { page } = await prebuildPage();
+        const [, variable] =
+          page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
+        return new Function(
+          variable,
+          `return Object.entries(${getIterated(page)});`
+        )(result) as unknown[];
+      };
+
+      test("covers the events of a successful read", async () => {
+        const events = [{ title: "a" }, { title: "b" }];
+        expect(
+          await iterate({ ok: true, data: { data: events } })
+        ).toHaveLength(items);
+      });
+
+      test.each([
+        ["a 200 whose body is not JSON", { ok: true, data: "<html></html>" }],
+        ["a 200 whose body has no list", { ok: true, data: {} }],
+        ["a 200 whose list is null", { ok: true, data: { data: null } }],
+        ["a 200 whose body is null", { ok: true, data: null }],
+        ["a 503", { ok: false, data: { error: "unavailable" } }],
+        [
+          "a 429, with its retryAfter",
+          { ok: false, data: { error: "rate_limited", retryAfter: 30 } },
+        ],
+        ["a Resource that has not loaded", undefined],
+      ])("is empty, and does not throw, after %s", async (_name, result) => {
+        expect(await iterate(result)).toEqual([]);
+      });
+    });
+
+    test("to no request on a page without the block", async () => {
+      await writeEventList({ secondPage: true });
+
+      const { page, resources } = await prebuildPage("[about]._index");
+
+      expect(page).not.toContain("Object.entries(");
+      expect(page).not.toContain("useResource(");
+      expect(resources).not.toContain("upcoming=true");
+      expect(resources).not.toContain("Upcoming Events");
+      expect(resources).not.toContain("ResourceRequest = {");
     });
   });
 

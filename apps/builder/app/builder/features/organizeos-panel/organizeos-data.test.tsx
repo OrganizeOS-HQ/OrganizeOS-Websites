@@ -35,7 +35,10 @@ import {
 } from "~/shared/sync/data-stores";
 import { $resourcesCache, getResourceKey } from "~/shared/resources";
 import { findAvailableVariables } from "~/shared/data-variables";
-import { getResourcePresetIds } from "~/shared/organizeos-preset-ids";
+import {
+  findCatalogResources,
+  getResourcePresetIds,
+} from "~/shared/organizeos-preset-ids";
 import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
 import {
   addCatalogResourceToPage,
@@ -58,6 +61,7 @@ const { resources: catalog } = await buildOrgResourcePresets({
   readToken: "osk_token",
 });
 const events = await getResourcePresetIds(projectId, "events");
+const upcoming = await getResourcePresetIds(projectId, "upcoming-events");
 const eventsResource = catalog.find(
   (resource) => resource.id === events.resourceId
 ) as Resource;
@@ -282,6 +286,96 @@ describe("addCatalogResourceToPage", () => {
 
     expect(addCatalogResourceToPage("missing")).toBe(false);
     expect($dataSources.get()).toBe(before);
+  });
+});
+
+describe("Upcoming Events in the Data section", () => {
+  const getUpcomingBindings = () =>
+    [...$dataSources.get().values()].filter(
+      (dataSource) =>
+        dataSource.type === "resource" &&
+        dataSource.resourceId === upcoming.resourceId
+    );
+
+  test("is listed last when the project has it, and not when it lacks it", async () => {
+    setProject();
+    const keys = async () =>
+      (await findCatalogResources(projectId, $resources.get().values())).map(
+        (entry) => [entry.key, entry.resource.name]
+      );
+
+    expect(await keys()).toEqual([
+      ["events", "Events"],
+      ["fundraisers", "Fundraisers"],
+      ["stats", "Stats"],
+      ["forms", "OrganizeOS Forms"],
+      ["upcoming-events", "Upcoming Events"],
+    ]);
+
+    $resources.set(
+      new Map(
+        [...$resources.get()].filter(([id]) => id !== upcoming.resourceId)
+      )
+    );
+    expect((await keys()).map(([key]) => key)).not.toContain("upcoming-events");
+  });
+
+  test('"Add to this page" names its binding Upcoming Events, scoped to the page root, once', () => {
+    setProject();
+
+    expect(addCatalogResourceToPage(upcoming.resourceId)).toBe(true);
+    expect(getUpcomingBindings()).toEqual([
+      {
+        type: "resource",
+        id: expect.any(String),
+        scopeInstanceId: "bodyId",
+        name: "Upcoming Events",
+        resourceId: upcoming.resourceId,
+      },
+    ]);
+    expect(
+      isCatalogResourceOnPage({
+        page: { rootInstanceId: "bodyId" },
+        dataSources: $dataSources.get(),
+        resourceId: upcoming.resourceId,
+      })
+    ).toBe(true);
+    // Events is a Resource of its own: this page does not have it
+    expect(getEventsBindings()).toEqual([]);
+
+    expect(addCatalogResourceToPage(upcoming.resourceId)).toBe(false);
+    expect(getUpcomingBindings()).toHaveLength(1);
+  });
+
+  test("the builder loads the upcoming read for the page, and Events not at all", async () => {
+    setProject();
+    expect(addCatalogResourceToPage(upcoming.resourceId)).toBe(true);
+    loaderFetch.mockImplementation(async (_url: string, init: RequestInit) => {
+      const requests = JSON.parse(String(init.body)) as ResourceRequest[];
+      return {
+        ok: true,
+        json: async () =>
+          requests.map((request) => [
+            getResourceKey(request),
+            { ok: true, status: 200, statusText: "", data: { data: [] } },
+          ]),
+      };
+    });
+    vi.useFakeTimers();
+    const unsubscribe = subscribeResources();
+    await vi.advanceTimersByTimeAsync(1000);
+    unsubscribe();
+
+    expect(loaderFetch).toHaveBeenCalledTimes(1);
+    const requests = JSON.parse(
+      loaderFetch.mock.calls[0][1].body
+    ) as ResourceRequest[];
+    expect(requests.map(({ name, url }) => [name, url])).toEqual([
+      [
+        "Upcoming Events",
+        "https://staging.example.org/api/public/v1/events?upcoming=true",
+      ],
+    ]);
   });
 });
 

@@ -296,9 +296,11 @@ one platform call per resource again (§9, the rollout gate).
 Blocks for OrganizeOS's platform features: a block is a root and parts that a
 designer places and styles like any element, while what it does (validation,
 opt-in, tags) stays on the platform, in services Website Lite shares. Phase 1
-ships the Signup Form. Design and plan are in the OrganizeOS repo
+ships the Signup Form; phase 2a (display) the Event List and the Event Card.
+Design and plans are in the OrganizeOS repo
 (`docs/superpowers/specs/2026-10-01-website-builder-platform-components-design.md`,
-`docs/superpowers/plans/2026-10-02-website-builder-signup-form.md`); its
+`docs/superpowers/plans/2026-10-02-website-builder-signup-form.md`,
+`docs/superpowers/plans/2026-10-14-website-builder-events.md`); its
 `docs/features/website-builder-components.md` covers both halves.
 
 **The package**, `packages/sdk-components-organizeos`, npm name
@@ -321,6 +323,27 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
   `formState` variable, shows its state boxes with `ws:show`, styles the parts
   through the tokens "OS Field", "OS Input", "OS Button" and "OS Message", and
   leaves `data` unbound for the panel.
+- **Event List** and **Event Card** are templates over native elements and a
+  collection, with no component of their own (the package registers no
+  component for them, and `components.ts` never reaches their template files,
+  so a published site's copy of the package does not carry them). Both are the
+  same `ws:element` div, a grid, holding a `ws:collection` of cards (id
+  `events`), a "No upcoming events" box (id `empty`) and an "Events
+  unavailable" box (id `unavailable`): the designed Unavailable state that
+  spec invariant 11 asks for, with placeholder text the designer edits. The
+  card is `src/events/event-card.template.tsx`, one function of the
+  collection's `event` parameter: an `article` wearing the shared token "OS
+  Card" with a Cover image (shown only for an event with a `cover_image_url`),
+  the Title, a Time element for the start time (rendered in the event's own
+  `timezone`, a literal `dateStyle` "full" and `timeStyle` "short"), the Place
+  (shown only for a `location_name`) and a link to the event's `url` (absolute,
+  so a native anchor). The two `ws:show` expressions are `(x ?? "") !== ""`:
+  false for `null`, `""` and a missing key, where a bare `!== null` would be
+  true for a missing key. A Time given a zone it does not know falls back to
+  UTC, so a build made before the platform sends `timezone` renders UTC rather
+  than failing. The Event Card is the Event List's template under its own label
+  and shows the next upcoming event (one item, see Insert completion); picking
+  a specific event waits for the events virtual collection.
 - The canvas and the preview never post. On the canvas a root draws a warning
   on itself for a missing part (an email Field, a Submit Button, a Field for a
   required form field), a Field naming a field its form lacks, a form inside
@@ -350,8 +373,16 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
   gate, not an enforcement boundary (known limits).
 - A left-sidebar tab after Components, with the OrganizeOS mark, hidden in
   content mode and disabled on text pages, as Components is. It lists the
-  namespace's templates in sections (Phase 1: Signups) with the Components
-  panel's cards and drag, then the org's data (the Data section, below).
+  namespace's templates in sections (Events, then Signups) with the Components
+  panel's cards and drag, then the org's data (the Data section, below). A
+  section names its blocks (Events: Event List, Event Card, RSVP Form), skips a
+  name that is not registered yet, and a registered block no section names is
+  offered after the others, under "More".
+- Events ends with a link to the org's events area,
+  `<platform URL>/<subdomain>/events` (the Website area's URL while the builder
+  does not know the subdomain), "Manage events in OrganizeOS". The builder
+  depends on that platform route; the OrganizeOS side lists it, beside the
+  Embeds hub's, under "Contract with the fork".
 - Signups ends with a link to the org's Embeds hub,
   `<platform URL>/<subdomain>/pages/embeds`, where the org makes its forms (the
   Website area's URL while the builder does not know the subdomain). The
@@ -360,7 +391,8 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
 - **Data loads only where it is used, never page-wide.** The org's data is a
   catalog of GET Resources with deterministic ids: Events, Fundraisers and
   Stats (provisioning), one per public collection (collections-sync), and
-  Forms once a Signup Form has added it. A Resource loads nowhere by itself:
+  Forms and Upcoming Events once a block has added them. A Resource loads
+  nowhere by itself:
   Webstudio loads a resource DataSource, in the builder (`$computedResourceRequests`)
   and on a published page (the CLI's prebuild), only when its scope is an
   instance on the page or `:root`. So each use brings its own binding: a
@@ -368,7 +400,8 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
   which references the catalog Resource by id. Nothing scopes a binding at
   `:root`, and provisioning and collections-sync write no binding at all.
 - **Data section** (`organizeos-data.ts`): one row per catalog Resource, in
-  that order (collections in the build's order), found by id, never by name.
+  that order (collections in the build's order, then Forms, then Upcoming
+  Events), found by id, never by name.
   "Add to this page" gives the selected page a binding of the Resource,
   scoped to the page's root, unless the page already has one there or at
   `:root`; the row then reads "On this page". The binding is named like its
@@ -387,30 +420,77 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
 - **Insert completion**, `insert-organizeos-block.ts`. A clicked block and a
   dropped one both go through it: the canvas's drop handler
   (`canvas/shared/use-drag-drop.ts`) has one marked branch for the namespace.
+  What a block reads from the catalog is a table, `organizeosBlockData`, keyed
+  by the template's key (the `component` the panel inserts, not the root's
+  component: an Event List's root is a `ws:element`). An entry names the
+  catalog Resource (`events`, `forms` or `upcoming-events`), the name of the
+  block's binding, and the props that read it: an instance (`root`, or the
+  `ws:id` the template gives it), a prop name, and the expression, given the
+  binding's variable. A template key with no entry is inserted untouched.
+
+  - The Signup Form's entry is the Forms Resource under "OrganizeOS Forms", and
+    the root's `data` = `<v>.data`.
+  - The Event List's entry is Upcoming Events under "OrganizeOS Upcoming
+    Events", with three binds: the collection's (`events`) `data` =
+    `(<v>.ok === true ? <v>.data.data : [])`, the empty box's (`empty`)
+    `data-ws-show` = `<v>.ok === true && <v>.data.data.length === 0`, and the
+    unavailable box's (`unavailable`) `data-ws-show` = `<v>.ok === false`. The
+    Event Card's entry is the same with `<v>.data.data.slice(0, 1)` for the
+    list: the next event.
+  - `<v>` is the loader's `{ ok, status, statusText, data }`, so `<v>.data` is
+    the response body, `<v>.data.data` is the DTO's list, and `ok` sits on
+    `<v>`, not on the body. The collection reads the list only when `ok` is
+    true, so it stays on a list for a successful read only and agrees with the
+    empty and Unavailable boxes. (A failed read, a 503, a 429 or a 401, hands
+    over an error body, `{ error }` or a 429's `{ error, retryAfter }`, whose
+    `<v>.data.data` is undefined and renders no card either way; binding the
+    body itself, `<v>.data`, would iterate one card per key of it.) The
+    condition is parenthesized because the published page iterates
+    `Object.entries(<bind> ?? {})` and `??` binds tighter than `?:`: bare, the
+    `?? {}` would guard only the `[]` branch, and a 200 whose body has no list
+    (an HTML page after a redirect, `{}`) would throw while the page renders.
+    While the Resource loads, `<v>` is undefined; expressions are transpiled
+    with optional chaining, so the collection is empty and both boxes stay
+    hidden.
+  - A designer caps the list by editing the collection's `data` expression,
+    for example `<v>.data.data.slice(0, 6)` inside the condition. Keep the
+    condition's outer parentheses when editing: a published page iterates
+    `Object.entries(<expr> ?? {})`, and `??` binds tighter than `?:`, so
+    without them the `?? {}` guards only the `[]` branch and a 200 with no list
+    throws on the published page.
 
   1. Refuse, with a toast and no write, when the org is not on the allowlist.
   2. Find the Events Resource by its deterministic id, never by name. If it is
      missing or has no non-blank `Authorization` header, refuse with a toast
      ("this site's link to your organization's data was removed or changed.
-     Contact OrganizeOS support to restore it.") and write nothing. The same
-     refusal applies when Forms must be created and the Events URL is not the
-     `"<API base>/events"` literal provisioning writes.
+     Contact OrganizeOS support to restore it.") and write nothing, for every
+     entry. The same refusal applies when the entry's Resource must be created
+     and the Events URL is not the `"<API base>/events"` literal provisioning
+     writes, and when an entry binds an instance the template does not have (a
+     template bug, which the template tests catch).
   3. Insert with `insertWebstudioFragmentAt`, and in the same transaction
-     (its `onInsert` option, once the block's root has its id): create the
-     Forms catalog Resource if the project still lacks it, by the id
-     provisioning gives it and in provisioning's shape (named "OrganizeOS
-     Forms", the Events URL with `/forms` for `/events`, the Events
-     `Authorization` header; one that appeared meanwhile is kept); add the
-     block's binding, a resource DataSource with a fresh id scoped to the
-     block's root, named "OrganizeOS Forms", referencing that Resource; and
-     bind the root's `data` by id to the binding's `.data`, the
-     `{ data: [...] }` body of `GET /v1/forms`, so no variable that shares
-     its name captures it at insert (copies are another matter: see the known
-     limits).
+     (its `onInsert` option, once the block's instances have their ids): create
+     the entry's catalog Resource if the project still lacks it, by the id
+     provisioning gives it and in provisioning's shape (Forms: named "OrganizeOS
+     Forms", the Events URL with `/forms` for `/events`; Upcoming Events: named
+     "Upcoming Events", the Events URL with `/events?upcoming=true`; both with
+     the Events `Authorization` header; one that appeared meanwhile is kept; an
+     `events` entry never creates anything); add the block's binding, a
+     resource DataSource with a fresh id scoped to the block's root, named by
+     the entry ("OrganizeOS Forms", "OrganizeOS Upcoming Events", "OrganizeOS
+     Events"), referencing that Resource; and bind each prop the entry names,
+     by id, to an expression over the binding's variable, dropping a prop the
+     template made under that name on that instance, so no variable that shares
+     the binding's name captures it at insert (copies are another matter: see
+     the known limits).
+  4. The insert resolves a token the project already has with "ours": the
+     shared tokens ("OS Input" and the rest) are reused as they stand, so a
+     block inserted after the designer restyled "OS Input" wears the restyled
+     token instead of adding "OS Input-1" with default styles, and restyling a
+     token restyles every block (spec 3.2).
 
-  One transaction, so one undo removes the block, its binding and a Forms
-  Resource it created, and a block with no place to go writes nothing. The
-  forms load on the pages that have a block, and nowhere else.
+  One transaction, so one undo removes the block, its binding and a Resource it
+  created. The data loads on the pages that have a block, and nowhere else.
 
 - **Catalog Resources outlive their bindings.** Upstream deletes a binding's
   Resource with it (deleting an instance or a page, deleting a variable in the
@@ -430,17 +510,22 @@ ships the Signup Form. Design and plan are in the OrganizeOS repo
   open builder tab reloads before it can copy a stale token. A Resource on the
   OrganizeOS API base with another read token (a block pasted from another
   org's project) gets this org's token on the next provision. Until then, a
-  pasted block reads the other org's public forms.
+  pasted block reads the other org's public forms or upcoming events, and a
+  published page shows them.
 - **Preset ids**: `apps/builder/app/shared/organizeos-preset-ids.ts`, one
   WebCrypto `uuidV5` that the server and the browser share, pinned by tests to
   the ids the replaced `node:crypto` code produced, and `findCatalogResources`,
   which both sides use to list the catalog. Provisioning and the panel derive
-  the same ids, so a re-provision rewrites the panel's Forms Resource instead
-  of adding a second.
+  the same ids, so a re-provision rewrites the panel's Forms and Upcoming
+  Events Resources instead of adding a second. The names of those two Resources
+  and of the bindings the Events blocks bring live there too.
 - **The catalog in provisioning** (`shared/db/resource-presets.server.ts`):
-  Events, Fundraisers and Stats are written on every provision, Forms
-  ("when-present") is rewritten when the build has its Resource and never
-  created, and every collection Resource gets the new token and API base.
+  Events, Fundraisers and Stats are written on every provision, Forms and
+  Upcoming Events (`/events?upcoming=true`, "when-present") are rewritten when
+  the build has their Resource and never created, and every collection
+  Resource gets the new token and API base. Upcoming Events' token rotates like
+  the others': the check that finds a copy of a catalog Resource is a prefix
+  check on the API base.
   Resources are upserted in place and in order. The unscoped bindings older
   provisioning wrote next to each Resource never loaded, and the `:root` Forms
   binding the pre-deploy branches wrote loaded on every page; a provision or a
@@ -527,52 +612,78 @@ control. The Signup Form's `record` is a select:
   answer is `{ outcome }` (`subscribed`, `confirm_email` or `received`) or
   `{ error, field? }`. The block maps an outcome it does not know to Success
   and any error to Error, so a frozen build survives new answers.
+- `GET /v1/events?upcoming=true`, through the Upcoming Events catalog Resource
+  (the Event List and Event Card): the events not yet over, soonest first,
+  each with the event's `timezone`, the zone the platform resolves for it: the
+  stored zone when `Intl` accepts it (a tz database name such as
+  `America/Chicago` or `CET`, or an offset such as `+05:30`),
+  `America/New_York` when unset or invalid (the event form stores the zone it is
+  sent unchecked). A browser that does not know the zone shows the event in UTC
+  (the Time element's fallback). An older platform ignores `upcoming`. Before
+  the one public-event rule (plan task P1) it also lists members-only and
+  private events, which `is_public` lets through by default. Before the display changes (P2) it also lists ended events, with
+  no `timezone`. A page published then shows them until the platform deploys,
+  which is why OrganizeOS deploys first. The new platform honors `upcoming`
+  only when it is exactly `true`. A failed read answers
+  503 `{ error: "unavailable" }` with no `Cache-Control`, so no cache stores
+  "no events"; the blocks show their Unavailable box. Only public, published
+  events are listed (one rule for the Website, Website Lite's homepage and
+  embeds, `/v1/stats` and the anonymous RSVP gate).
 - `GET /v1/forms`, through the Forms catalog Resource, server-side with the
   project's read token, with the `Cache-Control` every `/v1` read sends
   (`public, s-maxage=60, stale-if-error=600`). The site's resource cache (§8)
   depends on it: without `s-maxage` (or `public` with `max-age`) every page
   view calls the platform again, and without `stale-if-error` a platform
   failure shows at once.
-- The Embeds hub route the panel links to.
+- The Embeds hub and events area routes the panel links to
+  (`/<subdomain>/pages/embeds`, `/<subdomain>/events`), which the OrganizeOS
+  contract lists with its environment variables.
 - Both sides build to the contract fixtures in OrganizeOS's
   `client/tests/fixtures/site-components/`, which the package copies into
-  `src/__fixtures__/` for its tests. To keep them in step, change the
-  OrganizeOS copy first, copy the files over unchanged, update the source
-  commit in the note at the top of the copy's `README.md`, and check that
-  `diff -r` between the two folders shows that note alone. A change is
-  additive or ships under a new endpoint version: a published site keeps
-  calling what it was built against.
+  `src/__fixtures__/` for its tests (`forms.json`, `events.json` and
+  `signups/`). To keep them in step, change the OrganizeOS copy first, copy the
+  files over unchanged, update the source commit in the note at the top of the
+  copy's `README.md`, and check that `diff -r` between the two folders shows
+  that note alone. A change is additive or ships under a new endpoint version:
+  a published site keeps calling what it was built against.
 
-**Deploy order** for this feature: OrganizeOS first, then the builder. That
-reverses the usual order (§5, and the OrganizeOS contract table: the builder
-first, so a new optional field is accepted before it is sent). Here the
-platform half adds new endpoints that nothing calls until the builder half
-ships, while a block inserted before they exist can neither load its forms nor
-submit.
+**Deploy order** for this feature (each phase, each slice): OrganizeOS first,
+then the builder. That reverses the usual order (§5, and the OrganizeOS
+contract table: the builder first, so a new optional field is accepted before
+it is sent). Here the platform half adds new endpoints that nothing calls until
+the builder half ships, while a block inserted before they exist can neither
+load its forms nor submit. Phase 2a (display) adds no endpoint, only
+`?upcoming=true`, a `timezone` key and a 503 to `GET /v1/events`. Until the
+platform's one public-event rule deploys (plan task P1), that endpoint also
+lists members-only and private events, and until its display changes deploy
+(plan task P2) it lists ended events with times in UTC. So no Event List is
+published before the platform half is live.
 
 **Known limits** (OrganizeOS spec, section 12, items 15 to 18, with the
 options, and the limits found since in review):
 
 - **Rollout gate.** The panel and the blocks are offered only to the orgs on
-  `ORGANIZEOS_BLOCKS_ORG_IDS`. A page with a Signup Form loads
-  `GET /v1/forms` on every view of that page (no longer of every page: the
-  binding is the block's own). Vercel's CDN never caches that request (it
-  carries `Authorization`); the published site's resource cache (§8) does.
-  With `/v1`'s `Cache-Control`, each warm function instance fetches it at
-  most once a minute, however many visitors arrive, and through a platform
-  failure or a 429 keeps serving the last good answer for up to ten
-  minutes (a refresh that hangs counts as a failure after 4 seconds, while that
-  answer can still be served), trying again only after `Retry-After` (at most a minute) or 10
-  seconds. The ceiling is still the platform's `public_read` limit, 120 a
-  minute per org and site egress IP, shared by the site's instances behind
-  that address; on a 429 with nothing stored (a cold instance) a block with a
-  form picked shows Unavailable. A published build is frozen: a site
-  published before the builder deploy that ships the cache keeps the old
-  loader, one uncached call per page view, until it is republished. So an org
-  joins the allowlist only after it has republished on that deploy and its
-  `/v1/forms` call rate has been observed. The allowlist is a rollout gate,
-  not an enforcement boundary: it decides who is offered the panel, and
-  nothing more. Pasting or duplicating a block (`insertWebstudioFragmentCopy`)
+  `ORGANIZEOS_BLOCKS_ORG_IDS`. A page with a Signup Form or an Events block
+  loads its Resource (`GET /v1/forms`, `GET /v1/events?upcoming=true`) on every
+  view of that page (no longer of every page: the binding is the block's own),
+  and a page with both makes both reads. Vercel's CDN never caches those
+  requests (they carry `Authorization`); the published site's resource cache
+  (§8) does, one entry per URL. With `/v1`'s `Cache-Control`, each warm
+  function instance fetches each at most once a minute, however many visitors
+  arrive, and through a platform failure or a 429 keeps serving the last good
+  answer for up to ten minutes (a refresh that hangs counts as a failure after
+  4 seconds, while that answer can still be served), trying again only after
+  `Retry-After` (at most a minute) or 10 seconds. The ceiling is still the
+  platform's `public_read` limit, 120 a minute per org and site egress IP,
+  shared by the site's instances behind that address; on a 429 with nothing
+  stored (a cold instance) a block with a form picked shows Unavailable, and so
+  do the Event List and Event Card. A
+  published build is frozen: a site published before the builder deploy that
+  ships the cache keeps the old loader, one uncached call per page view, until
+  it is republished. So an org joins the allowlist only after it has
+  republished on that deploy and its `/v1` call rate has been observed. The
+  allowlist is a rollout gate, not an enforcement boundary: it decides who is
+  offered the panel, and nothing more. Pasting or duplicating a block (`insertWebstudioFragmentCopy`)
   is not gated; the canvas registers the namespace for every project; the CLI
   copies the package into every site it builds; and removing an org from the
   list changes none of that, leaving its blocks and published sites as they
@@ -601,15 +712,29 @@ options, and the limits found since in review):
   and a copy remaps it by id: an enclosing-scope variable named exactly
   "OrganizeOS Forms" can take over `data` only in a block written on the
   pre-deploy branches (above), whose binding is at `:root`. What can still
-  capture a new block's `data` is a variable named exactly "OrganizeOS Forms"
-  added on the block's root itself, which the next re-resolution (saving that
-  variable is one) binds in place of the block's binding:
+  capture a new block's bound props is a variable named exactly like the
+  block's binding ("OrganizeOS Forms", "OrganizeOS Upcoming Events") added on
+  the block's root, or on any instance from a bound prop's own instance up to
+  that root (for an Event List or Event Card as inserted, the `events`
+  collection and the `empty` and `unavailable` boxes), which the next
+  re-resolution (saving that variable is one) binds in place of the block's
+  binding:
   `validateDataVariableName` compares only `variable`-type sources, so it
-  allows the name beside the binding. Insert binds by id; the re-resolution
-  is upstream behavior, left alone.
+  allows the name beside the binding. A Signup Form has one such prop (`data`);
+  an Event List or Event Card has three (the collection's `data` and the
+  `data-ws-show` of the `empty` and `unavailable` boxes). Insert binds by id;
+  the re-resolution is upstream behavior, left alone.
 - A catalog Resource is shared: editing it through any binding in the data
   panel edits it for every use, and a provision rewrites Events, Fundraisers,
-  Stats, Forms and each collection whole. A copy's own Resource (see Copies)
-  is the exception, and a provision only rotates its token.
+  Stats, Forms, Upcoming Events (where present) and each collection whole. A
+  copy's own Resource (see Copies) is the exception, and a provision only
+  rotates its token.
+- **Events blocks.** The canvas shows no card when the org has no upcoming
+  public events, so designing the cards needs one. The Event Card is the next
+  event, not a chosen one. The list is unbounded (every upcoming public event; a
+  `limit` parameter waits until a site needs it), and a designer caps it in the
+  collection's `data` expression. A
+  card's cover image is an absolute URL the platform sends: check that it loads
+  under the platform's CSP on a published page.
 - No self-serve "Reconnect data": once the builder is enabled, nothing re-seeds
   a project's catalog, so a refused insert needs support to re-provision.
