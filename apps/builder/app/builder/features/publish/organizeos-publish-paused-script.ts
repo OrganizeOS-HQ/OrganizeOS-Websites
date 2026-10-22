@@ -1,5 +1,6 @@
 import {
-  findTreeInstanceIds,
+  blockTemplateComponent,
+  elementComponent,
   getAllPages,
   type Instance,
   type Instances,
@@ -7,10 +8,13 @@ import {
   type Prop,
   type Props,
 } from "@webstudio-is/sdk";
+import { tagProperty } from "@webstudio-is/sdk/runtime";
 import {
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
+  pausedPropNames,
   pausedSvgTags,
+  tagPropsByComponent,
 } from "@organizeos/site-components/org-script";
 import { platformName } from "~/shared/branding";
 import { findPageAndSelectorByInstanceId } from "~/shared/instance-utils/lookup";
@@ -20,7 +24,9 @@ import { findPageAndSelectorByInstanceId } from "~/shared/instance-utils/lookup"
  * It mirrors what publishing drops (packages/cli/src/organizeos-org-script.ts)
  * for the things a designer put there on purpose: HTML Embeds that are not a
  * template icon, Markdown Embeds, the SVG elements that can set a link to a
- * javascript: URL, and the site's custom code.
+ * javascript: URL, props that write raw markup into an element, and the site's
+ * custom code. Elements with a tag the builder does not offer are not listed:
+ * only crafted or pasted JSON makes one, and the publish log counts them.
  */
 export type PausedScriptItem = {
   label: string;
@@ -32,8 +38,61 @@ export type PausedScriptItem = {
 
 export const pausedScriptExplanation = `Scripts on your site could read the ${platformName} sign-in of people who visit, so these stay off while we make it safe. What you saved is kept.`;
 
-// Components that render their tag as an element, from `tag` or a legacy prop
-const tagComponents = new Set(["ws:element", "Box", "Text", "Heading"]);
+/**
+ * The ids of what a page publishes, the page's root first. A Content Block's
+ * templates container is not published, so neither is anything inside it (the
+ * core template puts an empty HTML Embed there). What a content editor inserts
+ * into the block is a copy outside the container, and is found.
+ */
+const findPublishedInstanceIds = (
+  instances: Instances,
+  rootInstanceId: Instance["id"]
+) => {
+  const ids = new Set<Instance["id"]>();
+  const visit = (instanceId: Instance["id"]) => {
+    const instance = instances.get(instanceId);
+    if (
+      instance === undefined ||
+      ids.has(instanceId) ||
+      instance.component === blockTemplateComponent
+    ) {
+      return;
+    }
+    ids.add(instanceId);
+    for (const child of instance.children) {
+      if (child.type === "id") {
+        visit(child.value);
+      }
+    }
+  };
+  visit(rootInstanceId);
+  return ids;
+};
+
+/**
+ * The tags that the props which choose an element hold as static strings, as
+ * publishing reads them (`tagPropsByComponent`): all of them count, because a
+ * component may read one of several. `ws:element` renders `instance.tag` only.
+ */
+const findStaticTags = (instance: Instance, props: Prop[]) => {
+  const isElement = instance.component === elementComponent;
+  const tagProps = tagPropsByComponent.get(instance.component) ?? [];
+  const tags: string[] = [];
+  // `instance.tag` is the element of a ws:element, and reaches the others as
+  // the data-ws-tag attribute, which only some of them read
+  if (
+    instance.tag !== undefined &&
+    (isElement || tagProps.includes(tagProperty))
+  ) {
+    tags.push(instance.tag);
+  }
+  for (const prop of props) {
+    if (prop.type === "string" && tagProps.includes(prop.name)) {
+      tags.push(prop.value);
+    }
+  }
+  return tags;
+};
 
 export const findPausedScript = ({
   pages,
@@ -50,22 +109,18 @@ export const findPausedScript = ({
     return [];
   }
 
-  const codeProps = new Map<Instance["id"], Prop>();
-  const tagProps = new Map<Instance["id"], string>();
+  const propsByInstance = new Map<Instance["id"], Prop[]>();
   for (const prop of props.values()) {
-    if (prop.name === "code") {
-      codeProps.set(prop.instanceId, prop);
-    }
-    if (prop.name === "tag" && prop.type === "string") {
-      tagProps.set(prop.instanceId, prop.value);
-    }
+    const list = propsByInstance.get(prop.instanceId) ?? [];
+    list.push(prop);
+    propsByInstance.set(prop.instanceId, list);
   }
 
   const items: PausedScriptItem[] = [];
   const seen = new Set<Instance["id"]>();
   for (const page of getAllPages(pages)) {
-    // only what a page contains is published
-    for (const instanceId of findTreeInstanceIds(
+    // only what a page publishes is listed
+    for (const instanceId of findPublishedInstanceIds(
       instances,
       page.rootInstanceId
     )) {
@@ -77,26 +132,37 @@ export const findPausedScript = ({
       if (instance === undefined) {
         continue;
       }
-      let name: undefined | string;
+      const instanceProps = propsByInstance.get(instance.id) ?? [];
+      const labels: string[] = [];
       if (instance.component === "HtmlEmbed") {
-        const code = codeProps.get(instance.id);
+        const code = instanceProps.find((prop) => prop.name === "code");
         // an expression is only known when the page renders: it is dropped
         if (
           htmlEmbedCodeMayRun(
             code?.type === "string" ? code.value : undefined
           ) === false
         ) {
-          name = "HTML Embed";
+          labels.push("HTML Embed");
         }
       } else if (instance.component === "MarkdownEmbed") {
-        name = "Markdown Embed";
-      } else if (tagComponents.has(instance.component)) {
-        const tag = instance.tag ?? tagProps.get(instance.id);
-        if (tag !== undefined && pausedSvgTags.has(tag)) {
-          name = `SVG ${tag} element`;
+        labels.push("Markdown Embed");
+      } else {
+        const paused = findStaticTags(instance, instanceProps).find((tag) =>
+          pausedSvgTags.has(tag)
+        );
+        if (paused !== undefined) {
+          labels.push(`SVG ${paused} element`);
+        }
+        // an instance that is dropped takes its props with it
+        if (labels.length === 0) {
+          for (const prop of instanceProps) {
+            if (pausedPropNames.has(prop.name)) {
+              labels.push("Raw HTML property");
+            }
+          }
         }
       }
-      if (name === undefined) {
+      if (labels.length === 0) {
         continue;
       }
       const { pageId, instanceSelector } = findPageAndSelectorByInstanceId(
@@ -105,10 +171,12 @@ export const findPausedScript = ({
         instance.id
       );
       const owner = pages.pages.get(pageId);
-      items.push({
-        label: `${name} on ${owner?.name ?? page.name}`,
-        navigate: { pageId, instanceSelector },
-      });
+      for (const label of labels) {
+        items.push({
+          label: `${label} on ${owner?.name ?? page.name}`,
+          navigate: { pageId, instanceSelector },
+        });
+      }
     }
   }
 

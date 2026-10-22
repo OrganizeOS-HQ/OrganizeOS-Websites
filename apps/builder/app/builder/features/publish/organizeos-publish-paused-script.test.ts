@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
   ROOT_FOLDER_ID,
+  blockComponent,
+  blockTemplateComponent,
   type Instance,
   type Page,
   type Pages,
@@ -59,6 +61,16 @@ const stringProp = (instanceId: string, name: string, value: string): Prop => ({
   type: "string",
   value,
 });
+
+const jsonProp = (instanceId: string, name: string, value: unknown): Prop => ({
+  id: `${instanceId}-${name}`,
+  instanceId,
+  name,
+  type: "json",
+  value,
+});
+
+const DialogTitle = "@webstudio-is/sdk-components-react-radix:DialogTitle";
 
 const toProps = (list: Prop[]) => new Map(list.map((prop) => [prop.id, prop]));
 
@@ -192,6 +204,194 @@ describe("findPausedScript", () => {
       {
         label: "SVG set element on Home",
         navigate: { pageId: "home", instanceSelector: ["legacy", "home-root"] },
+      },
+    ]);
+  });
+
+  test("lists a data-ws-tag prop of animate or set on a legacy component, and a DialogTitle's tag prop", () => {
+    // Box, Text and Heading read data-ws-tag before their legacy tag prop,
+    // DialogTitle reads tag
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids(
+          "box",
+          "text",
+          "title",
+          "both",
+          "element",
+          "link",
+          "title-with-tag",
+          "transform"
+        ),
+      },
+      { id: "box", component: "Box" },
+      { id: "text", component: "Text" },
+      { id: "title", component: DialogTitle },
+      { id: "both", component: "Heading" },
+      { id: "element", component: "ws:element", tag: "div" },
+      { id: "link", component: "Link", tag: "animate" },
+      // DialogTitle reads its tag prop only, so its instance.tag is an attribute
+      { id: "title-with-tag", component: DialogTitle, tag: "animate" },
+      { id: "transform", component: "Box" },
+    ]);
+    const props = toProps([
+      stringProp("box", "data-ws-tag", "animate"),
+      stringProp("text", "data-ws-tag", "set"),
+      stringProp("title", "tag", "animate"),
+      // the data-ws-tag prop is not the one that is checked first: both count
+      stringProp("both", "tag", "h2"),
+      stringProp("both", "data-ws-tag", "set"),
+      // only attributes here
+      stringProp("element", "data-ws-tag", "animate"),
+      stringProp("element", "tag", "animate"),
+      stringProp("link", "data-ws-tag", "animate"),
+      stringProp("transform", "data-ws-tag", "animateTransform"),
+    ]);
+
+    expect(find({ instances, props }).map((item) => item.label)).toEqual([
+      "SVG animate element on Home",
+      "SVG set element on Home",
+      "SVG animate element on Home",
+      "SVG set element on Home",
+    ]);
+    expect(
+      find({ instances, props }).map((item) => item.navigate?.instanceSelector)
+    ).toEqual([
+      ["box", "home-root"],
+      ["text", "home-root"],
+      ["title", "home-root"],
+      ["both", "home-root"],
+    ]);
+  });
+
+  test("lists each dangerouslySetInnerHTML prop, with its page and selector", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("box", "json", "expression"),
+      },
+      { id: "box", component: "Box", children: ids("nested") },
+      { id: "nested", component: "ws:element", tag: "div" },
+      { id: "json", component: "ws:element", tag: "div" },
+      { id: "expression", component: "Link" },
+      { id: "about-root", component: "Body", children: ids("about") },
+      { id: "about", component: "ws:element", tag: "div" },
+    ]);
+    const props = toProps([
+      jsonProp("nested", "dangerouslySetInnerHTML", { __html: "<b>1</b>" }),
+      jsonProp("json", "dangerouslySetInnerHTML", { __html: "<b>2</b>" }),
+      {
+        id: "expression-html",
+        instanceId: "expression",
+        name: "dangerouslySetInnerHTML",
+        type: "expression",
+        value: '{__html: "<b>3</b>"}',
+      },
+      stringProp("about", "dangerouslySetInnerHTML", "<b>4</b>"),
+      // not the prop
+      stringProp("box", "innerHTML", "<b>5</b>"),
+    ]);
+
+    expect(find({ instances, props })).toEqual([
+      {
+        label: "Raw HTML property on Home",
+        navigate: {
+          pageId: "home",
+          instanceSelector: ["nested", "box", "home-root"],
+        },
+      },
+      {
+        label: "Raw HTML property on Home",
+        navigate: { pageId: "home", instanceSelector: ["json", "home-root"] },
+      },
+      {
+        label: "Raw HTML property on Home",
+        navigate: {
+          pageId: "home",
+          instanceSelector: ["expression", "home-root"],
+        },
+      },
+      {
+        label: "Raw HTML property on About",
+        navigate: {
+          pageId: "about",
+          instanceSelector: ["about", "about-root"],
+        },
+      },
+    ]);
+  });
+
+  test("lists nothing for a dangerouslySetInnerHTML prop of an instance that is listed anyway", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("embed") },
+      { id: "embed", component: "HtmlEmbed" },
+    ]);
+    const props = toProps([
+      stringProp("embed", "code", "<script>1</script>"),
+      jsonProp("embed", "dangerouslySetInnerHTML", { __html: "<b>1</b>" }),
+    ]);
+
+    expect(find({ instances, props }).map((item) => item.label)).toEqual([
+      "HTML Embed on Home",
+    ]);
+  });
+
+  test("lists nothing for the empty HTML Embed in a Content Block's templates", () => {
+    // The core Content Block template holds an empty HtmlEmbed in its
+    // BlockTemplate. Nothing in the template is published, so the admin never
+    // added it and it never ships.
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("block") },
+      {
+        id: "block",
+        component: blockComponent,
+        children: ids("template", "paragraph"),
+      },
+      {
+        id: "template",
+        component: blockTemplateComponent,
+        children: ids("template-embed", "template-markdown", "template-box"),
+      },
+      { id: "template-embed", component: "HtmlEmbed" },
+      { id: "template-markdown", component: "MarkdownEmbed" },
+      { id: "template-box", component: "Box" },
+      { id: "paragraph", component: "ws:element", tag: "p" },
+    ]);
+    const props = toProps([
+      jsonProp("template-box", "dangerouslySetInnerHTML", { __html: "x" }),
+    ]);
+
+    expect(find({ instances, props })).toEqual([]);
+  });
+
+  test("lists an embed that a content editor inserted into the Content Block", () => {
+    // The copy is a child of the block, not of its templates, and is published
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("block") },
+      {
+        id: "block",
+        component: blockComponent,
+        children: ids("template", "inserted"),
+      },
+      {
+        id: "template",
+        component: blockTemplateComponent,
+        children: ids("template-embed"),
+      },
+      { id: "template-embed", component: "HtmlEmbed" },
+      { id: "inserted", component: "HtmlEmbed" },
+    ]);
+
+    expect(find({ instances })).toEqual([
+      {
+        label: "HTML Embed on Home",
+        navigate: {
+          pageId: "home",
+          instanceSelector: ["inserted", "block", "home-root"],
+        },
       },
     ]);
   });
