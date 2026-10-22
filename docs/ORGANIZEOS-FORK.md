@@ -1222,6 +1222,17 @@ upstream merge that adds or redraws one; another keeps the list free of script,
 handlers, links, `use`, `foreignObject` and animation. A designer who edits an
 icon's SVG loses it, and the canvas shows that at once.
 
+**The OrganizeOS blocks are left alone.** Their templates (§9) hold native
+elements, upstream's Image and Time, the package's own components, a collection
+and `ws:descendant` style rules: no embed, no `tag` or `data-ws-tag` prop and no raw HTML property, so
+the pause drops none of them. `features/publish/organizeos-publish-paused-script.blocks.test.tsx`
+inserts every block the OrganizeOS panel lists into one page, through the
+panel's own insert with its bindings, and fails if `findPausedScript` lists
+anything there, or if `dropOrgScript` changes the bundle or logs a line. It
+reads the CLI's module by path, as the panel's tests read the package's
+fixtures, so one fixture feeds both, and a block added to the panel is covered
+without editing the test.
+
 **Paths left alone, on purpose.** None of the upstream insert, paste and
 duplicate paths is gated: the Radix, YouTube and Vimeo templates (which insert
 the icons), Content Block's empty templates container, HTML paste (a `<script>`
