@@ -31,6 +31,12 @@ import {
 } from "@webstudio-is/sdk";
 import { indexProperty, tagProperty } from "@webstudio-is/sdk/runtime";
 import {
+  checksTagProp,
+  elementTagMayRun,
+  propNameMayRun,
+  withoutBlockedTagProps,
+} from "@organizeos/site-components/org-script";
+import {
   idAttribute,
   componentAttribute,
   showAttribute,
@@ -348,7 +354,10 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
         const instancePropsObject: Record<Prop["name"], unknown> = {};
         const instance = instances.get(instanceId);
         const tag = instance?.tag;
-        if (tag !== undefined) {
+        // OrganizeOS fork: org script is paused. A tag the builder does not
+        // offer (script, or JSX syntax) never reaches the component that makes
+        // an element from it (docs/ORGANIZEOS-FORK.md section 10).
+        if (tag !== undefined && elementTagMayRun(tag)) {
           instancePropsObject[tagProperty] = tag;
         }
         const meta = metas.get(instance?.component ?? "");
@@ -360,6 +369,23 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
         const instanceProps = propValuesByInstanceSelector.get(instanceKey);
         if (instanceProps) {
           for (const [name, value] of instanceProps) {
+            // OrganizeOS fork: org script is paused. A prop that writes raw
+            // markup into the element never reaches it (docs/ORGANIZEOS-FORK.md
+            // section 10).
+            if (propNameMayRun(name) === false) {
+              continue;
+            }
+            // ... and so does a data-ws-tag or tag prop that is not a tag the
+            // builder offers, once evaluated (an expression too), on any
+            // component but ws:element: Box, Text, Heading and Dialog Title
+            // make their element from it, and a Radix trigger passes it on to
+            // the child it renders (see withoutBlockedTagProps below)
+            if (
+              checksTagProp(instance?.component ?? "", name) &&
+              elementTagMayRun(value) === false
+            ) {
+              continue;
+            }
             let propName = name;
             // convert html attribute only when component has tags
             // and does not specify own property with this name
@@ -524,6 +550,12 @@ export const WebstudioComponentCanvas = forwardRef<
 
   if (instance.component === elementComponent) {
     Component = instance.tag ?? "div";
+    // OrganizeOS fork: org script is paused. React hoists a `script` that has
+    // `async` and `src` into <head> and runs it (docs/ORGANIZEOS-FORK.md
+    // section 10).
+    if (elementTagMayRun(Component) === false) {
+      Component = "div";
+    }
     // replace to enable uncontrolled state
     if (Component === "input") {
       Component = Input as AnyComponent;
@@ -572,7 +604,14 @@ export const WebstudioComponentCanvas = forwardRef<
     Component = BlockTemplate;
   }
 
-  const mergedProps = mergeProps(restProps, instanceProps, "delete");
+  // OrganizeOS fork: org script is paused. Radix's Slot merges the props of a
+  // trigger onto its child, so the tag the parent passes in reaches this
+  // component in restProps, past useInstanceProps. It is checked here too
+  // (docs/ORGANIZEOS-FORK.md section 10).
+  const mergedProps = withoutBlockedTagProps(
+    instance.component,
+    mergeProps(restProps, instanceProps, "delete")
+  );
 
   const props: {
     [componentAttribute]: string;
@@ -679,7 +718,11 @@ export const WebstudioComponentPreview = forwardRef<
     [idAttribute]: string;
     [selectorIdAttribute]: string;
   } & Record<string, unknown> = {
-    ...mergeProps(restProps, instanceProps, "merge"),
+    // OrganizeOS fork: org script is paused (see WebstudioComponentCanvas)
+    ...withoutBlockedTagProps(
+      instance.component,
+      mergeProps(restProps, instanceProps, "merge")
+    ),
     [idAttribute]: instance.id,
     [componentAttribute]: instance.component,
     [selectorIdAttribute]: instanceSelector.join(","),
@@ -721,6 +764,10 @@ export const WebstudioComponentPreview = forwardRef<
 
   if (instance.component === elementComponent) {
     Component = instance.tag ?? "div";
+    // OrganizeOS fork: org script is paused (see WebstudioComponentCanvas)
+    if (elementTagMayRun(Component) === false) {
+      Component = "div";
+    }
     // replace to enable uncontrolled state
     if (Component === "input") {
       Component = Input as AnyComponent;

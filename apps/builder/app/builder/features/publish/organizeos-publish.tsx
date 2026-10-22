@@ -29,6 +29,7 @@ import {
   $instances,
   $pages,
   $project,
+  $props,
 } from "~/shared/sync/data-stores";
 import {
   $editingPageId,
@@ -42,6 +43,11 @@ import { CopyToClipboard } from "~/shared/copy-to-clipboard";
 import { RelativeTime } from "~/builder/shared/relative-time";
 import { platformName } from "~/shared/branding";
 import { getRestrictedFeatures } from "./restricted-features";
+import { $openProjectSettings } from "~/shared/nano-states/project-settings";
+import {
+  findPausedScript,
+  pausedScriptExplanation,
+} from "./organizeos-publish-paused-script";
 import {
   getOrganizeosPublishState,
   type OrganizeosPublishState,
@@ -66,6 +72,12 @@ const $restrictedFeatures = computed(
   [$pages, $dataSources, $instances, $permissions],
   (pages, dataSources, instances, permissions) =>
     getRestrictedFeatures({ pages, dataSources, instances, permissions })
+);
+
+// OrganizeOS fork: what publishing leaves out while org script is paused
+const $pausedScript = computed(
+  [$pages, $instances, $props],
+  (pages, instances, props) => findPausedScript({ pages, instances, props })
 );
 
 const refreshProject = async () => {
@@ -185,6 +197,50 @@ const RestrictedFeaturesBanner = ({ manageUrl }: { manageUrl: string }) => {
           Open the Website area
         </Link>
       </Text>
+    </PanelBanner>
+  );
+};
+
+/**
+ * Lists the embeds, animations and custom code that this publish leaves out
+ * while an org's own script is paused (docs/ORGANIZEOS-FORK.md section 10).
+ * Information only: Publish still runs, and drops them. What the org saved is
+ * kept, so the list empties when the switch is turned on.
+ */
+export const PausedScriptBanner = () => {
+  const pausedScript = useStore($pausedScript);
+  if (pausedScript.length === 0) {
+    return;
+  }
+  return (
+    <PanelBanner variant="warning">
+      <Text variant="regularBold">These are paused and are not published:</Text>
+      <Text as="ul" css={{ paddingLeft: "1em" }}>
+        {pausedScript.map(({ label, navigate, view }, index) => (
+          <li key={index}>
+            {navigate !== undefined || view !== undefined ? (
+              <button
+                className={buttonLinkClass}
+                type="button"
+                onClick={() => {
+                  if (navigate !== undefined) {
+                    $selectedPageId.set(navigate.pageId);
+                    selectInstance(navigate.instanceSelector);
+                  }
+                  if (view === "projectSettings") {
+                    $openProjectSettings.set("general");
+                  }
+                }}
+              >
+                {label}
+              </button>
+            ) : (
+              label
+            )}
+          </li>
+        ))}
+      </Text>
+      <Text>{pausedScriptExplanation}</Text>
     </PanelBanner>
   );
 };
@@ -330,6 +386,7 @@ export const OrganizeosPublishContent = ({
       <StatusLine state={state} />
       {error !== undefined && <Text color="destructive">{error}</Text>}
       <RestrictedFeaturesBanner manageUrl={site.manageUrl} />
+      <PausedScriptBanner />
 
       <Tooltip
         content={

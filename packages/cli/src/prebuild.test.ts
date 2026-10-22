@@ -15,7 +15,9 @@ import * as jsxRuntime from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import { transformWithEsbuild } from "vite";
 import { bundleVersion } from "@webstudio-is/protocol";
+import { log } from "@clack/prompts";
 import { encodeDataSourceVariable } from "@webstudio-is/sdk";
+import { templateIconCodes } from "@organizeos/site-components/org-script";
 import { generateRedirectsModule, prebuild } from "./prebuild";
 import {
   findModuleClosure,
@@ -63,6 +65,31 @@ const getFilePaths = async (dir: string): Promise<string[]> => {
     })
   );
   return paths.flat();
+};
+
+/** Runs a TSX module as CommonJS, resolving its imports from `imports`. */
+const runModule = async (
+  code: string,
+  imports: Record<string, unknown>
+): Promise<Record<string, unknown>> => {
+  const { code: js } = await transformWithEsbuild(code, "module.tsx", {
+    loader: "tsx",
+    format: "cjs",
+    jsx: "automatic",
+  });
+  const module = { exports: {} as Record<string, unknown> };
+  const load = (id: string) => {
+    if (id in imports === false) {
+      throw Error(`"${id}" is not available to the module`);
+    }
+    return imports[id];
+  };
+  new Function("module", "exports", "require", js)(
+    module,
+    module.exports,
+    load
+  );
+  return module.exports;
 };
 
 const createSiteData = (
@@ -602,31 +629,6 @@ describe("prebuild", () => {
       // Body puts after its children.
       describe("rendered", () => {
         type Wrapper = ComponentType<{ system: unknown }>;
-
-        /** Runs a TSX module as CommonJS, resolving its imports from `imports`. */
-        const runModule = async (
-          code: string,
-          imports: Record<string, unknown>
-        ): Promise<Record<string, unknown>> => {
-          const { code: js } = await transformWithEsbuild(code, "module.tsx", {
-            loader: "tsx",
-            format: "cjs",
-            jsx: "automatic",
-          });
-          const module = { exports: {} as Record<string, unknown> };
-          const load = (id: string) => {
-            if (id in imports === false) {
-              throw Error(`"${id}" is not available to the module`);
-            }
-            return imports[id];
-          };
-          new Function("module", "exports", "require", js)(
-            module,
-            module.exports,
-            load
-          );
-          return module.exports;
-        };
 
         /** The route's PageWithSourceOffer, as the site ships it, around `Page`. */
         const loadWrapper = async (route: string, Page: unknown) => {
@@ -1630,6 +1632,691 @@ describe("prebuild", () => {
     await expect(
       readFile("app/routes/[robots.txt]._index.tsx", "utf8")
     ).resolves.toContain("Content-Type");
+  });
+
+  // OrganizeOS fork: org script is paused (organizeos-org-script.ts)
+  describe("leaves an org's own script out", () => {
+    const scriptEmbed = '<script>alert("embed")</script>';
+
+    const generated = async (file = "_index") => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+      const generatedDir = join("app", "__generated__");
+      return {
+        page: await readFile(join(generatedDir, `${file}.tsx`), "utf8"),
+        resources: await readFile(
+          join(generatedDir, `${file}.server.tsx`),
+          "utf8"
+        ),
+      };
+    };
+
+    // T12
+    test("leaves out HTML Embeds and custom code", async () => {
+      await writeSiteData(
+        createSiteData({
+          pageMeta: { code: '<script src="/custom.js"></script>' },
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "box" },
+                  { type: "id", value: "remote" },
+                  { type: "id", value: "jsx" },
+                ],
+              },
+            ],
+            [
+              "box",
+              {
+                id: "box",
+                component: "Box",
+                children: [{ type: "id", value: "embed" }],
+              },
+            ],
+            ["embed", { id: "embed", component: "HtmlEmbed", children: [] }],
+            [
+              "remote",
+              {
+                id: "remote",
+                component: elementComponent,
+                tag: "script",
+                children: [],
+              },
+            ],
+            [
+              "jsx",
+              {
+                id: "jsx",
+                component: elementComponent,
+                tag: "div />{globalThis.pwned = 1}<div",
+                children: [],
+              },
+            ],
+          ],
+          props: [
+            [
+              "embed-code",
+              {
+                id: "embed-code",
+                instanceId: "embed",
+                name: "code",
+                type: "string",
+                value: scriptEmbed,
+              },
+            ],
+            [
+              "remote-src",
+              {
+                id: "remote-src",
+                instanceId: "remote",
+                name: "src",
+                type: "string",
+                value: "https://evil.example/x.js",
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).not.toContain("alert");
+      expect(page).not.toContain("HtmlEmbed");
+      expect(page).not.toContain("custom.js");
+      expect(page).not.toContain("evil.example");
+      expect(page).not.toContain("<script");
+      expect(page).not.toContain("pwned");
+      // The page still exports its custom code, and now it holds nothing
+      expect(page).toMatch(
+        /export const CustomCode = \(\) => \{\s*return \(<><\/>\);/
+      );
+      expect(page).not.toContain("const Script");
+      // ... and still renders the Box
+      expect(page).toContain("<Box");
+    });
+
+    test("leaves out Markdown Embeds and the SVG animate and set elements", async () => {
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "markdown" },
+                  { type: "id", value: "svg" },
+                ],
+              },
+            ],
+            [
+              "markdown",
+              { id: "markdown", component: "MarkdownEmbed", children: [] },
+            ],
+            [
+              "svg",
+              {
+                id: "svg",
+                component: elementComponent,
+                tag: "svg",
+                children: [{ type: "id", value: "link" }],
+              },
+            ],
+            [
+              "link",
+              {
+                id: "link",
+                component: elementComponent,
+                tag: "a",
+                children: [
+                  { type: "id", value: "animate" },
+                  { type: "id", value: "set" },
+                  { type: "id", value: "transform" },
+                ],
+              },
+            ],
+            [
+              "animate",
+              {
+                id: "animate",
+                component: elementComponent,
+                tag: "animate",
+                children: [],
+              },
+            ],
+            [
+              "set",
+              {
+                id: "set",
+                component: elementComponent,
+                tag: "set",
+                children: [],
+              },
+            ],
+            [
+              "transform",
+              {
+                id: "transform",
+                component: elementComponent,
+                tag: "animateTransform",
+                children: [],
+              },
+            ],
+          ],
+          props: [
+            [
+              "markdown-code",
+              {
+                id: "markdown-code",
+                instanceId: "markdown",
+                name: "code",
+                type: "string",
+                value: "[x](javascript:void0)",
+              },
+            ],
+            [
+              "animate-values",
+              {
+                id: "animate-values",
+                instanceId: "animate",
+                name: "values",
+                type: "string",
+                value: "javascript:void0",
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).not.toContain("MarkdownEmbed");
+      expect(page).not.toContain("javascript:");
+      expect(page).not.toContain("<animate ");
+      expect(page).not.toContain("<set ");
+      expect(page).toContain("<svg");
+      expect(page).toContain("<Link");
+      expect(page).toContain("<animateTransform");
+    });
+
+    // T12, for the props that choose or fill an element
+    describe("props that choose an element or fill it with markup", () => {
+      const jsonProp = (
+        id: string,
+        instanceId: string,
+        name: string,
+        value: unknown
+      ): [string, Record<string, unknown>] => [
+        id,
+        { id, instanceId, name, type: "json", value },
+      ];
+      const stringProp = (
+        id: string,
+        instanceId: string,
+        name: string,
+        value: string
+      ): [string, Record<string, unknown>] => [
+        id,
+        { id, instanceId, name, type: "string", value },
+      ];
+      const expressionProp = (
+        id: string,
+        instanceId: string,
+        name: string,
+        value: string
+      ): [string, Record<string, unknown>] => [
+        id,
+        { id, instanceId, name, type: "expression", value },
+      ];
+      const children = (...ids: string[]) =>
+        ids.map((value) => ({ type: "id" as const, value }));
+
+      /** The home page the site ships, rendered with the real Box, Text and Heading. */
+      const renderHome = async () => {
+        const { page } = await generated();
+        const exports = await runModule(page, {
+          react: React,
+          "react/jsx-runtime": jsxRuntime,
+          "@webstudio-is/react-sdk/runtime": await import(
+            "@webstudio-is/react-sdk/runtime"
+          ),
+          "@webstudio-is/sdk-components-react/components": await import(
+            "@webstudio-is/sdk-components-react/components"
+          ),
+          "@webstudio-is/sdk-components-react-router": {
+            Body: (props: Record<string, unknown>) =>
+              React.createElement("body", props),
+          },
+        });
+        const Page = exports.Page as ComponentType<Record<string, unknown>>;
+        return {
+          page,
+          html: renderToStaticMarkup(
+            React.createElement(Page, {
+              system: { params: {}, search: {}, origin: "https://x" },
+            })
+          ),
+        };
+      };
+
+      test("a Box, Text and Heading with a data-ws-tag prop of script ship no script element", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              [
+                "root",
+                {
+                  id: "root",
+                  component: "Body",
+                  children: children("box", "text", "heading", "kept"),
+                },
+              ],
+              ["box", { id: "box", component: "Box", children: [] }],
+              [
+                "text",
+                {
+                  id: "text",
+                  component: "Text",
+                  children: [
+                    { type: "text", value: "alert(document.cookie)" } as never,
+                  ],
+                },
+              ],
+              [
+                "heading",
+                { id: "heading", component: "Heading", children: [] },
+              ],
+              ["kept", { id: "kept", component: "Box", children: [] }],
+            ],
+            props: [
+              stringProp("box-tag", "box", "data-ws-tag", "script"),
+              stringProp("box-src", "box", "src", "https://evil.example/x.js"),
+              stringProp("text-tag", "text", "data-ws-tag", "script"),
+              expressionProp(
+                "heading-tag",
+                "heading",
+                "data-ws-tag",
+                `"script"`
+              ),
+              stringProp("kept-tag", "kept", "data-ws-tag", "nav"),
+            ],
+          })
+        );
+
+        const { page, html } = await renderHome();
+
+        expect(page).not.toContain("script");
+        expect(page).not.toContain("evil.example");
+        expect(html).not.toContain("<script");
+        expect(html).not.toContain("evil.example");
+        expect(html).not.toContain("alert(");
+        // ... and a data-ws-tag prop that is a tag the builder offers stays
+        expect(html).toContain("<nav");
+      });
+
+      test("a DialogTitle whose tag prop is not an offered tag is left out", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              [
+                "root",
+                {
+                  id: "root",
+                  component: "Body",
+                  children: children("script", "expression", "kept"),
+                },
+              ],
+              [
+                "script",
+                {
+                  id: "script",
+                  component:
+                    "@webstudio-is/sdk-components-react-radix:DialogTitle",
+                  children: [],
+                },
+              ],
+              [
+                "expression",
+                {
+                  id: "expression",
+                  component:
+                    "@webstudio-is/sdk-components-react-radix:DialogTitle",
+                  children: [],
+                },
+              ],
+              [
+                "kept",
+                {
+                  id: "kept",
+                  component:
+                    "@webstudio-is/sdk-components-react-radix:DialogTitle",
+                  children: [],
+                },
+              ],
+            ],
+            props: [
+              stringProp("script-tag", "script", "tag", "script"),
+              expressionProp("expression-tag", "expression", "tag", `"script"`),
+              stringProp("kept-tag", "kept", "tag", "h2"),
+            ],
+          })
+        );
+
+        const { page } = await generated();
+
+        expect(page).not.toContain("script");
+        expect(page).toContain('tag={"h2"}');
+      });
+
+      test("a Radix trigger that passes a tag prop on to its child ships neither", async () => {
+        // Radix's Slot merges a trigger's props onto its first child, and a Box,
+        // Text or Heading makes its element from the data-ws-tag or tag prop it
+        // finds there. The published page does the same merge at run time.
+        const radix = "@webstudio-is/sdk-components-react-radix";
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              [
+                "root",
+                {
+                  id: "root",
+                  component: "Body",
+                  children: children("dialog", "collapsible", "popover"),
+                },
+              ],
+              [
+                "dialog",
+                {
+                  id: "dialog",
+                  component: `${radix}:Dialog`,
+                  children: children("dialog-trigger"),
+                },
+              ],
+              [
+                "dialog-trigger",
+                {
+                  id: "dialog-trigger",
+                  component: `${radix}:DialogTrigger`,
+                  children: children("dialog-child"),
+                },
+              ],
+              [
+                "dialog-child",
+                { id: "dialog-child", component: "Box", children: [] },
+              ],
+              [
+                "collapsible",
+                {
+                  id: "collapsible",
+                  component: `${radix}:Collapsible`,
+                  children: children("collapsible-trigger"),
+                },
+              ],
+              [
+                "collapsible-trigger",
+                {
+                  id: "collapsible-trigger",
+                  component: `${radix}:CollapsibleTrigger`,
+                  children: children("collapsible-child"),
+                },
+              ],
+              [
+                "collapsible-child",
+                { id: "collapsible-child", component: "Heading", children: [] },
+              ],
+              [
+                "popover",
+                {
+                  id: "popover",
+                  component: `${radix}:Popover`,
+                  children: children("popover-trigger"),
+                },
+              ],
+              [
+                "popover-trigger",
+                {
+                  id: "popover-trigger",
+                  component: `${radix}:PopoverTrigger`,
+                  children: children("popover-child"),
+                },
+              ],
+              [
+                "popover-child",
+                { id: "popover-child", component: "Box", children: [] },
+              ],
+            ],
+            props: [
+              stringProp("a", "dialog-trigger", "data-ws-tag", "script"),
+              stringProp(
+                "b",
+                "dialog-trigger",
+                "src",
+                "https://evil.example/x.js"
+              ),
+              expressionProp(
+                "c",
+                "collapsible-trigger",
+                "tag",
+                `"scr" + "ipt"`
+              ),
+              stringProp(
+                "d",
+                "collapsible-trigger",
+                "src",
+                "https://evil.example/y.js"
+              ),
+              stringProp("e", "popover-trigger", "data-ws-tag", "nav"),
+            ],
+          })
+        );
+
+        const { page } = await generated();
+
+        expect(page).not.toContain("evil.example");
+        expect(page).not.toContain("script");
+        expect(page).not.toContain("DialogTrigger");
+        expect(page).not.toContain("CollapsibleTrigger");
+        // ... and the trigger that passes a tag the builder offers stays
+        expect(page).toContain("PopoverTrigger");
+        expect(page).toContain('data-ws-tag={"nav"}');
+      });
+
+      test("a dangerouslySetInnerHTML prop ships no markup, and its element stays", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              [
+                "root",
+                {
+                  id: "root",
+                  component: "Body",
+                  children: children("json", "expression", "box"),
+                },
+              ],
+              [
+                "json",
+                {
+                  id: "json",
+                  component: elementComponent,
+                  tag: "div",
+                  children: [],
+                },
+              ],
+              [
+                "expression",
+                {
+                  id: "expression",
+                  component: elementComponent,
+                  tag: "div",
+                  children: [],
+                },
+              ],
+              ["box", { id: "box", component: "Box", children: [] }],
+            ],
+            props: [
+              jsonProp("json-html", "json", "dangerouslySetInnerHTML", {
+                __html: "<img src=x onerror=alert(1)>",
+              }),
+              stringProp("json-id", "json", "id", "json"),
+              expressionProp(
+                "expression-html",
+                "expression",
+                "dangerouslySetInnerHTML",
+                `{__html: "<img src=x onerror=alert(2)>"}`
+              ),
+              jsonProp("box-html", "box", "dangerouslySetInnerHTML", {
+                __html: "<script>alert(3)</script>",
+              }),
+            ],
+          })
+        );
+
+        const { page, html } = await renderHome();
+
+        expect(page).not.toContain("dangerouslySetInnerHTML");
+        expect(page).not.toContain("onerror");
+        expect(html).not.toContain("onerror");
+        expect(html).not.toContain("<img");
+        expect(html).not.toContain("<script");
+        // the elements stay
+        expect(html).toContain('<div id="json" class="w-element"></div>');
+        expect(html).toContain('<div class="w-element"></div>');
+        expect(html).toContain('<div class="w-box"></div>');
+      });
+    });
+
+    // T13. A guard: passes before and after.
+    test("keeps the template icons", async () => {
+      const chevron = [...templateIconCodes].find((icon) =>
+        icon.includes("m4 6 4 4 4-4")
+      );
+      expect(chevron).toBeDefined();
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "icon" }],
+              },
+            ],
+            ["icon", { id: "icon", component: "HtmlEmbed", children: [] }],
+          ],
+          props: [
+            [
+              "icon-code",
+              {
+                id: "icon-code",
+                instanceId: "icon",
+                name: "code",
+                type: "string",
+                value: chevron,
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).toContain("HtmlEmbed");
+      expect(page).toContain("m4 6 4 4 4-4");
+    });
+
+    // T14
+    test("a Resource used only inside a dropped embed is not loaded", async () => {
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "embed" }],
+              },
+            ],
+            ["embed", { id: "embed", component: "HtmlEmbed", children: [] }],
+          ],
+          props: [
+            [
+              "embed-code",
+              {
+                id: "embed-code",
+                instanceId: "embed",
+                name: "code",
+                type: "expression",
+                value: `${encodeDataSourceVariable("html")}.data`,
+              },
+            ],
+          ],
+          dataSources: [
+            [
+              "html",
+              {
+                type: "resource",
+                id: "html",
+                scopeInstanceId: "embed",
+                name: "html",
+                resourceId: "html-resource",
+              },
+            ],
+          ],
+          resources: [
+            [
+              "html-resource",
+              {
+                id: "html-resource",
+                name: "html",
+                method: "get",
+                url: `"https://cms.example.org/private/html"`,
+                headers: [],
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page, resources } = await generated();
+
+      expect(resources).not.toContain("cms.example.org");
+      expect(page).not.toContain("useResource(");
+    });
+
+    test("logs what it left out", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      await writeSiteData(
+        createSiteData({
+          pageMeta: { code: "<style>x{}</style>" },
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "embed" }],
+              },
+            ],
+            ["embed", { id: "embed", component: "HtmlEmbed", children: [] }],
+          ],
+        })
+      );
+
+      await generated();
+
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed and the site's custom code."
+      );
+    });
   });
 
   test("generates custom code only for the home page", async () => {
