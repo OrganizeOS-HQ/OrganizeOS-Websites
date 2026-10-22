@@ -30,6 +30,7 @@ import {
   elementComponent,
 } from "@webstudio-is/sdk";
 import { indexProperty, tagProperty } from "@webstudio-is/sdk/runtime";
+import { propNameMayRun } from "@organizeos/site-components/org-script";
 import {
   idAttribute,
   componentAttribute,
@@ -360,6 +361,12 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
         const instanceProps = propValuesByInstanceSelector.get(instanceKey);
         if (instanceProps) {
           for (const [name, value] of instanceProps) {
+            // OrganizeOS fork: org script is paused. A prop that writes raw
+            // markup into the element never reaches it (docs/ORGANIZEOS-FORK.md
+            // section 10).
+            if (propNameMayRun(name) === false) {
+              continue;
+            }
             let propName = name;
             // convert html attribute only when component has tags
             // and does not specify own property with this name
