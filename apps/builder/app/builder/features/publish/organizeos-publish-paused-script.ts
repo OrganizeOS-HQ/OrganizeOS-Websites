@@ -172,12 +172,12 @@ export const findPausedScript = ({
         if (paused !== undefined) {
           labels.push(`SVG ${paused} element`);
         }
-        // an instance that is dropped takes its props with it
-        if (labels.length === 0) {
-          for (const prop of instanceProps) {
-            if (pausedPropNames.has(prop.name)) {
-              labels.push("Raw HTML property");
-            }
+      }
+      // an instance that is dropped takes its props with it
+      if (labels.length === 0) {
+        for (const prop of instanceProps) {
+          if (pausedPropNames.has(prop.name)) {
+            labels.push("Raw HTML property");
           }
         }
       }

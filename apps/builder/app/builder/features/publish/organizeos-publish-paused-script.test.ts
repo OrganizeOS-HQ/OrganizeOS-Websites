@@ -449,6 +449,26 @@ describe("findPausedScript", () => {
     ]);
   });
 
+  test("lists the dangerouslySetInnerHTML prop of a template icon HTML Embed, which publishing keeps and strips", () => {
+    // The embed itself is not listed (its code is a template icon), so the
+    // prop that writes markup into it is the only thing publishing drops.
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("icon") },
+      { id: "icon", component: "HtmlEmbed" },
+    ]);
+    const props = toProps([
+      stringProp("icon", "code", MenuIcon),
+      jsonProp("icon", "dangerouslySetInnerHTML", { __html: "<b>1</b>" }),
+    ]);
+
+    expect(find({ instances, props })).toEqual([
+      {
+        label: "Raw HTML property on Home",
+        navigate: { pageId: "home", instanceSelector: ["icon", "home-root"] },
+      },
+    ]);
+  });
+
   test("lists nothing for the empty HTML Embed in a Content Block's templates", () => {
     // The core Content Block template holds an empty HtmlEmbed in its
     // BlockTemplate. Nothing in the template is published, so the admin never
