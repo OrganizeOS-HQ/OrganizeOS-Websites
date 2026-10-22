@@ -39,6 +39,7 @@ import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
 import { groupOrganizeosBlocks } from "../organizeos-panel/organizeos-panel";
 import {
   insertOrganizeosBlock,
+  organizeosBlockData,
   organizeosNamespace,
 } from "../organizeos-panel/insert-organizeos-block";
 // What prebuild runs on the project bundle. A test of the builder reaches into
@@ -196,12 +197,15 @@ describe("every OrganizeOS block, as the panel inserts it", () => {
     // control styles
     expect(components).toContain("ws:collection");
     expect(components).toContain("ws:descendant");
-    // Each block brought its own binding
+    // Each block that reads the org's data brought its own binding; one with
+    // no entry in the table is inserted untouched and brings none
     expect(
       [...$dataSources.get().values()].filter(
         (dataSource) => dataSource.type === "resource"
       )
-    ).toHaveLength(panelBlocks.length);
+    ).toHaveLength(
+      panelBlocks.filter((block) => organizeosBlockData.has(block)).length
+    );
   });
 
   test("the Publish dialog lists nothing of them", async () => {
