@@ -287,6 +287,95 @@ describe("findPausedScript", () => {
     ]);
   });
 
+  test("lists each element that publishing drops for a tag the builder does not offer, with everything it holds", () => {
+    // classify in packages/cli/src/organizeos-org-script.ts drops the instance
+    // and its subtree, so the dialog has to say so: the canvas only skips the
+    // prop, and the element looks fine there
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids(
+          "form",
+          "script-box",
+          "kept-box",
+          "expression-link",
+          "json-link",
+          "trigger",
+          "element-script",
+          "element-attribute",
+          "xml",
+          "both",
+          "embedded",
+          "kept-nav"
+        ),
+      },
+      { id: "form", component: "Form", children: ids("donate") },
+      { id: "donate", component: "Link" },
+      { id: "script-box", component: "Box", tag: "script" },
+      // a tag the builder offers on the instance and on the prop
+      { id: "kept-box", component: "Box", tag: "nav" },
+      { id: "expression-link", component: "Link" },
+      { id: "json-link", component: "Link" },
+      { id: "trigger", component: `${radix}:PopoverTrigger` },
+      { id: "element-script", component: "ws:element", tag: "script" },
+      // an attribute on an element that is made already
+      { id: "element-attribute", component: "ws:element", tag: "div" },
+      { id: "xml", component: "XmlNode", tag: "urlset" },
+      { id: "both", component: "Box", tag: "section" },
+      { id: "embedded", component: "Box", tag: "script" },
+      { id: "kept-nav", component: "Heading", tag: "h2" },
+    ]);
+    const props = toProps([
+      stringProp("form", "tag", "signup"),
+      stringProp("kept-box", "tag", "section"),
+      {
+        id: "expression-link-tag",
+        instanceId: "expression-link",
+        name: "tag",
+        type: "expression",
+        value: "$ws$dataSource$tag",
+      },
+      jsonProp("json-link", "data-ws-tag", "a"),
+      stringProp("trigger", "data-ws-tag", "script"),
+      stringProp("element-attribute", "tag", "signup"),
+      stringProp("element-attribute", "data-ws-tag", "script"),
+      stringProp("xml", "tag", "xhtml:link"),
+      // the animate prop would list as an SVG element, but the other tag drops
+      // the element first
+      stringProp("both", "data-ws-tag", "animate"),
+      stringProp("both", "tag", "signup"),
+      // a dropped instance takes its props with it
+      jsonProp("embedded", "dangerouslySetInnerHTML", { __html: "<b>1</b>" }),
+      stringProp("kept-nav", "data-ws-tag", "h3"),
+    ]);
+
+    const items = find({ instances, props });
+    expect(new Set(items.map((item) => item.label))).toEqual(
+      new Set(["Element with a tag the builder does not offer on Home"])
+    );
+    expect(items.map((item) => item.navigate?.instanceSelector)).toEqual([
+      ["form", "home-root"],
+      ["script-box", "home-root"],
+      ["expression-link", "home-root"],
+      ["json-link", "home-root"],
+      ["trigger", "home-root"],
+      ["element-script", "home-root"],
+      ["both", "home-root"],
+      ["embedded", "home-root"],
+    ]);
+  });
+
+  test("lists nothing for a tag the builder does not offer when the switch is on", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("form") },
+      { id: "form", component: "Form" },
+    ]);
+    const props = toProps([stringProp("form", "tag", "signup")]);
+
+    expect(find({ instances, props, mayRun: true })).toEqual([]);
+  });
+
   test("lists each dangerouslySetInnerHTML prop, with its page and selector", () => {
     const instances = createInstances([
       {

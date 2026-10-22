@@ -875,10 +875,15 @@ as paused, so reversal is the switch.
   kept (`section-general.tsx`, one marked branch). The saved code stays readable
   and copyable.
 - **Publish dialog.** A banner after the plan-features banner lists each HTML
-  Embed that will be dropped, each Markdown Embed, each SVG `animate` or `set`
+  Embed that will be dropped, each Markdown Embed, each element publishing
+  drops for a tag the builder does not offer, each SVG `animate` or `set`
   element, each `dangerouslySetInnerHTML` prop and "Custom code (Project
   settings)" (a click selects the element or opens Project settings), from
   `findPausedScript` (`features/publish/organizeos-publish-paused-script.ts`).
+  The tag items follow `classify` in the CLI, because the canvas only skips a
+  bad `tag` or `data-ws-tag` prop and the element looks fine there, while
+  publishing drops the element and everything inside it. An instance that goes
+  is listed once, for its tag, and not again for its raw HTML property.
   A Content Block's templates container is not published, so the empty HTML
   Embed that upstream's core template puts in it is not listed (an embed a
   content editor inserted into the block is). Information only: Publish still

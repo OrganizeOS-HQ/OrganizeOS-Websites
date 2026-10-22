@@ -10,6 +10,7 @@ import {
 import {
   checksInstanceTag,
   checksTagProp,
+  elementTagMayRun,
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
   pausedPropNames,
@@ -24,8 +25,10 @@ import { findPageAndSelectorByInstanceId } from "~/shared/instance-utils/lookup"
  * for the things a designer put there on purpose: HTML Embeds that are not a
  * template icon, Markdown Embeds, the SVG elements that can set a link to a
  * javascript: URL, props that write raw markup into an element, and the site's
- * custom code. Elements with a tag the builder does not offer are not listed:
- * only crafted or pasted JSON makes one, and the publish log counts them.
+ * custom code. Elements with a tag the builder does not offer are listed too:
+ * publishing drops each of them with everything inside it, the props panel can
+ * add a `tag` or `data-ws-tag` prop to any component, and the canvas only skips
+ * that prop, so the element looks fine there.
  */
 export type PausedScriptItem = {
   label: string;
@@ -92,6 +95,21 @@ const findStaticTags = (instance: Instance, props: Prop[]) => {
   return tags;
 };
 
+/**
+ * Whether publishing drops this instance for its tag (`classify` in
+ * packages/cli/src/organizeos-org-script.ts): its own tag, or a `data-ws-tag`
+ * or `tag` prop, is not a static string the builder offers.
+ */
+const hasBlockedTag = (instance: Instance, props: Prop[]) =>
+  (instance.tag !== undefined &&
+    checksInstanceTag(instance.component) &&
+    elementTagMayRun(instance.tag, false) === false) ||
+  props.some(
+    (prop) =>
+      checksTagProp(instance.component, prop.name) &&
+      (prop.type !== "string" || elementTagMayRun(prop.value, false) === false)
+  );
+
 export const findPausedScript = ({
   pages,
   instances,
@@ -144,6 +162,9 @@ export const findPausedScript = ({
         }
       } else if (instance.component === "MarkdownEmbed") {
         labels.push("Markdown Embed");
+      } else if (hasBlockedTag(instance, instanceProps)) {
+        // it goes with its props, so no raw HTML property is listed for it
+        labels.push("Element with a tag the builder does not offer");
       } else {
         const paused = findStaticTags(instance, instanceProps).find((tag) =>
           pausedSvgTags.has(tag)
