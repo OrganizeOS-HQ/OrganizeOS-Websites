@@ -218,7 +218,7 @@ No blocking browser gate. Upstream interrupted Firefox and Safari with a full-sc
 
 ## 7. OrganizeOS overlay (keep minimal for upstream merges)
 
-Changes confined to: env/config, the proprietary-package removal (this doc §2), auth/SSO + provisioning files (`services/auth-strategy/organizeos*`, `routes/internal.*`, `shared/db/provision.server.ts`, `shared/db/organizeos-*.server.ts`, `shared/db/collections-sync.server.ts`, and the data catalog `shared/db/resource-presets.server.ts` and `shared/db/signup-form-preset.server.tsx`, whose ids `shared/organizeos-preset-ids.ts` derives for the server and the browser alike), the blocks' allowlist (`ORGANIZEOS_BLOCKS_ORG_IDS` in `env/env.server.ts`, passed to `resolveOrganizeosSite` by the loader in `routes/_ui.(builder).tsx`, and synced to the canvas by one marked `organizeosSite` line in `shared/sync/sync-stores.ts`), the catalog's survival of its bindings (one marked branch each in `shared/instance-utils/mutation.ts` `deleteInstanceMutable`, `shared/data-variables.ts` `deleteVariableMutable` and `settings-panel/variable-popover.tsx`: a Resource whose id is a derived v5 UUID is never deleted with a binding, §9), the session binding (`services/auth-strategy/organizeos-session.server.ts`, called from `extractAuthFromRequest` in `shared/context.server.ts`, `findAuthenticatedUser` in `services/auth.server.ts` and the loader of `routes/oauth.ws.authorize.tsx`; the two optional fields and the `4-organizeos` cookie version in `services/auth.server.utils.ts`; the fields carried by `services/token.server.ts`, `routes/oauth.ws.authorize.tsx`, `routes/oauth.ws.token.ts` and the `ws` callback in `services/builder-auth.server.ts`; `ORGANIZEOS_SESSION_BINDING` in `env/env.server.ts`; tests in `organizeos-session.server.test.ts`, `routes-tests/oauth-ws-authorize.server.test.ts` and `env/env.server.test.ts`, and cases in `services/token.server.test.ts` and `shared/context.server.test.ts`; §5), the publish seam (`services/organizeos-publisher.server.ts`, `shared/db/publish-status.server.ts`, `publish-site.yml`), asset serving (`shared/asset-response.server.ts`, the three `routes/cgi.*` loaders, `asset-uploader`'s S3 client), frame protection (`shared/frame-protection.ts` and the `headers` exports of `root.tsx`, `routes/_ui.(builder).tsx`, `routes/_ui.dashboard.tsx` and `routes/_ui.$.tsx`), branding (`shared/branding.ts`, `shared/organizeos-logo.tsx`), the OrganizeOS-only chrome behind `$organizeosSite` (`features/publish/organizeos-publish*.ts*`, small branches in `menu.tsx`, `topbar.tsx`, `publish.tsx`), the OrganizeOS blocks (§9: the `packages/sdk-components-organizeos` package, `@organizeos/site-components`, a `workspace:*` dependency in `apps/builder/package.json` and `packages/cli/package.json`, and so in `pnpm-lock.yaml`, registered by one `registerComponentLibrary` call in `canvas/canvas.tsx`; their panel, `features/organizeos-panel/*`, with its tab in `sidebar-left/sidebar-left.tsx` (shown only for an org on the allowlist) and `sidebar-left/types.ts`, one branch in the canvas's drop handler, `canvas/shared/use-drag-drop.ts`, so a dropped block is bound to the project's data like a clicked one, and an `onInsert` option on `insertWebstudioFragmentAt` (`shared/instance-utils/insert.ts`) that completes the insert in its own transaction; their record picker, `settings-panel/controls/organizeos-record.tsx`, behind one branch in `settings-panel/controls/combined.tsx`; and the CLI's copy of their build into every published site, `packages/cli/src/organizeos-components.ts`, called from short hooks in `prebuild.ts` and `framework-react-router.ts`, with cases in `prebuild.test.ts`; `organizeos-components.ts` also copies the package's `LICENSE` and computes the source-offer URL, used by one more short hook in `prebuild.ts`; `html.tsx` carries a second marked change, the source offer (its head links and the visible Source link at the end of the body, §1), with cases in `prebuild.test.ts` and `organizeos-components.test.ts`; the fixture `fixtures/react-router-vercel` carries copies of the cache module and of the html route change), the org script pause (§10: `packages/sdk-components-organizeos/src/org-script.ts`, which the blocks package exports as `@organizeos/site-components/org-script` and builds with its own `vite.build.config.ts`; `canvas/organizeos-org-script.tsx`, with one marked change in `canvas/canvas.tsx` that registers upstream's base library through it; one marked branch in `shared/project-settings/section-general.tsx`; `features/publish/organizeos-publish-paused-script.ts`, whose banner is in `organizeos-publish.tsx`; and the CLI's `packages/cli/src/organizeos-org-script.ts`, called from one short marked hook in `prebuild.ts`; with tests beside each, among them `canvas/organizeos-org-script.wiring.test.ts`), the guards' wiring (the `check:*` scripts and `checks` in the root `package.json`, and `.github/workflows/main.yml`, both of which also build the blocks' package before the tests), and the forced CLI route-template patches for the reverse-proxy host/auth/cache (§8), among them the published site's resource cache (`packages/cli/templates/react-router/app/organizeos-resource-cache.ts`, which one marked change in each of the react-router route templates `html.tsx`, `xml.tsx` and `text.tsx` calls, with its tests in `packages/cli/src/organizeos-resource-cache.test.ts` and cases in `prebuild.test.ts`), and one CLI bug fix worth offering upstream: `packages/cli/src/asset-files.ts` waits for a failed download's write stream to close before deleting its `.tmp` file (otherwise a fast failure could delete it before the stream created it, leaving it behind and flaking `asset-files.test.ts`). Avoid deep edits to shared component `.tsx`; isolate OrganizeOS code so `upstream main` can be merged with minimal conflict.
+Changes confined to: env/config, the proprietary-package removal (this doc §2), auth/SSO + provisioning files (`services/auth-strategy/organizeos*`, `routes/internal.*`, `shared/db/provision.server.ts`, `shared/db/organizeos-*.server.ts`, `shared/db/collections-sync.server.ts`, and the data catalog `shared/db/resource-presets.server.ts` and `shared/db/signup-form-preset.server.tsx`, whose ids `shared/organizeos-preset-ids.ts` derives for the server and the browser alike), the blocks' allowlist (`ORGANIZEOS_BLOCKS_ORG_IDS` in `env/env.server.ts`, passed to `resolveOrganizeosSite` by the loader in `routes/_ui.(builder).tsx`, and synced to the canvas by one marked `organizeosSite` line in `shared/sync/sync-stores.ts`), the catalog's survival of its bindings (one marked branch each in `shared/instance-utils/mutation.ts` `deleteInstanceMutable`, `shared/data-variables.ts` `deleteVariableMutable` and `settings-panel/variable-popover.tsx`: a Resource whose id is a derived v5 UUID is never deleted with a binding, §9), the session binding (`services/auth-strategy/organizeos-session.server.ts`, called from `extractAuthFromRequest` in `shared/context.server.ts`, `findAuthenticatedUser` in `services/auth.server.ts` and the loader of `routes/oauth.ws.authorize.tsx`; the two optional fields and the `4-organizeos` cookie version in `services/auth.server.utils.ts`; the fields carried by `services/token.server.ts`, `routes/oauth.ws.authorize.tsx`, `routes/oauth.ws.token.ts` and the `ws` callback in `services/builder-auth.server.ts`; `ORGANIZEOS_SESSION_BINDING` in `env/env.server.ts`; tests in `organizeos-session.server.test.ts`, `routes-tests/oauth-ws-authorize.server.test.ts` and `env/env.server.test.ts`, and cases in `services/token.server.test.ts` and `shared/context.server.test.ts`; §5), the publish seam (`services/organizeos-publisher.server.ts`, `shared/db/publish-status.server.ts`, `publish-site.yml`), asset serving (`shared/asset-response.server.ts`, the three `routes/cgi.*` loaders, `asset-uploader`'s S3 client), frame protection (`shared/frame-protection.ts` and the `headers` exports of `root.tsx`, `routes/_ui.(builder).tsx`, `routes/_ui.dashboard.tsx` and `routes/_ui.$.tsx`), branding (`shared/branding.ts`, `shared/organizeos-logo.tsx`), the OrganizeOS-only chrome behind `$organizeosSite` (`features/publish/organizeos-publish*.ts*`, small branches in `menu.tsx`, `topbar.tsx`, `publish.tsx`), the OrganizeOS blocks (§9: the `packages/sdk-components-organizeos` package, `@organizeos/site-components`, a `workspace:*` dependency in `apps/builder/package.json` and `packages/cli/package.json`, and so in `pnpm-lock.yaml`, registered by one `registerComponentLibrary` call in `canvas/canvas.tsx`; their panel, `features/organizeos-panel/*`, with its tab in `sidebar-left/sidebar-left.tsx` (shown only for an org on the allowlist) and `sidebar-left/types.ts`, one branch in the canvas's drop handler, `canvas/shared/use-drag-drop.ts`, so a dropped block is bound to the project's data like a clicked one, and an `onInsert` option on `insertWebstudioFragmentAt` (`shared/instance-utils/insert.ts`) that completes the insert in its own transaction; their record picker, `settings-panel/controls/organizeos-record.tsx`, behind one branch in `settings-panel/controls/combined.tsx`; and the CLI's copy of their build into every published site, `packages/cli/src/organizeos-components.ts`, called from short hooks in `prebuild.ts` and `framework-react-router.ts`, with cases in `prebuild.test.ts`; `organizeos-components.ts` also copies the package's `LICENSE` and computes the source-offer URL, used by one more short hook in `prebuild.ts`; `html.tsx` carries a second marked change, the source offer (its head links and the visible Source link at the end of the body, §1), with cases in `prebuild.test.ts` and `organizeos-components.test.ts`; the fixture `fixtures/react-router-vercel` carries copies of the cache module and of the html route change), the org script pause (§10: `packages/sdk-components-organizeos/src/org-script.ts`, which the blocks package exports as `@organizeos/site-components/org-script` and builds with its own `vite.build.config.ts`; `canvas/organizeos-org-script.tsx`, with one marked change in `canvas/canvas.tsx` that registers upstream's base library through it, and one marked skip in `useInstanceProps` of `canvas/features/webstudio-component/webstudio-component.tsx` that keeps a `dangerouslySetInnerHTML` prop off every component; one marked branch in `shared/project-settings/section-general.tsx`; `features/publish/organizeos-publish-paused-script.ts`, whose banner is in `organizeos-publish.tsx`; and the CLI's `packages/cli/src/organizeos-org-script.ts`, called from one short marked hook in `prebuild.ts`; with tests beside each, among them `canvas/organizeos-org-script.wiring.test.ts` and `canvas/organizeos-org-script.props.test.tsx`), the guards' wiring (the `check:*` scripts and `checks` in the root `package.json`, and `.github/workflows/main.yml`, both of which also build the blocks' package before the tests), and the forced CLI route-template patches for the reverse-proxy host/auth/cache (§8), among them the published site's resource cache (`packages/cli/templates/react-router/app/organizeos-resource-cache.ts`, which one marked change in each of the react-router route templates `html.tsx`, `xml.tsx` and `text.tsx` calls, with its tests in `packages/cli/src/organizeos-resource-cache.test.ts` and cases in `prebuild.test.ts`), and one CLI bug fix worth offering upstream: `packages/cli/src/asset-files.ts` waits for a failed download's write stream to close before deleting its `.tmp` file (otherwise a fast failure could delete it before the stream created it, leaving it behind and flaking `asset-files.test.ts`). Avoid deep edits to shared component `.tsx`; isolate OrganizeOS code so `upstream main` can be merged with minimal conflict.
 
 ## 8. Published-site route template patches
 
@@ -765,6 +765,12 @@ the page. That exposure needs no publish. Spec (OrganizeOS repo):
   `href` to a `javascript:` URL, which no attribute check sees.
   `animateTransform` and `animateMotion` cannot set an arbitrary attribute and
   stay.
+- **The `dangerouslySetInnerHTML` prop.** React writes its value (an object
+  holding `__html`, from a JSON value or an expression) into any element as raw
+  markup. The props panel accepts the name (only `style` is refused), and
+  neither the component generator nor the canvas filters it, so without this an
+  org could still put its own markup on a page, and on the canvas, with no
+  HTML Embed.
 - **Custom code** (Project settings > General).
 
 **The switch** is `orgScriptMayRun()` in `@organizeos/site-components/org-script`
@@ -815,16 +821,26 @@ as paused, so reversal is the switch.
   from a Resource holding markup, even an icon, would become markup.
   `PausedMarkdownEmbed` always shows the notice. The settings panel is unchanged:
   an embed's code stays editable, and the notice says it is paused.
+- **Raw HTML props on the canvas.** `useInstanceProps`
+  (`canvas/features/webstudio-component/webstudio-component.tsx`) skips a prop
+  whose name `propNameMayRun` refuses (`pausedPropNames` in `org-script.ts`:
+  `dangerouslySetInnerHTML`), in design and in preview mode, on every
+  component. That is the one marked skip in an upstream file besides
+  `canvas.tsx`; `canvas/organizeos-org-script.props.test.tsx` renders an
+  instance with the prop in both modes and fails if a merge takes it back.
 - **Custom code field.** Read-only, with a sentence that says it is paused and
   kept (`section-general.tsx`, one marked branch). The saved code stays readable
   and copyable.
 - **Publish dialog.** A banner after the plan-features banner lists each HTML
   Embed that will be dropped, each Markdown Embed, each SVG `animate` or `set`
-  element and "Custom code (Project settings)" (a click selects the element or
-  opens Project settings), from `findPausedScript`
-  (`features/publish/organizeos-publish-paused-script.ts`). Information only:
-  Publish still runs. Nothing is listed when the switch is on, or when the site
-  holds only template icons.
+  element, each `dangerouslySetInnerHTML` prop and "Custom code (Project
+  settings)" (a click selects the element or opens Project settings), from
+  `findPausedScript` (`features/publish/organizeos-publish-paused-script.ts`).
+  A Content Block's templates container is not published, so the empty HTML
+  Embed that upstream's core template puts in it is not listed (an embed a
+  content editor inserted into the block is). Information only: Publish still
+  runs. Nothing is listed when the switch is on, or when the site holds only
+  template icons.
 - **Prebuild.** `dropOrgScript` (`packages/cli/src/organizeos-org-script.ts`) runs
   in one short marked hook in `prebuild.ts`, where the project bundle is read and
   before props are normalized, pages are walked, resources are collected and CSS
@@ -838,18 +854,30 @@ as paused, so reversal is the switch.
   2. every `MarkdownEmbed`, whatever its code;
   3. every `ws:element`, `Box`, `Text` or `Heading` whose `tag` is set and is not
      in `tags` (`@webstudio-is/sdk`, the list the Tag control offers), and every
-     `Box`, `Text` or `Heading` with a legacy `tag` prop that is not a static
-     string in `tags`. The match is exact and case-sensitive. These components
-     render their tag as an element, so a tag of `script` ships a `<script>` with
-     its `src` or code, and a tag that is JSX syntax
-     (`div />{globalThis.pwned = 1}<div`) is written into the page module as
-     code. An element dropped for its tag goes with everything inside it. Only
-     crafted content reaches this: the Tag control and HTML paste offer `tags`
-     only, but the sync server checks shape only, a pasted Webstudio fragment is
-     checked against the same schema, and Webflow paste copies Webflow's own tag
-     name into the legacy components. Query 3 below shows what is in use;
-  4. every such element whose tag is exactly `animate` or `set`;
-  5. the site's custom code (`build.pages.meta.code`). `CustomCode` is still
+     instance of a component that creates its element from a prop
+     (`tagPropsByComponent` in `org-script.ts`) with such a prop that is not a
+     static string in `tags`: `Box`, `Text` and `Heading` read a `data-ws-tag`
+     prop first and then a legacy `tag` prop, and Radix's `DialogTitle` renders
+     `<Tag>` from its `tag` prop with no check at run time. The generator emits a
+     user prop of either name like any attribute, and on the canvas a user prop
+     overwrites the instance's tag, so the props panel can set them. The match is
+     exact and case-sensitive. These components render their tag as an element,
+     so a tag of `script` ships a `<script>` with its `src` or code, and a tag
+     that is JSX syntax (`div />{globalThis.pwned = 1}<div`) is written into the
+     page module as code. An element dropped for its tag goes with everything
+     inside it. Other components forward both names as plain attributes and are
+     not touched, and neither is a `ws:element` carrying a `tag` or `data-ws-tag`
+     prop (an attribute there). Only crafted content or the props panel reaches
+     this: the Tag control and HTML paste offer `tags` only, but the sync server
+     checks shape only, a pasted Webstudio fragment is checked against the same
+     schema, and Webflow paste copies Webflow's own tag name into the legacy
+     components. Queries 3 and 5 below show what is in use;
+  4. every such element whose tag is exactly `animate` or `set`, whether it
+     comes from `tag`, `data-ws-tag` or a component's `tag` prop;
+  5. every `dangerouslySetInnerHTML` prop (`pausedPropNames`), of any type, on
+     any instance. The instance stays, without the prop. Counted in the log
+     line, except for the props of an instance that is dropped anyway;
+  6. the site's custom code (`build.pages.meta.code`). `CustomCode` is still
      exported from the home page module, as an empty fragment, so `root.tsx`
      is unchanged.
 
@@ -931,7 +959,8 @@ Org projects are those whose owner has `"User".provider = 'organizeos-service'`
 true and something would be dropped. Query 2 tells which embeds the admins will
 see paused. Query 3 shows whether any element has a tag outside the Tag control's
 list (it also shows `animate` and `set`) before the change deploys. Query 4
-counts Markdown Embeds.
+counts Markdown Embeds. Query 5 shows the props that choose an element or write
+raw markup into one.
 
 ```sql
 -- 1. Per org project: the dev build, the latest production build, and the build
@@ -997,6 +1026,29 @@ cross join lateral jsonb_array_elements(b.instances::jsonb) i
 where p."isDeleted" = false and i->>'component' = 'MarkdownEmbed'
 group by 1
 order by 2 desc;
+
+-- 5. Props that choose an element (`data-ws-tag`, and `tag` on a Radix
+--    DialogTitle, Box, Text or Heading) or write raw markup into one
+--    (`dangerouslySetInnerHTML`), in the dev builds. A tag outside the Tag
+--    control's list, an animate or set tag, and every dangerouslySetInnerHTML
+--    prop is dropped at publish. `tag` props on other components are
+--    attributes and are not listed.
+select p.domain as subdomain, pr->>'name' as prop, pr->>'type' as prop_type,
+       i->>'component' as component, left(pr->>'value', 60) as value_start,
+       count(*) as props
+from "Project" p
+join "User" u on u.id = p."userId" and u.provider = 'organizeos-service'
+join "Build" b on b."projectId" = p.id and b.deployment is null
+cross join lateral jsonb_array_elements(b.props::jsonb) pr
+join lateral jsonb_array_elements(b.instances::jsonb) i
+  on i->>'id' = pr->>'instanceId'
+where p."isDeleted" = false
+  and (pr->>'name' in ('data-ws-tag', 'dangerouslySetInnerHTML')
+       or (pr->>'name' = 'tag'
+           and i->>'component' in ('Box', 'Text', 'Heading',
+             '@webstudio-is/sdk-components-react-radix:DialogTitle')))
+group by 1, 2, 3, 4, 5
+order by props desc;
 ```
 
 **Not covered by this pause.** Other ways an org's script can reach a page run
@@ -1013,18 +1065,25 @@ page, which renders `on*` attributes as a custom element; and the same on the
 canvas. The lasting half of the tag rule above (refuse a tag outside `tags`,
 whatever the switch says) goes with the expression design.
 
-**Keeping it on upstream merges.** Three changes sit in upstream files and each
+**Keeping it on upstream merges.** Four changes sit in upstream files and each
 has a test that fails if a merge takes it back: `canvas/canvas.tsx` registers
 the base library through `withOrgScriptPolicy`
-(`organizeos-org-script.wiring.test.ts`), `section-general.tsx` holds the
-read-only branch (`section-general.test.tsx`), and the `prebuild.ts` hook runs
-`dropOrgScript` (`prebuild.test.ts`, "leaves an org's own script out"). A merge
+(`organizeos-org-script.wiring.test.ts`), `webstudio-component.tsx` skips a
+paused prop (`organizeos-org-script.props.test.tsx`), `section-general.tsx`
+holds the read-only branch (`section-general.test.tsx`), and the `prebuild.ts`
+hook runs `dropOrgScript` (`prebuild.test.ts`, "leaves an org's own script
+out"). A merge
 that adds or redraws a template icon fails the template test (add the new
 string to `templateIconCodes`, keep the old one), and one that adds another
 component using `dangerouslySetInnerHTML` to the runtime packages fails a
 tripwire in `packages/cli/src/organizeos-org-script.test.ts`, which reads its
 package list from `scripts/check-runtime-upstream.sh`: decide whether the new
-component joins the pause.
+component joins the pause. The same file reads the runtime packages' generated
+props and fails when a component other than Box, Text, Heading, Radix's
+DialogTitle and XML Node gains a `tag` prop: decide whether it creates its
+element from it, and if so add it to `tagPropsByComponent`. XML Node takes any
+tag by design; it is category xml and falls under "XML Node in an HTML page"
+below.
 
 **Fixtures.** `pnpm checks` ends with `pnpm fixtures`, which syncs
 `fixtures/webstudio-features` from upstream's development builder and rebuilds
