@@ -54,3 +54,11 @@ export const htmlEmbedCodeMayRun = (
   mayRun: boolean = orgScriptMayRun()
 ): boolean =>
   mayRun || (typeof code === "string" && templateIconCodes.has(code));
+
+/**
+ * The SVG elements that can set an attribute of their parent from markup, so
+ * `<a><animate attributeName="href" values="javascript:…"/></a>` makes a
+ * `javascript:` link that no attribute check sees (SMIL). `animateTransform`
+ * and `animateMotion` cannot set an arbitrary attribute and stay.
+ */
+export const pausedSvgTags: ReadonlySet<string> = new Set(["animate", "set"]);

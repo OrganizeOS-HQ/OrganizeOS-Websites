@@ -11,6 +11,7 @@ import {
 import {
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
+  pausedSvgTags,
   templateIconCodes,
 } from "./org-script";
 
@@ -102,5 +103,13 @@ describe("htmlEmbedCodeMayRun", () => {
     expect(htmlEmbedCodeMayRun("<script>window.x=1</script>", true)).toBe(true);
     expect(htmlEmbedCodeMayRun(undefined, true)).toBe(true);
     expect(htmlEmbedCodeMayRun([MenuIcon], true)).toBe(true);
+  });
+});
+
+describe("pausedSvgTags", () => {
+  test("are the SMIL elements that can set an attribute to a javascript: URL", () => {
+    expect([...pausedSvgTags].sort()).toEqual(["animate", "set"]);
+    expect(pausedSvgTags.has("animateTransform")).toBe(false);
+    expect(pausedSvgTags.has("animateMotion")).toBe(false);
   });
 });
