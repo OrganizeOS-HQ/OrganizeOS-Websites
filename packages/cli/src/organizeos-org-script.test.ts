@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, test, vi } from "vitest";
 import {
   bundleVersion,
@@ -11,7 +12,6 @@ import type { Instance, Prop } from "@webstudio-is/sdk";
 import { standardAttributesToReactProps } from "@webstudio-is/react-sdk";
 import {
   pausedPropNames,
-  tagPropsByComponent,
   templateIconCodes,
 } from "@organizeos/site-components/org-script";
 import {
@@ -24,6 +24,21 @@ const icons = [...templateIconCodes];
 const MenuIcon = icons.find((icon) => icon.includes("M2.667 8h10.666")) ?? "";
 
 const DialogTitle = "@webstudio-is/sdk-components-react-radix:DialogTitle";
+
+// The Radix components that pass their own props on to the child they render
+// (asChild with a spread). The tripwire at the end of this file reads the
+// runtime packages and fails when this list is not the whole of them.
+const triggerNames = [
+  "CollapsibleTrigger",
+  "DialogTrigger",
+  "NavigationMenuLink",
+  "NavigationMenuTrigger",
+  "PopoverTrigger",
+  "TooltipTrigger",
+];
+const triggers = triggerNames.map(
+  (name) => `@webstudio-is/sdk-components-react-radix:${name}`
+);
 
 type InstanceInit = Partial<Instance> & Pick<Instance, "id" | "component">;
 
@@ -631,33 +646,195 @@ describe("dropOrgScript", () => {
     expect(propIds(result)).toEqual(["h2:tag"]);
   });
 
-  test("leaves a data-ws-tag prop alone where it is only an attribute", () => {
-    // ws:element renders instance.tag, DialogTitle reads `tag` only, and
-    // XML Node (category xml) is left to the follow-up in the fork doc
+  test("leaves a tag or data-ws-tag prop alone on a ws:element and on an XML Node", () => {
+    // ws:element renders instance.tag, so a prop of either name is only an
+    // attribute there. XML Node takes any tag name by design (a sitemap holds
+    // urlset, url, loc and xhtml:link), and writes it with a suffix that no
+    // HTML element has.
     const bundle = createBundle({
       instances: [
         instance({
           id: "root",
           component: "Body",
-          children: ids("element", "title", "link"),
+          children: ids("element", "urlset", "loc", "link"),
         }),
         instance({ id: "element", component: "ws:element", tag: "div" }),
-        instance({ id: "title", component: DialogTitle }),
-        instance({ id: "link", component: "Link" }),
+        instance({ id: "urlset", component: "XmlNode" }),
+        instance({ id: "loc", component: "XmlNode" }),
+        instance({ id: "link", component: "XmlNode" }),
       ],
       props: [
         stringProp("element", "data-ws-tag", "script"),
         stringProp("element", "tag", "script"),
-        stringProp("title", "data-ws-tag", "script"),
-        stringProp("link", "data-ws-tag", "script"),
+        stringProp("urlset", "tag", "urlset"),
+        stringProp("loc", "tag", "loc"),
+        stringProp("link", "tag", "xhtml:link"),
       ],
     });
 
-    expect(instanceIds(dropOrgScript(bundle))).toEqual([
+    expect(dropOrgScript(bundle)).toBe(bundle);
+  });
+
+  // Radix's triggers render `<Primitive.Trigger asChild {...props}>`, and
+  // Radix's Slot merges those props onto the first child. A Box, Text or
+  // Heading in it makes its element from the data-ws-tag or tag prop it gets,
+  // and the generator writes instance.tag as a data-ws-tag prop on every
+  // component but ws:element. So the component that holds the tag does not
+  // matter, and the trigger goes with its child.
+  describe.each(triggers)("a %s", (trigger) => {
+    const withTrigger = ({
+      tag,
+      props = [],
+    }: {
+      tag?: string;
+      props?: Array<[string, Prop]>;
+    }) =>
+      createBundle({
+        instances: [
+          instance({
+            id: "root",
+            component: "Body",
+            children: ids("before", "trigger", "after"),
+          }),
+          instance({ id: "before", component: "Box" }),
+          instance({
+            id: "trigger",
+            component: trigger,
+            children: ids("child"),
+            ...(tag === undefined ? {} : { tag }),
+          }),
+          instance({ id: "child", component: "Box", children: ids("inner") }),
+          instance({ id: "inner", component: "Text" }),
+          instance({ id: "after", component: "Box" }),
+        ],
+        props: [
+          stringProp("trigger", "src", "https://evil.example/x.js"),
+          stringProp("child", "id", "child"),
+          ...props,
+        ],
+      });
+
+    test.each([
+      [
+        "a data-ws-tag prop of script",
+        stringProp("trigger", "data-ws-tag", "script"),
+      ],
+      ["a tag prop of script", stringProp("trigger", "tag", "script")],
+      [
+        "a data-ws-tag prop of Script",
+        stringProp("trigger", "data-ws-tag", "Script"),
+      ],
+      [
+        "a tag prop that is JSX syntax",
+        stringProp("trigger", "tag", "div />{pwned}<div"),
+      ],
+      [
+        "an expression for its data-ws-tag prop",
+        expressionProp("trigger", "data-ws-tag", "$ws$dataSource$tag"),
+      ],
+      [
+        "an expression for its tag prop",
+        expressionProp("trigger", "tag", '"scr" + "ipt"'),
+      ],
+      [
+        "a Resource for its tag prop",
+        resourceProp("trigger", "tag", "resource-1"),
+      ],
+      [
+        "a data-ws-tag prop of animate",
+        stringProp("trigger", "data-ws-tag", "animate"),
+      ],
+      ["a tag prop of set", stringProp("trigger", "tag", "set")],
+    ])("is dropped with its child when it has %s", (_name, prop) => {
+      const result = dropOrgScript(withTrigger({ props: [prop] }));
+
+      expect(instanceIds(result)).toEqual(["root", "before", "after"]);
+      expect(childrenOf(result, "root")).toEqual(ids("before", "after"));
+      expect(propIds(result)).toEqual([]);
+    });
+
+    test("is dropped with its child when its own tag is script", () => {
+      const result = dropOrgScript(withTrigger({ tag: "script" }));
+
+      expect(instanceIds(result)).toEqual(["root", "before", "after"]);
+      expect(propIds(result)).toEqual([]);
+    });
+
+    test("is dropped with its child when its own tag is animate", () => {
+      const result = dropOrgScript(withTrigger({ tag: "animate" }));
+
+      expect(instanceIds(result)).toEqual(["root", "before", "after"]);
+    });
+
+    test("stays when its tag and tag props are tags the builder offers, or it has none", () => {
+      const offered = withTrigger({
+        tag: "button",
+        props: [
+          stringProp("trigger", "data-ws-tag", "nav"),
+          stringProp("trigger", "tag", "h3"),
+        ],
+      });
+      expect(dropOrgScript(offered)).toBe(offered);
+      const plain = withTrigger({});
+      expect(dropOrgScript(plain)).toBe(plain);
+    });
+  });
+
+  test("drops any other component whose tag, data-ws-tag or tag prop is not an offered tag, and keeps one that is", () => {
+    // Nothing can list the components that pass props on to a child, so the
+    // rule holds for all of them. A Webstudio component that reads none of
+    // these names only loses what it did not need.
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids(
+            "link",
+            "image",
+            "button",
+            "title",
+            "title-prop",
+            "unknown",
+            "kept-link",
+            "kept-image",
+            "kept-title"
+          ),
+        }),
+        instance({ id: "link", component: "Link", tag: "script" }),
+        instance({ id: "image", component: "Image" }),
+        instance({ id: "button", component: "Button" }),
+        instance({ id: "title", component: DialogTitle, tag: "script" }),
+        instance({ id: "title-prop", component: DialogTitle }),
+        instance({ id: "unknown", component: "SomethingElse" }),
+        instance({ id: "kept-link", component: "Link", tag: "a" }),
+        instance({ id: "kept-image", component: "Image" }),
+        instance({ id: "kept-title", component: DialogTitle, tag: "h2" }),
+      ],
+      props: [
+        stringProp("image", "tag", "script"),
+        stringProp("image", "data-ws-tag", "script"),
+        stringProp("button", "data-ws-tag", "div />{pwned}<div"),
+        stringProp("title-prop", "data-ws-tag", "script"),
+        stringProp("unknown", "tag", "script"),
+        stringProp("kept-image", "tag", "img"),
+        stringProp("kept-image", "alt", "tag"),
+        stringProp("kept-title", "tag", "h2"),
+      ],
+    });
+
+    const result = dropOrgScript(bundle);
+
+    expect(instanceIds(result)).toEqual([
       "root",
-      "element",
-      "title",
-      "link",
+      "kept-link",
+      "kept-image",
+      "kept-title",
+    ]);
+    expect(propIds(result)).toEqual([
+      "kept-image:tag",
+      "kept-image:alt",
+      "kept-title:tag",
     ]);
   });
 
@@ -742,31 +919,6 @@ describe("dropOrgScript", () => {
     expect(log).toHaveBeenCalledWith(
       "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed, 1 element with a tag the builder does not offer and 1 raw HTML property."
     );
-  });
-
-  test("leaves other components alone, whatever their tag", () => {
-    // other components forward the tag as an attribute and are not touched
-    const bundle = createBundle({
-      instances: [
-        instance({
-          id: "root",
-          component: "Body",
-          children: ids("link", "image"),
-        }),
-        instance({ id: "link", component: "Link", tag: "script" }),
-        instance({ id: "image", component: "Image" }),
-      ],
-      props: [
-        stringProp("image", "tag", "script"),
-        stringProp("image", "data-ws-tag", "script"),
-      ],
-    });
-
-    expect(instanceIds(dropOrgScript(bundle))).toEqual([
-      "root",
-      "link",
-      "image",
-    ]);
   });
 
   test("drops a Markdown Embed with a javascript: link, whatever its code, with its subtree", () => {
@@ -1230,11 +1382,15 @@ describe("raw HTML in the runtime packages", () => {
     }
   });
 
-  // The components that choose their element from a prop are named in
-  // tagPropsByComponent, and publishing checks that prop. A merge that adds
-  // another one fails here, and gets a decision. A props file holds one export
-  // per component (dialog.props.ts has seven), so the check reads each export:
-  // a `tag` prop on Dialog Description would not change the list of files.
+  // Box, Text and Heading make their element from a `data-ws-tag` or `tag`
+  // prop and Dialog Title from `tag`, and publishing holds that prop to the Tag
+  // control's list on every component but ws:element and XML Node
+  // (checksTagProp), so a component that gains a `tag` prop is covered. A merge
+  // that adds one fails here all the same, and gets a decision: if it takes any
+  // value by design, as XML Node does for an XML element name, it joins
+  // anyTagComponents, or publishing drops it. A props file holds one export per
+  // component (dialog.props.ts has seven), so the check reads each export: a
+  // `tag` prop on Dialog Description would not change the list of files.
   const exportsWithTagProp = (source: string) =>
     source
       .split(/^(?=export const props\w*\b)/m)
@@ -1300,11 +1456,107 @@ describe("raw HTML in the runtime packages", () => {
       // XML Node (category xml) takes any tag by design
       "xml-node.props.ts:props",
     ]);
-    expect([...tagPropsByComponent.keys()].sort()).toEqual([
-      "@webstudio-is/sdk-components-react-radix:DialogTitle",
-      "Box",
-      "Heading",
-      "Text",
+  });
+
+  // Radix's triggers render `<Primitive.Trigger asChild {...props}>`, and
+  // Radix's Slot merges those props onto the first child, which makes its
+  // element from a `data-ws-tag` or `tag` prop it finds there. The tag rule
+  // holds the prop on the trigger, whatever component holds it, so a trigger
+  // needs no entry anywhere. A merge that adds another component that passes
+  // its props on to its child fails here, and gets a decision: it joins
+  // `triggerNames` above, and `forwarders` in
+  // apps/builder/app/canvas/organizeos-org-script.props.test.tsx.
+  const forwarders = (source: string, fileName: string) => {
+    const file = ts.createSourceFile(
+      fileName,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX
+    );
+    const found: string[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+        const { properties } = node.attributes;
+        const asChild = properties.some(
+          (property) =>
+            ts.isJsxAttribute(property) && property.name.getText() === "asChild"
+        );
+        const spread = properties.some((property) =>
+          ts.isJsxSpreadAttribute(property)
+        );
+        if (asChild && spread) {
+          let owner: ts.Node | undefined = node;
+          while (
+            owner !== undefined &&
+            ts.isVariableDeclaration(owner) === false &&
+            ts.isFunctionDeclaration(owner) === false
+          ) {
+            owner = owner.parent;
+          }
+          found.push(
+            owner !== undefined &&
+              (ts.isVariableDeclaration(owner) ||
+                ts.isFunctionDeclaration(owner))
+              ? (owner.name?.getText() ?? "?")
+              : "?"
+          );
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+    return found;
+  };
+
+  test("reads a component that passes its props on to its child", () => {
+    const source = [
+      'import { Trigger } from "@radix-ui/react-popover";',
+      "export const Passes = forwardRef(({ children, ...props }, ref) => (",
+      "  <Trigger asChild={true} ref={ref} {...props}>{children}</Trigger>",
+      "));",
+      "export const Plain = forwardRef((props, ref) => <Trigger ref={ref} {...props} />);",
+      "export const NoSpread = () => <Trigger asChild={true}><button /></Trigger>;",
+      "export function Declared(props) {",
+      "  return <Trigger {...props} asChild />;",
+      "}",
+    ].join("\n");
+
+    expect(forwarders(source, "example.tsx")).toEqual(["Passes", "Declared"]);
+  });
+
+  test("only the Radix triggers pass their props on to a child", () => {
+    const users = packages
+      .flatMap((name) => sourceFiles(join(root, name)))
+      .flatMap((file) =>
+        forwarders(readFileSync(file, "utf8"), file).map(
+          (name) => `${basename(file)}:${name}`
+        )
+      )
+      .sort();
+
+    expect(users).toEqual([
+      "collapsible.tsx:CollapsibleTrigger",
+      "dialog.tsx:DialogTrigger",
+      "navigation-menu.tsx:NavigationMenuLink",
+      "navigation-menu.tsx:NavigationMenuTrigger",
+      "popover.tsx:PopoverTrigger",
+      "tooltip.tsx:TooltipTrigger",
     ]);
+    expect(users.map((user) => user.split(":")[1])).toEqual(triggerNames);
+  });
+
+  // Anything else that puts a parent's props on a child goes through Slot or a
+  // clone, and none of the runtime packages does
+  test("nothing else clones its children with props or renders a Slot", () => {
+    const users = packages
+      .flatMap((name) => sourceFiles(join(root, name)))
+      .filter((file) =>
+        /cloneElement|@radix-ui\/react-slot/.test(readFileSync(file, "utf8"))
+      )
+      .map((file) => relative(root, file))
+      .sort();
+
+    expect(users).toEqual([]);
   });
 });

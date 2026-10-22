@@ -15,7 +15,9 @@
  * - every Markdown Embed (its renderer keeps `javascript:` links);
  * - every element whose tag is not one the builder offers: `script` ships a
  *   <script>, and a tag that is JSX syntax is written into the page module as
- *   code;
+ *   code. The tag counts wherever it is held, on a component that makes an
+ *   element from it or on one that passes it to the child that does (a Radix
+ *   trigger);
  * - the SVG `animate` and `set` elements (a `javascript:` link by SMIL);
  * - the `dangerouslySetInnerHTML` prop, which puts raw markup into any element;
  * - the site's custom code.
@@ -26,20 +28,19 @@
  * untouched.
  */
 import type { PublishedProjectBundle } from "@webstudio-is/protocol";
-import { tagProperty } from "@webstudio-is/sdk/runtime";
 import {
   blockTemplateComponent,
-  elementComponent,
   type Instance,
   type Prop,
 } from "@webstudio-is/sdk";
 import {
+  checksInstanceTag,
+  checksTagProp,
   elementTagMayRun,
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
   pausedPropNames,
   pausedSvgTags,
-  tagPropsByComponent,
 } from "@organizeos/site-components/org-script";
 
 export type DroppedOrgScript = {
@@ -102,13 +103,18 @@ const withoutCode = <Meta extends { code?: string }>(meta: Meta) => {
 
 type Kind = "htmlEmbed" | "markdownEmbed" | "unknownTag" | "svgAnimation";
 
-// `ws:element` writes <${instance.tag}> into the page module. The components in
-// tagPropsByComponent create their element from a prop: Box, Text and Heading
-// from `data-ws-tag` (the generator emits `instance.tag` under that name, and a
-// user prop of that name comes after it and wins) and then their legacy `tag`
-// prop, DialogTitle from its `tag` prop. Other components forward both names
-// as plain attributes and are not touched. A tag is one the builder offers
-// when `elementTagMayRun` says so, the same rule the canvas applies.
+// `ws:element` writes <${instance.tag}> into the page module. Box, Text and
+// Heading create their element from a `data-ws-tag` prop (the generator emits
+// `instance.tag` under that name on every component but ws:element, and a user
+// prop of that name comes after it and wins) and then their legacy `tag` prop,
+// and DialogTitle from its `tag` prop. A Radix trigger (asChild with a spread)
+// passes its own props to the child it renders, so a `data-ws-tag` or `tag` on
+// the trigger reaches a Box, Text or Heading inside it. So the tag of every
+// instance, and every `data-ws-tag` or `tag` prop, must be a tag the builder
+// offers, whichever component holds it: ws:element keeps those props as
+// attributes, and XML Node takes any tag by design (`checksInstanceTag` and
+// `checksTagProp`, in org-script.ts). A tag is one the builder offers when
+// `elementTagMayRun` says so, the same rule the canvas applies.
 const classify = (instance: Instance, props: Prop[] = []): undefined | Kind => {
   if (instance.component === "HtmlEmbed") {
     // An expression, a resource or a missing code is only known (or empty)
@@ -126,18 +132,11 @@ const classify = (instance: Instance, props: Prop[] = []): undefined | Kind => {
   if (instance.component === "MarkdownEmbed") {
     return "markdownEmbed";
   }
-  const isElement = instance.component === elementComponent;
-  const tagProps = tagPropsByComponent.get(instance.component) ?? [];
-  if (isElement === false && tagProps.length === 0) {
+  if (checksInstanceTag(instance.component) === false) {
     return;
   }
   const staticTags: string[] = [];
-  // `instance.tag` is the element of a ws:element. It reaches the others as the
-  // data-ws-tag attribute, which only some of them read.
-  if (
-    instance.tag !== undefined &&
-    (isElement || tagProps.includes(tagProperty))
-  ) {
+  if (instance.tag !== undefined) {
     // The match is exact and case-sensitive, as the Tag control's list is
     if (elementTagMayRun(instance.tag, false) === false) {
       return "unknownTag";
@@ -145,7 +144,7 @@ const classify = (instance: Instance, props: Prop[] = []): undefined | Kind => {
     staticTags.push(instance.tag);
   }
   for (const prop of props) {
-    if (tagProps.includes(prop.name) === false) {
+    if (checksTagProp(instance.component, prop.name) === false) {
       continue;
     }
     if (

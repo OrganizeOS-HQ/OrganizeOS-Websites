@@ -8,17 +8,22 @@ import {
   PlayIcon,
   SpinnerIcon,
 } from "@webstudio-is/icons/svg";
-import { tags } from "@webstudio-is/sdk";
+import { elementComponent, tags } from "@webstudio-is/sdk";
 import { tagProperty } from "@webstudio-is/sdk/runtime";
 import {
+  anyTagComponents,
+  checksInstanceTag,
+  checksTagProp,
   elementTagMayRun,
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
   pausedPropNames,
   pausedSvgTags,
   propNameMayRun,
+  tagPropNames,
   tagPropsByComponent,
   templateIconCodes,
+  withoutBlockedTagProps,
 } from "./org-script";
 
 const icons = {
@@ -212,8 +217,132 @@ describe("tagPropsByComponent", () => {
       "@webstudio-is/sdk-components-react-radix:DialogTitle": ["tag"],
     });
   });
+});
 
-  test("names the runtime's tag property as the framework does", () => {
+describe("tagPropNames", () => {
+  test("names the runtime's tag property as the framework does, and the legacy tag prop", () => {
     expect(tagProperty).toBe("data-ws-tag");
+    expect([...tagPropNames].sort()).toEqual(["data-ws-tag", "tag"]);
+    expect(tagPropNames).toContain(tagProperty);
+  });
+});
+
+describe("anyTagComponents", () => {
+  // XML Node writes the tag as the name of an XML element and adds a suffix
+  // that no HTML element has, so `urlset`, `loc` and `xhtml:link` are the point
+  test("are the components that take any tag name by design", () => {
+    expect([...anyTagComponents]).toEqual(["XmlNode"]);
+  });
+});
+
+describe("checksInstanceTag", () => {
+  // Radix's triggers pass their own props, `data-ws-tag` among them (the
+  // generator writes `instance.tag` under that name on every component but
+  // ws:element), on to the child they render, and Box, Text and Heading make
+  // their element from it. So the component that holds the tag does not matter.
+  test("is true for every component but XML Node", () => {
+    for (const component of [
+      elementComponent,
+      "Box",
+      "Text",
+      "Heading",
+      "Link",
+      "Button",
+      "@webstudio-is/sdk-components-react-radix:DialogTitle",
+      "@webstudio-is/sdk-components-react-radix:DialogTrigger",
+      "@webstudio-is/sdk-components-react-radix:CollapsibleTrigger",
+      "Anything",
+    ]) {
+      expect(checksInstanceTag(component), component).toBe(true);
+    }
+    expect(checksInstanceTag("XmlNode")).toBe(false);
+  });
+});
+
+describe("checksTagProp", () => {
+  test("is true for a tag prop of every component but ws:element and XML Node", () => {
+    for (const component of [
+      "Box",
+      "Text",
+      "Heading",
+      "Link",
+      "Image",
+      "@webstudio-is/sdk-components-react-radix:DialogTitle",
+      "@webstudio-is/sdk-components-react-radix:DialogTrigger",
+      "@webstudio-is/sdk-components-react-radix:PopoverTrigger",
+      "@webstudio-is/sdk-components-react-radix:TooltipTrigger",
+      "@webstudio-is/sdk-components-react-radix:CollapsibleTrigger",
+      "@webstudio-is/sdk-components-react-radix:NavigationMenuLink",
+      "@webstudio-is/sdk-components-react-radix:NavigationMenuTrigger",
+      "Anything",
+    ]) {
+      expect(checksTagProp(component, "tag"), component).toBe(true);
+      expect(checksTagProp(component, "data-ws-tag"), component).toBe(true);
+    }
+  });
+
+  test("is false where the name is only an attribute", () => {
+    // ws:element renders instance.tag, and XML Node takes any tag
+    for (const component of [elementComponent, "XmlNode"]) {
+      expect(checksTagProp(component, "tag"), component).toBe(false);
+      expect(checksTagProp(component, "data-ws-tag"), component).toBe(false);
+    }
+  });
+
+  test("is false for any other name, however much it looks alike", () => {
+    for (const name of [
+      "src",
+      "id",
+      "Tag",
+      "TAG",
+      "data-tag",
+      "data-ws-tags",
+    ]) {
+      expect(checksTagProp("Box", name), name).toBe(false);
+    }
+  });
+});
+
+describe("withoutBlockedTagProps", () => {
+  test("drops a tag prop that is not a tag the builder offers, from any component but ws:element and XML Node", () => {
+    for (const component of ["Box", "Link", "DialogTrigger"]) {
+      expect(
+        withoutBlockedTagProps(component, {
+          "data-ws-tag": "script",
+          tag: "SCRIPT",
+          src: "/x.js",
+        })
+      ).toEqual({ src: "/x.js" });
+    }
+    for (const component of [elementComponent, "XmlNode"]) {
+      const props = { "data-ws-tag": "script", tag: "urlset" };
+      expect(withoutBlockedTagProps(component, props)).toBe(props);
+    }
+  });
+
+  test("drops a tag prop that is not a string", () => {
+    expect(
+      withoutBlockedTagProps("Box", {
+        "data-ws-tag": ["div"],
+        tag: { toString: () => "div" },
+      })
+    ).toEqual({});
+    expect(withoutBlockedTagProps("Box", { tag: undefined })).toEqual({});
+  });
+
+  test("keeps a tag the builder offers, and hands back the same object when nothing goes", () => {
+    const props = { "data-ws-tag": "nav", tag: "h3", id: "a" };
+    expect(withoutBlockedTagProps("Box", props)).toBe(props);
+  });
+
+  test("does not change its input", () => {
+    const props = { "data-ws-tag": "script", id: "a" };
+    withoutBlockedTagProps("Box", props);
+    expect(props).toEqual({ "data-ws-tag": "script", id: "a" });
+  });
+
+  test("keeps everything when the switch is on", () => {
+    const props = { "data-ws-tag": "script", tag: "script" };
+    expect(withoutBlockedTagProps("Box", props, true)).toBe(props);
   });
 });

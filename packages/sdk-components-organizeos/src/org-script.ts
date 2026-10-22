@@ -1,4 +1,4 @@
-import { tags } from "@webstudio-is/sdk";
+import { elementComponent, tags } from "@webstudio-is/sdk";
 
 /**
  * Whether an org's own script may run on its Website: HTML Embeds, Content
@@ -99,8 +99,10 @@ const offeredTags: ReadonlySet<string> = new Set(tags);
  *
  * Publishing applies it to every tag it can read (`classify` in the CLI's
  * `organizeos-org-script.ts`), and the canvas to every tag it renders, whether
- * it comes from `instance.tag`, `data-ws-tag` or a component's `tag` prop, so
- * an expression that evaluates to `"script"` is caught as well.
+ * it comes from `instance.tag`, `data-ws-tag` or a `tag` prop, held by the
+ * component that makes the element or by one that passes its props to it
+ * (`checksTagProp`), so an expression that evaluates to `"script"` is caught as
+ * well.
  */
 export const elementTagMayRun = (
   tag: unknown,
@@ -132,3 +134,80 @@ export const tagPropsByComponent: ReadonlyMap<string, readonly string[]> =
     ["Heading", ["tag", "data-ws-tag"]],
     ["@webstudio-is/sdk-components-react-radix:DialogTitle", ["tag"]],
   ]);
+
+/**
+ * The props that choose the element of the component that reads them: Box, Text
+ * and Heading read `data-ws-tag` (`tagProperty` of `@webstudio-is/sdk/runtime`,
+ * which a test pins) before their legacy `tag` prop, and Radix's DialogTitle
+ * renders `<Tag>` from `tag` with no check. The component generator also writes
+ * `instance.tag` under the first name on every component but `ws:element`.
+ *
+ * Reading the prop is not the only way it reaches an element. Radix's triggers
+ * (Collapsible, Dialog, Popover and Tooltip triggers, and Navigation Menu's
+ * link and trigger) render `<Primitive.Trigger asChild {...props}>`, and
+ * Radix's Slot merges those props onto the first child, which may be a Box,
+ * Text or Heading that makes its element from them. So these names are held to
+ * `elementTagMayRun` on every component that is not `ws:element` or in
+ * `anyTagComponents`, wherever the prop sits.
+ */
+export const tagPropNames: readonly string[] = ["data-ws-tag", "tag"];
+
+/**
+ * The components that take any tag name by design, so the tag rule leaves their
+ * `tag` alone. XML Node (category xml) writes the tag as the name of an XML
+ * element (`urlset`, `url`, `loc`, `xhtml:link` in a sitemap) and adds a suffix
+ * that no HTML element has, so it never makes a `script`. Its other risks are
+ * not this rule's: "XML Node in an HTML page" is a path docs/ORGANIZEOS-FORK.md
+ * section 10 lists as not covered by this pause.
+ */
+export const anyTagComponents: ReadonlySet<string> = new Set(["XmlNode"]);
+
+/**
+ * Whether the tag of an instance of this component (`instance.tag`) must be one
+ * the builder offers: every component but XML Node. On `ws:element` it is the
+ * element itself, and on the others it is written as `data-ws-tag`, where the
+ * component or the child it passes its props to may make an element of it.
+ */
+export const checksInstanceTag = (component: string): boolean =>
+  anyTagComponents.has(component) === false;
+
+/**
+ * Whether a prop of this name on this component must hold a tag the builder
+ * offers: `data-ws-tag` and `tag` on every component but `ws:element` (an
+ * attribute there, on an element that is already made) and XML Node.
+ */
+export const checksTagProp = (component: string, name: string): boolean =>
+  component !== elementComponent &&
+  checksInstanceTag(component) &&
+  tagPropNames.includes(name);
+
+/**
+ * The props without a `data-ws-tag` or `tag` that is not a tag the builder
+ * offers, for a component that creates an element, or passes its props to a
+ * child that does. The same object when nothing goes, and never a changed
+ * input. The canvas uses it on what a component receives after its parent's
+ * props are merged in, so a tag a Radix trigger passes down is checked as well.
+ */
+export const withoutBlockedTagProps = <Props extends Record<string, unknown>>(
+  component: string,
+  props: Props,
+  mayRun: boolean = orgScriptMayRun()
+): Props => {
+  if (mayRun) {
+    return props;
+  }
+  let result = props;
+  for (const name of tagPropNames) {
+    if (
+      name in props &&
+      checksTagProp(component, name) &&
+      elementTagMayRun(props[name], mayRun) === false
+    ) {
+      if (result === props) {
+        result = { ...props };
+      }
+      delete result[name];
+    }
+  }
+  return result;
+};

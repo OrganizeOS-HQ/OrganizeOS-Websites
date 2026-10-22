@@ -2015,6 +2015,119 @@ describe("prebuild", () => {
         expect(page).toContain('tag={"h2"}');
       });
 
+      test("a Radix trigger that passes a tag prop on to its child ships neither", async () => {
+        // Radix's Slot merges a trigger's props onto its first child, and a Box,
+        // Text or Heading makes its element from the data-ws-tag or tag prop it
+        // finds there. The published page does the same merge at run time.
+        const radix = "@webstudio-is/sdk-components-react-radix";
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              [
+                "root",
+                {
+                  id: "root",
+                  component: "Body",
+                  children: children("dialog", "collapsible", "popover"),
+                },
+              ],
+              [
+                "dialog",
+                {
+                  id: "dialog",
+                  component: `${radix}:Dialog`,
+                  children: children("dialog-trigger"),
+                },
+              ],
+              [
+                "dialog-trigger",
+                {
+                  id: "dialog-trigger",
+                  component: `${radix}:DialogTrigger`,
+                  children: children("dialog-child"),
+                },
+              ],
+              [
+                "dialog-child",
+                { id: "dialog-child", component: "Box", children: [] },
+              ],
+              [
+                "collapsible",
+                {
+                  id: "collapsible",
+                  component: `${radix}:Collapsible`,
+                  children: children("collapsible-trigger"),
+                },
+              ],
+              [
+                "collapsible-trigger",
+                {
+                  id: "collapsible-trigger",
+                  component: `${radix}:CollapsibleTrigger`,
+                  children: children("collapsible-child"),
+                },
+              ],
+              [
+                "collapsible-child",
+                { id: "collapsible-child", component: "Heading", children: [] },
+              ],
+              [
+                "popover",
+                {
+                  id: "popover",
+                  component: `${radix}:Popover`,
+                  children: children("popover-trigger"),
+                },
+              ],
+              [
+                "popover-trigger",
+                {
+                  id: "popover-trigger",
+                  component: `${radix}:PopoverTrigger`,
+                  children: children("popover-child"),
+                },
+              ],
+              [
+                "popover-child",
+                { id: "popover-child", component: "Box", children: [] },
+              ],
+            ],
+            props: [
+              stringProp("a", "dialog-trigger", "data-ws-tag", "script"),
+              stringProp(
+                "b",
+                "dialog-trigger",
+                "src",
+                "https://evil.example/x.js"
+              ),
+              expressionProp(
+                "c",
+                "collapsible-trigger",
+                "tag",
+                `"scr" + "ipt"`
+              ),
+              stringProp(
+                "d",
+                "collapsible-trigger",
+                "src",
+                "https://evil.example/y.js"
+              ),
+              stringProp("e", "popover-trigger", "data-ws-tag", "nav"),
+            ],
+          })
+        );
+
+        const { page } = await generated();
+
+        expect(page).not.toContain("evil.example");
+        expect(page).not.toContain("script");
+        expect(page).not.toContain("DialogTrigger");
+        expect(page).not.toContain("CollapsibleTrigger");
+        // ... and the trigger that passes a tag the builder offers stays
+        expect(page).toContain("PopoverTrigger");
+        expect(page).toContain('data-ws-tag={"nav"}');
+      });
+
       test("a dangerouslySetInnerHTML prop ships no markup, and its element stays", async () => {
         await writeSiteData(
           createSiteData({
