@@ -8,7 +8,12 @@ import {
   type PublishedProjectBundle,
 } from "@webstudio-is/protocol";
 import type { Instance, Prop } from "@webstudio-is/sdk";
-import { templateIconCodes } from "@organizeos/site-components/org-script";
+import { standardAttributesToReactProps } from "@webstudio-is/react-sdk";
+import {
+  pausedPropNames,
+  tagPropsByComponent,
+  templateIconCodes,
+} from "@organizeos/site-components/org-script";
 import {
   describeDroppedOrgScript,
   dropOrgScript,
@@ -17,6 +22,8 @@ import {
 const icons = [...templateIconCodes];
 // the Sheet's menu button
 const MenuIcon = icons.find((icon) => icon.includes("M2.667 8h10.666")) ?? "";
+
+const DialogTitle = "@webstudio-is/sdk-components-react-radix:DialogTitle";
 
 type InstanceInit = Partial<Instance> & Pick<Instance, "id" | "component">;
 
@@ -58,6 +65,15 @@ const resourceProp = (
 ): [string, Prop] => [
   `${instanceId}:${name}`,
   { id: `${instanceId}:${name}`, instanceId, name, type: "resource", value },
+];
+
+const jsonProp = (
+  instanceId: string,
+  name: string,
+  value: unknown
+): [string, Prop] => [
+  `${instanceId}:${name}`,
+  { id: `${instanceId}:${name}`, instanceId, name, type: "json", value },
 ];
 
 const createBundle = ({
@@ -483,6 +499,251 @@ describe("dropOrgScript", () => {
     expect(propIds(result)).toEqual(["nav:tag"]);
   });
 
+  test("drops a Box, Text and Heading whose data-ws-tag prop is not a static tag, and keeps one that is", () => {
+    // These read the `data-ws-tag` prop before their legacy `tag` prop, and the
+    // generator emits a user prop of that name like any attribute
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids(
+            "box",
+            "text",
+            "heading",
+            "expression",
+            "resource",
+            "jsx",
+            "mixed",
+            "both",
+            "nav",
+            "kept"
+          ),
+        }),
+        instance({ id: "box", component: "Box" }),
+        instance({
+          id: "text",
+          component: "Text",
+          children: [text("eval(location.hash.slice(1))")],
+        }),
+        instance({ id: "heading", component: "Heading" }),
+        instance({ id: "expression", component: "Box" }),
+        instance({ id: "resource", component: "Text" }),
+        instance({ id: "jsx", component: "Box" }),
+        instance({ id: "mixed", component: "Box" }),
+        // the legacy prop is fine, but the data-ws-tag prop comes first
+        instance({ id: "both", component: "Box" }),
+        instance({ id: "nav", component: "Box" }),
+        instance({ id: "kept", component: "Box", tag: "div" }),
+      ],
+      props: [
+        stringProp("box", "data-ws-tag", "script"),
+        stringProp("box", "src", "https://evil.example/x.js"),
+        stringProp("text", "data-ws-tag", "script"),
+        stringProp("heading", "data-ws-tag", "script"),
+        expressionProp("expression", "data-ws-tag", "$ws$dataSource$tag"),
+        resourceProp("resource", "data-ws-tag", "resource-1"),
+        stringProp("jsx", "data-ws-tag", "div />{pwned}<div"),
+        stringProp("mixed", "data-ws-tag", "Script"),
+        stringProp("both", "tag", "nav"),
+        stringProp("both", "data-ws-tag", "script"),
+        stringProp("nav", "data-ws-tag", "nav"),
+        stringProp("kept", "id", "kept"),
+      ],
+    });
+
+    const result = dropOrgScript(bundle);
+
+    expect(instanceIds(result)).toEqual(["root", "nav", "kept"]);
+    expect(childrenOf(result, "root")).toEqual(ids("nav", "kept"));
+    expect(propIds(result)).toEqual(["nav:data-ws-tag", "kept:id"]);
+  });
+
+  test("drops a legacy component whose data-ws-tag prop is animate or set, as for the tag prop", () => {
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("animate", "set", "transform"),
+        }),
+        instance({ id: "animate", component: "Box" }),
+        instance({ id: "set", component: "Text" }),
+        instance({ id: "transform", component: "Box" }),
+      ],
+      props: [
+        stringProp("animate", "data-ws-tag", "animate"),
+        stringProp("set", "data-ws-tag", "set"),
+        stringProp("transform", "data-ws-tag", "animateTransform"),
+      ],
+    });
+
+    const result = dropOrgScript(bundle);
+
+    expect(instanceIds(result)).toEqual(["root", "transform"]);
+    expect(propIds(result)).toEqual(["transform:data-ws-tag"]);
+  });
+
+  test("drops a Radix DialogTitle whose tag prop is not a static tag, and keeps one that is", () => {
+    // DialogTitle renders <Tag> from its `tag` prop, which is typed h1 to h6
+    // and checked by nothing at run time
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids(
+            "script",
+            "expression",
+            "resource",
+            "jsx",
+            "animate",
+            "h2",
+            "default"
+          ),
+        }),
+        instance({
+          id: "script",
+          component: DialogTitle,
+          children: [text("eval(location.hash.slice(1))")],
+        }),
+        instance({ id: "expression", component: DialogTitle }),
+        instance({ id: "resource", component: DialogTitle }),
+        instance({ id: "jsx", component: DialogTitle }),
+        instance({ id: "animate", component: DialogTitle }),
+        instance({ id: "h2", component: DialogTitle }),
+        instance({ id: "default", component: DialogTitle, tag: "h2" }),
+      ],
+      props: [
+        stringProp("script", "tag", "script"),
+        expressionProp("expression", "tag", "$ws$dataSource$tag"),
+        resourceProp("resource", "tag", "resource-1"),
+        stringProp("jsx", "tag", "div />{pwned}<div"),
+        stringProp("animate", "tag", "animate"),
+        stringProp("h2", "tag", "h2"),
+      ],
+    });
+
+    const result = dropOrgScript(bundle);
+
+    expect(instanceIds(result)).toEqual(["root", "h2", "default"]);
+    expect(childrenOf(result, "root")).toEqual(ids("h2", "default"));
+    expect(propIds(result)).toEqual(["h2:tag"]);
+  });
+
+  test("leaves a data-ws-tag prop alone where it is only an attribute", () => {
+    // ws:element renders instance.tag, DialogTitle reads `tag` only, and
+    // XML Node (category xml) is left to the follow-up in the fork doc
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("element", "title", "link"),
+        }),
+        instance({ id: "element", component: "ws:element", tag: "div" }),
+        instance({ id: "title", component: DialogTitle }),
+        instance({ id: "link", component: "Link" }),
+      ],
+      props: [
+        stringProp("element", "data-ws-tag", "script"),
+        stringProp("element", "tag", "script"),
+        stringProp("title", "data-ws-tag", "script"),
+        stringProp("link", "data-ws-tag", "script"),
+      ],
+    });
+
+    expect(instanceIds(dropOrgScript(bundle))).toEqual([
+      "root",
+      "element",
+      "title",
+      "link",
+    ]);
+  });
+
+  test("drops the dangerouslySetInnerHTML prop of any instance, whatever its type, and keeps the instance", () => {
+    // React writes its value into the element as raw markup. The props panel
+    // accepts the name and a JSON value or an expression for it.
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("json", "expression", "string", "box", "title", "link"),
+        }),
+        instance({ id: "json", component: "ws:element", tag: "div" }),
+        instance({ id: "expression", component: "ws:element", tag: "div" }),
+        instance({ id: "string", component: "ws:element", tag: "div" }),
+        instance({ id: "box", component: "Box" }),
+        instance({ id: "title", component: DialogTitle }),
+        instance({ id: "link", component: "Link" }),
+      ],
+      props: [
+        jsonProp("json", "dangerouslySetInnerHTML", {
+          __html: "<img src=x onerror=alert(1)>",
+        }),
+        stringProp("json", "id", "json"),
+        expressionProp(
+          "expression",
+          "dangerouslySetInnerHTML",
+          '{__html: "<img src=x onerror=alert(2)>"}'
+        ),
+        stringProp("string", "dangerouslySetInnerHTML", "<script>3</script>"),
+        jsonProp("box", "dangerouslySetInnerHTML", { __html: "<b>4</b>" }),
+        jsonProp("title", "dangerouslySetInnerHTML", { __html: "<b>5</b>" }),
+        resourceProp("link", "dangerouslySetInnerHTML", "resource-1"),
+        // other names stay, however much they look alike
+        jsonProp("link", "dangerouslysetinnerhtml", { __html: "x" }),
+        stringProp("link", "innerHTML", "x"),
+      ],
+    });
+
+    const result = dropOrgScript(bundle);
+
+    expect(instanceIds(result)).toEqual([
+      "root",
+      "json",
+      "expression",
+      "string",
+      "box",
+      "title",
+      "link",
+    ]);
+    expect(propIds(result)).toEqual([
+      "json:id",
+      "link:dangerouslysetinnerhtml",
+      "link:innerHTML",
+    ]);
+  });
+
+  test("does not count the dangerouslySetInnerHTML prop of an instance that is dropped anyway", () => {
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("embed", "script", "kept"),
+        }),
+        instance({ id: "embed", component: "HtmlEmbed" }),
+        instance({ id: "script", component: "ws:element", tag: "script" }),
+        instance({ id: "kept", component: "ws:element", tag: "div" }),
+      ],
+      props: [
+        jsonProp("embed", "dangerouslySetInnerHTML", { __html: "1" }),
+        jsonProp("script", "dangerouslySetInnerHTML", { __html: "2" }),
+        jsonProp("kept", "dangerouslySetInnerHTML", { __html: "3" }),
+      ],
+    });
+    const log = vi.fn();
+
+    const result = dropOrgScript(bundle, { log });
+
+    expect(propIds(result)).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed, 1 element with a tag the builder does not offer and 1 raw HTML property."
+    );
+  });
+
   test("leaves other components alone, whatever their tag", () => {
     // other components forward the tag as an attribute and are not touched
     const bundle = createBundle({
@@ -495,7 +756,10 @@ describe("dropOrgScript", () => {
         instance({ id: "link", component: "Link", tag: "script" }),
         instance({ id: "image", component: "Image" }),
       ],
-      props: [stringProp("image", "tag", "script")],
+      props: [
+        stringProp("image", "tag", "script"),
+        stringProp("image", "data-ws-tag", "script"),
+      ],
     });
 
     expect(instanceIds(dropOrgScript(bundle))).toEqual([
@@ -720,15 +984,19 @@ describe("dropOrgScript", () => {
         instance({
           id: "root",
           component: "Body",
-          children: ids("a", "b", "markdown", "script", "animate"),
+          children: ids("a", "b", "markdown", "script", "animate", "raw"),
         }),
         instance({ id: "a", component: "HtmlEmbed" }),
         instance({ id: "b", component: "HtmlEmbed" }),
         instance({ id: "markdown", component: "MarkdownEmbed" }),
         instance({ id: "script", component: "ws:element", tag: "script" }),
         instance({ id: "animate", component: "ws:element", tag: "animate" }),
+        instance({ id: "raw", component: "ws:element", tag: "div" }),
       ],
-      props: [stringProp("a", "code", "<script>1</script>")],
+      props: [
+        stringProp("a", "code", "<script>1</script>"),
+        jsonProp("raw", "dangerouslySetInnerHTML", { __html: "<b>1</b>" }),
+      ],
     });
     const log = vi.fn();
 
@@ -736,7 +1004,7 @@ describe("dropOrgScript", () => {
 
     expect(log).toHaveBeenCalledTimes(1);
     expect(log).toHaveBeenCalledWith(
-      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 HTML Embeds, 1 Markdown Embed, 1 element with a tag the builder does not offer, 1 animate or set element and the site's custom code."
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 HTML Embeds, 1 Markdown Embed, 1 element with a tag the builder does not offer, 1 animate or set element, 1 raw HTML property and the site's custom code."
     );
   });
 });
@@ -747,6 +1015,7 @@ describe("describeDroppedOrgScript", () => {
     markdownEmbeds: 0,
     elementsWithUnknownTag: 0,
     svgAnimations: 0,
+    rawHtmlProps: 0,
     customCode: false,
   };
 
@@ -757,6 +1026,9 @@ describe("describeDroppedOrgScript", () => {
   test("names only what was left out", () => {
     expect(describeDroppedOrgScript({ ...none, htmlEmbeds: 1 })).toBe(
       "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed."
+    );
+    expect(describeDroppedOrgScript({ ...none, rawHtmlProps: 2 })).toBe(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 raw HTML properties."
     );
     expect(describeDroppedOrgScript({ ...none, customCode: true })).toBe(
       "Org script is paused until OrganizeOS sites move to their own domain: left out the site's custom code."
@@ -831,6 +1103,48 @@ describe("raw HTML in the runtime packages", () => {
     expect(users).toEqual([
       "packages/sdk-components-react/src/html-embed.tsx",
       "packages/sdk-components-react/src/markdown-embed.tsx",
+    ]);
+  });
+
+  // The generator renames a standard attribute to its React prop (`tabindex` to
+  // `tabIndex`), so a paused prop must not be reachable under another name
+  test("no standard attribute is renamed to a paused prop", () => {
+    const renamed = new Set(Object.values(standardAttributesToReactProps));
+    for (const name of pausedPropNames) {
+      expect(renamed.has(name)).toBe(false);
+      expect(
+        standardAttributesToReactProps[name.toLowerCase()]
+      ).toBeUndefined();
+    }
+  });
+
+  // The components that choose their element from a prop are named in
+  // tagPropsByComponent, and publishing checks that prop. A merge that adds
+  // another one fails here, and gets a decision.
+  test("only Box, Text, Heading, Dialog Title and XML Node have a tag prop", () => {
+    const users = packages
+      .flatMap((name) => sourceFiles(join(root, name)))
+      .filter(
+        (file) =>
+          file.endsWith(".props.ts") &&
+          /^ {2}tag: \{/m.test(readFileSync(file, "utf8"))
+      )
+      .map((file) => relative(root, file))
+      .sort();
+
+    expect(users).toEqual([
+      "packages/sdk-components-react-radix/src/__generated__/dialog.props.ts",
+      "packages/sdk-components-react/src/__generated__/box.props.ts",
+      "packages/sdk-components-react/src/__generated__/heading.props.ts",
+      "packages/sdk-components-react/src/__generated__/text.props.ts",
+      // XML Node (category xml) takes any tag by design
+      "packages/sdk-components-react/src/__generated__/xml-node.props.ts",
+    ]);
+    expect([...tagPropsByComponent.keys()].sort()).toEqual([
+      "@webstudio-is/sdk-components-react-radix:DialogTitle",
+      "Box",
+      "Heading",
+      "Text",
     ]);
   });
 });

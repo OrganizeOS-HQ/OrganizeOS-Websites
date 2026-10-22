@@ -17,6 +17,7 @@
  *   <script>, and a tag that is JSX syntax is written into the page module as
  *   code;
  * - the SVG `animate` and `set` elements (a `javascript:` link by SMIL);
+ * - the `dangerouslySetInnerHTML` prop, which puts raw markup into any element;
  * - the site's custom code.
  *
  * Nothing is deleted from the build the org edits: the embeds and the code stay
@@ -25,11 +26,19 @@
  * untouched.
  */
 import type { PublishedProjectBundle } from "@webstudio-is/protocol";
-import { tags, type Instance, type Prop } from "@webstudio-is/sdk";
+import { tagProperty } from "@webstudio-is/sdk/runtime";
+import {
+  elementComponent,
+  tags,
+  type Instance,
+  type Prop,
+} from "@webstudio-is/sdk";
 import {
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
+  pausedPropNames,
   pausedSvgTags,
+  tagPropsByComponent,
 } from "@organizeos/site-components/org-script";
 
 export type DroppedOrgScript = {
@@ -39,6 +48,8 @@ export type DroppedOrgScript = {
   elementsWithUnknownTag: number;
   /** SVG animate and set elements */
   svgAnimations: number;
+  /** `dangerouslySetInnerHTML` props, on instances that stay */
+  rawHtmlProps: number;
   customCode: boolean;
 };
 
@@ -68,6 +79,9 @@ export const describeDroppedOrgScript = (dropped: DroppedOrgScript) => {
           "animate or set elements"
         )
       : undefined,
+    dropped.rawHtmlProps > 0
+      ? plural(dropped.rawHtmlProps, "raw HTML property", "raw HTML properties")
+      : undefined,
     dropped.customCode ? "the site's custom code" : undefined,
   ].filter((part) => part !== undefined);
   if (parts.length === 0) {
@@ -80,11 +94,12 @@ export const describeDroppedOrgScript = (dropped: DroppedOrgScript) => {
   return `Org script is paused until OrganizeOS sites move to their own domain: left out ${list}.`;
 };
 
-// The components that render their tag as an element: `ws:element` writes
-// <${instance.tag}> into the page module, and the legacy three call
-// createElement(tag) with the tag or a `tag` prop.
-const tagComponents = new Set(["ws:element", "Box", "Text", "Heading"]);
-const legacyTagComponents = new Set(["Box", "Text", "Heading"]);
+// `ws:element` writes <${instance.tag}> into the page module. The components in
+// tagPropsByComponent create their element from a prop: Box, Text and Heading
+// from `data-ws-tag` (the generator emits `instance.tag` under that name, and a
+// user prop of that name comes after it and wins) and then their legacy `tag`
+// prop, DialogTitle from its `tag` prop. Other components forward both names
+// as plain attributes and are not touched.
 const offeredTags = new Set(tags);
 
 const withoutCode = <Meta extends { code?: string }>(meta: Meta) => {
@@ -111,24 +126,32 @@ const classify = (instance: Instance, props: Prop[] = []): undefined | Kind => {
   if (instance.component === "MarkdownEmbed") {
     return "markdownEmbed";
   }
-  if (tagComponents.has(instance.component) === false) {
+  const isElement = instance.component === elementComponent;
+  const tagProps = tagPropsByComponent.get(instance.component) ?? [];
+  if (isElement === false && tagProps.length === 0) {
     return;
   }
-  // The match is exact and case-sensitive, as the Tag control's list is
-  if (instance.tag !== undefined && offeredTags.has(instance.tag) === false) {
-    return "unknownTag";
-  }
-  const staticTags: string[] = instance.tag === undefined ? [] : [instance.tag];
-  if (legacyTagComponents.has(instance.component)) {
-    for (const prop of props) {
-      if (prop.name !== "tag") {
-        continue;
-      }
-      if (prop.type !== "string" || offeredTags.has(prop.value) === false) {
-        return "unknownTag";
-      }
-      staticTags.push(prop.value);
+  const staticTags: string[] = [];
+  // `instance.tag` is the element of a ws:element. It reaches the others as the
+  // data-ws-tag attribute, which only some of them read.
+  if (
+    instance.tag !== undefined &&
+    (isElement || tagProps.includes(tagProperty))
+  ) {
+    // The match is exact and case-sensitive, as the Tag control's list is
+    if (offeredTags.has(instance.tag) === false) {
+      return "unknownTag";
     }
+    staticTags.push(instance.tag);
+  }
+  for (const prop of props) {
+    if (tagProps.includes(prop.name) === false) {
+      continue;
+    }
+    if (prop.type !== "string" || offeredTags.has(prop.value) === false) {
+      return "unknownTag";
+    }
+    staticTags.push(prop.value);
   }
   if (staticTags.some((tag) => pausedSvgTags.has(tag))) {
     return "svgAnimation";
@@ -146,7 +169,8 @@ const classify = (instance: Instance, props: Prop[] = []): undefined | Kind => {
  * them go too, so a Resource that only they used is neither loaded by the
  * page's loader nor written into its server module. A page root that would be
  * dropped (only a crafted build has one) is emptied into a Body instead, so the
- * page still builds.
+ * page still builds. A `dangerouslySetInnerHTML` prop is dropped from its
+ * instance, which stays.
  */
 export const dropOrgScript = (
   bundle: PublishedProjectBundle,
@@ -176,6 +200,7 @@ export const dropOrgScript = (
     markdownEmbeds: 0,
     elementsWithUnknownTag: 0,
     svgAnimations: 0,
+    rawHtmlProps: 0,
     customCode: (build.pages.meta?.code ?? "").trim() !== "",
   };
   const found = new Set<Instance["id"]>();
@@ -198,7 +223,15 @@ export const dropOrgScript = (
   }
 
   const hasCode = build.pages.meta?.code !== undefined;
-  if (found.size === 0 && emptiedRoots.size === 0 && hasCode === false) {
+  const hasRawHtml = build.props.some(([, prop]) =>
+    pausedPropNames.has(prop.name)
+  );
+  if (
+    found.size === 0 &&
+    emptiedRoots.size === 0 &&
+    hasCode === false &&
+    hasRawHtml === false
+  ) {
     return bundle;
   }
 
@@ -253,6 +286,15 @@ export const dropOrgScript = (
       ? build.pages
       : { ...build.pages, meta: withoutCode(meta) };
 
+  // An instance that stays loses a prop that writes markup into it. Those of
+  // an instance that goes are not counted twice.
+  const keptProps = build.props.filter(
+    ([, prop]) => gone(prop.instanceId) === false
+  );
+  dropped.rawHtmlProps = keptProps.filter(([, prop]) =>
+    pausedPropNames.has(prop.name)
+  ).length;
+
   const result: PublishedProjectBundle = {
     ...bundle,
     build: {
@@ -279,7 +321,9 @@ export const dropOrgScript = (
           ],
         ] as Array<[Instance["id"], Instance]>;
       }),
-      props: build.props.filter(([, prop]) => gone(prop.instanceId) === false),
+      props: keptProps.filter(
+        ([, prop]) => pausedPropNames.has(prop.name) === false
+      ),
       dataSources: build.dataSources.filter(
         ([, dataSource]) => gone(dataSource.scopeInstanceId) === false
       ),

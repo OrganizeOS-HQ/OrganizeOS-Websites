@@ -67,6 +67,31 @@ const getFilePaths = async (dir: string): Promise<string[]> => {
   return paths.flat();
 };
 
+/** Runs a TSX module as CommonJS, resolving its imports from `imports`. */
+const runModule = async (
+  code: string,
+  imports: Record<string, unknown>
+): Promise<Record<string, unknown>> => {
+  const { code: js } = await transformWithEsbuild(code, "module.tsx", {
+    loader: "tsx",
+    format: "cjs",
+    jsx: "automatic",
+  });
+  const module = { exports: {} as Record<string, unknown> };
+  const load = (id: string) => {
+    if (id in imports === false) {
+      throw Error(`"${id}" is not available to the module`);
+    }
+    return imports[id];
+  };
+  new Function("module", "exports", "require", js)(
+    module,
+    module.exports,
+    load
+  );
+  return module.exports;
+};
+
 const createSiteData = (
   overrides: {
     pages?: Array<{
@@ -604,31 +629,6 @@ describe("prebuild", () => {
       // Body puts after its children.
       describe("rendered", () => {
         type Wrapper = ComponentType<{ system: unknown }>;
-
-        /** Runs a TSX module as CommonJS, resolving its imports from `imports`. */
-        const runModule = async (
-          code: string,
-          imports: Record<string, unknown>
-        ): Promise<Record<string, unknown>> => {
-          const { code: js } = await transformWithEsbuild(code, "module.tsx", {
-            loader: "tsx",
-            format: "cjs",
-            jsx: "automatic",
-          });
-          const module = { exports: {} as Record<string, unknown> };
-          const load = (id: string) => {
-            if (id in imports === false) {
-              throw Error(`"${id}" is not available to the module`);
-            }
-            return imports[id];
-          };
-          new Function("module", "exports", "require", js)(
-            module,
-            module.exports,
-            load
-          );
-          return module.exports;
-        };
 
         /** The route's PageWithSourceOffer, as the site ships it, around `Page`. */
         const loadWrapper = async (route: string, Page: unknown) => {
@@ -1844,6 +1844,239 @@ describe("prebuild", () => {
       expect(page).toContain("<svg");
       expect(page).toContain("<Link");
       expect(page).toContain("<animateTransform");
+    });
+
+    // T12, for the props that choose or fill an element
+    describe("props that choose an element or fill it with markup", () => {
+      const jsonProp = (
+        id: string,
+        instanceId: string,
+        name: string,
+        value: unknown
+      ): [string, Record<string, unknown>] => [
+        id,
+        { id, instanceId, name, type: "json", value },
+      ];
+      const stringProp = (
+        id: string,
+        instanceId: string,
+        name: string,
+        value: string
+      ): [string, Record<string, unknown>] => [
+        id,
+        { id, instanceId, name, type: "string", value },
+      ];
+      const expressionProp = (
+        id: string,
+        instanceId: string,
+        name: string,
+        value: string
+      ): [string, Record<string, unknown>] => [
+        id,
+        { id, instanceId, name, type: "expression", value },
+      ];
+      const children = (...ids: string[]) =>
+        ids.map((value) => ({ type: "id" as const, value }));
+
+      /** The home page the site ships, rendered with the real Box, Text and Heading. */
+      const renderHome = async () => {
+        const { page } = await generated();
+        const exports = await runModule(page, {
+          react: React,
+          "react/jsx-runtime": jsxRuntime,
+          "@webstudio-is/react-sdk/runtime": await import(
+            "@webstudio-is/react-sdk/runtime"
+          ),
+          "@webstudio-is/sdk-components-react/components": await import(
+            "@webstudio-is/sdk-components-react/components"
+          ),
+          "@webstudio-is/sdk-components-react-router": {
+            Body: (props: Record<string, unknown>) =>
+              React.createElement("body", props),
+          },
+        });
+        const Page = exports.Page as ComponentType<Record<string, unknown>>;
+        return {
+          page,
+          html: renderToStaticMarkup(
+            React.createElement(Page, {
+              system: { params: {}, search: {}, origin: "https://x" },
+            })
+          ),
+        };
+      };
+
+      test("a Box, Text and Heading with a data-ws-tag prop of script ship no script element", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              [
+                "root",
+                {
+                  id: "root",
+                  component: "Body",
+                  children: children("box", "text", "heading", "kept"),
+                },
+              ],
+              ["box", { id: "box", component: "Box", children: [] }],
+              [
+                "text",
+                {
+                  id: "text",
+                  component: "Text",
+                  children: [
+                    { type: "text", value: "alert(document.cookie)" } as never,
+                  ],
+                },
+              ],
+              [
+                "heading",
+                { id: "heading", component: "Heading", children: [] },
+              ],
+              ["kept", { id: "kept", component: "Box", children: [] }],
+            ],
+            props: [
+              stringProp("box-tag", "box", "data-ws-tag", "script"),
+              stringProp("box-src", "box", "src", "https://evil.example/x.js"),
+              stringProp("text-tag", "text", "data-ws-tag", "script"),
+              expressionProp(
+                "heading-tag",
+                "heading",
+                "data-ws-tag",
+                `"script"`
+              ),
+              stringProp("kept-tag", "kept", "data-ws-tag", "nav"),
+            ],
+          })
+        );
+
+        const { page, html } = await renderHome();
+
+        expect(page).not.toContain("script");
+        expect(page).not.toContain("evil.example");
+        expect(html).not.toContain("<script");
+        expect(html).not.toContain("evil.example");
+        expect(html).not.toContain("alert(");
+        // ... and a data-ws-tag prop that is a tag the builder offers stays
+        expect(html).toContain("<nav");
+      });
+
+      test("a DialogTitle whose tag prop is not an offered tag is left out", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              [
+                "root",
+                {
+                  id: "root",
+                  component: "Body",
+                  children: children("script", "expression", "kept"),
+                },
+              ],
+              [
+                "script",
+                {
+                  id: "script",
+                  component:
+                    "@webstudio-is/sdk-components-react-radix:DialogTitle",
+                  children: [],
+                },
+              ],
+              [
+                "expression",
+                {
+                  id: "expression",
+                  component:
+                    "@webstudio-is/sdk-components-react-radix:DialogTitle",
+                  children: [],
+                },
+              ],
+              [
+                "kept",
+                {
+                  id: "kept",
+                  component:
+                    "@webstudio-is/sdk-components-react-radix:DialogTitle",
+                  children: [],
+                },
+              ],
+            ],
+            props: [
+              stringProp("script-tag", "script", "tag", "script"),
+              expressionProp("expression-tag", "expression", "tag", `"script"`),
+              stringProp("kept-tag", "kept", "tag", "h2"),
+            ],
+          })
+        );
+
+        const { page } = await generated();
+
+        expect(page).not.toContain("script");
+        expect(page).toContain('tag={"h2"}');
+      });
+
+      test("a dangerouslySetInnerHTML prop ships no markup, and its element stays", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              [
+                "root",
+                {
+                  id: "root",
+                  component: "Body",
+                  children: children("json", "expression", "box"),
+                },
+              ],
+              [
+                "json",
+                {
+                  id: "json",
+                  component: elementComponent,
+                  tag: "div",
+                  children: [],
+                },
+              ],
+              [
+                "expression",
+                {
+                  id: "expression",
+                  component: elementComponent,
+                  tag: "div",
+                  children: [],
+                },
+              ],
+              ["box", { id: "box", component: "Box", children: [] }],
+            ],
+            props: [
+              jsonProp("json-html", "json", "dangerouslySetInnerHTML", {
+                __html: "<img src=x onerror=alert(1)>",
+              }),
+              stringProp("json-id", "json", "id", "json"),
+              expressionProp(
+                "expression-html",
+                "expression",
+                "dangerouslySetInnerHTML",
+                `{__html: "<img src=x onerror=alert(2)>"}`
+              ),
+              jsonProp("box-html", "box", "dangerouslySetInnerHTML", {
+                __html: "<script>alert(3)</script>",
+              }),
+            ],
+          })
+        );
+
+        const { page, html } = await renderHome();
+
+        expect(page).not.toContain("dangerouslySetInnerHTML");
+        expect(page).not.toContain("onerror");
+        expect(html).not.toContain("onerror");
+        expect(html).not.toContain("<img");
+        expect(html).not.toContain("<script");
+        // the elements stay
+        expect(html).toContain('<div id="json" class="w-element"></div>');
+        expect(html).toContain('<div class="w-element"></div>');
+        expect(html).toContain('<div class="w-box"></div>');
+      });
     });
 
     // T13. A guard: passes before and after.

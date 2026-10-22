@@ -8,10 +8,14 @@ import {
   PlayIcon,
   SpinnerIcon,
 } from "@webstudio-is/icons/svg";
+import { tagProperty } from "@webstudio-is/sdk/runtime";
 import {
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
+  pausedPropNames,
   pausedSvgTags,
+  propNameMayRun,
+  tagPropsByComponent,
   templateIconCodes,
 } from "./org-script";
 
@@ -111,5 +115,53 @@ describe("pausedSvgTags", () => {
     expect([...pausedSvgTags].sort()).toEqual(["animate", "set"]);
     expect(pausedSvgTags.has("animateTransform")).toBe(false);
     expect(pausedSvgTags.has("animateMotion")).toBe(false);
+  });
+});
+
+describe("pausedPropNames", () => {
+  test("are the props that put markup on a page without an HTML Embed", () => {
+    // React writes the value of this prop into the element as raw markup, and
+    // nothing in the builder or the generator filters it
+    expect([...pausedPropNames]).toEqual(["dangerouslySetInnerHTML"]);
+  });
+});
+
+describe("propNameMayRun", () => {
+  test("is false for a prop that writes raw markup into an element", () => {
+    expect(propNameMayRun("dangerouslySetInnerHTML")).toBe(false);
+  });
+
+  test("is true for every other name, however much it looks alike", () => {
+    for (const name of [
+      "id",
+      "class",
+      "className",
+      "href",
+      "onClick",
+      "innerHTML",
+      "dangerouslysetinnerhtml",
+      "data-dangerouslySetInnerHTML",
+    ]) {
+      expect(propNameMayRun(name)).toBe(true);
+    }
+  });
+
+  test("is true for every name when the switch is on", () => {
+    expect(propNameMayRun("dangerouslySetInnerHTML", true)).toBe(true);
+  });
+});
+
+describe("tagPropsByComponent", () => {
+  test("lists the components that choose their element from a prop, and the props that do it", () => {
+    expect(Object.fromEntries(tagPropsByComponent)).toEqual({
+      Box: ["tag", tagProperty],
+      Text: ["tag", tagProperty],
+      Heading: ["tag", tagProperty],
+      "@webstudio-is/sdk-components-react-radix:DialogTitle": ["tag"],
+    });
+  });
+
+  test("names the runtime's tag property as the framework does", () => {
+    expect(tagProperty).toBe("data-ws-tag");
   });
 });
