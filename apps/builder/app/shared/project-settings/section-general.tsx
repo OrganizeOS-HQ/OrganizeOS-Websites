@@ -28,7 +28,8 @@ import { serverSyncStore } from "~/shared/sync/sync-stores";
 import { sectionSpacing } from "./utils";
 import { CodeEditor } from "~/shared/code-editor";
 import { CopyToClipboard } from "~/shared/copy-to-clipboard";
-import { planBadgeLabel } from "~/shared/branding";
+import { planBadgeLabel, platformName } from "~/shared/branding";
+import { orgScriptMayRun } from "@organizeos/site-components/org-script";
 
 const imgStyle = css({
   objectFit: "contain",
@@ -223,14 +224,24 @@ export const SectionGeneral = ({ projectId }: { projectId?: string }) => {
 
       <Grid gap={2} css={sectionSpacing}>
         <Label>Custom code</Label>
+        {/* OrganizeOS fork: custom code is paused, its field read-only, until
+            org sites move to their own domain (docs/ORGANIZEOS-FORK.md
+            section 10). What is saved here is kept. */}
         <Text color="subtle">
-          Custom code and scripts will be added at the end of the &lt;head&gt;
-          tag to every page across the published project and will run{" "}
-          <strong>only</strong> on the published site.
+          {orgScriptMayRun() ? (
+            <>
+              Custom code and scripts will be added at the end of the
+              &lt;head&gt; tag to every page across the published project and
+              will run <strong>only</strong> on the published site.
+            </>
+          ) : (
+            `Custom code is paused for now: it isn't added to any page of your published site. Scripts on your site could read the ${platformName} sign-in of people who visit, so it stays off while we make it safe. The code saved here is kept and starts running again when it is.`
+          )}
         </Text>
         <CodeEditor
           title="Custom code"
           lang="html"
+          readOnly={orgScriptMayRun() === false}
           value={meta.code ?? ""}
           onChange={handleSave("code")}
           onChangeComplete={handleSave("code")}
