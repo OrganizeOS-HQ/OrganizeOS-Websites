@@ -1,4 +1,4 @@
-> Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit e6146db7b): change both copies together.
+> Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit 290f1dffe): change both copies together.
 
 # Site component contract fixtures
 
@@ -33,11 +33,12 @@ additive, or it ships under a new endpoint version.
   (400), `not_found` (404), `rate_limited` (429) and `unavailable` (503). A
   `role_full` answer never lists the role the request chose, so
   `response-role-full.json` answers `request-full.json`'s Canvasser with its
-  sibling Driver: a block marks Canvasser full and leaves Driver open.
-  `events.json` lists Driver as `full` because the listing is a snapshot, and a
-  `role_full` answer reflects the moment of the post. `response-full.json`
-  stands for an event with no room and no waitlist, or a selected shift with no
-  room.
+  sibling Driver. For a visitor with no guests a block marks Canvasser full and
+  enables Driver; `request-full.json` brings a guest, so for it the block marks
+  no role full, enables Driver and shows the party message. `events.json` lists
+  Driver as `full` because the listing is a snapshot, and a `role_full` answer
+  reflects the moment of the post. `response-full.json` stands for an event with
+  no room and no waitlist, or a selected shift with no room.
 - `forms.json`: the body of `GET /v1/forms`.
 - `events.json`: the body of `GET /v1/events`, as the route lists it: soonest
   first, with the event's own time zone, and the ended event the
