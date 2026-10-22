@@ -8,8 +8,10 @@ import {
   PlayIcon,
   SpinnerIcon,
 } from "@webstudio-is/icons/svg";
+import { tags } from "@webstudio-is/sdk";
 import { tagProperty } from "@webstudio-is/sdk/runtime";
 import {
+  elementTagMayRun,
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
   pausedPropNames,
@@ -148,6 +150,56 @@ describe("propNameMayRun", () => {
 
   test("is true for every name when the switch is on", () => {
     expect(propNameMayRun("dangerouslySetInnerHTML", true)).toBe(true);
+  });
+});
+
+describe("elementTagMayRun", () => {
+  test("is true for every tag the builder offers", () => {
+    expect(tags.length).toBeGreaterThan(100);
+    for (const tag of tags) {
+      expect(elementTagMayRun(tag), tag).toBe(true);
+    }
+    for (const tag of ["div", "section", "a", "h1", "svg", "iframe"]) {
+      expect(elementTagMayRun(tag), tag).toBe(true);
+    }
+  });
+
+  // React hoists a <script async src> into <head> and runs it, and creates any
+  // spelling that is not exactly "script" (SCRIPT) as a live element
+  test("is false for script, in every spelling", () => {
+    for (const tag of ["script", "SCRIPT", "Script", " script", "script "]) {
+      expect(elementTagMayRun(tag), tag).toBe(false);
+    }
+  });
+
+  test("is false for a tag that is not exactly one the builder offers", () => {
+    for (const tag of [
+      "DIV",
+      "Div",
+      "div ",
+      "",
+      "div />{globalThis.pwned = 1}<div",
+      "my-element",
+      "constructor",
+      "__proto__",
+    ]) {
+      expect(elementTagMayRun(tag), tag).toBe(false);
+    }
+  });
+
+  test("is false for a value that is not a string, even one that becomes a tag", () => {
+    expect(elementTagMayRun(undefined)).toBe(false);
+    expect(elementTagMayRun(null)).toBe(false);
+    expect(elementTagMayRun(1)).toBe(false);
+    expect(elementTagMayRun({})).toBe(false);
+    expect(elementTagMayRun({ toString: () => "div" })).toBe(false);
+    expect(elementTagMayRun(["div"])).toBe(false);
+    expect(elementTagMayRun(() => "div")).toBe(false);
+  });
+
+  test("is true for everything when the switch is on", () => {
+    expect(elementTagMayRun("script", true)).toBe(true);
+    expect(elementTagMayRun(undefined, true)).toBe(true);
   });
 });
 

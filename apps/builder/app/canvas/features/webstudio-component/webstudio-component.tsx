@@ -30,7 +30,11 @@ import {
   elementComponent,
 } from "@webstudio-is/sdk";
 import { indexProperty, tagProperty } from "@webstudio-is/sdk/runtime";
-import { propNameMayRun } from "@organizeos/site-components/org-script";
+import {
+  elementTagMayRun,
+  propNameMayRun,
+  tagPropsByComponent,
+} from "@organizeos/site-components/org-script";
 import {
   idAttribute,
   componentAttribute,
@@ -349,7 +353,10 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
         const instancePropsObject: Record<Prop["name"], unknown> = {};
         const instance = instances.get(instanceId);
         const tag = instance?.tag;
-        if (tag !== undefined) {
+        // OrganizeOS fork: org script is paused. A tag the builder does not
+        // offer (script, or JSX syntax) never reaches the component that makes
+        // an element from it (docs/ORGANIZEOS-FORK.md section 10).
+        if (tag !== undefined && elementTagMayRun(tag)) {
           instancePropsObject[tagProperty] = tag;
         }
         const meta = metas.get(instance?.component ?? "");
@@ -365,6 +372,16 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
             // markup into the element never reaches it (docs/ORGANIZEOS-FORK.md
             // section 10).
             if (propNameMayRun(name) === false) {
+              continue;
+            }
+            // ... and so does a prop that picks the element of Box, Text,
+            // Heading or Dialog Title, once evaluated (an expression too)
+            if (
+              tagPropsByComponent
+                .get(instance?.component ?? "")
+                ?.includes(name) &&
+              elementTagMayRun(value) === false
+            ) {
               continue;
             }
             let propName = name;
@@ -531,6 +548,12 @@ export const WebstudioComponentCanvas = forwardRef<
 
   if (instance.component === elementComponent) {
     Component = instance.tag ?? "div";
+    // OrganizeOS fork: org script is paused. React hoists a `script` that has
+    // `async` and `src` into <head> and runs it (docs/ORGANIZEOS-FORK.md
+    // section 10).
+    if (elementTagMayRun(Component) === false) {
+      Component = "div";
+    }
     // replace to enable uncontrolled state
     if (Component === "input") {
       Component = Input as AnyComponent;
@@ -728,6 +751,10 @@ export const WebstudioComponentPreview = forwardRef<
 
   if (instance.component === elementComponent) {
     Component = instance.tag ?? "div";
+    // OrganizeOS fork: org script is paused (see WebstudioComponentCanvas)
+    if (elementTagMayRun(Component) === false) {
+      Component = "div";
+    }
     // replace to enable uncontrolled state
     if (Component === "input") {
       Component = Input as AnyComponent;

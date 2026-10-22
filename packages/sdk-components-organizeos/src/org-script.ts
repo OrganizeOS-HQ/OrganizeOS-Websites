@@ -1,3 +1,5 @@
+import { tags } from "@webstudio-is/sdk";
+
 /**
  * Whether an org's own script may run on its Website: HTML Embeds, Content
  * Embeds, Markdown Embeds, the SVG `animate` and `set` elements, and the
@@ -82,6 +84,28 @@ export const propNameMayRun = (
   name: string,
   mayRun: boolean = orgScriptMayRun()
 ): boolean => mayRun || pausedPropNames.has(name) === false;
+
+const offeredTags: ReadonlySet<string> = new Set(tags);
+
+/**
+ * Whether an element may be created with this tag. Only a string that is
+ * exactly one of the tags the builder offers (`tags` of `@webstudio-is/sdk`,
+ * the list the Tag control shows and HTML paste filters on), unless the switch
+ * is on. `script` is not one, nor is any other spelling of it: React hoists a
+ * `<script async src>` into the document's `<head>` and runs it, creates a
+ * `SCRIPT` as a live element, and the generator writes a tag that is JSX
+ * syntax into the page module as code. A value that is not a string is never a
+ * tag, even one that becomes a tag string.
+ *
+ * Publishing applies it to every tag it can read (`classify` in the CLI's
+ * `organizeos-org-script.ts`), and the canvas to every tag it renders, whether
+ * it comes from `instance.tag`, `data-ws-tag` or a component's `tag` prop, so
+ * an expression that evaluates to `"script"` is caught as well.
+ */
+export const elementTagMayRun = (
+  tag: unknown,
+  mayRun: boolean = orgScriptMayRun()
+): boolean => mayRun || (typeof tag === "string" && offeredTags.has(tag));
 
 /**
  * The components that choose the element they render from a prop, with the

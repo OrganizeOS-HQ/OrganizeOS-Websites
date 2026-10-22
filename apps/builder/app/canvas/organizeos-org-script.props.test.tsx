@@ -11,6 +11,8 @@ import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import * as baseComponents from "@webstudio-is/sdk-components-react/components";
 import * as baseComponentMetas from "@webstudio-is/sdk-components-react/metas";
 import * as baseComponentTemplates from "@webstudio-is/sdk-components-react/templates";
+import * as radixComponents from "@webstudio-is/sdk-components-react-radix";
+import * as radixComponentMetas from "@webstudio-is/sdk-components-react-radix/metas";
 import {
   $registeredComponents,
   registerComponentLibrary,
@@ -27,7 +29,10 @@ import { withOrgScriptPolicy } from "./organizeos-org-script";
 
 // The canvas copies every prop of an instance onto its component, so a prop
 // named dangerouslySetInnerHTML would put raw markup into the builder's own
-// origin, which holds the platform session (docs/ORGANIZEOS-FORK.md section 10)
+// origin, which holds the platform session (docs/ORGANIZEOS-FORK.md section 10).
+// The same holds for the element it creates: a tag that is not one the builder
+// offers must not reach React, which hoists a <script async src> into the
+// document's <head> and runs it.
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -47,7 +52,15 @@ afterEach(() => {
   container = undefined;
   $instances.set(new Map());
   $props.set(new Map());
+  for (const script of evilScripts()) {
+    script.remove();
+  }
 });
+
+// React puts a hoisted <script async src> in document.head, outside the
+// container, so look at the whole document
+const evilScripts = () =>
+  document.querySelectorAll<HTMLScriptElement>('script[src*="evil.example"]');
 
 const ids = (...list: string[]): Instance["children"] =>
   list.map((value) => ({ type: "id", value }));
@@ -59,6 +72,8 @@ const instance = (init: Partial<Instance> & Pick<Instance, "id">) =>
   ] as [string, Instance];
 
 const html = '<img id="pwn" src="x" onerror="window.pwned=1">';
+
+const radixNamespace = "@webstudio-is/sdk-components-react-radix";
 
 type Renderer = "canvas" | "preview";
 
@@ -79,6 +94,12 @@ const render = ({
       templates: baseComponentTemplates,
     })
   );
+  registerComponentLibrary({
+    namespace: radixNamespace,
+    components: radixComponents as never,
+    metas: radixComponentMetas,
+    templates: {},
+  });
   $instances.set(new Map(instances));
   $props.set(new Map(props));
   $pages.set(
@@ -234,6 +255,231 @@ describe.each(renderers)(
 
       const kept = dom.querySelector("#kept");
       expect(kept?.getAttribute("title")).toBe("dangerouslySetInnerHTML");
+    });
+  }
+);
+
+const prop = (
+  instanceId: string,
+  name: string,
+  type: "string" | "boolean" | "expression",
+  value: string | boolean
+) => {
+  const id = `${instanceId}:${name}`;
+  return [id, { id, instanceId, name, type, value } as Prop] as [string, Prop];
+};
+
+describe.each(renderers)(
+  "the %s renders an instance whose tag is not one the builder offers",
+  (renderer) => {
+    // React hoists a <script async src> into <head> and creates it with
+    // document.createElement, so a browser fetches and runs it. Each case has
+    // its own src, because React dedupes hoisted scripts by src.
+    const src = (name: string) => `https://evil.example/${renderer}-${name}.js`;
+
+    const expectNoScript = (dom: HTMLElement) => {
+      expect(evilScripts().length).toBe(0);
+      expect(dom.querySelector("script")).toBeNull();
+    };
+
+    test("without a script, on a ws:element with tag script, an async prop and a src", () => {
+      const dom = render({
+        renderer,
+        instances: [
+          instance({ id: "body", children: ids("script") }),
+          instance({ id: "script", tag: "script" }),
+        ],
+        props: [
+          prop("script", "src", "string", src("element")),
+          prop("script", "async", "boolean", true),
+        ],
+      });
+
+      expectNoScript(dom);
+      // the element is still there, as a div
+      expect(dom.querySelector("[data-ws-id=script]")?.tagName).toBe("DIV");
+    });
+
+    test("without a script, on a ws:element with the tag SCRIPT and inline code", () => {
+      // React creates anything but the exact string "script" with
+      // document.createElement, which makes a live script element
+      const dom = render({
+        renderer,
+        instances: [
+          instance({
+            id: "body",
+            children: ids("upper", "mixed"),
+          }),
+          instance({
+            id: "upper",
+            tag: "SCRIPT",
+            children: [{ type: "text", value: "window.pwned = 1" }],
+          }),
+          instance({ id: "mixed", tag: "Script" }),
+        ],
+        props: [
+          prop("upper", "src", "string", src("upper")),
+          prop("mixed", "src", "string", src("mixed")),
+        ],
+      });
+
+      expectNoScript(dom);
+      expect(dom.querySelector("[data-ws-id=upper]")?.tagName).toBe("DIV");
+      expect(dom.querySelector("[data-ws-id=mixed]")?.tagName).toBe("DIV");
+    });
+
+    // each falls back to its own default element
+    test.each([
+      ["Box", "DIV"],
+      ["Text", "DIV"],
+      ["Heading", "H1"],
+    ])(
+      "without a script, on a %s with a data-ws-tag prop of script and an async expression",
+      (component, fallback) => {
+        const dom = render({
+          renderer,
+          instances: [
+            instance({ id: "body", children: ids("c") }),
+            instance({ id: "c", component }),
+          ],
+          props: [
+            prop("c", "data-ws-tag", "string", "script"),
+            prop("c", "src", "string", src(`data-ws-tag-${component}`)),
+            prop("c", "async", "expression", "true"),
+          ],
+        });
+
+        expectNoScript(dom);
+        expect(dom.querySelector("[data-ws-id=c]")?.tagName).toBe(fallback);
+      }
+    );
+
+    test("without a script, on a Box whose instance tag is script", () => {
+      const dom = render({
+        renderer,
+        instances: [
+          instance({ id: "body", children: ids("box") }),
+          instance({ id: "box", component: "Box", tag: "script" }),
+        ],
+        props: [
+          prop("box", "src", "string", src("instance-tag")),
+          prop("box", "async", "boolean", true),
+        ],
+      });
+
+      expectNoScript(dom);
+      expect(dom.querySelector("[data-ws-id=box]")?.tagName).toBe("DIV");
+    });
+
+    test("without a script, on a Box whose legacy tag prop is an expression that evaluates to script", () => {
+      const dom = render({
+        renderer,
+        instances: [
+          instance({ id: "body", children: ids("box") }),
+          instance({ id: "box", component: "Box" }),
+        ],
+        props: [
+          prop("box", "tag", "expression", '"scr" + "ipt"'),
+          prop("box", "src", "string", src("legacy-tag")),
+          prop("box", "async", "expression", "true"),
+        ],
+      });
+
+      expectNoScript(dom);
+      expect(dom.querySelector("[data-ws-id=box]")?.tagName).toBe("DIV");
+    });
+
+    test("without a script, on a Dialog Title whose tag is an expression that evaluates to script", () => {
+      const dom = render({
+        renderer,
+        instances: [
+          instance({ id: "body", children: ids("dialog") }),
+          instance({
+            id: "dialog",
+            component: `${radixNamespace}:Dialog`,
+            children: ids("title"),
+          }),
+          instance({ id: "title", component: `${radixNamespace}:DialogTitle` }),
+        ],
+        props: [
+          prop("dialog", "open", "boolean", true),
+          prop("title", "tag", "expression", '"script"'),
+          prop("title", "src", "string", src("dialog-title")),
+          prop("title", "async", "expression", "true"),
+        ],
+      });
+
+      expectNoScript(dom);
+      // the title is rendered, with the component's own tag
+      expect(document.querySelector("[data-ws-id=title]")).not.toBeNull();
+    });
+
+    test("without crashing, on a tag prop whose value is not a string", () => {
+      const dom = render({
+        renderer,
+        instances: [
+          instance({ id: "body", children: ids("number", "array") }),
+          instance({ id: "number", component: "Box" }),
+          instance({ id: "array", component: "Text" }),
+        ],
+        props: [
+          prop("number", "tag", "expression", "1"),
+          prop("array", "data-ws-tag", "expression", '["h1"]'),
+        ],
+      });
+
+      expect(dom.querySelector("[data-ws-id=number]")?.tagName).toBe("DIV");
+      expect(dom.querySelector("[data-ws-id=array]")?.tagName).toBe("DIV");
+    });
+
+    // The guards: an element the builder offers is created as before
+    test("keeps a ws:element whose tag the builder offers", () => {
+      const dom = render({
+        renderer,
+        instances: [
+          instance({ id: "body", children: ids("section", "svg") }),
+          instance({ id: "section", tag: "section" }),
+          instance({ id: "svg", tag: "svg" }),
+        ],
+        props: [],
+      });
+
+      expect(dom.querySelector("[data-ws-id=section]")?.tagName).toBe(
+        "SECTION"
+      );
+      expect(dom.querySelector("[data-ws-id=svg]")?.tagName).toBe("svg");
+    });
+
+    test("keeps the tag a Box, a Heading and a Dialog Title are given, when the builder offers it", () => {
+      const dom = render({
+        renderer,
+        instances: [
+          instance({
+            id: "body",
+            children: ids("box", "legacy", "heading", "dialog"),
+          }),
+          instance({ id: "box", component: "Box", tag: "nav" }),
+          instance({ id: "legacy", component: "Box" }),
+          instance({ id: "heading", component: "Heading" }),
+          instance({
+            id: "dialog",
+            component: `${radixNamespace}:Dialog`,
+            children: ids("title"),
+          }),
+          instance({ id: "title", component: `${radixNamespace}:DialogTitle` }),
+        ],
+        props: [
+          prop("legacy", "tag", "string", "aside"),
+          prop("heading", "data-ws-tag", "expression", '"h3"'),
+          prop("dialog", "open", "boolean", true),
+          prop("title", "tag", "expression", '"h4"'),
+        ],
+      });
+
+      expect(dom.querySelector("[data-ws-id=box]")?.tagName).toBe("NAV");
+      expect(dom.querySelector("[data-ws-id=legacy]")?.tagName).toBe("ASIDE");
+      expect(dom.querySelector("[data-ws-id=heading]")?.tagName).toBe("H3");
+      expect(document.querySelector("[data-ws-id=title]")?.tagName).toBe("H4");
     });
   }
 );
