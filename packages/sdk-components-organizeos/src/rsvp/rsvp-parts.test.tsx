@@ -474,7 +474,9 @@ describe("what the platform answers", () => {
     fillEverything(container);
     fireEvent.submit(getForm(container));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    const message = await screen.findByText("Check your guests' names.");
+    const message = await screen.findByText(
+      "Check your guests: each needs a first and a last name, and this event may take fewer guests."
+    );
     expect(message.hasAttribute("data-message")).toBe(true);
     expect(message.parentElement?.hasAttribute("data-invalid")).toBe(true);
   });

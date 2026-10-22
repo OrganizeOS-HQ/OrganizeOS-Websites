@@ -130,7 +130,7 @@ const fieldErrorMessage = (field: string) => {
     case "phone":
       return "Enter a valid phone number.";
     case "guests":
-      return "Check your guests' names.";
+      return "Check your guests: each needs a first and a last name, and this event may take fewer guests.";
     case "shift_ids":
       return "Check the shifts you picked.";
     case "shift_role_id":

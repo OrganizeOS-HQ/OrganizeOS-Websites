@@ -949,7 +949,10 @@ describe("states", () => {
     ["last_name", "Enter your last name."],
     ["email", "Enter a valid email address."],
     ["phone", "Enter a valid phone number."],
-    ["guests", "Check your guests' names."],
+    [
+      "guests",
+      "Check your guests: each needs a first and a last name, and this event may take fewer guests.",
+    ],
     ["shift_ids", "Check the shifts you picked."],
     ["shift_role_id", "Check the role you picked."],
     [`answers.${tShirtQuestionId}`, "Check this answer."],

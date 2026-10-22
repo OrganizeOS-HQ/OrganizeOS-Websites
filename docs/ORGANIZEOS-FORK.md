@@ -935,9 +935,11 @@ options, and the limits found since in review):
     (`s-maxage=60`), and while the platform fails or rate-limits the site the
     cache keeps answering with the stale list for up to ten minutes more
     (`stale-if-error=600`, §8). So for that long an event made private or
-    unpublished still renders, though the endpoint refuses it (`not_found`), and
-    Shift Options can show a filled shift or role as open; the `full` and
-    `role_full` answers keep the visitor on the form with a message.
+    unpublished still renders, though the endpoint refuses it (`not_found`),
+    Shift Options can show a filled shift or role as open, and Guests can offer
+    more rows than the event now takes, which the endpoint refuses as
+    `invalid_field` `guests` (the Guests message says to bring fewer); the `full`
+    and `role_full` answers keep the visitor on the form with a message.
   - The Events payload grows with the org's history: the list is unbounded and
     each item carries its shifts and questions (about 1 to 3 KB for an event
     with them), though the site's resource cache holds it. A `limit` or `since`

@@ -226,10 +226,16 @@ describe("the message", () => {
   test("shows the guests message, marked for styling, and flags the blank names", () => {
     const view = renderPart(<Guests data-testid="part" />, {
       event: withGuests,
-      errors: { guests: "Check your guests' names.", email: "elsewhere" },
+      errors: {
+        guests:
+          "Check your guests: each needs a first and a last name, and this event may take fewer guests.",
+        email: "elsewhere",
+      },
     });
     // no rows yet: the message still shows
-    const message = screen.getByText("Check your guests' names.");
+    const message = screen.getByText(
+      "Check your guests: each needs a first and a last name, and this event may take fewer guests."
+    );
     expect(message.hasAttribute("data-message")).toBe(true);
     expect(message.hasAttribute("data-invalid")).toBe(true);
     expect(screen.getByTestId("part").hasAttribute("data-invalid")).toBe(true);
