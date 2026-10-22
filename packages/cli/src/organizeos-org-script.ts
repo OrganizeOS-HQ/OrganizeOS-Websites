@@ -28,12 +28,13 @@
 import type { PublishedProjectBundle } from "@webstudio-is/protocol";
 import { tagProperty } from "@webstudio-is/sdk/runtime";
 import {
+  blockTemplateComponent,
   elementComponent,
-  tags,
   type Instance,
   type Prop,
 } from "@webstudio-is/sdk";
 import {
+  elementTagMayRun,
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
   pausedPropNames,
@@ -94,14 +95,6 @@ export const describeDroppedOrgScript = (dropped: DroppedOrgScript) => {
   return `Org script is paused until OrganizeOS sites move to their own domain: left out ${list}.`;
 };
 
-// `ws:element` writes <${instance.tag}> into the page module. The components in
-// tagPropsByComponent create their element from a prop: Box, Text and Heading
-// from `data-ws-tag` (the generator emits `instance.tag` under that name, and a
-// user prop of that name comes after it and wins) and then their legacy `tag`
-// prop, DialogTitle from its `tag` prop. Other components forward both names
-// as plain attributes and are not touched.
-const offeredTags = new Set(tags);
-
 const withoutCode = <Meta extends { code?: string }>(meta: Meta) => {
   const { code: _code, ...rest } = meta;
   return rest;
@@ -109,6 +102,13 @@ const withoutCode = <Meta extends { code?: string }>(meta: Meta) => {
 
 type Kind = "htmlEmbed" | "markdownEmbed" | "unknownTag" | "svgAnimation";
 
+// `ws:element` writes <${instance.tag}> into the page module. The components in
+// tagPropsByComponent create their element from a prop: Box, Text and Heading
+// from `data-ws-tag` (the generator emits `instance.tag` under that name, and a
+// user prop of that name comes after it and wins) and then their legacy `tag`
+// prop, DialogTitle from its `tag` prop. Other components forward both names
+// as plain attributes and are not touched. A tag is one the builder offers
+// when `elementTagMayRun` says so, the same rule the canvas applies.
 const classify = (instance: Instance, props: Prop[] = []): undefined | Kind => {
   if (instance.component === "HtmlEmbed") {
     // An expression, a resource or a missing code is only known (or empty)
@@ -139,7 +139,7 @@ const classify = (instance: Instance, props: Prop[] = []): undefined | Kind => {
     (isElement || tagProps.includes(tagProperty))
   ) {
     // The match is exact and case-sensitive, as the Tag control's list is
-    if (offeredTags.has(instance.tag) === false) {
+    if (elementTagMayRun(instance.tag, false) === false) {
       return "unknownTag";
     }
     staticTags.push(instance.tag);
@@ -148,7 +148,10 @@ const classify = (instance: Instance, props: Prop[] = []): undefined | Kind => {
     if (tagProps.includes(prop.name) === false) {
       continue;
     }
-    if (prop.type !== "string" || offeredTags.has(prop.value) === false) {
+    if (
+      prop.type !== "string" ||
+      elementTagMayRun(prop.value, false) === false
+    ) {
       return "unknownTag";
     }
     staticTags.push(prop.value);
@@ -156,6 +159,53 @@ const classify = (instance: Instance, props: Prop[] = []): undefined | Kind => {
   if (staticTags.some((tag) => pausedSvgTags.has(tag))) {
     return "svgAnimation";
   }
+};
+
+/**
+ * The instances that sit only inside a Content Block's templates container. The
+ * generator writes nothing for it (`blockTemplateComponent`), so none of them
+ * ships, and the Publish dialog does not list them (`findPausedScript`). What
+ * a content editor inserted into the block is a copy outside the container, and
+ * an instance that a Slot's Fragment shows both inside it and on a page is
+ * published, so neither is here.
+ */
+const findTemplateOnlyIds = (
+  instances: Map<Instance["id"], Instance>,
+  rootIds: Set<Instance["id"]>
+) => {
+  const walk = (starts: Iterable<Instance["id"]>, enterTemplates: boolean) => {
+    const seen = new Set<Instance["id"]>();
+    const pending = [...starts];
+    while (pending.length > 0) {
+      const id = pending.pop() as Instance["id"];
+      const instance = instances.get(id);
+      if (
+        instance === undefined ||
+        seen.has(id) ||
+        (enterTemplates === false &&
+          instance.component === blockTemplateComponent)
+      ) {
+        continue;
+      }
+      seen.add(id);
+      for (const child of instance.children) {
+        if (child.type === "id") {
+          pending.push(child.value);
+        }
+      }
+    }
+    return seen;
+  };
+  const templateIds = [...instances.values()]
+    .filter((instance) => instance.component === blockTemplateComponent)
+    .map((instance) => instance.id);
+  if (templateIds.length === 0) {
+    return new Set<Instance["id"]>();
+  }
+  const published = walk(rootIds, false);
+  return new Set(
+    [...walk(templateIds, true)].filter((id) => published.has(id) === false)
+  );
 };
 
 /**
@@ -205,19 +255,23 @@ export const dropOrgScript = (
   };
   const found = new Set<Instance["id"]>();
   const emptiedRoots = new Set<Instance["id"]>();
+  // Left out like the rest, but not counted: it never ships
+  const templateOnly = findTemplateOnlyIds(new Map(build.instances), rootIds);
   for (const [, instance] of build.instances) {
     const kind = classify(instance, propsByInstance.get(instance.id));
     if (kind === undefined) {
       continue;
     }
-    if (kind === "htmlEmbed") {
-      dropped.htmlEmbeds += 1;
-    } else if (kind === "markdownEmbed") {
-      dropped.markdownEmbeds += 1;
-    } else if (kind === "unknownTag") {
-      dropped.elementsWithUnknownTag += 1;
-    } else {
-      dropped.svgAnimations += 1;
+    if (templateOnly.has(instance.id) === false) {
+      if (kind === "htmlEmbed") {
+        dropped.htmlEmbeds += 1;
+      } else if (kind === "markdownEmbed") {
+        dropped.markdownEmbeds += 1;
+      } else if (kind === "unknownTag") {
+        dropped.elementsWithUnknownTag += 1;
+      } else {
+        dropped.svgAnimations += 1;
+      }
     }
     (rootIds.has(instance.id) ? emptiedRoots : found).add(instance.id);
   }
@@ -287,12 +341,15 @@ export const dropOrgScript = (
       : { ...build.pages, meta: withoutCode(meta) };
 
   // An instance that stays loses a prop that writes markup into it. Those of
-  // an instance that goes are not counted twice.
+  // an instance that goes are not counted twice, nor are those of an instance
+  // that never ships.
   const keptProps = build.props.filter(
     ([, prop]) => gone(prop.instanceId) === false
   );
-  dropped.rawHtmlProps = keptProps.filter(([, prop]) =>
-    pausedPropNames.has(prop.name)
+  dropped.rawHtmlProps = keptProps.filter(
+    ([, prop]) =>
+      pausedPropNames.has(prop.name) &&
+      templateOnly.has(prop.instanceId) === false
   ).length;
 
   const result: PublishedProjectBundle = {

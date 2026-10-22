@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test, vi } from "vitest";
 import {
@@ -977,6 +977,118 @@ describe("dropOrgScript", () => {
     expect(log).not.toHaveBeenCalled();
   });
 
+  // The generator writes nothing for a Content Block's templates container, so
+  // what sits only inside it never ships. The Publish dialog does not list it
+  // (findPausedScript), and the log matches the dialog.
+  describe("what sits in a Content Block's templates", () => {
+    const blockBundle = (extra: Array<[string, Instance]> = []) =>
+      createBundle({
+        instances: [
+          instance({ id: "root", component: "Body", children: ids("block") }),
+          instance({
+            id: "block",
+            component: "ws:block",
+            children: ids("templates", "kept", ...extra.map(([id]) => id)),
+          }),
+          instance({
+            id: "templates",
+            component: "ws:block-template",
+            children: ids("template-embed", "template-script", "template-raw"),
+          }),
+          // the empty HTML Embed that the core template puts there
+          instance({ id: "template-embed", component: "HtmlEmbed" }),
+          instance({
+            id: "template-script",
+            component: "ws:element",
+            tag: "script",
+          }),
+          instance({ id: "template-raw", component: "ws:element", tag: "div" }),
+          instance({ id: "kept", component: "ws:element", tag: "p" }),
+          ...extra,
+        ],
+        props: [
+          jsonProp("template-raw", "dangerouslySetInnerHTML", { __html: "1" }),
+          ...extra.map(([id]) => stringProp(id, "code", "<script>1</script>")),
+        ],
+      });
+
+    test("says nothing when that is all there is", () => {
+      const log = vi.fn();
+
+      const result = dropOrgScript(blockBundle(), { log });
+
+      expect(log).not.toHaveBeenCalled();
+      // still left out of the build, as before: it is never published
+      expect(instanceIds(result)).toEqual([
+        "root",
+        "block",
+        "templates",
+        "template-raw",
+        "kept",
+      ]);
+      expect(propIds(result)).toEqual([]);
+    });
+
+    test("counts what a content editor inserted into the block, and not the templates", () => {
+      const log = vi.fn();
+
+      dropOrgScript(
+        blockBundle([instance({ id: "inserted", component: "HtmlEmbed" })]),
+        { log }
+      );
+
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed."
+      );
+    });
+
+    test("counts an embed that a Slot's Fragment shows both in the templates and on the page", () => {
+      const bundle = createBundle({
+        instances: [
+          instance({
+            id: "root",
+            component: "Body",
+            children: ids("block", "slot"),
+          }),
+          instance({
+            id: "block",
+            component: "ws:block",
+            children: ids("templates"),
+          }),
+          instance({
+            id: "templates",
+            component: "ws:block-template",
+            children: ids("template-slot"),
+          }),
+          instance({
+            id: "template-slot",
+            component: "Slot",
+            children: ids("fragment"),
+          }),
+          instance({
+            id: "slot",
+            component: "Slot",
+            children: ids("fragment"),
+          }),
+          instance({
+            id: "fragment",
+            component: "Fragment",
+            children: ids("embed"),
+          }),
+          instance({ id: "embed", component: "HtmlEmbed" }),
+        ],
+      });
+      const log = vi.fn();
+
+      dropOrgScript(bundle, { log });
+
+      expect(log).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed."
+      );
+    });
+  });
+
   test("logs one line for support", () => {
     const bundle = createBundle({
       code: "<script>1</script>",
@@ -1120,25 +1232,73 @@ describe("raw HTML in the runtime packages", () => {
 
   // The components that choose their element from a prop are named in
   // tagPropsByComponent, and publishing checks that prop. A merge that adds
-  // another one fails here, and gets a decision.
+  // another one fails here, and gets a decision. A props file holds one export
+  // per component (dialog.props.ts has seven), so the check reads each export:
+  // a `tag` prop on Dialog Description would not change the list of files.
+  const exportsWithTagProp = (source: string) =>
+    source
+      .split(/^(?=export const props\w*\b)/m)
+      .flatMap((block) => {
+        const name = block.match(/^export const (props\w*)\b/)?.[1];
+        return name !== undefined && /^ {2}tag: \{/m.test(block) ? [name] : [];
+      })
+      .sort();
+
+  test("reads a props file one export at a time", () => {
+    const source = [
+      'import type { PropMeta } from "@webstudio-is/sdk";',
+      "export const propsDialog: Record<string, PropMeta> = {",
+      '  open: { required: false, control: "boolean", type: "boolean" },',
+      "};",
+      "export const propsDialogTitle: Record<string, PropMeta> = {",
+      "  tag: {",
+      '    required: false, control: "select", type: "string",',
+      "  },",
+      "};",
+      "export const propsDialogDescription: Record<string, PropMeta> = {",
+      '  asChild: { required: false, control: "boolean", type: "boolean" },',
+      "  tag: { required: false },",
+      "};",
+      "export const propsDialogClose: Record<string, PropMeta> = {};",
+    ].join("\n");
+
+    expect(exportsWithTagProp(source)).toEqual([
+      "propsDialogDescription",
+      "propsDialogTitle",
+    ]);
+    // a nested key or a property that merely ends in tag is not a tag prop
+    expect(
+      exportsWithTagProp(
+        [
+          "export const props: Record<string, PropMeta> = {",
+          "  nested: {",
+          "    tag: { required: false },",
+          "  },",
+          "  data-ws-tag: { required: false },",
+          "};",
+        ].join("\n")
+      )
+    ).toEqual([]);
+  });
+
   test("only Box, Text, Heading, Dialog Title and XML Node have a tag prop", () => {
     const users = packages
       .flatMap((name) => sourceFiles(join(root, name)))
-      .filter(
-        (file) =>
-          file.endsWith(".props.ts") &&
-          /^ {2}tag: \{/m.test(readFileSync(file, "utf8"))
+      .filter((file) => file.endsWith(".props.ts"))
+      .flatMap((file) =>
+        exportsWithTagProp(readFileSync(file, "utf8")).map(
+          (name) => `${basename(file)}:${name}`
+        )
       )
-      .map((file) => relative(root, file))
       .sort();
 
     expect(users).toEqual([
-      "packages/sdk-components-react-radix/src/__generated__/dialog.props.ts",
-      "packages/sdk-components-react/src/__generated__/box.props.ts",
-      "packages/sdk-components-react/src/__generated__/heading.props.ts",
-      "packages/sdk-components-react/src/__generated__/text.props.ts",
+      "box.props.ts:props",
+      "dialog.props.ts:propsDialogTitle",
+      "heading.props.ts:props",
+      "text.props.ts:props",
       // XML Node (category xml) takes any tag by design
-      "packages/sdk-components-react/src/__generated__/xml-node.props.ts",
+      "xml-node.props.ts:props",
     ]);
     expect([...tagPropsByComponent.keys()].sort()).toEqual([
       "@webstudio-is/sdk-components-react-radix:DialogTitle",
