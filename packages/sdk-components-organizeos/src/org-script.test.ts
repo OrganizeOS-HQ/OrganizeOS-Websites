@@ -21,7 +21,6 @@ import {
   pausedSvgTags,
   propNameMayRun,
   tagPropNames,
-  tagPropsByComponent,
   templateIconCodes,
   withoutBlockedTagProps,
 } from "./org-script";
@@ -205,17 +204,6 @@ describe("elementTagMayRun", () => {
   test("is true for everything when the switch is on", () => {
     expect(elementTagMayRun("script", true)).toBe(true);
     expect(elementTagMayRun(undefined, true)).toBe(true);
-  });
-});
-
-describe("tagPropsByComponent", () => {
-  test("lists the components that choose their element from a prop, and the props that do it", () => {
-    expect(Object.fromEntries(tagPropsByComponent)).toEqual({
-      Box: ["tag", tagProperty],
-      Text: ["tag", tagProperty],
-      Heading: ["tag", tagProperty],
-      "@webstudio-is/sdk-components-react-radix:DialogTitle": ["tag"],
-    });
   });
 });
 

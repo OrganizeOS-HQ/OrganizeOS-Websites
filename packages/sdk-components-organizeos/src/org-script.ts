@@ -110,32 +110,6 @@ export const elementTagMayRun = (
 ): boolean => mayRun || (typeof tag === "string" && offeredTags.has(tag));
 
 /**
- * The components that choose the element they render from a prop, with the
- * props that do it. A tag that is not one the builder offers (`script`, or JSX
- * syntax, which the generator writes into the page module as code) must not
- * reach them, so publishing checks every one of these props.
- *
- * - Box, Text and Heading read `data-ws-tag` (`tagProperty` of
- *   `@webstudio-is/sdk/runtime`, which a test pins) before their legacy `tag`
- *   prop. The generator emits a user prop with either name like any attribute.
- * - Radix's DialogTitle renders `<Tag>` from its `tag` prop with no check.
- *
- * `ws:element` is not here: it renders `instance.tag`, and a prop of either
- * name on it is only an attribute. XML Node (category xml) takes any tag by
- * design; "XML Node in an HTML page" is a path the fork doc's section 10 lists
- * as not covered by this pause. A test reads
- * the runtime packages' generated props, so a merge that adds a component with
- * a `tag` prop fails and gets a decision.
- */
-export const tagPropsByComponent: ReadonlyMap<string, readonly string[]> =
-  new Map([
-    ["Box", ["tag", "data-ws-tag"]],
-    ["Text", ["tag", "data-ws-tag"]],
-    ["Heading", ["tag", "data-ws-tag"]],
-    ["@webstudio-is/sdk-components-react-radix:DialogTitle", ["tag"]],
-  ]);
-
-/**
  * The props that choose the element of the component that reads them: Box, Text
  * and Heading read `data-ws-tag` (`tagProperty` of `@webstudio-is/sdk/runtime`,
  * which a test pins) before their legacy `tag` prop, and Radix's DialogTitle

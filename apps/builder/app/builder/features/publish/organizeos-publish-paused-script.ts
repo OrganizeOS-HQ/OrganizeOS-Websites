@@ -1,6 +1,5 @@
 import {
   blockTemplateComponent,
-  elementComponent,
   getAllPages,
   type Instance,
   type Instances,
@@ -8,13 +7,13 @@ import {
   type Prop,
   type Props,
 } from "@webstudio-is/sdk";
-import { tagProperty } from "@webstudio-is/sdk/runtime";
 import {
+  checksInstanceTag,
+  checksTagProp,
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
   pausedPropNames,
   pausedSvgTags,
-  tagPropsByComponent,
 } from "@organizeos/site-components/org-script";
 import { platformName } from "~/shared/branding";
 import { findPageAndSelectorByInstanceId } from "~/shared/instance-utils/lookup";
@@ -70,24 +69,23 @@ const findPublishedInstanceIds = (
 };
 
 /**
- * The tags that the props which choose an element hold as static strings, as
- * publishing reads them (`tagPropsByComponent`): all of them count, because a
- * component may read one of several. `ws:element` renders `instance.tag` only.
+ * The tags an instance holds as static strings, as publishing reads them: its
+ * own tag (the element of a ws:element, and the data-ws-tag prop the generator
+ * writes on every other component), and a `data-ws-tag` or `tag` prop of any
+ * component but a ws:element, where it is an attribute, and an XML Node, which
+ * takes any tag name. All of them count: a component may read one of several,
+ * and a Radix trigger passes them on to the child it renders.
  */
 const findStaticTags = (instance: Instance, props: Prop[]) => {
-  const isElement = instance.component === elementComponent;
-  const tagProps = tagPropsByComponent.get(instance.component) ?? [];
   const tags: string[] = [];
-  // `instance.tag` is the element of a ws:element, and reaches the others as
-  // the data-ws-tag attribute, which only some of them read
-  if (
-    instance.tag !== undefined &&
-    (isElement || tagProps.includes(tagProperty))
-  ) {
+  if (instance.tag !== undefined && checksInstanceTag(instance.component)) {
     tags.push(instance.tag);
   }
   for (const prop of props) {
-    if (prop.type === "string" && tagProps.includes(prop.name)) {
+    if (
+      prop.type === "string" &&
+      checksTagProp(instance.component, prop.name)
+    ) {
       tags.push(prop.value);
     }
   }

@@ -483,3 +483,249 @@ describe.each(renderers)(
     });
   }
 );
+
+// Radix's triggers render `<Primitive.Trigger asChild {...props}>`, and Radix's
+// Slot merges those props onto the first child. So a `data-ws-tag` or `tag`
+// prop on a trigger reaches the legacy Box, Text or Heading inside it, which
+// makes its element from that prop. The rule is about the tag that reaches an
+// element, whichever component holds the prop.
+const forwarders: Array<[trigger: string, parents: string[]]> = [
+  ["CollapsibleTrigger", ["Collapsible"]],
+  ["DialogTrigger", ["Dialog"]],
+  ["PopoverTrigger", ["Popover"]],
+  ["TooltipTrigger", ["Tooltip"]],
+  [
+    "NavigationMenuLink",
+    ["NavigationMenu", "NavigationMenuList", "NavigationMenuItem"],
+  ],
+  [
+    "NavigationMenuTrigger",
+    ["NavigationMenu", "NavigationMenuList", "NavigationMenuItem"],
+  ],
+];
+
+/** Parents, then the trigger, then its child: the ids are p0, p1, ..., trigger, child */
+const forwarderTree = (
+  trigger: string,
+  parents: string[],
+  childComponent: string,
+  triggerInit: Partial<Instance> = {}
+) => {
+  const ancestors = parents.map((_name, index) => `p${index}`);
+  const chain = [...ancestors, "trigger", "child"];
+  return [
+    instance({ id: "body", children: ids(chain[0]) }),
+    ...parents.map((name, index) =>
+      instance({
+        id: ancestors[index],
+        component: `${radixNamespace}:${name}`,
+        children: ids(chain[index + 1]),
+      })
+    ),
+    instance({
+      id: "trigger",
+      component: `${radixNamespace}:${trigger}`,
+      children: ids("child"),
+      ...triggerInit,
+    }),
+    instance({ id: "child", component: childComponent }),
+  ];
+};
+
+describe.each(renderers)(
+  "the %s renders a legacy component inside a Radix trigger that passes a tag down",
+  (renderer) => {
+    const src = (name: string) => `https://evil.example/${renderer}-${name}.js`;
+
+    const fallbacks: Array<[string, string]> = [
+      ["Box", "DIV"],
+      ["Text", "DIV"],
+      ["Heading", "H1"],
+    ];
+
+    const cases = forwarders.flatMap(([trigger, parents]) =>
+      fallbacks.flatMap(([child, fallback]) =>
+        ["data-ws-tag", "tag"].map(
+          (name) => [trigger, parents, child, fallback, name] as const
+        )
+      )
+    );
+
+    test.each(cases)(
+      "without a script, in a %s over %s with the tag prop of the trigger",
+      (trigger, parents, child, fallback, name) => {
+        const dom = render({
+          renderer,
+          instances: forwarderTree(trigger, parents, child),
+          props: [
+            prop("trigger", name, "string", "script"),
+            prop(
+              "trigger",
+              "src",
+              "string",
+              src(`${trigger}-${child}-${name}`)
+            ),
+            prop("trigger", "async", "boolean", true),
+          ],
+        });
+
+        expect(evilScripts().length).toBe(0);
+        expect(dom.querySelector("script")).toBeNull();
+        expect(document.head.querySelector("script[src]")).toBeNull();
+        // the child is rendered, as its own default element
+        expect(document.querySelector("[data-ws-id=child]")?.tagName).toBe(
+          fallback
+        );
+      }
+    );
+
+    test.each(["data-ws-tag", "tag"])(
+      "without a script, when the trigger's %s prop is an expression that evaluates to script",
+      (name) => {
+        const dom = render({
+          renderer,
+          instances: forwarderTree(
+            "CollapsibleTrigger",
+            ["Collapsible"],
+            "Box"
+          ),
+          props: [
+            prop("trigger", name, "expression", '"scr" + "ipt"'),
+            prop("trigger", "src", "string", src(`expression-${name}`)),
+            prop("trigger", "async", "expression", "true"),
+          ],
+        });
+
+        expect(evilScripts().length).toBe(0);
+        expect(dom.querySelector("script")).toBeNull();
+        expect(document.querySelector("[data-ws-id=child]")?.tagName).toBe(
+          "DIV"
+        );
+      }
+    );
+
+    test("without a script, when the trigger's own instance tag is script", () => {
+      // the generator writes instance.tag as a data-ws-tag prop on every
+      // component but ws:element, and the canvas does the same
+      const dom = render({
+        renderer,
+        instances: forwarderTree("DialogTrigger", ["Dialog"], "Box", {
+          tag: "script",
+        }),
+        props: [
+          prop("trigger", "src", "string", src("instance-tag")),
+          prop("trigger", "async", "boolean", true),
+        ],
+      });
+
+      expect(evilScripts().length).toBe(0);
+      expect(dom.querySelector("script")).toBeNull();
+    });
+
+    test("without a script, when the trigger that holds the tag prop passes it to a child that is itself a trigger", () => {
+      // the outer trigger's props go to the inner trigger, which spreads them
+      // on to the Box
+      const dom = render({
+        renderer,
+        instances: [
+          instance({ id: "body", children: ids("popover") }),
+          instance({
+            id: "popover",
+            component: `${radixNamespace}:Popover`,
+            children: ids("collapsible"),
+          }),
+          instance({
+            id: "collapsible",
+            component: `${radixNamespace}:Collapsible`,
+            children: ids("outer"),
+          }),
+          instance({
+            id: "outer",
+            component: `${radixNamespace}:CollapsibleTrigger`,
+            children: ids("inner"),
+          }),
+          instance({
+            id: "inner",
+            component: `${radixNamespace}:PopoverTrigger`,
+            children: ids("child"),
+          }),
+          instance({ id: "child", component: "Box" }),
+        ],
+        props: [
+          prop("outer", "data-ws-tag", "string", "script"),
+          prop("outer", "src", "string", src("nested")),
+          prop("outer", "async", "boolean", true),
+        ],
+      });
+
+      expect(evilScripts().length).toBe(0);
+      expect(dom.querySelector("script")).toBeNull();
+      expect(document.querySelector("[data-ws-id=child]")?.tagName).toBe("DIV");
+    });
+
+    test("without crashing, on a trigger whose tag prop is not a string", () => {
+      render({
+        renderer,
+        instances: forwarderTree("PopoverTrigger", ["Popover"], "Text"),
+        props: [
+          prop("trigger", "data-ws-tag", "expression", '["h1"]'),
+          prop("trigger", "tag", "expression", "1"),
+        ],
+      });
+
+      expect(document.querySelector("[data-ws-id=child]")?.tagName).toBe("DIV");
+    });
+
+    // The guards: what the builder offers is created as before
+    test("keeps a tag the builder offers, passed down by a trigger", () => {
+      render({
+        renderer,
+        instances: forwarderTree("DialogTrigger", ["Dialog"], "Box"),
+        props: [prop("trigger", "data-ws-tag", "string", "nav")],
+      });
+
+      expect(document.querySelector("[data-ws-id=child]")?.tagName).toBe("NAV");
+    });
+
+    test("keeps the tag of an XML Node, which takes any tag name by design", () => {
+      const dom = render({
+        renderer,
+        instances: [
+          instance({ id: "body", children: ids("urlset") }),
+          instance({
+            id: "urlset",
+            component: "XmlNode",
+            children: ids("loc"),
+          }),
+          instance({ id: "loc", component: "XmlNode" }),
+        ],
+        props: [
+          prop("urlset", "tag", "string", "urlset"),
+          prop("loc", "tag", "string", "xhtml:link"),
+        ],
+      });
+
+      expect(dom.textContent).toContain("<urlset");
+      expect(dom.textContent).toContain("<xhtml:link");
+    });
+
+    test("keeps the attributes of a ws:element, whose tag is its own", () => {
+      const dom = render({
+        renderer,
+        instances: [
+          instance({ id: "body", children: ids("div") }),
+          instance({ id: "div", tag: "div" }),
+        ],
+        props: [
+          prop("div", "data-ws-tag", "string", "script"),
+          prop("div", "tag", "string", "script"),
+        ],
+      });
+
+      const element = dom.querySelector("[data-ws-id=div]");
+      expect(element?.tagName).toBe("DIV");
+      expect(element?.getAttribute("tag")).toBe("script");
+      expect(evilScripts().length).toBe(0);
+    });
+  }
+);

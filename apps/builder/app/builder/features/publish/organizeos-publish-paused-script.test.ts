@@ -70,7 +70,8 @@ const jsonProp = (instanceId: string, name: string, value: unknown): Prop => ({
   value,
 });
 
-const DialogTitle = "@webstudio-is/sdk-components-react-radix:DialogTitle";
+const radix = "@webstudio-is/sdk-components-react-radix";
+const DialogTitle = `${radix}:DialogTitle`;
 
 const toProps = (list: Prop[]) => new Map(list.map((prop) => [prop.id, prop]));
 
@@ -208,9 +209,10 @@ describe("findPausedScript", () => {
     ]);
   });
 
-  test("lists a data-ws-tag prop of animate or set on a legacy component, and a DialogTitle's tag prop", () => {
+  test("lists an animate or set tag held by any component but a ws:element and an XML Node, as publishing reads it", () => {
     // Box, Text and Heading read data-ws-tag before their legacy tag prop,
-    // DialogTitle reads tag
+    // DialogTitle reads tag, and a Radix trigger passes its props (the
+    // generator writes instance.tag as data-ws-tag) to the child it renders
     const instances = createInstances([
       {
         id: "home-root",
@@ -221,8 +223,11 @@ describe("findPausedScript", () => {
           "title",
           "both",
           "element",
+          "xml",
           "link",
           "title-with-tag",
+          "trigger",
+          "trigger-with-tag",
           "transform"
         ),
       },
@@ -231,9 +236,15 @@ describe("findPausedScript", () => {
       { id: "title", component: DialogTitle },
       { id: "both", component: "Heading" },
       { id: "element", component: "ws:element", tag: "div" },
+      { id: "xml", component: "XmlNode" },
       { id: "link", component: "Link", tag: "animate" },
-      // DialogTitle reads its tag prop only, so its instance.tag is an attribute
       { id: "title-with-tag", component: DialogTitle, tag: "animate" },
+      { id: "trigger", component: `${radix}:DialogTrigger` },
+      {
+        id: "trigger-with-tag",
+        component: `${radix}:PopoverTrigger`,
+        tag: "set",
+      },
       { id: "transform", component: "Box" },
     ]);
     const props = toProps([
@@ -243,16 +254,22 @@ describe("findPausedScript", () => {
       // the data-ws-tag prop is not the one that is checked first: both count
       stringProp("both", "tag", "h2"),
       stringProp("both", "data-ws-tag", "set"),
-      // only attributes here
+      stringProp("trigger", "tag", "animate"),
+      // only attributes here: the element is made already, and an XML Node
+      // takes any name
       stringProp("element", "data-ws-tag", "animate"),
       stringProp("element", "tag", "animate"),
-      stringProp("link", "data-ws-tag", "animate"),
+      stringProp("xml", "tag", "set"),
       stringProp("transform", "data-ws-tag", "animateTransform"),
     ]);
 
     expect(find({ instances, props }).map((item) => item.label)).toEqual([
       "SVG animate element on Home",
       "SVG set element on Home",
+      "SVG animate element on Home",
+      "SVG set element on Home",
+      "SVG animate element on Home",
+      "SVG animate element on Home",
       "SVG animate element on Home",
       "SVG set element on Home",
     ]);
@@ -263,6 +280,10 @@ describe("findPausedScript", () => {
       ["text", "home-root"],
       ["title", "home-root"],
       ["both", "home-root"],
+      ["link", "home-root"],
+      ["title-with-tag", "home-root"],
+      ["trigger", "home-root"],
+      ["trigger-with-tag", "home-root"],
     ]);
   });
 

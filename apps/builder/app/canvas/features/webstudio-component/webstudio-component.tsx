@@ -31,9 +31,10 @@ import {
 } from "@webstudio-is/sdk";
 import { indexProperty, tagProperty } from "@webstudio-is/sdk/runtime";
 import {
+  checksTagProp,
   elementTagMayRun,
   propNameMayRun,
-  tagPropsByComponent,
+  withoutBlockedTagProps,
 } from "@organizeos/site-components/org-script";
 import {
   idAttribute,
@@ -374,12 +375,13 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
             if (propNameMayRun(name) === false) {
               continue;
             }
-            // ... and so does a prop that picks the element of Box, Text,
-            // Heading or Dialog Title, once evaluated (an expression too)
+            // ... and so does a data-ws-tag or tag prop that is not a tag the
+            // builder offers, once evaluated (an expression too), on any
+            // component but ws:element: Box, Text, Heading and Dialog Title
+            // make their element from it, and a Radix trigger passes it on to
+            // the child it renders (see withoutBlockedTagProps below)
             if (
-              tagPropsByComponent
-                .get(instance?.component ?? "")
-                ?.includes(name) &&
+              checksTagProp(instance?.component ?? "", name) &&
               elementTagMayRun(value) === false
             ) {
               continue;
@@ -602,7 +604,14 @@ export const WebstudioComponentCanvas = forwardRef<
     Component = BlockTemplate;
   }
 
-  const mergedProps = mergeProps(restProps, instanceProps, "delete");
+  // OrganizeOS fork: org script is paused. Radix's Slot merges the props of a
+  // trigger onto its child, so the tag the parent passes in reaches this
+  // component in restProps, past useInstanceProps. It is checked here too
+  // (docs/ORGANIZEOS-FORK.md section 10).
+  const mergedProps = withoutBlockedTagProps(
+    instance.component,
+    mergeProps(restProps, instanceProps, "delete")
+  );
 
   const props: {
     [componentAttribute]: string;
@@ -709,7 +718,11 @@ export const WebstudioComponentPreview = forwardRef<
     [idAttribute]: string;
     [selectorIdAttribute]: string;
   } & Record<string, unknown> = {
-    ...mergeProps(restProps, instanceProps, "merge"),
+    // OrganizeOS fork: org script is paused (see WebstudioComponentCanvas)
+    ...withoutBlockedTagProps(
+      instance.component,
+      mergeProps(restProps, instanceProps, "merge")
+    ),
     [idAttribute]: instance.id,
     [componentAttribute]: instance.component,
     [selectorIdAttribute]: instanceSelector.join(","),
