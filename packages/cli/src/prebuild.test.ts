@@ -15,7 +15,9 @@ import * as jsxRuntime from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
 import { transformWithEsbuild } from "vite";
 import { bundleVersion } from "@webstudio-is/protocol";
+import { log } from "@clack/prompts";
 import { encodeDataSourceVariable } from "@webstudio-is/sdk";
+import { templateIconCodes } from "@organizeos/site-components/org-script";
 import { generateRedirectsModule, prebuild } from "./prebuild";
 import {
   findModuleClosure,
@@ -1630,6 +1632,345 @@ describe("prebuild", () => {
     await expect(
       readFile("app/routes/[robots.txt]._index.tsx", "utf8")
     ).resolves.toContain("Content-Type");
+  });
+
+  // OrganizeOS fork: org script is paused (organizeos-org-script.ts)
+  describe("leaves an org's own script out", () => {
+    const scriptEmbed = '<script>alert("embed")</script>';
+
+    const generated = async (file = "_index") => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+      const generatedDir = join("app", "__generated__");
+      return {
+        page: await readFile(join(generatedDir, `${file}.tsx`), "utf8"),
+        resources: await readFile(
+          join(generatedDir, `${file}.server.tsx`),
+          "utf8"
+        ),
+      };
+    };
+
+    // T12
+    test("leaves out HTML Embeds and custom code", async () => {
+      await writeSiteData(
+        createSiteData({
+          pageMeta: { code: '<script src="/custom.js"></script>' },
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "box" },
+                  { type: "id", value: "remote" },
+                  { type: "id", value: "jsx" },
+                ],
+              },
+            ],
+            [
+              "box",
+              {
+                id: "box",
+                component: "Box",
+                children: [{ type: "id", value: "embed" }],
+              },
+            ],
+            ["embed", { id: "embed", component: "HtmlEmbed", children: [] }],
+            [
+              "remote",
+              {
+                id: "remote",
+                component: elementComponent,
+                tag: "script",
+                children: [],
+              },
+            ],
+            [
+              "jsx",
+              {
+                id: "jsx",
+                component: elementComponent,
+                tag: "div />{globalThis.pwned = 1}<div",
+                children: [],
+              },
+            ],
+          ],
+          props: [
+            [
+              "embed-code",
+              {
+                id: "embed-code",
+                instanceId: "embed",
+                name: "code",
+                type: "string",
+                value: scriptEmbed,
+              },
+            ],
+            [
+              "remote-src",
+              {
+                id: "remote-src",
+                instanceId: "remote",
+                name: "src",
+                type: "string",
+                value: "https://evil.example/x.js",
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).not.toContain("alert");
+      expect(page).not.toContain("HtmlEmbed");
+      expect(page).not.toContain("custom.js");
+      expect(page).not.toContain("evil.example");
+      expect(page).not.toContain("<script");
+      expect(page).not.toContain("pwned");
+      // The page still exports its custom code, and now it holds nothing
+      expect(page).toMatch(
+        /export const CustomCode = \(\) => \{\s*return \(<><\/>\);/
+      );
+      expect(page).not.toContain("const Script");
+      // ... and still renders the Box
+      expect(page).toContain("<Box");
+    });
+
+    test("leaves out Markdown Embeds and the SVG animate and set elements", async () => {
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "markdown" },
+                  { type: "id", value: "svg" },
+                ],
+              },
+            ],
+            [
+              "markdown",
+              { id: "markdown", component: "MarkdownEmbed", children: [] },
+            ],
+            [
+              "svg",
+              {
+                id: "svg",
+                component: elementComponent,
+                tag: "svg",
+                children: [{ type: "id", value: "link" }],
+              },
+            ],
+            [
+              "link",
+              {
+                id: "link",
+                component: elementComponent,
+                tag: "a",
+                children: [
+                  { type: "id", value: "animate" },
+                  { type: "id", value: "set" },
+                  { type: "id", value: "transform" },
+                ],
+              },
+            ],
+            [
+              "animate",
+              {
+                id: "animate",
+                component: elementComponent,
+                tag: "animate",
+                children: [],
+              },
+            ],
+            [
+              "set",
+              {
+                id: "set",
+                component: elementComponent,
+                tag: "set",
+                children: [],
+              },
+            ],
+            [
+              "transform",
+              {
+                id: "transform",
+                component: elementComponent,
+                tag: "animateTransform",
+                children: [],
+              },
+            ],
+          ],
+          props: [
+            [
+              "markdown-code",
+              {
+                id: "markdown-code",
+                instanceId: "markdown",
+                name: "code",
+                type: "string",
+                value: "[x](javascript:void0)",
+              },
+            ],
+            [
+              "animate-values",
+              {
+                id: "animate-values",
+                instanceId: "animate",
+                name: "values",
+                type: "string",
+                value: "javascript:void0",
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).not.toContain("MarkdownEmbed");
+      expect(page).not.toContain("javascript:");
+      expect(page).not.toContain("<animate ");
+      expect(page).not.toContain("<set ");
+      expect(page).toContain("<svg");
+      expect(page).toContain("<Link");
+      expect(page).toContain("<animateTransform");
+    });
+
+    // T13. A guard: passes before and after.
+    test("keeps the template icons", async () => {
+      const chevron = [...templateIconCodes].find((icon) =>
+        icon.includes("m4 6 4 4 4-4")
+      );
+      expect(chevron).toBeDefined();
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "icon" }],
+              },
+            ],
+            ["icon", { id: "icon", component: "HtmlEmbed", children: [] }],
+          ],
+          props: [
+            [
+              "icon-code",
+              {
+                id: "icon-code",
+                instanceId: "icon",
+                name: "code",
+                type: "string",
+                value: chevron,
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).toContain("HtmlEmbed");
+      expect(page).toContain("m4 6 4 4 4-4");
+    });
+
+    // T14
+    test("a Resource used only inside a dropped embed is not loaded", async () => {
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "embed" }],
+              },
+            ],
+            ["embed", { id: "embed", component: "HtmlEmbed", children: [] }],
+          ],
+          props: [
+            [
+              "embed-code",
+              {
+                id: "embed-code",
+                instanceId: "embed",
+                name: "code",
+                type: "expression",
+                value: `${encodeDataSourceVariable("html")}.data`,
+              },
+            ],
+          ],
+          dataSources: [
+            [
+              "html",
+              {
+                type: "resource",
+                id: "html",
+                scopeInstanceId: "embed",
+                name: "html",
+                resourceId: "html-resource",
+              },
+            ],
+          ],
+          resources: [
+            [
+              "html-resource",
+              {
+                id: "html-resource",
+                name: "html",
+                method: "get",
+                url: `"https://cms.example.org/private/html"`,
+                headers: [],
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page, resources } = await generated();
+
+      expect(resources).not.toContain("cms.example.org");
+      expect(page).not.toContain("useResource(");
+    });
+
+    test("logs what it left out", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      await writeSiteData(
+        createSiteData({
+          pageMeta: { code: "<style>x{}</style>" },
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "embed" }],
+              },
+            ],
+            ["embed", { id: "embed", component: "HtmlEmbed", children: [] }],
+          ],
+        })
+      );
+
+      await generated();
+
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed and the site's custom code."
+      );
+    });
   });
 
   test("generates custom code only for the home page", async () => {
