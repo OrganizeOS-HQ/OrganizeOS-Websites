@@ -61,6 +61,7 @@ import {
   getOrganizeosSourceUrl,
   resolveOrganizeosComponentsModule,
 } from "./organizeos-components";
+import { dropOrgScript } from "./organizeos-org-script";
 
 const createRemixFramework = async () =>
   (await import("./framework-remix")).createFramework();
@@ -303,7 +304,11 @@ export const prebuild = async (options: {
       `Project bundle is invalid, please make sure the project is synced. Invalid fields: ${formatZodIssues(parsedSiteData.error.issues)}`
     );
   }
-  const siteData = parsedSiteData.data;
+  // OrganizeOS fork: org script is paused, so the build that every step below
+  // reads has none: no HTML Embed, no custom code (organizeos-org-script.ts).
+  const siteData = dropOrgScript(parsedSiteData.data, {
+    log: (message) => log.info(message),
+  });
 
   const usedMetas = new Map<Instance["component"], WsComponentMeta>(
     Object.entries(coreMetas)

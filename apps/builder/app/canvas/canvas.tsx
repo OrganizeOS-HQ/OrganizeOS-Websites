@@ -26,6 +26,7 @@ import * as organizeosComponentMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
 import { hooks as organizeosComponentHooks } from "@organizeos/site-components/hooks";
 import { ErrorMessage } from "~/shared/error";
+import { withOrgScriptPolicy } from "./organizeos-org-script";
 import { $publisher, publish } from "~/shared/pubsub";
 import {
   registerContainers,
@@ -275,12 +276,17 @@ export const Canvas = () => {
       metas: coreMetas,
       templates: organizeosCoreTemplates,
     });
-    registerComponentLibrary({
-      components: baseComponents,
-      metas: baseComponentMetas,
-      hooks: baseComponentHooks,
-      templates: baseComponentTemplates,
-    });
+    // OrganizeOS fork: org script is paused (organizeos-org-script.tsx). The
+    // policy hides HTML Embed, Content Embed and Markdown Embed and swaps in
+    // the canvas's stand-ins.
+    registerComponentLibrary(
+      withOrgScriptPolicy({
+        components: baseComponents,
+        metas: baseComponentMetas,
+        hooks: baseComponentHooks,
+        templates: baseComponentTemplates,
+      })
+    );
     registerComponentLibrary({
       namespace: "@webstudio-is/sdk-components-react-radix",
       components: radixComponents,
