@@ -950,10 +950,23 @@ options, and the limits found since in review):
   - A repeat RSVP takes measurably less time than a new one, since it skips the
     writes; equal timing waits. At the organization's contact cap the platform
     refuses every RSVP alike (503 `unavailable`, a holder's repeat included).
-    Website Lite shows a repeat's waitlist confirmation since owner decision D8
-    and keeps its own email consent until D3. Confirmations still go to
+    Since owner decision D8 (2026-10-21) Website Lite shows a visitor's repeat
+    as it shows a new booking (the waitlist confirmation, the place in line, the
+    picked shifts) and a signed-in member's repeat as the status they hold. The
+    Website endpoint has no signed-in caller, so the member's status never
+    reaches the RSVP Form: its answers stay equal for a holder and a stranger.
+    Website Lite keeps its own email consent until D3. Confirmations still go to
     suppressed addresses (D15), and an anonymous form can restore a deleted
     contact (D14), as Website Lite does.
+  - The counts channel. A new booking raises the public counts (`rsvp_count` on
+    `/v1/events`, and "N people are going" and the shift counts on the Website
+    Lite page) and a holder's repeat does not, so a sender who books an address
+    can tell from the counts whether it already held a place: read them, send,
+    read them again. The RSVP Form's `registered` and `waitlisted` answers are
+    equal for a holder and a stranger; the counts are the one place they
+    differ. It is inherent while the counts are public, accepted for the pilot,
+    and to be revisited with rounded or delayed counts if the public counts
+    stay.
   - The capacity race (D13) is not closed: a burst can overshoot a capacity,
     and a mailing that links to an RSVP Form makes bursts likelier. An atomic
     book-and-count function is fixed on the platform before the RSVP Form goes
