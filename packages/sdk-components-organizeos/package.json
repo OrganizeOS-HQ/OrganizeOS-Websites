@@ -36,10 +36,15 @@
       "webstudio": "./src/templates.ts",
       "types": "./lib/types/templates.d.ts",
       "import": "./lib/templates.js"
+    },
+    "./org-script": {
+      "webstudio": "./src/org-script.ts",
+      "types": "./lib/types/org-script.d.ts",
+      "import": "./lib/org-script.js"
     }
   },
   "scripts": {
-    "build": "vite build --config ../../vite.sdk-components.config.ts",
+    "build": "vite build --config vite.build.config.ts",
     "dts": "tsc --project tsconfig.dts.json",
     "test": "vitest run",
     "typecheck": "tsgo --noEmit"
