@@ -867,6 +867,11 @@ as paused, so reversal is the switch.
   tag, `async` and `src`, and each of the six Radix triggers over a Box, Text
   and Heading carrying the tag prop, in both modes, asserts the whole document
   (head included) holds no script, and fails if a merge takes a change back.
+  A render shows that no script reached the canvas, not which check stopped it,
+  and the two tag skips in `useInstanceProps` overlap the check on the props a
+  parent passes in. So the test also renders a Box that is given the tag by a
+  parent alone, which fails if `withoutBlockedTagProps` goes, and
+  `organizeos-org-script.wiring.test.ts` reads the source for the two skips.
   `animate` and `set` are in `tags` and stay as they are on the canvas: they
   reach a `javascript:` link only through a click, which an `href` set directly
   on a Link already allows (N2 below).
@@ -1146,7 +1151,8 @@ the base library through `withOrgScriptPolicy`
 (`organizeos-org-script.wiring.test.ts`); `webstudio-component.tsx` skips a
 paused prop and a tag the builder does not offer, checks the props a parent
 passes in as well, and falls back to a `div` for a `ws:element` with such a tag
-(`organizeos-org-script.props.test.tsx`);
+(`organizeos-org-script.props.test.tsx`, and `organizeos-org-script.wiring.test.ts`
+for the two tag skips in `useInstanceProps`);
 `section-general.tsx` holds the read-only branch (`section-general.test.tsx`);
 and the `prebuild.ts` hook runs `dropOrgScript` (`prebuild.test.ts`, "leaves an
 org's own script out"). A merge that adds or redraws a template icon fails the

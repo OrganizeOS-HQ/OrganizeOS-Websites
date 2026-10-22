@@ -1,6 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
+import type { ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -77,14 +78,12 @@ const radixNamespace = "@webstudio-is/sdk-components-react-radix";
 
 type Renderer = "canvas" | "preview";
 
-const render = ({
+const prepare = ({
   instances,
   props,
-  renderer,
 }: {
   instances: Array<[string, Instance]>;
   props: Array<[string, Prop]>;
-  renderer: Renderer;
 }) => {
   // the library the canvas registers, with org script paused
   registerComponentLibrary(
@@ -106,6 +105,9 @@ const render = ({
     createDefaultPages({ homePageId: "home", rootInstanceId: "body" })
   );
   $selectedPageId.set("home");
+};
+
+const mount = (renderer: Renderer, element: ReactNode) => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -121,20 +123,36 @@ const render = ({
           onError: console.error,
         }}
       >
-        {createInstanceElement({
-          instances: $instances.get(),
-          instanceId: "body",
-          instanceSelector: ["body"],
-          Component:
-            renderer === "preview"
-              ? WebstudioComponentPreview
-              : WebstudioComponentCanvas,
-          components: $registeredComponents.get(),
-        })}
+        {element}
       </ReactSdkContext.Provider>
     );
   });
   return container;
+};
+
+const componentOf = (renderer: Renderer) =>
+  renderer === "preview" ? WebstudioComponentPreview : WebstudioComponentCanvas;
+
+const render = ({
+  instances,
+  props,
+  renderer,
+}: {
+  instances: Array<[string, Instance]>;
+  props: Array<[string, Prop]>;
+  renderer: Renderer;
+}) => {
+  prepare({ instances, props });
+  return mount(
+    renderer,
+    createInstanceElement({
+      instances: $instances.get(),
+      instanceId: "body",
+      instanceSelector: ["body"],
+      Component: componentOf(renderer),
+      components: $registeredComponents.get(),
+    })
+  );
 };
 
 const renderers: Renderer[] = ["canvas", "preview"];
@@ -726,6 +744,52 @@ describe.each(renderers)(
       expect(element?.tagName).toBe("DIV");
       expect(element?.getAttribute("tag")).toBe("script");
       expect(evilScripts().length).toBe(0);
+    });
+  }
+);
+
+// A Radix trigger hands its props to the component it renders, so a component
+// can receive a tag from its parent next to the props of its own instance. The
+// canvas checks that tag where the two are merged, which is a different place
+// from the check on the instance's own props: either alone keeps a script off
+// the canvas, so these tests render the component with the tag passed in and
+// an instance that holds no props, and fail if the check on what a parent
+// passes in is taken back (docs/ORGANIZEOS-FORK.md section 10).
+describe.each(renderers)(
+  "the %s renders a tag a parent passes in",
+  (renderer) => {
+    // React dedupes hoisted scripts by src, so each renderer has its own
+    const src = `https://evil.example/passed-${renderer}.js`;
+
+    test("without a script, on a Box given a data-ws-tag of script, an async prop and a src", () => {
+      const box: Instance = {
+        type: "instance",
+        id: "box",
+        component: "Box",
+        children: [],
+      };
+      prepare({ instances: [["box", box]], props: [] });
+      const Component = componentOf(renderer);
+      const passedIn: Record<string, unknown> = {
+        "data-ws-tag": "script",
+        async: true,
+        src,
+      };
+
+      const dom = mount(
+        renderer,
+        <Component
+          instance={box}
+          instanceSelector={["box"]}
+          components={$registeredComponents.get()}
+          {...passedIn}
+        />
+      );
+
+      expect(evilScripts().length).toBe(0);
+      expect(dom.querySelector("script")).toBeNull();
+      // the Box is rendered, as its own default element
+      expect(dom.querySelector("[data-ws-id=box]")?.tagName).toBe("DIV");
     });
   }
 );
