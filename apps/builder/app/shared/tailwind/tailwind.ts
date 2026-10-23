@@ -759,15 +759,14 @@ export const generateFragmentFromTailwind = async (
       type: "local" as const,
       id: `${instanceId}:ws:style`,
     };
-    let styleSourceSelection = structuredClone(
+    const styleSourceSelection = structuredClone(
       styleSourceSelections.get(instanceId)
-    );
-    if (styleSourceSelection === undefined) {
-      styleSourceSelection = { instanceId, values: [] };
-      styleSourceSelections.set(instanceId, styleSourceSelection);
-    }
+    ) ?? { instanceId, values: [] };
     styleSources.set(localStyleSource.id, localStyleSource);
     styleSourceSelection.values.push(localStyleSource.id);
+    // the selection is a clone, so write it back even when one existed,
+    // e.g. a token from a pasted <style> class rule
+    styleSourceSelections.set(instanceId, styleSourceSelection);
     return localStyleSource;
   };
   const createOrMergeLocalStyles = (

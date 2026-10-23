@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { css, renderTemplate, ws } from "@webstudio-is/template";
+import { css, renderTemplate, token, ws } from "@webstudio-is/template";
 import { __testing__, generateFragmentFromTailwind } from "./tailwind";
 
 const { normalizeUnoCssForWebstudio } = __testing__;
@@ -592,6 +592,43 @@ test("preserve or override existing local styles", async () => {
       ></ws.element>
     )
   );
+});
+
+test("attach tailwind styles to an element that already has a token", async () => {
+  // a pasted <style> class rule becomes a token before tailwind runs
+  const fragment = await generateFragmentFromTailwind(
+    renderTemplate(
+      <ws.element
+        ws:tag="div"
+        ws:tokens={[
+          token(
+            "x",
+            css`
+              background-image: linear-gradient(red, blue);
+            `
+          ),
+        ]}
+        class="h-[200px] w-full"
+      ></ws.element>
+    )
+  );
+  const [instance] = fragment.instances;
+  const tokenSource = fragment.styleSources.find(
+    (styleSource) => styleSource.type === "token"
+  );
+  const localSource = fragment.styleSources.find(
+    (styleSource) => styleSource.type === "local"
+  );
+  expect(fragment.styleSourceSelections).toEqual([
+    { instanceId: instance.id, values: [tokenSource?.id, localSource?.id] },
+  ]);
+  const localStyles = fragment.styles.filter(
+    (style) => style.styleSourceId === localSource?.id
+  );
+  expect(localStyles.map((style) => [style.property, style.value])).toEqual([
+    ["height", { type: "unit", unit: "px", value: 200 }],
+    ["width", { type: "unit", unit: "%", value: 100 }],
+  ]);
 });
 
 test("add preflight matching tags", async () => {
