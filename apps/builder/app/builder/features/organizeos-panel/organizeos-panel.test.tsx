@@ -49,7 +49,6 @@ describe("groupOrganizeosBlocks", () => {
       {
         label: "Events",
         area: { label: "Manage events in OrganizeOS", path: "events" },
-        // RsvpForm is named by the section and not registered yet: skipped
         blocks: [
           {
             name: `${namespace}:EventList`,
@@ -69,6 +68,16 @@ describe("groupOrganizeosBlocks", () => {
             firstInstance: expect.objectContaining({
               component: "ws:element",
               label: "Event Card",
+            }),
+          },
+          {
+            name: `${namespace}:RsvpForm`,
+            label: "RSVP Form",
+            description: organizeosTemplates.RsvpForm.description,
+            icon: organizeosTemplates.RsvpForm.icon,
+            // the one Events block whose root is a component of the namespace
+            firstInstance: expect.objectContaining({
+              component: `${namespace}:RsvpForm`,
             }),
           },
         ],
@@ -106,9 +115,33 @@ describe("groupOrganizeosBlocks", () => {
         section.blocks.map((block) => block.name),
       ])
     ).toEqual([
-      ["Events", [`${namespace}:EventList`, `${namespace}:EventCard`]],
+      [
+        "Events",
+        [
+          `${namespace}:EventList`,
+          `${namespace}:EventCard`,
+          `${namespace}:RsvpForm`,
+        ],
+      ],
       ["Signups", [`${namespace}:SignupForm`]],
       ["More", [`${namespace}:FutureBlock`]],
+    ]);
+  });
+
+  test("skips a block a section names that is not registered", () => {
+    const { RsvpForm: _unregistered, ...registered } = organizeosTemplates;
+
+    expect(
+      groupOrganizeosBlocks(
+        new Map(register(registered, `${namespace}:`)),
+        metas
+      ).map((section) => [
+        section.label,
+        section.blocks.map((block) => block.name),
+      ])
+    ).toEqual([
+      ["Events", [`${namespace}:EventList`, `${namespace}:EventCard`]],
+      ["Signups", [`${namespace}:SignupForm`]],
     ]);
   });
 

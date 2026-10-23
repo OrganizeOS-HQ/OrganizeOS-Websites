@@ -238,7 +238,13 @@ export const describeEventsBlock = ({
       expect(evaluate({ cover_image_url: null })).toBe(false);
       expect(evaluate({ cover_image_url: "" })).toBe(false);
       expect(evaluate({})).toBe(false);
-      expect(eventsFixture.map(evaluate)).toEqual([false, false, true]);
+      expect(eventsFixture.map(evaluate)).toEqual([
+        false,
+        false,
+        true,
+        false,
+        false,
+      ]);
     });
 
     test("the place shows only for an event with a location name", () => {
@@ -250,7 +256,13 @@ export const describeEventsBlock = ({
       expect(evaluate({ location_name: null })).toBe(false);
       expect(evaluate({ location_name: "" })).toBe(false);
       expect(evaluate({})).toBe(false);
-      expect(eventsFixture.map(evaluate)).toEqual([true, false, true]);
+      expect(eventsFixture.map(evaluate)).toEqual([
+        true,
+        false,
+        true,
+        true,
+        true,
+      ]);
     });
   });
 

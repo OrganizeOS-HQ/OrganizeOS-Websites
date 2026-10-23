@@ -19,7 +19,12 @@
       "featured_image_url": null,
       "latitude": 41.8832,
       "longitude": -87.6285,
-      "url": "https://acme.organizeos.org/events/voter-registration-drive"
+      "url": "https://acme.organizeos.org/events/voter-registration-drive",
+      "waitlist": false,
+      "full": false,
+      "max_guests": 0,
+      "shifts": [],
+      "questions": []
     },
     {
       "id": "a47e9c10-62db-4f85-b1a3-0c8d5e7f2916",
@@ -40,7 +45,12 @@
       "featured_image_url": null,
       "latitude": null,
       "longitude": null,
-      "url": "https://acme.organizeos.org/events/weekly-phone-bank"
+      "url": "https://acme.organizeos.org/events/weekly-phone-bank",
+      "waitlist": true,
+      "full": false,
+      "max_guests": 0,
+      "shifts": [],
+      "questions": []
     },
     {
       "id": "d1c5b8f3-94a7-4e20-8f6d-2b3a9c7e4051",
@@ -61,7 +71,153 @@
       "featured_image_url": "https://cdn.example.org/events/cookout-featured.jpg",
       "latitude": 37.8044,
       "longitude": -122.2712,
-      "url": "https://acme.organizeos.org/events/neighborhood-cookout"
+      "url": "https://acme.organizeos.org/events/neighborhood-cookout",
+      "waitlist": false,
+      "full": false,
+      "max_guests": 0,
+      "shifts": [],
+      "questions": []
+    },
+    {
+      "id": "c9e2a7b4-3d18-4f56-a0c7-5b1e8d2f6a93",
+      "title": "Saturday Canvass Launch",
+      "slug": "saturday-canvass-launch",
+      "description": "Kick off the weekend canvass with training, turf cuts and lunch.",
+      "start_time": "2026-11-21T15:00:00+00:00",
+      "end_time": "2026-11-21T22:00:00+00:00",
+      "timezone": "America/Denver",
+      "event_type": "canvass",
+      "location_type": "in_person",
+      "location_name": "Union Hall",
+      "city": "Denver",
+      "state": "CO",
+      "capacity": 60,
+      "rsvp_count": 45,
+      "cover_image_url": null,
+      "featured_image_url": null,
+      "latitude": 39.7392,
+      "longitude": -104.9903,
+      "url": "https://acme.organizeos.org/events/saturday-canvass-launch",
+      "waitlist": true,
+      "full": false,
+      "max_guests": 3,
+      "shifts": [
+        {
+          "id": "0e4b9a27-c561-4d83-b7f0-3a9d2c8e5b14",
+          "title": "Morning canvass",
+          "description": null,
+          "start_time": "2026-11-21T15:00:00+00:00",
+          "end_time": "2026-11-21T18:00:00+00:00",
+          "full": true,
+          "roles": []
+        },
+        {
+          "id": "5d73c1e9-0a2f-4b68-8e45-b7c0f9a1d326",
+          "title": "Afternoon canvass",
+          "description": "Doors in the afternoon, with a driver for each turf.",
+          "start_time": "2026-11-21T19:00:00+00:00",
+          "end_time": "2026-11-21T22:00:00+00:00",
+          "full": false,
+          "roles": [
+            {
+              "id": "17d9f3a6-b204-4c5e-91a8-e6f0c3b75d20",
+              "name": "Canvasser",
+              "description": "Knock doors in pairs.",
+              "full": false
+            },
+            {
+              "id": "6c0a8e41-3f97-4d1b-b5e2-9a7d4c1f8036",
+              "name": "Driver",
+              "description": null,
+              "full": true
+            }
+          ]
+        }
+      ],
+      "questions": [
+        {
+          "id": "2f8d6b10-4c93-4e7a-b1d5-0a9c3e7f2468",
+          "label": "How did you hear about us?",
+          "help_text": null,
+          "type": "text",
+          "required": false,
+          "options": []
+        },
+        {
+          "id": "73e1a9c5-8b02-4f6d-9d37-c4b0e5a1f892",
+          "label": "Anything we should know?",
+          "help_text": "Access needs, dietary needs, or anything else.",
+          "type": "textarea",
+          "required": false,
+          "options": []
+        },
+        {
+          "id": "d40b7f26-1e85-4a39-8c6b-92f3a7d0e514",
+          "label": "Years of canvassing experience",
+          "help_text": "Whole years; 0 is fine.",
+          "type": "number",
+          "required": false,
+          "options": []
+        },
+        {
+          "id": "91c5e3a8-6d70-4b24-a0f9-3e8b1c6d7a05",
+          "label": "Preferred training date",
+          "help_text": null,
+          "type": "date",
+          "required": false,
+          "options": []
+        },
+        {
+          "id": "e8a3d1b7-25c4-4f90-b6e1-7d0a9f3c5b82",
+          "label": "T-shirt size",
+          "help_text": "Unisex sizing.",
+          "type": "select",
+          "required": true,
+          "options": ["S", "M", "L", "XL"]
+        },
+        {
+          "id": "3b6f9d02-a8e7-4c15-8d43-f1c5e0b7a269",
+          "label": "Languages you speak",
+          "help_text": null,
+          "type": "multiselect",
+          "required": false,
+          "options": ["English", "Spanish", "Mandarin"]
+        },
+        {
+          "id": "5a0c2e84-d9f1-4b73-96a8-0b4e7c3d1f65",
+          "label": "I agree to the volunteer code of conduct",
+          "help_text": null,
+          "type": "checkbox",
+          "required": true,
+          "options": []
+        }
+      ]
+    },
+    {
+      "id": "f2a6d0c8-71b3-4e95-9c24-8e0b5a3d7f16",
+      "title": "City Hall Rally",
+      "slug": "city-hall-rally",
+      "description": "Join us on the steps for speeches and a march to the polls.",
+      "start_time": "2026-12-05T23:00:00+00:00",
+      "end_time": "2026-12-06T01:00:00+00:00",
+      "timezone": "America/New_York",
+      "event_type": "rally",
+      "location_type": "in_person",
+      "location_name": "City Hall",
+      "city": "Boston",
+      "state": "MA",
+      "capacity": 100,
+      "rsvp_count": 100,
+      "cover_image_url": null,
+      "featured_image_url": null,
+      "latitude": 42.3601,
+      "longitude": -71.0589,
+      "url": "https://acme.organizeos.org/events/city-hall-rally",
+      "waitlist": false,
+      "full": true,
+      "max_guests": 0,
+      "shifts": [],
+      "questions": []
     }
   ]
 }

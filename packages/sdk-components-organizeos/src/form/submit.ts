@@ -8,17 +8,55 @@ export type Renderer = "canvas" | "preview" | undefined;
 export const isBuilderRender = (renderer: Renderer) =>
   renderer === "canvas" || renderer === "preview";
 
+/** A role an event still has room in, as a `role_full` answer lists it. */
+export type OpenRole = { id: string; name: string };
+
 /**
  * What a platform endpoint answered: `{ outcome }` on success, `{ error,
- * field? }` on failure. A network failure or an answer this build cannot read
- * is an error too.
+ * field?, openRoles? }` on failure. A network failure or an answer this build
+ * cannot read is an error too.
+ *
+ * `openRoles` is a `role_full` answer's `open_roles`, and no other error's: it
+ * is read from that error alone. It is undefined when the answer carries none
+ * or none that can be read, and an empty list when the answer says that no
+ * role has room: the two are not the same.
  */
 export type PlatformAnswer =
   | { outcome: string }
-  | { error: string; field?: string };
+  | { error: string; field?: string; openRoles?: OpenRole[] };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && Array.isArray(value) === false;
+
+/**
+ * Reads `open_roles` leniently, since a published site keeps this code while
+ * the platform moves on. Anything that is not a list is no answer at all
+ * (undefined). In a list, an entry without a non-empty string `id` and a
+ * string `name` is skipped, and only those two keys are kept: the list is
+ * `[{ id, name }]` by contract and anything else in an entry is not ours. Only
+ * a list that is empty to begin with says no role has room: a list that had
+ * entries but none readable did not say, so it is undefined too.
+ */
+const readOpenRoles = (value: unknown): OpenRole[] | undefined => {
+  if (Array.isArray(value) === false) {
+    return;
+  }
+  const roles: OpenRole[] = [];
+  for (const entry of value as unknown[]) {
+    if (
+      isRecord(entry) &&
+      typeof entry.id === "string" &&
+      entry.id !== "" &&
+      typeof entry.name === "string"
+    ) {
+      roles.push({ id: entry.id, name: entry.name });
+    }
+  }
+  // `[]` says no role has room, so only a literal `[]` may come out as one.
+  return roles.length === 0 && (value as unknown[]).length > 0
+    ? undefined
+    : roles;
+};
 
 const readAnswer = async (response: Response): Promise<PlatformAnswer> => {
   let payload: unknown;
@@ -32,9 +70,20 @@ const readAnswer = async (response: Response): Promise<PlatformAnswer> => {
       return { outcome: payload.outcome };
     }
     if (typeof payload.error === "string") {
-      return typeof payload.field === "string"
-        ? { error: payload.error, field: payload.field }
-        : { error: payload.error };
+      const answer: PlatformAnswer = { error: payload.error };
+      if (typeof payload.field === "string") {
+        answer.field = payload.field;
+      }
+      // Only a `role_full` answer has a list of open roles: the platform sends
+      // `open_roles` with that error alone, so it is not read from another.
+      const openRoles =
+        payload.error === "role_full"
+          ? readOpenRoles(payload.open_roles)
+          : undefined;
+      if (openRoles !== undefined) {
+        answer.openRoles = openRoles;
+      }
+      return answer;
     }
   }
   return { error: "unreadable_answer" };
@@ -83,7 +132,13 @@ export type AnswerStates<State extends string> = {
   outcomes: Readonly<Record<string, State>>;
   /** The family's success state, for an outcome this build does not know. */
   success: State;
-  /** The family's error state, for every error, known or not. */
+  /**
+   * The state of an error code this build knows, such as a family that shows
+   * its own state for a full or an ended event. Optional: without it, or for
+   * a code it does not list, an error maps to `error`.
+   */
+  errors?: Readonly<Record<string, State>>;
+  /** The family's error state, for every error this build has no state for. */
   error: State;
 };
 
@@ -91,20 +146,31 @@ export type AnswerStates<State extends string> = {
  * Maps an answer to a state. A published site freezes this code, so an
  * outcome the platform adds later lands in the family's success state and an
  * error it adds later in its error state. `field` names the field an
- * `invalid_field` error is about.
+ * `invalid_field` error is about. `openRoles` passes on a `role_full`
+ * answer's list of roles with room, when it has one, and no other error's.
  */
 export const stateForAnswer = <State extends string>(
   answer: PlatformAnswer,
   states: AnswerStates<State>
-): { state: State; field?: string } => {
+): { state: State; field?: string; openRoles?: OpenRole[] } => {
   if ("outcome" in answer) {
     const known = Object.hasOwn(states.outcomes, answer.outcome)
       ? states.outcomes[answer.outcome]
       : undefined;
     return { state: known ?? states.success };
   }
+  const known =
+    states.errors !== undefined && Object.hasOwn(states.errors, answer.error)
+      ? states.errors[answer.error]
+      : undefined;
+  const result: { state: State; field?: string; openRoles?: OpenRole[] } = {
+    state: known ?? states.error,
+  };
   if (answer.error === "invalid_field" && answer.field !== undefined) {
-    return { state: states.error, field: answer.field };
+    result.field = answer.field;
   }
-  return { state: states.error };
+  if (answer.error === "role_full" && answer.openRoles !== undefined) {
+    result.openRoles = answer.openRoles;
+  }
+  return result;
 };

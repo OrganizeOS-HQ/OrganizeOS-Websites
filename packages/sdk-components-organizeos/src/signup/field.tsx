@@ -109,12 +109,23 @@ type InputElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
  */
 const maxValueLength = 2000;
 
-/** The designer's own maxLength when it is shorter, else the platform's. */
-const getMaxLength = (designerMaxLength: unknown) => {
-  const length = Number(designerMaxLength);
-  return Number.isInteger(length) && length >= 0 && length < maxValueLength
-    ? length
-    : maxValueLength;
+/**
+ * The smallest of the platform's limit, the root's own limit for this field
+ * (an RSVP's phone takes 40) and the designer's `maxLength`, ignoring a limit
+ * that is not a whole number of at least 0.
+ */
+const getMaxLength = (
+  fieldMaxLength: number | undefined,
+  designerMaxLength: unknown
+) => {
+  let result = maxValueLength;
+  for (const limit of [fieldMaxLength, designerMaxLength]) {
+    const length = Number(limit);
+    if (Number.isInteger(length) && length >= 0 && length < result) {
+      result = length;
+    }
+  }
+  return result;
 };
 
 /** A checkbox sends "true" when checked and "" when not, as Website Lite does. */
@@ -138,7 +149,8 @@ type FieldInputProps = Omit<ComponentProps<"input">, "children"> & {
  * input, a textarea, a select with the form's options, or a checkbox), named
  * and required as the form says. The designer's attributes (placeholder,
  * classes) pass through; name, type, id and required are the form's, and a
- * typed value stops at the platform's limit.
+ * typed value stops at the platform's limit for the field (or the designer's
+ * shorter `maxLength`).
  */
 export const FieldInput = forwardRef<InputElement, FieldInputProps>(
   (
@@ -180,7 +192,7 @@ export const FieldInput = forwardRef<InputElement, FieldInputProps>(
       return (
         <textarea
           {...(common as ComponentProps<"textarea">)}
-          maxLength={getMaxLength(props.maxLength)}
+          maxLength={getMaxLength(field?.config?.maxLength, props.maxLength)}
           placeholder={placeholder}
           defaultValue={value ?? defaultValue}
           ref={ref}
@@ -224,7 +236,7 @@ export const FieldInput = forwardRef<InputElement, FieldInputProps>(
       <input
         {...common}
         type={inputType}
-        maxLength={getMaxLength(props.maxLength)}
+        maxLength={getMaxLength(field?.config?.maxLength, props.maxLength)}
         autoComplete={
           getAutoComplete(field?.name ?? "", type) ?? props.autoComplete
         }

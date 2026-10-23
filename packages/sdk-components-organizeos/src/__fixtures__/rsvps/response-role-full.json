@@ -1,0 +1,9 @@
+{
+  "status": 409,
+  "body": {
+    "error": "role_full",
+    "open_roles": [
+      { "id": "6c0a8e41-3f97-4d1b-b5e2-9a7d4c1f8036", "name": "Driver" }
+    ]
+  }
+}
