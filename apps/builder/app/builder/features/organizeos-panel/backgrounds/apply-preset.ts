@@ -1,36 +1,16 @@
-import type { StyleValue } from "@webstudio-is/css-engine";
 import {
-  getHtmlTagFromInstance,
-  ROOT_INSTANCE_ID,
-  rootComponent,
-  type Instance,
-} from "@webstudio-is/sdk";
-import type { HtmlTags } from "html-tags";
-import {
-  $propsIndex,
-  $registeredComponentMetas,
   $selectedBreakpoint,
   $selectedInstance,
   $selectedInstanceStyleSources,
   $selectedStyleSources,
   $selectedStyleState,
 } from "~/shared/nano-states";
-import {
-  $breakpoints,
-  $instances,
-  $styleSourceSelections,
-  $styleSources,
-  $styles,
-} from "~/shared/sync/data-stores";
-import {
-  getComputedStyleDecl,
-  getPresetStyleDeclKey,
-  type StyleObjectModel,
-} from "~/shared/style-object-model";
+import { $breakpoints, $styleSources } from "~/shared/sync/data-stores";
+import { getComputedStyleDecl } from "~/shared/style-object-model";
 import type { InstanceSelector } from "~/shared/instance-utils/tree";
 import { createBatchUpdate } from "~/builder/features/style-panel/shared/use-style-data";
-import { $matchingBreakpoints } from "~/builder/features/style-panel/shared/model";
 import { layerProperties, type PresetStyles } from "./presets";
+import { buildSectionStyleModel } from "./style-model";
 
 /**
  * Applies a preset's styles to the selected instance (spec 3.2).
@@ -104,55 +84,6 @@ const originPriority: Record<BackgroundOrigin["kind"], number> = {
 };
 
 /**
- * A style model for one instance, enough for its own non-inherited
- * properties: the user styles at the matching breakpoints, the component's
- * preset styles and its tag's browser defaults, base state.
- */
-const buildInstanceStyleModel = (
-  instance: Instance | undefined
-): StyleObjectModel => {
-  const metas = $registeredComponentMetas.get();
-  const presetStyles = new Map<string, StyleValue>();
-  for (const [component, meta] of metas) {
-    for (const [tag, styles] of Object.entries(meta.presetStyle ?? {})) {
-      for (const styleDecl of styles) {
-        const key = getPresetStyleDeclKey({
-          component,
-          tag,
-          state: styleDecl.state,
-          property: styleDecl.property,
-        });
-        presetStyles.set(key, styleDecl.value);
-      }
-    }
-  }
-  const instanceTags = new Map<Instance["id"], HtmlTags>();
-  const instanceComponents = new Map<Instance["id"], Instance["component"]>([
-    [ROOT_INSTANCE_ID, rootComponent],
-  ]);
-  if (instance !== undefined) {
-    instanceComponents.set(instance.id, instance.component);
-    const tag = getHtmlTagFromInstance({
-      instance,
-      metas,
-      htmlTagsByInstanceId: $propsIndex.get().htmlTagsByInstanceId,
-    });
-    if (tag !== undefined) {
-      instanceTags.set(instance.id, tag as HtmlTags);
-    }
-  }
-  return {
-    styles: $styles.get(),
-    styleSourceSelections: $styleSourceSelections.get(),
-    presetStyles,
-    instanceTags,
-    instanceComponents,
-    matchingBreakpoints: $matchingBreakpoints.get(),
-    matchingStates: new Set(),
-  };
-};
-
-/**
  * Where the instance's `background-color` and `background-image` come from
  * now, for the notice shown before a preset is applied ("This element's
  * background comes from the token X..."). When the two differ, a token wins
@@ -161,8 +92,7 @@ const buildInstanceStyleModel = (
 export const describeBackgroundOrigin = (
   instanceSelector: InstanceSelector
 ): BackgroundOrigin => {
-  const [instanceId] = instanceSelector;
-  const model = buildInstanceStyleModel($instances.get().get(instanceId));
+  const model = buildSectionStyleModel(instanceSelector);
   const styleSources = $styleSources.get();
   const breakpoints = $breakpoints.get();
   const selectedBreakpointId = $selectedBreakpoint.get()?.id;
