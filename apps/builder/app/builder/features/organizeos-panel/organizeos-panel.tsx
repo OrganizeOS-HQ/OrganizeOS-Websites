@@ -342,7 +342,7 @@ export const OrganizeosPanel = ({
             </CollapsibleSection>
           ))
         )}
-        <SectionBackground />
+        {selectedPage?.meta.documentType !== "xml" && <SectionBackground />}
         <DataSection />
         {dragCard}
       </ScrollArea>
