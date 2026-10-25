@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test } from "vitest";
 import { toValue, type StyleValue } from "@webstudio-is/css-engine";
 import { parseCssValue } from "@webstudio-is/css-data";
 import { parseAnyGradient } from "~/builder/features/style-panel/sections/backgrounds/gradient-utils";
@@ -13,6 +13,14 @@ import {
   type PresetId,
   type PresetStyles,
 } from "./presets";
+import { checkSectionContrast } from "./contrast";
+import {
+  el,
+  registerTestMetas,
+  root,
+  setupProject,
+  type TestStyle,
+} from "./test-fixtures";
 
 const black: Rgba = { r: 0, g: 0, b: 0, a: 1 };
 const white: Rgba = { r: 1, g: 1, b: 1, a: 1 };
@@ -226,5 +234,54 @@ describe("scrimAlpha", () => {
     for (const stop of parsed!.stops) {
       expect(stop.color).toMatchObject({ type: "color", alpha: 0.49 });
     }
+  });
+});
+
+describe("each preset passes AA for its reference text color", () => {
+  beforeEach(() => {
+    registerTestMetas();
+  });
+
+  const toCss = ({ r, g, b }: Rgba) =>
+    `rgb(${Math.round(r * 255)} ${Math.round(g * 255)} ${Math.round(b * 255)})`;
+
+  describe.each(palettes)("with %s", (_name, palette) => {
+    test.each(presets.map((preset) => [preset.id, preset] as const))(
+      "%s",
+      (_id, preset) => {
+        // a variable-backed palette's variables live on Global Root
+        const rootVariables: TestStyle[] = [];
+        for (const color of [palette.base, palette.accent1, palette.accent2]) {
+          if (color.variable !== undefined) {
+            rootVariables.push({
+              on: root,
+              property: `--${color.variable}`,
+              value: toCss(color.rgba),
+            });
+          }
+        }
+        const styles = preset
+          .build(palette, { imageAssetId: "asset-1" })
+          .map(({ property, value }) => ({ on: "section", property, value }));
+        setupProject({
+          tree: el("body", "Body", [
+            el("section", "Box", [el("text", "Text", ["Hello"])]),
+          ]),
+          styles: [
+            ...rootVariables,
+            ...styles,
+            {
+              on: "text",
+              property: "color",
+              value: toCss(getReferenceTextColor(preset, palette)),
+            },
+          ],
+        });
+        const report = checkSectionContrast(["section", "body"]);
+        expect(report.summary).toBe("pass");
+        expect(report.groups).toHaveLength(1);
+        expect(report.groups[0].result).toBe("pass");
+      }
+    );
   });
 });
