@@ -677,6 +677,31 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   `/newsletter`, nothing moves there: a seeded page stays where it is (its
   form is still re-synced) and a build without one gets none.
 
+**Section backgrounds**, the panel's "Section background" area
+(`features/organizeos-panel/section-background.tsx`, with its modules in
+`features/organizeos-panel/backgrounds/`), between the blocks and the Data
+section. For the selected element (not the Body or Global Root) it applies a
+Bloom, Wash, Solid tint or Image with scrim preset colored from Global Root's
+color variables (or a built-in palette), and reports the WCAG AA contrast of
+the text inside it.
+
+- A preset writes ordinary styles only, to the element's **local** style
+  source at the current breakpoint, base state, in one undo step:
+  `background-color` and the nine layer longhands upstream's Backgrounds
+  section reads. It never writes to a token, adds no component, prop or
+  script, and keeps no link to the element; tinted stops are literal colors,
+  so re-applying a preset picks up a palette change.
+- The contrast check is advisory: it never blocks publish, and it never
+  reports Pass for what it cannot compute (unreadable values, an image with
+  no layer above it, blending, filters, opacity, interpolation methods and
+  color hints are "Can't check"). It reads styles through
+  `getComputedStyleDecl` over its own model, not the rendered canvas, so it
+  does not see positioned text, text inside an embed, or where on a gradient
+  the text sits.
+- Nothing changes in the published-site runtime, the CLI or the templates.
+  Design: `docs/superpowers/specs/2026-10-25-builder-section-backgrounds-design.md`
+  in the OrganizeOS repo.
+
 **The record picker**, `settings-panel/controls/organizeos-record.tsx`, behind
 one marked branch in `settings-panel/controls/combined.tsx`, before the text
 control. A table, `recordPickers`, maps a block's component to its picker (what
