@@ -307,6 +307,36 @@ describe("gradients", () => {
     );
     expect(group.result).toBe("fail");
     expect(group.ratio).toBeLessThan(4.5);
+    expect(group.gradient).toBe(true);
+  });
+
+  test("a group on a gradient is marked, one on a solid color is not", () => {
+    // the gradient is on an ancestor, the lowest ratio's stack still has it
+    const onGradient = only(
+      check(
+        [text()],
+        [
+          style("text", "color", "#000000"),
+          style(
+            "wrapper",
+            "background-image",
+            "linear-gradient(90deg, #ff0000 0%, #3399ff 100%)"
+          ),
+        ]
+      )
+    );
+    expect(onGradient).toMatchObject({ result: "fail", gradient: true });
+
+    const onSolid = only(
+      check(
+        [text()],
+        [
+          style("text", "color", "#aaaaaa"),
+          style("section", "background-color", "#ffffff"),
+        ]
+      )
+    );
+    expect(onSolid).toMatchObject({ result: "fail", gradient: false });
   });
 
   test.each([

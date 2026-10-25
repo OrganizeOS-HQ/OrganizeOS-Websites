@@ -106,6 +106,12 @@ export type ContrastGroup = {
   large: boolean;
   /** the lowest ratio across the background; absent for "cant-check" */
   ratio?: number;
+  /**
+   * True when the background stack that gave the lowest ratio has a
+   * gradient layer, so a failure is at the gradient's worst point, which may
+   * not be where the text sits ("Lowest point of the background").
+   */
+  gradient?: boolean;
   threshold: 3 | 4.5;
   result: ContrastResult;
   /** why the group could not be checked */
@@ -135,7 +141,9 @@ const cantCheck = (reason: string): never => {
 };
 
 /** A layer in the background stack, bottom to top. */
-type StackLayer = { type: "colors"; colors: Rgba[] } | { type: "image" };
+type StackLayer =
+  | { type: "colors"; colors: Rgba[]; gradient?: boolean }
+  | { type: "image" };
 
 const keywordOf = (value: StyleValue) =>
   value.type === "keyword" ? value.value.toLowerCase() : undefined;
@@ -309,6 +317,7 @@ const createChecker = (model: StyleObjectModel) => {
           layers.push({
             type: "colors",
             colors: sampleGradient(item.value, currentColorOf(selector)),
+            gradient: true,
           });
           continue;
         }
@@ -535,9 +544,13 @@ const checkTarget = (
       layers.push(...checker.layersOf(selector.slice(index)));
     }
     const ratio = lowestRatio(color, compositeStack(layers));
+    const gradient = layers.some(
+      (layer) => layer.type === "colors" && layer.gradient === true
+    );
     return {
       ...base,
       ratio,
+      gradient,
       result: ratio >= threshold ? "pass" : "fail",
     };
   } catch (error) {
