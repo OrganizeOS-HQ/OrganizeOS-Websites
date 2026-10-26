@@ -12,6 +12,7 @@ import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import { CanvasCheck } from "../form/canvas-check";
 import { useMergedRef } from "../form/merge-ref";
 import { checkRotationStructure } from "./structure";
+import { useFade } from "./use-fade";
 import { useRotation } from "./use-rotation";
 
 export const structureProblem =
@@ -53,6 +54,8 @@ const useCanvasStructure = (
 type Props = Omit<ComponentProps<"button">, "value" | "children"> & {
   /** seconds between advances, clamped to 3..20 by the runtime */
   interval?: number;
+  /** ms the incoming panel fades in, clamped to 0..600 by the runtime; 0 is off */
+  fade?: number;
   pauseLabel?: string;
   playLabel?: string;
   /** the Tabs' selected value, bound to the variable Tabs' `value` reads */
@@ -69,11 +72,15 @@ type Props = Omit<ComponentProps<"button">, "value" | "children"> & {
  * a page without JavaScript show no inert control, and it hides again when
  * rotation will not run. On the canvas rotation never runs, and the button
  * always shows its Pause label so the designer can select and style it.
+ *
+ * While rotation can run, the panel that becomes active, by rotation or by a
+ * visitor's choice, fades in over `fade` ms (`useFade`).
  */
 export const RotationControl = forwardRef<ElementRef<"button">, Props>(
   (
     {
       interval,
+      fade = 250,
       pauseLabel = "Pause",
       playLabel = "Play",
       value,
@@ -95,6 +102,8 @@ export const RotationControl = forwardRef<ElementRef<"button">, Props>(
       interval,
       enabled: canvas === false,
     });
+    // "off" on the canvas, under reduced motion and until after mount
+    useFade({ buttonRef, enabled: state !== "off", fade });
     const holds = useCanvasStructure(buttonRef, canvas);
     const hidden = canvas === false && state === "off";
     return (

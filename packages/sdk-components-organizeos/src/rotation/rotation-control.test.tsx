@@ -50,6 +50,7 @@ const FakeTabs = ({
           type="button"
           role="tab"
           aria-selected={tab === selected}
+          onClick={() => setSelected(tab)}
         >
           Tab {tab}
         </button>
@@ -79,11 +80,13 @@ const Section = ({
   controlFirst,
   pauseLabel,
   playLabel,
+  fade,
 }: {
   renderer: Renderer;
   controlFirst?: boolean;
   pauseLabel?: string;
   playLabel?: string;
+  fade?: number;
 }) => {
   const [activeTab, setActiveTab] = useState("0");
   return (
@@ -102,6 +105,7 @@ const Section = ({
             }}
             pauseLabel={pauseLabel}
             playLabel={playLabel}
+            fade={fade}
           />
         }
       />
@@ -347,5 +351,109 @@ describe("Rotation Control", () => {
         view.unmount();
       }
     });
+  });
+});
+
+describe("the cross-fade", () => {
+  type Call = {
+    target: Element;
+    keyframes: Keyframe[];
+    options: KeyframeAnimationOptions;
+  };
+  let calls: Call[] = [];
+  const proto = Element.prototype as unknown as Record<string, unknown>;
+
+  beforeEach(() => {
+    calls = [];
+    proto.animate = function (
+      this: Element,
+      keyframes: Keyframe[],
+      options: KeyframeAnimationOptions
+    ) {
+      calls.push({ target: this, keyframes, options });
+      return { cancel: () => {} };
+    };
+  });
+
+  afterEach(() => {
+    delete proto.animate;
+  });
+
+  const getPanel = (index: number) =>
+    screen.getAllByRole("tabpanel", { hidden: true })[index];
+  const advance = async (ms: number) => {
+    act(() => {
+      vi.advanceTimersByTime(ms);
+    });
+    await act(async () => {});
+  };
+
+  test("the panel rotation brings in fades in over the default 250 ms", async () => {
+    vi.useFakeTimers();
+    render(<Section renderer={undefined} />);
+    await act(async () => {});
+    expect(calls).toEqual([]);
+    await advance(5500);
+    expect(selected()).toBe(1);
+    expect(calls).toEqual([
+      {
+        target: getPanel(1),
+        keyframes: [{ opacity: 0 }, { opacity: 1 }],
+        options: { duration: 250, easing: "ease-out", fill: "none" },
+      },
+    ]);
+  });
+
+  test("a panel a visitor picks fades in too, with rotation playing or stopped", async () => {
+    render(<Section renderer={undefined} fade={400} />);
+    act(() => {
+      screen.getAllByRole("tab")[2].click();
+    });
+    await act(async () => {});
+    expect(
+      calls.map(({ target, options }) => [target, options.duration])
+    ).toEqual([[getPanel(2), 400]]);
+
+    act(() => {
+      getControl().click();
+    });
+    expect(getControl().textContent).toBe("Play");
+    act(() => {
+      screen.getAllByRole("tab")[0].click();
+    });
+    await act(async () => {});
+    expect(calls.map(({ target }) => target)).toEqual([
+      getPanel(2),
+      getPanel(0),
+    ]);
+  });
+
+  test("Fade 0 switches at once", async () => {
+    vi.useFakeTimers();
+    render(<Section renderer={undefined} fade={0} />);
+    await advance(5500);
+    expect(selected()).toBe(1);
+    expect(calls).toEqual([]);
+  });
+
+  test("nothing fades under reduced motion", async () => {
+    reducedMotion = true;
+    render(<Section renderer={undefined} />);
+    act(() => {
+      screen.getAllByRole("tab")[1].click();
+    });
+    await act(async () => {});
+    expect(selected()).toBe(1);
+    expect(calls).toEqual([]);
+  });
+
+  test("nothing fades on the canvas", async () => {
+    render(<Section renderer="canvas" />);
+    act(() => {
+      screen.getAllByRole("tab")[1].click();
+    });
+    await act(async () => {});
+    expect(selected()).toBe(1);
+    expect(calls).toEqual([]);
   });
 });

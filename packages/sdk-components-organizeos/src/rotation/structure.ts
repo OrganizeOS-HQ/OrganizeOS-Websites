@@ -36,6 +36,12 @@ export const getOwnTabs = (root: Element): Element[] => {
   });
 };
 
+/** The root's own panels: not those of a Tabs nested in its panels. */
+export const getOwnPanels = (root: Element): HTMLElement[] =>
+  getOwn(root, "tabpanel").filter(
+    (panel): panel is HTMLElement => panel instanceof HTMLElement
+  );
+
 /** The index of the selected tab, or -1 when none is selected. */
 export const getSelectedIndex = (tabs: readonly Element[]) =>
   tabs.findIndex((tab) => tab.getAttribute("aria-selected") === "true");

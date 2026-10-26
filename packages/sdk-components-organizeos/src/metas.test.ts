@@ -261,7 +261,7 @@ test("templates and hooks", () => {
   expect(hooks).toEqual([hooksAnimateChildren]);
 });
 
-test("the Rotation Control: hidden, childless, a button, with its props", () => {
+test("the Rotation Control: hidden, childless, a button, with its props, Fade among them", () => {
   const meta = metas.RotationControl;
   expect(meta.label).toBe("Rotation Control");
   expect(meta.icon).toBeDefined();
@@ -272,11 +272,13 @@ test("the Rotation Control: hidden, childless, a button, with its props", () => 
     "id",
     "class",
     "interval",
+    "fade",
     "pauseLabel",
     "playLabel",
   ]);
   expect(meta.props).toMatchObject({
     interval: { type: "number", control: "number", defaultValue: 5.5 },
+    fade: { type: "number", control: "number", defaultValue: 250 },
     pauseLabel: { type: "string", control: "text", defaultValue: "Pause" },
     playLabel: { type: "string", control: "text", defaultValue: "Play" },
     value: { type: "string", control: "text" },
@@ -284,6 +286,7 @@ test("the Rotation Control: hidden, childless, a button, with its props", () => 
   });
   expect(Object.keys(meta.props ?? {})).toEqual([
     "interval",
+    "fade",
     "pauseLabel",
     "playLabel",
     "value",
