@@ -58,8 +58,10 @@ jobs:
 
       - name: Build the OrganizeOS site components
         # The CLI tests copy this package's build into a generated site, as the
-        # publish executor does (packages/cli/src/organizeos-components.ts).
-        run: pnpm --filter ./packages/sdk-components-organizeos build
+        # publish executor does (packages/cli/src/organizeos-components.ts),
+        # and run the publish workflow's switch check on its org-script entry,
+        # which imports the builds of the workspace packages it depends on.
+        run: pnpm --filter "@organizeos/site-components..." build
 
       - name: Test
         run: pnpm -r test

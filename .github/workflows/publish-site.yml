@@ -75,6 +75,27 @@ jobs:
           node "$GITHUB_WORKSPACE/packages/cli/bin.js" build \
             --template react-router --template react-router-vercel
 
+      - name: Read the org script switch
+        # OrganizeOS fork: OrganizeOS launches a Website only from a build that
+        # carries no org script, so the publish reports what this run's CLI
+        # says (docs/ORGANIZEOS-FORK.md section 10), never configuration, and
+        # fails unless the switch is off and the address rule is there.
+        id: org-script
+        working-directory: packages/cli
+        run: |
+          value=$(node --input-type=module -e '
+            import { orgScriptMayRun, urlMayRun } from "@organizeos/site-components/org-script";
+            if (typeof urlMayRun !== "function" || urlMayRun("javascript:alert(1)", false) !== false) {
+              throw new Error("this CLI does not check unsafe addresses");
+            }
+            process.stdout.write(JSON.stringify(orgScriptMayRun()));
+          ')
+          if [ "$value" != "false" ]; then
+            echo "::error::orgScriptMayRun() is ${value:-unreadable}. OrganizeOS launches a Website only from a build that carries no org script: turn the switch on only together with that gate."
+            exit 1
+          fi
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to Vercel
         id: deploy
         working-directory: ${{ runner.temp }}
