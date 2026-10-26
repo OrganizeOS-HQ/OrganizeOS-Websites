@@ -17,3 +17,4 @@ export { meta as Marquee } from "./marquee/marquee.ws";
 export { meta as MarqueePauseButton } from "./marquee/marquee-pause-button.ws";
 export { meta as MarqueeTrack } from "./marquee/marquee-track.ws";
 export { meta as ConvergenceField } from "./field/convergence-field.ws";
+export { meta as ShareCodeCarrier } from "./share-code/share-code-carrier.ws";
