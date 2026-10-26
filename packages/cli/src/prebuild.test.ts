@@ -486,7 +486,7 @@ describe("prebuild", () => {
   // its license and every html page links the fork's source
   // (route-templates/html.tsx, organizeos-components.ts).
   describe("offers the fork's source", () => {
-    const repository = "https://github.com/OrganizeOS-HQ/websites-builder";
+    const repository = "https://github.com/OrganizeOS-HQ/OrganizeOS-Websites";
     const sha = "0123456789abcdef0123456789abcdef01234567";
 
     /** The generated html route's links function, the head it renders. */
@@ -508,7 +508,7 @@ describe("prebuild", () => {
     });
 
     test("every html page links the license and the fork at the commit the publish workflow built", async () => {
-      vi.stubEnv("GITHUB_REPOSITORY", "OrganizeOS-HQ/websites-builder");
+      vi.stubEnv("GITHUB_REPOSITORY", "OrganizeOS-HQ/OrganizeOS-Websites");
       vi.stubEnv("GITHUB_SHA", sha);
 
       const { route, links } = await prebuildLinks();
@@ -573,7 +573,7 @@ describe("prebuild", () => {
       };
 
       test("it links the fork at the commit the publish workflow built", async () => {
-        vi.stubEnv("GITHUB_REPOSITORY", "OrganizeOS-HQ/websites-builder");
+        vi.stubEnv("GITHUB_REPOSITORY", "OrganizeOS-HQ/OrganizeOS-Websites");
         vi.stubEnv("GITHUB_SHA", sha);
 
         const { route } = await prebuildLinks();

@@ -58,7 +58,7 @@ export const planBadgeLabel = "Not in plan";
  * marketing link.
  */
 export const sourceCodeUrl =
-  "https://github.com/OrganizeOS-HQ/websites-builder";
+  "https://github.com/OrganizeOS-HQ/OrganizeOS-Websites";
 
 /** Label for the source offer. Neutral on purpose — it is not a product ad. */
 export const sourceCodeLabel = "Source code";

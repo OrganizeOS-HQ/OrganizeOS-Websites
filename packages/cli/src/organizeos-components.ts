@@ -41,7 +41,7 @@ export const ORGANIZEOS_COMPONENTS_IMPORT = `../${ORGANIZEOS_DIR}/components.js`
  * The fork's public repository, where a site's visitors get the Corresponding
  * Source of the fork's code the site carries (ORGANIZEOS-FORK.md §1).
  */
-export const ORGANIZEOS_SOURCE_REPOSITORY = "OrganizeOS-HQ/websites-builder";
+export const ORGANIZEOS_SOURCE_REPOSITORY = "OrganizeOS-HQ/OrganizeOS-Websites";
 
 /** What prebuild replaces with getOrganizeosSourceUrl() in the route templates. */
 export const ORGANIZEOS_SOURCE_URL_PLACEHOLDER = "__ORGANIZEOS_SOURCE_URL__";

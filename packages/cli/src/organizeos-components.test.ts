@@ -255,14 +255,14 @@ describe("findModuleClosure", () => {
 });
 
 describe("getOrganizeosSourceUrl", () => {
-  const repository = "https://github.com/OrganizeOS-HQ/websites-builder";
+  const repository = "https://github.com/OrganizeOS-HQ/OrganizeOS-Websites";
   const sha = "0123456789abcdef0123456789abcdef01234567";
 
   test.each([
     {
       name: "the fork at the commit, in the fork's workflow",
       env: {
-        GITHUB_REPOSITORY: "OrganizeOS-HQ/websites-builder",
+        GITHUB_REPOSITORY: "OrganizeOS-HQ/OrganizeOS-Websites",
         GITHUB_SHA: sha,
       },
       expected: `${repository}/tree/${sha}`,
@@ -281,7 +281,7 @@ describe("getOrganizeosSourceUrl", () => {
     {
       name: "the fork, for a commit that is not a full SHA",
       env: {
-        GITHUB_REPOSITORY: "OrganizeOS-HQ/websites-builder",
+        GITHUB_REPOSITORY: "OrganizeOS-HQ/OrganizeOS-Websites",
         GITHUB_SHA: "main",
       },
       expected: repository,
