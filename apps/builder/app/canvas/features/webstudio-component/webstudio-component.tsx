@@ -32,7 +32,7 @@ import {
 import { indexProperty, tagProperty } from "@webstudio-is/sdk/runtime";
 import {
   checksTagProp,
-  elementTagMayRun,
+  elementTagMayRender,
   propNameMayRun,
   withoutPausedProps,
 } from "@organizeos/site-components/org-script";
@@ -355,9 +355,10 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
         const instance = instances.get(instanceId);
         const tag = instance?.tag;
         // OrganizeOS fork: org script is paused. A tag the builder does not
-        // offer (script, or JSX syntax) never reaches the component that makes
-        // an element from it (docs/ORGANIZEOS-FORK.md section 10).
-        if (tag !== undefined && elementTagMayRun(tag)) {
+        // offer (script, or JSX syntax), or an SVG animate or set, never
+        // reaches the component that makes an element from it
+        // (docs/ORGANIZEOS-FORK.md section 10).
+        if (tag !== undefined && elementTagMayRender(tag)) {
           instancePropsObject[tagProperty] = tag;
         }
         const meta = metas.get(instance?.component ?? "");
@@ -376,13 +377,14 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
               continue;
             }
             // ... and so does a data-ws-tag or tag prop that is not a tag the
-            // builder offers, once evaluated (an expression too), on any
-            // component but ws:element: Box, Text, Heading and Dialog Title
-            // make their element from it, and a Radix trigger passes it on to
-            // the child it renders (see withoutBlockedTagProps below)
+            // builder offers, or is animate or set, once evaluated (an
+            // expression too), on any component but ws:element: Box, Text,
+            // Heading and Dialog Title make their element from it, and a Radix
+            // trigger passes it on to the child it renders (see
+            // withoutPausedProps below)
             if (
               checksTagProp(instance?.component ?? "", name) &&
-              elementTagMayRun(value) === false
+              elementTagMayRender(value) === false
             ) {
               continue;
             }
@@ -551,9 +553,10 @@ export const WebstudioComponentCanvas = forwardRef<
   if (instance.component === elementComponent) {
     Component = instance.tag ?? "div";
     // OrganizeOS fork: org script is paused. React hoists a `script` that has
-    // `async` and `src` into <head> and runs it (docs/ORGANIZEOS-FORK.md
+    // `async` and `src` into <head> and runs it, and an SVG animate or set can
+    // set a link's href to a javascript: URL (docs/ORGANIZEOS-FORK.md
     // section 10).
-    if (elementTagMayRun(Component) === false) {
+    if (elementTagMayRender(Component) === false) {
       Component = "div";
     }
     // replace to enable uncontrolled state
@@ -769,7 +772,7 @@ export const WebstudioComponentPreview = forwardRef<
   if (instance.component === elementComponent) {
     Component = instance.tag ?? "div";
     // OrganizeOS fork: org script is paused (see WebstudioComponentCanvas)
-    if (elementTagMayRun(Component) === false) {
+    if (elementTagMayRender(Component) === false) {
       Component = "div";
     }
     // replace to enable uncontrolled state

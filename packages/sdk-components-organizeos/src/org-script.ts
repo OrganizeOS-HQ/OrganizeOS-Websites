@@ -72,7 +72,9 @@ export const htmlEmbedCodeMayRun = (
  * The SVG elements that can set an attribute of their parent from markup, so
  * `<a><animate attributeName="href" values="javascript:…"/></a>` makes a
  * `javascript:` link that no attribute check sees (SMIL). `animateTransform`
- * and `animateMotion` cannot set an arbitrary attribute and stay.
+ * (a transform list only), `animateMotion` (a position on a path) and `mpath`
+ * cannot set an arbitrary attribute and stay. Publishing drops these
+ * elements, and the canvas does not make them (`elementTagMayRender`).
  */
 export const pausedSvgTags: ReadonlySet<string> = new Set(["animate", "set"]);
 
@@ -109,16 +111,30 @@ const offeredTags: ReadonlySet<string> = new Set(tags);
  * tag, even one that becomes a tag string.
  *
  * Publishing applies it to every tag it can read (`classify` in the CLI's
- * `organizeos-org-script.ts`), and the canvas to every tag it renders, whether
- * it comes from `instance.tag`, `data-ws-tag` or a `tag` prop, held by the
- * component that makes the element or by one that passes its props to it
- * (`checksTagProp`), so an expression that evaluates to `"script"` is caught as
- * well.
+ * `organizeos-org-script.ts`), and the canvas to every tag it renders
+ * (`elementTagMayRender`), whether it comes from `instance.tag`, `data-ws-tag`
+ * or a `tag` prop, held by the component that makes the element or by one that
+ * passes its props to it (`checksTagProp`), so an expression that evaluates to
+ * `"script"` is caught as well.
  */
 export const elementTagMayRun = (
   tag: unknown,
   mayRun: boolean = orgScriptMayRun()
 ): boolean => mayRun || (typeof tag === "string" && offeredTags.has(tag));
+
+/**
+ * Whether the canvas may make an element with this tag: one the builder offers
+ * (`elementTagMayRun`) that is not `animate` or `set` (`pausedSvgTags`), unless
+ * the switch is on. Publishing drops an element with either kind of tag, and
+ * counts them apart; the canvas makes neither, so an `animate` cannot set a
+ * link's `href` to a `javascript:` URL that a click in preview would run.
+ */
+export const elementTagMayRender = (
+  tag: unknown,
+  mayRun: boolean = orgScriptMayRun()
+): boolean =>
+  mayRun ||
+  (elementTagMayRun(tag, mayRun) && pausedSvgTags.has(tag as string) === false);
 
 /**
  * The props that choose the element of the component that reads them: Box, Text
@@ -133,7 +149,8 @@ export const elementTagMayRun = (
  * Radix's Slot merges those props onto the first child, which may be a Box,
  * Text or Heading that makes its element from them. So these names are held to
  * `elementTagMayRun` on every component that is not `ws:element` or in
- * `anyTagComponents`, wherever the prop sits.
+ * `anyTagComponents`, wherever the prop sits, and on the canvas to
+ * `elementTagMayRender`.
  */
 export const tagPropNames: readonly string[] = ["data-ws-tag", "tag"];
 
@@ -167,8 +184,9 @@ export const checksTagProp = (component: string, name: string): boolean =>
   tagPropNames.includes(name);
 
 /**
- * The props without a `data-ws-tag` or `tag` that is not a tag the builder
- * offers, for a component that creates an element, or passes its props to a
+ * The props without a `data-ws-tag` or `tag` that the canvas may not render
+ * (`elementTagMayRender`: a tag the builder does not offer, `animate` or
+ * `set`), for a component that creates an element, or passes its props to a
  * child that does. The same object when nothing goes, and never a changed
  * input. The canvas uses it on what a component receives after its parent's
  * props are merged in, so a tag a Radix trigger passes down is checked as well.
@@ -186,7 +204,7 @@ export const withoutBlockedTagProps = <Props extends Record<string, unknown>>(
     if (
       name in props &&
       checksTagProp(component, name) &&
-      elementTagMayRun(props[name], mayRun) === false
+      elementTagMayRender(props[name], mayRun) === false
     ) {
       if (result === props) {
         result = { ...props };

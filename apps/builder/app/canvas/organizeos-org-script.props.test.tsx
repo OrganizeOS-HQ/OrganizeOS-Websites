@@ -1093,3 +1093,135 @@ describe.each(renderers)(
     });
   }
 );
+
+// Inside a link, an SVG animate or set sets the link's href by SMIL, past the
+// address check, and a click in preview runs it. The canvas makes neither,
+// whichever way the tag reaches an element (elementTagMayRender,
+// docs/ORGANIZEOS-FORK.md section 10), as publishing drops both.
+// animateTransform and animateMotion cannot set an href, and stay.
+describe.each(renderers)("the %s renders no SVG animate or set", (renderer) => {
+  const pwn = "javascript:window.pwned = 1";
+
+  const smilElements = (dom: Element) =>
+    Array.from(dom.querySelectorAll("*")).filter(
+      (element) =>
+        element.localName === "animate" || element.localName === "set"
+    );
+
+  test("without an animate or set on a ws:element in an SVG link, and with animateTransform and animateMotion", () => {
+    const dom = render({
+      renderer,
+      instances: [
+        instance({ id: "body", children: ids("svg") }),
+        instance({ id: "svg", tag: "svg", children: ids("link") }),
+        instance({
+          id: "link",
+          tag: "a",
+          children: ids("animate", "set", "transform", "motion"),
+        }),
+        instance({ id: "animate", tag: "animate" }),
+        instance({ id: "set", tag: "set" }),
+        instance({ id: "transform", tag: "animateTransform" }),
+        instance({ id: "motion", tag: "animateMotion" }),
+      ],
+      props: [
+        prop("animate", "attributeName", "string", "href"),
+        prop("animate", "values", "string", pwn),
+        prop("set", "attributeName", "string", "href"),
+        prop("set", "to", "string", pwn),
+        prop("transform", "attributeName", "string", "transform"),
+        prop("transform", "type", "string", "rotate"),
+        prop("motion", "path", "string", "M0,0 L10,10"),
+      ],
+    });
+
+    expect(smilElements(dom)).toEqual([]);
+    // each is still there, as a div that nothing animates
+    expect(dom.querySelector("[data-ws-id=animate]")?.localName).toBe("div");
+    expect(dom.querySelector("[data-ws-id=set]")?.localName).toBe("div");
+    expect(dom.querySelector("[data-ws-id=transform]")?.localName).toBe(
+      "animateTransform"
+    );
+    expect(dom.querySelector("[data-ws-id=motion]")?.localName).toBe(
+      "animateMotion"
+    );
+  });
+
+  // each falls back to its own default element
+  test("without an animate or set on a Box, Text, Heading or Dialog Title given one as its tag", () => {
+    const dom = render({
+      renderer,
+      instances: [
+        instance({
+          id: "body",
+          children: ids("box", "text", "heading", "dialog"),
+        }),
+        instance({ id: "box", component: "Box", tag: "animate" }),
+        instance({ id: "text", component: "Text" }),
+        instance({ id: "heading", component: "Heading" }),
+        instance({
+          id: "dialog",
+          component: `${radixNamespace}:Dialog`,
+          children: ids("title"),
+        }),
+        instance({ id: "title", component: `${radixNamespace}:DialogTitle` }),
+      ],
+      props: [
+        prop("text", "data-ws-tag", "string", "set"),
+        prop("heading", "tag", "expression", '"anim" + "ate"'),
+        prop("dialog", "open", "boolean", true),
+        prop("title", "tag", "string", "set"),
+      ],
+    });
+
+    expect(smilElements(document.body)).toEqual([]);
+    expect(dom.querySelector("[data-ws-id=box]")?.tagName).toBe("DIV");
+    expect(dom.querySelector("[data-ws-id=text]")?.tagName).toBe("DIV");
+    expect(dom.querySelector("[data-ws-id=heading]")?.tagName).toBe("H1");
+    expect(document.querySelector("[data-ws-id=title]")).not.toBeNull();
+  });
+
+  test("without an animate a Radix trigger passes down to a Box", () => {
+    render({
+      renderer,
+      instances: forwarderTree("PopoverTrigger", ["Popover"], "Box"),
+      props: [
+        prop("trigger", "data-ws-tag", "string", "animate"),
+        prop("trigger", "attributeName", "string", "href"),
+        prop("trigger", "values", "string", pwn),
+      ],
+    });
+
+    expect(smilElements(document.body)).toEqual([]);
+    expect(document.querySelector("[data-ws-id=child]")?.tagName).toBe("DIV");
+  });
+
+  test("without a set a parent passes in", () => {
+    const box: Instance = {
+      type: "instance",
+      id: "box",
+      component: "Box",
+      children: [],
+    };
+    prepare({ instances: [["box", box]], props: [] });
+    const Component = componentOf(renderer);
+    const passedIn: Record<string, unknown> = {
+      "data-ws-tag": "set",
+      attributeName: "href",
+      to: pwn,
+    };
+
+    const dom = mount(
+      renderer,
+      <Component
+        instance={box}
+        instanceSelector={["box"]}
+        components={$registeredComponents.get()}
+        {...passedIn}
+      />
+    );
+
+    expect(smilElements(dom)).toEqual([]);
+    expect(dom.querySelector("[data-ws-id=box]")?.tagName).toBe("DIV");
+  });
+});

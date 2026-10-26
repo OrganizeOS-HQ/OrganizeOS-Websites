@@ -257,7 +257,8 @@ const withSafeRedirect = (page: Page): Page => {
 // offers, whichever component holds it: ws:element keeps those props as
 // attributes, and XML Node takes any tag by design (`checksInstanceTag` and
 // `checksTagProp`, in org-script.ts). A tag is one the builder offers when
-// `elementTagMayRun` says so, the same rule the canvas applies.
+// `elementTagMayRun` says so; the canvas applies the same rule, and makes no
+// `animate` or `set` either (`elementTagMayRender`).
 const classify = (instance: Instance, props: Prop[] = []): undefined | Kind => {
   if (instance.component === "HtmlEmbed") {
     // An expression, a resource or a missing code is only known (or empty)

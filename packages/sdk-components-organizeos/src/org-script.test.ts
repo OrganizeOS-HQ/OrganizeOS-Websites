@@ -15,6 +15,7 @@ import {
   anyTagComponents,
   checksInstanceTag,
   checksTagProp,
+  elementTagMayRender,
   elementTagMayRun,
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
@@ -215,6 +216,49 @@ describe("elementTagMayRun", () => {
   });
 });
 
+describe("elementTagMayRender", () => {
+  test("is true for every tag the builder offers but animate and set", () => {
+    for (const tag of tags) {
+      expect(elementTagMayRender(tag), tag).toBe(
+        pausedSvgTags.has(tag) === false
+      );
+    }
+    // they cannot set an arbitrary attribute, and stay
+    for (const tag of [
+      "animateTransform",
+      "animateMotion",
+      "mpath",
+      "svg",
+      "a",
+    ]) {
+      expect(elementTagMayRender(tag), tag).toBe(true);
+    }
+  });
+
+  // inside an <a>, SMIL sets the link's href to a javascript: URL that a click
+  // runs, past every attribute check
+  test("is false for animate and set, and for every tag elementTagMayRun refuses", () => {
+    for (const tag of [
+      "animate",
+      "set",
+      "script",
+      "SCRIPT",
+      "Animate",
+      "",
+      "div />{globalThis.pwned = 1}<div",
+      undefined,
+      ["animate"],
+    ]) {
+      expect(elementTagMayRender(tag), String(tag)).toBe(false);
+    }
+  });
+
+  test("is true for everything when the switch is on", () => {
+    expect(elementTagMayRender("animate", true)).toBe(true);
+    expect(elementTagMayRender("script", true)).toBe(true);
+  });
+});
+
 describe("tagPropNames", () => {
   test("names the runtime's tag property as the framework does, and the legacy tag prop", () => {
     expect(tagProperty).toBe("data-ws-tag");
@@ -314,6 +358,18 @@ describe("withoutBlockedTagProps", () => {
       const props = { "data-ws-tag": "script", tag: "urlset" };
       expect(withoutBlockedTagProps(component, props)).toBe(props);
     }
+  });
+
+  test("drops an animate or set tag prop, which the canvas does not make", () => {
+    expect(
+      withoutBlockedTagProps("Box", {
+        "data-ws-tag": "animate",
+        tag: "set",
+        attributeName: "href",
+      })
+    ).toEqual({ attributeName: "href" });
+    const kept = { "data-ws-tag": "animateTransform" };
+    expect(withoutBlockedTagProps("Box", kept)).toBe(kept);
   });
 
   test("drops a tag prop that is not a string", () => {
