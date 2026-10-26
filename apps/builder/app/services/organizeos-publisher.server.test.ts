@@ -93,7 +93,7 @@ describe("resolveOrganizationIdForBuild", () => {
 describe("createOrganizeosPublisher", () => {
   const deps = {
     client: makeClient(HAPPY_ROWS),
-    repo: "OrganizeOS-HQ/websites-builder",
+    repo: "OrganizeOS-HQ/OrganizeOS-Websites",
     githubToken: "gh-token",
   };
 
@@ -113,7 +113,7 @@ describe("createOrganizeosPublisher", () => {
       RequestInit,
     ];
     expect(url).toBe(
-      "https://api.github.com/repos/OrganizeOS-HQ/websites-builder/actions/workflows/publish-site.yml/dispatches"
+      "https://api.github.com/repos/OrganizeOS-HQ/OrganizeOS-Websites/actions/workflows/publish-site.yml/dispatches"
     );
     expect(JSON.parse(init.body as string)).toEqual({
       ref: "main",

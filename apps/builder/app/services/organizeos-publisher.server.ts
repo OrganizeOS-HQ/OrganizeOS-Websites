@@ -52,7 +52,7 @@ type PostgrestLike = {
 
 export type OrganizeosPublisherDeps = {
   client: PostgrestLike;
-  /** e.g. "OrganizeOS-HQ/websites-builder" */
+  /** e.g. "OrganizeOS-HQ/OrganizeOS-Websites" */
   repo: string;
   /** Fine-grained token with actions:write on that repo. Server-only. */
   githubToken: string;
