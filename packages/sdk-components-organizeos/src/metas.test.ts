@@ -257,3 +257,33 @@ test("templates and hooks", () => {
   expect(templates.RsvpForm.label).toBe(metas.RsvpForm.label);
   expect(hooks).toEqual([]);
 });
+
+test("the Rotation Control: hidden, childless, a button, with its props", () => {
+  const meta = metas.RotationControl;
+  expect(meta.label).toBe("Rotation Control");
+  expect(meta.icon).toBeDefined();
+  // upstream's Tabs takes only `instance` children
+  expect(meta.contentModel).toEqual({ category: "instance", children: [] });
+  expect(Object.keys(meta.presetStyle ?? {})).toEqual(["button"]);
+  expect(meta.initialProps).toEqual([
+    "id",
+    "class",
+    "interval",
+    "pauseLabel",
+    "playLabel",
+  ]);
+  expect(meta.props).toMatchObject({
+    interval: { type: "number", control: "number", defaultValue: 5.5 },
+    pauseLabel: { type: "string", control: "text", defaultValue: "Pause" },
+    playLabel: { type: "string", control: "text", defaultValue: "Play" },
+    value: { type: "string", control: "text" },
+    onValueChange: { type: "action", control: "action" },
+  });
+  expect(Object.keys(meta.props ?? {})).toEqual([
+    "interval",
+    "pauseLabel",
+    "playLabel",
+    "value",
+    "onValueChange",
+  ]);
+});
