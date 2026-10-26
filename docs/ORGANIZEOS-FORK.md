@@ -198,7 +198,7 @@ How an org admin's session is wired end to end, and which side owns each step. T
    The AGPL §13 source offer is rendered in the builder menu as well as the dashboard footer, so it stays reachable for an admin who never sees the dashboard. Do not remove the menu copy.
 
 4. **Publish** (`features/publish/organizeos-publish.tsx`). The dialog shows the site's real address with copy/open, points at OrganizeOS for domains and settings, and has one Publish button. `domain.publish` creates the production build and the OrganizeOS publisher (`services/organizeos-publisher.server.ts`) dispatches `publish-site.yml` with the build and organization ids. A dispatch that never leaves the builder marks the build FAILED at once; a static-export build is refused (it must never be deployed as the live site). The dialog also lists what is paused, and prebuild leaves an org's own script, and the unsafe values of §10, out of the published site.
-5. **Execute** (`.github/workflows/publish-site.yml`). Syncs the build with the CLI, builds it, reads the org script switch from the CLI it built and fails unless it is off (§10, "Reporting to OrganizeOS"), deploys to the `organizeos-sites` Vercel project, POSTs the deployment URL to OrganizeOS's publish callback (which flips the org's ledger pointer, making the site live through the reverse proxy), then reports `PUBLISHED` to the builder's `POST /internal/publish-status`; any failure reports `FAILED`. Without that report the builder's status would read "pending" forever: upstream's cloud publisher used to flip `Build.publishStatus` directly.
+5. **Execute** (`.github/workflows/publish-site.yml`). Syncs the build with the CLI, builds it, reads the org script switch from the CLI it built and fails unless it is off, deploys to the `organizeos-sites` Vercel project, POSTs the deployment URL, and `orgScript` as the run's CLI read it (§10, "Reporting to OrganizeOS"), to OrganizeOS's publish callback (which flips the org's ledger pointer, making the site live through the reverse proxy), then reports `PUBLISHED` to the builder's `POST /internal/publish-status`; any failure reports `FAILED`. Without that report the builder's status would read "pending" forever: upstream's cloud publisher used to flip `Build.publishStatus` directly.
 6. **Status.** The dialog polls the project while a build is pending and treats a build as failed only after the executor's 25 minute timeout (`organizeos-publish-status.ts`; upstream assumes 3 minutes). On success it says the site is live and that the proxy can take up to a minute to pick the new deployment up (its target cache).
 7. **Collections** (OrganizeOS → builder, `POST /internal/collections-sync`, `ORGANIZEOS_PROVISION_TOKEN`, authenticated like provision). Sent by an Inngest job (debounced 30 s per org) whenever the org's public CMS collections change: `{ organizationId, collections }`, every public collection as a full snapshot (`slug` and `name`; `singularName`, `kind`, `id`, `contentUrl` and `fields` are optional, and unknown keys are ignored). The builder adds one catalog Resource per collection to the org's dev build (`shared/db/collections-sync.server.ts`): a GET Resource for `<api base>/collections/<slug>/items`, and no binding. The OrganizeOS panel lists it in its Data section, where an admin adds it to a page (§9: data loads only where it is used). Ids derive from the project and the slug, so a rename only updates the name; a platform collection that a static Resource already covers (`events`, `fundraisers`, `stats`) is skipped. Existing entries are replaced where they stand and new ones appended, so the build keeps its order. A sync also removes, where nothing references them, the bindings with a preset's deterministic id: the unscoped ones older syncs wrote next to each Resource and the `:root` Forms binding of the pre-deploy branches (§9). It keeps the rest, and never touches a binding with a fresh id, which is what every use brings now, whatever its scope.
 
@@ -1453,8 +1453,9 @@ the page. That exposure needs no publish. Spec (OrganizeOS repo):
 returns `false`, read by the builder and the CLI alike. It is not an env var: an
 env var has two homes (the builder's Vercel env and the publish workflow's) that
 could disagree, and a missing or mistyped value could fail open. The publish
-workflow reads it too, from the built package, and fails unless it is off
-(Reporting to OrganizeOS, below), so turning it on also edits that step. Turning
+workflow reads it too, from the built package, fails unless it is off, and
+reports it to OrganizeOS (Reporting to OrganizeOS, below), so turning it on also
+edits that step. Turning
 it on is one reviewed change that also edits its test (`org-script.test.ts`),
 and only when both hold:
 
@@ -1765,16 +1766,18 @@ does (`lib/org-script.js`, built at the same commit by "Install and build CLI"),
 checks that the module has the address rule (`urlMayRun` refuses a `javascript:`
 address with the switch held off), and reads `orgScriptMayRun()`. The run fails
 unless the rule is there and the switch reads `false`, which is then the step's
-output (`steps.org-script.outputs.value`). The publish callback's body is to
-carry it as `orgScript`, a JSON boolean written unquoted from that output alone,
-beside `organizationId`, `buildId` and `deploymentUrl`, under the same shared
-secret; OrganizeOS then stores it with the deployment pointer, `true` when it is
-missing (unknown means unsafe), and launches a Website only from a build whose
-report is `false`. The callback refuses a body with a key it does not know, so
-OrganizeOS accepts the field first, and the workflow sends it only once that is
-in production. `organizeos-publish-workflow.test.ts` reads the step and runs its
-command against the built package; CI builds the blocks package, with the
-workspace packages it imports, before the tests.
+output (`steps.org-script.outputs.value`). The publish callback's body carries
+it as `orgScript`, a JSON boolean written unquoted from that output alone, beside
+`organizationId`, `buildId` and `deploymentUrl`, under the same shared secret.
+The callback refuses a body with a key it does not know, so OrganizeOS accepted
+the field first (OrganizeOS #2075); it stores nothing of it yet. The Launch PR
+stores it with the deployment pointer, `true` when it is missing (unknown means
+unsafe), and launches a Website only from a build whose report is `false`.
+`organizeos-publish-workflow.test.ts` reads the step and the callback body
+(`orgScript` from the step's output and nothing else, and the body JSON with the
+four keys the callback accepts) and runs the step's command against the built
+package; CI builds the blocks package, with the workspace packages it imports,
+before the tests.
 
 **Existing projects.** Dev builds (`"Build".deployment` null, the build the
 builder edits) keep their embeds and code, and the canvas shows them paused from

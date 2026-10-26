@@ -164,4 +164,54 @@ describe("the publish workflow's org script switch", () => {
     expect(run.status).toBe(0);
     expect(run.output).toBe("value=false\n");
   });
+
+  // The publish callback stores what the body says (the Launch PR), so the
+  // field comes from what this run's CLI said and from nothing a dispatch, a
+  // secret, a variable or the environment could set
+  test("sends orgScript from the step's output, unquoted, and from nothing else", () => {
+    const names = steps.map((item) => item.name);
+    const callback = steps.find(
+      (item) => item.name === "Flip the OrganizeOS pointer"
+    );
+    expect(callback).toBeDefined();
+    expect(names.indexOf("Flip the OrganizeOS pointer")).toBeGreaterThan(
+      names.indexOf(stepName)
+    );
+
+    // one orgScript in the whole workflow, unquoted, the step's output alone
+    const fields = [...workflow.matchAll(/"orgScript":\s*([^\n]*)/g)].map(
+      (match) => match[1].trim().replace(/,$/, "")
+    );
+    expect(fields).toEqual(["${{ steps.org-script.outputs.value }}"]);
+    expect(callback?.text).toContain(
+      '"orgScript": ${{ steps.org-script.outputs.value }}\n'
+    );
+    for (const source of ["secrets.", "vars.", "inputs.", "env."]) {
+      expect(fields[0]).not.toContain(source);
+    }
+    // nothing else reads or overrides the output on the way
+    expect(
+      steps
+        .filter((item) => item.text.includes("steps.org-script"))
+        .map((item) => item.name)
+    ).toEqual(["Flip the OrganizeOS pointer"]);
+    expect(callback?.text).not.toMatch(/^ {8}env:/m);
+    expect(step?.text).not.toMatch(/^ {8}env:/m);
+    expect(workflow).not.toMatch(/^ {2,4}env:/m);
+
+    // the body is JSON with the four keys the callback accepts, orgScript a
+    // boolean, once the runner fills the expressions in
+    const body = callback?.text.match(/-d '(\{[^']*\})'/)?.[1] ?? "";
+    const filled = body.replace(/\$\{\{\s*([^}]*?)\s*\}\}/g, (_, name) =>
+      name === "steps.org-script.outputs.value" ? "false" : `filled-${name}`
+    );
+    const parsed = JSON.parse(filled);
+    expect(Object.keys(parsed).sort()).toEqual([
+      "buildId",
+      "deploymentUrl",
+      "orgScript",
+      "organizationId",
+    ]);
+    expect(parsed.orgScript).toBe(false);
+  });
 });
