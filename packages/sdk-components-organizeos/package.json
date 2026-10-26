@@ -63,6 +63,8 @@
     "@testing-library/react": "^16.2.0",
     "@types/react": "^18.2.70",
     "@types/react-dom": "^18.2.25",
+    "@webstudio-is/css-data": "workspace:*",
+    "@webstudio-is/css-engine": "workspace:*",
     "@webstudio-is/react-sdk": "workspace:*",
     "@webstudio-is/sdk": "workspace:*",
     "@webstudio-is/sdk-components-react-radix": "workspace:*",
