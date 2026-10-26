@@ -2318,3 +2318,67 @@ describe("Marquee", () => {
     ).toBe(false);
   });
 });
+
+describe("Convergence Field", () => {
+  const namespace = "@organizeos/site-components";
+  const field = `${namespace}:ConvergenceField`;
+  const getFieldRoots = () =>
+    [...$instances.get().values()].filter(
+      (instance) => instance.component === field
+    );
+
+  test("inserts unbound, with no props: the runtime's defaults apply", async () => {
+    setProject({ resources: [], dataSources: [] });
+    const resources = $resources.get();
+
+    expect(await insertOrganizeosBlock(field)).toBe(true);
+
+    const [root, ...others] = getFieldRoots();
+    expect(others).toEqual([]);
+    expect($instances.get().get("bodyId")?.children).toEqual([
+      { type: "id", value: root.id },
+    ]);
+    expect($resources.get()).toBe(resources);
+    expect([...$dataSources.get().values()]).toEqual([]);
+    expect([...$props.get().values()]).toEqual([]);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("the inserted section satisfies the content model, and so does any element added inside it", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(field)).toBe(true);
+    const [root] = getFieldRoots();
+    const check = () => {
+      const errors: string[] = [];
+      const satisfied = isTreeSatisfyingContentModel({
+        instances: $instances.get(),
+        props: $props.get(),
+        metas: $registeredComponentMetas.get(),
+        instanceSelector: [root.id, "bodyId"],
+        onError: (message) => errors.push(message),
+      });
+      return { satisfied, errors };
+    };
+    expect(check()).toEqual({ satisfied: true, errors: [] });
+    // the content Box, holding a heading and a line of text
+    const componentOf = (id: string) => $instances.get().get(id)?.component;
+    expect(root.children.map((child) => componentOf(child.value))).toEqual([
+      "ws:element",
+    ]);
+
+    // a designer's Box beside the content
+    const instances = new Map($instances.get());
+    instances.set("added-box", {
+      type: "instance",
+      id: "added-box",
+      component: "Box",
+      children: [],
+    });
+    instances.set(root.id, {
+      ...root,
+      children: [...root.children, { type: "id", value: "added-box" }],
+    });
+    $instances.set(instances);
+    expect(check()).toEqual({ satisfied: true, errors: [] });
+  });
+});

@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ClearZone, FieldArm, FieldPoint } from "./generate";
 
 // Tests only: the shared fixture (`__fixtures__/README.md`), read from disk
@@ -24,9 +26,12 @@ export type Fixture = {
   cases: FixtureCase[];
 };
 
-export const fixturePath = new URL(
-  "./__fixtures__/convergence-field.fixture.json",
-  import.meta.url
+// A path, not a URL: under jsdom the global URL is jsdom's, which node:fs
+// does not take.
+export const fixturePath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "__fixtures__",
+  "convergence-field.fixture.json"
 );
 
 export const readFixture = (): Fixture =>

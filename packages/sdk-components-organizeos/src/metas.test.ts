@@ -243,6 +243,7 @@ test("templates and hooks", () => {
     "RsvpForm",
     "RotatingTabs",
     "Marquee",
+    "ConvergenceField",
   ]);
   for (const template of Object.values(templates)) {
     expect(template.category).toBe("hidden");
@@ -253,12 +254,14 @@ test("templates and hooks", () => {
   expect(templates.RsvpForm.label).toBe("RSVP Form");
   expect(templates.RotatingTabs.label).toBe("Rotating Tabs");
   expect(templates.Marquee.label).toBe("Marquee");
+  expect(templates.ConvergenceField.label).toBe("Convergence Field");
   // every template's label is the label a designer sees in the panel and the
   // navigator, and a template that is a component's has that component's
   for (const [name, template] of Object.entries(templates)) {
     expect(template.label, name).toMatch(labelPattern);
   }
   expect(templates.RsvpForm.label).toBe(metas.RsvpForm.label);
+  expect(templates.ConvergenceField.label).toBe(metas.ConvergenceField.label);
   // one hook: the canvas play flag for Animate Children (hooks.test.ts)
   expect(hooks).toEqual([hooksAnimateChildren]);
 });
@@ -370,4 +373,59 @@ test("every part the Marquee lists is a component of the package, under the name
     expect(Object.keys(metas), name).toContain(short);
     expect(Object.keys(components), name).toContain(short);
   }
+});
+
+test("the Convergence Field: a section root that takes any children, its preset, props and defaults", () => {
+  const meta = metas.ConvergenceField;
+  expect(meta.label).toBe("Convergence Field");
+  expect(meta.icon).toBeDefined();
+  expect(meta.contentModel).toEqual({
+    category: "instance",
+    children: ["instance"],
+  });
+  // the field's containing block and stacking context (spec 4.1)
+  expect(Object.keys(meta.presetStyle ?? {})).toEqual(["div"]);
+  expect(meta.presetStyle?.div).toEqual(
+    expect.arrayContaining([
+      { property: "position", value: { type: "keyword", value: "relative" } },
+      { property: "isolation", value: { type: "keyword", value: "isolate" } },
+    ])
+  );
+  expect(meta.initialProps).toEqual([
+    "id",
+    "class",
+    "shape",
+    "density",
+    "focusX",
+    "focusY",
+    "zoneWidth",
+    "zoneHeight",
+    "innerColor",
+    "outerColor",
+    "motion",
+  ]);
+  expect(meta.props).toMatchObject({
+    shape: {
+      type: "string",
+      control: "select",
+      options: ["Band", "Wide", "Panel", "Square", "Tall"],
+      defaultValue: "Band",
+    },
+    density: { type: "number", control: "number", defaultValue: 40 },
+    focusX: { type: "number", control: "number", defaultValue: 50 },
+    focusY: { type: "number", control: "number", defaultValue: 50 },
+    zoneWidth: { type: "number", control: "number", defaultValue: 60 },
+    zoneHeight: { type: "number", control: "number", defaultValue: 50 },
+    innerColor: { type: "string", control: "color", defaultValue: "#3FC9E0" },
+    outerColor: { type: "string", control: "color", defaultValue: "#F4EFE6" },
+    motion: {
+      type: "string",
+      control: "radio",
+      options: ["None", "Settle"],
+      defaultValue: "None",
+    },
+  });
+  expect(Object.keys(meta.props ?? {})).toEqual(meta.initialProps?.slice(2));
+  // Density is the spacing in box units, the same on every Shape (amendment 2)
+  expect(meta.props?.density?.description).toMatch(/units/);
 });
