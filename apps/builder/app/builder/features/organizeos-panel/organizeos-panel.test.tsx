@@ -3,6 +3,7 @@ import { renderTemplate, type TemplateMeta } from "@webstudio-is/template";
 import type { WsComponentMeta } from "@webstudio-is/sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
+import * as radixMetas from "@webstudio-is/sdk-components-react-radix/metas";
 import { platformUrl } from "~/shared/branding";
 import { $organizeosSite } from "~/shared/nano-states";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
@@ -46,6 +47,23 @@ describe("groupOrganizeosBlocks", () => {
     ]);
 
     expect(groupOrganizeosBlocks(templates, metas)).toEqual([
+      {
+        label: "Sections",
+        // no workspace area: the block reads no platform data
+        area: undefined,
+        blocks: [
+          {
+            name: `${namespace}:RotatingTabs`,
+            label: "Rotating Tabs",
+            description: organizeosTemplates.RotatingTabs.description,
+            // its own icon, not upstream Tabs' (the card's fallback)
+            icon: organizeosTemplates.RotatingTabs.icon,
+            firstInstance: expect.objectContaining({
+              component: "@webstudio-is/sdk-components-react-radix:Tabs",
+            }),
+          },
+        ],
+      },
       {
         label: "Events",
         area: { label: "Manage events in OrganizeOS", path: "events" },
@@ -100,6 +118,13 @@ describe("groupOrganizeosBlocks", () => {
     ]);
   });
 
+  test("Rotating Tabs has its own icon, not the one of upstream's Tabs it starts with", () => {
+    expect(organizeosTemplates.RotatingTabs.icon).toEqual(expect.any(String));
+    expect(organizeosTemplates.RotatingTabs.icon).not.toBe(
+      radixMetas.Tabs.icon
+    );
+  });
+
   test("still offers a block no section names, after the others", () => {
     const templates = new Map([
       ...register(organizeosTemplates, `${namespace}:`),
@@ -115,6 +140,7 @@ describe("groupOrganizeosBlocks", () => {
         section.blocks.map((block) => block.name),
       ])
     ).toEqual([
+      ["Sections", [`${namespace}:RotatingTabs`]],
       [
         "Events",
         [
@@ -140,6 +166,7 @@ describe("groupOrganizeosBlocks", () => {
         section.blocks.map((block) => block.name),
       ])
     ).toEqual([
+      ["Sections", [`${namespace}:RotatingTabs`]],
       ["Events", [`${namespace}:EventList`, `${namespace}:EventCard`]],
       ["Signups", [`${namespace}:SignupForm`]],
     ]);

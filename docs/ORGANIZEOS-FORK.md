@@ -493,11 +493,13 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   gate, not an enforcement boundary (known limits).
 - A left-sidebar tab after Components, with the OrganizeOS mark, hidden in
   content mode and disabled on text pages, as Components is. It lists the
-  namespace's templates in sections (Events, then Signups) with the Components
-  panel's cards and drag, then the org's data (the Data section, below). A
-  section names its blocks (Events: Event List, Event Card, RSVP Form), skips a
-  name that is not registered yet, and a registered block no section names is
-  offered after the others, under "More".
+  namespace's templates in sections (Sections, then Events, then Signups) with
+  the Components panel's cards and drag, then the org's data (the Data section,
+  below). A section names its blocks (Sections: Rotating Tabs; Events: Event
+  List, Event Card, RSVP Form), skips a name that is not registered yet, and a
+  registered block no section names is offered after the others, under "More".
+  Sections holds blocks that read no platform data, so it has no workspace
+  link and its inserts bind nothing.
 - Events ends with a link to the org's events area,
   `<platform URL>/<subdomain>/events` (the Website area's URL while the builder
   does not know the subdomain), "Manage events in OrganizeOS". The builder
@@ -701,6 +703,52 @@ the text inside it.
 - Nothing changes in the published-site runtime, the CLI or the templates.
   Design: `docs/superpowers/specs/2026-10-25-builder-section-backgrounds-design.md`
   in the OrganizeOS repo.
+
+**Rotating Tabs**, the panel's Sections block: upstream's Radix Tabs that
+show each panel in turn behind a Pause button (Track 2 phase 2). Design:
+`docs/superpowers/specs/2026-10-25-builder-rotating-tabs-design.md` in the
+OrganizeOS repo, plan `docs/superpowers/plans/2026-10-25-builder-rotating-tabs.md`.
+
+- **The control**, Rotation Control (`src/rotation/`, registered as
+  `@organizeos/site-components:RotationControl`, hidden from the Components
+  panel): a `<button type="button">` that is the Tabs' first child, so it is
+  first in the section's tab order, with the rotation behind it
+  (`use-rotation.ts`). Props: Interval (seconds, default 5.5, clamped to 3..20
+  by the runtime), Pause label and Play label (default "Pause" and "Play", the
+  button's text and accessible name), `value` and the `onValueChange` action.
+  It renders `hidden` (and `display: none`) on the server and whenever rotation
+  will not run, so no inert button shows without JavaScript.
+- **The variable seam.** Upstream's Tabs stays byte-identical (§1): the control
+  drives it through its one public seam, `value`. The template
+  (`src/rotating-tabs.template.tsx`, upstream's parts named through the
+  `radix` namespace proxy) binds Tabs' `value` and the control's to one
+  variable, `activeTab` (initial "0"), and the control's `onValueChange` sets
+  it. Since Tabs keeps its own selection, the control reads the selected index
+  from the DOM on mount and on Play and writes it first; each advance is
+  verified on the next tick, and a mismatch (custom trigger values) stops
+  rotation for good. Triggers and Contents keep upstream's index values; every
+  Content is `forceMount`ed with its Inactive state (`[data-state="inactive"]`)
+  `display: none`, so every `aria-controls` target and every panel's text is in
+  the markup and only the selected panel shows.
+- **The rules.** Rotation never runs on the canvas, under
+  `prefers-reduced-motion: reduce` (it stops, and the button hides, if that
+  starts matching mid-visit), or with fewer than two tabs. It pauses while the
+  pointer is over the section, the section is off screen or the document is
+  hidden, restarting the interval when the pause ends. It stops for good when
+  focus enters the section anywhere but the button, when the visitor picks a
+  tab (a trusted `pointerdown` on a tab, or an arrow, Home, End, Enter or Space
+  in the list) and on Pause; untrusted events are ignored. An advance never
+  moves focus and nothing sets `aria-live`. A runtime structure check (the
+  button before the Tabs' one own tab list, at most one panel rendered) stops
+  rotation when it fails; on the canvas the same check draws a canvas-check
+  problem on the control, rerun as the designer edits.
+- The package gains no runtime dependency: the control's closure is `react`,
+  `react/jsx-runtime` and `@webstudio-is/react-sdk/runtime`.
+  `@webstudio-is/sdk-components-react-radix` is a devDependency for the
+  template test only, which renders the template through upstream's real Tabs.
+  The builder's contrast check classifies the control as rendering its own
+  text. Nothing changes in the published-site runtime, the CLI or the
+  templates.
 
 **The record picker**, `settings-panel/controls/organizeos-record.tsx`, behind
 one marked branch in `settings-panel/controls/combined.tsx`, before the text

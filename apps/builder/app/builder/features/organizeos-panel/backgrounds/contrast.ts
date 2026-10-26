@@ -59,6 +59,7 @@ export const namedTextComponents = new Set([
   organizeos("Questions"),
   organizeos("FieldInput"),
   organizeos("FieldMessage"),
+  organizeos("RotationControl"),
 ]);
 
 /**

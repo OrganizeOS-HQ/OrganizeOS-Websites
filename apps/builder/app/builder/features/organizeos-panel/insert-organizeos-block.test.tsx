@@ -10,6 +10,7 @@ import {
   ws,
 } from "@webstudio-is/template";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
+import * as radixMetas from "@webstudio-is/sdk-components-react-radix/metas";
 import {
   ROOT_INSTANCE_ID,
   coreMetas,
@@ -109,6 +110,14 @@ registerContainers();
 $registeredComponentMetas.set(
   new Map(Object.entries({ ...defaultMetas, ...coreMetas }))
 );
+// Upstream's Radix metas, as the builder registers them: Rotating Tabs is
+// built on upstream's Tabs.
+registerComponentLibrary({
+  namespace: "@webstudio-is/sdk-components-react-radix",
+  components: {},
+  metas: radixMetas,
+  templates: {},
+});
 registerComponentLibrary({
   namespace: "@organizeos/site-components",
   components: {},
@@ -2135,5 +2144,91 @@ describe("completeOrganizeosFragment", () => {
         resources: new Map(),
       })
     ).toEqual({ status: "ready", fragment });
+  });
+});
+
+describe("Rotating Tabs", () => {
+  const rotatingTabs = "@organizeos/site-components:RotatingTabs";
+  const radix = "@webstudio-is/sdk-components-react-radix";
+  const getTabsRoots = () =>
+    [...$instances.get().values()].filter(
+      (instance) => instance.component === `${radix}:Tabs`
+    );
+
+  test("inserts unbound: no catalog data, no Resource and no binding, only its own activeTab variable", async () => {
+    // a project missing every catalog Resource: the block reads none of them
+    setProject({ resources: [], dataSources: [] });
+    const resources = $resources.get();
+
+    expect(await insertOrganizeosBlock(rotatingTabs)).toBe(true);
+
+    const [root, ...others] = getTabsRoots();
+    expect(others).toEqual([]);
+    expect($instances.get().get("bodyId")?.children).toEqual([
+      { type: "id", value: root.id },
+    ]);
+    expect($resources.get()).toBe(resources);
+    const dataSources = [...$dataSources.get().values()];
+    expect(dataSources).toEqual([
+      {
+        type: "variable",
+        id: expect.any(String),
+        scopeInstanceId: root.id,
+        name: "activeTab",
+        value: { type: "string", value: "0" },
+      },
+    ]);
+    const variable = encodeDataSourceVariable(dataSources[0].id);
+    const [control] = [...$instances.get().values()].filter(
+      (instance) =>
+        instance.component === "@organizeos/site-components:RotationControl"
+    );
+    const propsOf = (instanceId: string) =>
+      [...$props.get().values()]
+        .filter((prop) => prop.instanceId === instanceId)
+        .map(({ name, type, value }) => ({ name, type, value }));
+    expect(propsOf(root.id)).toEqual([
+      { name: "value", type: "expression", value: variable },
+    ]);
+    expect(propsOf(control.id)).toEqual([
+      { name: "value", type: "expression", value: variable },
+      {
+        name: "onValueChange",
+        type: "action",
+        value: [
+          { type: "execute", args: ["value"], code: `${variable} = value` },
+        ],
+      },
+    ]);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("the inserted section satisfies the content model with upstream's Radix metas registered", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(rotatingTabs)).toBe(true);
+    const [root] = getTabsRoots();
+    const errors: string[] = [];
+
+    expect(
+      isTreeSatisfyingContentModel({
+        instances: $instances.get(),
+        props: $props.get(),
+        metas: $registeredComponentMetas.get(),
+        instanceSelector: [root.id, "bodyId"],
+        onError: (message) => errors.push(message),
+      }),
+      errors.join("\n")
+    ).toBe(true);
+    expect(errors).toEqual([]);
+    // the control is a child of the Tabs, before its list
+    expect(
+      root.children.map((child) => $instances.get().get(child.value)?.component)
+    ).toEqual([
+      "@organizeos/site-components:RotationControl",
+      `${radix}:TabsList`,
+      `${radix}:TabsContent`,
+      `${radix}:TabsContent`,
+      `${radix}:TabsContent`,
+    ]);
   });
 });

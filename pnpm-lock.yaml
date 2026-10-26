@@ -2120,6 +2120,9 @@ importers:
       '@webstudio-is/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@webstudio-is/sdk-components-react-radix':
+        specifier: workspace:*
+        version: link:../sdk-components-react-radix
       '@webstudio-is/template':
         specifier: workspace:*
         version: link:../template
