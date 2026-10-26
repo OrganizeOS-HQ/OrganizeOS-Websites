@@ -93,6 +93,7 @@ export const rendersDesignerChildrenOnly = new Set([
   organizeos("Marquee"),
   organizeos("MarqueeTrack"),
   organizeos("ConvergenceField"),
+  organizeos("ShareCodeCarrier"),
 ]);
 
 /**
