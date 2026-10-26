@@ -1379,6 +1379,76 @@ options, and the limits found since in review):
 - No self-serve "Reconnect data": once the builder is enabled, nothing re-seeds
   a project's catalog, so a refused insert needs support to re-provision.
 
+**Rich Text styling spike** (W7a, 2026-10-26; OrganizeOS spec
+`docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md`, section 4.7).
+The question: can a component in this package that renders its own tree of
+`p`, `h2`, `ul`, `li`, `a` and `strong` as React elements, with no
+`dangerouslySetInnerHTML`, be styled per tag through `ws:descendant` the way
+upstream's Markdown Embed is, on the canvas and in a published build. Result:
+it works, with no fork change outside the package. W7 uses `ws:descendant`, and
+the class-per-tag fallback (`oos-rt-*` plus a style block of tokens) is not
+needed.
+
+- **How it was checked.** A throwaway `RichText` (a `forwardRef` root that
+  drops `value` and `children` and spreads the rest and the ref onto a `div`), a
+  meta with `contentModel.children: [descendantComponent]` and a `div` preset
+  of `display: contents`, and a template holding five styled `ws:descendant`
+  instances (` p`, ` h2`, ` li`, ` :where(strong, b)`, ` a`), all under the
+  `@organizeos/site-components` namespace. It was exported from the package,
+  built, and run through the CLI
+  (`webstudio build --template react-router --template vercel`) in a copy of
+  `fixtures/react-router-vercel` holding only that block; the site was then
+  built with `react-router build` and rendered through the built server
+  bundle. Unit checks covered `generateCss` (atomic and not), the component
+  generator and the canvas's selector code; the canvas was checked through that
+  code, not in a running builder. None of it was committed.
+- **The CSS generator is generic.** `generateCss` (`packages/sdk/src/css.ts`,
+  188 to 234) treats any `ws:descendant` by its `selector` prop and its
+  parent's instance id, with no list of components, and the preset rule
+  (lines 127 to 150) is written for whatever component's meta has one, when
+  the instance's tag (the meta's first preset key here) is used. The built
+  site's CSS held `div.w-rich-text{display:contents}` in the presets layer and
+  one rule per descendant under a class on the root
+  (`.cecbazs p{color:red}` and so on, atomic, as prebuild defaults,
+  `prebuild.ts:473`), and the server-rendered page carried those classes on
+  the root `div`, with the tree inside it.
+- **The page code.** The component generator writes nothing for a
+  `ws:descendant` (`packages/react-sdk/src/component-generator.ts:175`) and
+  passes the classes as `className`, so the root must spread the rest onto a
+  real element, as Markdown Embed does (`markdown-embed.tsx:14-26`), and must
+  ignore `children`. The page imported the block from the site's copy
+  (`../__organizeos__/components.js`), as for every block.
+- **The canvas is generic too.** `computeDescendantSelectors`
+  (`apps/builder/app/canvas/shared/styles.ts:328-364`) writes
+  `[data-ws-id="<parent>"] <selector>` for any parent, and the preset selector
+  is `div:where([data-ws-component="<component>"])` (line 414), both of which
+  matched the throwaway's rendered elements once the canvas's props
+  (`data-ws-id`, `data-ws-component`, `webstudio-component.tsx:616-635`)
+  reached its root through the spread. The canvas renders nothing for a
+  descendant (`webstudio-component.tsx:595` and 757), and the navigator and
+  the settings panel special-case `ws:descendant` alone, never its parent's
+  component (`navigator-tree.tsx:446`, `use-props-logic.ts:278`). The
+  content-model check reads the meta's `children` list as it does for any
+  component (`shared/content-model.ts`). The RSVP Form's Guests, Shift Options
+  and Questions already ship this way (above), which the spike confirms.
+- **Org script.** The prebuild check (`packages/cli/src/organizeos-org-script.ts`,
+  `classify`, from line 118) reads an instance's `tag`, its `tag` and
+  `data-ws-tag` props, its `dangerouslySetInnerHTML` prop and the embed
+  components. A Rich Text instance and its descendants have none of these, and
+  the build logged no paused-script line. The check does not see the tags the
+  component renders inside itself, so the component's own re-validation of
+  links and images (spec 4.7) is the only guard there.
+- **Caveats for W7.** With `display: contents` the root draws no box, so
+  styles a designer sets on the root itself (padding, a background) do not
+  show; spacing goes on a wrapper or on the descendants, as with Markdown
+  Embed. A descendant has no element on the canvas, so selecting one in the
+  navigator outlines nothing, as with Markdown Embed's. A descendant's selector is appended to the
+  root's class as it stands, so a comma list must sit inside `:where()` or
+  `:is()` (as Markdown Embed's ` :where(strong, b)` does), or it would style
+  matching elements across the page. With atomic styles off, the root's class
+  takes its name from the first descendant's label (`w-paragraph`), a cosmetic
+  quirk of upstream's naming.
+
 ## 10. Org script is paused
 
 **Decision (owner, 2026-10-21).** Until org sites move to `{sub}.organizeos.io`
