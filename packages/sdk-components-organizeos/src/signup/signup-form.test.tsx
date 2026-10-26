@@ -16,6 +16,7 @@ import requestCheckbox from "../__fixtures__/signups/request-checkbox.json";
 import requestContactForm from "../__fixtures__/signups/request-contact-form.json";
 import requestForm from "../__fixtures__/signups/request-form.json";
 import requestOrgDefaults from "../__fixtures__/signups/request-org-defaults.json";
+import requestShareCode from "../__fixtures__/signups/request-share-code.json";
 import responseConfirmEmail from "../__fixtures__/signups/response-confirm-email.json";
 import responseInvalidField from "../__fixtures__/signups/response-invalid-field.json";
 import responseInvalidRequest from "../__fixtures__/signups/response-invalid-request.json";
@@ -303,9 +304,140 @@ describe("parts", () => {
     expect(honeypot?.getAttribute("autocomplete")).toBe("off");
     expect(honeypot?.getAttribute("aria-hidden")).toBe("true");
   });
+
+  test("carries the code on a link a designer put inside the form", () => {
+    window.history.replaceState(null, "", "/get-involved?r=Code234567");
+    render(
+      <Sdk renderer={undefined}>
+        <SignupForm data={forms}>
+          <TestField name="email" label="Email" />
+          <a href="/donate/spring-drive">Give instead</a>
+          <a href="/privacy">Privacy</a>
+        </SignupForm>
+      </Sdk>
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Give instead" }));
+    expect(navigateTo).toHaveBeenCalledTimes(1);
+    expect(navigateTo).toHaveBeenCalledWith(
+      `${window.location.origin}/donate/spring-drive?r=Code234567`
+    );
+    // a link to one of the site's own pages carries nothing
+    const privacy = screen.getByRole("link", { name: "Privacy" });
+    privacy.addEventListener("click", (event) => event.preventDefault());
+    fireEvent.click(privacy);
+    expect(privacy.getAttribute("href")).toBe("/privacy");
+    expect(navigateTo).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("request body", () => {
+  /** The newsletter form of request-form.json, filled in as it is there. */
+  const submitNewsletter = (fetchMock: ReturnType<typeof stubFetch>) => {
+    const view = render(
+      <Block
+        record={newsletterId}
+        fields={[
+          ["email", "Email"],
+          ["first_name", "First name"],
+          ["last_name", "Last name"],
+        ]}
+      />
+    );
+    fill("Email", "ada@example.org");
+    fill("First name", "Ada");
+    fill("Last name", "Lovelace");
+    return {
+      ...view,
+      submit: async () => {
+        fireEvent.submit(getForm(view.container));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      },
+    };
+  };
+
+  test("with a share code in the address, the body matches request-share-code.json", async () => {
+    window.history.replaceState(null, "", "/get-involved?r=Code234567");
+    const fetchMock = answerWith(responseSubscribed);
+    await submitNewsletter(fetchMock).submit();
+    expect(sentBody(fetchMock)).toEqual(requestShareCode);
+  });
+
+  test("a code that is not one leaves the key out", async () => {
+    for (const search of [
+      "?r=bad",
+      "?r=Code23456O",
+      "?ref=Code234567",
+      "?r=",
+      "",
+    ]) {
+      window.history.replaceState(null, "", `/get-involved${search}`);
+      const fetchMock = answerWith(responseSubscribed);
+      const { unmount, submit } = submitNewsletter(fetchMock);
+      await submit();
+      const body = sentBody(fetchMock);
+      expect(body, search).toEqual(requestForm);
+      expect("referral_code" in body, search).toBe(false);
+      unmount();
+    }
+  });
+
+  test("reads the code at submit: one added after rendering is sent, one removed before submitting is not", async () => {
+    window.history.replaceState(null, "", "/get-involved");
+    let fetchMock = answerWith(responseSubscribed);
+    let view = submitNewsletter(fetchMock);
+    window.history.replaceState(null, "", "/get-involved?r=Code234567");
+    await view.submit();
+    expect(sentBody(fetchMock)).toEqual(requestShareCode);
+    view.unmount();
+
+    fetchMock = answerWith(responseSubscribed);
+    view = submitNewsletter(fetchMock);
+    window.history.replaceState(null, "", "/get-involved");
+    await view.submit();
+    expect(sentBody(fetchMock)).toEqual(requestForm);
+  });
+
+  test("a platform that refuses the code is asked again without it", async () => {
+    window.history.replaceState(null, "", "/get-involved?r=Code234567");
+    const answers = [responseInvalidRequest, responseSubscribed];
+    const fetchMock = stubFetch(async () => {
+      const fixture = answers.shift() as ResponseFixture;
+      return Response.json(fixture.body, { status: fixture.status });
+    });
+    const onStateChange = vi.fn();
+    const { container } = render(
+      <Block
+        record={newsletterId}
+        onStateChange={onStateChange}
+        fields={[
+          ["email", "Email"],
+          ["first_name", "First name"],
+          ["last_name", "Last name"],
+        ]}
+      />
+    );
+    fill("Email", "ada@example.org");
+    fill("First name", "Ada");
+    fill("Last name", "Lovelace");
+    fireEvent.submit(getForm(container));
+    await waitFor(() =>
+      expect(onStateChange).toHaveBeenLastCalledWith("success", "Thank you.")
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [first, second] = fetchMock.mock.calls.map(([input, init]) => {
+      expect(input).toBe("/api/public/site/v1/signups");
+      return JSON.parse(String(init?.body));
+    });
+    expect(first).toEqual(requestShareCode);
+    expect(second).toEqual(requestForm);
+    expect(second).not.toHaveProperty("referral_code");
+    // submitting, then success: the refusal never showed
+    expect(onStateChange.mock.calls.map(([state]) => state)).toEqual([
+      "submitting",
+      "success",
+    ]);
+  });
+
   test("a form's fields match request-form.json", async () => {
     window.history.replaceState(null, "", "/get-involved");
     const fetchMock = answerWith(responseSubscribed);
