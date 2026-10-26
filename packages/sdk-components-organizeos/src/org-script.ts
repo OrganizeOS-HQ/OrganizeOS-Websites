@@ -1,10 +1,21 @@
-import { elementComponent, tags } from "@webstudio-is/sdk";
+import { parseExpressionAt, type Expression } from "acorn";
+import {
+  collectionComponent,
+  elementComponent,
+  tags,
+  type Instance,
+  type Prop,
+} from "@webstudio-is/sdk";
 
 /**
  * Whether an org's own script may run on its Website: HTML Embeds, Content
- * Embeds, Markdown Embeds, the SVG `animate` and `set` elements, and the
- * site-wide custom code. It is off (owner decision, 2026-10-21); what orgs
- * saved is kept, and each org's next publish ships it again once this is on.
+ * Embeds, Markdown Embeds, the SVG `animate` and `set` elements, an element
+ * whose tag the builder does not offer, the `dangerouslySetInnerHTML` prop,
+ * the site-wide custom code, and the unsafe values (an address that can run
+ * script, `srcdoc`, an event handler attribute, an XML element on an HTML page
+ * and a redirect to an unsafe address). It is off (owner decision,
+ * 2026-10-21); what orgs saved is kept, and each org's next publish ships it
+ * again once this is on.
  *
  * Turn it on only when both hold (docs/ORGANIZEOS-FORK.md section 10):
  * - org sites are served from {sub}.organizeos.io and the old
@@ -131,8 +142,8 @@ export const tagPropNames: readonly string[] = ["data-ws-tag", "tag"];
  * `tag` alone. XML Node (category xml) writes the tag as the name of an XML
  * element (`urlset`, `url`, `loc`, `xhtml:link` in a sitemap) and adds a suffix
  * that no HTML element has, so it never makes a `script`. Its other risks are
- * not this rule's: "XML Node in an HTML page" is a path docs/ORGANIZEOS-FORK.md
- * section 10 lists as not covered by this pause.
+ * not this rule's: publishing leaves it out of an HTML page, and an XML page
+ * answers sandboxed (`xmlComponents`).
  */
 export const anyTagComponents: ReadonlySet<string> = new Set(["XmlNode"]);
 
@@ -176,6 +187,439 @@ export const withoutBlockedTagProps = <Props extends Record<string, unknown>>(
       name in props &&
       checksTagProp(component, name) &&
       elementTagMayRun(props[name], mayRun) === false
+    ) {
+      if (result === props) {
+        result = { ...props };
+      }
+      delete result[name];
+    }
+  }
+  return result;
+};
+
+/**
+ * The URL schemes an address may have while org script is paused. Any other
+ * scheme, `javascript:` and `data:` among them, can run script in the site's
+ * origin or load a document that does: React writes an address as it is, so a
+ * click, a frame, an object, a form or a client-side redirect would run it.
+ * `sms` cannot run script, and campaign sites use it ("Text JOIN to…").
+ */
+export const allowedUrlSchemes: ReadonlySet<string> = new Set([
+  "http",
+  "https",
+  "mailto",
+  "tel",
+  "sms",
+]);
+
+const urlSchemePattern = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+
+// The URL parser's first steps: leading and trailing C0 controls and spaces go,
+// then every tab, line feed and carriage return, wherever it is.
+const isC0OrSpace = (char: string) => char.charCodeAt(0) <= 0x20;
+const withoutTabsAndNewlines = (text: string) => text.replace(/[\t\n\r]/g, "");
+const trimStartOfUrl = (text: string) => {
+  let start = 0;
+  while (start < text.length && isC0OrSpace(text[start])) {
+    start += 1;
+  }
+  return text.slice(start);
+};
+const trimUrl = (text: string) => {
+  let end = text.length;
+  while (end > 0 && isC0OrSpace(text[end - 1])) {
+    end -= 1;
+  }
+  return trimStartOfUrl(text.slice(0, end));
+};
+
+const schemeMayRun = (scheme: string) =>
+  allowedUrlSchemes.has(scheme.slice(0, -1).toLowerCase());
+
+/**
+ * Whether an address may reach a published page or the canvas, read as the URL
+ * parser reads it. One with no scheme (a relative path, `//host`, `?query`,
+ * `#fragment`, the empty string) may, and so may one whose scheme is in
+ * `allowedUrlSchemes`; `javascript:`, `data:`, `vbscript:`, `blob:`, `file:`
+ * and `about:` may not, however they are spelled, spaced or split by tabs and
+ * newlines. The rule guards against script, not against where an address
+ * leads: a relative or protocol-relative address (`//evil.example`) can be an
+ * open redirect, never script in the site's origin.
+ */
+export const urlMayRun = (
+  url: string,
+  mayRun: boolean = orgScriptMayRun()
+): boolean => {
+  if (mayRun) {
+    return true;
+  }
+  const scheme = withoutTabsAndNewlines(trimUrl(url)).match(
+    urlSchemePattern
+  )?.[0];
+  return scheme === undefined || schemeMayRun(scheme);
+};
+
+/**
+ * Whether a value written as an address may run, as React writes it: `null`,
+ * `undefined`, a boolean and a function write no address; anything else is
+ * written as `String(value)`, so an array joins (`["javascript:x"]` is
+ * `javascript:x`) and an object is `[object Object]`. A symbol, or a value that
+ * cannot be made a string, is refused.
+ */
+export const urlValueMayRun = (
+  value: unknown,
+  mayRun: boolean = orgScriptMayRun()
+): boolean => {
+  if (mayRun) {
+    return true;
+  }
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === "boolean" ||
+    typeof value === "function"
+  ) {
+    return true;
+  }
+  if (typeof value === "symbol") {
+    return false;
+  }
+  try {
+    return urlMayRun(String(value), false);
+  } catch {
+    return false;
+  }
+};
+
+/** The fixed start of an expression's value, as far as the source fixes it */
+type FixedStart = {
+  text: string;
+  /** the start is the whole value */
+  complete: boolean;
+  /** the value is a string, so a `+` after it adds text */
+  string: boolean;
+};
+
+const noFixedStart: FixedStart = { text: "", complete: false, string: false };
+
+const fixedStartOf = (node: Expression): FixedStart => {
+  if (node.type === "Literal") {
+    if (node.regex !== undefined || node.bigint !== undefined) {
+      return noFixedStart;
+    }
+    if (typeof node.value === "string") {
+      return { text: node.value, complete: true, string: true };
+    }
+    if (
+      typeof node.value === "number" ||
+      typeof node.value === "boolean" ||
+      node.value === null
+    ) {
+      return { text: String(node.value), complete: true, string: false };
+    }
+    return noFixedStart;
+  }
+  if (node.type === "TemplateLiteral") {
+    const cooked = node.quasis[0]?.value.cooked;
+    if (typeof cooked !== "string") {
+      return noFixedStart;
+    }
+    return {
+      text: cooked,
+      complete: node.expressions.length === 0,
+      string: true,
+    };
+  }
+  if (node.type === "ParenthesizedExpression") {
+    return fixedStartOf(node.expression);
+  }
+  if (
+    node.type === "BinaryExpression" &&
+    node.operator === "+" &&
+    node.left.type !== "PrivateIdentifier"
+  ) {
+    const left = fixedStartOf(node.left);
+    if (left.string === false) {
+      return noFixedStart;
+    }
+    if (left.complete === false) {
+      return left;
+    }
+    const right = fixedStartOf(node.right);
+    return {
+      text: right.string || right.complete ? left.text + right.text : left.text,
+      complete: right.complete,
+      string: true,
+    };
+  }
+  // a variable, a member, a call, a sequence: nothing is fixed
+  return noFixedStart;
+};
+
+/**
+ * Whether the fixed start of an address decides its scheme, read as the URL
+ * parser reads the start of a URL: not empty, and either an allowed scheme, or
+ * no scheme whatever follows (a first character that is not an ASCII letter,
+ * or a character that cannot be in a scheme before any `:`). A start made only
+ * of scheme characters (`"java" + x`) decides nothing.
+ */
+const urlStartMayRun = (start: string) => {
+  const text = withoutTabsAndNewlines(trimStartOfUrl(start));
+  if (text === "") {
+    return false;
+  }
+  const scheme = text.match(urlSchemePattern)?.[0];
+  if (scheme !== undefined) {
+    return schemeMayRun(scheme);
+  }
+  return /^[A-Za-z]/.test(text) === false || /[^A-Za-z0-9+.-]/.test(text);
+};
+
+const expressionMayRun = (node: Expression): boolean => {
+  if (node.type === "ParenthesizedExpression") {
+    return expressionMayRun(node.expression);
+  }
+  if (node.type === "ConditionalExpression") {
+    return (
+      expressionMayRun(node.consequent) && expressionMayRun(node.alternate)
+    );
+  }
+  if (node.type === "LogicalExpression") {
+    return expressionMayRun(node.left) && expressionMayRun(node.right);
+  }
+  const start = fixedStartOf(node);
+  return start.complete
+    ? urlValueMayRun(start.text, false)
+    : urlStartMayRun(start.text);
+};
+
+const onlyWhitespace = /^\s*$/;
+
+/**
+ * Whether an address bound to an expression may run. Publishing cannot know
+ * what a variable, a Resource or a parameter holds when the page renders, so a
+ * bound address ships only when the start of its value is fixed in the source
+ * and decides the scheme: `"/events/" + x`, `` `https://${x}` ``,
+ * `"mailto:" + x`. A JSON literal is judged by its value. The whole string must
+ * be one expression; a conditional or a logical expression may run when both
+ * of its branches may. Anything else, a parse error included, is refused.
+ */
+export const urlExpressionMayRun = (
+  expression: string,
+  mayRun: boolean = orgScriptMayRun()
+): boolean => {
+  if (mayRun) {
+    return true;
+  }
+  try {
+    return urlValueMayRun(JSON.parse(expression), false);
+  } catch {
+    // not JSON: an expression
+  }
+  let node: Expression;
+  try {
+    node = parseExpressionAt(expression, 0, {
+      ecmaVersion: "latest",
+      preserveParens: true,
+    });
+  } catch {
+    return false;
+  }
+  if (
+    onlyWhitespace.test(expression.slice(0, node.start)) === false ||
+    onlyWhitespace.test(expression.slice(node.end)) === false
+  ) {
+    return false;
+  }
+  return expressionMayRun(node);
+};
+
+/**
+ * The props that hold an address, compared lower-cased: an HTML parser
+ * lower-cases attribute names (`HREF` is an `href`), and the generator and the
+ * canvas rename `formaction` and `xlink:href` to React's `formAction` and
+ * `xlinkHref` (`standardAttributesToReactProps`).
+ */
+export const urlPropNames: ReadonlySet<string> = new Set([
+  "href",
+  "xlink:href",
+  "xlinkhref",
+  "src",
+  "action",
+  "formaction",
+  "data",
+]);
+
+export const isUrlPropName = (name: string): boolean =>
+  urlPropNames.has(name.toLowerCase());
+
+/** `srcdoc` in any spelling (React's is `srcDoc`): its markup runs in the
+ * page's own origin. */
+export const isFrameDocumentName = (name: string): boolean =>
+  name.toLowerCase() === "srcdoc";
+
+/** An event handler attribute: React writes a string one on a custom element. */
+export const isEventAttributeName = (name: string): boolean =>
+  /^on./i.test(name);
+
+/**
+ * The components of category xml. Publishing leaves them out of every HTML and
+ * text page (a custom element keeps every attribute, `onmouseover` included),
+ * and an XML page answers sandboxed, so on an XML page they ship every prop.
+ */
+export const xmlComponents: ReadonlySet<string> = new Set([
+  "XmlNode",
+  "XmlTime",
+]);
+
+/** Components whose bound `src` cannot run script: an image. */
+export const inertSrcComponents: ReadonlySet<string> = new Set(["Image"]);
+
+/** `ws:element` tags whose bound `src` cannot run script: media and images. */
+export const inertSrcTags: ReadonlySet<string> = new Set([
+  "img",
+  "video",
+  "audio",
+  "source",
+  "track",
+  "input",
+]);
+
+/** Components whose bound `href` cannot run script: a `<link>` in the head. */
+export const inertHrefComponents: ReadonlySet<string> = new Set(["HeadLink"]);
+
+/** Components that hold records in `data`, never an address. */
+export const recordDataComponents: ReadonlySet<string> = new Set([
+  collectionComponent,
+  "@organizeos/site-components:SignupForm",
+  "@organizeos/site-components:RsvpForm",
+]);
+
+type InstanceKind = Pick<Instance, "component" | "tag">;
+
+/**
+ * Whether `data` on this instance is never an address: it is one only on an
+ * `object`. So a holder of records and a `ws:element` that is not an `object`
+ * (a plain attribute there) keep their `data` whatever it holds, and every
+ * other holder is held to the rule, whatever the value's shape: React writes
+ * `<object data={["javascript:…"]}>` as `data="javascript:…"`.
+ */
+export const recordDataHolder = (instance: InstanceKind): boolean =>
+  recordDataComponents.has(instance.component) ||
+  (instance.component === elementComponent && instance.tag !== "object");
+
+const bindingIsInert = (instance: InstanceKind, name: string) =>
+  (name === "src" &&
+    (inertSrcComponents.has(instance.component) ||
+      (instance.component === elementComponent &&
+        inertSrcTags.has(instance.tag ?? "")))) ||
+  (name === "href" && inertHrefComponents.has(instance.component));
+
+/**
+ * Whether publishing keeps this prop. Every prop of an XML element ships. A
+ * `srcdoc` never does, nor an `on…` prop that is not an action. An address
+ * ships when it is of a type that cannot hold one (a page, an asset, a
+ * resource, an action, a number, a boolean), when its static value may run
+ * whatever its shape, or when it is bound and its fixed start decides the
+ * scheme or the binding cannot run script (`inertSrcComponents`,
+ * `inertSrcTags`, `inertHrefComponents`). `data` is an address only on an
+ * `object` (`recordDataHolder`).
+ */
+export const propMayShip = (
+  instance: InstanceKind,
+  prop: Prop,
+  mayRun: boolean = orgScriptMayRun()
+): boolean => {
+  if (mayRun || xmlComponents.has(instance.component)) {
+    return true;
+  }
+  if (isFrameDocumentName(prop.name)) {
+    return false;
+  }
+  if (isEventAttributeName(prop.name)) {
+    return prop.type === "action";
+  }
+  if (isUrlPropName(prop.name) === false) {
+    return true;
+  }
+  const name = prop.name.toLowerCase();
+  if (name === "data" && recordDataHolder(instance)) {
+    return true;
+  }
+  switch (prop.type) {
+    case "page":
+    case "asset":
+    case "resource":
+    case "action":
+    case "number":
+    case "boolean":
+      return true;
+    case "string":
+    case "json":
+    case "string[]":
+    // An animation's settings: an object, which React writes as
+    // [object Object] (the OrganizeOS Animate Children's `action`)
+    case "animationAction":
+      return urlValueMayRun(prop.value, false);
+    case "expression":
+      return (
+        urlExpressionMayRun(prop.value, false) || bindingIsInert(instance, name)
+      );
+    case "parameter":
+      return bindingIsInert(instance, name);
+    default:
+      return false;
+  }
+};
+
+/**
+ * Whether a page's redirect ships: an expression, evaluated per request, held
+ * to the rule for a bound address. A client-side navigation to the page would
+ * follow it with `window.location`, so a `javascript:` target would run.
+ */
+export const pageRedirectMayShip = (
+  page: { meta: { redirect?: string } },
+  mayRun: boolean = orgScriptMayRun()
+): boolean =>
+  page.meta.redirect === undefined ||
+  urlExpressionMayRun(page.meta.redirect, mayRun);
+
+/** Whether a project redirect ships: its target is a static address. */
+export const projectRedirectMayShip = (
+  redirect: { new: string },
+  mayRun: boolean = orgScriptMayRun()
+): boolean => urlMayRun(redirect.new, mayRun);
+
+/**
+ * The props without what may run script on the canvas, for a component that
+ * receives them, its own or passed in by a parent: what
+ * `withoutBlockedTagProps` drops, every `srcdoc`, every `on…` value that is
+ * not a function, and every address value that `urlValueMayRun` refuses,
+ * whatever its shape (`data` stays only on a `recordDataHolder`). The same
+ * object when nothing goes, never a changed input, and the input itself when
+ * the switch is on.
+ */
+export const withoutPausedProps = <Props extends Record<string, unknown>>(
+  instance: InstanceKind,
+  props: Props,
+  mayRun: boolean = orgScriptMayRun()
+): Props => {
+  if (mayRun) {
+    return props;
+  }
+  let result = withoutBlockedTagProps(instance.component, props, mayRun);
+  for (const [name, value] of Object.entries(result)) {
+    // a missing value writes nothing
+    if (value === undefined || value === null) {
+      continue;
+    }
+    if (
+      isFrameDocumentName(name) ||
+      (isEventAttributeName(name) && typeof value !== "function") ||
+      (isUrlPropName(name) &&
+        (name.toLowerCase() === "data" && recordDataHolder(instance)) ===
+          false &&
+        urlValueMayRun(value, false) === false)
     ) {
       if (result === props) {
         result = { ...props };

@@ -2101,6 +2101,9 @@ importers:
       '@webstudio-is/icons':
         specifier: workspace:*
         version: link:../icons
+      acorn:
+        specifier: ^8.14.1
+        version: 8.14.1
     devDependencies:
       '@testing-library/dom':
         specifier: ^10.4.0
@@ -16360,7 +16363,7 @@ snapshots:
   miniflare@3.20240701.0:
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
-      acorn: 8.14.1
+      acorn: 8.16.0
       acorn-walk: 8.3.4
       capnp-ts: 0.7.0
       exit-hook: 2.2.1
