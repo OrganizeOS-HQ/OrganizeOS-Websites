@@ -295,7 +295,8 @@ export const Canvas = () => {
       templates: radixTemplates,
     });
     // OrganizeOS fork: the OrganizeOS blocks (packages/sdk-components-organizeos).
-    // Their metas are hidden, so the Components panel skips them. Every build
+    // Their metas are hidden, so upstream's grouping in the Components panel
+    // skips them, and the panel's OrganizeOS section lists them. Every build
     // that uses a block records this namespace, so it can never change.
     registerComponentLibrary({
       namespace: "@organizeos/site-components",

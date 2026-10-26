@@ -84,7 +84,7 @@ OrganizeOS integration (all optional; each feature ships dark until its variable
 - `ORGANIZEOS_SESSION_BINDING` — `observe` (default; unset or blank reads as `observe`) or `enforce`: whether a builder session whose OrganizeOS session has ended still reads as a session (§5, "Session binding"). Consulted only when `ORGANIZEOS_SSO_PUBLIC_KEY` is set. An env change reaches functions only on a new deployment, so redeploy after setting it.
 - `ORGANIZEOS_PUBLISH_REPO` + `ORGANIZEOS_PUBLISH_GITHUB_TOKEN` — Publish dispatches `publish-site.yml` in that repo instead of Webstudio's cloud publisher.
 - `ORGANIZEOS_APP_URL` — the OrganizeOS app the builder hands users back to (login page, the builder menu's "Back to OrganizeOS", the org's Website area). Defaults to `https://app.organizeos.org`.
-- `ORGANIZEOS_BLOCKS_ORG_IDS` — the rollout allowlist for the OrganizeOS panel and blocks (§9): comma-separated organization ids. Unset or empty offers them to no org. Read by the builder loader, which resolves the project's org from its owner's service email (`org+<organizationId>@svc.organizeos.internal`) and hands the result to the builder as `organizeosSite.blocksEnabled`.
+- `ORGANIZEOS_BLOCKS_ORG_IDS` — the rollout allowlist for the OrganizeOS blocks and the rest of the OrganizeOS builder UI (§9, In the builder): comma-separated organization ids. Unset or empty offers them to no org. Read by the builder loader, which resolves the project's org from its owner's service email (`org+<organizationId>@svc.organizeos.internal`) and hands the result to the builder as `organizeosSite.blocksEnabled`.
 - `PUBLISHER_HOST` — the platform base domain an org's site is served from (`<subdomain>.<PUBLISHER_HOST>`); with the org subdomain mirrored into `Project.domain` (§5) every address the builder shows is the real one. **Defaults to `organizeos.org` in code**, so an unset env is correct rather than dangerous; upstream defaulted it to its own staging domain, which is what made a missing value advertise a Webstudio address. Set it only to point a deployment somewhere else.
 - `TRPC_SERVER_API_TOKEN` — the builder's service token. The publish executor uses it to sync the build **and** to report the outcome to `POST /internal/publish-status` (§5).
 
@@ -218,7 +218,7 @@ No blocking browser gate. Upstream interrupted Firefox and Safari with a full-sc
 
 ## 7. OrganizeOS overlay (keep minimal for upstream merges)
 
-Changes confined to: env/config, the proprietary-package removal (this doc §2), auth/SSO + provisioning files (`services/auth-strategy/organizeos*`, `routes/internal.*`, `shared/db/provision.server.ts`, `shared/db/organizeos-*.server.ts`, `shared/db/collections-sync.server.ts`, and the data catalog `shared/db/resource-presets.server.ts` and `shared/db/signup-form-preset.server.tsx`, whose ids `shared/organizeos-preset-ids.ts` derives for the server and the browser alike), the blocks' allowlist (`ORGANIZEOS_BLOCKS_ORG_IDS` in `env/env.server.ts`, passed to `resolveOrganizeosSite` by the loader in `routes/_ui.(builder).tsx`, and synced to the canvas by one marked `organizeosSite` line in `shared/sync/sync-stores.ts`), the catalog's survival of its bindings (one marked branch each in `shared/instance-utils/mutation.ts` `deleteInstanceMutable`, `shared/data-variables.ts` `deleteVariableMutable` and `settings-panel/variable-popover.tsx`: a Resource whose id is a derived v5 UUID is never deleted with a binding, §9), the session binding (`services/auth-strategy/organizeos-session.server.ts`, called from `extractAuthFromRequest` in `shared/context.server.ts`, `findAuthenticatedUser` in `services/auth.server.ts` and the loader of `routes/oauth.ws.authorize.tsx`; the two optional fields and the `4-organizeos` cookie version in `services/auth.server.utils.ts`; the fields carried by `services/token.server.ts`, `routes/oauth.ws.authorize.tsx`, `routes/oauth.ws.token.ts` and the `ws` callback in `services/builder-auth.server.ts`; `ORGANIZEOS_SESSION_BINDING` in `env/env.server.ts`; tests in `organizeos-session.server.test.ts`, `routes-tests/oauth-ws-authorize.server.test.ts` and `env/env.server.test.ts`, and cases in `services/token.server.test.ts` and `shared/context.server.test.ts`; §5), the publish seam (`services/organizeos-publisher.server.ts`, `shared/db/publish-status.server.ts`, `publish-site.yml`), asset serving (`shared/asset-response.server.ts`, the three `routes/cgi.*` loaders, `asset-uploader`'s S3 client), frame protection (`shared/frame-protection.ts` and the `headers` exports of `root.tsx`, `routes/_ui.(builder).tsx`, `routes/_ui.dashboard.tsx` and `routes/_ui.$.tsx`), branding (`shared/branding.ts`; the OrganizeOS mark v3 in `shared/organizeos-logo.tsx`, the OrganizeOS repo's `LOGO_MARK_PATHS` drawn inline in the brand's in-app pair like its `BrandMark`, ink on light and cream on dark, shown where upstream showed its logo in `auth/login.tsx`, `features/menu/menu-button.tsx` and `builder/shared/loading.tsx` (those two on the dark topbar colour, so `on="dark"`) and `shared/error/error-message.client.tsx`, and as the OrganizeOS tab's icon; and `public/favicon.ico`, OrganizeOS's teal browser-tab favicon at 16, 32 and 48 px, packed by ImageMagick, `convert favicon-16x16.png favicon-32x32.png favicon-48x48.png favicon.ico`, from the OrganizeOS repo's `client/public/favicon-16x16.png` and `favicon-32x32.png` and a 48 px frame drawn from its `client/public/brand/organizeos-favicon.svg` by the favicon call of its `client/scripts/generate-pwa-icons.mjs`, `sharp(svg, { density: 300 }).resize(48, 48, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png({ compressionLevel: 9 })`, run with the builder's sharp 0.33.5), the OrganizeOS-only chrome behind `$organizeosSite` (`features/publish/organizeos-publish*.ts*`, small branches in `menu.tsx`, `topbar.tsx`, `publish.tsx`), the OrganizeOS blocks (§9: the `packages/sdk-components-organizeos` package, `@organizeos/site-components`, a `workspace:*` dependency in `apps/builder/package.json` and `packages/cli/package.json`, and so in `pnpm-lock.yaml`, registered by one `registerComponentLibrary` call in `canvas/canvas.tsx`; their panel, `features/organizeos-panel/*`, with its tab in `sidebar-left/sidebar-left.tsx` (shown only for an org on the allowlist) and `sidebar-left/types.ts`, one branch in the canvas's drop handler, `canvas/shared/use-drag-drop.ts`, so a dropped block is bound to the project's data like a clicked one, and an `onInsert` option on `insertWebstudioFragmentAt` (`shared/instance-utils/insert.ts`) that completes the insert in its own transaction, and an `onWrap` option on `wrapInstance` (`shared/instance-utils/mutation.ts`), a third optional parameter called inside the wrap's transaction after the content-model check, through which the Motion area writes its Animate Children's props in the wrap's undo step (§9), with two cases in `shared/instance-utils/mutation.test.tsx` (its writes undo with the wrap; it is not called for a refused `li`); their record picker, `settings-panel/controls/organizeos-record.tsx`, behind one branch in `settings-panel/controls/combined.tsx`; and the CLI's copy of their build into every published site, `packages/cli/src/organizeos-components.ts`, called from short hooks in `prebuild.ts` and `framework-react-router.ts`, with cases in `prebuild.test.ts`; `organizeos-components.ts` also copies the package's `LICENSE` and computes the source-offer URL, used by one more short hook in `prebuild.ts`; `html.tsx` carries a second marked change, the source offer (its head links and the visible Source link at the end of the body, §1), with cases in `prebuild.test.ts` and `organizeos-components.test.ts`; the fixture `fixtures/react-router-vercel` carries copies of the cache module and of the html route change), the org script pause (§10: `packages/sdk-components-organizeos/src/org-script.ts`, which the blocks package exports as `@organizeos/site-components/org-script` and builds with its own `vite.build.config.ts`; `canvas/organizeos-org-script.tsx`, with one marked change in `canvas/canvas.tsx` that registers upstream's base library through it, and four marked changes in `canvas/features/webstudio-component/webstudio-component.tsx` (a skip in `useInstanceProps` of a `dangerouslySetInnerHTML` prop, a skip there of a tag the builder does not offer, whether it is `instance.tag` or a `data-ws-tag` or `tag` prop on any component but `ws:element` and XML Node, a fallback to `div` in `WebstudioComponentCanvas` and `WebstudioComponentPreview` for a `ws:element` whose tag it does not offer, and a drop of such a tag prop from the props a parent passes in, in both) that keep both off every component; one marked branch in `shared/project-settings/section-general.tsx`; `features/publish/organizeos-publish-paused-script.ts`, whose banner is in `organizeos-publish.tsx`; and the CLI's `packages/cli/src/organizeos-org-script.ts`, called from one short marked hook in `prebuild.ts`; with tests beside each, among them `canvas/organizeos-org-script.wiring.test.ts` and `canvas/organizeos-org-script.props.test.tsx`), the guards' wiring (the `check:*` scripts and `checks` in the root `package.json`, and `.github/workflows/main.yml`, both of which also build the blocks' package before the tests), and the forced CLI route-template patches for the reverse-proxy host/auth/cache (§8), among them the published site's resource cache (`packages/cli/templates/react-router/app/organizeos-resource-cache.ts`, which one marked change in each of the react-router route templates `html.tsx`, `xml.tsx` and `text.tsx` calls, with its tests in `packages/cli/src/organizeos-resource-cache.test.ts` and cases in `prebuild.test.ts`), and two bug fixes worth offering upstream: `packages/cli/src/asset-files.ts` waits for a failed download's write stream to close before deleting its `.tmp` file (otherwise a fast failure could delete it before the stream created it, leaving it behind and flaking `asset-files.test.ts`), and `createLocalStyleSource` in `apps/builder/app/shared/tailwind/tailwind.ts` writes an element's style source selection back when one already existed (otherwise an element that kept a token from a pasted `<style>` class rule lost every Tailwind style, with a case in `tailwind.test.tsx`). Avoid deep edits to shared component `.tsx`; isolate OrganizeOS code so `upstream main` can be merged with minimal conflict.
+Changes confined to: env/config, the proprietary-package removal (this doc §2), auth/SSO + provisioning files (`services/auth-strategy/organizeos*`, `routes/internal.*`, `shared/db/provision.server.ts`, `shared/db/organizeos-*.server.ts`, `shared/db/collections-sync.server.ts`, and the data catalog `shared/db/resource-presets.server.ts` and `shared/db/signup-form-preset.server.tsx`, whose ids `shared/organizeos-preset-ids.ts` derives for the server and the browser alike), the blocks' allowlist (`ORGANIZEOS_BLOCKS_ORG_IDS` in `env/env.server.ts`, passed to `resolveOrganizeosSite` by the loader in `routes/_ui.(builder).tsx`, and synced to the canvas by one marked `organizeosSite` line in `shared/sync/sync-stores.ts`), the catalog's survival of its bindings (one marked branch each in `shared/instance-utils/mutation.ts` `deleteInstanceMutable`, `shared/data-variables.ts` `deleteVariableMutable` and `settings-panel/variable-popover.tsx`: a Resource whose id is a derived v5 UUID is never deleted with a binding, §9), the session binding (`services/auth-strategy/organizeos-session.server.ts`, called from `extractAuthFromRequest` in `shared/context.server.ts`, `findAuthenticatedUser` in `services/auth.server.ts` and the loader of `routes/oauth.ws.authorize.tsx`; the two optional fields and the `4-organizeos` cookie version in `services/auth.server.utils.ts`; the fields carried by `services/token.server.ts`, `routes/oauth.ws.authorize.tsx`, `routes/oauth.ws.token.ts` and the `ws` callback in `services/builder-auth.server.ts`; `ORGANIZEOS_SESSION_BINDING` in `env/env.server.ts`; tests in `organizeos-session.server.test.ts`, `routes-tests/oauth-ws-authorize.server.test.ts` and `env/env.server.test.ts`, and cases in `services/token.server.test.ts` and `shared/context.server.test.ts`; §5), the publish seam (`services/organizeos-publisher.server.ts`, `shared/db/publish-status.server.ts`, `publish-site.yml`), asset serving (`shared/asset-response.server.ts`, the three `routes/cgi.*` loaders, `asset-uploader`'s S3 client), frame protection (`shared/frame-protection.ts` and the `headers` exports of `root.tsx`, `routes/_ui.(builder).tsx`, `routes/_ui.dashboard.tsx` and `routes/_ui.$.tsx`), branding (`shared/branding.ts`; the OrganizeOS mark v3 in `shared/organizeos-logo.tsx`, the OrganizeOS repo's `LOGO_MARK_PATHS` drawn inline in the brand's in-app pair like its `BrandMark`, ink on light and cream on dark, shown where upstream showed its logo in `auth/login.tsx`, `features/menu/menu-button.tsx` and `builder/shared/loading.tsx` (those two on the dark topbar colour, so `on="dark"`) and `shared/error/error-message.client.tsx`, and as the OrganizeOS tab's icon; and `public/favicon.ico`, OrganizeOS's teal browser-tab favicon at 16, 32 and 48 px, packed by ImageMagick, `convert favicon-16x16.png favicon-32x32.png favicon-48x48.png favicon.ico`, from the OrganizeOS repo's `client/public/favicon-16x16.png` and `favicon-32x32.png` and a 48 px frame drawn from its `client/public/brand/organizeos-favicon.svg` by the favicon call of its `client/scripts/generate-pwa-icons.mjs`, `sharp(svg, { density: 300 }).resize(48, 48, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png({ compressionLevel: 9 })`, run with the builder's sharp 0.33.5), the OrganizeOS-only chrome behind `$organizeosSite` (`features/publish/organizeos-publish*.ts*`, small branches in `menu.tsx`, `topbar.tsx`, `publish.tsx`), the OrganizeOS blocks (§9: the `packages/sdk-components-organizeos` package, `@organizeos/site-components`, a `workspace:*` dependency in `apps/builder/package.json` and `packages/cli/package.json`, and so in `pnpm-lock.yaml`, registered by one `registerComponentLibrary` call in `canvas/canvas.tsx`; their builder UI, `features/organizeos-panel/*`: the blocks listed by one marked OrganizeOS section in `features/components/components.tsx` (its group, heading and links, and a click or Enter on a block routed to `insertOrganizeosBlock`), the OrganizeOS tab in `sidebar-left/sidebar-left.tsx` (shown only for an org on the allowlist) and `sidebar-left/types.ts`, one branch in the canvas's drop handler, `canvas/shared/use-drag-drop.ts`, so a dropped block is bound to the project's data like a clicked one, and `features/organizeos-panel/overlay.wiring.test.ts` pinning the marked lines; an `onInsert` option on `insertWebstudioFragmentAt` (`shared/instance-utils/insert.ts`) that completes the insert in its own transaction, and an `onWrap` option on `wrapInstance` (`shared/instance-utils/mutation.ts`), a third optional parameter called inside the wrap's transaction after the content-model check, through which the Motion area writes its Animate Children's props in the wrap's undo step (§9), with two cases in `shared/instance-utils/mutation.test.tsx` (its writes undo with the wrap; it is not called for a refused `li`); their record picker, `settings-panel/controls/organizeos-record.tsx`, behind one branch in `settings-panel/controls/combined.tsx`; and the CLI's copy of their build into every published site, `packages/cli/src/organizeos-components.ts`, called from short hooks in `prebuild.ts` and `framework-react-router.ts`, with cases in `prebuild.test.ts`; `organizeos-components.ts` also copies the package's `LICENSE` and computes the source-offer URL, used by one more short hook in `prebuild.ts`; `html.tsx` carries a second marked change, the source offer (its head links and the visible Source link at the end of the body, §1), with cases in `prebuild.test.ts` and `organizeos-components.test.ts`; the fixture `fixtures/react-router-vercel` carries copies of the cache module and of the html route change), the org script pause (§10: `packages/sdk-components-organizeos/src/org-script.ts`, which the blocks package exports as `@organizeos/site-components/org-script` and builds with its own `vite.build.config.ts`; `canvas/organizeos-org-script.tsx`, with one marked change in `canvas/canvas.tsx` that registers upstream's base library through it, and four marked changes in `canvas/features/webstudio-component/webstudio-component.tsx` (a skip in `useInstanceProps` of a `dangerouslySetInnerHTML` prop, a skip there of a tag the builder does not offer, whether it is `instance.tag` or a `data-ws-tag` or `tag` prop on any component but `ws:element` and XML Node, a fallback to `div` in `WebstudioComponentCanvas` and `WebstudioComponentPreview` for a `ws:element` whose tag it does not offer, and a drop of such a tag prop from the props a parent passes in, in both) that keep both off every component; one marked branch in `shared/project-settings/section-general.tsx`; `features/publish/organizeos-publish-paused-script.ts`, whose banner is in `organizeos-publish.tsx`; and the CLI's `packages/cli/src/organizeos-org-script.ts`, called from one short marked hook in `prebuild.ts`; with tests beside each, among them `canvas/organizeos-org-script.wiring.test.ts` and `canvas/organizeos-org-script.props.test.tsx`), the guards' wiring (the `check:*` scripts and `checks` in the root `package.json`, and `.github/workflows/main.yml`, both of which also build the blocks' package before the tests), and the forced CLI route-template patches for the reverse-proxy host/auth/cache (§8), among them the published site's resource cache (`packages/cli/templates/react-router/app/organizeos-resource-cache.ts`, which one marked change in each of the react-router route templates `html.tsx`, `xml.tsx` and `text.tsx` calls, with its tests in `packages/cli/src/organizeos-resource-cache.test.ts` and cases in `prebuild.test.ts`), and two bug fixes worth offering upstream: `packages/cli/src/asset-files.ts` waits for a failed download's write stream to close before deleting its `.tmp` file (otherwise a fast failure could delete it before the stream created it, leaving it behind and flaking `asset-files.test.ts`), and `createLocalStyleSource` in `apps/builder/app/shared/tailwind/tailwind.ts` writes an element's style source selection back when one already existed (otherwise an element that kept a token from a pasted `<style>` class rule lost every Tailwind style, with a case in `tailwind.test.tsx`). Avoid deep edits to shared component `.tsx`; isolate OrganizeOS code so `upstream main` can be merged with minimal conflict.
 
 ## 8. Published-site route template patches
 
@@ -318,11 +318,12 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   which names a form field and wires its **Field Label**, **Field Input** and
   **Field Message** together. `src/form/` holds what later families share: part
   registration, the submit helper, the canvas check.
-- Every meta is `category: "hidden"`, so the Components panel never lists the
-  blocks. The **Signup Form template** binds the root's `state` to a
+- Every meta is `category: "hidden"`, so upstream's grouping in the
+  Components panel skips the blocks, and the panel's OrganizeOS section lists
+  them (In the builder, below). The **Signup Form template** binds the root's `state` to a
   `formState` variable, shows its state boxes with `ws:show`, styles the parts
   through the tokens "OS Field", "OS Input", "OS Button" and "OS Message", and
-  leaves `data` unbound for the panel. The four tokens are defined once, in
+  leaves `data` unbound for the insert. The four tokens are defined once, in
   `src/shared/form-tokens.ts`, for the Signup Form and the RSVP Form alike: a
   project that has both reuses one token each, so the two templates cannot
   drift apart.
@@ -442,7 +443,7 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     no Shift Options, and that it takes guests and no Guests.
 - The **RSVP Form template** (`src/rsvp-form.template.tsx`) binds the root's
   `state` to an `rsvpState` variable and its `onStateChange` to set it, and
-  leaves `data` unbound for the panel and `record` for the designer. A "Form
+  leaves `data` unbound for the insert and `record` for the designer. A "Form
   Content" box, shown in `initial`, `submitting` and `error`, holds a heading,
   the four Fields, Guests, Shift Options, Questions, Email Consent (placeholder
   text: "Also email me news from this organization") and a Submit Button
@@ -481,36 +482,44 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   block records that name in `Instance.component`: the namespace can never
   change.
 
-**The panel**, `apps/builder/app/builder/features/organizeos-panel/`:
+**In the builder**, `apps/builder/app/builder/features/organizeos-panel/`:
 
-- **Offered to the orgs on `ORGANIZEOS_BLOCKS_ORG_IDS` only** (§4). The
-  builder loader resolves the project's org and sets
-  `organizeosSite.blocksEnabled`; without it the tab is hidden and
-  `insertOrganizeosBlock` refuses with a toast ("OrganizeOS blocks are not
-  available for this site yet") and writes nothing, which covers a drop too
-  (the canvas receives `organizeosSite` through the sync pool). A project no
-  org owns never gets the panel. This gate is client-side and is a rollout
-  gate, not an enforcement boundary (known limits).
-- A left-sidebar tab after Components, with the OrganizeOS mark, hidden in
-  content mode and disabled on text pages, as Components is. It lists the
-  namespace's templates in sections (Sections, then Events, then Signups) with
-  the Components panel's cards and drag, then the org's data (the Data section,
-  below). A section names its blocks (Sections: Rotating Tabs, Marquee,
-  Convergence Field; Events: Event List, Event Card, RSVP Form), skips a name
-  that is not registered yet, and a registered block no section names is
-  offered after the others, under "More".
-  Sections holds blocks that read no platform data, so it has no workspace
-  link and its inserts bind nothing.
-- Events ends with a link to the org's events area,
-  `<platform URL>/<subdomain>/events` (the Website area's URL while the builder
-  does not know the subdomain), "Manage events in OrganizeOS". The builder
-  depends on that platform route; the OrganizeOS side lists it, beside the
-  Embeds hub's, under "Contract with the fork".
-- Signups ends with a link to the org's Embeds hub,
-  `<platform URL>/<subdomain>/pages/embeds`, where the org makes its forms (the
-  Website area's URL while the builder does not know the subdomain). The
-  builder depends on that platform route; the OrganizeOS side lists it under
-  "Contract with the fork".
+- **Offered to the orgs on `ORGANIZEOS_BLOCKS_ORG_IDS` only** (§4): the
+  Components panel's OrganizeOS section and the OrganizeOS tab. The builder
+  loader resolves the project's org and sets `organizeosSite.blocksEnabled`;
+  without it neither is offered and `insertOrganizeosBlock` refuses with a
+  toast ("OrganizeOS blocks are not available for this site yet") and writes
+  nothing, which covers a drop too (the canvas receives `organizeosSite`
+  through the sync pool). A project no org owns never gets them. This gate is
+  client-side and is a rollout gate, not an enforcement boundary (known
+  limits).
+- **The OrganizeOS section** of the Components panel
+  (`components-section.tsx`, mounted by marked lines in
+  `features/components/components.tsx`): one section, headed "OrganizeOS",
+  directly after General. It lists the namespace's templates with the
+  Components panel's own cards, in its sections' order (Sections: Rotating
+  Tabs, Marquee, Convergence Field; Events: Event List, Event Card, RSVP Form;
+  Signups: Signup Form), skips a name that is not registered yet, and offers a
+  registered block no section names after the others (the "More" rule). The
+  blocks' metas stay `category: "hidden"`, so upstream's grouping skips them
+  and this section adds them. "Find components" finds them by label, ranked
+  with upstream's matches in the one "Found" list. A click, Enter on a found
+  block, and a drag (upstream's drag, which accepts every registered template)
+  all insert through `insertOrganizeosBlock`, so each block arrives bound to
+  the project's data. There is no section on an XML page, where the panel
+  shows only the XML and data categories. The Sections blocks read no
+  platform data, so their inserts bind nothing.
+- **The OrganizeOS tab**, a left-sidebar tab after Components, with the
+  OrganizeOS mark, hidden in content mode and disabled on text pages, as
+  Components is. It holds Section background and Motion (below), then the
+  org's data (the Data section, below).
+- Two links sit at the foot of the OrganizeOS section, Events first. "Manage
+  events in OrganizeOS" opens the org's events area,
+  `<platform URL>/<subdomain>/events`, and "Manage forms in OrganizeOS" its
+  Embeds hub, `<platform URL>/<subdomain>/pages/embeds`, where the org makes
+  its forms; each is the Website area's URL while the builder does not know
+  the subdomain. The builder depends on both platform routes; the OrganizeOS
+  side lists them under "Contract with the fork".
 - **Data loads only where it is used, never page-wide.** The org's data is a
   catalog of GET Resources with deterministic ids: Events, Fundraisers and
   Stats (provisioning), one per public collection (collections-sync), and
@@ -540,11 +549,13 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   builder loads it while the page is open, and a published site loads it on
   that page alone. A block's own binding does not count: it is visible inside
   the block only.
-- **Insert completion**, `insert-organizeos-block.ts`. A clicked block and a
-  dropped one both go through it: the canvas's drop handler
-  (`canvas/shared/use-drag-drop.ts`) has one marked branch for the namespace.
-  What a block reads from the catalog is a table, `organizeosBlockData`, keyed
-  by the template's key (the `component` the panel inserts, not the root's
+- **Insert completion**, `insert-organizeos-block.ts`. A clicked block, a
+  block chosen with Enter and a dropped one all go through it: the Components
+  panel's `handleInsert` (`features/components/components.tsx`) and the
+  canvas's drop handler (`canvas/shared/use-drag-drop.ts`) each have one
+  marked branch for the namespace. What a block reads from the catalog is a
+  table, `organizeosBlockData`, keyed by the template's key (the `component`
+  the Components panel inserts, not the root's
   component: an Event List's root is a `ws:element`). An entry names the
   catalog Resource (`events`, `forms` or `upcoming-events`), the name of the
   block's binding, and the props that read it: an instance (`root`, or the
@@ -649,9 +660,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
 - **Preset ids**: `apps/builder/app/shared/organizeos-preset-ids.ts`, one
   WebCrypto `uuidV5` that the server and the browser share, pinned by tests to
   the ids the replaced `node:crypto` code produced, and `findCatalogResources`,
-  which both sides use to list the catalog. Provisioning and the panel derive
-  the same ids, so a re-provision rewrites the panel's Forms and Upcoming
-  Events Resources instead of adding a second. The names of those two Resources
+  which both sides use to list the catalog. Provisioning and the builder
+  derive the same ids, so a re-provision rewrites the Forms and Upcoming
+  Events Resources a block's insert added instead of adding a second. The names of those two Resources
   and of the bindings the Events blocks bring live there too.
 - **The catalog in provisioning** (`shared/db/resource-presets.server.ts`):
   Events, Fundraisers and Stats are written on every provision, Forms and
@@ -680,9 +691,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   `/newsletter`, nothing moves there: a seeded page stays where it is (its
   form is still re-synced) and a build without one gets none.
 
-**Section backgrounds**, the panel's "Section background" area
+**Section backgrounds**, the OrganizeOS tab's "Section background" area
 (`features/organizeos-panel/section-background.tsx`, with its modules in
-`features/organizeos-panel/backgrounds/`), between the blocks and the Data
+`features/organizeos-panel/backgrounds/`), above Motion and the Data
 section. For the selected element (not the Body or Global Root) it applies a
 Bloom, Wash, Solid tint or Image with scrim preset colored from Global Root's
 color variables (or a built-in palette), and reports the WCAG AA contrast of
@@ -705,7 +716,8 @@ the text inside it.
   Design: `docs/superpowers/specs/2026-10-25-builder-section-backgrounds-design.md`
   in the OrganizeOS repo.
 
-**Rotating Tabs**, the panel's first Sections block: upstream's Radix Tabs that
+**Rotating Tabs**, the first block of the Components panel's OrganizeOS
+section: upstream's Radix Tabs that
 show each panel in turn behind a Pause button (Track 2 phase 2). Design:
 `docs/superpowers/specs/2026-10-25-builder-rotating-tabs-design.md` in the
 OrganizeOS repo, plan `docs/superpowers/plans/2026-10-25-builder-rotating-tabs.md`.
@@ -769,7 +781,8 @@ OrganizeOS repo, plan `docs/superpowers/plans/2026-10-25-builder-rotating-tabs.m
   text. Nothing changes in the published-site runtime, the CLI or the
   templates.
 
-**Marquee**, the panel's second Sections block: a row of items that drifts
+**Marquee**, the second block of the Components panel's OrganizeOS section: a
+row of items that drifts
 in a seamless loop behind a Pause button (Track 2 phase 3B). Design:
 `docs/superpowers/specs/2026-10-26-builder-timed-motion-design.md` in the
 OrganizeOS repo (its section 12 amends the earlier sections), plan
@@ -842,7 +855,8 @@ OrganizeOS repo (its section 12 amends the earlier sections), plan
   three). The builder's contrast check classifies the Pause button as
   rendering its own text and Marquee and the track as rendering the
   designer's children only. The paused-script publish fixture covers Marquee
-  through the panel's sections. Nothing changes in the published-site runtime,
+  through the Components panel's OrganizeOS section. Nothing changes in the
+  published-site runtime,
   the CLI or the templates.
 
 **Motion presets**, part A, the scroll-driven half of Track 2 phase 3: a
@@ -935,7 +949,8 @@ timelines gets the static page.
   text of its own. Nothing changes in the published-site runtime packages,
   the CLI or the templates.
 
-**Convergence Field**, the panel's third Sections block: the brand's field of
+**Convergence Field**, the third block of the Components panel's OrganizeOS
+section: the brand's field of
 the mark's arms, each pointing at a focus in 45-degree steps and fading from
 faint near a clear zone to solid at the edges, drawn behind the block's
 children as inline SVG (Track 2 phase 3, "field animation"). Design:
@@ -1071,7 +1086,8 @@ slice"`, so it covers the element and is cropped on its narrower axis.
 - The package gains no runtime dependency, and the shipped closure no bare
   specifier (the field uses `react` and `@webstudio-is/react-sdk/runtime`, as
   Animate Children does). The paused-script and contrast coverage fixtures
-  cover it through the panel's sections. Nothing changes in the
+  cover it through the Components panel's OrganizeOS section. Nothing changes
+  in the
   published-site runtime packages, the CLI or the templates.
 
 **The record picker**, `settings-panel/controls/organizeos-record.tsx`, behind
@@ -1115,7 +1131,8 @@ The RSVP Form's `record` is a select over the events in its computed `data`
   was unpublished, deleted or made private, or has not loaded). With no events
   data (loading, unbound, or the loader's error body) a hint says to reload the
   builder, then to contact support. An empty list is data: the select is empty,
-  and the panel's "Manage events in OrganizeOS" link is where the org makes one.
+  and the "Manage events in OrganizeOS" link at the foot of the Components
+  panel's OrganizeOS section is where the org makes one.
 
 **Shipping in published sites**, `packages/cli/src/organizeos-components.ts`:
 
@@ -1215,7 +1232,8 @@ The RSVP Form's `record` is a select over the events in its computed `data`
   depends on it: without `s-maxage` (or `public` with `max-age`) every page
   view calls the platform again, and without `stale-if-error` a platform
   failure shows at once.
-- The Embeds hub and events area routes the panel links to
+- The Embeds hub and events area routes the links at the foot of the
+  Components panel's OrganizeOS section lead to
   (`/<subdomain>/pages/embeds`, `/<subdomain>/events`), which the OrganizeOS
   contract lists with its environment variables.
 - Both sides build to the contract fixtures in OrganizeOS's
@@ -1248,7 +1266,8 @@ them ignore them.
 **Known limits** (OrganizeOS spec, section 12, items 15 to 18, with the
 options, and the limits found since in review):
 
-- **Rollout gate.** The panel and the blocks are offered only to the orgs on
+- **Rollout gate.** The OrganizeOS blocks and the rest of the OrganizeOS
+  builder UI (§9, In the builder) are offered only to the orgs on
   `ORGANIZEOS_BLOCKS_ORG_IDS`. A page with a Signup Form or an Events block
   loads its Resource (`GET /v1/forms`, `GET /v1/events?upcoming=true`, and
   `GET /v1/events` for an RSVP Form) on every view of that page (no longer of
@@ -1271,7 +1290,8 @@ options, and the limits found since in review):
   it is republished. So an org joins the allowlist only after it has
   republished on that deploy and its `/v1` call rate has been observed. The
   allowlist is a rollout gate, not an enforcement boundary: it decides who is
-  offered the panel, and nothing more. Pasting or duplicating a block (`insertWebstudioFragmentCopy`)
+  offered the OrganizeOS blocks and the rest of the OrganizeOS builder UI (§9,
+  In the builder), and nothing more. Pasting or duplicating a block (`insertWebstudioFragmentCopy`)
   is not gated; the canvas registers the namespace for every project; the CLI
   copies the package into every site it builds; and removing an org from the
   list changes none of that, leaving its blocks and published sites as they
@@ -1623,12 +1643,14 @@ icon's SVG loses it, and the canvas shows that at once.
 elements, upstream's Image and Time, the package's own components, a collection
 and `ws:descendant` style rules: no embed, no `tag` or `data-ws-tag` prop and no raw HTML property, so
 the pause drops none of them. `features/publish/organizeos-publish-paused-script.blocks.test.tsx`
-inserts every block the OrganizeOS panel lists into one page, through the
-panel's own insert with its bindings, and fails if `findPausedScript` lists
-anything there, or if `dropOrgScript` changes the bundle or logs a line. It
-reads the CLI's module by path, as the panel's tests read the package's
-fixtures, so one fixture feeds both, and a block added to the panel is covered
-without editing the test.
+inserts every block the Components panel's OrganizeOS section lists into one
+page, through `insertOrganizeosBlock`, the section's own insert, with its
+bindings, and fails if `findPausedScript` lists anything there, or if
+`dropOrgScript` changes the bundle or logs a line. It reads the CLI's module by
+path, as the OrganizeOS section's tests read the package's fixtures, so one
+fixture feeds both, and a block added to the section is covered without
+editing the test. The section lists the namespace's templates only, so the
+embeds, hidden by category (above), never appear in it.
 
 **Paths left alone, on purpose.** None of the upstream insert, paste and
 duplicate paths is gated: the Radix, YouTube and Vimeo templates (which insert

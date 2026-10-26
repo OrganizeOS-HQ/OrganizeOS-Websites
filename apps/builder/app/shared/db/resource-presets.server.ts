@@ -22,7 +22,7 @@ import {
  * builder and on a published page, only when its scope is an instance on the
  * page or `:root`, and data loads only where it is used: a use brings its own
  * binding, scoped to the instance that uses it (a Signup Form's root, or a
- * page the OrganizeOS panel adds the Resource to), which references the
+ * page the builder adds the Resource to), which references the
  * catalog Resource by id. Provisioning writes no binding. The unscoped
  * bindings it used to write never loaded; it removes each one nothing
  * references, and leaves the rest (removeUnusedPresetBindings).
@@ -41,9 +41,9 @@ import {
  * All ids are derived DETERMINISTICALLY from (projectId, key) so seeding is
  * idempotent: re-provisioning updates the same Resource in place (e.g.
  * rotating the token value) instead of duplicating it. The derivation lives in
- * shared/organizeos-preset-ids.ts, because the builder's OrganizeOS panel
- * derives the same ids in the browser: it adds the Forms Resource when a block
- * first uses it, and a re-provision then rewrites that same Resource.
+ * shared/organizeos-preset-ids.ts, because the builder derives the same ids
+ * in the browser: a block's insert adds the Forms Resource when a block first
+ * uses it, and a re-provision then rewrites that same Resource.
  */
 
 type V1ResourcePreset = {
@@ -56,7 +56,7 @@ type V1ResourcePreset = {
    * Which builds a provision writes the preset to:
    * - "always": every org project, on every provision;
    * - "when-present": only a build that already has its Resource, which is
-   *   rewritten whole. It is never added: the OrganizeOS panel creates it when
+   *   rewritten whole. It is never added: a block's insert creates it when
    *   a block first uses it.
    */
   seeding: "always" | "when-present";
@@ -67,10 +67,10 @@ type V1ResourcePreset = {
  * public GET DTOs from Phase 1 (see the OrganizeOS ledger repo). Write surfaces
  * (donate/signup form submission) are a separate mechanism and not seeded here.
  * Forms is the org's published forms, which the OrganizeOS Signup Form block
- * reads through its `data` prop; the panel creates it on the first insert.
- * Upcoming Events is Events without the events already over, which the Event
- * List and Event Card blocks read; the panel creates it on the first insert,
- * like Forms.
+ * reads through its `data` prop; a block's insert creates it on the first
+ * insert. Upcoming Events is Events without the events already over, which the
+ * Event List and Event Card blocks read; a block's insert creates it on the
+ * first insert, like Forms.
  */
 export const V1_RESOURCE_PRESETS: readonly V1ResourcePreset[] = [
   { key: "events", label: "Events", path: "/events", seeding: "always" },
@@ -214,8 +214,8 @@ export const readV1PresetSeed = async ({
 };
 
 /**
- * Build one catalog Resource per public collection, which the OrganizeOS panel
- * lists next to the static ones. Pure (async only because the id derivation
+ * Build one catalog Resource per public collection, which the builder lists
+ * next to the static ones. Pure (async only because the id derivation
  * is). Ids derive from (projectId, slug), so a rename keeps them and only
  * updates the names.
  *

@@ -118,10 +118,12 @@ const panels: PanelConfig[] = [
       text: false,
     },
   },
-  // OrganizeOS fork: the OrganizeOS blocks (Signup Form and the families after
-  // it) are hidden from Components and listed in a panel of their own, which
-  // binds each to the project's data as it inserts it. Offered only to orgs on
-  // the blocks' allowlist (see getAvailablePanels).
+  // OrganizeOS fork: the OrganizeOS tab, holding the org's data catalog and,
+  // until each moves to the right-hand panel, the OrganizeOS tools that act on
+  // the selection (organizeos-panel.tsx). The OrganizeOS blocks are listed in
+  // the Components panel's OrganizeOS section, which binds each to the
+  // project's data as it inserts it. Offered only to orgs on the blocks'
+  // allowlist (see getAvailablePanels).
   {
     name: "organizeos",
     label: "OrganizeOS",
@@ -158,7 +160,7 @@ const panels: PanelConfig[] = [
   },
 ];
 
-// OrganizeOS fork: the OrganizeOS panel only where the org may use it.
+// OrganizeOS fork: the OrganizeOS tab only where the org may use it.
 const getAvailablePanels = (isOrganizeosPanelAvailable: boolean) =>
   panels.filter(
     (panel) => panel.name !== "organizeos" || isOrganizeosPanelAvailable
