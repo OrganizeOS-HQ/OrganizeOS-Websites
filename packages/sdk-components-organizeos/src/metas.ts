@@ -16,3 +16,4 @@ export { meta as AnimateChildren } from "./animate/animate-children.ws";
 export { meta as Marquee } from "./marquee/marquee.ws";
 export { meta as MarqueePauseButton } from "./marquee/marquee-pause-button.ws";
 export { meta as MarqueeTrack } from "./marquee/marquee-track.ws";
+export { meta as ConvergenceField } from "./field/convergence-field.ws";

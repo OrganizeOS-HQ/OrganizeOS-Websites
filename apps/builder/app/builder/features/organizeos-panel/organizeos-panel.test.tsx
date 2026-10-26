@@ -72,6 +72,15 @@ describe("groupOrganizeosBlocks", () => {
               component: `${namespace}:Marquee`,
             }),
           },
+          {
+            name: `${namespace}:ConvergenceField`,
+            label: "Convergence Field",
+            description: organizeosTemplates.ConvergenceField.description,
+            icon: organizeosTemplates.ConvergenceField.icon,
+            firstInstance: expect.objectContaining({
+              component: `${namespace}:ConvergenceField`,
+            }),
+          },
         ],
       },
       {
@@ -135,7 +144,7 @@ describe("groupOrganizeosBlocks", () => {
     );
   });
 
-  test("Marquee has its own icon, not one of an upstream component", () => {
+  test("Marquee and Convergence Field have their own icons, not one of an upstream component", () => {
     const upstreamIcons = new Set(
       [
         ...Object.values(defaultMetas),
@@ -143,8 +152,16 @@ describe("groupOrganizeosBlocks", () => {
         ...Object.values(coreMetas),
       ].map((meta) => (meta as WsComponentMeta).icon)
     );
-    expect(organizeosTemplates.Marquee.icon).toEqual(expect.any(String));
-    expect(upstreamIcons.has(organizeosTemplates.Marquee.icon)).toBe(false);
+    for (const template of [
+      organizeosTemplates.Marquee,
+      organizeosTemplates.ConvergenceField,
+    ]) {
+      expect(template.icon).toEqual(expect.any(String));
+      expect(upstreamIcons.has(template.icon)).toBe(false);
+    }
+    expect(organizeosTemplates.ConvergenceField.icon).not.toBe(
+      organizeosTemplates.Marquee.icon
+    );
   });
 
   test("still offers a block no section names, after the others", () => {
@@ -162,7 +179,14 @@ describe("groupOrganizeosBlocks", () => {
         section.blocks.map((block) => block.name),
       ])
     ).toEqual([
-      ["Sections", [`${namespace}:RotatingTabs`, `${namespace}:Marquee`]],
+      [
+        "Sections",
+        [
+          `${namespace}:RotatingTabs`,
+          `${namespace}:Marquee`,
+          `${namespace}:ConvergenceField`,
+        ],
+      ],
       [
         "Events",
         [
@@ -188,7 +212,14 @@ describe("groupOrganizeosBlocks", () => {
         section.blocks.map((block) => block.name),
       ])
     ).toEqual([
-      ["Sections", [`${namespace}:RotatingTabs`, `${namespace}:Marquee`]],
+      [
+        "Sections",
+        [
+          `${namespace}:RotatingTabs`,
+          `${namespace}:Marquee`,
+          `${namespace}:ConvergenceField`,
+        ],
+      ],
       ["Events", [`${namespace}:EventList`, `${namespace}:EventCard`]],
       ["Signups", [`${namespace}:SignupForm`]],
     ]);

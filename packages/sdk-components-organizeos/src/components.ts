@@ -14,3 +14,4 @@ export { AnimateChildren } from "./animate/animate-children";
 export { Marquee } from "./marquee/marquee";
 export { MarqueePauseButton } from "./marquee/marquee-pause-button";
 export { MarqueeTrack } from "./marquee/marquee-track";
+export { ConvergenceField } from "./field/convergence-field";

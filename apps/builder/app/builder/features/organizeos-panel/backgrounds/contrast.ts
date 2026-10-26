@@ -92,6 +92,20 @@ export const rendersDesignerChildrenOnly = new Set([
   organizeos("AnimateChildren"),
   organizeos("Marquee"),
   organizeos("MarqueeTrack"),
+  organizeos("ConvergenceField"),
+]);
+
+/**
+ * OrganizeOS components that draw something behind their children the check
+ * cannot read, by registered name, with the reason it gives (spec 10.3). Their
+ * own background layers are under it, and a child's layers above it, so a
+ * child with an opaque background (a scrim) still passes.
+ */
+export const rendersBackgroundLayer = new Map([
+  [
+    organizeos("ConvergenceField"),
+    "a Convergence Field draws behind this text",
+  ],
 ]);
 
 /** Above this many background colors after any layer, the check gives up. */
@@ -148,7 +162,8 @@ const cantCheck = (reason: string): never => {
 /** A layer in the background stack, bottom to top. */
 type StackLayer =
   | { type: "colors"; colors: Rgba[]; gradient?: boolean }
-  | { type: "image" };
+  /** `reason`: what to report when nothing covers this image */
+  | { type: "image"; reason?: string };
 
 const keywordOf = (value: StyleValue) =>
   value.type === "keyword" ? value.value.toLowerCase() : undefined;
@@ -282,9 +297,24 @@ const createChecker = (model: StyleObjectModel) => {
     }
   };
 
-  /** One instance's layers, bottom to top (spec 4.3). */
+  /**
+   * One instance's layers, bottom to top (spec 4.3), and above them the
+   * image-like layer of a component that draws behind its children.
+   */
   const layersOf = (selector: InstanceSelector): StackLayer[] =>
     memo(`layers:${selector.join(",")}`, () => {
+      const own = ownLayersOf(selector);
+      const component = $instances.get().get(selector[0])?.component;
+      const reason =
+        component === undefined
+          ? undefined
+          : rendersBackgroundLayer.get(component);
+      return reason === undefined ? own : [...own, { type: "image", reason }];
+    });
+
+  /** One instance's own background layers, bottom to top. */
+  const ownLayersOf = (selector: InstanceSelector): StackLayer[] =>
+    memo(`own-layers:${selector.join(",")}`, () => {
       const color = backgroundColorOf(selector);
       const items = imageItemsOf(selector);
       if (color.a === 0 && items.length === 0) {
@@ -381,11 +411,13 @@ const compositeStack = (layers: StackLayer[]) => {
     ["white", { overBlack: white, overWhite: white }],
   ]);
   let imageBacked = false;
+  let imageReason: string | undefined;
   let layersAboveImage = 0;
   for (const layer of layers) {
     if (layer.type === "image") {
       set = new Map([["image", { overBlack: black, overWhite: white }]]);
       imageBacked = true;
+      imageReason = layer.reason;
       layersAboveImage = 0;
       continue;
     }
@@ -409,7 +441,7 @@ const compositeStack = (layers: StackLayer[]) => {
     set = next;
   }
   if (imageBacked && layersAboveImage === 0) {
-    return cantCheck("add a scrim layer above the image");
+    return cantCheck(imageReason ?? "add a scrim layer above the image");
   }
   return Array.from(set.values());
 };

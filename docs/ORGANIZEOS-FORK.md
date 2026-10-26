@@ -495,9 +495,10 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   content mode and disabled on text pages, as Components is. It lists the
   namespace's templates in sections (Sections, then Events, then Signups) with
   the Components panel's cards and drag, then the org's data (the Data section,
-  below). A section names its blocks (Sections: Rotating Tabs, Marquee;
-  Events: Event List, Event Card, RSVP Form), skips a name that is not registered yet, and a
-  registered block no section names is offered after the others, under "More".
+  below). A section names its blocks (Sections: Rotating Tabs, Marquee,
+  Convergence Field; Events: Event List, Event Card, RSVP Form), skips a name
+  that is not registered yet, and a registered block no section names is
+  offered after the others, under "More".
   Sections holds blocks that read no platform data, so it has no workspace
   link and its inserts bind nothing.
 - Events ends with a link to the org's events area,
@@ -898,14 +899,16 @@ timelines gets the static page.
   write `translate`, `scale`, `rotate` and `opacity` as tuples and units,
   which play.
 - **The canvas play hook**, `src/hooks.ts` (the package's `hooks` entry, which
-  `canvas/canvas.tsx` already registers): on Navigator select it flags the
-  closest Animate Children of the selected path with the memory prop
-  `data-ws-animation-can-play-on-canvas` (upstream's Navigator reads it for
-  its icon), and every select and unselect first clears the instance it
-  flagged last, so a wrapper removed by undo or delete and brought back is
-  never left playing unselected. On the canvas an Animate Children plays only
-  with that flag or its action's "Run on canvas" (`isPinned`); preview and
-  published pages ignore both.
+  `canvas/canvas.tsx` already registers): on Navigator select it walks the
+  selected path outward and flags the first Animate Children or Convergence
+  Field it meets (nearest wins when one is nested in the other) with the
+  memory prop `data-ws-animation-can-play-on-canvas` (upstream's Navigator
+  reads it for its icon), and every select and unselect first clears the
+  instance it flagged last, so a block removed by undo or delete and brought
+  back is never left playing unselected. On the canvas an Animate Children
+  plays only with that flag or its action's "Run on canvas" (`isPinned`), a
+  Convergence Field only with the flag; preview and published pages ignore
+  both.
 - **The Motion area** (`features/organizeos-panel/motion.tsx`, presets in
   `motion/presets.ts`), after Section background. Its target is the selected
   Animate Children, else the selection's parent if that is one, else the
@@ -931,6 +934,145 @@ timelines gets the static page.
 - The builder's contrast check classifies Animate Children as rendering no
   text of its own. Nothing changes in the published-site runtime packages,
   the CLI or the templates.
+
+**Convergence Field**, the panel's third Sections block: the brand's field of
+the mark's arms, each pointing at a focus in 45-degree steps and fading from
+faint near a clear zone to solid at the edges, drawn behind the block's
+children as inline SVG (Track 2 phase 3, "field animation"). Design:
+`docs/superpowers/specs/2026-10-26-builder-convergence-field-design.md` in the
+OrganizeOS repo (its section 10 amends the earlier sections; owner decision:
+Settle turns arms 45 degrees into place), plan
+`docs/superpowers/plans/2026-10-26-builder-convergence-field.md` (its
+"Amendments from review" take precedence over its task text).
+
+- **The block** (`src/field/`, registered as
+  `@organizeos/site-components:ConvergenceField`, meta `category: "hidden"`):
+  a `div` with every prop but the field's passed through, content model
+  `instance` with `instance` children, `position: relative` and
+  `isolation: isolate` by its preset. It renders a decorative `svg`
+  (`aria-hidden`, `focusable="false"`, absolute at `inset: 0`, `z-index: -1`,
+  `pointer-events: none`) and then the children, so the field sits above the
+  element's own background and below its content. The template
+  (`src/convergence-field.template.tsx`) is a Band root, `min-height: 560px`,
+  padding, the night background `#0B1A1F`, holding a centred Box with a heading
+  and a line of text in the clear zone.
+- **Props**, each clamped by the runtime (a bound expression may give
+  anything; anything else falls back to the default): **Shape** (Band, the
+  default, Wide, Panel, Square, Tall), **Density** (24..96, default 40),
+  **Focus X** and **Focus Y** (10..90%, default 50), **Zone width** and
+  **Zone height** (10..90%, defaults 60 and 50, read as the clear ellipse's
+  diameters), **Inner color** and **Outer color** (defaults `#3FC9E0` aqua and
+  `#F4EFE6` cream), **Motion** (None, the default, or Settle).
+- **Shape and cropping.** The field is drawn in a fixed box chosen by Shape
+  (Band 1800 by 600, Wide 1600 by 900, Panel 1600 by 800, Square 1000 by 1000,
+  Tall 900 by 1200 units) and scaled with `preserveAspectRatio="xMidYMid
+slice"`, so it covers the element and is cropped on its narrower axis.
+  Focus and zone are percentages of the box, never of the element: nothing is
+  measured, so the server and the client render the identical SVG and it
+  hydrates without a mismatch. The help text recommends the Shape closest to
+  the element's aspect, and Tall for sections taller than wide on phones.
+- **Density is box units.** Density is the generator's grid `spacing` in box
+  units, the same on every Shape (a Wide box is 1600 units across). The clamp
+  bounds the arm count: 398 arms at the defaults (Band), 604 on Wide, 1,814 at
+  density 24 on Wide, and under 2,500 anywhere inside the clamps (the
+  homepage: thesis band 534, pillars 214). Each clear-zone radius is further
+  held to 0.8 of the focus-to-nearest-edge distance on its axis, since at the
+  edge the generator's fade divides by zero (every arm solid) and past it the
+  field is empty; the generator itself is unchanged.
+- **Drawing.** `defs` holds two arm groups, `{id}-arm-plus` and
+  `{id}-arm-minus`, each the arm path centred by
+  `translate(-21.8 -64.165)`, and each arm is a `use` with the homepage's
+  `transform` attribute referencing one or the other by the grid parity of
+  `(i + j)`. One `g` per fade level carries
+  `fill: color-mix(in srgb, <outer> k%, <inner>)` and its opacity, the
+  homepage's level math with the brand variables replaced by the two colors.
+  Ids come from `useId()`, so two fields never share one, and are used for
+  `id` and `href` only, never in a CSS `url()`. The colors reach the DOM only
+  as a `fill` value in React's `style` object, and only after `validColor`
+  accepts them: `#hex`; `rgb()`, `rgba()`, `hsl()`, `hsla()`, `oklch()`,
+  `oklab()` and `color()` with plain arguments; a named color; or
+  `var(--name)` with an optional fallback of the same grammar. Anything else
+  (`red; background: url(x)`, an unbalanced parenthesis, a brace, a comment,
+  a `url()` fallback) is the default. The SVG carries no designer markup, no
+  script and no event attribute, so nothing here falls under §10.
+- **One generator, two copies.** The fork cannot import from the OrganizeOS
+  repository, so `src/field/generate.ts` is a verbatim copy of the homepage's
+  generator (`client/lib/marketing/convergence-field.ts`: `convergenceField`,
+  `zoneDistance`, `LEVELS`, the types) plus the arm path, its centring offset,
+  the arm transform and the fade level math from
+  `client/components/marketing/convergence-field.tsx`, with a header naming
+  the source commit. `src/field/__fixtures__/convergence-field.fixture.json`
+  is a byte-for-byte copy of OrganizeOS's
+  `client/tests/fixtures/marketing/convergence-field.fixture.json` (the
+  homepage generator's output on fixed cases: the homepage's two uses, each
+  Shape at the defaults, density 24 and 96, focus 10/10 and 90/90, a zone
+  touching the edge), and `generate.test.ts` holds the copy to every case
+  exactly. OrganizeOS's own test holds its generator to its copy, and its CI
+  downloads this file from `main` and `cmp`s it with its own. Neither copy is
+  changed alone.
+- **Changing the generator** is a two-repository change, in this order (also
+  in `__fixtures__/README.md`): in OrganizeOS, change the generator and run
+  `npx tsx scripts/write-convergence-field-fixture.ts` from `client/`; copy
+  the written file here with `cp`, check it with `cmp`, change `generate.ts`
+  to match, update the commits in its header and the README, and merge the
+  fork's change first; then open the OrganizeOS pull request with the
+  generator and the fixture, whose CI comparison is red only while the change
+  is half landed.
+- **The nested `.prettierrc.yaml`** in `src/field/__fixtures__/` sets
+  `rangeEnd: 0` for `*.fixture.json`: the pre-commit hook runs Prettier on
+  staged JSON, and reformatting the fixture would break the byte-for-byte
+  comparison with OrganizeOS's copy (which OrganizeOS keeps out of Prettier
+  through `client/.prettierignore`). Formatting the empty range leaves the file
+  as it is; the file repeats `trailingComma: es5`, since a nested config
+  replaces the root's rather than merging with it. Tests read the fixture with
+  `readFileSync` and `JSON.parse`, never a JSON import, which would make the
+  typecheck infer a huge literal type.
+- **Settle** (`use-settle.ts`). With Motion Settle, after mount, the runtime
+  registers `--os-field-settle` (`<number>`, inherited, initial `0`) with
+  `CSS.registerProperty` and animates the `svg` with keyframes
+  `[{ "--os-field-settle": 1 }, { "--os-field-settle": 0 }]` on
+  `new ViewTimeline({ subject: root })`, `rangeStart: "entry 0%"`,
+  `rangeEnd: "entry 80%"`, `easing: "ease-out"`, `fill: "both"`. The two arm
+  groups carry `rotate: calc(var(--os-field-settle) * 45deg)` and `-45deg`,
+  which compose after the path's centring transform, so every arm turns about
+  its centre from 45 degrees off (the sign alternating by grid parity) into
+  place as the element's top enters the viewport; the property reaches each
+  arm by inheritance through its `use`. One animation drives the field, and
+  only two elements carry the `calc`. At rest, cancelled or unregistered the
+  property is 0 or unset and the field is exactly the static one: settle only
+  rotates arms and never hides anything.
+- **When it does not settle.** Under `prefers-reduced-motion: reduce` (with a
+  change listener that cancels the animation when it turns on; nothing
+  restarts on its own); in a browser without `ViewTimeline`,
+  `CSS.registerProperty` (jsdom has no `window.CSS` at all) or
+  `element.animate`, with part A's "unsupported" note on the canvas; inside a
+  scroll container other than the page, by part A's `findScrollContainer`
+  (an ancestor whose block-axis overflow is `hidden`, `auto` or `scroll`;
+  `clip` is fine), with part A's overflow note; and on the canvas unless the
+  play flag is set (`canPlay` is `renderer !== "canvas" || flag === true`; the
+  field has no action, so nothing pins it). A second registration in the same
+  document throws `InvalidModificationError`, which the runtime takes as
+  registered, so registration is remembered by the document itself (a module
+  flag could not tell the builder's document from the canvas's); any other
+  registration error leaves the field static with the unsupported note. The
+  animation is cancelled on unmount and when Motion changes. The notes are a
+  `CanvasCheck` after the children, as Animate Children's are, so they render
+  on the canvas only.
+- **Settle cost.** A registered property animates on the main thread: the
+  browser recomputes the two groups' rotation each frame and re-renders the
+  `use` instances. The PR's manual pass measures frame time at density 24 on
+  a 4x CPU throttle; if it is over budget, Settle floors the density.
+- **Contrast.** The builder's contrast check classifies the root as rendering
+  the designer's children only and, through `rendersBackgroundLayer` in
+  `backgrounds/contrast.ts`, pushes an image layer above the root's own
+  layers even when it has no color or image of its own, so text inside a
+  Convergence Field reports "Can't check: a Convergence Field draws behind
+  this text", while a child with an opaque background (a scrim) still passes.
+- The package gains no runtime dependency, and the shipped closure no bare
+  specifier (the field uses `react` and `@webstudio-is/react-sdk/runtime`, as
+  Animate Children does). The paused-script and contrast coverage fixtures
+  cover it through the panel's sections. Nothing changes in the
+  published-site runtime packages, the CLI or the templates.
 
 **The record picker**, `settings-panel/controls/organizeos-record.tsx`, behind
 one marked branch in `settings-panel/controls/combined.tsx`, before the text

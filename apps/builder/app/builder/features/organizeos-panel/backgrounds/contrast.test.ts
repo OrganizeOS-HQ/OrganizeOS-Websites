@@ -8,6 +8,7 @@ import {
   checkSectionContrast,
   maxBackgroundColors,
   namedTextComponents,
+  rendersBackgroundLayer,
   rendersDesignerChildrenOnly,
   rendersNoOwnText,
   type ContrastReport,
@@ -742,6 +743,119 @@ describe("text collection", () => {
   });
 });
 
+describe("a Convergence Field", () => {
+  const field = `${organizeosNamespace}:ConvergenceField`;
+  const reason = "a Convergence Field draws behind this text";
+  const cream = "#f4efe6";
+  const night = "#0b1a1f";
+
+  // body > wrapper > section, the section a Convergence Field
+  const checkField = (
+    children: Node[],
+    styles: TestStyle[],
+    selector = sectionSelector
+  ) => {
+    setupProject({
+      tree: el("body", "Body", [
+        el("wrapper", "Box", [el("section", field, children)]),
+      ]),
+      styles,
+    });
+    return checkSectionContrast(selector);
+  };
+
+  test("text inside it can't be checked: the field draws behind it", () => {
+    const report = checkField(
+      [text()],
+      [
+        style("section", "background-color", night),
+        style("text", "color", cream),
+      ]
+    );
+    expect(report.summary).toBe("partial");
+    expect(only(report)).toMatchObject({ result: "cant-check", reason });
+  });
+
+  test("even with no background of its own, and for text deeper inside", () => {
+    const report = checkField(
+      [el("box", "Box", [text()])],
+      [style("text", "color", "#111111")]
+    );
+    expect(only(report)).toMatchObject({ result: "cant-check", reason });
+  });
+
+  test("a child with an opaque background, a scrim, still passes", () => {
+    const styles = [
+      style("section", "background-color", night),
+      style("scrim", "background-color", night),
+      style("text", "color", cream),
+    ];
+    const children = [el("scrim", "Box", [text()])];
+    // the scrim selected: the field is under it, and the scrim covers it
+    const report = checkField(children, styles, ["scrim", ...sectionSelector]);
+    expect(only(report)).toMatchObject({
+      result: "pass",
+      sampleInstanceId: "text",
+    });
+    // the field selected: the walk stops at the opaque scrim, as for any
+    // section
+    expect(checkField(children, styles).summary).toBe("none");
+  });
+
+  test("a translucent scrim over it is checked over the field's worst case", () => {
+    const report = checkField(
+      [el("scrim", "Box", [text()])],
+      [
+        style("section", "background-color", night),
+        style("scrim", "background-color", "rgb(11 26 31 / 0.95)"),
+        style("text", "color", cream),
+      ]
+    );
+    expect(only(report).result).toBe("pass");
+    const weak = checkField(
+      [el("scrim", "Box", [text()])],
+      [
+        style("scrim", "background-color", "rgb(11 26 31 / 0.2)"),
+        style("text", "color", cream),
+      ]
+    );
+    expect(only(weak).result).toBe("fail");
+  });
+
+  test("an image under its own background keeps the field's reason, which is on top", () => {
+    const report = checkField(
+      [text()],
+      [
+        style(
+          "section",
+          "background-image",
+          unparsedLayers("url(https://example.org/a.png)")
+        ),
+        style("text", "color", cream),
+      ]
+    );
+    expect(only(report)).toMatchObject({ result: "cant-check", reason });
+  });
+
+  test("a plain image with nothing above it still asks for a scrim", () => {
+    const report = check(
+      [text()],
+      [
+        style(
+          "section",
+          "background-image",
+          unparsedLayers("url(https://example.org/a.png)")
+        ),
+        style("text", "color", "#111111"),
+      ]
+    );
+    expect(only(report)).toMatchObject({
+      result: "cant-check",
+      reason: "add a scrim layer above the image",
+    });
+  });
+});
+
 describe("component coverage", () => {
   // built as organizeos-panel.test.tsx builds its map
   const registered = Object.keys(organizeosMetas).map(
@@ -756,6 +870,16 @@ describe("component coverage", () => {
         rendersDesignerChildrenOnly.has(name) === false
     );
     expect(unclassified).toEqual([]);
+  });
+
+  test("every component that draws a background layer is registered and renders the designer's children", () => {
+    expect([...rendersBackgroundLayer.keys()]).toEqual([
+      `${organizeosNamespace}:ConvergenceField`,
+    ]);
+    for (const name of rendersBackgroundLayer.keys()) {
+      expect(registered).toContain(name);
+      expect(rendersDesignerChildrenOnly.has(name)).toBe(true);
+    }
   });
 
   test("the lists name only registered components and do not overlap", () => {
