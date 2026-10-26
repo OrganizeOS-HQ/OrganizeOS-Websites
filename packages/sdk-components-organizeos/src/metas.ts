@@ -12,3 +12,4 @@ export { meta as ShiftOptions } from "./rsvp/shift-options.ws";
 export { meta as Questions } from "./rsvp/questions.ws";
 export { meta as EmailConsent } from "./rsvp/email-consent.ws";
 export { meta as RotationControl } from "./rotation/rotation-control.ws";
+export { meta as AnimateChildren } from "./animate/animate-children.ws";
