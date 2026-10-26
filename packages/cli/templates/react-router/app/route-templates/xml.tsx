@@ -139,6 +139,12 @@ export const loader = async (arg: LoaderFunctionArgs) => {
       "Content-Type": "application/xml",
       "Cache-Control":
         authRoute === undefined ? "public, max-age=600" : "private, no-store",
+      // OrganizeOS fork: an XML element can be a script in another namespace,
+      // so the page answers sandboxed and is never read as another type, and
+      // nothing it carries runs on the org host (docs/ORGANIZEOS-FORK.md
+      // section 8). Crawlers and feed readers ignore the policy.
+      "Content-Security-Policy": "sandbox",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 };
