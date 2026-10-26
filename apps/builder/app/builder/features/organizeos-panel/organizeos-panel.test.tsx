@@ -93,7 +93,7 @@ describe("groupOrganizeosBlocks", () => {
             description: organizeosTemplates.EventList.description,
             icon: organizeosTemplates.EventList.icon,
             firstInstance: expect.objectContaining({
-              component: "ws:element",
+              component: `${namespace}:ShareCodeCarrier`,
               label: "Event List",
             }),
           },
@@ -103,7 +103,7 @@ describe("groupOrganizeosBlocks", () => {
             description: organizeosTemplates.EventCard.description,
             icon: organizeosTemplates.EventCard.icon,
             firstInstance: expect.objectContaining({
-              component: "ws:element",
+              component: `${namespace}:ShareCodeCarrier`,
               label: "Event Card",
             }),
           },
@@ -112,7 +112,7 @@ describe("groupOrganizeosBlocks", () => {
             label: "RSVP Form",
             description: organizeosTemplates.RsvpForm.description,
             icon: organizeosTemplates.RsvpForm.icon,
-            // the one Events block whose root is a component of the namespace
+            // the one Events block whose root is its own component
             firstInstance: expect.objectContaining({
               component: `${namespace}:RsvpForm`,
             }),

@@ -1356,9 +1356,13 @@ describe("the inserted Event List's and Event Card's data", () => {
       titleExpression: title.children,
     };
   };
+  // The root and the card share the label "Event Card"; the root is the Share
+  // Code Carrier, and the card is the article.
   const getRoot = (label: string) =>
     [...$instances.get().values()].filter(
-      (instance) => instance.label === label && instance.tag === "div"
+      (instance) =>
+        instance.label === label &&
+        instance.component === "@organizeos/site-components:ShareCodeCarrier"
     )[0] as Instance;
 
   test("an Event List brings an Upcoming Events binding scoped to its root, never page-wide", async () => {

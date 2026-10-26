@@ -91,9 +91,13 @@ export const describeEventsBlock = ({
       expect(meta.icon).toBe(CalendarIcon);
     });
 
-    test("is a div holding the collection, then the empty and unavailable boxes", () => {
-      expect(root.component).toBe("ws:element");
-      expect(root.tag).toBe("div");
+    test("is a Share Code Carrier, a div, holding the collection, then the empty and unavailable boxes", () => {
+      // the carrier takes a visitor's share code to a card's link
+      expect(root.component).toBe(
+        "@organizeos/site-components:ShareCodeCarrier"
+      );
+      expect(root.tag).toBeUndefined();
+      expect(propsOf(root)).toEqual([]);
       expect(root.label).toBe(label);
       expect(childInstances(root).map((child) => child.label)).toEqual([
         "Events",

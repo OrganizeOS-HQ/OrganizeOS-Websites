@@ -7,6 +7,7 @@ import {
   Parameter,
   PlaceholderValue,
 } from "@webstudio-is/template";
+import { organizeos } from "../shared/proxy";
 
 // Template-only JSX: the pieces of the Event List and Event Card templates.
 // Nothing here is a component, and `components.ts` never reaches this file, so
@@ -109,12 +110,15 @@ export const eventCard = (event: Parameter) => (
  * collection's `data` and the two boxes' `data-ws-show` to the block's own
  * Upcoming Events binding, by the `ws:id`s given here ("events", "empty",
  * "unavailable"), so they are not changed without the table there.
+ *
+ * The root is a Share Code Carrier, a `div`: a visitor who arrived with a
+ * share code (`?r=`) takes it to the event's page when they click a card's
+ * link on the published site.
  */
 export const eventsTemplate = ({ label }: { label: string }) => {
   const event = new Parameter("event");
   return (
-    <ws.element
-      ws:tag="div"
+    <organizeos.ShareCodeCarrier
       ws:label={label}
       ws:style={css`
         display: grid;
@@ -131,6 +135,6 @@ export const eventsTemplate = ({ label }: { label: string }) => {
       <ws.element ws:tag="p" ws:id="unavailable" ws:label="Events unavailable">
         {new PlaceholderValue("Events are unavailable right now.")}
       </ws.element>
-    </ws.element>
+    </organizeos.ShareCodeCarrier>
   );
 };

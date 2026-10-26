@@ -430,3 +430,20 @@ test("the Convergence Field: a section root that takes any children, its preset,
   // Density is the spacing in box units, the same on every Shape (amendment 2)
   expect(meta.props?.density?.description).toMatch(/units/);
 });
+
+test("the Share Code Carrier: hidden, a div that takes any children, with no props of its own", () => {
+  const meta = metas.ShareCodeCarrier;
+  expect(meta.category).toBe("hidden");
+  expect(meta.label).toBe("Share Code Carrier");
+  expect(meta.description).toMatch(/share code/);
+  expect(meta.contentModel).toEqual({
+    category: "instance",
+    children: ["instance"],
+  });
+  expect(Object.keys(meta.presetStyle ?? {})).toEqual(["div"]);
+  expect(meta.initialProps).toEqual(["id", "class"]);
+  expect(meta.props).toBeUndefined();
+  // a component, never a template: the Event List and Event Card use it
+  expect(Object.keys(templates)).not.toContain("ShareCodeCarrier");
+  expect(Object.keys(components)).toContain("ShareCodeCarrier");
+});
