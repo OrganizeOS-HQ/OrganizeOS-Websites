@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   checkRotationStructure,
+  getOwnPanels,
   getOwnTabLists,
   getOwnTabs,
   getSelectedIndex,
@@ -155,5 +156,20 @@ describe("getOwnTabs and getSelectedIndex", () => {
   test("gives -1 when no tab is selected", () => {
     const { root } = build(control + tabList(3, -1) + panels(3));
     expect(getSelectedIndex(getOwnTabs(root))).toBe(-1);
+  });
+});
+
+describe("getOwnPanels", () => {
+  test("lists the root's panels, not those of a Tabs nested in one", () => {
+    const { root } = build(
+      control +
+        tabList(2) +
+        `<div role="tabpanel" data-own="0">${tabList(2)}<div role="tabpanel">Inner</div></div>` +
+        `<div role="tabpanel" data-own="1">Panel 1</div>`
+    );
+    expect(getOwnPanels(root).map((panel) => panel.dataset.own)).toEqual([
+      "0",
+      "1",
+    ]);
   });
 });

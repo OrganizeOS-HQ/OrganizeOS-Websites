@@ -2232,3 +2232,89 @@ describe("Rotating Tabs", () => {
     ]);
   });
 });
+
+describe("Marquee", () => {
+  const namespace = "@organizeos/site-components";
+  const marquee = `${namespace}:Marquee`;
+  const getMarqueeRoots = () =>
+    [...$instances.get().values()].filter(
+      (instance) => instance.component === marquee
+    );
+
+  test("inserts unbound: no catalog data, no Resource, no variable and no binding", async () => {
+    // a project missing every catalog Resource: the block reads none of them
+    setProject({ resources: [], dataSources: [] });
+    const resources = $resources.get();
+
+    expect(await insertOrganizeosBlock(marquee)).toBe(true);
+
+    const [root, ...others] = getMarqueeRoots();
+    expect(others).toEqual([]);
+    expect($instances.get().get("bodyId")?.children).toEqual([
+      { type: "id", value: root.id },
+    ]);
+    expect($resources.get()).toBe(resources);
+    expect([...$dataSources.get().values()]).toEqual([]);
+    expect(
+      [...$props.get().values()].filter(
+        (prop) => prop.type === "expression" || prop.type === "action"
+      )
+    ).toEqual([]);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("the inserted section satisfies the content model with the package's metas", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(marquee)).toBe(true);
+    const [root] = getMarqueeRoots();
+    const errors: string[] = [];
+
+    expect(
+      isTreeSatisfyingContentModel({
+        instances: $instances.get(),
+        props: $props.get(),
+        metas: $registeredComponentMetas.get(),
+        instanceSelector: [root.id, "bodyId"],
+        onError: (message) => errors.push(message),
+      }),
+      errors.join("\n")
+    ).toBe(true);
+    expect(errors).toEqual([]);
+    // the Pause button first, then the track of five plain items
+    const componentOf = (id: string) => $instances.get().get(id)?.component;
+    expect(root.children.map((child) => componentOf(child.value))).toEqual([
+      `${namespace}:MarqueePauseButton`,
+      `${namespace}:MarqueeTrack`,
+    ]);
+    const track = $instances.get().get(root.children[1].value);
+    expect(track?.children.map((child) => componentOf(child.value))).toEqual(
+      Array.from({ length: 5 }, () => "ws:element")
+    );
+  });
+
+  test("the content model refuses a Marquee Track outside a Marquee", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(marquee)).toBe(true);
+    const [root] = getMarqueeRoots();
+    const trackId = root.children[1].value;
+    const instances = new Map($instances.get());
+    // the track moved up to the body, beside its Marquee
+    instances.set("bodyId", {
+      ...instances.get("bodyId")!,
+      children: [
+        { type: "id", value: root.id },
+        { type: "id", value: trackId },
+      ],
+    });
+    instances.set(root.id, { ...root, children: [root.children[0]] });
+
+    expect(
+      isTreeSatisfyingContentModel({
+        instances,
+        props: $props.get(),
+        metas: $registeredComponentMetas.get(),
+        instanceSelector: [trackId, "bodyId"],
+      })
+    ).toBe(false);
+  });
+});

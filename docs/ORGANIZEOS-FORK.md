@@ -495,8 +495,8 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   content mode and disabled on text pages, as Components is. It lists the
   namespace's templates in sections (Sections, then Events, then Signups) with
   the Components panel's cards and drag, then the org's data (the Data section,
-  below). A section names its blocks (Sections: Rotating Tabs; Events: Event
-  List, Event Card, RSVP Form), skips a name that is not registered yet, and a
+  below). A section names its blocks (Sections: Rotating Tabs, Marquee;
+  Events: Event List, Event Card, RSVP Form), skips a name that is not registered yet, and a
   registered block no section names is offered after the others, under "More".
   Sections holds blocks that read no platform data, so it has no workspace
   link and its inserts bind nothing.
@@ -704,7 +704,7 @@ the text inside it.
   Design: `docs/superpowers/specs/2026-10-25-builder-section-backgrounds-design.md`
   in the OrganizeOS repo.
 
-**Rotating Tabs**, the panel's Sections block: upstream's Radix Tabs that
+**Rotating Tabs**, the panel's first Sections block: upstream's Radix Tabs that
 show each panel in turn behind a Pause button (Track 2 phase 2). Design:
 `docs/superpowers/specs/2026-10-25-builder-rotating-tabs-design.md` in the
 OrganizeOS repo, plan `docs/superpowers/plans/2026-10-25-builder-rotating-tabs.md`.
@@ -742,6 +742,24 @@ OrganizeOS repo, plan `docs/superpowers/plans/2026-10-25-builder-rotating-tabs.m
   button before the Tabs' one own tab list, at most one panel rendered) stops
   rotation when it fails; on the canvas the same check draws a canvas-check
   problem on the control, rerun as the designer edits.
+- **The cross-fade** (Track 2 phase 3B, `src/rotation/use-fade.ts`, design
+  `docs/superpowers/specs/2026-10-26-builder-timed-motion-design.md` in the
+  OrganizeOS repo, whose section 12 amends the earlier sections): the
+  control's **Fade** prop, in milliseconds, clamped to 0..600 by the runtime
+  (anything non-numeric is 250; 0 is an instant switch). The component
+  destructures `fade = 250` and the meta's default is 250, so a Rotating Tabs
+  published before the prop existed fades too once it is republished, with no
+  designer action; the template writes no `fade`. When one of the root's own
+  panels turns `data-state="active"` after hydration, for any reason (an
+  advance, a click, a key), it animates `opacity: 0 → 1` over Fade,
+  `ease-out`, `fill: "none"`, through `element.animate()`: the outgoing panel
+  is already `display: none`, so nothing overlaps or shifts, and a finished or
+  cancelled fade leaves no style, so a panel is never partly transparent at
+  rest. A new switch cancels a running fade. A trigger's flip, or a flip in a
+  Tabs nested in a panel, fades nothing; the panels are collected again when
+  the root's children change. No fade on the first render, on the canvas,
+  under reduced motion (it stops if that starts matching), while the control
+  is "off" (phase 2's rules), or in an engine without `element.animate`.
 - The package gains no runtime dependency: the control's closure is `react`,
   `react/jsx-runtime` and `@webstudio-is/react-sdk/runtime`.
   `@webstudio-is/sdk-components-react-radix` is a devDependency for the
@@ -749,6 +767,82 @@ OrganizeOS repo, plan `docs/superpowers/plans/2026-10-25-builder-rotating-tabs.m
   The builder's contrast check classifies the control as rendering its own
   text. Nothing changes in the published-site runtime, the CLI or the
   templates.
+
+**Marquee**, the panel's second Sections block: a row of items that drifts
+in a seamless loop behind a Pause button (Track 2 phase 3B). Design:
+`docs/superpowers/specs/2026-10-26-builder-timed-motion-design.md` in the
+OrganizeOS repo (its section 12 amends the earlier sections), plan
+`docs/superpowers/plans/2026-10-26-builder-timed-motion.md`.
+
+- **The parts** (`src/marquee/`, metas `category: "hidden"`): **Marquee**
+  (`@organizeos/site-components:Marquee`, a `div`; props Speed, px/s, default
+  40, clamped to 10..200 by the runtime, anything non-numeric 40, and
+  Direction, `left` or `right`, unset the reading direction's: left, or right
+  when `getComputedStyle(root).direction` is `rtl`), whose only children are
+  **Marquee Pause Button** (a `button`; props Pause label and Play label,
+  default "Pause" and "Play", its text and accessible name) and **Marquee
+  Track** (a `div` whose children are any instances: the items). The template
+  (`src/marquee.template.tsx`) clips the root on the x axis only
+  (`overflow-x: clip; overflow-y: visible`, so focus rings and shadows are not
+  cut vertically), puts the button first, and gives the track `display: flex`,
+  a `gap` and `width: max-content` and five static `div` items `flex: none`.
+- **The context** (`context.ts`): the button and the track register their
+  elements with the root, and the button reads the root's `state` ("playing",
+  "stopped" or "off") and `toggle`. A structure check (`structure.ts`: one
+  button and one track, both directly in the root, the button first; the
+  canvas-check boxes skipped) turns motion off on a published page when it
+  fails and draws a canvas-check problem on the canvas, rerun as the designer
+  edits. The button renders `hidden` (and `display: none`) on the server and
+  whenever the state is "off", so no inert button shows without JavaScript; on
+  the canvas it always shows.
+- **The server markup** holds every item once, in a row the root clips;
+  nothing else is hidden. After hydration, when motion may run (not the
+  canvas, no reduced motion, the structure holds, the engine has
+  `element.animate`, and the items at rest run past the root's padding edge),
+  the runtime (`use-marquee.ts`) appends **one clone container** to the track,
+  `<div aria-hidden="true" inert style="display: contents">` holding
+  `cloneNode(true)` copies of the items with every `id` inside removed, so
+  React never reconciles the copies, the track's `gap` runs between all of
+  them, and assistive technology and the keyboard meet each item once. A
+  change to the items (React adding or removing one) re-appends the container
+  last and rebuilds the copies; mutations inside the container, or the
+  container's own insert, are ignored. The copies carry nothing the page did
+  not render, so nothing here falls under §10.
+- **Measurement** reads transform-independent layout only (`offsetLeft`,
+  `offsetWidth`, `clientWidth`, never `getBoundingClientRect`). The period W
+  is `firstClone.offsetLeft - firstOriginal.offsetLeft`, so the gap and the
+  items' margins count. The track animates `translateX(0) → translateX(-W)`,
+  linear, forever, W / Speed seconds per period, on the document timeline,
+  reversed for the other direction. A `ResizeObserver` on the root and the
+  track starts motion when the root narrows below the items, stops it (copies
+  removed, button hidden) when it widens past them, and otherwise restarts
+  from the current progress if W changed; the size change its own copies
+  cause is a no-op.
+- **Pause and stop** (WCAG 2.2.2): motion pauses while the pointer is over the
+  root, while the root is off screen and while the document is hidden (the
+  pauses add up), resuming from where it stood. It **stops**, until Play, on
+  Pause and when trusted keyboard focus enters the track (not the button);
+  each focus then sets the animation's time so the focused item lies inside
+  the root's content box (its padding and the track's offset count), at the
+  nearest time within one period. Untrusted events are ignored.
+- **Reduced motion**: never starts; turned on mid-visit, it cancels the
+  animation, removes the copies and hides the button, and focus on the button
+  moves to the track's first focusable item, or to the root (given
+  `tabindex="-1"` until it blurs). Unmount does the same cleanup, so the DOM is
+  the server's again.
+- **What the designer can still break**: items wider than the root, and
+  focusable items past the edge on a page without JavaScript, stay
+  unreachable; media inside a marquee (`video`, `audio`, `iframe`) is
+  unsupported, since its copies would load or play twice; and a track
+  styled to wrap (`flex-wrap`) or to run vertically (a column direction)
+  breaks the measurement, which the structure check does not catch, since it
+  reads no styling.
+- The package gains no runtime dependency (the closure is the control's
+  three). The builder's contrast check classifies the Pause button as
+  rendering its own text and Marquee and the track as rendering the
+  designer's children only. The paused-script publish fixture covers Marquee
+  through the panel's sections. Nothing changes in the published-site runtime,
+  the CLI or the templates.
 
 **Motion presets**, part A, the scroll-driven half of Track 2 phase 3: a
 player for upstream's own `animationAction` data, and the panel's "Motion"

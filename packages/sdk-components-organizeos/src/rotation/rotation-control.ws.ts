@@ -13,7 +13,7 @@ export const meta: WsComponentMeta = {
     children: [],
   },
   presetStyle: { button },
-  initialProps: ["id", "class", "interval", "pauseLabel", "playLabel"],
+  initialProps: ["id", "class", "interval", "fade", "pauseLabel", "playLabel"],
   props: {
     interval: {
       type: "number",
@@ -23,6 +23,15 @@ export const meta: WsComponentMeta = {
       label: "Interval",
       description:
         "Seconds each tab shows before the next, from 3 to 20. Rotation stops for good when a visitor moves focus into the section or picks a tab.",
+    },
+    fade: {
+      type: "number",
+      control: "number",
+      required: false,
+      defaultValue: 250,
+      label: "Fade",
+      description:
+        "Milliseconds the incoming panel fades in, from 0 to 600; 0 switches at once. Never under reduced motion.",
     },
     pauseLabel: {
       type: "string",
