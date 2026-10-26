@@ -34,7 +34,7 @@ import {
   checksTagProp,
   elementTagMayRun,
   propNameMayRun,
-  withoutBlockedTagProps,
+  withoutPausedProps,
 } from "@organizeos/site-components/org-script";
 import {
   idAttribute,
@@ -604,12 +604,14 @@ export const WebstudioComponentCanvas = forwardRef<
     Component = BlockTemplate;
   }
 
-  // OrganizeOS fork: org script is paused. Radix's Slot merges the props of a
-  // trigger onto its child, so the tag the parent passes in reaches this
-  // component in restProps, past useInstanceProps. It is checked here too
-  // (docs/ORGANIZEOS-FORK.md section 10).
-  const mergedProps = withoutBlockedTagProps(
-    instance.component,
+  // OrganizeOS fork: org script is paused. Every prop this component
+  // receives, its own or passed in by a parent (Radix's Slot merges a
+  // trigger's props onto its child, in restProps, past useInstanceProps), is
+  // checked here: a tag the builder does not offer, an unsafe address, a
+  // srcdoc and an event handler attribute are dropped, by the instance's
+  // component and tag (docs/ORGANIZEOS-FORK.md section 10).
+  const mergedProps = withoutPausedProps(
+    instance,
     mergeProps(restProps, instanceProps, "delete")
   );
 
@@ -718,9 +720,11 @@ export const WebstudioComponentPreview = forwardRef<
     [idAttribute]: string;
     [selectorIdAttribute]: string;
   } & Record<string, unknown> = {
-    // OrganizeOS fork: org script is paused (see WebstudioComponentCanvas)
-    ...withoutBlockedTagProps(
-      instance.component,
+    // OrganizeOS fork: org script is paused. A tag, an unsafe address, a
+    // srcdoc and an event handler attribute are dropped from every prop this
+    // component receives (see WebstudioComponentCanvas).
+    ...withoutPausedProps(
+      instance,
       mergeProps(restProps, instanceProps, "merge")
     ),
     [idAttribute]: instance.id,

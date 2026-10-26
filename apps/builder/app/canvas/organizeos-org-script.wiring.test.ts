@@ -58,3 +58,23 @@ test("useInstanceProps passes the instance's own tag on only when the builder of
     /tag !== undefined && elementTagMayRun\(tag\)/
   );
 });
+
+// An unsafe address, a srcdoc or an event handler can reach a component from
+// its own props or from a parent's (a Radix trigger), so each renderer checks
+// what it receives, after the two are merged, by the instance's component and
+// tag. A render test shows that nothing unsafe reached the canvas, not which
+// renderer checked it.
+test("both renderers check every prop a component receives with withoutPausedProps", () => {
+  const preview = webstudioComponent.indexOf(
+    "export const WebstudioComponentPreview"
+  );
+  expect(preview).toBeGreaterThan(0);
+  const call =
+    /withoutPausedProps\(\s*instance,\s*mergeProps\(restProps, instanceProps, "(?:delete|merge)"\)\s*\)/g;
+  const canvasRenderer = webstudioComponent.slice(0, preview);
+  const previewRenderer = webstudioComponent.slice(preview);
+  expect(canvasRenderer.match(call)).toHaveLength(1);
+  expect(previewRenderer.match(call)).toHaveLength(1);
+  expect(webstudioComponent.match(/withoutPausedProps\(/g)).toHaveLength(2);
+  expect(webstudioComponent).not.toContain("withoutBlockedTagProps(");
+});

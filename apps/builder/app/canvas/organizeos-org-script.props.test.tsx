@@ -15,10 +15,16 @@ import * as baseComponentTemplates from "@webstudio-is/sdk-components-react/temp
 import * as radixComponents from "@webstudio-is/sdk-components-react-radix";
 import * as radixComponentMetas from "@webstudio-is/sdk-components-react-radix/metas";
 import {
+  $dataSourceVariables,
   $registeredComponents,
   registerComponentLibrary,
 } from "~/shared/nano-states";
-import { $instances, $pages, $props } from "~/shared/sync/data-stores";
+import {
+  $dataSources,
+  $instances,
+  $pages,
+  $props,
+} from "~/shared/sync/data-stores";
 import { $selectedPageId } from "~/shared/nano-states/pages";
 import { registerContainers } from "~/shared/sync/sync-stores";
 import { createInstanceElement } from "./elements";
@@ -790,6 +796,300 @@ describe.each(renderers)(
       expect(dom.querySelector("script")).toBeNull();
       // the Box is rendered, as its own default element
       expect(dom.querySelector("[data-ws-id=box]")?.tagName).toBe("DIV");
+    });
+  }
+);
+
+// An address React writes as it is runs in the builder's own origin when it
+// is clicked, framed, posted or loaded as an object, a srcdoc's markup runs
+// there as the frame loads, and a string on… attribute runs on a custom
+// element. Both renderers drop them from every prop a component receives, its
+// own or a parent's, by the instance's component and tag
+// (withoutPausedProps, docs/ORGANIZEOS-FORK.md section 10).
+describe.each(renderers)(
+  "the %s renders an unsafe address, a srcdoc or an event handler",
+  (renderer) => {
+    const xlink = "http://www.w3.org/1999/xlink";
+    const pwn = "javascript:window.pwned = 1";
+
+    beforeEach(() => {
+      (window as { pwned?: number }).pwned = undefined;
+      $dataSources.set(new Map());
+      $dataSourceVariables.set(new Map());
+    });
+
+    const variable = (id: string, value: unknown) => {
+      $dataSources.set(
+        new Map($dataSources.get()).set(id, {
+          type: "variable",
+          id,
+          name: id,
+          scopeInstanceId: "body",
+          value: Array.isArray(value)
+            ? { type: "json", value }
+            : { type: "string", value: String(value) },
+        })
+      );
+    };
+
+    const json = (instanceId: string, name: string, value: unknown) => {
+      const id = `${instanceId}:${name}`;
+      return [id, { id, instanceId, name, type: "json", value } as Prop] as [
+        string,
+        Prop,
+      ];
+    };
+
+    // What is left of the attributes that hold an address, a frame document
+    // or a handler, apart from upstream Link's own "#" when it is given none
+    const unsafeAttributes = (element: Element | null) =>
+      [
+        "href",
+        "src",
+        "srcdoc",
+        "data",
+        "action",
+        "formaction",
+        "xlink:href",
+        "onclick",
+      ].filter(
+        (name) =>
+          element?.hasAttribute(name) === true &&
+          (name === "href" && element.getAttribute(name) === "#") === false
+      );
+
+    test("without the attribute, wherever it is set", () => {
+      variable("target", pwn);
+      variable("html", "<script>parent.pwned = 1</script>");
+      variable("list", [pwn]);
+      const dom = render({
+        renderer,
+        instances: [
+          instance({
+            id: "body",
+            children: ids(
+              "anchor",
+              "link",
+              "frame",
+              "frame-doc",
+              "frame-bound-doc",
+              "object",
+              "form",
+              "button",
+              "svg",
+              "bound-link",
+              "custom",
+              "object-list",
+              "anchor-list"
+            ),
+          }),
+          instance({ id: "anchor", tag: "a" }),
+          instance({ id: "link", component: "Link" }),
+          instance({ id: "frame", tag: "iframe" }),
+          instance({ id: "frame-doc", tag: "iframe" }),
+          instance({ id: "frame-bound-doc", tag: "iframe" }),
+          instance({ id: "object", tag: "object" }),
+          instance({ id: "form", tag: "form" }),
+          instance({ id: "button", tag: "button" }),
+          instance({ id: "svg", tag: "svg", children: ids("svg-link") }),
+          instance({ id: "svg-link", tag: "a" }),
+          instance({ id: "bound-link", component: "Link" }),
+          instance({ id: "custom", tag: "div" }),
+          instance({ id: "object-list", tag: "object" }),
+          instance({ id: "anchor-list", tag: "a" }),
+        ],
+        props: [
+          prop("anchor", "href", "string", pwn),
+          prop("link", "href", "string", " JaVaScRiPt:window.pwned = 1"),
+          prop("frame", "src", "string", pwn),
+          prop(
+            "frame-doc",
+            "srcdoc",
+            "string",
+            "<script>parent.pwned = 1</script>"
+          ),
+          prop(
+            "frame-bound-doc",
+            "srcdoc",
+            "expression",
+            "$ws$dataSource$html"
+          ),
+          prop(
+            "object",
+            "data",
+            "string",
+            "data:text/html,<script>parent.pwned = 1</script>"
+          ),
+          prop("form", "action", "string", pwn),
+          prop("button", "formaction", "string", pwn),
+          prop("svg-link", "xlink:href", "string", pwn),
+          prop("bound-link", "href", "expression", "$ws$dataSource$target"),
+          prop("custom", "is", "string", "x-y"),
+          prop("custom", "onclick", "string", "window.pwned = 1"),
+          prop("object-list", "data", "expression", "$ws$dataSource$list"),
+          json("anchor-list", "href", [pwn]),
+        ],
+      });
+
+      for (const id of [
+        "anchor",
+        "link",
+        "frame",
+        "frame-doc",
+        "frame-bound-doc",
+        "object",
+        "form",
+        "button",
+        "svg-link",
+        "bound-link",
+        "custom",
+        "object-list",
+        "anchor-list",
+      ]) {
+        const element = dom.querySelector(`[data-ws-id="${id}"]`);
+        // the element is still there, without the attribute
+        expect(element, id).not.toBeNull();
+        expect(unsafeAttributes(element), id).toEqual([]);
+        expect(element?.getAttributeNS(xlink, "href"), id).toBeNull();
+      }
+      expect(dom.innerHTML.toLowerCase()).not.toContain("javascript:");
+      expect(dom.innerHTML).not.toContain("pwned");
+      expect((window as { pwned?: number }).pwned).toBeUndefined();
+    });
+
+    test("without the address a Dialog Trigger passes to a Link that has none of its own", () => {
+      const dom = render({
+        renderer,
+        instances: forwarderTree("DialogTrigger", ["Dialog"], "Link"),
+        props: [prop("trigger", "href", "string", pwn)],
+      });
+
+      const child = document.querySelector("[data-ws-id=child]");
+      expect(child).not.toBeNull();
+      expect(unsafeAttributes(child)).toEqual([]);
+      expect(dom.innerHTML.toLowerCase()).not.toContain("javascript:");
+    });
+
+    test("without an address a parent passes in", () => {
+      const link: Instance = {
+        type: "instance",
+        id: "link",
+        component: "Link",
+        children: [],
+      };
+      prepare({ instances: [["link", link]], props: [] });
+      const Component = componentOf(renderer);
+      const passedIn: Record<string, unknown> = { href: pwn };
+
+      const dom = mount(
+        renderer,
+        <Component
+          instance={link}
+          instanceSelector={["link"]}
+          components={$registeredComponents.get()}
+          {...passedIn}
+        />
+      );
+
+      expect(unsafeAttributes(dom.querySelector("[data-ws-id=link]"))).toEqual(
+        []
+      );
+      expect(dom.innerHTML.toLowerCase()).not.toContain("javascript:");
+    });
+
+    // The guards: what may run is rendered as before
+    test("keeps safe addresses, an Image src bound to an https value and a Collection's data", () => {
+      variable("cover", "https://cdn.example.org/a.png");
+      variable("records", [pwn, "/b"]);
+      const safe = [
+        "https://example.org/a",
+        "mailto:a@example.org",
+        "tel:+15555550123",
+        "sms:+15555550123",
+        "/a",
+        "#b",
+      ];
+      const dom = render({
+        renderer,
+        instances: [
+          instance({
+            id: "body",
+            children: ids(
+              ...safe.map((_href, index) => `safe-${index}`),
+              "image",
+              "collection"
+            ),
+          }),
+          ...safe.map((_href, index) =>
+            instance({ id: `safe-${index}`, component: "Link" })
+          ),
+          instance({ id: "image", component: "Image" }),
+          instance({
+            id: "collection",
+            component: "ws:collection",
+            children: ids("record"),
+          }),
+          instance({ id: "record", tag: "div" }),
+        ],
+        props: [
+          ...safe.map((href, index) =>
+            prop(`safe-${index}`, "href", "string", href)
+          ),
+          prop("image", "src", "expression", "$ws$dataSource$cover"),
+          prop("image", "optimize", "boolean", false),
+          prop("collection", "data", "expression", "$ws$dataSource$records"),
+        ],
+      });
+
+      safe.forEach((href, index) => {
+        expect(
+          dom
+            .querySelector(`[data-ws-id="safe-${index}"]`)
+            ?.getAttribute("href")
+        ).toBe(href);
+      });
+      expect(dom.querySelector("img")?.getAttribute("src")).toBe(
+        "https://cdn.example.org/a.png"
+      );
+      // one item for each record, whatever the record holds
+      expect(dom.querySelectorAll("[data-ws-id=record]")).toHaveLength(2);
+    });
+
+    // The design mode removes every handler (upstream's mergeProps), so only
+    // the preview runs one
+    test.runIf(renderer === "preview")("keeps an action's handler", () => {
+      variable("clicked", "no");
+      const dom = render({
+        renderer,
+        instances: [
+          instance({ id: "body", children: ids("button") }),
+          instance({ id: "button", tag: "button" }),
+        ],
+        props: [
+          [
+            "button:onClick",
+            {
+              id: "button:onClick",
+              instanceId: "button",
+              name: "onClick",
+              type: "action",
+              value: [
+                {
+                  type: "execute",
+                  args: [],
+                  code: `$ws$dataSource$clicked = "yes"`,
+                },
+              ],
+            },
+          ],
+        ],
+      });
+
+      act(() => {
+        dom.querySelector<HTMLElement>("[data-ws-id=button]")?.click();
+      });
+
+      expect($dataSourceVariables.get().get("clicked")).toBe("yes");
     });
   }
 );
