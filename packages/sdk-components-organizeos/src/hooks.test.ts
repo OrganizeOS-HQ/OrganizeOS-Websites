@@ -7,6 +7,7 @@ import type {
 import { animationCanPlayOnCanvasProperty } from "@webstudio-is/sdk/runtime";
 
 const animateChildren = "@organizeos/site-components:AnimateChildren";
+const convergenceField = "@organizeos/site-components:ConvergenceField";
 
 type Instance = { id: string; component: string };
 
@@ -188,5 +189,71 @@ describe("the canvas play hook", () => {
     builder.add("wrapper", animateChildren);
     builder.select(["wrapper", "body"]);
     expect(builder.flag(["wrapper", "body"])).toBe(true);
+  });
+});
+
+describe("the canvas play hook and the Convergence Field", () => {
+  test("selecting a Convergence Field sets the flag on it", () => {
+    const builder = setup();
+    builder.add("field", convergenceField);
+    builder.select(["field", "body"]);
+    expect(builder.flag(["field", "body"])).toBe(true);
+    expect(builder.flagged()).toEqual([JSON.stringify(["field", "body"])]);
+  });
+
+  test("selecting its content flags the field", () => {
+    const builder = setup();
+    builder.add("field", convergenceField);
+    builder.select(["card", "field", "body"]);
+    expect(builder.flagged()).toEqual([JSON.stringify(["field", "body"])]);
+  });
+
+  test("a field inside an Animate Children: the field, the nearest, wins", () => {
+    const builder = setup();
+    builder.add("wrapper", animateChildren);
+    builder.add("field", convergenceField);
+    builder.select(["card", "field", "section", "wrapper", "body"]);
+    expect(builder.flagged()).toEqual([
+      JSON.stringify(["field", "section", "wrapper", "body"]),
+    ]);
+  });
+
+  test("an Animate Children inside a field: the Animate Children, the nearest, wins", () => {
+    const builder = setup();
+    builder.add("field", convergenceField);
+    builder.add("wrapper", animateChildren);
+    builder.select(["card", "wrapper", "field", "body"]);
+    expect(builder.flagged()).toEqual([
+      JSON.stringify(["wrapper", "field", "body"]),
+    ]);
+    // selecting the field itself moves the flag to it
+    builder.select(["field", "body"]);
+    expect(builder.flagged()).toEqual([JSON.stringify(["field", "body"])]);
+  });
+
+  test("unselecting clears the field's flag", () => {
+    const builder = setup();
+    builder.add("field", convergenceField);
+    builder.select(["card", "field", "body"]);
+    builder.select(undefined);
+    expect(builder.flagged()).toEqual([]);
+    builder.select(["field", "body"]);
+    builder.select(["other", "body"]);
+    expect(builder.flagged()).toEqual([]);
+  });
+
+  test("insert, select, undo, click elsewhere, redo: the field holds no flag", () => {
+    const builder = setup();
+    builder.add("field", convergenceField);
+    builder.select(["field", "body"]);
+    expect(builder.flag(["field", "body"])).toBe(true);
+    // undo removes the field; the unselect path no longer holds it
+    builder.instances.delete("field");
+    builder.select(["section", "body"]);
+    builder.select(["other", "body"]);
+    // redo brings it back under the same key
+    builder.add("field", convergenceField);
+    expect(builder.flag(["field", "body"])).toBeUndefined();
+    expect(builder.flagged()).toEqual([]);
   });
 });

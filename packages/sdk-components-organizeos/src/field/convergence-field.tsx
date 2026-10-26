@@ -1,11 +1,16 @@
 import {
   forwardRef,
+  useContext,
   useId,
+  useRef,
   type ComponentProps,
   type CSSProperties,
   type ElementRef,
 } from "react";
+import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import { canPlayOnCanvasProperty } from "../animate/flag";
+import { CanvasCheck } from "../form/canvas-check";
+import { useMergedRef } from "../form/merge-ref";
 import {
   ARM_CENTRE_TRANSFORM,
   ARM_PATH,
@@ -16,6 +21,7 @@ import {
   type FieldArm,
 } from "./generate";
 import { clampField, type FieldProps } from "./shape";
+import { useSettle } from "./use-settle";
 
 type Props = Omit<ComponentProps<"div">, keyof FieldProps> &
   FieldProps & {
@@ -75,7 +81,7 @@ export const ConvergenceField = forwardRef<ElementRef<"div">, Props>(
       outerColor,
       motion,
       // the settle reads it (part A's play flag); never an attribute
-      [canPlayOnCanvasProperty]: _canPlayOnCanvas,
+      [canPlayOnCanvasProperty]: canPlayOnCanvas,
       children,
       ...props
     },
@@ -98,6 +104,18 @@ export const ConvergenceField = forwardRef<ElementRef<"div">, Props>(
       outerColor,
       motion,
     });
+    const { renderer } = useContext(ReactSdkContext);
+    const rootRef = useRef<HTMLDivElement | null>(null);
+    const mergedRef = useMergedRef(ref, rootRef);
+    const svgRef = useRef<SVGSVGElement | null>(null);
+    // part A's rule; the field has no action, so nothing pins it
+    const canPlay = renderer !== "canvas" || canPlayOnCanvas === true;
+    const notes = useSettle({
+      svgRef,
+      rootRef,
+      motion: field.motion,
+      canPlay,
+    });
     const arms = convergenceField(
       field.width,
       field.height,
@@ -106,8 +124,9 @@ export const ConvergenceField = forwardRef<ElementRef<"div">, Props>(
       field.zone
     );
     return (
-      <div {...props} ref={ref}>
+      <div {...props} ref={mergedRef}>
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${field.width} ${field.height}`}
           preserveAspectRatio="xMidYMid slice"
           aria-hidden="true"
@@ -148,6 +167,7 @@ export const ConvergenceField = forwardRef<ElementRef<"div">, Props>(
           })}
         </svg>
         {children}
+        <CanvasCheck title="Convergence Field" problems={[]} notes={notes} />
       </div>
     );
   }

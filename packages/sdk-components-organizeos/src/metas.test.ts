@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { descendantComponent, wsComponentMeta } from "@webstudio-is/sdk";
 import * as components from "./components";
-import { hooks, hooksAnimateChildren } from "./hooks";
+import { hooks, hooksCanvasPlay } from "./hooks";
 import * as metas from "./metas";
 import * as templates from "./templates";
 
@@ -262,8 +262,9 @@ test("templates and hooks", () => {
   }
   expect(templates.RsvpForm.label).toBe(metas.RsvpForm.label);
   expect(templates.ConvergenceField.label).toBe(metas.ConvergenceField.label);
-  // one hook: the canvas play flag for Animate Children (hooks.test.ts)
-  expect(hooks).toEqual([hooksAnimateChildren]);
+  // one hook: the canvas play flag for Animate Children and Convergence
+  // Field, nearest wins (hooks.test.ts)
+  expect(hooks).toEqual([hooksCanvasPlay]);
 });
 
 test("the Rotation Control: hidden, childless, a button, with its props, Fade among them", () => {
