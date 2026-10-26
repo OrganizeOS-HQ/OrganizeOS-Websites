@@ -877,7 +877,16 @@ export const toggleInstanceShow = (instanceId: Instance["id"]) => {
   });
 };
 
-export const wrapInstance = (component: string, tag?: string) => {
+export const wrapInstance = (
+  component: string,
+  tag?: string,
+  options?: {
+    // OrganizeOS fork: completes the wrap in its own transaction, with the
+    // wrapper's id, after the content model accepts it (the Motion area
+    // writes its props here, so the wrap and its props are one undo step).
+    onWrap?: (data: WebstudioData, newInstanceId: Instance["id"]) => void;
+  }
+) => {
   const instancePath = $selectedInstancePath.get();
   // global root or body are selected
   if (instancePath === undefined || instancePath.length === 1) {
@@ -945,6 +954,8 @@ export const wrapInstance = (component: string, tag?: string) => {
         toast.error(`Cannot wrap in ${label}`);
         throw Error("Abort transaction");
       }
+      // OrganizeOS fork: see options.onWrap.
+      options?.onWrap?.(data, newInstanceId);
     });
     selectInstance(newInstanceSelector);
   } catch {

@@ -48,6 +48,7 @@ import {
   isCatalogResourceOnPage,
 } from "./organizeos-data";
 import { SectionBackground } from "./section-background";
+import { Motion } from "./motion";
 
 /**
  * The OrganizeOS panel (spec section 3.1): the blocks registered under the
@@ -347,7 +348,12 @@ export const OrganizeosPanel = ({
             </CollapsibleSection>
           ))
         )}
-        {selectedPage?.meta.documentType !== "xml" && <SectionBackground />}
+        {selectedPage?.meta.documentType !== "xml" && (
+          <>
+            <SectionBackground />
+            <Motion />
+          </>
+        )}
         <DataSection />
         {dragCard}
       </ScrollArea>

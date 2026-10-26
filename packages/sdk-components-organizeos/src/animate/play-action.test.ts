@@ -5,6 +5,7 @@ import type {
   ScrollAnimation,
   ViewAnimation,
 } from "@webstudio-is/sdk";
+import motionPresets from "./__fixtures__/motion-presets.json";
 import newScrollAnimations from "./__fixtures__/new-scroll-animations.json";
 import newViewAnimations from "./__fixtures__/new-view-animations.json";
 import { clampStagger, isPinned, planAction, type Play } from "./play-action";
@@ -89,6 +90,11 @@ const parallax: AnimationActionView = {
     },
   ],
 };
+
+test("the presets above are the ones the Motion area writes", () => {
+  // the builder's motion/presets.test.ts checks its presets equal this file
+  expect(motionPresets).toEqual({ reveal, gentleParallax: parallax });
+});
 
 const view = (
   animations: ViewAnimation[],
