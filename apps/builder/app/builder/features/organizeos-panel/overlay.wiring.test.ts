@@ -22,6 +22,7 @@ const read = (path: string) =>
 const components = read("../components/components.tsx");
 const useDragDrop = read("../../../canvas/shared/use-drag-drop.ts");
 const sidebarLeft = read("../../sidebar-left/sidebar-left.tsx");
+const styleSections = read("../style-panel/sections/sections.ts");
 
 describe("the Components panel's OrganizeOS section", () => {
   test("components.tsx imports both OrganizeOS modules", () => {
@@ -93,6 +94,17 @@ describe("the Components panel's OrganizeOS section", () => {
   test("the Groups category takes the OrganizeOS category", () => {
     expect(components).toMatch(
       /type Groups = Array<\{\s*category:[^;]*\|\s*"found"\s*\|\s*OrganizeosCategory;/
+    );
+  });
+});
+
+describe("the Style panel's Background presets", () => {
+  test("sections.ts imports the presets from the OrganizeOS module and lists them immediately after backgrounds", () => {
+    expect(styleSections).toMatch(
+      /import \* as organizeosBackgroundPresets from "~\/builder\/features\/organizeos-panel\/background-presets-section";/
+    );
+    expect(styleSections).toMatch(
+      /\["backgrounds", backgrounds\],\s*\["organizeosBackgroundPresets", organizeosBackgroundPresets\],/
     );
   });
 });
