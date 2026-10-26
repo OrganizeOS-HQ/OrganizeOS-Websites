@@ -1,0 +1,10 @@
+{
+  "event_id": "a47e9c10-62db-4f85-b1a3-0c8d5e7f2916",
+  "first_name": "Ada",
+  "last_name": "Lovelace",
+  "email": "ada@example.org",
+  "email_consent": false,
+  "page_path": "/events/weekly-phone-bank",
+  "website": "",
+  "referral_code": "Code234567"
+}
