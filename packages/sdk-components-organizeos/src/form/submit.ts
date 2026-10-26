@@ -126,6 +126,40 @@ export const postToPlatform = async ({
   }
 };
 
+/**
+ * Posts a body that may carry the visit's share code, `referral_code` (the
+ * platform's name for it), as `postToPlatform` does. When the platform answers
+ * `invalid_request` to a body with `referral_code`, it posts once more with
+ * the key removed and returns that answer; any other answer, and the answer to
+ * a body without the key, is returned as it came.
+ *
+ * Both endpoints answer `invalid_request` before any rate limit, form or event
+ * read, or write, so the first request wrote nothing: a platform that does not
+ * take the code costs the credit, never the submission.
+ */
+export const postWithShareCode = async ({
+  renderer,
+  path,
+  body,
+}: {
+  renderer: Renderer;
+  path: string;
+  body: Record<string, unknown>;
+}): Promise<PlatformAnswer | undefined> => {
+  const answer = await postToPlatform({ renderer, path, body });
+  if (
+    answer === undefined ||
+    "outcome" in answer ||
+    answer.error !== "invalid_request" ||
+    Object.hasOwn(body, "referral_code") === false
+  ) {
+    return answer;
+  }
+  const withoutShareCode = { ...body };
+  delete withoutShareCode.referral_code;
+  return postToPlatform({ renderer, path, body: withoutShareCode });
+};
+
 /** How a family turns answers into its states. */
 export type AnswerStates<State extends string> = {
   /** The outcomes this build knows, and the state each one shows. */

@@ -25,10 +25,12 @@ import { useMergedRef } from "../form/merge-ref";
 import { navigateTo } from "../form/navigate";
 import {
   isBuilderRender,
-  postToPlatform,
+  postWithShareCode,
   stateForAnswer,
   type AnswerStates,
 } from "../form/submit";
+import { readPageShareCode } from "../share-code/share-code";
+import { useShareCodeCarrier } from "../share-code/use-share-code-carrier";
 import { resolveSignupForm, type SignupFormResolution } from "./forms-data";
 import { signupsPath, type SignupFormState } from "./states";
 
@@ -88,19 +90,25 @@ const honeypotStyle: CSSProperties = {
   border: 0,
 };
 
-/** The `POST /api/public/site/v1/signups` body. */
+/**
+ * The `POST /api/public/site/v1/signups` body. `shareCode` is the visit's share
+ * code, sent as `referral_code` (the platform's name) only when the page has
+ * one; without it the key is left out.
+ */
 const buildSignupBody = ({
   formId,
   fields,
   parts,
   pagePath,
   honeypot,
+  shareCode,
 }: {
   formId: string | undefined;
   fields: readonly FormFieldConfig[];
   parts: readonly FormPart[];
   pagePath: string;
   honeypot: string;
+  shareCode: string | undefined;
 }) => {
   const values = new Map<string, string>();
   for (const part of parts) {
@@ -130,6 +138,7 @@ const buildSignupBody = ({
     fields: Object.fromEntries(entries),
     page_path: pagePath,
     website: honeypot,
+    ...(shareCode === undefined ? {} : { referral_code: shareCode }),
   };
 };
 
@@ -283,6 +292,8 @@ export const SignupForm = forwardRef<ElementRef<"form">, SignupFormProps>(
     const { parts, register } = usePartRegistry();
     const formRef = useRef<HTMLFormElement | null>(null);
     const ref = useMergedRef(forwardedRef, formRef);
+    // a link the designer put inside the form carries the visit's share code
+    useShareCodeCarrier({ rootRef: formRef, renderer });
     const honeypotRef = useRef<HTMLInputElement>(null);
 
     // The current state follows the state prop (the bound variable, or the
@@ -337,11 +348,13 @@ export const SignupForm = forwardRef<ElementRef<"form">, SignupFormProps>(
         parts,
         pagePath: window.location.pathname,
         honeypot: honeypotRef.current?.value ?? "",
+        // read at submit, never while rendering
+        shareCode: readPageShareCode(),
       });
       submitting.current = true;
       setFieldErrors(new Map());
       report("submitting", stateMessages.submitting);
-      void postToPlatform({ renderer, path: signupsPath, body }).then(
+      void postWithShareCode({ renderer, path: signupsPath, body }).then(
         (answer) => {
           submitting.current = false;
           if (answer === undefined) {
