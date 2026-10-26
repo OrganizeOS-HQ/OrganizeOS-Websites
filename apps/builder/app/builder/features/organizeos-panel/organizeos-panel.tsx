@@ -22,14 +22,14 @@ import {
   addCatalogResourceToPage,
   isCatalogResourceOnPage,
 } from "./organizeos-data";
-import { SectionBackground } from "./section-background";
 import { Motion } from "./motion";
 
 /**
- * The OrganizeOS tab of the left sidebar: Section background, Motion and the
- * org's data catalog, which a page can add (organizeos-data.ts). The blocks
- * are listed in the Components panel's OrganizeOS section
- * (components-section.tsx).
+ * The OrganizeOS tab of the left sidebar: Motion and the org's data catalog,
+ * which a page can add (organizeos-data.ts). The blocks are listed in the
+ * Components panel's OrganizeOS section (components-section.tsx), and Section
+ * background is the Style panel's Background presets section
+ * (background-presets-section.tsx).
  *
  * Offered only to orgs on the rollout allowlist: the sidebar hides the tab
  * otherwise ($isOrganizeosPanelAvailable).
@@ -120,12 +120,7 @@ export const OrganizeosPanel = () => {
       <Separator />
 
       <ScrollArea>
-        {selectedPage?.meta.documentType !== "xml" && (
-          <>
-            <SectionBackground />
-            <Motion />
-          </>
-        )}
+        {selectedPage?.meta.documentType !== "xml" && <Motion />}
         <DataSection />
       </ScrollArea>
     </>

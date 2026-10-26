@@ -16,7 +16,6 @@ import {
   Text,
 } from "@webstudio-is/design-system";
 import {
-  $propsIndex,
   $registeredComponentMetas,
   $selectedBreakpoint,
   $selectedInstanceSelector,
@@ -32,7 +31,6 @@ import {
   $styles,
 } from "~/shared/sync/data-stores";
 import type { InstanceSelector } from "~/shared/instance-utils/tree";
-import { CollapsibleSection } from "~/builder/shared/collapsible-section";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { AssetManager } from "~/builder/shared/asset-manager";
 import { AssetUpload } from "~/builder/shared/assets";
@@ -53,28 +51,27 @@ import {
   describeBackgroundOrigin,
   type BackgroundOrigin,
 } from "./backgrounds/apply-preset";
-import {
-  checkSectionContrast,
-  type ContrastGroup,
-  type ContrastReport,
-} from "./backgrounds/contrast";
+import type { ContrastGroup, ContrastReport } from "./backgrounds/contrast";
 import {
   buildSectionStyleModel,
   listRootColorVariables,
 } from "./backgrounds/style-model";
+import { useDeferredContrastReport } from "./contrast-schedule";
 
 /**
- * The Section background area of the OrganizeOS panel (spec 3.1): applies a
- * background preset to the selected element, colored from Global Root's
- * color variables, and reports the contrast of the text inside it.
- * Everything it writes goes through `applyPreset`, as local styles.
+ * The content of the Style panel's Background presets section
+ * (background-presets-section.tsx; spec 3.1, panel overhaul spec 5.2):
+ * applies a background preset to the selected element, colored from Global
+ * Root's color variables, and reports the contrast of the text inside it,
+ * after a scheduled run (contrast-schedule.ts). Everything it writes goes
+ * through `applyPreset`, as local styles.
  */
 
 /**
  * The selected element when it can take a section background: not nothing,
  * not Global Root, not the page root (the Body), and still in the tree.
  */
-const $sectionSelector = computed(
+export const $sectionSelector = computed(
   [$selectedInstanceSelector, $instances, $selectedPage],
   (selector, instances, page): InstanceSelector | undefined => {
     if (selector === undefined || selector.length === 0) {
@@ -93,23 +90,6 @@ const $sectionSelector = computed(
     }
     return selector;
   }
-);
-
-/** The contrast report for the selected element, live (spec 4.1). */
-const $contrastReport = computed(
-  [
-    $sectionSelector,
-    $styles,
-    $styleSourceSelections,
-    $instances,
-    $propsIndex,
-    $registeredComponentMetas,
-    $matchingBreakpoints,
-    $selectedInstanceSelector,
-    $selectedPage,
-  ],
-  (selector): ContrastReport | undefined =>
-    selector === undefined ? undefined : checkSectionContrast(selector)
 );
 
 /** Where the selected element's background comes from now. */
@@ -398,20 +378,14 @@ const ImagePicker = ({
 
 export const SectionBackground = () => {
   const selector = useStore($sectionSelector);
-  const report = useStore($contrastReport);
+  const report = useDeferredContrastReport(selector);
   const origin = useStore($backgroundOrigin);
   const variables = useStore($rootColorVariables);
   const [chosen, setChosen] = useState<Partial<Record<Role, string>>>({});
   const [imageAssetId, setImageAssetId] = useState<string>();
 
-  if (selector === undefined || report === undefined) {
-    return (
-      <CollapsibleSection label="Section background" fullWidth>
-        <Text color="subtle" css={{ paddingInline: theme.panel.paddingInline }}>
-          Select a section to give it a background.
-        </Text>
-      </CollapsibleSection>
-    );
+  if (selector === undefined) {
+    return;
   }
 
   const byName = new Map(
@@ -443,92 +417,96 @@ export const SectionBackground = () => {
   );
 
   return (
-    <CollapsibleSection label="Section background" fullWidth>
-      <Flex
-        direction="column"
-        gap="3"
-        css={{ paddingInline: theme.panel.paddingInline }}
-      >
-        {variables.length === 0 ? (
-          <Text color="subtle" data-palette-hint>
-            Define color variables in Global Root to use your own palette.
-          </Text>
-        ) : (
-          <Grid columns="2" gap="2" align="center" data-color-row>
-            {roles.map(({ role, label }) => (
-              <Box key={role} css={{ display: "contents" }}>
-                <Label>{label}</Label>
-                <Select
-                  name={role}
-                  options={names}
-                  value={pick(role)?.variable}
-                  getLabel={(name) => `--${name}`}
-                  onChange={(name) =>
-                    setChosen((previous) => ({ ...previous, [role]: name }))
-                  }
-                />
-              </Box>
-            ))}
-          </Grid>
-        )}
-        <Text color="subtle">
-          Changing a variable later updates the base color. Re-apply the preset
-          to update its tints.
+    <Flex
+      direction="column"
+      gap="3"
+      css={{ paddingInline: theme.panel.paddingInline }}
+    >
+      {variables.length === 0 ? (
+        <Text color="subtle" data-palette-hint>
+          Define color variables in Global Root to use your own palette.
         </Text>
-
-        {notice && <Text data-origin-notice>{notice}</Text>}
-
-        <Grid columns="3" gap="2" data-preset-grid>
-          {presets.map((preset) => {
-            const needsImage =
-              preset.family === "image-scrim" && imageAssetId === undefined;
-            return (
-              <PresetButton
-                key={preset.id}
-                type="button"
-                data-preset={preset.id}
-                disabled={needsImage}
-                title={needsImage ? "Choose an image first" : preset.label}
-                onClick={() =>
-                  applyPreset(preset.build(palette, { imageAssetId }))
+      ) : (
+        <Grid columns="2" gap="2" align="center" data-color-row>
+          {roles.map(({ role, label }) => (
+            <Box key={role} css={{ display: "contents" }}>
+              <Label>{label}</Label>
+              <Select
+                name={role}
+                options={names}
+                value={pick(role)?.variable}
+                getLabel={(name) => `--${name}`}
+                onChange={(name) =>
+                  setChosen((previous) => ({ ...previous, [role]: name }))
                 }
-              >
-                <Thumbnail style={getThumbnailStyle(preset, palette)} />
-                <Text variant="small" truncate>
-                  {preset.label}
-                </Text>
-              </PresetButton>
-            );
-          })}
+              />
+            </Box>
+          ))}
         </Grid>
+      )}
+      <Text color="subtle">
+        Changing a variable later updates the base color. Re-apply the preset to
+        update its tints.
+      </Text>
 
-        <Flex direction="column" gap="1">
-          <ImagePicker assetId={imageAssetId} onChange={setImageAssetId} />
-          {imageAssetId === undefined && (
-            <Text color="subtle">
-              Choose an image to use the image with scrim presets.
-            </Text>
-          )}
-          {scrimPresets.map((preset) => {
-            const reference = getReferenceTextColor(preset, palette);
-            return (
-              <Flex
-                key={preset.id}
-                align="center"
-                gap="2"
-                data-scrim-reference={preset.id}
-              >
-                <Swatch aria-hidden css={{ background: toHex(reference) }} />
-                <Text color="subtle">
-                  {preset.label}: tuned for text {toHex(reference)}
-                </Text>
-              </Flex>
-            );
-          })}
-        </Flex>
+      {notice && <Text data-origin-notice>{notice}</Text>}
 
-        <ContrastSection report={report} />
+      <Grid columns="3" gap="2" data-preset-grid>
+        {presets.map((preset) => {
+          const needsImage =
+            preset.family === "image-scrim" && imageAssetId === undefined;
+          return (
+            <PresetButton
+              key={preset.id}
+              type="button"
+              data-preset={preset.id}
+              disabled={needsImage}
+              title={needsImage ? "Choose an image first" : preset.label}
+              onClick={() =>
+                applyPreset(preset.build(palette, { imageAssetId }))
+              }
+            >
+              <Thumbnail style={getThumbnailStyle(preset, palette)} />
+              <Text variant="small" truncate>
+                {preset.label}
+              </Text>
+            </PresetButton>
+          );
+        })}
+      </Grid>
+
+      <Flex direction="column" gap="1">
+        <ImagePicker assetId={imageAssetId} onChange={setImageAssetId} />
+        {imageAssetId === undefined && (
+          <Text color="subtle">
+            Choose an image to use the image with scrim presets.
+          </Text>
+        )}
+        {scrimPresets.map((preset) => {
+          const reference = getReferenceTextColor(preset, palette);
+          return (
+            <Flex
+              key={preset.id}
+              align="center"
+              gap="2"
+              data-scrim-reference={preset.id}
+            >
+              <Swatch aria-hidden css={{ background: toHex(reference) }} />
+              <Text color="subtle">
+                {preset.label}: tuned for text {toHex(reference)}
+              </Text>
+            </Flex>
+          );
+        })}
       </Flex>
-    </CollapsibleSection>
+
+      {report === undefined ? (
+        <Text color="subtle" data-contrast-pending>
+          Checking contrast
+        </Text>
+      ) : (
+        <ContrastSection report={report} />
+      )}
+    </Flex>
   );
 };
