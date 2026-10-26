@@ -60,6 +60,7 @@ export const namedTextComponents = new Set([
   organizeos("FieldInput"),
   organizeos("FieldMessage"),
   organizeos("RotationControl"),
+  organizeos("MarqueePauseButton"),
 ]);
 
 /**
@@ -89,6 +90,8 @@ export const rendersDesignerChildrenOnly = new Set([
   organizeos("SubmitButton"),
   organizeos("EmailConsent"),
   organizeos("AnimateChildren"),
+  organizeos("Marquee"),
+  organizeos("MarqueeTrack"),
 ]);
 
 /** Above this many background colors after any layer, the check gives up. */

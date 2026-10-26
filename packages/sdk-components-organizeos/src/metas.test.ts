@@ -242,6 +242,7 @@ test("templates and hooks", () => {
     "EventCard",
     "RsvpForm",
     "RotatingTabs",
+    "Marquee",
   ]);
   for (const template of Object.values(templates)) {
     expect(template.category).toBe("hidden");
@@ -251,6 +252,7 @@ test("templates and hooks", () => {
   expect(templates.EventCard.label).toBe("Event Card");
   expect(templates.RsvpForm.label).toBe("RSVP Form");
   expect(templates.RotatingTabs.label).toBe("Rotating Tabs");
+  expect(templates.Marquee.label).toBe("Marquee");
   // every template's label is the label a designer sees in the panel and the
   // navigator, and a template that is a component's has that component's
   for (const [name, template] of Object.entries(templates)) {
@@ -292,4 +294,80 @@ test("the Rotation Control: hidden, childless, a button, with its props, Fade am
     "value",
     "onValueChange",
   ]);
+});
+
+test("the Marquee: its parts, their content models, preset styles and props", () => {
+  expect(metas.Marquee.label).toBe("Marquee");
+  expect(metas.MarqueePauseButton.label).toBe("Marquee Pause Button");
+  expect(metas.MarqueeTrack.label).toBe("Marquee Track");
+  for (const meta of [
+    metas.Marquee,
+    metas.MarqueePauseButton,
+    metas.MarqueeTrack,
+  ]) {
+    expect(meta.icon).toBeDefined();
+  }
+  expect(metas.Marquee.contentModel).toEqual({
+    category: "instance",
+    children: [namespaced("MarqueePauseButton"), namespaced("MarqueeTrack")],
+  });
+  expect(metas.MarqueePauseButton.contentModel).toEqual({
+    category: "none",
+    children: [],
+  });
+  expect(metas.MarqueeTrack.contentModel).toEqual({
+    category: "none",
+    children: ["instance"],
+  });
+  expect(Object.keys(metas.Marquee.presetStyle ?? {})).toEqual(["div"]);
+  expect(Object.keys(metas.MarqueePauseButton.presetStyle ?? {})).toEqual([
+    "button",
+  ]);
+  expect(Object.keys(metas.MarqueeTrack.presetStyle ?? {})).toEqual(["div"]);
+
+  expect(metas.Marquee.initialProps).toEqual([
+    "id",
+    "class",
+    "speed",
+    "direction",
+  ]);
+  expect(metas.Marquee.props).toMatchObject({
+    speed: { type: "number", control: "number", defaultValue: 40 },
+    direction: { type: "string", control: "radio", options: ["left", "right"] },
+  });
+  // unset, the runtime follows the reading direction (spec 12.11)
+  expect(metas.Marquee.props?.direction).not.toHaveProperty("defaultValue");
+  expect(Object.keys(metas.Marquee.props ?? {})).toEqual([
+    "speed",
+    "direction",
+  ]);
+
+  // the labels are the button's, the part that renders them (amendment 5)
+  expect(metas.MarqueePauseButton.initialProps).toEqual([
+    "id",
+    "class",
+    "pauseLabel",
+    "playLabel",
+  ]);
+  expect(metas.MarqueePauseButton.props).toMatchObject({
+    pauseLabel: { type: "string", control: "text", defaultValue: "Pause" },
+    playLabel: { type: "string", control: "text", defaultValue: "Play" },
+  });
+  expect(Object.keys(metas.MarqueePauseButton.props ?? {})).toEqual([
+    "pauseLabel",
+    "playLabel",
+  ]);
+  expect(metas.MarqueeTrack.initialProps).toEqual(["id", "class"]);
+  expect(metas.MarqueeTrack.props).toBeUndefined();
+});
+
+test("every part the Marquee lists is a component of the package, under the name it is listed by", () => {
+  const listed = metas.Marquee.contentModel?.children ?? [];
+  expect(listed).toHaveLength(2);
+  for (const name of listed) {
+    const short = name.replace(namespaced(""), "");
+    expect(name, name).toBe(namespaced(short));
+    expect(Object.keys(metas), name).toContain(short);
+    expect(Object.keys(components), name).toContain(short);
+  }
 });

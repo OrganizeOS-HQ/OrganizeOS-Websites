@@ -115,6 +115,21 @@ describe("groupOrganizeosBlocks", () => {
           },
         ],
       },
+      // registered ahead of its Sections entry (phase 3B plan, amendment 1)
+      {
+        label: "More",
+        blocks: [
+          {
+            name: `${namespace}:Marquee`,
+            label: "Marquee",
+            description: organizeosTemplates.Marquee.description,
+            icon: organizeosTemplates.Marquee.icon,
+            firstInstance: expect.objectContaining({
+              component: `${namespace}:Marquee`,
+            }),
+          },
+        ],
+      },
     ]);
   });
 
@@ -150,7 +165,7 @@ describe("groupOrganizeosBlocks", () => {
         ],
       ],
       ["Signups", [`${namespace}:SignupForm`]],
-      ["More", [`${namespace}:FutureBlock`]],
+      ["More", [`${namespace}:Marquee`, `${namespace}:FutureBlock`]],
     ]);
   });
 
@@ -169,6 +184,7 @@ describe("groupOrganizeosBlocks", () => {
       ["Sections", [`${namespace}:RotatingTabs`]],
       ["Events", [`${namespace}:EventList`, `${namespace}:EventCard`]],
       ["Signups", [`${namespace}:SignupForm`]],
+      ["More", [`${namespace}:Marquee`]],
     ]);
   });
 

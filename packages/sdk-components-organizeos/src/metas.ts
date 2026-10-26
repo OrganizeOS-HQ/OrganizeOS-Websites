@@ -13,3 +13,6 @@ export { meta as Questions } from "./rsvp/questions.ws";
 export { meta as EmailConsent } from "./rsvp/email-consent.ws";
 export { meta as RotationControl } from "./rotation/rotation-control.ws";
 export { meta as AnimateChildren } from "./animate/animate-children.ws";
+export { meta as Marquee } from "./marquee/marquee.ws";
+export { meta as MarqueePauseButton } from "./marquee/marquee-pause-button.ws";
+export { meta as MarqueeTrack } from "./marquee/marquee-track.ws";
