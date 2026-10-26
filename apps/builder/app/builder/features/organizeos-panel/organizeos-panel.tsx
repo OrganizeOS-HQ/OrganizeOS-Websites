@@ -17,19 +17,18 @@ import {
   findCatalogResources,
 } from "~/shared/organizeos-preset-ids";
 import { $dataSources, $project, $resources } from "~/shared/sync/data-stores";
-import { CollapsibleSection } from "~/builder/shared/collapsible-section";
 import {
   addCatalogResourceToPage,
   isCatalogResourceOnPage,
 } from "./organizeos-data";
-import { Motion } from "./motion";
 
 /**
- * The OrganizeOS tab of the left sidebar: Motion and the org's data catalog,
- * which a page can add (organizeos-data.ts). The blocks are listed in the
- * Components panel's OrganizeOS section (components-section.tsx), and Section
- * background is the Style panel's Background presets section
- * (background-presets-section.tsx).
+ * The OrganizeOS data tab of the left sidebar: the org's data catalog, which a
+ * page can add (organizeos-data.ts), until the CMS tab takes this slot. The
+ * blocks are listed in the Components panel's OrganizeOS section
+ * (components-section.tsx), Section background is the Style panel's
+ * Background presets section (background-presets-section.tsx), and Motion is
+ * the Inspector's Motion tab (motion-tab.tsx).
  *
  * Offered only to orgs on the rollout allowlist: the sidebar hides the tab
  * otherwise ($isOrganizeosPanelAvailable).
@@ -44,14 +43,15 @@ export const $isOrganizeosPanelAvailable = computed(
 /**
  * The project's catalog, found by its deterministic ids, which take a hash to
  * derive, so it is refreshed asynchronously whenever the resources change.
+ * Undefined until it first resolves, and with no project.
  */
 const useCatalog = () => {
   const project = useStore($project);
   const resources = useStore($resources);
-  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
+  const [catalog, setCatalog] = useState<CatalogEntry[]>();
   useEffect(() => {
     if (project === undefined) {
-      setCatalog([]);
+      setCatalog(undefined);
       return;
     }
     let isCurrent = true;
@@ -74,53 +74,67 @@ const DataSection = () => {
   const catalog = useCatalog();
   const dataSources = useStore($dataSources);
   const page = useStore($selectedPage);
-  if (catalog.length === 0 || page === undefined) {
+  if (page === undefined || catalog === undefined) {
     return;
   }
-  return (
-    <CollapsibleSection label="Data" fullWidth>
-      <Flex
-        direction="column"
-        gap="1"
+  if (catalog.length === 0) {
+    return (
+      <Text
+        color="subtle"
         css={{ paddingInline: theme.panel.paddingInline }}
+        data-organizeos-data-empty
       >
-        {catalog.map(({ resource }) => (
-          <Flex key={resource.id} align="center" justify="between" gap="2">
-            <Text truncate>{resource.name}</Text>
-            {isCatalogResourceOnPage({
-              page,
-              dataSources,
-              resourceId: resource.id,
-            }) ? (
-              <Text color="subtle" css={{ flexShrink: 0 }}>
-                On this page
-              </Text>
-            ) : (
-              <Button
-                color="neutral"
-                css={{ flexShrink: 0 }}
-                onClick={() => addCatalogResourceToPage(resource.id)}
-              >
-                Add to this page
-              </Button>
-            )}
-          </Flex>
-        ))}
-      </Flex>
-    </CollapsibleSection>
+        No organization data is connected to this site yet.
+      </Text>
+    );
+  }
+  return (
+    <Flex
+      direction="column"
+      gap="1"
+      css={{ paddingInline: theme.panel.paddingInline }}
+      data-organizeos-data
+    >
+      {catalog.map(({ resource }) => (
+        <Flex key={resource.id} align="center" justify="between" gap="2">
+          <Text truncate>{resource.name}</Text>
+          {isCatalogResourceOnPage({
+            page,
+            dataSources,
+            resourceId: resource.id,
+          }) ? (
+            <Text color="subtle" css={{ flexShrink: 0 }}>
+              On this page
+            </Text>
+          ) : (
+            <Button
+              color="neutral"
+              css={{ flexShrink: 0 }}
+              onClick={() => addCatalogResourceToPage(resource.id)}
+            >
+              Add to this page
+            </Button>
+          )}
+        </Flex>
+      ))}
+    </Flex>
   );
 };
 
 export const OrganizeosPanel = () => {
-  const selectedPage = useStore($selectedPage);
-
   return (
     <>
-      <PanelTitle>{platformName}</PanelTitle>
+      <PanelTitle>{`${platformName} data`}</PanelTitle>
       <Separator />
 
       <ScrollArea>
-        {selectedPage?.meta.documentType !== "xml" && <Motion />}
+        <Text
+          color="subtle"
+          css={{ padding: theme.panel.padding }}
+          data-organizeos-data-line
+        >
+          Add your organization's data to this page, then bind it in Settings.
+        </Text>
         <DataSection />
       </ScrollArea>
     </>

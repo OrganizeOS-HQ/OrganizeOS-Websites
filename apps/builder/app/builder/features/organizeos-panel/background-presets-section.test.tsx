@@ -476,12 +476,13 @@ describe("Background presets in the Style panel", () => {
       Array.from(host.querySelectorAll('[role="tab"]'), (tab) =>
         tab.textContent?.trim()
       );
-    expect(tabs()).toEqual(["Settings"]);
+    // no Style tab (the Motion tab is offered to the allowlisted org)
+    expect(tabs()).toEqual(["Settings", "Motion"]);
     expect(host.querySelector('[data-marker="style-panel"]')).toBeNull();
     // StylePanel is a marker here, so the tab list is what this case pins:
     // with no Style tab, Background presets has nowhere to render
     // where the Style tab is offered, the Inspector does offer it
     act(() => selectInstance(sectionSelector));
-    expect(tabs()).toEqual(["Style", "Settings"]);
+    expect(tabs()).toEqual(["Style", "Settings", "Motion"]);
   });
 });

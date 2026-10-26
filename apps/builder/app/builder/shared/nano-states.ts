@@ -78,7 +78,10 @@ export const $clampingRect = computed(
   }
 );
 
-export const $activeInspectorPanel = atom<"style" | "settings">("style");
+// OrganizeOS fork: "motion" is the Inspector's Motion tab (organizeos-panel/motion-tab.tsx)
+export const $activeInspectorPanel = atom<"style" | "settings" | "motion">(
+  "style"
+);
 
 export const $dataLoadingState = atom<"idle" | "loading" | "loaded">("idle");
 
