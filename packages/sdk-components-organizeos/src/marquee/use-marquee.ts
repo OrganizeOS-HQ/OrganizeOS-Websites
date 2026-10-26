@@ -51,6 +51,37 @@ const fraction = (value: number) => {
   return Number.isFinite(result) && result < 1 ? result : 0;
 };
 
+/**
+ * An element's border-box left at rest, from the root's padding edge: its
+ * `offsetLeft` chain up to the root, so a transform (the drift) never counts.
+ * An offset parent outside the root is the root's own offset parent too, so
+ * the root's offset is taken off.
+ */
+const restLeft = (element: HTMLElement, root: HTMLElement): number => {
+  let left = 0;
+  for (let node = element; ; ) {
+    left += node.offsetLeft;
+    const parent = node.offsetParent;
+    if (parent === root) {
+      return left;
+    }
+    if (parent instanceof HTMLElement && root.contains(parent)) {
+      left += parent.clientLeft;
+      node = parent;
+    } else {
+      return left - root.offsetLeft - root.clientLeft;
+    }
+  }
+};
+
+/** The root's content box, from its padding edge. */
+const contentBox = (root: HTMLElement) => {
+  const style = getComputedStyle(root);
+  const left = Number.parseFloat(style.paddingLeft) || 0;
+  const right = root.clientWidth - (Number.parseFloat(style.paddingRight) || 0);
+  return { left, right: Math.max(left, right) };
+};
+
 type Pause = "pointer" | "offscreen" | "hidden";
 
 type Direction = "left" | "right";
@@ -61,7 +92,8 @@ const toDirection = (direction: unknown): Direction | undefined =>
 /**
  * The Marquee's motion (spec 4.2, 12.1-12.5, 12.8): after mount, when motion
  * may run (not on the canvas, no reduced motion, the parts in place, an
- * engine with `element.animate`, and the track's items wider than the root),
+ * engine with `element.animate`, and the track's items running past the
+ * root's padding edge, where it clips them),
  * it appends one runtime-owned container of clones to the track,
  * `<div aria-hidden="true" inert style="display: contents">`, and drifts the
  * track by one period W in a seamless loop on the document timeline.
@@ -71,7 +103,7 @@ const toDirection = (direction: unknown): Direction | undefined =>
  * Motion pauses while the pointer is over the root, while the root is off
  * screen and while the document is hidden; it stops (until Play) when
  * keyboard focus enters the track, and the focused item is brought inside
- * the root. Reduced motion turned on mid-visit, unmount, and a root that
+ * the root's content box (its padding and the track's offset count). Reduced motion turned on mid-visit, unmount, and a root that
  * widens past its items remove the clones, so the DOM is the server's again.
  *
  * It reads and writes nothing during render: the state starts "off" and
@@ -141,17 +173,19 @@ export const useMarquee = ({
           child instanceof HTMLElement && owned.has(child) === false
       );
 
-    // The width the originals span, from their own boxes.
+    // Whether the originals at rest run past the root's padding edge, where
+    // it clips them: the root's padding and the track's offset count.
     const overflows = () => {
       const originals = getOriginals();
       if (originals.length === 0) {
         return false;
       }
-      const left = Math.min(...originals.map((item) => item.offsetLeft));
+      const lefts = originals.map((item) => restLeft(item, root));
+      const left = Math.min(...lefts);
       const right = Math.max(
-        ...originals.map((item) => item.offsetLeft + item.offsetWidth)
+        ...originals.map((item, index) => lefts[index] + item.offsetWidth)
       );
-      return right - left > root.clientWidth;
+      return left < 0 || right > root.clientWidth;
     };
 
     const buildContainer = () => {
@@ -319,26 +353,21 @@ export const useMarquee = ({
     };
 
     // Brings the focused item inside the root (spec 12.1): the time in one
-    // period at which its box lies in the root's, nearest the current one.
+    // period at which its box lies in the root's content box, nearest the
+    // current one.
     const bringIntoView = (target: Node) => {
       if (animation === undefined || duration === 0) {
         return;
       }
-      const originals = getOriginals();
-      const item = originals.find((original) => original.contains(target));
-      const [first] = originals;
-      if (item === undefined || first === undefined) {
+      const item = getOriginals().find((original) => original.contains(target));
+      if (item === undefined) {
         return;
       }
-      const width = root.clientWidth;
-      // the root's box at rest, where the first item starts (or, right to
-      // left, ends)
-      const viewLeft =
-        period > 0
-          ? first.offsetLeft
-          : first.offsetLeft + first.offsetWidth - width;
-      const low = viewLeft - item.offsetLeft;
-      const high = Math.max(low, low + width - item.offsetWidth);
+      const view = contentBox(root);
+      const left = restLeft(item, root);
+      // the translates that put the item's box inside the view
+      const low = view.left - left;
+      const high = Math.max(low, view.right - item.offsetWidth - left);
       // the translate is -period * shift, shift in [0, 1)
       const progress = getProgress();
       const shift = reverse ? fraction(1 - progress) : progress;

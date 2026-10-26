@@ -122,12 +122,20 @@ const setVisibility = (state: DocumentVisibilityState) => {
  * stubbed per element. Item i (`data-item`) sits at `itemLeft(i)` with
  * `itemWidth(i)`; its clone, inside the inert container, sits one period
  * further, `period(count)` for `count` original items. The root
- * (`data-testid="root"`) is `rootWidth` wide.
+ * (`data-testid="root"`) is `rootWidth` wide, padding included.
+ *
+ * `frame` names the items' offset parent: the root (`itemLeft` from its
+ * padding edge), the track (`itemLeft` from the track, which sits
+ * `trackLeft` inside the root), or an ancestor of both, from which the root
+ * sits `rootLeft` along.
  */
 let rootWidth = 300;
 let itemWidth = (_index: number) => 100;
 let itemLeft = (index: number) => index * 116;
 let period = (count: number) => count * 116;
+let frame: "root" | "track" | "shared" = "root";
+let trackLeft = 0;
+let rootLeft = 0;
 
 const countOriginals = (element: Element) =>
   [...(element.closest('[data-testid="track"]')?.children ?? [])].filter(
@@ -137,6 +145,12 @@ const countOriginals = (element: Element) =>
 const stubLayout = () => {
   vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(
     function (this: HTMLElement) {
+      if (this.dataset.testid === "root") {
+        return rootLeft;
+      }
+      if (this.dataset.testid === "track") {
+        return trackLeft;
+      }
       const index = this.dataset.item;
       if (index === undefined) {
         return 0;
@@ -145,6 +159,18 @@ const stubLayout = () => {
       return (
         itemLeft(Number(index)) + (clone ? period(countOriginals(this)) : 0)
       );
+    }
+  );
+  vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockImplementation(
+    function (this: HTMLElement) {
+      const root = this.closest('[data-testid="root"]');
+      if (this === root || frame === "shared") {
+        return document.body;
+      }
+      if (this.dataset.item !== undefined && frame === "track") {
+        return this.closest('[data-testid="track"]');
+      }
+      return root;
     }
   );
   vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(
@@ -171,6 +197,9 @@ beforeEach(() => {
   itemWidth = () => 100;
   itemLeft = (index) => index * 116;
   period = (count) => count * 116;
+  frame = "root";
+  trackLeft = 0;
+  rootLeft = 0;
   stubLayout();
   vi.spyOn(document, "visibilityState", "get").mockImplementation(
     () => visibility
@@ -525,6 +554,14 @@ describe("never starting", () => {
     expect(getButton().hidden).toBe(true);
   });
 
+  test("when the items, from the root's left padding, end inside its padding edge", () => {
+    // the items span 564px from 24: they end at 588 of a 588px root
+    itemLeft = (index) => 24 + index * 116;
+    rootWidth = 588;
+    render(<Section />);
+    expectOff();
+  });
+
   test("in an engine without element.animate (plan amendment 2)", () => {
     delete proto.animate;
     render(<Section />);
@@ -758,6 +795,9 @@ describe("keyboard focus", () => {
           : real(element)
     );
     // item 0 ends at the root's right edge (500); the root shows 200..500
+    // of the frame the items and the root share
+    frame = "shared";
+    rootLeft = 200;
     itemLeft = (index) => 400 - index * 116;
     period = (count) => -count * 116;
     render(<Section />);
@@ -765,6 +805,116 @@ describe("keyboard focus", () => {
     tabTo(getLink(4));
     // moved right by 264px, to 200..300
     expect(lastAnimation().currentTime).toBeCloseTo(6600, 6);
+  });
+
+  // The root's computed style: a reading direction and side paddings.
+  const styleRoot = (style: {
+    direction?: string;
+    paddingLeft?: string;
+    paddingRight?: string;
+  }) => {
+    const real = window.getComputedStyle.bind(window);
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      (element: Element) =>
+        (element as HTMLElement).dataset?.testid === "root"
+          ? ({ direction: "ltr", ...style } as CSSStyleDeclaration)
+          : real(element)
+    );
+  };
+
+  // A 300px root with 24px side paddings shows items in 24..276 of its
+  // padding edge; the items start at 24.
+  describe.each([
+    {
+      name: "the root",
+      setup: () => {
+        itemLeft = (index) => 24 + index * 116;
+      },
+    },
+    {
+      name: "the track, offset inside the root",
+      setup: () => {
+        frame = "track";
+        trackLeft = 24;
+        itemLeft = (index) => index * 116;
+      },
+    },
+    {
+      name: "an ancestor of the root",
+      setup: () => {
+        frame = "shared";
+        rootLeft = 200;
+        itemLeft = (index) => 224 + index * 116;
+      },
+    },
+  ])("a root with side padding, the items measured from $name", ({ setup }) => {
+    // Item i's left, from the root's padding edge, at the current time.
+    const leftAt = (index: number, reverse = false) => {
+      const progress = (Number(lastAnimation().currentTime) / 14_500) % 1;
+      const shift = reverse ? (1 - progress) % 1 : progress;
+      return 24 + index * 116 - 580 * shift;
+    };
+
+    test("an item past the right padding is brought inside the content box", () => {
+      setup();
+      styleRoot({ paddingLeft: "24px", paddingRight: "24px" });
+      render(<Section />);
+      // at rest item 4 spans 488..588
+      tabTo(getLink(4));
+      // its right edge on the content box's, 276: shifted 312px, 7.8 s
+      expect(lastAnimation().currentTime).toBeCloseTo(7800, 6);
+      expect(leftAt(4)).toBeGreaterThanOrEqual(24 - 1e-6);
+      expect(leftAt(4) + 100).toBeLessThanOrEqual(276 + 1e-6);
+      // item 0, now past the left edge, comes back to the left padding
+      tabTo(getLink(0));
+      expect(lastAnimation().currentTime).toBeCloseTo(0, 6);
+      expect(leftAt(0)).toBeCloseTo(24, 6);
+    });
+
+    test("an item inside the content box leaves the time alone", () => {
+      setup();
+      styleRoot({ paddingLeft: "24px", paddingRight: "24px" });
+      render(<Section />);
+      // shifted 100px: item 2 spans 156..256
+      lastAnimation().currentTime = 2500;
+      tabTo(getLink(2));
+      expect(lastAnimation().currentTime).toBe(2500);
+    });
+
+    test("drifting right, the same box is found", () => {
+      setup();
+      styleRoot({ paddingLeft: "24px", paddingRight: "24px" });
+      render(<Section direction="right" />);
+      tabTo(getLink(4));
+      expect(lastAnimation().currentTime).toBeCloseTo(14_500 - 7800, 6);
+      expect(leftAt(4, true)).toBeGreaterThanOrEqual(24 - 1e-6);
+      expect(leftAt(4, true) + 100).toBeLessThanOrEqual(276 + 1e-6);
+    });
+  });
+
+  test("laid out right to left in a padded root, an item past the left padding is brought inside the content box", () => {
+    styleRoot({ direction: "rtl", paddingLeft: "24px", paddingRight: "24px" });
+    // item 0 ends at the content box's right edge, 276; item 4 spans
+    // -288..-188 at rest
+    itemLeft = (index) => 176 - index * 116;
+    period = (count) => -count * 116;
+    render(<Section />);
+    tabTo(getLink(4));
+    // moved right by 312px, to 24..124
+    expect(lastAnimation().currentTime).toBeCloseTo(7800, 6);
+    const left = -288 + 580 * (Number(lastAnimation().currentTime) / 14_500);
+    expect(left).toBeCloseTo(24, 6);
+  });
+
+  test("laid out right to left with the root's own right padding unequal, the box follows it", () => {
+    styleRoot({ direction: "rtl", paddingLeft: "0px", paddingRight: "40px" });
+    // content box 0..260; item 0 ends at 260; item 4 spans -304..-204
+    itemLeft = (index) => 160 - index * 116;
+    period = (count) => -count * 116;
+    render(<Section />);
+    tabTo(getLink(4));
+    // moved right by 304px, to 0..100: 7.6 s
+    expect(lastAnimation().currentTime).toBeCloseTo(7600, 6);
   });
 
   test("an item past the edge on its way in is reached from the current time", () => {
@@ -842,6 +992,15 @@ describe("resizing (spec 12.4)", () => {
     expect(getContainers()).toEqual([]);
     expect(getTrack().innerHTML).toBe(serverHtml);
     expect(getButton().hidden).toBe(true);
+  });
+
+  test("counts the root's padding: items that fit its width but run past its padding edge start", () => {
+    // 564px of items from 24 end at 588, past a 580px root's padding edge
+    itemLeft = (index) => 24 + index * 116;
+    rootWidth = 580;
+    render(<Section />);
+    expect(calls).toHaveLength(1);
+    expect(getButton().hidden).toBe(false);
   });
 
   test("ignores the size change its own copies cause", () => {

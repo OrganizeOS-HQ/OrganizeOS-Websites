@@ -76,13 +76,13 @@ type Section = {
 };
 
 // Signups, Events, Membership and Donations in the spec; so far the Signup
-// Form, the Events blocks and Rotating Tabs. A section names its blocks in the
+// Form, the Events blocks, Rotating Tabs and Marquee. A section names its blocks in the
 // order they are listed, and one that is not registered (yet) is skipped.
 const sections: Section[] = [
   {
     // Page sections that read no platform data, so the insert binds nothing.
     label: "Sections",
-    blocks: ["RotatingTabs"],
+    blocks: ["RotatingTabs", "Marquee"],
   },
   {
     label: "Events",

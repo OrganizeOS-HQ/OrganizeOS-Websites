@@ -1,8 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { renderTemplate, type TemplateMeta } from "@webstudio-is/template";
-import type { WsComponentMeta } from "@webstudio-is/sdk";
+import { coreMetas, type WsComponentMeta } from "@webstudio-is/sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
+import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import * as radixMetas from "@webstudio-is/sdk-components-react-radix/metas";
 import { platformUrl } from "~/shared/branding";
 import { $organizeosSite } from "~/shared/nano-states";
@@ -62,6 +63,15 @@ describe("groupOrganizeosBlocks", () => {
               component: "@webstudio-is/sdk-components-react-radix:Tabs",
             }),
           },
+          {
+            name: `${namespace}:Marquee`,
+            label: "Marquee",
+            description: organizeosTemplates.Marquee.description,
+            icon: organizeosTemplates.Marquee.icon,
+            firstInstance: expect.objectContaining({
+              component: `${namespace}:Marquee`,
+            }),
+          },
         ],
       },
       {
@@ -115,21 +125,6 @@ describe("groupOrganizeosBlocks", () => {
           },
         ],
       },
-      // registered ahead of its Sections entry (phase 3B plan, amendment 1)
-      {
-        label: "More",
-        blocks: [
-          {
-            name: `${namespace}:Marquee`,
-            label: "Marquee",
-            description: organizeosTemplates.Marquee.description,
-            icon: organizeosTemplates.Marquee.icon,
-            firstInstance: expect.objectContaining({
-              component: `${namespace}:Marquee`,
-            }),
-          },
-        ],
-      },
     ]);
   });
 
@@ -138,6 +133,18 @@ describe("groupOrganizeosBlocks", () => {
     expect(organizeosTemplates.RotatingTabs.icon).not.toBe(
       radixMetas.Tabs.icon
     );
+  });
+
+  test("Marquee has its own icon, not one of an upstream component", () => {
+    const upstreamIcons = new Set(
+      [
+        ...Object.values(defaultMetas),
+        ...Object.values(radixMetas),
+        ...Object.values(coreMetas),
+      ].map((meta) => (meta as WsComponentMeta).icon)
+    );
+    expect(organizeosTemplates.Marquee.icon).toEqual(expect.any(String));
+    expect(upstreamIcons.has(organizeosTemplates.Marquee.icon)).toBe(false);
   });
 
   test("still offers a block no section names, after the others", () => {
@@ -155,7 +162,7 @@ describe("groupOrganizeosBlocks", () => {
         section.blocks.map((block) => block.name),
       ])
     ).toEqual([
-      ["Sections", [`${namespace}:RotatingTabs`]],
+      ["Sections", [`${namespace}:RotatingTabs`, `${namespace}:Marquee`]],
       [
         "Events",
         [
@@ -165,7 +172,7 @@ describe("groupOrganizeosBlocks", () => {
         ],
       ],
       ["Signups", [`${namespace}:SignupForm`]],
-      ["More", [`${namespace}:Marquee`, `${namespace}:FutureBlock`]],
+      ["More", [`${namespace}:FutureBlock`]],
     ]);
   });
 
@@ -181,10 +188,9 @@ describe("groupOrganizeosBlocks", () => {
         section.blocks.map((block) => block.name),
       ])
     ).toEqual([
-      ["Sections", [`${namespace}:RotatingTabs`]],
+      ["Sections", [`${namespace}:RotatingTabs`, `${namespace}:Marquee`]],
       ["Events", [`${namespace}:EventList`, `${namespace}:EventCard`]],
       ["Signups", [`${namespace}:SignupForm`]],
-      ["More", [`${namespace}:Marquee`]],
     ]);
   });
 
