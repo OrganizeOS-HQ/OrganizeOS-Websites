@@ -303,11 +303,11 @@ export const planAction = ({
         targetIndex,
         animationIndex,
         timeline,
-        // each play gets its own copies: the engine may keep them
-        keyframes: keyframes.map((keyframe) => ({ ...keyframe })),
+        // shared between plays: Element.animate copies what it is given
+        keyframes,
         options:
           starts === undefined
-            ? { ...options }
+            ? options
             : { ...options, rangeStart: starts[targetIndex] },
       });
     }

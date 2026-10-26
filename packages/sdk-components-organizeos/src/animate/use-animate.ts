@@ -114,9 +114,6 @@ const serialize = (value: unknown): string =>
       : item
   ) ?? "";
 
-const sameNotes = (a: readonly string[], b: readonly string[]) =>
-  a.length === b.length && a.every((note, index) => note === b[index]);
-
 /**
  * The scroll-driven player (spec 4.2): after mount, plays `action` on each
  * element child of the root with native scroll and view timelines, and
@@ -176,15 +173,15 @@ export const useAnimate = ({
       if (spec.kind === "view") {
         if (findScrollContainer(target, spec.axis) !== rootScroller) {
           reasons.add("overflow");
-        } else if (attach && window.ViewTimeline !== undefined) {
-          timeline = new window.ViewTimeline({
+        } else if (attach) {
+          timeline = new window.ViewTimeline!({
             subject: target,
             axis: spec.axis,
             inset: spec.inset,
           });
         }
-      } else if (attach && window.ScrollTimeline !== undefined) {
-        timeline = new window.ScrollTimeline({
+      } else if (attach) {
+        timeline = new window.ScrollTimeline!({
           source:
             spec.source === "root"
               ? rootScroller
@@ -197,6 +194,7 @@ export const useAnimate = ({
     };
 
     for (const play of plan.plays) {
+      // checked here, so getTimeline constructs the class unguarded
       if (typeof timelineClass(play.timeline.kind) !== "function") {
         reasons.add("unsupported");
         continue;
@@ -219,11 +217,8 @@ export const useAnimate = ({
 
     const cancelAll = () => {
       for (const animation of animations.splice(0)) {
-        try {
-          animation.cancel();
-        } catch {
-          // already gone with its element
-        }
+        // never throws, even for an element no longer in the document
+        animation.cancel();
       }
     };
     const onReducedMotionChange = () => {
@@ -236,7 +231,10 @@ export const useAnimate = ({
     const next = (Object.keys(noteMessages) as NoteReason[])
       .filter((reason) => reasons.has(reason))
       .map((reason) => noteMessages[reason]);
-    setNotes((previous) => (sameNotes(previous, next) ? previous : next));
+    // the same notes keep the same array, so nothing re-renders
+    setNotes((previous) =>
+      previous.join("\n") === next.join("\n") ? previous : next
+    );
 
     return () => {
       reducedMotion?.removeEventListener?.("change", onReducedMotionChange);
