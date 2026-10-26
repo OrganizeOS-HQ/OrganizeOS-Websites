@@ -15,7 +15,7 @@ import { updateWebstudioData } from "~/shared/instance-utils/data";
 import { isOrganizeosBlocksEnabled } from "./insert-organizeos-block";
 
 /**
- * The OrganizeOS panel's Data section: the org's catalog (Events, Fundraisers,
+ * The OrganizeOS tab's data list: the org's catalog (Events, Fundraisers,
  * Stats, each public collection, and Forms and Upcoming Events once a block
  * has added them), one row per Resource, each with "Add to this page".
  *

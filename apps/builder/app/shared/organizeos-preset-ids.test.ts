@@ -84,7 +84,7 @@ describe("getResourcePresetIds", () => {
 });
 
 describe("the Events blocks' names", () => {
-  test("keys and names the panel and provisioning share", () => {
+  test("keys and names the builder and provisioning share", () => {
     expect(UPCOMING_EVENTS_PRESET_KEY).toBe("upcoming-events");
     expect(UPCOMING_EVENTS_RESOURCE_NAME).toBe("Upcoming Events");
     expect(EVENTS_BINDING_NAME).toBe("OrganizeOS Events");
