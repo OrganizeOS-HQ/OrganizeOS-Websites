@@ -42,6 +42,8 @@ import {
   organizeosBlockData,
   organizeosNamespace,
 } from "../organizeos-panel/insert-organizeos-block";
+import { applyMotionPreset } from "../organizeos-panel/motion";
+import { motionPresets } from "../organizeos-panel/motion/presets";
 // What prebuild runs on the project bundle. A test of the builder reaches into
 // the CLI for it, as the panel's tests reach into the blocks package for their
 // fixtures, so that one fixture, made by the insert itself, feeds both.
@@ -124,6 +126,11 @@ const insertEveryBlock = async () => {
     selectInstance([bodyId]);
     expect(await insertOrganizeosBlock(block)).toBe(true);
   }
+  // and Animate Children, as the panel's Motion area wraps a section in one:
+  // the first block, wrapped with a preset
+  const [first] = $instances.get().get(bodyId)?.children ?? [];
+  selectInstance([first.value, bodyId]);
+  applyMotionPreset(motionPresets[1]);
   expect(toastError).not.toHaveBeenCalled();
 };
 

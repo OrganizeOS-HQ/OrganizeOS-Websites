@@ -1,0 +1,127 @@
+{
+  "reveal": {
+    "type": "view",
+    "animations": [
+      {
+        "name": "Reveal",
+        "timing": {
+          "rangeStart": [
+            "entry",
+            {
+              "type": "unit",
+              "value": 0,
+              "unit": "%"
+            }
+          ],
+          "rangeEnd": [
+            "entry",
+            {
+              "type": "unit",
+              "value": 60,
+              "unit": "%"
+            }
+          ],
+          "fill": "backwards",
+          "easing": "ease-out"
+        },
+        "keyframes": [
+          {
+            "offset": 0,
+            "styles": {
+              "opacity": {
+                "type": "unit",
+                "value": 0,
+                "unit": "number"
+              },
+              "translate": {
+                "type": "tuple",
+                "value": [
+                  {
+                    "type": "unit",
+                    "value": 0,
+                    "unit": "number"
+                  },
+                  {
+                    "type": "unit",
+                    "value": 12,
+                    "unit": "px"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "gentleParallax": {
+    "type": "view",
+    "animations": [
+      {
+        "name": "Gentle parallax",
+        "timing": {
+          "rangeStart": [
+            "cover",
+            {
+              "type": "unit",
+              "value": 0,
+              "unit": "%"
+            }
+          ],
+          "rangeEnd": [
+            "cover",
+            {
+              "type": "unit",
+              "value": 100,
+              "unit": "%"
+            }
+          ],
+          "fill": "both",
+          "easing": "linear"
+        },
+        "keyframes": [
+          {
+            "offset": 0,
+            "styles": {
+              "translate": {
+                "type": "tuple",
+                "value": [
+                  {
+                    "type": "unit",
+                    "value": 0,
+                    "unit": "number"
+                  },
+                  {
+                    "type": "unit",
+                    "value": 24,
+                    "unit": "px"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "offset": 1,
+            "styles": {
+              "translate": {
+                "type": "tuple",
+                "value": [
+                  {
+                    "type": "unit",
+                    "value": 0,
+                    "unit": "number"
+                  },
+                  {
+                    "type": "unit",
+                    "value": -24,
+                    "unit": "px"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

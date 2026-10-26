@@ -13,7 +13,7 @@ import {
 } from "./mutation";
 import { reparentInstanceMutable, deleteSelectedInstance } from "./mutation";
 import { enableMapSet } from "immer";
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect, beforeEach, vi } from "vitest";
 import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import {
@@ -50,7 +50,7 @@ import {
   $project,
   $props,
 } from "~/shared/sync/data-stores";
-import { registerContainers } from "../sync/sync-stores";
+import { registerContainers, serverSyncStore } from "../sync/sync-stores";
 import { $selectedInstanceSelector, getInstancePath } from "../nano-states";
 import { selectInstance } from "../nano-states";
 import { $selectedPageId } from "../nano-states/pages";
@@ -2623,6 +2623,60 @@ describe("wrap in", () => {
     wrapInstance(elementComponent);
     // nothing is changed
     expect($instances.get()).toEqual(instances);
+  });
+
+  // OrganizeOS fork: the onWrap option (fork doc section 7)
+  test("onWrap writes in the wrap's transaction, so one undo removes both", () => {
+    const { instances } = renderData(
+      <ws.element ws:tag="body" ws:id="bodyId">
+        <ws.element ws:tag="div" ws:id="divId"></ws.element>
+      </ws.element>
+    );
+    $instances.set(instances);
+    $props.set(new Map());
+    selectInstance(["divId", "bodyId"]);
+    const onWrap = vi.fn((data: WebstudioData, newInstanceId: string) => {
+      expect(data.instances.get(newInstanceId)?.children).toEqual([
+        { type: "id", value: "divId" },
+      ]);
+      data.props.set("propId", {
+        id: "propId",
+        instanceId: newInstanceId,
+        name: "title",
+        type: "string",
+        value: "wrapped",
+      });
+    });
+    wrapInstance(elementComponent, "div", { onWrap });
+    expect(onWrap).toHaveBeenCalledTimes(1);
+    const [, wrapperId] = onWrap.mock.calls[0];
+    expect($instances.get().get(wrapperId)?.children).toEqual([
+      { type: "id", value: "divId" },
+    ]);
+    expect($props.get().get("propId")?.instanceId).toBe(wrapperId);
+    expect($selectedInstanceSelector.get()).toEqual([wrapperId, "bodyId"]);
+
+    serverSyncStore.undo();
+    expect($instances.get()).toEqual(instances);
+    expect($props.get().size).toBe(0);
+  });
+
+  test("onWrap is not called when the content model refuses the wrap", () => {
+    const { instances } = renderData(
+      <ws.element ws:tag="body" ws:id="bodyId">
+        <ws.element ws:tag="ul" ws:id="listId">
+          <ws.element ws:tag="li" ws:id="listItemId"></ws.element>
+        </ws.element>
+      </ws.element>
+    );
+    $instances.set(instances);
+    $props.set(new Map());
+    selectInstance(["listItemId", "listId", "bodyId"]);
+    const onWrap = vi.fn();
+    wrapInstance(elementComponent, "div", { onWrap });
+    expect(onWrap).not.toHaveBeenCalled();
+    expect($instances.get()).toEqual(instances);
+    expect($props.get().size).toBe(0);
   });
 });
 

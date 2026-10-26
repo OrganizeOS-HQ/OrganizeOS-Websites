@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { descendantComponent, wsComponentMeta } from "@webstudio-is/sdk";
 import * as components from "./components";
-import { hooks } from "./hooks";
+import { hooks, hooksAnimateChildren } from "./hooks";
 import * as metas from "./metas";
 import * as templates from "./templates";
 
@@ -257,7 +257,8 @@ test("templates and hooks", () => {
     expect(template.label, name).toMatch(labelPattern);
   }
   expect(templates.RsvpForm.label).toBe(metas.RsvpForm.label);
-  expect(hooks).toEqual([]);
+  // one hook: the canvas play flag for Animate Children (hooks.test.ts)
+  expect(hooks).toEqual([hooksAnimateChildren]);
 });
 
 test("the Rotation Control: hidden, childless, a button, with its props", () => {

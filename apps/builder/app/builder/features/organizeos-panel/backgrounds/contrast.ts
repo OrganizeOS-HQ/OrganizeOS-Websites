@@ -88,6 +88,7 @@ export const rendersNoOwnText = new Set([
 export const rendersDesignerChildrenOnly = new Set([
   organizeos("SubmitButton"),
   organizeos("EmailConsent"),
+  organizeos("AnimateChildren"),
 ]);
 
 /** Above this many background colors after any layer, the check gives up. */

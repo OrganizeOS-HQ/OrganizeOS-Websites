@@ -1,0 +1,104 @@
+[
+  {
+    "name": "New Animation",
+    "description": "Create a new animation.",
+    "timing": {
+      "rangeStart": [
+        "start",
+        {
+          "type": "unit",
+          "value": 0,
+          "unit": "px"
+        }
+      ],
+      "rangeEnd": [
+        "end",
+        {
+          "type": "unit",
+          "value": 0,
+          "unit": "px"
+        }
+      ],
+      "fill": "both",
+      "easing": "linear"
+    },
+    "keyframes": [
+      {
+        "offset": 0,
+        "styles": {}
+      }
+    ]
+  },
+  {
+    "name": "Fade In",
+    "description": "Fade in the element as it scrolls into view.",
+    "timing": {
+      "rangeStart": [
+        "start",
+        {
+          "type": "unit",
+          "value": 0,
+          "unit": "%"
+        }
+      ],
+      "rangeEnd": [
+        "start",
+        {
+          "type": "unit",
+          "value": 50,
+          "unit": "dvh"
+        }
+      ],
+      "fill": "backwards",
+      "easing": "linear"
+    },
+    "keyframes": [
+      {
+        "offset": 0,
+        "styles": {
+          "opacity": {
+            "type": "unit",
+            "unit": "number",
+            "value": 0
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Fade Out",
+    "description": "Fade out the element as it scrolls out of view.",
+    "timing": {
+      "rangeStart": [
+        "end",
+        {
+          "type": "unit",
+          "value": 50,
+          "unit": "dvh"
+        }
+      ],
+      "rangeEnd": [
+        "end",
+        {
+          "type": "unit",
+          "value": 0,
+          "unit": "%"
+        }
+      ],
+      "fill": "backwards",
+      "easing": "linear"
+    },
+    "keyframes": [
+      {
+        "offset": 1,
+        "styles": {
+          "opacity": {
+            "type": "unit",
+            "unit": "number",
+            "value": 0
+          }
+        }
+      }
+    ]
+  }
+]

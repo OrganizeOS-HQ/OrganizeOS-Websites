@@ -1,0 +1,376 @@
+[
+  {
+    "name": "New Animation",
+    "description": "Create a new animation.",
+    "timing": {
+      "rangeStart": [
+        "cover",
+        {
+          "type": "unit",
+          "value": 0,
+          "unit": "%"
+        }
+      ],
+      "rangeEnd": [
+        "cover",
+        {
+          "type": "unit",
+          "value": 100,
+          "unit": "%"
+        }
+      ],
+      "fill": "both",
+      "easing": "linear"
+    },
+    "keyframes": [
+      {
+        "offset": 0,
+        "styles": {}
+      }
+    ]
+  },
+  {
+    "name": "Fade In",
+    "description": "Fade in the element as it scrolls into view.",
+    "timing": {
+      "rangeStart": [
+        "entry",
+        {
+          "type": "unit",
+          "value": 0,
+          "unit": "%"
+        }
+      ],
+      "rangeEnd": [
+        "entry",
+        {
+          "type": "unit",
+          "value": 100,
+          "unit": "%"
+        }
+      ],
+      "fill": "backwards",
+      "easing": "linear"
+    },
+    "keyframes": [
+      {
+        "offset": 0,
+        "styles": {
+          "opacity": {
+            "type": "unit",
+            "unit": "number",
+            "value": 0
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Fade Out",
+    "description": "Fade out the element as it scrolls out of view.",
+    "timing": {
+      "rangeStart": [
+        "exit",
+        {
+          "type": "unit",
+          "value": 0,
+          "unit": "%"
+        }
+      ],
+      "rangeEnd": [
+        "exit",
+        {
+          "type": "unit",
+          "value": 100,
+          "unit": "%"
+        }
+      ],
+      "fill": "forwards",
+      "easing": "linear"
+    },
+    "keyframes": [
+      {
+        "offset": 1,
+        "styles": {
+          "opacity": {
+            "type": "unit",
+            "unit": "number",
+            "value": 0
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Fly In",
+    "description": "A fly in animation moves an element as it scrolls into view.",
+    "timing": {
+      "rangeStart": [
+        "entry",
+        {
+          "type": "unit",
+          "value": 0,
+          "unit": "%"
+        }
+      ],
+      "rangeEnd": [
+        "entry",
+        {
+          "type": "unit",
+          "value": 100,
+          "unit": "%"
+        }
+      ],
+      "fill": "backwards",
+      "easing": "linear"
+    },
+    "keyframes": [
+      {
+        "offset": 0,
+        "styles": {
+          "translate": {
+            "type": "tuple",
+            "value": [
+              {
+                "type": "unit",
+                "unit": "number",
+                "value": 0
+              },
+              {
+                "type": "unit",
+                "unit": "px",
+                "value": 100
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Fly Out",
+    "description": "A fly out animation moves an element as it scrolls out of view.",
+    "timing": {
+      "rangeStart": [
+        "exit",
+        {
+          "type": "unit",
+          "value": 0,
+          "unit": "%"
+        }
+      ],
+      "rangeEnd": [
+        "exit",
+        {
+          "type": "unit",
+          "value": 100,
+          "unit": "%"
+        }
+      ],
+      "fill": "forwards",
+      "easing": "linear"
+    },
+    "keyframes": [
+      {
+        "offset": 1,
+        "styles": {
+          "translate": {
+            "type": "tuple",
+            "value": [
+              {
+                "type": "unit",
+                "unit": "number",
+                "value": 0
+              },
+              {
+                "type": "unit",
+                "unit": "px",
+                "value": -100
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Wipe In",
+    "description": "A wipe in is an animation where one scene gradually replaces another as it scrolls into the view.",
+    "timing": {
+      "rangeStart": [
+        "contain",
+        {
+          "type": "unit",
+          "value": 0,
+          "unit": "%"
+        }
+      ],
+      "rangeEnd": [
+        "contain",
+        {
+          "type": "unit",
+          "value": 50,
+          "unit": "%"
+        }
+      ],
+      "fill": "backwards",
+      "easing": "linear"
+    },
+    "keyframes": [
+      {
+        "offset": 0,
+        "styles": {
+          "clip-path": {
+            "type": "unparsed",
+            "value": "inset(0 100% 0 0)"
+          }
+        }
+      },
+      {
+        "offset": 1,
+        "styles": {
+          "clip-path": {
+            "type": "unparsed",
+            "value": "inset(0 0 0 0)"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Wipe Out",
+    "description": "A wipe out is an animation where one scene gradually replaces another as it scrolls out of view.",
+    "timing": {
+      "rangeStart": [
+        "contain",
+        {
+          "type": "unit",
+          "value": 50,
+          "unit": "%"
+        }
+      ],
+      "rangeEnd": [
+        "contain",
+        {
+          "type": "unit",
+          "value": 100,
+          "unit": "%"
+        }
+      ],
+      "fill": "forwards",
+      "easing": "linear"
+    },
+    "keyframes": [
+      {
+        "offset": 0,
+        "styles": {
+          "clip-path": {
+            "type": "unparsed",
+            "value": "inset(0 0 0 0)"
+          }
+        }
+      },
+      {
+        "offset": 1,
+        "styles": {
+          "clip-path": {
+            "type": "unparsed",
+            "value": "inset(0 0 0 100%)"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Parallax In",
+    "description": "Parallax the element as it scrolls into the view.",
+    "timing": {
+      "rangeStart": [
+        "cover",
+        {
+          "type": "unit",
+          "value": 0,
+          "unit": "%"
+        }
+      ],
+      "rangeEnd": [
+        "cover",
+        {
+          "type": "unit",
+          "value": 50,
+          "unit": "%"
+        }
+      ],
+      "fill": "backwards",
+      "easing": "linear"
+    },
+    "keyframes": [
+      {
+        "offset": 0,
+        "styles": {
+          "translate": {
+            "type": "tuple",
+            "value": [
+              {
+                "type": "unit",
+                "unit": "number",
+                "value": 0
+              },
+              {
+                "type": "unit",
+                "unit": "px",
+                "value": 100
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Parallax Out",
+    "description": "Parallax the element as it scrolls out of view.",
+    "timing": {
+      "rangeStart": [
+        "cover",
+        {
+          "type": "unit",
+          "value": 50,
+          "unit": "%"
+        }
+      ],
+      "rangeEnd": [
+        "cover",
+        {
+          "type": "unit",
+          "value": 100,
+          "unit": "%"
+        }
+      ],
+      "fill": "forwards",
+      "easing": "linear"
+    },
+    "keyframes": [
+      {
+        "offset": 1,
+        "styles": {
+          "translate": {
+            "type": "tuple",
+            "value": [
+              {
+                "type": "unit",
+                "unit": "number",
+                "value": 0
+              },
+              {
+                "type": "unit",
+                "unit": "px",
+                "value": -100
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+]

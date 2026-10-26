@@ -10,3 +10,4 @@ export { ShiftOptions } from "./rsvp/shift-options";
 export { Questions } from "./rsvp/questions";
 export { EmailConsent } from "./rsvp/email-consent";
 export { RotationControl } from "./rotation/rotation-control";
+export { AnimateChildren } from "./animate/animate-children";
