@@ -882,7 +882,7 @@ export const wrapInstance = (
   tag?: string,
   options?: {
     // OrganizeOS fork: completes the wrap in its own transaction, with the
-    // wrapper's id, after the content model accepts it (the Motion area
+    // wrapper's id, after the content model accepts it (the Motion tab
     // writes its props here, so the wrap and its props are one undo step).
     onWrap?: (data: WebstudioData, newInstanceId: Instance["id"]) => void;
   }

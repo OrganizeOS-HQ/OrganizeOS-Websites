@@ -23,6 +23,8 @@ const components = read("../components/components.tsx");
 const useDragDrop = read("../../../canvas/shared/use-drag-drop.ts");
 const sidebarLeft = read("../../sidebar-left/sidebar-left.tsx");
 const styleSections = read("../style-panel/sections/sections.ts");
+const inspector = read("../../inspector.tsx");
+const builderNanoStates = read("../../shared/nano-states.ts");
 
 describe("the Components panel's OrganizeOS section", () => {
   test("components.tsx imports both OrganizeOS modules", () => {
@@ -109,6 +111,43 @@ describe("the Style panel's Background presets", () => {
   });
 });
 
+describe("the Inspector's Motion tab", () => {
+  test('inspector.tsx adds motion only behind $isMotionTabAvailable, lists MotionTabTrigger behind availablePanels.has("motion") and renders MotionTabContent behind it too', () => {
+    expect(inspector).toMatch(
+      /import\s*\{\s*\$isMotionTabAvailable,\s*MotionTabContent,\s*MotionTabTrigger,?\s*\}\s*from\s*"~\/builder\/features\/organizeos-panel\/motion-tab"/
+    );
+    expect(inspector).toMatch(
+      /const isMotionTabAvailable = useStore\(\$isMotionTabAvailable\);/
+    );
+    // read with the other hooks, before the early returns
+    expect(inspector.indexOf("useStore($isMotionTabAvailable)")).toBeLessThan(
+      inspector.indexOf("return <NavigatorTree />")
+    );
+    expect(inspector).toMatch(
+      /type PanelName = "style" \| "settings" \| "motion";/
+    );
+    expect(inspector).toMatch(
+      /if \(isMotionTabAvailable\) \{\s*availablePanels\.add\("motion"\);\s*\}/
+    );
+    expect(inspector.match(/availablePanels\.add\("motion"\)/g)).toHaveLength(
+      1
+    );
+    expect(inspector).toMatch(
+      /\{availablePanels\.has\("motion"\) && <MotionTabTrigger \/>\}/
+    );
+    expect(inspector).toMatch(
+      /\{availablePanels\.has\("motion"\) && \(\s*<MotionTabContent\s+instance=\{selectedInstance\}\s+instanceKey=\{selectedInstanceKey\}\s*\/>\s*\)\}/
+    );
+    expect(inspector.match(/<MotionTabContent\b/g)).toHaveLength(1);
+  });
+
+  test("builder nano-states type $activeInspectorPanel with motion", () => {
+    expect(builderNanoStates).toMatch(
+      /export const \$activeInspectorPanel = atom<"style" \| "settings" \| "motion">\(\s*"style"\s*\);/
+    );
+  });
+});
+
 describe("the canvas's drop", () => {
   test("use-drag-drop.ts sends a dropped block to insertOrganizeosBlock before the template fallback", () => {
     const branch = useDragDrop.search(
@@ -130,6 +169,15 @@ describe("the left sidebar", () => {
     );
     expect(sidebarLeft).toMatch(
       /getAvailablePanels\(\s*useStore\(\$isOrganizeosPanelAvailable\)\s*\)/
+    );
+  });
+
+  test("sidebar-left.tsx labels the tab OrganizeOS data with ResourceIcon", () => {
+    expect(sidebarLeft).toMatch(
+      /name: "organizeos",\s*label: "OrganizeOS data",\s*Icon: ResourceIcon,\s*Panel: OrganizeosPanel,/
+    );
+    expect(sidebarLeft).toMatch(
+      /import\s*\{[^}]*\bResourceIcon\b[^}]*\}\s*from\s*"@webstudio-is\/icons"/
     );
   });
 });

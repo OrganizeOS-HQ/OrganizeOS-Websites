@@ -130,7 +130,7 @@ const insertEveryBlock = async () => {
     selectInstance([bodyId]);
     expect(await insertOrganizeosBlock(block)).toBe(true);
   }
-  // and Animate Children, as the panel's Motion area wraps a section in one:
+  // and Animate Children, as the Motion tab wraps a section in one:
   // the first block, wrapped with a preset
   const [first] = $instances.get().get(bodyId)?.children ?? [];
   selectInstance([first.value, bodyId]);

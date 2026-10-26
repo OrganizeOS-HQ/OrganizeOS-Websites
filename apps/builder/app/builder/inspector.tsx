@@ -34,6 +34,12 @@ import {
   $selectedPage,
 } from "~/shared/nano-states";
 import { InstanceIcon, getInstanceLabel } from "./shared/instance-label";
+// OrganizeOS fork: the Motion tab (organizeos-panel/motion-tab.tsx)
+import {
+  $isMotionTabAvailable,
+  MotionTabContent,
+  MotionTabTrigger,
+} from "~/builder/features/organizeos-panel/motion-tab";
 
 const InstanceInfo = ({ instance }: { instance: Instance }) => {
   return (
@@ -75,6 +81,8 @@ export const Inspector = ({ navigatorLayout }: InspectorProps) => {
   const selectedPage = useStore($selectedPage);
   const activeInspectorPanel = useStore($activeInspectorPanel);
   const isDesignMode = useStore($isDesignMode);
+  // OrganizeOS fork: the Motion tab, for orgs on the blocks' allowlist
+  const isMotionTabAvailable = useStore($isMotionTabAvailable);
 
   if (navigatorLayout === "docked" && isDragging) {
     return <NavigatorTree />;
@@ -96,7 +104,8 @@ export const Inspector = ({ navigatorLayout }: InspectorProps) => {
   const meta = metas.get(selectedInstance.component);
   const documentType = selectedPage?.meta.documentType ?? "html";
 
-  type PanelName = "style" | "settings";
+  // OrganizeOS fork: the Motion tab
+  type PanelName = "style" | "settings" | "motion";
 
   const availablePanels = new Set<PanelName>();
   availablePanels.add("settings");
@@ -108,6 +117,10 @@ export const Inspector = ({ navigatorLayout }: InspectorProps) => {
     isDesignMode
   ) {
     availablePanels.add("style");
+  }
+  // OrganizeOS fork: the Motion tab, after Style and Settings
+  if (isMotionTabAvailable) {
+    availablePanels.add("motion");
   }
 
   return (
@@ -162,6 +175,8 @@ export const Inspector = ({ navigatorLayout }: InspectorProps) => {
                 </div>
               </Tooltip>
             )}
+            {/* OrganizeOS fork: the Motion tab */}
+            {availablePanels.has("motion") && <MotionTabTrigger />}
           </PanelTabsList>
           <Separator />
           <PanelTabsContent value="style" css={contentStyle} tabIndex={-1}>
@@ -200,6 +215,13 @@ export const Inspector = ({ navigatorLayout }: InspectorProps) => {
               />
             </ScrollArea>
           </PanelTabsContent>
+          {/* OrganizeOS fork: the Motion tab, only where it is offered */}
+          {availablePanels.has("motion") && (
+            <MotionTabContent
+              instance={selectedInstance}
+              instanceKey={selectedInstanceKey}
+            />
+          )}
         </Flex>
       </PanelTabs>
     </EnhancedTooltipProvider>

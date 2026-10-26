@@ -48,8 +48,9 @@ export const UPCOMING_EVENTS_RESOURCE_NAME = "Upcoming Events";
 /**
  * The names of the bindings the Events blocks bring, distinctive for the same
  * reason as FORMS_PRESET_NAME. The Events one is for the blocks that bind the
- * Events Resource as it is (the RSVP Form). A binding the Data section adds to
- * a page keeps its Resource's name ("Events", "Upcoming Events") instead.
+ * Events Resource as it is (the RSVP Form). A binding the OrganizeOS data tab
+ * adds to a page keeps its Resource's name ("Events", "Upcoming Events")
+ * instead.
  */
 export const EVENTS_BINDING_NAME = "OrganizeOS Events";
 export const UPCOMING_EVENTS_BINDING_NAME = "OrganizeOS Upcoming Events";
