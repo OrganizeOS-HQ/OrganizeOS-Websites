@@ -1,0 +1,9 @@
+# The Convergence Field fixture is a byte-for-byte copy of the OrganizeOS
+# repository's file (README.md here), so Prettier must never rewrite it:
+# formatting the empty range [0, 0] leaves it as it is. Everything else here
+# keeps the repository's options.
+trailingComma: es5
+overrides:
+  - files: "*.fixture.json"
+    options:
+      rangeEnd: 0
