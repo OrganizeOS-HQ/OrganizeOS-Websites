@@ -1351,12 +1351,18 @@ describe("the inserted Event List's and Event Card's data", () => {
       datetime: (index: number) =>
         read([starts.id, card.id, ...item(index)], "datetime"),
       href: (index: number) => read([link.id, card.id, ...item(index)], "href"),
+      reloadDocument: (index: number) =>
+        read([link.id, card.id, ...item(index)], "reloadDocument"),
       titleExpression: title.children,
     };
   };
+  // The root and the card share the label "Event Card"; the root is the Share
+  // Code Carrier, and the card is the article.
   const getRoot = (label: string) =>
     [...$instances.get().values()].filter(
-      (instance) => instance.label === label && instance.tag === "div"
+      (instance) =>
+        instance.label === label &&
+        instance.component === "@organizeos/site-components:ShareCodeCarrier"
     )[0] as Instance;
 
   test("an Event List brings an Upcoming Events binding scoped to its root, never page-wide", async () => {
@@ -1434,7 +1440,10 @@ describe("the inserted Event List's and Event Card's data", () => {
     eventsBody.data.forEach((event, index) => {
       expect(block.timeZone(index)).toBe(event.timezone);
       expect(block.datetime(index)).toBe(event.start_time);
-      expect(block.href(index)).toBe(event.url);
+      // the platform's event page on the site's own host, as a document
+      // navigation (the site has no route there)
+      expect(block.href(index)).toBe(`/events/${event.slug}`);
+      expect(block.reloadDocument(index)).toBe(true);
     });
     expect(block.timeZone(0)).toBe("America/Chicago");
     expect(block.timeZone(2)).toBe("America/Los_Angeles");
@@ -1501,7 +1510,8 @@ describe("the inserted Event List's and Event Card's data", () => {
 
     expect(block.collectionData).toEqual(eventsBody.data.slice(0, 1));
     expect(block.timeZone(0)).toBe(eventsBody.data[0].timezone);
-    expect(block.href(0)).toBe(eventsBody.data[0].url);
+    expect(block.href(0)).toBe(`/events/${eventsBody.data[0].slug}`);
+    expect(block.reloadDocument(0)).toBe(true);
     expect(block.items.some((key) => key.includes("[1]"))).toBe(false);
     expect(block.emptyShown).toBe(false);
 

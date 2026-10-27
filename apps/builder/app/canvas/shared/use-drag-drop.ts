@@ -336,8 +336,9 @@ export const useDragAndDrop = () => {
         if (dragPayload.dragComponent === elementComponent) {
           insertWebstudioElementAt(insertable);
         } else if (isOrganizeosBlock(dragPayload.dragComponent)) {
-          // OrganizeOS fork: a block dropped from the OrganizeOS panel is bound
-          // to the project's data as it is inserted, as a clicked one is.
+          // OrganizeOS fork: a block dropped from the Components panel's
+          // OrganizeOS section is bound to the project's data as it is
+          // inserted, as a clicked one is.
           void insertOrganizeosBlock(dragPayload.dragComponent, insertable);
         } else {
           const fragment = getComponentTemplateData(dragPayload.dragComponent);

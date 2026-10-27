@@ -13,6 +13,7 @@ import {
   NavigatorIcon,
   PageIcon,
   PlusIcon,
+  ResourceIcon,
   type IconComponent,
 } from "@webstudio-is/icons";
 import { useStore } from "@nanostores/react";
@@ -41,7 +42,6 @@ import {
   $isOrganizeosPanelAvailable,
   OrganizeosPanel,
 } from "~/builder/features/organizeos-panel";
-import { OrganizeosIcon } from "~/shared/organizeos-logo";
 import { PagesPanel } from "~/builder/features/pages";
 import { NavigatorPanel } from "~/builder/features/navigator";
 import { AssetsPanel } from "~/builder/features/assets";
@@ -118,14 +118,16 @@ const panels: PanelConfig[] = [
       text: false,
     },
   },
-  // OrganizeOS fork: the OrganizeOS blocks (Signup Form and the families after
-  // it) are hidden from Components and listed in a panel of their own, which
-  // binds each to the project's data as it inserts it. Offered only to orgs on
-  // the blocks' allowlist (see getAvailablePanels).
+  // OrganizeOS fork: the OrganizeOS data tab: the org's data catalog, until
+  // the CMS tab takes this slot. The blocks are in the Components panel's
+  // OrganizeOS section, which binds each to the project's data as it inserts
+  // it; Background presets are in the Style panel and Motion in the
+  // Inspector. Offered only to orgs on the blocks' allowlist (see
+  // getAvailablePanels).
   {
     name: "organizeos",
-    label: "OrganizeOS",
-    Icon: OrganizeosIcon,
+    label: "OrganizeOS data",
+    Icon: ResourceIcon,
     Panel: OrganizeosPanel,
     visibility: {
       content: false,
@@ -158,7 +160,7 @@ const panels: PanelConfig[] = [
   },
 ];
 
-// OrganizeOS fork: the OrganizeOS panel only where the org may use it.
+// OrganizeOS fork: the OrganizeOS data tab only where the org may use it.
 const getAvailablePanels = (isOrganizeosPanelAvailable: boolean) =>
   panels.filter(
     (panel) => panel.name !== "organizeos" || isOrganizeosPanelAvailable

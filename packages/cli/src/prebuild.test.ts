@@ -465,6 +465,52 @@ describe("prebuild", () => {
     await expectCopyToBeTheClosure();
   });
 
+  test("imports the Share Code Carrier, an Event List's root, from the copy of the build", async () => {
+    await writeSiteData(
+      createSiteData({
+        instances: [
+          [
+            "root",
+            {
+              id: "root",
+              component: "Box",
+              children: [{ type: "id", value: "events" }],
+            },
+          ],
+          [
+            "events",
+            {
+              id: "events",
+              component: "@organizeos/site-components:ShareCodeCarrier",
+              children: [],
+            },
+          ],
+        ],
+      })
+    );
+
+    await prebuild({
+      assets: false,
+      template: ["react-router", "react-router-vercel"],
+    });
+
+    const pagePath = join("app", "__generated__", "_index.tsx");
+    const page = await readFile(pagePath, "utf8");
+    const [, localName, importSource] =
+      page.match(/import \{ ShareCodeCarrier as (\w+) \} from "([^"]+)";/) ??
+      [];
+    expect(importSource).toBe("../__organizeos__/components.js");
+    // the page renders it
+    expect(page).toContain(`<${localName}`);
+    // and the copy of the build exports it
+    const copy = await readFile(
+      join(dirname(pagePath), importSource as string),
+      "utf8"
+    );
+    expect(copy).toMatch(/export \{[^}]*\bas ShareCodeCarrier\b[^}]*\}/);
+    await expectCopyToBeTheClosure();
+  });
+
   test("a second prebuild in the same folder leaves no stale file in the OrganizeOS copy", async () => {
     await prebuild({
       assets: false,
@@ -2316,6 +2362,408 @@ describe("prebuild", () => {
       expect(info).toHaveBeenCalledWith(
         "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed and the site's custom code."
       );
+    });
+  });
+
+  // OrganizeOS fork: while org script is paused, publishing also leaves out
+  // unsafe addresses, srcdoc, event handler attributes, XML elements on HTML
+  // pages and redirects to an unsafe address (organizeos-org-script.ts,
+  // propMayShip in @organizeos/site-components/org-script).
+  describe("leaves unsafe values out", () => {
+    type SiteData = Parameters<typeof createSiteData>[0];
+    type Instances = NonNullable<NonNullable<SiteData>["instances"]>;
+    type Props = NonNullable<NonNullable<SiteData>["props"]>;
+
+    const element = (
+      id: string,
+      component: string,
+      tag?: string,
+      children: string[] = []
+    ): Instances[number] => [
+      id,
+      {
+        id,
+        component,
+        ...(tag === undefined ? {} : { tag }),
+        children: children.map((value) => ({ type: "id", value })),
+      },
+    ];
+
+    const prop = (
+      instanceId: string,
+      name: string,
+      value: unknown,
+      type = "string"
+    ): Props[number] => [
+      `${instanceId}:${name}`,
+      { id: `${instanceId}:${name}`, instanceId, name, type, value },
+    ];
+
+    // Each element carries its id, so the page shows that it still renders
+    const onHome = (
+      instances: Instances,
+      props: Props,
+      overrides: SiteData = {}
+    ) =>
+      writeSiteData(
+        createSiteData({
+          instances: [
+            element(
+              "root",
+              "Body",
+              undefined,
+              instances.flatMap(([id]) =>
+                instances.some(([, parent]) =>
+                  parent.children.some((child) => child.value === id)
+                )
+                  ? []
+                  : [id]
+              )
+            ),
+            ...instances,
+          ],
+          props: [...instances.map(([id]) => prop(id, "id", id)), ...props],
+          ...overrides,
+        })
+      );
+
+    const build = () =>
+      prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+
+    const read = async (file = "_index") => {
+      const generatedDir = join("app", "__generated__");
+      return {
+        page: await readFile(join(generatedDir, `${file}.tsx`), "utf8"),
+        server: await readFile(
+          join(generatedDir, `${file}.server.tsx`),
+          "utf8"
+        ),
+      };
+    };
+
+    const generated = async () => {
+      await build();
+      return read();
+    };
+
+    const expectRendered = (page: string, ids: string[]) => {
+      for (const id of ids) {
+        expect(page, id).toContain(`id={${JSON.stringify(id)}}`);
+      }
+    };
+
+    test("drops javascript: and data: addresses from links, sources, forms and objects", async () => {
+      await onHome(
+        [
+          element("object-json", elementComponent, "object"),
+          element("link", "Link"),
+          element("anchor", elementComponent, "a"),
+          element("frame", elementComponent, "iframe"),
+          element("object", elementComponent, "object"),
+          element("form", elementComponent, "form"),
+          element("button", elementComponent, "button"),
+          element("svg", elementComponent, "svg", ["svg-link"]),
+          element("svg-link", elementComponent, "a"),
+          element("image", "Image"),
+        ],
+        [
+          prop("object-json", "data", ["javascript:alert(1)"], "json"),
+          prop("link", "href", "javascript:alert(1)"),
+          prop("anchor", "href", " \tJaVaScRiPt:alert(1)"),
+          prop("frame", "src", "data:text/html,<script>alert(1)</script>"),
+          prop("object", "data", "data:text/html,<script>alert(1)</script>"),
+          prop("form", "action", "javascript:alert(1)"),
+          prop("button", "formaction", "javascript:alert(1)"),
+          prop("svg-link", "xlink:href", "javascript:alert(1)"),
+          prop("image", "src", "data:image/png;base64,AAAA"),
+        ]
+      );
+
+      const { page } = await generated();
+
+      expect(page.toLowerCase()).not.toContain("javascript:");
+      expect(page.toLowerCase()).not.toContain("data:");
+      expect(page).not.toContain("alert(1)");
+      expectRendered(page, [
+        "object-json",
+        "link",
+        "anchor",
+        "frame",
+        "object",
+        "form",
+        "button",
+        "svg-link",
+        "image",
+      ]);
+    });
+
+    // A guard: passes before and after
+    test("keeps http, https, mailto, tel and sms addresses, relative paths and fragments", async () => {
+      const addresses = [
+        "http://example.org/a",
+        "https://example.org/b",
+        "mailto:a@example.org",
+        "tel:+15555550123",
+        "sms:+15555550123",
+        "/about",
+        "#top",
+      ];
+      await onHome(
+        addresses.map((_address, index) => element(`link-${index}`, "Link")),
+        addresses.map((address, index) =>
+          prop(`link-${index}`, "href", address)
+        )
+      );
+
+      const { page } = await generated();
+
+      for (const address of addresses) {
+        expect(page).toContain(`href={${JSON.stringify(address)}}`);
+      }
+    });
+
+    test("drops a bound address that decides nothing and publishes one whose fixed start decides", async () => {
+      const variable = encodeDataSourceVariable("target");
+      await onHome(
+        [element("bound", "Link"), element("fixed", "Link")],
+        [
+          prop("bound", "href", `${variable}`, "expression"),
+          prop("fixed", "href", `"/go/" + ${variable}`, "expression"),
+        ],
+        {
+          dataSources: [
+            [
+              "target",
+              {
+                type: "variable",
+                id: "target",
+                scopeInstanceId: "root",
+                name: "target",
+                value: { type: "string", value: "next" },
+              },
+            ],
+          ],
+        }
+      );
+
+      const { page } = await generated();
+
+      expectRendered(page, ["bound", "fixed"]);
+      expect(page.match(/href=\{/g)).toHaveLength(1);
+      expect(page).toMatch(/href=\{"\/go\/" \+ \w+\}/);
+    });
+
+    test("publishes the Event Card's link, its document navigation and its cover image", async () => {
+      // the card as the Event Card and Event List templates make it
+      // (event-card.template.tsx), over the collection's event parameter
+      const event = encodeDataSourceVariable("event-parameter");
+      await onHome(
+        [
+          element("list", elementComponent, "div", ["events"]),
+          element("events", "ws:collection", undefined, ["card"]),
+          element("card", elementComponent, "article", ["cover", "link"]),
+          element("cover", "Image"),
+          element("link", elementComponent, "a"),
+        ],
+        [
+          prop("events", "item", "event-parameter", "parameter"),
+          prop(
+            "events",
+            "data",
+            encodeDataSourceVariable("events"),
+            "expression"
+          ),
+          prop("cover", "src", `${event}.cover_image_url`, "expression"),
+          prop("link", "href", `"/events/" + ${event}.slug`, "expression"),
+          prop("link", "reloadDocument", true, "boolean"),
+        ],
+        {
+          dataSources: [
+            [
+              "events",
+              {
+                type: "variable",
+                id: "events",
+                scopeInstanceId: "list",
+                name: "events",
+                value: {
+                  type: "json",
+                  value: [{ slug: "drive", cover_image_url: "/a.png" }],
+                },
+              },
+            ],
+            [
+              "event-parameter",
+              {
+                type: "parameter",
+                id: "event-parameter",
+                name: "event",
+                scopeInstanceId: "events",
+              },
+            ],
+          ],
+        }
+      );
+
+      const { page } = await generated();
+
+      expect(page).toContain('href={"/events/" + event?.slug}');
+      expect(page).toContain("reloadDocument={true}");
+      expect(page).toContain("src={event?.cover_image_url}");
+    });
+
+    test("drops srcdoc and event handler attributes", async () => {
+      await onHome(
+        [
+          element("frame", elementComponent, "iframe"),
+          element("bound-frame", elementComponent, "iframe"),
+          element("custom", elementComponent, "div"),
+        ],
+        [
+          prop("frame", "srcdoc", "<script>alert(1)</script>"),
+          prop("bound-frame", "srcdoc", '"<p>" + 1', "expression"),
+          prop("custom", "is", "x-y"),
+          prop("custom", "onclick", "alert(1)"),
+          prop("custom", "onmouseover", '"alert(1)"', "expression"),
+        ]
+      );
+
+      const { page } = await generated();
+
+      expect(page.toLowerCase()).not.toContain("srcdoc");
+      expect(page).not.toContain("onclick");
+      expect(page).not.toContain("onmouseover");
+      expect(page).not.toContain("alert(1)");
+      expect(page).toContain('is={"x-y"}');
+      expectRendered(page, ["frame", "bound-frame", "custom"]);
+    });
+
+    const xmlPages = [
+      {
+        id: "home",
+        name: "Home",
+        title: "Home",
+        path: "",
+        rootInstanceId: "root",
+        meta: {},
+      },
+      {
+        id: "feed",
+        name: "Feed",
+        title: "Feed",
+        path: "/feed.xml",
+        rootInstanceId: "xml-root",
+        meta: { documentType: "xml" },
+      },
+    ];
+
+    test("leaves an XML Node out of an HTML page and keeps it on an XML page", async () => {
+      await writeSiteData(
+        createSiteData({
+          pages: xmlPages,
+          instances: [
+            element("root", "Body", undefined, ["box", "html-node"]),
+            element("box", "Box"),
+            element("html-node", "XmlNode"),
+            element("xml-root", "Body", undefined, ["xml-node"]),
+            element("xml-node", "XmlNode"),
+          ],
+          props: [
+            prop("html-node", "tag", "x-custom"),
+            prop("html-node", "onmouseover", "alert(1)"),
+            prop("xml-node", "tag", "rss"),
+            prop("xml-node", "version", "2.0"),
+          ],
+        })
+      );
+
+      await build();
+      const { page } = await read();
+      const { page: feed } = await read("[feed.xml]._index");
+
+      expect(page).not.toContain("XmlNode");
+      expect(page).not.toContain("onmouseover");
+      expect(page).toContain("<Box");
+      expect(feed).toContain("<XmlNode");
+      expect(feed).toContain('tag={"rss"}');
+    });
+
+    test("an XML page answers with a sandbox policy and nosniff", async () => {
+      await writeSiteData(
+        createSiteData({
+          pages: xmlPages,
+          instances: [
+            element("root", "Body"),
+            element("xml-root", "Body", undefined, ["xml-node"]),
+            element("xml-node", "XmlNode"),
+          ],
+          props: [prop("xml-node", "tag", "rss")],
+        })
+      );
+
+      await build();
+      const route = await readFile(
+        join("app", "routes", "[feed.xml]._index.tsx"),
+        "utf8"
+      );
+
+      expect(route).toContain('"Content-Type": "application/xml"');
+      expect(route).toContain('"Content-Security-Policy": "sandbox"');
+      expect(route).toContain('"X-Content-Type-Options": "nosniff"');
+    });
+
+    test("drops a page redirect and a project redirect to an unsafe target", async () => {
+      await writeSiteData(
+        createSiteData({
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: "Home",
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+            {
+              id: "unsafe",
+              name: "Unsafe",
+              title: "Unsafe",
+              path: "/unsafe",
+              rootInstanceId: "root",
+              meta: { redirect: '"javascript:alert(1)"', status: "302" },
+            },
+            {
+              id: "safe",
+              name: "Safe",
+              title: "Safe",
+              path: "/safe",
+              rootInstanceId: "root",
+              meta: { redirect: '"/landing"', status: "301" },
+            },
+          ],
+          instances: [element("root", "Body")],
+          redirects: [
+            { old: "/go", new: "javascript:alert(1)" },
+            { old: "/old", new: "/new" },
+          ],
+        })
+      );
+
+      await build();
+      const { server: unsafe } = await read("[unsafe]._index");
+      const { server: safe } = await read("[safe]._index");
+      const redirects = await readFile(
+        join("app", "__generated__", "$resources.redirects.ts"),
+        "utf8"
+      );
+
+      expect(unsafe.toLowerCase()).not.toContain("javascript:");
+      expect(redirects.toLowerCase()).not.toContain("javascript:");
+      expect(safe).toContain('"/landing"');
+      expect(redirects).toContain('"new": "/new"');
     });
   });
 

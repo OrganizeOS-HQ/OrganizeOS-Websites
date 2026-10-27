@@ -14,6 +14,8 @@ import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import events from "../__fixtures__/events.json";
 import requestFull from "../__fixtures__/rsvps/request-full.json";
 import requestMinimal from "../__fixtures__/rsvps/request-minimal.json";
+import requestShareCode from "../__fixtures__/rsvps/request-share-code.json";
+import responseClosed from "../__fixtures__/rsvps/response-closed.json";
 import responseEnded from "../__fixtures__/rsvps/response-ended.json";
 import responseFull from "../__fixtures__/rsvps/response-full.json";
 import responseInvalidField from "../__fixtures__/rsvps/response-invalid-field.json";
@@ -274,6 +276,35 @@ afterEach(() => {
 });
 
 describe("parts", () => {
+  test("carries the code on a link a designer put inside the form", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/events/weekly-phone-bank?r=Code234567"
+    );
+    render(
+      <Block
+        parts={
+          <>
+            <a href="/donate/spring-drive">Give too</a>
+            <a href="/privacy">Privacy</a>
+          </>
+        }
+      />
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Give too" }));
+    expect(navigateTo).toHaveBeenCalledTimes(1);
+    expect(navigateTo).toHaveBeenCalledWith(
+      `${window.location.origin}/donate/spring-drive?r=Code234567`
+    );
+    // a link to one of the site's own pages carries nothing
+    const privacy = screen.getByRole("link", { name: "Privacy" });
+    privacy.addEventListener("click", (event) => event.preventDefault());
+    fireEvent.click(privacy);
+    expect(privacy.getAttribute("href")).toBe("/privacy");
+    expect(navigateTo).toHaveBeenCalledTimes(1);
+  });
+
   test("register with their root: the canvas check follows them as they come and go", () => {
     const { container, rerender } = render(
       <Block renderer="canvas" submit={false} />
@@ -401,6 +432,111 @@ describe("parts", () => {
 });
 
 describe("request body", () => {
+  /** The Weekly Phone Bank of request-minimal.json, filled in as it is there. */
+  const rsvpToPhoneBank = (fetchMock: ReturnType<typeof stubFetch>) => {
+    const view = render(<Block record={requestMinimal.event_id} />);
+    fillPerson();
+    return {
+      ...view,
+      submit: async () => {
+        fireEvent.submit(getForm(view.container));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      },
+    };
+  };
+
+  test("with a share code in the address, the body matches request-share-code.json", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/events/weekly-phone-bank?r=Code234567"
+    );
+    const fetchMock = answerWith(responseRegistered);
+    await rsvpToPhoneBank(fetchMock).submit();
+    expect(sentBody(fetchMock)).toEqual(requestShareCode);
+  });
+
+  test("a code that is not one leaves the key out", async () => {
+    for (const search of [
+      "?r=bad",
+      "?r=Code23456O",
+      "?ref=Code234567",
+      "?r=",
+      "",
+    ]) {
+      window.history.replaceState(
+        null,
+        "",
+        `/events/weekly-phone-bank${search}`
+      );
+      const fetchMock = answerWith(responseRegistered);
+      const { unmount, submit } = rsvpToPhoneBank(fetchMock);
+      await submit();
+      const body = sentBody(fetchMock);
+      expect(body, search).toEqual(requestMinimal);
+      expect("referral_code" in body, search).toBe(false);
+      unmount();
+    }
+  });
+
+  test("reads the code at submit", async () => {
+    window.history.replaceState(null, "", "/events/weekly-phone-bank");
+    let fetchMock = answerWith(responseRegistered);
+    let view = rsvpToPhoneBank(fetchMock);
+    window.history.replaceState(
+      null,
+      "",
+      "/events/weekly-phone-bank?r=Code234567"
+    );
+    await view.submit();
+    expect(sentBody(fetchMock)).toEqual(requestShareCode);
+    view.unmount();
+
+    fetchMock = answerWith(responseRegistered);
+    view = rsvpToPhoneBank(fetchMock);
+    window.history.replaceState(null, "", "/events/weekly-phone-bank");
+    await view.submit();
+    expect(sentBody(fetchMock)).toEqual(requestMinimal);
+  });
+
+  test("a platform that refuses the code is asked again without it", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/events/weekly-phone-bank?r=Code234567"
+    );
+    const answers = [responseInvalidRequest, responseRegistered];
+    const fetchMock = stubFetch(async () => {
+      const fixture = answers.shift() as ResponseFixture;
+      return Response.json(fixture.body, { status: fixture.status });
+    });
+    const onStateChange = vi.fn();
+    const { container } = render(
+      <Block record={requestMinimal.event_id} onStateChange={onStateChange} />
+    );
+    fillPerson();
+    fireEvent.submit(getForm(container));
+    await waitFor(() =>
+      expect(onStateChange).toHaveBeenLastCalledWith(
+        "registered",
+        "You're registered."
+      )
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [first, second] = fetchMock.mock.calls.map(([input, init]) => {
+      expect(input).toBe("/api/public/site/v1/rsvps");
+      return JSON.parse(String(init?.body));
+    });
+    expect(first).toEqual(requestShareCode);
+    expect(second).toEqual(requestMinimal);
+    expect(second).not.toHaveProperty("referral_code");
+    // submitting, then registered: the refusal never showed
+    expect(onStateChange.mock.calls.map(([state]) => state)).toEqual([
+      "submitting",
+      "registered",
+    ]);
+  });
+
   test("an event with no shifts, questions or guests matches request-minimal.json", async () => {
     window.history.replaceState(null, "", "/events/weekly-phone-bank");
     const fetchMock = answerWith(responseRegistered);
@@ -864,6 +1000,7 @@ describe("states", () => {
     ["waitlisted", "waitlisted", responseWaitlisted],
     ["full", "full", responseFull],
     ["ended", "ended", responseEnded],
+    ["closed", "error", responseClosed],
     ["invalid_field", "error", responseInvalidField],
     ["invalid_request", "error", responseInvalidRequest],
     ["not_found", "unavailable", responseNotFound],

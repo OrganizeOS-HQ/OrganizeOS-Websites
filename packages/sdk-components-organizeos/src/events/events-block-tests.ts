@@ -91,9 +91,13 @@ export const describeEventsBlock = ({
       expect(meta.icon).toBe(CalendarIcon);
     });
 
-    test("is a div holding the collection, then the empty and unavailable boxes", () => {
-      expect(root.component).toBe("ws:element");
-      expect(root.tag).toBe("div");
+    test("is a Share Code Carrier, a div, holding the collection, then the empty and unavailable boxes", () => {
+      // the carrier takes a visitor's share code to a card's link
+      expect(root.component).toBe(
+        "@organizeos/site-components:ShareCodeCarrier"
+      );
+      expect(root.tag).toBeUndefined();
+      expect(propsOf(root)).toEqual([]);
       expect(root.label).toBe(label);
       expect(childInstances(root).map((child) => child.label)).toEqual([
         "Events",
@@ -182,7 +186,15 @@ export const describeEventsBlock = ({
       const link = byLabel("Event link");
       expect(link.component).toBe("ws:element");
       expect(link.tag).toBe("a");
-      expect(expressionOf(propOf(link, "href"))).toBe(`${variable}.url`);
+      // the platform's event page on the site's own host, opened with a
+      // document navigation: the site has no route there
+      expect(expressionOf(propOf(link, "href"))).toBe(
+        `"/events/" + ${variable}.slug`
+      );
+      expect(propOf(link, "reloadDocument")).toMatchObject({
+        type: "boolean",
+        value: true,
+      });
       expect(link.children).toEqual([
         { type: "text", value: "Details and RSVP", placeholder: true },
       ]);

@@ -57,8 +57,9 @@ const environment = z.object({
     .optional()
     .transform((value) => (value ?? platformUrl).replace(/\/+$/, "")),
 
-  // Rollout allowlist for the OrganizeOS panel and blocks: comma-separated
-  // organization ids. Unset or empty offers them to no org.
+  // Rollout allowlist for the OrganizeOS blocks and the rest of the OrganizeOS
+  // builder UI: comma-separated organization ids. Unset or empty offers them
+  // to no org.
   ORGANIZEOS_BLOCKS_ORG_IDS: z.string().optional(),
 
   PORT: z

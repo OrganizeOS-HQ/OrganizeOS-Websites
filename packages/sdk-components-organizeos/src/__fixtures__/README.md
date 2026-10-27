@@ -1,4 +1,4 @@
-> Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit 290f1dffe): change both copies together.
+> Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit 39ce1bbe3): change both copies together.
 
 # Site component contract fixtures
 
@@ -18,14 +18,17 @@ additive, or it ships under a new endpoint version.
 
 - `signups/request-*.json`: bodies of `POST /api/public/site/v1/signups`. A
   checkbox field is sent as the string `"true"` when checked and `""` when not,
-  as the Website Lite form sends it.
+  as the Website Lite form sends it. `request-share-code.json` is
+  `request-form.json` plus the visit's share code, `referral_code`, which a
+  block sends only when the page's `?r=` has a code's shape.
 - `signups/response-*.json`: `{ "status", "body" }` for each outcome and error.
 - `rsvps/request-*.json`: bodies of `POST /api/public/site/v1/rsvps`, for the
   events of `events.json`. `request-minimal.json` is an event with no shifts,
   questions or guests; `request-full.json` is the event that has them all: a
   guest, a shift with a role, one answer of each question type (a multiselect as
   a JSON array of strings, a checkbox as `"true"`, anything else as typed) and
-  `email_consent: true`.
+  `email_consent: true`. `request-share-code.json` is `request-minimal.json`
+  plus a share code, `referral_code`.
 - `rsvps/response-*.json`: `{ "status", "body" }` for each outcome and error:
   `registered` and `waitlisted` (200), `full`, `ended` and `role_full` (409, the
   latter with its open roles, which may be an empty list), `invalid_field` (422,
@@ -39,6 +42,21 @@ additive, or it ships under a new endpoint version.
   Driver as `full` because the listing is a snapshot, and a `role_full` answer
   reflects the moment of the post. `response-full.json` stands for an event with
   no room and no waitlist, or a selected shift with no room.
+- `share-code.json`: the share code a Website's blocks carry (plan
+  `docs/superpowers/plans/2026-10-26-builder-share-code.md`, P5): the query
+  parameter and the code's pattern (`client/lib/referrals/code.ts`), valid and
+  invalid codes, the platform path patterns a block carries the code to (the
+  transactional flow family of
+  `client/lib/verification/public-route-allowlist.ts`, in its order), the
+  platform paths a block carries the code to (`paths.platform`) and the paths it
+  never carries it to (`paths.notCarried`: the site's own pages, the donor
+  self-service pages, which carry a token from email, and the site endpoints),
+  and carry cases (`withReferralCode`, `client/lib/referrals/carry-code.ts`).
+  Both repositories test their own constants against it: OrganizeOS in
+  `client/tests/lib/public/site/site-components-contract.test.ts`, the fork in
+  its package's share-code tests. It is a Prettier fixed point under both
+  repositories' JSON settings (print width 80), so neither pre-commit hook
+  changes a byte of either copy.
 - `forms.json`: the body of `GET /v1/forms`.
 - `events.json`: the body of `GET /v1/events`, as the route lists it: soonest
   first, with the event's own time zone, and the ended event the

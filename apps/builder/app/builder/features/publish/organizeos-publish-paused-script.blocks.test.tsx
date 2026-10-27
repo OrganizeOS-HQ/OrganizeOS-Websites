@@ -36,7 +36,7 @@ import {
   $styles,
 } from "~/shared/sync/data-stores";
 import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
-import { groupOrganizeosBlocks } from "../organizeos-panel/organizeos-panel";
+import { groupOrganizeosBlocks } from "../organizeos-panel/components-section";
 import {
   insertOrganizeosBlock,
   organizeosBlockData,
@@ -45,17 +45,19 @@ import {
 import { applyMotionPreset } from "../organizeos-panel/motion";
 import { motionPresets } from "../organizeos-panel/motion/presets";
 // What prebuild runs on the project bundle. A test of the builder reaches into
-// the CLI for it, as the panel's tests reach into the blocks package for their
-// fixtures, so that one fixture, made by the insert itself, feeds both.
+// the CLI for it, as the OrganizeOS section's tests reach into the blocks
+// package for their fixtures, so that one fixture, made by the insert itself,
+// feeds both.
 import { dropOrgScript } from "../../../../../../packages/cli/src/organizeos-org-script";
 import { findPausedScript } from "./organizeos-publish-paused-script";
 
 /**
  * The org script pause (docs/ORGANIZEOS-FORK.md section 10) must leave every
  * OrganizeOS block alone: the Publish dialog lists none of it and publishing
- * drops none of it. The fixture is a page holding every block the OrganizeOS
- * panel offers, each inserted the way the panel inserts it (its template, its
- * parts and the binding the insert completes it with), so a template or a part
+ * drops none of it. The fixture is a page holding every block the Components
+ * panel's OrganizeOS section offers, each inserted the way the section inserts
+ * it, through insertOrganizeosBlock (its template, its parts and the binding
+ * the insert completes it with), so a template or a part
  * that comes to hold a tag the builder does not offer, an embed or a raw HTML
  * property fails here before an org loses it at publish.
  */
@@ -87,7 +89,8 @@ const provisioned = await buildOrgResourcePresets({
   readToken: "osk_eventstoken",
 });
 
-// Every block the panel lists, in its sections and under "More"
+// Every block the Components panel's OrganizeOS section lists, in its
+// sections and under "More"
 const panelBlocks = groupOrganizeosBlocks(
   $registeredTemplates.get(),
   $registeredComponentMetas.get()
@@ -118,7 +121,8 @@ const setProject = () => {
   });
 };
 
-// The home page with every block on it, inserted from the panel one after the
+// The home page with every block on it, inserted through insertOrganizeosBlock,
+// as the Components panel's OrganizeOS section inserts it, one after the
 // other into the page's body.
 const insertEveryBlock = async () => {
   setProject();
@@ -126,7 +130,7 @@ const insertEveryBlock = async () => {
     selectInstance([bodyId]);
     expect(await insertOrganizeosBlock(block)).toBe(true);
   }
-  // and Animate Children, as the panel's Motion area wraps a section in one:
+  // and Animate Children, as the Motion tab wraps a section in one:
   // the first block, wrapped with a preset
   const [first] = $instances.get().get(bodyId)?.children ?? [];
   selectInstance([first.value, bodyId]);
@@ -182,9 +186,10 @@ beforeEach(() => {
   toastError.mockReset();
 });
 
-describe("every OrganizeOS block, as the panel inserts it", () => {
-  test("the fixture holds every block the panel offers, every part, and their bindings", async () => {
-    // Not an empty check: the panel lists these, and any block added later
+describe("every OrganizeOS block, as insertOrganizeosBlock inserts it", () => {
+  test("the fixture holds every block the Components panel's OrganizeOS section offers, every part, and their bindings", async () => {
+    // Not an empty check: the OrganizeOS section lists these, and any block
+    // added later
     expect(panelBlocks).toEqual(
       expect.arrayContaining(
         ["SignupForm", "EventList", "EventCard", "RsvpForm"].map(

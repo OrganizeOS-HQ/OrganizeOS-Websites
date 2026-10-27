@@ -1,0 +1,95 @@
+{
+  "param": "r",
+  "pattern": "^[1-9A-HJ-NP-Za-km-z]{10}$",
+  "codes": {
+    "valid": ["Code234567", "abcDEF2345", "1111111111", "zzzzzzzzzz"],
+    "invalid": [
+      "",
+      "Code23456",
+      "Code2345678",
+      "Code23456O",
+      "Code23456l",
+      "Code23456I",
+      "Code234560",
+      "Code 23456",
+      "Code23456%"
+    ]
+  },
+  "platformPathPatterns": [
+    "^\\/donate(\\/[^/]+)?$",
+    "^\\/fundraise\\/[^/]+$",
+    "^\\/petitions\\/[^/]+(\\/(confirm|thanks))?$",
+    "^\\/join(\\/[^/]+)?$",
+    "^\\/shop(\\/[^/]+)?$",
+    "^\\/cart$",
+    "^\\/checkout(\\/success)?$",
+    "^\\/events\\/[^/]+$"
+  ],
+  "paths": {
+    "platform": [
+      "/donate",
+      "/donate/spring-drive",
+      "/donate/spring-drive/",
+      "/fundraise/spring",
+      "/petitions/clean-water",
+      "/petitions/clean-water/thanks",
+      "/join",
+      "/join/volunteers",
+      "/shop",
+      "/shop/union-t-shirt",
+      "/cart",
+      "/checkout",
+      "/checkout/success",
+      "/events/weekly-phone-bank"
+    ],
+    "notCarried": [
+      "/",
+      "/about",
+      "/events",
+      "/events/",
+      "/events/a/b",
+      "/donations",
+      "/donate/a/b",
+      "/shopping",
+      "/petitions/x/sign",
+      "/checkout/failed",
+      "/unsubscribe",
+      "/confirm-subscription",
+      "/giving/manage/abc",
+      "/newsletter",
+      "/api/public/site/v1/signups"
+    ]
+  },
+  "carry": [
+    {
+      "href": "/donate/spring-drive?amount=50&frequency=monthly",
+      "code": "Code234567",
+      "carried": "/donate/spring-drive?amount=50&frequency=monthly&r=Code234567"
+    },
+    {
+      "href": "https://acme.organizeos.org/events/weekly-phone-bank",
+      "code": "Code234567",
+      "carried": "https://acme.organizeos.org/events/weekly-phone-bank?r=Code234567"
+    },
+    {
+      "href": "/join#top",
+      "code": "Code234567",
+      "carried": "/join?r=Code234567#top"
+    },
+    {
+      "href": "/shop/union-t-shirt?r=Other23456",
+      "code": "Code234567",
+      "carried": "/shop/union-t-shirt?r=Code234567"
+    },
+    {
+      "href": "/cart?note=a%20b",
+      "code": "Code234567",
+      "carried": "/cart?note=a+b&r=Code234567"
+    },
+    {
+      "href": "/donate/spring-drive",
+      "code": "bad",
+      "carried": "/donate/spring-drive"
+    }
+  ]
+}

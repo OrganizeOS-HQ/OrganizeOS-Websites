@@ -25,11 +25,13 @@ import { useMergedRef } from "../form/merge-ref";
 import { navigateTo } from "../form/navigate";
 import {
   isBuilderRender,
-  postToPlatform,
+  postWithShareCode,
   stateForAnswer,
   type AnswerStates,
   type OpenRole,
 } from "../form/submit";
+import { readPageShareCode } from "../share-code/share-code";
+import { useShareCodeCarrier } from "../share-code/use-share-code-carrier";
 import { maxAnswerLength, RsvpContext, type RsvpContextValue } from "./context";
 import {
   resolveRsvpEvent,
@@ -279,19 +281,25 @@ const readInputs = (parts: readonly FormPart[]) => {
   return values;
 };
 
-/** The `POST /api/public/site/v1/rsvps` body. */
+/**
+ * The `POST /api/public/site/v1/rsvps` body. `shareCode` is the visit's share
+ * code, sent as `referral_code` (the platform's name) only when the page has
+ * one; without it the key is left out.
+ */
 const buildRsvpBody = ({
   eventId,
   inputs,
   collected,
   pagePath,
   honeypot,
+  shareCode,
 }: {
   eventId: string;
   inputs: ReadonlyMap<string, string>;
   collected: ReturnType<typeof collectFromParts>;
   pagePath: string;
   honeypot: string;
+  shareCode: string | undefined;
 }) => {
   const phone = inputs.get("phone") ?? "";
   const { guests, selection, answers, emailConsent } = collected;
@@ -313,6 +321,7 @@ const buildRsvpBody = ({
     email_consent: emailConsent,
     page_path: pagePath,
     website: honeypot,
+    ...(shareCode === undefined ? {} : { referral_code: shareCode }),
   };
 };
 
@@ -648,6 +657,8 @@ export const RsvpForm = forwardRef<ElementRef<"form">, RsvpFormProps>(
     const { parts, register } = usePartRegistry();
     const formRef = useRef<HTMLFormElement | null>(null);
     const ref = useMergedRef(forwardedRef, formRef);
+    // a link the designer put inside the form carries the visit's share code
+    useShareCodeCarrier({ rootRef: formRef, renderer });
     const honeypotRef = useRef<HTMLInputElement>(null);
 
     // The current state follows the state prop (the bound variable, or the
@@ -714,6 +725,8 @@ export const RsvpForm = forwardRef<ElementRef<"form">, RsvpFormProps>(
         collected,
         pagePath: window.location.pathname,
         honeypot: honeypotRef.current?.value ?? "",
+        // read at submit, never while rendering
+        shareCode: readPageShareCode(),
       });
       const overLimit = findFieldOverLimit(body);
       if (overLimit !== undefined) {
@@ -724,7 +737,7 @@ export const RsvpForm = forwardRef<ElementRef<"form">, RsvpFormProps>(
       submitting.current = true;
       setFieldErrors(new Map());
       report("submitting", stateMessages.submitting);
-      void postToPlatform({ renderer, path: rsvpsPath, body }).then(
+      void postWithShareCode({ renderer, path: rsvpsPath, body }).then(
         (answer) => {
           submitting.current = false;
           if (answer === undefined) {

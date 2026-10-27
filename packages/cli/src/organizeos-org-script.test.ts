@@ -96,11 +96,14 @@ const createBundle = ({
   props = [],
   dataSources = [],
   code,
+  xmlAbout = false,
 }: {
   instances?: Array<[string, Instance]>;
   props?: Array<[string, Prop]>;
   dataSources?: PublishedProjectBundle["build"]["dataSources"];
   code?: string;
+  /** the About page is an XML page, where XML Node and XML Time belong */
+  xmlAbout?: boolean;
 } = {}): PublishedProjectBundle => {
   const pages = [
     {
@@ -117,7 +120,7 @@ const createBundle = ({
       title: "About",
       path: "/about",
       rootInstanceId: "about-root",
-      meta: {},
+      meta: xmlAbout ? { documentType: "xml" } : {},
     },
   ];
   return publishedProjectBundle.parse({
@@ -650,13 +653,15 @@ describe("dropOrgScript", () => {
     // ws:element renders instance.tag, so a prop of either name is only an
     // attribute there. XML Node takes any tag name by design (a sitemap holds
     // urlset, url, loc and xhtml:link), and writes it with a suffix that no
-    // HTML element has.
+    // HTML element has. It sits on an XML page: an HTML page leaves it out.
     const bundle = createBundle({
+      xmlAbout: true,
       instances: [
+        instance({ id: "root", component: "Body", children: ids("element") }),
         instance({
-          id: "root",
+          id: "about-root",
           component: "Body",
-          children: ids("element", "urlset", "loc", "link"),
+          children: ids("urlset", "loc", "link"),
         }),
         instance({ id: "element", component: "ws:element", tag: "div" }),
         instance({ id: "urlset", component: "XmlNode" }),
@@ -1280,6 +1285,11 @@ describe("describeDroppedOrgScript", () => {
     elementsWithUnknownTag: 0,
     svgAnimations: 0,
     rawHtmlProps: 0,
+    xmlElementsOnHtmlPages: 0,
+    unsafeAddresses: 0,
+    frameDocuments: 0,
+    eventAttributes: 0,
+    redirects: 0,
     customCode: false,
   };
 

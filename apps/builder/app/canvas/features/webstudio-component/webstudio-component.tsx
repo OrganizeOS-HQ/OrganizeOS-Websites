@@ -32,9 +32,9 @@ import {
 import { indexProperty, tagProperty } from "@webstudio-is/sdk/runtime";
 import {
   checksTagProp,
-  elementTagMayRun,
+  elementTagMayRender,
   propNameMayRun,
-  withoutBlockedTagProps,
+  withoutPausedProps,
 } from "@organizeos/site-components/org-script";
 import {
   idAttribute,
@@ -355,9 +355,10 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
         const instance = instances.get(instanceId);
         const tag = instance?.tag;
         // OrganizeOS fork: org script is paused. A tag the builder does not
-        // offer (script, or JSX syntax) never reaches the component that makes
-        // an element from it (docs/ORGANIZEOS-FORK.md section 10).
-        if (tag !== undefined && elementTagMayRun(tag)) {
+        // offer (script, or JSX syntax), or an SVG animate or set, never
+        // reaches the component that makes an element from it
+        // (docs/ORGANIZEOS-FORK.md section 10).
+        if (tag !== undefined && elementTagMayRender(tag)) {
           instancePropsObject[tagProperty] = tag;
         }
         const meta = metas.get(instance?.component ?? "");
@@ -376,13 +377,14 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
               continue;
             }
             // ... and so does a data-ws-tag or tag prop that is not a tag the
-            // builder offers, once evaluated (an expression too), on any
-            // component but ws:element: Box, Text, Heading and Dialog Title
-            // make their element from it, and a Radix trigger passes it on to
-            // the child it renders (see withoutBlockedTagProps below)
+            // builder offers, or is animate or set, once evaluated (an
+            // expression too), on any component but ws:element: Box, Text,
+            // Heading and Dialog Title make their element from it, and a Radix
+            // trigger passes it on to the child it renders (see
+            // withoutPausedProps below)
             if (
               checksTagProp(instance?.component ?? "", name) &&
-              elementTagMayRun(value) === false
+              elementTagMayRender(value) === false
             ) {
               continue;
             }
@@ -551,9 +553,10 @@ export const WebstudioComponentCanvas = forwardRef<
   if (instance.component === elementComponent) {
     Component = instance.tag ?? "div";
     // OrganizeOS fork: org script is paused. React hoists a `script` that has
-    // `async` and `src` into <head> and runs it (docs/ORGANIZEOS-FORK.md
+    // `async` and `src` into <head> and runs it, and an SVG animate or set can
+    // set a link's href to a javascript: URL (docs/ORGANIZEOS-FORK.md
     // section 10).
-    if (elementTagMayRun(Component) === false) {
+    if (elementTagMayRender(Component) === false) {
       Component = "div";
     }
     // replace to enable uncontrolled state
@@ -604,12 +607,14 @@ export const WebstudioComponentCanvas = forwardRef<
     Component = BlockTemplate;
   }
 
-  // OrganizeOS fork: org script is paused. Radix's Slot merges the props of a
-  // trigger onto its child, so the tag the parent passes in reaches this
-  // component in restProps, past useInstanceProps. It is checked here too
-  // (docs/ORGANIZEOS-FORK.md section 10).
-  const mergedProps = withoutBlockedTagProps(
-    instance.component,
+  // OrganizeOS fork: org script is paused. Every prop this component
+  // receives, its own or passed in by a parent (Radix's Slot merges a
+  // trigger's props onto its child, in restProps, past useInstanceProps), is
+  // checked here: a tag the builder does not offer, an unsafe address, a
+  // srcdoc and an event handler attribute are dropped, by the instance's
+  // component and tag (docs/ORGANIZEOS-FORK.md section 10).
+  const mergedProps = withoutPausedProps(
+    instance,
     mergeProps(restProps, instanceProps, "delete")
   );
 
@@ -718,9 +723,11 @@ export const WebstudioComponentPreview = forwardRef<
     [idAttribute]: string;
     [selectorIdAttribute]: string;
   } & Record<string, unknown> = {
-    // OrganizeOS fork: org script is paused (see WebstudioComponentCanvas)
-    ...withoutBlockedTagProps(
-      instance.component,
+    // OrganizeOS fork: org script is paused. A tag, an unsafe address, a
+    // srcdoc and an event handler attribute are dropped from every prop this
+    // component receives (see WebstudioComponentCanvas).
+    ...withoutPausedProps(
+      instance,
       mergeProps(restProps, instanceProps, "merge")
     ),
     [idAttribute]: instance.id,
@@ -765,7 +772,7 @@ export const WebstudioComponentPreview = forwardRef<
   if (instance.component === elementComponent) {
     Component = instance.tag ?? "div";
     // OrganizeOS fork: org script is paused (see WebstudioComponentCanvas)
-    if (elementTagMayRun(Component) === false) {
+    if (elementTagMayRender(Component) === false) {
       Component = "div";
     }
     // replace to enable uncontrolled state

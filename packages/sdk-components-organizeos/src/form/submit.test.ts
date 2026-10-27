@@ -19,8 +19,11 @@ import signupRateLimited from "../__fixtures__/signups/response-rate-limited.jso
 import signupReceived from "../__fixtures__/signups/response-received.json";
 import signupSubscribed from "../__fixtures__/signups/response-subscribed.json";
 import signupUnavailable from "../__fixtures__/signups/response-unavailable.json";
+import rsvpShareCode from "../__fixtures__/rsvps/request-share-code.json";
+import signupShareCode from "../__fixtures__/signups/request-share-code.json";
 import {
   postToPlatform,
+  postWithShareCode,
   stateForAnswer,
   type AnswerStates,
   type PlatformAnswer,
@@ -453,5 +456,126 @@ test("the Signup Form passes no errors map, so it maps exactly as before", async
   // the codes an RSVP map knows are plain errors to a map without one
   for (const error of ["full", "ended", "not_found", "role_full"]) {
     expect(stateForAnswer({ error }, signupStates)).toEqual({ state: "error" });
+  }
+});
+
+type Fixture = { status: number; body: unknown };
+
+/** A fetch that gives the fixtures in turn, one a request. */
+const answerInTurn = (...fixtures: Fixture[]) => {
+  const fetchMock = vi.fn(
+    async (_input: RequestInfo | URL, _init?: RequestInit) => {
+      const fixture = fixtures.shift();
+      if (fixture === undefined) {
+        throw new Error("one request too many");
+      }
+      return Response.json(fixture.body, { status: fixture.status });
+    }
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+};
+
+const sentBodies = (fetchMock: ReturnType<typeof answerInTurn>) =>
+  fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
+
+test("postWithShareCode asks again without the code when the platform refuses the body", async () => {
+  const cases: Array<[Record<string, unknown>, Fixture, Fixture, unknown]> = [
+    [
+      signupShareCode,
+      signupInvalidRequest,
+      signupSubscribed,
+      { outcome: "subscribed" },
+    ],
+    [
+      rsvpShareCode,
+      rsvpInvalidRequest,
+      rsvpRegistered,
+      { outcome: "registered" },
+    ],
+  ];
+  for (const [body, refused, answered, expected] of cases) {
+    const before = structuredClone(body);
+    const fetchMock = answerInTurn(refused, answered);
+    expect(
+      await postWithShareCode({ renderer: undefined, path: "/api/x", body })
+    ).toEqual(expected);
+    const [first, second] = sentBodies(fetchMock);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(first).toEqual(body);
+    expect(first).toHaveProperty("referral_code", "Code234567");
+    const { referral_code: _code, ...withoutCode } = body;
+    expect(second).toEqual(withoutCode);
+    expect(second).not.toHaveProperty("referral_code");
+    // both to the same path, and the body it was given is unchanged
+    expect(fetchMock.mock.calls.map(([input]) => input)).toEqual([
+      "/api/x",
+      "/api/x",
+    ]);
+    expect(body).toEqual(before);
+  }
+});
+
+test("does not ask again for another error, for a body without a code, or a second time", async () => {
+  const withCode = { ...signupShareCode };
+  // another answer to a body with a code
+  for (const [fixture, expected] of [
+    [signupSubscribed, { outcome: "subscribed" }],
+    [signupInvalidField, { error: "invalid_field", field: "email" }],
+    [signupRateLimited, { error: "rate_limited" }],
+    [signupNotFound, { error: "not_found" }],
+    [signupUnavailable, { error: "unavailable" }],
+    [rsvpFull, { error: "full" }],
+  ] as const) {
+    const fetchMock = answerInTurn(fixture);
+    expect(
+      await postWithShareCode({
+        renderer: undefined,
+        path: "/api/x",
+        body: withCode,
+      })
+    ).toEqual(expected);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  }
+  // a network failure is not a refusal
+  const failing = vi.fn(async () => {
+    throw new TypeError("Failed to fetch");
+  });
+  vi.stubGlobal("fetch", failing);
+  expect(
+    await postWithShareCode({
+      renderer: undefined,
+      path: "/api/x",
+      body: withCode,
+    })
+  ).toEqual({ error: "network" });
+  expect(failing).toHaveBeenCalledTimes(1);
+  // invalid_request to a body without a code is the answer
+  const withoutCode = answerInTurn(signupInvalidRequest);
+  expect(
+    await postWithShareCode({
+      renderer: undefined,
+      path: "/api/x",
+      body: { fields: {}, page_path: "/", website: "" },
+    })
+  ).toEqual({ error: "invalid_request" });
+  expect(withoutCode).toHaveBeenCalledTimes(1);
+  // once only: a second refusal is the answer
+  const twice = answerInTurn(signupInvalidRequest, signupInvalidRequest);
+  expect(
+    await postWithShareCode({
+      renderer: undefined,
+      path: "/api/x",
+      body: withCode,
+    })
+  ).toEqual({ error: "invalid_request" });
+  expect(twice).toHaveBeenCalledTimes(2);
+  // and the builder never posts
+  for (const renderer of ["canvas", "preview"] as const) {
+    const never = answerInTurn();
+    expect(
+      await postWithShareCode({ renderer, path: "/api/x", body: withCode })
+    ).toBeUndefined();
+    expect(never).not.toHaveBeenCalled();
   }
 });

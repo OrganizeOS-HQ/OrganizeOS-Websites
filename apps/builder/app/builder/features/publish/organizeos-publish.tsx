@@ -202,8 +202,9 @@ const RestrictedFeaturesBanner = ({ manageUrl }: { manageUrl: string }) => {
 };
 
 /**
- * Lists the embeds, animations and custom code that this publish leaves out
- * while an org's own script is paused (docs/ORGANIZEOS-FORK.md section 10).
+ * Lists the embeds, animations, unsafe values and custom code that this publish
+ * leaves out while an org's own script is paused (docs/ORGANIZEOS-FORK.md
+ * section 10).
  * Information only: Publish still runs, and drops them. What the org saved is
  * kept, so the list empties when the switch is turned on.
  */
@@ -229,6 +230,13 @@ export const PausedScriptBanner = () => {
                   }
                   if (view === "projectSettings") {
                     $openProjectSettings.set("general");
+                  }
+                  if (view === "pageSettings" && navigate !== undefined) {
+                    setActiveSidebarPanel("pages");
+                    $editingPageId.set(navigate.pageId);
+                  }
+                  if (view === "projectRedirects") {
+                    $openProjectSettings.set("redirects");
                   }
                 }}
               >

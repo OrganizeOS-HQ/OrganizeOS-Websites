@@ -1,14 +1,24 @@
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { MenuIcon } from "@webstudio-is/icons/svg";
 import type { Instance, Prop } from "@webstudio-is/sdk";
 import { $instances, $pages, $props } from "~/shared/sync/data-stores";
-import { $selectedPageId } from "~/shared/nano-states";
+import { $editingPageId, $selectedPageId } from "~/shared/nano-states";
 import { $openProjectSettings } from "~/shared/nano-states/project-settings";
 import { PausedScriptBanner } from "./organizeos-publish";
+
+// Which sidebar panel shows depends on the builder having loaded, so the
+// call that opens the Pages panel is what the banner is held to
+const { setActiveSidebarPanel } = vi.hoisted(() => ({
+  setActiveSidebarPanel: vi.fn(),
+}));
+vi.mock("~/builder/shared/nano-states", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/builder/shared/nano-states")>()),
+  setActiveSidebarPanel,
+}));
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -103,5 +113,53 @@ describe("PausedScriptBanner", () => {
     setBuild({ code: MenuIcon });
     const host = renderBanner();
     expect(host.textContent).toBe("");
+  });
+
+  const clickItem = (host: HTMLElement, label: string) => {
+    const button = Array.from(host.querySelectorAll("button")).find(
+      (item) => item.textContent === label
+    );
+    expect(button, label).toBeDefined();
+    act(() => {
+      button?.click();
+    });
+  };
+
+  test("opens the page's settings from a page redirect item", () => {
+    setBuild({ code: MenuIcon });
+    const pages = $pages.get();
+    const home = pages?.pages.get(pages.homePageId);
+    if (pages === undefined || home === undefined) {
+      throw new Error("no home page");
+    }
+    home.meta = { ...home.meta, redirect: '"javascript:alert(1)"' };
+    $pages.set({ ...pages });
+    $editingPageId.set(undefined);
+    setActiveSidebarPanel.mockClear();
+
+    clickItem(renderBanner(), "Redirect on Home");
+
+    expect($selectedPageId.get()).toBe(home.id);
+    expect($editingPageId.get()).toBe(home.id);
+    expect(setActiveSidebarPanel).toHaveBeenCalledWith("pages");
+    expect($openProjectSettings.get()).toBeUndefined();
+  });
+
+  test("opens Redirects from a project redirect item", () => {
+    setBuild({ code: MenuIcon });
+    const pages = $pages.get();
+    if (pages === undefined) {
+      throw new Error("no pages");
+    }
+    $pages.set({
+      ...pages,
+      redirects: [{ old: "/go", new: "javascript:alert(1)" }],
+    });
+    setActiveSidebarPanel.mockClear();
+
+    clickItem(renderBanner(), "Redirect from /go (Project settings)");
+
+    expect($openProjectSettings.get()).toBe("redirects");
+    expect(setActiveSidebarPanel).not.toHaveBeenCalled();
   });
 });
