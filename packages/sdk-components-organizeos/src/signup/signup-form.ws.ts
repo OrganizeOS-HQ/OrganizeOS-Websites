@@ -31,16 +31,13 @@ export const meta: WsComponentMeta = {
       control: "text",
       required: false,
       label: "Form",
-      description:
-        "The form this block submits to, by its id. Leave it empty for the org defaults: email required; first name, last name and phone optional.",
+      description: "The form",
     },
     data: {
       type: "json",
       control: "json",
       required: false,
       label: "Forms data",
-      description:
-        "The organization's published forms (the project's Forms data), where the block finds the form it submits to. Not read with the org defaults.",
     },
     state: {
       type: "string",
@@ -48,8 +45,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: "initial",
       options: [...signupFormStates],
-      description:
-        "Reveals a state on the canvas so it can be styled. A published site starts in Initial and moves through the states as the visitor submits.",
+      description: "Shown on the canvas",
     },
     action: {
       type: "string",

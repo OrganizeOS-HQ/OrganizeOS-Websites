@@ -269,6 +269,68 @@ test("templates and hooks", () => {
   expect(hooks).toEqual([hooksCanvasPlay]);
 });
 
+// The builder's panels show options, not explanations: a template's
+// description is its card's tooltip in the Components panel, a short phrase.
+test("every template's card tooltip is a short phrase: a few words, no sentence", () => {
+  for (const [name, template] of Object.entries(templates)) {
+    expect(template.description, name).toEqual(expect.any(String));
+    expect(template.description?.split(" ").length, name).toBeLessThanOrEqual(
+      8
+    );
+    expect(template.description, name).not.toMatch(/[.:;]/);
+  }
+});
+
+// A prop's description is its Settings label's tooltip: the unit and range,
+// a few words, or nothing where the label says it.
+test("the blocks' Settings tooltips that were paragraphs are a few words, or none", () => {
+  const tooltips = (
+    meta: (typeof metas)[keyof typeof metas],
+    names: string[]
+  ) =>
+    Object.fromEntries(
+      names.map((name) => [name, meta.props?.[name]?.description])
+    );
+  expect(tooltips(metas.SignupForm, ["record", "data", "state"])).toEqual({
+    // a picker now, not an id to type
+    record: "The form",
+    data: undefined,
+    state: "Shown on the canvas",
+  });
+  expect(
+    tooltips(metas.RsvpForm, ["record", "data", "state", "action"])
+  ).toEqual({
+    record: "The event",
+    data: undefined,
+    state: "Shown on the canvas",
+    action: "Registered state, or a page",
+  });
+  expect(
+    tooltips(metas.ConvergenceField, [
+      "shape",
+      "density",
+      "innerColor",
+      "outerColor",
+    ])
+  ).toEqual({
+    shape: "Band 3:1, Wide 16:9, Panel 2:1, Square 1:1, Tall 3:4",
+    density: "24–96 field units",
+    innerColor: "Near the clear zone",
+    outerColor: "At the edges",
+  });
+  expect(tooltips(metas.RotationControl, ["interval"])).toEqual({
+    interval: "3–20 s",
+  });
+  expect(tooltips(metas.RichText, ["value"])).toEqual({
+    value: "A rich-text field's nodes",
+  });
+  expect(metas.AnimateChildren.description).toBe(
+    "Animates each child on scroll"
+  );
+  expect(metas.Marquee.description).toBe("Drifts its items in a loop");
+  expect(metas.RichText.description).toBe("A collection item's rich text");
+});
+
 test("the Rotation Control: hidden, childless, a button, with its props, Fade among them", () => {
   const meta = metas.RotationControl;
   expect(meta.label).toBe("Rotation Control");

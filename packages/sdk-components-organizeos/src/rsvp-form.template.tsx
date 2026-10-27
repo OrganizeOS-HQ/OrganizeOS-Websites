@@ -64,8 +64,7 @@ const field = (name: string, label: string, text: string) => (
 export const meta: TemplateMeta = {
   category: "hidden",
   label: "RSVP Form",
-  description:
-    "Take RSVPs for one of your organization's events, with its guests, shifts, roles and registration questions. Pick the event in the Settings panel.",
+  description: "RSVPs for one of your events",
   icon: CalendarIcon,
   template: (
     <organizeos.RsvpForm

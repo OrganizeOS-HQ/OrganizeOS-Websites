@@ -43,8 +43,7 @@ export const meta: WsComponentMeta = {
       options: shapeNames,
       defaultValue: fieldDefaults.shape,
       label: "Shape",
-      description:
-        "The field's box: Band 3:1, Wide 16:9, Panel 2:1, Square 1:1 or Tall 3:4. It covers the element and is cropped on the narrower side, so pick the Shape closest to the element's, and Tall for sections taller than wide on phones.",
+      description: "Band 3:1, Wide 16:9, Panel 2:1, Square 1:1, Tall 3:4",
     },
     density: {
       type: "number",
@@ -52,8 +51,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.density,
       label: "Density",
-      description:
-        "The grid step in field units, from 24 (dense) to 96 (sparse), the same on every Shape: a Wide field is 1600 units across.",
+      description: "24–96 field units",
     },
     focusX: {
       type: "number",
@@ -97,8 +95,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.innerColor,
       label: "Inner color",
-      description:
-        "The arms' color near the clear zone, where they are faint: a hex, rgb(), hsl(), oklch() or named color, or var(--name).",
+      description: "Near the clear zone",
     },
     outerColor: {
       type: "string",
@@ -106,8 +103,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.outerColor,
       label: "Outer color",
-      description:
-        "The arms' color at the edges, where they are solid: a hex, rgb(), hsl(), oklch() or named color, or var(--name).",
+      description: "At the edges",
     },
     motion: {
       type: "string",

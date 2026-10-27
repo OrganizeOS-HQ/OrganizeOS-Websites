@@ -22,8 +22,7 @@ const formState = new Variable("formState", "initial");
 export const meta: TemplateMeta = {
   category: "hidden",
   label: "Signup Form",
-  description:
-    "Collect newsletter and contact signups into OrganizeOS. Works with the org defaults until you pick one of the organization's forms.",
+  description: "Newsletter and contact signups",
   template: (
     <organizeos.SignupForm
       state={expression`${formState}`}

@@ -21,8 +21,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: 5.5,
       label: "Interval",
-      description:
-        "Seconds each tab shows before the next, from 3 to 20. Rotation stops for good when a visitor moves focus into the section or picks a tab.",
+      description: "3–20 s",
     },
     fade: {
       type: "number",

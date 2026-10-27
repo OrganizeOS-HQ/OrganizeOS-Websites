@@ -7,8 +7,7 @@ const namespaced = (name: string) => `@organizeos/site-components:${name}`;
 export const meta: WsComponentMeta = {
   category: "hidden",
   label: "Marquee",
-  description:
-    "Drifts its track's items in a loop on the published page, behind its Pause button. Never on the canvas or under reduced motion, and it stops for good when keyboard focus enters the track.",
+  description: "Drifts its items in a loop",
   icon: ArrowRightLeftIcon,
   contentModel: {
     category: "instance",
