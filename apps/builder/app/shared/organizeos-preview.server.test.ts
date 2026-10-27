@@ -84,6 +84,8 @@ describe("isPreviewableUrl", () => {
   test.each([
     `${appUrl}/api/public/v1/collections/news/items`,
     `${appUrl}/api/public/v1/collections/news/items?limit=10`,
+    // an item page's Resource (organizeos-panel/collection-pages.ts)
+    `${appUrl}/api/public/v1/collections/news/items/first-post`,
     `${appUrl}/api/public/v1/collections/`,
     "https://APP.organizeos.org:443/api/public/v1/collections/news",
   ])("accepts %s", (href) => {

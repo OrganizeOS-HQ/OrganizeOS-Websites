@@ -1725,6 +1725,201 @@ describe("prebuild", () => {
     });
   });
 
+  // OrganizeOS fork: a CMS item page (/blog/:slug, made by the builder's
+  // Create item page) sets its status to 404 when its Resource does not answer
+  // with the item, and the html route answers with that status and the page's
+  // own body, its "not found" box, so a missing item is a real 404.
+  describe("answers an item page with the status its meta computes", () => {
+    const itemVariable = encodeDataSourceVariable("current-post");
+    const system = "$ws$system";
+    const found = `(${system}.params.slug ?? "") !== "" && ${itemVariable}?.ok === true && ${itemVariable}.data.data.slug === ${system}.params.slug`;
+    const itemUrl =
+      "https://app.example.org/api/public/v1/collections/blog/items/";
+
+    beforeEach(async () => {
+      const pages = [
+        {
+          id: "home",
+          name: "Home",
+          title: `"Home"`,
+          path: "",
+          rootInstanceId: "root",
+          meta: {},
+        },
+        {
+          id: "blog-item",
+          name: "Blog template",
+          title: `(${found}) ? ${itemVariable}.data.data.name : "Page not found"`,
+          path: "/blog/:slug",
+          rootInstanceId: "item-root",
+          meta: { status: `(${found}) ? 200 : 404` },
+        },
+      ];
+      await writeSiteData(
+        createSiteData({
+          pages,
+          instances: [
+            ["root", { id: "root", component: "Box", children: [] }],
+            ["item-root", { id: "item-root", component: "Box", children: [] }],
+          ],
+          dataSources: [
+            [
+              "current-post",
+              {
+                type: "resource",
+                id: "current-post",
+                name: "Current post",
+                scopeInstanceId: "item-root",
+                resourceId: "current-post-resource",
+              },
+            ],
+          ],
+          resources: [
+            [
+              "current-post-resource",
+              {
+                id: "current-post-resource",
+                name: "Current post",
+                method: "get",
+                url: `${JSON.stringify(itemUrl)} + (${system}.params.slug ?? "-")`,
+                headers: [
+                  { name: "Authorization", value: `"Bearer osk_test"` },
+                ],
+              },
+            ],
+          ],
+        })
+      );
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+    });
+
+    /**
+     * The item route's loader as the site ships it, with its generated
+     * resources and meta, the sdk's resource loading, a fresh resource cache
+     * and react-router's data(); the client module and auth stood in.
+     */
+    const loadItemLoader = async () => {
+      const server = await runModule(
+        await readFile(
+          join("app", "__generated__", "[blog].$slug._index.server.tsx"),
+          "utf8"
+        ),
+        {}
+      );
+      const route = await readFile(
+        join("app", "routes", "[blog].$slug._index.tsx"),
+        "utf8"
+      );
+      const exports = await runModule(route, {
+        react: React,
+        "react/jsx-runtime": jsxRuntime,
+        "react-router": await import("react-router"),
+        "@webstudio-is/sdk/runtime": await import("@webstudio-is/sdk/runtime"),
+        "@webstudio-is/wsauth": { authenticateRequest: () => undefined },
+        "@webstudio-is/react-sdk/runtime": await import(
+          "@webstudio-is/react-sdk/runtime"
+        ),
+        "../__generated__/[blog].$slug._index": {
+          projectId: "project-id",
+          Page: () => null,
+          breakpoints: [],
+        },
+        "../__generated__/[blog].$slug._index.server": server,
+        "../constants.mjs": {},
+        "../__generated__/index.css?url": { default: "" },
+        "../__generated__/$resources.sitemap.xml": { sitemap: [] },
+        "../__generated__/$resources.assets": { assets: {} },
+        "../__generated__/$resources.wsauth.server": { authRoutes: [] },
+        "../organizeos-resource-cache": {
+          siteResourceCache: (
+            await import(
+              "../templates/react-router/app/organizeos-resource-cache"
+            )
+          ).createResourceCache(),
+        },
+        "../__organizeos__/page.js": { PageShareCodeCarrier: () => null },
+      });
+      const loader = exports.loader as (arg: unknown) => Promise<{
+        data: { pageMeta: { status?: number; title: string } };
+        init: { status?: number } | null;
+      }>;
+      return (slug: string) =>
+        loader({
+          request: new Request(`https://site.example/blog/${slug}`),
+          params: { slug },
+          context: { EXCLUDE_FROM_SEARCH: false },
+        });
+    };
+
+    const answer = (status: number, body: unknown) => async () =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "public, s-maxage=60",
+        },
+      });
+
+    test("200 with the item's title when the Resource answers with the item", async () => {
+      const network = vi.fn<typeof fetch>(
+        answer(200, { data: { slug: "hello", name: "Hello" } })
+      );
+      globalThis.fetch = network;
+
+      const result = await (await loadItemLoader())("hello");
+
+      expect(network).toHaveBeenCalledWith(
+        `${itemUrl}hello`,
+        expect.objectContaining({ method: "get" })
+      );
+      expect(result.init?.status).toBe(200);
+      expect(result.data.pageMeta.title).toBe("Hello");
+    });
+
+    test.each([
+      {
+        name: "answers 404",
+        fetch: answer(404, { error: "Not found" }),
+      },
+      {
+        name: "answers with another item",
+        fetch: answer(200, { data: { slug: "other", name: "Other" } }),
+      },
+      {
+        name: "fails",
+        fetch: async (): Promise<Response> => {
+          throw new TypeError("fetch failed");
+        },
+      },
+    ])(
+      "404 with the page, not an error, when the Resource $name",
+      async ({ fetch }) => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        globalThis.fetch = vi.fn<typeof globalThis.fetch>(fetch);
+
+        const result = await (await loadItemLoader())("missing");
+
+        expect(result.init?.status).toBe(404);
+        expect(result.data.pageMeta.status).toBe(404);
+        expect(result.data.pageMeta.title).toBe("Page not found");
+      }
+    );
+
+    test("a second request for a missing item reads the 404 the cache kept", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const network = vi.fn<typeof fetch>(answer(404, { error: "Not found" }));
+      globalThis.fetch = network;
+      const load = await loadItemLoader();
+
+      expect((await load("missing")).init?.status).toBe(404);
+      expect((await load("missing")).init?.status).toBe(404);
+      expect(network).toHaveBeenCalledTimes(1);
+    });
+  });
+
   test("selects ssg templates and skips dynamic routes", async () => {
     await writeSiteData(
       createSiteData({
