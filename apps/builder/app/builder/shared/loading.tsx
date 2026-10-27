@@ -93,7 +93,7 @@ export const Loading = ({ state }: { state: LoadingState }) => {
           gap="3"
           css={{ isolation: "isolate" }}
         >
-          <OrganizeosLogo size={60} />
+          <OrganizeosLogo size={60} on="dark" />
           <Progress value={fakeProgress} />
         </Flex>
       )}

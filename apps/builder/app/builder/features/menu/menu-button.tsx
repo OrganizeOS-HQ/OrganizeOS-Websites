@@ -54,7 +54,7 @@ export const MenuButton = () => {
       <DropdownMenuTrigger>
         <span className={innerContainerStyle()}>
           <span className={faceStyle({ front: true })}>
-            <OrganizeosLogo size={22} />
+            <OrganizeosLogo size={22} on="dark" />
           </span>
           <span className={faceStyle({ back: true })}>
             <MenuIcon size={22} />
