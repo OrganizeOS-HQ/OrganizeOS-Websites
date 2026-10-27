@@ -23,6 +23,7 @@
       "waitlist": false,
       "full": false,
       "max_guests": 0,
+      "registration_deadline": null,
       "shifts": [],
       "questions": []
     },
@@ -49,6 +50,7 @@
       "waitlist": true,
       "full": false,
       "max_guests": 0,
+      "registration_deadline": "2026-11-05T21:00:00+00:00",
       "shifts": [],
       "questions": []
     },
@@ -75,6 +77,7 @@
       "waitlist": false,
       "full": false,
       "max_guests": 0,
+      "registration_deadline": null,
       "shifts": [],
       "questions": []
     },
@@ -101,6 +104,7 @@
       "waitlist": true,
       "full": false,
       "max_guests": 3,
+      "registration_deadline": null,
       "shifts": [
         {
           "id": "0e4b9a27-c561-4d83-b7f0-3a9d2c8e5b14",
@@ -216,6 +220,7 @@
       "waitlist": false,
       "full": true,
       "max_guests": 0,
+      "registration_deadline": null,
       "shifts": [],
       "questions": []
     }

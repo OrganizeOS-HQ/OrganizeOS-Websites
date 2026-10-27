@@ -55,7 +55,7 @@ export const isOrganizeosBlock = (component: string) =>
  * What a block reads from the org's catalog, and where its template reads it:
  * the table `organizeosBlockData`, keyed by the template's key (the
  * `component` the Components panel inserts, not the root's component: an
- * Event List's root is a `ws:element`).
+ * Event List's root is a Share Code Carrier).
  */
 export type BlockData = {
   /** The catalog Resource the block's binding references. */

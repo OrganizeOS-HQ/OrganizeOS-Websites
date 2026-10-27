@@ -465,6 +465,52 @@ describe("prebuild", () => {
     await expectCopyToBeTheClosure();
   });
 
+  test("imports the Share Code Carrier, an Event List's root, from the copy of the build", async () => {
+    await writeSiteData(
+      createSiteData({
+        instances: [
+          [
+            "root",
+            {
+              id: "root",
+              component: "Box",
+              children: [{ type: "id", value: "events" }],
+            },
+          ],
+          [
+            "events",
+            {
+              id: "events",
+              component: "@organizeos/site-components:ShareCodeCarrier",
+              children: [],
+            },
+          ],
+        ],
+      })
+    );
+
+    await prebuild({
+      assets: false,
+      template: ["react-router", "react-router-vercel"],
+    });
+
+    const pagePath = join("app", "__generated__", "_index.tsx");
+    const page = await readFile(pagePath, "utf8");
+    const [, localName, importSource] =
+      page.match(/import \{ ShareCodeCarrier as (\w+) \} from "([^"]+)";/) ??
+      [];
+    expect(importSource).toBe("../__organizeos__/components.js");
+    // the page renders it
+    expect(page).toContain(`<${localName}`);
+    // and the copy of the build exports it
+    const copy = await readFile(
+      join(dirname(pagePath), importSource as string),
+      "utf8"
+    );
+    expect(copy).toMatch(/export \{[^}]*\bas ShareCodeCarrier\b[^}]*\}/);
+    await expectCopyToBeTheClosure();
+  });
+
   test("a second prebuild in the same folder leaves no stale file in the OrganizeOS copy", async () => {
     await prebuild({
       assets: false,
