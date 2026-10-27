@@ -2392,3 +2392,52 @@ describe("Convergence Field", () => {
     expect(check()).toEqual({ satisfied: true, errors: [] });
   });
 });
+
+describe("Rich Text", () => {
+  const namespace = "@organizeos/site-components";
+  const richText = `${namespace}:RichText`;
+  const getRichTextRoots = () =>
+    [...$instances.get().values()].filter(
+      (instance) => instance.component === richText
+    );
+
+  test("inserts unbound: no catalog data, no Resource, no variable and no binding; a designer binds value", async () => {
+    setProject({ resources: [], dataSources: [] });
+    const resources = $resources.get();
+
+    expect(await insertOrganizeosBlock(richText)).toBe(true);
+
+    const [root, ...others] = getRichTextRoots();
+    expect(others).toEqual([]);
+    expect($instances.get().get("bodyId")?.children).toEqual([
+      { type: "id", value: root.id },
+    ]);
+    expect($resources.get()).toBe(resources);
+    expect([...$dataSources.get().values()]).toEqual([]);
+    // only the descendants' selectors
+    expect(
+      [...$props.get().values()].filter((prop) => prop.name !== "selector")
+    ).toEqual([]);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("the inserted block satisfies the content model: its children are its descendants", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(richText)).toBe(true);
+    const [root] = getRichTextRoots();
+    const errors: string[] = [];
+    expect(
+      isTreeSatisfyingContentModel({
+        instances: $instances.get(),
+        props: $props.get(),
+        metas: $registeredComponentMetas.get(),
+        instanceSelector: [root.id, "bodyId"],
+        onError: (message) => errors.push(message),
+      }),
+      errors.join("\n")
+    ).toBe(true);
+    expect(
+      root.children.map((child) => $instances.get().get(child.value)?.component)
+    ).toEqual(Array.from({ length: 17 }, () => "ws:descendant"));
+  });
+});

@@ -16,3 +16,4 @@ export { MarqueePauseButton } from "./marquee/marquee-pause-button";
 export { MarqueeTrack } from "./marquee/marquee-track";
 export { ConvergenceField } from "./field/convergence-field";
 export { ShareCodeCarrier } from "./share-code/share-code-carrier";
+export { RichText } from "./rich-text/rich-text";

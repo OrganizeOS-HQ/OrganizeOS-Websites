@@ -26,4 +26,10 @@ export type OrganizeosSite = {
    * false none of it is offered, and a block's insert is refused.
    */
   blocksEnabled: boolean;
+  /**
+   * Whether the deployment offers the CMS panel (`ORGANIZEOS_CMS_PANEL` is
+   * exactly `true`). The panel also needs the plan's `allowDynamicData` and a
+   * role above viewer (builder/features/cms-panel).
+   */
+  cmsPanelEnabled?: boolean;
 };

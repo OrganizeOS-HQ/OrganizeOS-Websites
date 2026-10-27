@@ -61,6 +61,8 @@ export const namedTextComponents = new Set([
   organizeos("FieldMessage"),
   organizeos("RotationControl"),
   organizeos("MarqueePauseButton"),
+  // the item's rich text (on the canvas without a value, a sample)
+  organizeos("RichText"),
 ]);
 
 /**

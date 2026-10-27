@@ -1134,6 +1134,57 @@ describe("dropOrgScript", () => {
     expect(log).not.toHaveBeenCalled();
   });
 
+  // The Rich Text block (OrganizeOS design 2026-10-26-cms-in-the-builder
+  // section 4.7) renders its own tree and offers no tag: the check passes it
+  // and its descendants unchanged, whatever its value holds. Its own
+  // re-validation of links and images is the guard there.
+  test("leaves a Rich Text and its descendants as they are, with a literal or a bound value", () => {
+    const richText = "@organizeos/site-components:RichText";
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("literal", "bound"),
+        }),
+        instance({
+          id: "literal",
+          component: richText,
+          children: ids("p", "a", "img"),
+        }),
+        instance({ id: "p", component: "ws:descendant" }),
+        instance({ id: "a", component: "ws:descendant" }),
+        instance({ id: "img", component: "ws:descendant" }),
+        instance({ id: "bound", component: richText }),
+      ],
+      props: [
+        stringProp("p", "selector", " p"),
+        stringProp("a", "selector", " a"),
+        stringProp("img", "selector", " img"),
+        jsonProp("literal", "value", {
+          v: 1,
+          children: [
+            {
+              t: "p",
+              c: [
+                {
+                  t: "a",
+                  href: "javascript:alert(1)",
+                  c: [{ t: "text", text: "x" }],
+                },
+              ],
+            },
+          ],
+        }),
+        expressionProp("bound", "value", "$ws$dataSource$item.body.nodes"),
+      ],
+    });
+    const log = vi.fn();
+
+    expect(dropOrgScript(bundle, { log })).toEqual(bundle);
+    expect(log).not.toHaveBeenCalled();
+  });
+
   // The generator writes nothing for a Content Block's templates container, so
   // what sits only inside it never ships. The Publish dialog does not list it
   // (findPausedScript), and the log matches the dialog.

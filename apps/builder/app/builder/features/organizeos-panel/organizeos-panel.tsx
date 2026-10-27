@@ -121,22 +121,31 @@ const DataSection = () => {
   );
 };
 
+/**
+ * The data list under its line, without a title: the OrganizeOS data tab
+ * below, and the CMS panel's Data view (builder/features/cms-panel).
+ */
+export const OrganizeosDataBody = () => {
+  return (
+    <ScrollArea>
+      <Text
+        color="subtle"
+        css={{ padding: theme.panel.padding }}
+        data-organizeos-data-line
+      >
+        Add your organization's data to this page, then bind it in Settings.
+      </Text>
+      <DataSection />
+    </ScrollArea>
+  );
+};
+
 export const OrganizeosPanel = () => {
   return (
     <>
       <PanelTitle>{`${platformName} data`}</PanelTitle>
       <Separator />
-
-      <ScrollArea>
-        <Text
-          color="subtle"
-          css={{ padding: theme.panel.padding }}
-          data-organizeos-data-line
-        >
-          Add your organization's data to this page, then bind it in Settings.
-        </Text>
-        <DataSection />
-      </ScrollArea>
+      <OrganizeosDataBody />
     </>
   );
 };

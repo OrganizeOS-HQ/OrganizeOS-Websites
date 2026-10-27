@@ -1,0 +1,14 @@
+{
+  "description": "X-OOS-Preview v1 test vector (design 2026-10-26-cms-in-the-builder section 4.5). payloadSegment is base64url (no padding) of the UTF-8 JSON of payload, keys in the order org, sub, sid, iat, exp; mac is base64url (no padding) of HMAC-SHA256 keyed by secret over the ASCII bytes of payloadSegment; header is 'v1.' + payloadSegment + '.' + mac. iat and exp are Unix seconds. The secret is a test value only.",
+  "secret": "oos-preview-fixture-secret-0123456789abcdef",
+  "payload": {
+    "org": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "sub": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "sid": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    "iat": 1793016000,
+    "exp": 1793016060
+  },
+  "payloadSegment": "eyJvcmciOiJhYWFhYWFhYS1hYWFhLTRhYWEtOGFhYS1hYWFhYWFhYWFhYWEiLCJzdWIiOiJjY2NjY2NjYy1jY2NjLTRjY2MtOGNjYy1jY2NjY2NjY2NjY2MiLCJzaWQiOiJkZGRkZGRkZC1kZGRkLTRkZGQtOGRkZC1kZGRkZGRkZGRkZGQiLCJpYXQiOjE3OTMwMTYwMDAsImV4cCI6MTc5MzAxNjA2MH0",
+  "mac": "5_La_9iN8GX96_zoM3Awb6gVXEcZ_U06Q9mtoSl1sTM",
+  "header": "v1.eyJvcmciOiJhYWFhYWFhYS1hYWFhLTRhYWEtOGFhYS1hYWFhYWFhYWFhYWEiLCJzdWIiOiJjY2NjY2NjYy1jY2NjLTRjY2MtOGNjYy1jY2NjY2NjY2NjY2MiLCJzaWQiOiJkZGRkZGRkZC1kZGRkLTRkZGQtOGRkZC1kZGRkZGRkZGRkZGQiLCJpYXQiOjE3OTMwMTYwMDAsImV4cCI6MTc5MzAxNjA2MH0.5_La_9iN8GX96_zoM3Awb6gVXEcZ_U06Q9mtoSl1sTM"
+}

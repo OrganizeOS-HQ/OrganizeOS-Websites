@@ -50,13 +50,20 @@ type Section = {
 };
 
 // Signups, Events, Membership and Donations in the spec; so far the Signup
-// Form, the Events blocks, Rotating Tabs, Marquee and Convergence Field. A section names its blocks in the
-// order they are listed, and one that is not registered (yet) is skipped.
+// Form, the Events blocks, Rotating Tabs, Marquee, Convergence Field and Rich
+// Text. A section names its blocks in the order they are listed, and one that
+// is not registered (yet) is skipped.
 const sections: Section[] = [
   {
     // Page sections that read no platform data, so the insert binds nothing.
     label: "Sections",
     blocks: ["RotatingTabs", "Marquee", "ConvergenceField"],
+  },
+  {
+    // Shows a collection item's rich text. The insert binds nothing: a
+    // designer binds its value to an item's field inside a collection.
+    label: "Content",
+    blocks: ["RichText"],
   },
   {
     label: "Events",

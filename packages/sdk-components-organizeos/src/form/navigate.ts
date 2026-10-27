@@ -4,11 +4,14 @@ import {
   shareCodeParam,
   withShareCode,
 } from "../share-code/share-code";
+import { isNavigableUrl } from "../shared/safe-href";
 
 /**
  * Where a navigation to `href` goes, or undefined when it must not go. Only
- * http(s) targets: the page link comes from the builder's URL control, and a
- * `javascript:` value must never run. When the target is one of the
+ * http(s) targets (`isNavigableUrl`): the page link comes from the builder's
+ * URL control, and a `javascript:` value must never run. This is narrower
+ * than a link's rule (`isSafeHref`), which also allows `mailto:` and `tel:`,
+ * and wider in one way: a relative address resolves against the page. When the target is one of the
  * organization's platform pages on the page's own origin, has no `r` yet and
  * the page has a share code, the code goes with it, as a click on a link to
  * that page would carry it (share-code/attach-share-code-carrier.ts).
@@ -20,7 +23,7 @@ export const navigationTarget = (href: string): string | undefined => {
   } catch {
     return;
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
+  if (isNavigableUrl(url) === false) {
     return;
   }
   const code = readPageShareCode();

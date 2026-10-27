@@ -64,6 +64,7 @@ import {
   resolveOrganizeosComponentsModule,
 } from "./organizeos-components";
 import { dropOrgScript } from "./organizeos-org-script";
+import { assertNoPreviewHeader } from "./organizeos-preview-header";
 
 const createRemixFramework = async () =>
   (await import("./framework-remix")).createFramework();
@@ -311,6 +312,9 @@ export const prebuild = async (options: {
   const siteData = dropOrgScript(parsedSiteData.data, {
     log: (message) => log.info(message),
   });
+  // OrganizeOS fork: no Resource carries the builder's draft-preview header
+  // (organizeos-preview-header.ts).
+  assertNoPreviewHeader(siteData.build.resources);
 
   const usedMetas = new Map<Instance["component"], WsComponentMeta>(
     Object.entries(coreMetas)

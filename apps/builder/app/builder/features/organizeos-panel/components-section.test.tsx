@@ -91,6 +91,22 @@ describe("groupOrganizeosBlocks", () => {
         ],
       },
       {
+        label: "Content",
+        // no workspace area: a designer binds it to a collection's item
+        area: undefined,
+        blocks: [
+          {
+            name: `${namespace}:RichText`,
+            label: "Rich Text",
+            description: organizeosTemplates.RichText.description,
+            icon: organizeosTemplates.RichText.icon,
+            firstInstance: expect.objectContaining({
+              component: `${namespace}:RichText`,
+            }),
+          },
+        ],
+      },
+      {
         label: "Events",
         area: { label: "Manage events in OrganizeOS", path: "events" },
         blocks: [
@@ -151,7 +167,7 @@ describe("groupOrganizeosBlocks", () => {
     );
   });
 
-  test("Marquee and Convergence Field have their own icons, not one of an upstream component", () => {
+  test("Marquee, Convergence Field and Rich Text have their own icons, not one of an upstream component", () => {
     const upstreamIcons = new Set(
       [
         ...Object.values(defaultMetas),
@@ -162,12 +178,17 @@ describe("groupOrganizeosBlocks", () => {
     for (const template of [
       organizeosTemplates.Marquee,
       organizeosTemplates.ConvergenceField,
+      organizeosTemplates.RichText,
     ]) {
       expect(template.icon).toEqual(expect.any(String));
       expect(upstreamIcons.has(template.icon)).toBe(false);
     }
     expect(organizeosTemplates.ConvergenceField.icon).not.toBe(
       organizeosTemplates.Marquee.icon
+    );
+    // not Markdown Embed's, the upstream block it is styled like
+    expect(organizeosTemplates.RichText.icon).not.toBe(
+      defaultMetas.MarkdownEmbed.icon
     );
   });
 
@@ -194,6 +215,7 @@ describe("groupOrganizeosBlocks", () => {
           `${namespace}:ConvergenceField`,
         ],
       ],
+      ["Content", [`${namespace}:RichText`]],
       [
         "Events",
         [
@@ -227,6 +249,7 @@ describe("groupOrganizeosBlocks", () => {
           `${namespace}:ConvergenceField`,
         ],
       ],
+      ["Content", [`${namespace}:RichText`]],
       ["Events", [`${namespace}:EventList`, `${namespace}:EventCard`]],
       ["Signups", [`${namespace}:SignupForm`]],
     ]);
@@ -324,6 +347,7 @@ describe("$organizeosComponentGroups", () => {
         "RotatingTabs",
         "Marquee",
         "ConvergenceField",
+        "RichText",
         "EventList",
         "EventCard",
         "RsvpForm",

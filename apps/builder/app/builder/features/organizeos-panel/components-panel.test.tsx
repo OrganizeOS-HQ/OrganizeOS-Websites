@@ -202,6 +202,7 @@ describe("the Components panel's OrganizeOS section", () => {
         "RotatingTabs",
         "Marquee",
         "ConvergenceField",
+        "RichText",
         "EventList",
         "EventCard",
         "RsvpForm",

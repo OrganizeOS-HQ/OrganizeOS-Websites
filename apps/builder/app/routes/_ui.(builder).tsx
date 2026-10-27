@@ -44,6 +44,7 @@ import {
   privateNoStoreResponseHeaders,
 } from "~/services/cache-control.server";
 import {
+  builderFrameSrcPolicy,
   frameProtectionHeaders,
   withFrameAncestors,
 } from "~/shared/frame-protection";
@@ -255,6 +256,7 @@ export const loader = async (loaderArgs: LoaderFunctionArgs) => {
             publisherHost: env.PUBLISHER_HOST,
             platformUrl: env.ORGANIZEOS_APP_URL,
             blocksOrgIds: env.ORGANIZEOS_BLOCKS_ORG_IDS,
+            cmsPanel: env.ORGANIZEOS_CMS_PANEL,
           });
 
     const headers = createPrivateNoStoreHeaders();
@@ -285,8 +287,10 @@ export const loader = async (loaderArgs: LoaderFunctionArgs) => {
       // blob: workers can only be created from JS already running in this page, so the
       // attack surface is no wider than allowing eval.
       // help.webstudio.is dropped with the upstream help dialog it framed.
+      // OrganizeOS fork: the CMS panel frames the OrganizeOS app's
+      // /cms-panel screen (builder/features/cms-panel).
       "Content-Security-Policy",
-      `frame-src ${url.origin}/canvas https://app.goentri.com/; worker-src blob:`
+      builderFrameSrcPolicy(url.origin, env.ORGANIZEOS_APP_URL)
     );
 
     return json(

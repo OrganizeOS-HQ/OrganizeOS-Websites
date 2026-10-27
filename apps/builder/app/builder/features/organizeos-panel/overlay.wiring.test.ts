@@ -163,12 +163,33 @@ describe("the canvas's drop", () => {
 });
 
 describe("the left sidebar", () => {
-  test("sidebar-left.tsx still offers the OrganizeOS tab only on the allowlist", () => {
+  test("sidebar-left.tsx offers the CMS panel where it is available, and the OrganizeOS tab only on the allowlist without it", () => {
     expect(sidebarLeft).toMatch(
-      /panel\.name !== "organizeos" \|\| isOrganizeosPanelAvailable/
+      /if \(panel\.name === "cms"\) \{\s*return isCmsPanelAvailable;\s*\}/
     );
     expect(sidebarLeft).toMatch(
-      /getAvailablePanels\(\s*useStore\(\$isOrganizeosPanelAvailable\)\s*\)/
+      /if \(panel\.name === "organizeos"\) \{\s*return isOrganizeosPanelAvailable && isCmsPanelAvailable === false;\s*\}/
+    );
+    expect(sidebarLeft).toMatch(
+      /getAvailablePanels\(\s*useStore\(\$isOrganizeosPanelAvailable\),\s*useStore\(\$isCmsPanelAvailable\)\s*\)/
+    );
+  });
+
+  test("sidebar-left.tsx renders the CMS frame outside the tab content", () => {
+    const content = sidebarLeft.indexOf("</SidebarTabsContent>");
+    const frame = sidebarLeft.indexOf("<CmsFrame />");
+    expect(content).toBeGreaterThan(-1);
+    expect(frame).toBeGreaterThan(content);
+    expect(frame).toBeLessThan(sidebarLeft.indexOf("</SidebarTabs>"));
+    expect(sidebarLeft.match(/<CmsFrame \/>/g)).toHaveLength(1);
+  });
+
+  test("sidebar-left.tsx gives the active panel its own maximum and starting width", () => {
+    expect(sidebarLeft).toMatch(
+      /maxWidth: activePanelConfig\?\.maxWidth \?\? theme\.spacing\[35\]/
+    );
+    expect(sidebarLeft).toMatch(
+      /getSidebarPanelWidth\(\s*activePanel,\s*activePanelConfig\?\.defaultWidth\s*\)/
     );
   });
 

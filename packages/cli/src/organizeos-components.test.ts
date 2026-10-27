@@ -157,6 +157,28 @@ describe("the copy of the build", () => {
     );
   });
 
+  test("carries Rich Text and its canvas sample, and the copy exports it", async () => {
+    const libDir = dirname(getBuiltModule());
+    const { modules } = await findModuleClosure(getBuiltModule());
+    const paths = modules.map((path) => relative(libDir, path));
+    expect(paths).toContain(join("rich-text", "rich-text.js"));
+    expect(paths).toContain(join("rich-text", "sample.js"));
+    expect(paths).toContain(join("shared", "safe-href.js"));
+
+    await copyOrganizeosComponents("app", getBuiltModule());
+    for (const path of ["rich-text.js", "sample.js"]) {
+      await expect(
+        readFile(join("app", "__organizeos__", "rich-text", path), "utf8")
+      ).resolves.toEqual(
+        await readFile(join(libDir, "rich-text", path), "utf8")
+      );
+    }
+    // the framework maps it (above), and the build exports it
+    expect(Object.keys(organizeosComponentMetas)).toContain("RichText");
+    const built = await import(pathToFileURL(getBuiltModule()).href);
+    expect(built.RichText).toEqual(expect.anything());
+  });
+
   test("imports only packages the react-router site template depends on", async () => {
     const { bareSpecifiers } = await findModuleClosure(getBuiltModule());
     const template = JSON.parse(

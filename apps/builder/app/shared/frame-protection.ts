@@ -50,3 +50,27 @@ export const withFrameAncestors = (csp: string | null | undefined): string => {
 
   return hasFrameAncestors ? policy : `${policy}; ${FRAME_ANCESTORS}`;
 };
+
+/**
+ * The builder document's frame-src and worker-src (`routes/_ui.(builder).tsx`):
+ * its own canvas, Entri's dialog, and the OrganizeOS app's origin, which the
+ * CMS panel frames (builder/features/cms-panel). An unparseable app URL adds
+ * nothing.
+ */
+export const builderFrameSrcPolicy = (
+  builderOrigin: string,
+  appUrl: string
+) => {
+  let appOrigin: string | undefined;
+  try {
+    appOrigin = new URL(appUrl).origin;
+  } catch {
+    appOrigin = undefined;
+  }
+  const frameSrc = [
+    `${builderOrigin}/canvas`,
+    "https://app.goentri.com/",
+    ...(appOrigin === undefined || appOrigin === "null" ? [] : [appOrigin]),
+  ];
+  return `frame-src ${frameSrc.join(" ")}; worker-src blob:`;
+};
