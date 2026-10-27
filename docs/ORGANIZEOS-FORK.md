@@ -596,7 +596,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     outside the tab content and portalled to the document's body, is a
     `position: fixed` box from the rail's measured right edge to the
     viewport's right edge, top to bottom, over the top bar, the sidebar
-    panel, the canvas and the inspector. Its `z-index` is 2
+    panel, the canvas and the inspector, plus a strip from the rail's
+    measured bottom edge down, under the rail, where the full-width footer
+    would otherwise show through. Its `z-index` is 2
     (`CMS_OVERLAY_Z_INDEX`): above the top bar (`zIndex: 1`) and below the
     toast layer (`theme.zIndices.max`, 999), so the "Reload" notice shows
     over it. It is portalled because the left sidebar's own box isolates
@@ -608,7 +610,10 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     mounted for the life of the builder document. Closing sets
     `display: none`, so reopening shows the screen as it was left, unsaved
     text included; there is no discard and no confirm. It hides on the rail
-    button, on Escape pressed in the builder document, on
+    button, on Escape pressed in the builder document, on a press on the
+    top bar (its corner beside the overlay holds the builder's main menu,
+    whose menus and dialogs portal without a z-index and would open beneath
+    the overlay), on
     `cms.close_requested` (the screen's own close button, or Escape at its
     top level), when another rail tab is clicked (which then shows its
     panel, even the one already open) or a panel becomes active any other
