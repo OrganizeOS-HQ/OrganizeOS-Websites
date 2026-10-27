@@ -47,11 +47,11 @@ import { CollectionRow, OrphanRow } from "./collection-row-menu";
  * Background presets section (background-presets-section.tsx), and Motion is
  * the Inspector's Motion tab (motion-tab.tsx).
  *
- * Offered only to orgs on the rollout allowlist: the sidebar hides the tab
+ * Offered only to orgs the deny list does not deny: the sidebar hides the tab
  * otherwise ($isOrganizeosPanelAvailable).
  */
 
-/** Whether the sidebar offers the tab: the org is on the blocks' allowlist. */
+/** Whether the sidebar offers the tab: the org is not denied the blocks. */
 export const $isOrganizeosPanelAvailable = computed(
   $organizeosSite,
   (site) => site?.blocksEnabled === true

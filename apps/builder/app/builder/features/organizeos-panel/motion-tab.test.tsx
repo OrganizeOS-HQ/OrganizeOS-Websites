@@ -186,13 +186,13 @@ afterEach(() => {
 });
 
 describe("$isMotionTabAvailable", () => {
-  test("true on the allowlist, in design mode, on an HTML page", () => {
+  test("true for an org not denied the blocks, in design mode, on an HTML page", () => {
     expect($isMotionTabAvailable.get()).toBe(true);
   });
 
   test.each([
     [
-      "off the allowlist",
+      "for a denied org",
       () => $organizeosSite.set({ ...site, blocksEnabled: false }),
     ],
     ["for no org", () => $organizeosSite.set(undefined)],
@@ -206,7 +206,7 @@ describe("$isMotionTabAvailable", () => {
 });
 
 describe("the Inspector's Motion tab", () => {
-  test("an Inspector shows Style, Settings and Motion, in that order, for an allowlisted element in design mode on an HTML page", () => {
+  test("an Inspector shows Style, Settings and Motion, in that order, for an element of an org not denied the blocks, in design mode on an HTML page", () => {
     selectInstance(["section", "body"]);
     const host = render();
     expect(tabs(host)).toEqual(["Style", "Settings", "Motion"]);
@@ -243,7 +243,7 @@ describe("the Inspector's Motion tab", () => {
     expect(document.body.textContent).toBe(before);
   });
 
-  test("content mode and XML keep upstream's Settings only, and off the allowlist upstream's Style and Settings", () => {
+  test("content mode and XML keep upstream's Settings only, and for a denied org upstream's Style and Settings", () => {
     selectInstance(["section", "body"]);
     $builderMode.set("content");
     let host = render();
@@ -266,7 +266,7 @@ describe("the Inspector's Motion tab", () => {
     expect(tabs(host)).toEqual(["Style", "Settings"]);
   });
 
-  test("off the allowlist the Inspector has exactly two tabpanels, as upstream's", () => {
+  test("for a denied org the Inspector has exactly two tabpanels, as upstream's", () => {
     selectInstance(["section", "body"]);
     $organizeosSite.set({ ...site, blocksEnabled: false });
     let host = render();
@@ -274,7 +274,7 @@ describe("the Inspector's Motion tab", () => {
     act(() => root?.unmount());
     container?.remove();
 
-    // on the allowlist, the Motion tab's panel is the third
+    // for an org not denied the blocks, the Motion tab's panel is the third
     $organizeosSite.set(site);
     host = render();
     expect(host.querySelectorAll('[role="tabpanel"]')).toHaveLength(3);

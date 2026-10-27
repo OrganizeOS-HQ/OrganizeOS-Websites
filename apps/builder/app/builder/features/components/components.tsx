@@ -254,7 +254,7 @@ export const ComponentsPanel = ({
   });
 
   const { metasByCategory, availableComponents } = useStore($metas);
-  // OrganizeOS fork: the OrganizeOS section, for orgs on the blocks' allowlist
+  // OrganizeOS fork: the OrganizeOS section, for orgs not denied the blocks
   const organizeosGroups = useStore($organizeosComponentGroups);
 
   const { dragCard, draggableContainerRef, isDragging } = useDraggable({

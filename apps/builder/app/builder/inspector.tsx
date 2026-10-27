@@ -81,7 +81,7 @@ export const Inspector = ({ navigatorLayout }: InspectorProps) => {
   const selectedPage = useStore($selectedPage);
   const activeInspectorPanel = useStore($activeInspectorPanel);
   const isDesignMode = useStore($isDesignMode);
-  // OrganizeOS fork: the Motion tab, for orgs on the blocks' allowlist
+  // OrganizeOS fork: the Motion tab, for orgs not denied the blocks
   const isMotionTabAvailable = useStore($isMotionTabAvailable);
 
   if (navigatorLayout === "docked" && isDragging) {

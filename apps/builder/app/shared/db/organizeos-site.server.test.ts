@@ -11,6 +11,7 @@ import {
   deriveProjectDomain,
   isOrgSubdomain,
   organizeosWebsiteAreaUrl,
+  parseOrgDenyList,
   resolveOrganizeosDashboardExit,
   resolveOrgProjectDomain,
   resolveOrganizeosSite,
@@ -18,6 +19,8 @@ import {
 } from "./organizeos-site.server";
 
 const ORG_ID = "f0e1d2c3-b4a5-4697-8877-665544332211";
+const OTHER_ORG_ID = "92dbe068-fa3f-472f-95e5-b1e34dd7bdf7";
+const THIRD_ORG_ID = "cae826fa-773b-478a-84ef-940f5683ab1a";
 const SERVICE_OWNER = {
   provider: "organizeos-service",
   email: `org+${ORG_ID}@svc.organizeos.internal`,
@@ -77,7 +80,6 @@ describe("organizeosWebsiteAreaUrl", () => {
 
 describe("resolveOrganizeosSite", () => {
   const base = {
-    publisherHost: "example.org",
     platformUrl: "https://app.example.org",
   };
 
@@ -91,10 +93,10 @@ describe("resolveOrganizeosSite", () => {
     ).toEqual({
       organizationId: ORG_ID,
       subdomain: "acme",
-      siteUrl: "https://acme.example.org",
       manageUrl: "https://app.example.org/acme/website",
       platformUrl: "https://app.example.org",
-      blocksEnabled: false,
+      // no deny list denies nobody
+      blocksEnabled: true,
       cmsPanelEnabled: false,
     });
   });
@@ -122,28 +124,45 @@ describe("resolveOrganizeosSite", () => {
   );
 
   test.each([
-    [undefined, false],
-    ["", false],
-    [" , ", false],
-    ["org-a,org-b", false],
-    [ORG_ID, true],
-    [`org-a, ${ORG_ID} ,org-b`, true],
-    [`${ORG_ID.toUpperCase()}`, false],
+    [undefined, true],
+    ["", true],
+    [" , ", true],
+    [`${OTHER_ORG_ID},${THIRD_ORG_ID}`, true],
+    [ORG_ID, false],
+    [`${OTHER_ORG_ID}, ${ORG_ID} ,${THIRD_ORG_ID}`, false],
+    [ORG_ID.toUpperCase(), false],
+    // an entry that is not an organization id denies every org
+    ["hq", false],
+    [`${OTHER_ORG_ID},x`, false],
   ])(
-    "offers the blocks when ORGANIZEOS_BLOCKS_ORG_IDS is %j: %s",
-    (blocksOrgIds, expected) => {
+    "offers the blocks when ORGANIZEOS_BLOCKS_DENY_ORG_IDS is %j: %s",
+    (blocksDenyOrgIds, expected) => {
       expect(
         resolveOrganizeosSite({
           ...base,
           owner: SERVICE_OWNER,
           projectDomain: "acme",
-          blocksOrgIds,
+          blocksDenyOrgIds,
         })?.blocksEnabled
       ).toBe(expected);
     }
   );
 
-  test("an org project still on the placeholder has no site URL", () => {
+  test("matches an org id in any case against the deny list", () => {
+    expect(
+      resolveOrganizeosSite({
+        ...base,
+        owner: {
+          provider: "organizeos-service",
+          email: `org+${ORG_ID.toUpperCase()}@svc.organizeos.internal`,
+        },
+        projectDomain: "acme",
+        blocksDenyOrgIds: ORG_ID,
+      })?.blocksEnabled
+    ).toBe(false);
+  });
+
+  test("an org project still on the placeholder has no subdomain", () => {
     const site = resolveOrganizeosSite({
       ...base,
       owner: SERVICE_OWNER,
@@ -151,18 +170,21 @@ describe("resolveOrganizeosSite", () => {
     });
     expect(site?.organizationId).toBe(ORG_ID);
     expect(site?.subdomain).toBeUndefined();
-    expect(site?.siteUrl).toBeUndefined();
     expect(site?.manageUrl).toBe("https://app.example.org/dashboard");
   });
 
   test("a human-owned project is not an OrganizeOS site", () => {
-    expect(
-      resolveOrganizeosSite({
-        ...base,
-        owner: { provider: "google", email: "me@example.org" },
-        projectDomain: "my-site",
-      })
-    ).toBeUndefined();
+    for (const blocksDenyOrgIds of [undefined, "", ORG_ID, "hq"]) {
+      expect(
+        resolveOrganizeosSite({
+          ...base,
+          owner: { provider: "google", email: "me@example.org" },
+          projectDomain: "my-site",
+          blocksDenyOrgIds,
+        }),
+        String(blocksDenyOrgIds)
+      ).toBeUndefined();
+    }
   });
 
   test("a service account without a parseable org is not an OrganizeOS site", () => {
@@ -173,6 +195,50 @@ describe("resolveOrganizeosSite", () => {
         projectDomain: "acme",
       })
     ).toBeUndefined();
+  });
+});
+
+describe("parseOrgDenyList", () => {
+  test.each([undefined, "", " ", " , ", ",,"])(
+    "denies nobody for %j",
+    (value) => {
+      expect(parseOrgDenyList(value)).toEqual({ all: false, ids: new Set() });
+    }
+  );
+
+  test("trims and lower-cases each organization id", () => {
+    expect(
+      parseOrgDenyList(` ${ORG_ID.toUpperCase()} ,${OTHER_ORG_ID}, `)
+    ).toEqual({ all: false, ids: new Set([ORG_ID, OTHER_ORG_ID]) });
+  });
+
+  test.each(["hq", `${ORG_ID},x`, `${ORG_ID};${OTHER_ORG_ID}`, `{${ORG_ID}}`])(
+    "denies every org for %j, which holds an entry that is not an organization id",
+    (value) => {
+      expect(parseOrgDenyList(value)).toEqual({ all: true });
+    }
+  );
+});
+
+describe("reportMalformedOrgDenyList", () => {
+  test("logs once per instance, without the value, when an entry is not an organization id", async () => {
+    vi.resetModules();
+    const { reportMalformedOrgDenyList } = await import(
+      "./organizeos-site.server"
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    reportMalformedOrgDenyList(undefined);
+    reportMalformedOrgDenyList(ORG_ID);
+    expect(error).not.toHaveBeenCalled();
+    reportMalformedOrgDenyList("hq");
+    reportMalformedOrgDenyList("hq");
+    reportMalformedOrgDenyList(`${ORG_ID},x`);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(String(error.mock.calls[0][0])).toContain(
+      "ORGANIZEOS_BLOCKS_DENY_ORG_IDS"
+    );
+    expect(String(error.mock.calls[0][0])).not.toContain("hq");
+    error.mockRestore();
   });
 });
 
@@ -273,7 +339,6 @@ describe("resolveOrganizeosDashboardExit", () => {
     resolveOrganizeosDashboardExit(context, {
       userId: "human-1",
       workspaces,
-      publisherHost: "example.org",
       platformUrl: PLATFORM,
     });
 

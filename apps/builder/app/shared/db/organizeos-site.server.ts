@@ -116,39 +116,71 @@ export const organizeosWebsiteAreaUrl = (
     : `${base}/${subdomain}/website`;
 };
 
+const ORGANIZATION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** The orgs denied the OrganizeOS blocks: every org, or these ids. */
+export type OrgDenyList =
+  | { all: true }
+  | { all: false; ids: ReadonlySet<string> };
+
 /**
- * The organization ids in `ORGANIZEOS_BLOCKS_ORG_IDS`, a comma-separated list.
- * Unset or empty means none.
+ * `ORGANIZEOS_BLOCKS_DENY_ORG_IDS`: comma-separated organization ids, each
+ * trimmed and lower-cased. Unset, empty or only separators denies nobody. An
+ * entry that is not an organization id denies every org: the value is set,
+ * so it is meant to deny someone, and guessing whom would fail open.
  */
-export const parseOrgIdList = (value: string | undefined): Set<string> =>
-  new Set(
-    (value ?? "")
-      .split(",")
-      .map((item) => item.trim())
-      .filter((item) => item !== "")
+export const parseOrgDenyList = (value: string | undefined): OrgDenyList => {
+  const entries = (value ?? "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item !== "");
+  if (entries.some((item) => ORGANIZATION_ID_PATTERN.test(item) === false)) {
+    return { all: true };
+  }
+  return { all: false, ids: new Set(entries) };
+};
+
+const isOrgDenied = (list: OrgDenyList, organizationId: string) =>
+  list.all || list.ids.has(organizationId.toLowerCase());
+
+let malformedDenyListReported = false;
+
+/**
+ * Logs, once per server instance, that the deny list holds an entry that is
+ * not an organization id and so offers the blocks to no org. The value is
+ * left out of the log.
+ */
+export const reportMalformedOrgDenyList = (value: string | undefined) => {
+  if (malformedDenyListReported || parseOrgDenyList(value).all === false) {
+    return;
+  }
+  malformedDenyListReported = true;
+  console.error(
+    "[organizeos-site] ORGANIZEOS_BLOCKS_DENY_ORG_IDS holds an entry that is not an organization id, so the OrganizeOS blocks are offered to no org."
   );
+};
 
 /**
  * Describe the OrganizeOS org behind a project, or undefined for a project a
  * human owns (which is not an OrganizeOS site and gets upstream behavior).
  * Pure: the caller supplies the project's owner row, the deployment's
- * publisher host + platform URL, and the raw `ORGANIZEOS_BLOCKS_ORG_IDS`
- * allowlist (the OrganizeOS blocks and the rest of the OrganizeOS builder UI
- * are offered to the orgs it lists only).
+ * platform URL, and the raw `ORGANIZEOS_BLOCKS_DENY_ORG_IDS` deny list (the
+ * OrganizeOS blocks and the rest of the OrganizeOS builder UI are offered to
+ * every org it does not deny).
  */
 export const resolveOrganizeosSite = ({
   owner,
   projectDomain,
-  publisherHost,
   platformUrl,
-  blocksOrgIds,
+  blocksDenyOrgIds,
   cmsPanel,
 }: {
   owner: { provider: string | null; email: string | null };
   projectDomain: string;
-  publisherHost: string;
   platformUrl: string;
-  blocksOrgIds?: string;
+  /** The raw `ORGANIZEOS_BLOCKS_DENY_ORG_IDS`. */
+  blocksDenyOrgIds?: string;
   /** The raw `ORGANIZEOS_CMS_PANEL`: only `true` offers the CMS panel. */
   cmsPanel?: string;
 }): OrganizeosSite | undefined => {
@@ -170,13 +202,10 @@ export const resolveOrganizeosSite = ({
   return {
     organizationId,
     subdomain,
-    siteUrl:
-      subdomain === undefined
-        ? undefined
-        : `https://${subdomain}.${publisherHost}`,
     manageUrl: organizeosWebsiteAreaUrl(platformUrl, subdomain),
     platformUrl: platformUrl.replace(/\/+$/, ""),
-    blocksEnabled: parseOrgIdList(blocksOrgIds).has(organizationId),
+    blocksEnabled:
+      isOrgDenied(parseOrgDenyList(blocksDenyOrgIds), organizationId) === false,
     cmsPanelEnabled: cmsPanel === "true",
   };
 };
@@ -214,12 +243,10 @@ export const resolveOrganizeosDashboardExit = async (
   {
     userId,
     workspaces,
-    publisherHost,
     platformUrl,
   }: {
     userId: string;
     workspaces: ReadonlyArray<DashboardWorkspace>;
-    publisherHost: string;
     platformUrl: string;
   }
 ): Promise<string | undefined> => {
@@ -289,7 +316,6 @@ export const resolveOrganizeosDashboardExit = async (
     resolveOrganizeosSite({
       owner,
       projectDomain: project.data.domain,
-      publisherHost,
       platformUrl,
     })?.manageUrl ?? home
   );

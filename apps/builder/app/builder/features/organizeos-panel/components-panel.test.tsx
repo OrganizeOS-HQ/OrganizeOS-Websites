@@ -65,7 +65,6 @@ const namespace = "@organizeos/site-components";
 const site: OrganizeosSite = {
   organizationId: "org-1",
   subdomain: "acme",
-  siteUrl: "https://acme.organizeos.org",
   manageUrl: "https://app.organizeos.org/acme/website",
   platformUrl: "https://app.organizeos.org",
   blocksEnabled: true,
@@ -286,7 +285,7 @@ describe("the Components panel's OrganizeOS section", () => {
     ]);
   });
 
-  test("no OrganizeOS section off the allowlist", () => {
+  test("no OrganizeOS section for a denied org", () => {
     $organizeosSite.set({ ...site, blocksEnabled: false });
     const host = render();
     expect(headings(host)).not.toContain("OrganizeOS");

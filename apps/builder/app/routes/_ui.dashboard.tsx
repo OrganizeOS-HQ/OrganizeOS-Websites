@@ -119,7 +119,6 @@ const loadDashboardData = async (request: Request) => {
       const exitUrl = await resolveOrganizeosDashboardExit(context, {
         userId: user.id,
         workspaces,
-        publisherHost: env.PUBLISHER_HOST,
         platformUrl: env.ORGANIZEOS_APP_URL,
       });
       if (exitUrl !== undefined && new URL(exitUrl).origin !== url.origin) {

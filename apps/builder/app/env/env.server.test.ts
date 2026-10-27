@@ -54,3 +54,25 @@ describe("ORGANIZEOS_CMS_PANEL", () => {
     expect((await loadEnv()).ORGANIZEOS_CMS_PANEL).toBe("true");
   });
 });
+
+describe("ORGANIZEOS_BLOCKS_DENY_ORG_IDS", () => {
+  test("passes the raw value through", async () => {
+    vi.stubEnv("ORGANIZEOS_BLOCKS_DENY_ORG_IDS", " a , b ");
+    expect((await loadEnv()).ORGANIZEOS_BLOCKS_DENY_ORG_IDS).toBe(" a , b ");
+  });
+
+  test("is undefined when unset", async () => {
+    vi.stubEnv("ORGANIZEOS_BLOCKS_DENY_ORG_IDS", undefined);
+    expect((await loadEnv()).ORGANIZEOS_BLOCKS_DENY_ORG_IDS).toBeUndefined();
+  });
+
+  // The allowlist it replaces is never read again, so a value left behind in
+  // a deployment can neither offer nor deny the blocks
+  test("leaves ORGANIZEOS_BLOCKS_ORG_IDS out of env even when it is set", async () => {
+    vi.stubEnv(
+      "ORGANIZEOS_BLOCKS_ORG_IDS",
+      "f0e1d2c3-b4a5-4697-8877-665544332211"
+    );
+    expect("ORGANIZEOS_BLOCKS_ORG_IDS" in (await loadEnv())).toBe(false);
+  });
+});
