@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -267,13 +267,16 @@ test.each([
 ] as const)(
   "with a block's carrier on the page, a plain click on the block's link gets one r and navigates once (page carrier %s)",
   (_name, position) => {
+    const block = (
+      <ShareCodeCarrier>
+        <RouterLink to="/events/weekly-phone-bank">Event</RouterLink>
+        <a href="/donate">Give</a>
+      </ShareCodeCarrier>
+    );
     render(
       <Sdk>
         {position === "before" && <PageShareCodeCarrier />}
-        <ShareCodeCarrier>
-          <RouterLink to="/events/weekly-phone-bank">Event</RouterLink>
-          <a href="/donate">Give</a>
-        </ShareCodeCarrier>
+        {block}
         {position === "after" && <PageShareCodeCarrier />}
       </Sdk>
     );
@@ -303,6 +306,22 @@ test.each([
       { prevented: true, codes: [code] },
       { prevented: true, codes: [code] },
     ]);
+
+    // Control: the block's carrier is live. Alone on the page, the same block
+    // carries the same click itself, after the click passed <body> untouched,
+    // so above it saw the click and, finding it cancelled, did nothing.
+    cleanup();
+    vi.mocked(navigateTo).mockClear();
+    render(<Sdk>{block}</Sdk>);
+    const alone = watchBody();
+    expect(click(link("Event"))).toEqual({ prevented: true });
+    alone.stop();
+    expect(route).not.toHaveBeenCalled();
+    expect(vi.mocked(navigateTo).mock.calls).toEqual([
+      [at(`/events/weekly-phone-bank?r=${code}`)],
+    ]);
+    expect(shareCodes(link("Event"))).toEqual([code]);
+    expect(alone.seen).toEqual([{ prevented: false, codes: [] }]);
   }
 );
 
@@ -312,15 +331,18 @@ test.each([
 ] as const)(
   "with a block's carrier on the page, a modified click gets one r and no navigation (page carrier %s)",
   (_name, position) => {
+    const block = (
+      <ShareCodeCarrier>
+        <a href="/donate">Give</a>
+        <a href="/join" target="_blank" rel="noopener">
+          Join
+        </a>
+      </ShareCodeCarrier>
+    );
     render(
       <Sdk>
         {position === "before" && <PageShareCodeCarrier />}
-        <ShareCodeCarrier>
-          <a href="/donate">Give</a>
-          <a href="/join" target="_blank" rel="noopener">
-            Join
-          </a>
-        </ShareCodeCarrier>
+        {block}
         {position === "after" && <PageShareCodeCarrier />}
       </Sdk>
     );
@@ -345,6 +367,24 @@ test.each([
       { prevented: false, codes: [code] },
       { prevented: false, codes: [code] },
       { prevented: false, codes: [code] },
+    ]);
+
+    // Control: the block's carrier is live. Alone on the page, the same block
+    // adds the code itself, after the click passed <body> without one.
+    cleanup();
+    render(<Sdk>{block}</Sdk>);
+    const alone = watchBody();
+    expect(click(link("Give"), { ctrlKey: true })).toEqual({
+      prevented: false,
+    });
+    expect(click(link("Join"))).toEqual({ prevented: false });
+    alone.stop();
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(link("Give").getAttribute("href")).toBe(at(`/donate?r=${code}`));
+    expect(link("Join").getAttribute("href")).toBe(at(`/join?r=${code}`));
+    expect(alone.seen).toEqual([
+      { prevented: false, codes: [] },
+      { prevented: false, codes: [] },
     ]);
   }
 );
@@ -452,6 +492,43 @@ test("stops listening when it unmounts", () => {
   expect(click(link("Join"))).toEqual({ prevented: false });
   expect(link("Join").getAttribute("href")).toBe("/join");
   expect(navigateTo).toHaveBeenCalledTimes(1);
+});
+
+// A published route keys the page by its URL (PageBoundary in the html route
+// template), so a client-side move between the site's own pages unmounts the
+// carrier and mounts a new one.
+test("remounted by a change of key, it leaves exactly one listener on the document", () => {
+  const add = vi.spyOn(document, "addEventListener");
+  const remove = vi.spyOn(document, "removeEventListener");
+  const Page = ({ url }: { url: string }) => (
+    <Sdk>
+      <Fragment key={url}>
+        <a href="/donate">Give</a>
+        <PageShareCodeCarrier />
+      </Fragment>
+    </Sdk>
+  );
+  const { rerender } = render(<Page url="/" />);
+  for (const url of ["/about", "/team", "/about", "/"]) {
+    rerender(<Page url={url} />);
+  }
+
+  // the carrier's listeners: click, in the capture phase
+  const carriers = (spy: typeof add | typeof remove) =>
+    spy.mock.calls
+      .filter(([type, , options]) => type === "click" && options === true)
+      .map(([, listener]) => listener);
+  const added = carriers(add);
+  const removed = carriers(remove);
+  expect(added).toHaveLength(5);
+  expect(removed).toHaveLength(4);
+  const live = added.filter((listener) => removed.includes(listener) === false);
+  expect(live).toHaveLength(1);
+  expect(live[0]).toBe(added.at(-1));
+
+  // and it carries a click once
+  expect(click(link("Give"))).toEqual({ prevented: true });
+  expect(vi.mocked(navigateTo).mock.calls).toEqual([[at(`/donate?r=${code}`)]]);
 });
 
 test("is the page entry's one export, and none of the blocks' components", () => {
