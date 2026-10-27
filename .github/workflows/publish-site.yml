@@ -7,10 +7,20 @@ name: Publish site
 # OrganizeOS, which flips the org's ledger pointer. Each publish is its own
 # deployment URL, so the flip is atomic and rollback is repointing.
 #
+# With the URL it reports what this run's CLI says of itself, read from the
+# CLI it built and never from configuration: the org script switch (orgScript)
+# and the guard level (guardLevel, ORGANIZEOS_GUARD_LEVEL), which OrganizeOS
+# stores per build (docs/ORGANIZEOS-FORK.md section 5).
+#
 # The run ends by telling the builder how it went (internal/publish-status):
 # PUBLISHED once the pointer is flipped, FAILED when any step fails. That is
 # what the builder's Publish dialog shows the admin; without it every publish
 # reads "pending" until the UI gives up.
+#
+# No run script holds an expression: inputs, variables, secrets and step
+# outputs reach it through its step's env, JSON bodies are built from those
+# with node, and a step output is written only after its value is checked. A
+# dispatch input can then never break out of the shell or a body.
 #
 # Required repository secrets (all server-to-server; none reach the built app):
 #   WSTD_SERVICE_TOKEN          TRPC_SERVER_API_TOKEN of the deployed builder
@@ -63,11 +73,15 @@ jobs:
 
       - name: Sync project bundle
         working-directory: ${{ runner.temp }}
+        env:
+          BUILD_ID: ${{ inputs.build_id }}
+          BUILDER_ORIGIN: ${{ vars.BUILDER_ORIGIN }}
+          WSTD_SERVICE_TOKEN: ${{ secrets.WSTD_SERVICE_TOKEN }}
         run: |
           node "$GITHUB_WORKSPACE/packages/cli/bin.js" sync \
-            --buildId "${{ inputs.build_id }}" \
-            --origin "${{ vars.BUILDER_ORIGIN }}" \
-            --authToken "${{ secrets.WSTD_SERVICE_TOKEN }}"
+            --buildId "$BUILD_ID" \
+            --origin "$BUILDER_ORIGIN" \
+            --authToken "$WSTD_SERVICE_TOKEN"
 
       - name: Build site
         working-directory: ${{ runner.temp }}
@@ -96,15 +110,39 @@ jobs:
           fi
           echo "value=$value" >> "$GITHUB_OUTPUT"
 
+      - name: Read the guard level
+        # OrganizeOS fork: which of OrganizeOS's launch requirements this run's
+        # CLI meets (ORGANIZEOS_GUARD_LEVEL, docs/ORGANIZEOS-FORK.md section 5),
+        # read from the CLI it built, never configuration. It fails unless the
+        # value is an integer from 0 to 32767, the range OrganizeOS takes.
+        id: guard-level
+        working-directory: packages/cli
+        run: |
+          value=$(node --input-type=module -e '
+            import { ORGANIZEOS_GUARD_LEVEL } from "@organizeos/site-components/org-script";
+            process.stdout.write(JSON.stringify(ORGANIZEOS_GUARD_LEVEL));
+          ')
+          if [[ ! "$value" =~ ^(0|[1-9][0-9]{0,4})$ ]] || [ "$value" -gt 32767 ]; then
+            echo "::error::ORGANIZEOS_GUARD_LEVEL is ${value:-unreadable}. OrganizeOS takes an integer from 0 to 32767."
+            exit 1
+          fi
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
       - name: Deploy to Vercel
+        # The install runs without the deploy token in its environment.
         id: deploy
         working-directory: ${{ runner.temp }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_SITES_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          npm install --global vercel@latest
-          url=$(vercel deploy --token "${{ secrets.VERCEL_TOKEN }}" --yes --prod --skip-domain)
+          env -u VERCEL_TOKEN npm install --global vercel@latest
+          url=$(vercel deploy --token "$VERCEL_TOKEN" --yes --prod --skip-domain)
+          if [[ ! "$url" =~ ^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
+            echo "::error::Vercel did not answer with a deployment URL."
+            exit 1
+          fi
           echo "deployment_url=$url" >> "$GITHUB_OUTPUT"
           echo "Deployed: $url"
 
@@ -113,28 +151,73 @@ jobs:
         # different PUBLISH_CALLBACK_URL answers 308) would pass while flipping
         # nothing, and the run would still report the build PUBLISHED. Anything
         # but a 2xx fails the run.
-        # OrganizeOS fork: orgScript is what this run's CLI said of the org
-        # script switch ("Read the org script switch"), a JSON boolean written
-        # unquoted from that step's output alone (docs/ORGANIZEOS-FORK.md
-        # section 10).
+        # OrganizeOS fork: orgScript and guardLevel are what this run's CLI
+        # said ("Read the org script switch", "Read the guard level"), each
+        # from that step's output alone and checked again here before anything
+        # is sent: orgScript the JSON false, guardLevel an integer from 0 to
+        # 32767 (docs/ORGANIZEOS-FORK.md sections 5 and 10). On success the log
+        # shows the answer's live and launchable only, each only when it is a
+        # boolean; on failure it shows the answer.
+        env:
+          CALLBACK_URL: ${{ secrets.PUBLISH_CALLBACK_URL }}
+          CALLBACK_TOKEN: ${{ secrets.PUBLISH_CALLBACK_TOKEN }}
+          ORGANIZATION_ID: ${{ inputs.organization_id }}
+          BUILD_ID: ${{ inputs.build_id }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment_url }}
+          ORG_SCRIPT: ${{ steps.org-script.outputs.value }}
+          GUARD_LEVEL: ${{ steps.guard-level.outputs.value }}
         run: |
+          body=$(node -e '
+            const env = process.env;
+            let orgScript;
+            try {
+              orgScript = JSON.parse(env.ORG_SCRIPT ?? "");
+            } catch {}
+            if (orgScript !== false) {
+              console.log("::error::The org script switch did not read false, so nothing was sent.");
+              process.exit(1);
+            }
+            const level = env.GUARD_LEVEL ?? "";
+            if (/^(0|[1-9][0-9]{0,4})$/.test(level) === false || Number(level) > 32767) {
+              console.log("::error::The guard level is not an integer from 0 to 32767, so nothing was sent.");
+              process.exit(1);
+            }
+            process.stdout.write(JSON.stringify({
+              organizationId: env.ORGANIZATION_ID ?? "",
+              buildId: env.BUILD_ID ?? "",
+              deploymentUrl: env.DEPLOYMENT_URL ?? "",
+              orgScript,
+              guardLevel: Number(level),
+            }));
+          ') || { printf '%s\n' "$body"; exit 1; }
           response="$RUNNER_TEMP/callback-response.txt"
           status=$(curl --fail-with-body -sS --retry 3 --retry-all-errors \
             -o "$response" -w '%{http_code}' -X POST \
-            "${{ secrets.PUBLISH_CALLBACK_URL }}" \
-            -H "Authorization: ${{ secrets.PUBLISH_CALLBACK_TOKEN }}" \
+            "$CALLBACK_URL" \
+            -H "Authorization: $CALLBACK_TOKEN" \
             -H "Content-Type: application/json" \
-            -d '{
-              "organizationId": "${{ inputs.organization_id }}",
-              "buildId": "${{ inputs.build_id }}",
-              "deploymentUrl": "${{ steps.deploy.outputs.deployment_url }}",
-              "orgScript": ${{ steps.org-script.outputs.value }}
-            }') || { cat "$response"; echo; exit 1; }
-          cat "$response"
-          echo
+            --data-binary "$body") || { cat "$response"; echo; exit 1; }
           case "$status" in
-            2??) echo "Pointer flipped ($status)" ;;
+            2??)
+              echo "Pointer flipped ($status)"
+              RESPONSE="$response" node -e '
+                let answer;
+                try {
+                  answer = JSON.parse(require("node:fs").readFileSync(process.env.RESPONSE, "utf8"));
+                } catch {
+                  process.exit(0);
+                }
+                for (const key of ["live", "launchable"]) {
+                  const value = typeof answer === "object" && answer !== null ? answer[key] : undefined;
+                  if (typeof value === "boolean") {
+                    console.log(key + "=" + value);
+                  }
+                }
+              ' || true
+              ;;
             *)
+              cat "$response"
+              echo
               echo "::error::The publish callback answered $status, so the pointer was not flipped. PUBLISH_CALLBACK_URL must be the exact https URL, with no redirect."
               exit 1
               ;;
@@ -144,18 +227,28 @@ jobs:
         # The site is live once the pointer is flipped; a failed status report
         # must not fail the run (and so must not mark the build FAILED below).
         continue-on-error: true
+        env:
+          BUILDER_ORIGIN: ${{ vars.BUILDER_ORIGIN }}
+          WSTD_SERVICE_TOKEN: ${{ secrets.WSTD_SERVICE_TOKEN }}
+          BUILD_ID: ${{ inputs.build_id }}
         run: |
+          body=$(node -e 'process.stdout.write(JSON.stringify({ buildId: process.env.BUILD_ID ?? "", status: "PUBLISHED" }))')
           curl --fail-with-body -sS --retry 3 --retry-all-errors -X POST \
-            "${{ vars.BUILDER_ORIGIN }}/internal/publish-status" \
-            -H "Authorization: ${{ secrets.WSTD_SERVICE_TOKEN }}" \
+            "$BUILDER_ORIGIN/internal/publish-status" \
+            -H "Authorization: $WSTD_SERVICE_TOKEN" \
             -H "Content-Type: application/json" \
-            -d '{"buildId": "${{ inputs.build_id }}", "status": "PUBLISHED"}'
+            --data-binary "$body"
 
       - name: Report the build as failed
         if: failure()
+        env:
+          BUILDER_ORIGIN: ${{ vars.BUILDER_ORIGIN }}
+          WSTD_SERVICE_TOKEN: ${{ secrets.WSTD_SERVICE_TOKEN }}
+          BUILD_ID: ${{ inputs.build_id }}
         run: |
+          body=$(node -e 'process.stdout.write(JSON.stringify({ buildId: process.env.BUILD_ID ?? "", status: "FAILED" }))')
           curl --fail-with-body -sS --retry 3 --retry-all-errors -X POST \
-            "${{ vars.BUILDER_ORIGIN }}/internal/publish-status" \
-            -H "Authorization: ${{ secrets.WSTD_SERVICE_TOKEN }}" \
+            "$BUILDER_ORIGIN/internal/publish-status" \
+            -H "Authorization: $WSTD_SERVICE_TOKEN" \
             -H "Content-Type: application/json" \
-            -d '{"buildId": "${{ inputs.build_id }}", "status": "FAILED"}'
+            --data-binary "$body"
