@@ -41,6 +41,11 @@
       "webstudio": "./src/org-script.ts",
       "types": "./lib/types/org-script.d.ts",
       "import": "./lib/org-script.js"
+    },
+    "./page": {
+      "webstudio": "./src/page.ts",
+      "types": "./lib/types/page.d.ts",
+      "import": "./lib/page.js"
     }
   },
   "scripts": {
