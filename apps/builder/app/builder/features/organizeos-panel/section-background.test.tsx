@@ -17,7 +17,11 @@ import {
 } from "~/shared/nano-states";
 import { $instances, $pages, $styles } from "~/shared/sync/data-stores";
 import { applyPreset } from "./backgrounds/apply-preset";
-import { builtInPalette, presets } from "./backgrounds/presets";
+import { builtInPalette, presets, type Palette } from "./backgrounds/presets";
+import {
+  buildSectionStyleModel,
+  listRootColorVariables,
+} from "./backgrounds/style-model";
 import {
   el,
   localId,
@@ -27,7 +31,6 @@ import {
   toStyleValue,
   type Node,
   type TestStyle,
-  type TestToken,
 } from "./backgrounds/test-fixtures";
 import { getDefaultRoles, SectionBackground } from "./section-background";
 
@@ -37,12 +40,36 @@ vi.mock("./backgrounds/apply-preset", async (importOriginal) => {
   return { ...actual, applyPreset: vi.fn(actual.applyPreset) };
 });
 
+// The image picker's asset list, as one button that chooses the asset "photo".
+vi.mock("~/builder/shared/asset-manager", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/builder/shared/asset-manager")>()),
+  AssetManager: ({
+    accept,
+    onChange,
+  }: {
+    accept?: string;
+    onChange?: (assetId: string) => void;
+  }) =>
+    createElement("button", {
+      "data-choose-asset": accept,
+      onClick: () => onChange?.("photo"),
+    }),
+}));
+
 enableMapSet();
 registerContainers();
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+
+// The image picker's dialog observes its size, and jsdom 20 has no
+// ResizeObserver.
+class FakeResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
 
 let root: Root | undefined;
 let container: HTMLElement | undefined;
@@ -53,16 +80,13 @@ const sectionSelector = ["section", "body"];
 const project = ({
   children = [el("text", "Text", ["Hello"])],
   styles = [],
-  tokens = [],
 }: {
   children?: Node[];
   styles?: TestStyle[];
-  tokens?: TestToken[];
 } = {}) => {
   setupProject({
     tree: el("body", "Body", [el("section", "Box", children)]),
     styles,
-    tokens,
   });
   const pages = createDefaultPages({ rootInstanceId: "body" });
   $pages.set(pages);
@@ -70,15 +94,16 @@ const project = ({
 };
 
 // The contrast report lands after a scheduled run (contrast-schedule.ts),
-// which jsdom, without requestIdleCallback, takes through setTimeout: both
-// helpers flush it after their change.
+// which jsdom, without requestIdleCallback, takes through setTimeout, and the
+// image picker opens a frame after its click (the design system's Dialog):
+// both helpers flush them after their change.
 const flushContrastRun = () => {
   act(() => {
     vi.advanceTimersByTime(150);
   });
 };
 
-const render = () => {
+const render = ({ flush = true } = {}) => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -87,7 +112,9 @@ const render = () => {
       createElement(TooltipProvider, null, createElement(SectionBackground))
     );
   });
-  flushContrastRun();
+  if (flush) {
+    flushContrastRun();
+  }
   return container;
 };
 
@@ -96,8 +123,23 @@ const update = (change: () => void) => {
   flushContrastRun();
 };
 
-const summary = (host: HTMLElement) =>
-  host.querySelector("[data-contrast-summary]")?.textContent;
+const contrastLine = (host: HTMLElement) =>
+  host.querySelector<HTMLButtonElement>("[data-contrast-line]");
+
+const presetButton = (host: HTMLElement, id: string) =>
+  host.querySelector<HTMLButtonElement>(`[data-preset="${id}"]`);
+
+const presetById = (id: string) => presets.find((preset) => preset.id === id)!;
+
+/** Opens a scrim preset's image picker and chooses the asset "photo". */
+const chooseImage = (host: HTMLElement, id: string) => {
+  update(() => presetButton(host, id)?.click());
+  const choose = document.querySelector<HTMLButtonElement>(
+    "[data-choose-asset]"
+  );
+  expect(choose?.getAttribute("data-choose-asset")).toBe("image/*");
+  update(() => choose?.click());
+};
 
 const style = (
   on: string,
@@ -122,8 +164,18 @@ const setLocalStyle = (
   $styles.set(styles);
 };
 
+const rootVariables = [
+  style(globalRoot, "--paper", "#fafafa"),
+  style(globalRoot, "--brand", "#0a7c8c"),
+  style(globalRoot, "--ink", "#555555"),
+  style(globalRoot, "--sky", "#3fc9e0"),
+];
+
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame"],
+  });
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   registerTestMetas();
   selectInstance(undefined);
   $selectedStyleSources.set(new Map());
@@ -139,6 +191,7 @@ afterEach(() => {
   root = undefined;
   container = undefined;
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("SectionBackground states", () => {
@@ -158,57 +211,59 @@ describe("SectionBackground states", () => {
     expect(host.innerHTML).toBe("");
   });
 
-  test("a selected element shows the presets, the colors and the report", () => {
-    project({ styles: [style("text", "color", "#333333")] });
-    selectInstance(sectionSelector);
-    const host = render();
-    expect(host.textContent).not.toContain(
-      "Select a section to give it a background."
-    );
-    expect(host.querySelectorAll("[data-preset]")).toHaveLength(presets.length);
-    expect(summary(host)).toBe("All text passes AA");
-  });
-
-  test("a section with no text says so", () => {
-    project({ children: [el("box", "Box")] });
-    selectInstance(sectionSelector);
-    const host = render();
-    expect(summary(host)).toBe("No text to check in this section.");
-  });
-});
-
-describe("color row", () => {
-  test("with no variables, the built-in palette and the hint", () => {
-    project();
-    selectInstance(sectionSelector);
-    const host = render();
-    expect(host.querySelector("[data-palette-hint]")?.textContent).toBe(
-      "Define color variables in Global Root to use your own palette."
-    );
-    expect(host.querySelector("[data-color-row]")).toBeNull();
-  });
-
-  test("with variables, four selects and no hint", () => {
+  test("one button per preset, named by its label, and no text", () => {
     project({
-      styles: [
-        style(globalRoot, "--paper", "#fafafa"),
-        style(globalRoot, "--brand", "#0a7c8c"),
-        style(globalRoot, "--ink", "#202020"),
-        style(globalRoot, "--sky", "#3fc9e0"),
-      ],
+      styles: [...rootVariables, style("text", "color", "#333333")],
     });
     selectInstance(sectionSelector);
     const host = render();
-    expect(host.querySelector("[data-palette-hint]")).toBeNull();
-    const row = host.querySelector("[data-color-row]");
-    expect(row?.textContent).toContain("Base");
-    expect(row?.textContent).toContain("Accent 1");
-    expect(row?.textContent).toContain("Accent 2");
-    expect(row?.textContent).toContain("Text");
-    expect(row?.textContent).toContain("--paper");
-    expect(row?.textContent).toContain("--ink");
+    const buttons = Array.from(host.querySelectorAll("button"));
+    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(
+      presets.map((preset) => preset.label)
+    );
+    expect(host.textContent).toBe("");
+  });
+});
+
+describe("applying a preset", () => {
+  test("clicking a preset calls applyPreset with its styles", () => {
+    project({ styles: [style("text", "color", "#333333")] });
+    selectInstance(sectionSelector);
+    const host = render();
+    update(() => presetButton(host, "bloom-light")?.click());
+    expect(applyPreset).toHaveBeenCalledTimes(1);
+    expect(applyPreset).toHaveBeenCalledWith(
+      presetById("bloom-light").build(builtInPalette)
+    );
+    // written locally, and the report still reads it
+    const local = $selectedStyleSources.get().get("section");
+    expect(
+      Array.from($styles.get().values()).some(
+        (decl) =>
+          decl.styleSourceId === local && decl.property === "backgroundImage"
+      )
+    ).toBe(true);
+    expect(contrastLine(host)).toBeNull();
   });
 
+  test("a scrim preset opens the image picker and applies with the chosen image", () => {
+    project();
+    selectInstance(sectionSelector);
+    const host = render();
+    expect(document.querySelector("[data-choose-asset]")).toBeNull();
+    chooseImage(host, "image-scrim-dark");
+    expect(applyPreset).toHaveBeenCalledTimes(1);
+    expect(applyPreset).toHaveBeenCalledWith(
+      presetById("image-scrim-dark").build(builtInPalette, {
+        imageAssetId: "photo",
+      })
+    );
+    // the picker closed
+    expect(document.querySelector("[data-choose-asset]")).toBeNull();
+  });
+});
+
+describe("palette", () => {
   test("the defaults: lightest base, darkest text, accents in order", () => {
     const color = (variable: string, value: number) => ({
       variable,
@@ -225,123 +280,124 @@ describe("color row", () => {
     expect(getDefaultRoles([])).toEqual({});
   });
 
-  test("the re-apply note is shown", () => {
+  test("with no variables, the presets take the built-in palette", () => {
     project();
     selectInstance(sectionSelector);
     const host = render();
-    expect(host.textContent).toContain(
-      "Changing a variable later updates the base color. Re-apply the preset to update its tints."
+    update(() => presetButton(host, "wash-light")?.click());
+    expect(applyPreset).toHaveBeenLastCalledWith(
+      presetById("wash-light").build(builtInPalette)
+    );
+  });
+
+  test("with variables, the presets take them in their default roles", () => {
+    project({ styles: rootVariables });
+    selectInstance(sectionSelector);
+    const host = render();
+    const colors = new Map(
+      listRootColorVariables(buildSectionStyleModel([globalRoot])).map(
+        (color) => [color.variable, color]
+      )
+    );
+    const palette: Palette = {
+      base: colors.get("paper")!,
+      accent1: colors.get("brand")!,
+      accent2: colors.get("sky")!,
+      text: colors.get("ink")!,
+    };
+    update(() => presetButton(host, "bloom-light")?.click());
+    expect(applyPreset).toHaveBeenLastCalledWith(
+      presetById("bloom-light").build(palette)
+    );
+    // the light scrim is tuned for the text role
+    chooseImage(host, "image-scrim-light");
+    expect(applyPreset).toHaveBeenLastCalledWith(
+      presetById("image-scrim-light").build(palette, { imageAssetId: "photo" })
     );
   });
 });
 
-describe("origin notice", () => {
-  test("a token's background is named before writing", () => {
-    project({
-      tokens: [{ id: "card", name: "OS Card", on: ["section"] }],
-      styles: [
-        {
-          on: "section",
-          token: "card",
-          property: "background-color",
-          value: "#eeeeee",
-        },
-      ],
-    });
-    selectInstance(sectionSelector);
-    const host = render();
-    expect(host.querySelector("[data-origin-notice]")?.textContent).toBe(
-      "This element's background comes from the token OS Card. The preset is applied as a local style and overrides it here."
-    );
-  });
-
-  test("no notice when the element has no background", () => {
-    project();
-    selectInstance(sectionSelector);
-    const host = render();
-    expect(host.querySelector("[data-origin-notice]")).toBeNull();
-  });
-});
-
-describe("scrim presets", () => {
-  test("show the text color each scrim was tuned for", () => {
-    project();
-    selectInstance(sectionSelector);
-    const host = render();
-    expect(
-      host.querySelector('[data-scrim-reference="image-scrim-light"]')
-        ?.textContent
-    ).toContain("tuned for text #111111");
-    expect(
-      host.querySelector('[data-scrim-reference="image-scrim-dark"]')
-        ?.textContent
-    ).toContain("tuned for text #FFFFFF");
-  });
-
-  test("the light scrim is tuned for the palette's text color", () => {
-    project({
-      styles: [
-        style(globalRoot, "--paper", "#ffffff"),
-        style(globalRoot, "--ink", "#1a2b3c"),
-        style(globalRoot, "--brand", "#0a7c8c"),
-      ],
-    });
-    selectInstance(sectionSelector);
-    const host = render();
-    expect(
-      host.querySelector('[data-scrim-reference="image-scrim-light"]')
-        ?.textContent
-    ).toContain("tuned for text #1A2B3C");
-  });
-
-  test("need an image before they apply", () => {
-    project();
-    selectInstance(sectionSelector);
-    const host = render();
-    const button = host.querySelector<HTMLButtonElement>(
-      '[data-preset="image-scrim-light"]'
-    );
-    expect(button?.disabled).toBe(true);
-  });
-});
-
-describe("applying a preset", () => {
-  test("clicking a preset calls applyPreset with its styles", () => {
+describe("contrast line", () => {
+  test("no line when all text passes", () => {
     project({ styles: [style("text", "color", "#333333")] });
     selectInstance(sectionSelector);
     const host = render();
-    const button = host.querySelector<HTMLButtonElement>(
-      '[data-preset="bloom-light"]'
-    );
-    update(() => button?.click());
-    expect(applyPreset).toHaveBeenCalledTimes(1);
-    expect(applyPreset).toHaveBeenCalledWith(
-      presets
-        .find((preset) => preset.id === "bloom-light")!
-        .build(builtInPalette, { imageAssetId: undefined })
-    );
-    // written locally, and the report still reads it
-    const local = $selectedStyleSources.get().get("section");
-    expect(
-      Array.from($styles.get().values()).some(
-        (decl) =>
-          decl.styleSourceId === local && decl.property === "backgroundImage"
-      )
-    ).toBe(true);
-    expect(summary(host)).toBe("All text passes AA");
+    expect(contrastLine(host)).toBeNull();
   });
-});
 
-describe("contrast report", () => {
-  test("clicking a group selects its instance", () => {
-    project({ styles: [style("text", "color", "#aaaaaa")] });
+  test("no line when there is no text", () => {
+    project({ children: [el("box", "Box")] });
     selectInstance(sectionSelector);
     const host = render();
-    const group = host.querySelector<HTMLButtonElement>('[data-group="text"]');
-    expect(group?.textContent).toContain("Fail");
-    update(() => group?.click());
+    expect(contrastLine(host)).toBeNull();
+  });
+
+  test("no line when some text can't be checked", () => {
+    project({
+      styles: [
+        style("text", "color", "#000000"),
+        style("section", "opacity", "0.5"),
+      ],
+    });
+    selectInstance(sectionSelector);
+    const host = render();
+    expect(contrastLine(host)).toBeNull();
+  });
+
+  test("no line while the check is pending", () => {
+    project({ styles: [style("text", "color", "#aaaaaa")] });
+    selectInstance(sectionSelector);
+    const host = render({ flush: false });
+    expect(host.querySelector("[data-preset-grid]")).not.toBeNull();
+    expect(host.textContent).toBe("");
+    flushContrastRun();
+    expect(contrastLine(host)?.textContent).toBe("1 below AA contrast");
+  });
+
+  test("one line with the count of failing text", () => {
+    project({
+      children: [
+        el("grey", "Text", ["Grey"]),
+        el("light", "Text", ["Light"]),
+        el("dark", "Text", ["Dark"]),
+      ],
+      styles: [
+        style("grey", "color", "#aaaaaa"),
+        style("light", "color", "#bbbbbb"),
+        style("dark", "color", "#333333"),
+      ],
+    });
+    selectInstance(sectionSelector);
+    const host = render();
+    expect(host.textContent).toBe("2 below AA contrast");
+  });
+
+  test("clicking selects the first failing text, then the next, cycling", () => {
+    project({
+      children: [el("grey", "Text", ["Grey"]), el("light", "Text", ["Light"])],
+      styles: [
+        style("grey", "color", "#aaaaaa"),
+        style("light", "color", "#bbbbbb"),
+      ],
+    });
+    selectInstance(sectionSelector);
+    const host = render();
+    // failures come lowest ratio first: #bbbbbb, then #aaaaaa
+    update(() => contrastLine(host)?.click());
     expect($selectedInstanceSelector.get()).toEqual([
-      "text",
+      "light",
+      "section",
+      "body",
+    ]);
+    update(() => contrastLine(host)?.click());
+    expect($selectedInstanceSelector.get()).toEqual([
+      "grey",
+      "section",
+      "body",
+    ]);
+    update(() => contrastLine(host)?.click());
+    expect($selectedInstanceSelector.get()).toEqual([
+      "light",
       "section",
       "body",
     ]);
@@ -351,16 +407,16 @@ describe("contrast report", () => {
     project({ styles: [style("text", "color", "#333333")] });
     selectInstance(sectionSelector);
     const host = render();
-    expect(summary(host)).toBe("All text passes AA");
+    expect(contrastLine(host)).toBeNull();
     update(() => setLocalStyle("text", "color", "#aaaaaa"));
-    expect(summary(host)).toBe("1 text style fails AA");
+    expect(contrastLine(host)?.textContent).toBe("1 below AA contrast");
   });
 
   test("updates after an instance is removed", () => {
     project({ styles: [style("text", "color", "#aaaaaa")] });
     selectInstance(sectionSelector);
     const host = render();
-    expect(summary(host)).toBe("1 text style fails AA");
+    expect(contrastLine(host)?.textContent).toBe("1 below AA contrast");
     update(() => {
       const instances = new Map($instances.get());
       instances.delete("text");
@@ -370,49 +426,6 @@ describe("contrast report", () => {
       });
       $instances.set(instances);
     });
-    expect(summary(host)).toBe("No text to check in this section.");
-  });
-
-  test("a failure on a gradient is labelled the lowest point", () => {
-    project({
-      styles: [
-        style("text", "color", "#000000"),
-        style(
-          "section",
-          "background-image",
-          "linear-gradient(90deg, #ff0000 0%, #3399ff 100%)"
-        ),
-      ],
-    });
-    selectInstance(sectionSelector);
-    const host = render();
-    expect(host.querySelector('[data-group="text"]')?.textContent).toContain(
-      "Lowest point of the background"
-    );
-  });
-
-  test("a group that can't be checked gives the reason", () => {
-    project({
-      styles: [
-        style("text", "color", "#000000"),
-        style("section", "opacity", "0.5"),
-      ],
-    });
-    selectInstance(sectionSelector);
-    const host = render();
-    expect(summary(host)).toBe("Some text could not be checked");
-    expect(host.querySelector('[data-group="text"]')?.textContent).toContain(
-      "Can't check: the text or an element behind it is transparent"
-    );
-  });
-
-  test("the help text says what the check does not see", () => {
-    project();
-    selectInstance(sectionSelector);
-    const host = render();
-    const report = host.querySelector("[data-contrast-report]")?.textContent;
-    expect(report).toContain("text positioned outside this element");
-    expect(report).toContain("text away from the background's lowest point");
-    expect(report).toContain("text inside an embed");
+    expect(contrastLine(host)).toBeNull();
   });
 });

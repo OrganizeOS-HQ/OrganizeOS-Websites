@@ -804,9 +804,20 @@ in upstream's section map, `features/style-panel/sections/sections.ts`,
 directly after Backgrounds; its content is
 `features/organizeos-panel/section-background.tsx`, with its modules in
 `features/organizeos-panel/backgrounds/`). For the selected element (not the
-Body, the page root or Global Root) it applies a Bloom, Wash, Solid tint or
-Image with scrim preset colored from Global Root's color variables (or a
-built-in palette), and reports the WCAG AA contrast of the text inside it.
+Body, the page root or Global Root) it shows one wrapping row of small square
+thumbnails, one per preset (Bloom, Wash and Solid tint, light and dark, and
+Image with scrim, light and dark), each named in a tooltip and by its
+`aria-label`, with no caption. A click applies the preset; an Image with scrim
+preset opens the image picker (the asset manager and its upload) and applies
+with the image chosen there, closing it. The presets take their colors from
+Global Root's color variables, the lightest as the base, the darkest as the
+text and the others as the accents in the order they are defined
+(`getDefaultRoles`), or from a built-in palette when Global Root defines none.
+Under the row, a single line in the destructive color, such as "2 below AA
+contrast", appears only when text inside fails WCAG AA. That is all it shows,
+by the owner's rule in `CLAUDE.md` ("Builder UI: options, not explanations"):
+no palette menus, help text, notices or report, since people learn the presets
+by trying them on the canvas.
 
 - It is offered as the Style tab is: for a selection whose meta has a preset
   style, on an HTML page, in design mode, and mounted on the canvas. Slot,
@@ -823,23 +834,32 @@ built-in palette), and reports the WCAG AA contrast of the text inside it.
   `requestIdleCallback` with a 150 ms timeout where it exists and
   `setTimeout(run, 150)` where it does not (Safari), and a newer change
   replaces a pending run. A report is shown only for the selection it was
-  computed for: after a style edit the last report stays until the new run
-  lands, and after a change of selection the block reads "Checking contrast"
-  until the run for the new one lands, so no group row of the previous
-  element is ever shown, or clicked, for the new one.
+  computed for: after a style edit the last line stays until the new run
+  lands, and after a change of selection nothing shows until the run for the
+  new one lands, so the previous element's line is never shown, or clicked,
+  for the new one. No line shows while a run is pending, or when no text
+  fails: all of it passes, there is none, or some can't be checked.
+- A click on the line selects the instance of the report's first failing
+  group (failures come lowest ratio first); clicking the line again there
+  selects the next failing group of the same report, cycling back to the
+  first. A click from any other selection starts again from that element's
+  report.
 - A preset writes ordinary styles only, to the element's **local** style
   source at the current breakpoint, base state, in one undo step:
   `background-color` and the nine layer longhands upstream's Backgrounds
   section reads. It never writes to a token, adds no component, prop or
   script, and keeps no link to the element; tinted stops are literal colors,
-  so re-applying a preset picks up a palette change.
+  so re-applying a preset picks up a palette change. A background the element
+  takes from a token or another breakpoint is overridden here, by the local
+  style, without a notice.
 - The contrast check is advisory: it never blocks publish, and it never
   reports Pass for what it cannot compute (unreadable values, an image with
   no layer above it, blending, filters, opacity, interpolation methods and
-  color hints are "Can't check"). It reads styles through
-  `getComputedStyleDecl` over its own model, not the rendered canvas, so it
-  does not see positioned text, text inside an embed, or where on a gradient
-  the text sits.
+  color hints are "Can't check", which the line does not count). It reads
+  styles through `getComputedStyleDecl` over its own model, not the rendered
+  canvas, so it does not see positioned text, text inside an embed, or where
+  on a gradient the text sits (it takes the gradient's lowest point). The
+  section shows none of this, so it is recorded here.
 - Nothing changes in the published-site runtime, the CLI or the templates.
   Design: `docs/superpowers/specs/2026-10-25-builder-section-backgrounds-design.md`
   in the OrganizeOS repo.
