@@ -291,35 +291,69 @@ test("the blocks' Settings tooltips that were paragraphs are a few words, or non
     Object.fromEntries(
       names.map((name) => [name, meta.props?.[name]?.description])
     );
-  expect(tooltips(metas.SignupForm, ["record", "data", "state"])).toEqual({
+  expect(
+    tooltips(metas.SignupForm, [
+      "record",
+      "data",
+      "state",
+      "action",
+      "actionPage",
+    ])
+  ).toEqual({
     // a picker now, not an id to type
     record: "The form",
     data: undefined,
     state: "Shown on the canvas",
+    action: "Success state, or a page",
+    // the page After submit opens: its label says it
+    actionPage: undefined,
   });
   expect(
-    tooltips(metas.RsvpForm, ["record", "data", "state", "action"])
+    tooltips(metas.RsvpForm, [
+      "record",
+      "data",
+      "state",
+      "action",
+      "actionPage",
+    ])
   ).toEqual({
     record: "The event",
     data: undefined,
     state: "Shown on the canvas",
     action: "Registered state, or a page",
+    actionPage: undefined,
   });
   expect(
     tooltips(metas.ConvergenceField, [
       "shape",
       "density",
+      "focusX",
+      "focusY",
+      "zoneWidth",
+      "zoneHeight",
       "innerColor",
       "outerColor",
+      "motion",
     ])
   ).toEqual({
     shape: "Band 3:1, Wide 16:9, Panel 2:1, Square 1:1, Tall 3:4",
     density: "24–96 field units",
+    focusX: "10–90 %",
+    focusY: "10–90 %",
+    zoneWidth: "10–90 %",
+    zoneHeight: "10–90 %",
     innerColor: "Near the clear zone",
     outerColor: "At the edges",
+    motion: "Settle: arms turn into place on scroll",
   });
-  expect(tooltips(metas.RotationControl, ["interval"])).toEqual({
+  expect(tooltips(metas.RotationControl, ["interval", "fade"])).toEqual({
     interval: "3–20 s",
+    fade: "0–600 ms",
+  });
+  expect(tooltips(metas.Marquee, ["speed", "direction"])).toEqual({
+    speed: "10–200 px/s",
+    // left or right: its options say it
+    direction: undefined,
   });
   expect(tooltips(metas.RichText, ["value"])).toEqual({
     value: "A rich-text field's nodes",

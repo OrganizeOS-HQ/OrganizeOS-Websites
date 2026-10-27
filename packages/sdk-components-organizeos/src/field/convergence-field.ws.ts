@@ -59,8 +59,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.focusX,
       label: "Focus X",
-      description:
-        "Where the arms point, across the field, in percent from 10 to 90.",
+      description: "10–90 %",
     },
     focusY: {
       type: "number",
@@ -68,8 +67,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.focusY,
       label: "Focus Y",
-      description:
-        "Where the arms point, down the field, in percent from 10 to 90.",
+      description: "10–90 %",
     },
     zoneWidth: {
       type: "number",
@@ -77,8 +75,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.zoneWidth,
       label: "Zone width",
-      description:
-        "Width of the clear ellipse around the focus, in percent of the field from 10 to 90, kept clear of the edges.",
+      description: "10–90 %",
     },
     zoneHeight: {
       type: "number",
@@ -86,8 +83,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.zoneHeight,
       label: "Zone height",
-      description:
-        "Height of the clear ellipse around the focus, in percent of the field from 10 to 90, kept clear of the edges.",
+      description: "10–90 %",
     },
     innerColor: {
       type: "string",
@@ -112,8 +108,7 @@ export const meta: WsComponentMeta = {
       options: [...motions],
       defaultValue: fieldDefaults.motion,
       label: "Motion",
-      description:
-        "Settle turns the arms into place as the element scrolls into view, never under reduced motion.",
+      description: "Settle: arms turn into place on scroll",
     },
   },
 };

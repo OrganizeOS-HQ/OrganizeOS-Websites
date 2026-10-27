@@ -29,8 +29,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: 250,
       label: "Fade",
-      description:
-        "Milliseconds the incoming panel fades in, from 0 to 600; 0 switches at once. Never under reduced motion.",
+      description: "0–600 ms",
     },
     pauseLabel: {
       type: "string",

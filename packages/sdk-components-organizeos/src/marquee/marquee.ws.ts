@@ -22,7 +22,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: 40,
       label: "Speed",
-      description: "Pixels per second, from 10 to 200.",
+      description: "10–200 px/s",
     },
     direction: {
       type: "string",
@@ -30,8 +30,6 @@ export const meta: WsComponentMeta = {
       required: false,
       options: ["left", "right"],
       label: "Direction",
-      description:
-        "Which way the items drift. Unset, they drift left, or right on a right-to-left page.",
     },
   },
 };

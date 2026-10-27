@@ -72,8 +72,6 @@ export const meta: WsComponentMeta = {
       control: "url",
       required: false,
       label: "Page",
-      description:
-        "The page to open after a successful RSVP, when After submit is page.",
     },
   },
 };

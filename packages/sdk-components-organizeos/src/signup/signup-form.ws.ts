@@ -54,16 +54,13 @@ export const meta: WsComponentMeta = {
       defaultValue: "state",
       options: ["state", "page"],
       label: "After submit",
-      description:
-        "What happens after a successful signup: show the Success state, or go to a page.",
+      description: "Success state, or a page",
     },
     actionPage: {
       type: "string",
       control: "url",
       required: false,
       label: "Page",
-      description:
-        "The page to open after a successful signup, when After submit is page.",
     },
   },
 };

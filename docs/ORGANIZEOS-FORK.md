@@ -554,9 +554,10 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   registered block no section names after the others (the "More" rule). A
   card's tooltip is its template's description, a short phrase ("Your
   upcoming public events"; `metas.test.ts` holds every template to a few
-  words), as a block prop's Settings tooltip is its unit and range ("3–20 s")
-  or a few words. The blocks' metas stay `category: "hidden"`, so upstream's
-  grouping skips them and this section adds them. "Find components" finds them by label, ranked
+  words), as a block prop's Settings tooltip is its unit and range ("3–20 s"),
+  a few words, or none where its label says it (`metas.test.ts` pins them).
+  The blocks' metas stay `category: "hidden"`, so upstream's grouping skips
+  them and this section adds them. "Find components" finds them by label, ranked
   with upstream's matches in the one "Found" list. A click, Enter on a found
   block, and a drag (upstream's drag, which accepts every registered template)
   all insert through `insertOrganizeosBlock`, so each block arrives bound to
