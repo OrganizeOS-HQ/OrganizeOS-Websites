@@ -18,8 +18,10 @@ import { bundleVersion } from "@webstudio-is/protocol";
 import { log } from "@clack/prompts";
 import { encodeDataSourceVariable } from "@webstudio-is/sdk";
 import { templateIconCodes } from "@organizeos/site-components/org-script";
+import * as organizeosPage from "@organizeos/site-components/page";
 import { generateRedirectsModule, prebuild } from "./prebuild";
 import {
+  ORGANIZEOS_PAGE_MODULE,
   findModuleClosure,
   resolveOrganizeosComponentsModule,
 } from "./organizeos-components";
@@ -408,11 +410,19 @@ describe("prebuild", () => {
 
   const expectCopyToBeTheClosure = async () => {
     const entryPath = resolveOrganizeosComponentsModule();
-    const { modules } = await findModuleClosure(entryPath);
+    // the components module, and the page module every html route mounts
+    const modules = new Set([
+      ...(await findModuleClosure(entryPath)).modules,
+      ...(
+        await findModuleClosure(
+          join(dirname(entryPath), ORGANIZEOS_PAGE_MODULE)
+        )
+      ).modules,
+    ]);
     const copied = await getFilePaths(organizeosDir);
     expect(copied.map((path) => relative(organizeosDir, path)).sort()).toEqual(
       [
-        ...modules.map((path) => relative(dirname(entryPath), path)),
+        ...[...modules].map((path) => relative(dirname(entryPath), path)),
         // the package's, so the copy carries its license
         "LICENSE",
       ].sort()
@@ -676,21 +686,34 @@ describe("prebuild", () => {
       describe("rendered", () => {
         type Wrapper = ComponentType<{ system: unknown }>;
 
-        /** The route's PageWithSourceOffer, as the site ships it, around `Page`. */
-        const loadWrapper = async (route: string, Page: unknown) => {
+        /**
+         * The route's PageWithSourceOffer, as the site ships it, around
+         * `Page`, with the page's share-code carrier from `pageModule`: the
+         * package's own page module unless a test stands in for it.
+         */
+        const loadWrapper = async (
+          route: string,
+          Page: unknown,
+          pageModule: unknown = organizeosPage
+        ) => {
           const start = route.indexOf("const organizeosSourceUrl");
           const wrapper = route.indexOf("const PageWithSourceOffer", start);
           const end = route.indexOf("\n};\n", wrapper) + "\n};\n".length;
           const reactImport = route.match(
             /import \{[^}]*\bisValidElement\b[^}]*\} from "react";/
           )?.[0];
+          const [carrierImport, carrierSource] =
+            route.match(/import \{ PageShareCodeCarrier \} from "([^"]+)";/) ??
+            [];
           expect(start).toBeGreaterThan(-1);
           expect(wrapper).toBeGreaterThan(start);
           expect(end).toBeGreaterThan(wrapper);
           expect(reactImport).toBeDefined();
+          expect(carrierImport).toBeDefined();
           const exports = await runModule(
             [
               reactImport,
+              carrierImport,
               `import { Page } from "./page";`,
               route.slice(start, end),
               `export { PageWithSourceOffer };`,
@@ -699,6 +722,7 @@ describe("prebuild", () => {
               react: React,
               "react/jsx-runtime": jsxRuntime,
               "./page": { Page },
+              [carrierSource as string]: pageModule,
             }
           );
           return exports.PageWithSourceOffer as Wrapper;
@@ -816,6 +840,41 @@ describe("prebuild", () => {
           );
         });
 
+        test("the page's share-code carrier renders once, after the link, and adds nothing to the markup", async () => {
+          const { route } = await prebuildLinks();
+          const Page = () =>
+            React.createElement(
+              "body",
+              null,
+              React.createElement("p", { id: "content" })
+            );
+          // a stand-in that shows where the route renders the carrier
+          const PageWithSourceOffer = await loadWrapper(route, Page, {
+            PageShareCodeCarrier: () =>
+              React.createElement("i", { "data-carrier": "" }),
+          });
+          const offer =
+            '<div data-organizeos-source-offer=""[^>]*><a [^>]*>Source</a></div>';
+          expect(
+            renderInHtml(
+              React.createElement(PageWithSourceOffer, { system: {} })
+            )
+          ).toMatch(
+            new RegExp(
+              `<body><p id="content"></p>${offer}<i data-carrier=""></i></body>`
+            )
+          );
+
+          // the package's carrier renders nothing, so the link stays the last
+          // of the body's content
+          const html = renderInHtml(
+            React.createElement(await loadWrapper(route, Page), { system: {} })
+          );
+          expect(html).toMatch(
+            new RegExp(`<body><p id="content"></p>${offer}</body>`)
+          );
+        });
+
         test("it renders what Page renders when that is not an element", async () => {
           const { route } = await prebuildLinks();
           const PageWithSourceOffer = await loadWrapper(route, () => null);
@@ -928,6 +987,114 @@ describe("prebuild", () => {
         expect(xml).not.toContain("data-organizeos-source-offer");
         expect(text).not.toContain("data-organizeos-source-offer");
       });
+    });
+  });
+
+  // OrganizeOS fork: every html page mounts the page's share-code carrier from
+  // the copy of the blocks' build (route-templates/html.tsx,
+  // organizeos-components.ts, ORGANIZEOS-FORK.md §8).
+  describe("mounts the page's share-code carrier", () => {
+    const page = (id: string, path: string, meta = {}) => ({
+      id,
+      name: id,
+      title: id,
+      path,
+      rootInstanceId: "root",
+      meta,
+    });
+
+    test("every html route imports the page's share-code carrier from the copy of the build and renders it", async () => {
+      await writeSiteData(
+        createSiteData({
+          pages: [page("home", ""), page("another", "/another-page")],
+        })
+      );
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+
+      const builtPage = join(
+        dirname(resolveOrganizeosComponentsModule()),
+        ORGANIZEOS_PAGE_MODULE
+      );
+      for (const routeFile of ["_index.tsx", "[another-page]._index.tsx"]) {
+        const routePath = join("app", "routes", routeFile);
+        const route = await readFile(routePath, "utf8");
+        expect(route, routeFile).not.toContain("__ORGANIZEOS_PAGE__");
+        // what the generated route holds, its comments aside
+        const code = route
+          .split("\n")
+          .filter((line) => line.trim().startsWith("//") === false)
+          .join("\n");
+        const [carrierImport, importSource] =
+          code.match(/^import \{ PageShareCodeCarrier \} from "([^"]+)";$/m) ??
+          [];
+        expect(carrierImport, routeFile).toBe(
+          'import { PageShareCodeCarrier } from "../__organizeos__/page.js";'
+        );
+        const start = code.indexOf("const PageWithSourceOffer");
+        expect(
+          code.slice(start, code.indexOf("\n};\n", start) + "\n};".length),
+          routeFile
+        ).toBe(
+          [
+            "const PageWithSourceOffer = ({ system }: ComponentProps<typeof Page>) => {",
+            "  const page = Page({ system });",
+            "  if (isValidElement<{ children?: ReactNode }>(page) === false) {",
+            "    return page;",
+            "  }",
+            "  return cloneElement(",
+            "    page,",
+            "    undefined,",
+            "    ...Children.toArray(page.props.children),",
+            '    <SourceOffer key="organizeos-source-offer" />,',
+            '    <PageShareCodeCarrier key="organizeos-share-code" />',
+            "  );",
+            "};",
+          ].join("\n")
+        );
+        // the import reaches the copy, which is the package's built page
+        // module and exports the carrier
+        const copy = await readFile(
+          join(dirname(routePath), importSource as string),
+          "utf8"
+        );
+        expect(copy).toEqual(await readFile(builtPage, "utf8"));
+        expect(copy).toMatch(
+          /export \{[^}]*\bas PageShareCodeCarrier\b[^}]*\}/
+        );
+      }
+      // the page module came with everything it imports, and nothing else did
+      await expectCopyToBeTheClosure();
+    });
+
+    test("the xml and text routes do not import it", async () => {
+      await writeSiteData(
+        createSiteData({
+          pages: [
+            page("home", ""),
+            page("feed", "/feed.xml", { documentType: "xml" }),
+            page("notes", "/notes.txt", { documentType: "text" }),
+          ],
+        })
+      );
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+
+      const html = await readFile(join("app", "routes", "_index.tsx"), "utf8");
+      expect(html).toContain("<PageShareCodeCarrier");
+      for (const routeFile of [
+        "[feed.xml]._index.tsx",
+        "[notes.txt]._index.tsx",
+      ]) {
+        const route = await readFile(join("app", "routes", routeFile), "utf8");
+        expect(route, routeFile).not.toContain("PageShareCodeCarrier");
+        expect(route, routeFile).not.toContain("__organizeos__/page.js");
+        expect(route, routeFile).not.toContain("__ORGANIZEOS_PAGE__");
+      }
     });
   });
 
