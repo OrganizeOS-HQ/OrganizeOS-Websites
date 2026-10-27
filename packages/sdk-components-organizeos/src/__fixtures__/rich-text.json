@@ -1,0 +1,541 @@
+{
+  "format": "OrganizeOS rich-text nodes, version 1",
+  "about": "Each case is sanitised rich-text HTML and the `nodes` /v1 sends for it (toRichTextNodes in client/lib/collections/rich-text-nodes.ts). The builder fork copies this file unchanged and tests the RichText component against it. Design: docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md section 4.7.",
+  "limits": {
+    "maxDepth": 8,
+    "maxNodes": 5000,
+    "depth": "Block nesting: top-level blocks are at depth 1, and the blocks of a quote or of a list item are one deeper. A quote or list that would sit at depth 8 becomes a paragraph of its plain text.",
+    "count": "Every block and inline counts; the root does not. A tree over 5,000 nodes keeps its first 4,998 in document order (a container left empty by the cut goes), and the text of everything after them becomes one trailing paragraph, so the tree ends at no more than 5,000 nodes.",
+    "plainText": "Plain text joins text nodes, puts a space at each line break and block boundary, collapses runs of whitespace to one space and trims."
+  },
+  "cases": [
+    {
+      "name": "every mark",
+      "html": "<p>Plain <strong>strong</strong> <b>b</b> <em>em</em> <i>i</i> <u>u</u> <s>s</s> <code>code</code> <strong><em>both</em></strong></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              { "t": "text", "text": "Plain " },
+              { "t": "text", "text": "strong", "marks": ["b"] },
+              { "t": "text", "text": " " },
+              { "t": "text", "text": "b", "marks": ["b"] },
+              { "t": "text", "text": " " },
+              { "t": "text", "text": "em", "marks": ["i"] },
+              { "t": "text", "text": " " },
+              { "t": "text", "text": "i", "marks": ["i"] },
+              { "t": "text", "text": " " },
+              { "t": "text", "text": "u", "marks": ["u"] },
+              { "t": "text", "text": " " },
+              { "t": "text", "text": "s", "marks": ["s"] },
+              { "t": "text", "text": " " },
+              { "t": "text", "text": "code", "marks": ["code"] },
+              { "t": "text", "text": " " },
+              { "t": "text", "text": "both", "marks": ["b", "i"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "headings, entities and collapsed whitespace",
+      "html": "<h2>Two &amp; more</h2>\n<h3>\n  Three\n</h3>\n<h4>Four&nbsp;four</h4>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "h",
+            "level": 2,
+            "c": [{ "t": "text", "text": "Two & more" }]
+          },
+          { "t": "h", "level": 3, "c": [{ "t": "text", "text": "Three" }] },
+          { "t": "h", "level": 4, "c": [{ "t": "text", "text": "Four four" }] }
+        ]
+      }
+    },
+    {
+      "name": "lists, nested",
+      "html": "<ul><li><p>One</p></li><li>Two<ul><li>Nested</li></ul></li></ul><ol><li><p>First</p><p>Second paragraph</p></li></ol>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [{ "t": "p", "c": [{ "t": "text", "text": "One" }] }],
+              [
+                { "t": "p", "c": [{ "t": "text", "text": "Two" }] },
+                {
+                  "t": "ul",
+                  "items": [
+                    [{ "t": "p", "c": [{ "t": "text", "text": "Nested" }] }]
+                  ]
+                }
+              ]
+            ]
+          },
+          {
+            "t": "ol",
+            "items": [
+              [
+                { "t": "p", "c": [{ "t": "text", "text": "First" }] },
+                { "t": "p", "c": [{ "t": "text", "text": "Second paragraph" }] }
+              ]
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "quote, code block and rule",
+      "html": "<blockquote><p>Quoted <em>words</em></p></blockquote><pre><code>const a = 1;\n  if (a &lt; 2) go();\n</code></pre><hr />",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "p",
+                "c": [
+                  { "t": "text", "text": "Quoted " },
+                  { "t": "text", "text": "words", "marks": ["i"] }
+                ]
+              }
+            ]
+          },
+          { "t": "code", "text": "const a = 1;\n  if (a < 2) go();\n" },
+          { "t": "hr" }
+        ]
+      }
+    },
+    {
+      "name": "line break",
+      "html": "<p>Line one<br />line two</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              { "t": "text", "text": "Line one" },
+              { "t": "br" },
+              { "t": "text", "text": "line two" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "every allowed link target",
+      "html": "<p><a href=\"https://example.org\" target=\"_blank\" rel=\"noopener noreferrer\">new tab</a> <a href=\"http://example.org/a\"><strong>bold link</strong></a> <a href=\"/about\">root path</a> <a href=\"#top\">fragment</a> <a href=\"mailto:press@example.org\">mail</a> <a href=\"tel:+15550100100\">call</a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "a",
+                "href": "https://example.org",
+                "newTab": true,
+                "c": [{ "t": "text", "text": "new tab" }]
+              },
+              { "t": "text", "text": " " },
+              {
+                "t": "a",
+                "href": "http://example.org/a",
+                "c": [{ "t": "text", "text": "bold link", "marks": ["b"] }]
+              },
+              { "t": "text", "text": " " },
+              {
+                "t": "a",
+                "href": "/about",
+                "c": [{ "t": "text", "text": "root path" }]
+              },
+              { "t": "text", "text": " " },
+              {
+                "t": "a",
+                "href": "#top",
+                "c": [{ "t": "text", "text": "fragment" }]
+              },
+              { "t": "text", "text": " " },
+              {
+                "t": "a",
+                "href": "mailto:press@example.org",
+                "c": [{ "t": "text", "text": "mail" }]
+              },
+              { "t": "text", "text": " " },
+              {
+                "t": "a",
+                "href": "tel:+15550100100",
+                "c": [{ "t": "text", "text": "call" }]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "image",
+      "html": "<img src=\"https://cdn.example.org/a.jpg\" alt=\"Members at a meeting\" width=\"1600\" height=\"900\" />",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "img",
+            "src": "https://cdn.example.org/a.jpg",
+            "alt": "Members at a meeting",
+            "width": 1600,
+            "height": 900
+          }
+        ]
+      }
+    },
+    {
+      "name": "figure with a caption",
+      "html": "<figure><img src=\"https://cdn.example.org/b.jpg\" alt=\"\" /><figcaption>Photo by <em>Ada</em></figcaption></figure>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "img",
+            "src": "https://cdn.example.org/b.jpg",
+            "alt": "",
+            "caption": [
+              { "t": "text", "text": "Photo by " },
+              { "t": "text", "text": "Ada", "marks": ["i"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "image inside a paragraph splits it",
+      "html": "<p>Before<img src=\"https://cdn.example.org/c.png\" alt=\"c\" />after</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          { "t": "p", "c": [{ "t": "text", "text": "Before" }] },
+          { "t": "img", "src": "https://cdn.example.org/c.png", "alt": "c" },
+          { "t": "p", "c": [{ "t": "text", "text": "after" }] }
+        ]
+      }
+    },
+    {
+      "name": "loose text becomes a paragraph",
+      "html": "Loose text and <strong>bold</strong>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              { "t": "text", "text": "Loose text and " },
+              { "t": "text", "text": "bold", "marks": ["b"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "allowed elements with no node become their text",
+      "html": "<li>Stray item</li><figcaption>Stray caption</figcaption><p><a href=\"https://example.org\">outer <a href=\"https://example.net\">inner</a></a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          { "t": "p", "c": [{ "t": "text", "text": "Stray item" }] },
+          { "t": "p", "c": [{ "t": "text", "text": "Stray caption" }] },
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "a",
+                "href": "https://example.org",
+                "c": [{ "t": "text", "text": "outer " }]
+              },
+              {
+                "t": "a",
+                "href": "https://example.net",
+                "c": [{ "t": "text", "text": "inner" }]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty blocks are left out",
+      "html": "<p></p><p> </p><ul></ul><blockquote></blockquote>",
+      "nodes": { "v": 1, "children": [] }
+    },
+    {
+      "name": "dropped: protocol-relative link",
+      "html": "<p>See <a href=\"//evil.example/x\">this page</a> now</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          { "t": "p", "c": [{ "t": "text", "text": "See this page now" }] }
+        ]
+      }
+    },
+    {
+      "name": "dropped: protocol-relative link with a backslash",
+      "html": "<p><a href=\"/\\evil.example\">back</a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [{ "t": "p", "c": [{ "t": "text", "text": "back" }] }]
+      }
+    },
+    {
+      "name": "dropped: javascript: link",
+      "html": "<p><a href=\"javascript:alert(1)\"><strong>click</strong></a> <a href=\" JavaScript:alert(1)\">me</a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              { "t": "text", "text": "click", "marks": ["b"] },
+              { "t": "text", "text": " me" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "dropped: relative path and missing href",
+      "html": "<p><a href=\"about\">relative</a> <a>bare</a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          { "t": "p", "c": [{ "t": "text", "text": "relative bare" }] }
+        ]
+      }
+    },
+    {
+      "name": "dropped: data: image",
+      "html": "<img src=\"data:image/png;base64,iVBORw0KGgo=\" alt=\"pasted\" /><p>After</p>",
+      "nodes": {
+        "v": 1,
+        "children": [{ "t": "p", "c": [{ "t": "text", "text": "After" }] }]
+      }
+    },
+    {
+      "name": "dropped: http: image",
+      "html": "<img src=\"http://cdn.example.org/a.jpg\" alt=\"insecure\" /><p>After</p>",
+      "nodes": {
+        "v": 1,
+        "children": [{ "t": "p", "c": [{ "t": "text", "text": "After" }] }]
+      }
+    },
+    {
+      "name": "dropped: http: image in a figure takes its caption",
+      "html": "<figure><img src=\"http://cdn.example.org/a.jpg\" alt=\"\" /><figcaption>Gone too</figcaption></figure>",
+      "nodes": { "v": 1, "children": [] }
+    },
+    {
+      "name": "dropped: protocol-relative image and bad dimensions",
+      "html": "<img src=\"//cdn.example.org/a.jpg\" alt=\"\" /><img src=\"https://cdn.example.org/d.jpg\" alt=\"d\" width=\"auto\" height=\"0\" />",
+      "nodes": {
+        "v": 1,
+        "children": [
+          { "t": "img", "src": "https://cdn.example.org/d.jpg", "alt": "d" }
+        ]
+      }
+    },
+    {
+      "name": "depth past 8: quotes",
+      "html": "<blockquote><blockquote><blockquote><blockquote><blockquote><blockquote><blockquote><blockquote><p>Too <strong>deep</strong></p><p>to keep</p></blockquote></blockquote></blockquote></blockquote></blockquote></blockquote></blockquote></blockquote>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "quote",
+                "children": [
+                  {
+                    "t": "quote",
+                    "children": [
+                      {
+                        "t": "quote",
+                        "children": [
+                          {
+                            "t": "quote",
+                            "children": [
+                              {
+                                "t": "quote",
+                                "children": [
+                                  {
+                                    "t": "quote",
+                                    "children": [
+                                      {
+                                        "t": "p",
+                                        "c": [
+                                          {
+                                            "t": "text",
+                                            "text": "Too deep to keep"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "depth past 8: lists",
+      "html": "<ul><li>1<ul><li>2<ul><li>3<ul><li>4<ul><li>5<ul><li>6<ul><li>7<ul><li>8<ul><li>9</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                { "t": "p", "c": [{ "t": "text", "text": "1" }] },
+                {
+                  "t": "ul",
+                  "items": [
+                    [
+                      { "t": "p", "c": [{ "t": "text", "text": "2" }] },
+                      {
+                        "t": "ul",
+                        "items": [
+                          [
+                            { "t": "p", "c": [{ "t": "text", "text": "3" }] },
+                            {
+                              "t": "ul",
+                              "items": [
+                                [
+                                  {
+                                    "t": "p",
+                                    "c": [{ "t": "text", "text": "4" }]
+                                  },
+                                  {
+                                    "t": "ul",
+                                    "items": [
+                                      [
+                                        {
+                                          "t": "p",
+                                          "c": [{ "t": "text", "text": "5" }]
+                                        },
+                                        {
+                                          "t": "ul",
+                                          "items": [
+                                            [
+                                              {
+                                                "t": "p",
+                                                "c": [
+                                                  { "t": "text", "text": "6" }
+                                                ]
+                                              },
+                                              {
+                                                "t": "ul",
+                                                "items": [
+                                                  [
+                                                    {
+                                                      "t": "p",
+                                                      "c": [
+                                                        {
+                                                          "t": "text",
+                                                          "text": "7"
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "t": "p",
+                                                      "c": [
+                                                        {
+                                                          "t": "text",
+                                                          "text": "8 9"
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                ]
+                                              }
+                                            ]
+                                          ]
+                                        }
+                                      ]
+                                    ]
+                                  }
+                                ]
+                              ]
+                            }
+                          ]
+                        ]
+                      }
+                    ]
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "generated": [
+    {
+      "name": "count past 5,000: paragraphs",
+      "about": "3,000 paragraphs of one word are 6,000 nodes. The first 2,499 paragraphs (4,998 nodes) stay, and the words of the other 501 become one trailing paragraph.",
+      "html": { "repeat": "<p>word</p>", "times": 3000 },
+      "expect": {
+        "nodeCount": 5000,
+        "childCount": 2500,
+        "first": { "t": "p", "c": [{ "t": "text", "text": "word" }] },
+        "last": {
+          "t": "p",
+          "c": [
+            {
+              "t": "text",
+              "text": { "repeat": "word", "times": 501, "separator": " " }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "count past 5,000: inside a list",
+      "about": "One list of 3,000 one-word items is 6,001 nodes. The list and its first 2,498 items (4,997 nodes) stay, the next item is cut after its paragraph node and so goes, and the words of the other 502 items become one trailing paragraph after the list.",
+      "html": {
+        "prefix": "<ul>",
+        "repeat": "<li>word</li>",
+        "times": 3000,
+        "suffix": "</ul>"
+      },
+      "expect": {
+        "nodeCount": 4999,
+        "childCount": 2,
+        "firstItemCount": 2498,
+        "last": {
+          "t": "p",
+          "c": [
+            {
+              "t": "text",
+              "text": { "repeat": "word", "times": 502, "separator": " " }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

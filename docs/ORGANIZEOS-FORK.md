@@ -522,8 +522,8 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   `features/components/components.tsx`): one section, headed "OrganizeOS",
   directly after General. It lists the namespace's templates with the
   Components panel's own cards, in its sections' order (Sections: Rotating
-  Tabs, Marquee, Convergence Field; Events: Event List, Event Card, RSVP Form;
-  Signups: Signup Form), skips a name that is not registered yet, and offers a
+  Tabs, Marquee, Convergence Field; Content: Rich Text; Events: Event List,
+  Event Card, RSVP Form; Signups: Signup Form), skips a name that is not registered yet, and offers a
   registered block no section names after the others (the "More" rule). The
   blocks' metas stay `category: "hidden"`, so upstream's grouping skips them
   and this section adds them. "Find components" finds them by label, ranked
@@ -531,8 +531,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   block, and a drag (upstream's drag, which accepts every registered template)
   all insert through `insertOrganizeosBlock`, so each block arrives bound to
   the project's data. There is no section on an XML page, where the panel
-  shows only the XML and data categories. The Sections blocks read no
-  platform data, so their inserts bind nothing.
+  shows only the XML and data categories. The Sections blocks and Rich Text
+  read no platform data of their own, so their inserts bind nothing (Rich
+  Text has no entry in `organizeosBlockData`).
 - **The OrganizeOS data tab** (`organizeos-panel.tsx`), a left-sidebar tab
   after Components with upstream's `ResourceIcon` and the tooltip "OrganizeOS
   data", hidden in content mode and disabled on text pages, as Components is.
@@ -1200,6 +1201,86 @@ slice"`, so it covers the element and is cropped on its narrower axis.
   cover it through the Components panel's OrganizeOS section. Nothing changes
   in the
   published-site runtime packages, the CLI or the templates.
+
+**Rich Text**, the Components panel's OrganizeOS section's Content block
+(W7.1): shows a collection item's rich-text field. Design: OrganizeOS
+`docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md` section 4.7;
+plan `docs/superpowers/plans/2026-10-26-cms-in-the-builder.md` task W7.1. It is
+built on the spike's result (Rich Text styling spike, below): `ws:descendant`,
+no class fallback.
+
+- **The value.** `/v1/collections*` sends a rich-text value as
+  `{ html, text, nodes }`; `nodes` is a node tree, version 1:
+  `{ v: 1, children }` of blocks (`p`, `h` with `level` 2 to 4, `ul` and `ol`
+  with `items`, `quote`, `code`, `hr`, `img` with an optional `caption`) and
+  inlines (`text` with `marks` among `b`, `i`, `u`, `s` and `code`, `br`, `a`
+  with `href` and `newTab`). The format is the platform's
+  (`client/lib/collections/rich-text-nodes.ts`) and is pinned by the shared
+  fixture `src/__fixtures__/rich-text.json`, which both repositories test
+  against. A designer places the block inside a `ws:collection` item and binds
+  its one prop, `value` (json, control json), to the field's nodes, for
+  example `item.body.nodes`. Bound to the whole field (`item.body`) by
+  mistake, it reads the `nodes` inside it.
+- **The component** (`src/rich-text/rich-text.tsx`, registered as
+  `@organizeos/site-components:RichText`) is a `forwardRef` `div` that spreads
+  the rest of its props and the ref onto itself and ignores its children (the
+  descendants), as Markdown Embed does, and renders the tree as React
+  elements: `p`; `h2` to `h4`; `ul` and `ol` with `li`; `blockquote`;
+  `pre > code`; `hr`; `img` with `loading="lazy"`, inside `figure` with a
+  `figcaption` when it has a caption; `a` with `rel="noopener noreferrer"`,
+  and `target="_blank"` only when `newTab` is `true`; `strong`, `em`, `u`,
+  `s`, `code` and `br`. It never uses `dangerouslySetInnerHTML`
+  (`src/no-raw-markup.test.ts` fails on the name anywhere in the package's
+  sources but `org-script.ts`, the pause's list of props it keeps off).
+- **It checks the tree again**, because a published site freezes this code
+  while `/v1` may grow looser: a node of a kind it does not know, or with a
+  heading level or a field it cannot read, renders nothing, and a mark it
+  does not know is left off its text; a link
+  whose address fails `safeLinkHref` renders its text; an image whose source
+  is not `https:` is left out, with its caption; a quote or list nested at
+  depth 8 or deeper renders nothing (top-level blocks are depth 1); rendering
+  stops after 5,000 nodes; a root whose `v` is not 1 renders nothing. Text is
+  React text, so it is escaped.
+- **The address rules** are in `src/shared/safe-href.ts`, pure: `isSafeHref`
+  and `safeLinkHref` for a link (`http:`, `https:`, `mailto:`, `tel:`, a root
+  path not starting `//` or `/\`, a `#` fragment, checked after stripping
+  tabs and newlines and trimming C0 controls and spaces, as a browser does;
+  the platform's `richTextHref` rule), `safeImageSrc` (`https:` only), and
+  `isNavigableUrl`, the `http:`/`https:` rule `form/navigate.ts` keeps for the
+  navigations a block makes. This link rule is narrower than the org-script
+  pause's address rule (§10), which also allows `sms:` and relative
+  addresses; the two are not meant to agree.
+- **On the canvas** with no value (unbound, or the item still loading), the
+  block shows a sample made, node for node, of fixture cases
+  (`src/rich-text/sample.ts`, pinned by its test), holding every tag the
+  template styles. Its links and image point at example.org, so the image
+  shows its caption and no picture. In preview and on a published page, no
+  value renders nothing.
+- **The template** (`src/rich-text/rich-text.template.tsx`) is the root and
+  17 `ws:descendant` instances, one per element: ` p`, ` h2`, ` h3`, ` h4`,
+  ` ul`, ` ol`, ` li`, ` a`, ` blockquote`, ` pre`, ` code`, ` hr`, ` img`,
+  ` figure`, ` figcaption`, ` strong`, ` em`. Each names one tag; a selector
+  naming several would sit inside `:where()`. ` code` styles inline code and
+  the code block's text alike; ` pre` is the block. `value` is left unbound,
+  and the insert binds nothing. The meta: `contentModel` children
+  `[descendantComponent]`, a `div` preset of `display: contents` (so the
+  spike's caveats hold: styles on the root itself draw no box, and a
+  descendant outlines nothing on the canvas), and the icon `DescriptionIcon`,
+  which no upstream component uses.
+- The section background contrast check (`backgrounds/contrast.ts`) counts it
+  among the components that render their own text, each descendant a text
+  group of its own. Content mode does not edit its text: the CMS does.
+- **Shipping.** `components.ts` exports it; its closure reaches
+  `rich-text/rich-text.js`, `rich-text/sample.js` and `shared/safe-href.js`,
+  and imports nothing beyond `react` and `@webstudio-is/react-sdk/runtime`
+  (`organizeos-components.test.ts`). The org-script prebuild check passes it
+  and its descendants unchanged, whatever its value holds
+  (`organizeos-org-script.test.ts`); its own re-validation is the guard on
+  what it renders. Nothing changes in the published-site runtime packages.
+- **Fixtures.** `rich-text.json` and `preview-assertion.json` (the latter for
+  W7.2) are copies of the platform's, recorded with their source commit in
+  `src/__fixtures__/README.md`; `diff -r` the folder against the platform's
+  before each fork PR.
 
 **The record picker**, `settings-panel/controls/organizeos-record.tsx`, behind
 one marked branch in `settings-panel/controls/combined.tsx`, before the text

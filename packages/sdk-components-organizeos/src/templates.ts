@@ -5,3 +5,4 @@ export { meta as RsvpForm } from "./rsvp-form.template";
 export { meta as RotatingTabs } from "./rotating-tabs.template";
 export { meta as Marquee } from "./marquee.template";
 export { meta as ConvergenceField } from "./convergence-field.template";
+export { meta as RichText } from "./rich-text/rich-text.template";

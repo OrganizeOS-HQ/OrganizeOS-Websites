@@ -244,6 +244,7 @@ test("templates and hooks", () => {
     "RotatingTabs",
     "Marquee",
     "ConvergenceField",
+    "RichText",
   ]);
   for (const template of Object.values(templates)) {
     expect(template.category).toBe("hidden");
@@ -262,6 +263,7 @@ test("templates and hooks", () => {
   }
   expect(templates.RsvpForm.label).toBe(metas.RsvpForm.label);
   expect(templates.ConvergenceField.label).toBe(metas.ConvergenceField.label);
+  expect(templates.RichText.label).toBe(metas.RichText.label);
   // one hook: the canvas play flag for Animate Children and Convergence
   // Field, nearest wins (hooks.test.ts)
   expect(hooks).toEqual([hooksCanvasPlay]);
@@ -446,4 +448,29 @@ test("the Share Code Carrier: hidden, a div that takes any children, with no pro
   // a component, never a template: the Event List and Event Card use it
   expect(Object.keys(templates)).not.toContain("ShareCodeCarrier");
   expect(Object.keys(components)).toContain("ShareCodeCarrier");
+});
+
+test("the Rich Text: hidden, styled by descendants only, its root laid out as its content, one json prop", () => {
+  const meta = metas.RichText;
+  expect(meta.category).toBe("hidden");
+  expect(meta.label).toBe("Rich Text");
+  expect(meta.icon).toBeDefined();
+  expect(meta.contentModel).toEqual({
+    category: "instance",
+    children: [descendantComponent],
+  });
+  expect(meta.presetStyle).toEqual({
+    div: [
+      { property: "display", value: { type: "keyword", value: "contents" } },
+    ],
+  });
+  expect(meta.initialProps).toEqual(["id", "class", "value"]);
+  expect(meta.props).toEqual({
+    value: expect.objectContaining({
+      type: "json",
+      control: "json",
+      required: false,
+    }),
+  });
+  expect(Object.keys(components)).toContain("RichText");
 });

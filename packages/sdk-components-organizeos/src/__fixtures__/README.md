@@ -1,4 +1,6 @@
 > Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit 39ce1bbe3): change both copies together.
+>
+> `rich-text.json` and `preview-assertion.json` were copied later, from commit 826b5a764 (where `rich-text.json` last changed in 35d7867ec and `preview-assertion.json` in 5a9d4789c). Before each fork PR, `diff -r` this folder against the platform's to find drift.
 
 # Site component contract fixtures
 
@@ -57,6 +59,26 @@ additive, or it ships under a new endpoint version.
   its package's share-code tests. It is a Prettier fixed point under both
   repositories' JSON settings (print width 80), so neither pre-commit hook
   changes a byte of either copy.
+- `rich-text.json`: the rich-text node format, version 1, that
+  `/v1/collections*` sends as `nodes` beside a rich-text value's `html` and
+  `text` (design
+  `docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md` section 4.7).
+  Each case is sanitised HTML and the tree `toRichTextNodes` builds from it:
+  every block, inline and mark, a figure with a caption, and each dropped case
+  (protocol-relative and `javascript:` links, `data:` and `http:` images, depth
+  past 8). The `generated` cases describe inputs too large to write out (a count
+  past 5,000 nodes) as `{ repeat, times }`, with the expected size, head and
+  tail. The platform's converter and the fork's `RichText` component both test
+  against it.
+- `preview-assertion.json`: a test vector for the `X-OOS-Preview` header,
+  version 1, that the builder mints for a canvas fetch of `/v1/collections*` and
+  the platform verifies (design
+  `docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md` section 4.5):
+  a fixed test secret, a payload (`org`, `sub`, `sid`, `iat`, `exp`, Unix
+  seconds, in that key order), the base64url payload segment, the base64url
+  HMAC-SHA256 of that segment's bytes, and the whole header. The fork's minting
+  test and the platform's `verifyPreviewAssertion` test both build to it. The
+  secret is a test value and never a deployed one.
 - `forms.json`: the body of `GET /v1/forms`.
 - `events.json`: the body of `GET /v1/events`, as the route lists it: soonest
   first, with the event's own time zone, and the ended event the
