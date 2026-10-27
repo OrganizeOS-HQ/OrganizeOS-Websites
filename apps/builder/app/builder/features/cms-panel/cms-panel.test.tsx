@@ -314,7 +314,7 @@ describe("the CMS panel in the left sidebar", () => {
       dataButton?.click();
     });
     expect(
-      document.querySelector("[data-organizeos-data-line]")
+      document.querySelector("[data-organizeos-data-body]")
     ).not.toBeNull();
     expect(frame()).toBe(iframe);
     expect(iframe?.style.display).toBe("none");

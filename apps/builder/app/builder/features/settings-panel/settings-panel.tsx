@@ -5,7 +5,7 @@ import { VariablesSection } from "./variables-section";
 import { Box, PanelBanner, Text, theme } from "@webstudio-is/design-system";
 import { useStore } from "@nanostores/react";
 import { $isDesignMode, $permissions } from "~/shared/nano-states";
-import { planUpgradeHint, platformName } from "~/shared/branding";
+import { planUpgradeHint } from "~/shared/branding";
 
 export const SettingsPanel = ({
   selectedInstance,
@@ -36,10 +36,6 @@ export const SettingsPanel = ({
         <PanelBanner>
           <Text variant="regularBold">
             Binding external data is not included in your plan
-          </Text>
-          <Text>
-            Data binding pulls live content from {platformName} into your site,
-            so pages like events and donations stay current on their own.
           </Text>
           <Text>{planUpgradeHint}</Text>
         </PanelBanner>

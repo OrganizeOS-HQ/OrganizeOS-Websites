@@ -126,6 +126,8 @@ afterEach(() => {
   root = undefined;
   container = undefined;
   vi.restoreAllMocks();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("getMotionTarget", () => {
@@ -186,7 +188,9 @@ describe("the Motion area", () => {
       selectInstance(selector);
     }
     const host = render();
-    expect(host.textContent).toContain(motionRefusal);
+    // the empty state, and nothing else
+    expect(host.textContent).toBe("Select an element");
+    expect(motionRefusal).toBe("Select an element");
     expect(host.querySelector("[data-motion-presets]")).toBeNull();
   });
 
@@ -334,6 +338,40 @@ describe("the Motion area", () => {
       serverSyncStore.undo();
     });
     expect(propsOf("wrapper").stagger).toEqual({ type: "number", value: 6 });
+  });
+
+  test("Stagger has no caption: its range is the label's tooltip, 0–20 %", () => {
+    vi.useFakeTimers();
+    // the open tooltip measures its arrow
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+    );
+    project();
+    selectInstance(["wrapper", "body"]);
+    const host = render();
+    const field = host.querySelector("[data-motion-stagger]");
+    // the label and the input, nothing under them
+    expect(field?.textContent).toBe("Stagger");
+    expect(field?.querySelector("input")?.getAttribute("aria-label")).toBe(
+      "Stagger"
+    );
+    expect(document.body.textContent).not.toContain("0–20 %");
+    // hovering the label opens its tooltip, as the Animation editor's do
+    const label = Array.from(field?.querySelectorAll("button") ?? []).find(
+      (button) => button.textContent === "Stagger"
+    );
+    act(() => {
+      label?.dispatchEvent(new MouseEvent("pointermove", { bubbles: true }));
+    });
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(document.body.textContent).toContain("0–20 %");
   });
 
   test("setMotionStagger clamps below 0 and non-finite values to 0", () => {

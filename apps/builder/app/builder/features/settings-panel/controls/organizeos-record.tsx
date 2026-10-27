@@ -1,18 +1,37 @@
 import { useId } from "react";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
-import { Flex, Select, Text, theme } from "@webstudio-is/design-system";
+import {
+  decodeDataVariableId,
+  getExpressionIdentifiers,
+} from "@webstudio-is/sdk";
+import {
+  Flex,
+  Select,
+  Text,
+  css,
+  textVariants,
+  theme,
+} from "@webstudio-is/design-system";
 import {
   BindingControl,
   BindingPopover,
   validatePrimitiveValue,
 } from "~/builder/shared/binding-popover";
-import { platformName } from "~/shared/branding";
 import {
+  $computedResourceRequests,
   $propValuesByInstanceSelector,
+  $selectedInstance,
   $selectedInstanceKey,
+  $selectedInstanceKeyWithRoot,
+  $variableValuesByInstanceSelector,
 } from "~/shared/nano-states";
-import { $instances } from "~/shared/sync/data-stores";
+import {
+  $resourcesCache,
+  getResourceKey,
+  invalidateResource,
+} from "~/shared/resources";
+import { $dataSources, $instances, $props } from "~/shared/sync/data-stores";
 import {
   isOrganizeosBlock,
   organizeosNamespace,
@@ -39,7 +58,8 @@ import { PropertyLabel } from "../property-label";
  * loads every resource bound to an instance on the page through its resources
  * loader (`subscribeResources`) and computes the block's props from that
  * cache, so the picker reads the selected block's computed `data` and makes no
- * request of its own.
+ * request of its own; when a load failed, Reload asks that loader to load it
+ * again.
  */
 
 export type OrganizeosRecordOption = {
@@ -52,15 +72,15 @@ type RecordOptions = {
   options: OrganizeosRecordOption[];
   /** The option the record names; none when it names nothing. */
   selected: undefined | OrganizeosRecordOption;
-  /** Whether `data` is the records' body; the control shows a hint when not. */
+  /** Whether `data` is the records' body. */
   hasData: boolean;
 };
 
 /** What a block's record is picked from, and how the control words it. */
 export type RecordPicker = {
   getOptions: (data: unknown, value: unknown, now: Date) => RecordOptions;
-  /** Under the control while there is no data. */
-  noDataHint: string;
+  /** Under the control when the records failed to load, before "Reload". */
+  loadFailed: string;
   /** In the control while nothing is selected. */
   placeholder: string;
 };
@@ -77,12 +97,6 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const toRecordValue = (value: unknown) =>
   typeof value === "string" ? value : "";
 
-// Shown while the records load and when they fail to. Reloading retries a load
-// that failed or stalled; it cannot restore a preset whose link to the org's
-// data was removed (OrganizeOS spec section 12, item 17), which support can.
-const getNoDataHint = (records: string) =>
-  `Your ${records} load from ${platformName}. If they do not appear, reload the builder; if they still do not, contact ${platformName} support.`;
-
 /**
  * The Signup Form's picker, over the kinds of form its record can name, with
  * the label each kind has in the picker. Options come from the block's
@@ -94,7 +108,7 @@ const getNoDataHint = (records: string) =>
  * fields, is skipped.
  */
 const formsPicker = (kinds: ReadonlyMap<string, string>): RecordPicker => ({
-  noDataHint: getNoDataHint("forms"),
+  loadFailed: "Forms didn't load.",
   placeholder: "Select a form",
   getOptions: (data, value) => {
     const forms =
@@ -204,7 +218,7 @@ const getStartTime = (event: Record<string, unknown>) =>
  * "None": a form without an event is Unavailable on the live site.
  */
 const eventsPicker: RecordPicker = {
-  noDataHint: getNoDataHint("events"),
+  loadFailed: "Events didn't load.",
   placeholder: "Pick an event",
   getOptions: (data, value, now) => {
     const events =
@@ -308,10 +322,10 @@ export const isOrganizeosRecordProp = (
 const noPicker = formsPicker(new Map());
 
 /**
- * The picker a block's `record` is chosen with: what it lists, the hint under
- * the control while there is no data and the placeholder while nothing is
- * selected. The control reads its wording from here, so a test of the picker
- * is a test of what the control shows.
+ * The picker a block's `record` is chosen with: what it lists, the line under
+ * the control when the records failed to load and the placeholder while
+ * nothing is selected. The control reads its wording from here, so a test of
+ * the picker is a test of what the control shows.
  */
 export const getOrganizeosRecordPicker = (
   component: undefined | string
@@ -340,6 +354,81 @@ export const $selectedInstanceDataProp = computed(
     propValuesByInstanceSelector.get(instanceKey ?? "")?.get("data")
 );
 
+// one empty list, so a change elsewhere on the page does not re-render the control
+const noFailedLoads: readonly unknown[] = [];
+
+/**
+ * The results of the loads the selected instance's `data` reads that failed:
+ * each Resource variable its expression names, as the builder's resources
+ * loader answered it (`{ ok, status, statusText, data }`), where `ok` is
+ * false. None while the loads are pending (no result yet), once they succeed,
+ * and when `data` reads no Resource.
+ */
+export const $selectedInstanceFailedLoads = computed(
+  [
+    $selectedInstance,
+    // variables are keyed by the selector with :root, as Settings reads them
+    $selectedInstanceKeyWithRoot,
+    $props,
+    $dataSources,
+    $variableValuesByInstanceSelector,
+  ],
+  (
+    instance,
+    instanceKey,
+    props,
+    dataSources,
+    variableValuesByInstanceSelector
+  ) => {
+    let expression: undefined | string;
+    for (const prop of props.values()) {
+      if (
+        prop.instanceId === instance?.id &&
+        prop.name === "data" &&
+        prop.type === "expression"
+      ) {
+        expression = prop.value;
+      }
+    }
+    if (expression === undefined) {
+      return noFailedLoads;
+    }
+    const failed: unknown[] = [];
+    const values = variableValuesByInstanceSelector.get(instanceKey ?? "");
+    for (const identifier of getExpressionIdentifiers(expression)) {
+      const id = decodeDataVariableId(identifier);
+      if (id === undefined || dataSources.get(id)?.type !== "resource") {
+        continue;
+      }
+      const result = values?.get(id);
+      if (isObject(result) && result.ok === false) {
+        failed.push(result);
+      }
+    }
+    return failed.length === 0 ? noFailedLoads : failed;
+  }
+);
+
+/**
+ * Loads again, with the builder's resources loader, the requests on the page
+ * whose results are these: the cache holds each result under its request's
+ * key, and the instance's variables read them from there.
+ */
+export const reloadFailedLoads = (results: readonly unknown[]) => {
+  const cache = $resourcesCache.get();
+  for (const request of $computedResourceRequests.get()) {
+    if (results.includes(cache.get(getResourceKey(request)))) {
+      invalidateResource(request);
+    }
+  }
+};
+
+const reloadClass = css({
+  all: "unset",
+  cursor: "pointer",
+  ...textVariants.link,
+}).toString();
+
 // Radix Select refuses an item whose value is the empty string, which is the
 // org defaults' value, so every option is keyed with a prefix.
 const getOptionKey = (option: OrganizeosRecordOption) =>
@@ -349,7 +438,8 @@ const getOptionLabel = (option: OrganizeosRecordOption) => option.label;
 
 /**
  * A select with `select.tsx`'s binding support, over the options above, and a
- * hint under it when there is no data.
+ * line under it, with Reload, when the records failed to load. Nothing shows
+ * while they load.
  */
 export const OrganizeosRecordControl = ({
   instanceId,
@@ -362,12 +452,13 @@ export const OrganizeosRecordControl = ({
   const id = useId();
   const component = useStore($instances).get(instanceId)?.component;
   const data = useStore($selectedInstanceDataProp);
-  const { options, selected, hasData } = getOrganizeosRecordOptions(
+  const { options, selected } = getOrganizeosRecordOptions(
     component,
     data,
     computedValue
   );
   const picker = getOrganizeosRecordPicker(component);
+  const failedLoads = useStore($selectedInstanceFailedLoads);
 
   const label = humanizeAttribute(meta.label || propName);
   const { scope, aliases } = useStore($selectedInstanceScope);
@@ -420,7 +511,19 @@ export const OrganizeosRecordControl = ({
             }
           />
         </BindingControl>
-        {hasData === false && <Text color="subtle">{picker.noDataHint}</Text>}
+        {failedLoads.length > 0 && (
+          <Text color="subtle" data-record-load-failed>
+            {picker.loadFailed}{" "}
+            <button
+              type="button"
+              className={reloadClass}
+              onClick={() => reloadFailedLoads(failedLoads)}
+            >
+              Reload
+            </button>
+            .
+          </Text>
+        )}
       </Flex>
     </VerticalLayout>
   );

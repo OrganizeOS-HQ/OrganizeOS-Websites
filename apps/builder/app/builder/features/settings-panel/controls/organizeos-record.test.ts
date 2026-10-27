@@ -1,5 +1,9 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { act } from "react-dom/test-utils";
 import { enableMapSet } from "immer";
+import { TooltipProvider } from "@webstudio-is/design-system";
 import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
@@ -14,6 +18,7 @@ import {
   $organizeosSite,
   $registeredComponentMetas,
   $selectedInstanceKey,
+  $selectedInstanceSelector,
   getInstanceKey,
   registerComponentLibrary,
   selectInstance,
@@ -37,6 +42,7 @@ import {
   $resourcesCache,
   computeResourceRequest,
   getResourceKey,
+  invalidateResource,
 } from "~/shared/resources";
 import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
 import {
@@ -47,11 +53,23 @@ import { renderControl } from "./combined";
 import { TextControl } from "./text";
 import {
   $selectedInstanceDataProp,
+  $selectedInstanceFailedLoads,
   OrganizeosRecordControl,
   getOrganizeosRecordOptions,
   getOrganizeosRecordPicker,
   isOrganizeosRecordProp,
 } from "./organizeos-record";
+
+// Reload asks the builder's resources loader for the request again, which
+// would fetch it here
+vi.mock("~/shared/resources", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/shared/resources")>()),
+  invalidateResource: vi.fn(),
+}));
+
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 enableMapSet();
 registerContainers();
@@ -418,7 +436,7 @@ describe("getOrganizeosRecordOptions for the RSVP Form", () => {
     }
   );
 
-  test("an empty list is data: nothing to pick, and no hint to reload", () => {
+  test("an empty list is data: nothing to pick", () => {
     expect(getOrganizeosRecordOptions(rsvpForm, { data: [] }, "", now)).toEqual(
       { options: [], selected: undefined, hasData: true }
     );
@@ -616,35 +634,18 @@ describe("getOrganizeosRecordOptions for the RSVP Form", () => {
 });
 
 describe("getOrganizeosRecordPicker", () => {
-  // The control shows the picker's `noDataHint` under itself while there is no
-  // data, and its `placeholder` while nothing is selected.
-  test("words the RSVP Form's hint and placeholder for events, and the Signup Form's for forms", () => {
+  // The control shows the picker's `loadFailed` line under itself, with
+  // Reload, when the records failed to load, and its `placeholder` while
+  // nothing is selected.
+  test("words the RSVP Form's line and placeholder for events, and the Signup Form's for forms", () => {
     expect(getOrganizeosRecordPicker(rsvpForm)).toMatchObject({
       placeholder: "Pick an event",
-      noDataHint:
-        "Your events load from OrganizeOS. If they do not appear, reload the builder; if they still do not, contact OrganizeOS support.",
+      loadFailed: "Events didn't load.",
     });
     expect(getOrganizeosRecordPicker(signupForm)).toMatchObject({
       placeholder: "Select a form",
-      noDataHint:
-        "Your forms load from OrganizeOS. If they do not appear, reload the builder; if they still do not, contact OrganizeOS support.",
+      loadFailed: "Forms didn't load.",
     });
-  });
-
-  test("is the picker that lists the block's options, so the hint belongs to the data it waits for", () => {
-    // no data: the options say so, and the picker has the hint to show
-    expect(
-      getOrganizeosRecordOptions(rsvpForm, undefined, "", now).hasData
-    ).toBe(false);
-    expect(getOrganizeosRecordPicker(rsvpForm).noDataHint).toMatch(
-      /^Your events /
-    );
-    expect(
-      getOrganizeosRecordOptions(signupForm, undefined, "", now).hasData
-    ).toBe(false);
-    expect(getOrganizeosRecordPicker(signupForm).noDataHint).toMatch(
-      /^Your forms /
-    );
   });
 });
 
@@ -714,7 +715,7 @@ describe("an inserted Signup Form", () => {
     expect($selectedInstanceKey.get()).toBe(
       getInstanceKey([roots[0].id, "bodyId"])
     );
-    // until the loader has the forms: None alone, and the hint
+    // until the loader has the forms: None alone
     expect($selectedInstanceDataProp.get()).toBeUndefined();
     expect(
       getOrganizeosRecordOptions(
@@ -848,5 +849,196 @@ describe("an inserted RSVP Form", () => {
         now
       )
     ).toEqual({ options: eventOptions, selected: undefined, hasData: true });
+  });
+});
+
+/**
+ * A project as provisioning seeds it, with the block inserted and selected,
+ * and the request its binding loads, which nothing has answered yet.
+ */
+const insertBlock = async (component: string, projectId: string) => {
+  const { forms, events } = await getOrganizeosPresetIds(projectId);
+  const provisioned = await buildOrgResourcePresets({
+    projectId,
+    apiBaseUrl: "https://staging.example.org/api/public/v1",
+    readToken: "osk_eventstoken",
+  });
+  // the first Signup Form adds Forms
+  $resources.set(
+    new Map(
+      provisioned.resources
+        .filter((resource) => resource.id !== forms.resourceId)
+        .map((resource) => [resource.id, resource])
+    )
+  );
+  $dataSources.set(new Map());
+  $instances.set(
+    new Map([
+      [
+        "bodyId",
+        { type: "instance", id: "bodyId", component: "Body", children: [] },
+      ],
+    ])
+  );
+  $props.set(new Map());
+  $breakpoints.set(new Map());
+  $styles.set(new Map());
+  $styleSources.set(new Map());
+  $styleSourceSelections.set(new Map());
+  $assets.set(new Map());
+  const pages = createDefaultPages({ rootInstanceId: "bodyId" });
+  $pages.set(pages);
+  $selectedPageId.set(pages.homePageId);
+  selectInstance(["bodyId"]);
+  $project.set({ id: projectId } as Project);
+  $organizeosSite.set({
+    organizationId: "org-1",
+    manageUrl: "https://app.example.org/dashboard",
+    platformUrl: "https://app.example.org",
+    blocksEnabled: true,
+  });
+  $resourcesCache.set(new Map());
+  expect(await insertOrganizeosBlock(component)).toBe(true);
+  const resourceId =
+    component === signupForm ? forms.resourceId : events.resourceId;
+  return {
+    request: computeResourceRequest(
+      $resources.get().get(resourceId) as Resource,
+      new Map()
+    ),
+    // the other catalog Resource, which this block does not read
+    otherRequest: computeResourceRequest(
+      provisioned.resources.find(
+        (resource) =>
+          resource.id ===
+          (component === signupForm ? events.resourceId : forms.resourceId)
+      ) as Resource,
+      new Map()
+    ),
+  };
+};
+
+const answer = (...results: Array<[{ url: string }, unknown]>) => {
+  act(() => {
+    $resourcesCache.set(
+      new Map(
+        results.map(([request, result]) => [
+          getResourceKey(request as Parameters<typeof getResourceKey>[0]),
+          result,
+        ])
+      )
+    );
+  });
+};
+
+// the resources loader's result for a platform error (a 503 body) and for a
+// fetch that threw (no body at all)
+const failedRead = {
+  ok: false,
+  status: 503,
+  statusText: "Service Unavailable",
+  data: { error: "unavailable" },
+};
+const unreachable = {
+  ok: false,
+  status: 500,
+  statusText: "fetch failed",
+  data: undefined,
+};
+
+describe("the record picker's load line", () => {
+  let root: undefined | Root;
+  let container: undefined | HTMLElement;
+
+  afterEach(() => {
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+    root = undefined;
+    container = undefined;
+    vi.mocked(invalidateResource).mockClear();
+  });
+
+  // the picker of the selected block, as Settings renders it
+  const renderPicker = () => {
+    const [instanceId] = $selectedInstanceSelector.get() ?? [];
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        createElement(
+          TooltipProvider,
+          null,
+          createElement(OrganizeosRecordControl, {
+            instanceId,
+            meta: { type: "string", control: "text", required: false },
+            prop: undefined,
+            propName: "record",
+            computedValue: "",
+            onChange: () => {},
+          })
+        )
+      );
+    });
+    return container;
+  };
+
+  const line = (host: HTMLElement) =>
+    host.querySelector("[data-record-load-failed]")?.textContent;
+
+  test("shows nothing under the picker while the forms load, nor once they have", async () => {
+    const { request, otherRequest } = await insertBlock(signupForm, "p-load");
+    const host = renderPicker();
+    // no answer yet: loading
+    expect($selectedInstanceFailedLoads.get()).toEqual([]);
+    expect(line(host)).toBeUndefined();
+    expect(host.textContent).not.toMatch(/load/i);
+
+    // a Resource the block does not read failed: still loading, for this one
+    answer([otherRequest, failedRead]);
+    expect(line(host)).toBeUndefined();
+
+    answer([
+      request,
+      { ok: true, status: 200, statusText: "", data: formsBody },
+    ]);
+    expect($selectedInstanceFailedLoads.get()).toEqual([]);
+    expect(line(host)).toBeUndefined();
+    expect(host.textContent).not.toMatch(/load/i);
+  });
+
+  test("a failed load of the forms shows the short line, and Reload loads that request again", async () => {
+    const { request } = await insertBlock(signupForm, "p-fail");
+    const host = renderPicker();
+    answer([request, failedRead]);
+    expect($selectedInstanceFailedLoads.get()).toEqual([failedRead]);
+    expect(line(host)).toBe("Forms didn't load. Reload.");
+
+    const reload = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.textContent === "Reload"
+    );
+    act(() => {
+      reload?.click();
+    });
+    expect(invalidateResource).toHaveBeenCalledTimes(1);
+    expect(invalidateResource).toHaveBeenCalledWith(request);
+
+    // the load answers this time
+    answer([
+      request,
+      { ok: true, status: 200, statusText: "", data: formsBody },
+    ]);
+    expect(line(host)).toBeUndefined();
+  });
+
+  test("an RSVP Form whose events fetch threw shows the events line, though its data reads as loading", async () => {
+    const { request } = await insertBlock(rsvpForm, "p-rsvp");
+    const host = renderPicker();
+    answer([request, unreachable]);
+    // `data` is undefined, as it is while the events load
+    expect($selectedInstanceDataProp.get()).toBeUndefined();
+    expect(line(host)).toBe("Events didn't load. Reload.");
   });
 });

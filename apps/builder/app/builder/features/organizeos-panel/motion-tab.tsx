@@ -8,7 +8,6 @@ import {
   PanelTabsTrigger,
   ScrollArea,
   Text,
-  Tooltip,
 } from "@webstudio-is/design-system";
 import {
   $isDesignMode,
@@ -50,14 +49,7 @@ const contentStyle = {
 };
 
 export const MotionTabTrigger = () => (
-  <Tooltip
-    variant="wrapped"
-    content={<Text>Motion for the selected instance</Text>}
-  >
-    <div>
-      <PanelTabsTrigger value="motion">Motion</PanelTabsTrigger>
-    </div>
-  </Tooltip>
+  <PanelTabsTrigger value="motion">Motion</PanelTabsTrigger>
 );
 
 /** The selected instance's icon and label, as the Inspector's other tabs show it. */

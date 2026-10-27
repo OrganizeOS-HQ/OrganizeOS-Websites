@@ -26,7 +26,6 @@ import type { OrganizeosSite } from "~/shared/organizeos-site";
 import { insertWebstudioFragmentAt } from "~/shared/instance-utils/insert";
 import { ComponentsPanel } from "~/builder/features/components";
 import { insertOrganizeosBlock } from "./insert-organizeos-block";
-import { getWorkspaceAreaUrl } from "./components-section";
 
 vi.mock("./insert-organizeos-block", async (importOriginal) => {
   const actual =
@@ -264,7 +263,7 @@ describe("the Components panel's OrganizeOS section", () => {
     expect(insertWebstudioFragmentAt).not.toHaveBeenCalled();
   });
 
-  test("each link's href equals getWorkspaceAreaUrl", () => {
+  test("one Manage link, to the org's Website area", () => {
     const host = render();
     const links = Array.from(
       host.querySelectorAll<HTMLAnchorElement>("[data-organizeos-links] a")
@@ -278,14 +277,9 @@ describe("the Components panel's OrganizeOS section", () => {
       ])
     ).toEqual([
       [
-        "Manage events in OrganizeOS",
-        getWorkspaceAreaUrl(site, "events"),
-        "_blank",
-        "noreferrer",
-      ],
-      [
-        "Manage forms in OrganizeOS",
-        getWorkspaceAreaUrl(site, "pages/embeds"),
+        "Manage in OrganizeOS ↗",
+        // the Website area, where the builder's menu leads too
+        "https://app.organizeos.org/acme/website",
         "_blank",
         "noreferrer",
       ],

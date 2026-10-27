@@ -564,12 +564,11 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
 - **The OrganizeOS data tab** (`organizeos-panel.tsx`), a left-sidebar tab
   after Components with upstream's `ResourceIcon` and the tooltip "OrganizeOS
   data", hidden in content mode and disabled on text pages, as Components is.
-  It is titled "OrganizeOS data", with one line under the title: "Add your
-  organization's data to this page, then bind it in Settings." Below it, the
-  data list (below). Once the catalog has resolved and is empty, it reads "No
-  organization data is connected to this site yet."; with no selected page
-  there is nothing below the line. Where the CMS panel is offered it takes
-  this slot and the tab is not listed; the list is the CMS panel's Data view.
+  It is titled "OrganizeOS data", with the data list (below) under the title
+  and no line of its own. Once the catalog has resolved and is empty, it reads
+  "No data connected"; with no selected page there is nothing below the
+  title. Where the CMS panel is offered it takes this slot and the tab is not
+  listed; the list is the CMS panel's Data view.
 - **The CMS panel** (`features/cms-panel/`, OrganizeOS design
   `docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md`, 4.4): a
   left-sidebar panel `cms`, "CMS", with `NotebookAndPenIcon` (upstream has no
@@ -620,13 +619,13 @@ collection }` invalidates, through `invalidateResource`, every current
     `{ type: "cms.dirty", dirty }` sets the flag the window's `beforeunload`
     and the close button check. Anything else, a nested `payload` included, is
     dropped. No message chooses an org, a collection's data or a permission.
-- Two links sit at the foot of the OrganizeOS section, Events first. "Manage
-  events in OrganizeOS" opens the org's events area,
-  `<platform URL>/<subdomain>/events`, and "Manage forms in OrganizeOS" its
-  Embeds hub, `<platform URL>/<subdomain>/pages/embeds`, where the org makes
-  its forms; each is the Website area's URL while the builder does not know
-  the subdomain. The builder depends on both platform routes; the OrganizeOS
-  side lists them under "Contract with the fork".
+- One link sits at the foot of the OrganizeOS section while it lists a block
+  that reads the org's data (the Events and Signups blocks): "Manage in
+  OrganizeOS ↗", which opens the org's Website area,
+  `<platform URL>/<subdomain>/website` (`getWorkspaceAreaUrl`), where the
+  builder's menu leads too, and from where the org reaches its events and its
+  forms. While the builder does not know the subdomain it is the Website
+  area's URL, `manageUrl`.
 - **Data loads only where it is used, never page-wide.** The org's data is a
   catalog of GET Resources with deterministic ids: Events, Fundraisers and
   Stats (provisioning), one per public collection (collections-sync), and
@@ -1052,7 +1051,7 @@ timelines gets the static page.
   Convergence Field only with the flag; preview and published pages ignore
   both.
 - **The Motion tab**, the Inspector's third tab, after Style and Settings,
-  with the tooltip "Motion for the selected instance"
+  with no tooltip of its own
   (`features/organizeos-panel/motion-tab.tsx`, mounting `Motion` from
   `motion.tsx`, presets in `motion/presets.ts`). It is offered as the rest of
   the OrganizeOS builder UI is, in design mode, on an HTML page; content mode,
@@ -1060,7 +1059,7 @@ timelines gets the static page.
   falls back to Settings where the tab is not offered. Its target is the
   selected Animate Children, else the selection's parent if that is one, else
   the selection, which a preset wraps in a new one; the Body, the page root and
-  Global Root are refused ("Select a section to give it motion."), and
+  Global Root are refused (the tab reads "Select an element"), and
   `wrapInstance` refuses with its own toast what the content model does not
   allow (an `li`, a `tr`, a Radix part: the wrapper counts as a `div`).
   Reveal (fade and a 12px rise over `entry 0%` to `entry 60%`, fill
@@ -1070,13 +1069,16 @@ timelines gets the static page.
   one undo step, through `wrapInstance`'s `onWrap` (§7) or one
   `updateWebstudioData` on an existing wrapper, replacing the designer's
   edits to the previous action. With an Animate Children selected (a preset
-  selects the wrapper it adds), the tab shows its Stagger field, 0 to 20, and
-  below it upstream's Animation editor, upstream's `PropsSectionContainer` for
-  the selection, only while a breakpoint is selected (it is undefined only in
-  a project with no breakpoints, where upstream would render the whole props
-  panel instead). Settings shows the same editor, and the two are never
+  selects the wrapper it adds), the tab shows its Stagger field, 0 to 20 (the
+  range is the Stagger label's tooltip, "0–20 %", a `FieldLabel` as the
+  Animation editor's labels are), and below it upstream's Animation editor,
+  upstream's `PropsSectionContainer` for the selection, only while a
+  breakpoint is selected (it is undefined only in a project with no
+  breakpoints, where upstream would render the whole props panel instead). Settings shows the same editor, and the two are never
   mounted together. With a child of an Animate Children selected, the presets
-  act on the wrapper, and "Select Animate Children" selects it. Tests check
+  act on the wrapper, and "Select Animate Children" selects it. The tab
+  shows the presets and fields only: no line explaining what a preset does to
+  the selection, and no note on where and when the motion plays. Tests check
   that the package's copies of upstream's "new animation" presets
   (`src/animate/__fixtures__/`) still equal upstream's files and that the
   Motion tab's presets equal the actions the player tests play.
@@ -1322,10 +1324,14 @@ other component keeps the text control. The Signup Form's `record` is a select:
 - It reads the selected root's computed `data`, which the builder's resources
   loader already fetches for the block's own binding (scoped to its root, so
   loaded while the block is on the open page), and makes no request of its
-  own.
-- A value it cannot find stays listed as "Unavailable form". With no forms data
-  (loading, unbound, or the loader's error body) a hint says to reload the
-  builder, then to contact support.
+  own (Reload, below, asks that loader again).
+- A value it cannot find stays listed as "Unavailable form". Nothing shows
+  under the select while the forms load. Only when their load failed (the
+  resources loader's result for a Resource the root's `data` reads has `ok`
+  false: an error body, or a fetch that threw) does one line show, "Forms
+  didn't load. Reload.", where Reload asks the loader for that request again
+  (`invalidateResource`) without reloading the builder
+  (`$selectedInstanceFailedLoads`, `reloadFailedLoads`).
 - It keeps the upstream select's binding support.
 
 The RSVP Form's `record` is a select over the events in its computed `data`
@@ -1347,11 +1353,11 @@ The RSVP Form's `record` is a select over the events in its computed `data`
 - It skips what the block cannot find, as the block does: an entry with no
   string id, a blank or padded id, and a second event with an id it has seen.
 - A value it cannot find stays listed first as "Unavailable event" (the event
-  was unpublished, deleted or made private, or has not loaded). With no events
-  data (loading, unbound, or the loader's error body) a hint says to reload the
-  builder, then to contact support. An empty list is data: the select is empty,
-  and the "Manage events in OrganizeOS" link at the foot of the Components
-  panel's OrganizeOS section is where the org makes one.
+  was unpublished, deleted or made private, or has not loaded). Nothing shows
+  under the select while the events load; a failed load shows "Events didn't
+  load. Reload.", as the Signup Form's does. An empty list is data: the select
+  is empty, and the "Manage in OrganizeOS ↗" link at the foot of the
+  Components panel's OrganizeOS section leads to where the org makes one.
 
 **Share codes**, `src/share-code/`: a member's share link opens an org page
 with `?r=` and a 10-character code, which OrganizeOS credits to the member when
@@ -1519,10 +1525,11 @@ code in the page's address only, never in a cookie or storage.
   depends on it: without `s-maxage` (or `public` with `max-age`) every page
   view calls the platform again, and without `stale-if-error` a platform
   failure shows at once.
-- The Embeds hub and events area routes the links at the foot of the
-  Components panel's OrganizeOS section lead to
-  (`/<subdomain>/pages/embeds`, `/<subdomain>/events`), which the OrganizeOS
-  contract lists with its environment variables.
+- The Website area route the link at the foot of the Components panel's
+  OrganizeOS section leads to (`/<subdomain>/website`, which the builder's
+  menu and `manageUrl` use too). The OrganizeOS contract also lists the Embeds
+  hub and events area routes (`/<subdomain>/pages/embeds`,
+  `/<subdomain>/events`), which the builder no longer links to.
 - Both sides build to the contract fixtures in OrganizeOS's
   `client/tests/fixtures/site-components/`, which the package copies into
   `src/__fixtures__/` for its tests (`forms.json`, `events.json`,

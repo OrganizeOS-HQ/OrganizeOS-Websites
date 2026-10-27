@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import { nanoid } from "nanoid";
@@ -17,7 +17,6 @@ import {
   Flex,
   Grid,
   InputField,
-  Label,
   Text,
 } from "@webstudio-is/design-system";
 import {
@@ -29,8 +28,8 @@ import { $instances, $props } from "~/shared/sync/data-stores";
 import type { InstanceSelector } from "~/shared/instance-utils/tree";
 import { updateWebstudioData } from "~/shared/instance-utils/data";
 import { wrapInstance } from "~/shared/instance-utils/mutation";
-import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { useDraftValue } from "~/builder/shared/use-draft-value";
+import { FieldLabel } from "~/builder/features/settings-panel/property-label";
 import { organizeosNamespace } from "./insert-organizeos-block";
 import { motionPresets, type MotionPreset } from "./motion/presets";
 
@@ -48,7 +47,7 @@ export const animateChildrenComponent = `${organizeosNamespace}:AnimateChildren`
 
 export const maxStagger = 20;
 
-export const motionRefusal = "Select a section to give it motion.";
+export const motionRefusal = "Select an element";
 
 export type MotionTarget =
   | { kind: "refused" }
@@ -216,56 +215,32 @@ const StaggerField = ({
   instanceId: Instance["id"];
   stagger: number;
 }) => {
-  const id = useId();
   const draft = useDraftValue<number | string>(stagger, (value) => {
     if (typeof value === "number") {
       setMotionStagger(instanceId, value);
     }
   });
   return (
-    <Flex direction="column" gap="1" data-motion-stagger>
-      <Grid columns="2" gap="2" align="center">
-        <Label htmlFor={id}>Stagger</Label>
-        <InputField
-          id={id}
-          type="number"
-          min={0}
-          max={maxStagger}
-          value={draft.value}
-          onChange={({ target: { valueAsNumber, value } }) =>
-            draft.set(Number.isNaN(valueAsNumber) ? value : valueAsNumber)
+    <Grid columns="2" gap="2" align="center" data-motion-stagger>
+      <FieldLabel description={`0–${maxStagger} %`}>Stagger</FieldLabel>
+      <InputField
+        aria-label="Stagger"
+        type="number"
+        min={0}
+        max={maxStagger}
+        value={draft.value}
+        onChange={({ target: { valueAsNumber, value } }) =>
+          draft.set(Number.isNaN(valueAsNumber) ? value : valueAsNumber)
+        }
+        onBlur={draft.save}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            draft.save();
           }
-          onBlur={draft.save}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              draft.save();
-            }
-          }}
-        />
-      </Grid>
-      <Text color="subtle">
-        Percent of the entry range between one child and the next, from 0 to{" "}
-        {maxStagger}; 0 is off.
-      </Text>
-    </Flex>
+        }}
+      />
+    </Grid>
   );
-};
-
-const getTargetLine = (
-  target: Exclude<MotionTarget, { kind: "refused" }>,
-  isWrapperSelected: boolean,
-  hasEditor: boolean
-) => {
-  if (target.kind === "wrap") {
-    return `A preset wraps this ${getInstanceLabel(target.instanceId)} in an Animate Children that plays it on each of its children.`;
-  }
-  if (isWrapperSelected === false) {
-    return "This element is inside an Animate Children. A preset replaces its animation. Select it to edit its animation and stagger.";
-  }
-  // "Edit it below." only while the editor is there to edit it in
-  return hasEditor
-    ? "A preset replaces this Animate Children's animation. Edit it below."
-    : "A preset replaces this Animate Children's animation.";
 };
 
 /**
@@ -302,10 +277,12 @@ export const Motion = ({ editor }: { editor?: ReactNode }) => {
         gap="3"
         css={{ paddingInline: theme.panel.paddingInline }}
       >
-        <Text color="subtle" data-motion-target={target.kind}>
-          {getTargetLine(target, isWrapperSelected, editor !== undefined)}
-        </Text>
-        <Grid columns="3" gap="2" data-motion-presets>
+        <Grid
+          columns="3"
+          gap="2"
+          data-motion-presets
+          data-motion-target={target.kind}
+        >
           {motionPresets.map((preset) => (
             <PresetButton
               key={preset.id}
@@ -336,10 +313,6 @@ export const Motion = ({ editor }: { editor?: ReactNode }) => {
         )}
       </Flex>
       {isWrapperSelected && editor}
-      <Text color="subtle" css={{ paddingInline: theme.panel.paddingInline }}>
-        Plays on the published page as visitors scroll, never for visitors who
-        ask for reduced motion. On the canvas it plays while selected.
-      </Text>
     </Flex>
   );
 };
