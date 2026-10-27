@@ -9,7 +9,6 @@ import { getStyleDeclKey, ROOT_INSTANCE_ID } from "@webstudio-is/sdk";
 import { camelCaseProperty } from "@webstudio-is/css-data";
 import { registerContainers } from "~/shared/sync/sync-stores";
 import {
-  $selectedInstanceSelector,
   $selectedPageId,
   $selectedStyleSources,
   $selectedStyleState,
@@ -124,7 +123,7 @@ const update = (change: () => void) => {
 };
 
 const contrastLine = (host: HTMLElement) =>
-  host.querySelector<HTMLButtonElement>("[data-contrast-line]");
+  host.querySelector("[data-contrast-line]");
 
 const presetButton = (host: HTMLElement, id: string) =>
   host.querySelector<HTMLButtonElement>(`[data-preset="${id}"]`);
@@ -223,6 +222,19 @@ describe("SectionBackground states", () => {
     );
     expect(host.textContent).toBe("");
   });
+
+  test("a preset's label shows in a tooltip on keyboard focus", () => {
+    project();
+    selectInstance(sectionSelector);
+    const host = render();
+    const tooltip = () =>
+      document.querySelector('[role="tooltip"]')?.textContent;
+    expect(tooltip()).toBeUndefined();
+    update(() => presetButton(host, "wash-dark")?.focus());
+    expect(tooltip()).toBe("Wash, dark");
+    update(() => presetButton(host, "wash-dark")?.blur());
+    expect(tooltip()).toBeUndefined();
+  });
 });
 
 describe("applying a preset", () => {
@@ -260,6 +272,31 @@ describe("applying a preset", () => {
     );
     // the picker closed
     expect(document.querySelector("[data-choose-asset]")).toBeNull();
+  });
+
+  test("a tap on the other scrim preset opens its picker while the first one closes", () => {
+    project();
+    selectInstance(sectionSelector);
+    const host = render();
+    const expanded = (id: string) =>
+      presetButton(host, id)?.getAttribute("aria-expanded");
+    update(() => presetButton(host, "image-scrim-light")?.click());
+    expect(expanded("image-scrim-light")).toBe("true");
+    // the open picker listens for a pointer down outside it from the next tick
+    flushContrastRun();
+    // On touch, Radix dismisses the open picker on the tap's click, at the
+    // document, so after the tapped trigger's own click handler: the first
+    // picker's close lands a frame after the second one's open.
+    const next = presetButton(host, "image-scrim-dark")!;
+    const touch = new MouseEvent("pointerdown", { bubbles: true });
+    Object.defineProperty(touch, "pointerType", { value: "touch" });
+    update(() => {
+      next.dispatchEvent(touch);
+      next.click();
+    });
+    expect(expanded("image-scrim-dark")).toBe("true");
+    expect(expanded("image-scrim-light")).toBe("false");
+    expect(document.querySelectorAll("[data-choose-asset]")).toHaveLength(1);
   });
 });
 
@@ -351,10 +388,10 @@ describe("contrast line", () => {
     expect(host.querySelector("[data-preset-grid]")).not.toBeNull();
     expect(host.textContent).toBe("");
     flushContrastRun();
-    expect(contrastLine(host)?.textContent).toBe("1 below AA contrast");
+    expect(contrastLine(host)?.textContent).toBe("Text below AA contrast");
   });
 
-  test("one line with the count of failing text", () => {
+  test("one line when some text fails", () => {
     project({
       children: [
         el("grey", "Text", ["Grey"]),
@@ -369,38 +406,8 @@ describe("contrast line", () => {
     });
     selectInstance(sectionSelector);
     const host = render();
-    expect(host.textContent).toBe("2 below AA contrast");
-  });
-
-  test("clicking selects the first failing text, then the next, cycling", () => {
-    project({
-      children: [el("grey", "Text", ["Grey"]), el("light", "Text", ["Light"])],
-      styles: [
-        style("grey", "color", "#aaaaaa"),
-        style("light", "color", "#bbbbbb"),
-      ],
-    });
-    selectInstance(sectionSelector);
-    const host = render();
-    // failures come lowest ratio first: #bbbbbb, then #aaaaaa
-    update(() => contrastLine(host)?.click());
-    expect($selectedInstanceSelector.get()).toEqual([
-      "light",
-      "section",
-      "body",
-    ]);
-    update(() => contrastLine(host)?.click());
-    expect($selectedInstanceSelector.get()).toEqual([
-      "grey",
-      "section",
-      "body",
-    ]);
-    update(() => contrastLine(host)?.click());
-    expect($selectedInstanceSelector.get()).toEqual([
-      "light",
-      "section",
-      "body",
-    ]);
+    expect(host.textContent).toBe("Text below AA contrast");
+    expect(host.querySelectorAll("[data-contrast-line]")).toHaveLength(1);
   });
 
   test("updates after a style change", () => {
@@ -409,14 +416,14 @@ describe("contrast line", () => {
     const host = render();
     expect(contrastLine(host)).toBeNull();
     update(() => setLocalStyle("text", "color", "#aaaaaa"));
-    expect(contrastLine(host)?.textContent).toBe("1 below AA contrast");
+    expect(contrastLine(host)?.textContent).toBe("Text below AA contrast");
   });
 
   test("updates after an instance is removed", () => {
     project({ styles: [style("text", "color", "#aaaaaa")] });
     selectInstance(sectionSelector);
     const host = render();
-    expect(contrastLine(host)?.textContent).toBe("1 below AA contrast");
+    expect(contrastLine(host)?.textContent).toBe("Text below AA contrast");
     update(() => {
       const instances = new Map($instances.get());
       instances.delete("text");

@@ -20,7 +20,6 @@ import {
   $registeredComponentMetas,
   $selectedInstanceSelector,
   $selectedPage,
-  selectInstance,
 } from "~/shared/nano-states";
 import {
   $instances,
@@ -42,7 +41,6 @@ import {
   type PresetStyles,
 } from "./backgrounds/presets";
 import { applyPreset } from "./backgrounds/apply-preset";
-import type { ContrastGroup } from "./backgrounds/contrast";
 import {
   buildSectionStyleModel,
   listRootColorVariables,
@@ -55,10 +53,9 @@ import { useDeferredContrastReport } from "./contrast-schedule";
  * of preset thumbnails, each named in a tooltip, colored from Global Root's
  * color variables or the built-in palette. A click applies one through
  * `applyPreset`, as local styles; an Image with scrim preset opens the image
- * picker first. Under the row, one line when text inside fails AA after a
- * scheduled run (contrast-schedule.ts); a click selects the failing text, one
- * group after another. Nothing else: the canvas shows the result (CLAUDE.md,
- * "Builder UI: options, not explanations").
+ * picker first. Under the row, one line of text when text inside fails AA
+ * after a scheduled run (contrast-schedule.ts). Nothing else: the canvas shows
+ * the result (CLAUDE.md, "Builder UI: options, not explanations").
  */
 
 /**
@@ -203,58 +200,34 @@ const PresetButton = styled("button", {
 });
 
 /**
- * A preset's thumbnail as a button, its label in a tooltip. It forwards its
- * ref and props so the image picker's trigger can wrap it.
+ * A preset's thumbnail as a button, its label in a tooltip that opens on hover
+ * and on keyboard focus. The design system's Tooltip, and so EnhancedTooltip,
+ * drops its trigger's focus, so the focus is handled here. It forwards its ref
+ * and props so the image picker's trigger can wrap it.
  */
 const PresetThumbnail = forwardRef<
   HTMLButtonElement,
   ComponentPropsWithoutRef<"button"> & { preset: Preset; palette: Palette }
->(({ preset, palette, ...props }, ref) => (
-  <Tooltip content={preset.label}>
-    <PresetButton
-      {...props}
-      ref={ref}
-      type="button"
-      aria-label={preset.label}
-      data-preset={preset.id}
-      style={getThumbnailStyle(preset, palette)}
-    />
-  </Tooltip>
-));
-PresetThumbnail.displayName = "PresetThumbnail";
-
-const ContrastLine = styled("button", {
-  all: "unset",
-  alignSelf: "start",
-  borderRadius: theme.borderRadius[2],
-  cursor: "pointer",
-  "&:hover": { textDecoration: "underline" },
-  "&:focus-visible": { outline: `1px solid ${theme.colors.borderFocus}` },
+>(({ preset, palette, onFocus, ...props }, ref) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <Tooltip content={preset.label} open={open} onOpenChange={setOpen}>
+      <PresetButton
+        {...props}
+        ref={ref}
+        type="button"
+        aria-label={preset.label}
+        data-preset={preset.id}
+        style={getThumbnailStyle(preset, palette)}
+        onFocus={(event) => {
+          onFocus?.(event);
+          setOpen(event.currentTarget.matches(":focus-visible"));
+        }}
+      />
+    </Tooltip>
+  );
 });
-
-/**
- * The failing text the contrast line steps through, and the step it is on.
- * A click from the instance the last step selected steps on, cycling; from
- * anywhere else it starts again from that element's report. Kept outside the
- * component, which the Style panel can unmount while the selection changes.
- */
-let failingCycle: { selectors: InstanceSelector[]; step: number } | undefined;
-
-const selectNextFailing = (failing: ContrastGroup[]) => {
-  const selected = $selectedInstanceSelector.get()?.join(",");
-  if (
-    failingCycle !== undefined &&
-    failingCycle.selectors[failingCycle.step].join(",") === selected
-  ) {
-    failingCycle.step = (failingCycle.step + 1) % failingCycle.selectors.length;
-  } else {
-    failingCycle = {
-      selectors: failing.map((group) => group.sampleInstanceSelector),
-      step: 0,
-    };
-  }
-  selectInstance(failingCycle.selectors[failingCycle.step]);
-};
+PresetThumbnail.displayName = "PresetThumbnail";
 
 export const SectionBackground = () => {
   const selector = useStore($sectionSelector);
@@ -265,9 +238,6 @@ export const SectionBackground = () => {
   if (selector === undefined) {
     return;
   }
-
-  const failing =
-    report?.groups.filter((group) => group.result === "fail") ?? [];
 
   return (
     <Flex
@@ -292,7 +262,14 @@ export const SectionBackground = () => {
                 />
               }
               open={picking === preset.id}
-              onOpenChange={(open) => setPicking(open ? preset.id : undefined)}
+              // The dialog reports a change a frame late, and on touch one
+              // picker's dismiss can land after the next one opened: a close
+              // clears only its own picker.
+              onOpenChange={(open) =>
+                setPicking((current) =>
+                  open ? preset.id : current === preset.id ? undefined : current
+                )
+              }
             >
               <PresetThumbnail preset={preset} palette={palette} />
             </FloatingPanel>
@@ -307,16 +284,10 @@ export const SectionBackground = () => {
         )}
       </PresetGrid>
 
-      {failing.length > 0 && (
-        <ContrastLine
-          type="button"
-          data-contrast-line
-          onClick={() => selectNextFailing(failing)}
-        >
-          <Text as="span" color="destructive">
-            {failing.length} below AA contrast
-          </Text>
-        </ContrastLine>
+      {report?.groups.some((group) => group.result === "fail") && (
+        <Text color="destructive" data-contrast-line>
+          Text below AA contrast
+        </Text>
       )}
     </Flex>
   );

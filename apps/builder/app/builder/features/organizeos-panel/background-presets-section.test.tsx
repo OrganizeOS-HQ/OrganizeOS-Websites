@@ -11,7 +11,6 @@ import { registerContainers } from "~/shared/sync/sync-stores";
 import {
   $organizeosSite,
   $selectedInstanceRenderState,
-  $selectedInstanceSelector,
   $selectedPageId,
   $selectedStyleSources,
   $selectedStyleState,
@@ -216,7 +215,7 @@ describe("Background presets", () => {
     expect(host.textContent).toContain("Background presets");
     expect(host.querySelector("[data-preset-grid]")).not.toBeNull();
     advance(150);
-    expect(contrastLine(host)).toBe("1 below AA contrast");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
   });
 
   test("computes nothing while closed", () => {
@@ -248,7 +247,7 @@ describe("Background presets", () => {
     expect(checkSectionContrast).not.toHaveBeenCalled();
     advance(1);
     expect(checkSectionContrast).toHaveBeenCalledTimes(1);
-    expect(contrastLine(host)).toBe("1 below AA contrast");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
   });
 
   test("a style change updates the report after the scheduled run, not synchronously", () => {
@@ -256,15 +255,15 @@ describe("Background presets", () => {
     selectInstance(sectionSelector);
     const host = render(createElement(Section));
     advance(150);
-    expect(contrastLine(host)).toBe("1 below AA contrast");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
     const calls = contrastCalls();
 
     act(() => setLocalStyle("text", "color", "#333333"));
     // the last report stays on screen until the run lands
     expect(contrastCalls()).toBe(calls);
-    expect(contrastLine(host)).toBe("1 below AA contrast");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
     advance(149);
-    expect(contrastLine(host)).toBe("1 below AA contrast");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
     advance(1);
     expect(contrastCalls()).toBe(calls + 1);
     expect(contrastLine(host)).toBeUndefined();
@@ -312,7 +311,7 @@ describe("Background presets", () => {
       advance(149);
       expect(contrastLine(host)).toBeUndefined();
       advance(1);
-      expect(contrastLine(host)).toBe("1 below AA contrast");
+      expect(contrastLine(host)).toBe("Text below AA contrast");
     } finally {
       if (saved.requestIdleCallback !== undefined) {
         scope.requestIdleCallback = saved.requestIdleCallback;
@@ -358,7 +357,7 @@ describe("Background presets", () => {
     advance(1000);
     expect(contrastLine(host)).toBeUndefined();
     runPending();
-    expect(contrastLine(host)).toBe("1 below AA contrast");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
 
     act(() => setLocalStyle("text", "color", "#bbbbbb"));
     expect(requestIdleCallback).toHaveBeenCalledTimes(2);
@@ -387,7 +386,7 @@ describe("Background presets", () => {
     selectInstance(sectionSelector);
     const host = render(createElement(Section));
     advance(150);
-    expect(contrastLine(host)).toBe("1 below AA contrast");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
 
     // every DOM change from here on, read synchronously with takeRecords
     const observer = new MutationObserver(() => {});
@@ -412,16 +411,7 @@ describe("Background presets", () => {
     expect(lineAdded).toBe(false);
 
     advance(1);
-    expect(contrastLine(host)).toBe("1 below AA contrast");
-    // the line is the new section's: it selects that section's text
-    act(() =>
-      host.querySelector<HTMLButtonElement>("[data-contrast-line]")?.click()
-    );
-    expect($selectedInstanceSelector.get()).toEqual([
-      "otherText",
-      "other",
-      "body",
-    ]);
+    expect(contrastLine(host)).toBe("Text below AA contrast");
   });
 });
 

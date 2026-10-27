@@ -805,19 +805,22 @@ directly after Backgrounds; its content is
 `features/organizeos-panel/section-background.tsx`, with its modules in
 `features/organizeos-panel/backgrounds/`). For the selected element (not the
 Body, the page root or Global Root) it shows one wrapping row of small square
-thumbnails, one per preset (Bloom, Wash and Solid tint, light and dark, and
-Image with scrim, light and dark), each named in a tooltip and by its
-`aria-label`, with no caption. A click applies the preset; an Image with scrim
-preset opens the image picker (the asset manager and its upload) and applies
-with the image chosen there, closing it. The presets take their colors from
-Global Root's color variables, the lightest as the base, the darkest as the
-text and the others as the accents in the order they are defined
-(`getDefaultRoles`), or from a built-in palette when Global Root defines none.
-Under the row, a single line in the destructive color, such as "2 below AA
-contrast", appears only when text inside fails WCAG AA. That is all it shows,
-by the owner's rule in `CLAUDE.md` ("Builder UI: options, not explanations"):
-no palette menus, help text, notices or report, since people learn the presets
-by trying them on the canvas.
+thumbnails, one for each of the nine presets ("Bloom", "Bloom, strong",
+"Bloom, dark", "Wash", "Wash, dark", "Solid tint", "Solid tint, dark", "Image
+with scrim" and "Image with scrim, dark"), each named by its `aria-label` and
+in a tooltip that opens on hover and on keyboard focus, with no caption. A
+click applies the preset; an Image with scrim preset opens the image picker
+(the asset manager and its upload) and applies with the image chosen there,
+closing it. With one picker open, a click or tap on the other scrim preset
+opens that one's picker. The presets take their colors from Global Root's
+color variables, the lightest as the base, the darkest as the text and the
+others as the accents in the order they are defined (`getDefaultRoles`), or
+from a built-in palette when Global Root defines none. Under the row, one line
+of plain text in the destructive color, "Text below AA contrast", appears only
+when text inside fails WCAG AA. That is all it shows, by the owner's rule in
+`CLAUDE.md` ("Builder UI: options, not explanations"): no palette menus, help
+text, notices or report, since people learn the presets by trying them on the
+canvas.
 
 - It is offered as the Style tab is: for a selection whose meta has a preset
   style, on an HTML page, in design mode, and mounted on the canvas. Slot,
@@ -836,14 +839,9 @@ by trying them on the canvas.
   replaces a pending run. A report is shown only for the selection it was
   computed for: after a style edit the last line stays until the new run
   lands, and after a change of selection nothing shows until the run for the
-  new one lands, so the previous element's line is never shown, or clicked,
-  for the new one. No line shows while a run is pending, or when no text
-  fails: all of it passes, there is none, or some can't be checked.
-- A click on the line selects the instance of the report's first failing
-  group (failures come lowest ratio first); clicking the line again there
-  selects the next failing group of the same report, cycling back to the
-  first. A click from any other selection starts again from that element's
-  report.
+  new one lands, so the previous element's line is never shown for the new
+  one. No line shows while a run is pending, or when no text fails: all of
+  it passes, there is none, or some can't be checked.
 - A preset writes ordinary styles only, to the element's **local** style
   source at the current breakpoint, base state, in one undo step:
   `background-color` and the nine layer longhands upstream's Backgrounds
@@ -1239,9 +1237,10 @@ slice"`, so it covers the element and is cropped on its narrower axis.
 - **Contrast.** The builder's contrast check classifies the root as rendering
   the designer's children only and, through `rendersBackgroundLayer` in
   `backgrounds/contrast.ts`, pushes an image layer above the root's own
-  layers even when it has no color or image of its own, so text inside a
-  Convergence Field reports "Can't check: a Convergence Field draws behind
-  this text", while a child with an opaque background (a scrim) still passes.
+  layers even when it has no color or image of its own. So the check can't
+  measure text over a Convergence Field, and that text raises no warning in
+  Background presets, while text on a child with an opaque background (a
+  scrim) is still checked.
 - The package gains no runtime dependency, and the shipped closure no bare
   specifier (the field uses `react` and `@webstudio-is/react-sdk/runtime`, as
   Animate Children does). The paused-script and contrast coverage fixtures
