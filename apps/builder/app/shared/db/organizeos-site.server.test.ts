@@ -95,8 +95,31 @@ describe("resolveOrganizeosSite", () => {
       manageUrl: "https://app.example.org/acme/website",
       platformUrl: "https://app.example.org",
       blocksEnabled: false,
+      cmsPanelEnabled: false,
     });
   });
+
+  test.each([
+    [undefined, false],
+    ["", false],
+    ["false", false],
+    ["TRUE", false],
+    ["1", false],
+    [" true", false],
+    ["true", true],
+  ])(
+    "offers the CMS panel when ORGANIZEOS_CMS_PANEL is %j: %s",
+    (cmsPanel, expected) => {
+      expect(
+        resolveOrganizeosSite({
+          ...base,
+          owner: SERVICE_OWNER,
+          projectDomain: "acme",
+          cmsPanel,
+        })?.cmsPanelEnabled
+      ).toBe(expected);
+    }
+  );
 
   test.each([
     [undefined, false],

@@ -142,12 +142,15 @@ export const resolveOrganizeosSite = ({
   publisherHost,
   platformUrl,
   blocksOrgIds,
+  cmsPanel,
 }: {
   owner: { provider: string | null; email: string | null };
   projectDomain: string;
   publisherHost: string;
   platformUrl: string;
   blocksOrgIds?: string;
+  /** The raw `ORGANIZEOS_CMS_PANEL`: only `true` offers the CMS panel. */
+  cmsPanel?: string;
 }): OrganizeosSite | undefined => {
   if (owner.provider !== ORGANIZEOS_SERVICE_PROVIDER || owner.email === null) {
     return undefined;
@@ -174,6 +177,7 @@ export const resolveOrganizeosSite = ({
     manageUrl: organizeosWebsiteAreaUrl(platformUrl, subdomain),
     platformUrl: platformUrl.replace(/\/+$/, ""),
     blocksEnabled: parseOrgIdList(blocksOrgIds).has(organizationId),
+    cmsPanelEnabled: cmsPanel === "true",
   };
 };
 

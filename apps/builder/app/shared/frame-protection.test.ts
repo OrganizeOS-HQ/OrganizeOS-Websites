@@ -1,5 +1,11 @@
+/**
+ * @vitest-environment node
+ */
 import { describe, expect, test } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
+  builderFrameSrcPolicy,
   FRAME_ANCESTORS,
   frameProtectionHeaders,
   withFrameAncestors,
@@ -101,5 +107,45 @@ describe("withFrameAncestors", () => {
     const policy = withFrameAncestors("frame-src 'self'; worker-src blob:");
     expect(policy.match(/frame-ancestors/g)).toHaveLength(1);
     expect(policy).not.toContain(",");
+  });
+});
+
+describe("builderFrameSrcPolicy", () => {
+  test("frames the canvas, Entri and the OrganizeOS app's origin, for the CMS panel", () => {
+    expect(
+      builderFrameSrcPolicy(
+        "https://p-1.builder.organizeos.org",
+        "https://app.organizeos.org"
+      )
+    ).toBe(
+      "frame-src https://p-1.builder.organizeos.org/canvas https://app.goentri.com/ https://app.organizeos.org; worker-src blob:"
+    );
+  });
+
+  test("takes only the app URL's origin", () => {
+    expect(
+      builderFrameSrcPolicy(
+        "https://p-1.builder.organizeos.org",
+        "https://staging.organizeos.org:8443/some/path?x=1"
+      )
+    ).toContain(" https://staging.organizeos.org:8443;");
+  });
+
+  test("adds nothing for an app URL that does not parse", () => {
+    expect(
+      builderFrameSrcPolicy("https://p-1.builder.organizeos.org", "not a url")
+    ).toBe(
+      "frame-src https://p-1.builder.organizeos.org/canvas https://app.goentri.com/; worker-src blob:"
+    );
+  });
+
+  test("the builder route sends it with ORGANIZEOS_APP_URL", () => {
+    const route = readFileSync(
+      fileURLToPath(new URL("../routes/_ui.(builder).tsx", import.meta.url)),
+      "utf8"
+    );
+    expect(route).toMatch(
+      /"Content-Security-Policy",\s*builderFrameSrcPolicy\(url\.origin, env\.ORGANIZEOS_APP_URL\)/
+    );
   });
 });

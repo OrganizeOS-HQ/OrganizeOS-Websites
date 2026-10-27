@@ -580,7 +580,9 @@ export const $variableValuesByInstanceSelector = computed(
   }
 );
 
-const $computedResourceRequests = computed(
+// OrganizeOS fork: exported for the CMS panel, which invalidates a saved
+// collection's requests (builder/features/cms-panel).
+export const $computedResourceRequests = computed(
   [
     $selectedPage,
     $instances,

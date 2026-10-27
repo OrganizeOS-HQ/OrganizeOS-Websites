@@ -11,6 +11,7 @@ import { theme } from "@webstudio-is/design-system";
 import {
   ImageIcon,
   NavigatorIcon,
+  NotebookAndPenIcon,
   PageIcon,
   PlusIcon,
   ResourceIcon,
@@ -42,6 +43,11 @@ import {
   $isOrganizeosPanelAvailable,
   OrganizeosPanel,
 } from "~/builder/features/organizeos-panel";
+import {
+  $isCmsPanelAvailable,
+  CmsFrame,
+  CmsPanel,
+} from "~/builder/features/cms-panel";
 import { PagesPanel } from "~/builder/features/pages";
 import { NavigatorPanel } from "~/builder/features/navigator";
 import { AssetsPanel } from "~/builder/features/assets";
@@ -59,6 +65,10 @@ type PanelConfig = {
     content?: boolean;
     text?: boolean;
   };
+  // OrganizeOS fork: a panel may ask for a wider maximum than the sidebar's
+  // 448px, and start at its own width; the others keep the defaults.
+  maxWidth?: string;
+  defaultWidth?: number;
 };
 
 const isPanelVisible = (
@@ -118,8 +128,22 @@ const panels: PanelConfig[] = [
       text: false,
     },
   },
-  // OrganizeOS fork: the OrganizeOS data tab: the org's data catalog, until
-  // the CMS tab takes this slot. The blocks are in the Components panel's
+  // OrganizeOS fork: the CMS panel (builder/features/cms-panel), in the
+  // OrganizeOS data tab's slot where it is offered (see getAvailablePanels).
+  // Its Data view keeps the data tab's list.
+  {
+    name: "cms",
+    label: "CMS",
+    Icon: NotebookAndPenIcon,
+    Panel: CmsPanel,
+    visibility: {
+      content: true,
+    },
+    maxWidth: "min(960px, 70vw)",
+    defaultWidth: 448,
+  },
+  // OrganizeOS fork: the OrganizeOS data tab: the org's data catalog, where
+  // the CMS panel is not offered. The blocks are in the Components panel's
   // OrganizeOS section, which binds each to the project's data as it inserts
   // it; Background presets are in the Style panel and Motion in the
   // Inspector. Offered only to orgs on the blocks' allowlist (see
@@ -160,24 +184,40 @@ const panels: PanelConfig[] = [
   },
 ];
 
-// OrganizeOS fork: the OrganizeOS data tab only where the org may use it.
-const getAvailablePanels = (isOrganizeosPanelAvailable: boolean) =>
-  panels.filter(
-    (panel) => panel.name !== "organizeos" || isOrganizeosPanelAvailable
-  );
+// OrganizeOS fork: the CMS panel where it is offered, and otherwise the
+// OrganizeOS data tab only where the org may use it.
+export const getAvailablePanels = (
+  isOrganizeosPanelAvailable: boolean,
+  isCmsPanelAvailable: boolean
+) =>
+  panels.filter((panel) => {
+    if (panel.name === "cms") {
+      return isCmsPanelAvailable;
+    }
+    if (panel.name === "organizeos") {
+      return isOrganizeosPanelAvailable && isCmsPanelAvailable === false;
+    }
+    return true;
+  });
 
 const setSidebarPanelWidth = (panelName: string, width: number) => {
   const widths = getSetting("sidebarPanelWidths");
   setSetting("sidebarPanelWidths", { ...widths, [panelName]: width });
 };
 
-const getSidebarPanelWidth = (panelName: SidebarPanelName) => {
+const getSidebarPanelWidth = (
+  panelName: SidebarPanelName,
+  // OrganizeOS fork: a panel's own starting width.
+  defaultWidth?: number
+) => {
   if (panelName === "none") {
     return theme.sizes.sidebarWidth;
   }
   const width = getSetting("sidebarPanelWidths")[panelName];
   if (width === undefined) {
-    return theme.sizes.sidebarWidth;
+    return defaultWidth === undefined
+      ? theme.sizes.sidebarWidth
+      : defaultWidth + "px";
   }
   return width + "px";
 };
@@ -190,10 +230,13 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
   const activePanel = useStore($activeSidebarPanel);
   const dragAndDropState = useStore($dragAndDropState);
   const availablePanels = getAvailablePanels(
-    useStore($isOrganizeosPanelAvailable)
+    useStore($isOrganizeosPanelAvailable),
+    useStore($isCmsPanelAvailable)
   );
-  const { Panel } =
-    availablePanels.find((item) => item.name === activePanel) ?? none;
+  const activePanelConfig = availablePanels.find(
+    (item) => item.name === activePanel
+  );
+  const { Panel } = activePanelConfig ?? none;
   const isPreviewMode = useStore($isPreviewMode);
   const isContentMode = useStore($isContentMode);
   const selectedPage = useStore($selectedPage);
@@ -302,10 +345,13 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
         }}
         resizable
         css={{
-          "--sidebar-left-panel-width": `${getSidebarPanelWidth(activePanel)}`,
+          "--sidebar-left-panel-width": `${getSidebarPanelWidth(
+            activePanel,
+            activePanelConfig?.defaultWidth
+          )}`,
           width: "var(--sidebar-left-panel-width)",
           minWidth: theme.sizes.sidebarWidth,
-          maxWidth: theme.spacing[35],
+          maxWidth: activePanelConfig?.maxWidth ?? theme.spacing[35],
           // We need the node to be rendered but hidden
           // to keep receiving the drag events.
           visibility:
@@ -331,6 +377,9 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
           />
         </Flex>
       </SidebarTabsContent>
+      {/* OrganizeOS fork: the CMS panel's frame, outside the tab content so
+      a tab switch or Escape never unmounts it (builder/features/cms-panel). */}
+      <CmsFrame />
     </SidebarTabs>
   );
 };
