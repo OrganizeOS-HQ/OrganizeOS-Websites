@@ -189,15 +189,24 @@ const onOverlayKeyDown = (event: KeyboardEvent) => {
   }
 };
 
-/** The rail's right edge in the viewport, measured while the overlay shows. */
-const useRailRight = (rail: HTMLElement | null, isShown: boolean) => {
-  const [right, setRight] = useState(0);
+/**
+ * The rail's right and bottom edges in the viewport, measured while the
+ * overlay shows. Below the rail the builder's footer spans the full width,
+ * so the overlay also covers that corner.
+ */
+const useRailBox = (rail: HTMLElement | null, isShown: boolean) => {
+  const [box, setBox] = useState({ right: 0, bottom: 0 });
   useLayoutEffect(() => {
     if (rail === null || isShown === false) {
       return;
     }
     const update = () => {
-      setRight(rail.getBoundingClientRect().right);
+      const { right, bottom } = rail.getBoundingClientRect();
+      setBox((current) =>
+        current.right === right && current.bottom === bottom
+          ? current
+          : { right, bottom }
+      );
     };
     update();
     window.addEventListener("resize", update);
@@ -211,7 +220,25 @@ const useRailRight = (rail: HTMLElement | null, isShown: boolean) => {
       observer?.disconnect();
     };
   }, [rail, isShown]);
-  return right;
+  return box;
+};
+
+/**
+ * A press on the top bar (the builder's main menu sits in its corner beside
+ * the overlay) hides the overlay, as another rail tab does. Menus and the
+ * dialogs they open portal without a z-index and would open beneath it.
+ */
+const onOverlayPointerDown = (event: PointerEvent) => {
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return;
+  }
+  if (target.closest("[data-cms-overlay], [data-cms-rail-button]")) {
+    return;
+  }
+  if (target.closest("nav")) {
+    hideCmsOverlay();
+  }
 };
 
 /**
@@ -244,7 +271,7 @@ export const CmsOverlay = () => {
   const isRendered = isAvailable && isMounted && src !== undefined;
   const isShown =
     isRendered && isOpen && isPreviewMode === false && isUiHidden === false;
-  const railRight = useRailRight(rail, isShown);
+  const { right: railRight, bottom: railBottom } = useRailBox(rail, isShown);
 
   // Preview mode and the hidden UI both take the rail away: they hide the
   // overlay, which stays hidden when they end.
@@ -306,8 +333,10 @@ export const CmsOverlay = () => {
       return;
     }
     document.addEventListener("keydown", onOverlayKeyDown, true);
+    document.addEventListener("pointerdown", onOverlayPointerDown, true);
     return () => {
       document.removeEventListener("keydown", onOverlayKeyDown, true);
+      document.removeEventListener("pointerdown", onOverlayPointerDown, true);
     };
   }, [isShown]);
 
@@ -349,6 +378,19 @@ export const CmsOverlay = () => {
           width: "100%",
           height: "100%",
           border: "none",
+        }}
+      />
+      {/* The corner below the rail, where the footer would show through. */}
+      <div
+        data-cms-overlay-corner
+        aria-hidden="true"
+        style={{
+          position: "fixed",
+          left: 0,
+          width: railRight,
+          top: railBottom,
+          bottom: 0,
+          background: theme.colors.backgroundPanel,
         }}
       />
     </div>,
