@@ -197,8 +197,8 @@ How an org admin's session is wired end to end, and which side owns each step. T
 
    The AGPL §13 source offer is rendered in the builder menu as well as the dashboard footer, so it stays reachable for an admin who never sees the dashboard. Do not remove the menu copy.
 
-4. **Publish** (`features/publish/organizeos-publish.tsx`). The dialog shows the site's real address with copy/open, points at OrganizeOS for domains and settings, and has one Publish button. `domain.publish` creates the production build and the OrganizeOS publisher (`services/organizeos-publisher.server.ts`) dispatches `publish-site.yml` with the build and organization ids. A dispatch that never leaves the builder marks the build FAILED at once; a static-export build is refused (it must never be deployed as the live site). The dialog also lists what is paused, and prebuild leaves an org's own script out of the published site (§10).
-5. **Execute** (`.github/workflows/publish-site.yml`). Syncs the build with the CLI, builds it, deploys to the `organizeos-sites` Vercel project, POSTs the deployment URL to OrganizeOS's publish callback (which flips the org's ledger pointer, making the site live through the reverse proxy), then reports `PUBLISHED` to the builder's `POST /internal/publish-status`; any failure reports `FAILED`. Without that report the builder's status would read "pending" forever: upstream's cloud publisher used to flip `Build.publishStatus` directly.
+4. **Publish** (`features/publish/organizeos-publish.tsx`). The dialog shows the site's real address with copy/open, points at OrganizeOS for domains and settings, and has one Publish button. `domain.publish` creates the production build and the OrganizeOS publisher (`services/organizeos-publisher.server.ts`) dispatches `publish-site.yml` with the build and organization ids. A dispatch that never leaves the builder marks the build FAILED at once; a static-export build is refused (it must never be deployed as the live site). The dialog also lists what is paused, and prebuild leaves an org's own script, and the unsafe values of §10, out of the published site.
+5. **Execute** (`.github/workflows/publish-site.yml`). Syncs the build with the CLI, builds it, reads the org script switch from the CLI it built and fails unless it is off, deploys to the `organizeos-sites` Vercel project, POSTs the deployment URL, and `orgScript` as the run's CLI read it (§10, "Reporting to OrganizeOS"), to OrganizeOS's publish callback (which flips the org's ledger pointer, making the site live through the reverse proxy), then reports `PUBLISHED` to the builder's `POST /internal/publish-status`; any failure reports `FAILED`. Without that report the builder's status would read "pending" forever: upstream's cloud publisher used to flip `Build.publishStatus` directly.
 6. **Status.** The dialog polls the project while a build is pending and treats a build as failed only after the executor's 25 minute timeout (`organizeos-publish-status.ts`; upstream assumes 3 minutes). On success it says the site is live and that the proxy can take up to a minute to pick the new deployment up (its target cache).
 7. **Collections** (OrganizeOS → builder, `POST /internal/collections-sync`, `ORGANIZEOS_PROVISION_TOKEN`, authenticated like provision). Sent by an Inngest job (debounced 30 s per org) whenever the org's public CMS collections change: `{ organizationId, collections }`, every public collection as a full snapshot (`slug` and `name`; `singularName`, `kind`, `id`, `contentUrl` and `fields` are optional, and unknown keys are ignored). The builder adds one catalog Resource per collection to the org's dev build (`shared/db/collections-sync.server.ts`): a GET Resource for `<api base>/collections/<slug>/items`, and no binding. The OrganizeOS data tab lists it, where an admin adds it to a page (§9: data loads only where it is used). Ids derive from the project and the slug, so a rename only updates the name; a platform collection that a static Resource already covers (`events`, `fundraisers`, `stats`) is skipped. Existing entries are replaced where they stand and new ones appended, so the build keeps its order. A sync also removes, where nothing references them, the bindings with a preset's deterministic id: the unscoped ones older syncs wrote next to each Resource and the `:root` Forms binding of the pre-deploy branches (§9). It keeps the rest, and never touches a binding with a fresh id, which is what every use brings now, whatever its scope.
 
@@ -218,7 +218,7 @@ No blocking browser gate. Upstream interrupted Firefox and Safari with a full-sc
 
 ## 7. OrganizeOS overlay (keep minimal for upstream merges)
 
-Changes confined to: env/config, the proprietary-package removal (this doc §2), auth/SSO + provisioning files (`services/auth-strategy/organizeos*`, `routes/internal.*`, `shared/db/provision.server.ts`, `shared/db/organizeos-*.server.ts`, `shared/db/collections-sync.server.ts`, and the data catalog `shared/db/resource-presets.server.ts` and `shared/db/signup-form-preset.server.tsx`, whose ids `shared/organizeos-preset-ids.ts` derives for the server and the browser alike), the blocks' allowlist (`ORGANIZEOS_BLOCKS_ORG_IDS` in `env/env.server.ts`, passed to `resolveOrganizeosSite` by the loader in `routes/_ui.(builder).tsx`, and synced to the canvas by one marked `organizeosSite` line in `shared/sync/sync-stores.ts`), the catalog's survival of its bindings (one marked branch each in `shared/instance-utils/mutation.ts` `deleteInstanceMutable`, `shared/data-variables.ts` `deleteVariableMutable` and `settings-panel/variable-popover.tsx`: a Resource whose id is a derived v5 UUID is never deleted with a binding, §9), the session binding (`services/auth-strategy/organizeos-session.server.ts`, called from `extractAuthFromRequest` in `shared/context.server.ts`, `findAuthenticatedUser` in `services/auth.server.ts` and the loader of `routes/oauth.ws.authorize.tsx`; the two optional fields and the `4-organizeos` cookie version in `services/auth.server.utils.ts`; the fields carried by `services/token.server.ts`, `routes/oauth.ws.authorize.tsx`, `routes/oauth.ws.token.ts` and the `ws` callback in `services/builder-auth.server.ts`; `ORGANIZEOS_SESSION_BINDING` in `env/env.server.ts`; tests in `organizeos-session.server.test.ts`, `routes-tests/oauth-ws-authorize.server.test.ts` and `env/env.server.test.ts`, and cases in `services/token.server.test.ts` and `shared/context.server.test.ts`; §5), the publish seam (`services/organizeos-publisher.server.ts`, `shared/db/publish-status.server.ts`, `publish-site.yml`), asset serving (`shared/asset-response.server.ts`, the three `routes/cgi.*` loaders, `asset-uploader`'s S3 client), frame protection (`shared/frame-protection.ts` and the `headers` exports of `root.tsx`, `routes/_ui.(builder).tsx`, `routes/_ui.dashboard.tsx` and `routes/_ui.$.tsx`), branding (`shared/branding.ts`; the OrganizeOS mark v3 in `shared/organizeos-logo.tsx`, the OrganizeOS repo's `LOGO_MARK_PATHS` drawn inline in the brand's in-app pair like its `BrandMark`, ink on light and cream on dark, shown where upstream showed its logo in `auth/login.tsx`, `features/menu/menu-button.tsx` and `builder/shared/loading.tsx` (those two on the dark topbar colour, so `on="dark"`) and `shared/error/error-message.client.tsx`; and `public/favicon.ico`, OrganizeOS's teal browser-tab favicon at 16, 32 and 48 px, packed by ImageMagick, `convert favicon-16x16.png favicon-32x32.png favicon-48x48.png favicon.ico`, from the OrganizeOS repo's `client/public/favicon-16x16.png` and `favicon-32x32.png` and a 48 px frame drawn from its `client/public/brand/organizeos-favicon.svg` by the favicon call of its `client/scripts/generate-pwa-icons.mjs`, `sharp(svg, { density: 300 }).resize(48, 48, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png({ compressionLevel: 9 })`, run with the builder's sharp 0.33.5), the OrganizeOS-only chrome behind `$organizeosSite` (`features/publish/organizeos-publish*.ts*`, small branches in `menu.tsx`, `topbar.tsx`, `publish.tsx`), the OrganizeOS blocks (§9: the `packages/sdk-components-organizeos` package, `@organizeos/site-components`, a `workspace:*` dependency in `apps/builder/package.json` and `packages/cli/package.json`, and so in `pnpm-lock.yaml`, registered by one `registerComponentLibrary` call in `canvas/canvas.tsx`; their builder UI, `features/organizeos-panel/*`: the blocks listed by one marked OrganizeOS section in `features/components/components.tsx` (its group, heading and links, and a click or Enter on a block routed to `insertOrganizeosBlock`), the Background presets section, one marked entry in `features/style-panel/sections/sections.ts`, the Motion tab, marked lines in `builder/inspector.tsx` with `$activeInspectorPanel` widened to take `"motion"` in `builder/shared/nano-states.ts`, the OrganizeOS data tab in `sidebar-left/sidebar-left.tsx` (shown only for an org on the allowlist) and `sidebar-left/types.ts`, one branch in the canvas's drop handler, `canvas/shared/use-drag-drop.ts`, so a dropped block is bound to the project's data like a clicked one, and `features/organizeos-panel/overlay.wiring.test.ts` pinning the marked lines; an `onInsert` option on `insertWebstudioFragmentAt` (`shared/instance-utils/insert.ts`) that completes the insert in its own transaction, and an `onWrap` option on `wrapInstance` (`shared/instance-utils/mutation.ts`), a third optional parameter called inside the wrap's transaction after the content-model check, through which the Motion tab writes its Animate Children's props in the wrap's undo step (§9), with two cases in `shared/instance-utils/mutation.test.tsx` (its writes undo with the wrap; it is not called for a refused `li`); their record picker, `settings-panel/controls/organizeos-record.tsx`, behind one branch in `settings-panel/controls/combined.tsx`; and the CLI's copy of their build into every published site, `packages/cli/src/organizeos-components.ts`, called from short hooks in `prebuild.ts` and `framework-react-router.ts`, with cases in `prebuild.test.ts`; `organizeos-components.ts` also copies the package's `LICENSE` and computes the source-offer URL, used by one more short hook in `prebuild.ts`; `html.tsx` carries a second marked change, the source offer (its head links and the visible Source link at the end of the body, §1), with cases in `prebuild.test.ts` and `organizeos-components.test.ts`; the fixture `fixtures/react-router-vercel` carries copies of the cache module and of the html route change), the org script pause (§10: `packages/sdk-components-organizeos/src/org-script.ts`, which the blocks package exports as `@organizeos/site-components/org-script` and builds with its own `vite.build.config.ts`; `canvas/organizeos-org-script.tsx`, with one marked change in `canvas/canvas.tsx` that registers upstream's base library through it, and four marked changes in `canvas/features/webstudio-component/webstudio-component.tsx` (a skip in `useInstanceProps` of a `dangerouslySetInnerHTML` prop, a skip there of a tag the builder does not offer, whether it is `instance.tag` or a `data-ws-tag` or `tag` prop on any component but `ws:element` and XML Node, a fallback to `div` in `WebstudioComponentCanvas` and `WebstudioComponentPreview` for a `ws:element` whose tag it does not offer, and a drop of such a tag prop from the props a parent passes in, in both) that keep both off every component; one marked branch in `shared/project-settings/section-general.tsx`; `features/publish/organizeos-publish-paused-script.ts`, whose banner is in `organizeos-publish.tsx`; and the CLI's `packages/cli/src/organizeos-org-script.ts`, called from one short marked hook in `prebuild.ts`; with tests beside each, among them `canvas/organizeos-org-script.wiring.test.ts` and `canvas/organizeos-org-script.props.test.tsx`), the guards' wiring (the `check:*` scripts and `checks` in the root `package.json`, and `.github/workflows/main.yml`, both of which also build the blocks' package before the tests), and the forced CLI route-template patches for the reverse-proxy host/auth/cache (§8), among them the published site's resource cache (`packages/cli/templates/react-router/app/organizeos-resource-cache.ts`, which one marked change in each of the react-router route templates `html.tsx`, `xml.tsx` and `text.tsx` calls, with its tests in `packages/cli/src/organizeos-resource-cache.test.ts` and cases in `prebuild.test.ts`), and two bug fixes worth offering upstream: `packages/cli/src/asset-files.ts` waits for a failed download's write stream to close before deleting its `.tmp` file (otherwise a fast failure could delete it before the stream created it, leaving it behind and flaking `asset-files.test.ts`), and `createLocalStyleSource` in `apps/builder/app/shared/tailwind/tailwind.ts` writes an element's style source selection back when one already existed (otherwise an element that kept a token from a pasted `<style>` class rule lost every Tailwind style, with a case in `tailwind.test.tsx`). Avoid deep edits to shared component `.tsx`; isolate OrganizeOS code so `upstream main` can be merged with minimal conflict.
+Changes confined to: env/config, the proprietary-package removal (this doc §2), auth/SSO + provisioning files (`services/auth-strategy/organizeos*`, `routes/internal.*`, `shared/db/provision.server.ts`, `shared/db/organizeos-*.server.ts`, `shared/db/collections-sync.server.ts`, and the data catalog `shared/db/resource-presets.server.ts` and `shared/db/signup-form-preset.server.tsx`, whose ids `shared/organizeos-preset-ids.ts` derives for the server and the browser alike), the blocks' allowlist (`ORGANIZEOS_BLOCKS_ORG_IDS` in `env/env.server.ts`, passed to `resolveOrganizeosSite` by the loader in `routes/_ui.(builder).tsx`, and synced to the canvas by one marked `organizeosSite` line in `shared/sync/sync-stores.ts`), the catalog's survival of its bindings (one marked branch each in `shared/instance-utils/mutation.ts` `deleteInstanceMutable`, `shared/data-variables.ts` `deleteVariableMutable` and `settings-panel/variable-popover.tsx`: a Resource whose id is a derived v5 UUID is never deleted with a binding, §9), the session binding (`services/auth-strategy/organizeos-session.server.ts`, called from `extractAuthFromRequest` in `shared/context.server.ts`, `findAuthenticatedUser` in `services/auth.server.ts` and the loader of `routes/oauth.ws.authorize.tsx`; the two optional fields and the `4-organizeos` cookie version in `services/auth.server.utils.ts`; the fields carried by `services/token.server.ts`, `routes/oauth.ws.authorize.tsx`, `routes/oauth.ws.token.ts` and the `ws` callback in `services/builder-auth.server.ts`; `ORGANIZEOS_SESSION_BINDING` in `env/env.server.ts`; tests in `organizeos-session.server.test.ts`, `routes-tests/oauth-ws-authorize.server.test.ts` and `env/env.server.test.ts`, and cases in `services/token.server.test.ts` and `shared/context.server.test.ts`; §5), the publish seam (`services/organizeos-publisher.server.ts`, `shared/db/publish-status.server.ts`, `publish-site.yml`), asset serving (`shared/asset-response.server.ts`, the three `routes/cgi.*` loaders, `asset-uploader`'s S3 client), frame protection (`shared/frame-protection.ts` and the `headers` exports of `root.tsx`, `routes/_ui.(builder).tsx`, `routes/_ui.dashboard.tsx` and `routes/_ui.$.tsx`), branding (`shared/branding.ts`; the OrganizeOS mark v3 in `shared/organizeos-logo.tsx`, the OrganizeOS repo's `LOGO_MARK_PATHS` drawn inline in the brand's in-app pair like its `BrandMark`, ink on light and cream on dark, shown where upstream showed its logo in `auth/login.tsx`, `features/menu/menu-button.tsx` and `builder/shared/loading.tsx` (those two on the dark topbar colour, so `on="dark"`) and `shared/error/error-message.client.tsx`; and `public/favicon.ico`, OrganizeOS's teal browser-tab favicon at 16, 32 and 48 px, packed by ImageMagick, `convert favicon-16x16.png favicon-32x32.png favicon-48x48.png favicon.ico`, from the OrganizeOS repo's `client/public/favicon-16x16.png` and `favicon-32x32.png` and a 48 px frame drawn from its `client/public/brand/organizeos-favicon.svg` by the favicon call of its `client/scripts/generate-pwa-icons.mjs`, `sharp(svg, { density: 300 }).resize(48, 48, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png({ compressionLevel: 9 })`, run with the builder's sharp 0.33.5), the OrganizeOS-only chrome behind `$organizeosSite` (`features/publish/organizeos-publish*.ts*`, small branches in `menu.tsx`, `topbar.tsx`, `publish.tsx`), the OrganizeOS blocks (§9: the `packages/sdk-components-organizeos` package, `@organizeos/site-components`, a `workspace:*` dependency in `apps/builder/package.json` and `packages/cli/package.json`, and so in `pnpm-lock.yaml`, registered by one `registerComponentLibrary` call in `canvas/canvas.tsx`; their builder UI, `features/organizeos-panel/*`: the blocks listed by one marked OrganizeOS section in `features/components/components.tsx` (its group, heading and links, and a click or Enter on a block routed to `insertOrganizeosBlock`), the Background presets section, one marked entry in `features/style-panel/sections/sections.ts`, the Motion tab, marked lines in `builder/inspector.tsx` with `$activeInspectorPanel` widened to take `"motion"` in `builder/shared/nano-states.ts`, the OrganizeOS data tab in `sidebar-left/sidebar-left.tsx` (shown only for an org on the allowlist) and `sidebar-left/types.ts`, one branch in the canvas's drop handler, `canvas/shared/use-drag-drop.ts`, so a dropped block is bound to the project's data like a clicked one, and `features/organizeos-panel/overlay.wiring.test.ts` pinning the marked lines; an `onInsert` option on `insertWebstudioFragmentAt` (`shared/instance-utils/insert.ts`) that completes the insert in its own transaction, and an `onWrap` option on `wrapInstance` (`shared/instance-utils/mutation.ts`), a third optional parameter called inside the wrap's transaction after the content-model check, through which the Motion tab writes its Animate Children's props in the wrap's undo step (§9), with two cases in `shared/instance-utils/mutation.test.tsx` (its writes undo with the wrap; it is not called for a refused `li`); their record picker, `settings-panel/controls/organizeos-record.tsx`, behind one branch in `settings-panel/controls/combined.tsx`; and the CLI's copy of their build into every published site, `packages/cli/src/organizeos-components.ts`, called from short hooks in `prebuild.ts` and `framework-react-router.ts`, with cases in `prebuild.test.ts`; `organizeos-components.ts` also copies the package's `LICENSE` and computes the source-offer URL, used by one more short hook in `prebuild.ts`; `html.tsx` carries a second marked change, the source offer (its head links and the visible Source link at the end of the body, §1), with cases in `prebuild.test.ts` and `organizeos-components.test.ts`; the fixture `fixtures/react-router-vercel` carries copies of the cache module and of the html route change), the org script pause (§10: `packages/sdk-components-organizeos/src/org-script.ts`, which the blocks package exports as `@organizeos/site-components/org-script` and builds with its own `vite.build.config.ts`; `acorn`, a dependency of the blocks package for the address rule, and so in `pnpm-lock.yaml`; `canvas/organizeos-org-script.tsx`, with one marked change in `canvas/canvas.tsx` that registers upstream's base library through it, and four marked changes in `canvas/features/webstudio-component/webstudio-component.tsx` (a skip in `useInstanceProps` of a `dangerouslySetInnerHTML` prop, a skip there of a tag the builder does not offer, or of an SVG `animate` or `set`, whether it is `instance.tag` or a `data-ws-tag` or `tag` prop on any component but `ws:element` and XML Node, a fallback to `div` in `WebstudioComponentCanvas` and `WebstudioComponentPreview` for a `ws:element` with such a tag, and a drop, in both renderers, of such a tag prop, an unsafe address, a `srcdoc` and an event handler attribute from every prop the component receives (`withoutPausedProps`, given the instance)) that keep both off every component; one marked branch in `shared/project-settings/section-general.tsx`; `features/publish/organizeos-publish-paused-script.ts`, whose banner is in `organizeos-publish.tsx`; and the CLI's `packages/cli/src/organizeos-org-script.ts`, called from one short marked hook in `prebuild.ts`; one marked header in `route-templates/xml.tsx` (§8); with tests beside each, among them `canvas/organizeos-org-script.wiring.test.ts`, `canvas/organizeos-org-script.props.test.tsx`, `packages/cli/src/organizeos-org-script.unsafe-values.test.ts` and `packages/cli/src/organizeos-publish-workflow.test.ts`), the guards' wiring (the `check:*` scripts and `checks` in the root `package.json`, and `.github/workflows/main.yml`, both of which also build the blocks' package, with the workspace packages it imports, before the tests), and the forced CLI route-template patches for the reverse-proxy host/auth/cache (§8), among them the published site's resource cache (`packages/cli/templates/react-router/app/organizeos-resource-cache.ts`, which one marked change in each of the react-router route templates `html.tsx`, `xml.tsx` and `text.tsx` calls, with its tests in `packages/cli/src/organizeos-resource-cache.test.ts` and cases in `prebuild.test.ts`), and two bug fixes worth offering upstream: `packages/cli/src/asset-files.ts` waits for a failed download's write stream to close before deleting its `.tmp` file (otherwise a fast failure could delete it before the stream created it, leaving it behind and flaking `asset-files.test.ts`), and `createLocalStyleSource` in `apps/builder/app/shared/tailwind/tailwind.ts` writes an element's style source selection back when one already existed (otherwise an element that kept a token from a pasted `<style>` class rule lost every Tailwind style, with a case in `tailwind.test.tsx`). Avoid deep edits to shared component `.tsx`; isolate OrganizeOS code so `upstream main` can be merged with minimal conflict.
 
 ## 8. Published-site route template patches
 
@@ -291,6 +291,17 @@ server bundle with one copy of the module, every route calling the same
 instance. Keep the patches on upstream merges: without them a page view costs
 one platform call per resource again (§9, the rollout gate).
 
+**XML pages answer sandboxed.** `xml.tsx` adds `Content-Security-Policy:
+sandbox` and `X-Content-Type-Options: nosniff` to an XML page's response, in
+one marked change, so an XML element that is a script in another namespace
+never runs on the org host. Sitemaps and feeds are read by crawlers and
+readers, which ignore the policy. Keep it on upstream merges (`prebuild.test.ts`,
+"an XML page answers with a sandbox policy and nosniff"). The fixture copies of
+the route stay upstream's: `pnpm fixtures` writes the header into
+`fixtures/webstudio-features/app/routes/[sitemap.xml]._index.tsx`, a render of
+upstream's `xml.tsx`, and `git checkout -- fixtures` drops it with the rest of
+that drift (§10, "Fixtures").
+
 ## 9. OrganizeOS components
 
 Blocks for OrganizeOS's platform features: a block is a root and parts that a
@@ -340,8 +351,11 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   Card" with a Cover image (shown only for an event with a `cover_image_url`),
   the Title, a Time element for the start time (rendered in the event's own
   `timezone`, a literal `dateStyle` "full" and `timeStyle` "short"), the Place
-  (shown only for a `location_name`) and a link to the event's `url` (absolute,
-  so a native anchor). The two `ws:show` expressions are `(x ?? "") !== ""`:
+  (shown only for a `location_name`) and a link to the event's page,
+  `/events/{slug}` on the site's own host, which the platform serves, opened
+  with a document navigation (`reloadDocument`: the site has no route there);
+  a bound address with a fixed start is published while org script is paused
+  (§10). The two `ws:show` expressions are `(x ?? "") !== ""`:
   false for `null`, `""` and a missing key, where a bare `!== null` would be
   true for a missing key. A Time given a zone it does not know falls back to
   UTC, so a build made before the platform sends `timezone` renders UTC rather
@@ -1477,15 +1491,32 @@ the page. That exposure needs no publish. Spec (OrganizeOS repo):
   neither the component generator nor the canvas filters it, so without this an
   org could still put its own markup on a page, and on the canvas, with no
   HTML Embed.
+- **Unsafe addresses.** An address whose scheme is not `http`, `https`,
+  `mailto`, `tel` or `sms` in `href`, `xlink:href`, `src`, `action`,
+  `formaction`, or `data` wherever it can reach an `object` (every holder but
+  Collection, Signup Form, RSVP Form and a `ws:element` that is not an
+  `object`), whatever the value's shape, on any element, a bound one whose
+  fixed start does not decide its scheme, and a page or project redirect to
+  one. The sites' React writes an address as it is, and a click, a frame, a
+  form or a client-side redirect runs it in the site's origin. See "Unsafe
+  values" below.
+- **`srcdoc`.** Its markup runs in the page's origin.
+- **Event handler attributes**: an `on…` prop that is not an action. React
+  writes one on a custom element.
+- **XML Node and XML Time on an HTML page**: a custom element that keeps every
+  attribute.
 - **Custom code** (Project settings > General).
 
 **The switch** is `orgScriptMayRun()` in `@organizeos/site-components/org-script`
 (`packages/sdk-components-organizeos/src/org-script.ts`), a code constant that
 returns `false`, read by the builder and the CLI alike. It is not an env var: an
 env var has two homes (the builder's Vercel env and the publish workflow's) that
-could disagree, and a missing or mistyped value could fail open. Turning it on is
-one reviewed change that also edits its test (`org-script.test.ts`), and only
-when both hold:
+could disagree, and a missing or mistyped value could fail open. The publish
+workflow reads it too, from the built package, fails unless it is off, and
+reports it to OrganizeOS (Reporting to OrganizeOS, below), so turning it on also
+edits that step. Turning
+it on is one reviewed change that also edits its test (`org-script.test.ts`),
+and only when both hold:
 
 - org sites are served from `{sub}.organizeos.io` and the old
   `{sub}.organizeos.org` hosts only redirect (step C2, `PUBLISHER_HOST=organizeos.io`);
@@ -1539,9 +1570,12 @@ as paused, so reversal is the switch.
   it hoists the element into `<head>` with `document.createElement`, and a
   script inserted that way runs; any spelling but the exact `script`
   (`SCRIPT`) is created as a live element too. `/canvas` sends no `script-src`
-  policy. So the canvas applies the rule publishing applies
-  (`elementTagMayRun` in `org-script.ts`: a string that is exactly one of
-  `tags`, the Tag control's list) to every tag that can reach an element,
+  policy. And inside a link, an SVG `animate` or `set` sets the link's `href` by
+  SMIL, past every attribute check, so a `javascript:` URL could reach a click
+  in preview. So the canvas applies the rules publishing applies
+  (`elementTagMayRender` in `org-script.ts`: a string that is exactly one of
+  `tags`, the Tag control's list, as `elementTagMayRun` holds, and is not
+  `animate` or `set`, `pausedSvgTags`) to every tag that can reach an element,
   whichever component holds it:
 
   - a `ws:element` whose `instance.tag` fails it renders as a `div`;
@@ -1557,8 +1591,9 @@ as paused, so reversal is the switch.
     both names are plain attributes, and XML Node writes its tag with a suffix
     no HTML element has, so both are left alone;
   - and again after the parent's props are merged in
-    (`withoutBlockedTagProps`, in both renderers): the props a trigger passes in
-    arrive in the child's `restProps`, past `useInstanceProps`.
+    (`withoutBlockedTagProps`, through `withoutPausedProps`, in both
+    renderers): the props a trigger passes in arrive in the child's
+    `restProps`, past `useInstanceProps`.
 
   The component that loses its tag renders its own default element. Four marked
   changes in `webstudio-component.tsx`; `organizeos-org-script.props.test.tsx`
@@ -1566,14 +1601,30 @@ as paused, so reversal is the switch.
   tag, `async` and `src`, and each of the six Radix triggers over a Box, Text
   and Heading carrying the tag prop, in both modes, asserts the whole document
   (head included) holds no script, and fails if a merge takes a change back.
+  It renders an `animate` and a `set` the same ways (a `ws:element` in an SVG
+  link, a Box, Text, Heading or Dialog Title given the tag, a trigger or a
+  parent passing it in) and asserts that the canvas makes neither.
   A render shows that no script reached the canvas, not which check stopped it,
   and the two tag skips in `useInstanceProps` overlap the check on the props a
   parent passes in. So the test also renders a Box that is given the tag by a
-  parent alone, which fails if `withoutBlockedTagProps` goes, and
-  `organizeos-org-script.wiring.test.ts` reads the source for the two skips.
-  `animate` and `set` are in `tags` and stay as they are on the canvas: they
-  reach a `javascript:` link only through a click, which an `href` set directly
-  on a Link already allows (N2 below).
+  parent alone, which fails if that check goes, and
+  `organizeos-org-script.wiring.test.ts` reads the source for the two skips
+  and the two `div` fallbacks. `animateTransform` (a transform list only),
+  `animateMotion` (a position on a path) and `mpath` cannot set an arbitrary
+  attribute, and the canvas still makes them.
+
+- **Unsafe values on the canvas.** `withoutPausedProps` (`org-script.ts`), at
+  the seam the tag check already uses, in both renderers, on every prop the
+  component receives, its own or passed in by a parent, given the instance: it
+  drops what `withoutBlockedTagProps` drops, every `srcdoc`, every `on…` value
+  that is not a function, and every address value that `urlValueMayRun`
+  refuses, whatever its shape, with `data` decided by the instance's component
+  and tag (Unsafe values, below). So an `iframe` with a `javascript:` `src` or
+  a `srcdoc` no longer runs in the builder's origin, in design or preview mode.
+  The canvas judges a bound address by the value it computes; publishing
+  judges it by its fixed start, and the Publish dialog lists the difference.
+  `organizeos-org-script.props.test.tsx` renders each case in both modes, and
+  `organizeos-org-script.wiring.test.ts` pins the two calls.
 
 - **Custom code field.** Read-only, with a sentence that says it is paused and
   kept (`section-general.tsx`, one marked branch). The saved code stays readable
@@ -1581,9 +1632,17 @@ as paused, so reversal is the switch.
 - **Publish dialog.** A banner after the plan-features banner lists each HTML
   Embed that will be dropped, each Markdown Embed, each element publishing
   drops for a tag the builder does not offer, each SVG `animate` or `set`
-  element, each `dangerouslySetInnerHTML` prop and "Custom code (Project
-  settings)" (a click selects the element or opens Project settings), from
-  `findPausedScript` (`features/publish/organizeos-publish-paused-script.ts`).
+  element, each `dangerouslySetInnerHTML` prop, each unsafe value ("Link
+  address (href)", "Form address (action)", "Source address (src)", "Object
+  address (data)", "Frame document (srcdoc)", "Event handler attribute
+  (onclick)", "XML element"), each page redirect to an unsafe address
+  ("Redirect on {page}", which opens that page's settings), each project
+  redirect to one ("Redirect from {old} (Project settings)", which opens
+  Redirects) and "Custom code (Project settings)" (a click selects the element
+  or opens the settings), from `findPausedScript`
+  (`features/publish/organizeos-publish-paused-script.ts`). A bound address
+  that the canvas shows with a safe value is still listed, and dropped at
+  publish, when its fixed start decides nothing.
   The tag items follow `classify` in the CLI, because the canvas only skips a
   bad `tag` or `data-ws-tag` prop and the element looks fine there, while
   publishing drops the element and everything inside it. An instance that goes
@@ -1641,7 +1700,17 @@ as paused, so reversal is the switch.
      line, except for the props of an instance that is dropped anyway;
   6. the site's custom code (`build.pages.meta.code`). `CustomCode` is still
      exported from the home page module, as an empty fragment, so `root.tsx`
-     is unchanged.
+     is unchanged;
+  7. every prop `propMayShip` refuses (Unsafe values, below): an unsafe
+     address, a `srcdoc` and an `on…` prop that is not an action. The instance
+     stays, without the prop;
+  8. an XML Node or XML Time that an HTML or text page publishes, with
+     everything inside it (one a Slot also shows on an XML page goes from
+     both);
+  9. a page redirect to an unsafe target, with the page's literal 3xx status,
+     and a project redirect to one, the others kept in order. The bundle's
+     pages are read once, in either pages shape, for the page roots, the walk
+     of what HTML and text pages publish and the redirects.
 
   A dropped instance takes its `ws:descendant` children (and any children a
   crafted build gave it), its props and the data sources scoped to it with it, so
@@ -1653,13 +1722,16 @@ as paused, so reversal is the switch.
   because `generateCss` skips a selection whose instance is gone. A dropped embed
   leaves nothing behind: HTML Embed's preset is `display: contents`, so an
   unstyled one has no box of its own. The hook logs one line in the publish
-  workflow's output, for support (what it left out, counted). It counts what
+  workflow's output, for support (what it left out, counted, the unsafe
+  addresses, `srcdoc` and event handler attributes of the instances that stay,
+  the XML elements on HTML pages and the redirects included). It counts what
   ships, as the Publish dialog lists it: whatever sits only inside a Content
   Block's templates container (the generator writes nothing for it, and the core
   template puts an empty HTML Embed there) is left out of the build and not
   counted, so a site with nothing else logs no line. The runtime
-  packages and the route templates are untouched, so `pnpm check:runtime-upstream`
-  stays green and no fixture copy changes.
+  packages and the route templates are untouched by the hook, so `pnpm check:runtime-upstream`
+  stays green and no fixture copy changes; XML pages answer sandboxed by a
+  separate marked header in `xml.tsx` (§8).
 
 **The icon exception.** An HTML Embed whose `code` is a static string
 byte-identical to one of the 7 SVG icons that upstream's own templates insert is
@@ -1703,6 +1775,71 @@ insertion (about six upstream paths, and still not a crafted patch) buys
 nothing, and keeping them makes reversal free. A designer who pasted HTML loses
 its leftover CSS embed at publish and moves the rules into styles.
 
+**Unsafe values.** While the switch is off, an address may have the scheme
+`http`, `https`, `mailto`, `tel` or `sms`, or none (a relative path, `//host`,
+`?query`, `#fragment`, the empty string); `sms` cannot run script, and campaign
+sites use it. Every other scheme is refused, `javascript:`, `data:`,
+`vbscript:`, `blob:`, `file:` and `about:` among them (`urlMayRun` in
+`org-script.ts`). An address is read as the URL parser reads it: leading and
+trailing C0 controls and spaces trimmed, then every tab, line feed and carriage
+return removed, so a `javascript:` split by a newline is still one, while a
+scheme broken by another character (`java script:`) is a relative path. A value
+is judged as React writes it, `String(value)`, whatever its shape: an array
+joins, so a JSON `["javascript:…"]` is `javascript:…` (`urlValueMayRun`).
+Publishing cannot know what a variable, a Resource or a parameter holds when the
+page renders, so a bound address ships only when the start of its value is fixed
+in the expression and decides the scheme: `"/events/" + x`, `"mailto:" + x`, a
+template literal that starts `https://` (`urlExpressionMayRun`, which reads the
+expression with acorn, refuses anything that is not exactly one expression, and
+holds both branches of a conditional or logical expression to the rule). The
+canvas judges the value it computes instead, and the Publish dialog lists a
+bound address that publishing drops. Some bindings cannot run script, and are
+exempt: a bound `src` on Image and on a `ws:element` `img`, `video`, `audio`,
+`source`, `track` or `input` loads an image or media, never a document, and a
+bound `href` on Head Link is a `<link>` in the head. A prop whose type cannot
+hold an address (a page, an asset, a Resource, an action, a number or a boolean)
+ships, and an animation's settings (`animationAction`, an object) are judged by
+their value, so the OrganizeOS Animate Children keeps its `action`. `data` is an
+address only on an `object`, so it is decided by its holder, never by the
+value's shape: Collection, Signup Form and RSVP Form hold records in it, and on
+a `ws:element` that is not an `object` it is a plain attribute, so they keep it
+whatever it holds, and every other holder is held to the rule
+(`recordDataHolder`). `srcdoc` never ships, in any spelling: its markup runs in
+the page's origin. An `on…` prop ships only as an action, because React writes a
+string one on a custom element. XML Node and XML Time are left out of every HTML
+and text page, where each is a custom element that keeps every attribute, and
+keep every prop on an XML page, which answers sandboxed (§8). A page's redirect,
+an expression evaluated per request, is held to the rule for a bound address,
+and a project redirect's target to the rule for a static one: on a client-side
+navigation the site follows a redirect to another origin with `window.location`,
+and a `javascript:` URL's origin is never the page's. `propMayShip`,
+`pageRedirectMayShip`, `projectRedirectMayShip` and `withoutPausedProps` hold
+the rule, and every part of it follows the switch. It guards against script, not
+against where an address leads: a relative or protocol-relative address such as
+`//evil.example` can be an open redirect, never script in the site's origin.
+
+**Reporting to OrganizeOS.** OrganizeOS launches a Website only from a build
+that carries no org script, so the publish reports what the run's CLI says,
+never configuration. The step "Read the org script switch" (`publish-site.yml`,
+after "Build site" and before "Deploy to Vercel", so nothing deploys first)
+loads `@organizeos/site-components/org-script` from `packages/cli`, as the CLI
+does (`lib/org-script.js`, built at the same commit by "Install and build CLI"),
+checks that the module has the address rule (`urlMayRun` refuses a `javascript:`
+address with the switch held off), and reads `orgScriptMayRun()`. The run fails
+unless the rule is there and the switch reads `false`, which is then the step's
+output (`steps.org-script.outputs.value`). The publish callback's body carries
+it as `orgScript`, a JSON boolean written unquoted from that output alone, beside
+`organizationId`, `buildId` and `deploymentUrl`, under the same shared secret.
+The callback refuses a body with a key it does not know, so OrganizeOS accepted
+the field first (OrganizeOS #2075); it stores nothing of it yet. The Launch PR
+stores it with the deployment pointer, `true` when it is missing (unknown means
+unsafe), and launches a Website only from a build whose report is `false`.
+`organizeos-publish-workflow.test.ts` reads the step and the callback body
+(`orgScript` from the step's output and nothing else, and the body JSON with the
+four keys the callback accepts) and runs the step's command against the built
+package; CI builds the blocks package, with the workspace packages it imports,
+before the tests.
+
 **Existing projects.** Dev builds (`"Build".deployment` null, the build the
 builder edits) keep their embeds and code, and the canvas shows them paused from
 the deploy onward. Published deployments are frozen: a deployment built before
@@ -1731,6 +1868,10 @@ build id and checks only that the build belongs to the org's project.
   flight, the org's run cancels the owner's, and the org's build is the one that
   goes out, with all of it dropped.
 
+An Event Card inserted before the card linked to `/events/{slug}` links to the
+event's `url`, which publishing now leaves out (the dialog lists it): insert the
+card again.
+
 These are read-only queries for the Supabase SQL editor of OrganizeOS
 production. The builder's tables live in that database, reachable by
 `service_role` only (`docs/features/website-builder.md` in the OrganizeOS repo).
@@ -1745,7 +1886,11 @@ shows too), and the ones that write raw markup into one. Run 3 and 5 before the
 change that widened the tag rule to every component deploys: an instance they
 list with a value outside `tags` is dropped at publish, and the only components
 that legitimately hold one are XML Node (exempt) and Webflow's own tag names on
-Box, Text and Heading.
+Box, Text and Heading. Query 6 lists the address, `srcdoc` and `on…` props that
+publishing may leave out for their value, and query 7 the page and project
+redirects it may leave out (both approximate: the CLI's rule is the authority).
+Run them before the unsafe values rule deploys: what they list is what the next
+publish leaves out.
 
 ```sql
 -- 1. Per org project: the dev build, the latest production build, and the build
@@ -1836,6 +1981,65 @@ where p."isDeleted" = false
            and i->>'component' not in ('ws:element', 'XmlNode')))
 group by 1, 2, 3, 4, 5
 order by props desc;
+
+-- 6. Address, srcdoc and on… props in the dev builds that publishing may leave
+--    out: a static value with a scheme other than http, https, mailto, tel or sms,
+--    every srcdoc, every on… prop that is not an action, every json or string[]
+--    address (read value_start: it ships when its text is safe) and every bound
+--    address (it ships when its fixed start decides the scheme, or on an
+--    exempt component). Approximate (a tab or newline inside
+--    a scheme is not read); the CLI's rule is the authority.
+select p.domain as subdomain, i->>'component' as component, i->>'tag' as tag,
+       pr->>'name' as prop, pr->>'type' as prop_type,
+       left(pr->>'value', 80) as value_start, count(*) as props
+from "Project" p
+join "User" u on u.id = p."userId" and u.provider = 'organizeos-service'
+join "Build" b on b."projectId" = p.id and b.deployment is null
+cross join lateral jsonb_array_elements(b.props::jsonb) pr
+join lateral jsonb_array_elements(b.instances::jsonb) i
+  on i->>'id' = pr->>'instanceId'
+where p."isDeleted" = false
+  and i->>'component' not in ('XmlNode', 'XmlTime')
+  -- data on a holder of records, or on a ws:element that is not an object, ships
+  and not (lower(pr->>'name') = 'data'
+           and (i->>'component' in ('ws:collection',
+                                    '@organizeos/site-components:SignupForm',
+                                    '@organizeos/site-components:RsvpForm')
+                or (i->>'component' = 'ws:element' and i->>'tag' is distinct from 'object')))
+  and (lower(pr->>'name') = 'srcdoc'
+       or (pr->>'name' ~* '^on.' and pr->>'type' <> 'action')
+       or (lower(pr->>'name') in ('href', 'xlink:href', 'xlinkhref', 'src',
+                                  'action', 'formaction', 'data')
+           and (pr->>'type' in ('expression', 'parameter', 'json', 'string[]')
+                or (pr->>'type' = 'string'
+                    and pr->>'value' ~* '^[[:space:][:cntrl:]]*[a-z][a-z0-9+.-]*:'
+                    and pr->>'value' !~* '^[[:space:][:cntrl:]]*(https?|mailto|tel|sms):'))))
+group by 1, 2, 3, 4, 5, 6
+order by props desc;
+
+-- 7. Page redirects (every one: a bound target ships only with a fixed start)
+--    and project redirects whose target has a scheme other than http, https,
+--    mailto, tel or sms, in the dev builds, both page shapes.
+select p.domain as subdomain, 'page' as kind, pg->>'path' as source,
+       pg #>> '{meta,redirect}' as target
+from "Project" p
+join "User" u on u.id = p."userId" and u.provider = 'organizeos-service'
+join "Build" b on b."projectId" = p.id and b.deployment is null
+cross join lateral jsonb_array_elements(
+  coalesce(b.pages::jsonb -> 'pages', '[]'::jsonb)
+  || coalesce(jsonb_build_array(b.pages::jsonb -> 'homePage'), '[]'::jsonb)) pg
+where p."isDeleted" = false and pg #>> '{meta,redirect}' is not null
+union all
+select p.domain, 'project', r->>'old', r->>'new'
+from "Project" p
+join "User" u on u.id = p."userId" and u.provider = 'organizeos-service'
+join "Build" b on b."projectId" = p.id and b.deployment is null
+cross join lateral jsonb_array_elements(
+  coalesce(b.pages::jsonb -> 'redirects', '[]'::jsonb)) r
+where p."isDeleted" = false
+  and r->>'new' ~* '^[[:space:][:cntrl:]]*[a-z][a-z0-9+.-]*:'
+  and r->>'new' !~* '^[[:space:][:cntrl:]]*(https?|mailto|tel|sms):'
+order by 1, 2;
 ```
 
 **Not covered by this pause.** Other ways an org's script can reach a page run
@@ -1844,30 +2048,34 @@ builder canvas now). A follow-up design closes them before any Website goes live
 on `{sub}.organizeos.org`, which the owner has allowed before C2: expressions
 compile to code unchecked (`transpileExpression` and `generateExpression` only
 parse and rename identifiers, `lintExpression` runs in the builder UI only, and
-the sync server checks shape only); `javascript:` URLs and `srcdoc` (the sites'
-React does not block `javascript:` in production); uploaded HTML, SVG and XML
-assets served from `/assets/` on the org host; XML pages (XML Node takes any tag
-and attribute, and the xml route answers `application/xml`); XML Node in an HTML
-page, which renders `on*` attributes as a custom element. The canvas is open to
-`javascript:` URLs and `srcdoc` in **design mode too**, not only in preview: an
-`iframe` with `srcdoc`, or with a `javascript:` `src`, runs in the builder's own
-origin as soon as the page renders (React DOM's client keeps the URL as it is,
-and nothing in `apps/builder/app/canvas` filters either), and the builder
-origin holds the platform session until step D. That half of the follow-up
-design is live now. The lasting half of the tag rule above (refuse a tag
+the sync server checks shape only); and uploaded HTML, SVG and XML assets
+served from `/assets/` on the org host, which the OrganizeOS site proxy is to
+answer sandboxed (the platform's one builder design, section 8.5). The others
+are closed: `javascript:` URLs and `srcdoc`, which publishing leaves out and the
+canvas drops in design and preview mode (Unsafe values, above), and an SVG
+`animate` or `set` that sets a link's `href` to one, which neither publishing
+nor the canvas makes (Tags on the canvas, above); XML pages, which
+answer sandboxed (§8); and XML Node in an HTML page, which publishing leaves
+out. The lasting half of the tag rule above (refuse a tag
 outside `tags`, whatever the switch says) goes with the expression design.
 
-**Keeping it on upstream merges.** Four upstream files carry a change, and each
+**Keeping it on upstream merges.** Five upstream files carry a change, and each
 has a test that fails if a merge takes it back: `canvas/canvas.tsx` registers
 the base library through `withOrgScriptPolicy`
 (`organizeos-org-script.wiring.test.ts`); `webstudio-component.tsx` skips a
-paused prop and a tag the builder does not offer, checks the props a parent
-passes in as well, and falls back to a `div` for a `ws:element` with such a tag
+paused prop and a tag the builder does not offer, `animate` and `set` among
+them on the canvas, checks every prop a component
+receives, its own and the ones a parent passes in, and falls back to a `div` for
+a `ws:element` with such a tag
 (`organizeos-org-script.props.test.tsx`, and `organizeos-org-script.wiring.test.ts`
-for the two tag skips in `useInstanceProps`);
+for the two tag skips in `useInstanceProps`, the two `div` fallbacks, which
+read `elementTagMayRender`, and the two renderer calls, which are
+`withoutPausedProps`);
 `section-general.tsx` holds the read-only branch (`section-general.test.tsx`);
-and the `prebuild.ts` hook runs `dropOrgScript` (`prebuild.test.ts`, "leaves an
-org's own script out"). A merge that adds or redraws a template icon fails the
+the `prebuild.ts` hook runs `dropOrgScript` (`prebuild.test.ts`, "leaves an
+org's own script out" and "leaves unsafe values out"); and `xml.tsx` answers an
+XML page sandboxed (`prebuild.test.ts`, "an XML page answers with a sandbox
+policy and nosniff", §8). A merge that adds or redraws a template icon fails the
 template test (add the new string to `templateIconCodes`, keep the old one), and
 one that adds another component using `dangerouslySetInnerHTML` to the runtime
 packages fails a tripwire in `packages/cli/src/organizeos-org-script.test.ts`,
@@ -1888,7 +2096,15 @@ props on to a child, which is how a tag prop reaches a Box. The new one needs
 no entry for the rule to cover it, but it joins `triggerNames` in that test and
 `forwarders` in `organizeos-org-script.props.test.tsx`, so both modes of the
 canvas and publishing are shown to hold for it. XML Node takes any tag by
-design; it is category xml and falls under "XML Node in an HTML page" above.
+design; it is category xml, and publishing leaves it out of an HTML page.
+Four tripwires in `packages/cli/src/organizeos-org-script.unsafe-values.test.ts`
+read the metas the CLI registers and fail on a change that needs a decision
+under Unsafe values: a new component of category xml joins `xmlComponents`; a
+new component with a `data` prop holds records, and joins
+`recordDataComponents`, or publishing holds its `data` to the rule; a new meta
+prop named `on…` that is not an action gets a decision, since publishing drops
+it; and a new attribute rename that is an address, `srcdoc` or `on…` name joins
+the rule, which must read both names alike.
 
 **Fixtures.** `pnpm checks` ends with `pnpm fixtures`, which syncs
 `fixtures/webstudio-features` from upstream's development builder and rebuilds

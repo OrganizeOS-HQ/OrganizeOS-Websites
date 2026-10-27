@@ -32,14 +32,14 @@ export const cardToken = token(
 /**
  * One event, as a function of the collection's parameter: the
  * `GET /v1/events` item (`cover_image_url`, `title`, `start_time`, `timezone`,
- * `location_name`, `url`).
+ * `location_name`, `slug`).
  *
  * The two `ws:show` expressions are false for `null`, `""` and a missing key:
  * a bare `!== null` would be true for a missing key, since `undefined !== null`.
  * The Time element renders in the event's own zone; a value it does not know
  * falls back to UTC, so a build made before the platform sends `timezone`
- * renders UTC rather than failing. `url` is absolute, so the link renders as a
- * native anchor.
+ * renders UTC rather than failing. The link goes to the event's page on the
+ * site's own host, `/events/{slug}`, which the platform serves (see below).
  */
 export const eventCard = (event: Parameter) => (
   <ws.element ws:tag="article" ws:label="Event Card" ws:tokens={[cardToken]}>
@@ -82,10 +82,20 @@ export const eventCard = (event: Parameter) => (
     >
       {expression`${event}.location_name`}
     </ws.element>
+    {/*
+      The platform serves the event's page at /events/{slug} on the site's own
+      host, and the site has no route there, so the click is a document
+      navigation: upstream Link's `reloadDocument`, which a published `a`
+      renders through. A bound address whose fixed start decides the scheme is
+      published while org script is paused (docs/ORGANIZEOS-FORK.md section
+      10); `event.url` alone would not be. The Event List shares this card
+      (`eventsTemplate`).
+    */}
     <ws.element
       ws:tag="a"
       ws:label="Event link"
-      href={expression`${event}.url`}
+      href={expression`"/events/" + ${event}.slug`}
+      reloadDocument={true}
     >
       {new PlaceholderValue("Details and RSVP")}
     </ws.element>

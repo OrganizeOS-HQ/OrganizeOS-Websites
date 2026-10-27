@@ -182,7 +182,15 @@ export const describeEventsBlock = ({
       const link = byLabel("Event link");
       expect(link.component).toBe("ws:element");
       expect(link.tag).toBe("a");
-      expect(expressionOf(propOf(link, "href"))).toBe(`${variable}.url`);
+      // the platform's event page on the site's own host, opened with a
+      // document navigation: the site has no route there
+      expect(expressionOf(propOf(link, "href"))).toBe(
+        `"/events/" + ${variable}.slug`
+      );
+      expect(propOf(link, "reloadDocument")).toMatchObject({
+        type: "boolean",
+        value: true,
+      });
       expect(link.children).toEqual([
         { type: "text", value: "Details and RSVP", placeholder: true },
       ]);

@@ -20,8 +20,18 @@ const createPage = (id: string, name: string): Page => ({
   rootInstanceId: `${id}-root`,
 });
 
-const createPages = ({ code }: { code?: string } = {}): Pages => {
+const createPages = ({
+  code,
+  xmlAbout = false,
+}: {
+  code?: string;
+  /** the About page is an XML page, where XML Node and XML Time belong */
+  xmlAbout?: boolean;
+} = {}): Pages => {
   const pages = [createPage("home", "Home"), createPage("about", "About")];
+  if (xmlAbout) {
+    pages[1].meta = { documentType: "xml" };
+  }
   return {
     homePageId: "home",
     rootFolderId: ROOT_FOLDER_ID,
@@ -223,7 +233,6 @@ describe("findPausedScript", () => {
           "title",
           "both",
           "element",
-          "xml",
           "link",
           "title-with-tag",
           "trigger",
@@ -236,6 +245,8 @@ describe("findPausedScript", () => {
       { id: "title", component: DialogTitle },
       { id: "both", component: "Heading" },
       { id: "element", component: "ws:element", tag: "div" },
+      // on an XML page: an HTML page leaves an XML element out
+      { id: "about-root", component: "Body", children: ids("xml") },
       { id: "xml", component: "XmlNode" },
       { id: "link", component: "Link", tag: "animate" },
       { id: "title-with-tag", component: DialogTitle, tag: "animate" },
@@ -263,7 +274,11 @@ describe("findPausedScript", () => {
       stringProp("transform", "data-ws-tag", "animateTransform"),
     ]);
 
-    expect(find({ instances, props }).map((item) => item.label)).toEqual([
+    expect(
+      find({ pages: createPages({ xmlAbout: true }), instances, props }).map(
+        (item) => item.label
+      )
+    ).toEqual([
       "SVG animate element on Home",
       "SVG set element on Home",
       "SVG animate element on Home",
@@ -274,7 +289,9 @@ describe("findPausedScript", () => {
       "SVG set element on Home",
     ]);
     expect(
-      find({ instances, props }).map((item) => item.navigate?.instanceSelector)
+      find({ pages: createPages({ xmlAbout: true }), instances, props }).map(
+        (item) => item.navigate?.instanceSelector
+      )
     ).toEqual([
       ["box", "home-root"],
       ["text", "home-root"],
@@ -304,7 +321,6 @@ describe("findPausedScript", () => {
           "trigger",
           "element-script",
           "element-attribute",
-          "xml",
           "both",
           "embedded",
           "kept-nav"
@@ -321,6 +337,8 @@ describe("findPausedScript", () => {
       { id: "element-script", component: "ws:element", tag: "script" },
       // an attribute on an element that is made already
       { id: "element-attribute", component: "ws:element", tag: "div" },
+      // on an XML page: an HTML page leaves an XML element out
+      { id: "about-root", component: "Body", children: ids("xml") },
       { id: "xml", component: "XmlNode", tag: "urlset" },
       { id: "both", component: "Box", tag: "section" },
       { id: "embedded", component: "Box", tag: "script" },
@@ -350,7 +368,11 @@ describe("findPausedScript", () => {
       stringProp("kept-nav", "data-ws-tag", "h3"),
     ]);
 
-    const items = find({ instances, props });
+    const items = find({
+      pages: createPages({ xmlAbout: true }),
+      instances,
+      props,
+    });
     expect(new Set(items.map((item) => item.label))).toEqual(
       new Set(["Element with a tag the builder does not offer on Home"])
     );
@@ -602,5 +624,213 @@ describe("findPausedScript", () => {
 
   test("lists nothing before the pages load", () => {
     expect(find({ pages: undefined })).toEqual([]);
+  });
+
+  // Unsafe values (docs/ORGANIZEOS-FORK.md section 10): publishing leaves them
+  // out (propMayShip), and the dialog says so, each with its element
+  const expressionProp = (
+    instanceId: string,
+    name: string,
+    value: string
+  ): Prop => ({
+    id: `${instanceId}-${name}`,
+    instanceId,
+    name,
+    type: "expression",
+    value,
+  });
+
+  const onHome = (selector: string) => ({
+    pageId: "home",
+    instanceSelector: [selector, "home-root"],
+  });
+
+  test("lists each unsafe address with its name, page and selector", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("link", "anchor", "form", "button", "frame", "object"),
+      },
+      { id: "link", component: "Link" },
+      { id: "anchor", component: "ws:element", tag: "a" },
+      { id: "form", component: "ws:element", tag: "form" },
+      { id: "button", component: "ws:element", tag: "button" },
+      { id: "frame", component: "ws:element", tag: "iframe" },
+      {
+        id: "object",
+        component: "ws:element",
+        tag: "object",
+        children: ids("svg-link"),
+      },
+      { id: "svg-link", component: "ws:element", tag: "a" },
+    ]);
+    const props = toProps([
+      stringProp("link", "href", "javascript:alert(1)"),
+      stringProp("anchor", "HREF", " JavaScript:alert(1)"),
+      stringProp("anchor", "title", "javascript:alert(1)"),
+      stringProp("form", "action", "javascript:alert(1)"),
+      stringProp("button", "formaction", "javascript:alert(1)"),
+      stringProp("frame", "src", "data:text/html,<script>alert(1)</script>"),
+      jsonProp("object", "data", ["javascript:alert(1)"]),
+      stringProp("svg-link", "xlink:href", "javascript:alert(1)"),
+    ]);
+
+    expect(find({ instances, props })).toEqual([
+      { label: "Link address (href) on Home", navigate: onHome("link") },
+      { label: "Link address (HREF) on Home", navigate: onHome("anchor") },
+      { label: "Form address (action) on Home", navigate: onHome("form") },
+      {
+        label: "Form address (formaction) on Home",
+        navigate: onHome("button"),
+      },
+      { label: "Source address (src) on Home", navigate: onHome("frame") },
+      { label: "Object address (data) on Home", navigate: onHome("object") },
+      {
+        label: "Link address (xlink:href) on Home",
+        navigate: {
+          pageId: "home",
+          instanceSelector: ["svg-link", "object", "home-root"],
+        },
+      },
+    ]);
+  });
+
+  test("lists a bound address that decides nothing, and not one whose fixed start decides", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("bound", "fixed", "image", "collection"),
+      },
+      { id: "bound", component: "Link" },
+      { id: "fixed", component: "Link" },
+      { id: "image", component: "Image" },
+      { id: "collection", component: "ws:collection" },
+    ]);
+    const props = toProps([
+      expressionProp("bound", "href", "$ws$dataSource$event.url"),
+      expressionProp("fixed", "href", '"/events/" + $ws$dataSource$event.slug'),
+      expressionProp("image", "src", "$ws$dataSource$event.cover_image_url"),
+      expressionProp("collection", "data", "$ws$dataSource$events.data"),
+    ]);
+
+    expect(find({ instances, props })).toEqual([
+      { label: "Link address (href) on Home", navigate: onHome("bound") },
+    ]);
+  });
+
+  test("lists srcdoc and event handler attributes", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("frame", "custom"),
+      },
+      { id: "frame", component: "ws:element", tag: "iframe" },
+      { id: "custom", component: "ws:element", tag: "div" },
+    ]);
+    const props = toProps([
+      stringProp("frame", "srcdoc", "<script>alert(1)</script>"),
+      stringProp("custom", "is", "x-y"),
+      stringProp("custom", "onclick", "alert(1)"),
+      {
+        id: "custom-onClick",
+        instanceId: "custom",
+        name: "onClick",
+        type: "action",
+        value: [],
+      },
+    ]);
+
+    expect(find({ instances, props })).toEqual([
+      { label: "Frame document (srcdoc) on Home", navigate: onHome("frame") },
+      {
+        label: "Event handler attribute (onclick) on Home",
+        navigate: onHome("custom"),
+      },
+    ]);
+  });
+
+  test("lists an XML element on an HTML page, and nothing on an XML page", () => {
+    const pages = createPages({ xmlAbout: true });
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("node") },
+      { id: "node", component: "XmlNode", children: ids("time") },
+      { id: "time", component: "XmlTime" },
+      { id: "about-root", component: "Body", children: ids("url") },
+      { id: "url", component: "XmlNode" },
+    ]);
+    const props = toProps([
+      stringProp("node", "onmouseover", "alert(1)"),
+      stringProp("url", "onmouseover", "alert(1)"),
+      stringProp("url", "href", "javascript:alert(1)"),
+    ]);
+
+    // its props go with it, so they are not listed
+    expect(find({ pages, instances, props })).toEqual([
+      { label: "XML element on Home", navigate: onHome("node") },
+      {
+        label: "XML element on Home",
+        navigate: {
+          pageId: "home",
+          instanceSelector: ["time", "node", "home-root"],
+        },
+      },
+    ]);
+  });
+
+  test("lists a page redirect that opens the page's settings, and a project redirect that opens Redirects", () => {
+    const pages = createPages({ code: "<script>1</script>" });
+    (pages.pages.get("home") as Page).meta = {
+      redirect: '"javascript:alert(1)"',
+      status: "302",
+    };
+    (pages.pages.get("about") as Page).meta = { redirect: '"/landing"' };
+    pages.redirects = [
+      { old: "/go", new: "javascript:alert(1)" },
+      { old: "/old", new: "/new" },
+    ];
+
+    expect(find({ pages })).toEqual([
+      {
+        label: "Redirect on Home",
+        navigate: { pageId: "home", instanceSelector: ["home-root"] },
+        view: "pageSettings",
+      },
+      {
+        label: "Redirect from /go (Project settings)",
+        view: "projectRedirects",
+      },
+      // still last
+      { label: "Custom code (Project settings)", view: "projectSettings" },
+    ]);
+  });
+
+  test("lists nothing more for an instance listed for its tag", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("box", "embed", "node"),
+      },
+      { id: "box", component: "Box" },
+      { id: "embed", component: "HtmlEmbed" },
+      { id: "node", component: "XmlNode" },
+    ]);
+    const props = toProps([
+      stringProp("box", "tag", "script"),
+      stringProp("box", "href", "javascript:alert(1)"),
+      stringProp("box", "onclick", "alert(1)"),
+      stringProp("embed", "code", "<script>1</script>"),
+      stringProp("embed", "srcdoc", "<script>1</script>"),
+      stringProp("node", "onmouseover", "alert(1)"),
+    ]);
+
+    expect(find({ instances, props }).map((item) => item.label)).toEqual([
+      "Element with a tag the builder does not offer on Home",
+      "HTML Embed on Home",
+      "XML element on Home",
+    ]);
   });
 });
