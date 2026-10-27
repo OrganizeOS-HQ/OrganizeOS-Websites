@@ -133,7 +133,8 @@ export const parseOrgIdList = (value: string | undefined): Set<string> =>
  * human owns (which is not an OrganizeOS site and gets upstream behavior).
  * Pure: the caller supplies the project's owner row, the deployment's
  * publisher host + platform URL, and the raw `ORGANIZEOS_BLOCKS_ORG_IDS`
- * allowlist (the panel and blocks are offered to the orgs it lists only).
+ * allowlist (the OrganizeOS blocks and the rest of the OrganizeOS builder UI
+ * are offered to the orgs it lists only).
  */
 export const resolveOrganizeosSite = ({
   owner,

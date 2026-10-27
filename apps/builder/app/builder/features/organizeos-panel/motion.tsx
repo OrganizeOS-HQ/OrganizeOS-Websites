@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import { nanoid } from "nanoid";
@@ -13,30 +13,35 @@ import {
 import {
   theme,
   styled,
+  Button,
   Flex,
   Grid,
   InputField,
   Label,
   Text,
 } from "@webstudio-is/design-system";
-import { $selectedInstanceSelector, $selectedPage } from "~/shared/nano-states";
+import {
+  $selectedInstanceSelector,
+  $selectedPage,
+  selectInstance,
+} from "~/shared/nano-states";
 import { $instances, $props } from "~/shared/sync/data-stores";
 import type { InstanceSelector } from "~/shared/instance-utils/tree";
 import { updateWebstudioData } from "~/shared/instance-utils/data";
 import { wrapInstance } from "~/shared/instance-utils/mutation";
-import { CollapsibleSection } from "~/builder/shared/collapsible-section";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { useDraftValue } from "~/builder/shared/use-draft-value";
 import { organizeosNamespace } from "./insert-organizeos-block";
 import { motionPresets, type MotionPreset } from "./motion/presets";
 
 /**
- * The Motion area of the OrganizeOS panel (spec 3, 4.4, 4.6): a preset wraps
- * the selected element in an Animate Children whose `action` is the preset,
- * or replaces the action of the Animate Children the selection is, or sits
- * directly in. `action` is upstream's data, edited afterwards in upstream's
- * Animation section; `stagger` is edited only here, because that section
- * replaces the props panel.
+ * The content of the Inspector's Motion tab (motion-tab.tsx; spec 3, 4.4, 4.6,
+ * panel overhaul spec 5.4): a preset wraps the selected element in an Animate
+ * Children whose `action` is the preset, or replaces the action of the Animate
+ * Children the selection is, or sits directly in. `action` is upstream's data,
+ * edited afterwards in upstream's Animation section, which the tab embeds
+ * below the presets for a selected Animate Children (`editor`); `stagger` is
+ * edited only here, because that section replaces the props panel.
  */
 
 export const animateChildrenComponent = `${organizeosNamespace}:AnimateChildren`;
@@ -246,35 +251,59 @@ const StaggerField = ({
   );
 };
 
-export const Motion = () => {
+const getTargetLine = (
+  target: Exclude<MotionTarget, { kind: "refused" }>,
+  isWrapperSelected: boolean,
+  hasEditor: boolean
+) => {
+  if (target.kind === "wrap") {
+    return `A preset wraps this ${getInstanceLabel(target.instanceId)} in an Animate Children that plays it on each of its children.`;
+  }
+  if (isWrapperSelected === false) {
+    return "This element is inside an Animate Children. A preset replaces its animation. Select it to edit its animation and stagger.";
+  }
+  // "Edit it below." only while the editor is there to edit it in
+  return hasEditor
+    ? "A preset replaces this Animate Children's animation. Edit it below."
+    : "A preset replaces this Animate Children's animation.";
+};
+
+/**
+ * `editor` is upstream's Animation editor for a selected Animate Children,
+ * shown full width below the Stagger field; the Motion tab passes it only
+ * where upstream renders the editor alone (motion-tab.tsx).
+ */
+export const Motion = ({ editor }: { editor?: ReactNode }) => {
+  const selector = useStore($selectedInstanceSelector);
   const target = useStore($motionTarget);
   const stagger = useStore($wrapperStagger);
 
   if (target.kind === "refused") {
     return (
-      <CollapsibleSection label="Motion" fullWidth>
-        <Text
-          color="subtle"
-          css={{ paddingInline: theme.panel.paddingInline }}
-          data-motion-refusal
-        >
-          {motionRefusal}
-        </Text>
-      </CollapsibleSection>
+      <Text
+        color="subtle"
+        css={{ paddingInline: theme.panel.paddingInline }}
+        data-motion-refusal
+      >
+        {motionRefusal}
+      </Text>
     );
   }
 
+  // a wrapper target is the selection itself, or the parent of a child of it
+  const isWrapperSelected =
+    target.kind === "wrapper" && selector?.[0] === target.instanceId;
+  const isWrapperChild = target.kind === "wrapper" && !isWrapperSelected;
+
   return (
-    <CollapsibleSection label="Motion" fullWidth>
+    <Flex direction="column" gap="3">
       <Flex
         direction="column"
         gap="3"
         css={{ paddingInline: theme.panel.paddingInline }}
       >
         <Text color="subtle" data-motion-target={target.kind}>
-          {target.kind === "wrap"
-            ? `A preset wraps this ${getInstanceLabel(target.instanceId)} in an Animate Children that plays it on each of its children.`
-            : "A preset replaces this Animate Children's animation. Edit the animation in the Settings panel."}
+          {getTargetLine(target, isWrapperSelected, editor !== undefined)}
         </Text>
         <Grid columns="3" gap="2" data-motion-presets>
           {motionPresets.map((preset) => (
@@ -288,7 +317,16 @@ export const Motion = () => {
             </PresetButton>
           ))}
         </Grid>
-        {target.kind === "wrapper" && stagger !== undefined && (
+        {isWrapperChild && selector !== undefined && (
+          <Button
+            color="neutral"
+            data-motion-select-wrapper
+            onClick={() => selectInstance(selector.slice(1))}
+          >
+            Select Animate Children
+          </Button>
+        )}
+        {isWrapperSelected && stagger !== undefined && (
           <StaggerField
             // a fresh draft for each wrapper
             key={target.instanceId}
@@ -296,11 +334,12 @@ export const Motion = () => {
             stagger={stagger}
           />
         )}
-        <Text color="subtle">
-          Plays on the published page as visitors scroll, never for visitors who
-          ask for reduced motion. On the canvas it plays while selected.
-        </Text>
       </Flex>
-    </CollapsibleSection>
+      {isWrapperSelected && editor}
+      <Text color="subtle" css={{ paddingInline: theme.panel.paddingInline }}>
+        Plays on the published page as visitors scroll, never for visitors who
+        ask for reduced motion. On the canvas it plays while selected.
+      </Text>
+    </Flex>
   );
 };

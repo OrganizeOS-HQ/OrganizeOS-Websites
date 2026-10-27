@@ -36,9 +36,9 @@ import { getInstanceLabel } from "~/builder/shared/instance-label";
  * references one of the project's catalog Resources (Forms, Events or Upcoming
  * Events), and the props its table entry names are bound to that binding by
  * id. The Forms and Upcoming Events Resources are added when the project
- * lacks them, from the Events Resource that provisioning wrote. Click (the
- * OrganizeOS panel) and drop (the canvas's drag and drop) both insert through
- * here.
+ * lacks them, from the Events Resource that provisioning wrote. Click and
+ * Enter (the Components panel's OrganizeOS section) and drop (the canvas's
+ * drag and drop) all insert through here.
  *
  * Webstudio loads a resource DataSource, in the builder and on a published
  * page, only when its scope is on the page, so the data loads on the pages
@@ -54,8 +54,8 @@ export const isOrganizeosBlock = (component: string) =>
 /**
  * What a block reads from the org's catalog, and where its template reads it:
  * the table `organizeosBlockData`, keyed by the template's key (the
- * `component` the panel inserts, not the root's component: an Event List's root
- * is a Share Code Carrier).
+ * `component` the Components panel inserts, not the root's component: an
+ * Event List's root is a Share Code Carrier).
  */
 export type BlockData = {
   /** The catalog Resource the block's binding references. */

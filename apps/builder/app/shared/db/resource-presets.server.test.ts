@@ -90,7 +90,7 @@ describe("buildOrgResourcePresets", () => {
     expect(forms?.id).toBe("5bd1e1fb-1480-5d7a-ad4b-75e9cbeec7dd");
   });
 
-  test("builds Upcoming Events as Events with the upcoming filter, under the id the panel uses", async () => {
+  test("builds Upcoming Events as Events with the upcoming filter, under the id the builder uses", async () => {
     const { resources } = await buildOrgResourcePresets(args);
     const upcoming = resources.find(
       (resource) => resource.name === "Upcoming Events"
@@ -342,7 +342,7 @@ describe("seedProjectResourcePresets", () => {
     });
   });
 
-  describe("Forms, which only the panel creates", () => {
+  describe("Forms, which only the builder creates", () => {
     const getForms = async (token = "osk_secrettoken") => {
       const { resourceId, bindingId } = await getResourcePresetIds(
         projectId,

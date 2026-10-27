@@ -4,19 +4,19 @@ import type { Resource } from "@webstudio-is/sdk";
  * The deterministic ids of an OrganizeOS org project's data catalog, shared by
  * provisioning and collections-sync on the server
  * (`shared/db/resource-presets.server.ts`, `shared/db/collections-sync.server.ts`,
- * `shared/db/signup-form-preset.server.tsx`) and the OrganizeOS panel in the
+ * `shared/db/signup-form-preset.server.tsx`) and the builder in the
  * browser, which finds the Events Resource, adds the Forms Resource at insert
  * time and lists the catalog (`builder/features/organizeos-panel`). Both sides
- * must derive the same id from the same name, so a Resource the panel adds is
+ * must derive the same id from the same name, so a Resource the builder adds is
  * the one a later re-provision rewrites in place, never a second copy. The
  * names of the Resources a block creates (Forms, Upcoming Events) and of the
  * bindings a block brings live here too, so that both sides give them the same
  * ones.
  *
  * The catalog is GET Resources only. A Resource loads nowhere by itself: a use
- * (a block, or a page the panel adds it to) brings its own resource DataSource,
- * scoped to the instance that uses it, which references the catalog Resource
- * by id. The `bindingId` derived here is the id of the unscoped binding older
+ * (a block, or a page the builder adds it to) brings its own resource
+ * DataSource, scoped to the instance that uses it, which references the
+ * catalog Resource by id. The `bindingId` derived here is the id of the unscoped binding older
  * provisioning wrote next to each Resource, which never loaded; provisioning
  * and collections-sync now only remove it where nothing uses it.
  *
@@ -26,7 +26,7 @@ import type { Resource } from "@webstudio-is/sdk";
 
 /**
  * The name of the Forms catalog Resource, in both writers, and of the binding
- * a Signup Form brings. The panel binds a block's `data` by id, but Webstudio
+ * a Signup Form brings. A block's insert binds its `data` by id, but Webstudio
  * rebinds expressions by name when a block is duplicated, copied, pasted or
  * moved, and when a variable is saved. The block's own binding is scoped to
  * its root, so it masks a variable of this name in an enclosing scope, and a
@@ -48,21 +48,28 @@ export const UPCOMING_EVENTS_RESOURCE_NAME = "Upcoming Events";
 /**
  * The names of the bindings the Events blocks bring, distinctive for the same
  * reason as FORMS_PRESET_NAME. The Events one is for the blocks that bind the
- * Events Resource as it is (the RSVP Form). A binding the Data section adds to
- * a page keeps its Resource's name ("Events", "Upcoming Events") instead.
+ * Events Resource as it is (the RSVP Form). A binding the OrganizeOS data tab
+ * adds to a page keeps its Resource's name ("Events", "Upcoming Events")
+ * instead.
  */
 export const EVENTS_BINDING_NAME = "OrganizeOS Events";
 export const UPCOMING_EVENTS_BINDING_NAME = "OrganizeOS Upcoming Events";
 
-/** The keys of the static catalog Resources, in the order the panel lists them. */
+/**
+ * The keys of the static catalog Resources, in the order the builder lists
+ * them.
+ */
 export const STATIC_PRESET_KEYS = ["events", "fundraisers", "stats"] as const;
 
-/** The key of the Forms catalog Resource, which the panel creates on first use. */
+/**
+ * The key of the Forms catalog Resource, which the builder creates on first
+ * use.
+ */
 export const FORMS_PRESET_KEY = "forms";
 
 /**
- * The key of the Upcoming Events catalog Resource, which the panel creates on
- * first use, like Forms.
+ * The key of the Upcoming Events catalog Resource, which the builder creates
+ * on first use, like Forms.
  */
 export const UPCOMING_EVENTS_PRESET_KEY = "upcoming-events";
 

@@ -42,6 +42,18 @@ import {
   InstanceIcon,
 } from "~/builder/shared/instance-label";
 import { titleCase } from "title-case";
+// OrganizeOS fork: the OrganizeOS blocks, as one section of this panel (organizeos-panel/components-section.tsx)
+import {
+  $organizeosComponentGroups,
+  OrganizeosGroupFooter,
+  organizeosGroupLabel,
+  withOrganizeosGroups,
+  type OrganizeosCategory,
+} from "~/builder/features/organizeos-panel/components-section";
+import {
+  insertOrganizeosBlock,
+  isOrganizeosBlock,
+} from "~/builder/features/organizeos-panel/insert-organizeos-block";
 
 type Meta = {
   name: string;
@@ -100,7 +112,11 @@ const $metas = computed(
 );
 
 type Groups = Array<{
-  category: Exclude<WsComponentMeta["category"], undefined> | "found";
+  category:
+    | Exclude<WsComponentMeta["category"], undefined>
+    | "found"
+    // OrganizeOS fork: the OrganizeOS section's category
+    | OrganizeosCategory;
   metas: Array<Meta>;
 }>;
 
@@ -188,7 +204,10 @@ export const ComponentsPanel = ({
   const [selectedComponent, setSelectedComponent] = useState<string>();
 
   const handleInsert = (component: string) => {
-    if (component === elementComponent) {
+    // OrganizeOS fork: a block is completed with the org's data as it is inserted
+    if (isOrganizeosBlock(component)) {
+      void insertOrganizeosBlock(component);
+    } else if (component === elementComponent) {
       insertWebstudioElementAt();
     } else {
       const fragment = getComponentTemplateData(component);
@@ -235,17 +254,27 @@ export const ComponentsPanel = ({
   });
 
   const { metasByCategory, availableComponents } = useStore($metas);
+  // OrganizeOS fork: the OrganizeOS section, for orgs on the blocks' allowlist
+  const organizeosGroups = useStore($organizeosComponentGroups);
 
   const { dragCard, draggableContainerRef, isDragging } = useDraggable({
     publish,
     availableComponents,
   });
 
-  const groups = filterAndGroupComponents({
-    documentType: selectedPage?.meta.documentType,
-    metasByCategory,
-    search: searchFieldProps.value,
-  });
+  // OrganizeOS fork: upstream's groups, with the OrganizeOS section
+  const groups = withOrganizeosGroups(
+    filterAndGroupComponents({
+      documentType: selectedPage?.meta.documentType,
+      metasByCategory,
+      search: searchFieldProps.value,
+    }),
+    organizeosGroups,
+    {
+      documentType: selectedPage?.meta.documentType,
+      search: searchFieldProps.value,
+    }
+  );
 
   return (
     <>
@@ -264,7 +293,10 @@ export const ComponentsPanel = ({
       <ScrollArea ref={draggableContainerRef}>
         {groups.map((group) => (
           <CollapsibleSection
-            label={titleCase(group.category)}
+            // OrganizeOS fork: the OrganizeOS section's heading
+            label={
+              organizeosGroupLabel(group.category) ?? titleCase(group.category)
+            }
             key={group.category}
             fullWidth
           >
@@ -316,6 +348,8 @@ export const ComponentsPanel = ({
                 )}
               </Flex>
             </List>
+            {/* OrganizeOS fork: the OrganizeOS section's workspace links */}
+            <OrganizeosGroupFooter category={group.category} />
           </CollapsibleSection>
         ))}
       </ScrollArea>

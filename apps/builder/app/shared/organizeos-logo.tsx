@@ -1,6 +1,3 @@
-import { forwardRef } from "react";
-import type { IconComponent } from "@webstudio-is/icons";
-
 /**
  * The OrganizeOS mark v3 (the converging arrows): the four paths of the
  * OrganizeOS repo's client/lib/brand/logo-paths.ts (LOGO_MARK_PATHS), which
@@ -58,31 +55,3 @@ export const OrganizeosLogo = ({
     </svg>
   );
 };
-
-/**
- * The same mark as an icon, for chrome that takes @webstudio-is/icons
- * components, such as the left sidebar's tabs. It paints in currentColor like
- * the icons beside it. The padded viewBox draws the mark 13px wide in the 16px
- * box, the width those line icons' ink spans (a 12px path plus a 1px stroke),
- * so its arrow stems end where the Plus icon's strokes do.
- */
-export const OrganizeosIcon: IconComponent = forwardRef(
-  ({ fill = "currentColor", size = 16, ...props }, forwardedRef) => {
-    return (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="-14.8 -14.8 157.85 157.85"
-        width={size}
-        height={size}
-        fill={fill}
-        {...props}
-        ref={forwardedRef}
-      >
-        {MARK_PATHS.map((d) => (
-          <path key={d} d={d} />
-        ))}
-      </svg>
-    );
-  }
-);
-OrganizeosIcon.displayName = "OrganizeosIcon";
