@@ -48,8 +48,12 @@ const contentStyle = {
   overflow: "auto",
 };
 
+// In a bare div, as upstream's Style and Settings triggers sit in the div
+// their Tooltip needs, so the tabs' hover boxes match.
 export const MotionTabTrigger = () => (
-  <PanelTabsTrigger value="motion">Motion</PanelTabsTrigger>
+  <div>
+    <PanelTabsTrigger value="motion">Motion</PanelTabsTrigger>
+  </div>
 );
 
 /** The selected instance's icon and label, as the Inspector's other tabs show it. */

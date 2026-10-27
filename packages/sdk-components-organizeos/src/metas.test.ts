@@ -277,7 +277,8 @@ test("every template's card tooltip is a short phrase: a few words, no sentence"
     expect(template.description?.split(" ").length, name).toBeLessThanOrEqual(
       8
     );
-    expect(template.description, name).not.toMatch(/[.:;]/);
+    // no sentence: no full stop, exclamation or question mark ending one
+    expect(template.description, name).not.toMatch(/[.!?](\s|$)/);
   }
 });
 
@@ -300,8 +301,8 @@ test("the blocks' Settings tooltips that were paragraphs are a few words, or non
       "actionPage",
     ])
   ).toEqual({
-    // a picker now, not an id to type
-    record: "The form",
+    // a picker now, whose label says it
+    record: undefined,
     data: undefined,
     state: "Shown on the canvas",
     action: "Success state, or a page",
@@ -317,7 +318,7 @@ test("the blocks' Settings tooltips that were paragraphs are a few words, or non
       "actionPage",
     ])
   ).toEqual({
-    record: "The event",
+    record: undefined,
     data: undefined,
     state: "Shown on the canvas",
     action: "Registered state, or a page",

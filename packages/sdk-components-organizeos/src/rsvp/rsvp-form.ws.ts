@@ -42,7 +42,6 @@ export const meta: WsComponentMeta = {
       control: "text",
       required: false,
       label: "Event",
-      description: "The event",
     },
     data: {
       type: "json",

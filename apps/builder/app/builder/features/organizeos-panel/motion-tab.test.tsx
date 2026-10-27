@@ -182,6 +182,7 @@ afterEach(() => {
   container = undefined;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("$isMotionTabAvailable", () => {
@@ -211,14 +212,35 @@ describe("the Inspector's Motion tab", () => {
     expect(tabs(host)).toEqual(["Style", "Settings", "Motion"]);
   });
 
-  test("the Motion tab is a bare trigger in the tab list, with no tooltip of its own", () => {
+  test("the Motion tab sits in a bare div, as Style and Settings do, with no tooltip of its own", () => {
+    vi.useFakeTimers();
     selectInstance(["section", "body"]);
     const host = render();
-    const motion = Array.from(host.querySelectorAll('[role="tab"]')).find(
-      (tab) => tab.textContent?.trim() === "Motion"
-    );
-    // upstream's tabs sit in the div their Tooltip needs; Motion has none
-    expect(motion?.parentElement?.getAttribute("role")).toBe("tablist");
+    const tab = (label: string) =>
+      Array.from(host.querySelectorAll('[role="tab"]')).find(
+        (tab) => tab.textContent?.trim() === label
+      );
+    const motion = tab("Motion");
+    // upstream's tabs sit in the div their Tooltip needs, so Motion's hover
+    // box matches theirs
+    for (const label of ["Style", "Settings", "Motion"]) {
+      const wrapper = tab(label)?.parentElement;
+      expect(wrapper?.tagName, label).toBe("DIV");
+      expect(wrapper?.parentElement?.getAttribute("role"), label).toBe(
+        "tablist"
+      );
+    }
+    // Motion's div is bare: no Tooltip trigger state on it
+    expect(motion?.parentElement?.attributes).toHaveLength(0);
+    // and hovering Motion shows nothing new
+    const before = document.body.textContent;
+    act(() => {
+      motion?.dispatchEvent(new MouseEvent("pointermove", { bubbles: true }));
+    });
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(document.body.textContent).toBe(before);
   });
 
   test("content mode and XML keep upstream's Settings only, and off the allowlist upstream's Style and Settings", () => {

@@ -1033,6 +1033,33 @@ describe("the record picker's load line", () => {
     expect(line(host)).toBeUndefined();
   });
 
+  test("Reload hides the line at once, until the loader answers; a new failure brings it back", async () => {
+    const { request } = await insertBlock(signupForm, "p-retry");
+    const host = renderPicker();
+    answer([request, failedRead]);
+    expect(line(host)).toBe("Forms didn't load. Reload.");
+
+    const reload = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.textContent === "Reload"
+    );
+    act(() => {
+      reload?.click();
+    });
+    expect(invalidateResource).toHaveBeenCalledWith(request);
+    // the loader answers a second or more later: no line meanwhile
+    expect(line(host)).toBeUndefined();
+    // a change elsewhere recomputes the same failure: still none
+    act(() => {
+      $props.set(new Map($props.get()));
+    });
+    expect($selectedInstanceFailedLoads.get()).toEqual([failedRead]);
+    expect(line(host)).toBeUndefined();
+
+    // the retry failed too: a new result, so the line is back
+    answer([request, { ...failedRead }]);
+    expect(line(host)).toBe("Forms didn't load. Reload.");
+  });
+
   test("an RSVP Form whose events fetch threw shows the events line, though its data reads as loading", async () => {
     const { request } = await insertBlock(rsvpForm, "p-rsvp");
     const host = renderPicker();

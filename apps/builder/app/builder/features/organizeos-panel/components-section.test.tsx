@@ -381,10 +381,15 @@ describe("$organizeosComponentGroups", () => {
 
   test("the Manage link shows with any block that reads the org's data, and not with only the others", () => {
     $organizeosSite.set(site);
-    registerLibrary({ RsvpForm: organizeosTemplates.RsvpForm });
-    expect($organizeosComponentGroups.get()[0].link).toBe(manageLink);
-    registerLibrary({ SignupForm: organizeosTemplates.SignupForm });
-    expect($organizeosComponentGroups.get()[0].link).toBe(manageLink);
+    for (const name of [
+      "EventList",
+      "EventCard",
+      "RsvpForm",
+      "SignupForm",
+    ] as const) {
+      registerLibrary({ [name]: organizeosTemplates[name] });
+      expect($organizeosComponentGroups.get()[0].link, name).toBe(manageLink);
+    }
     registerLibrary({
       Marquee: organizeosTemplates.Marquee,
       RichText: organizeosTemplates.RichText,

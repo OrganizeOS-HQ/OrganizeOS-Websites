@@ -31,7 +31,6 @@ export const meta: WsComponentMeta = {
       control: "text",
       required: false,
       label: "Form",
-      description: "The form",
     },
     data: {
       type: "json",

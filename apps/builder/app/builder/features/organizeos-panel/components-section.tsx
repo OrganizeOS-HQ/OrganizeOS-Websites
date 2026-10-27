@@ -51,10 +51,7 @@ type Section = {
   area?: WorkspaceLink;
 };
 
-/**
- * The one workspace link, the org's Website area, which reaches its events
- * and its forms alike.
- */
+/** The one workspace link: it opens the org's Website area in OrganizeOS. */
 export const manageLink: WorkspaceLink = {
   label: `Manage in ${platformName} ↗`,
   path: "website",

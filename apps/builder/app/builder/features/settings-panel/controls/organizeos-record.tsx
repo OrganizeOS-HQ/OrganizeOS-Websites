@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import {
@@ -427,6 +427,11 @@ const reloadClass = css({
   all: "unset",
   cursor: "pointer",
   ...textVariants.link,
+  "&:focus-visible": {
+    outline: `1px solid ${theme.colors.borderFocus}`,
+    outlineOffset: 1,
+    borderRadius: theme.borderRadius[3],
+  },
 }).toString();
 
 // Radix Select refuses an item whose value is the empty string, which is the
@@ -459,6 +464,13 @@ export const OrganizeosRecordControl = ({
   );
   const picker = getOrganizeosRecordPicker(component);
   const failedLoads = useStore($selectedInstanceFailedLoads);
+  // The failed loads Reload was clicked for. The line hides while those are
+  // the failures, until the loader answers (a second or more): a new failure
+  // is a new result, so the line returns for it.
+  const [reloading, setReloading] = useState<readonly unknown[]>();
+  const isReloading =
+    reloading !== undefined &&
+    failedLoads.every((result) => reloading.includes(result));
 
   const label = humanizeAttribute(meta.label || propName);
   const { scope, aliases } = useStore($selectedInstanceScope);
@@ -511,13 +523,16 @@ export const OrganizeosRecordControl = ({
             }
           />
         </BindingControl>
-        {failedLoads.length > 0 && (
+        {failedLoads.length > 0 && isReloading === false && (
           <Text color="subtle" data-record-load-failed>
             {picker.loadFailed}{" "}
             <button
               type="button"
               className={reloadClass}
-              onClick={() => reloadFailedLoads(failedLoads)}
+              onClick={() => {
+                setReloading(failedLoads);
+                reloadFailedLoads(failedLoads);
+              }}
             >
               Reload
             </button>

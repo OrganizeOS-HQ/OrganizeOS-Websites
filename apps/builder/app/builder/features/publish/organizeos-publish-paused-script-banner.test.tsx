@@ -103,7 +103,7 @@ describe("PausedScriptBanner", () => {
     expect(list?.nextElementSibling?.nextElementSibling).toBeNull();
   });
 
-  test("names an element publishing drops for its tag as one with a custom tag", () => {
+  test("names an element publishing drops for its tag, a script among them, as one with an unsupported tag", () => {
     setBuild({ code: MenuIcon });
     $instances.set(
       new Map([
@@ -135,7 +135,7 @@ describe("PausedScriptBanner", () => {
     const host = renderBanner();
     expect(
       Array.from(host.querySelectorAll("li"), (item) => item.textContent)
-    ).toEqual(["Element with a custom tag on Home"]);
+    ).toEqual(["Element with an unsupported tag on Home"]);
   });
 
   test("opens Project settings from the custom code item", () => {

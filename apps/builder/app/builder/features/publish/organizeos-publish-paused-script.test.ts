@@ -374,7 +374,7 @@ describe("findPausedScript", () => {
       props,
     });
     expect(new Set(items.map((item) => item.label))).toEqual(
-      new Set(["Element with a custom tag on Home"])
+      new Set(["Element with an unsupported tag on Home"])
     );
     expect(items.map((item) => item.navigate?.instanceSelector)).toEqual([
       ["form", "home-root"],
@@ -828,7 +828,7 @@ describe("findPausedScript", () => {
     ]);
 
     expect(find({ instances, props }).map((item) => item.label)).toEqual([
-      "Element with a custom tag on Home",
+      "Element with an unsupported tag on Home",
       "HTML Embed on Home",
       "XML element on Home",
     ]);

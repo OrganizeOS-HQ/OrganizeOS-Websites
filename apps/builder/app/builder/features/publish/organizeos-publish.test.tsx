@@ -141,7 +141,7 @@ describe("the OrganizeOS Publish dialog", () => {
     );
   });
 
-  test("the plan banner ends with its Manage plan link alone", () => {
+  test("the plan banner ends with its Open in OrganizeOS link alone, to the Website area", () => {
     setProject(null);
     const pages = $pages.get();
     if (pages === undefined) {
@@ -156,7 +156,7 @@ describe("the OrganizeOS Publish dialog", () => {
     expect(list?.previousElementSibling?.textContent).toBe(
       "This site uses features your plan does not include:"
     );
-    expect(list?.nextElementSibling?.textContent).toBe("Manage plan ↗");
+    expect(list?.nextElementSibling?.textContent).toBe("Open in OrganizeOS ↗");
     expect(list?.nextElementSibling?.querySelector("a")?.href).toBe(
       "https://app.organizeos.org/acme/website"
     );

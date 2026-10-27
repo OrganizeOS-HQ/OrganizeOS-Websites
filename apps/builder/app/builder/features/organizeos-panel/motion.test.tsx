@@ -189,8 +189,8 @@ describe("the Motion area", () => {
     }
     const host = render();
     // the empty state, and nothing else
-    expect(host.textContent).toBe("Select an element");
-    expect(motionRefusal).toBe("Select an element");
+    expect(host.textContent).toBe("Select a section");
+    expect(motionRefusal).toBe("Select a section");
     expect(host.querySelector("[data-motion-presets]")).toBeNull();
   });
 

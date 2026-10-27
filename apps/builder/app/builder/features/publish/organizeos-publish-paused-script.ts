@@ -204,7 +204,7 @@ export const findPausedScript = ({
         labels.push("Markdown Embed");
       } else if (hasBlockedTag(instance, instanceProps)) {
         // it goes with its props, so no raw HTML property is listed for it
-        labels.push("Element with a custom tag");
+        labels.push("Element with an unsupported tag");
       } else {
         const paused = findStaticTags(instance, instanceProps).find((tag) =>
           pausedSvgTags.has(tag)

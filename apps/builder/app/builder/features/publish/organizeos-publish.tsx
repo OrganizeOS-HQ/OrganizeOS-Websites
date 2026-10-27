@@ -191,7 +191,7 @@ const RestrictedFeaturesBanner = ({ manageUrl }: { manageUrl: string }) => {
           color="inherit"
           variant="inherit"
         >
-          Manage plan ↗
+          Open in {platformName} ↗
         </Link>
       </Text>
     </PanelBanner>

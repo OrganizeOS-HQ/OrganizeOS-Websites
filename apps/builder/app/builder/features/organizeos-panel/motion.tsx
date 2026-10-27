@@ -47,7 +47,7 @@ export const animateChildrenComponent = `${organizeosNamespace}:AnimateChildren`
 
 export const maxStagger = 20;
 
-export const motionRefusal = "Select an element";
+export const motionRefusal = "Select a section";
 
 export type MotionTarget =
   | { kind: "refused" }

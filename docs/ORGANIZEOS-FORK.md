@@ -199,7 +199,7 @@ How an org admin's session is wired end to end, and which side owns each step. T
 
    The AGPL §13 source offer is rendered in the builder menu as well as the dashboard footer, so it stays reachable for an admin who never sees the dashboard. Do not remove the menu copy.
 
-4. **Publish** (`features/publish/organizeos-publish.tsx`). The dialog shows the site's real address with copy/open, a bare "Site settings ↗" link to the org's Website area in OrganizeOS (domains, visibility and the rest), and one Publish button, with no tooltip. A banner names the features the plan does not cover and ends with a "Manage plan ↗" link to the same area. `domain.publish` creates the production build and the OrganizeOS publisher (`services/organizeos-publisher.server.ts`) dispatches `publish-site.yml` with the build and organization ids. A dispatch that never leaves the builder marks the build FAILED at once; a static-export build is refused (it must never be deployed as the live site). The dialog also lists what is paused, and prebuild leaves an org's own script, and the unsafe values of §10, out of the published site.
+4. **Publish** (`features/publish/organizeos-publish.tsx`). The dialog shows the site's real address with copy/open, a bare "Site settings ↗" link to the org's Website area in OrganizeOS (domains, visibility and the rest), and one Publish button, with no tooltip. A banner names the features the plan does not cover and ends with an "Open in OrganizeOS ↗" link to the same area. `domain.publish` creates the production build and the OrganizeOS publisher (`services/organizeos-publisher.server.ts`) dispatches `publish-site.yml` with the build and organization ids. A dispatch that never leaves the builder marks the build FAILED at once; a static-export build is refused (it must never be deployed as the live site). The dialog also lists what is paused, and prebuild leaves an org's own script, and the unsafe values of §10, out of the published site.
 5. **Execute** (`.github/workflows/publish-site.yml`). Syncs the build with the CLI, builds it, reads the org script switch from the CLI it built and fails unless it is off, deploys to the `organizeos-sites` Vercel project, POSTs the deployment URL, and `orgScript` as the run's CLI read it (§10, "Reporting to OrganizeOS"), to OrganizeOS's publish callback (which flips the org's ledger pointer, making the site live through the reverse proxy), then reports `PUBLISHED` to the builder's `POST /internal/publish-status`; any failure reports `FAILED`. Without that report the builder's status would read "pending" forever: upstream's cloud publisher used to flip `Build.publishStatus` directly.
 6. **Status.** The dialog polls the project while a build is pending and treats a build as failed only after the executor's 25 minute timeout (`organizeos-publish-status.ts`; upstream assumes 3 minutes). Its status line reads "Publishing, started {when}", "Published {when}", "Publish failed {when}" or "Publishing did not finish {when}", and nothing more; an error the publish call returned shows on its own line below. On success it says the site is live and that the proxy can take up to a minute to pick the new deployment up (its target cache).
 7. **Collections** (OrganizeOS → builder, `POST /internal/collections-sync`, `ORGANIZEOS_PROVISION_TOKEN`, authenticated like provision). Sent by an Inngest job (debounced 30 s per org) whenever the org's public CMS collections change: `{ organizationId, collections }`, every public collection as a full snapshot (`slug` and `name`; `singularName`, `kind`, `id`, `contentUrl` and `fields` are optional, and unknown keys are ignored). The builder adds one catalog Resource per collection to the org's dev build (`shared/db/collections-sync.server.ts`): a GET Resource for `<api base>/collections/<slug>/items`, and no binding. The OrganizeOS data tab lists it, where an admin adds it to a page (§9: data loads only where it is used). Ids derive from the project and the slug, so a rename only updates the name; a platform collection that a static Resource already covers (`events`, `fundraisers`, `stats`) is skipped. Existing entries are replaced where they stand and new ones appended, so the build keeps its order. A sync also removes, where nothing references them, the bindings with a preset's deterministic id: the unscoped ones older syncs wrote next to each Resource and the `:root` Forms binding of the pre-deploy branches (§9). It keeps the rest, and never touches a binding with a fresh id, which is what every use brings now, whatever its scope.
@@ -625,11 +625,10 @@ collection }` invalidates, through `invalidateResource`, every current
     dropped. No message chooses an org, a collection's data or a permission.
 - One link sits at the foot of the OrganizeOS section while it lists a block
   that reads the org's data (the Events and Signups blocks): "Manage in
-  OrganizeOS ↗", which opens the org's Website area,
+  OrganizeOS ↗", which opens the org's Website area in OrganizeOS,
   `<platform URL>/<subdomain>/website` (`getWorkspaceAreaUrl`), where the
-  builder's menu leads too, and from where the org reaches its events and its
-  forms. While the builder does not know the subdomain it is the Website
-  area's URL, `manageUrl`.
+  builder's menu leads too. While the builder does not know the subdomain it
+  is the Website area's URL, `manageUrl`.
 - **Data loads only where it is used, never page-wide.** The org's data is a
   catalog of GET Resources with deterministic ids: Events, Fundraisers and
   Stats (provisioning), one per public collection (collections-sync), and
@@ -1063,7 +1062,7 @@ timelines gets the static page.
   falls back to Settings where the tab is not offered. Its target is the
   selected Animate Children, else the selection's parent if that is one, else
   the selection, which a preset wraps in a new one; the Body, the page root and
-  Global Root are refused (the tab reads "Select an element"), and
+  Global Root are refused (the tab reads "Select a section"), and
   `wrapInstance` refuses with its own toast what the content model does not
   allow (an `li`, a `tr`, a Radix part: the wrapper counts as a `div`).
   Reveal (fade and a 12px rise over `entry 0%` to `entry 60%`, fill
@@ -1335,7 +1334,12 @@ other component keeps the text control. The Signup Form's `record` is a select:
   false: an error body, or a fetch that threw) does one line show, "Forms
   didn't load. Reload.", where Reload asks the loader for that request again
   (`invalidateResource`) without reloading the builder
-  (`$selectedInstanceFailedLoads`, `reloadFailedLoads`).
+  (`$selectedInstanceFailedLoads`, `reloadFailedLoads`). The line hides as
+  Reload is clicked and returns only for a new failure, the loader's next
+  answer. When the builder's whole resource request fails (the
+  resources-loader route itself, not one Resource), the picker shows nothing:
+  upstream's loader keeps those requests pending, so there is no result to
+  read as a failure.
 - It keeps the upstream select's binding support.
 
 The RSVP Form's `record` is a select over the events in its computed `data`
@@ -1360,8 +1364,7 @@ The RSVP Form's `record` is a select over the events in its computed `data`
   was unpublished, deleted or made private, or has not loaded). Nothing shows
   under the select while the events load; a failed load shows "Events didn't
   load. Reload.", as the Signup Form's does. An empty list is data: the select
-  is empty, and the "Manage in OrganizeOS ↗" link at the foot of the
-  Components panel's OrganizeOS section leads to where the org makes one.
+  is empty.
 
 **Share codes**, `src/share-code/`: a member's share link opens an org page
 with `?r=` and a 10-character code, which OrganizeOS credits to the member when
@@ -1969,7 +1972,7 @@ as paused, so reversal is the switch.
 - **Publish dialog.** A banner after the plan-features banner, headed "Paused,
   not published", lists each HTML Embed that will be dropped, each Markdown
   Embed, each element publishing drops for a tag the builder does not offer
-  ("Element with a custom tag on {page}"), each SVG `animate` or `set`
+  ("Element with an unsupported tag on {page}"), each SVG `animate` or `set`
   element, each `dangerouslySetInnerHTML` prop, each unsafe value ("Link
   address (href)", "Form address (action)", "Source address (src)", "Object
   address (data)", "Frame document (srcdoc)", "Event handler attribute
