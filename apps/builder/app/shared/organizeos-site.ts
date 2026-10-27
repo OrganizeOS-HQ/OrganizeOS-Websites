@@ -19,9 +19,10 @@ export type OrganizeosSite = {
   /** OrganizeOS app home, for a plain "back to OrganizeOS" affordance. */
   platformUrl: string;
   /**
-   * Whether the org is on the rollout allowlist for the OrganizeOS blocks and
-   * the rest of the OrganizeOS builder UI (`ORGANIZEOS_BLOCKS_ORG_IDS`). When
-   * false none of it is offered, and a block's insert is refused.
+   * Whether the OrganizeOS blocks and the rest of the OrganizeOS builder UI are
+   * offered to the org: it is not on the deny list
+   * (`ORGANIZEOS_BLOCKS_DENY_ORG_IDS`). When false none of it is offered, and
+   * a block's insert is refused.
    */
   blocksEnabled: boolean;
   /**

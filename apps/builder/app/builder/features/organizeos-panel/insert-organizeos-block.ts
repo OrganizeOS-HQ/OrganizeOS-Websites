@@ -412,8 +412,8 @@ export const completeOrganizeosInsertMutable = (
 };
 
 /**
- * Whether the org behind this project may use the blocks: it is on the
- * rollout allowlist (`ORGANIZEOS_BLOCKS_ORG_IDS`, resolved by the builder's
+ * Whether the org behind this project may use the blocks: it is not on the
+ * deny list (`ORGANIZEOS_BLOCKS_DENY_ORG_IDS`, resolved by the builder's
  * loader into `$organizeosSite`).
  */
 export const isOrganizeosBlocksEnabled = () =>
