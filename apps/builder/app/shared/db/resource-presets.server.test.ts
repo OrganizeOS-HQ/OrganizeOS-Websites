@@ -807,6 +807,38 @@ describe("seedProjectResourcePresets", () => {
       });
     });
 
+    test("reaches the generated sitemap's /slugs Resource", async () => {
+      const t1 = await buildCollectionResourcePresets({
+        projectId,
+        apiBase: "https://app.example.org/api/public/v1",
+        authHeaderExpression: `"Bearer osk_t1"`,
+        collections: [{ slug: "blog", name: "Blog posts" }],
+      });
+      // as Create item page writes it (organizeos-panel/collection-pages.ts)
+      const slugs: Resource = {
+        id: "sitemap-slugs-resource",
+        name: "Blog posts slugs",
+        method: "get",
+        url: `"https://app.example.org/api/public/v1/collections/blog/slugs"`,
+        headers: [{ name: "Authorization", value: `"Bearer osk_t1"` }],
+      };
+      const { context, state } = makeBuildContext({
+        build: {
+          resources: JSON.stringify([...t1.resources, slugs, userResource]),
+        },
+      });
+      await seedProjectResourcePresets(context, {
+        ...args,
+        readToken: "osk_t2",
+      });
+
+      const resources = parseRow(state.row).resources;
+      expect(resources.find(({ id }) => id === slugs.id)).toEqual({
+        ...slugs,
+        headers: [{ name: "Authorization", value: `"Bearer osk_t2"` }],
+      });
+    });
+
     test("replaces another org's token on a Resource pasted onto this org's API", async () => {
       // a Signup Form copied from another org's project brings its own copy
       // of that org's Forms Resource, with that org's token
