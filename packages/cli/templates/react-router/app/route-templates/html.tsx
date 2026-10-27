@@ -45,6 +45,8 @@ import { sitemap } from "__SITEMAP__";
 import { assets } from "__ASSETS__";
 import { authRoutes } from "__AUTH__";
 import { siteResourceCache } from "../organizeos-resource-cache";
+// OrganizeOS fork: the page's share-code carrier (PageWithSourceOffer).
+import { PageShareCodeCarrier } from "__ORGANIZEOS_PAGE__";
 // OrganizeOS fork: the source offer's visible link (PageWithSourceOffer).
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 
@@ -118,7 +120,13 @@ const PageWithSourceOffer = ({ system }: ComponentProps<typeof Page>) => {
     page,
     undefined,
     ...Children.toArray(page.props.children),
-    <SourceOffer key="organizeos-source-offer" />
+    <SourceOffer key="organizeos-source-offer" />,
+    // OrganizeOS fork: a visitor's share code (?r=) goes with every click on a
+    // same-origin link to the organization's platform pages, a designer's own
+    // included (the copy of @organizeos/site-components' page module,
+    // ORGANIZEOS-FORK.md §8). It renders nothing, so the source offer stays
+    // the last of the body's content.
+    <PageShareCodeCarrier key="organizeos-share-code" />
   );
 };
 

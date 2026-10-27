@@ -7,7 +7,10 @@
  * (runtime-version.ts), and this package is never published. So prebuild
  * copies the package's built components module, with the modules it imports,
  * into the site as app source (app/__organizeos__/), and the react-router
- * framework maps every component of the namespace to that copy.
+ * framework maps every component of the namespace to that copy. Its page
+ * module, what every published page mounts once (the page's share-code
+ * carrier), comes with it, and the html route template imports it through
+ * a placeholder prebuild resolves (ORGANIZEOS_PAGE_PLACEHOLDER).
  *
  * The copied modules may import only packages the site template already
  * depends on (react, react-dom, @webstudio-is/react-sdk, @webstudio-is/sdk),
@@ -45,6 +48,21 @@ export const ORGANIZEOS_SOURCE_REPOSITORY = "OrganizeOS-HQ/OrganizeOS-Websites";
 
 /** What prebuild replaces with getOrganizeosSourceUrl() in the route templates. */
 export const ORGANIZEOS_SOURCE_URL_PLACEHOLDER = "__ORGANIZEOS_SOURCE_URL__";
+
+/**
+ * The package's page module (its `./page` entry), built beside components.js:
+ * what every published page mounts once from the html route template, the
+ * page's share-code carrier. The copy carries it with the modules it reaches.
+ */
+export const ORGANIZEOS_PAGE_MODULE = "page.js";
+
+/**
+ * What prebuild replaces, in the route templates, with the path from each
+ * route to the copy of the page module. The templates import it as a module
+ * (organizeos-placeholders.d.ts declares it), as upstream imports __CLIENT__,
+ * so they typecheck here, where no site's app/__organizeos__/ exists.
+ */
+export const ORGANIZEOS_PAGE_PLACEHOLDER = "__ORGANIZEOS_PAGE__";
 
 /**
  * The source a site links: the fork's repository at the commit this CLI was
@@ -200,28 +218,39 @@ export const findModuleClosure = async (entryPath: string) => {
 };
 
 /**
- * Copy a built components module, and every module it reaches through
- * relative imports, into the site's app/__organizeos__/, keeping their paths,
- * with its package's LICENSE beside them. The components module reaches
- * neither metas.js nor templates.js, whose imports (@webstudio-is/template,
- * the icons) a site does not install, so neither is copied.
+ * Copy a built components module and the page module beside it
+ * (ORGANIZEOS_PAGE_MODULE), and every module they reach through relative
+ * imports, into the site's app/__organizeos__/, keeping their paths, with
+ * their package's LICENSE beside them. Neither reaches metas.js nor
+ * templates.js, whose imports (@webstudio-is/template, the icons) a site does
+ * not install, so neither is copied. A build without the page module is
+ * refused, as one without a LICENSE is: every html route imports it.
  */
 export const copyOrganizeosComponents = async (
   appDir: string,
   entryPath: string
 ) => {
   const root = dirname(entryPath);
-  const { modules } = await findModuleClosure(entryPath);
-  for (const modulePath of modules) {
-    const targetPath = join(appDir, ORGANIZEOS_DIR, relative(root, modulePath));
-    await mkdir(dirname(targetPath), { recursive: true });
-    await copyFile(modulePath, targetPath);
-  }
   const licensePath = join(getPackageDir(entryPath), "LICENSE");
   if (existsSync(licensePath) === false) {
     throw new Error(
       `${ORGANIZEOS_NAMESPACE} has no LICENSE at ${licensePath}, and its copy cannot ship without one`
     );
+  }
+  const pagePath = join(root, ORGANIZEOS_PAGE_MODULE);
+  if (existsSync(pagePath) === false) {
+    throw new Error(
+      `${ORGANIZEOS_NAMESPACE} has no ${ORGANIZEOS_PAGE_MODULE} beside ${entryPath}, which every published page imports. Build it again: pnpm --filter ./packages/sdk-components-organizeos build`
+    );
+  }
+  const modules = new Set([
+    ...(await findModuleClosure(entryPath)).modules,
+    ...(await findModuleClosure(pagePath)).modules,
+  ]);
+  for (const modulePath of modules) {
+    const targetPath = join(appDir, ORGANIZEOS_DIR, relative(root, modulePath));
+    await mkdir(dirname(targetPath), { recursive: true });
+    await copyFile(modulePath, targetPath);
   }
   await copyFile(licensePath, join(appDir, ORGANIZEOS_DIR, "LICENSE"));
 };

@@ -56,6 +56,8 @@ import { formatZodIssues } from "./zod-utils";
 import { pinRuntimeDependencies } from "./runtime-version";
 import {
   ORGANIZEOS_DIR,
+  ORGANIZEOS_PAGE_MODULE,
+  ORGANIZEOS_PAGE_PLACEHOLDER,
   ORGANIZEOS_SOURCE_URL_PLACEHOLDER,
   copyOrganizeosComponents,
   getOrganizeosSourceUrl,
@@ -727,10 +729,12 @@ export const prebuild = async (options: {
           "__CSS__",
           importFrom(`./app/__generated__/index.css`, file)
         )
-        // OrganizeOS fork: the source offer's link (organizeos-components.ts).
+        // OrganizeOS fork: the source offer's link, and the copy of the page
+        // module the html route mounts (organizeos-components.ts).
+        .replaceAll(ORGANIZEOS_SOURCE_URL_PLACEHOLDER, getOrganizeosSourceUrl())
         .replaceAll(
-          ORGANIZEOS_SOURCE_URL_PLACEHOLDER,
-          getOrganizeosSourceUrl()
+          ORGANIZEOS_PAGE_PLACEHOLDER,
+          importFrom(`./app/${ORGANIZEOS_DIR}/${ORGANIZEOS_PAGE_MODULE}`, file)
         );
       await createFileIfNotExists(file, content);
     }

@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -9,6 +17,8 @@ import * as organizeosComponentMetas from "@organizeos/site-components/metas";
 import { createFramework } from "./framework-react-router";
 import {
   ORGANIZEOS_NAMESPACE,
+  ORGANIZEOS_PAGE_MODULE,
+  ORGANIZEOS_PAGE_PLACEHOLDER,
   copyOrganizeosComponents,
   findModuleClosure,
   getOrganizeosSourceUrl,
@@ -28,6 +38,10 @@ const specifier = `${ORGANIZEOS_NAMESPACE}/components`;
 // first (pnpm --filter ./packages/sdk-components-organizeos build).
 const getBuiltModule = () =>
   realpathSync(join(packageDir, "lib", "components.js"));
+
+/** The page module the copy also carries, built beside components.js. */
+const getBuiltPageModule = () =>
+  realpathSync(join(packageDir, "lib", ORGANIZEOS_PAGE_MODULE));
 
 /**
  * Node's own resolver, run from the CLI's folder as the built CLI
@@ -181,6 +195,100 @@ describe("the copy of the build", () => {
       );
     }
   });
+
+  test("the copy carries page.js and its closure, and nothing it does not reach", async () => {
+    const libDir = dirname(getBuiltModule());
+    expect(dirname(getBuiltPageModule())).toBe(libDir);
+    const page = await findModuleClosure(getBuiltPageModule());
+    const pagePaths = page.modules.map((path) => relative(libDir, path));
+    expect(pagePaths).toContain("page.js");
+    expect(pagePaths).toContain(
+      join("share-code", "page-share-code-carrier.js")
+    );
+    expect(pagePaths).toContain(
+      join("share-code", "attach-share-code-carrier.js")
+    );
+    expect(pagePaths).not.toContain("metas.js");
+    expect(pagePaths).not.toContain("templates.js");
+    expect(pagePaths).not.toContain("org-script.js");
+    expect(
+      pagePaths.filter((path) => /\.(ws|template)\.js$/.test(path))
+    ).toEqual([]);
+
+    await copyOrganizeosComponents("app", getBuiltModule());
+    const components = await findModuleClosure(getBuiltModule());
+    const expected = new Set(
+      [...components.modules, ...page.modules].map((path) =>
+        relative(libDir, path)
+      )
+    );
+    const copyDir = join("app", "__organizeos__");
+    const copied = (
+      await readdir(copyDir, { recursive: true, withFileTypes: true })
+    )
+      .filter((entry) => entry.isFile())
+      .map((entry) => relative(copyDir, join(entry.parentPath, entry.name)));
+    expect(copied.sort()).toEqual([...expected, "LICENSE"].sort());
+    await expect(
+      readFile(join("app", "__organizeos__", "page.js"), "utf8")
+    ).resolves.toEqual(await readFile(getBuiltPageModule(), "utf8"));
+  });
+
+  test("page.js imports only packages the react-router site template depends on", async () => {
+    const { bareSpecifiers } = await findModuleClosure(getBuiltPageModule());
+    const template = JSON.parse(
+      await readFile(
+        join(cliDir, "templates", "react-router", "package.json"),
+        "utf8"
+      )
+    );
+
+    expect(bareSpecifiers).toContain("react");
+    for (const bareSpecifier of bareSpecifiers) {
+      expect(Object.keys(template.dependencies), bareSpecifier).toContain(
+        getPackageName(bareSpecifier)
+      );
+    }
+  });
+
+  test("the built page.js exports what the placeholder's declaration names", async () => {
+    const declarations = await readFile(
+      join(cliDir, "src", "organizeos-placeholders.d.ts"),
+      "utf8"
+    );
+    const body = declarations.match(
+      new RegExp(
+        `declare module "${ORGANIZEOS_PAGE_PLACEHOLDER}" \\{([^}]*)\\}`
+      )
+    )?.[1];
+    expect(body).toBeDefined();
+    const declared = [
+      ...(body as string).matchAll(/export const (\w+)\s*:/g),
+    ].map(([, name]) => name);
+    expect(declared).toEqual(["PageShareCodeCarrier"]);
+
+    const built = await import(pathToFileURL(getBuiltPageModule()).href);
+    expect(Object.keys(built).sort()).toEqual(declared.sort());
+    for (const name of declared) {
+      expect(typeof built[name], name).toBe("function");
+    }
+
+    // and the html route template imports it through that placeholder
+    const html = await readFile(
+      join(
+        cliDir,
+        "templates",
+        "react-router",
+        "app",
+        "route-templates",
+        "html.tsx"
+      ),
+      "utf8"
+    );
+    expect(html).toContain(
+      `import { PageShareCodeCarrier } from "${ORGANIZEOS_PAGE_PLACEHOLDER}";`
+    );
+  });
 });
 
 describe("findModuleClosure", () => {
@@ -205,6 +313,10 @@ describe("findModuleClosure", () => {
       "lazy.js": `export default 1;`,
       "shared.js": `export const shared = 1;`,
       "metas.js": `import { EmailIcon } from "@webstudio-is/icons/svg";\nexport const meta = EmailIcon;`,
+      // the page module, beside components.js, reaches a module of its own
+      // and one the components module also reaches
+      "page.js": `export { carrier } from "./page/carrier.js";`,
+      "page/carrier.js": `import { shared } from "../shared.js";\nexport const carrier = shared;`,
     });
 
     const entryPath = join(libDir, "components.js");
@@ -227,7 +339,8 @@ describe("findModuleClosure", () => {
     ]);
 
     await copyOrganizeosComponents("app", entryPath);
-    for (const path of reached) {
+    const copied = [...reached, "page.js", join("page", "carrier.js")];
+    for (const path of copied) {
       await expect(
         readFile(join("app", "__organizeos__", path), "utf8")
       ).resolves.toEqual(await readFile(join(libDir, path), "utf8"));
@@ -237,6 +350,23 @@ describe("findModuleClosure", () => {
     await expect(
       readFile(join("app", "__organizeos__", "LICENSE"), "utf8")
     ).resolves.toBe("the package's license");
+  });
+
+  test("refuses a build without its page module, which every html route imports", async () => {
+    await writeModules(tempDir, {
+      "package.json": "{}",
+      LICENSE: "the package's license",
+    });
+    await writeModules(join(tempDir, "lib"), {
+      "components.js": "export const a = 1;",
+    });
+
+    await expect(
+      copyOrganizeosComponents("app", join(tempDir, "lib", "components.js"))
+    ).rejects.toThrow(
+      /has no page\.js beside .*components\.js, which every published page imports\. Build it again: pnpm --filter \.\/packages\/sdk-components-organizeos build/
+    );
+    expect(existsSync(join("app", "__organizeos__"))).toBe(false);
   });
 
   test("refuses a build whose package has no LICENSE", async () => {
