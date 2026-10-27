@@ -313,7 +313,8 @@ renders the route templates, so nothing changes on the canvas or in the
 Preview, and the xml and text routes have no links and do not mount it. The
 fixture `fixtures/react-router-vercel` carries the change in its two html
 routes with the placeholder resolved; it does not commit `app/__organizeos__/`
-(prebuild writes it), and CI neither typechecks nor builds fixtures. Keep it
+(prebuild writes it), so its html routes neither typecheck nor build until
+prebuild has written it, and CI neither typechecks nor builds fixtures. Keep it
 on upstream merges (`prebuild.test.ts`, "every html route imports the page's
 share-code carrier from the copy of the build and renders it").
 
@@ -1560,7 +1561,10 @@ options, and the limits found since in review):
   site's own pages. Without JavaScript, or before hydration, nothing is
   carried. A site published before the blocks carried the code sends none
   until it is republished, and one published before the page's carrier
-  carries it from its blocks' links and forms only.
+  carries it from its blocks' links and forms only. A plain click on a
+  same-origin link to a platform page is cancelled and sent by document in the
+  capture phase, before the link's own handlers run: they still run, but
+  cannot keep that click from navigating (§10, for when org script returns).
 
 ## 10. Org script is paused
 
@@ -1639,7 +1643,14 @@ move together. When it is on, everything follows it: the panel lists the embeds
 again, the canvas renders upstream's components, Custom code is editable,
 prebuild keeps all of it, and the Publish dialog's list goes away. Nothing needs
 migrating: each org's next publish ships what it saved, including code someone
-may have forgotten, so tell the orgs first. Then this section moves to history.
+may have forgotten, so tell the orgs first. The unpause also decides how an
+org's own click handlers meet the share-code carriers (§9, "Share codes"): the
+page's carrier cancels a plain click on a same-origin link to a platform page
+in the document's capture phase, and a block's carrier does the same within its
+block, both before any handler on the link itself (a React `onClick`, an inline
+`onclick`) runs, so once org script returns a designer's handler on such a link
+cannot cancel that click: the carrier has already sent it by document. Then
+this section moves to history.
 The package builds the `org-script` entry with `vite.build.config.ts`, which
 extends the root `vite.sdk-components.config.ts` (left as upstream's) with one
 entry. It is not named `vite.config.ts` because Vitest picks up the nearest
