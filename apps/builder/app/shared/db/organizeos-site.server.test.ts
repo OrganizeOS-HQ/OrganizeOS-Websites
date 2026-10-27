@@ -77,7 +77,6 @@ describe("organizeosWebsiteAreaUrl", () => {
 
 describe("resolveOrganizeosSite", () => {
   const base = {
-    publisherHost: "example.org",
     platformUrl: "https://app.example.org",
   };
 
@@ -91,7 +90,6 @@ describe("resolveOrganizeosSite", () => {
     ).toEqual({
       organizationId: ORG_ID,
       subdomain: "acme",
-      siteUrl: "https://acme.example.org",
       manageUrl: "https://app.example.org/acme/website",
       platformUrl: "https://app.example.org",
       blocksEnabled: false,
@@ -143,7 +141,7 @@ describe("resolveOrganizeosSite", () => {
     }
   );
 
-  test("an org project still on the placeholder has no site URL", () => {
+  test("an org project still on the placeholder has no subdomain", () => {
     const site = resolveOrganizeosSite({
       ...base,
       owner: SERVICE_OWNER,
@@ -151,7 +149,6 @@ describe("resolveOrganizeosSite", () => {
     });
     expect(site?.organizationId).toBe(ORG_ID);
     expect(site?.subdomain).toBeUndefined();
-    expect(site?.siteUrl).toBeUndefined();
     expect(site?.manageUrl).toBe("https://app.example.org/dashboard");
   });
 
@@ -273,7 +270,6 @@ describe("resolveOrganizeosDashboardExit", () => {
     resolveOrganizeosDashboardExit(context, {
       userId: "human-1",
       workspaces,
-      publisherHost: "example.org",
       platformUrl: PLATFORM,
     });
 

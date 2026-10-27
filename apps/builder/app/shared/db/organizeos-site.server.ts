@@ -132,21 +132,19 @@ export const parseOrgIdList = (value: string | undefined): Set<string> =>
  * Describe the OrganizeOS org behind a project, or undefined for a project a
  * human owns (which is not an OrganizeOS site and gets upstream behavior).
  * Pure: the caller supplies the project's owner row, the deployment's
- * publisher host + platform URL, and the raw `ORGANIZEOS_BLOCKS_ORG_IDS`
+ * platform URL, and the raw `ORGANIZEOS_BLOCKS_ORG_IDS`
  * allowlist (the OrganizeOS blocks and the rest of the OrganizeOS builder UI
  * are offered to the orgs it lists only).
  */
 export const resolveOrganizeosSite = ({
   owner,
   projectDomain,
-  publisherHost,
   platformUrl,
   blocksOrgIds,
   cmsPanel,
 }: {
   owner: { provider: string | null; email: string | null };
   projectDomain: string;
-  publisherHost: string;
   platformUrl: string;
   blocksOrgIds?: string;
   /** The raw `ORGANIZEOS_CMS_PANEL`: only `true` offers the CMS panel. */
@@ -170,10 +168,6 @@ export const resolveOrganizeosSite = ({
   return {
     organizationId,
     subdomain,
-    siteUrl:
-      subdomain === undefined
-        ? undefined
-        : `https://${subdomain}.${publisherHost}`,
     manageUrl: organizeosWebsiteAreaUrl(platformUrl, subdomain),
     platformUrl: platformUrl.replace(/\/+$/, ""),
     blocksEnabled: parseOrgIdList(blocksOrgIds).has(organizationId),
@@ -214,12 +208,10 @@ export const resolveOrganizeosDashboardExit = async (
   {
     userId,
     workspaces,
-    publisherHost,
     platformUrl,
   }: {
     userId: string;
     workspaces: ReadonlyArray<DashboardWorkspace>;
-    publisherHost: string;
     platformUrl: string;
   }
 ): Promise<string | undefined> => {
@@ -289,7 +281,6 @@ export const resolveOrganizeosDashboardExit = async (
     resolveOrganizeosSite({
       owner,
       projectDomain: project.data.domain,
-      publisherHost,
       platformUrl,
     })?.manageUrl ?? home
   );

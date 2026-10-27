@@ -253,7 +253,6 @@ export const loader = async (loaderArgs: LoaderFunctionArgs) => {
         : resolveOrganizeosSite({
             owner: owner.data,
             projectDomain: project.domain,
-            publisherHost: env.PUBLISHER_HOST,
             platformUrl: env.ORGANIZEOS_APP_URL,
             blocksOrgIds: env.ORGANIZEOS_BLOCKS_ORG_IDS,
             cmsPanel: env.ORGANIZEOS_CMS_PANEL,

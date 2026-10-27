@@ -65,7 +65,6 @@ const namespace = "@organizeos/site-components";
 const site: OrganizeosSite = {
   organizationId: "org-1",
   subdomain: "acme",
-  siteUrl: "https://acme.organizeos.org",
   manageUrl: "https://app.organizeos.org/acme/website",
   platformUrl: "https://app.organizeos.org",
   blocksEnabled: true,

@@ -5,7 +5,6 @@ import {
   Button,
   Flex,
   Grid,
-  IconButton,
   Link,
   PanelBanner,
   Separator,
@@ -16,13 +15,9 @@ import {
   textVariants,
   theme,
   toast,
+  useIsTruncated,
 } from "@webstudio-is/design-system";
-import {
-  AlertIcon,
-  CheckCircleIcon,
-  CopyIcon,
-  ExternalLinkIcon,
-} from "@webstudio-is/icons";
+import { AlertIcon, CheckCircleIcon } from "@webstudio-is/icons";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
 import {
   $dataSources,
@@ -39,7 +34,6 @@ import {
 } from "~/shared/nano-states";
 import { setActiveSidebarPanel } from "~/builder/shared/nano-states";
 import { nativeClient } from "~/shared/trpc/trpc-client";
-import { CopyToClipboard } from "~/shared/copy-to-clipboard";
 import { RelativeTime } from "~/builder/shared/relative-time";
 import { platformName } from "~/shared/branding";
 import { getRestrictedFeatures } from "./restricted-features";
@@ -52,6 +46,11 @@ import {
   getOrganizeosPublishState,
   type OrganizeosPublishState,
 } from "./organizeos-publish-status";
+import {
+  loadSiteAddresses,
+  servesThisVersion,
+  type SiteAddresses,
+} from "./organizeos-publish-addresses";
 
 /**
  * The Publish dialog for an OrganizeOS site.
@@ -61,8 +60,9 @@ import {
  * through Entri, per-domain checkboxes, plan upgrade banners and a static
  * export. None of that applies to an org's site: it is served by OrganizeOS
  * at the org's subdomain and its custom domains, which are managed there. So
- * this dialog shows the site's real address, points at OrganizeOS for
- * everything else, and has one Publish button whose status follows the
+ * this dialog shows where it publishes and whether the site is live, as
+ * OrganizeOS answers (organizeos-publish-addresses.ts), points at OrganizeOS
+ * for everything else, and has one Publish button whose status follows the
  * executor (see organizeos-publish-status.ts).
  */
 
@@ -98,14 +98,6 @@ const buttonLinkClass = css({
   cursor: "pointer",
   ...textVariants.link,
 }).toString();
-
-const hostOf = (url: string) => {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-};
 
 const StatusLine = ({ state }: { state: OrganizeosPublishState }) => {
   switch (state.status) {
@@ -250,6 +242,84 @@ export const PausedScriptBanner = () => {
   );
 };
 
+const newTabLink = {
+  target: "_blank",
+  rel: "noreferrer",
+  color: "inherit",
+  variant: "inherit",
+} as const;
+
+/** Publishing to {host}, linked when the site is live, and Manage domains. */
+const PublishingTo = ({ addresses }: { addresses: SiteAddresses }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const truncated = useIsTruncated(ref, addresses.host);
+  const target = (
+    <Text ref={ref} truncate css={{ flexGrow: 1, minWidth: 0 }}>
+      Publishing to{" "}
+      {addresses.status === "live" ? (
+        <Link href={addresses.origin} target="_blank" rel="noreferrer">
+          {addresses.host}
+        </Link>
+      ) : (
+        addresses.host
+      )}
+    </Text>
+  );
+  return (
+    <Flex align="center" gap="2" css={{ minWidth: 0 }}>
+      {truncated ? (
+        <Tooltip content={addresses.host}>{target}</Tooltip>
+      ) : (
+        target
+      )}
+      <Text color="subtle" css={{ flexShrink: 0 }}>
+        <Link href={addresses.manageDomainsUrl} {...newTabLink}>
+          Manage domains ↗
+        </Link>
+      </Text>
+    </Flex>
+  );
+};
+
+/** A site that is not live: where to launch it, or put it back, in OrganizeOS. */
+const LaunchLine = ({ addresses }: { addresses: SiteAddresses }) => {
+  if (addresses.status === "live") {
+    return;
+  }
+  return (
+    <Text color="subtle">
+      {addresses.status === "offline"
+        ? "Your website is offline."
+        : "Not live yet."}{" "}
+      <Link href={addresses.websiteUrl} {...newTabLink}>
+        {addresses.status === "offline"
+          ? `Put it back from ${platformName} ↗`
+          : `Launch your website from ${platformName} ↗`}
+      </Link>
+    </Text>
+  );
+};
+
+/** A live site whose current version OrganizeOS will not serve. */
+const CannotGoLiveWarning = ({
+  addresses,
+}: {
+  addresses: SiteAddresses | undefined;
+}) => {
+  if (addresses?.status !== "live" || addresses.launchable !== false) {
+    return;
+  }
+  return (
+    <Flex gap="1" align="center">
+      <AlertIcon color={rawTheme.colors.backgroundAlertMain} />
+      <Text css={{ color: theme.colors.backgroundAlertMain }}>
+        This version can&apos;t go live yet. Publish again after the next
+        builder update.
+      </Text>
+    </Flex>
+  );
+};
+
 export const OrganizeosPublishContent = ({
   site,
 }: {
@@ -259,8 +329,28 @@ export const OrganizeosPublishContent = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
+  const [addresses, setAddresses] = useState<SiteAddresses>();
+
   const state = getOrganizeosPublishState(project?.latestBuildVirtual);
   const previousStatus = useRef(state.status);
+  const projectId = project?.id;
+  const mounted = useRef(true);
+
+  // Where it publishes and whether the site is live, read when the dialog
+  // opens
+  useEffect(() => {
+    mounted.current = true;
+    if (projectId !== undefined) {
+      loadSiteAddresses(projectId).then((loaded) => {
+        if (mounted.current) {
+          setAddresses(loaded);
+        }
+      });
+    }
+    return () => {
+      mounted.current = false;
+    };
+  }, [projectId]);
 
   // While the executor runs, keep the status fresh so the dialog (and the
   // admin) learn the outcome without a reload.
@@ -275,22 +365,37 @@ export const OrganizeosPublishContent = ({
   }, [state.status]);
 
   // Announce the outcome of a publish that was pending while the dialog was
-  // open; a dialog opened onto an old result stays quiet.
+  // open, and read the addresses again; a dialog opened onto an old result
+  // stays quiet. The site is called live only when OrganizeOS serves this
+  // version.
   useEffect(() => {
-    if (previousStatus.current === "pending") {
-      if (state.status === "published") {
-        toast.success(
-          site.siteUrl === undefined
-            ? "Your site is live. Changes can take up to a minute to appear."
-            : `Your site is live. Changes can take up to a minute to appear at ${hostOf(site.siteUrl)}.`,
-          { duration: 10000 }
-        );
-      } else if (state.status === "failed") {
+    if (
+      previousStatus.current === "pending" &&
+      projectId !== undefined &&
+      (state.status === "published" || state.status === "failed")
+    ) {
+      const settled = state.status;
+      if (settled === "failed") {
         toast.error("Publishing failed. Please try again.");
       }
+      loadSiteAddresses(projectId).then((loaded) => {
+        if (mounted.current) {
+          setAddresses(loaded);
+        }
+        if (settled === "published") {
+          if (servesThisVersion(loaded)) {
+            toast.success(
+              `Your site is live. Changes can take up to a minute to appear at ${loaded.host}.`,
+              { duration: 10000 }
+            );
+          } else {
+            toast.success("Published.");
+          }
+        }
+      });
     }
     previousStatus.current = state.status;
-  }, [state.status, site.siteUrl]);
+  }, [state.status, projectId]);
 
   if (project === undefined) {
     return;
@@ -329,64 +434,18 @@ export const OrganizeosPublishContent = ({
 
   return (
     <Grid css={{ padding: theme.panel.padding }} gap={3}>
-      <Grid gap={1}>
-        <Text variant="labels" color="main">
-          Your site
-        </Text>
-        {site.siteUrl === undefined ? (
-          <Text color="subtle">
-            Your site&apos;s address is set in {platformName}.
-          </Text>
-        ) : (
-          <Flex align="center" gap="1" css={{ minWidth: 0 }}>
-            <Link
-              href={site.siteUrl}
-              target="_blank"
-              rel="noreferrer"
-              css={{
-                flexGrow: 1,
-                minWidth: 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {hostOf(site.siteUrl)}
-            </Link>
-            <CopyToClipboard text={site.siteUrl} copyText="Copy link">
-              <IconButton type="button" aria-label="Copy site link">
-                <CopyIcon />
-              </IconButton>
-            </CopyToClipboard>
-            <Tooltip content="Open site">
-              <IconButton
-                type="button"
-                aria-label="Open site"
-                onClick={() => {
-                  window.open(site.siteUrl, "_blank", "noreferrer");
-                }}
-              >
-                <ExternalLinkIcon />
-              </IconButton>
-            </Tooltip>
-          </Flex>
-        )}
-        <Text color="subtle">
-          <Link
-            href={site.manageUrl}
-            target="_blank"
-            rel="noreferrer"
-            color="inherit"
-            variant="inherit"
-          >
-            Site settings ↗
-          </Link>
-        </Text>
-      </Grid>
-
-      <Separator />
+      {addresses !== undefined && (
+        <>
+          <Grid gap={1}>
+            <PublishingTo addresses={addresses} />
+            <LaunchLine addresses={addresses} />
+          </Grid>
+          <Separator />
+        </>
+      )}
 
       <StatusLine state={state} />
+      <CannotGoLiveWarning addresses={addresses} />
       {error !== undefined && <Text color="destructive">{error}</Text>}
       <RestrictedFeaturesBanner manageUrl={site.manageUrl} />
       <PausedScriptBanner />
