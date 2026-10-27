@@ -12,9 +12,15 @@ import {
   checksTagProp,
   elementTagMayRun,
   htmlEmbedCodeMayRun,
+  isEventAttributeName,
+  isFrameDocumentName,
   orgScriptMayRun,
+  pageRedirectMayShip,
   pausedPropNames,
   pausedSvgTags,
+  projectRedirectMayShip,
+  propMayShip,
+  xmlComponents,
 } from "@organizeos/site-components/org-script";
 import { platformName } from "~/shared/branding";
 import { findPageAndSelectorByInstanceId } from "~/shared/instance-utils/lookup";
@@ -28,14 +34,18 @@ import { findPageAndSelectorByInstanceId } from "~/shared/instance-utils/lookup"
  * custom code. Elements with a tag the builder does not offer are listed too:
  * publishing drops each of them with everything inside it, the props panel can
  * add a `tag` or `data-ws-tag` prop to any component, and the canvas only skips
- * that prop, so the element looks fine there.
+ * that prop, so the element looks fine there. So are the unsafe values
+ * publishing leaves out (`propMayShip`): an address that may run script, a
+ * `srcdoc`, an event handler attribute, an XML element on an HTML or text page
+ * and a redirect to an unsafe address. A bound address the canvas shows with a
+ * safe value is still listed when its fixed start decides nothing.
  */
 export type PausedScriptItem = {
   label: string;
   /** Select the element on its page when clicked */
   navigate?: { pageId: string; instanceSelector: string[] };
   /** Open a view when clicked */
-  view?: "projectSettings";
+  view?: "projectSettings" | "projectRedirects" | "pageSettings";
 };
 
 export const pausedScriptExplanation = `Scripts on your site could read the ${platformName} sign-in of people who visit, so these stay off while we make it safe. What you saved is kept.`;
@@ -95,6 +105,27 @@ const findStaticTags = (instance: Instance, props: Prop[]) => {
   return tags;
 };
 
+/** How the dialog names a prop that publishing leaves out for its value. */
+const unsafePropLabel = (name: string) => {
+  if (isFrameDocumentName(name)) {
+    return "Frame document (srcdoc)";
+  }
+  if (isEventAttributeName(name)) {
+    return `Event handler attribute (${name})`;
+  }
+  const kind = name.toLowerCase();
+  if (kind === "action" || kind === "formaction") {
+    return `Form address (${name})`;
+  }
+  if (kind === "src") {
+    return `Source address (${name})`;
+  }
+  if (kind === "data") {
+    return `Object address (${name})`;
+  }
+  return `Link address (${name})`;
+};
+
 /**
  * Whether publishing drops this instance for its tag (`classify` in
  * packages/cli/src/organizeos-org-script.ts): its own tag, or a `data-ws-tag`
@@ -131,6 +162,15 @@ export const findPausedScript = ({
     list.push(prop);
     propsByInstance.set(prop.instanceId, list);
   }
+
+  // An XML element is left out of every HTML and text page that publishes it
+  const publishedOnHtmlPages = new Set(
+    getAllPages(pages)
+      .filter((page) => page.meta.documentType !== "xml")
+      .flatMap((page) => [
+        ...findPublishedInstanceIds(instances, page.rootInstanceId),
+      ])
+  );
 
   const items: PausedScriptItem[] = [];
   const seen = new Set<Instance["id"]>();
@@ -171,6 +211,11 @@ export const findPausedScript = ({
         );
         if (paused !== undefined) {
           labels.push(`SVG ${paused} element`);
+        } else if (
+          xmlComponents.has(instance.component) &&
+          publishedOnHtmlPages.has(instance.id)
+        ) {
+          labels.push("XML element");
         }
       }
       // an instance that is dropped takes its props with it
@@ -178,6 +223,8 @@ export const findPausedScript = ({
         for (const prop of instanceProps) {
           if (pausedPropNames.has(prop.name)) {
             labels.push("Raw HTML property");
+          } else if (propMayShip(instance, prop, false) === false) {
+            labels.push(unsafePropLabel(prop.name));
           }
         }
       }
@@ -196,6 +243,24 @@ export const findPausedScript = ({
           navigate: { pageId, instanceSelector },
         });
       }
+    }
+  }
+
+  for (const page of getAllPages(pages)) {
+    if (pageRedirectMayShip(page, false) === false) {
+      items.push({
+        label: `Redirect on ${page.name}`,
+        navigate: { pageId: page.id, instanceSelector: [page.rootInstanceId] },
+        view: "pageSettings",
+      });
+    }
+  }
+  for (const redirect of pages.redirects ?? []) {
+    if (projectRedirectMayShip(redirect, false) === false) {
+      items.push({
+        label: `Redirect from ${redirect.old} (Project settings)`,
+        view: "projectRedirects",
+      });
     }
   }
 

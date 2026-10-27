@@ -56,7 +56,8 @@
     "react-dom": "18.3.0-canary-14898b6a9-20240318"
   },
   "dependencies": {
-    "@webstudio-is/icons": "workspace:*"
+    "@webstudio-is/icons": "workspace:*",
+    "acorn": "^8.14.1"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.0",
