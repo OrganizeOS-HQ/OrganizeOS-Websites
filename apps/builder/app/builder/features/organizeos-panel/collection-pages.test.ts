@@ -270,13 +270,13 @@ describe("createCollectionItemPage", () => {
     );
     expect(page.meta).toEqual({
       status: `(${found}) ? 200 : 404`,
-      description: `(${found}) ? (${v}.data.data.fields.body.text ?? "").slice(0, 160) : ""`,
+      description: `(${found}) ? (${v}.data.data.fields.summary ?? "").slice(0, 160) : ""`,
       socialImageUrl: `(${found}) ? (${v}.data.data.fields.cover.url ?? "") : ""`,
       excludePageFromSearch: "false",
     });
   });
 
-  test("the description is the Summary field, else the rich text's text, else empty", () => {
+  test("the description is the first textarea field, else the rich text's text, else empty", () => {
     const describe = (
       fields: Parameters<typeof getItemPageExpressions>[0]["fields"]
     ) =>
@@ -289,6 +289,16 @@ describe("createCollectionItemPage", () => {
       describe([{ key: "story", label: "Story", kind: "richtext" }])
     ).toContain(
       `($ws$dataSource$x.data.data.fields.story.text ?? "").slice(0, 160)`
+    );
+    // the textarea wins over the rich text, wherever each sits
+    expect(
+      describe([
+        { key: "story", label: "Story", kind: "richtext" },
+        { key: "excerpt", label: "Excerpt", kind: "textarea" },
+        { key: "notes", label: "Notes", kind: "textarea" },
+      ])
+    ).toContain(
+      `($ws$dataSource$x.data.data.fields.excerpt ?? "").slice(0, 160)`
     );
     expect(describe([{ key: "name", label: "Name", kind: "text" }])).toEqual(
       `""`

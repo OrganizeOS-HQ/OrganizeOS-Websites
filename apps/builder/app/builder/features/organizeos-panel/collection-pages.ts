@@ -29,7 +29,11 @@ import {
 import { selectInstance, selectPage } from "~/shared/nano-states";
 import { $pages } from "~/shared/sync/data-stores";
 import { registerFolderChildMutable } from "~/builder/features/pages/page-utils";
-import { type CollectionField, pickRoles } from "./collection-layout";
+import {
+  type CollectionField,
+  normalizeFieldKind,
+  pickRoles,
+} from "./collection-layout";
 import {
   type CollectionCatalog,
   type CollectionSchema,
@@ -95,9 +99,14 @@ export const getItemPageExpressions = ({
   const item = `${variable}.data.data`;
   const found = `(${system}.params.slug ?? "") !== "" && ${variable}?.ok === true && ${item}.slug === ${system}.params.slug`;
   const field = (target: CollectionField) => `${item}.fields.${target.key}`;
+  // the first textarea field (a blog's summary), even beside a rich text
+  // field, which the layout shows instead (design 3.4)
+  const textarea = fields.find(
+    (target) => normalizeFieldKind(target.kind) === "textarea"
+  );
   const descriptionSource =
-    roles.summary !== undefined
-      ? field(roles.summary)
+    textarea !== undefined
+      ? field(textarea)
       : roles.body !== undefined
         ? `${field(roles.body)}.text`
         : undefined;
