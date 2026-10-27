@@ -27,6 +27,11 @@ const environment = z.object({
   // the collab-relay/service paths that grant broad project access.
   ORGANIZEOS_PROVISION_TOKEN: z.string().optional(),
 
+  // OrganizeOS's website agent (POST /internal/organizeos-agent). Its own
+  // secret: a leaked provisioning token must not read or edit content, and
+  // this one must not provision. Unset, the route answers 404.
+  ORGANIZEOS_AGENT_TOKEN: z.string().optional(),
+
   // Public key (PEM, ES256/P-256) for verifying OrganizeOS SSO trust tokens.
   // OrganizeOS holds the private key; the fork holds only this public key. The
   // organizeos dashboard strategy is registered only when this is set.
@@ -151,6 +156,7 @@ const rawEnv = {
   TRPC_SERVER_URL: process.env.TRPC_SERVER_URL,
   TRPC_SERVER_API_TOKEN: process.env.TRPC_SERVER_API_TOKEN,
   ORGANIZEOS_PROVISION_TOKEN: process.env.ORGANIZEOS_PROVISION_TOKEN,
+  ORGANIZEOS_AGENT_TOKEN: process.env.ORGANIZEOS_AGENT_TOKEN,
   ORGANIZEOS_SSO_PUBLIC_KEY: process.env.ORGANIZEOS_SSO_PUBLIC_KEY,
   ORGANIZEOS_SESSION_BINDING: process.env.ORGANIZEOS_SESSION_BINDING,
   ORGANIZEOS_PUBLISH_REPO: process.env.ORGANIZEOS_PUBLISH_REPO,
