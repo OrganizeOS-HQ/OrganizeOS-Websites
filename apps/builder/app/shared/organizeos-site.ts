@@ -31,3 +31,17 @@ export type OrganizeosSite = {
    */
   cmsPanelEnabled?: boolean;
 };
+
+/**
+ * The org's workspace home in OrganizeOS, where "Back to OrganizeOS" goes:
+ * `{app}/{subdomain}`, or the app's dashboard while the subdomain is unknown.
+ * Not the Website area (`manageUrl`), which the Publish dialog links instead.
+ */
+export const organizeosHomeUrl = (
+  site: Pick<OrganizeosSite, "platformUrl" | "subdomain">
+): string => {
+  const base = site.platformUrl.replace(/\/+$/, "");
+  return site.subdomain === undefined
+    ? `${base}/dashboard`
+    : `${base}/${site.subdomain}`;
+};
