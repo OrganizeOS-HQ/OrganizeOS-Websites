@@ -88,13 +88,33 @@ describe("what it stores", () => {
       reply: { headers: { "cache-control": cacheable } },
     },
     {
-      name: "a 404",
-      reply: { status: 404, headers: { "cache-control": cacheable } },
+      name: "a 404 with no Cache-Control",
+      reply: { status: 404 },
+    },
+    {
+      name: "a 404 with private",
+      reply: {
+        status: 404,
+        headers: { "cache-control": "private, max-age=60" },
+      },
+    },
+    {
+      name: "a max-age-only 404 to a request with Authorization",
+      init: authorized,
+      reply: { status: 404, headers: { "cache-control": "max-age=60" } },
+    },
+    {
+      name: "a 401",
+      reply: { status: 401, headers: { "cache-control": cacheable } },
     },
     {
       name: "a 429",
       reply: { status: 429, headers: { "cache-control": cacheable } },
     },
+    ...[500, 502, 503, 504].map((status) => ({
+      name: `a ${status}`,
+      reply: { status, headers: { "cache-control": cacheable } },
+    })),
     {
       name: "no-store",
       reply: { headers: { "cache-control": `${cacheable}, no-store` } },
@@ -259,6 +279,133 @@ describe("what it stores", () => {
     expect(await loadResource(cache, request)).toEqual(expected);
     expect(await loadResource(cache, request)).toEqual(expected);
     expect(network).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a 404 that declares a lifetime", () => {
+  // The platform's collections item route answers a missing item with a 404
+  // and public, s-maxage=60, so a crawler walking random slugs reads it once
+  // a minute per server instance, not once per request.
+  const missing = `${url.replace("/forms", "/collections/blog/items")}/nope`;
+
+  test("keeps a 404 with s-maxage for that lifetime, then refetches", async () => {
+    const { cache, network, wait } = setup();
+    network.mockImplementation(async () =>
+      reply({
+        body: "not found",
+        status: 404,
+        headers: { "cache-control": cacheable },
+      })
+    );
+
+    const first = await get(cache, authorized, missing);
+    expect(first.status).toBe(404);
+    expect(await first.text()).toBe("not found");
+    wait(59.999);
+    const second = await get(cache, authorized, missing);
+    expect(second.status).toBe(404);
+    expect(await second.text()).toBe("not found");
+    expect(network).toHaveBeenCalledTimes(1);
+
+    wait(0.001);
+    await read(get(cache, authorized, missing));
+    expect(network).toHaveBeenCalledTimes(2);
+  });
+
+  test("reads as not ok through the sdk's loadResource, stored or not", async () => {
+    const { cache, network } = setup();
+    network.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ error: "Not found" }), {
+          status: 404,
+          statusText: "Not Found",
+          headers: {
+            "content-type": "application/json",
+            "cache-control": cacheable,
+          },
+        })
+    );
+    const request = {
+      name: "currentItem",
+      method: "get" as const,
+      url: missing,
+      searchParams: [],
+      headers: [{ name: "Authorization", value: "Bearer token" }],
+    };
+    const expected = {
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      data: { error: "Not found" },
+    };
+
+    expect(await loadResource(cache, request)).toEqual(expected);
+    expect(await loadResource(cache, request)).toEqual(expected);
+    expect(network).toHaveBeenCalledTimes(1);
+  });
+
+  test("a refresh that answers 404 replaces a stored 200, and is not a failure that serves stale", async () => {
+    const { cache, network, wait } = setup();
+    network
+      .mockResolvedValueOnce(
+        reply({ body: "item", headers: { "cache-control": staleIfError } })
+      )
+      .mockResolvedValueOnce(
+        reply({
+          body: "gone",
+          status: 404,
+          headers: { "cache-control": cacheable },
+        })
+      );
+
+    expect(await read(get(cache))).toBe("item");
+    wait(61);
+    const refreshed = await get(cache);
+    expect(refreshed.status).toBe(404);
+    expect(await refreshed.text()).toBe("gone");
+    wait(30);
+    const stored = await get(cache);
+    expect(stored.status).toBe(404);
+    expect(network).toHaveBeenCalledTimes(2);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  test("a refresh that answers 200 replaces a stored 404", async () => {
+    const { cache, network, wait } = setup();
+    network
+      .mockResolvedValueOnce(
+        reply({
+          body: "gone",
+          status: 404,
+          headers: { "cache-control": cacheable },
+        })
+      )
+      .mockResolvedValueOnce(
+        reply({ body: "item", headers: { "cache-control": cacheable } })
+      );
+
+    expect((await get(cache)).status).toBe(404);
+    wait(60);
+    expect(await read(get(cache))).toBe("item");
+  });
+
+  test("a stored 404 answers a failed refresh within stale-if-error, as any stored response does", async () => {
+    const { cache, network, wait } = setup();
+    network
+      .mockResolvedValueOnce(
+        reply({
+          body: "gone",
+          status: 404,
+          headers: { "cache-control": staleIfError },
+        })
+      )
+      .mockResolvedValueOnce(reply({ body: "down", status: 503 }));
+
+    expect((await get(cache)).status).toBe(404);
+    wait(61);
+    const response = await get(cache);
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("gone");
   });
 });
 

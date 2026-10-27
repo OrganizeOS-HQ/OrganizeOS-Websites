@@ -12,10 +12,16 @@
  *   opt-in for cachedFetch, left to it). Anything else goes straight through.
  * - Key: the method, the URL and every request header, so requests that differ
  *   in any header, Authorization included, never share an entry.
- * - Stored: a 200 with s-maxage or max-age above 0, without no-store, private,
- *   no-cache, Vary: * or Set-Cookie, and, for a request with Authorization,
- *   with public or s-maxage (section 3.5). Fresh for s-maxage, else max-age,
- *   less Age (section 4.2.3), at most 300 seconds.
+ * - Stored: a 200 or a 404 with s-maxage or max-age above 0, without
+ *   no-store, private, no-cache, Vary: * or Set-Cookie, and, for a request
+ *   with Authorization, with public or s-maxage (section 3.5). Fresh for
+ *   s-maxage, else max-age, less Age (section 4.2.3), at most 300 seconds.
+ *   A 404 is heuristically cacheable (section 4.2.2) but is kept only when it
+ *   declares a lifetime: the platform's collections item route sends public,
+ *   s-maxage=60 with a missing item, so a missing item page costs one
+ *   platform read a minute per instance, as a found one does, not one per
+ *   request.
+ *   Any other status, every 5xx included, is never stored.
  *
  * A stale entry is refreshed by the request that finds it, once for all who
  * wait. A refresh that fails (a network error, or a 429, 500, 502, 503 or 504)
@@ -92,7 +98,8 @@ const STALE_REQUEST_TIMEOUT_SECONDS = 4;
 // The deadline of a request nothing stored could stand in for.
 const REQUEST_TIMEOUT_SECONDS = 10;
 
-// RFC 5861's four, and 429 (see above).
+// RFC 5861's four, and 429 (see above). A 404 is not one: it is the answer
+// for a missing item, so it replaces the stale entry.
 const FAILED_REFRESH_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 // A Response with one of these statuses cannot carry a body.
@@ -158,7 +165,7 @@ const getFreshSeconds = (
   hasAuthorization: boolean
 ) => {
   if (
-    response.status !== 200 ||
+    (response.status !== 200 && response.status !== 404) ||
     directives.has("no-store") ||
     directives.has("private") ||
     directives.has("no-cache") ||
@@ -390,8 +397,9 @@ export const createResourceCache = (
         retryAt: 0,
       });
     } else {
-      // Not stored, so the old entry is out of date: a 401 or a 404 must show,
-      // now and after any later failure.
+      // Not stored, so the old entry is out of date: a 401, or a 404 with no
+      // lifetime, must show, now and after any later failure. A 404 is an
+      // answer, never a failed refresh: it replaces the entry, stored or not.
       forget(key, stale);
     }
     return snapshot;
