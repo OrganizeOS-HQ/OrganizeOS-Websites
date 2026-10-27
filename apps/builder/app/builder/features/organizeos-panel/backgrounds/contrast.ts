@@ -131,7 +131,7 @@ export type ContrastGroup = {
   /**
    * True when the background stack that gave the lowest ratio has a
    * gradient layer, so a failure is at the gradient's worst point, which may
-   * not be where the text sits ("Lowest point of the background").
+   * not be where the text sits.
    */
   gradient?: boolean;
   threshold: 3 | 4.5;

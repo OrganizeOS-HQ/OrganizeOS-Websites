@@ -42,16 +42,12 @@ export const meta: WsComponentMeta = {
       control: "text",
       required: false,
       label: "Event",
-      description:
-        "The event this block takes RSVPs for, by its id. Without one, the live site shows the Unavailable state.",
     },
     data: {
       type: "json",
       control: "json",
       required: false,
       label: "Events data",
-      description:
-        "The organization's public events (the project's Events data), where the block finds its event: when it starts and ends, whether it is full, and its guests, shifts and questions.",
     },
     state: {
       type: "string",
@@ -59,8 +55,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: "initial",
       options: [...rsvpFormStates],
-      description:
-        "Reveals a state on the canvas so it can be styled. A published site starts in Initial and moves through the states as the visitor submits.",
+      description: "Shown on the canvas",
     },
     action: {
       type: "string",
@@ -69,16 +64,13 @@ export const meta: WsComponentMeta = {
       defaultValue: "state",
       options: ["state", "page"],
       label: "After submit",
-      description:
-        "What happens after a successful RSVP: show the Registered state, or go to a page. A visitor who lands on the waitlist always sees the Waitlisted state.",
+      description: "Registered state, or a page",
     },
     actionPage: {
       type: "string",
       control: "url",
       required: false,
       label: "Page",
-      description:
-        "The page to open after a successful RSVP, when After submit is page.",
     },
   },
 };

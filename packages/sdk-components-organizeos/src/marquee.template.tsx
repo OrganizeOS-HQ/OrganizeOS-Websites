@@ -37,8 +37,7 @@ const item = (label: string) => (
 export const meta: TemplateMeta = {
   category: "hidden",
   label: "Marquee",
-  description:
-    "A row of items that drifts in a loop, with a Pause button first. It stops for good when keyboard focus enters it, pauses on hover and off screen, and never moves under reduced motion.",
+  description: "A row of items drifting in a loop",
   icon: ArrowRightLeftIcon,
   template: (
     <organizeos.Marquee

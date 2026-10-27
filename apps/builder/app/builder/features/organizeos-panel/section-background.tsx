@@ -1,4 +1,9 @@
-import { useState, type CSSProperties } from "react";
+import {
+  forwardRef,
+  useState,
+  type ComponentPropsWithoutRef,
+  type CSSProperties,
+} from "react";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import { toValue } from "@webstudio-is/css-engine";
@@ -6,52 +11,36 @@ import { ROOT_INSTANCE_ID } from "@webstudio-is/sdk";
 import {
   theme,
   styled,
-  Box,
-  Button,
   Flex,
   FloatingPanel,
-  Grid,
-  Label,
-  Select,
   Text,
+  Tooltip,
 } from "@webstudio-is/design-system";
 import {
   $registeredComponentMetas,
-  $selectedBreakpoint,
   $selectedInstanceSelector,
   $selectedPage,
-  selectInstance,
 } from "~/shared/nano-states";
 import {
-  $assets,
-  $breakpoints,
   $instances,
   $styleSourceSelections,
-  $styleSources,
   $styles,
 } from "~/shared/sync/data-stores";
 import type { InstanceSelector } from "~/shared/instance-utils/tree";
-import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { AssetManager } from "~/builder/shared/asset-manager";
 import { AssetUpload } from "~/builder/shared/assets";
-import { formatAssetName } from "~/builder/shared/assets/asset-utils";
 import { $matchingBreakpoints } from "~/builder/features/style-panel/shared/model";
-import { luminance, type Rgba } from "./backgrounds/color";
+import { luminance } from "./backgrounds/color";
 import {
   builtInPalette,
-  getReferenceTextColor,
   presets,
   type Palette,
   type PaletteColor,
   type Preset,
+  type PresetId,
   type PresetStyles,
 } from "./backgrounds/presets";
-import {
-  applyPreset,
-  describeBackgroundOrigin,
-  type BackgroundOrigin,
-} from "./backgrounds/apply-preset";
-import type { ContrastGroup, ContrastReport } from "./backgrounds/contrast";
+import { applyPreset } from "./backgrounds/apply-preset";
 import {
   buildSectionStyleModel,
   listRootColorVariables,
@@ -60,11 +49,13 @@ import { useDeferredContrastReport } from "./contrast-schedule";
 
 /**
  * The content of the Style panel's Background presets section
- * (background-presets-section.tsx; spec 3.1, panel overhaul spec 5.2):
- * applies a background preset to the selected element, colored from Global
- * Root's color variables, and reports the contrast of the text inside it,
- * after a scheduled run (contrast-schedule.ts). Everything it writes goes
- * through `applyPreset`, as local styles.
+ * (background-presets-section.tsx; spec 3.1, panel overhaul spec 5.2): a row
+ * of preset thumbnails, each named in a tooltip, colored from Global Root's
+ * color variables or the built-in palette. A click applies one through
+ * `applyPreset`, as local styles; an Image with scrim preset opens the image
+ * picker first. Under the row, one line of text when text inside fails AA
+ * after a scheduled run (contrast-schedule.ts). Nothing else: the canvas shows
+ * the result (CLAUDE.md, "Builder UI: options, not explanations").
  */
 
 /**
@@ -92,22 +83,6 @@ export const $sectionSelector = computed(
   }
 );
 
-/** Where the selected element's background comes from now. */
-const $backgroundOrigin = computed(
-  [
-    $sectionSelector,
-    $styles,
-    $styleSources,
-    $styleSourceSelections,
-    $breakpoints,
-    $selectedBreakpoint,
-    $matchingBreakpoints,
-    $registeredComponentMetas,
-  ],
-  (selector): BackgroundOrigin | undefined =>
-    selector === undefined ? undefined : describeBackgroundOrigin(selector)
-);
-
 /** Global Root's color variables, the same on every page. */
 const $rootColorVariables = computed(
   [
@@ -121,16 +96,9 @@ const $rootColorVariables = computed(
 
 type Role = "base" | "accent1" | "accent2" | "text";
 
-const roles: Array<{ role: Role; label: string }> = [
-  { role: "base", label: "Base" },
-  { role: "accent1", label: "Accent 1" },
-  { role: "accent2", label: "Accent 2" },
-  { role: "text", label: "Text" },
-];
-
 /**
- * The variable each role starts with: the lightest for the base, the
- * darkest for the text, and the others in the order they are defined.
+ * The variable each role takes: the lightest for the base, the darkest for
+ * the text, and the others in the order they are defined.
  */
 export const getDefaultRoles = (
   variables: PaletteColor[]
@@ -151,18 +119,21 @@ export const getDefaultRoles = (
   return { base, accent1, accent2, text };
 };
 
-const toHex = ({ r, g, b }: Rgba) =>
-  `#${[r, g, b]
-    .map((channel) =>
-      Math.round(Math.min(1, Math.max(0, channel)) * 255)
-        .toString(16)
-        .padStart(2, "0")
-    )
-    .join("")
-    .toUpperCase()}`;
-
-const formatRatio = (ratio: number) =>
-  `${(Math.floor(ratio * 100) / 100).toFixed(2)}:1`;
+/** The presets' palette: the root variables in their default roles. */
+const $palette = computed($rootColorVariables, (variables): Palette => {
+  if (variables.length === 0) {
+    return builtInPalette;
+  }
+  const roles = getDefaultRoles(variables);
+  const pick = (role: Role) =>
+    variables.find((color) => color.variable === roles[role])!;
+  return {
+    base: pick("base"),
+    accent1: pick("accent1"),
+    accent2: pick("accent2"),
+    text: pick("text"),
+  };
+});
 
 /** The palette with its variables dropped, for thumbnails in the builder UI. */
 const toLiteralPalette = (palette: Palette): Palette => ({
@@ -205,307 +176,118 @@ export const getThumbnailStyle = (
   return style;
 };
 
+// As many columns of at least 28px as fit, so the row wraps in any width.
+const PresetGrid = styled("div", {
+  display: "grid",
+  gridTemplateColumns: `repeat(auto-fill, minmax(${theme.spacing[12]}, 1fr))`,
+  gap: theme.spacing[4],
+});
+
 const PresetButton = styled("button", {
   all: "unset",
   boxSizing: "border-box",
-  display: "flex",
-  flexDirection: "column",
-  gap: theme.spacing[2],
-  padding: theme.spacing[2],
+  display: "block",
+  width: "100%",
+  aspectRatio: "1",
   borderRadius: theme.borderRadius[2],
   border: `1px solid ${theme.colors.borderMain}`,
   cursor: "pointer",
-  "&:hover": { background: theme.colors.backgroundHover },
-  "&:focus-visible": { borderColor: theme.colors.borderFocus },
-  "&:disabled": { cursor: "default", opacity: 0.5 },
+  "&:hover": { borderColor: theme.colors.borderFocus },
+  "&:focus-visible": {
+    outline: `1px solid ${theme.colors.borderFocus}`,
+    outlineOffset: 1,
+  },
 });
 
-const Thumbnail = styled("div", {
-  height: 36,
-  borderRadius: theme.borderRadius[1],
-  border: `1px solid ${theme.colors.borderMain}`,
-});
-
-const Swatch = styled("span", {
-  display: "inline-block",
-  flexShrink: 0,
-  width: theme.spacing[7],
-  height: theme.spacing[7],
-  borderRadius: theme.borderRadius[1],
-  border: `1px solid ${theme.colors.borderMain}`,
-});
-
-const GroupButton = styled("button", {
-  all: "unset",
-  boxSizing: "border-box",
-  display: "flex",
-  alignItems: "flex-start",
-  gap: theme.spacing[3],
-  padding: theme.spacing[2],
-  borderRadius: theme.borderRadius[2],
-  cursor: "pointer",
-  "&:hover": { background: theme.colors.backgroundHover },
-  "&:focus-visible": { outline: `1px solid ${theme.colors.borderFocus}` },
-});
-
-const getOriginNotice = (origin: BackgroundOrigin | undefined) => {
-  if (origin?.kind === "token") {
-    return `This element's background comes from the token ${origin.label ?? ""}. The preset is applied as a local style and overrides it here.`;
-  }
-  if (origin?.kind === "breakpoint") {
-    return `This element's background comes from the ${origin.label ?? "another"} breakpoint. The preset is applied as a local style at this breakpoint and overrides it here.`;
-  }
-  if (origin?.kind === "local") {
-    return "Applying a preset replaces this element's background.";
-  }
-};
-
-const getSummary = (report: ContrastReport) => {
-  const failing = report.groups.filter(
-    (group) => group.result === "fail"
-  ).length;
-  switch (report.summary) {
-    case "pass":
-      return "All text passes AA";
-    case "fail":
-      return `${failing} text ${failing === 1 ? "style fails" : "styles fail"} AA`;
-    case "partial":
-      return "Some text could not be checked";
-    case "none":
-      return "No text to check in this section.";
-  }
-};
-
-const describeText = (group: ContrastGroup) => {
-  const parts: string[] = [];
-  if (group.color !== undefined) {
-    parts.push(toHex(group.color));
-  }
-  if (group.fontSize !== undefined) {
-    parts.push(`${Math.round(group.fontSize * 100) / 100}px`);
-  }
-  if (group.fontWeight !== undefined) {
-    parts.push(String(group.fontWeight));
-  }
-  return parts.join(", ");
-};
-
-const describeResult = (group: ContrastGroup) => {
-  if (group.result === "cant-check") {
-    return `Can't check: ${group.reason ?? "unknown value"}`;
-  }
-  const ratio = group.ratio === undefined ? "" : ` ${formatRatio(group.ratio)}`;
-  const outcome = group.result === "pass" ? "Pass" : "Fail";
-  return `${outcome}${ratio}, needs ${group.threshold}:1`;
-};
-
-const GroupRow = ({ group }: { group: ContrastGroup }) => {
-  const label = getInstanceLabel(group.sampleInstanceId);
+/**
+ * A preset's thumbnail as a button, its label in a tooltip that opens on hover
+ * and on keyboard focus. The design system's Tooltip, and so EnhancedTooltip,
+ * drops its trigger's focus, so the focus is handled here. It forwards its ref
+ * and props so the image picker's trigger can wrap it.
+ */
+const PresetThumbnail = forwardRef<
+  HTMLButtonElement,
+  ComponentPropsWithoutRef<"button"> & { preset: Preset; palette: Palette }
+>(({ preset, palette, onFocus, ...props }, ref) => {
+  const [open, setOpen] = useState(false);
   return (
-    <GroupButton
-      type="button"
-      data-group={group.sampleInstanceId}
-      onClick={() => selectInstance(group.sampleInstanceSelector)}
-    >
-      <Swatch
-        aria-hidden
-        css={{
-          background:
-            group.color === undefined
-              ? theme.colors.backgroundPanel
-              : toHex(group.color),
+    <Tooltip content={preset.label} open={open} onOpenChange={setOpen}>
+      <PresetButton
+        {...props}
+        ref={ref}
+        type="button"
+        aria-label={preset.label}
+        data-preset={preset.id}
+        style={getThumbnailStyle(preset, palette)}
+        onFocus={(event) => {
+          onFocus?.(event);
+          setOpen(event.currentTarget.matches(":focus-visible"));
         }}
       />
-      <Flex direction="column" gap="1" css={{ minWidth: 0 }}>
-        <Text truncate>
-          {label}
-          {group.large ? ", large text" : ""}
-        </Text>
-        <Text color="subtle">{describeText(group)}</Text>
-        <Text color={group.result === "fail" ? "destructive" : "subtle"}>
-          {describeResult(group)}
-        </Text>
-        {group.result === "fail" && group.gradient === true && (
-          <Text color="subtle">Lowest point of the background</Text>
-        )}
-      </Flex>
-    </GroupButton>
+    </Tooltip>
   );
-};
-
-const ContrastSection = ({ report }: { report: ContrastReport }) => (
-  <Flex direction="column" gap="1" data-contrast-report>
-    <Label>Contrast</Label>
-    <Text data-contrast-summary>{getSummary(report)}</Text>
-    {report.groups.map((group) => (
-      <GroupRow
-        key={`${group.sampleInstanceId}:${group.result}:${group.ratio ?? ""}`}
-        group={group}
-      />
-    ))}
-    <Text color="subtle">
-      The check reads this element's styles at the current breakpoint, not the
-      rendered page. It does not see text positioned outside this element, text
-      away from the background's lowest point, or text inside an embed.
-    </Text>
-  </Flex>
-);
-
-const ImagePicker = ({
-  assetId,
-  onChange,
-}: {
-  assetId: string | undefined;
-  onChange: (assetId: string) => void;
-}) => {
-  const assets = useStore($assets);
-  const asset = assetId === undefined ? undefined : assets.get(assetId);
-  return (
-    <Grid columns="2" gap="2" align="center">
-      <Label>Image</Label>
-      <FloatingPanel
-        title="Images"
-        titleSuffix={<AssetUpload type="image" />}
-        content={<AssetManager accept="image/*" onChange={onChange} />}
-      >
-        <Button color="neutral" css={{ maxWidth: "100%" }}>
-          {asset ? formatAssetName(asset) : "Choose image..."}
-        </Button>
-      </FloatingPanel>
-    </Grid>
-  );
-};
+});
+PresetThumbnail.displayName = "PresetThumbnail";
 
 export const SectionBackground = () => {
   const selector = useStore($sectionSelector);
   const report = useDeferredContrastReport(selector);
-  const origin = useStore($backgroundOrigin);
-  const variables = useStore($rootColorVariables);
-  const [chosen, setChosen] = useState<Partial<Record<Role, string>>>({});
-  const [imageAssetId, setImageAssetId] = useState<string>();
+  const palette = useStore($palette);
+  const [picking, setPicking] = useState<PresetId>();
 
   if (selector === undefined) {
     return;
   }
 
-  const byName = new Map(
-    variables.flatMap((color) =>
-      color.variable === undefined ? [] : [[color.variable, color] as const]
-    )
-  );
-  const defaults = getDefaultRoles(variables);
-  const pick = (role: Role): PaletteColor | undefined => {
-    const name = chosen[role];
-    return (
-      (name === undefined ? undefined : byName.get(name)) ??
-      (defaults[role] === undefined ? undefined : byName.get(defaults[role]))
-    );
-  };
-  const palette: Palette =
-    variables.length === 0
-      ? builtInPalette
-      : {
-          base: pick("base")!,
-          accent1: pick("accent1")!,
-          accent2: pick("accent2")!,
-          text: pick("text"),
-        };
-  const names = Array.from(byName.keys());
-  const notice = getOriginNotice(origin);
-  const scrimPresets = presets.filter(
-    (preset) => preset.family === "image-scrim"
-  );
-
   return (
     <Flex
       direction="column"
-      gap="3"
+      gap="2"
       css={{ paddingInline: theme.panel.paddingInline }}
     >
-      {variables.length === 0 ? (
-        <Text color="subtle" data-palette-hint>
-          Define color variables in Global Root to use your own palette.
-        </Text>
-      ) : (
-        <Grid columns="2" gap="2" align="center" data-color-row>
-          {roles.map(({ role, label }) => (
-            <Box key={role} css={{ display: "contents" }}>
-              <Label>{label}</Label>
-              <Select
-                name={role}
-                options={names}
-                value={pick(role)?.variable}
-                getLabel={(name) => `--${name}`}
-                onChange={(name) =>
-                  setChosen((previous) => ({ ...previous, [role]: name }))
-                }
-              />
-            </Box>
-          ))}
-        </Grid>
-      )}
-      <Text color="subtle">
-        Changing a variable later updates the base color. Re-apply the preset to
-        update its tints.
-      </Text>
-
-      {notice && <Text data-origin-notice>{notice}</Text>}
-
-      <Grid columns="3" gap="2" data-preset-grid>
-        {presets.map((preset) => {
-          const needsImage =
-            preset.family === "image-scrim" && imageAssetId === undefined;
-          return (
-            <PresetButton
+      <PresetGrid data-preset-grid>
+        {presets.map((preset) =>
+          preset.family === "image-scrim" ? (
+            <FloatingPanel
               key={preset.id}
-              type="button"
-              data-preset={preset.id}
-              disabled={needsImage}
-              title={needsImage ? "Choose an image first" : preset.label}
-              onClick={() =>
-                applyPreset(preset.build(palette, { imageAssetId }))
+              title="Images"
+              titleSuffix={<AssetUpload type="image" />}
+              content={
+                <AssetManager
+                  accept="image/*"
+                  onChange={(imageAssetId) => {
+                    applyPreset(preset.build(palette, { imageAssetId }));
+                    setPicking(undefined);
+                  }}
+                />
+              }
+              open={picking === preset.id}
+              // The dialog reports a change a frame late, and on touch one
+              // picker's dismiss can land after the next one opened: a close
+              // clears only its own picker.
+              onOpenChange={(open) =>
+                setPicking((current) =>
+                  open ? preset.id : current === preset.id ? undefined : current
+                )
               }
             >
-              <Thumbnail style={getThumbnailStyle(preset, palette)} />
-              <Text variant="small" truncate>
-                {preset.label}
-              </Text>
-            </PresetButton>
-          );
-        })}
-      </Grid>
-
-      <Flex direction="column" gap="1">
-        <ImagePicker assetId={imageAssetId} onChange={setImageAssetId} />
-        {imageAssetId === undefined && (
-          <Text color="subtle">
-            Choose an image to use the image with scrim presets.
-          </Text>
-        )}
-        {scrimPresets.map((preset) => {
-          const reference = getReferenceTextColor(preset, palette);
-          return (
-            <Flex
+              <PresetThumbnail preset={preset} palette={palette} />
+            </FloatingPanel>
+          ) : (
+            <PresetThumbnail
               key={preset.id}
-              align="center"
-              gap="2"
-              data-scrim-reference={preset.id}
-            >
-              <Swatch aria-hidden css={{ background: toHex(reference) }} />
-              <Text color="subtle">
-                {preset.label}: tuned for text {toHex(reference)}
-              </Text>
-            </Flex>
-          );
-        })}
-      </Flex>
+              preset={preset}
+              palette={palette}
+              onClick={() => applyPreset(preset.build(palette))}
+            />
+          )
+        )}
+      </PresetGrid>
 
-      {report === undefined ? (
-        <Text color="subtle" data-contrast-pending>
-          Checking contrast
+      {report?.groups.some((group) => group.result === "fail") && (
+        <Text color="destructive" data-contrast-line>
+          Text below AA contrast
         </Text>
-      ) : (
-        <ContrastSection report={report} />
       )}
     </Flex>
   );

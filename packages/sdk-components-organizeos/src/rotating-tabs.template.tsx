@@ -98,8 +98,7 @@ const content = (heading: string) => (
 export const meta: TemplateMeta = {
   category: "hidden",
   label: "Rotating Tabs",
-  description:
-    "Tabs that show each panel in turn, with a Pause button first. Rotation stops for good when a visitor picks a tab or moves focus into the section, and never runs under reduced motion.",
+  description: "Tabs that rotate on their own",
   icon: RefreshCcwIcon,
   template: (
     <radix.Tabs

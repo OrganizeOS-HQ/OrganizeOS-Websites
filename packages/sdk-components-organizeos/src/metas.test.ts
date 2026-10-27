@@ -269,6 +269,103 @@ test("templates and hooks", () => {
   expect(hooks).toEqual([hooksCanvasPlay]);
 });
 
+// The builder's panels show options, not explanations: a template's
+// description is its card's tooltip in the Components panel, a short phrase.
+test("every template's card tooltip is a short phrase: a few words, no sentence", () => {
+  for (const [name, template] of Object.entries(templates)) {
+    expect(template.description, name).toEqual(expect.any(String));
+    expect(template.description?.split(" ").length, name).toBeLessThanOrEqual(
+      8
+    );
+    // no sentence: no full stop, exclamation or question mark ending one
+    expect(template.description, name).not.toMatch(/[.!?](\s|$)/);
+  }
+});
+
+// A prop's description is its Settings label's tooltip: the unit and range,
+// a few words, or nothing where the label says it.
+test("the blocks' Settings tooltips that were paragraphs are a few words, or none", () => {
+  const tooltips = (
+    meta: (typeof metas)[keyof typeof metas],
+    names: string[]
+  ) =>
+    Object.fromEntries(
+      names.map((name) => [name, meta.props?.[name]?.description])
+    );
+  expect(
+    tooltips(metas.SignupForm, [
+      "record",
+      "data",
+      "state",
+      "action",
+      "actionPage",
+    ])
+  ).toEqual({
+    // a picker now, whose label says it
+    record: undefined,
+    data: undefined,
+    state: "Shown on the canvas",
+    action: "Success state, or a page",
+    // the page After submit opens: its label says it
+    actionPage: undefined,
+  });
+  expect(
+    tooltips(metas.RsvpForm, [
+      "record",
+      "data",
+      "state",
+      "action",
+      "actionPage",
+    ])
+  ).toEqual({
+    record: undefined,
+    data: undefined,
+    state: "Shown on the canvas",
+    action: "Registered state, or a page",
+    actionPage: undefined,
+  });
+  expect(
+    tooltips(metas.ConvergenceField, [
+      "shape",
+      "density",
+      "focusX",
+      "focusY",
+      "zoneWidth",
+      "zoneHeight",
+      "innerColor",
+      "outerColor",
+      "motion",
+    ])
+  ).toEqual({
+    shape: "Band 3:1, Wide 16:9, Panel 2:1, Square 1:1, Tall 3:4",
+    density: "24–96 field units",
+    focusX: "10–90 %",
+    focusY: "10–90 %",
+    zoneWidth: "10–90 %",
+    zoneHeight: "10–90 %",
+    innerColor: "Near the clear zone",
+    outerColor: "At the edges",
+    motion: "Settle: arms turn into place on scroll",
+  });
+  expect(tooltips(metas.RotationControl, ["interval", "fade"])).toEqual({
+    interval: "3–20 s",
+    fade: "0–600 ms",
+  });
+  expect(tooltips(metas.Marquee, ["speed", "direction"])).toEqual({
+    speed: "10–200 px/s",
+    // left or right: its options say it
+    direction: undefined,
+  });
+  expect(tooltips(metas.RichText, ["value"])).toEqual({
+    value: "A rich-text field's nodes",
+  });
+  expect(metas.AnimateChildren.description).toBe(
+    "Animates each child on scroll"
+  );
+  expect(metas.Marquee.description).toBe("Drifts its items in a loop");
+  expect(metas.RichText.description).toBe("A collection item's rich text");
+});
+
 test("the Rotation Control: hidden, childless, a button, with its props, Fade among them", () => {
   const meta = metas.RotationControl;
   expect(meta.label).toBe("Rotation Control");

@@ -28,7 +28,7 @@ import {
   type StyleObjectModel,
 } from "~/shared/style-object-model";
 import { repeatedProperties } from "~/builder/features/style-panel/sections/backgrounds/background-thumbnail";
-import { applyPreset, describeBackgroundOrigin } from "./apply-preset";
+import { applyPreset } from "./apply-preset";
 import {
   builtInPalette,
   layerProperties,
@@ -372,72 +372,5 @@ describe("applyPreset", () => {
     applyPreset(buildPreset("bloom-light"));
     expect($styles.get().size).toBe(0);
     expect($styleSources.get().size).toBe(0);
-  });
-});
-
-describe("describeBackgroundOrigin", () => {
-  const local: StyleSource = { type: "local", id: "local" };
-
-  test("none when the element has no background of its own", () => {
-    setup({
-      styleSources: [local],
-      selection: ["local"],
-      styles: [decl("local", "color", keyword("red"))],
-    });
-    expect(describeBackgroundOrigin(["box", "body"])).toEqual({
-      kind: "none",
-    });
-  });
-
-  test("local when its local source sets one at this breakpoint", () => {
-    setup({
-      styleSources: [local],
-      selection: ["local"],
-      styles: [decl("local", "background-color", keyword("red"))],
-    });
-    expect(describeBackgroundOrigin(["box", "body"])).toEqual({
-      kind: "local",
-    });
-  });
-
-  test("token, named, when a token sets it", () => {
-    setup({
-      styleSources: [token, local],
-      selection: ["token", "local"],
-      styles: [
-        decl("token", "background-image", layers(keyword("none"))),
-        decl("local", "background-color", keyword("red")),
-      ],
-    });
-    expect(describeBackgroundOrigin(["box", "body"])).toEqual({
-      kind: "token",
-      label: "OS Card",
-    });
-  });
-
-  test("breakpoint, named, when it comes from another breakpoint", () => {
-    setup({
-      styleSources: [local],
-      selection: ["local"],
-      styles: [decl("local", "background-color", keyword("red"))],
-      breakpointId: "tablet",
-    });
-    expect(describeBackgroundOrigin(["box", "body"])).toEqual({
-      kind: "breakpoint",
-      label: "Base",
-    });
-  });
-
-  test("a token at another breakpoint is still the token", () => {
-    setup({
-      styleSources: [token],
-      selection: ["token"],
-      styles: [decl("token", "background-color", keyword("red"))],
-      breakpointId: "tablet",
-    });
-    expect(describeBackgroundOrigin(["box", "body"])).toEqual({
-      kind: "token",
-      label: "OS Card",
-    });
   });
 });

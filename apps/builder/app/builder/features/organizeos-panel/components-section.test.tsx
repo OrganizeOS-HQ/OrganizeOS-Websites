@@ -16,6 +16,7 @@ import {
   $organizeosComponentGroups,
   getWorkspaceAreaUrl,
   groupOrganizeosBlocks,
+  manageLink,
   organizeosGroupLabel,
   withOrganizeosGroups,
   type ComponentsPanelMeta,
@@ -108,7 +109,8 @@ describe("groupOrganizeosBlocks", () => {
       },
       {
         label: "Events",
-        area: { label: "Manage events in OrganizeOS", path: "events" },
+        // the Website area, the one link the Signups share
+        area: { label: "Manage in OrganizeOS ↗", path: "website" },
         blocks: [
           {
             name: `${namespace}:EventList`,
@@ -144,7 +146,7 @@ describe("groupOrganizeosBlocks", () => {
       },
       {
         label: "Signups",
-        area: { label: "Manage forms in OrganizeOS", path: "pages/embeds" },
+        area: { label: "Manage in OrganizeOS ↗", path: "website" },
         blocks: [
           {
             name: `${namespace}:SignupForm`,
@@ -279,6 +281,10 @@ describe("getWorkspaceAreaUrl", () => {
     );
   });
 
+  test("links the Manage link to the Website area, the menu's own link", () => {
+    expect(getWorkspaceAreaUrl(site, manageLink.path)).toBe(site.manageUrl);
+  });
+
   test("falls back to the Website area's link while the subdomain is unknown", () => {
     expect(
       getWorkspaceAreaUrl(
@@ -332,7 +338,7 @@ describe("$organizeosComponentGroups", () => {
     expect($organizeosComponentGroups.get()).toEqual([]);
   });
 
-  test("on the allowlist, one OrganizeOS group with the blocks in order, More last, and the Events then Forms links", () => {
+  test("on the allowlist, one OrganizeOS group with the blocks in order, More last, and one Manage link", () => {
     registerLibrary({
       ...organizeosTemplates,
       FutureBlock: organizeosTemplates.SignupForm,
@@ -367,10 +373,28 @@ describe("$organizeosComponentGroups", () => {
         component: "@webstudio-is/sdk-components-react-radix:Tabs",
       }),
     });
-    expect(group.links).toEqual([
-      { label: "Manage events in OrganizeOS", path: "events" },
-      { label: "Manage forms in OrganizeOS", path: "pages/embeds" },
-    ]);
+    expect(group.link).toEqual({
+      label: "Manage in OrganizeOS ↗",
+      path: "website",
+    });
+  });
+
+  test("the Manage link shows with any block that reads the org's data, and not with only the others", () => {
+    $organizeosSite.set(site);
+    for (const name of [
+      "EventList",
+      "EventCard",
+      "RsvpForm",
+      "SignupForm",
+    ] as const) {
+      registerLibrary({ [name]: organizeosTemplates[name] });
+      expect($organizeosComponentGroups.get()[0].link, name).toBe(manageLink);
+    }
+    registerLibrary({
+      Marquee: organizeosTemplates.Marquee,
+      RichText: organizeosTemplates.RichText,
+    });
+    expect($organizeosComponentGroups.get()[0].link).toBeUndefined();
   });
 });
 

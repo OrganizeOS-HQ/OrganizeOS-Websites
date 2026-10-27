@@ -74,9 +74,7 @@ describe("the OrganizeOS data tab", () => {
   }
 
   const projectId = "project-1";
-  const line =
-    "Add your organization's data to this page, then bind it in Settings.";
-  const empty = "No organization data is connected to this site yet.";
+  const empty = "No data connected";
 
   let root: Root | undefined;
   let container: HTMLElement | undefined;
@@ -147,17 +145,19 @@ describe("the OrganizeOS data tab", () => {
     vi.unstubAllGlobals();
   });
 
-  test("titled OrganizeOS data with its line, and only the data list: no component card, no Background presets, no Motion", async () => {
+  test("titled OrganizeOS data, and only the data list: no line, no component card, no Background presets, no Motion", async () => {
     await setProject({ withCatalog: true });
     // a selection Background presets and Motion would both act on
     selectInstance(["boxId", "bodyId"]);
     const host = render();
     await settle();
-    // the panel's title, then its line
-    expect(host.textContent?.startsWith(`OrganizeOS data${line}`)).toBe(true);
-    expect(host.querySelector("[data-organizeos-data-line]")?.textContent).toBe(
-      line
+    // the panel's title, then the list, with no line between them
+    const body = host.querySelector("[data-organizeos-data-body]");
+    expect(body?.firstElementChild?.hasAttribute("data-organizeos-data")).toBe(
+      true
     );
+    expect(host.textContent?.startsWith("OrganizeOS dataEvents")).toBe(true);
+    expect(host.textContent).not.toContain("bind it in Settings");
     const rows = host.querySelector("[data-organizeos-data]");
     expect(rows?.textContent).toContain("Events");
     expect(rows?.textContent).toContain("Add to this page");
@@ -183,7 +183,7 @@ describe("the OrganizeOS data tab", () => {
         })
     );
     const host = render();
-    expect(host.querySelector("[data-organizeos-data-line]")).not.toBeNull();
+    expect(host.querySelector("[data-organizeos-data-body]")).not.toBeNull();
     expect(host.textContent).not.toContain(empty);
     await act(async () => {
       resolve([]);
@@ -193,13 +193,13 @@ describe("the OrganizeOS data tab", () => {
     ).toBe(empty);
   });
 
-  test("nothing below the line with no selected page", async () => {
+  test("nothing below the title with no selected page", async () => {
     await setProject({ withCatalog: true });
     $selectedPageId.set(undefined);
     const host = render();
     await settle();
-    expect(host.querySelector("[data-organizeos-data-line]")?.textContent).toBe(
-      line
+    expect(host.querySelector("[data-organizeos-data-body]")?.textContent).toBe(
+      ""
     );
     expect(host.querySelector("[data-organizeos-data]")).toBeNull();
     expect(host.querySelector("[data-organizeos-data-empty]")).toBeNull();

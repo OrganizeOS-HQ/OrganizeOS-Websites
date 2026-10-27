@@ -18,3 +18,12 @@ Work that touches both sides needs both repositories; attach the other one with 
 ## Keep the overlay small
 
 OrganizeOS changes stay in the files `docs/ORGANIZEOS-FORK.md` section 7 lists, so upstream merges stay tractable, and the published-site runtime packages stay byte-identical to upstream (section 1).
+
+## Builder UI: options, not explanations
+
+The owner's rule (2026-10-27) for every OrganizeOS control in the builder's panels. The builder is not the platform: people learn it by trying options and watching the canvas change, or from tutorials.
+
+- Show the options and settings, compactly, and nothing else. No paragraphs of help text, no notes on how a control works, no captions an option's own result already shows.
+- Do not visualize results in the panel (reports, reference swatches, previews of what the canvas shows). The canvas is the preview.
+- A name that does not fit goes in a tooltip. A warning earns a line only when something is actually wrong, and says what in a few words.
+- Fit the panel's width: no row wider than the panel, no grid that crops.

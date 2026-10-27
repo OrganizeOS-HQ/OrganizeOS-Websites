@@ -17,8 +17,7 @@ import { organizeos } from "./shared/proxy";
 export const meta: TemplateMeta = {
   category: "hidden",
   label: "Convergence Field",
-  description:
-    "A section over the brand's field of arms pointing at its content. Shape, density, focus, clear zone, colors and a settle motion are in its settings.",
+  description: "A section over the brand's field of arms",
   icon: RepeatGridIcon,
   template: (
     <organizeos.ConvergenceField

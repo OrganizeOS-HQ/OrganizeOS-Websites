@@ -43,8 +43,7 @@ export const meta: WsComponentMeta = {
       options: shapeNames,
       defaultValue: fieldDefaults.shape,
       label: "Shape",
-      description:
-        "The field's box: Band 3:1, Wide 16:9, Panel 2:1, Square 1:1 or Tall 3:4. It covers the element and is cropped on the narrower side, so pick the Shape closest to the element's, and Tall for sections taller than wide on phones.",
+      description: "Band 3:1, Wide 16:9, Panel 2:1, Square 1:1, Tall 3:4",
     },
     density: {
       type: "number",
@@ -52,8 +51,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.density,
       label: "Density",
-      description:
-        "The grid step in field units, from 24 (dense) to 96 (sparse), the same on every Shape: a Wide field is 1600 units across.",
+      description: "24–96 field units",
     },
     focusX: {
       type: "number",
@@ -61,8 +59,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.focusX,
       label: "Focus X",
-      description:
-        "Where the arms point, across the field, in percent from 10 to 90.",
+      description: "10–90 %",
     },
     focusY: {
       type: "number",
@@ -70,8 +67,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.focusY,
       label: "Focus Y",
-      description:
-        "Where the arms point, down the field, in percent from 10 to 90.",
+      description: "10–90 %",
     },
     zoneWidth: {
       type: "number",
@@ -79,8 +75,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.zoneWidth,
       label: "Zone width",
-      description:
-        "Width of the clear ellipse around the focus, in percent of the field from 10 to 90, kept clear of the edges.",
+      description: "10–90 %",
     },
     zoneHeight: {
       type: "number",
@@ -88,8 +83,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.zoneHeight,
       label: "Zone height",
-      description:
-        "Height of the clear ellipse around the focus, in percent of the field from 10 to 90, kept clear of the edges.",
+      description: "10–90 %",
     },
     innerColor: {
       type: "string",
@@ -97,8 +91,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.innerColor,
       label: "Inner color",
-      description:
-        "The arms' color near the clear zone, where they are faint: a hex, rgb(), hsl(), oklch() or named color, or var(--name).",
+      description: "Near the clear zone",
     },
     outerColor: {
       type: "string",
@@ -106,8 +99,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: fieldDefaults.outerColor,
       label: "Outer color",
-      description:
-        "The arms' color at the edges, where they are solid: a hex, rgb(), hsl(), oklch() or named color, or var(--name).",
+      description: "At the edges",
     },
     motion: {
       type: "string",
@@ -116,8 +108,7 @@ export const meta: WsComponentMeta = {
       options: [...motions],
       defaultValue: fieldDefaults.motion,
       label: "Motion",
-      description:
-        "Settle turns the arms into place as the element scrolls into view, never under reduced motion.",
+      description: "Settle: arms turn into place on scroll",
     },
   },
 };

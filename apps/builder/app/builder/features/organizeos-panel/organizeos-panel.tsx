@@ -3,6 +3,7 @@ import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import {
   theme,
+  Box,
   Button,
   Flex,
   PanelTitle,
@@ -84,7 +85,7 @@ const DataSection = () => {
         css={{ paddingInline: theme.panel.paddingInline }}
         data-organizeos-data-empty
       >
-        No organization data is connected to this site yet.
+        No data connected
       </Text>
     );
   }
@@ -121,22 +122,28 @@ const DataSection = () => {
   );
 };
 
+/**
+ * The data list, without a title, under the OrganizeOS data tab's title.
+ */
+export const OrganizeosDataBody = () => {
+  return (
+    <ScrollArea>
+      <Box
+        css={{ paddingBlock: theme.panel.paddingBlock }}
+        data-organizeos-data-body
+      >
+        <DataSection />
+      </Box>
+    </ScrollArea>
+  );
+};
+
 export const OrganizeosPanel = () => {
   return (
     <>
       <PanelTitle>{`${platformName} data`}</PanelTitle>
       <Separator />
-
-      <ScrollArea>
-        <Text
-          color="subtle"
-          css={{ padding: theme.panel.padding }}
-          data-organizeos-data-line
-        >
-          Add your organization's data to this page, then bind it in Settings.
-        </Text>
-        <DataSection />
-      </ScrollArea>
+      <OrganizeosDataBody />
     </>
   );
 };

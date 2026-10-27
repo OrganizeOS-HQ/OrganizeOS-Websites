@@ -196,7 +196,7 @@ describe("the Rotating Tabs template", () => {
   test("a hidden block with its own label, description and icon", () => {
     expect(meta.category).toBe("hidden");
     expect(meta.label).toBe("Rotating Tabs");
-    expect(meta.description).toMatch(/Pause/);
+    expect(meta.description).toBe("Tabs that rotate on their own");
     expect(meta.icon).toEqual(expect.any(String));
   });
 

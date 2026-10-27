@@ -8,7 +8,6 @@ import {
   PanelTabsTrigger,
   ScrollArea,
   Text,
-  Tooltip,
 } from "@webstudio-is/design-system";
 import {
   $isDesignMode,
@@ -49,15 +48,12 @@ const contentStyle = {
   overflow: "auto",
 };
 
+// In a bare div, as upstream's Style and Settings triggers sit in the div
+// their Tooltip needs, so the tabs' hover boxes match.
 export const MotionTabTrigger = () => (
-  <Tooltip
-    variant="wrapped"
-    content={<Text>Motion for the selected instance</Text>}
-  >
-    <div>
-      <PanelTabsTrigger value="motion">Motion</PanelTabsTrigger>
-    </div>
-  </Tooltip>
+  <div>
+    <PanelTabsTrigger value="motion">Motion</PanelTabsTrigger>
+  </div>
 );
 
 /** The selected instance's icon and label, as the Inspector's other tabs show it. */
