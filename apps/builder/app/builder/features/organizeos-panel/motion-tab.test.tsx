@@ -142,8 +142,24 @@ const tabs = (host: HTMLElement) =>
 const activeTab = (host: HTMLElement) =>
   host.querySelector('[role="tab"][data-state="active"]')?.textContent?.trim();
 
-const motionLine = (host: HTMLElement) =>
-  host.querySelector("[data-motion-target]")?.textContent;
+const motionTarget = (host: HTMLElement) =>
+  host
+    .querySelector("[data-motion-target]")
+    ?.getAttribute("data-motion-target");
+
+// The panel shows options only: none of the lines it used to explain them in.
+const explanations = [
+  "A preset wraps",
+  "A preset replaces",
+  "inside an Animate Children",
+  "Edit it below",
+  "Plays on the published page",
+  "reduced motion",
+  "Percent of the",
+];
+
+const explains = (host: HTMLElement) =>
+  explanations.filter((line) => host.textContent?.includes(line));
 
 const runOnCanvas = (host: HTMLElement) =>
   host.textContent?.includes("Run on canvas") ?? false;
@@ -166,6 +182,7 @@ afterEach(() => {
   container = undefined;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("$isMotionTabAvailable", () => {
@@ -193,6 +210,37 @@ describe("the Inspector's Motion tab", () => {
     selectInstance(["section", "body"]);
     const host = render();
     expect(tabs(host)).toEqual(["Style", "Settings", "Motion"]);
+  });
+
+  test("the Motion tab sits in a bare div, as Style and Settings do, with no tooltip of its own", () => {
+    vi.useFakeTimers();
+    selectInstance(["section", "body"]);
+    const host = render();
+    const tab = (label: string) =>
+      Array.from(host.querySelectorAll('[role="tab"]')).find(
+        (tab) => tab.textContent?.trim() === label
+      );
+    const motion = tab("Motion");
+    // upstream's tabs sit in the div their Tooltip needs, so Motion's hover
+    // box matches theirs
+    for (const label of ["Style", "Settings", "Motion"]) {
+      const wrapper = tab(label)?.parentElement;
+      expect(wrapper?.tagName, label).toBe("DIV");
+      expect(wrapper?.parentElement?.getAttribute("role"), label).toBe(
+        "tablist"
+      );
+    }
+    // Motion's div is bare: no Tooltip trigger state on it
+    expect(motion?.parentElement?.attributes).toHaveLength(0);
+    // and hovering Motion shows nothing new
+    const before = document.body.textContent;
+    act(() => {
+      motion?.dispatchEvent(new MouseEvent("pointermove", { bubbles: true }));
+    });
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(document.body.textContent).toBe(before);
   });
 
   test("content mode and XML keep upstream's Settings only, and off the allowlist upstream's Style and Settings", () => {
@@ -247,11 +295,8 @@ describe("the Inspector's Motion tab", () => {
     $activeInspectorPanel.set("motion");
     const host = render();
     expect(activeTab(host)).toBe("Motion");
-    expect(
-      host
-        .querySelector("[data-motion-target]")
-        ?.getAttribute("data-motion-target")
-    ).toBe("wrap");
+    expect(motionTarget(host)).toBe("wrap");
+    expect(explains(host)).toEqual([]);
     expect(host.querySelector("[data-motion-stagger]")).toBeNull();
     expect(runOnCanvas(host)).toBe(false);
 
@@ -265,31 +310,21 @@ describe("the Inspector's Motion tab", () => {
       animateChildrenComponent
     );
     expect(activeTab(host)).toBe("Motion");
-    expect(motionLine(host)).toBe(
-      "A preset replaces this Animate Children's animation. Edit it below."
-    );
+    expect(motionTarget(host)).toBe("wrapper");
+    expect(explains(host)).toEqual([]);
     expect(host.querySelector("[data-motion-stagger]")).not.toBeNull();
     expect(runOnCanvas(host)).toBe(true);
-    // the editor sits below Stagger, the reduced-motion note below the editor
+    // the editor sits below Stagger
     const text = host.textContent ?? "";
     expect(text.indexOf("Stagger")).toBeLessThan(text.indexOf("Run on canvas"));
-    expect(text.indexOf("Run on canvas")).toBeLessThan(
-      text.indexOf("Plays on the published page")
-    );
   });
 
-  test("with a child of a wrapper selected, the inside line, no Stagger, and Select Animate Children selects the wrapper", () => {
+  test("with a child of a wrapper selected, the presets, no Stagger, and Select Animate Children selects the wrapper", () => {
     selectInstance(["child", "wrapper", "body"]);
     $activeInspectorPanel.set("motion");
     const host = render();
-    expect(motionLine(host)).toBe(
-      "This element is inside an Animate Children. A preset replaces its animation. Select it to edit its animation and stagger."
-    );
-    expect(
-      host
-        .querySelector("[data-motion-target]")
-        ?.getAttribute("data-motion-target")
-    ).toBe("wrapper");
+    expect(motionTarget(host)).toBe("wrapper");
+    expect(explains(host)).toEqual([]);
     expect(host.querySelector("[data-motion-presets]")).not.toBeNull();
     expect(host.querySelector("[data-motion-stagger]")).toBeNull();
     expect(runOnCanvas(host)).toBe(false);
@@ -334,16 +369,14 @@ describe("the Inspector's Motion tab", () => {
     expect(runOnCanvas(host)).toBe(true);
   });
 
-  test("with no breakpoints an Animate Children shows Stagger and nothing below: no Properties & attributes, no Animation editor, and no Edit it below", () => {
+  test("with no breakpoints an Animate Children shows Stagger and nothing below: no Properties & attributes and no Animation editor", () => {
     project({ breakpoints: [] });
     selectInstance(["wrapper", "body"]);
     $activeInspectorPanel.set("motion");
     const host = render();
     expect(host.querySelector("[data-motion-stagger]")).not.toBeNull();
-    expect(motionLine(host)).toBe(
-      "A preset replaces this Animate Children's animation."
-    );
-    expect(host.textContent).not.toContain("Edit it below");
+    expect(motionTarget(host)).toBe("wrapper");
+    expect(explains(host)).toEqual([]);
     expect(host.textContent).not.toContain("Properties & attributes");
     expect(runOnCanvas(host)).toBe(false);
   });

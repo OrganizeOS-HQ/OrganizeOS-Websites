@@ -9,8 +9,7 @@ import { eventsTemplate } from "./events/event-card.template";
 export const meta: TemplateMeta = {
   category: "hidden",
   label: "Event Card",
-  description:
-    "Show your organization's next upcoming public event, with its start time in the event's own time zone and a link to its page.",
+  description: "Your next public event",
   icon: CalendarIcon,
   template: eventsTemplate({ label: "Event Card" }),
 };

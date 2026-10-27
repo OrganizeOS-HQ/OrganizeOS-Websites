@@ -4,8 +4,7 @@ import { descendantComponent, type WsComponentMeta } from "@webstudio-is/sdk";
 export const meta: WsComponentMeta = {
   category: "hidden",
   label: "Rich Text",
-  description:
-    "Shows a rich-text field of a collection item, such as a post's body: headings, paragraphs, lists, quotes, links and images. Bind its value to the field's nodes inside a collection.",
+  description: "A collection item's rich text",
   icon: DescriptionIcon,
   // The tree is the component's own; ws:descendant instances style its tags
   // through their selectors, as upstream's Markdown Embed's do.
@@ -30,8 +29,7 @@ export const meta: WsComponentMeta = {
       control: "json",
       required: false,
       label: "Value",
-      description:
-        "The rich text to show: a collection item's rich-text field, as its nodes (for example item.body.nodes). Without one, the canvas shows a sample to style and the live site shows nothing.",
+      description: "A rich-text field's nodes",
     },
   },
 };

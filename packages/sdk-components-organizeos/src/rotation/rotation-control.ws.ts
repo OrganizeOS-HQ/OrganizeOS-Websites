@@ -21,8 +21,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: 5.5,
       label: "Interval",
-      description:
-        "Seconds each tab shows before the next, from 3 to 20. Rotation stops for good when a visitor moves focus into the section or picks a tab.",
+      description: "3–20 s",
     },
     fade: {
       type: "number",
@@ -30,8 +29,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: 250,
       label: "Fade",
-      description:
-        "Milliseconds the incoming panel fades in, from 0 to 600; 0 switches at once. Never under reduced motion.",
+      description: "0–600 ms",
     },
     pauseLabel: {
       type: "string",

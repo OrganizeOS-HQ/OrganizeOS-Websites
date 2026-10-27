@@ -199,9 +199,9 @@ How an org admin's session is wired end to end, and which side owns each step. T
 
    The AGPL §13 source offer is rendered in the builder menu as well as the dashboard footer, so it stays reachable for an admin who never sees the dashboard. Do not remove the menu copy.
 
-4. **Publish** (`features/publish/organizeos-publish.tsx`). The dialog shows the site's real address with copy/open, points at OrganizeOS for domains and settings, and has one Publish button. `domain.publish` creates the production build and the OrganizeOS publisher (`services/organizeos-publisher.server.ts`) dispatches `publish-site.yml` with the build and organization ids. A dispatch that never leaves the builder marks the build FAILED at once; a static-export build is refused (it must never be deployed as the live site). The dialog also lists what is paused, and prebuild leaves an org's own script, and the unsafe values of §10, out of the published site.
+4. **Publish** (`features/publish/organizeos-publish.tsx`). The dialog shows the site's real address with copy/open, a bare "Site settings ↗" link to the org's Website area in OrganizeOS (domains, visibility and the rest), and one Publish button, with no tooltip. A banner names the features the plan does not cover and ends with an "Open in OrganizeOS ↗" link to the same area. `domain.publish` creates the production build and the OrganizeOS publisher (`services/organizeos-publisher.server.ts`) dispatches `publish-site.yml` with the build and organization ids. A dispatch that never leaves the builder marks the build FAILED at once; a static-export build is refused (it must never be deployed as the live site). The dialog also lists what is paused, and prebuild leaves an org's own script, and the unsafe values of §10, out of the published site.
 5. **Execute** (`.github/workflows/publish-site.yml`). Syncs the build with the CLI, builds it, reads the org script switch from the CLI it built and fails unless it is off, deploys to the `organizeos-sites` Vercel project, POSTs the deployment URL, and `orgScript` as the run's CLI read it (§10, "Reporting to OrganizeOS"), to OrganizeOS's publish callback (which flips the org's ledger pointer, making the site live through the reverse proxy), then reports `PUBLISHED` to the builder's `POST /internal/publish-status`; any failure reports `FAILED`. Without that report the builder's status would read "pending" forever: upstream's cloud publisher used to flip `Build.publishStatus` directly.
-6. **Status.** The dialog polls the project while a build is pending and treats a build as failed only after the executor's 25 minute timeout (`organizeos-publish-status.ts`; upstream assumes 3 minutes). On success it says the site is live and that the proxy can take up to a minute to pick the new deployment up (its target cache).
+6. **Status.** The dialog polls the project while a build is pending and treats a build as failed only after the executor's 25 minute timeout (`organizeos-publish-status.ts`; upstream assumes 3 minutes). Its status line reads "Publishing, started {when}", "Published {when}", "Publish failed {when}" or "Publishing did not finish {when}", and nothing more; an error the publish call returned shows on its own line below. On success it says the site is live and that the proxy can take up to a minute to pick the new deployment up (its target cache).
 7. **Collections** (OrganizeOS → builder, `POST /internal/collections-sync`, `ORGANIZEOS_PROVISION_TOKEN`, authenticated like provision). Sent by an Inngest job (debounced 30 s per org) whenever the org's public CMS collections change: `{ organizationId, collections }`, every public collection as a full snapshot (`slug` and `name`; `singularName`, `kind`, `id`, `contentUrl` and `fields` are optional, and unknown keys are ignored). The builder adds one catalog Resource per collection to the org's dev build (`shared/db/collections-sync.server.ts`): a GET Resource for `<api base>/collections/<slug>/items`, and no binding. The OrganizeOS data tab lists it, where an admin adds it to a page (§9: data loads only where it is used). Ids derive from the project and the slug, so a rename only updates the name; a platform collection that a static Resource already covers (`events`, `fundraisers`, `stats`) is skipped. Existing entries are replaced where they stand and new ones appended, so the build keeps its order. A sync also removes, where nothing references them, the bindings with a preset's deterministic id: the unscoped ones older syncs wrote next to each Resource and the `:root` Forms binding of the pre-deploy branches (§9). It keeps the rest, and never touches a binding with a fresh id, which is what every use brings now, whatever its scope.
 
    The request carries no token: the API base and the `Authorization` header are copied from the static Resources that provisioning seeded. A re-provision rotates the token in every collection Resource itself (new `Authorization` and API base, same name and position), so the old token can be revoked after the next publish without a sync in between; OrganizeOS still fires a sync after provisioning and at builder SSO entry. Idempotent: an unchanged snapshot writes nothing. A write is a compare-and-swap on the build's `version`, which it never bumps (that would make every open builder reload); if a builder save wins the race it re-reads and tries again, three attempts in all.
@@ -551,9 +551,13 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   Components panel's own cards, in its sections' order (Sections: Rotating
   Tabs, Marquee, Convergence Field; Content: Rich Text; Events: Event List,
   Event Card, RSVP Form; Signups: Signup Form), skips a name that is not registered yet, and offers a
-  registered block no section names after the others (the "More" rule). The
-  blocks' metas stay `category: "hidden"`, so upstream's grouping skips them
-  and this section adds them. "Find components" finds them by label, ranked
+  registered block no section names after the others (the "More" rule). A
+  card's tooltip is its template's description, a short phrase ("Your
+  upcoming public events"; `metas.test.ts` holds every template to a few
+  words), as a block prop's Settings tooltip is its unit and range ("3–20 s"),
+  a few words, or none where its label says it (`metas.test.ts` pins them).
+  The blocks' metas stay `category: "hidden"`, so upstream's grouping skips
+  them and this section adds them. "Find components" finds them by label, ranked
   with upstream's matches in the one "Found" list. A click, Enter on a found
   block, and a drag (upstream's drag, which accepts every registered template)
   all insert through `insertOrganizeosBlock`, so each block arrives bound to
@@ -564,12 +568,11 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
 - **The OrganizeOS data tab** (`organizeos-panel.tsx`), a left-sidebar tab
   after Components with upstream's `ResourceIcon` and the tooltip "OrganizeOS
   data", hidden in content mode and disabled on text pages, as Components is.
-  It is titled "OrganizeOS data", with one line under the title: "Add your
-  organization's data to this page, then bind it in Settings." Below it, the
-  data list (below). Once the catalog has resolved and is empty, it reads "No
-  organization data is connected to this site yet."; with no selected page
-  there is nothing below the line. Where the CMS panel is offered it takes
-  this slot and the tab is not listed; the list is the CMS panel's Data view.
+  It is titled "OrganizeOS data", with the data list (below) under the title
+  and no line of its own. Once the catalog has resolved and is empty, it reads
+  "No data connected"; with no selected page there is nothing below the
+  title. Where the CMS panel is offered it takes this slot and the tab is not
+  listed; the list is the CMS panel's Data view.
 - **The CMS panel** (`features/cms-panel/`, OrganizeOS design
   `docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md`, 4.4): a
   left-sidebar panel `cms`, "CMS", with `NotebookAndPenIcon` (upstream has no
@@ -620,13 +623,12 @@ collection }` invalidates, through `invalidateResource`, every current
     `{ type: "cms.dirty", dirty }` sets the flag the window's `beforeunload`
     and the close button check. Anything else, a nested `payload` included, is
     dropped. No message chooses an org, a collection's data or a permission.
-- Two links sit at the foot of the OrganizeOS section, Events first. "Manage
-  events in OrganizeOS" opens the org's events area,
-  `<platform URL>/<subdomain>/events`, and "Manage forms in OrganizeOS" its
-  Embeds hub, `<platform URL>/<subdomain>/pages/embeds`, where the org makes
-  its forms; each is the Website area's URL while the builder does not know
-  the subdomain. The builder depends on both platform routes; the OrganizeOS
-  side lists them under "Contract with the fork".
+- One link sits at the foot of the OrganizeOS section while it lists a block
+  that reads the org's data (the Events and Signups blocks): "Manage in
+  OrganizeOS ↗", which opens the org's Website area in OrganizeOS,
+  `<platform URL>/<subdomain>/website` (`getWorkspaceAreaUrl`), where the
+  builder's menu leads too. While the builder does not know the subdomain it
+  is the Website area's URL, `manageUrl`.
 - **Data loads only where it is used, never page-wide.** The org's data is a
   catalog of GET Resources with deterministic ids: Events, Fundraisers and
   Stats (provisioning), one per public collection (collections-sync), and
@@ -1070,7 +1072,7 @@ timelines gets the static page.
   Convergence Field only with the flag; preview and published pages ignore
   both.
 - **The Motion tab**, the Inspector's third tab, after Style and Settings,
-  with the tooltip "Motion for the selected instance"
+  with no tooltip of its own
   (`features/organizeos-panel/motion-tab.tsx`, mounting `Motion` from
   `motion.tsx`, presets in `motion/presets.ts`). It is offered as the rest of
   the OrganizeOS builder UI is, in design mode, on an HTML page; content mode,
@@ -1078,7 +1080,7 @@ timelines gets the static page.
   falls back to Settings where the tab is not offered. Its target is the
   selected Animate Children, else the selection's parent if that is one, else
   the selection, which a preset wraps in a new one; the Body, the page root and
-  Global Root are refused ("Select a section to give it motion."), and
+  Global Root are refused (the tab reads "Select a section"), and
   `wrapInstance` refuses with its own toast what the content model does not
   allow (an `li`, a `tr`, a Radix part: the wrapper counts as a `div`).
   Reveal (fade and a 12px rise over `entry 0%` to `entry 60%`, fill
@@ -1088,13 +1090,16 @@ timelines gets the static page.
   one undo step, through `wrapInstance`'s `onWrap` (§7) or one
   `updateWebstudioData` on an existing wrapper, replacing the designer's
   edits to the previous action. With an Animate Children selected (a preset
-  selects the wrapper it adds), the tab shows its Stagger field, 0 to 20, and
-  below it upstream's Animation editor, upstream's `PropsSectionContainer` for
-  the selection, only while a breakpoint is selected (it is undefined only in
-  a project with no breakpoints, where upstream would render the whole props
-  panel instead). Settings shows the same editor, and the two are never
+  selects the wrapper it adds), the tab shows its Stagger field, 0 to 20 (the
+  range is the Stagger label's tooltip, "0–20 %", a `FieldLabel` as the
+  Animation editor's labels are), and below it upstream's Animation editor,
+  upstream's `PropsSectionContainer` for the selection, only while a
+  breakpoint is selected (it is undefined only in a project with no
+  breakpoints, where upstream would render the whole props panel instead). Settings shows the same editor, and the two are never
   mounted together. With a child of an Animate Children selected, the presets
-  act on the wrapper, and "Select Animate Children" selects it. Tests check
+  act on the wrapper, and "Select Animate Children" selects it. The tab
+  shows the presets and fields only: no line explaining what a preset does to
+  the selection, and no note on where and when the motion plays. Tests check
   that the package's copies of upstream's "new animation" presets
   (`src/animate/__fixtures__/`) still equal upstream's files and that the
   Motion tab's presets equal the actions the player tests play.
@@ -1341,10 +1346,19 @@ other component keeps the text control. The Signup Form's `record` is a select:
 - It reads the selected root's computed `data`, which the builder's resources
   loader already fetches for the block's own binding (scoped to its root, so
   loaded while the block is on the open page), and makes no request of its
-  own.
-- A value it cannot find stays listed as "Unavailable form". With no forms data
-  (loading, unbound, or the loader's error body) a hint says to reload the
-  builder, then to contact support.
+  own (Reload, below, asks that loader again).
+- A value it cannot find stays listed as "Unavailable form". Nothing shows
+  under the select while the forms load. Only when their load failed (the
+  resources loader's result for a Resource the root's `data` reads has `ok`
+  false: an error body, or a fetch that threw) does one line show, "Forms
+  didn't load. Reload.", where Reload asks the loader for that request again
+  (`invalidateResource`) without reloading the builder
+  (`$selectedInstanceFailedLoads`, `reloadFailedLoads`). The line hides as
+  Reload is clicked and returns only for a new failure, the loader's next
+  answer. When the builder's whole resource request fails (the
+  resources-loader route itself, not one Resource), the picker shows nothing:
+  upstream's loader keeps those requests pending, so there is no result to
+  read as a failure.
 - It keeps the upstream select's binding support.
 
 The RSVP Form's `record` is a select over the events in its computed `data`
@@ -1366,11 +1380,10 @@ The RSVP Form's `record` is a select over the events in its computed `data`
 - It skips what the block cannot find, as the block does: an entry with no
   string id, a blank or padded id, and a second event with an id it has seen.
 - A value it cannot find stays listed first as "Unavailable event" (the event
-  was unpublished, deleted or made private, or has not loaded). With no events
-  data (loading, unbound, or the loader's error body) a hint says to reload the
-  builder, then to contact support. An empty list is data: the select is empty,
-  and the "Manage events in OrganizeOS" link at the foot of the Components
-  panel's OrganizeOS section is where the org makes one.
+  was unpublished, deleted or made private, or has not loaded). Nothing shows
+  under the select while the events load; a failed load shows "Events didn't
+  load. Reload.", as the Signup Form's does. An empty list is data: the select
+  is empty.
 
 **Share codes**, `src/share-code/`: a member's share link opens an org page
 with `?r=` and a 10-character code, which OrganizeOS credits to the member when
@@ -1538,10 +1551,11 @@ code in the page's address only, never in a cookie or storage.
   depends on it: without `s-maxage` (or `public` with `max-age`) every page
   view calls the platform again, and without `stale-if-error` a platform
   failure shows at once.
-- The Embeds hub and events area routes the links at the foot of the
-  Components panel's OrganizeOS section lead to
-  (`/<subdomain>/pages/embeds`, `/<subdomain>/events`), which the OrganizeOS
-  contract lists with its environment variables.
+- The Website area route the link at the foot of the Components panel's
+  OrganizeOS section leads to (`/<subdomain>/website`, which the builder's
+  menu and `manageUrl` use too). The OrganizeOS contract also lists the Embeds
+  hub and events area routes (`/<subdomain>/pages/embeds`,
+  `/<subdomain>/events`), which the builder no longer links to.
 - Both sides build to the contract fixtures in OrganizeOS's
   `client/tests/fixtures/site-components/`, which the package copies into
   `src/__fixtures__/` for its tests (`forms.json`, `events.json`,
@@ -1974,9 +1988,10 @@ as paused, so reversal is the switch.
 - **Custom code field.** Read-only, with a sentence that says it is paused and
   kept (`section-general.tsx`, one marked branch). The saved code stays readable
   and copyable.
-- **Publish dialog.** A banner after the plan-features banner lists each HTML
-  Embed that will be dropped, each Markdown Embed, each element publishing
-  drops for a tag the builder does not offer, each SVG `animate` or `set`
+- **Publish dialog.** A banner after the plan-features banner, headed "Paused,
+  not published", lists each HTML Embed that will be dropped, each Markdown
+  Embed, each element publishing drops for a tag the builder does not offer
+  ("Element with an unsupported tag on {page}"), each SVG `animate` or `set`
   element, each `dangerouslySetInnerHTML` prop, each unsafe value ("Link
   address (href)", "Form address (action)", "Source address (src)", "Object
   address (data)", "Frame document (srcdoc)", "Event handler attribute
@@ -1994,9 +2009,11 @@ as paused, so reversal is the switch.
   is listed once, for its tag, and not again for its raw HTML property.
   A Content Block's templates container is not published, so the empty HTML
   Embed that upstream's core template puts in it is not listed (an embed a
-  content editor inserted into the block is). Information only: Publish still
-  runs. Nothing is listed when the switch is on, or when the site holds only
-  template icons.
+  content editor inserted into the block is). One line under the list says
+  why and that nothing is lost: "Scripts could read visitors' OrganizeOS
+  sign-in, so these stay off until that's fixed. Your work is kept."
+  (`pausedScriptExplanation`). Information only: Publish still runs. Nothing
+  is listed when the switch is on, or when the site holds only template icons.
 - **Prebuild.** `dropOrgScript` (`packages/cli/src/organizeos-org-script.ts`) runs
   in one short marked hook in `prebuild.ts`, where the project bundle is read and
   before props are normalized, pages are walked, resources are collected and CSS

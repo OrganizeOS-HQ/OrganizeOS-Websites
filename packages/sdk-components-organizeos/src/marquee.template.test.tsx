@@ -135,7 +135,7 @@ describe("the Marquee template", () => {
   test("a hidden block with its own label, description and icon", () => {
     expect(meta.category).toBe("hidden");
     expect(meta.label).toBe("Marquee");
-    expect(meta.description).toMatch(/Pause/);
+    expect(meta.description).toBe("A row of items drifting in a loop");
     expect(meta.icon).toEqual(expect.any(String));
     expect(meta.icon).not.toBe(rotatingTabs.icon);
   });

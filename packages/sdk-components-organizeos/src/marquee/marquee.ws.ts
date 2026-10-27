@@ -7,8 +7,7 @@ const namespaced = (name: string) => `@organizeos/site-components:${name}`;
 export const meta: WsComponentMeta = {
   category: "hidden",
   label: "Marquee",
-  description:
-    "Drifts its track's items in a loop on the published page, behind its Pause button. Never on the canvas or under reduced motion, and it stops for good when keyboard focus enters the track.",
+  description: "Drifts its items in a loop",
   icon: ArrowRightLeftIcon,
   contentModel: {
     category: "instance",
@@ -23,7 +22,7 @@ export const meta: WsComponentMeta = {
       required: false,
       defaultValue: 40,
       label: "Speed",
-      description: "Pixels per second, from 10 to 200.",
+      description: "10–200 px/s",
     },
     direction: {
       type: "string",
@@ -31,8 +30,6 @@ export const meta: WsComponentMeta = {
       required: false,
       options: ["left", "right"],
       label: "Direction",
-      description:
-        "Which way the items drift. Unset, they drift left, or right on a right-to-left page.",
     },
   },
 };

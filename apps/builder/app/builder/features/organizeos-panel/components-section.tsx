@@ -41,12 +41,20 @@ export type ComponentsPanelMeta = {
   firstInstance: { component: string; tag?: string };
 };
 
+type WorkspaceLink = { label: string; path: string };
+
 type Section = {
   label: string;
   /** Block names without the namespace, in the order they are listed. */
   blocks: string[];
   /** The workspace area where the org makes what these blocks act on. */
-  area?: { label: string; path: string };
+  area?: WorkspaceLink;
+};
+
+/** The one workspace link: it opens the org's Website area in OrganizeOS. */
+export const manageLink: WorkspaceLink = {
+  label: `Manage in ${platformName} ↗`,
+  path: "website",
 };
 
 // Signups, Events, Membership and Donations in the spec; so far the Signup
@@ -68,14 +76,12 @@ const sections: Section[] = [
   {
     label: "Events",
     blocks: ["EventList", "EventCard", "RsvpForm"],
-    // The workspace's events area, where the org makes the events these list.
-    area: { label: `Manage events in ${platformName}`, path: "events" },
+    area: manageLink,
   },
   {
     label: "Signups",
     blocks: ["SignupForm"],
-    // The workspace's Embeds hub, where the org makes its signup forms.
-    area: { label: `Manage forms in ${platformName}`, path: "pages/embeds" },
+    area: manageLink,
   },
 ];
 
@@ -136,10 +142,10 @@ export const groupOrganizeosBlocks = (
 
 /**
  * A link into the org's workspace on the app host,
- * <platform URL>/<subdomain>/<path>, beside the Website area the builder's
- * menu links to (<platform URL>/<subdomain>/website). Without a known
- * subdomain it is the Website area's own URL, which is then the platform
- * dashboard; for a project no org owns, the platform home.
+ * <platform URL>/<subdomain>/<path>; the path `website` is the Website area
+ * the builder's menu links to. Without a known subdomain it is the Website
+ * area's own URL, which is then the platform dashboard; for a project no org
+ * owns, the platform home.
  */
 export const getWorkspaceAreaUrl = (
   site: undefined | OrganizeosSite,
@@ -157,16 +163,17 @@ export const getWorkspaceAreaUrl = (
 export type OrganizeosComponentGroup = {
   category: OrganizeosCategory;
   metas: ComponentsPanelMeta[];
-  /** The workspace areas of the group's blocks, shown at its foot. */
-  links: Array<NonNullable<Section["area"]>>;
+  /** The workspace link shown at its foot: its blocks' area, when any has one. */
+  link: undefined | WorkspaceLink;
 };
 
 /**
  * The OrganizeOS groups of the Components panel: none off the allowlist, for
  * a project no org owns, or while no block is registered; otherwise one,
- * holding every section's blocks in order ("More" last) and the sections'
- * workspace links in order. groupOrganizeosBlocks keeps its per-section
- * result, so a group per section would change only this flattening.
+ * holding every section's blocks in order ("More" last) and the workspace
+ * link of its sections' areas (they share one). groupOrganizeosBlocks keeps
+ * its per-section result, so a group per section would change only this
+ * flattening.
  */
 export const $organizeosComponentGroups = computed(
   [$registeredTemplates, $registeredComponentMetas, $organizeosSite],
@@ -192,9 +199,7 @@ export const $organizeosComponentGroups = computed(
             firstInstance: block.firstInstance,
           }))
         ),
-        links: blockSections.flatMap((section) =>
-          section.area === undefined ? [] : [section.area]
-        ),
+        link: blockSections.find((section) => section.area !== undefined)?.area,
       },
     ];
   }
@@ -245,15 +250,16 @@ export const organizeosGroupLabel = (category: string) =>
   category === "organizeos" ? platformName : undefined;
 
 /**
- * The workspace links at the foot of a group: the OrganizeOS group's, and
- * nothing for a category without links.
+ * The workspace link at the foot of a group: the OrganizeOS group's, and
+ * nothing for a category without one.
  */
 export const OrganizeosGroupFooter = ({ category }: { category: string }) => {
   const organizeosGroups = useStore($organizeosComponentGroups);
   const site = useStore($organizeosSite);
-  const links =
-    organizeosGroups.find((group) => group.category === category)?.links ?? [];
-  if (links.length === 0) {
+  const link = organizeosGroups.find(
+    (group) => group.category === category
+  )?.link;
+  if (link === undefined) {
     return;
   }
   return (
@@ -262,19 +268,17 @@ export const OrganizeosGroupFooter = ({ category }: { category: string }) => {
       data-organizeos-links
       css={{ paddingInline: theme.panel.paddingInline }}
     >
-      {links.map((link) => (
-        <Text color="subtle" key={link.path}>
-          <Link
-            href={getWorkspaceAreaUrl(site, link.path)}
-            target="_blank"
-            rel="noreferrer"
-            color="inherit"
-            variant="inherit"
-          >
-            {link.label}
-          </Link>
-        </Text>
-      ))}
+      <Text color="subtle">
+        <Link
+          href={getWorkspaceAreaUrl(site, link.path)}
+          target="_blank"
+          rel="noreferrer"
+          color="inherit"
+          variant="inherit"
+        >
+          {link.label}
+        </Link>
+      </Text>
     </Flex>
   );
 };

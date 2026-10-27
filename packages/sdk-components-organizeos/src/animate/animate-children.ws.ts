@@ -4,8 +4,7 @@ import type { WsComponentMeta } from "@webstudio-is/sdk";
 export const meta: WsComponentMeta = {
   category: "hidden",
   label: "Animate Children",
-  description:
-    "Plays a scroll-driven animation on each of its children on the published page, never under reduced motion. On the canvas it plays while selected, or with Run on canvas on.",
+  description: "Animates each child on scroll",
   icon: AnimationGroupIcon,
   contentModel: {
     category: "instance",
