@@ -770,6 +770,43 @@ describe("seedProjectResourcePresets", () => {
       );
     });
 
+    test("reaches a collection list block's Resource, with its search params", async () => {
+      const t1 = await buildCollectionResourcePresets({
+        projectId,
+        apiBase: "https://app.example.org/api/public/v1",
+        authHeaderExpression: `"Bearer osk_t1"`,
+        collections: [{ slug: "blog", name: "Blog posts" }],
+      });
+      // as Add list writes it (organizeos-panel/collection-list.ts)
+      const list: Resource = {
+        id: "list-resource",
+        name: "Blog posts list",
+        method: "get",
+        url: `"https://app.example.org/api/public/v1/collections/blog/items"`,
+        searchParams: [
+          { name: "sort", value: `"-publishedAt"` },
+          { name: "limit", value: `"6"` },
+          { name: "fields", value: `"cover,publishedOn,summary"` },
+        ],
+        headers: [{ name: "Authorization", value: `"Bearer osk_t1"` }],
+      };
+      const { context, state } = makeBuildContext({
+        build: {
+          resources: JSON.stringify([...t1.resources, list, userResource]),
+        },
+      });
+      await seedProjectResourcePresets(context, {
+        ...args,
+        readToken: "osk_t2",
+      });
+
+      const resources = parseRow(state.row).resources;
+      expect(resources.find(({ id }) => id === list.id)).toEqual({
+        ...list,
+        headers: [{ name: "Authorization", value: `"Bearer osk_t2"` }],
+      });
+    });
+
     test("replaces another org's token on a Resource pasted onto this org's API", async () => {
       // a Signup Form copied from another org's project brings its own copy
       // of that org's Forms Resource, with that org's token

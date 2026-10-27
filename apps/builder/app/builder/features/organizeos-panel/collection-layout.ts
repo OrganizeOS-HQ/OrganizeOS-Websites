@@ -51,6 +51,14 @@ export const normalizeFieldKind = (kind: string) => {
   return kind;
 };
 
+/**
+ * The first `textarea` field, an item's summary wherever it sits: the item
+ * page's description and a list card's text read it, even beside a rich text
+ * field, which neither can show.
+ */
+export const findSummaryField = (fields: CollectionField[]) =>
+  fields.find((field) => normalizeFieldKind(field.kind) === "textarea");
+
 export type CollectionRoles = {
   /** The `isTitle` field. Its value is the item's `name`. */
   title?: CollectionField;

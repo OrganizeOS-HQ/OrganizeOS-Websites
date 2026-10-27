@@ -31,7 +31,7 @@ import { $pages } from "~/shared/sync/data-stores";
 import { registerFolderChildMutable } from "~/builder/features/pages/page-utils";
 import {
   type CollectionField,
-  normalizeFieldKind,
+  findSummaryField,
   pickRoles,
 } from "./collection-layout";
 import {
@@ -101,9 +101,7 @@ export const getItemPageExpressions = ({
   const field = (target: CollectionField) => `${item}.fields.${target.key}`;
   // the first textarea field (a blog's summary), even beside a rich text
   // field, which the layout shows instead (design 3.4)
-  const textarea = fields.find(
-    (target) => normalizeFieldKind(target.kind) === "textarea"
-  );
+  const textarea = findSummaryField(fields);
   const descriptionSource =
     textarea !== undefined
       ? field(textarea)
