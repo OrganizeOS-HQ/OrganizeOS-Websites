@@ -15,6 +15,7 @@ describe("cmsMessageSchema", () => {
     { type: "cms.collection_changed", collection: null },
     { type: "cms.dirty", dirty: true },
     { type: "cms.dirty", dirty: false },
+    { type: "cms.close_requested" },
   ])("accepts the platform's flat shape %j", (message) => {
     expect(cmsMessageSchema.parse(message)).toEqual(message);
   });
@@ -36,6 +37,14 @@ describe("cmsMessageSchema", () => {
       { type: "cms.item_saved", collection: "News/../x" },
     ],
     ["a string flag", { type: "cms.dirty", dirty: "true" }],
+    [
+      "a close request with a payload",
+      { type: "cms.close_requested", payload: {} },
+    ],
+    [
+      "a close request with an extra key",
+      { type: "cms.close_requested", collection: "news" },
+    ],
     ["a string", "cms.dirty"],
     ["null", null],
   ])("drops %s", (_case, message) => {
