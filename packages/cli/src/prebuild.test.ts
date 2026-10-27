@@ -1681,6 +1681,32 @@ describe("prebuild", () => {
   });
 
   // OrganizeOS fork: org script is paused (organizeos-org-script.ts)
+  // OrganizeOS fork: organizeos-preview-header.ts
+  test("fails a build whose Resource headers name X-OOS-Preview, in any casing", async () => {
+    await writeSiteData(
+      createSiteData({
+        resources: [
+          [
+            "news",
+            {
+              id: "news",
+              name: "News",
+              method: "get",
+              url: `"https://app.organizeos.org/api/public/v1/collections/news/items"`,
+              headers: [{ name: "x-OOS-preview", value: `"v1.a.b"` }],
+            },
+          ],
+        ],
+      })
+    );
+    await expect(
+      prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      })
+    ).rejects.toThrow(/X-OOS-Preview.*"News"/);
+  });
+
   describe("leaves an org's own script out", () => {
     const scriptEmbed = '<script>alert("embed")</script>';
 

@@ -62,6 +62,20 @@ const environment = z.object({
   // to no org.
   ORGANIZEOS_BLOCKS_ORG_IDS: z.string().optional(),
 
+  // The shared secret that signs the canvas's draft-preview assertion
+  // (X-OOS-Preview, shared/organizeos-preview.server.ts). OrganizeOS holds the
+  // same value and verifies it. Unset or blank: no assertion is minted and the
+  // canvas shows published items only.
+  WEBSITES2_PREVIEW_SECRET: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().optional()
+  ),
+
+  // The CMS panel's switch (builder/features/cms-panel). Only the exact value
+  // `true` offers it; anything else keeps it hidden.
+  ORGANIZEOS_CMS_PANEL: z.string().optional(),
+
   PORT: z
     .string()
     .optional()
@@ -143,6 +157,8 @@ const rawEnv = {
   ORGANIZEOS_PUBLISH_GITHUB_TOKEN: process.env.ORGANIZEOS_PUBLISH_GITHUB_TOKEN,
   ORGANIZEOS_APP_URL: process.env.ORGANIZEOS_APP_URL,
   ORGANIZEOS_BLOCKS_ORG_IDS: process.env.ORGANIZEOS_BLOCKS_ORG_IDS,
+  WEBSITES2_PREVIEW_SECRET: process.env.WEBSITES2_PREVIEW_SECRET,
+  ORGANIZEOS_CMS_PANEL: process.env.ORGANIZEOS_CMS_PANEL,
   PORT: process.env.PORT,
   MAX_UPLOAD_SIZE: process.env.MAX_UPLOAD_SIZE,
   S3_ENDPOINT: process.env.S3_ENDPOINT,
