@@ -325,7 +325,8 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
 - **Signup Form** is the root: it renders the `<form>`, finds its form by its
   `record` prop in its `data` prop (with no `record`, the org defaults: email
   required; first name, last name and phone optional), and on a published page
-  posts what its parts collect. Its parts are **Submit Button** and **Field**,
+  posts what its parts collect, and the page's share code when it has one
+  (Share codes, below). Its parts are **Submit Button** and **Field**,
   which names a form field and wires its **Field Label**, **Field Input** and
   **Field Message** together. `src/form/` holds what later families share: part
   registration, the submit helper, the canvas check.
@@ -338,10 +339,11 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   project that has both reuses one token each, so the two templates cannot
   drift apart.
 - **Event List** and **Event Card** are templates over native elements and a
-  collection, with no component of their own (the package registers no
-  component for them, and `components.ts` never reaches their template files,
-  so a published site's copy of the package does not carry them). Both are the
-  same `ws:element` div, a grid, holding a `ws:collection` of cards (id
+  collection under a Share Code Carrier root, with no component of their own
+  (the package registers no component for them, and `components.ts` never
+  reaches their template files, so a published site's copy of the package does
+  not carry them). Both have the same root, a **Share Code Carrier** (a `div`,
+  see Share codes below), a grid, holding a `ws:collection` of cards (id
   `events`), a "No upcoming events" box (id `empty`) and an "Events
   unavailable" box (id `unavailable`): the designed Unavailable state that
   spec invariant 11 asks for, with placeholder text the designer edits. The
@@ -416,7 +418,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     `event_id`, `first_name`, `last_name`, `email`, `phone` (left out when
     blank), `guests`, `shift_ids`, `shift_role_id` and `answers` (each left out
     when empty), `email_consent` (`false` without the part), `page_path`
-    (`window.location.pathname`) and `website` (the honeypot).
+    (`window.location.pathname`), `website` (the honeypot) and, when the
+    page's address has a well-formed share code, `referral_code` (Share codes,
+    below).
   - **Answers.** `registered` and `waitlisted` show their states, and a
     successful RSVP goes to the Page prop's page instead when After submit is
     set to page (a waitlisted visitor always sees Waitlisted). `ended` and
@@ -559,7 +563,7 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   (`canvas/shared/use-drag-drop.ts`) has one marked branch for the namespace.
   What a block reads from the catalog is a table, `organizeosBlockData`, keyed
   by the template's key (the `component` the panel inserts, not the root's
-  component: an Event List's root is a `ws:element`). An entry names the
+  component: an Event List's root is a Share Code Carrier). An entry names the
   catalog Resource (`events`, `forms` or `upcoming-events`), the name of the
   block's binding, and the props that read it: an instance (`root`, or the
   `ws:id` the template gives it), a prop name, and the expression, given the
@@ -1131,6 +1135,57 @@ The RSVP Form's `record` is a select over the events in its computed `data`
   builder, then to contact support. An empty list is data: the select is empty,
   and the panel's "Manage events in OrganizeOS" link is where the org makes one.
 
+**Share codes**, `src/share-code/`: a member's share link opens an org page
+with `?r=` and a 10-character code, which OrganizeOS credits to the member when
+the visitor signs up, registers or gives during that visit. The blocks keep the
+code in the page's address only, never in a cookie or storage.
+
+- **Forms.** The Signup Form and the RSVP Form read the code when they submit,
+  never while rendering, and send it as `referral_code` (the platform's name)
+  only when it has the code's shape; without one the body is what it was. A
+  platform that answers `invalid_request` to such a body is asked once more
+  without it (`postWithShareCode`, `src/form/submit.ts`): both endpoints give
+  that answer before any rate limit, form or event read, or write, so a
+  platform that does not take the code costs the credit, never the
+  submission.
+- **Links.** `attachShareCodeCarrier`, through `useShareCodeCarrier` on each
+  platform block's root (the two forms' `<form>`, and the **Share Code
+  Carrier**, the root of the Event List and the Event Card), carries the code
+  on a click on a link inside the block to a platform page on the same host.
+  The list, `platformPathPatterns`, is the platform's own: donate, fundraise,
+  petitions, join, shop, cart, checkout and an event's page; the donor
+  self-service pages, whose links carry a token from email, are not on it. The
+  code is read at the click, and a click another handler cancelled is left
+  alone. The carrier adds the code to the link's `href` unless the link
+  already has an `r`, which it keeps. A plain click then has its default
+  prevented and goes to that address by document (`navigateTo`), whether or
+  not the `href` was rewritten, which keeps a client-side router out: a
+  published link may route by its own `to`, not the DOM `href`, and would drop
+  the code, even on a link an earlier Ctrl-click or the first click of a
+  double-click has already given its `r`. Here the fork departs from the
+  platform's own carrier, which leaves a link that already has `r` to its
+  default. Any other click (a modifier key or another button,
+  `target="_blank"`, `download`) follows the `href`. Nothing stops the click's
+  propagation, and a carrier inside another acts once. `navigateTo` does the
+  same for an after-submit page that is a platform page. Nothing happens on
+  the canvas or in the Preview.
+- **Share Code Carrier** (`@organizeos/site-components:ShareCodeCarrier`): a
+  hidden `div` that passes every prop through, takes any children and has no
+  props of its own, the root for blocks that are templates over native
+  elements. It renders the same markup on the server and the client and acts
+  only on a click, so it cannot cause a hydration mismatch. The builder's
+  contrast check classifies it as rendering the designer's children only
+  (`rendersDesignerChildrenOnly` in `backgrounds/contrast.ts`).
+- **The copy.** `share-code.ts` copies OrganizeOS's constants and carry
+  function (`client/lib/referrals/code.ts`, `client/lib/referrals/carry-code.ts`
+  and the flow family of `client/lib/verification/public-route-allowlist.ts`),
+  and both repositories test their copy against `__fixtures__/share-code.json`
+  (`share-code.test.ts` here): change OrganizeOS first, then copy, as for the
+  contract fixtures below.
+- An Event List or an Event Card inserted before this change keeps its
+  `ws:element` root and carries no code until it is inserted again. Nothing
+  changes in the published-site runtime packages, the CLI or the templates.
+
 **Shipping in published sites**, `packages/cli/src/organizeos-components.ts`:
 
 - A site never installs the package. Prebuild clears `app/__organizeos__/`
@@ -1175,15 +1230,17 @@ The RSVP Form's `record` is a select over the events in its computed `data`
 - `POST /api/public/site/v1/signups`, same origin from the published page
   (every org host reserves `/api` for OrganizeOS): JSON only, no CORS, the org
   taken from the request's host, never the body. The body is
-  `{ form_id?, fields, page_path, website }` (`website` is the honeypot); the
+  `{ form_id?, fields, page_path, website, referral_code? }` (`website` is the
+  honeypot); the
   answer is `{ outcome }` (`subscribed`, `confirm_email` or `received`) or
   `{ error, field? }`. The block maps an outcome it does not know to Success
   and any error to Error, so a frozen build survives new answers.
 - `POST /api/public/site/v1/rsvps`, on the same terms (same origin, JSON only,
   no CORS, the org from the host, no platform cookie read or set). The body
   has `event_id`, `first_name`, `last_name`, `email`, `phone?`, `guests?`,
-  `shift_ids?`, `shift_role_id?`, `answers?`, `email_consent?`, `page_path` and
-  `website`: `guests` carry names only, `answers` are strings by question id (a
+  `shift_ids?`, `shift_role_id?`, `answers?`, `email_consent?`, `page_path`,
+  `website` and `referral_code?`: `guests` carry names only, `answers` are
+  strings by question id (a
   multiselect as a JSON array of strings, a checkbox as `"true"` or `"false"`,
   a number as a plain decimal with no exponent, anything else as typed), and
   `website` is the honeypot. The answer is `{ outcome }`
@@ -1198,6 +1255,10 @@ The RSVP Form's `record` is a select over the events in its computed `data`
   `ended` shows Error for it. The platform answers a repeat RSVP as it would a
   new one, so the page tells a holder and a stranger nothing different, but
   for the contact-cap window under RSVP Form below.
+- In both bodies, `referral_code` is the visit's share code, sent only when
+  well-formed; the platform ignores a malformed one and answers the same with
+  or without it, and a block that is refused with `invalid_request` asks once
+  more without it.
 - `GET /v1/events`, through the Events catalog Resource (the RSVP Form and its
   picker): every public event, past ones included, soonest first, each with the
   registration details the form reads on top of the display keys: `waitlist`,
@@ -1234,12 +1295,15 @@ The RSVP Form's `record` is a select over the events in its computed `data`
   contract lists with its environment variables.
 - Both sides build to the contract fixtures in OrganizeOS's
   `client/tests/fixtures/site-components/`, which the package copies into
-  `src/__fixtures__/` for its tests (`forms.json`, `events.json`, `signups/` and
-  `rsvps/`). To keep them in step, change the OrganizeOS copy first, copy the
-  files over unchanged, update the source commit in the note at the top of the
-  copy's `README.md`, and check that `diff -r` between the two folders shows
-  that note alone. A change is additive or ships under a new endpoint version:
-  a published site keeps calling what it was built against.
+  `src/__fixtures__/` for its tests (`forms.json`, `events.json`,
+  `share-code.json`, `signups/` and `rsvps/`). To keep them in step, change the
+  OrganizeOS copy first, copy the files over unchanged, update the source
+  commit in the note at the top of the copy's `README.md`, and check that
+  `diff -r` between the two folders shows that note alone. `share-code.json`
+  must also be a Prettier fixed point under both repositories' JSON settings
+  (print width 80), so neither pre-commit hook changes a byte of either copy.
+  A change is additive or ships under a new endpoint version: a published site
+  keeps calling what it was built against.
 
 **Deploy order** for this feature (each phase, each slice): OrganizeOS first,
 then the builder. That reverses the usual order (§5, and the OrganizeOS
@@ -1257,7 +1321,9 @@ page published before they exist would find no guests, shifts or questions in
 the event data, which lets a visitor post an RSVP that misses a required
 answer, to an endpoint that is not there. So no RSVP Form is published before
 the platform half is live. The keys are additive, and builds that do not know
-them ignore them.
+them ignore them. Share codes follow the same order: OrganizeOS accepts
+`referral_code` before the builder sends it; a block that meets a platform
+without it falls back to a submission without the code.
 
 **Known limits** (OrganizeOS spec, section 12, items 15 to 18, with the
 options, and the limits found since in review):
@@ -1392,6 +1458,12 @@ options, and the limits found since in review):
     beyond the pilot.
 - No self-serve "Reconnect data": once the builder is enabled, nothing re-seeds
   a project's catalog, so a refused insert needs support to re-provision.
+- **Share codes** are carried on a click, after hydration, by links inside the
+  blocks and by the forms only: not by a designer's link outside a block, a
+  middle-click, a long press or a copied link address, and not between the
+  site's own pages. Without JavaScript, or before hydration, nothing is
+  carried. A site published before this change sends no code until it is
+  republished.
 
 ## 10. Org script is paused
 
