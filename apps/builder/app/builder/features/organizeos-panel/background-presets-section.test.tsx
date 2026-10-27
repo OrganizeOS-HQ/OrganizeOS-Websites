@@ -143,8 +143,8 @@ const advance = (ms: number) => {
   });
 };
 
-const summary = (host: HTMLElement) =>
-  host.querySelector("[data-contrast-summary]")?.textContent;
+const contrastLine = (host: HTMLElement) =>
+  host.querySelector("[data-contrast-line]")?.textContent;
 
 const contrastCalls = () => vi.mocked(checkSectionContrast).mock.calls.length;
 
@@ -209,13 +209,13 @@ describe("Background presets", () => {
   });
 
   test("Background presets for an element", () => {
-    project({ styles: [style("text", "color", "#333333")] });
+    project({ styles: [style("text", "color", "#aaaaaa")] });
     selectInstance(sectionSelector);
     const host = render(createElement(Section));
     expect(host.textContent).toContain("Background presets");
     expect(host.querySelector("[data-preset-grid]")).not.toBeNull();
     advance(150);
-    expect(summary(host)).toBe("All text passes AA");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
   });
 
   test("computes nothing while closed", () => {
@@ -242,31 +242,31 @@ describe("Background presets", () => {
     act(() => trigger?.click());
     expect(host.querySelector("[data-preset-grid]")).not.toBeNull();
     expect(checkSectionContrast).not.toHaveBeenCalled();
-    expect(host.querySelector("[data-contrast-pending]")).not.toBeNull();
+    expect(contrastLine(host)).toBeUndefined();
     advance(149);
     expect(checkSectionContrast).not.toHaveBeenCalled();
     advance(1);
     expect(checkSectionContrast).toHaveBeenCalledTimes(1);
-    expect(summary(host)).toBe("1 text style fails AA");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
   });
 
   test("a style change updates the report after the scheduled run, not synchronously", () => {
-    project({ styles: [style("text", "color", "#333333")] });
+    project({ styles: [style("text", "color", "#aaaaaa")] });
     selectInstance(sectionSelector);
     const host = render(createElement(Section));
     advance(150);
-    expect(summary(host)).toBe("All text passes AA");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
     const calls = contrastCalls();
 
-    act(() => setLocalStyle("text", "color", "#aaaaaa"));
+    act(() => setLocalStyle("text", "color", "#333333"));
     // the last report stays on screen until the run lands
     expect(contrastCalls()).toBe(calls);
-    expect(summary(host)).toBe("All text passes AA");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
     advance(149);
-    expect(summary(host)).toBe("All text passes AA");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
     advance(1);
     expect(contrastCalls()).toBe(calls + 1);
-    expect(summary(host)).toBe("1 text style fails AA");
+    expect(contrastLine(host)).toBeUndefined();
   });
 
   test("two quick changes cause one run", () => {
@@ -284,7 +284,7 @@ describe("Background presets", () => {
     expect(contrastCalls()).toBe(calls);
     advance(50);
     expect(contrastCalls()).toBe(calls + 1);
-    expect(summary(host)).toBe("All text passes AA");
+    expect(contrastLine(host)).toBeUndefined();
     advance(1000);
     expect(contrastCalls()).toBe(calls + 1);
   });
@@ -307,14 +307,11 @@ describe("Background presets", () => {
       selectInstance(sectionSelector);
       const host = render(createElement(Section));
       expect(host.querySelector("[data-preset-grid]")).not.toBeNull();
-      expect(host.querySelector("[data-contrast-pending]")?.textContent).toBe(
-        "Checking contrast"
-      );
+      expect(contrastLine(host)).toBeUndefined();
       advance(149);
-      expect(summary(host)).toBeUndefined();
+      expect(contrastLine(host)).toBeUndefined();
       advance(1);
-      expect(summary(host)).toBe("1 text style fails AA");
-      expect(host.querySelector("[data-contrast-pending]")).toBeNull();
+      expect(contrastLine(host)).toBe("Text below AA contrast");
     } finally {
       if (saved.requestIdleCallback !== undefined) {
         scope.requestIdleCallback = saved.requestIdleCallback;
@@ -349,7 +346,7 @@ describe("Background presets", () => {
       });
     };
 
-    project({ styles: [style("text", "color", "#333333")] });
+    project({ styles: [style("text", "color", "#aaaaaa")] });
     selectInstance(sectionSelector);
     const host = render(createElement(Section));
     expect(requestIdleCallback).toHaveBeenCalledTimes(1);
@@ -358,13 +355,13 @@ describe("Background presets", () => {
     });
     // nothing went through setTimeout: time alone lands no report
     advance(1000);
-    expect(summary(host)).toBeUndefined();
+    expect(contrastLine(host)).toBeUndefined();
     runPending();
-    expect(summary(host)).toBe("All text passes AA");
+    expect(contrastLine(host)).toBe("Text below AA contrast");
 
-    act(() => setLocalStyle("text", "color", "#aaaaaa"));
-    expect(requestIdleCallback).toHaveBeenCalledTimes(2);
     act(() => setLocalStyle("text", "color", "#bbbbbb"));
+    expect(requestIdleCallback).toHaveBeenCalledTimes(2);
+    act(() => setLocalStyle("text", "color", "#333333"));
     expect(requestIdleCallback).toHaveBeenCalledTimes(3);
     // the second run was cancelled by the third
     expect(cancelIdleCallback).toHaveBeenLastCalledWith(
@@ -376,60 +373,45 @@ describe("Background presets", () => {
     expect(contrastCalls()).toBe(calls);
     runPending();
     expect(contrastCalls()).toBe(calls + 1);
-    expect(summary(host)).toBe("1 text style fails AA");
+    expect(contrastLine(host)).toBeUndefined();
   });
 
-  test("a selection change drops the previous groups at once, shows Checking contrast, then shows the new section's groups, with no row of the first report in between", () => {
+  test("a selection change drops the previous line at once, shows none until the new section's run lands, and never the first report's line in between", () => {
     project({
       styles: [
         style("text", "color", "#aaaaaa"),
-        style("otherText", "color", "#333333"),
+        style("otherText", "color", "#bbbbbb"),
       ],
     });
     selectInstance(sectionSelector);
     const host = render(createElement(Section));
     advance(150);
-    expect(host.querySelector('[data-group="text"]')).not.toBeNull();
+    expect(contrastLine(host)).toBe("Text below AA contrast");
 
     // every DOM change from here on, read synchronously with takeRecords
     const observer = new MutationObserver(() => {});
-    observer.observe(host, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["data-group"],
-    });
+    observer.observe(host, { childList: true, subtree: true });
 
     act(() => selectInstance(otherSelector));
-    expect(host.querySelector('[data-group="text"]')).toBeNull();
-    expect(host.querySelector("[data-contrast-pending]")?.textContent).toBe(
-      "Checking contrast"
-    );
-    expect(summary(host)).toBeUndefined();
+    expect(contrastLine(host)).toBeUndefined();
     advance(149);
-    expect(host.querySelector('[data-group="text"]')).toBeNull();
-    expect(host.querySelector("[data-contrast-pending]")).not.toBeNull();
-    advance(1);
-    expect(host.querySelector('[data-group="otherText"]')).not.toBeNull();
-    expect(host.querySelector("[data-contrast-pending]")).toBeNull();
-    expect(summary(host)).toBe("All text passes AA");
-
+    expect(contrastLine(host)).toBeUndefined();
+    // no line was added, even for a moment, before the new run landed
     const records = observer.takeRecords();
     observer.disconnect();
     expect(records.length).toBeGreaterThan(0);
-    // no row of the first report was added, or relabelled, in between
-    const firstReportRow = '[data-group="text"]';
-    const showedFirstReport = records.some((record) =>
-      record.type === "attributes"
-        ? (record.target as Element).matches(firstReportRow)
-        : Array.from(record.addedNodes).some(
-            (node) =>
-              node instanceof Element &&
-              (node.matches(firstReportRow) ||
-                node.querySelector(firstReportRow) !== null)
-          )
+    const lineAdded = records.some((record) =>
+      Array.from(record.addedNodes).some(
+        (node) =>
+          node instanceof Element &&
+          (node.matches("[data-contrast-line]") ||
+            node.querySelector("[data-contrast-line]") !== null)
+      )
     );
-    expect(showedFirstReport).toBe(false);
+    expect(lineAdded).toBe(false);
+
+    advance(1);
+    expect(contrastLine(host)).toBe("Text below AA contrast");
   });
 });
 

@@ -1,16 +1,11 @@
 import {
-  $selectedBreakpoint,
   $selectedInstance,
   $selectedInstanceStyleSources,
   $selectedStyleSources,
   $selectedStyleState,
 } from "~/shared/nano-states";
-import { $breakpoints, $styleSources } from "~/shared/sync/data-stores";
-import { getComputedStyleDecl } from "~/shared/style-object-model";
-import type { InstanceSelector } from "~/shared/instance-utils/tree";
 import { createBatchUpdate } from "~/builder/features/style-panel/shared/use-style-data";
 import { layerProperties, type PresetStyles } from "./presets";
-import { buildSectionStyleModel } from "./style-model";
 
 /**
  * Applies a preset's styles to the selected instance (spec 3.2).
@@ -60,69 +55,4 @@ export const applyPreset = (styles: PresetStyles): void => {
     batch.setProperty(property)(value);
   }
   batch.publish();
-};
-
-export type BackgroundOrigin = {
-  /**
-   * Where the element's current background comes from, at the current
-   * breakpoint and base state:
-   * - none: no background of its own (defaults or a component preset);
-   * - local: its local style source, at this breakpoint;
-   * - token: a token, named in `label`;
-   * - breakpoint: its local style source at another breakpoint, named in
-   *   `label`.
-   */
-  kind: "none" | "local" | "token" | "breakpoint";
-  label?: string;
-};
-
-const originPriority: Record<BackgroundOrigin["kind"], number> = {
-  none: 0,
-  local: 1,
-  breakpoint: 2,
-  token: 3,
-};
-
-/**
- * Where the instance's `background-color` and `background-image` come from
- * now, for the notice shown before a preset is applied ("This element's
- * background comes from the token X..."). When the two differ, a token wins
- * over another breakpoint, which wins over local.
- */
-export const describeBackgroundOrigin = (
-  instanceSelector: InstanceSelector
-): BackgroundOrigin => {
-  const model = buildSectionStyleModel(instanceSelector);
-  const styleSources = $styleSources.get();
-  const breakpoints = $breakpoints.get();
-  const selectedBreakpointId = $selectedBreakpoint.get()?.id;
-  let origin: BackgroundOrigin = { kind: "none" };
-  for (const property of ["background-color", "background-image"] as const) {
-    const { source } = getComputedStyleDecl({
-      model,
-      instanceSelector,
-      property,
-    });
-    if (source.styleSourceId === undefined) {
-      // a browser default or the component's preset
-      continue;
-    }
-    const styleSource = styleSources.get(source.styleSourceId);
-    let next: BackgroundOrigin;
-    if (styleSource?.type === "token") {
-      next = { kind: "token", label: styleSource.name };
-    } else if (source.breakpointId !== selectedBreakpointId) {
-      const breakpoint =
-        source.breakpointId === undefined
-          ? undefined
-          : breakpoints.get(source.breakpointId);
-      next = { kind: "breakpoint", label: breakpoint?.label };
-    } else {
-      next = { kind: "local" };
-    }
-    if (originPriority[next.kind] > originPriority[origin.kind]) {
-      origin = next;
-    }
-  }
-  return origin;
 };
