@@ -82,7 +82,7 @@ afterEach(() => {
 });
 
 describe("PausedScriptBanner", () => {
-  test("lists what is paused, and says why and that it is kept", () => {
+  test("lists what is paused under its heading, and says why and that it is kept, in two lines", () => {
     setBuild({ code: "<script>1</script>", customCode: "<style>x{}</style>" });
     const host = renderBanner();
     const items = Array.from(host.querySelectorAll("li")).map(
@@ -92,9 +92,50 @@ describe("PausedScriptBanner", () => {
       "HTML Embed on Home",
       "Custom code (Project settings)",
     ]);
-    expect(host.textContent).toContain(
-      "Scripts on your site could read the OrganizeOS sign-in of people who visit, so these stay off while we make it safe. What you saved is kept."
+    // the heading, the list, the reason: nothing else
+    const list = host.querySelector("ul");
+    expect(list?.previousElementSibling?.textContent).toBe(
+      "Paused, not published"
     );
+    expect(list?.nextElementSibling?.textContent).toBe(
+      "Scripts could read visitors' OrganizeOS sign-in, so these stay off until that's fixed. Your work is kept."
+    );
+    expect(list?.nextElementSibling?.nextElementSibling).toBeNull();
+  });
+
+  test("names an element publishing drops for its tag as one with a custom tag", () => {
+    setBuild({ code: MenuIcon });
+    $instances.set(
+      new Map([
+        ...$instances.get(),
+        [
+          "root",
+          {
+            type: "instance",
+            id: "root",
+            component: "Body",
+            children: [
+              { type: "id", value: "embed" },
+              { type: "id", value: "custom" },
+            ],
+          },
+        ],
+        [
+          "custom",
+          {
+            type: "instance",
+            id: "custom",
+            component: "ws:element",
+            tag: "script",
+            children: [],
+          },
+        ],
+      ])
+    );
+    const host = renderBanner();
+    expect(
+      Array.from(host.querySelectorAll("li"), (item) => item.textContent)
+    ).toEqual(["Element with a custom tag on Home"]);
   });
 
   test("opens Project settings from the custom code item", () => {

@@ -48,7 +48,7 @@ export type PausedScriptItem = {
   view?: "projectSettings" | "projectRedirects" | "pageSettings";
 };
 
-export const pausedScriptExplanation = `Scripts on your site could read the ${platformName} sign-in of people who visit, so these stay off while we make it safe. What you saved is kept.`;
+export const pausedScriptExplanation = `Scripts could read visitors' ${platformName} sign-in, so these stay off until that's fixed. Your work is kept.`;
 
 /**
  * The ids of what a page publishes, the page's root first. A Content Block's
@@ -204,7 +204,7 @@ export const findPausedScript = ({
         labels.push("Markdown Embed");
       } else if (hasBlockedTag(instance, instanceProps)) {
         // it goes with its props, so no raw HTML property is listed for it
-        labels.push("Element with a tag the builder does not offer");
+        labels.push("Element with a custom tag");
       } else {
         const paused = findStaticTags(instance, instanceProps).find((tag) =>
           pausedSvgTags.has(tag)

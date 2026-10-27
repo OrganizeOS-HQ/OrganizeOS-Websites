@@ -114,8 +114,7 @@ const StatusLine = ({ state }: { state: OrganizeosPublishState }) => {
     case "pending":
       return (
         <Text color="subtle">
-          Publishing, started <RelativeTime time={state.at} />. This usually
-          takes a few minutes; you can keep editing meanwhile.
+          Publishing, started <RelativeTime time={state.at} />
         </Text>
       );
     case "published":
@@ -133,8 +132,7 @@ const StatusLine = ({ state }: { state: OrganizeosPublishState }) => {
           <AlertIcon color={rawTheme.colors.foregroundDestructive} />
           <Text color="destructive">
             {state.timedOut ? "Publishing did not finish" : "Publish failed"}{" "}
-            <RelativeTime time={state.at} />. Try again, or contact{" "}
-            {platformName} support if it keeps failing.
+            <RelativeTime time={state.at} />
           </Text>
         </Flex>
       );
@@ -186,7 +184,6 @@ const RestrictedFeaturesBanner = ({ manageUrl }: { manageUrl: string }) => {
         ))}
       </Text>
       <Text>
-        Your organization&apos;s plan is managed in {platformName}.{" "}
         <Link
           href={manageUrl}
           target="_blank"
@@ -194,7 +191,7 @@ const RestrictedFeaturesBanner = ({ manageUrl }: { manageUrl: string }) => {
           color="inherit"
           variant="inherit"
         >
-          Open the Website area
+          Manage plan ↗
         </Link>
       </Text>
     </PanelBanner>
@@ -215,7 +212,7 @@ export const PausedScriptBanner = () => {
   }
   return (
     <PanelBanner variant="warning">
-      <Text variant="regularBold">These are paused and are not published:</Text>
+      <Text variant="regularBold">Paused, not published</Text>
       <Text as="ul" css={{ paddingLeft: "1em" }}>
         {pausedScript.map(({ label, navigate, view }, index) => (
           <li key={index}>
@@ -375,8 +372,6 @@ export const OrganizeosPublishContent = ({
           </Flex>
         )}
         <Text color="subtle">
-          Custom domains, visibility and site settings are managed in{" "}
-          {platformName}.{" "}
           <Link
             href={site.manageUrl}
             target="_blank"
@@ -384,7 +379,7 @@ export const OrganizeosPublishContent = ({
             color="inherit"
             variant="inherit"
           >
-            Open the Website area
+            Site settings ↗
           </Link>
         </Text>
       </Grid>
@@ -396,24 +391,16 @@ export const OrganizeosPublishContent = ({
       <RestrictedFeaturesBanner manageUrl={site.manageUrl} />
       <PausedScriptBanner />
 
-      <Tooltip
-        content={
-          isPending
-            ? "Publish process in progress"
-            : "Build and publish the current version of every page"
-        }
+      <Button
+        type="button"
+        color="positive"
+        state={isPending ? "pending" : undefined}
+        onClick={() => {
+          handlePublish().catch(() => undefined);
+        }}
       >
-        <Button
-          type="button"
-          color="positive"
-          state={isPending ? "pending" : undefined}
-          onClick={() => {
-            handlePublish().catch(() => undefined);
-          }}
-        >
-          {state.status === "published" ? "Publish changes" : "Publish"}
-        </Button>
-      </Tooltip>
+        {state.status === "published" ? "Publish changes" : "Publish"}
+      </Button>
     </Grid>
   );
 };

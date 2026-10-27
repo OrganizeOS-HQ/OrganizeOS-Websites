@@ -199,9 +199,9 @@ How an org admin's session is wired end to end, and which side owns each step. T
 
    The AGPL §13 source offer is rendered in the builder menu as well as the dashboard footer, so it stays reachable for an admin who never sees the dashboard. Do not remove the menu copy.
 
-4. **Publish** (`features/publish/organizeos-publish.tsx`). The dialog shows the site's real address with copy/open, points at OrganizeOS for domains and settings, and has one Publish button. `domain.publish` creates the production build and the OrganizeOS publisher (`services/organizeos-publisher.server.ts`) dispatches `publish-site.yml` with the build and organization ids. A dispatch that never leaves the builder marks the build FAILED at once; a static-export build is refused (it must never be deployed as the live site). The dialog also lists what is paused, and prebuild leaves an org's own script, and the unsafe values of §10, out of the published site.
+4. **Publish** (`features/publish/organizeos-publish.tsx`). The dialog shows the site's real address with copy/open, a bare "Site settings ↗" link to the org's Website area in OrganizeOS (domains, visibility and the rest), and one Publish button, with no tooltip. A banner names the features the plan does not cover and ends with a "Manage plan ↗" link to the same area. `domain.publish` creates the production build and the OrganizeOS publisher (`services/organizeos-publisher.server.ts`) dispatches `publish-site.yml` with the build and organization ids. A dispatch that never leaves the builder marks the build FAILED at once; a static-export build is refused (it must never be deployed as the live site). The dialog also lists what is paused, and prebuild leaves an org's own script, and the unsafe values of §10, out of the published site.
 5. **Execute** (`.github/workflows/publish-site.yml`). Syncs the build with the CLI, builds it, reads the org script switch from the CLI it built and fails unless it is off, deploys to the `organizeos-sites` Vercel project, POSTs the deployment URL, and `orgScript` as the run's CLI read it (§10, "Reporting to OrganizeOS"), to OrganizeOS's publish callback (which flips the org's ledger pointer, making the site live through the reverse proxy), then reports `PUBLISHED` to the builder's `POST /internal/publish-status`; any failure reports `FAILED`. Without that report the builder's status would read "pending" forever: upstream's cloud publisher used to flip `Build.publishStatus` directly.
-6. **Status.** The dialog polls the project while a build is pending and treats a build as failed only after the executor's 25 minute timeout (`organizeos-publish-status.ts`; upstream assumes 3 minutes). On success it says the site is live and that the proxy can take up to a minute to pick the new deployment up (its target cache).
+6. **Status.** The dialog polls the project while a build is pending and treats a build as failed only after the executor's 25 minute timeout (`organizeos-publish-status.ts`; upstream assumes 3 minutes). Its status line reads "Publishing, started {when}", "Published {when}", "Publish failed {when}" or "Publishing did not finish {when}", and nothing more; an error the publish call returned shows on its own line below. On success it says the site is live and that the proxy can take up to a minute to pick the new deployment up (its target cache).
 7. **Collections** (OrganizeOS → builder, `POST /internal/collections-sync`, `ORGANIZEOS_PROVISION_TOKEN`, authenticated like provision). Sent by an Inngest job (debounced 30 s per org) whenever the org's public CMS collections change: `{ organizationId, collections }`, every public collection as a full snapshot (`slug` and `name`; `singularName`, `kind`, `id`, `contentUrl` and `fields` are optional, and unknown keys are ignored). The builder adds one catalog Resource per collection to the org's dev build (`shared/db/collections-sync.server.ts`): a GET Resource for `<api base>/collections/<slug>/items`, and no binding. The OrganizeOS data tab lists it, where an admin adds it to a page (§9: data loads only where it is used). Ids derive from the project and the slug, so a rename only updates the name; a platform collection that a static Resource already covers (`events`, `fundraisers`, `stats`) is skipped. Existing entries are replaced where they stand and new ones appended, so the build keeps its order. A sync also removes, where nothing references them, the bindings with a preset's deterministic id: the unscoped ones older syncs wrote next to each Resource and the `:root` Forms binding of the pre-deploy branches (§9). It keeps the rest, and never touches a binding with a fresh id, which is what every use brings now, whatever its scope.
 
    The request carries no token: the API base and the `Authorization` header are copied from the static Resources that provisioning seeded. A re-provision rotates the token in every collection Resource itself (new `Authorization` and API base, same name and position), so the old token can be revoked after the next publish without a sync in between; OrganizeOS still fires a sync after provisioning and at builder SSO entry. Idempotent: an unchanged snapshot writes nothing. A write is a compare-and-swap on the build's `version`, which it never bumps (that would make every open builder reload); if a builder save wins the race it re-reads and tries again, three attempts in all.
@@ -1962,9 +1962,10 @@ as paused, so reversal is the switch.
 - **Custom code field.** Read-only, with a sentence that says it is paused and
   kept (`section-general.tsx`, one marked branch). The saved code stays readable
   and copyable.
-- **Publish dialog.** A banner after the plan-features banner lists each HTML
-  Embed that will be dropped, each Markdown Embed, each element publishing
-  drops for a tag the builder does not offer, each SVG `animate` or `set`
+- **Publish dialog.** A banner after the plan-features banner, headed "Paused,
+  not published", lists each HTML Embed that will be dropped, each Markdown
+  Embed, each element publishing drops for a tag the builder does not offer
+  ("Element with a custom tag on {page}"), each SVG `animate` or `set`
   element, each `dangerouslySetInnerHTML` prop, each unsafe value ("Link
   address (href)", "Form address (action)", "Source address (src)", "Object
   address (data)", "Frame document (srcdoc)", "Event handler attribute
@@ -1982,9 +1983,11 @@ as paused, so reversal is the switch.
   is listed once, for its tag, and not again for its raw HTML property.
   A Content Block's templates container is not published, so the empty HTML
   Embed that upstream's core template puts in it is not listed (an embed a
-  content editor inserted into the block is). Information only: Publish still
-  runs. Nothing is listed when the switch is on, or when the site holds only
-  template icons.
+  content editor inserted into the block is). One line under the list says
+  why and that nothing is lost: "Scripts could read visitors' OrganizeOS
+  sign-in, so these stay off until that's fixed. Your work is kept."
+  (`pausedScriptExplanation`). Information only: Publish still runs. Nothing
+  is listed when the switch is on, or when the site holds only template icons.
 - **Prebuild.** `dropOrgScript` (`packages/cli/src/organizeos-org-script.ts`) runs
   in one short marked hook in `prebuild.ts`, where the project bundle is read and
   before props are normalized, pages are walked, resources are collected and CSS
