@@ -62,10 +62,12 @@ const environment = z.object({
     .optional()
     .transform((value) => (value ?? platformUrl).replace(/\/+$/, "")),
 
-  // Rollout allowlist for the OrganizeOS blocks and the rest of the OrganizeOS
-  // builder UI: comma-separated organization ids. Unset or empty offers them
-  // to no org.
-  ORGANIZEOS_BLOCKS_ORG_IDS: z.string().optional(),
+  // The OrganizeOS blocks and the rest of the OrganizeOS builder UI are
+  // offered to every org except these: comma-separated organization ids.
+  // Unset or empty denies none; an entry that is not an organization id
+  // denies every org (shared/db/organizeos-site.server.ts). It replaced
+  // ORGANIZEOS_BLOCKS_ORG_IDS, an allowlist, which is never read again.
+  ORGANIZEOS_BLOCKS_DENY_ORG_IDS: z.string().optional(),
 
   // The shared secret that signs the canvas's draft-preview assertion
   // (X-OOS-Preview, shared/organizeos-preview.server.ts). OrganizeOS holds the
@@ -162,7 +164,7 @@ const rawEnv = {
   ORGANIZEOS_PUBLISH_REPO: process.env.ORGANIZEOS_PUBLISH_REPO,
   ORGANIZEOS_PUBLISH_GITHUB_TOKEN: process.env.ORGANIZEOS_PUBLISH_GITHUB_TOKEN,
   ORGANIZEOS_APP_URL: process.env.ORGANIZEOS_APP_URL,
-  ORGANIZEOS_BLOCKS_ORG_IDS: process.env.ORGANIZEOS_BLOCKS_ORG_IDS,
+  ORGANIZEOS_BLOCKS_DENY_ORG_IDS: process.env.ORGANIZEOS_BLOCKS_DENY_ORG_IDS,
   WEBSITES2_PREVIEW_SECRET: process.env.WEBSITES2_PREVIEW_SECRET,
   ORGANIZEOS_CMS_PANEL: process.env.ORGANIZEOS_CMS_PANEL,
   PORT: process.env.PORT,

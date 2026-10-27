@@ -1,0 +1,8 @@
+[
+  {
+    "subdomain": "laborparty",
+    "main_host": "votelabor.org",
+    "website_hosts": ["votelabor.org"],
+    "status": "not_launched"
+  }
+]

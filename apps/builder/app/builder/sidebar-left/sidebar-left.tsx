@@ -134,7 +134,7 @@ const panels: PanelConfig[] = [
   // (builder/features/cms-panel). The blocks are in the Components panel's
   // OrganizeOS section, which binds each to the project's data as it inserts
   // it; Background presets are in the Style panel and Motion in the
-  // Inspector. Offered only to orgs on the blocks' allowlist (see
+  // Inspector. Offered only to orgs not denied the blocks (see
   // getAvailablePanels).
   {
     name: "organizeos",

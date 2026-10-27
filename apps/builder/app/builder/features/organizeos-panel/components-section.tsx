@@ -24,8 +24,8 @@ import { organizeosNamespace } from "./insert-organizeos-block";
  * insertOrganizeosBlock, which binds it to the project's data as it inserts
  * it; the canvas routes a drop there by name (canvas/shared/use-drag-drop.ts).
  *
- * Offered only to orgs on the rollout allowlist (`blocksEnabled`), and never
- * on an XML page.
+ * Offered only to orgs the deny list does not deny (`blocksEnabled`), and
+ * never on an XML page.
  */
 
 export type OrganizeosCategory = "organizeos";
@@ -168,7 +168,7 @@ export type OrganizeosComponentGroup = {
 };
 
 /**
- * The OrganizeOS groups of the Components panel: none off the allowlist, for
+ * The OrganizeOS groups of the Components panel: none for a denied org, for
  * a project no org owns, or while no block is registered; otherwise one,
  * holding every section's blocks in order ("More" last) and the workspace
  * link of its sections' areas (they share one). groupOrganizeosBlocks keeps

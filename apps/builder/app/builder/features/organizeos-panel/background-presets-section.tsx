@@ -9,7 +9,7 @@ import { $sectionSelector, SectionBackground } from "./section-background";
  * upstream's section map (style-panel/sections/sections.ts), directly after
  * Backgrounds (panel overhaul spec 5.2). Its content is section-background.tsx.
  *
- * Shown only for an org on the blocks' allowlist and a selection that can take
+ * Shown only for an org not denied the blocks and a selection that can take
  * a section background (not Global Root, the page root or the Body);
  * otherwise it renders nothing and the Style panel is upstream's. Radix mounts
  * a collapsible section's content only while it is open, so a closed section

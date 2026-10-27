@@ -72,7 +72,8 @@ describe("the Components panel's OrganizeOS section", () => {
 
   // withOrganizeosGroups ranks upstream's Found list again, together with the
   // blocks, with these keys (components-section.tsx). A merge that changes
-  // upstream's keys must change those too, or allowlisted orgs lose matches.
+  // upstream's keys must change those too, or orgs offered the blocks lose
+  // matches.
   test("upstream's search still ranks by label alone, the keys withOrganizeosGroups uses", () => {
     const filterAndGroup = components.slice(
       components.indexOf("const filterAndGroupComponents = ("),
@@ -163,7 +164,7 @@ describe("the canvas's drop", () => {
 });
 
 describe("the left sidebar", () => {
-  test("sidebar-left.tsx still offers the OrganizeOS tab only on the allowlist", () => {
+  test("sidebar-left.tsx still offers the OrganizeOS tab only to an org not denied the blocks", () => {
     expect(sidebarLeft).toMatch(
       /panel\.name !== "organizeos" \|\| isOrganizeosPanelAvailable/
     );

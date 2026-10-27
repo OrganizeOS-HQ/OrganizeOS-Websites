@@ -38,7 +38,10 @@ import {
 } from "~/services/destinations.server";
 import { loader as authWsLoader } from "./auth.ws";
 import { getUserById } from "~/shared/db/user.server";
-import { resolveOrganizeosSite } from "~/shared/db/organizeos-site.server";
+import {
+  reportMalformedOrgDenyList,
+  resolveOrganizeosSite,
+} from "~/shared/db/organizeos-site.server";
 import {
   createPrivateNoStoreHeaders,
   privateNoStoreResponseHeaders,
@@ -232,9 +235,9 @@ export const loader = async (loaderArgs: LoaderFunctionArgs) => {
     }
 
     // OrganizeOS: a project owned by an org's synthetic service account is an
-    // OrganizeOS site. The chrome then points back at the org's Website area,
-    // the Publish dialog shows the site's real address, and the OrganizeOS
-    // panel is offered when the org is on ORGANIZEOS_BLOCKS_ORG_IDS.
+    // OrganizeOS site. The chrome then points back at OrganizeOS, the Publish
+    // dialog reads the site's addresses from it, and the OrganizeOS panel is
+    // offered unless ORGANIZEOS_BLOCKS_DENY_ORG_IDS denies the org.
     const owner = await context.postgrest.client
       .from("User")
       .select("provider, email")
@@ -247,15 +250,15 @@ export const loader = async (loaderArgs: LoaderFunctionArgs) => {
       // of which are safe there. Every other lookup in this loader throws too.
       throw owner.error;
     }
+    reportMalformedOrgDenyList(env.ORGANIZEOS_BLOCKS_DENY_ORG_IDS);
     const organizeosSite =
       owner.data === null
         ? undefined
         : resolveOrganizeosSite({
             owner: owner.data,
             projectDomain: project.domain,
-            publisherHost: env.PUBLISHER_HOST,
             platformUrl: env.ORGANIZEOS_APP_URL,
-            blocksOrgIds: env.ORGANIZEOS_BLOCKS_ORG_IDS,
+            blocksDenyOrgIds: env.ORGANIZEOS_BLOCKS_DENY_ORG_IDS,
             cmsPanel: env.ORGANIZEOS_CMS_PANEL,
           });
 

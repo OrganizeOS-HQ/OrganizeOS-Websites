@@ -16,3 +16,18 @@ diff ../OrganizeOS/client/tests/fixtures/site-components/preview-assertion.json 
 ```
 
 and update this note's commit when it changes.
+
+`site-addresses.json` is a byte-for-byte copy of the OrganizeOS repo's
+`client/tests/fixtures/site-components/site-addresses.json`, at commit
+`e8f9b9ca390f5b26293f7bdab099ed870a4f0961` (the last commit that touched it).
+It is the answer of `websites2_site_addresses`, which
+`../db/organizeos-site-addresses.server.ts` reads for the Publish dialog.
+Before each fork PR that touches that read, compare it with the platform's
+copy:
+
+```sh
+diff ../OrganizeOS/client/tests/fixtures/site-components/site-addresses.json \
+  apps/builder/app/shared/__fixtures__/site-addresses.json
+```
+
+and update this note's commit when it changes.

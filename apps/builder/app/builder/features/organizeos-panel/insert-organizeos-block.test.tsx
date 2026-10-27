@@ -638,7 +638,7 @@ describe("insertOrganizeosBlock", () => {
       ["clicked", undefined],
       ["dropped", { parentSelector: ["bodyId"], position: 0 }],
     ] as const)(
-      "when the org is not on the blocks' allowlist, %s",
+      "when the org is denied the blocks, %s",
       async (_case, insertable) => {
         setProject(withForms, { blocksEnabled: false });
         const before = getStores();
@@ -1894,7 +1894,7 @@ describe("the inserted RSVP Form", () => {
     );
   });
 
-  test("refuses, writing nothing, for an org off the allowlist", async () => {
+  test("refuses, writing nothing, for a denied org", async () => {
     setProject(withForms, { blocksEnabled: false });
     const before = getStores();
 

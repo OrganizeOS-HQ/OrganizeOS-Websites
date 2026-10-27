@@ -27,6 +27,7 @@ import {
   $isDesignMode,
   $organizeosSite,
 } from "~/shared/nano-states";
+import { organizeosHomeUrl } from "~/shared/organizeos-site";
 import { emitCommand } from "~/builder/shared/commands";
 import { MenuButton } from "./menu-button";
 import { $openProjectSettings } from "~/shared/nano-states/project-settings";
@@ -95,8 +96,8 @@ export const Menu = ({ defaultOpen }: { defaultOpen?: boolean } = {}) => {
     <DropdownMenu modal={false} defaultOpen={defaultOpen}>
       <MenuButton />
       <DropdownMenuContent sideOffset={4} collisionPadding={4} width="regular">
-        {/* OrganizeOS site: the org's Website area in OrganizeOS is the
-            management surface, not the fork dashboard (SSO skips it). */}
+        {/* OrganizeOS site: back to the org's workspace home in OrganizeOS,
+            not the fork dashboard (SSO skips it). */}
         {organizeosSite === undefined ? (
           <DropdownMenuItem
             onSelect={() => {
@@ -108,7 +109,7 @@ export const Menu = ({ defaultOpen }: { defaultOpen?: boolean } = {}) => {
         ) : (
           <DropdownMenuItem
             onSelect={() => {
-              window.location.href = organizeosSite.manageUrl;
+              window.location.href = organizeosHomeUrl(organizeosSite);
             }}
           >
             Back to {platformName}

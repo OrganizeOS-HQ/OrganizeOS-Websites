@@ -55,7 +55,7 @@ describe("$isOrganizeosPanelAvailable", () => {
   };
 
   test.each([
-    ["an org on the blocks' allowlist", site, true],
+    ["an org not denied the blocks", site, true],
     ["an org off it", { ...site, blocksEnabled: false }, false],
     ["a project no org owns", undefined, false],
   ])("offers the panel to %s: %s", (_case, value, expected) => {
