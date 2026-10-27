@@ -16,11 +16,16 @@ import {
   getAllPages,
   getPagePath,
   getStyleDeclKey,
+  collectionComponent,
 } from "@webstudio-is/sdk";
+import { sitemapResourceUrl } from "@webstudio-is/sdk/runtime";
 import { renderTemplate } from "@webstudio-is/template";
 import { RichText } from "@organizeos/site-components/templates";
 import { findAvailableVariables } from "~/shared/data-variables";
-import { updateWebstudioData } from "~/shared/instance-utils/data";
+import {
+  getWebstudioData,
+  updateWebstudioData,
+} from "~/shared/instance-utils/data";
 import { selectInstance, selectPage } from "~/shared/nano-states";
 import { $pages } from "~/shared/sync/data-stores";
 import { registerFolderChildMutable } from "~/builder/features/pages/page-utils";
@@ -469,8 +474,409 @@ export type CreateItemPageResult =
   | { error: string };
 
 /**
+ * The sitemap page (design 3.7): the first Create item page makes a page at
+ * `/sitemap.xml`, an XML document listing the site's static pages, from
+ * upstream's Sitemap system Resource, and the items of every collection that
+ * has an item page, each from its `/slugs` Resource. Its root XmlNode carries
+ * the marker prop, which XmlNode drops in both renderers, so the marker lives
+ * in the build and never reaches the XML. Later item pages add their
+ * collection only to a page carrying the marker: a hand-made `/sitemap.xml` is
+ * never edited. Its Resources are scoped to the page's root, so they go with
+ * the page.
+ */
+
+export const SITEMAP_PATH = "/sitemap.xml";
+
+/** The prop on the generated sitemap's root XmlNode. */
+export const SITEMAP_MARKER = "data-organizeos-sitemap";
+
+/** The page whose full path is `/sitemap.xml`, whoever made it. */
+export const findSitemapPage = (
+  pages: undefined | Pages = $pages.get()
+): undefined | Page => {
+  if (pages === undefined) {
+    return;
+  }
+  return getAllPages(pages).find(
+    (page) => getPagePath(page.id, pages) === SITEMAP_PATH
+  );
+};
+
+/**
+ * The generated sitemap's root XmlNode: the first child of the page's body,
+ * when it carries the marker. Undefined for a hand-made sitemap.
+ */
+const findMarkedSitemapRoot = (
+  data: Pick<WebstudioData, "instances" | "props">,
+  page: Page
+) => {
+  const first = data.instances.get(page.rootInstanceId)?.children[0];
+  if (first?.type !== "id") {
+    return;
+  }
+  const root = data.instances.get(first.value);
+  if (root?.component !== "XmlNode") {
+    return;
+  }
+  for (const prop of data.props.values()) {
+    if (
+      prop.instanceId === root.id &&
+      prop.name === SITEMAP_MARKER &&
+      prop.type === "boolean" &&
+      prop.value === true
+    ) {
+      return root;
+    }
+  }
+};
+
+/** A collection's `/slugs` Resource url, a literal. */
+export const getSlugsResourceUrl = (apiBase: string, slug: string) =>
+  JSON.stringify(`${apiBase}/collections/${encodeURIComponent(slug)}/slugs`);
+
+/** The slug a `/slugs` Resource url names, or undefined for any other url. */
+export const parseSlugsResourceUrl = (url: string): undefined | string => {
+  let value: unknown;
+  try {
+    value = JSON.parse(url);
+  } catch {
+    return;
+  }
+  if (typeof value !== "string") {
+    return;
+  }
+  const match = /\/collections\/([^/]+)\/slugs$/.exec(value);
+  if (match === null) {
+    return;
+  }
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return;
+  }
+};
+
+/**
+ * The parts of the generated sitemap, one per collection: the binding of its
+ * `/slugs` Resource, scoped to the page root, and the `ws:collection` under
+ * the root XmlNode whose `data` reads it.
+ */
+const findSitemapParts = (
+  data: Pick<
+    WebstudioData,
+    "instances" | "props" | "dataSources" | "resources"
+  >,
+  page: Page,
+  root: Instance
+) => {
+  const parts: Array<{
+    slug: string;
+    binding: DataSource;
+    collectionId?: Instance["id"];
+  }> = [];
+  for (const binding of data.dataSources.values()) {
+    if (
+      binding.type !== "resource" ||
+      binding.scopeInstanceId !== page.rootInstanceId
+    ) {
+      continue;
+    }
+    const resource = data.resources.get(binding.resourceId);
+    const slug =
+      resource === undefined ? undefined : parseSlugsResourceUrl(resource.url);
+    if (slug === undefined) {
+      continue;
+    }
+    const variable = encodeDataVariableId(binding.id);
+    const collectionId = root.children.find((child) => {
+      if (child.type !== "id") {
+        return false;
+      }
+      for (const prop of data.props.values()) {
+        if (
+          prop.instanceId === child.value &&
+          prop.name === "data" &&
+          prop.type === "expression" &&
+          prop.value.includes(variable)
+        ) {
+          return true;
+        }
+      }
+      return false;
+    })?.value;
+    parts.push({ slug, binding, collectionId });
+  }
+  return parts;
+};
+
+/**
+ * The collections the generated sitemap lists, in its order of bindings.
+ * Empty with no sitemap, or a hand-made one.
+ */
+export const listSitemapCollections = (
+  data: Pick<
+    WebstudioData,
+    "pages" | "instances" | "props" | "dataSources" | "resources"
+  > = getWebstudioData()
+): string[] => {
+  const page = findSitemapPage(data.pages);
+  const root = page && findMarkedSitemapRoot(data, page);
+  if (page === undefined || root === undefined) {
+    return [];
+  }
+  return findSitemapParts(data, page, root).map(({ slug }) => slug);
+};
+
+/** A `ws:collection` over `data` under `parentId`, with its item parameter. */
+const addXmlCollectionMutable = (
+  data: WebstudioData,
+  {
+    parentId,
+    label,
+    list,
+    loc,
+    lastmod,
+  }: {
+    parentId: Instance["id"];
+    label: string;
+    list: string;
+    /** given the item variable */
+    loc: (item: string) => string;
+    lastmod: (item: string) => string;
+  }
+) => {
+  const writer = createInstanceWriter(data);
+  const collectionId = writer.addChild(parentId, {
+    component: collectionComponent,
+    label,
+  });
+  const parameter: DataSource = {
+    type: "parameter",
+    id: nanoid(),
+    scopeInstanceId: collectionId,
+    name: "item",
+  };
+  data.dataSources.set(parameter.id, parameter);
+  writer.addExpressionProp(collectionId, "data", list);
+  writer.addProp({
+    instanceId: collectionId,
+    name: "item",
+    type: "parameter",
+    value: parameter.id,
+  });
+  const item = encodeDataVariableId(parameter.id);
+  const urlId = writer.addChild(collectionId, { component: "XmlNode" });
+  writer.addStringProp(urlId, "tag", "url");
+  const locId = writer.addChild(urlId, {
+    component: "XmlNode",
+    children: [{ type: "expression", value: loc(item) }],
+  });
+  writer.addStringProp(locId, "tag", "loc");
+  const lastmodId = writer.addChild(urlId, {
+    component: "XmlNode",
+    children: [{ type: "expression", value: lastmod(item) }],
+  });
+  writer.addStringProp(lastmodId, "tag", "lastmod");
+  return collectionId;
+};
+
+/**
+ * Create the sitemap page with its root XmlNode and its static part: upstream's
+ * Sitemap system Resource, as the Resource panel offers it.
+ */
+const createSitemapPageMutable = (data: WebstudioData) => {
+  const writer = createInstanceWriter(data);
+  const bodyId = writer.addInstance({
+    component: elementComponent,
+    tag: "body",
+  });
+  const rootId = writer.addChild(bodyId, { component: "XmlNode" });
+  writer.addStringProp(rootId, "tag", "urlset");
+  writer.addStringProp(
+    rootId,
+    "xmlns",
+    "http://www.sitemaps.org/schemas/sitemap/0.9"
+  );
+  writer.addProp({
+    instanceId: rootId,
+    name: SITEMAP_MARKER,
+    type: "boolean",
+    value: true,
+  });
+  const resource: Resource = {
+    id: nanoid(),
+    name: "Sitemap",
+    control: "system",
+    method: "get",
+    url: JSON.stringify(sitemapResourceUrl),
+    headers: [],
+  };
+  const binding: DataSource = {
+    type: "resource",
+    id: nanoid(),
+    scopeInstanceId: bodyId,
+    name: getFreeVariableName(data, bodyId, resource.name),
+    resourceId: resource.id,
+  };
+  data.resources.set(resource.id, resource);
+  data.dataSources.set(binding.id, binding);
+  const pages = encodeDataVariableId(binding.id);
+  addXmlCollectionMutable(data, {
+    parentId: rootId,
+    label: "Pages",
+    list: `(${pages}.ok === true ? ${pages}.data : [])`,
+    loc: (item) => `${system}.origin + ${item}.path`,
+    lastmod: (item) => `${item}.lastModified`,
+  });
+  const pageId = nanoid();
+  data.pages.pages.set(pageId, {
+    id: pageId,
+    name: "Sitemap",
+    path: SITEMAP_PATH,
+    title: JSON.stringify("Sitemap"),
+    rootInstanceId: bodyId,
+    meta: { documentType: "xml" },
+  });
+  registerFolderChildMutable(data.pages, pageId, ROOT_FOLDER_ID);
+  return pageId;
+};
+
+/**
+ * Add a collection's part to the sitemap in a transaction's data, creating
+ * the sitemap page when the project has no page at `/sitemap.xml`. Returns
+ * what it did: "created" the page, "added" the part, the part was already
+ * "listed", or "skipped" a hand-made sitemap.
+ */
+export const addCollectionToSitemapMutable = (
+  data: WebstudioData,
+  {
+    schema,
+    catalog,
+  }: {
+    schema: Pick<CollectionSchema, "slug" | "name">;
+    catalog: Pick<CollectionCatalog, "apiBase" | "authorization">;
+  }
+): "created" | "added" | "listed" | "skipped" => {
+  let page = findSitemapPage(data.pages);
+  let result: "created" | "added" = "added";
+  if (page === undefined) {
+    const pageId = createSitemapPageMutable(data);
+    page = data.pages.pages.get(pageId) as Page;
+    result = "created";
+  }
+  const root = findMarkedSitemapRoot(data, page);
+  if (root === undefined) {
+    return "skipped";
+  }
+  const { slug } = schema;
+  if (findSitemapParts(data, page, root).some((part) => part.slug === slug)) {
+    return "listed";
+  }
+  const resource: Resource = {
+    id: nanoid(),
+    name: `${schema.name} slugs`,
+    method: "get",
+    url: getSlugsResourceUrl(catalog.apiBase, slug),
+    headers: [{ name: "Authorization", value: catalog.authorization }],
+  };
+  const binding: DataSource = {
+    type: "resource",
+    id: nanoid(),
+    scopeInstanceId: page.rootInstanceId,
+    name: getFreeVariableName(data, page.rootInstanceId, resource.name),
+    resourceId: resource.id,
+  };
+  data.resources.set(resource.id, resource);
+  data.dataSources.set(binding.id, binding);
+  const slugs = encodeDataVariableId(binding.id);
+  addXmlCollectionMutable(data, {
+    parentId: root.id,
+    label: schema.name,
+    list: `(${slugs}.ok === true ? ${slugs}.data.data : [])`,
+    loc: (item) =>
+      `${system}.origin + ${JSON.stringify(`/${slug}/`)} + ${item}.slug`,
+    lastmod: (item) => `${item}.updatedAt`,
+  });
+  return result;
+};
+
+/** Delete an instance's subtree with its props, scoped variables and styles. */
+const deleteSubtreeMutable = (
+  data: WebstudioData,
+  parentId: Instance["id"],
+  instanceId: Instance["id"]
+) => {
+  const parent = data.instances.get(parentId);
+  if (parent !== undefined) {
+    parent.children = parent.children.filter(
+      (child) => child.type !== "id" || child.value !== instanceId
+    );
+  }
+  const ids = new Set<Instance["id"]>();
+  const visit = (id: Instance["id"]) => {
+    const instance = data.instances.get(id);
+    if (instance === undefined || ids.has(id)) {
+      return;
+    }
+    ids.add(id);
+    for (const child of instance.children) {
+      if (child.type === "id") {
+        visit(child.value);
+      }
+    }
+  };
+  visit(instanceId);
+  for (const id of ids) {
+    data.instances.delete(id);
+    data.styleSourceSelections.delete(id);
+  }
+  for (const prop of data.props.values()) {
+    if (ids.has(prop.instanceId)) {
+      data.props.delete(prop.id);
+    }
+  }
+  for (const dataSource of data.dataSources.values()) {
+    if (ids.has(dataSource.scopeInstanceId ?? "")) {
+      data.dataSources.delete(dataSource.id);
+    }
+  }
+};
+
+/**
+ * Remove from sitemap: drop one collection's part from the generated sitemap,
+ * its `ws:collection` and its `/slugs` Resource, in one transaction. Returns
+ * whether it removed anything. A hand-made sitemap is never edited.
+ */
+export const removeCollectionFromSitemap = (slug: string) => {
+  let removed = false;
+  updateWebstudioData((data) => {
+    const page = findSitemapPage(data.pages);
+    const root = page && findMarkedSitemapRoot(data, page);
+    if (page === undefined || root === undefined) {
+      return;
+    }
+    for (const part of findSitemapParts(data, page, root)) {
+      if (part.slug !== slug) {
+        continue;
+      }
+      if (part.collectionId !== undefined) {
+        deleteSubtreeMutable(data, root.id, part.collectionId);
+      }
+      data.dataSources.delete(part.binding.id);
+      if (part.binding.type === "resource") {
+        data.resources.delete(part.binding.resourceId);
+      }
+      removed = true;
+    }
+  });
+  return removed;
+};
+
+/**
  * Create item page, from the data tab: reads the collection's schema and its
  * first item, then writes the page in one transaction and switches to it.
+ * The same transaction creates the sitemap page, or adds the collection to
+ * it (addCollectionToSitemapMutable).
  * When the collection already has an item page, that page is opened instead
  * and nothing is written (`created: false`). `{ error }` when the schema
  * cannot be read.
@@ -507,6 +913,7 @@ export const createCollectionItemPage = async (
     }
     pageId = nanoid();
     createItemPageMutable(data, { pageId, schema, catalog, firstItemSlug });
+    addCollectionToSitemapMutable(data, { schema, catalog });
     created = true;
     selectInstance(undefined);
   });

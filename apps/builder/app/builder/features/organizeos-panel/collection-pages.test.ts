@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { XmlNode } from "@webstudio-is/sdk-components-react/components";
 import { enableMapSet } from "immer";
 import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { showAttribute } from "@webstudio-is/react-sdk";
 import {
+  type DataSource,
   type Instance,
   type Page,
   type Pages,
@@ -33,13 +37,22 @@ import { $selectedPageId } from "~/shared/nano-states/pages";
 import { selectInstance } from "~/shared/nano-states";
 import { getResourceKey } from "~/shared/resources";
 import { isPresetId } from "~/shared/organizeos-preset-ids";
-import { getWebstudioData } from "~/shared/instance-utils/data";
+import {
+  getWebstudioData,
+  updateWebstudioData,
+} from "~/shared/instance-utils/data";
 import { buildCollectionResourcePresets } from "~/shared/db/resource-presets.server";
+import { findAvailableVariables } from "~/shared/data-variables";
 import { loadCollectionError } from "./collection-schema";
 import {
+  SITEMAP_MARKER,
+  addCollectionToSitemapMutable,
   createCollectionItemPage,
   findCollectionItemPage,
+  findSitemapPage,
   getItemPageExpressions,
+  listSitemapCollections,
+  removeCollectionFromSitemap,
 } from "./collection-pages";
 
 const { loaderFetch } = vi.hoisted(() => ({ loaderFetch: vi.fn() }));
@@ -503,35 +516,50 @@ describe("the item page's expressions", () => {
     }
   );
 
-  test("every expression the page writes passes the validator", async () => {
+  test("every expression the item page and the sitemap write passes the validator, with the variables in scope", async () => {
     const { page } = await createBlogPage();
-    const binding = getItemBinding(page);
-    const availableVariables = new Set([
-      "$ws$system",
-      encodeDataVariableId(binding.id),
-    ]);
+    await createCollectionItemPage("faq");
     const data: WebstudioData = getWebstudioData();
-    const written: string[] = [
-      page.title,
-      ...(Object.values(page.meta) as string[]),
-    ];
+    const scopeOf = (instanceId: Instance["id"]) =>
+      new Set([
+        "$ws$system",
+        ...findAvailableVariables({
+          startingInstanceId: instanceId,
+          instances: data.instances,
+          dataSources: data.dataSources,
+        }).map((variable) => encodeDataVariableId(variable.id)),
+      ]);
+    const written: Array<[expression: string, scope: Set<string>]> = [];
+    for (const target of data.pages.pages.values()) {
+      if (target.id === data.pages.homePageId) {
+        continue;
+      }
+      const scope = scopeOf(target.rootInstanceId);
+      written.push([target.title, scope]);
+      for (const [key, value] of Object.entries(target.meta)) {
+        // the document type is a value, not an expression
+        if (key !== "documentType" && typeof value === "string") {
+          written.push([value, scope]);
+        }
+      }
+    }
     for (const prop of data.props.values()) {
       if (prop.type === "expression") {
-        written.push(prop.value);
+        written.push([prop.value, scopeOf(prop.instanceId)]);
       }
     }
     for (const instance of data.instances.values()) {
       for (const child of instance.children) {
         if (child.type === "expression") {
-          written.push(child.value);
+          written.push([child.value, scopeOf(instance.id)]);
         }
       }
     }
-    written.push(
-      ($resources.get().get(binding.resourceId) as { url: string }).url
-    );
-    expect(written.length).toBeGreaterThan(10);
-    for (const expression of written) {
+    for (const resource of data.resources.values()) {
+      written.push([resource.url, scopeOf(page.rootInstanceId)]);
+    }
+    expect(written.length).toBeGreaterThan(30);
+    for (const [expression, availableVariables] of written) {
       expect(
         lintExpression({ expression, availableVariables }),
         expression
@@ -590,5 +618,273 @@ describe("the item page's expressions", () => {
 
   test("found: an undefined Resource is false", () => {
     expect(evaluate({ params: { slug: "first-post" } }, undefined)).toBe(false);
+  });
+});
+
+describe("the sitemap page", () => {
+  const getSitemap = () => {
+    const data = getWebstudioData();
+    const page = findSitemapPage(data.pages) as Page;
+    const body = data.instances.get(page.rootInstanceId) as Instance;
+    const root = data.instances.get(
+      body.children[0]?.value as string
+    ) as Instance;
+    const propsOf = (instanceId: Instance["id"]) =>
+      Object.fromEntries(
+        [...data.props.values()]
+          .filter((prop) => prop.instanceId === instanceId)
+          .map((prop) => [prop.name, prop])
+      );
+    const parts = root.children.map((child) => {
+      const collection = data.instances.get(child.value as string) as Instance;
+      const url = data.instances.get(
+        collection.children[0]?.value as string
+      ) as Instance;
+      const [loc, lastmod] = url.children.map(
+        (child) => data.instances.get(child.value as string) as Instance
+      );
+      return {
+        collection,
+        data: propsOf(collection.id).data,
+        item: propsOf(collection.id).item,
+        url: propsOf(url.id).tag,
+        loc: [propsOf(loc.id).tag, loc.children],
+        lastmod: [propsOf(lastmod.id).tag, lastmod.children],
+      };
+    });
+    const bindings = [...data.dataSources.values()].filter(
+      (dataSource) =>
+        dataSource.type === "resource" &&
+        dataSource.scopeInstanceId === page.rootInstanceId
+    ) as Array<Extract<DataSource, { type: "resource" }>>;
+    return { data, page, root, rootProps: propsOf(root.id), parts, bindings };
+  };
+
+  const resourceOf = (
+    data: WebstudioData,
+    binding: Extract<DataSource, { type: "resource" }>
+  ) => data.resources.get(binding.resourceId);
+
+  test("the first item page creates /sitemap.xml, an XML page whose root XmlNode carries the marker", async () => {
+    await createBlogPage();
+    const { page, root, rootProps } = getSitemap();
+    expect(getPagePath(page.id, $pages.get() as Pages)).toEqual("/sitemap.xml");
+    expect(page.meta.documentType).toEqual("xml");
+    expect(root.component).toEqual("XmlNode");
+    expect(rootProps.tag).toMatchObject({ type: "string", value: "urlset" });
+    expect(rootProps.xmlns).toMatchObject({
+      type: "string",
+      value: "http://www.sitemaps.org/schemas/sitemap/0.9",
+    });
+    expect(rootProps["data-organizeos-sitemap"]).toMatchObject({
+      type: "boolean",
+      value: true,
+    });
+  });
+
+  test("lists the static pages from upstream's Sitemap system Resource", async () => {
+    await createBlogPage();
+    const { data, parts, bindings } = getSitemap();
+    const sitemap = bindings.find(
+      (binding) => resourceOf(data, binding)?.control === "system"
+    );
+    expect(resourceOf(data, sitemap!)).toEqual({
+      id: sitemap!.resourceId,
+      name: "Sitemap",
+      control: "system",
+      method: "get",
+      url: `"/$resources/sitemap.xml"`,
+      headers: [],
+    });
+    const v = encodeDataVariableId(sitemap!.id);
+    const item = encodeDataVariableId(parts[0].item?.value as string);
+    expect(parts[0]).toMatchObject({
+      collection: { component: "ws:collection", label: "Pages" },
+      data: {
+        type: "expression",
+        value: `(${v}.ok === true ? ${v}.data : [])`,
+      },
+      url: { value: "url" },
+      loc: [
+        { value: "loc" },
+        [{ type: "expression", value: `$ws$system.origin + ${item}.path` }],
+      ],
+      lastmod: [
+        { value: "lastmod" },
+        [{ type: "expression", value: `${item}.lastModified` }],
+      ],
+    });
+  });
+
+  test("lists each collection's items from its /slugs Resource", async () => {
+    await createBlogPage();
+    const { data, parts, bindings } = getSitemap();
+    const slugs = bindings.find(
+      (binding) => resourceOf(data, binding)?.name === "Blog posts slugs"
+    );
+    expect(resourceOf(data, slugs!)).toEqual({
+      id: slugs!.resourceId,
+      name: "Blog posts slugs",
+      method: "get",
+      url: `"${apiBase}/collections/blog/slugs"`,
+      headers: [{ name: "Authorization", value: auth }],
+    });
+    const v = encodeDataVariableId(slugs!.id);
+    const item = encodeDataVariableId(parts[1].item?.value as string);
+    expect(parts[1]).toMatchObject({
+      collection: { component: "ws:collection", label: "Blog posts" },
+      data: {
+        type: "expression",
+        value: `(${v}.ok === true ? ${v}.data.data : [])`,
+      },
+      url: { value: "url" },
+      loc: [
+        { value: "loc" },
+        [
+          {
+            type: "expression",
+            value: `$ws$system.origin + "/blog/" + ${item}.slug`,
+          },
+        ],
+      ],
+      lastmod: [
+        { value: "lastmod" },
+        [{ type: "expression", value: `${item}.updatedAt` }],
+      ],
+    });
+    expect(listSitemapCollections()).toEqual(["blog"]);
+  });
+
+  test("a second collection is appended to the same page", async () => {
+    await createBlogPage();
+    await createCollectionItemPage("faq");
+    const sitemaps = [...($pages.get() as Pages).pages.values()].filter(
+      (page) => page.path === "/sitemap.xml"
+    );
+    expect(sitemaps).toHaveLength(1);
+    expect(listSitemapCollections()).toEqual(["blog", "faq"]);
+    expect(getSitemap().parts.map((part) => part.collection.label)).toEqual([
+      "Pages",
+      "Blog posts",
+      "FAQ",
+    ]);
+  });
+
+  test("a collection is listed once, whatever adds it again", async () => {
+    await createBlogPage();
+    const catalogBlog = { apiBase, authorization: auth };
+    let result: undefined | string;
+    updateWebstudioData((data) => {
+      result = addCollectionToSitemapMutable(data, {
+        schema: { slug: "blog", name: "Blog posts" },
+        catalog: catalogBlog,
+      });
+    });
+    expect(result).toEqual("listed");
+    expect(listSitemapCollections()).toEqual(["blog"]);
+  });
+
+  test("a hand-made /sitemap.xml is left alone", async () => {
+    const pages = createDefaultPages({ rootInstanceId: "homeBody" });
+    pages.pages.set("hand-made", {
+      id: "hand-made",
+      name: "My sitemap",
+      path: "/sitemap.xml",
+      title: `"Sitemap"`,
+      rootInstanceId: "handBody",
+      meta: { documentType: "xml" },
+    });
+    pages.folders.get(pages.rootFolderId)?.children.push("hand-made");
+    setProject(pages);
+    $instances.set(
+      new Map([
+        ...$instances.get(),
+        [
+          "handBody",
+          {
+            type: "instance",
+            id: "handBody",
+            component: "ws:element",
+            tag: "body",
+            children: [{ type: "id", value: "handRoot" }],
+          },
+        ],
+        [
+          "handRoot",
+          {
+            type: "instance",
+            id: "handRoot",
+            component: "XmlNode",
+            children: [],
+          },
+        ],
+      ])
+    );
+    const before = getWebstudioData();
+    await createBlogPage();
+    const after = getWebstudioData();
+    expect(after.instances.get("handBody")).toEqual(
+      before.instances.get("handBody")
+    );
+    expect(after.instances.get("handRoot")).toEqual(
+      before.instances.get("handRoot")
+    );
+    expect(
+      [...after.pages.pages.values()].filter(
+        (page) => getPagePath(page.id, after.pages) === "/sitemap.xml"
+      )
+    ).toHaveLength(1);
+    expect(listSitemapCollections()).toEqual([]);
+  });
+
+  test("the marker never reaches the rendered XML", () => {
+    const markup = renderToStaticMarkup(
+      createElement(XmlNode, {
+        tag: "urlset",
+        xmlns: "http://www.sitemaps.org/schemas/sitemap/0.9",
+        [SITEMAP_MARKER]: true,
+      } as Parameters<typeof XmlNode>[0])
+    );
+    expect(markup).toContain("urlset");
+    expect(markup).toContain(
+      `xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"`
+    );
+    expect(markup).not.toContain(SITEMAP_MARKER);
+  });
+
+  test("Remove from sitemap drops one collection's part, and its Resource", async () => {
+    await createBlogPage();
+    await createCollectionItemPage("faq");
+    const before = getSitemap();
+    const blogBinding = before.bindings.find(
+      (binding) => resourceOf(before.data, binding)?.name === "Blog posts slugs"
+    )!;
+    const blogCollection = before.parts[1].collection;
+    expect(removeCollectionFromSitemap("blog")).toBe(true);
+    const after = getSitemap();
+    expect(listSitemapCollections()).toEqual(["faq"]);
+    expect(after.parts.map((part) => part.collection.label)).toEqual([
+      "Pages",
+      "FAQ",
+    ]);
+    expect(after.data.instances.has(blogCollection.id)).toBe(false);
+    expect(after.data.dataSources.has(blogBinding.id)).toBe(false);
+    expect(after.data.resources.has(blogBinding.resourceId)).toBe(false);
+    expect(
+      [...after.data.props.values()].some(
+        (prop) => prop.instanceId === blogCollection.id
+      )
+    ).toBe(false);
+    // nothing else to remove
+    expect(removeCollectionFromSitemap("blog")).toBe(false);
+  });
+
+  test("the item page and the sitemap are one undo step", async () => {
+    const before = getWebstudioData();
+    await createBlogPage();
+    expect(findSitemapPage()).toBeDefined();
+    serverSyncStore.undo();
+    expect(getWebstudioData()).toEqual(before);
+    expect(findSitemapPage()).toBeUndefined();
   });
 });
