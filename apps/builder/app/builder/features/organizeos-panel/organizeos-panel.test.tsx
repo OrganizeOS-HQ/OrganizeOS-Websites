@@ -1,272 +1,50 @@
-import { describe, expect, test } from "vitest";
-import { renderTemplate, type TemplateMeta } from "@webstudio-is/template";
-import { coreMetas, type WsComponentMeta } from "@webstudio-is/sdk";
-import * as organizeosMetas from "@organizeos/site-components/metas";
-import * as organizeosTemplates from "@organizeos/site-components/templates";
-import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
-import * as radixMetas from "@webstudio-is/sdk-components-react-radix/metas";
-import { platformUrl } from "~/shared/branding";
-import { $organizeosSite } from "~/shared/nano-states";
+import { createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { act } from "react-dom/test-utils";
+import { enableMapSet } from "immer";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { Project } from "@webstudio-is/project";
+import { TooltipProvider } from "@webstudio-is/design-system";
+import { createDefaultPages } from "@webstudio-is/project-build";
+import { $, renderData } from "@webstudio-is/template";
+import { $organizeosSite, selectInstance } from "~/shared/nano-states";
+import { $selectedPageId } from "~/shared/nano-states/pages";
+import { registerContainers } from "~/shared/sync/sync-stores";
+import {
+  $dataSources,
+  $instances,
+  $pages,
+  $project,
+  $props,
+  $resources,
+} from "~/shared/sync/data-stores";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
 import {
+  findCatalogResources,
+  type CatalogEntry,
+} from "~/shared/organizeos-preset-ids";
+import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
+import { registerTestMetas } from "./backgrounds/test-fixtures";
+import {
   $isOrganizeosPanelAvailable,
-  getWorkspaceAreaUrl,
-  groupOrganizeosBlocks,
+  OrganizeosPanel,
 } from "./organizeos-panel";
 
-const namespace = "@organizeos/site-components";
-
-// What registerComponentLibrary puts in the registry for a library.
-const register = (
-  library: Record<string, TemplateMeta>,
-  prefix: string
-): Array<[string, ReturnType<typeof generate>]> =>
-  Object.entries(library).map(([name, meta]) => [
-    `${prefix}${name}`,
-    generate(meta),
-  ]);
-const generate = ({ template, ...meta }: TemplateMeta) => ({
-  ...meta,
-  template: renderTemplate(template),
-});
-
-const metas = new Map<string, WsComponentMeta>(
-  Object.entries(organizeosMetas).map(([name, meta]) => [
-    `${namespace}:${name}`,
-    meta,
-  ])
-);
-
-describe("groupOrganizeosBlocks", () => {
-  test("lists the namespace's templates in their sections, and nothing else", () => {
-    const templates = new Map([
-      ...register(organizeosTemplates, `${namespace}:`),
-      ...register(
-        { Sheet: organizeosTemplates.SignupForm },
-        "@webstudio-is/sdk-components-react-radix:"
-      ),
-    ]);
-
-    expect(groupOrganizeosBlocks(templates, metas)).toEqual([
-      {
-        label: "Sections",
-        // no workspace area: the block reads no platform data
-        area: undefined,
-        blocks: [
-          {
-            name: `${namespace}:RotatingTabs`,
-            label: "Rotating Tabs",
-            description: organizeosTemplates.RotatingTabs.description,
-            // its own icon, not upstream Tabs' (the card's fallback)
-            icon: organizeosTemplates.RotatingTabs.icon,
-            firstInstance: expect.objectContaining({
-              component: "@webstudio-is/sdk-components-react-radix:Tabs",
-            }),
-          },
-          {
-            name: `${namespace}:Marquee`,
-            label: "Marquee",
-            description: organizeosTemplates.Marquee.description,
-            icon: organizeosTemplates.Marquee.icon,
-            firstInstance: expect.objectContaining({
-              component: `${namespace}:Marquee`,
-            }),
-          },
-          {
-            name: `${namespace}:ConvergenceField`,
-            label: "Convergence Field",
-            description: organizeosTemplates.ConvergenceField.description,
-            icon: organizeosTemplates.ConvergenceField.icon,
-            firstInstance: expect.objectContaining({
-              component: `${namespace}:ConvergenceField`,
-            }),
-          },
-        ],
-      },
-      {
-        label: "Events",
-        area: { label: "Manage events in OrganizeOS", path: "events" },
-        blocks: [
-          {
-            name: `${namespace}:EventList`,
-            label: "Event List",
-            description: organizeosTemplates.EventList.description,
-            icon: organizeosTemplates.EventList.icon,
-            firstInstance: expect.objectContaining({
-              component: "ws:element",
-              label: "Event List",
-            }),
-          },
-          {
-            name: `${namespace}:EventCard`,
-            label: "Event Card",
-            description: organizeosTemplates.EventCard.description,
-            icon: organizeosTemplates.EventCard.icon,
-            firstInstance: expect.objectContaining({
-              component: "ws:element",
-              label: "Event Card",
-            }),
-          },
-          {
-            name: `${namespace}:RsvpForm`,
-            label: "RSVP Form",
-            description: organizeosTemplates.RsvpForm.description,
-            icon: organizeosTemplates.RsvpForm.icon,
-            // the one Events block whose root is a component of the namespace
-            firstInstance: expect.objectContaining({
-              component: `${namespace}:RsvpForm`,
-            }),
-          },
-        ],
-      },
-      {
-        label: "Signups",
-        area: { label: "Manage forms in OrganizeOS", path: "pages/embeds" },
-        blocks: [
-          {
-            name: `${namespace}:SignupForm`,
-            label: "Signup Form",
-            description: organizeosTemplates.SignupForm.description,
-            icon: undefined,
-            firstInstance: expect.objectContaining({
-              component: `${namespace}:SignupForm`,
-            }),
-          },
-        ],
-      },
-    ]);
-  });
-
-  test("Rotating Tabs has its own icon, not the one of upstream's Tabs it starts with", () => {
-    expect(organizeosTemplates.RotatingTabs.icon).toEqual(expect.any(String));
-    expect(organizeosTemplates.RotatingTabs.icon).not.toBe(
-      radixMetas.Tabs.icon
-    );
-  });
-
-  test("Marquee and Convergence Field have their own icons, not one of an upstream component", () => {
-    const upstreamIcons = new Set(
-      [
-        ...Object.values(defaultMetas),
-        ...Object.values(radixMetas),
-        ...Object.values(coreMetas),
-      ].map((meta) => (meta as WsComponentMeta).icon)
-    );
-    for (const template of [
-      organizeosTemplates.Marquee,
-      organizeosTemplates.ConvergenceField,
-    ]) {
-      expect(template.icon).toEqual(expect.any(String));
-      expect(upstreamIcons.has(template.icon)).toBe(false);
-    }
-    expect(organizeosTemplates.ConvergenceField.icon).not.toBe(
-      organizeosTemplates.Marquee.icon
-    );
-  });
-
-  test("still offers a block no section names, after the others", () => {
-    const templates = new Map([
-      ...register(organizeosTemplates, `${namespace}:`),
-      ...register(
-        { FutureBlock: organizeosTemplates.SignupForm },
-        `${namespace}:`
-      ),
-    ]);
-
-    expect(
-      groupOrganizeosBlocks(templates, metas).map((section) => [
-        section.label,
-        section.blocks.map((block) => block.name),
-      ])
-    ).toEqual([
-      [
-        "Sections",
-        [
-          `${namespace}:RotatingTabs`,
-          `${namespace}:Marquee`,
-          `${namespace}:ConvergenceField`,
-        ],
-      ],
-      [
-        "Events",
-        [
-          `${namespace}:EventList`,
-          `${namespace}:EventCard`,
-          `${namespace}:RsvpForm`,
-        ],
-      ],
-      ["Signups", [`${namespace}:SignupForm`]],
-      ["More", [`${namespace}:FutureBlock`]],
-    ]);
-  });
-
-  test("skips a block a section names that is not registered", () => {
-    const { RsvpForm: _unregistered, ...registered } = organizeosTemplates;
-
-    expect(
-      groupOrganizeosBlocks(
-        new Map(register(registered, `${namespace}:`)),
-        metas
-      ).map((section) => [
-        section.label,
-        section.blocks.map((block) => block.name),
-      ])
-    ).toEqual([
-      [
-        "Sections",
-        [
-          `${namespace}:RotatingTabs`,
-          `${namespace}:Marquee`,
-          `${namespace}:ConvergenceField`,
-        ],
-      ],
-      ["Events", [`${namespace}:EventList`, `${namespace}:EventCard`]],
-      ["Signups", [`${namespace}:SignupForm`]],
-    ]);
-  });
-
-  test("lists no section while the library is not registered", () => {
-    expect(groupOrganizeosBlocks(new Map(), new Map())).toEqual([]);
-  });
-});
-
-describe("getWorkspaceAreaUrl", () => {
-  const site: OrganizeosSite = {
-    organizationId: "org-1",
-    subdomain: "acme",
-    siteUrl: "https://acme.organizeos.org",
-    manageUrl: "https://app.organizeos.org/acme/website",
-    platformUrl: "https://app.organizeos.org",
-    blocksEnabled: true,
+vi.mock("~/shared/organizeos-preset-ids", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("~/shared/organizeos-preset-ids")>();
+  return {
+    ...actual,
+    findCatalogResources: vi.fn(actual.findCatalogResources),
   };
-
-  test("links the org's workspace area on the app host", () => {
-    expect(getWorkspaceAreaUrl(site, "pages/embeds")).toBe(
-      "https://app.organizeos.org/acme/pages/embeds"
-    );
-    expect(getWorkspaceAreaUrl(site, "events")).toBe(
-      "https://app.organizeos.org/acme/events"
-    );
-  });
-
-  test("falls back to the Website area's link while the subdomain is unknown", () => {
-    expect(
-      getWorkspaceAreaUrl(
-        {
-          ...site,
-          subdomain: undefined,
-          siteUrl: undefined,
-          manageUrl: "https://app.organizeos.org/dashboard",
-        },
-        "pages/embeds"
-      )
-    ).toBe("https://app.organizeos.org/dashboard");
-  });
-
-  test("links the platform home for a project no org owns", () => {
-    expect(getWorkspaceAreaUrl(undefined, "pages/embeds")).toBe(platformUrl);
-  });
 });
+
+enableMapSet();
+registerContainers();
+
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("$isOrganizeosPanelAvailable", () => {
   const site: OrganizeosSite = {
@@ -283,5 +61,148 @@ describe("$isOrganizeosPanelAvailable", () => {
   ])("offers the panel to %s: %s", (_case, value, expected) => {
     $organizeosSite.set(value);
     expect($isOrganizeosPanelAvailable.get()).toBe(expected);
+  });
+});
+
+describe("the OrganizeOS data tab", () => {
+  // Radix's ScrollArea observes its viewport, and jsdom 20 has no
+  // ResizeObserver.
+  class FakeResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+
+  const projectId = "project-1";
+  const line =
+    "Add your organization's data to this page, then bind it in Settings.";
+  const empty = "No organization data is connected to this site yet.";
+
+  let root: Root | undefined;
+  let container: HTMLElement | undefined;
+
+  const setProject = async ({ withCatalog }: { withCatalog: boolean }) => {
+    const data = renderData(
+      <$.Body ws:id="bodyId">
+        <$.Box ws:id="boxId"></$.Box>
+      </$.Body>
+    );
+    $instances.set(data.instances);
+    $props.set(data.props);
+    $dataSources.set(new Map());
+    const { resources } = withCatalog
+      ? await buildOrgResourcePresets({
+          projectId,
+          apiBaseUrl: "https://staging.example.org/api/public/v1",
+          readToken: "osk_token",
+        })
+      : { resources: [] };
+    $resources.set(
+      new Map(resources.map((resource) => [resource.id, resource]))
+    );
+    const pages = createDefaultPages({ rootInstanceId: "bodyId" });
+    $pages.set(pages);
+    $selectedPageId.set(pages.homePageId);
+    $project.set({ id: projectId } as Project);
+    $organizeosSite.set({
+      organizationId: "org-1",
+      manageUrl: "https://app.organizeos.org/dashboard",
+      platformUrl: "https://app.organizeos.org",
+      blocksEnabled: true,
+    });
+  };
+
+  const render = () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        createElement(TooltipProvider, null, createElement(OrganizeosPanel))
+      );
+    });
+    return container;
+  };
+
+  /** Lets findCatalogResources resolve and the tab render it. */
+  const settle = async () => {
+    await act(async () => {
+      await vi.mocked(findCatalogResources).mock.results.at(-1)?.value;
+    });
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    registerTestMetas();
+    vi.mocked(findCatalogResources).mockClear();
+  });
+
+  afterEach(() => {
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+    root = undefined;
+    container = undefined;
+    vi.unstubAllGlobals();
+  });
+
+  test("titled OrganizeOS data with its line, and only the data list: no component card, no Background presets, no Motion", async () => {
+    await setProject({ withCatalog: true });
+    // a selection Background presets and Motion would both act on
+    selectInstance(["boxId", "bodyId"]);
+    const host = render();
+    await settle();
+    // the panel's title, then its line
+    expect(host.textContent?.startsWith(`OrganizeOS data${line}`)).toBe(true);
+    expect(host.querySelector("[data-organizeos-data-line]")?.textContent).toBe(
+      line
+    );
+    const rows = host.querySelector("[data-organizeos-data]");
+    expect(rows?.textContent).toContain("Events");
+    expect(rows?.textContent).toContain("Add to this page");
+    // no "Data" heading of its own: the title says it
+    expect(
+      Array.from(host.querySelectorAll("label"), (label) => label.textContent)
+    ).not.toContain("Data");
+    expect(host.querySelector("[data-drag-component]")).toBeNull();
+    expect(host.textContent).not.toContain("Background presets");
+    expect(host.textContent).not.toContain("Section background");
+    expect(host.querySelector("[data-preset-grid]")).toBeNull();
+    expect(host.querySelector("[data-motion-presets]")).toBeNull();
+    expect(host.querySelector("[data-motion-refusal]")).toBeNull();
+  });
+
+  test("the empty state shows only after the catalog resolves", async () => {
+    await setProject({ withCatalog: false });
+    let resolve: (entries: CatalogEntry[]) => void = () => {};
+    vi.mocked(findCatalogResources).mockImplementationOnce(
+      () =>
+        new Promise((resolver) => {
+          resolve = resolver;
+        })
+    );
+    const host = render();
+    expect(host.querySelector("[data-organizeos-data-line]")).not.toBeNull();
+    expect(host.textContent).not.toContain(empty);
+    await act(async () => {
+      resolve([]);
+    });
+    expect(
+      host.querySelector("[data-organizeos-data-empty]")?.textContent
+    ).toBe(empty);
+  });
+
+  test("nothing below the line with no selected page", async () => {
+    await setProject({ withCatalog: true });
+    $selectedPageId.set(undefined);
+    const host = render();
+    await settle();
+    expect(host.querySelector("[data-organizeos-data-line]")?.textContent).toBe(
+      line
+    );
+    expect(host.querySelector("[data-organizeos-data]")).toBeNull();
+    expect(host.querySelector("[data-organizeos-data-empty]")).toBeNull();
+    expect(host.textContent).not.toContain("Add to this page");
   });
 });

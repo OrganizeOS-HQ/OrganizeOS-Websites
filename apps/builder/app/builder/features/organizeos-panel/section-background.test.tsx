@@ -69,6 +69,15 @@ const project = ({
   $selectedPageId.set(pages.homePageId);
 };
 
+// The contrast report lands after a scheduled run (contrast-schedule.ts),
+// which jsdom, without requestIdleCallback, takes through setTimeout: both
+// helpers flush it after their change.
+const flushContrastRun = () => {
+  act(() => {
+    vi.advanceTimersByTime(150);
+  });
+};
+
 const render = () => {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -78,11 +87,13 @@ const render = () => {
       createElement(TooltipProvider, null, createElement(SectionBackground))
     );
   });
+  flushContrastRun();
   return container;
 };
 
 const update = (change: () => void) => {
   act(change);
+  flushContrastRun();
 };
 
 const summary = (host: HTMLElement) =>
@@ -112,6 +123,7 @@ const setLocalStyle = (
 };
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   registerTestMetas();
   selectInstance(undefined);
   $selectedStyleSources.set(new Map());
@@ -126,32 +138,33 @@ afterEach(() => {
   container?.remove();
   root = undefined;
   container = undefined;
+  vi.useRealTimers();
 });
 
-const selectPrompt = "Select a section to give it a background.";
-
 describe("SectionBackground states", () => {
-  test("with no selection it asks for a section", () => {
+  test("renders nothing with no selection", () => {
     project();
     const host = render();
-    expect(host.textContent).toContain(selectPrompt);
+    expect(host.innerHTML).toBe("");
     expect(host.querySelector("[data-preset-grid]")).toBeNull();
   });
 
-  test("the Body and Global Root ask for a section too", () => {
+  test("renders nothing for the Body and Global Root", () => {
     project();
     selectInstance(["body"]);
     const host = render();
-    expect(host.textContent).toContain(selectPrompt);
+    expect(host.innerHTML).toBe("");
     update(() => selectInstance([ROOT_INSTANCE_ID]));
-    expect(host.textContent).toContain(selectPrompt);
+    expect(host.innerHTML).toBe("");
   });
 
   test("a selected element shows the presets, the colors and the report", () => {
     project({ styles: [style("text", "color", "#333333")] });
     selectInstance(sectionSelector);
     const host = render();
-    expect(host.textContent).not.toContain(selectPrompt);
+    expect(host.textContent).not.toContain(
+      "Select a section to give it a background."
+    );
     expect(host.querySelectorAll("[data-preset]")).toHaveLength(presets.length);
     expect(summary(host)).toBe("All text passes AA");
   });

@@ -115,7 +115,7 @@ const makeContext = ({
 };
 
 // What a provision writes: the "always" catalog Resources, and no binding.
-// Forms is "when-present" (the OrganizeOS panel adds it when a block first
+// Forms is "when-present" (a block's insert adds it when a block first
 // uses it), so a freshly provisioned build does not have it.
 const provisionedPresets = async (
   args: Parameters<typeof buildOrgResourcePresets>[0]

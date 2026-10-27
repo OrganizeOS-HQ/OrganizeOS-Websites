@@ -14,7 +14,7 @@ import {
  *
  * OrganizeOS calls this with a full snapshot of an org's PUBLIC collections
  * whenever they change; each one becomes a catalog Resource in the org's dev
- * build (see buildCollectionResourcePresets), which the OrganizeOS panel lists
+ * build (see buildCollectionResourcePresets), which the builder lists
  * so an admin can add it to a page. No binding is written: data loads only
  * where it is used, and a use brings its own. The unscoped bindings an older
  * sync wrote are removed where nothing references them. Idempotent: same
