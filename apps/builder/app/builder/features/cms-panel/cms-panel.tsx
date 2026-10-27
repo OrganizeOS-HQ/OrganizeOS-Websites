@@ -1,33 +1,29 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { atom, computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import {
-  Box,
   Button,
   Flex,
-  PanelTitle,
-  Separator,
   Text,
-  Tooltip,
+  rawTheme,
+  theme,
   toast,
 } from "@webstudio-is/design-system";
-import { XIcon } from "@webstudio-is/icons";
 import {
   $authPermit,
   $computedResourceRequests,
-  $isContentMode,
+  $isPreviewMode,
   $organizeosSite,
   $planFeatures,
-  $selectedPage,
   $workspaceRole,
 } from "~/shared/nano-states";
 import { invalidateResource } from "~/shared/resources";
+import { suppressCommandsForEvent } from "~/shared/commands-emitter";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
-import { $activeSidebarPanel } from "~/builder/shared/nano-states";
-import {
-  $isOrganizeosPanelAvailable,
-  OrganizeosDataBody,
-} from "~/builder/features/organizeos-panel";
+import { $activeSidebarPanel, $isUiHidden } from "~/builder/shared/nano-states";
+import { SidebarButton } from "~/builder/sidebar-left/sidebar-tabs";
+import { CmsIcon } from "./cms-icon";
 import {
   findCollectionRequests,
   readCmsMessage,
@@ -35,29 +31,36 @@ import {
 } from "./cms-messages";
 
 /**
- * The CMS panel: the OrganizeOS app's CMS screen, framed in the left sidebar
+ * The CMS overlay: the OrganizeOS app's CMS screen, framed over the builder
  * (OrganizeOS design
- * docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md, 4.4). It
- * takes the OrganizeOS data tab's slot, and keeps that tab's list as its Data
- * view.
+ * docs/superpowers/specs/2026-10-27-cms-overlay-and-staged-edits-design.md,
+ * 3.1, superseding the panel of 2026-10-26-cms-in-the-builder-design.md,
+ * 4.4).
  *
- * The sidebar renders only the active panel, so a frame inside the panel
- * would be destroyed, with the open item and any unsaved text, on every tab
- * switch or Escape. The frame is therefore `CmsFrame`, rendered once beside
- * the tab content for the life of the builder document (once the panel has
- * first been opened), and laid over the panel's slot while the panel shows
- * its Content view. Only the panel's own close button discards it, after a
- * confirm when the frame has unsaved changes.
+ * A rail button, not a sidebar panel, opens it. It covers everything right
+ * of the rail: the top bar, the sidebar panel, the canvas and the inspector.
+ *
+ * Close means hide. The frame is mounted on the first open and stays mounted
+ * for the life of the builder document; closing sets `display: none`, so
+ * reopening shows the screen as it was left, unsaved text included. Nothing
+ * discards it, so `cms.dirty` guards only the window's `beforeunload`.
  */
 
 export const CMS_FRAME_SANDBOX =
   "allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-top-navigation-by-user-activation";
 
-export const DISCARD_MESSAGE =
-  "The CMS has unsaved changes. Close it and discard them?";
-
 export const COLLECTION_CHANGED_NOTICE =
   "Collection changes appear after you reload the builder";
+
+/**
+ * Above the top bar (`zIndex: 1`, builder/shared/topbar.tsx) and below the
+ * toast layer (`theme.zIndices.max`, 999), so the "Reload" notice for
+ * `cms.collection_changed` shows over the CMS. The overlay is portalled to
+ * the document's body, because the left sidebar's own box isolates its
+ * stacking (builder.tsx `SidePanel`), where a z-index would not reach past
+ * the inspector.
+ */
+export const CMS_OVERLAY_Z_INDEX = 2;
 
 /**
  * Offered for an OrganizeOS project when the deployment's switch is on
@@ -73,52 +76,41 @@ export const $isCmsPanelAvailable = computed(
     authPermit !== "view"
 );
 
-export type CmsPanelView = "content" | "data";
+/** Whether the overlay shows. */
+export const $isCmsOverlayOpen = atom(false);
 
-export const $cmsPanelView = atom<CmsPanelView>("content");
-
-/**
- * The Data view, today's OrganizeOS data list, is offered where the data tab
- * was: an org on the blocks' allowlist, outside content mode, on a page that
- * is not a text page.
- */
-export const $isCmsDataViewAvailable = computed(
-  [$isOrganizeosPanelAvailable, $isContentMode, $selectedPage],
-  (isOrganizeosPanelAvailable, isContentMode, page) =>
-    isOrganizeosPanelAvailable &&
-    isContentMode === false &&
-    page?.meta.documentType !== "text"
-);
-
-const $cmsPanelEffectiveView = computed(
-  [$cmsPanelView, $isCmsDataViewAvailable],
-  (view, isDataViewAvailable): CmsPanelView =>
-    view === "data" && isDataViewAvailable ? "data" : "content"
-);
-
-/** Whether the frame exists: from the panel's first opening until a close. */
+/** Whether the frame exists: from the first open, for the document's life. */
 export const $cmsFrameMounted = atom(false);
 
 /** Whether the frame's editor has unsaved changes (`cms.dirty`). */
 export const $cmsDirty = atom(false);
 
-/** The panel body the frame is laid over, while the Content view shows. */
-const $cmsFrameSlot = atom<HTMLElement | null>(null);
+/** The left rail, whose right edge the overlay starts at. */
+const $cmsRail = atom<HTMLElement | null>(null);
 
-/**
- * Close the panel's frame, asking first when it has unsaved changes. Returns
- * whether it was closed.
- */
-export const discardCmsFrame = (
-  confirmDiscard: (message: string) => boolean = (message) =>
-    window.confirm(message)
-): boolean => {
-  if ($cmsDirty.get() && confirmDiscard(DISCARD_MESSAGE) === false) {
+/** A stable ref callback for the rail's element (sidebar-left.tsx). */
+export const registerCmsRail = (element: HTMLElement | null) => {
+  $cmsRail.set(element);
+};
+
+export const openCmsOverlay = () => {
+  $cmsFrameMounted.set(true);
+  $isCmsOverlayOpen.set(true);
+};
+
+/** Hide the overlay. Returns whether it was open. */
+export const hideCmsOverlay = (): boolean => {
+  if ($isCmsOverlayOpen.get() === false) {
     return false;
   }
-  $cmsDirty.set(false);
-  $cmsFrameMounted.set(false);
+  $isCmsOverlayOpen.set(false);
   return true;
+};
+
+export const toggleCmsOverlay = () => {
+  if (hideCmsOverlay() === false) {
+    openCmsOverlay();
+  }
 };
 
 /** The builder UI has one, light, colour mode. */
@@ -166,6 +158,9 @@ export const applyCmsMessage = (message: CmsMessage, platformUrl: string) => {
     case "cms.dirty":
       $cmsDirty.set(message.dirty);
       return;
+    case "cms.close_requested":
+      hideCmsOverlay();
+      return;
   }
 };
 
@@ -177,25 +172,32 @@ const onBeforeUnload = (event: BeforeUnloadEvent) => {
   }
 };
 
-type FrameRect = { top: number; left: number; width: number; height: number };
+/**
+ * While the overlay shows, no builder shortcut runs from the builder
+ * document (the canvas is covered, and keys typed inside the CMS frame never
+ * reach the builder). Escape hides the overlay and does nothing else: it
+ * neither runs the builder's own Escape command (deselect, or leave preview)
+ * nor reaches the sidebar's Escape, which would close the open panel.
+ * Capture phase on the document, so it runs before the commands' own
+ * document listener and before React's root.
+ */
+const onOverlayKeyDown = (event: KeyboardEvent) => {
+  suppressCommandsForEvent(event);
+  if (event.key === "Escape") {
+    event.stopPropagation();
+    hideCmsOverlay();
+  }
+};
 
-/** The slot's place in the viewport, kept current while it is shown. */
-const useSlotRect = (slot: HTMLElement | null) => {
-  const [rect, setRect] = useState<FrameRect>();
+/** The rail's right edge in the viewport, measured while the overlay shows. */
+const useRailRight = (rail: HTMLElement | null, isShown: boolean) => {
+  const [right, setRight] = useState(0);
   useLayoutEffect(() => {
-    if (slot === null) {
+    if (rail === null || isShown === false) {
       return;
     }
     const update = () => {
-      const { top, left, width, height } = slot.getBoundingClientRect();
-      setRect((previous) =>
-        previous?.top === top &&
-        previous.left === left &&
-        previous.width === width &&
-        previous.height === height
-          ? previous
-          : { top, left, width, height }
-      );
+      setRight(rail.getBoundingClientRect().right);
     };
     update();
     window.addEventListener("resize", update);
@@ -203,27 +205,27 @@ const useSlotRect = (slot: HTMLElement | null) => {
       typeof ResizeObserver === "undefined"
         ? undefined
         : new ResizeObserver(update);
-    observer?.observe(slot);
+    observer?.observe(rail);
     return () => {
       window.removeEventListener("resize", update);
       observer?.disconnect();
     };
-  }, [slot]);
-  return rect;
+  }, [rail, isShown]);
+  return right;
 };
 
 /**
- * The persistent frame. Rendered by the left sidebar outside its tab content,
- * so neither a tab switch nor Escape unmounts it.
+ * The persistent frame, rendered once by the left sidebar and portalled to
+ * the document's body.
  */
-export const CmsFrame = () => {
+export const CmsOverlay = () => {
   const isAvailable = useStore($isCmsPanelAvailable);
   const site = useStore($organizeosSite);
   const isMounted = useStore($cmsFrameMounted);
-  const activePanel = useStore($activeSidebarPanel);
-  const view = useStore($cmsPanelEffectiveView);
-  const slot = useStore($cmsFrameSlot);
-  const rect = useSlotRect(slot);
+  const isOpen = useStore($isCmsOverlayOpen);
+  const isPreviewMode = useStore($isPreviewMode);
+  const isUiHidden = useStore($isUiHidden);
+  const rail = useStore($cmsRail);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const platformUrl = site?.platformUrl;
@@ -240,6 +242,33 @@ export const CmsFrame = () => {
   );
 
   const isRendered = isAvailable && isMounted && src !== undefined;
+  const isShown =
+    isRendered && isOpen && isPreviewMode === false && isUiHidden === false;
+  const railRight = useRailRight(rail, isShown);
+
+  // Preview mode and the hidden UI both take the rail away: they hide the
+  // overlay, which stays hidden when they end.
+  useEffect(() => {
+    if (isPreviewMode || isUiHidden) {
+      hideCmsOverlay();
+    }
+  }, [isPreviewMode, isUiHidden]);
+
+  // Another rail tab becoming active hides the overlay.
+  useEffect(() => {
+    return $activeSidebarPanel.listen((panel) => {
+      if (panel !== "none") {
+        hideCmsOverlay();
+      }
+    });
+  }, []);
+
+  // Without the CMS (a permit or a plan changed), there is nothing to show.
+  useEffect(() => {
+    if (isAvailable === false) {
+      hideCmsOverlay();
+    }
+  }, [isAvailable]);
 
   useEffect(() => {
     if (isRendered === false || platformUrl === undefined) {
@@ -272,118 +301,77 @@ export const CmsFrame = () => {
     };
   }, [isRendered]);
 
-  if (isRendered === false) {
+  useEffect(() => {
+    if (isShown === false) {
+      return;
+    }
+    document.addEventListener("keydown", onOverlayKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onOverlayKeyDown, true);
+    };
+  }, [isShown]);
+
+  // Focus leaves the canvas and the rail for the CMS screen.
+  useLayoutEffect(() => {
+    if (isShown) {
+      iframeRef.current?.focus();
+    }
+  }, [isShown]);
+
+  if (isRendered === false || typeof document === "undefined") {
     return null;
   }
 
-  const isVisible =
-    activePanel === "cms" &&
-    view === "content" &&
-    slot !== null &&
-    rect !== undefined;
-
-  return (
-    <iframe
-      ref={iframeRef}
-      data-cms-frame
-      src={src}
-      title="CMS"
-      referrerPolicy="no-referrer"
-      sandbox={CMS_FRAME_SANDBOX}
+  return createPortal(
+    <div
+      data-cms-overlay
       style={{
         position: "fixed",
-        top: rect?.top ?? 0,
-        left: rect?.left ?? 0,
-        width: rect?.width ?? 0,
-        height: rect?.height ?? 0,
-        border: "none",
+        top: 0,
+        bottom: 0,
+        left: railRight,
+        right: 0,
+        zIndex: CMS_OVERLAY_Z_INDEX,
+        background: theme.colors.backgroundPanel,
         // Hidden, never unmounted: display none keeps the document alive.
-        display: isVisible ? "block" : "none",
+        display: isShown ? "block" : "none",
       }}
-    />
+    >
+      <iframe
+        ref={iframeRef}
+        data-cms-frame
+        src={src}
+        title="CMS"
+        referrerPolicy="no-referrer"
+        sandbox={CMS_FRAME_SANDBOX}
+        style={{
+          display: "block",
+          width: "100%",
+          height: "100%",
+          border: "none",
+        }}
+      />
+    </div>,
+    document.body
   );
 };
 
-const CmsFrameSlot = () => {
-  const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    $cmsFrameSlot.set(ref.current);
-    return () => {
-      $cmsFrameSlot.set(null);
-    };
-  }, []);
+/** The rail's CMS button: it opens and hides the overlay. */
+export const CmsRailButton = () => {
+  const isAvailable = useStore($isCmsPanelAvailable);
+  const isOpen = useStore($isCmsOverlayOpen);
+  if (isAvailable === false) {
+    return null;
+  }
   return (
-    <Box
-      ref={ref}
-      data-cms-frame-slot
-      css={{ flexGrow: 1, minHeight: 0, position: "relative" }}
-    />
-  );
-};
-
-const ViewButton = ({
-  view,
-  current,
-  children,
-}: {
-  view: CmsPanelView;
-  current: CmsPanelView;
-  children: string;
-}) => (
-  <Button
-    color={view === current ? "neutral" : "ghost"}
-    aria-pressed={view === current}
-    data-cms-view={view}
-    onClick={() => $cmsPanelView.set(view)}
-  >
-    {children}
-  </Button>
-);
-
-/** The panel's own entry: its title, its views and the frame's slot. */
-export const CmsPanel = ({ onClose }: { onClose: () => void }) => {
-  const view = useStore($cmsPanelEffectiveView);
-  const isDataViewAvailable = useStore($isCmsDataViewAvailable);
-
-  useEffect(() => {
-    $cmsFrameMounted.set(true);
-  }, []);
-
-  return (
-    <>
-      <PanelTitle
-        suffix={
-          <Flex gap="1" align="center">
-            {isDataViewAvailable && (
-              <Flex gap="1" role="group" aria-label="CMS view">
-                <ViewButton view="content" current={view}>
-                  Content
-                </ViewButton>
-                <ViewButton view="data" current={view}>
-                  Data
-                </ViewButton>
-              </Flex>
-            )}
-            <Tooltip content="Close CMS">
-              <Button
-                color="ghost"
-                prefix={<XIcon />}
-                aria-label="Close CMS"
-                data-cms-close
-                onClick={() => {
-                  if (discardCmsFrame()) {
-                    onClose();
-                  }
-                }}
-              />
-            </Tooltip>
-          </Flex>
-        }
-      >
-        CMS
-      </PanelTitle>
-      <Separator />
-      {view === "content" ? <CmsFrameSlot /> : <OrganizeosDataBody />}
-    </>
+    <SidebarButton
+      label="CMS"
+      data-cms-rail-button
+      data-state={isOpen ? "active" : "inactive"}
+      aria-pressed={isOpen}
+      onClick={toggleCmsOverlay}
+    >
+      <CmsIcon size={rawTheme.spacing[10]} />
+    </SidebarButton>
   );
 };

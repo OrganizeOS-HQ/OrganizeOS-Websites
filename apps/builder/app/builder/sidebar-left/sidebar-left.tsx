@@ -11,7 +11,6 @@ import { theme } from "@webstudio-is/design-system";
 import {
   ImageIcon,
   NavigatorIcon,
-  NotebookAndPenIcon,
   PageIcon,
   PlusIcon,
   ResourceIcon,
@@ -44,9 +43,10 @@ import {
   OrganizeosPanel,
 } from "~/builder/features/organizeos-panel";
 import {
-  $isCmsPanelAvailable,
-  CmsFrame,
-  CmsPanel,
+  CmsOverlay,
+  CmsRailButton,
+  hideCmsOverlay,
+  registerCmsRail,
 } from "~/builder/features/cms-panel";
 import { PagesPanel } from "~/builder/features/pages";
 import { NavigatorPanel } from "~/builder/features/navigator";
@@ -66,7 +66,8 @@ type PanelConfig = {
     text?: boolean;
   };
   // OrganizeOS fork: a panel may ask for a wider maximum than the sidebar's
-  // 448px, and start at its own width; the others keep the defaults.
+  // 448px, and start at its own width; the others keep the defaults. No
+  // panel asks today (the CMS, which did, is now an overlay).
   maxWidth?: string;
   defaultWidth?: number;
 };
@@ -128,22 +129,9 @@ const panels: PanelConfig[] = [
       text: false,
     },
   },
-  // OrganizeOS fork: the CMS panel (builder/features/cms-panel), in the
-  // OrganizeOS data tab's slot where it is offered (see getAvailablePanels).
-  // Its Data view keeps the data tab's list.
-  {
-    name: "cms",
-    label: "CMS",
-    Icon: NotebookAndPenIcon,
-    Panel: CmsPanel,
-    visibility: {
-      content: true,
-    },
-    maxWidth: "min(960px, 70vw)",
-    defaultWidth: 448,
-  },
-  // OrganizeOS fork: the OrganizeOS data tab: the org's data catalog, where
-  // the CMS panel is not offered. The blocks are in the Components panel's
+  // OrganizeOS fork: the OrganizeOS data tab: the org's data catalog. The
+  // CMS is not a panel: it is a rail button that opens an overlay
+  // (builder/features/cms-panel). The blocks are in the Components panel's
   // OrganizeOS section, which binds each to the project's data as it inserts
   // it; Background presets are in the Style panel and Motion in the
   // Inspector. Offered only to orgs on the blocks' allowlist (see
@@ -184,21 +172,11 @@ const panels: PanelConfig[] = [
   },
 ];
 
-// OrganizeOS fork: the CMS panel where it is offered, and otherwise the
-// OrganizeOS data tab only where the org may use it.
-export const getAvailablePanels = (
-  isOrganizeosPanelAvailable: boolean,
-  isCmsPanelAvailable: boolean
-) =>
-  panels.filter((panel) => {
-    if (panel.name === "cms") {
-      return isCmsPanelAvailable;
-    }
-    if (panel.name === "organizeos") {
-      return isOrganizeosPanelAvailable && isCmsPanelAvailable === false;
-    }
-    return true;
-  });
+// OrganizeOS fork: the OrganizeOS data tab only where the org may use it.
+const getAvailablePanels = (isOrganizeosPanelAvailable: boolean) =>
+  panels.filter(
+    (panel) => panel.name !== "organizeos" || isOrganizeosPanelAvailable
+  );
 
 const setSidebarPanelWidth = (panelName: string, width: number) => {
   const widths = getSetting("sidebarPanelWidths");
@@ -230,8 +208,7 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
   const activePanel = useStore($activeSidebarPanel);
   const dragAndDropState = useStore($dragAndDropState);
   const availablePanels = getAvailablePanels(
-    useStore($isOrganizeosPanelAvailable),
-    useStore($isCmsPanelAvailable)
+    useStore($isOrganizeosPanelAvailable)
   );
   const activePanelConfig = availablePanels.find(
     (item) => item.name === activePanel
@@ -303,6 +280,8 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
           grow
           direction="column"
           css={{ borderRight: `1px solid ${theme.colors.borderMain}` }}
+          // OrganizeOS fork: the CMS overlay starts at the rail's right edge.
+          ref={registerCmsRail}
         >
           <ExternalDragDropMonitor />
           <div ref={tabsWrapperRef} style={{ display: "contents" }}>
@@ -319,6 +298,12 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
                       value={name}
                       disabled={disabled}
                       onClick={() => {
+                        // OrganizeOS fork: a tab clicked over the CMS overlay
+                        // hides it and shows its panel.
+                        if (hideCmsOverlay()) {
+                          setActiveSidebarPanel(name);
+                          return;
+                        }
                         toggleActiveSidebarPanel(name);
                       }}
                     >
@@ -326,6 +311,9 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
                     </SidebarTabsTrigger>
                   );
                 })}
+              {/* OrganizeOS fork: the CMS rail button, which opens the CMS
+              overlay (builder/features/cms-panel). */}
+              <CmsRailButton />
             </SidebarTabsList>
           </div>
         </Flex>
@@ -377,9 +365,10 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
           />
         </Flex>
       </SidebarTabsContent>
-      {/* OrganizeOS fork: the CMS panel's frame, outside the tab content so
-      a tab switch or Escape never unmounts it (builder/features/cms-panel). */}
-      <CmsFrame />
+      {/* OrganizeOS fork: the CMS overlay's frame, outside the tab content
+      and portalled to the body, so nothing but the builder document's end
+      unmounts it (builder/features/cms-panel). */}
+      <CmsOverlay />
     </SidebarTabs>
   );
 };

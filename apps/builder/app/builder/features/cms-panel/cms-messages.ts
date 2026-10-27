@@ -4,13 +4,15 @@ import type { ResourceRequest } from "@webstudio-is/sdk";
 /**
  * The CMS screen's messages to the builder (OrganizeOS design
  * docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md, 4.4 and
- * section 13; the platform's `client/components/cms/messages.ts`).
+ * section 13, and 2026-10-27-cms-overlay-and-staged-edits-design.md, 3.1;
+ * the platform's `client/components/cms/messages.ts`).
  *
  * One way, frame to builder. Each message is one flat object, its type beside
  * its fields, with no nested payload:
  *   { type: "cms.item_saved", collection: slug }
  *   { type: "cms.collection_changed", collection: slug | null }
  *   { type: "cms.dirty", dirty: boolean }
+ *   { type: "cms.close_requested" }   (nothing beside its type)
  *
  * The schemas are strict: an unknown key (a nested `payload` included), an
  * unknown type or a value of the wrong shape drops the message. A message
@@ -34,6 +36,7 @@ export const cmsMessageSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("cms.dirty"), dirty: z.boolean() }).strict(),
+  z.object({ type: z.literal("cms.close_requested") }).strict(),
 ]);
 
 export type CmsMessage = z.infer<typeof cmsMessageSchema>;

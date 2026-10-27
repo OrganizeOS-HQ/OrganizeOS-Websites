@@ -163,28 +163,38 @@ describe("the canvas's drop", () => {
 });
 
 describe("the left sidebar", () => {
-  test("sidebar-left.tsx offers the CMS panel where it is available, and the OrganizeOS tab only on the allowlist without it", () => {
+  test("sidebar-left.tsx still offers the OrganizeOS tab only on the allowlist", () => {
     expect(sidebarLeft).toMatch(
-      /if \(panel\.name === "cms"\) \{\s*return isCmsPanelAvailable;\s*\}/
+      /panel\.name !== "organizeos" \|\| isOrganizeosPanelAvailable/
     );
     expect(sidebarLeft).toMatch(
-      /if \(panel\.name === "organizeos"\) \{\s*return isOrganizeosPanelAvailable && isCmsPanelAvailable === false;\s*\}/
-    );
-    expect(sidebarLeft).toMatch(
-      /getAvailablePanels\(\s*useStore\(\$isOrganizeosPanelAvailable\),\s*useStore\(\$isCmsPanelAvailable\)\s*\)/
+      /getAvailablePanels\(\s*useStore\(\$isOrganizeosPanelAvailable\)\s*\)/
     );
   });
 
-  test("sidebar-left.tsx renders the CMS frame outside the tab content", () => {
+  test("sidebar-left.tsx renders the CMS rail button after the tabs and the overlay once outside the tab content", () => {
+    const list = sidebarLeft.indexOf("</SidebarTabsList>");
+    const button = sidebarLeft.indexOf("<CmsRailButton />");
+    expect(button).toBeGreaterThan(-1);
+    expect(button).toBeLessThan(list);
+    expect(sidebarLeft.match(/<CmsRailButton \/>/g)).toHaveLength(1);
+
     const content = sidebarLeft.indexOf("</SidebarTabsContent>");
-    const frame = sidebarLeft.indexOf("<CmsFrame />");
+    const overlay = sidebarLeft.indexOf("<CmsOverlay />");
     expect(content).toBeGreaterThan(-1);
-    expect(frame).toBeGreaterThan(content);
-    expect(frame).toBeLessThan(sidebarLeft.indexOf("</SidebarTabs>"));
-    expect(sidebarLeft.match(/<CmsFrame \/>/g)).toHaveLength(1);
+    expect(overlay).toBeGreaterThan(content);
+    expect(overlay).toBeLessThan(sidebarLeft.indexOf("</SidebarTabs>"));
+    expect(sidebarLeft.match(/<CmsOverlay \/>/g)).toHaveLength(1);
+    expect(sidebarLeft).toMatch(/ref=\{registerCmsRail\}/);
   });
 
-  test("sidebar-left.tsx gives the active panel its own maximum and starting width", () => {
+  test("sidebar-left.tsx hides the CMS overlay when a rail tab is clicked over it", () => {
+    expect(sidebarLeft).toMatch(
+      /if \(hideCmsOverlay\(\)\) \{\s*setActiveSidebarPanel\(name\);\s*return;\s*\}\s*toggleActiveSidebarPanel\(name\);/
+    );
+  });
+
+  test("sidebar-left.tsx keeps the per-panel maximum and starting width", () => {
     expect(sidebarLeft).toMatch(
       /maxWidth: activePanelConfig\?\.maxWidth \?\? theme\.spacing\[35\]/
     );

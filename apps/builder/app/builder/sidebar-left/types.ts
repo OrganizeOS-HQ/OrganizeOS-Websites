@@ -1,10 +1,9 @@
 export const sidebarPanelNames = [
   "assets",
-  // OrganizeOS fork: the CMS panel, in the OrganizeOS data tab's slot.
-  "cms",
   "components",
   "navigator",
-  // OrganizeOS fork: the OrganizeOS data tab, where the CMS panel is off.
+  // OrganizeOS fork: the OrganizeOS data tab. The CMS is a rail button, not a
+  // panel (builder/features/cms-panel).
   "organizeos",
   "pages",
 ] as const;

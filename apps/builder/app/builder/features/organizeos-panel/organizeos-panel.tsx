@@ -123,8 +123,7 @@ const DataSection = () => {
 };
 
 /**
- * The data list, without a title: the OrganizeOS data tab below, and the CMS
- * panel's Data view (builder/features/cms-panel).
+ * The data list, without a title, under the OrganizeOS data tab's title.
  */
 export const OrganizeosDataBody = () => {
   return (
