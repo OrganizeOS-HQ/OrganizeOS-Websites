@@ -172,7 +172,7 @@ afterEach(() => {
 });
 
 describe("Background presets", () => {
-  test("renders nothing off the allowlist", () => {
+  test("renders nothing for a denied org", () => {
     project();
     selectInstance(sectionSelector);
     $organizeosSite.set({ ...site, blocksEnabled: false });
@@ -458,7 +458,7 @@ describe("Background presets in the Style panel", () => {
       Array.from(host.querySelectorAll('[role="tab"]'), (tab) =>
         tab.textContent?.trim()
       );
-    // no Style tab (the Motion tab is offered to the allowlisted org)
+    // no Style tab (the Motion tab is offered to the org)
     expect(tabs()).toEqual(["Settings", "Motion"]);
     expect(host.querySelector('[data-marker="style-panel"]')).toBeNull();
     // StylePanel is a marker here, so the tab list is what this case pins:

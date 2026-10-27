@@ -273,7 +273,7 @@ describe("addCatalogResourceToPage", () => {
     ).toEqual(eventsResult);
   });
 
-  test("adds nothing where the org is not on the blocks' allowlist", () => {
+  test("adds nothing where the org is denied the blocks", () => {
     setProject({ blocksEnabled: false });
 
     expect(addCatalogResourceToPage(events.resourceId)).toBe(false);

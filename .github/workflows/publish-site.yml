@@ -13,14 +13,15 @@ name: Publish site
 # stores per build (docs/ORGANIZEOS-FORK.md section 5).
 #
 # The run ends by telling the builder how it went (internal/publish-status):
-# PUBLISHED once the pointer is flipped, FAILED when any step fails. That is
-# what the builder's Publish dialog shows the admin; without it every publish
-# reads "pending" until the UI gives up.
+# PUBLISHED once the pointer is flipped, FAILED when any step fails or the run
+# is cancelled before the flip (see the two report steps). That is what the
+# builder's Publish dialog shows the admin; without it every publish reads
+# "pending" until the UI gives up.
 #
-# No run script holds an expression: inputs, variables, secrets and step
-# outputs reach it through its step's env, JSON bodies are built from those
-# with node, and a step output is written only after its value is checked. A
-# dispatch input can then never break out of the shell or a body.
+# No run script holds a ${{ }} substitution: inputs, variables, secrets and
+# step outputs reach it through its step's env, JSON bodies are built from
+# those with node, and a step output is written only after its value is
+# checked. A dispatch input can then never break out of the shell or a body.
 #
 # Required repository secrets (all server-to-server; none reach the built app):
 #   WSTD_SERVICE_TOKEN          TRPC_SERVER_API_TOKEN of the deployed builder
@@ -70,6 +71,14 @@ jobs:
         run: |
           pnpm install
           pnpm -r --filter "./packages/*" build
+
+      - name: Install the Vercel CLI
+        # A step of its own, so no secret is in its environment, at a pinned
+        # version and without install scripts, which would run before anything
+        # checks the package. Bump the pin on purpose, to a release at least two
+        # weeks old, and check that the CLI still works without its scripts.
+        run: |
+          npm install --global --ignore-scripts vercel@63.1.2
 
       - name: Sync project bundle
         working-directory: ${{ runner.temp }}
@@ -129,7 +138,8 @@ jobs:
           echo "value=$value" >> "$GITHUB_OUTPUT"
 
       - name: Deploy to Vercel
-        # The install runs without the deploy token in its environment.
+        # The deploy token is in this step's env only, never on a command line:
+        # the Vercel CLI reads VERCEL_TOKEN from the environment.
         id: deploy
         working-directory: ${{ runner.temp }}
         env:
@@ -137,8 +147,7 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_SITES_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          env -u VERCEL_TOKEN npm install --global vercel@latest
-          url=$(vercel deploy --token "$VERCEL_TOKEN" --yes --prod --skip-domain)
+          url=$(vercel deploy --yes --prod --skip-domain)
           if [[ ! "$url" =~ ^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
             echo "::error::Vercel did not answer with a deployment URL."
             exit 1
@@ -157,7 +166,9 @@ jobs:
         # is sent: orgScript the JSON false, guardLevel an integer from 0 to
         # 32767 (docs/ORGANIZEOS-FORK.md sections 5 and 10). On success the log
         # shows the answer's live and launchable only, each only when it is a
-        # boolean; on failure it shows the answer.
+        # boolean; on failure it shows the answer. The report steps read this
+        # step's outcome, under its id.
+        id: flip
         env:
           CALLBACK_URL: ${{ secrets.PUBLISH_CALLBACK_URL }}
           CALLBACK_TOKEN: ${{ secrets.PUBLISH_CALLBACK_TOKEN }}
@@ -226,6 +237,9 @@ jobs:
       - name: Report the build as published
         # The site is live once the pointer is flipped; a failed status report
         # must not fail the run (and so must not mark the build FAILED below).
+        # A run cancelled after the flip (by a newer publish for the org, or
+        # the job's timeout) reports it too: the pointer did move.
+        if: success() || (cancelled() && steps.flip.outcome == 'success')
         continue-on-error: true
         env:
           BUILDER_ORIGIN: ${{ vars.BUILDER_ORIGIN }}
@@ -240,7 +254,13 @@ jobs:
             --data-binary "$body"
 
       - name: Report the build as failed
-        if: failure()
+        # A failure, or a run cancelled by a newer publish for the org or by
+        # the job's timeout, marks the build FAILED, so it does not read
+        # pending. Never once the flip succeeded: that build is published
+        # (reported above), and the builder would take FAILED over PUBLISHED.
+        # Nor when the flip itself was cut off: whether the pointer moved is
+        # unknown, so the build reads pending until the dialog gives up.
+        if: (failure() || cancelled()) && steps.flip.outcome != 'success' && steps.flip.outcome != 'cancelled'
         env:
           BUILDER_ORIGIN: ${{ vars.BUILDER_ORIGIN }}
           WSTD_SERVICE_TOKEN: ${{ secrets.WSTD_SERVICE_TOKEN }}

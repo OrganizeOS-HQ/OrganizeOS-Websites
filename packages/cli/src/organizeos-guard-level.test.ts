@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
+import { parse } from "acorn";
+import { transformWithEsbuild } from "vite";
 import {
   bundleVersion,
   publishedProjectBundle,
@@ -17,20 +19,25 @@ import { dropOrgScript } from "./organizeos-org-script";
 // guardLevel, and OrganizeOS launches a Website only from a build whose level
 // is high enough (docs/ORGANIZEOS-FORK.md section 5). So the level this commit
 // reports must be one its CLI meets. Each requirement of level 1 has a check
-// that runs here and the tests that cover it fully, which must still exist.
+// that runs here and the tests that cover it fully, which must still exist and
+// run: neither commented out nor skipped.
 // The level stays 0 while a requirement is not yet in this repository; the
 // change that lands the last one replaces its check, removes the pin below and
 // raises the level.
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 
-type Covering = { file: string; title: string };
+/**
+ * A test that covers a requirement: the titles from an enclosing describe to
+ * the describe or test itself (any describes between them may be left out),
+ * in a file named from the repository root.
+ */
+type Covering = { file: string; path: string[] };
 
 type Requirement = {
   name: string;
   /** Whether the CLI built from this commit meets it. */
   holds: () => boolean;
-  /** A describe or test title in a file (from the repository root). */
   coveredBy: Covering[];
 };
 
@@ -163,6 +170,10 @@ const unsafeValuesTests =
   "packages/cli/src/organizeos-org-script.unsafe-values.test.ts";
 const prebuildTests = "packages/cli/src/prebuild.test.ts";
 
+const workflowTests = "packages/cli/src/organizeos-publish-workflow.test.ts";
+const unsafeValues = "dropOrgScript leaves unsafe values out";
+const prebuildUnsafeValues = ["prebuild", "leaves unsafe values out"];
+
 const levelOne: Requirement[] = [
   {
     name: "the org script switch is off",
@@ -170,7 +181,14 @@ const levelOne: Requirement[] = [
     coveredBy: [
       {
         file: "packages/sdk-components-organizeos/src/org-script.test.ts",
-        title: "is off",
+        path: ["orgScriptMayRun", "is off"],
+      },
+      {
+        file: workflowTests,
+        path: [
+          "the publish workflow's org script switch",
+          "the step's command prints false from the built package",
+        ],
       },
     ],
   },
@@ -180,9 +198,53 @@ const levelOne: Requirement[] = [
     coveredBy: [
       {
         file: unsafeValuesTests,
-        title: "dropOrgScript leaves unsafe values out",
+        path: [
+          unsafeValues,
+          "drops unsafe static addresses and keeps the instance and its other props",
+        ],
       },
-      { file: prebuildTests, title: "leaves unsafe values out" },
+      {
+        file: unsafeValuesTests,
+        path: [
+          unsafeValues,
+          "drops a bound address that decides nothing, and keeps one whose fixed start decides",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          unsafeValues,
+          "drops srcdoc and every on… prop that is not an action, and keeps an action",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          unsafeValues,
+          "drops a page redirect to an unsafe target with its 3xx status, on the home page, and keeps a 404 status",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          unsafeValues,
+          "drops a project redirect to an unsafe target and keeps the others in order",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildUnsafeValues,
+          "drops javascript: and data: addresses from links, sources, forms and objects",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildUnsafeValues,
+          "drops a page redirect and a project redirect to an unsafe target",
+        ],
+      },
     ],
   },
   {
@@ -193,7 +255,10 @@ const levelOne: Requirement[] = [
     coveredBy: [
       {
         file: prebuildTests,
-        title: "an XML page answers with a sandbox policy and nosniff",
+        path: [
+          ...prebuildUnsafeValues,
+          "an XML page answers with a sandbox policy and nosniff",
+        ],
       },
     ],
   },
@@ -203,22 +268,31 @@ const levelOne: Requirement[] = [
     coveredBy: [
       {
         file: unsafeValuesTests,
-        title:
+        path: [
+          unsafeValues,
           "drops an XML Node from an HTML page with its subtree and its scoped data, and keeps it on an XML page",
+        ],
       },
       {
         file: unsafeValuesTests,
-        title:
+        path: [
+          unsafeValues,
           "drops srcdoc and every on… prop that is not an action, and keeps an action",
+        ],
       },
       {
         file: prebuildTests,
-        title:
+        path: [
+          ...prebuildUnsafeValues,
           "leaves an XML Node out of an HTML page and keeps it on an XML page",
+        ],
       },
       {
         file: prebuildTests,
-        title: "drops srcdoc and event handler attributes",
+        path: [
+          ...prebuildUnsafeValues,
+          "drops srcdoc and event handler attributes",
+        ],
       },
     ],
   },
@@ -233,16 +307,188 @@ const present = levelOne.filter(
   (requirement) => requirement.coveredBy.length > 0
 );
 
-const escapeRegExp = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+type SyntaxNode = { type: string; [key: string]: unknown };
 
-/** Whether `title` is a describe or test title in `file`. */
-const hasTitle = ({ file, title }: Covering) => {
-  const source = readFileSync(`${root}${file}`, "utf8");
-  return new RegExp(
-    `\\b(?:describe|test|it)\\(\\s*(["'\`])${escapeRegExp(title)}\\1`
-  ).test(source);
+/** A describe, test or it call with a fixed title, and the one it is in. */
+type TitledCall = {
+  title: string;
+  /** Marked so it may not run: skip, todo, skipIf, runIf or fails. */
+  mayNotRun: boolean;
+  parent: TitledCall | undefined;
 };
+
+const testFunctions = new Set(["describe", "test", "it"]);
+const notRunning = new Set(["skip", "todo", "skipIf", "runIf", "fails"]);
+
+const isNode = (value: unknown): value is SyntaxNode =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as SyntaxNode).type === "string";
+
+/** `test`, with its modifiers, for `test.skip`, `test.each(cases)` and so on. */
+const calleeOf = (node: SyntaxNode) => {
+  const modifiers: string[] = [];
+  let current: SyntaxNode = node;
+  for (;;) {
+    if (current.type === "Identifier") {
+      return { name: current.name as string, modifiers };
+    }
+    if (
+      current.type === "MemberExpression" &&
+      current.computed === false &&
+      isNode(current.property) &&
+      current.property.type === "Identifier" &&
+      isNode(current.object)
+    ) {
+      modifiers.push(current.property.name as string);
+      current = current.object;
+    } else if (current.type === "CallExpression" && isNode(current.callee)) {
+      current = current.callee;
+    } else {
+      return { name: undefined, modifiers };
+    }
+  }
+};
+
+const titleOf = (node: unknown) => {
+  if (isNode(node) && node.type === "Literal") {
+    return typeof node.value === "string" ? node.value : undefined;
+  }
+  // a template with no substitution is one quasi
+  if (isNode(node) && node.type === "TemplateLiteral") {
+    const quasis = node.quasis as Array<{ value: { cooked: string } }>;
+    return quasis.length === 1 ? quasis[0].value.cooked : undefined;
+  }
+};
+
+const collectCalls = (
+  node: SyntaxNode,
+  parent: TitledCall | undefined,
+  calls: TitledCall[]
+) => {
+  let inner = parent;
+  if (node.type === "CallExpression" && isNode(node.callee)) {
+    const { name, modifiers } = calleeOf(node.callee);
+    const title = titleOf((node.arguments as unknown[])[0]);
+    if (name !== undefined && testFunctions.has(name) && title !== undefined) {
+      inner = {
+        title,
+        mayNotRun: modifiers.some((modifier) => notRunning.has(modifier)),
+        parent,
+      };
+      calls.push(inner);
+    }
+  }
+  for (const value of Object.values(node)) {
+    for (const child of Array.isArray(value) ? value : [value]) {
+      if (isNode(child)) {
+        collectCalls(child, inner, calls);
+      }
+    }
+  }
+};
+
+/**
+ * The titled describe, test and it calls of a test file's source. It is
+ * parsed, so a title in a comment is not one.
+ */
+const titledCalls = async (source: string, fileName: string) => {
+  const { code } = await transformWithEsbuild(source, fileName);
+  const calls: TitledCall[] = [];
+  collectCalls(
+    parse(code, {
+      ecmaVersion: "latest",
+      sourceType: "module",
+    }) as unknown as SyntaxNode,
+    undefined,
+    calls
+  );
+  return calls;
+};
+
+/**
+ * Whether a call runs at `path`: its title is the last one, the others are
+ * titles of calls it is in, in order, and neither it nor any call it is in may
+ * be skipped.
+ */
+const runsAt = (calls: TitledCall[], path: string[]) =>
+  calls.some((call) => {
+    if (call.title !== path.at(-1)) {
+      return false;
+    }
+    let wanted = path.length - 2;
+    for (let current: TitledCall | undefined = call; current; ) {
+      if (current.mayNotRun) {
+        return false;
+      }
+      current = current.parent;
+      if (
+        current !== undefined &&
+        wanted >= 0 &&
+        current.title === path[wanted]
+      ) {
+        wanted -= 1;
+      }
+    }
+    return wanted < 0;
+  });
+
+const isCovered = async ({ file, path }: Covering) =>
+  runsAt(await titledCalls(readFileSync(`${root}${file}`, "utf8"), file), path);
+
+describe("the covering-test lookup", () => {
+  const source = `
+    describe("outer", () => {
+      test("runs", () => {});
+      // test("commented out", () => {});
+      /* test("in a block comment", () => {}); */
+      test.skip("skipped", () => {});
+      test.todo("todo");
+      it.fails("fails", () => {});
+      test.each([[1]])("each %s", () => {});
+      test(\`template\`, () => {});
+      test(\`template \${1}\`, () => {});
+      describe.skip("skipped block", () => {
+        test("inside a skipped block", () => {});
+      });
+      describe("inner", () => {
+        test.skipIf(true)("skipped if", () => {});
+        it("deep", () => {});
+      });
+    });
+    const text = 'test("in a string", () => {})';
+  `;
+
+  test("finds a title that runs, at its path, any describes between left out", async () => {
+    const calls = await titledCalls(source, "lookup.test.ts");
+    expect(runsAt(calls, ["runs"])).toBe(true);
+    expect(runsAt(calls, ["outer", "runs"])).toBe(true);
+    expect(runsAt(calls, ["outer", "inner", "deep"])).toBe(true);
+    expect(runsAt(calls, ["outer", "deep"])).toBe(true);
+    expect(runsAt(calls, ["outer", "each %s"])).toBe(true);
+    expect(runsAt(calls, ["template"])).toBe(true);
+    expect(runsAt(calls, ["inner", "outer", "deep"])).toBe(false);
+    expect(runsAt(calls, ["other", "runs"])).toBe(false);
+  });
+
+  test("refuses a title in a comment or a string, and one that is skipped, todo, failing or in a skipped describe", async () => {
+    const calls = await titledCalls(source, "lookup.test.ts");
+    for (const title of [
+      "commented out",
+      "in a block comment",
+      "in a string",
+      "skipped",
+      "todo",
+      "fails",
+      "skipped block",
+      "inside a skipped block",
+      "skipped if",
+      "template 1",
+    ]) {
+      expect(runsAt(calls, [title]), title).toBe(false);
+    }
+  });
+});
 
 describe("ORGANIZEOS_GUARD_LEVEL", () => {
   test("is an integer from 0 to 32767, and at most 1", () => {
@@ -262,11 +508,12 @@ describe("ORGANIZEOS_GUARD_LEVEL", () => {
   test.each(
     present.flatMap((requirement) =>
       requirement.coveredBy.map(
-        (covering) => [covering.title, covering.file, covering] as const
+        (covering) =>
+          [covering.path.join(" > "), covering.file, covering] as const
       )
     )
-  )("level 1 is covered by %s in %s", (_title, _file, covering) => {
-    expect(hasTitle(covering)).toBe(true);
+  )("level 1 is covered by %s in %s", async (_path, _file, covering) => {
+    expect(await isCovered(covering)).toBe(true);
   });
 
   test("a level of 1 or more means every level-1 requirement holds", () => {

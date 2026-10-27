@@ -364,7 +364,7 @@ describe("the CMS overlay in the builder", () => {
       ]);
     });
 
-    test("keeps its rules: only on the blocks' allowlist", () => {
+    test("keeps its rules: only for an org not denied the blocks", () => {
       $organizeosSite.set({ ...site, blocksEnabled: false });
       render();
       expect(tab("OrganizeOS data")).toBeNull();

@@ -335,17 +335,26 @@ export const OrganizeosPublishContent = ({
   const previousStatus = useRef(state.status);
   const projectId = project?.id;
   const mounted = useRef(true);
+  // Reads can finish out of order (a slow first read after a publish's
+  // refetch): only the latest one is shown.
+  const latestRead = useRef(0);
+  const readAddresses = (id: string) => {
+    latestRead.current += 1;
+    const read = latestRead.current;
+    return loadSiteAddresses(id).then((loaded) => {
+      if (mounted.current && read === latestRead.current) {
+        setAddresses(loaded);
+      }
+      return loaded;
+    });
+  };
 
   // Where it publishes and whether the site is live, read when the dialog
   // opens
   useEffect(() => {
     mounted.current = true;
     if (projectId !== undefined) {
-      loadSiteAddresses(projectId).then((loaded) => {
-        if (mounted.current) {
-          setAddresses(loaded);
-        }
-      });
+      readAddresses(projectId);
     }
     return () => {
       mounted.current = false;
@@ -378,10 +387,7 @@ export const OrganizeosPublishContent = ({
       if (settled === "failed") {
         toast.error("Publishing failed. Please try again.");
       }
-      loadSiteAddresses(projectId).then((loaded) => {
-        if (mounted.current) {
-          setAddresses(loaded);
-        }
+      readAddresses(projectId).then((loaded) => {
         if (settled === "published") {
           if (servesThisVersion(loaded)) {
             toast.success(

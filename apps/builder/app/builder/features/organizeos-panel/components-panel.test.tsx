@@ -285,7 +285,7 @@ describe("the Components panel's OrganizeOS section", () => {
     ]);
   });
 
-  test("no OrganizeOS section off the allowlist", () => {
+  test("no OrganizeOS section for a denied org", () => {
     $organizeosSite.set({ ...site, blocksEnabled: false });
     const host = render();
     expect(headings(host)).not.toContain("OrganizeOS");

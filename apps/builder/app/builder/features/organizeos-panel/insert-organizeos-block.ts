@@ -423,7 +423,7 @@ export const isOrganizeosBlocksEnabled = () =>
  * Insert a block at the selection, or at `insertable` (a drop), the way the
  * Components panel inserts a template, after completing it, in one
  * transaction. Refuses with a toast, writing nothing, when the org is not on
- * the blocks' allowlist or the project's data is not connected.
+ * the blocks' deny list or the project's data is not connected.
  */
 export const insertOrganizeosBlock = async (
   component: string,

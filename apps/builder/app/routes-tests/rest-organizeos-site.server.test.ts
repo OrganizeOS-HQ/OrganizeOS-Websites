@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
   authorization: { type: "user" } as { type: string },
   permitted: true,
   owner: null as null | { provider: string | null; email: string | null },
+  failingTable: undefined as undefined | "Project" | "User",
   rpc: undefined as unknown as ReturnType<typeof vi.fn>,
 }));
 
@@ -30,7 +31,10 @@ vi.mock("~/shared/context.server", () => {
     const chain = {
       select: () => chain,
       eq: () => chain,
-      maybeSingle: async () => ({ data: row(table), error: null }),
+      maybeSingle: async () =>
+        state.failingTable === table
+          ? { data: null, error: { message: "connection refused: detail" } }
+          : { data: row(table), error: null },
     };
     return chain;
   };
@@ -99,6 +103,7 @@ beforeEach(() => {
   state.authorization = { type: "user" };
   state.permitted = true;
   state.owner = orgOwner;
+  state.failingTable = undefined;
   state.rpc = vi.fn(async () => ({ data: fixture, error: null }));
 });
 
@@ -184,6 +189,21 @@ describe("rest.organizeos-site", () => {
     expect(await (await call()).json()).toEqual({ ok: false });
     state.rpc = vi.fn(async () => ({ data: [], error: null }));
     expect(await (await call()).json()).toEqual({ ok: false });
+  });
+
+  test("answers { ok: false }, logging one code and no data, when the project or its owner cannot be read", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const table of ["Project", "User"] as const) {
+      state.failingTable = table;
+      const response = await call();
+      expect(response.status, table).toBe(200);
+      expect(await response.json(), table).toEqual({ ok: false });
+    }
+    expect(error.mock.calls).toEqual([
+      ["[organizeos-site-addresses] owner_read_failed"],
+      ["[organizeos-site-addresses] owner_read_failed"],
+    ]);
+    expect(state.rpc).not.toHaveBeenCalled();
   });
 
   test("is never stored", async () => {

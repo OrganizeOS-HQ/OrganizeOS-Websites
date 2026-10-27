@@ -18,9 +18,9 @@ import { afterEach, describe, expect, test } from "vitest";
 // and the guard level from the CLI it built, never from configuration, and
 // fails the run unless the switch is off, the address rule is there and the
 // level is one OrganizeOS takes (docs/ORGANIZEOS-FORK.md sections 5 and 10).
-// No run script holds an expression: every input, variable, secret and step
-// output reaches it through its step's env, and the bodies are built with
-// node. The workflow is read as text, and its scripts run here as the runner
+// No run script holds a ${{ }} substitution: every input, variable, secret
+// and step output reaches it through its step's env, and the bodies are built
+// with node. The workflow is read as text, and its scripts run here as the runner
 // runs them, against a fake curl, npm and vercel: a change that moves a step,
 // loosens a check or feeds a value from elsewhere fails here.
 
@@ -88,6 +88,7 @@ const probeOf = (script: string) =>
 
 const switchStep = stepNamed("Read the org script switch");
 const guardStep = stepNamed("Read the guard level");
+const installVercelStep = stepNamed("Install the Vercel CLI");
 const deployStep = stepNamed("Deploy to Vercel");
 const callbackStep = stepNamed("Flip the OrganizeOS pointer");
 const publishedStep = stepNamed("Report the build as published");
@@ -134,7 +135,7 @@ fs.appendFileSync(process.env.FAKE_LOG, JSON.stringify({ tool: "npm", args: proc
   // prints $FAKE_VERCEL_URL, as vercel deploy prints the deployment's URL
   vercel: `#!/usr/bin/env node
 const fs = require("node:fs");
-fs.appendFileSync(process.env.FAKE_LOG, JSON.stringify({ tool: "vercel", args: process.argv.slice(2) }) + "\\n");
+fs.appendFileSync(process.env.FAKE_LOG, JSON.stringify({ tool: "vercel", args: process.argv.slice(2), token: process.env.VERCEL_TOKEN ?? null }) + "\\n");
 process.stdout.write(process.env.FAKE_VERCEL_URL ?? "");
 `,
 };
@@ -193,8 +194,8 @@ const secrets = {
   vercelToken: "vercel-token-secret-value",
 };
 
-/** What the runner fills each expression with. */
-const expressions: Record<string, string> = {
+/** What the runner fills each ${{ }} substitution with. */
+const substitutions: Record<string, string> = {
   "inputs.build_id": hostileBuildId,
   "inputs.organization_id": "a6b33e8c-3f0e-4c21-9d4e-6b0c1f2e3d4a",
   "vars.BUILDER_ORIGIN": "https://builder.example",
@@ -209,9 +210,9 @@ const expressions: Record<string, string> = {
   "steps.guard-level.outputs.value": "0",
 };
 
-/** The step's env as the runner fills it, with some expressions replaced. */
+/** The step's env as the runner fills it, with some substitutions replaced. */
 const envFor = (step: Step, replaced: Record<string, string> = {}) => {
-  const values = { ...expressions, ...replaced };
+  const values = { ...substitutions, ...replaced };
   return Object.fromEntries(
     Object.entries(envOf(step)).map(([key, value]) => {
       const name = value.match(/^\$\{\{ ([^}]+) \}\}$/)?.[1];
@@ -421,20 +422,20 @@ describe("the publish workflow's guard level", () => {
   });
 });
 
-describe("the publish workflow's expressions", () => {
-  test("no run script holds an expression, and there is no workflow- or job-level env", () => {
+describe("the publish workflow's inputs", () => {
+  test("no run script holds a ${{ }} substitution, and there is no workflow- or job-level env", () => {
     const scripts = steps
       .filter((item) => /^ {8}run: \|$/m.test(item.text))
       .map(runScriptOf);
-    expect(scripts).toHaveLength(9);
+    expect(scripts).toHaveLength(10);
     for (const script of scripts) {
       expect(script).not.toContain("${{");
     }
-    // every expression in the file is a step's env value, the temp
-    // directory a step runs in, or the concurrency group
+    // every ${{ }} in the file is a step's env value, the temp directory a
+    // step runs in, or the concurrency group
     for (const line of workflow
       .split("\n")
-      .filter((text) => text.includes("${{"))) {
+      .filter((text) => text.includes("${{") && /^\s*#/.test(text) === false)) {
       expect(
         /^ {10}[A-Z_]+: \$\{\{ [\w.-]+ \}\}$/.test(line) ||
           line === "        working-directory: ${{ runner.temp }}" ||
@@ -466,7 +467,38 @@ describe("the publish workflow's expressions", () => {
     }
   });
 
-  test("the deploy writes its URL out only when Vercel answered with one, and installs without the token", () => {
+  test("installs the Vercel CLI in a step of its own, with no secret in its environment, pinned and without install scripts", () => {
+    const names = steps.map((item) => item.name);
+    expect(names.indexOf(installVercelStep.name)).toBeLessThan(
+      names.indexOf(deployStep.name)
+    );
+    expect(envOf(installVercelStep)).toEqual({});
+    expect(installVercelStep.text).not.toContain("${{");
+    expect(installVercelStep.text).not.toContain("secrets.");
+    const script = runScriptOf(installVercelStep);
+    expect(script).toMatch(
+      /^npm install --global --ignore-scripts vercel@\d+\.\d+\.\d+$/
+    );
+
+    const run = runStep(script);
+    expect(run.status).toBe(0);
+    expect(run.calls).toEqual([
+      {
+        tool: "npm",
+        args: [
+          "install",
+          "--global",
+          "--ignore-scripts",
+          script.slice(script.indexOf("vercel@")),
+        ],
+        token: null,
+      },
+    ]);
+    // and nothing else installs it
+    expect(workflow.match(/\bnpm install/g)).toHaveLength(1);
+  });
+
+  test("the deploy passes the token in its environment only, and writes its URL out only when Vercel answered with one", () => {
     const deploy = (url: string) =>
       runStep(runScriptOf(deployStep), {
         ...envFor(deployStep),
@@ -476,11 +508,15 @@ describe("the publish workflow's expressions", () => {
     const run = deploy("https://site-abc.vercel.app");
     expect(run.status).toBe(0);
     expect(run.output).toBe("deployment_url=https://site-abc.vercel.app\n");
-    const npm = run.calls.find((call) => call.tool === "npm");
-    expect(npm?.args).toEqual(["install", "--global", "vercel@latest"]);
-    expect(npm?.token).toBe(null);
-    const vercel = run.calls.find((call) => call.tool === "vercel");
-    expect(vercel && argAfter(vercel, "--token")).toBe(secrets.vercelToken);
+    expect(run.calls).toEqual([
+      {
+        tool: "vercel",
+        args: ["deploy", "--yes", "--prod", "--skip-domain"],
+        token: secrets.vercelToken,
+      },
+    ]);
+    // never on a command line, where any process can read it
+    expect(workflow).not.toContain("--token");
     expectNoSecretIn(run);
 
     for (const url of [
@@ -506,13 +542,13 @@ describe("the publish callback", () => {
     expect(run.status).toBe(0);
     expect(run.calls).toHaveLength(1);
     const [call] = run.calls;
-    expect(call.args).toContain(expressions["secrets.PUBLISH_CALLBACK_URL"]);
+    expect(call.args).toContain(substitutions["secrets.PUBLISH_CALLBACK_URL"]);
     expect(call.args).toContain(`Authorization: ${secrets.callbackToken}`);
     const body = JSON.parse(argAfter(call, "--data-binary"));
     expect(body).toEqual({
-      organizationId: expressions["inputs.organization_id"],
+      organizationId: substitutions["inputs.organization_id"],
       buildId: hostileBuildId,
-      deploymentUrl: expressions["steps.deploy.outputs.deployment_url"],
+      deploymentUrl: substitutions["steps.deploy.outputs.deployment_url"],
       orgScript: false,
       guardLevel: 0,
     });
@@ -596,7 +632,59 @@ describe("the publish callback", () => {
   });
 });
 
+/**
+ * A step's `if:` under a run's state, as the runner evaluates it: the status
+ * functions, the flip step's outcome, quoted strings, ==, !=, && and ||.
+ */
+const runsIf = (
+  step: Step,
+  run: {
+    failed?: boolean;
+    cancelled?: boolean;
+    /** The flip step's outcome; "" when it never started. */
+    flip: "" | "success" | "failure" | "cancelled" | "skipped";
+  }
+) => {
+  const condition = step.text.match(/^ {8}if: (.*)$/m)?.[1] ?? "success()";
+  expect(condition).toMatch(
+    /^(?:success\(\)|failure\(\)|cancelled\(\)|steps\.flip\.outcome|'[a-z]*'|[!=]=|&&|\|\||[()\s])+$/
+  );
+  const failed = run.failed ?? false;
+  const cancelled = run.cancelled ?? false;
+  const script = condition
+    .replaceAll("success()", String(failed === false && cancelled === false))
+    .replaceAll("failure()", String(failed))
+    .replaceAll("cancelled()", String(cancelled))
+    .replaceAll("steps.flip.outcome", JSON.stringify(run.flip))
+    .replaceAll("!=", "!==")
+    .replace(/([^!=])==/g, "$1===");
+  return Boolean(new Function(`return (${script});`)());
+};
+
 describe("the publish workflow's status reports", () => {
+  test("a failure or a cancel marks the build FAILED, and never once the pointer flipped", () => {
+    const report = (run: Parameters<typeof runsIf>[1]) =>
+      [
+        runsIf(publishedStep, run) ? "PUBLISHED" : undefined,
+        runsIf(failedStep, run) ? "FAILED" : undefined,
+      ].filter(Boolean);
+
+    // every step succeeded
+    expect(report({ flip: "success" })).toEqual(["PUBLISHED"]);
+    // a step before the flip failed, or the flip itself
+    expect(report({ failed: true, flip: "skipped" })).toEqual(["FAILED"]);
+    expect(report({ failed: true, flip: "failure" })).toEqual(["FAILED"]);
+    // cancelled (a newer publish, or the timeout) before the flip started
+    expect(report({ cancelled: true, flip: "" })).toEqual(["FAILED"]);
+    expect(report({ cancelled: true, flip: "skipped" })).toEqual(["FAILED"]);
+    // cancelled after the flip: the pointer moved, so it is published
+    expect(report({ cancelled: true, flip: "success" })).toEqual(["PUBLISHED"]);
+    // cancelled during the flip: whether the pointer moved is unknown
+    expect(report({ cancelled: true, flip: "cancelled" })).toEqual([]);
+    // the flip step has the id the conditions read
+    expect(callbackStep.text).toMatch(/^ {8}id: flip$/m);
+  });
+
   test.each([
     ["published", publishedStep, "PUBLISHED"],
     ["failed", failedStep, "FAILED"],

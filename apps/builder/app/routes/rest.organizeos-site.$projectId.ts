@@ -14,6 +14,7 @@ import {
   composeSiteAddresses,
   fetchSiteAddresses,
   getSiteAddressesClient,
+  logSiteAddressesFailure,
 } from "~/shared/db/organizeos-site-addresses.server";
 
 /**
@@ -26,7 +27,7 @@ import {
  * as the builder loader resolves it, and never comes from the request. The
  * answer is `{ ok: true, host, origin, status, manageDomainsUrl, websiteUrl,
  * launchable? }`, or `{ ok: false }` for a project no org owns and for any
- * failure, which the dialog shows as nothing extra.
+ * failure, which the dialog shows as nothing extra. A failure logs one code.
  */
 
 const UUID_PATTERN =
@@ -64,7 +65,8 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     .eq("isDeleted", false)
     .maybeSingle();
   if (project.error) {
-    throw project.error;
+    logSiteAddressesFailure("owner_read_failed");
+    return answer({ ok: false });
   }
   if (project.data === null || project.data.userId === null) {
     return answer({ ok: false });
@@ -75,7 +77,8 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     .eq("id", project.data.userId)
     .maybeSingle();
   if (owner.error) {
-    throw owner.error;
+    logSiteAddressesFailure("owner_read_failed");
+    return answer({ ok: false });
   }
   if (
     owner.data === null ||

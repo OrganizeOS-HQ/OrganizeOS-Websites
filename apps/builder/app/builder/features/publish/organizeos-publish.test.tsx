@@ -337,6 +337,43 @@ describe("the OrganizeOS Publish dialog", () => {
     expect(routeFetch).toHaveBeenCalledTimes(3);
   });
 
+  test("a slow first read never replaces the read after a publish settles", async () => {
+    vi.spyOn(toast, "success").mockImplementation(() => "");
+    let finishFirst: (response: Response) => void = () => {};
+    routeFetch
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            finishFirst = resolve;
+          })
+      )
+      .mockImplementationOnce(async () =>
+        Response.json({ ...addresses, status: "live", launchable: true })
+      );
+    setProject({ createdAt: minutesAgo(1), publishStatus: "PENDING" });
+    const host = await render();
+    act(() => {
+      setProject({ createdAt: minutesAgo(1), publishStatus: "PUBLISHED" });
+    });
+    await settle();
+    expect(links(host)[0]).toEqual([
+      "votelabor.org",
+      "https://votelabor.org",
+      "_blank",
+    ]);
+
+    // the read the dialog opened with answers last, and is dropped
+    finishFirst(Response.json({ ...addresses, status: "not_launched" }));
+    await settle();
+    expect(routeFetch).toHaveBeenCalledTimes(2);
+    expect(links(host)[0]).toEqual([
+      "votelabor.org",
+      "https://votelabor.org",
+      "_blank",
+    ]);
+    expect(host.textContent).not.toContain("Not live yet");
+  });
+
   test("a publish that settles says the site is live only when it is and its version can go live, and Published otherwise", async () => {
     const success = vi.spyOn(toast, "success").mockImplementation(() => "");
     const live =

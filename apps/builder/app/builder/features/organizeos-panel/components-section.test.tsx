@@ -320,7 +320,7 @@ describe("$organizeosComponentGroups", () => {
     $organizeosSite.set(undefined);
   });
 
-  test("empty off the allowlist", () => {
+  test("empty for a denied org", () => {
     registerLibrary(organizeosTemplates);
     $organizeosSite.set({ ...site, blocksEnabled: false });
     expect($organizeosComponentGroups.get()).toEqual([]);
@@ -336,7 +336,7 @@ describe("$organizeosComponentGroups", () => {
     expect($organizeosComponentGroups.get()).toEqual([]);
   });
 
-  test("on the allowlist, one OrganizeOS group with the blocks in order, More last, and one Manage link", () => {
+  test("for an org not denied, one OrganizeOS group with the blocks in order, More last, and one Manage link", () => {
     registerLibrary({
       ...organizeosTemplates,
       FutureBlock: organizeosTemplates.SignupForm,

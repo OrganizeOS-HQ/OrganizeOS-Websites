@@ -38,7 +38,7 @@ export const sections = new Map<
   ["typography", typography],
   ["textShadows", textShadows],
   ["backgrounds", backgrounds],
-  // OrganizeOS fork: Background presets, for orgs on the blocks' allowlist
+  // OrganizeOS fork: Background presets, for orgs not denied the blocks
   ["organizeosBackgroundPresets", organizeosBackgroundPresets],
   ["borders", borders],
   ["boxShadows", boxShadows],

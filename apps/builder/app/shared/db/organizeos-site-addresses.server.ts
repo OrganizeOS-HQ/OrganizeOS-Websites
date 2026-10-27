@@ -61,11 +61,18 @@ export type SiteAddressesRow = z.infer<typeof rowSchema>;
 
 const answerSchema = z.array(rowSchema).max(1);
 
-type LogCode = "addresses_rpc_failed" | "addresses_invalid";
+type LogCode =
+  | "addresses_rpc_failed"
+  | "addresses_invalid"
+  /** The route could not read the project or its owner. */
+  | "owner_read_failed";
 
-const log = (code: LogCode) => {
+/** One code, never the answer or the error. */
+export const logSiteAddressesFailure = (code: LogCode) => {
   console.error(`[organizeos-site-addresses] ${code}`);
 };
+
+const log = logSiteAddressesFailure;
 
 /** The one PostgREST call made here: the RPC is not in the fork's typed schema. */
 export type SiteAddressesClient = {
