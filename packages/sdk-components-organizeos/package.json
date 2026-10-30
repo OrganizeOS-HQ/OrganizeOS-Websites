@@ -37,6 +37,16 @@
       "types": "./lib/types/templates.d.ts",
       "import": "./lib/templates.js"
     },
+    "./site-templates/canonical-variables": {
+      "webstudio": "./src/site-templates/canonical-variables.ts",
+      "types": "./lib/types/site-templates/canonical-variables.d.ts",
+      "import": "./lib/site-templates/canonical-variables.js"
+    },
+    "./site-templates": {
+      "webstudio": "./src/site-templates/index.ts",
+      "types": "./lib/types/site-templates/index.d.ts",
+      "import": "./lib/site-templates/index.js"
+    },
     "./org-script": {
       "webstudio": "./src/org-script.ts",
       "types": "./lib/types/org-script.d.ts",
