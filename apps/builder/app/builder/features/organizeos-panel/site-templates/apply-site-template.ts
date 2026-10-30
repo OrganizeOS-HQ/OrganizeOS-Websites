@@ -37,6 +37,7 @@ import { $project } from "~/shared/sync/data-stores";
 import { registerFolderChildMutable } from "~/builder/features/pages/page-utils";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { uploadAssets } from "~/builder/shared/assets/upload-assets";
+import { getSha256Hash } from "~/builder/shared/assets/asset-utils";
 import { deleteSubtreeMutable } from "../collection-pages";
 import {
   type OrganizeosPresetIds,
@@ -62,9 +63,9 @@ const NOT_FOUND_PAGE_PATH = "/*";
 /**
  * Whether a project is as provisioning left it: Home's body has no children,
  * the only other pages are the 404 page and the seeded sign-up page, and it
- * has no assets but `ignoreAssetIds` (an apply's own uploads, which can land
- * before its transaction). Reads only what it is given, so the chooser can
- * pass the raw stores.
+ * has no assets but `ignoreAssetIds` (an apply's own images, which an earlier
+ * upload of the same files can have added). Reads only what it is given, so
+ * the chooser can pass the raw stores.
  */
 export const isProjectUntouched = (
   data: Pick<WebstudioData, "pages" | "instances" | "assets">,
@@ -231,8 +232,9 @@ const deleteBodyMutable = (data: WebstudioData, bodyId: Instance["id"]) => {
 /**
  * Write a rendered template into a transaction's data. Refuses, writing
  * nothing, unless the project is untouched (decided again here: the chooser's
- * check and the uploads come before the transaction), when a page brings a
- * Resource, or when a page's path is taken. A placed block that cannot be
+ * check comes before the transaction, and the project can change while an
+ * apply awaits), when a page brings a Resource, or when a page's path is
+ * taken. A placed block that cannot be
  * bound (its Events Resource is gone) is left in place, unbound, and named in
  * `unboundBlocks`.
  */
@@ -333,9 +335,12 @@ export const applySiteTemplateMutable = (
 };
 
 /**
- * Apply a template from the chooser. Its images are uploaded first: an
- * upload's asset id is known before it finishes, so the pages render with
- * those ids and the transaction does not wait, and a failed upload is
+ * Apply a template from the chooser. An image's asset id is the one
+ * uploadAssets gives its URL, the SHA-256 of the URL (upload-assets.tsx), so
+ * the pages render with those ids, and the images are uploaded only once the
+ * template is applied: a page that cannot render, or a refusal, leaves no
+ * asset behind to make the project touched for good. An id the upload
+ * returns that is not the rendered one is logged; a failed upload is
  * reported by the upload's own toast.
  */
 export const applySiteTemplate = async (
@@ -350,34 +355,46 @@ export const applySiteTemplate = async (
   }
   const presetIds = await getOrganizeosPresetIds(project.id);
 
-  // uploadAssets keys its ids by the URLs it is given
   const urls = new Map(
     Object.entries(template.images).map(([file, entry]) => [
       file,
       new URL(entry.url, location.origin),
     ])
   );
-  const uploaded = await uploadAssets("image", [...urls.values()]);
-  const assetIds = new Map<string, string>();
-  for (const [file, url] of urls) {
-    const assetId = uploaded.get(url);
-    if (assetId !== undefined) {
-      assetIds.set(file, assetId);
-    }
-  }
+  const assetIds = new Map(
+    await Promise.all(
+      Array.from(
+        urls,
+        async ([file, url]) => [file, await getSha256Hash(url.href)] as const
+      )
+    )
+  );
   const pages = renderSiteTemplate(template, {
     assetIds,
     generatePageId: nanoid,
   });
 
-  let result: ApplyResult = { status: "refused", reason: "touched" };
+  // stays refused when the transaction skips its callback
+  let result = { status: "refused", reason: "touched" } as ApplyResult;
   updateWebstudioData((data) => {
     result = applySiteTemplateMutable(data, pages, {
       projectId: project.id,
       presetIds,
       variables: template.variables,
-      ignoreAssetIds: new Set(uploaded.values()),
+      ignoreAssetIds: new Set(assetIds.values()),
     });
   });
+  if (result.status !== "applied") {
+    return result;
+  }
+
+  const uploaded = await uploadAssets("image", [...urls.values()]);
+  for (const [file, url] of urls) {
+    if (uploaded.get(url) !== assetIds.get(file)) {
+      console.error(
+        `Image "${file}" was uploaded with an asset id its pages do not use`
+      );
+    }
+  }
   return result;
 };

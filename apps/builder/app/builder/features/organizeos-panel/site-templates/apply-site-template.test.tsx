@@ -14,7 +14,14 @@ import {
   getAllPages,
   getStyleDeclKey,
 } from "@webstudio-is/sdk";
-import { $, PageValue, css, ws } from "@webstudio-is/template";
+import {
+  $,
+  PageValue,
+  ResourceValue,
+  css,
+  expression,
+  ws,
+} from "@webstudio-is/template";
 import {
   type BlockKey,
   type CanonicalValues,
@@ -44,6 +51,7 @@ import {
   selectInstance,
 } from "~/shared/nano-states";
 import { getWebstudioData } from "~/shared/instance-utils/data";
+import { getSha256Hash } from "~/builder/shared/assets/asset-utils";
 import {
   SIGNUP_PAGE_PATH,
   UPCOMING_EVENTS_BINDING_NAME,
@@ -186,8 +194,8 @@ const template: SiteTemplate = {
       path: "/about",
       title: "About us",
       description: "Say who you are and who you work with.",
-      body: ({ pageIds, image, imageAlt }) => (
-        <ws.element ws:tag="body">
+      body: ({ pageIds, image, imageAlt, backgroundImage }) => (
+        <ws.element ws:tag="body" ws:style={backgroundImage("hero.jpg")}>
           <ws.element ws:tag="h1">{"About us"}</ws.element>
           <$.Image
             ws:id="team"
@@ -617,7 +625,7 @@ describe("applySiteTemplateMutable", () => {
     expect(data.styles.has(getStyleDeclKey(decl))).toBe(false);
   });
 
-  test("an upload that landed before the transaction does not refuse it", async () => {
+  test("an asset of the template's own images does not refuse it", async () => {
     const data = await createProvisionedProject();
     data.assets.set("asset-hero", imageAsset("asset-hero"));
 
@@ -723,25 +731,27 @@ describe("applySiteTemplate", () => {
 
   const urlOf = (path: string) => new URL(path, location.origin).href;
 
+  // As the builder's: ids keyed by the URLs passed, by its own rule, returned
+  // before the uploads finish. Here the uploads never land.
+  const uploadedIds = async (_type: string, urls: URL[]) =>
+    new Map(
+      await Promise.all(
+        urls.map(async (url) => [url, await getSha256Hash(url.href)] as const)
+      )
+    );
+
   beforeEach(() => {
     uploadAssets.mockReset();
-    // as the builder's: ids keyed by the URLs passed, known before the
-    // uploads finish; here the uploads also land before the transaction
-    uploadAssets.mockImplementation(async (_type: string, urls: URL[]) => {
-      const ids = new Map(
-        urls.toReversed().map((url) => [url, `uploaded${url.pathname}`])
-      );
-      const assets = new Map($assets.get());
-      for (const id of ids.values()) {
-        assets.set(id, imageAsset(id));
-      }
-      $assets.set(assets);
-      return ids;
-    });
+    uploadAssets.mockImplementation(uploadedIds);
   });
 
-  test("renders each image with the asset id its file's upload got", async () => {
+  test("renders each image with the asset id its URL uploads as, and uploads once applied", async () => {
     setStores(await createProvisionedProject());
+    let aboutAtUpload: undefined | Page;
+    uploadAssets.mockImplementationOnce(async (type: string, urls: URL[]) => {
+      aboutAtUpload = findPage(getWebstudioData(), "/about");
+      return uploadedIds(type, urls);
+    });
 
     const result = await applySiteTemplate(template);
 
@@ -753,7 +763,14 @@ describe("applySiteTemplate", () => {
       urlOf("/site-templates/fixture/hero.jpg"),
       urlOf("/site-templates/fixture/team.jpg"),
     ]);
+    expect(aboutAtUpload).toBeDefined();
 
+    const heroId = await getSha256Hash(
+      urlOf("/site-templates/fixture/hero.jpg")
+    );
+    const teamId = await getSha256Hash(
+      urlOf("/site-templates/fixture/team.jpg")
+    );
     const data = getWebstudioData();
     const imageSrc = (page: undefined | Page) => {
       const image = childrenOf(data, page?.rootInstanceId ?? "").find(
@@ -763,12 +780,108 @@ describe("applySiteTemplate", () => {
         (prop) => prop.instanceId === image?.id && prop.name === "src"
       )?.value;
     };
-    expect(imageSrc(findPage(data, ""))).toBe(
-      "uploaded/site-templates/fixture/hero.jpg"
+    expect(imageSrc(findPage(data, ""))).toBe(heroId);
+    expect(imageSrc(findPage(data, "/about"))).toBe(teamId);
+    expect(stylesOf(data, findPage(data, "/about")!.rootInstanceId)).toEqual([
+      expect.objectContaining({
+        property: "backgroundImage",
+        value: {
+          type: "layers",
+          value: [{ type: "image", value: { type: "asset", value: heroId } }],
+        },
+      }),
+    ]);
+  });
+
+  test("a page that cannot render rejects and uploads nothing", async () => {
+    setStores(await createProvisionedProject());
+    const assets = $assets.get();
+    const broken: SiteTemplate = {
+      ...template,
+      pages: [
+        template.pages[0],
+        {
+          ...template.pages[1],
+          body: () => {
+            throw new Error("broken body");
+          },
+        },
+      ],
+    };
+
+    await expect(applySiteTemplate(broken)).rejects.toThrow(
+      'Page "about": broken body'
     );
-    expect(imageSrc(findPage(data, "/about"))).toBe(
-      "uploaded/site-templates/fixture/team.jpg"
+
+    expect(uploadAssets).not.toHaveBeenCalled();
+    expect($assets.get()).toBe(assets);
+    expect(getWebstudioData().pages.pages.size).toBe(3);
+  });
+
+  test.each([
+    {
+      reason: "path-taken",
+      about: { path: SIGNUP_PAGE_PATH },
+    },
+    {
+      reason: "resources",
+      about: {
+        body: () => (
+          <ws.element ws:tag="body">
+            <ws.element
+              ws:tag="div"
+              data={
+                new ResourceValue("Sample", {
+                  url: expression`"https://example.org/sample"`,
+                  method: "get",
+                  searchParams: [],
+                  headers: [],
+                })
+              }
+            />
+          </ws.element>
+        ),
+      },
+    },
+  ])(
+    "a refusal in the transaction ($reason) uploads nothing",
+    async ({ reason, about }) => {
+      setStores(await createProvisionedProject());
+      const assets = $assets.get();
+
+      const result = await applySiteTemplate({
+        ...template,
+        pages: [template.pages[0], { ...template.pages[1], ...about }],
+      });
+
+      expect(result).toEqual({ status: "refused", reason });
+      expect(uploadAssets).not.toHaveBeenCalled();
+      expect($assets.get()).toBe(assets);
+      expect(getWebstudioData().pages.pages.size).toBe(3);
+    }
+  );
+
+  test("an upload whose id is not the rendered one is logged", async () => {
+    setStores(await createProvisionedProject());
+    uploadAssets.mockImplementationOnce(
+      async (_type: string, urls: URL[]) =>
+        new Map(urls.map((url) => [url, `other${url.pathname}`]))
     );
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    expect(await applySiteTemplate(template)).toEqual({
+      status: "applied",
+      unboundBlocks: [],
+    });
+
+    expect(consoleError).toHaveBeenCalledTimes(2);
+    expect(consoleError.mock.calls.map(([message]) => message)).toEqual([
+      expect.stringContaining('"hero.jpg"'),
+      expect.stringContaining('"team.jpg"'),
+    ]);
+    consoleError.mockRestore();
   });
 
   test("clears the selection, as Create item page does", async () => {
