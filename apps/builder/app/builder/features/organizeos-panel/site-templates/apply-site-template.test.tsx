@@ -11,9 +11,11 @@ import {
   ROOT_FOLDER_ID,
   ROOT_INSTANCE_ID,
   encodeDataSourceVariable,
+  findTreeInstanceIds,
   getAllPages,
   getStyleDeclKey,
 } from "@webstudio-is/sdk";
+import { showAttribute } from "@webstudio-is/react-sdk";
 import {
   $,
   PageValue,
@@ -28,6 +30,7 @@ import {
   type RenderedPage,
   type SiteTemplate,
   BLANK_CANONICAL_VALUES,
+  SITE_TEMPLATES,
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
 import { createPages } from "../../../../../../../packages/project-build/src/template";
@@ -673,6 +676,157 @@ describe("applySiteTemplateMutable", () => {
         (instance) => instance.label === "Event List"
       )
     ).toBe(true);
+  });
+
+  describe("several blocks on one page", () => {
+    // the spike: an Event Card, an Event List and a Signup Form on Home
+    const spike = SITE_TEMPLATES.find((item) => item.id === "spike")!;
+    const renderSpike = () =>
+      renderSiteTemplate(spike, {
+        assetIds: new Map(
+          Object.keys(spike.images).map((file) => [file, `asset:${file}`])
+        ),
+        generatePageId: () => `page-${++pageCount}`,
+      });
+
+    const homeInstances = (data: WebstudioData) => {
+      const home = data.pages.pages.get(data.pages.homePageId)!;
+      return [...findTreeInstanceIds(data.instances, home.rootInstanceId)].map(
+        (id) => data.instances.get(id)!
+      );
+    };
+
+    /** Each placed block's root on Home. */
+    const findBlockRoots = (data: WebstudioData) => {
+      const find = (match: (instance: Instance) => boolean) => {
+        const found = homeInstances(data).filter(match);
+        expect(found).toHaveLength(1);
+        return found[0];
+      };
+      const carrier = "@organizeos/site-components:ShareCodeCarrier";
+      return {
+        card: find(
+          (instance) =>
+            instance.component === carrier && instance.label === "Event Card"
+        ),
+        list: find(
+          (instance) =>
+            instance.component === carrier && instance.label === "Event List"
+        ),
+        form: find(
+          (instance) =>
+            instance.component === "@organizeos/site-components:SignupForm"
+        ),
+      };
+    };
+
+    const resourceBindings = (data: WebstudioData) =>
+      [...data.dataSources.values()].flatMap((dataSource) =>
+        dataSource.type === "resource" ? [dataSource] : []
+      );
+
+    const propValue = (
+      data: WebstudioData,
+      instanceId: Instance["id"],
+      name: string
+    ) =>
+      [...data.props.values()].find(
+        (prop) => prop.instanceId === instanceId && prop.name === name
+      )?.value;
+
+    test("binds each block to a binding of its own", async () => {
+      const data = await createProvisionedProject();
+      const resourceIdsBefore = new Set(data.resources.keys());
+
+      const result = applySiteTemplateMutable(data, renderSpike(), context);
+
+      expect(result).toEqual({ status: "applied", unboundBlocks: [] });
+      const { card, list, form } = findBlockRoots(data);
+      const bindings = resourceBindings(data);
+      expect(bindings.map((binding) => binding.scopeInstanceId).sort()).toEqual(
+        [card.id, list.id, form.id].sort()
+      );
+      const bindingOf = (rootId: Instance["id"]) =>
+        bindings.find((binding) => binding.scopeInstanceId === rootId)!;
+      expect(bindingOf(form.id).resourceId).toBe(presetIds.forms.resourceId);
+      expect(propValue(data, form.id, "data")).toContain(
+        encodeDataSourceVariable(bindingOf(form.id).id)
+      );
+
+      // each Events block reads its own binding, never the other's
+      for (const [block, other] of [
+        [card, list],
+        [list, card],
+      ]) {
+        expect(bindingOf(block.id)).toEqual(
+          expect.objectContaining({
+            name: UPCOMING_EVENTS_BINDING_NAME,
+            resourceId: presetIds.upcomingEvents.resourceId,
+          })
+        );
+        const own = encodeDataSourceVariable(bindingOf(block.id).id);
+        const others = encodeDataSourceVariable(bindingOf(other.id).id);
+        const bound = [
+          ["Events", "data"],
+          ["No upcoming events", showAttribute],
+          ["Events unavailable", showAttribute],
+        ] as const;
+        for (const [label, name] of bound) {
+          const instance = childrenOf(data, block.id).find(
+            (child) => child.label === label
+          )!;
+          const value = propValue(data, instance.id, name);
+          expect(value, `${block.label}: ${label}`).toContain(own);
+          expect(value, `${block.label}: ${label}`).not.toContain(others);
+        }
+      }
+
+      // Forms and Upcoming Events are created, once each
+      expect(
+        [...data.resources.keys()]
+          .filter((id) => resourceIdsBefore.has(id) === false)
+          .sort()
+      ).toEqual(
+        [presetIds.forms.resourceId, presetIds.upcomingEvents.resourceId].sort()
+      );
+    });
+
+    test("a block whose ids its placement prefix does not match is left unbound", async () => {
+      const data = await createProvisionedProject();
+      const [home] = renderSpike();
+      const root = home.fragment.children[0];
+      expect(root?.type).toBe("id");
+      // the Event List placed at the body: no "<body id>:events" to bind
+      const pages: RenderedPage[] = [
+        {
+          ...home,
+          placements: home.placements.map((placement) =>
+            placement.key === EventList
+              ? { ...placement, rootId: root.value }
+              : placement
+          ),
+        },
+      ];
+
+      const result = applySiteTemplateMutable(data, pages, context);
+
+      expect(result).toEqual({
+        status: "applied",
+        unboundBlocks: ["Event List"],
+      });
+      const { card, list, form } = findBlockRoots(data);
+      expect(
+        resourceBindings(data)
+          .map((binding) => binding.scopeInstanceId)
+          .sort()
+      ).toEqual([card.id, form.id].sort());
+      const collection = childrenOf(data, list.id).find(
+        (child) => child.label === "Events"
+      )!;
+      expect(String(propValue(data, collection.id, "data"))).not.toContain(
+        "$ws$dataSource$"
+      );
+    });
   });
 
   test("refuses a site with colours of its own, as the offer does", async () => {
