@@ -8,6 +8,9 @@ import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import { toValue } from "@webstudio-is/css-engine";
 import { ROOT_INSTANCE_ID } from "@webstudio-is/sdk";
+// The names file only: the site-templates index carries the catalog and its
+// images, which must stay out of the Style panel.
+import { CANONICAL_COLOR_NAMES } from "@organizeos/site-components/site-templates/canonical-variables";
 import {
   theme,
   styled,
@@ -97,14 +100,25 @@ const $rootColorVariables = computed(
 type Role = "base" | "accent1" | "accent2" | "text";
 
 /**
- * The variable each role takes: the lightest for the base, the darkest for
- * the text, and the others in the order they are defined.
+ * The variable each role takes. When the four canonical site variables are
+ * all there (site templates, spec 6.3) each role takes its own by name, so a
+ * dark theme keeps its dark base. Otherwise the lightest takes the base, the
+ * darkest the text, and the others in the order they are defined.
  */
 export const getDefaultRoles = (
   variables: PaletteColor[]
 ): Partial<Record<Role, string>> => {
   if (variables.length === 0) {
     return {};
+  }
+  const names = new Set(variables.map((color) => color.variable));
+  if (CANONICAL_COLOR_NAMES.every((name) => names.has(name))) {
+    return {
+      base: "base",
+      accent1: "accent-1",
+      accent2: "accent-2",
+      text: "text",
+    };
   }
   const byLuminance = [...variables].sort(
     (a, b) => luminance(a.rgba) - luminance(b.rgba)

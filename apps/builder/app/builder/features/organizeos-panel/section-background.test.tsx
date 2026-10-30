@@ -317,6 +317,47 @@ describe("palette", () => {
     expect(getDefaultRoles([])).toEqual({});
   });
 
+  test("roles follow the canonical names", () => {
+    const color = (variable: string, value: number) => ({
+      variable,
+      rgba: { r: value, g: value, b: value, a: 1 },
+    });
+    // A dark base and a light text: the luminance rule would swap them.
+    expect(
+      getDefaultRoles([
+        color("base", 0.05),
+        color("accent-1", 0.5),
+        color("accent-2", 0.6),
+        color("text", 0.95),
+      ])
+    ).toEqual({
+      base: "base",
+      accent1: "accent-1",
+      accent2: "accent-2",
+      text: "text",
+    });
+  });
+
+  test("three canonical names fall back to luminance", () => {
+    const color = (variable: string, value: number) => ({
+      variable,
+      rgba: { r: value, g: value, b: value, a: 1 },
+    });
+    expect(
+      getDefaultRoles([
+        color("base", 0.05),
+        color("text", 0.95),
+        color("accent-1", 0.5),
+        color("brand", 0.6),
+      ])
+    ).toEqual({
+      base: "text",
+      text: "base",
+      accent1: "accent-1",
+      accent2: "brand",
+    });
+  });
+
   test("with no variables, the presets take the built-in palette", () => {
     project();
     selectInstance(sectionSelector);
