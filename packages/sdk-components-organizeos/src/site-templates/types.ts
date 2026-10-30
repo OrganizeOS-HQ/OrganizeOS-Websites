@@ -32,7 +32,7 @@ export const CATEGORY_ORDER: TemplateCategory[] = [
 export type ImageEntry = {
   /** From a `?url` import of the file in the template's `images/` folder. */
   url: string;
-  /** Where the CC0 original came from. */
+  /** Where the image came from: its source (CC0 or OrganizeOS's own). */
   sourceUrl: string;
   /** Says what to replace the image with. */
   alt: string;
@@ -73,6 +73,7 @@ export type SiteTemplate = {
   status: "draft" | "listed";
   /** The PRs the template needs merged first. */
   dependsOn: string[];
+  /** The chooser's picture of the template: a file name in `images`. */
   thumbnail: string;
   variables: CanonicalValues;
   /** By file name in the template's `images/` folder. */

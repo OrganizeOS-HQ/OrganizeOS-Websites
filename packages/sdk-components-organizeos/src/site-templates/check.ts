@@ -1,5 +1,9 @@
 import { hyphenateProperty } from "@webstudio-is/css-engine";
-import type { Instance } from "@webstudio-is/sdk";
+import {
+  type Instance,
+  type WebstudioFragment,
+  pagePath,
+} from "@webstudio-is/sdk";
 import { contrastRatio } from "./canonical-variables";
 import { findStyleProblems } from "./style-scan";
 import { renderSiteTemplate, type RenderedPage } from "./render";
@@ -41,6 +45,9 @@ const blockRootComponents = new Set([
 // The org's provisioned sign-up page, which applying a template keeps (rule 8).
 const signupPagePath = "/newsletter";
 
+// The 404 page `createPages()` makes for every project.
+const notFoundPagePath = "/*";
+
 const minimumContrast = 4.5;
 
 const pageName = (key: string) => `Page "${key}"`;
@@ -58,6 +65,15 @@ const describeInstance = (instance: Instance) => {
   return `the ${kind} with id "${instance.id}"`;
 };
 
+/** The instance a prop is on, or its id when the fragment lacks it. */
+const describePropOwner = (
+  fragment: WebstudioFragment,
+  instanceId: Instance["id"]
+) => {
+  const instance = fragment.instances.find((item) => item.id === instanceId);
+  return instance ? describeInstance(instance) : `"${instanceId}"`;
+};
+
 const deniedWords = (text: string) =>
   denyPatterns.flatMap((pattern) => pattern.exec(text)?.[0] ?? []);
 
@@ -70,6 +86,19 @@ const checkPagePaths = (template: SiteTemplate): string[] => {
       violations.push(
         `${pageName(page.key)} is at ${signupPagePath}, which belongs to the org's sign-up page`
       );
+    } else if (page.path === notFoundPagePath) {
+      violations.push(
+        `${pageName(page.key)} is at ${notFoundPagePath}, which belongs to the 404 page`
+      );
+    } else if (page.path !== "") {
+      // the rules the builder's page settings hold a path to
+      const parsed = pagePath.safeParse(page.path);
+      if (parsed.success === false) {
+        const reasons = parsed.error.issues.map((issue) => issue.message);
+        violations.push(
+          `${pageName(page.key)} has the path "${page.path}", which is not a page path (${reasons.join("; ")})`
+        );
+      }
     }
   }
   for (const [path, keys] of keysByPath) {
@@ -96,13 +125,37 @@ const checkPageText = (template: SiteTemplate): string[] =>
     ),
   ]);
 
-const checkImageEntries = (template: SiteTemplate): string[] =>
-  Object.entries(template.images).flatMap(([file, entry]) => [
+// The apply routine uploads an image by its URL, resolved against the
+// builder's origin. A file small enough for Vite to inline as a data: URL is
+// not one it can upload.
+const isUploadableUrl = (url: string) => {
+  if (url.startsWith("/")) {
+    return url.startsWith("//") === false;
+  }
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
+};
+
+const checkImageEntries = (template: SiteTemplate): string[] => [
+  ...(Object.hasOwn(template.images, template.thumbnail)
+    ? []
+    : [
+        `The thumbnail "${template.thumbnail}" is not one of the template's images`,
+      ]),
+  ...Object.entries(template.images).flatMap(([file, entry]) => [
+    ...(isUploadableUrl(entry.url)
+      ? []
+      : [`Image "${file}" has a URL that is not root-relative or http(s)`]),
     ...(entry.sourceUrl.trim() === ""
       ? [`Image "${file}" has no source URL`]
       : []),
     ...(entry.alt.trim() === "" ? [`Image "${file}" has no alt text`] : []),
-  ]);
+  ]),
+];
 
 const checkContrast = (template: SiteTemplate): string[] => {
   const pairs = [
@@ -186,8 +239,9 @@ const checkStyles = (page: RenderedPage, blockIds: Set<string>): string[] => {
 };
 
 // An image on the page's own elements comes from the template's images
-// (image(file)), so its CC0 source is recorded and the apply routine uploads
-// it, and it carries alt text. A placed block's image is bound to its records.
+// (image(file)), so its source (CC0 or OrganizeOS's own) is recorded and the
+// apply routine uploads it, and it carries alt text. A placed block's image is
+// bound to its records.
 const checkImageInstances = (
   page: RenderedPage,
   blockIds: Set<string>
@@ -230,10 +284,40 @@ const checkBlocks = (page: RenderedPage): string[] => {
   );
 };
 
+// A link names a page by the id renderSiteTemplate gave it, so a mistyped
+// pageIds key links nowhere. A link to an element of a page is refused too:
+// applying the template gives the element a new id, and the link loses it.
+const checkPageLinks = (page: RenderedPage, pageIds: Set<string>): string[] => {
+  const { fragment } = page;
+  return fragment.props.flatMap((prop) => {
+    if (prop.type !== "page") {
+      return [];
+    }
+    const where = `${pageName(page.key)}: the "${prop.name}" of ${describePropOwner(fragment, prop.instanceId)}`;
+    // PageValue(undefined) leaves the value undefined, whatever its type says
+    const value: unknown = prop.value;
+    if (typeof value === "object" && value !== null) {
+      return [`${where} links to an element of a page`];
+    }
+    return typeof value === "string" && pageIds.has(value)
+      ? []
+      : [`${where} links to a page the template does not have`];
+  });
+};
+
 const checkFragment = (page: RenderedPage): string[] => {
   const { fragment } = page;
   const name = pageName(page.key);
   const violations: string[] = [];
+  // Applying makes the root the page's body.
+  const [root, ...otherRoots] = fragment.children;
+  const rootInstance =
+    root?.type === "id"
+      ? fragment.instances.find((instance) => instance.id === root.value)
+      : undefined;
+  if (rootInstance?.tag !== "body" || otherRoots.length > 0) {
+    violations.push(`${name}: the root is not one <body> element`);
+  }
   if (fragment.resources.length > 0) {
     violations.push(
       `${name}: holds ${fragment.resources.length} Resource(s); a template holds none`
@@ -283,13 +367,10 @@ const checkFragmentText = (page: RenderedPage): string[] => {
       if (prop.type !== "string") {
         return [];
       }
-      const instance = fragment.instances.find(
-        (item) => item.id === prop.instanceId
+      return found(
+        `the "${prop.name}" of ${describePropOwner(fragment, prop.instanceId)}`,
+        prop.value
       );
-      const owner = instance
-        ? describeInstance(instance)
-        : `"${prop.instanceId}"`;
-      return found(`the "${prop.name}" of ${owner}`, prop.value);
     }),
   ];
 };
@@ -322,10 +403,12 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
     violations.push(error instanceof Error ? error.message : String(error));
     return violations;
   }
+  const pageIds = new Set(pages.map((page) => page.pageId));
   for (const page of pages) {
     const blockIds = placedBlockIds(page);
     violations.push(
       ...checkBlocks(page),
+      ...checkPageLinks(page, pageIds),
       ...checkStyles(page, blockIds),
       ...checkImageInstances(page, blockIds),
       ...checkFragment(page),

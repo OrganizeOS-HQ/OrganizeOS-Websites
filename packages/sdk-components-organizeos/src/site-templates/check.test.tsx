@@ -102,7 +102,7 @@ const fixture = (overrides: Partial<SiteTemplate> = {}): SiteTemplate => ({
   styleTags: [],
   status: "draft",
   dependsOn: [],
-  thumbnail: "/thumbnail.jpg",
+  thumbnail: "hero.jpg",
   variables: BLANK_CANONICAL_VALUES,
   images: {
     "hero.jpg": {
@@ -367,6 +367,53 @@ describe("checkSiteTemplate", () => {
     });
   });
 
+  describe("pages", () => {
+    test("a page rooted at an element that is not the body is a violation", () => {
+      const about: SiteTemplatePage = {
+        ...aboutPage(),
+        body: () => (
+          <ws.element ws:tag="div">
+            <ws.element ws:tag="h1">{"About us"}</ws.element>
+          </ws.element>
+        ),
+      };
+      expectOneViolation(
+        checkSiteTemplate(fixture({ pages: [home, about] })),
+        '"about"',
+        "<body>"
+      );
+    });
+
+    test("a link to a page the template does not have is a violation", () => {
+      expectOneViolation(
+        checkAbout(({ pageIds }) => (
+          <$.Link ws:label="Broken link" href={new PageValue(pageIds.abuot)}>
+            {"About"}
+          </$.Link>
+        )),
+        '"about"',
+        '"Broken link"',
+        "page"
+      );
+    });
+
+    test("a link to an element of a page is a violation", () => {
+      expectOneViolation(
+        checkAbout(({ pageIds }) => (
+          <$.Link
+            ws:label="Section link"
+            href={new PageValue(pageIds.home, "hero")}
+          >
+            {"Home"}
+          </$.Link>
+        )),
+        '"about"',
+        '"Section link"',
+        "element"
+      );
+    });
+  });
+
   describe("paths", () => {
     test("a page at /newsletter is a violation", () => {
       expectOneViolation(
@@ -391,6 +438,29 @@ describe("checkSiteTemplate", () => {
       );
     });
 
+    test("a page at /* is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({ pages: [home, { ...aboutPage(), path: "/*" }] })
+        ),
+        '"about"',
+        "/*"
+      );
+    });
+
+    test.each(["about", "/About", "/about/", "/about us", "/s/about"])(
+      "the path %s is a violation",
+      (path) => {
+        expectOneViolation(
+          checkSiteTemplate(
+            fixture({ pages: [home, { ...aboutPage(), path }] })
+          ),
+          '"about"',
+          `"${path}"`
+        );
+      }
+    );
+
     test("no Home page is a violation", () => {
       expectOneViolation(
         checkSiteTemplate(
@@ -413,6 +483,45 @@ describe("checkSiteTemplate", () => {
         ),
         '"hero.jpg"',
         "source"
+      );
+    });
+
+    test.each([
+      "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+      "images/hero.jpg",
+      "//cdn.example.org/hero.jpg",
+    ])("an image at %s is a violation", (url) => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            images: { "hero.jpg": { ...fixture().images["hero.jpg"], url } },
+          })
+        ),
+        '"hero.jpg"',
+        "URL"
+      );
+    });
+
+    test("an image at an https URL is not a violation", () => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            images: {
+              "hero.jpg": {
+                ...fixture().images["hero.jpg"],
+                url: "https://example.org/hero.jpg",
+              },
+            },
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test("a thumbnail that is not one of the images is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ thumbnail: "/thumbnail.jpg" })),
+        "thumbnail",
+        '"/thumbnail.jpg"'
       );
     });
 
