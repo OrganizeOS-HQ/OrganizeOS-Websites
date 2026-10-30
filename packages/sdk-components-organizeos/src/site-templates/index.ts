@@ -5,3 +5,4 @@
 // directly, which keeps the catalog and its images out of its chunk.
 
 export * from "./canonical-variables";
+export * from "./place-block";
