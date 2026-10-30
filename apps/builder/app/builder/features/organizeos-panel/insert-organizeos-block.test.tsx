@@ -7,6 +7,7 @@ import {
   Parameter,
   expression,
   renderData,
+  renderTemplate,
   ws,
 } from "@webstudio-is/template";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
@@ -23,6 +24,7 @@ import {
 } from "@webstudio-is/sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
+import { createBlockPlacer } from "@organizeos/site-components/site-templates";
 import {
   $organizeosSite,
   $propValuesByInstanceSelector,
@@ -2154,6 +2156,105 @@ describe("completeOrganizeosFragment", () => {
         resources: new Map(),
       })
     ).toEqual({ status: "ready", fragment });
+  });
+
+  // A site template renders a page as one fragment, so the apply routine
+  // completes each placed block through a view of it: the page's instances with
+  // the block's root as the only child, and the block's ids prefixed by it.
+  describe("a block placed by a site template", () => {
+    const eventCard = "@organizeos/site-components:EventCard";
+    const placementId = "featured";
+    const instanceIdPrefix = `${placementId}:`;
+    const getPlacedBlock = () => {
+      const { placeBlock } = createBlockPlacer();
+      const page = renderTemplate(
+        <ws.element ws:tag="body">
+          {placeBlock(eventCard, placementId)}
+        </ws.element>
+      );
+      return {
+        ...page,
+        children: [{ type: "id" as const, value: placementId }],
+      };
+    };
+
+    test("completes a block placed with a prefix", () => {
+      const completion = completeOrganizeosFragment({
+        component: eventCard,
+        fragment: getPlacedBlock(),
+        instanceIdPrefix,
+        ...presets,
+      });
+
+      expect(completion).toEqual({
+        status: "ready",
+        fragment: expect.anything(),
+        binding: {
+          resourceId: upcomingEvents.resourceId,
+          resource: undefined,
+          name: "OrganizeOS Upcoming Events",
+          binds: [
+            {
+              instanceId: "featured:events",
+              prop: "data",
+              value: expect.any(Function),
+            },
+            {
+              instanceId: "featured:empty",
+              prop: "data-ws-show",
+              value: expect.any(Function),
+            },
+            {
+              instanceId: "featured:unavailable",
+              prop: "data-ws-show",
+              value: expect.any(Function),
+            },
+          ],
+        },
+      });
+    });
+
+    test("a prefixed block whose root is missing is refused", () => {
+      const completion = completeOrganizeosFragment({
+        component: eventCard,
+        fragment: {
+          ...getPlacedBlock(),
+          children: [{ type: "id", value: "not-in-the-fragment" }],
+        },
+        instanceIdPrefix,
+        ...presets,
+      });
+
+      expect(completion).toEqual({ status: "refused" });
+    });
+
+    test("a block with no entry is returned as it is, prefix or not", () => {
+      const fragment = getPlacedBlock();
+
+      expect(
+        completeOrganizeosFragment({
+          component: plainBlock,
+          fragment,
+          instanceIdPrefix,
+          ...presets,
+        })
+      ).toEqual({ status: "ready", fragment });
+    });
+
+    test("without a prefix, a fragment whose root is missing is returned as it is", () => {
+      const fragment = {
+        ...getPlacedBlock(),
+        children: [{ type: "id" as const, value: "not-in-the-fragment" }],
+      };
+
+      expect(
+        completeOrganizeosFragment({
+          component: eventCard,
+          fragment,
+          ...presets,
+        })
+      ).toEqual({ status: "ready", fragment });
+    });
   });
 });
 
