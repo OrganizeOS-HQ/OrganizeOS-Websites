@@ -1059,6 +1059,18 @@ describe("applySiteTemplate", () => {
     expect($selectedInstanceSelector.get()).toBeUndefined();
   });
 
+  test("refuses when no project is open", async () => {
+    setStores(await createProvisionedProject());
+    $project.set(undefined);
+
+    expect(await applySiteTemplate(template)).toEqual({
+      status: "refused",
+      reason: "no-project",
+    });
+    expect(uploadAssets).not.toHaveBeenCalled();
+    expect(getWebstudioData().pages.pages.size).toBe(3);
+  });
+
   test("refuses a touched project before uploading anything", async () => {
     const data = await createProvisionedProject();
     data.assets.set("asset-1", imageAsset("asset-1"));

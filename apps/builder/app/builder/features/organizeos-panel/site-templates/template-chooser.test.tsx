@@ -451,17 +451,28 @@ describe("choosing", () => {
     expect(setBuilderMode).toHaveBeenCalledWith("content");
   });
 
-  test("a refused apply says the site has content", async () => {
-    vi.mocked(applySiteTemplate).mockResolvedValue({
-      status: "refused",
-      reason: "touched",
-    });
-    render();
-    await choose("union");
-    expect(toastError).toHaveBeenCalledTimes(1);
-    expect(toastError).toHaveBeenCalledWith("This site already has content.");
-    expect(setBuilderMode).not.toHaveBeenCalled();
-  });
+  test.each([
+    { reason: "touched", message: "This site already has content." },
+    {
+      reason: "path-taken",
+      message: "This template's pages clash with pages this site already has.",
+    },
+    { reason: "resources", message: "This template cannot be applied." },
+    { reason: "no-project", message: "This template cannot be applied." },
+  ] as const)(
+    "a refused apply ($reason) says why in one error",
+    async ({ reason, message }) => {
+      vi.mocked(applySiteTemplate).mockResolvedValue({
+        status: "refused",
+        reason,
+      });
+      render();
+      await choose("union");
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(toastError).toHaveBeenCalledWith(message);
+      expect(setBuilderMode).not.toHaveBeenCalled();
+    }
+  );
 
   test("a rejected apply shows an error and keeps the dialog open", async () => {
     const consoleError = vi

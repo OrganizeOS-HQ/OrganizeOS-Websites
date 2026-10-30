@@ -126,6 +126,17 @@ const categoryLabels: Record<TemplateCategory, string> = {
   foundation: "Foundation",
 };
 
+/** What a refused apply says, by its reason. */
+const refusalMessages: Record<
+  Extract<ApplyResult, { status: "refused" }>["reason"],
+  string
+> = {
+  touched: "This site already has content.",
+  "path-taken": "This template's pages clash with pages this site already has.",
+  resources: "This template cannot be applied.",
+  "no-project": "This template cannot be applied.",
+};
+
 /** Write the blank-start variables, which ends the offer. */
 const startBlank = () => {
   updateWebstudioData((data) => {
@@ -147,7 +158,7 @@ const chooseTemplate = async (template: SiteTemplate) => {
     return;
   }
   if (result.status === "refused") {
-    builderApi.toast.error("This site already has content.");
+    builderApi.toast.error(refusalMessages[result.reason]);
     return;
   }
   const homePageId = $pages.get()?.homePageId;

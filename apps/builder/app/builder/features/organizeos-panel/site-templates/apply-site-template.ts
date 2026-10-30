@@ -183,7 +183,10 @@ export const startBlankMutable = (data: WebstudioData): void => {
 
 export type ApplyResult =
   | { status: "applied"; unboundBlocks: string[] }
-  | { status: "refused"; reason: "touched" | "path-taken" | "resources" };
+  | {
+      status: "refused";
+      reason: "touched" | "path-taken" | "resources" | "no-project";
+    };
 
 const isHomePage = (page: Pick<RenderedPage, "path">) => page.path === "";
 
@@ -348,10 +351,10 @@ export const applySiteTemplate = async (
   template: SiteTemplate
 ): Promise<ApplyResult> => {
   const project = $project.get();
-  if (
-    project === undefined ||
-    isProjectUntouched(getWebstudioData()) === false
-  ) {
+  if (project === undefined) {
+    return { status: "refused", reason: "no-project" };
+  }
+  if (isProjectUntouched(getWebstudioData()) === false) {
     return { status: "refused", reason: "touched" };
   }
   const presetIds = await getOrganizeosPresetIds(project.id);
