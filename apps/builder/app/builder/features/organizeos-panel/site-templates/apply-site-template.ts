@@ -49,9 +49,9 @@ import {
  * Applying a site template (OrganizeOS design
  * `2026-10-30-website-template-inventory-design.md` sections 6.2 and 6.3):
  * on a project as provisioning left it, the template's variables go on Global
- * Root, each page's body is inserted as a fragment in design mode, Home's body
- * is swapped for the template's, the other pages are added at the root of the
- * Pages tree, and each platform block the template placed is bound to the
+ * Root, each page's body is inserted as a fragment in design mode, Home takes
+ * the template's body, title and description, the other pages are added at the
+ * root of the Pages tree, and each platform block the template placed is bound to the
  * org's data as an inserted block is. All in one `updateWebstudioData`
  * transaction, so the builder's undo removes it in one step.
  */
@@ -298,6 +298,8 @@ export const applySiteTemplateMutable = (
     if (isHomePage(page)) {
       deleteBodyMutable(data, homePage.rootInstanceId);
       homePage.rootInstanceId = bodyId;
+      homePage.title = JSON.stringify(page.title);
+      homePage.meta.description = JSON.stringify(page.description);
     } else {
       data.pages.pages.set(page.pageId, {
         id: page.pageId,

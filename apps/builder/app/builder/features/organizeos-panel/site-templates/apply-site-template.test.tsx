@@ -157,7 +157,7 @@ const template: SiteTemplate = {
       key: "home",
       name: "Home",
       path: "",
-      title: "Home",
+      title: "Welcome",
       description:
         "Say in one sentence what your organization is working toward.",
       body: ({ pageIds, placeBlock, image, imageAlt }) => (
@@ -459,6 +459,7 @@ describe("applySiteTemplateMutable", () => {
     const data = await createProvisionedProject();
     const homePageId = data.pages.homePageId;
     const oldBodyId = data.pages.pages.get(homePageId)!.rootInstanceId;
+    data.pages.pages.get(homePageId)!.meta.language = JSON.stringify("en");
     const notFound = findPage(data, "/*")!;
     const newsletter = findPage(data, SIGNUP_PAGE_PATH)!;
     const pages = renderPages();
@@ -470,7 +471,20 @@ describe("applySiteTemplateMutable", () => {
     // Home keeps its page id and row; its body is the template's
     expect(data.pages.homePageId).toBe(homePageId);
     const home = data.pages.pages.get(homePageId)!;
-    expect(home).toMatchObject({ id: homePageId, name: "Home", path: "" });
+    // with the template's title and description, its other meta kept
+    expect(home).toEqual({
+      id: homePageId,
+      name: "Home",
+      path: "",
+      title: JSON.stringify("Welcome"),
+      rootInstanceId: expect.any(String),
+      meta: {
+        language: JSON.stringify("en"),
+        description: JSON.stringify(
+          "Say in one sentence what your organization is working toward."
+        ),
+      },
+    });
     expect(home.rootInstanceId).not.toBe(oldBodyId);
     expect(data.instances.has(oldBodyId)).toBe(false);
     expect(
