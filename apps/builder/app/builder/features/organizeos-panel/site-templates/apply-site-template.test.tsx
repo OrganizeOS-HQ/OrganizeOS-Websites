@@ -468,8 +468,9 @@ describe("applySiteTemplateMutable", () => {
     const homePageId = data.pages.homePageId;
     const oldBodyId = data.pages.pages.get(homePageId)!.rootInstanceId;
     data.pages.pages.get(homePageId)!.meta.language = JSON.stringify("en");
-    const notFound = findPage(data, "/*")!;
-    const newsletter = findPage(data, SIGNUP_PAGE_PATH)!;
+    // copies, so the rows after applying are compared with the rows before
+    const notFound = structuredClone(findPage(data, "/*")!);
+    const newsletter = structuredClone(findPage(data, SIGNUP_PAGE_PATH)!);
     const pages = renderPages();
 
     const result = applySiteTemplateMutable(data, pages, context);
