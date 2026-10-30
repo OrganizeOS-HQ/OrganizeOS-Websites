@@ -807,13 +807,18 @@ export const addCollectionToSitemapMutable = (
   return result;
 };
 
-/** Delete an instance's subtree with its props, scoped variables and styles. */
-const deleteSubtreeMutable = (
+/**
+ * Delete an instance's subtree with its props, scoped variables and style
+ * source selections; `parentId` is undefined for a page's root. Its local
+ * styles are the caller's (deleteLocalStyleSourcesMutable).
+ */
+export const deleteSubtreeMutable = (
   data: WebstudioData,
-  parentId: Instance["id"],
+  parentId: undefined | Instance["id"],
   instanceId: Instance["id"]
 ) => {
-  const parent = data.instances.get(parentId);
+  const parent =
+    parentId === undefined ? undefined : data.instances.get(parentId);
   if (parent !== undefined) {
     parent.children = parent.children.filter(
       (child) => child.type !== "id" || child.value !== instanceId

@@ -22,7 +22,7 @@ import {
   renderData,
   Variable,
 } from "@webstudio-is/template";
-import { uuidV5 } from "../organizeos-preset-ids";
+import { SIGNUP_PAGE_PATH, uuidV5 } from "../organizeos-preset-ids";
 import {
   updateDevBuildWithVersionBump,
   upsertById,
@@ -50,12 +50,6 @@ import {
  * at SIGNUP_PAGE_PATH.
  */
 
-/**
- * Where the starter signup page is seeded. Not under any path every org host
- * redirects to the platform (`/signup` is one, to the account sign-up), where
- * the page could never render: the guard test lists them.
- */
-export const SIGNUP_PAGE_PATH = "/newsletter";
 const SIGNUP_PAGE_NAME = "Newsletter";
 
 // Signup-form ids are derived in the same namespace as the read presets

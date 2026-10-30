@@ -73,6 +73,15 @@ export const FORMS_PRESET_KEY = "forms";
  */
 export const UPCOMING_EVENTS_PRESET_KEY = "upcoming-events";
 
+/**
+ * Where provisioning seeds the starter signup page
+ * (`shared/db/signup-form-preset.server.tsx`), which applying a site template
+ * keeps. Not under any path every org host redirects to the platform
+ * (`/signup` is one, to the account sign-up), where the page could never
+ * render: the guard test lists them.
+ */
+export const SIGNUP_PAGE_PATH = "/newsletter";
+
 /** The key of a public collection's catalog Resource. */
 export const getCollectionPresetKey = (slug: string) => `collection:${slug}`;
 
