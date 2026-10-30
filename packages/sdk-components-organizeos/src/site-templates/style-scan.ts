@@ -1,8 +1,9 @@
 import { toValue, type StyleValue } from "@webstudio-is/css-engine";
 import { isCanonicalName } from "./canonical-variables";
 
-// The style half of the template check (spec rule 2): a template's own
-// styles reach colours and fonts only through the canonical variables.
+// The style half of the template check: a template's own styles reach
+// colours and fonts only through the canonical variables (spec rule 2), and
+// images only through the template's images (rule 6).
 
 const colourProperties = new Set([
   "color",
@@ -110,7 +111,8 @@ const findFontProblem = (value: StyleValue): string | undefined => {
  * What is wrong with one style declaration's value, one phrase per problem:
  * a literal colour, a colour keyword where a colour goes, a literal colour
  * inside unparsed text (a gradient), a variable outside the canonical set,
- * or a font-family that is not a font variable.
+ * a font-family that is not a font variable, or an image by URL rather than
+ * one of the template's images (an asset).
  */
 export const findStyleProblems = (
   property: string,
@@ -126,6 +128,11 @@ export const findStyleProblems = (
   const nonCanonical = (name: string) =>
     `--${name}, which is not a canonical variable`;
   visitStyleValue(value, isColourProperty(property), (item, isColourSlot) => {
+    if (item.type === "image" && item.value.type === "url") {
+      problems.push(
+        `the image url(${item.value.url}), not one of the template's images`
+      );
+    }
     if (item.type === "rgb" || item.type === "color") {
       problems.push(`the literal colour ${toValue(item)}`);
     }

@@ -96,7 +96,7 @@ const checkPageText = (template: SiteTemplate): string[] =>
     ),
   ]);
 
-const checkImages = (template: SiteTemplate): string[] =>
+const checkImageEntries = (template: SiteTemplate): string[] =>
   Object.entries(template.images).flatMap(([file, entry]) => [
     ...(entry.sourceUrl.trim() === ""
       ? [`Image "${file}" has no source URL`]
@@ -149,9 +149,8 @@ const placedBlockIds = (page: RenderedPage) => {
   return ids;
 };
 
-const checkStyles = (page: RenderedPage): string[] => {
+const checkStyles = (page: RenderedPage, blockIds: Set<string>): string[] => {
   const { fragment } = page;
-  const blockIds = placedBlockIds(page);
   const instances = new Map(
     fragment.instances.map((instance) => [instance.id, instance])
   );
@@ -183,6 +182,39 @@ const checkStyles = (page: RenderedPage): string[] => {
       (problem) =>
         `${pageName(page.key)}: ${hyphenateProperty(decl.property)} on ${describeSource(decl.styleSourceId)} uses ${problem}`
     );
+  });
+};
+
+// An image on the page's own elements comes from the template's images
+// (image(file)), so its CC0 source is recorded and the apply routine uploads
+// it, and it carries alt text. A placed block's image is bound to its records.
+const checkImageInstances = (
+  page: RenderedPage,
+  blockIds: Set<string>
+): string[] => {
+  const { fragment } = page;
+  return fragment.instances.flatMap((instance) => {
+    if (
+      blockIds.has(instance.id) ||
+      (instance.component !== "Image" && instance.tag !== "img")
+    ) {
+      return [];
+    }
+    const prop = (name: string) =>
+      fragment.props.find(
+        (item) => item.instanceId === instance.id && item.name === name
+      );
+    const src = prop("src");
+    const alt = prop("alt");
+    const where = `${pageName(page.key)}: ${describeInstance(instance)}`;
+    return [
+      ...(src?.type === "asset"
+        ? []
+        : [`${where} has a src that is not one of the template's images`]),
+      ...(alt?.type === "string" && alt.value.trim() !== ""
+        ? []
+        : [`${where} has no alt text`]),
+    ];
   });
 };
 
@@ -271,7 +303,7 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
   const violations = [
     ...checkPagePaths(template),
     ...checkPageText(template),
-    ...checkImages(template),
+    ...checkImageEntries(template),
     ...checkContrast(template),
   ];
   let pages: RenderedPage[];
@@ -291,9 +323,11 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
     return violations;
   }
   for (const page of pages) {
+    const blockIds = placedBlockIds(page);
     violations.push(
       ...checkBlocks(page),
-      ...checkStyles(page),
+      ...checkStyles(page, blockIds),
+      ...checkImageInstances(page, blockIds),
       ...checkFragment(page),
       ...checkFragmentText(page)
     );

@@ -416,25 +416,71 @@ describe("checkSiteTemplate", () => {
       );
     });
 
-    test("an image without alt text is a violation", () => {
-      expectOneViolation(
-        checkSiteTemplate(
-          fixture({
-            images: {
-              "hero.jpg": { ...fixture().images["hero.jpg"], alt: " " },
-            },
-          })
-        ),
-        '"hero.jpg"',
-        "alt"
+    test("an image without alt text is a violation, and so is its Image", () => {
+      const violations = checkSiteTemplate(
+        fixture({
+          images: {
+            "hero.jpg": { ...fixture().images["hero.jpg"], alt: " " },
+          },
+        })
       );
+      // The entry, and Home's Image, whose alt is imageAlt("hero.jpg").
+      expect(violations).toEqual([
+        'Image "hero.jpg" has no alt text',
+        expect.stringMatching(/^Page "home": .* has no alt text$/),
+      ]);
     });
 
     test("an image that is not in the template's images is a violation", () => {
       expectOneViolation(
-        checkAbout(({ image }) => <$.Image src={image("missing.jpg")} />),
+        checkAbout(({ image }) => (
+          <$.Image src={image("missing.jpg")} alt="Replace with a photo" />
+        )),
         '"about"',
         '"missing.jpg"'
+      );
+    });
+
+    test("an Image with a literal src is a violation", () => {
+      expectOneViolation(
+        checkAbout(() => (
+          <$.Image
+            ws:label="Photo"
+            src="https://example.org/photo.jpg"
+            alt="Replace with a photo"
+          />
+        )),
+        '"about"',
+        '"Photo"',
+        "src"
+      );
+    });
+
+    test("an img with no alt is a violation", () => {
+      expectOneViolation(
+        checkAbout(({ image }) => (
+          <ws.element ws:tag="img" ws:label="Photo" src={image("hero.jpg")} />
+        )),
+        '"about"',
+        '"Photo"',
+        "alt"
+      );
+    });
+
+    test("a background image by URL is a violation", () => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:label="Banner"
+            ws:style={css`
+              background-image: url(https://example.org/photo.jpg);
+            `}
+          />
+        )),
+        '"about"',
+        '"Banner"',
+        "https://example.org/photo.jpg"
       );
     });
   });
