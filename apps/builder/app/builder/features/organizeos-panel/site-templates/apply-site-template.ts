@@ -231,10 +231,10 @@ const deleteBodyMutable = (data: WebstudioData, bodyId: Instance["id"]) => {
 
 /**
  * Write a rendered template into a transaction's data. Refuses, writing
- * nothing, unless the project is untouched (decided again here: the chooser's
- * check comes before the transaction, and the project can change while an
- * apply awaits), when a page brings a Resource, or when a page's path is
- * taken. A placed block that cannot be
+ * nothing, unless the project is untouched and has none of the canonical
+ * variables (the chooser's offer, decided again here: the project can change
+ * while the chooser is open and while an apply awaits), when a page brings a
+ * Resource, or when a page's path is taken. A placed block that cannot be
  * bound (its Events Resource is gone) is left in place, unbound, and named in
  * `unboundBlocks`.
  */
@@ -256,7 +256,8 @@ export const applySiteTemplateMutable = (
   const homePage = data.pages.pages.get(data.pages.homePageId);
   if (
     homePage === undefined ||
-    isProjectUntouched(data, { ignoreAssetIds }) === false
+    isProjectUntouched(data, { ignoreAssetIds }) === false ||
+    hasCanonicalVariables(data)
   ) {
     return { status: "refused", reason: "touched" };
   }

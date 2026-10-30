@@ -674,6 +674,16 @@ describe("applySiteTemplateMutable", () => {
     ).toBe(true);
   });
 
+  test("refuses a site with colours of its own, as the offer does", async () => {
+    const data = await withBlackBase();
+    const before = structuredClone(data);
+
+    const result = applySiteTemplateMutable(data, renderPages(), context);
+
+    expect(result).toEqual({ status: "refused", reason: "touched" });
+    expect(data).toEqual(before);
+  });
+
   test("refuses a fragment with resources", async () => {
     const data = await createProvisionedProject();
     const before = structuredClone(data);
