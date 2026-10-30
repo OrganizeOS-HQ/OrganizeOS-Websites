@@ -15,7 +15,9 @@ import { organizeos } from "../shared/proxy";
 // does not carry it.
 
 // A neutral card through a token shared with every Events block: restyling
-// "OS Card" restyles every card on the site, as the Signup Form's tokens do.
+// "OS Card" restyles every card on the site, as the Signup Form's tokens do. Its
+// background and text read the site's `--base` and `--text` (see
+// shared/form-tokens.ts), with the old literals as fallbacks.
 export const cardToken = token(
   "OS Card",
   css`
@@ -25,8 +27,8 @@ export const cardToken = token(
     padding: 16px;
     border: 1px solid #e4e4e7;
     border-radius: 8px;
-    background-color: #ffffff;
-    color: #18181b;
+    background-color: var(--base, #ffffff);
+    color: var(--text, #18181b);
   `
 );
 
