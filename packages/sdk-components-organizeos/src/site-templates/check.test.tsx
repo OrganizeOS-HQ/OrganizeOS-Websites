@@ -265,6 +265,53 @@ describe("checkSiteTemplate", () => {
         ))
       ).toEqual([]);
     });
+
+    test("none and auto on colour properties are not violations", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="svg"
+            ws:style={css`
+              fill: none;
+              stroke: none;
+              caret-color: auto;
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+
+    test("a literal font is a violation; a font variable is not", () => {
+      const fontOf = (style: ReturnType<typeof css>) =>
+        checkAbout(() => (
+          <ws.element ws:tag="div" ws:label="Text" ws:style={style} />
+        ));
+      expectOneViolation(
+        fontOf(css`
+          font-family: Georgia;
+        `),
+        '"about"',
+        '"Text"',
+        "Georgia"
+      );
+      expect(
+        fontOf(css`
+          font-family: var(--font-body);
+        `)
+      ).toEqual([]);
+      expect(
+        fontOf(css`
+          font-family: inherit;
+        `)
+      ).toEqual([]);
+      expectOneViolation(
+        fontOf(css`
+          font-family: var(--base);
+        `),
+        '"Text"',
+        "--base"
+      );
+    });
   });
 
   test("a Resource is a violation", () => {

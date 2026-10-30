@@ -1,8 +1,8 @@
 import { toValue, type StyleValue } from "@webstudio-is/css-engine";
 import { isCanonicalName } from "./canonical-variables";
 
-// The colour half of the template check (spec rule 2): a template's own
-// styles reach colours only through the canonical variables.
+// The style half of the template check (spec rule 2): a template's own
+// styles reach colours and fonts only through the canonical variables.
 
 const colourProperties = new Set([
   "color",
@@ -17,14 +17,21 @@ const colourProperties = new Set([
 const isColourProperty = (property: string) =>
   colourProperties.has(property) || /^border\w*Color$/.test(property);
 
-// Keywords that name no colour of their own.
+// Keywords that name no colour of their own (`none` for an SVG's fill or
+// stroke, `auto` for a caret).
 const allowedColourKeywords = new Set([
   "transparent",
   "currentcolor",
   "inherit",
   "initial",
   "unset",
+  "none",
+  "auto",
 ]);
+
+const fontVariables = new Set(["font-heading", "font-body"]);
+
+const allowedFontKeywords = new Set(["inherit", "initial", "unset"]);
 
 const literalColourInText = /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|oklch\(|color\(/i;
 
@@ -76,15 +83,46 @@ const visitStyleValue = (
 };
 
 /**
+ * A font-family reads `var(--font-heading)` or `var(--font-body)`. A
+ * variable outside the canonical set is left to the colour scan, which
+ * already reports it.
+ */
+const findFontProblem = (value: StyleValue): string | undefined => {
+  if (value.type === "var") {
+    if (
+      fontVariables.has(value.value) ||
+      isCanonicalName(value.value) === false
+    ) {
+      return;
+    }
+    return `--${value.value}, which is not a font variable`;
+  }
+  if (
+    value.type === "keyword" &&
+    allowedFontKeywords.has(value.value.toLowerCase())
+  ) {
+    return;
+  }
+  return `the font ${toValue(value)}, not var(--font-heading) or var(--font-body)`;
+};
+
+/**
  * What is wrong with one style declaration's value, one phrase per problem:
  * a literal colour, a colour keyword where a colour goes, a literal colour
- * inside unparsed text (a gradient), or a variable outside the canonical set.
+ * inside unparsed text (a gradient), a variable outside the canonical set,
+ * or a font-family that is not a font variable.
  */
-export const findColourProblems = (
+export const findStyleProblems = (
   property: string,
   value: StyleValue
 ): string[] => {
   const problems: string[] = [];
+  if (property === "fontFamily") {
+    const fontProblem = findFontProblem(value);
+    if (fontProblem !== undefined) {
+      problems.push(fontProblem);
+    }
+  }
   const nonCanonical = (name: string) =>
     `--${name}, which is not a canonical variable`;
   visitStyleValue(value, isColourProperty(property), (item, isColourSlot) => {

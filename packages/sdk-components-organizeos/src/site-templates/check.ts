@@ -1,7 +1,7 @@
 import { hyphenateProperty } from "@webstudio-is/css-engine";
 import type { Instance } from "@webstudio-is/sdk";
 import { contrastRatio } from "./canonical-variables";
-import { findColourProblems } from "./colour-scan";
+import { findStyleProblems } from "./style-scan";
 import { renderSiteTemplate, type RenderedPage } from "./render";
 import type { SiteTemplate } from "./types";
 
@@ -179,7 +179,7 @@ const checkStyles = (page: RenderedPage): string[] => {
     if (checkedSources.has(decl.styleSourceId) === false) {
       return [];
     }
-    return findColourProblems(decl.property, decl.value).map(
+    return findStyleProblems(decl.property, decl.value).map(
       (problem) =>
         `${pageName(page.key)}: ${hyphenateProperty(decl.property)} on ${describeSource(decl.styleSourceId)} uses ${problem}`
     );
