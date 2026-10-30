@@ -15,15 +15,15 @@ import {
 } from "./shared/form-tokens";
 import { organizeos } from "./shared/proxy";
 
-const formState = new Variable("formState", "initial");
-
+// A function, not a constant: a site template places the form once per
+// placement, and `renderTemplate` keys a data source by its Variable, so each
+// call needs a Variable of its own to scope the state to its own root.
+//
 // `data` is left unbound: the OrganizeOS panel binds it to the project's
 // Forms preset by id when it inserts the block.
-export const meta: TemplateMeta = {
-  category: "hidden",
-  label: "Signup Form",
-  description: "Newsletter and contact signups",
-  template: (
+export const signupFormTemplate = () => {
+  const formState = new Variable("formState", "initial");
+  return (
     <organizeos.SignupForm
       state={expression`${formState}`}
       onStateChange={
@@ -102,5 +102,12 @@ export const meta: TemplateMeta = {
         {new PlaceholderValue("Signups are not available right now.")}
       </ws.element>
     </organizeos.SignupForm>
-  ),
+  );
+};
+
+export const meta: TemplateMeta = {
+  category: "hidden",
+  label: "Signup Form",
+  description: "Newsletter and contact signups",
+  template: signupFormTemplate(),
 };
