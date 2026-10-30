@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { atom, computed } from "nanostores";
 import { useStore } from "@nanostores/react";
+import type { AuthPermit } from "@webstudio-is/trpc-interface/index.server";
 import {
   theme,
   Button,
@@ -20,6 +21,7 @@ import {
   listedTemplates,
 } from "@organizeos/site-components/site-templates";
 import {
+  $authPermit,
   $isContentModeAllowed,
   $organizeosSite,
   selectPage,
@@ -69,16 +71,20 @@ const getOfferedTemplates = (showDrafts: boolean): SiteTemplate[] => [
     : []),
 ];
 
+/** The permits that may build: applying writes pages, tokens and styles. */
+const buildPermits = new Set<AuthPermit>(["build", "admin", "own"]);
+
 /**
- * Whether the chooser is offered: the data is loaded, the org is not denied
- * the blocks (templates place them, and this is the only caller of
- * applySiteTemplate), the project is untouched and has none of the canonical
- * variables, and a template is offered. Reads the raw stores, since
- * getWebstudioData() throws before the data loads.
+ * Whether the chooser is offered: the data is loaded, the permit can build,
+ * the org is not denied the blocks (templates place them, and this is the
+ * only caller of applySiteTemplate), the project is untouched and has none of
+ * the canonical variables, and a template is offered. Reads the raw stores,
+ * since getWebstudioData() throws before the data loads.
  */
 export const $isTemplateChooserOffered = computed(
   [
     $dataLoadingState,
+    $authPermit,
     $organizeosSite,
     $showTemplateDrafts,
     $pages,
@@ -89,6 +95,7 @@ export const $isTemplateChooserOffered = computed(
   ],
   (
     dataLoadingState,
+    authPermit,
     _organizeosSite,
     showDrafts,
     pages,
@@ -98,6 +105,7 @@ export const $isTemplateChooserOffered = computed(
     styleSourceSelections
   ) =>
     dataLoadingState === "loaded" &&
+    buildPermits.has(authPermit) &&
     // the blocks deny list, read from $organizeosSite
     isOrganizeosBlocksEnabled() &&
     pages !== undefined &&

@@ -273,6 +273,34 @@ describe("the offer", () => {
     expect(dialog()).not.toBeNull();
   });
 
+  test("not offered to a viewer", () => {
+    $authPermit.set("view");
+    render();
+    expect($isTemplateChooserOffered.get()).toBe(false);
+    expect(dialog()).toBeNull();
+  });
+
+  test("not offered to a content editor (edit)", () => {
+    $authPermit.set("edit");
+    render();
+    expect($isTemplateChooserOffered.get()).toBe(false);
+    expect(dialog()).toBeNull();
+  });
+
+  test("offered to a builder and an admin", () => {
+    $authPermit.set("build");
+    render();
+    expect(dialog()).not.toBeNull();
+    act(() => {
+      $authPermit.set("admin");
+    });
+    expect(dialog()).not.toBeNull();
+    act(() => {
+      $authPermit.set("view");
+    });
+    expect(dialog()).toBeNull();
+  });
+
   test("not offered to an org denied the blocks", () => {
     $organizeosSite.set({ ...$organizeosSite.get()!, blocksEnabled: false });
     render();
