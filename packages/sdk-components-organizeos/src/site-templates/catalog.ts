@@ -1,3 +1,4 @@
+import { marigoldMarqueeTemplate } from "./campaign/marigold-marquee";
 import { porchLightTemplate } from "./community/porch-light";
 import { fieldJournalTemplate } from "./nonprofit/field-journal";
 import { CATEGORY_ORDER, type SiteTemplate } from "./types";
@@ -11,6 +12,7 @@ export const SITE_TEMPLATES: SiteTemplate[] = [
   fieldJournalTemplate,
   porchLightTemplate,
   workwearTemplate,
+  marigoldMarqueeTemplate,
 ];
 
 /** The templates the chooser offers: listed ones, by category order. */
