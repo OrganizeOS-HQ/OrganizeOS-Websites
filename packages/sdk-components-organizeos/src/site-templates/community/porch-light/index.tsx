@@ -24,11 +24,14 @@ import { home } from "./pages/home";
 // The photos are public domain works of United States federal agencies, from
 // Wikimedia Commons, cropped, resized and compressed. Painted out: in
 // snapshot-garden.jpg, the brand patch on a cap and the brand on a pair of
-// sunglasses; in snapshot-block-party.jpg, a brand emblem on a T-shirt and an
-// embroidered emblem on a cap's visor; in snapshot-meeting.jpg, the printing
-// on the back of a cap and of a T-shirt; in about.jpg, the agency emblem on a
-// cap, a name tag and a vehicle maker's name; in story.jpg, the title on a
-// booklet.
+// sunglasses; in snapshot-block-party.jpg, a brand emblem on a T-shirt (its
+// print continued over it), an embroidered emblem on a cap's visor, a
+// printed carton in the bottom-left corner, and a third person cut off at
+// the left edge (the field behind cloned from the field between the two
+// volunteers); in snapshot-meeting.jpg, the printing on the back of a cap and
+// of a T-shirt; in about.jpg, the agency emblem on a cap and a name tag on a
+// jacket (each filled from the cap's or the jacket's own fabric) and a
+// vehicle maker's name; in story.jpg, the title on a booklet.
 
 export const porchLightTemplate: SiteTemplate = {
   id: "porch-light",

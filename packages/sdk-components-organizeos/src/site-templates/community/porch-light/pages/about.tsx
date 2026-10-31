@@ -49,7 +49,10 @@ const value = ([number, name, line]: Value) => (
   </ws.element>
 );
 
-/** Mission and values: Three columns. */
+/**
+ * Mission and values: Three columns, one below 992px, where three would
+ * leave a value's name, kept on one line, wider than its column.
+ */
 const values = (context: PageContext) =>
   section({
     label: "Mission and values: Three columns",
@@ -63,7 +66,11 @@ const values = (context: PageContext) =>
       <ws.element
         ws:tag="div"
         ws:label="Values"
-        ws:style={gridStyles(3, { gap: SPACE[48], phoneGap: SPACE[32] })}
+        ws:style={gridStyles(3, {
+          tablet: 1,
+          gap: SPACE[48],
+          phoneGap: SPACE[32],
+        })}
       >
         {contentBlock({
           label: "Values",
@@ -259,6 +266,8 @@ export const about: SiteTemplatePage = {
         context,
         imageSide: "left",
         file: "story.jpg",
+        // the phone's 4:3 crop keeps the heads in the back row whole
+        position: "50% 20%",
         tag: "Our story",
         heading: "How it started",
         paragraphs: [

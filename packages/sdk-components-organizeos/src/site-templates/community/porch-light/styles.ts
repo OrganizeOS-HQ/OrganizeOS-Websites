@@ -163,11 +163,15 @@ export const paragraphStyles = (
 
 /**
  * The one line a section wants remembered: in the heading font, underlined
- * thick in teal, on the base only.
+ * thick in teal, on the base only. Its spaces collapse, as the published
+ * site's own default (preserve) would keep the space at the end of each
+ * wrapped line and underline it too.
  */
 export const pullLineStyles = (): TemplateStyleDecl[] => css`
-  margin: 0;
   margin-top: ${SPACE[8]};
+  margin-right: 0;
+  margin-bottom: 0;
+  margin-left: 0;
   max-width: 24em;
   font-family: var(--font-heading);
   font-size: 28px;
@@ -179,6 +183,7 @@ export const pullLineStyles = (): TemplateStyleDecl[] => css`
   text-decoration-thickness: 4px;
   text-underline-offset: 8px;
   text-wrap-style: pretty;
+  white-space-collapse: collapse;
   ${BREAKPOINT.landscape} {
     font-size: 24px;
   }

@@ -195,6 +195,8 @@ export const home: SiteTemplatePage = {
         context,
         imageSide: "right",
         file: "about.jpg",
+        // the phone's 4:3 crop keeps his cap and a little sky above it
+        position: "50% 5%",
         tag: "About us",
         heading: "Say how your group got started",
         paragraphs: [
