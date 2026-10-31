@@ -1,12 +1,11 @@
 import { ws } from "@webstudio-is/template";
 import type { SiteTemplatePage } from "../../types";
+import { hero } from "./hero";
+import { siteFooter, siteNav } from "./parts";
 import {
   faq,
-  hero,
   shareBand,
   signUp,
-  siteFooter,
-  siteNav,
   statsProgress,
   whyItMatters,
 } from "./sections";
@@ -34,7 +33,6 @@ export const home: SiteTemplatePage = {
       {siteNav(context.pageIds)}
       {hero({
         context,
-        // one bracketed ask, wrapping as a sentence does
         ask: "[Say what you are asking for, and of whom]",
         sentence:
           "Say in one sentence why it matters now, and what changes if enough people sign.",
@@ -71,7 +69,7 @@ export const home: SiteTemplatePage = {
       {signUp({
         placeBlock: context.placeBlock,
         label: "Every name counts",
-        heading: "Join the [1,240] already on the list",
+        heading: "Join everyone already on the list",
         intro: "Say who the names go to, and when.",
         reasons: [
           "Say what the names will be used for, and who will see the list.",

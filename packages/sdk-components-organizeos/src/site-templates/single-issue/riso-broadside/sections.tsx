@@ -1,28 +1,22 @@
-import { $, css, ws, type TemplateStyleDecl } from "@webstudio-is/template";
+import { css, ws, type TemplateStyleDecl } from "@webstudio-is/template";
 import {
   BREAKPOINT,
   CONTAINER,
   SPACE,
-  type SiteLink,
   contentBlock,
   focusRing,
-  footer,
   keyed,
-  linkProps,
-  nav,
   sample,
   section,
   text,
 } from "../../kit";
 import type { PageContext } from "../../types";
+import { ADD_YOUR_NAME, type PageIds, invertedButton } from "./parts";
 import {
-  LOOK,
   RULE,
   answerStyles,
   countStyles,
-  displayStyles,
   headingStyles,
-  invertedButtonStyles,
   labelStyles,
   leadStyles,
   numeralStyles,
@@ -34,58 +28,9 @@ import {
   subheadingStyles,
 } from "./styles";
 
-// Riso Broadside's sections, in the order Home shows them, each a kit
-// section named from the vocabulary (spec section 3). Home (./home) gives
-// them their sample copy. One page, one goal: every button is "Add your
-// name", to the form (`#sign-up`), and the nav's links are the page's own
-// anchors.
-
-type PageIds = PageContext["pageIds"];
-
-/** The one ask: the form, on this page. */
-export const ADD_YOUR_NAME: SiteLink = {
-  label: "Add your name",
-  href: "#sign-up",
-};
-
-/** A square button on a blue field, in the base colour. */
-const invertedButton = (
-  pageIds: PageIds,
-  styles: TemplateStyleDecl[] = []
-): JSX.Element => (
-  <$.Link
-    ws:label="Button"
-    {...linkProps(pageIds, ADD_YOUR_NAME)}
-    ws:style={[...invertedButtonStyles(), ...styles]}
-  >
-    {ADD_YOUR_NAME.label}
-  </$.Link>
-);
-
-/** Nav: Centered, with the page's anchors and the one button. */
-export const siteNav = (pageIds: PageIds): JSX.Element =>
-  nav({
-    pageIds,
-    variant: "centered",
-    links: [
-      { label: "Why", href: "#why" },
-      { label: "FAQ", href: "#faq" },
-    ],
-    cta: ADD_YOUR_NAME,
-    ...LOOK,
-  });
-
-/** Footer: Simple, its links the page's anchors. */
-export const siteFooter = (pageIds: PageIds, tagline: string): JSX.Element =>
-  footer({
-    pageIds,
-    tagline: sample(tagline),
-    links: [
-      { label: "Why", href: "#why" },
-      { label: "FAQ", href: "#faq" },
-      ADD_YOUR_NAME,
-    ],
-  });
+// Riso Broadside's sections after the hero (./hero), in the order Home
+// shows them, each a kit section named from the vocabulary (spec section
+// 3). Home (./home) gives them their sample copy.
 
 /** A section's heading block: a label, the h2 and a sentence. */
 const sectionHeader = ({
@@ -112,173 +57,6 @@ const sectionHeader = ({
     {text("p", paragraphStyles(), intro)}
   </ws.element>
 );
-
-/** A layer covering the hero, under its text. */
-const heroLayer = (label: string, styles: TemplateStyleDecl[]) => (
-  <ws.element
-    ws:tag="div"
-    ws:label={label}
-    ws:style={[
-      ...css`
-        position: absolute;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        left: 0;
-      `,
-      ...styles,
-    ]}
-  />
-);
-
-/**
- * Hero: Full-bleed image. The photo fills the section in blue duotone, the
- * board's photo multiplied with accent-1, and the ask, a sentence and the
- * one button sit centred over it in the base colour.
- *
- * The duotone lays the photo, in greys, from the darker to the lighter of
- * accent-1 and the text colour, channel by channel. Tone lifts the
- * section's accent-1 to the lighter of the two (`lighten`); the photo
- * multiplies it, black to that colour; Floor screens the darker of the two
- * over it, so the photo's black is that colour and its greys rise from it;
- * and Cap holds every channel to the lighter of the two (`darken`). In the
- * board's palette that is the photo multiplied with accent-1, ink to blue;
- * in a dark palette, whose text is lighter than its accent-1, a light blue
- * print on white. Floor and Cap mix their two colours in their own
- * backgrounds (`background-blend-mode`).
- *
- * Both ends are a checked pair with the base (base on accent-1, and text on
- * base), and every shade between lies between them in each channel, so
- * wherever the photo is light or dark the ask holds at least 4.5:1 against
- * what is behind it, given an accent-1 and a text colour of which one is
- * the lighter in every channel, as both palettes' are (index.test.ts). With
- * no photo the section shows the lighter of the two: in the board's palette
- * a plain accent-1 field (in a dark palette, the text colour's).
- *
- * The section is isolated, so the blends reach nothing outside it. The hero
- * is 4:5 on a portrait phone, its button full width, and square from 480px
- * to 767px but no taller than the window less the nav and the hero's
- * padding; it grows when its text needs more.
- */
-export const hero = ({
-  context,
-  ask,
-  sentence,
-  position,
-  phonePosition,
-}: {
-  context: PageContext;
-  ask: string;
-  sentence: string;
-  position: string;
-  phonePosition: string;
-}): JSX.Element =>
-  section({
-    label: "Hero: Full-bleed image",
-    background: "accent-1",
-    styles: css`
-      position: relative;
-      isolation: isolate;
-    `,
-    children: keyed([
-      heroLayer(
-        "Tone",
-        css`
-          background-color: var(--text);
-          mix-blend-mode: lighten;
-        `
-      ),
-      <$.Image
-        ws:label="Photo"
-        src={context.image("hero.jpg")}
-        alt={context.imageAlt("hero.jpg")}
-        ws:style={css`
-          position: absolute;
-          top: 0;
-          left: 0;
-          display: block;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          object-position: ${position};
-          filter: grayscale(1);
-          mix-blend-mode: multiply;
-          ${BREAKPOINT.landscape} {
-            object-position: ${phonePosition};
-          }
-        `}
-      />,
-      heroLayer(
-        "Floor",
-        css`
-          background-color: var(--accent-1);
-          background-image: linear-gradient(var(--text), var(--text));
-          background-blend-mode: darken;
-          mix-blend-mode: screen;
-        `
-      ),
-      heroLayer(
-        "Cap",
-        css`
-          background-color: var(--accent-1);
-          background-image: linear-gradient(var(--text), var(--text));
-          background-blend-mode: lighten;
-          mix-blend-mode: darken;
-        `
-      ),
-      <ws.element
-        ws:tag="div"
-        ws:label="Text"
-        ws:style={[
-          ...stackStyles(SPACE[24], "center"),
-          ...css`
-            position: relative;
-            justify-content: center;
-            min-height: clamp(420px, 32vw + 180px, 660px);
-            text-align: center;
-            ${BREAKPOINT.landscape} {
-              row-gap: ${SPACE[16]};
-              min-height: min(calc(100vw - 112px), calc(100vh - 224px));
-            }
-            ${BREAKPOINT.portrait} {
-              align-items: stretch;
-              min-height: calc(125vw - 112px);
-            }
-          `,
-        ]}
-      >
-        <ws.element
-          ws:tag="h1"
-          ws:style={[
-            ...displayStyles(),
-            ...css`
-              max-width: 11em;
-            `,
-          ]}
-        >
-          {ask}
-        </ws.element>
-        {text("p", leadStyles({ wrap: "balance", maxWidth: "30em" }), sentence)}
-        <ws.element
-          ws:tag="div"
-          ws:style={css`
-            display: flex;
-            justify-content: center;
-            margin-top: ${SPACE[8]};
-          `}
-        >
-          {invertedButton(
-            context.pageIds,
-            css`
-              ${BREAKPOINT.portrait} {
-                flex-grow: 1;
-              }
-            `
-          )}
-        </ws.element>
-      </ws.element>,
-    ]),
-  });
 
 /**
  * Stats: Inline row, the progress line: the count large in pink, and beside
@@ -599,6 +377,7 @@ export const signUp = ({
         >
           {placeBlock("@organizeos/site-components:SignupForm", "signup", {
             heading: ADD_YOUR_NAME.label,
+            submit: ADD_YOUR_NAME.label,
           })}
         </ws.element>
         <ws.element

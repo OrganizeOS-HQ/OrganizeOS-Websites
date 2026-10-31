@@ -10,22 +10,24 @@ import { RULE } from "./styles";
 // Riso Broadside, the first Single-issue drive or petition template
 // (OrganizeOS spec 2026-10-30-website-template-inventory-design.md, section
 // 5.1, template 5; its look is 2026-10-31-website-template-directions.md,
-// section 2.5): one page for one goal. Its page is ./home; its sections are
-// ./sections, drawn with its look (./styles). The Signup Form, the stand-in
-// for a petition until a petition block exists, wears its look through
+// section 2.5): one page for one goal. Its page is ./home; its hero is
+// ./hero, its other sections ./sections, its nav and footer ./parts, all
+// drawn with its look (./styles). The Signup Form, the stand-in for a
+// petition until a petition block exists, wears its look through
 // blockTokens below: an Instrument Serif heading, square fields in 2px
-// outlines and a square blue button.
+// outlines and a square blue button, its label the page's ask.
 //
 // The photo is a public domain work of a United States federal agency, from
 // Wikimedia Commons: Dan McCoy's photograph for DOCUMERICA (the
 // Environmental Protection Agency's 1970s photographic survey, in the
 // National Archives) of people reading the handouts at a public forum in
-// New York, August 1973. It is cropped inside the
-// slide's border, turned to greys with the weights of CSS `grayscale()`,
-// its levels stretched, and compressed. Painted out: a printed mark (a ring
-// and a wave) on the cover of a booklet on a lap, filled with the cover's
-// own shading and grain. The hero shows it in duotone (sections.tsx), so a
-// photo an org puts there takes the palette the same way.
+// New York, August 1973. It is cropped inside the slide's border, turned to
+// greys with the weights of CSS `grayscale()`, its levels stretched, its
+// midtones lifted (gamma 0.7), and compressed, since the slide is
+// low-key and the duotone sets its shadows in ink. Painted out: a printed
+// mark (a ring and a wave) on the cover of a booklet on a lap, filled with
+// the cover's own shading and grain. The hero shows it in duotone
+// (./hero), so a photo an org puts there takes the palette the same way.
 
 export const risoBroadsideTemplate: SiteTemplate = {
   id: "riso-broadside",

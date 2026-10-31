@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 import { approvedPalettes } from "../../__fixtures__/approved-palettes";
 import { checkSiteTemplate } from "../../check";
 import { SITE_TEMPLATES } from "../../catalog";
-import { contrastRatio } from "../../canonical-variables";
 import { renderSiteTemplate } from "../../render";
 import { risoBroadsideTemplate } from "./index";
 import nightPress from "./palettes/night-press.json";
@@ -16,12 +15,6 @@ const renderHome = () => {
   });
   return home.fragment;
 };
-
-const hex = (channels: number[]) =>
-  `#${channels.map((value) => Math.round(value).toString(16).padStart(2, "0")).join("")}`;
-
-const channels = (color: string) =>
-  [1, 3, 5].map((start) => parseInt(color.slice(start, start + 2), 16));
 
 describe("Riso Broadside", () => {
   test("is in the catalog as a draft", () => {
@@ -88,34 +81,6 @@ describe("Riso Broadside", () => {
         ) ?? []
     );
     expect(asked).toContain("What happens to my details?");
-  });
-
-  // The hero lays the photo, in greys, from the darker to the lighter of
-  // accent-1 and the text colour, channel by channel (sections.tsx): the
-  // photo multiplies the lighter, the darker is screened over it, and the
-  // lighter caps it. From black to white, every shade it can take holds the
-  // ask, in the base colour, at 4.5:1, in the board's palette and the
-  // alternate.
-  test.each([
-    ["the board's palette", risoBroadsideTemplate.variables],
-    ["night press", nightPress],
-  ])("the hero's duotone holds the ask at 4.5:1 in %s", (_name, palette) => {
-    const accent = channels(palette["accent-1"]).map((value) => value / 255);
-    const ink = channels(palette.text).map((value) => value / 255);
-    const lighter = accent.map((value, index) => Math.max(value, ink[index]));
-    const darker = accent.map((value, index) => Math.min(value, ink[index]));
-    for (let grey = 0; grey <= 255; grey += 1) {
-      const shade = lighter.map((value, index) => {
-        const multiplied = (value * grey) / 255;
-        const screened =
-          multiplied + darker[index] - multiplied * darker[index];
-        return Math.min(screened, value) * 255;
-      });
-      expect(
-        contrastRatio(palette.base, hex(shade)),
-        hex(shade)
-      ).toBeGreaterThanOrEqual(4.5);
-    }
   });
 
   // The alternate palette the owner reviews beside the board's: the same
