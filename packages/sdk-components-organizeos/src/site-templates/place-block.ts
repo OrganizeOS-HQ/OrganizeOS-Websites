@@ -6,6 +6,7 @@ import {
 } from "../events/event-card.template";
 import { rsvpFormTemplate } from "../rsvp-form.template";
 import { signupFormTemplate } from "../signup-form.template";
+import { sample } from "./kit/sample";
 import type { BlockStyle } from "./types";
 
 // The platform blocks a site template can place, by their Components-panel
@@ -38,12 +39,14 @@ export type FormBlockOptions = {
   /**
    * The text of the form's heading, in place of the block's own placeholder
    * ("Sign up for updates", "RSVP to this event"): the template's sample
-   * copy, which the org edits as its own.
+   * copy, which the org edits as its own. Set through the kit's `sample()`,
+   * so a [bracketed] placeholder in it keeps together.
    */
   heading?: string;
   /**
    * The text of the form's submit button, in place of the block's own
-   * placeholder ("Sign up", "RSVP"), so it can say the template's ask.
+   * placeholder ("Sign up", "RSVP"), so it can say the template's ask; set
+   * through `sample()` as the heading is.
    */
   submit?: string;
 };
@@ -71,11 +74,21 @@ export type BlockPlacement = { key: BlockKey; rootId: string };
 
 type BlockOptions = EventsBlockOptions & FormBlockOptions;
 
+/** A form's text as the kit sets sample copy, or none. */
+const sampleText = (text: string | undefined) =>
+  text === undefined ? undefined : sample(text);
+
 const factories: Record<BlockKey, (options: BlockOptions) => JSX.Element> = {
   "@organizeos/site-components:SignupForm": ({ heading, submit }) =>
-    signupFormTemplate({ heading, submit }),
+    signupFormTemplate({
+      heading: sampleText(heading),
+      submit: sampleText(submit),
+    }),
   "@organizeos/site-components:RsvpForm": ({ heading, submit }) =>
-    rsvpFormTemplate({ heading, submit }),
+    rsvpFormTemplate({
+      heading: sampleText(heading),
+      submit: sampleText(submit),
+    }),
   "@organizeos/site-components:EventList": ({ card }) =>
     eventsTemplate({ label: "Event List", card }),
   "@organizeos/site-components:EventCard": ({ card }) =>

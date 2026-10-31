@@ -379,6 +379,34 @@ describe("placement options", () => {
     ]);
   });
 
+  // Sample copy, as the kit's sample() sets a template's own text: a
+  // bracketed placeholder keeps together on a phone.
+  test("a form block's heading and submit text keep a bracketed placeholder on one line", () => {
+    const { placeBlock } = createBlockPlacer();
+    const signup = renderTemplate(
+      placeBlock("@organizeos/site-components:SignupForm", "signup", {
+        heading: "Join [Organization name] today",
+        submit: "Join [the drive]",
+      })
+    );
+    expect(headingOf(signup)).toEqual([
+      { type: "text", value: "Join [Organization name] today" },
+    ]);
+    expect(submitOf(signup)).toEqual([
+      { type: "text", value: "Join [the drive]" },
+    ]);
+    const rsvp = renderTemplate(
+      placeBlock("@organizeos/site-components:RsvpForm", "rsvp", {
+        heading: "RSVP to [Event name]",
+        submit: "Count [me] in",
+      })
+    );
+    expect(headingOf(rsvp)).toEqual([
+      { type: "text", value: "RSVP to [Event name]" },
+    ]);
+    expect(submitOf(rsvp)).toEqual([{ type: "text", value: "Count [me] in" }]);
+  });
+
   test("a form block takes no events options, and an events block no form options", () => {
     const Signup = "@organizeos/site-components:SignupForm" as const;
     const List = "@organizeos/site-components:EventList" as const;
