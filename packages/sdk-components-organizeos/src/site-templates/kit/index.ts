@@ -5,6 +5,7 @@
 // module.
 
 export {
+  ACCENT_TEXT,
   BREAKPOINT,
   CONTAINER,
   FOCUS_RING_VARIABLE,

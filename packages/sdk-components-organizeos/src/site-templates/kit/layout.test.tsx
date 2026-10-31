@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { css, renderTemplate, ws } from "@webstudio-is/template";
 import { initialBreakpoints } from "@webstudio-is/sdk";
 import {
+  ACCENT_TEXT,
   BREAKPOINT,
   CONTAINER,
   SPACE,
@@ -186,6 +187,23 @@ describe("section", () => {
     expect(ring("text")).toBe("var(--base)");
   });
 
+  // A block token's accent-2 text (an event's day) is held against the base
+  // alone: on a band it takes the band's text colour, as the ring does.
+  test("on a band, sets accent text in the band's text colour; on the base, leaves it alone", () => {
+    const accentText = (background?: "base" | "accent-1" | "text") => {
+      const fragment = renderBody(
+        section({ label: "Band", background, children: content() })
+      );
+      return stylesAt(fragment, byLabel(fragment, "Band"), 1440)[
+        "--accent-text"
+      ];
+    };
+    expect(accentText()).toBeUndefined();
+    expect(accentText("base")).toBeUndefined();
+    expect(accentText("accent-1")).toBe("var(--base)");
+    expect(accentText("text")).toBe("var(--base)");
+  });
+
   test("takes a narrower container", () => {
     for (const width of ["wide", "text", "narrow"] as const) {
       const fragment = renderBody(
@@ -260,6 +278,11 @@ describe("section", () => {
         --focus-ring: var(--text);
       `)
     ).toThrow(/--focus-ring/);
+    expect(
+      restating(css`
+        --accent-text: var(--text);
+      `)
+    ).toThrow(/--accent-text/);
     // the same property under another breakpoint is the template's own
     expect(
       restating(css`
@@ -295,6 +318,12 @@ describe("section", () => {
     // the body, then a section, its container and paragraph per call
     expect(ids).toHaveLength(7);
     expect(new Set(ids).size).toBe(7);
+  });
+});
+
+describe("ACCENT_TEXT", () => {
+  test("reads a band's accent text colour, accent-2 outside a band", () => {
+    expect(ACCENT_TEXT).toBe("var(--accent-text, var(--accent-2))");
   });
 });
 

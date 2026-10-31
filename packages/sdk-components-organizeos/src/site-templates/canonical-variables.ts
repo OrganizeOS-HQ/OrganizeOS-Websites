@@ -48,6 +48,36 @@ export const isCanonicalName = (name: string): name is CanonicalName =>
   canonicalNames.includes(name);
 
 /**
+ * The variable (`--focus-ring`) a band sets to the colour of the focus
+ * rings inside it. The check holds `--accent-2` against the base alone, so
+ * on a band it can all but vanish; a band rings focus in its text colour,
+ * `--base`, which the check holds against accent-1, as it holds the text
+ * colour against the base. Unset, on the base, the ring is `--accent-2`. A
+ * band is the kit's `section()` on accent-1 or text, or a section the
+ * builder's dark Background presets paint.
+ */
+export const FOCUS_RING_VARIABLE = "focus-ring";
+
+/**
+ * The variable (`--accent-text`) a band sets to the colour of accent-2 text
+ * inside it, its text colour, for the same reason: a template's block tokens
+ * are site-wide, so an events block an org places on a band later wears
+ * them there, and their accent-2 text reads `var(--accent-text,
+ * var(--accent-2))`. Unset, on the base, it is `--accent-2`.
+ */
+export const ACCENT_TEXT_VARIABLE = "accent-text";
+
+/**
+ * The variables a band sets for what sits inside it, each a canonical
+ * colour; a base-coloured panel inside a band sets them back to
+ * `var(--accent-2)`.
+ */
+export const BAND_VARIABLES = [
+  FOCUS_RING_VARIABLE,
+  ACCENT_TEXT_VARIABLE,
+] as const;
+
+/**
  * The family a font value names first, as CSS reads it: `"Source Serif 4",
  * Georgia, serif` reads `Source Serif 4`. It is the family a site's text is
  * set in when the font is there, so it is the one a template bundles and a

@@ -1,4 +1,11 @@
 import { css, ws, type TemplateStyleDecl } from "@webstudio-is/template";
+import {
+  ACCENT_TEXT_VARIABLE,
+  BAND_VARIABLES,
+  FOCUS_RING_VARIABLE,
+} from "../canonical-variables";
+
+export { FOCUS_RING_VARIABLE };
 
 // The layout kit's measurements and page frame: the skeleton every template
 // shares (OrganizeOS spec 2026-10-31-website-template-directions.md, section
@@ -97,21 +104,10 @@ const sectionColours: Record<
 };
 
 /**
- * The custom property (`--focus-ring`) a band sets to the colour of the
- * focus rings inside it. The check holds `--accent-2` against the base
- * alone, so on a band it can all but vanish; a band rings focus in its text
- * colour, `--base`, which the check holds against accent-1, as it holds the
- * text colour against the base. Unset, on the base, the ring is
- * `--accent-2`. A base-coloured panel inside a band that holds the kit's
- * links sets it back to `var(--accent-2)`.
- */
-export const FOCUS_RING_VARIABLE = "focus-ring";
-
-/**
  * The focus ring of every link and button: 2px at a 2px offset, of
  * `--accent-2`, or of a band's text colour inside a band
- * (`FOCUS_RING_VARIABLE`). A nested rule, so it goes last among an element's
- * styles.
+ * (`FOCUS_RING_VARIABLE` in canonical-variables.ts). A nested rule, so it
+ * goes last among an element's styles.
  */
 export const focusRing = (): TemplateStyleDecl[] => css`
   &:focus-visible {
@@ -121,6 +117,14 @@ export const focusRing = (): TemplateStyleDecl[] => css`
     outline-offset: 2px;
   }
 `;
+
+/**
+ * Text in accent-2 that a band sets in its own text colour
+ * (`ACCENT_TEXT_VARIABLE` in canonical-variables.ts): a block token's colour
+ * (an event's day or link), which an events block an org places on a band
+ * later wears there.
+ */
+export const ACCENT_TEXT = `var(--${ACCENT_TEXT_VARIABLE}, var(--accent-2))`;
 
 /**
  * A template's choices the kit draws with, given to `nav`, `footer` and
@@ -166,12 +170,12 @@ const declarationKey = ({ breakpoint, state, property }: TemplateStyleDecl) =>
  * A full-bleed `<section>` named `label` in the Navigator, in one of the
  * checked colour pairs (base by default), padded above and below, around a
  * container (`wide` by default) holding `children`. A band (accent-1 or
- * text) rings focus in its text colour (`FOCUS_RING_VARIABLE`). `id` is the
- * target of an in-page link (`#sign-up`). `styles` adds the template's own
- * to the section's (`position: relative`, so a full-bleed image inside the
- * container can cover the section); one that restates a declaration of the
- * kit's (the same property at the same breakpoint and state) throws, since
- * the later of the two would win unseen.
+ * text) rings focus and sets accent text in its text colour
+ * (`BAND_VARIABLES`). `id` is the target of an in-page link (`#sign-up`).
+ * `styles` adds the template's own to the section's (`position: relative`,
+ * so a full-bleed image inside the container can cover the section); one
+ * that restates a declaration of the kit's (the same property at the same
+ * breakpoint and state) throws, since the later of the two would win unseen.
  */
 export const section = ({
   label,
@@ -189,14 +193,16 @@ export const section = ({
   styles?: TemplateStyleDecl[];
 }): JSX.Element => {
   const colours = sectionColours[background];
+  const bandVariables =
+    background === "base"
+      ? []
+      : BAND_VARIABLES.map((name) => `--${name}: var(--${colours.text});`);
   const own = css`
     padding-top: ${sectionPadding.base};
     padding-bottom: ${sectionPadding.base};
     background-color: var(--${colours.background});
     color: var(--${colours.text});
-    ${background === "base"
-      ? ""
-      : `--${FOCUS_RING_VARIABLE}: var(--${colours.text});`}
+    ${bandVariables.join("\n")}
     ${BREAKPOINT.landscape} {
       padding-top: ${sectionPadding.phone};
       padding-bottom: ${sectionPadding.phone};

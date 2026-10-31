@@ -363,6 +363,57 @@ describe("checkSiteTemplate", () => {
       );
     });
 
+    // Block tokens are site-wide: an events block an org places on a band
+    // later wears them there, where accent-2 text is unchecked. Through the
+    // kit's accent text variable it takes the band's text colour.
+    test.each([
+      {
+        name: "bare accent-2",
+        style: css`
+          color: var(--accent-2);
+        `,
+      },
+      {
+        name: "accent-2 on hover",
+        style: css`
+          &:hover {
+            color: var(--accent-2);
+          }
+        `,
+      },
+      {
+        name: "accent-2 under a media query",
+        style: css`
+          @media (max-width: 767px) {
+            color: var(--accent-2);
+          }
+        `,
+      },
+    ])("a block token's text in $name is a violation", ({ style }) => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ blockTokens: { "OS Event Link": style } })),
+        "Block tokens",
+        '"OS Event Link"',
+        "accent-2",
+        "--accent-text"
+      );
+    });
+
+    test("a block token's text in accent-2 through the accent text variable is not a violation", () => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Event Link": css`
+                color: var(--accent-text, var(--accent-2));
+                text-decoration-color: var(--accent-2);
+              `,
+            },
+          })
+        )
+      ).toEqual([]);
+    });
+
     test("a block token no placed block wears is a violation", () => {
       // the fixture places cover cards and a Signup Form: no date column
       expectOneViolation(
@@ -481,7 +532,7 @@ describe("checkSiteTemplate", () => {
                 width: 56px;
               `,
               "OS Event Day": css`
-                color: var(--accent-2);
+                color: var(--accent-text, var(--accent-2));
               `,
               "OS Event Row": css`
                 row-gap: 4px;
@@ -719,6 +770,24 @@ describe("checkSiteTemplate", () => {
           --focus-ring: #ffffff;
         `,
       },
+      {
+        name: "a colour keyword for the kit's accent text",
+        style: css`
+          --accent-text: white;
+        `,
+      },
+      {
+        name: "a literal colour for the kit's accent text",
+        style: css`
+          --accent-text: #ffffff;
+        `,
+      },
+      {
+        name: "the kit's accent text set to a font variable",
+        style: css`
+          --accent-text: var(--font-body);
+        `,
+      },
     ])("$name is a violation", ({ style }) => {
       expectOneViolation(
         checkAbout(() => (
@@ -754,6 +823,20 @@ describe("checkSiteTemplate", () => {
             ws:style={css`
               --focus-ring: var(--base);
               outline-color: var(--focus-ring, var(--accent-2));
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+
+    test("the kit's accent text variable, set to a canonical colour and read with accent-2 behind it, is not a violation", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              --accent-text: var(--base);
+              color: var(--accent-text, var(--accent-2));
             `}
           />
         ))

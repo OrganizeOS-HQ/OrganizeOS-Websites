@@ -1,5 +1,5 @@
 import { camelCaseProperty, parseMediaQuery } from "@webstudio-is/css-data";
-import { hyphenateProperty } from "@webstudio-is/css-engine";
+import { hyphenateProperty, type StyleValue } from "@webstudio-is/css-engine";
 import {
   type Breakpoint,
   type Instance,
@@ -8,6 +8,7 @@ import {
   pagePath,
 } from "@webstudio-is/sdk";
 import {
+  ACCENT_TEXT_VARIABLE,
   CANONICAL_FONT_NAMES,
   contrastRatio,
   firstFontFamily,
@@ -427,8 +428,15 @@ const checkStyles = (page: RenderedPage, blockIds: Set<string>): string[] => {
   });
 };
 
+/** Whether a value is accent-2 itself, not through a band's accent text. */
+const isAccent2 = (value: StyleValue) =>
+  value.type === "var" && value.value === "accent-2";
+
 // A template's look for the block tokens is its own style: held to the
-// rules its page styles are.
+// rules its page styles are. And its text in accent-2 goes through the
+// band's accent text (ACCENT_TEXT_VARIABLE): the tokens are site-wide, so an
+// events block an org places on a band later wears them there, where
+// accent-2 text is a pair the check never holds.
 const checkBlockTokenStyles = (template: SiteTemplate): string[] =>
   Object.entries(template.blockTokens ?? {}).flatMap(([name, style = []]) =>
     style.flatMap(({ breakpoint, property, value }) => {
@@ -442,6 +450,11 @@ const checkBlockTokenStyles = (template: SiteTemplate): string[] =>
         ...findStyleProblems(camelCaseProperty(property), value).map(
           (problem) => `${where} uses ${problem}`
         ),
+        ...(property === "color" && isAccent2(value)
+          ? [
+              `${where} sets text in var(--accent-2), which a band does not change: read var(--${ACCENT_TEXT_VARIABLE}, var(--accent-2))`,
+            ]
+          : []),
         ...(breakpointProblem === undefined
           ? []
           : [`${where} ${breakpointProblem}`]),

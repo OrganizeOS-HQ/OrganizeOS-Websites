@@ -1,5 +1,5 @@
 import { css } from "@webstudio-is/template";
-import { BREAKPOINT, SPACE } from "../../kit";
+import { ACCENT_TEXT, BREAKPOINT, SPACE } from "../../kit";
 import type { BlockStyle, SiteTemplate } from "../../types";
 import {
   cardPaddingStyles,
@@ -84,12 +84,13 @@ export const blockTokens: SiteTemplate["blockTokens"] = {
       }
     `,
   ],
-  // The day number: large, in the heading font at 800, in teal.
+  // The day number: large, in the heading font at 800, in teal (in a
+  // band's text colour on a band, ACCENT_TEXT).
   "OS Event Day": css`
     font-size: 44px;
     font-weight: 800;
     letter-spacing: -0.03em;
-    color: var(--accent-2);
+    color: ${ACCENT_TEXT};
     ${BREAKPOINT.landscape} {
       font-size: 36px;
     }

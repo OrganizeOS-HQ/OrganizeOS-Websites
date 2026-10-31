@@ -1,5 +1,5 @@
 import { css } from "@webstudio-is/template";
-import { BREAKPOINT, SPACE, focusRing } from "../../kit";
+import { ACCENT_TEXT, BREAKPOINT, SPACE, focusRing } from "../../kit";
 import type { BlockStyle, SiteTemplate } from "../../types";
 import { HAIRLINE, RADIUS } from "./styles";
 
@@ -53,12 +53,13 @@ export const blockTokens: SiteTemplate["blockTokens"] = {
       font-size: 23px;
     }
   `,
-  // The template's link: mint, underlined 2px, as wide as its words, with
-  // the kit's focus ring.
+  // The template's link: mint (in a band's text colour on a band,
+  // ACCENT_TEXT, as the date's and the day's), underlined 2px, as wide as its
+  // words, with the kit's focus ring.
   "OS Event Link": [
     ...css`
       align-self: flex-start;
-      color: var(--accent-2);
+      color: ${ACCENT_TEXT};
       text-decoration-thickness: 2px;
       text-underline-offset: 6px;
     `,
@@ -89,7 +90,7 @@ export const blockTokens: SiteTemplate["blockTokens"] = {
     align-items: flex-start;
     width: 72px;
     row-gap: ${SPACE[4]};
-    color: var(--accent-2);
+    color: ${ACCENT_TEXT};
     font-size: 15px;
     letter-spacing: 0.1em;
     text-align: left;
@@ -103,7 +104,7 @@ export const blockTokens: SiteTemplate["blockTokens"] = {
     font-weight: 400;
     line-height: 0.9;
     letter-spacing: -0.02em;
-    color: var(--accent-2);
+    color: ${ACCENT_TEXT};
     ${BREAKPOINT.landscape} {
       font-size: 40px;
     }

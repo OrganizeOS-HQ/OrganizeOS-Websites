@@ -2,7 +2,7 @@ import barlow400Url from "@fontsource/barlow/files/barlow-latin-400-normal.woff2
 import barlow500Url from "@fontsource/barlow/files/barlow-latin-500-normal.woff2?url&no-inline";
 import barlowCondensed700Url from "@fontsource/barlow-condensed/files/barlow-condensed-latin-700-normal.woff2?url&no-inline";
 import { css } from "@webstudio-is/template";
-import { BREAKPOINT } from "../../kit";
+import { ACCENT_TEXT, BREAKPOINT } from "../../kit";
 import type { SiteTemplate } from "../../types";
 import aboutUrl from "./images/about.jpg?url&no-inline";
 import heroUrl from "./images/hero.jpg?url&no-inline";
@@ -145,7 +145,8 @@ export const workwearTemplate: SiteTemplate = {
     // The Event List as ruled rows (its root's own style, in
     // sections.tsx, draws the rule above the first): no card chrome, a
     // rule beneath each row, a fixed 56px date column with the month over
-    // the day, large in accent-2, and the title in the heading face.
+    // the day, large in accent-2 (in a band's text colour on a band,
+    // ACCENT_TEXT), and the title in the heading face.
     "OS Card": css`
       padding-top: 24px;
       padding-right: 0;
@@ -211,7 +212,7 @@ export const workwearTemplate: SiteTemplate = {
       font-weight: 700;
       line-height: 0.9;
       letter-spacing: 0;
-      color: var(--accent-2);
+      color: ${ACCENT_TEXT};
     `,
     "OS Event Title": css`
       font-size: 26px;

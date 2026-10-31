@@ -1,12 +1,15 @@
 import { toValue, type StyleValue } from "@webstudio-is/css-engine";
-import { CANONICAL_COLOR_NAMES, isCanonicalName } from "./canonical-variables";
-import { FOCUS_RING_VARIABLE } from "./kit/layout";
+import {
+  BAND_VARIABLES,
+  CANONICAL_COLOR_NAMES,
+  isCanonicalName,
+} from "./canonical-variables";
 
 // The style half of the template check: a template's own styles reach
 // colours and fonts only through the canonical variables (spec rule 2), and
-// images only through the template's images (rule 6). The one other
-// variable is the kit's focus ring (FOCUS_RING_VARIABLE), which a band sets
-// to a canonical colour.
+// images only through the template's images (rule 6). The only other
+// variables are the band's (BAND_VARIABLES: the focus ring and the accent
+// text), which a band sets to a canonical colour.
 
 const colourProperties = new Set([
   "color",
@@ -21,9 +24,11 @@ const colourProperties = new Set([
 const isColourProperty = (property: string) =>
   colourProperties.has(property) || /^border\w*Color$/.test(property);
 
-/** A variable a template's styles may read: a canonical one, or the kit's ring. */
+const bandVariables: readonly string[] = BAND_VARIABLES;
+
+/** A variable a template's styles may read: a canonical one, or a band's. */
 const isAllowedVariable = (name: string) =>
-  isCanonicalName(name) || name === FOCUS_RING_VARIABLE;
+  isCanonicalName(name) || bandVariables.includes(name);
 
 // Keywords that name no colour of their own (`none` for an SVG's fill or
 // stroke, `auto` for a caret).
@@ -118,21 +123,25 @@ const findFontProblem = (value: StyleValue): string | undefined => {
  * What is wrong with one style declaration's value, one phrase per problem:
  * a literal colour, a colour keyword where a colour goes, a literal colour
  * inside unparsed text (a gradient), a variable outside the canonical set
- * and the kit's focus ring, a font-family that is not a font variable, an
- * image by URL rather than one of the template's images (an asset), or the
- * focus ring set to anything but a colour variable.
+ * and the band's, a font-family that is not a font variable, an image by
+ * URL rather than one of the template's images (an asset), or a band
+ * variable set to anything but a bare canonical colour variable.
  */
 export const findStyleProblems = (
   property: string,
   value: StyleValue
 ): string[] => {
-  if (property === `--${FOCUS_RING_VARIABLE}`) {
+  const bandVariable = BAND_VARIABLES.find((name) => property === `--${name}`);
+  if (bandVariable !== undefined) {
     const colours: readonly string[] = CANONICAL_COLOR_NAMES;
     return value.type === "var" &&
       colours.includes(value.value) &&
       value.fallback === undefined
       ? []
-      : [`the focus ring set to ${toValue(value)}, not a colour variable`];
+      : [
+          // "the focus ring", "the accent text"
+          `the ${bandVariable.replace("-", " ")} set to ${toValue(value)}, not a colour variable`,
+        ];
   }
   const problems: string[] = [];
   if (property === "fontFamily") {
