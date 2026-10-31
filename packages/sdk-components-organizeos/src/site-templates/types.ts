@@ -66,6 +66,9 @@ export type BlockTokenName =
   | "OS Button"
   | "OS Message"
   | "OS Card"
+  | "OS Event Title"
+  | "OS Event Link"
+  | "OS Event Row"
   | "OS Event Date"
   | "OS Event Day";
 

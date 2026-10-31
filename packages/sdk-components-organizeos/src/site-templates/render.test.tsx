@@ -438,6 +438,49 @@ describe("template block tokens", () => {
     ]);
   });
 
+  test("the dated card's row, title and link take the template's look", () => {
+    const page = byKey(
+      render({
+        ...withTokens,
+        blockTokens: {
+          "OS Event Row": css`
+            @media (max-width: 767px) {
+              flex-direction: column;
+              row-gap: 4px;
+            }
+          `,
+          "OS Event Title": css`
+            font-size: 20px;
+          `,
+          "OS Event Link": css`
+            color: var(--accent-1);
+          `,
+        },
+      }),
+      "events"
+    );
+    const row = tokenStyles(page, "OS Event Row");
+    expect(declared(row, "flexDirection")).toEqual([
+      { type: "keyword", value: "row" },
+    ]);
+    expect(declared(row, "flexDirection", 767)).toEqual([
+      { type: "keyword", value: "column" },
+    ]);
+    expect(declared(row, "rowGap", 767)).toEqual([
+      { type: "unit", unit: "px", value: 4 },
+    ]);
+    const title = tokenStyles(page, "OS Event Title");
+    expect(declared(title, "fontSize")).toEqual([
+      { type: "unit", unit: "px", value: 20 },
+    ]);
+    expect(declared(title, "fontFamily")).toEqual([
+      { type: "var", value: "font-heading" },
+    ]);
+    expect(declared(tokenStyles(page, "OS Event Link"), "color")).toEqual([
+      { type: "var", value: "accent-1" },
+    ]);
+  });
+
   test("a page that places none of the tokens named is unchanged", () => {
     const plain = byKey(render({ ...withTokens, blockTokens: {} }), "join");
     const styled = byKey(render(withTokens), "join");

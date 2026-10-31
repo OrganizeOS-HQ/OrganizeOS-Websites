@@ -34,9 +34,16 @@ test("the Event List's description says what it lists", () => {
 });
 
 // The fragment the Components panel inserted before the dated card was added
-// (plan Task A7), with OS Card's four border colours changed from the literal
-// #e4e4e7 to a mix of the site's text and base colours. Nothing else differs:
-// the cover card is still the default.
-test("the Event List is the fragment it was, but for OS Card's border colours", () => {
+// (plan Task A7), with these changes and no others; the cover card is still
+// the default:
+// - OS Card's four border colours, from the literal #e4e4e7 to a mix of the
+//   site's text and base colours;
+// - the title wears "OS Event Title", in the heading font;
+// - the link wears "OS Event Link": --text, underlined and bolder, a 44px tap
+//   target. The browser's link blue was close to invisible on every dark
+//   palette, a readability defect, so the snapshot gives way for it (A7
+//   follow-up ruling);
+// - the start time's lines are balanced, so "AM" is not left alone.
+test("the Event List is the fragment it was, but for the changes above", () => {
   expect(renderTemplate(meta.template)).toEqual(beforeDatedCards);
 });

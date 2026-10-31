@@ -6,6 +6,9 @@ import {
   cardToken,
   eventDateToken,
   eventDayToken,
+  eventLinkToken,
+  eventRowToken,
+  eventTitleToken,
 } from "../events/event-card.template";
 import { approvedPalettes } from "../site-templates/__fixtures__/approved-palettes";
 import {
@@ -206,6 +209,9 @@ test("BlockTokenName names every block token", () => {
     "OS Card": cardToken,
     "OS Event Date": eventDateToken,
     "OS Event Day": eventDayToken,
+    "OS Event Row": eventRowToken,
+    "OS Event Title": eventTitleToken,
+    "OS Event Link": eventLinkToken,
   } satisfies Record<BlockTokenName, Token>;
   for (const [name, token] of Object.entries(byName)) {
     expect(token.name).toBe(name);
@@ -224,6 +230,7 @@ const tokens = [
   ["OS Card", cardToken],
   ["OS Event Date", eventDateToken],
   ["OS Event Day", eventDayToken],
+  ["OS Event Link", eventLinkToken],
 ] as const;
 
 type Reading = {
@@ -282,6 +289,7 @@ test("the colours the contrast test reads are the ones the blocks read from vari
     ["OS Card color", "text", "base"],
     ["OS Event Date color", "text", "base"],
     ["OS Event Day color", "text", "base"],
+    ["OS Event Link color", "text", "base"],
   ]);
 });
 

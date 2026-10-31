@@ -264,12 +264,26 @@
     },
     {
       "type": "local",
+      "id": "5:ws:style"
+    },
+    {
+      "type": "local",
       "id": "6:ws:style"
     },
     {
       "type": "token",
       "id": "8",
       "name": "OS Card"
+    },
+    {
+      "type": "token",
+      "id": "9",
+      "name": "OS Event Title"
+    },
+    {
+      "type": "token",
+      "id": "10",
+      "name": "OS Event Link"
     }
   ],
   "styleSourceSelections": [
@@ -283,7 +297,11 @@
     },
     {
       "instanceId": "4",
-      "values": ["4:ws:style"]
+      "values": ["4:ws:style", "9"]
+    },
+    {
+      "instanceId": "5",
+      "values": ["5:ws:style"]
     },
     {
       "instanceId": "6",
@@ -292,6 +310,10 @@
     {
       "instanceId": "2",
       "values": ["8"]
+    },
+    {
+      "instanceId": "7",
+      "values": ["10"]
     }
   ],
   "styles": [
@@ -399,6 +421,24 @@
         "type": "unit",
         "unit": "number",
         "value": 0
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "5:ws:style",
+      "property": "textWrapMode",
+      "value": {
+        "type": "keyword",
+        "value": "wrap"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "5:ws:style",
+      "property": "textWrapStyle",
+      "value": {
+        "type": "keyword",
+        "value": "balance"
       }
     },
     {
@@ -695,6 +735,93 @@
           "type": "unparsed",
           "value": "#18181b"
         }
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "9",
+      "property": "fontFamily",
+      "value": {
+        "type": "var",
+        "value": "font-heading"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "10",
+      "property": "display",
+      "value": {
+        "type": "keyword",
+        "value": "inline-flex"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "10",
+      "property": "alignItems",
+      "value": {
+        "type": "keyword",
+        "value": "center"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "10",
+      "property": "minHeight",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 44
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "10",
+      "property": "marginTop",
+      "value": {
+        "type": "unparsed",
+        "value": "calc((1lh - 44px)/2)"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "10",
+      "property": "marginBottom",
+      "value": {
+        "type": "unparsed",
+        "value": "calc((1lh - 44px)/2)"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "10",
+      "property": "color",
+      "value": {
+        "type": "var",
+        "value": "text",
+        "fallback": {
+          "type": "unparsed",
+          "value": "#18181b"
+        }
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "10",
+      "property": "fontWeight",
+      "value": {
+        "type": "unit",
+        "unit": "number",
+        "value": 600
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "10",
+      "property": "textDecorationLine",
+      "value": {
+        "type": "keyword",
+        "value": "underline"
       }
     }
   ],

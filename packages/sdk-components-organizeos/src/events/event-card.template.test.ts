@@ -10,6 +10,9 @@ import { renderTemplate, ws, type Token } from "@webstudio-is/template";
 import {
   eventDateToken,
   eventDayToken,
+  eventLinkToken,
+  eventRowToken,
+  eventTitleToken,
   eventsTemplate,
 } from "./event-card.template";
 import { evaluateOverItem, eventsFixture } from "./events-block-tests";
@@ -95,18 +98,20 @@ describe("the dated card", () => {
   // before its tokens in the fragment, so the token's direction would win on
   // the article: the row is the wrapper's. It wraps, so a template that sets
   // OS Event Date to the full width puts the date above the details.
-  test("the row is the wrapper's own: a wrapping flex row", () => {
+  // The row wears OS Event Row, so a template changes its gap or stacks it.
+  test("the row wrapper wears OS Event Row and has no style of its own", () => {
     const row = byLabel("Date and details");
-    const local = fragment.styles.filter(
-      (style) => style.styleSourceId === `${row.id}:ws:style`
-    );
-    const valueOf = (property: string) =>
-      local.find((style) => style.property === property)?.value;
-    expect(valueOf("display")).toEqual({ type: "keyword", value: "flex" });
-    expect(valueOf("flexDirection")).toBeUndefined();
-    expect(valueOf("flexWrap")).toEqual({ type: "keyword", value: "wrap" });
-    expect(valueOf("columnGap")).toBeDefined();
-    expect(tokensOf(row)).toEqual([]);
+    expect(tokensOf(row)).toEqual(["OS Event Row"]);
+    expect(
+      fragment.styles.filter(
+        (style) => style.styleSourceId === `${row.id}:ws:style`
+      )
+    ).toEqual([]);
+  });
+
+  test("the title wears OS Event Title and the link OS Event Link, as the cover card's", () => {
+    expect(tokensOf(byLabel("Title"))).toEqual(["OS Event Title"]);
+    expect(tokensOf(byLabel("Event link"))).toEqual(["OS Event Link"]);
   });
 
   test("the date column wears OS Event Date and the day number OS Event Day", () => {
@@ -285,13 +290,119 @@ describe("the dated card's tokens", () => {
       "font-heading",
       "font-body",
     ];
-    for (const token of [eventDateToken, eventDayToken]) {
+    const tokens = [
+      eventDateToken,
+      eventDayToken,
+      eventRowToken,
+      eventTitleToken,
+      eventLinkToken,
+    ];
+    for (const token of tokens) {
       for (const { property, value } of declarationsOf(token)) {
+        const where = `${token.name} ${property}`;
         if (value.type === "var") {
-          expect(canonical, `${token.name} ${property}`).toContain(value.value);
+          expect(canonical, where).toContain(value.value);
         }
-        expect(value.type, `${token.name} ${property}`).not.toBe("unparsed");
+        if (value.type === "unparsed") {
+          expect(value.value, where).not.toMatch(/var\(|#[0-9a-f]{3,8}\b/i);
+        }
       }
     }
+  });
+});
+
+describe("the title, link and row tokens", () => {
+  const valueOf = (token: Token, property: string) =>
+    declarationsOf(token).find(
+      (style) => style.property === property && style.state === undefined
+    )?.value;
+
+  test("are named OS Event Title, OS Event Link and OS Event Row", () => {
+    expect(eventTitleToken.name).toBe("OS Event Title");
+    expect(eventLinkToken.name).toBe("OS Event Link");
+    expect(eventRowToken.name).toBe("OS Event Row");
+  });
+
+  // as the Signup Form's and the RSVP Form's headings: with no fallback, a
+  // site without the variable inherits its font, as before
+  test("the title is in the heading font, with no fallback", () => {
+    expect(declarationsOf(eventTitleToken)).toEqual([
+      {
+        property: "fontFamily",
+        state: undefined,
+        value: { type: "var", value: "font-heading" },
+      },
+    ]);
+  });
+
+  // The browser's link blue is all but invisible on a dark base.
+  test("the link reads --text, underlined and bolder", () => {
+    expect(valueOf(eventLinkToken, "color")).toEqual({
+      type: "var",
+      value: "text",
+      fallback: { type: "unparsed", value: "#18181b" },
+    });
+    expect(valueOf(eventLinkToken, "textDecorationLine")).toEqual({
+      type: "keyword",
+      value: "underline",
+    });
+    expect(valueOf(eventLinkToken, "fontWeight")).toEqual({
+      type: "unit",
+      unit: "number",
+      value: 600,
+    });
+  });
+
+  // The kit's tap target (kit/layout.tsx tapTarget), with margins that take
+  // back what it adds over one line, so the card keeps its height.
+  test("the link is a 44px tap target that takes one line of the card", () => {
+    expect(valueOf(eventLinkToken, "display")).toEqual({
+      type: "keyword",
+      value: "inline-flex",
+    });
+    expect(valueOf(eventLinkToken, "alignItems")).toEqual({
+      type: "keyword",
+      value: "center",
+    });
+    expect(valueOf(eventLinkToken, "minHeight")).toEqual({
+      type: "unit",
+      unit: "px",
+      value: 44,
+    });
+    for (const property of ["marginTop", "marginBottom"]) {
+      expect(valueOf(eventLinkToken, property), property).toEqual({
+        type: "unparsed",
+        value: "calc((1lh - 44px)/2)",
+      });
+    }
+  });
+
+  test("the row is a wrapping flex row with the card's gaps", () => {
+    expect(valueOf(eventRowToken, "display")).toEqual({
+      type: "keyword",
+      value: "flex",
+    });
+    expect(valueOf(eventRowToken, "flexDirection")).toEqual({
+      type: "keyword",
+      value: "row",
+    });
+    expect(valueOf(eventRowToken, "flexWrap")).toEqual({
+      type: "keyword",
+      value: "wrap",
+    });
+    expect(valueOf(eventRowToken, "alignItems")).toEqual({
+      type: "keyword",
+      value: "flex-start",
+    });
+    expect(valueOf(eventRowToken, "columnGap")).toEqual({
+      type: "unit",
+      unit: "px",
+      value: 16,
+    });
+    expect(valueOf(eventRowToken, "rowGap")).toEqual({
+      type: "unit",
+      unit: "px",
+      value: 8,
+    });
   });
 });

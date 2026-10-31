@@ -239,23 +239,43 @@ export const describeEventsBlock = ({
       expect(literal("country")).toBe("US");
     });
 
-    test("the card wears the shared OS Card token, and the template makes no other", () => {
+    test("the card, its title and its link wear the shared tokens, and the template makes no others", () => {
       expect(
         fragment.styleSources.flatMap((source) =>
           source.type === "token" ? [source.name] : []
         )
-      ).toEqual(["OS Card"]);
-      const token = fragment.styleSources.find(
-        (source) => source.type === "token"
+      ).toEqual(["OS Card", "OS Event Title", "OS Event Link"]);
+      for (const [instance, name] of [
+        [card, "OS Card"],
+        [byLabel("Title"), "OS Event Title"],
+        [byLabel("Event link"), "OS Event Link"],
+      ] as const) {
+        const token = fragment.styleSources.find(
+          (source) => source.type === "token" && source.name === name
+        );
+        expect(
+          fragment.styleSourceSelections.find(
+            (selection) => selection.instanceId === instance.id
+          )?.values,
+          name
+        ).toContain(token?.id);
+        expect(
+          fragment.styles.some((style) => style.styleSourceId === token?.id),
+          name
+        ).toBe(true);
+      }
+    });
+
+    // "AM" alone on a line reads badly; the date still wraps where it must
+    test("the start time's lines are balanced, and it still wraps", () => {
+      const starts = byLabel("Starts");
+      const local = fragment.styles.filter(
+        (style) => style.styleSourceId === `${starts.id}:ws:style`
       );
-      expect(
-        fragment.styleSourceSelections.find(
-          (selection) => selection.instanceId === card.id
-        )?.values
-      ).toContain(token?.id);
-      expect(
-        fragment.styles.some((style) => style.styleSourceId === token?.id)
-      ).toBe(true);
+      expect(local.map(({ property, value }) => [property, value])).toEqual([
+        ["textWrapMode", { type: "keyword", value: "wrap" }],
+        ["textWrapStyle", { type: "keyword", value: "balance" }],
+      ]);
     });
 
     test("the cover shows only for an event with an image", () => {

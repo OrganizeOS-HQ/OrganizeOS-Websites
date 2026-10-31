@@ -24,7 +24,13 @@
 //    991, checks sideways scroll, text under 14px (at 390 and 320), console
 //    errors and failed requests; at those widths and 820 it also checks for
 //    clipped text, text that runs past its own box or a box around it (three
-//    unbreakable headings overlapping in their columns scroll nothing).
+//    unbreakable headings overlapping in their columns scroll nothing). That
+//    check is a heuristic, with known limits: it also reports text that runs
+//    past a scroll container on purpose (a row that scrolls sideways) or a
+//    clipped track (a Marquee's), and it does not look past an absolutely or
+//    fixed positioned element, so such an element's text placed outside its
+//    parent is not reported. Templates use neither kind of scroller yet; a
+//    finding on one is read by eye before it is fixed.
 //
 // Writes previews/<template-id>/<run>/<page-key>-<width>.png and
 // previews/<template-id>/<run>/report.json, where the run is the palette

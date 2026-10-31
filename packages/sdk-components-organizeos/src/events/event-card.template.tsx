@@ -88,6 +88,51 @@ export const eventDayToken = token(
   `
 );
 
+// A card's title, in both cards: the site's heading font, with no fallback,
+// as the forms' headings (on a site without the variable the font is
+// inherited, as before). A token, so a template sets its size and weight.
+export const eventTitleToken = token(
+  "OS Event Title",
+  css`
+    font-family: var(--font-heading);
+  `
+);
+
+// A card's link, in both cards. It reads `--text`, underlined and bolder,
+// where the browser's link blue was close to invisible on a dark base. It is
+// the kit's tap target (kit/layout.tsx `tapTarget`), at least 44px tall, and
+// its margins take back what that adds over one line of text, so the card
+// keeps its height; a browser without the `lh` unit drops the margins, and
+// the card is a little taller.
+export const eventLinkToken = token(
+  "OS Event Link",
+  css`
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin-top: calc((1lh - 44px) / 2);
+    margin-bottom: calc((1lh - 44px) / 2);
+    color: var(--text, #18181b);
+    font-weight: 600;
+    text-decoration-line: underline;
+  `
+);
+
+// The dated card's row of the date column and the details: a wrapping flex
+// row with the card's gaps. A token, so a template changes the gaps or stacks
+// the two (`flex-direction: column`).
+export const eventRowToken = token(
+  "OS Event Row",
+  css`
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    column-gap: 16px;
+    row-gap: 8px;
+  `
+);
+
 /**
  * One event, as a function of the collection's parameter: the
  * `GET /v1/events` item (`cover_image_url`, `title`, `start_time`, `timezone`,
@@ -119,11 +164,19 @@ export const eventCard = (event: Parameter) => (
       ws:style={css`
         margin: 0;
       `}
+      ws:tokens={[eventTitleToken]}
     >
       {expression`${event}.title`}
     </ws.element>
+    {/*
+      Balanced lines, so a time that wraps does not leave "AM" alone on its
+      line; it still wraps, so the full date fits a 320px phone.
+    */}
     <$.Time
       ws:label="Starts"
+      ws:style={css`
+        text-wrap: balance;
+      `}
       datetime={expression`${event}.start_time`}
       timeZone={expression`${event}.timezone`}
       dateStyle="full"
@@ -153,6 +206,7 @@ export const eventCard = (event: Parameter) => (
     <ws.element
       ws:tag="a"
       ws:label="Event link"
+      ws:tokens={[eventLinkToken]}
       href={expression`"/events/" + ${event}.slug`}
       reloadDocument={true}
     >
@@ -184,12 +238,13 @@ const startTime = (
  * number) and the details: the title, the weekday and start time, the place
  * when there is one, and the link, as the cover card's.
  *
- * The row is a wrapper's, not the article's: an element's own styles come
- * before its tokens in the fragment, so OS Card's `flex-direction: column`
- * would win on the article. The row wraps, so a template that sets OS Event
- * Date's width to 100% puts the date above the details (a card with its date
- * on top), and keeps it beside them where it sets a narrower width (rows on
- * phones). The weekday and the time are two Time elements: the format tokens
+ * The row is a wrapper's ("OS Event Row"), not the article's: an element's
+ * own styles come before its tokens in the fragment, and both cards wear OS
+ * Card, whose `flex-direction: column` the cover card needs. The row wraps,
+ * so a template that sets OS Event Date's width to 100% puts the date above
+ * the details (a card with its date on top), and keeps it beside them where
+ * it sets a narrower width (rows on phones); OS Event Row's own direction and
+ * gaps are a template's too. The weekday and the time are two Time elements: the format tokens
  * have no 12-hour clock, and the short time style has one ("6:30 PM").
  *
  * No element here has a `ws:id`: the insert binds by the root's (see
@@ -200,13 +255,7 @@ export const datedEventCard = (event: Parameter) => (
     <ws.element
       ws:tag="div"
       ws:label="Date and details"
-      ws:style={css`
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-start;
-        column-gap: 16px;
-        row-gap: 8px;
-      `}
+      ws:tokens={[eventRowToken]}
     >
       <ws.element ws:tag="div" ws:label="Date" ws:tokens={[eventDateToken]}>
         {startTime(event, { "ws:label": "Month", format: "MMM" })}
@@ -234,6 +283,7 @@ export const datedEventCard = (event: Parameter) => (
           ws:style={css`
             margin: 0;
           `}
+          ws:tokens={[eventTitleToken]}
         >
           {expression`${event}.title`}
         </ws.element>
@@ -265,6 +315,7 @@ export const datedEventCard = (event: Parameter) => (
         <ws.element
           ws:tag="a"
           ws:label="Event link"
+          ws:tokens={[eventLinkToken]}
           href={expression`"/events/" + ${event}.slug`}
           reloadDocument={true}
         >

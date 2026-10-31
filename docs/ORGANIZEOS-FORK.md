@@ -1742,8 +1742,11 @@ anything yet.
   on the block's root, replacing its declarations by key.
 - **Template block tokens.** `SiteTemplate.blockTokens` gives the template's
   look for the block tokens by name (`BlockTokenName`: "OS Field", "OS
-  Input", "OS Button", "OS Message", "OS Card", "OS Event Date" and "OS Event
-  Day"). `renderSiteTemplate` merges each declaration into the page
+  Input", "OS Button", "OS Message", "OS Card", "OS Event Title", "OS Event
+  Link", "OS Event Row", "OS Event Date" and "OS Event Day"). Both cards'
+  titles wear "OS Event Title" (the heading font) and their links "OS Event
+  Link" (`--text`, underlined, 600, a 44px tap target that keeps one line of
+  the card's height); the dated card's row wears "OS Event Row". `renderSiteTemplate` merges each declaration into the page
   fragment's token of that name by key (one under a media query goes on the
   fragment's breakpoint for it, added when the page has none), never into the
   shared `token()` objects, and the apply routine writes them over a token of

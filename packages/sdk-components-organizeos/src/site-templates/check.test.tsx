@@ -376,6 +376,36 @@ describe("checkSiteTemplate", () => {
       );
     });
 
+    test("the title and link tokens are worn by the cover card, the row token only by the dated one", () => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Event Title": css`
+                font-size: 20px;
+              `,
+              "OS Event Link": css`
+                color: var(--accent-1);
+              `,
+            },
+          })
+        )
+      ).toEqual([]);
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Event Row": css`
+                row-gap: 4px;
+              `,
+            },
+          })
+        ),
+        "Block tokens",
+        '"OS Event Row"'
+      );
+    });
+
     test("a dated card's tokens are worn once it is placed", () => {
       expect(
         checkAbout(({ placeBlock }) => (
@@ -399,6 +429,9 @@ describe("checkSiteTemplate", () => {
               `,
               "OS Event Day": css`
                 color: var(--accent-2);
+              `,
+              "OS Event Row": css`
+                row-gap: 4px;
               `,
             },
           })
