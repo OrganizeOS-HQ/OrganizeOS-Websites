@@ -101,8 +101,9 @@ export const button = (
 /**
  * A square photo at a fixed ratio (`4 / 5`), cropped to fill it, in greys
  * as the hero's is (any photo takes the cool palette the same way), over an
- * accent-1 field that shows when the photo is gone. `phoneRatio` replaces
- * the ratio below 768px, and `phonePosition` the crop.
+ * accent-1 field that shows when the photo is gone. The field is the Image's
+ * frame, not its own background, which the filter would grey too.
+ * `phoneRatio` replaces the ratio below 768px, and `phonePosition` the crop.
  */
 export const photo = (
   { image, imageAlt }: PageContext,
@@ -119,25 +120,31 @@ export const photo = (
     phonePosition?: string;
   }
 ): JSX.Element => (
-  <$.Image
+  <ws.element
+    ws:tag="div"
     ws:label="Photo"
-    src={image(file)}
-    alt={imageAlt(file)}
     ws:style={css`
-      display: block;
-      width: 100%;
-      height: auto;
-      aspect-ratio: ${ratio};
-      object-fit: cover;
-      object-position: ${position};
       background-color: var(--accent-1);
-      filter: grayscale(1);
-      ${BREAKPOINT.landscape} {
-        aspect-ratio: ${phoneRatio};
-        object-position: ${phonePosition};
-      }
     `}
-  />
+  >
+    <$.Image
+      src={image(file)}
+      alt={imageAlt(file)}
+      ws:style={css`
+        display: block;
+        width: 100%;
+        height: auto;
+        aspect-ratio: ${ratio};
+        object-fit: cover;
+        object-position: ${position};
+        filter: grayscale(1);
+        ${BREAKPOINT.landscape} {
+          aspect-ratio: ${phoneRatio};
+          object-position: ${phonePosition};
+        }
+      `}
+    />
+  </ws.element>
 );
 
 /**
