@@ -293,6 +293,67 @@ describe("section", () => {
     ).not.toThrow();
   });
 
+  // A section's colours are one of the checked pairs, chosen with its
+  // `background` option, which also sets a band's variables: never through
+  // `styles`, at any breakpoint or state.
+  test.each([
+    {
+      name: "a background colour",
+      styles: css`
+        background-color: var(--accent-2);
+      `,
+      property: "background-color",
+    },
+    {
+      name: "a background colour under a breakpoint",
+      styles: css`
+        ${BREAKPOINT.landscape} {
+          background-color: var(--text);
+        }
+      `,
+      property: "background-color",
+    },
+    {
+      name: "a background colour on hover",
+      styles: css`
+        &:hover {
+          background-color: var(--accent-1);
+        }
+      `,
+      property: "background-color",
+    },
+    {
+      name: "the background shorthand",
+      styles: css`
+        background: var(--accent-1);
+      `,
+      // its longhands, the image's or the colour's first
+      property: "background-(image|color)",
+    },
+    {
+      name: "a background image",
+      styles: css`
+        background-image: linear-gradient(var(--base), var(--accent-1));
+      `,
+      property: "background-image",
+    },
+    {
+      name: "a text colour under a breakpoint",
+      styles: css`
+        ${BREAKPOINT.portrait} {
+          color: var(--accent-2);
+        }
+      `,
+      property: "color",
+    },
+  ])("refuses $name in its styles", ({ styles, property }) => {
+    for (const background of ["base", "accent-1", "text"] as const) {
+      expect(() =>
+        section({ label: "Hero", background, styles, children: content() })
+      ).toThrow(new RegExp(`"Hero".*${property}.*background`));
+    }
+  });
+
   test("carries an id for in-page links only when given one", () => {
     const fragment = renderTemplate(
       <ws.element ws:tag="body">

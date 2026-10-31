@@ -168,6 +168,14 @@ export const textCase = (
 const declarationKey = ({ breakpoint, state, property }: TemplateStyleDecl) =>
   JSON.stringify([breakpoint ?? "", state ?? "", property]);
 
+// A section's colours are one of the checked pairs, set by its `background`
+// option, which also sets a band's variables; never by its `styles`.
+const sectionColourProperties = new Set([
+  "background-color",
+  "background-image",
+  "color",
+]);
+
 /**
  * A full-bleed `<section>` named `label` in the Navigator, in one of the
  * checked colour pairs (base by default), padded above and below, around a
@@ -177,7 +185,9 @@ const declarationKey = ({ breakpoint, state, property }: TemplateStyleDecl) =>
  * `styles` adds the template's own to the section's (`position: relative`,
  * so a full-bleed image inside the container can cover the section); one
  * that restates a declaration of the kit's (the same property at the same
- * breakpoint and state) throws, since the later of the two would win unseen.
+ * breakpoint and state) throws, since the later of the two would win unseen,
+ * as does a background colour, a background image or a text colour at any
+ * breakpoint or state: those are the `background` option's.
  */
 export const section = ({
   label,
@@ -210,6 +220,14 @@ export const section = ({
       padding-bottom: ${sectionPadding.phone};
     }
   `;
+  const colour = styles.find((style) =>
+    sectionColourProperties.has(style.property)
+  );
+  if (colour !== undefined) {
+    throw new Error(
+      `Section "${label}": its styles set ${colour.property}, which its background option sets, with a band's variables`
+    );
+  }
   const ownKeys = new Set(own.map(declarationKey));
   const restated = styles.find((style) => ownKeys.has(declarationKey(style)));
   if (restated !== undefined) {
