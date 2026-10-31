@@ -1,7 +1,7 @@
 import { css, token } from "@webstudio-is/template";
 
 // Neutral styles through shared tokens: every OrganizeOS form block uses the
-// same four, so restyling a token restyles every block on the site. A project
+// same five, so restyling a token restyles every block on the site. A project
 // that has more than one such block reuses one token each (the insert resolves
 // a token it already has with "ours"), so the Signup Form and the RSVP Form
 // take them from here and cannot drift apart.
@@ -28,6 +28,19 @@ import { css, token } from "@webstudio-is/template";
 //
 // Template-only: nothing a published site's copy of the package reaches
 // imports this file.
+
+// The form's heading: the site's heading font, with no fallback (on a site
+// without the variable the font is inherited, as before), its lines set as a
+// heading's, so one that wraps on a phone does not take the body's looser
+// line height. A token, so a site template sets its case and size
+// (SiteTemplate.blockTokens).
+export const formHeadingToken = token(
+  "OS Form Heading",
+  css`
+    font-family: var(--font-heading);
+    line-height: 1.2;
+  `
+);
 
 export const fieldToken = token(
   "OS Field",

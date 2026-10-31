@@ -10,6 +10,7 @@ import {
 import {
   buttonToken,
   fieldToken,
+  formHeadingToken,
   inputToken,
   messageToken,
 } from "./shared/form-tokens";
@@ -41,18 +42,10 @@ export const signupFormTemplate = () => {
         `}
       >
         {/*
-          The heading is in the site's heading font, as a template's own
-          headings are; on a site without the variable it inherits, as it
-          did before. Its lines are set as a heading's, so on a phone, where
-          it wraps, it does not take the body's looser line height.
+          The heading wears "OS Form Heading": the site's heading font, as a
+          template's own headings are, at a heading's line height.
         */}
-        <ws.element
-          ws:tag="h2"
-          ws:style={css`
-            font-family: var(--font-heading);
-            line-height: 1.2;
-          `}
-        >
+        <ws.element ws:tag="h2" ws:tokens={[formHeadingToken]}>
           {new PlaceholderValue("Sign up for updates")}
         </ws.element>
         <organizeos.Field

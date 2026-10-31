@@ -271,10 +271,11 @@ test("a descendant's selector is a string prop, as the CSS generator reads it", 
   }
 });
 
-test("parts are styled through the four shared OrganizeOS tokens, as the Signup Form's are", () => {
+test("parts are styled through the five shared OrganizeOS tokens, as the Signup Form's are", () => {
   expect(Array.from(tokenNames.values()).sort()).toEqual([
     "OS Button",
     "OS Field",
+    "OS Form Heading",
     "OS Input",
     "OS Message",
   ]);
@@ -397,11 +398,22 @@ test("every OrganizeOS part of the template sits inside the root's descendants, 
 // it, and inherits as before on a site without the variable. Its lines are
 // set as a heading's, not at the body's looser line height, so a heading
 // that wraps on a phone reads as one.
-test("the form's heading is set in the site's heading font, at a heading's line height", () => {
+// It wears a token, "OS Form Heading", so a site template sets its case and
+// size (SiteTemplate.blockTokens), and has no local style of its own.
+test("the form's heading wears OS Form Heading: the site's heading font, at a heading's line height", () => {
   const [heading] = contentChildren;
   expect(heading.tag).toBe("h2");
-  expect(localStylesOf(heading)).toEqual({
-    fontFamily: "var(--font-heading)",
-    lineHeight: "1.2",
-  });
+  expect(localStylesOf(heading)).toEqual({});
+  expect(tokensOf(heading)).toEqual(["OS Form Heading"]);
+  const [tokenId] =
+    fragment.styleSourceSelections.find(
+      (selection) => selection.instanceId === heading.id
+    )?.values ?? [];
+  expect(
+    Object.fromEntries(
+      fragment.styles
+        .filter((decl) => decl.styleSourceId === tokenId)
+        .map((decl) => [decl.property, toValue(decl.value)])
+    )
+  ).toEqual({ fontFamily: "var(--font-heading)", lineHeight: "1.2" });
 });

@@ -1745,10 +1745,10 @@ anything yet.
   which stays the default and the Components panel's; `style` is local style
   on the block's root, replacing its declarations by key.
 - **Template block tokens.** `SiteTemplate.blockTokens` gives the template's
-  look for the block tokens by name (`BlockTokenName`: "OS Field", "OS
-  Input", "OS Button", "OS Message", "OS Card", "OS Event Title", "OS Event
-  Link", "OS Event Row", "OS Event Date", "OS Event Day", "OS Event Cover"
-  and "OS Event Note"). Both cards' titles wear "OS Event Title" (the heading
+  look for the block tokens by name (`BlockTokenName`: "OS Form Heading",
+  "OS Field", "OS Input", "OS Button", "OS Message", "OS Card", "OS Event
+  Title", "OS Event Link", "OS Event Row", "OS Event Date", "OS Event Day",
+  "OS Event Cover" and "OS Event Note"). Both cards' titles wear "OS Event Title" (the heading
   font) and their links "OS Event Link" (`--text`, underlined, 600, a 44px
   tap target that keeps one line of the card's height); the dated card's row
   wears "OS Event Row"; the cover card's image wears "OS Event Cover" (a
@@ -1772,10 +1772,11 @@ anything yet.
   card's a `color-mix` of `--text` and `--base`, both as longhands. A project
   that already holds the old tokens keeps them: an insert
   resolves a token it already has with "ours". The Signup Form's and the RSVP
-  Form's headings are in `var(--font-heading)` (no fallback: on a site without
-  the variable the declaration is invalid and the heading inherits, as before),
-  so a template's form heading matches its own headings, at a line height of
-  1.2, so one that wraps on a phone sets as a heading, not at the body's.
+  Form's headings wear "OS Form Heading": `var(--font-heading)` (no fallback:
+  on a site without the variable the declaration is invalid and the heading
+  inherits, as before), so a template's form heading matches its own
+  headings, at a line height of 1.2, so one that wraps on a phone sets as a
+  heading, not at the body's; a template sets their case and size there.
 - **The check** (`checkSiteTemplate` in `check.ts`, with `style-scan.ts`; run
   over every `SITE_TEMPLATES` entry and the spike fixture by `catalog.test.ts`)
   returns one readable line per violation, and an empty list for a template that passes. It is a

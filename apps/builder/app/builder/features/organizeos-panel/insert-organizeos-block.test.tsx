@@ -1274,7 +1274,12 @@ describe("shared tokens", () => {
     // one token of each name, the designer's
     expect(getTokens("OS Input")).toEqual([input]);
     expect(getTokens("OS Input-1")).toEqual([]);
-    for (const name of ["OS Field", "OS Button", "OS Message"]) {
+    for (const name of [
+      "OS Form Heading",
+      "OS Field",
+      "OS Button",
+      "OS Message",
+    ]) {
       expect(getTokens(name)).toHaveLength(1);
     }
     expect(
@@ -2008,10 +2013,16 @@ describe("the inserted RSVP Form", () => {
       expect(await insertOrganizeosBlock(signupForm)).toBe(true);
       expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
 
-      for (const name of ["OS Field", "OS Input", "OS Button", "OS Message"]) {
+      for (const name of [
+        "OS Form Heading",
+        "OS Field",
+        "OS Input",
+        "OS Button",
+        "OS Message",
+      ]) {
         expect(getTokens(name), name).toHaveLength(1);
       }
-      expect(getTokens("OS ").map((source) => source.type)).toHaveLength(4);
+      expect(getTokens("OS ").map((source) => source.type)).toHaveLength(5);
     });
 
     test("a second RSVP Form after OS Input was restyled uses the restyled token, on its inner controls too", async () => {

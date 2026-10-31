@@ -61,6 +61,7 @@ export type BlockStyle = TemplateStyleDecl[];
 
 /** The tokens the platform blocks wear, which a template may restyle. */
 export type BlockTokenName =
+  | "OS Form Heading"
   | "OS Field"
   | "OS Input"
   | "OS Button"

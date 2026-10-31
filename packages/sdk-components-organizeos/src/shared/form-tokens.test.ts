@@ -21,6 +21,7 @@ import type { BlockTokenName } from "../site-templates/types";
 import {
   buttonToken,
   fieldToken,
+  formHeadingToken,
   inputToken,
   messageToken,
 } from "./form-tokens";
@@ -205,6 +206,7 @@ test("the borders reach the published CSS with their variables", () => {
 test("BlockTokenName names every block token", () => {
   const byName = {
     "OS Field": fieldToken,
+    "OS Form Heading": formHeadingToken,
     "OS Input": inputToken,
     "OS Button": buttonToken,
     "OS Message": messageToken,
