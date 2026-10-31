@@ -773,15 +773,48 @@ describe("applySiteTemplateMutable", () => {
       expect(data.breakpoints).toEqual(breakpointsBefore);
     });
 
-    test("a token the project already holds takes the template's declarations, by key", async () => {
+    // The project is untouched, so its token of the name is the seed's or
+    // an earlier insert's: the page fragment's merged token (the block's
+    // defaults and the template's look) replaces it whole, so no old literal
+    // the template does not restate is left behind.
+    test("a token the project already holds takes the pages' merged token whole", async () => {
       const data = await withOldCardToken();
+      const pages = renderDatedPages();
 
-      applySiteTemplateMutable(data, renderDatedPages(), datedContext);
+      applySiteTemplateMutable(data, pages, datedContext);
 
       // reused, as an insert reuses a token by name ("ours")
       expect(tokensNamed(data, "OS Card").map(({ id }) => id)).toEqual([
         "old-card",
       ]);
+      const { fragment } = pages[0];
+      const merged = fragment.styleSources.find(
+        (source) => source.type === "token" && source.name === "OS Card"
+      )!;
+      const declaration = ({
+        maxWidth,
+        property,
+        state,
+        value,
+      }: {
+        maxWidth?: number;
+        property: string;
+        state?: string;
+        value: unknown;
+      }) => JSON.stringify([maxWidth, state, property, value]);
+      const expected = fragment.styles
+        .filter((decl) => decl.styleSourceId === merged.id)
+        .map((decl) =>
+          declaration({
+            ...decl,
+            maxWidth: fragment.breakpoints.find(
+              (breakpoint) => breakpoint.id === decl.breakpointId
+            )?.maxWidth,
+          })
+        );
+      expect(tokenDecls(data, "old-card").map(declaration).sort()).toEqual(
+        expected.sort()
+      );
       const byProperty = new Map(
         tokenDecls(data, "old-card").map((decl) => [decl.property, decl])
       );
@@ -794,16 +827,13 @@ describe("applySiteTemplateMutable", () => {
         unit: "px",
         value: 24,
       });
-      expect(byProperty.get("paddingLeft")?.value).toEqual({
-        type: "unit",
-        unit: "px",
-        value: 24,
+      // the block's own default, which the old token lacked
+      expect(byProperty.get("borderLeftColor")?.value).toMatchObject({
+        type: "unparsed",
+        value: expect.stringContaining("color-mix"),
       });
-      // what the template does not name is the project's
-      expect(byProperty.get("cursor")?.value).toEqual({
-        type: "keyword",
-        value: "pointer",
-      });
+      // nothing of the old token the template does not restate is left
+      expect(byProperty.has("cursor")).toBe(false);
       // and the dated card wears it
       const home = data.pages.pages.get(data.pages.homePageId)!;
       const article = [

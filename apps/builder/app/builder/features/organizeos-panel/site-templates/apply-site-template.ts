@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { parseCssValue } from "@webstudio-is/css-data";
 import {
+  type Breakpoint,
   type Instance,
   type Page,
   type StyleDecl,
@@ -22,7 +23,6 @@ import {
   CANONICAL_COLOR_NAMES,
   CANONICAL_FONT_NAMES,
   findPageAssetIds,
-  getBlockTokenStyles,
   isCanonicalName,
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
@@ -222,39 +222,95 @@ const retargetHomeLinks = (
   }),
 });
 
+/** The project's breakpoint of a fragment's, by its media, added if missing. */
+const findOrAddBreakpointMutable = (
+  data: WebstudioData,
+  { minWidth, maxWidth, condition, label }: Breakpoint
+): Breakpoint["id"] => {
+  const found = Array.from(data.breakpoints.values()).find(
+    (breakpoint) =>
+      breakpoint.minWidth === minWidth &&
+      breakpoint.maxWidth === maxWidth &&
+      breakpoint.condition === condition
+  );
+  if (found !== undefined) {
+    return found.id;
+  }
+  const breakpoint: Breakpoint = {
+    id: nanoid(),
+    label,
+    ...(minWidth === undefined ? {} : { minWidth }),
+    ...(maxWidth === undefined ? {} : { maxWidth }),
+    ...(condition === undefined ? {} : { condition }),
+  };
+  data.breakpoints.set(breakpoint.id, breakpoint);
+  return breakpoint.id;
+};
+
 /**
- * The template's block tokens written into the project's token of each name,
- * each declaration replacing the token's own of the same key. The pages bring
- * the template's look in their tokens, but the insert resolves a token the
- * project already holds with "ours", which keeps that token as it stands: an
- * admin who inserted an Event Card on /newsletter before choosing a template
- * has one. A breakpoint the project lacks is added.
+ * The template's look for each block token it restyles, written whole over
+ * the project's token of that name: the token as the pages carry it (the
+ * block's defaults with the template's `blockTokens` merged, render.ts)
+ * replaces every declaration the project's token held. The pages bring that
+ * token, but the insert resolves a token the project already holds with
+ * "ours", which keeps it as it stands: the seeded sign-up page's form
+ * tokens, or an Event Card's an admin inserted on /newsletter before choosing
+ * a template, with old literal colours the template does not restate. The
+ * project is untouched, so nothing the org made is lost. A breakpoint the
+ * project lacks is added.
  */
 const writeBlockTokensMutable = (
   data: WebstudioData,
-  blockTokens: NonNullable<SiteTemplate["blockTokens"]>
+  pages: RenderedPage[],
+  names: string[]
 ) => {
-  for (const source of data.styleSources.values()) {
-    if (source.type !== "token") {
+  for (const name of names) {
+    const page = pages.find(({ fragment }) =>
+      fragment.styleSources.some(
+        (source) => source.type === "token" && source.name === name
+      )
+    );
+    const merged = page?.fragment.styleSources.find(
+      (source) => source.type === "token" && source.name === name
+    );
+    if (page === undefined || merged === undefined) {
       continue;
     }
-    const style = Object.entries(blockTokens).find(
-      ([name]) => name === source.name
-    )?.[1];
-    if (style === undefined) {
-      continue;
-    }
-    const { styles, newBreakpoints } = getBlockTokenStyles({
-      styleSourceId: source.id,
-      style,
-      breakpoints: Array.from(data.breakpoints.values()),
-      createBreakpointId: nanoid,
-    });
-    for (const breakpoint of newBreakpoints) {
-      data.breakpoints.set(breakpoint.id, breakpoint);
-    }
-    for (const decl of styles) {
-      data.styles.set(getStyleDeclKey(decl), decl);
+    const { fragment } = page;
+    const breakpointIds = new Map<Breakpoint["id"], Breakpoint["id"]>();
+    const projectBreakpointId = (id: Breakpoint["id"]) => {
+      let projectId = breakpointIds.get(id);
+      const breakpoint = fragment.breakpoints.find((item) => item.id === id);
+      if (projectId === undefined && breakpoint !== undefined) {
+        projectId = findOrAddBreakpointMutable(data, breakpoint);
+        breakpointIds.set(id, projectId);
+      }
+      return projectId;
+    };
+    const declarations = fragment.styles.filter(
+      (decl) => decl.styleSourceId === merged.id
+    );
+    for (const token of data.styleSources.values()) {
+      if (token.type !== "token" || token.name !== name) {
+        continue;
+      }
+      for (const [key, decl] of data.styles) {
+        if (decl.styleSourceId === token.id) {
+          data.styles.delete(key);
+        }
+      }
+      for (const decl of declarations) {
+        const breakpointId = projectBreakpointId(decl.breakpointId);
+        if (breakpointId === undefined) {
+          continue;
+        }
+        const written: StyleDecl = {
+          ...decl,
+          styleSourceId: token.id,
+          breakpointId,
+        };
+        data.styles.set(getStyleDeclKey(written), written);
+      }
     }
   }
 };
@@ -281,8 +337,8 @@ const deleteBodyMutable = (data: WebstudioData, bodyId: Instance["id"]) => {
  * while the chooser is open and while an apply awaits), when a page brings a
  * Resource, or when a page's path is taken. A placed block that cannot be
  * bound (its Events Resource is gone) is left in place, unbound, and named in
- * `unboundBlocks`. The template's block tokens are written over the project's
- * tokens of their names last (writeBlockTokensMutable).
+ * `unboundBlocks`. The tokens the template restyles are written whole over
+ * the project's tokens of their names last (writeBlockTokensMutable).
  */
 export const applySiteTemplateMutable = (
   data: WebstudioData,
@@ -382,7 +438,7 @@ export const applySiteTemplateMutable = (
     }
   }
   if (blockTokens !== undefined) {
-    writeBlockTokensMutable(data, blockTokens);
+    writeBlockTokensMutable(data, pages, Object.keys(blockTokens));
   }
   return { status: "applied", unboundBlocks };
 };

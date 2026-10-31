@@ -1774,18 +1774,22 @@ anything yet.
   "OS Event Link", "OS Event Row", "OS Event Date", "OS Event Day", "OS Event
   Cover" and "OS Event Note"). Both cards' titles wear "OS Event Title" (the
   heading font) and their links "OS Event Link" (`--text`, underlined, 600, a
-  44px tap target of padding that its margins take back, so the link takes
-  only its lines of the card's height, however many); the dated card's row
-  wears "OS Event Row"; the cover card's image wears "OS Event Cover" (a block
-  the card's width at the image's own ratio, which a template crops with
-  `aspect-ratio` and `object-fit`); and an events block's "No upcoming events"
-  and "Events unavailable" lines wear "OS Event Note", which declares nothing
-  (no colour: the lines inherit `--text`), so a template frames them.
-  `renderSiteTemplate` merges each declaration into the page fragment's token
-  of that name by key (one under a media query goes on the fragment's
-  breakpoint for it, added when the page has none), never into the shared
-  `token()` objects, and the apply routine writes them over a token of that
-  name the project already holds, which the insert's "ours" would keep.
+  44px tap target of padding that its margins take back, so the link takes only
+  its lines of the card's height, however many); the dated card's row wears "OS
+  Event Row"; the cover card's image wears "OS Event Cover" (a block the card's
+  width at the image's own ratio, which a template crops with `aspect-ratio` and
+  `object-fit`); and an events block's "No upcoming events" and "Events
+  unavailable" lines wear "OS Event Note", which declares nothing (no colour:
+  the lines inherit `--text`), so a template frames them. `renderSiteTemplate`
+  merges each declaration into the page fragment's token of that name by key
+  (one under a media query goes on the fragment's breakpoint for it, added when
+  the page has none), never into the shared `token()` objects, and the apply
+  routine writes the token so merged (the block's defaults with the template's
+  look, as the pages carry it) whole over a token of that name the project
+  already holds, which the insert's "ours" would keep as it stands: its
+  declarations are replaced, so no old literal the template does not restate is
+  left behind, and since the project is untouched the token is the seeded
+  sign-up page's or an earlier insert's, not the org's own work.
 - **Block tokens read the site variables.** "OS Input", "OS Button" and "OS
   Card" (`shared/form-tokens.ts`, `events/event-card.template.tsx`) take their
   background and text colours from `--base`, `--text` and `--accent-1`, and the
