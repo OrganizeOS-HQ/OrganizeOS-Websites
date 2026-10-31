@@ -219,6 +219,37 @@ describe("nav", () => {
         }
       }
     });
+
+    // Four links that need two lines on a 320px phone wrap two and two, not
+    // three and one; links that fit stay on one line.
+    test("at 991px and below the links are lines of text, balanced, each link spaced by its own margin", () => {
+      const fragment = renderNav({ links, cta: donate });
+      const linksRow = byLabel(fragment, "Links");
+      const items = childInstances(fragment, linksRow);
+      expect(stylesAt(fragment, linksRow, 1440)).toMatchObject({
+        display: "flex",
+        "column-gap": "24px",
+      });
+      for (const item of items) {
+        expect(stylesAt(fragment, item, 1440)).not.toHaveProperty(
+          "margin-right"
+        );
+      }
+      for (const width of [991, 820, 768, 767, 390, 320]) {
+        expect(stylesAt(fragment, linksRow, width)).toMatchObject({
+          display: "block",
+          "text-wrap-mode": "wrap",
+          "text-wrap-style": "balance",
+        });
+        for (const item of items) {
+          expect(stylesAt(fragment, item, width)).toMatchObject({
+            display: "inline-flex",
+            "vertical-align": "top",
+            "margin-right": width > 767 ? "24px" : "16px",
+          });
+        }
+      }
+    });
   });
 
   test("draws with the template's corners and weights, and declares no weight of its own", () => {

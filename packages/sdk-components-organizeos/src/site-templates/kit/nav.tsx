@@ -96,12 +96,30 @@ const button = (
 );
 
 /**
+ * The space after each link of the split nav's row from BREAKPOINT.tablet
+ * down, where the row is lines of text, not a flex row with a gap. A link
+ * sits at the top of its line, which is the link's own 44px.
+ */
+const splitNavLinkStyles = (): TemplateStyleDecl[] => css`
+  ${BREAKPOINT.tablet} {
+    margin-right: ${SPACE[24]};
+    vertical-align: top;
+  }
+  ${BREAKPOINT.landscape} {
+    margin-right: ${SPACE[16]};
+  }
+`;
+
+/**
  * One row from 992px up, which never wraps: when the links do not fit they
  * wrap within their own box, beside the button. At BREAKPOINT.tablet and
  * below the name and the button share the first row, the name wrapping its
  * own text before the button would leave the row, and the links take a row
- * of their own beneath, wrapping as they need. So no item is ever left alone
- * on a row, whatever the name's length.
+ * of their own beneath. That row is lines of text, balanced
+ * (`text-wrap: balance`), so links that need two lines wrap two and two,
+ * not three and one. So no item is ever left alone on a row, whatever the
+ * name's length; a browser without balanced wrapping wraps the links as
+ * they come.
  */
 const splitNav = (options: NavOptions) => (
   <ws.element ws:tag="header" ws:label="Nav" ws:style={headerStyles()}>
@@ -144,15 +162,13 @@ const splitNav = (options: NavOptions) => (
             ${BREAKPOINT.tablet} {
               order: 1;
               flex-basis: 100%;
-              justify-content: flex-start;
-            }
-            ${BREAKPOINT.landscape} {
-              column-gap: ${SPACE[16]};
+              display: block;
+              text-wrap: balance;
             }
           `}
         >
           {options.links.map((link, index) =>
-            textLink(options.pageIds, link, index)
+            textLink(options.pageIds, link, index, splitNavLinkStyles())
           )}
         </ws.element>,
         ...(options.cta === undefined

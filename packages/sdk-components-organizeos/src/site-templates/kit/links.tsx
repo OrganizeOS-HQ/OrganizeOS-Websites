@@ -76,13 +76,21 @@ export const textLinkStyles = (): TemplateStyleDecl[] => [
   ...focusRing(),
 ];
 
-/** A text link to `link`; `key` only quiets React's list check. */
+/**
+ * A text link to `link`; `key` only quiets React's list check. `styles` adds
+ * to the link's own, as the nav's spacing does.
+ */
 export const textLink = (
   pageIds: PageContext["pageIds"],
   link: SiteLink,
-  key: number
+  key: number,
+  styles: TemplateStyleDecl[] = []
 ): JSX.Element => (
-  <$.Link key={key} {...linkProps(pageIds, link)} ws:style={textLinkStyles()}>
+  <$.Link
+    key={key}
+    {...linkProps(pageIds, link)}
+    ws:style={[...textLinkStyles(), ...styles]}
+  >
     {link.label}
   </$.Link>
 );
