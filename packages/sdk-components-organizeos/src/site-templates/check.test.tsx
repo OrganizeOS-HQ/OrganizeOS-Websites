@@ -997,6 +997,8 @@ describe("checkSiteTemplate", () => {
       "/dashboard",
       "/embed/widget",
       "/@local-000",
+      "/org-profile",
+      "/org-profile/local-000",
     ])("a page at %s, which the platform serves, is a violation", (path) => {
       expectOneViolation(
         checkSiteTemplate(fixture({ pages: [home, { ...aboutPage(), path }] })),
@@ -1016,6 +1018,8 @@ describe("checkSiteTemplate", () => {
       "/donations",
       "/members",
       "/shop-local",
+      "/org-profiles",
+      "/organization",
     ])("a page at %s is not a platform path", (path) => {
       expect(
         checkSiteTemplate(fixture({ pages: [home, { ...aboutPage(), path }] }))

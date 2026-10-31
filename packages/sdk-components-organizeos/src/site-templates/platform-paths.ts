@@ -32,7 +32,10 @@ const under = (prefix: string) =>
  * - client/lib/middleware/org-host-route.ts: `decideOrgHostRoute`'s prefixes
  *   (with `/admin` and `/design-system` from
  *   client/lib/auth/platform-admin-paths.ts), each segment-exact as its
- *   `isUnder` is, and `HANDLE_PATH_RE`, a profile at `/@handle`.
+ *   `isUnder` is, and `HANDLE_PATH_RE`, a profile at `/@handle`;
+ * - client/middleware.ts: `/org-profile` and the paths below it, the org
+ *   profile renderer, which it answers with a 404 on every host (a profile
+ *   is reached only through the `/@handle` rewrite).
  */
 export const PLATFORM_SERVED_PATHS: readonly RegExp[] = [
   // public-route-allowlist.ts
@@ -68,6 +71,8 @@ export const PLATFORM_SERVED_PATHS: readonly RegExp[] = [
     "/embed",
   ].map(under),
   new RegExp(`^\\/@(${HANDLE_BODY})\\/?$`, "i"),
+  // middleware.ts
+  under("/org-profile"),
 ];
 
 /**

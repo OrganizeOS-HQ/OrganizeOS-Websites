@@ -1789,8 +1789,9 @@ anything yet.
   `/newsletter` or at `/*` (the 404 page's), a page at a path the platform
   answers itself on the site's host (`PLATFORM_SERVED_PATHS` in
   `platform-paths.ts`, mirrored from the OrganizeOS repository's
-  `public-route-allowlist.ts` and `org-host-route.ts`: `/join`, `/donate`,
-  `/events/<slug>`, `/auth` and the rest, prefixes by whole segment), a path
+  `public-route-allowlist.ts`, `org-host-route.ts` and `middleware.ts`:
+  `/join`, `/donate`, `/events/<slug>`, `/auth`, `/org-profile` and the rest,
+  prefixes by whole segment), a path
   the builder's page settings would refuse (`pagePath` from
   `@webstudio-is/sdk`), two pages on one path, or
   no Home (path `""`); a word on the neutrality deny list (party names and the
