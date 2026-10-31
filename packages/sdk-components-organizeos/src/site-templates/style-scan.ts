@@ -14,7 +14,9 @@ import {
 // colours and fonts only through the canonical variables (spec rule 2), and
 // images only through the template's images (rule 6). The only other
 // variables are the band's (BAND_VARIABLES: the focus ring and the accent
-// text), which a band sets to a canonical colour.
+// text), which a band sets to a canonical colour and every read names a
+// canonical colour behind. Only Global Root declares the six, from the
+// template's variables.
 
 // The properties whose value is a colour, hyphenated: a keyword there is a
 // colour's name. Every border colour longhand is one too.
@@ -87,6 +89,47 @@ const namedColourInText = new RegExp(
 const quotedStrings = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g;
 
 const variableInText = /var\(\s*--([\w-]+)/g;
+
+// A band variable is unset on the base, so a read names a canonical colour
+// behind it: `var(--focus-ring, var(--accent-2))`.
+const canonicalColourFallback = new RegExp(
+  `^var\\(\\s*--(?:${CANONICAL_COLOR_NAMES.join("|")})\\s*\\)$`
+);
+
+const bandReadInText = new RegExp(
+  `var\\(\\s*--(${BAND_VARIABLES.join("|")})\\s*([,)])`,
+  "g"
+);
+
+/** The fallback of a band variable read in unparsed text, after its comma. */
+const fallbackInText = (text: string) => {
+  let depth = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === "(") {
+      depth += 1;
+    } else if (text[index] === ")") {
+      if (depth === 0) {
+        return text.slice(0, index).trim();
+      }
+      depth -= 1;
+    }
+  }
+  return text.trim();
+};
+
+/** The band variables `text` reads with no canonical colour behind them. */
+const findBandReadsInText = (text: string) =>
+  Array.from(text.matchAll(bandReadInText)).flatMap((match) => {
+    const [read, name, after] = match;
+    const fallback =
+      after === ")"
+        ? ""
+        : fallbackInText(text.slice((match.index ?? 0) + read.length));
+    return canonicalColourFallback.test(fallback) ? [] : [name];
+  });
+
+const bandReadProblem = (name: string) =>
+  `--${name} with no canonical colour behind it: read var(--${name}, var(--accent-2))`;
 
 /**
  * Visits every value inside a style value with whether it sits where a
@@ -163,8 +206,10 @@ const findFontProblem = (value: StyleValue): string | undefined => {
  * or a colour's name inside unparsed text (a gradient, a `color-mix()`, a
  * variable's fallback), a variable outside the canonical set
  * and the band's, a font-family that is not a font variable, an image by
- * URL rather than one of the template's images (an asset), or a band
- * variable set to anything but a bare canonical colour variable.
+ * URL rather than one of the template's images (an asset), a band variable
+ * set to anything but a bare canonical colour variable or read with no
+ * canonical colour behind it, or a canonical variable declared as the
+ * property itself, which only Global Root declares.
  */
 export const findStyleProblems = (
   property: string,
@@ -181,6 +226,11 @@ export const findStyleProblems = (
           // "the focus ring", "the accent text"
           `the ${bandVariable.replace("-", " ")} set to ${toValue(value)}, not a colour variable`,
         ];
+  }
+  if (property.startsWith("--") && isCanonicalName(property.slice(2))) {
+    return [
+      `${property} as its own property, a canonical variable only Global Root declares (the template's variables)`,
+    ];
   }
   const problems: string[] = [];
   if (property === "fontFamily") {
@@ -221,9 +271,18 @@ export const findStyleProblems = (
           problems.push(nonCanonical(name));
         }
       }
+      problems.push(...findBandReadsInText(item.value).map(bandReadProblem));
     }
     if (item.type === "var" && isAllowedVariable(item.value) === false) {
       problems.push(nonCanonical(item.value));
+    }
+    if (
+      item.type === "var" &&
+      bandVariables.includes(item.value) &&
+      (item.fallback?.type !== "unparsed" ||
+        canonicalColourFallback.test(item.fallback.value.trim()) === false)
+    ) {
+      problems.push(bandReadProblem(item.value));
     }
   });
   return problems;

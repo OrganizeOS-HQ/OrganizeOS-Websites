@@ -1850,12 +1850,14 @@ anything yet.
   literal colour or a colour's name in unparsed text (a gradient, a
   `color-mix()`, a variable's fallback; a name counts as a whole word outside
   quoted strings), a variable outside the six and the two band variables, a band
-  variable set to anything but a bare colour variable, a `font-family` that is
-  not `var(--font-heading)` or `var(--font-body)`, an image by URL, and a
-  breakpoint other than the project's own (the base, and max-width 991, 767 and
-  479px); in `blockTokens`, a `color` of `var(--accent-2)` itself rather than
-  through `--accent-text` (the kit's `ACCENT_TEXT`); and a `blockTokens` name no
-  placed block wears.
+  variable set to anything but a bare colour variable or read with no canonical
+  colour as its fallback (as `var(--focus-ring, var(--accent-2))`), a
+  declaration of one of the six (only Global Root declares them, from the
+  template's variables), a `font-family` that is not `var(--font-heading)` or
+  `var(--font-body)`, an image by URL, and a breakpoint other than the project's
+  own (the base, and max-width 991, 767 and 479px); in `blockTokens`, a `color`
+  of `var(--accent-2)` itself rather than through `--accent-text` (the kit's
+  `ACCENT_TEXT`); and a `blockTokens` name no placed block wears.
 - **The apply routine** (`apply-site-template.ts`) is one `updateWebstudioData`
   transaction, with `contentMode: false` and `conflictResolution: "ours"`
   whatever mode the builder is in, so root styles, tokens and assets are

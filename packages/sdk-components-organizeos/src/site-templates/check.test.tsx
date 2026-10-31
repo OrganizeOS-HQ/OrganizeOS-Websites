@@ -965,6 +965,144 @@ describe("checkSiteTemplate", () => {
     });
   });
 
+  // The six are Global Root's, set from the template's variables; an
+  // element that declares one restyles its subtree out of the palette. A
+  // band variable is unset on the base, so a read names a canonical colour
+  // behind it.
+  describe("custom properties", () => {
+    test.each([
+      "base",
+      "accent-1",
+      "accent-2",
+      "text",
+      "font-heading",
+      "font-body",
+    ])("--%s declared on an element is a violation", (name) => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:label="Panel"
+            ws:style={css`
+              --${name}: inherit;
+            `}
+          />
+        )),
+        '"about"',
+        '"Panel"',
+        `--${name}`,
+        "Global Root"
+      );
+    });
+
+    test("a canonical variable declared in a block token or a placed block's root style is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Card": css`
+                --text: inherit;
+              `,
+            },
+          })
+        ),
+        "Block tokens",
+        '"OS Card"',
+        "--text"
+      );
+      expectOneViolation(
+        checkAbout(({ placeBlock }) =>
+          placeBlock(EventList, "upcoming", {
+            style: css`
+              --accent-2: inherit;
+            `,
+          })
+        ),
+        '"Event List"',
+        "--accent-2"
+      );
+    });
+
+    test.each([
+      {
+        name: "the focus ring with no fallback",
+        style: css`
+          outline-color: var(--focus-ring);
+        `,
+        variable: "--focus-ring",
+      },
+      {
+        name: "the accent text with no fallback",
+        style: css`
+          color: var(--accent-text);
+        `,
+        variable: "--accent-text",
+      },
+      {
+        name: "the focus ring with no fallback in unparsed text",
+        style: css`
+          box-shadow: 0 0 0 2px var(--focus-ring);
+        `,
+        variable: "--focus-ring",
+      },
+      {
+        name: "the accent text behind a font variable",
+        style: css`
+          color: var(--accent-text, var(--font-body));
+        `,
+        variable: "--accent-text",
+      },
+      {
+        name: "the focus ring behind a font variable in unparsed text",
+        style: css`
+          box-shadow: 0 0 0 2px var(--focus-ring, var(--font-body));
+        `,
+        variable: "--focus-ring",
+      },
+    ])("$name is a violation", ({ style, variable }) => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element ws:tag="div" ws:label="Read" ws:style={style} />
+        )),
+        '"about"',
+        '"Read"',
+        variable
+      );
+    });
+
+    test("a band variable read in a block token with no fallback is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Event Link": css`
+                color: var(--accent-text);
+              `,
+            },
+          })
+        ),
+        "Block tokens",
+        '"OS Event Link"',
+        "--accent-text"
+      );
+    });
+
+    test("a band variable read with a canonical colour behind it is not a violation", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              color: var(--accent-text, var(--text));
+              outline-color: var(--focus-ring, var(--accent-2));
+              box-shadow: 0 0 0 2px var(--focus-ring, var(--accent-2));
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+  });
+
   test("a Resource is a violation", () => {
     const events = new ResourceValue("Events", {
       url: expression`"https://example.org/events"`,
