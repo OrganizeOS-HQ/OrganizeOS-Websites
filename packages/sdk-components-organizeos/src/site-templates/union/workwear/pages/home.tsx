@@ -183,7 +183,7 @@ export const home: SiteTemplatePage = {
         pageIds: context.pageIds,
         heading: "Show the size of the local",
         intro:
-          "Replace each figure with your own, and keep the ones members ask about.",
+          "Say in a sentence what these numbers mean for a worker thinking of joining.",
         stats: [
           ["[000]", "Members"],
           ["[00]", "Stewards"],
