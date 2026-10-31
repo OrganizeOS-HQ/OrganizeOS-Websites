@@ -1757,7 +1757,8 @@ anything yet.
   nor http(s) (a small file Vite inlines as a `data:` URL, which the routine
   cannot upload), or without a `sourceUrl` or alt text, or an image on the
   page's own elements that is not one of the template's images or has no alt
-  text; a font whose key is not a `.woff2` file name, whose `url` is neither
+  text (an Image with no `src` is allowed: the builder draws its placeholder,
+  the "put your image here" slot of spec decision 3); a font whose key is not a `.woff2` file name, whose `url` is neither
   root-relative nor http(s), with no `source`, with no licence or one other
   than `OFL-1.1` or `Apache-2.0`, or whose `family` neither font variable
   names first (a publish would leave it out), and a font variable whose first

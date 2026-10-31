@@ -778,6 +778,20 @@ describe("checkSiteTemplate", () => {
       );
     });
 
+    // The builder draws its placeholder, a grey picture frame, for an Image
+    // with no src: the "put your image here" slot (spec decision 3).
+    test("an Image with no src, and alt text, is not a violation", () => {
+      expect(
+        checkAbout(() => <$.Image alt="Replace with a photo of the program" />)
+      ).toEqual([]);
+      expectOneViolation(
+        checkAbout(() => <$.Image ws:label="Slot" />),
+        '"about"',
+        '"Slot"',
+        "alt"
+      );
+    });
+
     test("an img with no alt is a violation", () => {
       expectOneViolation(
         checkAbout(({ image }) => (

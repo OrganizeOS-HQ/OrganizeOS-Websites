@@ -361,8 +361,9 @@ const checkStyles = (page: RenderedPage, blockIds: Set<string>): string[] => {
 
 // An image on the page's own elements comes from the template's images
 // (image(file)), so its source (CC0 or OrganizeOS's own) is recorded and the
-// apply routine uploads it, and it carries alt text. A placed block's image is
-// bound to its records.
+// apply routine uploads it, or has no src, which the builder draws as its
+// placeholder (spec decision 3: the "put your image here" slot); either way it
+// carries alt text. A placed block's image is bound to its records.
 const checkImageInstances = (
   page: RenderedPage,
   blockIds: Set<string>
@@ -383,7 +384,7 @@ const checkImageInstances = (
     const alt = prop("alt");
     const where = `${pageName(page.key)}: ${describeInstance(instance)}`;
     return [
-      ...(src?.type === "asset"
+      ...(src === undefined || src.type === "asset"
         ? []
         : [`${where} has a src that is not one of the template's images`]),
       ...(alt?.type === "string" && alt.value.trim() !== ""
