@@ -143,6 +143,8 @@ export type KitStyle = {
   headingCase?: "uppercase";
   /** The size of the org's name in the nav, a face that sets small wanting more; 20px when unset. */
   navNameSize?: string;
+  /** The size of the org's name in the footer, as `navNameSize`; 20px when unset. */
+  footerNameSize?: string;
 };
 
 /** A `font-weight` declaration, or none when the template sets no weight. */

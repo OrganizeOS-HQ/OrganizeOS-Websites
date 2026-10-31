@@ -70,14 +70,14 @@ const footerColumn = (
 /**
  * The site's footer on the base colours under a rule in the text colour
  * (none with `topRule: false`, for a footer straight under a band, whose
- * edge the rule would only seam):
- * the org's name (a [bracketed] placeholder in it kept together, `sample`)
- * and a one-line tagline; then the simple footer's `links`, if any, as
- * lines of text, balanced (`linkRowStyles`); then the columns of links, if any; then `note`, if any, in a
- * box of its own (a paid-for-by or imprint line, at 14px). The links and the
- * columns sit beside the name from 768px up, the columns wrapping under it
- * when they do not fit and the links narrowing the tagline instead; on
- * phones everything stacks to one column.
+ * edge the rule would only seam): the org's name (a [bracketed] placeholder
+ * in it kept together, `sample`), at `footerNameSize`, and a one-line
+ * tagline; then the simple footer's `links`, if any, as lines of text,
+ * balanced (`linkRowStyles`); then the columns of links, if any; then
+ * `note`, if any, in a box of its own (a paid-for-by or imprint line, at
+ * 14px). The links and the columns sit beside the name from 768px up, the
+ * columns wrapping under it when they do not fit and the links narrowing the
+ * tagline instead; on phones everything stacks to one column.
  */
 export const footer = ({
   pageIds,
@@ -88,8 +88,9 @@ export const footer = ({
   note,
   headingWeight,
   headingCase,
+  footerNameSize = "20px",
   topRule = true,
-}: Pick<KitStyle, "headingWeight" | "headingCase"> & {
+}: Pick<KitStyle, "headingWeight" | "headingCase" | "footerNameSize"> & {
   pageIds: PageContext["pageIds"];
   name?: string;
   tagline: string;
@@ -189,7 +190,7 @@ export const footer = ({
                   ...css`
                     margin: 0;
                     font-family: var(--font-heading);
-                    font-size: 20px;
+                    font-size: ${footerNameSize};
                     line-height: 1.2;
                   `,
                   ...fontWeight(headingWeight),

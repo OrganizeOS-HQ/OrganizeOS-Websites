@@ -16,6 +16,21 @@ const renderHome = () => {
   return home.fragment;
 };
 
+/** Whether `id` is `ancestorId` or under it. */
+const isWithin = (
+  fragment: ReturnType<typeof renderHome>,
+  id: string,
+  ancestorId: string
+): boolean => {
+  if (id === ancestorId) {
+    return true;
+  }
+  const parent = fragment.instances.find((instance) =>
+    instance.children.some((child) => child.type === "id" && child.value === id)
+  );
+  return parent !== undefined && isWithin(fragment, parent.id, ancestorId);
+};
+
 describe("Riso Broadside", () => {
   test("is in the catalog as a draft", () => {
     expect(SITE_TEMPLATES).toContain(risoBroadsideTemplate);
@@ -81,6 +96,39 @@ describe("Riso Broadside", () => {
         ) ?? []
     );
     expect(asked).toContain("What happens to my details?");
+  });
+
+  // Instrument Serif reads as a caption at the kit's 20px: the footer's name
+  // is set at the nav's size.
+  test("its footer's name is the nav's size", () => {
+    const fragment = renderHome();
+    const fontSize = (container: string) => {
+      const owner = fragment.instances.find(
+        (instance) => instance.label === container
+      );
+      const name = fragment.instances.find(
+        (instance) =>
+          instance.label === "Name" &&
+          owner !== undefined &&
+          isWithin(fragment, instance.id, owner.id)
+      );
+      const sources =
+        fragment.styleSourceSelections.find(
+          (selection) => selection.instanceId === name?.id
+        )?.values ?? [];
+      return fragment.styles.find(
+        (decl) =>
+          sources.includes(decl.styleSourceId) &&
+          decl.property === "fontSize" &&
+          decl.state === undefined
+      )?.value;
+    };
+    expect(fontSize("Footer")).toEqual({
+      type: "unit",
+      unit: "px",
+      value: 28,
+    });
+    expect(fontSize("Footer")).toEqual(fontSize("Nav: Centered"));
   });
 
   // The alternate palette the owner reviews beside the board's: the same

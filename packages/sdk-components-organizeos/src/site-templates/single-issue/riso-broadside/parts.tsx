@@ -56,5 +56,6 @@ export const siteFooter = (pageIds: PageIds, tagline: string): JSX.Element =>
       { label: "FAQ", href: "#faq" },
       ADD_YOUR_NAME,
     ],
+    footerNameSize: LOOK.footerNameSize,
     topRule: false,
   });

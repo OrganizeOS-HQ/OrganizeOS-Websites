@@ -19,14 +19,15 @@ import {
 
 /**
  * The template's choices for the kit: square corners (none set), buttons in
- * Plex at 600, and the nav's name at 28px, since Instrument Serif's narrow
- * face reads as a caption at the kit's 20px. Instrument Serif has one
- * weight, so the kit's name and footer titles in the heading face are asked
- * for none (the browser would synthesize a bold).
+ * Plex at 600, and the name at 28px in the nav and the footer alike, since
+ * Instrument Serif's narrow face reads as a caption at the kit's 20px.
+ * Instrument Serif has one weight, so the kit's name and footer titles in
+ * the heading face are asked for none (the browser would synthesize a bold).
  */
 export const LOOK: KitStyle = {
   buttonWeight: 600,
   navNameSize: "28px",
+  footerNameSize: "28px",
 };
 
 /** A rule's or an outline's weight: 2px, as printed. */

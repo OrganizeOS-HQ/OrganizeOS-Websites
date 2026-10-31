@@ -321,6 +321,21 @@ describe("footer", () => {
     }
   });
 
+  test("sets the name at the template's size, 20px unasked", () => {
+    const sized = renderFooter({ tagline, footerNameSize: "28px" });
+    expect(
+      stylesAt(sized.fragment, byLabel(sized.fragment, "Name"), 1440)[
+        "font-size"
+      ]
+    ).toBe("28px");
+    const plain = renderFooter({ tagline });
+    expect(
+      stylesAt(plain.fragment, byLabel(plain.fragment, "Name"), 1440)[
+        "font-size"
+      ]
+    ).toBe("20px");
+  });
+
   test("sits on the base colours under a rule in the text colour", () => {
     const { fragment, outer } = renderFooter({ tagline });
     expect(stylesAt(fragment, outer, 1440)).toMatchObject({
