@@ -13,7 +13,11 @@ import {
   firstFontFamily,
 } from "./canonical-variables";
 import type { BlockKey } from "./place-block";
-import { PLATFORM_PATHS, isPlatformPath } from "./platform-paths";
+import {
+  PLATFORM_PATHS,
+  isPlatformPath,
+  isPlatformServedPath,
+} from "./platform-paths";
 import { findStyleProblems } from "./style-scan";
 import { renderSiteTemplate, type RenderedPage } from "./render";
 import { isSectionLabel } from "./sections";
@@ -177,6 +181,10 @@ const checkPagePaths = (template: SiteTemplate): string[] => {
     } else if (page.path === notFoundPagePath) {
       violations.push(
         `${pageName(page.key)} is at ${notFoundPagePath}, which belongs to the 404 page`
+      );
+    } else if (isPlatformServedPath(page.path)) {
+      violations.push(
+        `${pageName(page.key)} is at ${page.path}, which the platform serves on the site's own host, so the page would never show`
       );
     } else if (page.path !== "") {
       // the rules the builder's page settings hold a path to

@@ -982,6 +982,46 @@ describe("checkSiteTemplate", () => {
       );
     });
 
+    // The platform answers these itself on an org's site host
+    // (PLATFORM_SERVED_PATHS), so a page there would never show.
+    test.each([
+      "/join",
+      "/join/union",
+      "/donate",
+      "/events/spring-meeting",
+      "/unsubscribe",
+      "/giving/manage/abc",
+      "/checkout/success",
+      "/auth",
+      "/auth/callback",
+      "/dashboard",
+      "/embed/widget",
+      "/@local-000",
+    ])("a page at %s, which the platform serves, is a violation", (path) => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ pages: [home, { ...aboutPage(), path }] })),
+        '"about"',
+        path,
+        "the platform serves"
+      );
+    });
+
+    // Only /events/<slug> is the platform's; the prefixes are matched by whole
+    // segment, as the org host matches them.
+    test.each([
+      "/events",
+      "/authors",
+      "/joining",
+      "/join-us",
+      "/donations",
+      "/members",
+      "/shop-local",
+    ])("a page at %s is not a platform path", (path) => {
+      expect(
+        checkSiteTemplate(fixture({ pages: [home, { ...aboutPage(), path }] }))
+      ).toEqual([]);
+    });
+
     test.each(["about", "/About", "/about/", "/about us", "/s/about"])(
       "the path %s is a violation",
       (path) => {

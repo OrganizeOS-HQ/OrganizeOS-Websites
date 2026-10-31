@@ -1780,8 +1780,13 @@ anything yet.
   over every `SITE_TEMPLATES` entry and the spike fixture by `catalog.test.ts`)
   returns one readable line per violation, and an empty list for a template that passes. It is a
   backstop to review, not a replacement. It fails a template for: a page at
-  `/newsletter` or at `/*` (the 404 page's), a path the builder's page settings
-  would refuse (`pagePath` from `@webstudio-is/sdk`), two pages on one path, or
+  `/newsletter` or at `/*` (the 404 page's), a page at a path the platform
+  answers itself on the site's host (`PLATFORM_SERVED_PATHS` in
+  `platform-paths.ts`, mirrored from the OrganizeOS repository's
+  `public-route-allowlist.ts` and `org-host-route.ts`: `/join`, `/donate`,
+  `/events/<slug>`, `/auth` and the rest, prefixes by whole segment), a path
+  the builder's page settings would refuse (`pagePath` from
+  `@webstudio-is/sdk`), two pages on one path, or
   no Home (path `""`); a word on the neutrality deny list (party names and the
   like) in a title, a description, a text or a string prop; a `thumbnail`, or
   a `previewEventCover`, that is not a file in `images`; no
