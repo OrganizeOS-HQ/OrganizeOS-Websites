@@ -15,7 +15,8 @@ import { css, token } from "@webstudio-is/template";
 // A message and an invalid field's border read `--text` too: a fixed red fails
 // 3:1 on some site backgrounds (about 1.9:1 on a deep green), and `--text` on
 // `--base` is already held to 4.5:1. The invalid state is then marked by
-// weight (the message) and width (the border), not by colour alone. The
+// weight (the message) and width (the border), not by colour alone; the
+// padding gives up the border's extra pixel, so the field keeps its size. The
 // focus ring and the invalid border's colour are longhands (`border-color`
 // too is a shorthand): a shorthand resolves a `var()` that has a fallback to
 // the fallback when it is parsed.
@@ -51,6 +52,7 @@ export const inputToken = token(
       outline-offset: 1px;
     }
     &[data-invalid] {
+      padding: 7px 11px;
       border-width: 2px;
       border-style: solid;
       border-top-color: var(--text, #dc2626);

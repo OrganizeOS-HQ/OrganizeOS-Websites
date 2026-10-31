@@ -76,6 +76,24 @@ test("an invalid message is bolder and an invalid input's border thicker, so col
   }
 });
 
+test("an invalid input keeps its size: the extra border width is taken from the padding", () => {
+  const px = (token: Token, property: string, state?: string) => {
+    const value = valueOf(token, property, state);
+    if (value?.type !== "unit" || value.unit !== "px") {
+      throw new Error(`${property} ${state ?? ""} is not a px length`);
+    }
+    return value.value;
+  };
+  for (const side of ["Top", "Right", "Bottom", "Left"]) {
+    const outer = (state?: string) =>
+      px(inputToken, `padding${side}`, state) +
+      px(inputToken, `border${side}Width`, state);
+    // the invalid state sets all of its own, so none falls back to the
+    // resting value by omission
+    expect(outer("[data-invalid]"), side).toBe(outer());
+  }
+});
+
 test("the focus ring keeps its width, style and offset as longhands", () => {
   for (const token of [inputToken, buttonToken]) {
     expect(valueOf(token, "outlineWidth", ":focus-visible")).toEqual({
