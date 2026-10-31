@@ -277,11 +277,17 @@ export const signUpSection = ({
   heading,
   body,
   note,
+  formHeading,
 }: Pick<PageContext, "placeBlock"> & {
   tag: string;
   heading: string;
   body: string;
   note: string;
+  /**
+   * The Signup Form's own heading, where the section asks for more than
+   * updates; the block's "Sign up for updates" when unset.
+   */
+  formHeading?: string;
 }): JSX.Element =>
   section({
     label: "Sign-up: Centered",
@@ -341,7 +347,9 @@ export const signUpSection = ({
             }
           `}
         >
-          {placeBlock("@organizeos/site-components:SignupForm", "signup")}
+          {placeBlock("@organizeos/site-components:SignupForm", "signup", {
+            heading: formHeading,
+          })}
         </ws.element>
         {text(
           "p",

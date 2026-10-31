@@ -124,6 +124,7 @@ export const getInvolved: SiteTemplatePage = {
         heading: "Hear when a role opens",
         body: "Leave your details and [our coordinator] will write when a role suits you.",
         note: "We only use your details to contact you about volunteering.",
+        formHeading: "Sign up to volunteer",
       })}
       {events(context)}
       {faqSection({

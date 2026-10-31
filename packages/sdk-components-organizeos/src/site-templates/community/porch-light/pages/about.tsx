@@ -250,7 +250,7 @@ export const about: SiteTemplatePage = {
   key: "about",
   name: "About",
   path: "/about",
-  title: "About [Organization name]",
+  title: "About | [Organization name]",
   description:
     "Who [Organization name] is, how it started and the neighbors who keep it going.",
   body: (context) => (

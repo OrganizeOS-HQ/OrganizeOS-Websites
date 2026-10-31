@@ -43,6 +43,7 @@ export const getInvolved: SiteTemplatePage = {
         heading: "Hear when help is needed",
         body: "Leave your details and [our coordinator] will write when there is a job that suits you.",
         note: "We only use your details to contact you about the group.",
+        formHeading: "Sign up to help",
       })}
       {eventsSection({
         placeBlock: context.placeBlock,
