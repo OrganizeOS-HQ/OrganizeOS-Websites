@@ -230,3 +230,43 @@ export const renderSiteTemplate = (
     };
   });
 };
+
+/** Adds to `ids` every asset `value` holds, however deep. */
+const collectAssetIds = (value: unknown, ids: Set<string>) => {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectAssetIds(item, ids);
+    }
+    return;
+  }
+  if (typeof value !== "object" || value === null) {
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  if (record.type === "asset" && typeof record.value === "string") {
+    ids.add(record.value);
+    return;
+  }
+  for (const item of Object.values(record)) {
+    collectAssetIds(item, ids);
+  }
+};
+
+/**
+ * The asset ids the rendered pages show: an Image's (or any prop's) asset,
+ * and a background image's (or any style's), however deep. A template image
+ * no page shows (its thumbnail, the chooser's picture, or its preview event
+ * cover) is not one of them. The apply uploads these images and no others,
+ * and the check reads a page's images through it too, so the two agree on
+ * what a page shows.
+ */
+export const findPageAssetIds = (
+  pages: Pick<RenderedPage, "fragment">[]
+): Set<string> => {
+  const ids = new Set<string>();
+  for (const { fragment } of pages) {
+    collectAssetIds(fragment.props, ids);
+    collectAssetIds(fragment.styles, ids);
+  }
+  return ids;
+};

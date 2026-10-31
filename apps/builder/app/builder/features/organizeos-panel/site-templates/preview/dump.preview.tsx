@@ -23,6 +23,7 @@ import {
   CANONICAL_COLOR_NAMES,
   CANONICAL_FONT_NAMES,
   SITE_TEMPLATES,
+  findPageAssetIds,
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
 import { getAssetData } from "../../../../../../../../packages/asset-uploader/src/utils/get-asset-data";
@@ -30,10 +31,7 @@ import { spikeTemplate } from "../../../../../../../../packages/sdk-components-o
 import { registerContainers } from "~/shared/sync/sync-stores";
 import { findCanonicalFontFamilies } from "~/shared/db/organizeos-canonical-fonts.server";
 import { getOrganizeosPresetIds } from "../../insert-organizeos-block";
-import {
-  applySiteTemplateMutable,
-  findPageAssetIds,
-} from "../apply-site-template";
+import { applySiteTemplateMutable } from "../apply-site-template";
 import { createProvisionedProject } from "../provisioned-project";
 
 /**

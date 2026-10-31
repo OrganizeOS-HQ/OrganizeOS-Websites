@@ -23,7 +23,11 @@ import {
   isPlatformServedPath,
 } from "./platform-paths";
 import { findStyleProblems } from "./style-scan";
-import { renderSiteTemplate, type RenderedPage } from "./render";
+import {
+  findPageAssetIds,
+  renderSiteTemplate,
+  type RenderedPage,
+} from "./render";
 import { isSectionLabel } from "./sections";
 import type { SiteTemplate, SiteTemplatePage } from "./types";
 
@@ -703,38 +707,12 @@ const checkBlockTokenNames = (
 /** The stand-in asset id the check renders a template's image `file` with. */
 const standInAssetId = (file: string) => `asset:${file}`;
 
-/** Whether a style value is, or holds, the asset `assetId`. */
-const holdsAsset = (value: unknown, assetId: string): boolean => {
-  if (Array.isArray(value)) {
-    return value.some((item) => holdsAsset(item, assetId));
-  }
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  return (
-    (record.type === "asset" && record.value === assetId) ||
-    Object.values(record).some((item) => holdsAsset(item, assetId))
-  );
-};
-
-/**
- * Whether the page shows the image `assetId`: an Image's (or any prop's)
- * asset, or a background image.
- */
-const showsAsset = ({ props, styles }: WebstudioFragment, assetId: string) =>
-  props.some((prop) => prop.type === "asset" && prop.value === assetId) ||
-  styles.some(
-    (style) =>
-      style.property === "backgroundImage" && holdsAsset(style.value, assetId)
-  );
-
 // The preview tool shows the first sample event with the template's
 // previewEventCover. A template that places the cover card names one, so its
 // preview shows a photo of its own, not a stand-in; and no page with an
-// events block shows it, as an Image or a background, so a preview never
-// shows a photo twice. The cover card is the one whose image wears "OS Event
-// Cover".
+// events block shows it, as an Image or a background (findPageAssetIds, as
+// the apply reads a page's images), so a preview never shows a photo twice.
+// The cover card is the one whose image wears "OS Event Cover".
 const checkPreviewEventCover = (
   template: SiteTemplate,
   pages: RenderedPage[]
@@ -753,10 +731,10 @@ const checkPreviewEventCover = (
       : [];
   }
   const assetId = standInAssetId(cover);
-  return eventPages.flatMap(({ key, fragment }) =>
-    showsAsset(fragment, assetId)
+  return eventPages.flatMap((page) =>
+    findPageAssetIds([page]).has(assetId)
       ? [
-          `${pageName(key)} shows the preview event cover "${cover}" and has an events block, so its preview would show the photo twice`,
+          `${pageName(page.key)} shows the preview event cover "${cover}" and has an events block, so its preview would show the photo twice`,
         ]
       : []
   );

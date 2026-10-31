@@ -1820,30 +1820,30 @@ anything yet.
   and the like) in a title, a description, a text or a string prop; a
   `thumbnail`, or a `previewEventCover`, that is not a file in `images`; no
   `previewEventCover` in a template that places the events blocks' cover card,
-  or one that a page with an events block shows (as an Image or a background),
-  which a preview would show twice; an image entry whose `url` is neither
-  root-relative nor http(s) (a small file Vite inlines as a `data:` URL, which
-  the routine cannot upload), or without a `sourceUrl` or alt text, or an image
-  on the page's own elements that is not one of the template's images or has no
-  alt text (an Image with no `src` is allowed: the builder draws its
-  placeholder, the "put your image here" slot of spec decision 3); a font whose
-  key is not a `.woff2` file name, whose `url` is neither root-relative nor
-  http(s), with no `source`, with no licence or one other than `OFL-1.1` or
-  `Apache-2.0`, or whose `family` neither font variable names first (a publish
-  would leave it out), and a font variable whose first family is neither one of
-  the template's fonts nor a system font (a generic family, `system-ui`,
-  `-apple-system`, Georgia and the like); `--text` on `--base`, or `--base` on
-  `--accent-1`, below 4.5:1, or `--accent-2` on `--base`, which draws the focus
-  ring and the templates' small accent text, below 4.5:1, or below 3:1 for a
-  template that declares `accent2: "large-text"` (it sets only large text in
-  accent-2: 24px and up, or 18.66px and up in bold); and, per page, a root that
-  is not one `<body>` element, a child of the body that is not a section
-  labelled with a name from `SECTION_LABELS` (`sections.ts`: the spec's section
-  vocabulary and its short forms, plus `Nav` and `Footer`, each alone or
-  followed by a variant after a colon, as in `Hero: Split`, never by a colon
-  alone), two Event Cards or Event Lists under one such section, a link to a
-  page the template does not have (a mistyped `pageIds` key) or to an element of
-  a page (applying gives the element a new id), a link by path (the `href` of
+  or one that a page with an events block shows (`findPageAssetIds`, as an Image
+  or a background), which a preview would show twice; an image entry whose `url`
+  is neither root-relative nor http(s) (a small file Vite inlines as a `data:`
+  URL, which the routine cannot upload), or without a `sourceUrl` or alt text,
+  or an image on the page's own elements that is not one of the template's
+  images or has no alt text (an Image with no `src` is allowed: the builder
+  draws its placeholder, the "put your image here" slot of spec decision 3); a
+  font whose key is not a `.woff2` file name, whose `url` is neither
+  root-relative nor http(s), with no `source`, with no licence or one other than
+  `OFL-1.1` or `Apache-2.0`, or whose `family` neither font variable names first
+  (a publish would leave it out), and a font variable whose first family is
+  neither one of the template's fonts nor a system font (a generic family,
+  `system-ui`, `-apple-system`, Georgia and the like); `--text` on `--base`, or
+  `--base` on `--accent-1`, below 4.5:1, or `--accent-2` on `--base`, which
+  draws the focus ring and the templates' small accent text, below 4.5:1, or
+  below 3:1 for a template that declares `accent2: "large-text"` (it sets only
+  large text in accent-2: 24px and up, or 18.66px and up in bold); and, per
+  page, a root that is not one `<body>` element, a child of the body that is not
+  a section labelled with a name from `SECTION_LABELS` (`sections.ts`: the
+  spec's section vocabulary and its short forms, plus `Nav` and `Footer`, each
+  alone or followed by a variant after a colon, as in `Hero: Split`, never by a
+  colon alone), two Event Cards or Event Lists under one such section, a link to
+  a page the template does not have (a mistyped `pageIds` key) or to an element
+  of a page (applying gives the element a new id), a link by path (the `href` of
   any element: a React Router site renders an `a` element as its Link too) to
   anything but a route the platform serves (`PLATFORM_PATHS` in
   `platform-paths.ts`, `/donate`), or to one without `reloadDocument` (the
@@ -1932,11 +1932,13 @@ anything yet.
   (`uploadAssets("image", urls)`) only after the transaction returns an applied
   result: a page that cannot render, or a refusal, leaves no asset behind, which
   would make the project touched for good. It uploads only the images a rendered
-  page shows (`findPageAssetIds`: an Image's asset or a background image), so a
-  thumbnail or a `previewEventCover` no page shows leaves no unused asset; the
-  preview's dump keeps the same ones. An id `uploadAssets` returns that differs
-  from the computed one is logged; a failed upload is reported by the builder's
-  own upload toast. The builder's server fetches the URL, so a deployment that
+  page shows (`findPageAssetIds` in the package's `render.ts`: an Image's asset,
+  a background image, or an asset in any other prop or style; the check reads a
+  page's images through it too, so the two agree), so a thumbnail or a
+  `previewEventCover` no page shows leaves no unused asset; the preview's dump
+  keeps the same ones. An id `uploadAssets` returns that differs from the
+  computed one is logged; a failed upload is reported by the builder's own
+  upload toast. The builder's server fetches the URL, so a deployment that
   protects its origin (a Vercel preview with Deployment Protection) answers with
   its login page and every image fails. The package's own lib build emits each
   image as a file of its own under `lib/`, which nothing in the builder reads

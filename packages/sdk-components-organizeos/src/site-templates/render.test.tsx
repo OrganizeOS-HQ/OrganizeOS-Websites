@@ -5,7 +5,11 @@ import { cardToken } from "../events/event-card.template";
 import { meta as eventListMeta } from "../event-list.template";
 import { BLANK_CANONICAL_VALUES } from "./canonical-variables";
 import type { BlockKey } from "./place-block";
-import { renderSiteTemplate, type RenderedPage } from "./render";
+import {
+  findPageAssetIds,
+  renderSiteTemplate,
+  type RenderedPage,
+} from "./render";
 import type { SiteTemplate, SiteTemplatePage } from "./types";
 
 const EventList: BlockKey = "@organizeos/site-components:EventList";
@@ -518,5 +522,53 @@ describe("template block tokens", () => {
     expect(declared(tokenStyles(other, "OS Card"), "paddingTop")).toEqual([
       { type: "unit", unit: "px", value: 16 },
     ]);
+  });
+});
+
+// The images a page shows, which the apply uploads and the check reads: one
+// helper, so the two cannot disagree.
+describe("findPageAssetIds", () => {
+  test("finds an Image's asset and a background image's, on every page", () => {
+    expect(findPageAssetIds(render())).toEqual(new Set(["asset-hero"]));
+  });
+
+  test("finds an asset in any style or prop, however deep, and no image a page does not show", () => {
+    const shown: SiteTemplatePage = {
+      ...about,
+      body: ({ backgroundImage }) => (
+        <ws.element
+          ws:tag="body"
+          ws:style={backgroundImage("team.jpg").map((decl) => ({
+            ...decl,
+            property: "mask-image" as const,
+          }))}
+        >
+          <ws.element ws:tag="h1">{"About us"}</ws.element>
+        </ws.element>
+      ),
+    };
+    const pages = renderSiteTemplate(
+      {
+        ...template,
+        thumbnail: "thumbnail.jpg",
+        images: {
+          ...template.images,
+          "team.jpg": { ...template.images["hero.jpg"], alt: "A team" },
+          "thumbnail.jpg": { ...template.images["hero.jpg"], alt: "A site" },
+        },
+        pages: [home, shown],
+      },
+      {
+        assetIds: new Map([
+          ["hero.jpg", "asset-hero"],
+          ["team.jpg", "asset-team"],
+          ["thumbnail.jpg", "asset-thumbnail"],
+        ]),
+        generatePageId: pageIdCounter(),
+      }
+    );
+    expect(findPageAssetIds(pages)).toEqual(
+      new Set(["asset-hero", "asset-team"])
+    );
   });
 });

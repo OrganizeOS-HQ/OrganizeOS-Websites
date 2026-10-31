@@ -1817,6 +1817,26 @@ describe("checkSiteTemplate", () => {
       );
     });
 
+    // as the apply reads a page's images (findPageAssetIds), so the two
+    // agree on what a page shows
+    test("a preview event cover shown by any style on a page with an events block is a violation", () => {
+      expectOneViolation(
+        checkAbout((context) => (
+          <ws.element
+            ws:tag="section"
+            ws:label="Events"
+            ws:style={context
+              .backgroundImage("cover.jpg")
+              .map((decl) => ({ ...decl, property: "mask-image" as const }))}
+          >
+            {context.placeBlock(EventList, "about-events")}
+          </ws.element>
+        )),
+        'Page "about"',
+        '"cover.jpg"'
+      );
+    });
+
     test("a preview event cover shown on a page with no events block is not a violation", () => {
       expect(
         checkAbout(({ image, imageAlt }) => (
