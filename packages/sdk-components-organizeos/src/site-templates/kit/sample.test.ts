@@ -5,7 +5,7 @@ describe("sample", () => {
   test("keeps each [bracketed] placeholder on one line with no-break spaces", () => {
     expect(
       sample("Help [Organization name] reach [your goal] by [date].")
-    ).toBe("Help [Organization name] reach [your goal] by [date].");
+    ).toBe("Help [Organization\u00A0name] reach [your\u00A0goal] by [date].");
   });
 
   test("leaves the words outside brackets free to wrap", () => {

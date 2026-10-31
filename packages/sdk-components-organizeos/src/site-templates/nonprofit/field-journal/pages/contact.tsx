@@ -1,7 +1,7 @@
 import { css, ws } from "@webstudio-is/template";
-import { BREAKPOINT, SPACE, contentBlock, section } from "../../../kit";
+import { BREAKPOINT, SPACE, contentBlock, section, text } from "../../../kit";
 import type { SiteTemplatePage } from "../../../types";
-import { siteFooter, siteNav, text } from "../parts";
+import { siteFooter, siteNav } from "../parts";
 import { faqSection, pageHeader } from "../sections";
 import {
   bodyStyles,

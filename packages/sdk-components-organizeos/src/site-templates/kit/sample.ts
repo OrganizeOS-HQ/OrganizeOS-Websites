@@ -9,5 +9,5 @@
  */
 export const sample = (value: string): string =>
   value.replace(/\[[^\]]*\]/g, (placeholder) =>
-    placeholder.replaceAll(" ", " ")
+    placeholder.replaceAll(" ", "\u00A0")
   );

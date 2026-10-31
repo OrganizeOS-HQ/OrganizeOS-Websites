@@ -5,18 +5,18 @@ import {
   SPACE,
   type SiteLink,
   contentBlock,
+  keyed,
   sample,
   section,
+  text,
 } from "../../kit";
 import type { PageContext } from "../../types";
 import {
   buttons,
   eventsBoard,
-  keyed,
   photo,
   quietLink,
   sectionHeader,
-  text,
   type PageIds,
 } from "./parts";
 import {

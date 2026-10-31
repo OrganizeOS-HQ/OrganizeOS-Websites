@@ -1,14 +1,14 @@
 import { css, ws } from "@webstudio-is/template";
-import { BREAKPOINT, SPACE, contentBlock, section } from "../../../kit";
-import type { PageContext, SiteTemplatePage } from "../../../types";
 import {
-  JOIN,
+  BREAKPOINT,
+  SPACE,
+  contentBlock,
   keyed,
-  sectionHeader,
-  siteFooter,
-  siteNav,
+  section,
   text,
-} from "../parts";
+} from "../../../kit";
+import type { PageContext, SiteTemplatePage } from "../../../types";
+import { JOIN, sectionHeader, siteFooter, siteNav } from "../parts";
 import { aboutSection, ctaBand, pageHeader } from "../sections";
 import {
   bodyStyles,

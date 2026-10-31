@@ -1,13 +1,7 @@
 import { ws } from "@webstudio-is/template";
-import { section } from "../../../kit";
+import { keyed, section } from "../../../kit";
 import type { PageContext, SiteTemplatePage } from "../../../types";
-import {
-  eventsFrame,
-  keyed,
-  sectionHeader,
-  siteFooter,
-  siteNav,
-} from "../parts";
+import { eventsFrame, sectionHeader, siteFooter, siteNav } from "../parts";
 import { pageHeader, signUpSection } from "../sections";
 import { bodyStyles } from "../styles";
 

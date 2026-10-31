@@ -1,16 +1,21 @@
 import { css, ws } from "@webstudio-is/template";
-import { BREAKPOINT, SPACE, contentBlock, section } from "../../../kit";
+import {
+  BREAKPOINT,
+  SPACE,
+  contentBlock,
+  keyed,
+  section,
+  text,
+} from "../../../kit";
 import type { PageContext, SiteTemplatePage } from "../../../types";
 import {
   DONATE,
   actions,
   eventsFrame,
-  keyed,
   photo,
   sectionHeader,
   siteFooter,
   siteNav,
-  text,
 } from "../parts";
 import { ctaBand, signUpSection, statsBand } from "../sections";
 import {

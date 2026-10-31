@@ -1,14 +1,12 @@
 import { ws } from "@webstudio-is/template";
-import { SPACE, contentBlock, section } from "../../../kit";
+import { SPACE, contentBlock, keyed, section, text } from "../../../kit";
 import type { PageContext, SiteTemplatePage } from "../../../types";
 import {
   eventsFrame,
-  keyed,
   quietLink,
   sectionHeader,
   siteFooter,
   siteNav,
-  text,
 } from "../parts";
 import { faqSection, pageHeader, signUpSection } from "../sections";
 import {

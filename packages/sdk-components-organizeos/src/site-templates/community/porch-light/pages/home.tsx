@@ -1,15 +1,7 @@
 import { css, ws } from "@webstudio-is/template";
-import { BREAKPOINT, SPACE, sample, section } from "../../../kit";
+import { BREAKPOINT, SPACE, keyed, sample, section, text } from "../../../kit";
 import type { PageContext, SiteTemplatePage } from "../../../types";
-import {
-  JOIN,
-  buttons,
-  keyed,
-  photo,
-  siteFooter,
-  siteNav,
-  text,
-} from "../parts";
+import { JOIN, buttons, photo, siteFooter, siteNav } from "../parts";
 import {
   aboutSection,
   contactSection,
