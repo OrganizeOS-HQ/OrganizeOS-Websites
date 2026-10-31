@@ -658,6 +658,189 @@ describe("checkSiteTemplate", () => {
     });
   });
 
+  // A band sets the band variables to its text colour for what sits inside
+  // it (the kit's section() on accent-1 or text, a dark Background preset).
+  // A base panel inside one sets them back to accent-2, or a focus ring and
+  // accent text inside it are the base on the base.
+  describe("bands", () => {
+    const panel = (style: ReturnType<typeof css>) => (
+      <ws.element ws:tag="div" ws:label="Form panel" ws:style={style}>
+        <ws.element ws:tag="p">{"Sign up"}</ws.element>
+      </ws.element>
+    );
+    const inBand = (
+      inner: JSX.Element,
+      background: "accent-1" | "text" = "accent-1"
+    ) =>
+      checkBody(() => (
+        <ws.element ws:tag="body">
+          {section({
+            label: "Sign-up",
+            background,
+            children: [
+              <ws.element key="h1" ws:tag="h1">
+                {"Sign up"}
+              </ws.element>,
+              <ws.element key="inner" ws:tag="div">
+                {inner}
+              </ws.element>,
+            ],
+          })}
+        </ws.element>
+      ));
+
+    test.each(["accent-1", "text"] as const)(
+      "a base panel inside a kit band on %s that does not reset the band variables is a violation",
+      (background) => {
+        expectOneViolation(
+          inBand(
+            panel(css`
+              background-color: var(--base);
+            `),
+            background
+          ),
+          '"about"',
+          '"Form panel"',
+          '"Sign-up"',
+          "--focus-ring and --accent-text",
+          "var(--accent-2)"
+        );
+      }
+    );
+
+    test("a base panel inside a band a preset's variables make is a violation", () => {
+      expectOneViolation(
+        checkAboutBody(() => (
+          <ws.element
+            ws:tag="section"
+            ws:label="Sign-up"
+            ws:style={css`
+              background-color: var(--accent-1);
+              --focus-ring: var(--text);
+              --accent-text: var(--text);
+            `}
+          >
+            {panel(css`
+              background-color: var(--base);
+            `)}
+          </ws.element>
+        )),
+        '"Form panel"',
+        '"Sign-up"'
+      );
+    });
+
+    test("a base panel that resets one of the two names the other", () => {
+      const [violation, ...others] = inBand(
+        panel(css`
+          background-color: var(--base);
+          --focus-ring: var(--accent-2);
+        `)
+      );
+      expect(others).toEqual([]);
+      expect(violation).toContain("--accent-text");
+      expect(violation).not.toContain("--focus-ring");
+    });
+
+    test("a base panel that resets both, at the base or where it turns base, is not a violation", () => {
+      expect(
+        inBand(
+          panel(css`
+            background-color: var(--base);
+            --focus-ring: var(--accent-2);
+            --accent-text: var(--accent-2);
+          `)
+        )
+      ).toEqual([]);
+      expect(
+        inBand(
+          panel(css`
+            @media (max-width: 767px) {
+              background-color: var(--base);
+              --focus-ring: var(--accent-2);
+              --accent-text: var(--accent-2);
+            }
+          `)
+        )
+      ).toEqual([]);
+    });
+
+    test("a panel that turns base under a breakpoint and resets only at another is a violation", () => {
+      expectOneViolation(
+        inBand(
+          panel(css`
+            @media (max-width: 767px) {
+              background-color: var(--base);
+            }
+            @media (max-width: 479px) {
+              --focus-ring: var(--accent-2);
+              --accent-text: var(--accent-2);
+            }
+          `)
+        ),
+        '"Form panel"'
+      );
+    });
+
+    // its ring is drawn outside it, on the band, in the band's colour
+    test("a base link or button inside a band is not a panel", () => {
+      expect(
+        inBand(
+          <$.Link
+            ws:label="Button"
+            href="/donate"
+            reloadDocument={true}
+            ws:style={css`
+              background-color: var(--base);
+            `}
+          >
+            {"Donate"}
+          </$.Link>
+        )
+      ).toEqual([]);
+      expect(
+        inBand(
+          <ws.element
+            ws:tag="button"
+            ws:style={css`
+              background-color: var(--base);
+            `}
+          >
+            {"Send"}
+          </ws.element>
+        )
+      ).toEqual([]);
+    });
+
+    test("a base panel inside a reset panel, or on the base, is not a violation", () => {
+      expect(
+        inBand(
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              --focus-ring: var(--accent-2);
+              --accent-text: var(--accent-2);
+            `}
+          >
+            {panel(css`
+              background-color: var(--base);
+            `)}
+          </ws.element>
+        )
+      ).toEqual([]);
+      expect(
+        checkAboutBody(() =>
+          section({
+            label: "Sign-up",
+            children: panel(css`
+              background-color: var(--base);
+            `),
+          })
+        )
+      ).toEqual([]);
+    });
+  });
+
   describe("events blocks", () => {
     test.each([
       {

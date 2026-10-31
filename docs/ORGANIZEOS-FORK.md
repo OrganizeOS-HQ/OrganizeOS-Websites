@@ -1716,28 +1716,28 @@ anything yet.
 - **The canonical variables** (`canonical-variables.ts`): `--base`,
   `--accent-1`, `--accent-2`, `--text`, `--font-heading` and `--font-body`. The
   blank-start values are `#ffffff`, `#18181b`, `#2563eb` and `#18181b`, and
-  `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif` for both fonts:
-  the look the blocks had before the variables. They sit on Global Root's
-  local style source at the base breakpoint, written by style key, so a second
-  write replaces the first. Provisioning writes none (its update path writes
-  content columns, not styles, and its seeds re-sync on every provision call).
-  The file holds the names, the values, `contrastRatio` and `firstFontFamily`
-  (the family a font value names first: `"Source Serif 4", Georgia, serif`
-  reads `Source Serif 4`), and imports nothing from the catalog: the Style
-  panel imports it alone, so the templates and their images stay out of the
-  panel's chunk. The Background presets take their roles by these names when
-  all four colours are there (Section backgrounds, above). It also names the
-  two band variables (`BAND_VARIABLES`), which a band sets for what sits
-  inside it, each to its text colour: `--focus-ring`, the colour of a focus
-  ring, and `--accent-text`, the colour of a template's accent-2 text; unset,
-  on the base, both are `--accent-2`, which the check holds against the base
-  alone. The kit's `section()` sets both to `var(--base)` on an accent-1 or
-  text band, and the Background presets' dark presets set them too; a
-  base-coloured panel inside a band sets them back to `var(--accent-2)`. The
-  kit's `focusRing()` reads `var(--focus-ring, var(--accent-2))` and
+  `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif` for both fonts: the
+  look the blocks had before the variables. They sit on Global Root's local
+  style source at the base breakpoint, written by style key, so a second write
+  replaces the first. Provisioning writes none (its update path writes content
+  columns, not styles, and its seeds re-sync on every provision call). The file
+  holds the names, the values, `contrastRatio` and `firstFontFamily` (the family
+  a font value names first: `"Source Serif 4", Georgia, serif` reads
+  `Source Serif 4`), and imports nothing from the catalog: the Style panel
+  imports it alone, so the templates and their images stay out of the panel's
+  chunk. The Background presets take their roles by these names when all four
+  colours are there (Section backgrounds, above). It also names the two band
+  variables (`BAND_VARIABLES`), which a band sets for what sits inside it, each
+  to its text colour: `--focus-ring`, the colour of a focus ring, and
+  `--accent-text`, the colour of a template's accent-2 text; unset, on the base,
+  both are `--accent-2`, which the check holds against the base alone. The kit's
+  `section()` sets both to `var(--base)` on an accent-1 or text band, and the
+  Background presets' dark presets set them too; a base-coloured panel inside a
+  band sets them back to `var(--accent-2)` (the check holds a template to that).
+  The kit's `focusRing()` reads `var(--focus-ring, var(--accent-2))` and
   `ACCENT_TEXT` is `var(--accent-text, var(--accent-2))`, which a template's
-  block tokens read for any text in accent-2: they are site-wide, so an
-  events block an org places on a band later wears them there.
+  block tokens read for any text in accent-2: they are site-wide, so an events
+  block an org places on a band later wears them there.
 - **`placeBlock(key, placementId)`** (`place-block.ts`) is the only way a
   template places a platform block. `key` is the Components-panel key
   (`@organizeos/site-components:SignupForm`, `:RsvpForm`, `:EventList` or
@@ -1845,8 +1845,13 @@ anything yet.
   `a` element as its Link too) to anything but a route the platform serves
   (`PLATFORM_PATHS` in `platform-paths.ts`, `/donate`), or to one without
   `reloadDocument` (the published site's router has no route there; the kit's
-  `linkProps` sets it), a Resource, a repeated instance id, a count of `h1`
-  other than one, a Signup Form, RSVP Form or Share Code Carrier not placed with
+  `linkProps` sets it), a panel with the base background inside a band (an
+  element that sets a band variable to anything but `var(--accent-2)`, as the
+  kit's band and a dark Background preset do) that does not set both band
+  variables back to `var(--accent-2)` at the base breakpoint or at the one where
+  it turns base (a link or a button is no panel: its own ring is drawn outside
+  it, on the band), a Resource, a repeated instance id, a count of `h1` other
+  than one, a Signup Form, RSVP Form or Share Code Carrier not placed with
   `placeBlock`, and, in styles on elements outside a placed block's subtree (a
   block's token used by the page's own element counts), in a placed block's root
   style and in `blockTokens`, a literal colour or colour keyword where a colour

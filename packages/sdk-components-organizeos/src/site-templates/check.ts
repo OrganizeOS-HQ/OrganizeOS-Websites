@@ -10,6 +10,7 @@ import {
 } from "@webstudio-is/sdk";
 import {
   ACCENT_TEXT_VARIABLE,
+  BAND_VARIABLES,
   CANONICAL_FONT_NAMES,
   contrastRatio,
   firstFontFamily,
@@ -512,9 +513,134 @@ const checkMediaQueries = (
   return Array.from(violations);
 };
 
+/** Whether a value is the canonical variable `name`, as `var(--name)`. */
+const isVariable = (value: StyleValue, name: string) =>
+  value.type === "var" && value.value === name;
+
 /** Whether a value is accent-2 itself, not through a band's accent text. */
-const isAccent2 = (value: StyleValue) =>
-  value.type === "var" && value.value === "accent-2";
+const isAccent2 = (value: StyleValue) => isVariable(value, "accent-2");
+
+// The elements a visitor focuses: each draws its focus ring outside itself.
+const focusableTags = new Set([
+  "a",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "summary",
+]);
+const focusableComponents = new Set([
+  "Link",
+  "RichTextLink",
+  "Button",
+  "Input",
+  "Textarea",
+  "Select",
+  "Checkbox",
+  "RadioButton",
+]);
+
+const isFocusable = (instance: Instance) =>
+  focusableTags.has(instance.tag ?? "") ||
+  focusableComponents.has(instance.component);
+
+// A band (the kit's section() on accent-1 or text, or a section a dark
+// Background preset paints) sets the band variables to its text colour for
+// what sits inside it; setting them is what makes an element a band here. A
+// panel with the base background inside a band sets both back to
+// var(--accent-2), at the base breakpoint or at the one where it turns base,
+// or a focus ring and accent text inside it are the band's text colour, the
+// base, on the base. A panel that sets both back at the base ends the band
+// for what is inside it. A link or a button is no panel: its own focus ring
+// is drawn outside it, on the band, so it keeps the band's. Styles in a state
+// are left out, and a placed block's subtree is its own but for its root's
+// style.
+const checkBandResets = (
+  page: RenderedPage,
+  blockIds: Set<string>
+): string[] => {
+  const { fragment } = page;
+  const body = bodyOf(fragment);
+  if (body === undefined) {
+    return [];
+  }
+  const instances = instancesById(fragment);
+  const roots = new Set(page.placements.map((placement) => placement.rootId));
+  const localIds = new Set(
+    fragment.styleSources.flatMap((source) =>
+      source.type === "local" ? [source.id] : []
+    )
+  );
+  const selections = new Map(
+    fragment.styleSourceSelections.map((selection) => [
+      selection.instanceId,
+      selection.values,
+    ])
+  );
+  const baseBreakpointId = fragment.breakpoints.find(
+    ({ minWidth, maxWidth, condition }) =>
+      minWidth === undefined &&
+      maxWidth === undefined &&
+      condition === undefined
+  )?.id;
+  const declarationsOf = (instanceId: Instance["id"]) => {
+    if (blockIds.has(instanceId) && roots.has(instanceId) === false) {
+      return [];
+    }
+    const values = selections.get(instanceId) ?? [];
+    const sourceIds = new Set(
+      roots.has(instanceId) ? values.filter((id) => localIds.has(id)) : values
+    );
+    return fragment.styles.filter(
+      (decl) => sourceIds.has(decl.styleSourceId) && decl.state === undefined
+    );
+  };
+  const violations: string[] = [];
+  const visit = (instance: Instance, band: Instance | undefined) => {
+    const declarations = declarationsOf(instance.id);
+    const resets = (name: string, breakpointId: string) =>
+      declarations.some(
+        (decl) =>
+          decl.property === `--${name}` &&
+          isAccent2(decl.value) &&
+          (decl.breakpointId === breakpointId ||
+            decl.breakpointId === baseBreakpointId)
+      );
+    if (band !== undefined && isFocusable(instance) === false) {
+      const baseBackgrounds = declarations.filter(
+        (decl) =>
+          decl.property === "backgroundColor" && isVariable(decl.value, "base")
+      );
+      const missing = BAND_VARIABLES.filter((name) =>
+        baseBackgrounds.some(({ breakpointId }) => !resets(name, breakpointId))
+      );
+      if (missing.length > 0) {
+        const names = missing.map((name) => `--${name}`).join(" and ");
+        violations.push(
+          `${pageName(page.key)}: ${describeInstance(instance)} has the base background inside the band ${describeInstance(band)}, so it sets ${names} back to var(--accent-2), or a focus ring or accent text inside it is the base on the base`
+        );
+      }
+    }
+    const setsBand = declarations.some(
+      (decl) =>
+        BAND_VARIABLES.some((name) => decl.property === `--${name}`) &&
+        isAccent2(decl.value) === false
+    );
+    const endsBand =
+      baseBreakpointId !== undefined &&
+      BAND_VARIABLES.every((name) => resets(name, baseBreakpointId));
+    const inner = setsBand ? instance : endsBand ? undefined : band;
+    for (const child of instance.children) {
+      const childInstance =
+        child.type === "id" ? instances.get(child.value) : undefined;
+      if (childInstance !== undefined) {
+        visit(childInstance, inner);
+      }
+    }
+  };
+  visit(body, undefined);
+  return violations;
+};
 
 // A template's look for the block tokens is its own style: held to the
 // rules its page styles are. And its text in accent-2 goes through the
@@ -921,6 +1047,7 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
       ...checkPageLinks(page, pageIds),
       ...checkPathLinks(page, blockIds),
       ...checkStyles(page, blockIds),
+      ...checkBandResets(page, blockIds),
       ...checkImageInstances(page, blockIds),
       ...checkFragment(page),
       ...checkSectionLabels(page),
