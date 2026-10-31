@@ -1695,8 +1695,9 @@ anything yet.
   constant. `renderSiteTemplate` (`render.ts`) renders every page into a
   fragment, with the placements it recorded; the caller supplies the page ids
   and the asset id of each image. `catalog.ts` lists `SITE_TEMPLATES` (Field
-  Journal in `nonprofit/field-journal/` and Porch Light in
-  `community/porch-light/`, both drafts), and the chooser offers
+  Journal in `nonprofit/field-journal/`, Porch Light in
+  `community/porch-light/` and Workwear in `union/workwear/`, all drafts),
+  and the chooser offers
   `listedTemplates()`,
   the `listed` ones in category order.
   Listing is the owner's call, made by changing `status` in a PR. Nothing the

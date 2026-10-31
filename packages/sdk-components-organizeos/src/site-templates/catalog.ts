@@ -1,6 +1,7 @@
 import { porchLightTemplate } from "./community/porch-light";
 import { fieldJournalTemplate } from "./nonprofit/field-journal";
 import { CATEGORY_ORDER, type SiteTemplate } from "./types";
+import { workwearTemplate } from "./union/workwear";
 
 // Every site template, listed or draft. Listing one is the owner's call, made
 // by changing its `status` in a PR (spec 6.1). Each template here is held to
@@ -9,6 +10,7 @@ import { CATEGORY_ORDER, type SiteTemplate } from "./types";
 export const SITE_TEMPLATES: SiteTemplate[] = [
   fieldJournalTemplate,
   porchLightTemplate,
+  workwearTemplate,
 ];
 
 /** The templates the chooser offers: listed ones, by category order. */

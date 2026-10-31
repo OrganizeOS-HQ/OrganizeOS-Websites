@@ -1,0 +1,8 @@
+{
+  "base": "#13181F",
+  "accent-1": "#9FB6D8",
+  "accent-2": "#EE7A3A",
+  "text": "#E8EAEC",
+  "font-heading": "\"Barlow Condensed\", \"Arial Narrow\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
+  "font-body": "\"Barlow\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
+}
