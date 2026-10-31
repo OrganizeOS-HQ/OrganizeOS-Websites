@@ -8,11 +8,19 @@ import type { SiteTemplate, TemplateCategory } from "./types";
 describe("the catalog", () => {
   // The spike is a fixture, not an entry; holding it to the check keeps the
   // apply tests and the preview tool working from a template that is valid.
-  test("every catalog template and the spike fixture pass their check and have a unique id", () => {
-    const templates = [...SITE_TEMPLATES, spikeTemplate];
-    for (const template of templates) {
-      expect(checkSiteTemplate(template), template.id).toEqual([]);
+  const templates = [...SITE_TEMPLATES, spikeTemplate];
+
+  // One test each: a check renders every page of its template, about a
+  // second apiece, so one test over the whole catalog outgrows the time a
+  // test is given as templates join it.
+  test.each(templates.map((template) => [template.id, template] as const))(
+    "%s passes its check",
+    (_id, template) => {
+      expect(checkSiteTemplate(template)).toEqual([]);
     }
+  );
+
+  test("every catalog template and the spike fixture have a unique id", () => {
     const ids = templates.map((template) => template.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
