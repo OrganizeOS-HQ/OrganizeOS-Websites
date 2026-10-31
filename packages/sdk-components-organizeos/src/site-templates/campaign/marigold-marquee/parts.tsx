@@ -53,7 +53,9 @@ export const siteNav = (pageIds: PageIds): JSX.Element =>
 
 /**
  * Footer: Columns, with the paid-for-by line most jurisdictions require in
- * the kit's boxed note, as a sample to replace with the exact wording.
+ * the kit's boxed note, as one bracketed statement for the campaign to
+ * replace with the exact wording. It wraps as a sentence does, so it does
+ * not go through `sample`, which would keep the whole bracket on one line.
  */
 export const siteFooter = (pageIds: PageIds): JSX.Element =>
   footer({
@@ -86,9 +88,9 @@ export const siteFooter = (pageIds: PageIds): JSX.Element =>
           text-wrap-style: pretty;
         `}
       >
-        {sample(
-          "Paid for by [Committee name]. Use the exact wording your jurisdiction requires."
-        )}
+        {
+          "[Paid for by Committee name, in the exact wording your jurisdiction requires]"
+        }
       </ws.element>
     ),
     headingWeight: LOOK.headingWeight,

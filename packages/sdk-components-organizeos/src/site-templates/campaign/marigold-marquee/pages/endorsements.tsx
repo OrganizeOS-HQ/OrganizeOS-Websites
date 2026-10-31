@@ -5,8 +5,8 @@ import { QUOTES } from "../sample-content";
 import { donateBand, pageHeader, quoteCards } from "../sections";
 import { bodyStyles } from "../styles";
 
-// Endorsements: Page header; Endorsements and testimonials: Quote cards,
-// every name and role a bracket to fill; the donate ask on marigold.
+// Endorsements: Page header; Endorsements: Quote cards, every name and role
+// a bracket to fill; the donate ask on marigold.
 
 export const endorsements: SiteTemplatePage = {
   key: "endorsements",
@@ -29,7 +29,7 @@ export const endorsements: SiteTemplatePage = {
         eyebrow: "In their words",
         heading: "Why they back the campaign",
         intro:
-          "Ask each one for a sentence or two, and check the wording with them before it goes up.",
+          "Say who stands behind [Candidate], and why their backing counts.",
         quotes: QUOTES,
       })}
       {donateBand({

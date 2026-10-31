@@ -166,6 +166,23 @@ describe("Marigold Marquee", () => {
     }
   });
 
+  // The quote cards' large quotation mark is decoration: the words are in a
+  // blockquote.
+  test("a screen reader skips each quote card's quotation mark", () => {
+    const { fragment } = render().find((page) => page.key === "endorsements")!;
+    const marks = fragment.instances.filter(
+      (instance) => instance.label === "Mark"
+    );
+    expect(marks.length).toBeGreaterThan(0);
+    for (const mark of marks) {
+      expect(
+        fragment.props.find(
+          (prop) => prop.instanceId === mark.id && prop.name === "aria-hidden"
+        )
+      ).toMatchObject({ type: "string", value: "true" });
+    }
+  });
+
   // Mint sets links, eyebrows and the event dates on the base, so it is
   // held to text's 4.5:1 there, not only the check's 3:1 for a ring.
   test.each([

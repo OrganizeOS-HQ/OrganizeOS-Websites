@@ -29,7 +29,7 @@ export const issues: SiteTemplatePage = {
         eyebrow: "The plan",
         heading: "What [Candidate] will do",
         intro:
-          "Keep each issue to a title, a line and a few steps, so a voter can read it on a phone.",
+          "Say in a sentence what the plan sets out to change, and for whom.",
         issues: ISSUES,
       })}
       {donateBand({

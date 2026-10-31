@@ -25,8 +25,8 @@ import {
 } from "../styles";
 
 // Home (directions 2.4 and section 3): Nav with Donate as its button; Hero:
-// Split with Volunteer and Donate; Issues or programs: Alternating rows,
-// numbered; one featured event (the Event List is on the Events page);
+// Split with Volunteer and Donate; Issues: Alternating rows, numbered;
+// Events: Featured, the next event (the Event List is on the Events page);
 // Volunteer opportunities: Cards; Sign-up: Side by side on the chalk band,
 // the page's one light section; Footer: Columns with the paid-for-by box.
 

@@ -195,9 +195,9 @@ const issue = ([number, title, line, steps = []]: Issue) => (
 );
 
 /**
- * Issues or programs: Alternating rows, numbered and text-first: the issues
- * as rows of a big mint number, a title and a line, between hairlines, the
- * last closed by one.
+ * Issues: Alternating rows, numbered and text-first: the issues as rows of a
+ * big mint number, a title and a line, between hairlines, the last closed
+ * by one.
  */
 export const issuesRows = ({
   pageIds,
@@ -215,7 +215,7 @@ export const issuesRows = ({
   issues: Issue[];
 }): JSX.Element =>
   section({
-    label: "Issues or programs: Alternating rows",
+    label: "Issues: Alternating rows",
     children: keyed([
       sectionHeader({ pageIds, eyebrow, heading, intro, link }),
       <ws.element
@@ -241,7 +241,7 @@ export const issuesRows = ({
   });
 
 /**
- * Events: Card grid, of one: the next event, featured in a marigold-outlined
+ * Events: Featured: the next event, one Event Card in a marigold-outlined
  * panel beside the reason to come and a "See all dates" link to the Events
  * page, where the Event List is; the two columns centred on each other, so
  * the shorter one sits in the middle of the taller. On phones the card
@@ -259,7 +259,7 @@ export const featuredEvent = ({
   intro: string;
 }): JSX.Element =>
   section({
-    label: "Events: Card grid",
+    label: "Events: Featured",
     children: (
       <ws.element
         ws:tag="div"
@@ -579,7 +579,7 @@ export type Quote = [string, string, string];
 
 /**
  * One endorsement in a card outlined by a hairline: a large mint quotation
- * mark, the words, and who said them.
+ * mark, which a screen reader skips, the words, and who said them.
  */
 const quote = ([words, name, role]: Quote) => (
   <ws.element
@@ -609,17 +609,19 @@ const quote = ([words, name, role]: Quote) => (
       }
     `}
   >
-    {text(
-      "p",
-      [
+    <ws.element
+      ws:tag="p"
+      ws:label="Mark"
+      aria-hidden="true"
+      ws:style={[
         ...numeralStyles("72px"),
         ...css`
           height: 0.5em;
         `,
-      ],
-      "“",
-      "Mark"
-    )}
+      ]}
+    >
+      {"“"}
+    </ws.element>
     <ws.element
       ws:tag="blockquote"
       ws:style={css`
@@ -659,8 +661,8 @@ const quote = ([words, name, role]: Quote) => (
 );
 
 /**
- * Endorsements and testimonials: Quote cards, three up (two from 768px to
- * 991px), one column on phones.
+ * Endorsements: Quote cards, three up (two from 768px to 991px), one column
+ * on phones.
  */
 export const quoteCards = ({
   pageIds,
@@ -676,7 +678,7 @@ export const quoteCards = ({
   quotes: Quote[];
 }): JSX.Element =>
   section({
-    label: "Endorsements and testimonials: Quote cards",
+    label: "Endorsements: Quote cards",
     children: keyed([
       sectionHeader({ pageIds, eyebrow, heading, intro }),
       <ws.element
