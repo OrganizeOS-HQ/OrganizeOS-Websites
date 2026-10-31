@@ -4,6 +4,7 @@ import {
   CANONICAL_COLOR_NAMES,
   CANONICAL_FONT_NAMES,
   contrastRatio,
+  firstFontFamily,
   isCanonicalName,
 } from "./canonical-variables";
 
@@ -116,6 +117,31 @@ describe("contrastRatio", () => {
     ]) {
       expect(() => contrastRatio(value, "#000000"), value).toThrow();
       expect(() => contrastRatio("#000000", value), value).toThrow();
+    }
+  });
+});
+
+describe("firstFontFamily", () => {
+  test("reads a quoted family without its quotes", () => {
+    expect(firstFontFamily('"Source Serif 4", Georgia, serif')).toBe(
+      "Source Serif 4"
+    );
+    expect(firstFontFamily("'Public Sans', system-ui")).toBe("Public Sans");
+  });
+
+  test("reads an unquoted family, its spaces collapsed", () => {
+    expect(firstFontFamily("Public  Sans , system-ui")).toBe("Public Sans");
+    expect(firstFontFamily(" system-ui, sans-serif")).toBe("system-ui");
+    expect(firstFontFamily("Barlow")).toBe("Barlow");
+  });
+
+  test("a comma inside quotes is part of the name", () => {
+    expect(firstFontFamily('"Odd, Font", serif')).toBe("Odd, Font");
+  });
+
+  test("a value that names no family reads as undefined", () => {
+    for (const value of ["", " ", ", serif", '"", serif', '"Unclosed']) {
+      expect(firstFontFamily(value), value).toBeUndefined();
     }
   });
 });

@@ -47,6 +47,28 @@ const canonicalNames: readonly string[] = [
 export const isCanonicalName = (name: string): name is CanonicalName =>
   canonicalNames.includes(name);
 
+/**
+ * The family a font value names first, as CSS reads it: `"Source Serif 4",
+ * Georgia, serif` reads `Source Serif 4`. It is the family a site's text is
+ * set in when the font is there, so it is the one a template bundles and a
+ * publish keeps. Undefined when the value names none.
+ */
+export const firstFontFamily = (value: string): string | undefined => {
+  const text = value.trim();
+  const quote = text[0];
+  let family: string;
+  if (quote === '"' || quote === "'") {
+    const end = text.indexOf(quote, 1);
+    if (end === -1) {
+      return;
+    }
+    family = text.slice(1, end);
+  } else {
+    family = text.split(",")[0].trim().replace(/\s+/g, " ");
+  }
+  return family === "" ? undefined : family;
+};
+
 const parseHex = (color: string): [number, number, number] => {
   const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color)?.[1];
   if (hex === undefined) {

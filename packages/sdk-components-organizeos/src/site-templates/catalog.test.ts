@@ -33,6 +33,7 @@ describe("the catalog", () => {
       thumbnail: `/${id}.jpg`,
       variables: BLANK_CANONICAL_VALUES,
       images: {},
+      fonts: {},
       pages: [],
     });
     const templates = [

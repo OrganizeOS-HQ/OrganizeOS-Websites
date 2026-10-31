@@ -11,10 +11,18 @@ import {
 } from "@webstudio-is/template";
 import { cardToken } from "../events/event-card.template";
 import { organizeos } from "../shared/proxy";
-import { BLANK_CANONICAL_VALUES } from "./canonical-variables";
+import {
+  type CanonicalValues,
+  BLANK_CANONICAL_VALUES,
+} from "./canonical-variables";
 import { NEUTRALITY_DENY_LIST, checkSiteTemplate } from "./check";
 import type { BlockKey } from "./place-block";
-import type { PageContext, SiteTemplate, SiteTemplatePage } from "./types";
+import type {
+  FontEntry,
+  PageContext,
+  SiteTemplate,
+  SiteTemplatePage,
+} from "./types";
 
 const EventCard: BlockKey = "@organizeos/site-components:EventCard";
 const EventList: BlockKey = "@organizeos/site-components:EventList";
@@ -116,6 +124,7 @@ const fixture = (overrides: Partial<SiteTemplate> = {}): SiteTemplate => ({
       alt: "Replace with a photo of your members",
     },
   },
+  fonts: {},
   pages: [home, aboutPage()],
   ...overrides,
 });
@@ -756,6 +765,163 @@ describe("checkSiteTemplate", () => {
         '"about"',
         '"Banner"',
         "https://example.org/photo.jpg"
+      );
+    });
+  });
+
+  describe("fonts", () => {
+    const sourceSerif: FontEntry = {
+      url: "/site-templates/fixture/source-serif-4-latin-wght-normal.woff2",
+      family: "Source Serif 4",
+      licence: "OFL-1.1",
+      source: "@fontsource-variable/source-serif-4",
+    };
+
+    /** The fixture with Source Serif 4 as its heading font. */
+    const withFont = ({
+      file = "source-serif-4-latin-wght-normal.woff2",
+      font = {},
+      variables = {},
+    }: {
+      file?: string;
+      font?: Partial<FontEntry>;
+      variables?: Partial<CanonicalValues>;
+    } = {}) =>
+      fixture({
+        variables: {
+          ...BLANK_CANONICAL_VALUES,
+          "font-heading": '"Source Serif 4", Georgia, serif',
+          ...variables,
+        },
+        fonts: { [file]: { ...sourceSerif, ...font } },
+      });
+
+    test("a font variable naming a bundled font first is not a violation", () => {
+      expect(checkSiteTemplate(withFont())).toEqual([]);
+      expect(
+        checkSiteTemplate(
+          withFont({
+            variables: { "font-body": "Source Serif 4, serif" },
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test("a font variable whose first family no font declares is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            variables: {
+              ...BLANK_CANONICAL_VALUES,
+              "font-body": '"Source Serif 4", Georgia, serif',
+            },
+          })
+        ),
+        "font-body",
+        '"Source Serif 4"'
+      );
+    });
+
+    // A publish keeps a font by its family, compared exactly.
+    test("a family is matched as the builder names it, case and all", () => {
+      const violations = checkSiteTemplate(
+        withFont({ font: { family: "source serif 4" } })
+      );
+      expect(violations).toEqual([
+        expect.stringMatching(
+          /"source-serif-4-latin-wght-normal.woff2".*"source serif 4"/
+        ),
+        expect.stringMatching(/font-heading.*"Source Serif 4"/),
+      ]);
+    });
+
+    test.each([
+      "system-ui, sans-serif",
+      "-apple-system, sans-serif",
+      "Georgia, serif",
+      '"Segoe UI", Roboto, sans-serif',
+      "serif",
+      "ui-monospace, monospace",
+    ])("a system font first (%s) needs no bundled font", (value) => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            variables: {
+              ...BLANK_CANONICAL_VALUES,
+              "font-heading": value,
+              "font-body": value,
+            },
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test("a font variable that names no family is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            variables: { ...BLANK_CANONICAL_VALUES, "font-body": " " },
+          })
+        ),
+        "font-body"
+      );
+    });
+
+    test.each(["licence", "source"] as const)(
+      "a font without a %s is a violation",
+      (field) => {
+        expectOneViolation(
+          checkSiteTemplate(withFont({ font: { [field]: " " } })),
+          '"source-serif-4-latin-wght-normal.woff2"',
+          field
+        );
+      }
+    );
+
+    test.each(["Apache-2.0", "OFL-1.1"])(
+      "a font under %s is not a violation",
+      (licence) => {
+        expect(checkSiteTemplate(withFont({ font: { licence } }))).toEqual([]);
+      }
+    );
+
+    test("a font under another licence is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(withFont({ font: { licence: "Proprietary" } })),
+        '"source-serif-4-latin-wght-normal.woff2"',
+        '"Proprietary"'
+      );
+    });
+
+    test.each([
+      "data:font/woff2;base64,d09GMgABAAAAAA==",
+      "files/source-serif-4.woff2",
+    ])("a font at %s is a violation", (url) => {
+      expectOneViolation(
+        checkSiteTemplate(withFont({ font: { url } })),
+        '"source-serif-4-latin-wght-normal.woff2"',
+        "URL"
+      );
+    });
+
+    test("a font not named as a .woff2 file is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(withFont({ file: "source-serif-4" })),
+        '"source-serif-4"',
+        ".woff2"
+      );
+    });
+
+    // A publish keeps a font only when a variable names its family first.
+    test("a font whose family neither variable names first is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          withFont({
+            variables: { "font-heading": 'Georgia, "Source Serif 4", serif' },
+          })
+        ),
+        '"source-serif-4-latin-wght-normal.woff2"',
+        '"Source Serif 4"'
       );
     });
   });

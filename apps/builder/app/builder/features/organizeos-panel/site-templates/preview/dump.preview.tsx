@@ -28,6 +28,7 @@ import {
 import { getAssetData } from "../../../../../../../../packages/asset-uploader/src/utils/get-asset-data";
 import { spikeTemplate } from "../../../../../../../../packages/sdk-components-organizeos/src/site-templates/__fixtures__/spike";
 import { registerContainers } from "~/shared/sync/sync-stores";
+import { findCanonicalFontFamilies } from "~/shared/db/organizeos-canonical-fonts.server";
 import { getOrganizeosPresetIds } from "../../insert-organizeos-block";
 import { applySiteTemplateMutable } from "../apply-site-template";
 import { createProvisionedProject } from "../provisioned-project";
@@ -174,12 +175,16 @@ const createAssetFile = async (
 };
 
 /**
- * The font families the build's styles name: a publish carries a font asset
- * only when one of them is its family (loadProductionCanvasDataAndProject in
+ * The font families the build's styles name, and those its canonical font
+ * variables name first: a publish carries a font asset only when one of them
+ * is its family (loadProductionCanvasDataAndProject in
  * shared/db/canvas.server.ts).
  */
 const findStyleFontFamilies = (data: WebstudioData) => {
-  const families = new Set<string>();
+  const families = findCanonicalFontFamilies({
+    styles: data.styles.values(),
+    styleSourceSelections: data.styleSourceSelections.values(),
+  });
   for (const { value } of data.styles.values()) {
     if (value.type === "fontFamily") {
       for (const family of value.value) {
@@ -200,20 +205,12 @@ test("dump a template's site", async () => {
       ? template.variables
       : await readPalette(paletteFile);
 
-  // `fonts` joins the template format with bundled fonts (wave 1 Task A3)
-  const {
-    images,
-    fonts = {},
-  }: {
-    images: Record<string, { url: string }>;
-    fonts?: Record<string, { url: string }>;
-  } = template;
   const imageFiles = new Map<string, AssetFile>();
-  for (const [file, { url }] of Object.entries(images)) {
+  for (const [file, { url }] of Object.entries(template.images)) {
     imageFiles.set(file, await createAssetFile("image", file, url));
   }
   const fontFiles: AssetFile[] = [];
-  for (const [file, { url }] of Object.entries(fonts)) {
+  for (const [file, { url }] of Object.entries(template.fonts)) {
     fontFiles.push(await createAssetFile("font", file, url));
   }
 

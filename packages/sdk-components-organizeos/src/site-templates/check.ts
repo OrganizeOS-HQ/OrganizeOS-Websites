@@ -4,7 +4,11 @@ import {
   type WebstudioFragment,
   pagePath,
 } from "@webstudio-is/sdk";
-import { contrastRatio } from "./canonical-variables";
+import {
+  CANONICAL_FONT_NAMES,
+  contrastRatio,
+  firstFontFamily,
+} from "./canonical-variables";
 import type { BlockKey } from "./place-block";
 import { findStyleProblems } from "./style-scan";
 import { renderSiteTemplate, type RenderedPage } from "./render";
@@ -55,6 +59,42 @@ const signupPagePath = "/newsletter";
 
 // The 404 page `createPages()` makes for every project.
 const notFoundPagePath = "/*";
+
+// The fonts a visitor's system has, which a template names first without
+// bundling: CSS's generic families and the system fonts of the major
+// platforms. Matched in any case.
+const systemFontFamilies = new Set([
+  "serif",
+  "sans-serif",
+  "monospace",
+  "cursive",
+  "fantasy",
+  "math",
+  "emoji",
+  "fangsong",
+  "system-ui",
+  "ui-serif",
+  "ui-sans-serif",
+  "ui-monospace",
+  "ui-rounded",
+  "-apple-system",
+  "blinkmacsystemfont",
+  "segoe ui",
+  "arial",
+  "helvetica",
+  "helvetica neue",
+  "georgia",
+  "times",
+  "times new roman",
+  "verdana",
+  "tahoma",
+  "trebuchet ms",
+  "courier new",
+]);
+
+// The open licences a bundled font may carry (spec section 2, rule 10: OFL
+// or Apache), as SPDX ids.
+const fontLicences = new Set(["OFL-1.1", "Apache-2.0"]);
 
 // Text, and the base text on an accent-1 band, is read, so it needs 4.5:1
 // (WCAG AA). --accent-2 draws the focus ring, a graphic, which needs 3:1.
@@ -139,9 +179,10 @@ const checkPageText = (template: SiteTemplate): string[] =>
     ),
   ]);
 
-// The apply routine uploads an image by its URL, resolved against the
-// builder's origin. A file small enough for Vite to inline as a data: URL is
-// not one it can upload.
+// The apply routine uploads an image by its URL, and fetches a font from
+// its URL, resolved against the builder's origin. A file small enough for
+// Vite to inline as a data: URL is not one it can upload, and a font inlined
+// so weighs on the chooser's chunk.
 const isUploadableUrl = (url: string) => {
   if (url.startsWith("/")) {
     return url.startsWith("//") === false;
@@ -170,6 +211,58 @@ const checkImageEntries = (template: SiteTemplate): string[] => [
     ...(entry.alt.trim() === "" ? [`Image "${file}" has no alt text`] : []),
   ]),
 ];
+
+const checkFontEntries = (template: SiteTemplate): string[] => {
+  // a publish keeps a font only when a variable names its family first
+  const named = new Set(
+    CANONICAL_FONT_NAMES.map((name) =>
+      firstFontFamily(template.variables[name])
+    )
+  );
+  return Object.entries(template.fonts).flatMap(([file, entry]) => {
+    const font = `Font "${file}"`;
+    return [
+      ...(file.endsWith(".woff2")
+        ? []
+        : [`${font} is not named as a .woff2 file`]),
+      ...(isUploadableUrl(entry.url)
+        ? []
+        : [`${font} has a URL that is not root-relative or http(s)`]),
+      ...(entry.licence.trim() === ""
+        ? [`${font} has no licence`]
+        : fontLicences.has(entry.licence)
+          ? []
+          : [
+              `${font} has the licence "${entry.licence}"; a template's fonts are OFL-1.1 or Apache-2.0`,
+            ]),
+      ...(entry.source.trim() === "" ? [`${font} has no source`] : []),
+      ...(named.has(entry.family)
+        ? []
+        : [
+            `${font} is in the family "${entry.family}", which neither font-heading nor font-body names first, so a publish leaves it out`,
+          ]),
+    ];
+  });
+};
+
+// A font variable names first a family the template bundles, under the name
+// the builder derives from its file, or one every visitor's system has.
+const checkFontVariables = (template: SiteTemplate): string[] => {
+  const bundled = new Set(
+    Object.values(template.fonts).map((entry) => entry.family)
+  );
+  return CANONICAL_FONT_NAMES.flatMap((name) => {
+    const family = firstFontFamily(template.variables[name]);
+    if (family === undefined) {
+      return [`Variables: ${name} names no font family`];
+    }
+    return bundled.has(family) || systemFontFamilies.has(family.toLowerCase())
+      ? []
+      : [
+          `Variables: ${name} names "${family}" first, which is neither one of the template's fonts nor a system font`,
+        ];
+  });
+};
 
 const checkContrast = (template: SiteTemplate): string[] =>
   contrastChecks.flatMap(({ foreground, background, minimum }) => {
@@ -469,7 +562,9 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
     ...checkPagePaths(template),
     ...checkPageText(template),
     ...checkImageEntries(template),
+    ...checkFontEntries(template),
     ...checkContrast(template),
+    ...checkFontVariables(template),
   ];
   let pages: RenderedPage[];
   try {

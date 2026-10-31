@@ -38,6 +38,20 @@ export type ImageEntry = {
   alt: string;
 };
 
+export type FontEntry = {
+  /** From a `?url&no-inline` import of a `woff2` file in a `@fontsource` package. */
+  url: string;
+  /**
+   * The family the builder derives from the file when it is uploaded
+   * (`getAssetData`), which `--font-heading` or `--font-body` names first.
+   */
+  family: string;
+  /** The SPDX id of its licence: OFL-1.1 or Apache-2.0. */
+  licence: string;
+  /** Where it came from: the npm package that bundles the file. */
+  source: string;
+};
+
 /** What a page's body is rendered with. Images are named by file. */
 export type PageContext = {
   /** Every page's id by its key, assigned before any body renders. */
@@ -78,5 +92,10 @@ export type SiteTemplate = {
   variables: CanonicalValues;
   /** By file name in the template's `images/` folder. */
   images: Record<string, ImageEntry>;
+  /**
+   * By file name, a `.woff2` file: the fonts `--font-heading` and
+   * `--font-body` name, uploaded with the template when it is applied.
+   */
+  fonts: Record<string, FontEntry>;
   pages: SiteTemplatePage[];
 };

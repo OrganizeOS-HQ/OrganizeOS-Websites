@@ -102,6 +102,7 @@ const entry = (
       alt: "Replace with a photo",
     },
   },
+  fonts: {},
   pages: [],
 });
 

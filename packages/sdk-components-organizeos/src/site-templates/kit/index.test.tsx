@@ -109,6 +109,7 @@ const template: SiteTemplate = {
       alt: "Replace with a photo of your members",
     },
   },
+  fonts: {},
   pages: [
     page("home", "", "base", "split"),
     page("about", "/about", "accent-1", "centered"),

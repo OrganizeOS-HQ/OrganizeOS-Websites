@@ -70,6 +70,7 @@ const template: SiteTemplate = {
       alt: "Replace with a photo of your members",
     },
   },
+  fonts: {},
   pages: [home, about],
 };
 

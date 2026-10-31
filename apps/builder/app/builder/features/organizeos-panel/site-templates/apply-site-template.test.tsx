@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { createHash } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { enableMapSet } from "immer";
 import type { Project } from "@webstudio-is/project";
 import { parseCssValue } from "@webstudio-is/css-data";
@@ -27,6 +28,7 @@ import {
 import {
   type BlockKey,
   type CanonicalValues,
+  type FontEntry,
   type RenderedPage,
   type SiteTemplate,
   BLANK_CANONICAL_VALUES,
@@ -53,7 +55,10 @@ import {
   selectInstance,
 } from "~/shared/nano-states";
 import { getWebstudioData } from "~/shared/instance-utils/data";
-import { getSha256Hash } from "~/builder/shared/assets/asset-utils";
+import {
+  getSha256Hash,
+  getSha256HashOfFile,
+} from "~/builder/shared/assets/asset-utils";
 import {
   SIGNUP_PAGE_PATH,
   UPCOMING_EVENTS_BINDING_NAME,
@@ -124,6 +129,7 @@ const template: SiteTemplate = {
       alt: "Replace with a photo of your team",
     },
   },
+  fonts: {},
   pages: [
     {
       key: "home",
@@ -856,18 +862,67 @@ describe("applySiteTemplate", () => {
 
   const urlOf = (path: string) => new URL(path, location.origin).href;
 
-  // As the builder's: ids keyed by the URLs passed, by its own rule, returned
-  // before the uploads finish. Here the uploads never land.
-  const uploadedIds = async (_type: string, urls: URL[]) =>
+  // As the builder's: ids keyed by the URLs or files passed, by its own rule,
+  // returned before the uploads finish. Here the uploads never land.
+  const uploadedIds = async (_type: string, filesOrUrls: (File | URL)[]) =>
     new Map(
       await Promise.all(
-        urls.map(async (url) => [url, await getSha256Hash(url.href)] as const)
+        filesOrUrls.map(
+          async (fileOrUrl) =>
+            [
+              fileOrUrl,
+              fileOrUrl instanceof File
+                ? await getSha256HashOfFile(fileOrUrl)
+                : await getSha256Hash(fileOrUrl.href),
+            ] as const
+        )
       )
     );
+
+  // Two font files, served by the builder at their URLs.
+  const sourceSans: FontEntry = {
+    url: "/site-templates/fixture/source-sans-3-latin-wght-normal.woff2",
+    family: "Source Sans 3",
+    licence: "OFL-1.1",
+    source: "@fontsource-variable/source-sans-3",
+  };
+  const sourceSansItalic: FontEntry = {
+    ...sourceSans,
+    url: "/site-templates/fixture/source-sans-3-latin-wght-italic.woff2",
+  };
+  const fontBytes = new Map([
+    [urlOf(sourceSans.url), new Uint8Array([119, 79, 70, 50, 1])],
+    [urlOf(sourceSansItalic.url), new Uint8Array([119, 79, 70, 50, 2])],
+  ]);
+  const sha256 = (bytes: Uint8Array) =>
+    createHash("sha256").update(bytes).digest("hex");
+  const fetchFont = vi.fn(async (input: string | URL) => {
+    const bytes = fontBytes.get(String(input));
+    return bytes === undefined
+      ? new Response("Not found", { status: 404 })
+      : new Response(bytes);
+  });
+  const withFonts: SiteTemplate = {
+    ...template,
+    variables: {
+      ...variables,
+      "font-body": '"Source Sans 3", system-ui, sans-serif',
+    },
+    fonts: {
+      "source-sans-3-latin-wght-normal.woff2": sourceSans,
+      "source-sans-3-latin-wght-italic.woff2": sourceSansItalic,
+    },
+  };
 
   beforeEach(() => {
     uploadAssets.mockReset();
     uploadAssets.mockImplementation(uploadedIds);
+    fetchFont.mockClear();
+    vi.stubGlobal("fetch", fetchFont);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   test("renders each image with the asset id its URL uploads as, and uploads once applied", async () => {
@@ -916,6 +971,119 @@ describe("applySiteTemplate", () => {
         },
       }),
     ]);
+  });
+
+  test("uploads each font as a file named by its key, once applied, after the images", async () => {
+    setStores(await createProvisionedProject(provisioning));
+    let aboutAtUpload: undefined | Page;
+    uploadAssets.mockImplementation(
+      async (type: string, filesOrUrls: (File | URL)[]) => {
+        if (type === "font") {
+          aboutAtUpload = findPage(getWebstudioData(), "/about");
+        }
+        return uploadedIds(type, filesOrUrls);
+      }
+    );
+
+    const result = await applySiteTemplate(withFonts);
+
+    expect(result).toEqual({ status: "applied", unboundBlocks: [] });
+    expect(fetchFont.mock.calls.map(([input]) => String(input))).toEqual([
+      urlOf(sourceSans.url),
+      urlOf(sourceSansItalic.url),
+    ]);
+    expect(uploadAssets.mock.calls.map(([type]) => type)).toEqual([
+      "image",
+      "font",
+    ]);
+    const [, files] = uploadAssets.mock.calls[1] as [string, File[]];
+    expect(files.every((file) => file instanceof File)).toBe(true);
+    expect(files.map((file) => [file.name, file.type])).toEqual([
+      ["source-sans-3-latin-wght-normal.woff2", "font/woff2"],
+      ["source-sans-3-latin-wght-italic.woff2", "font/woff2"],
+    ]);
+    // each file holds the bytes its URL served
+    expect(await Promise.all(files.map(getSha256HashOfFile))).toEqual([
+      sha256(fontBytes.get(urlOf(sourceSans.url))!),
+      sha256(fontBytes.get(urlOf(sourceSansItalic.url))!),
+    ]);
+    expect(aboutAtUpload).toBeDefined();
+  });
+
+  test("a font upload whose id is not the file's hash is logged", async () => {
+    setStores(await createProvisionedProject(provisioning));
+    uploadAssets.mockImplementation(
+      async (type: string, filesOrUrls: (File | URL)[]) =>
+        type === "font"
+          ? new Map(filesOrUrls.map((file) => [file, "other"]))
+          : uploadedIds(type, filesOrUrls)
+    );
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    expect(await applySiteTemplate(withFonts)).toEqual({
+      status: "applied",
+      unboundBlocks: [],
+    });
+
+    expect(consoleError.mock.calls.map(([message]) => message)).toEqual([
+      expect.stringContaining('"source-sans-3-latin-wght-normal.woff2"'),
+      expect.stringContaining('"source-sans-3-latin-wght-italic.woff2"'),
+    ]);
+    consoleError.mockRestore();
+  });
+
+  // As an image's: an upload of the same font, landing while this apply
+  // awaits (another admin's apply of the template), does not refuse it.
+  test("an asset of the template's own fonts does not refuse it", async () => {
+    setStores(await createProvisionedProject(provisioning));
+    const fontId = sha256(fontBytes.get(urlOf(sourceSans.url))!);
+    fetchFont.mockImplementationOnce(async (input: string | URL) => {
+      $assets.set(
+        new Map([
+          [
+            fontId,
+            {
+              id: fontId,
+              projectId,
+              type: "font",
+              name: "source-sans-3-latin-wght-normal_abc.woff2",
+              format: "woff2",
+              size: 5,
+              createdAt: "2026-10-31T00:00:00.000Z",
+              meta: { family: "Source Sans 3", style: "normal", weight: 400 },
+            },
+          ],
+        ])
+      );
+      return new Response(fontBytes.get(String(input)));
+    });
+
+    expect(await applySiteTemplate(withFonts)).toEqual({
+      status: "applied",
+      unboundBlocks: [],
+    });
+  });
+
+  test("a font that cannot be fetched rejects, writing and uploading nothing", async () => {
+    setStores(await createProvisionedProject(provisioning));
+    const assets = $assets.get();
+
+    await expect(
+      applySiteTemplate({
+        ...withFonts,
+        fonts: {
+          ...withFonts.fonts,
+          "missing.woff2": { ...sourceSans, url: "/missing.woff2" },
+        },
+      })
+    ).rejects.toThrow('"missing.woff2"');
+
+    expect(uploadAssets).not.toHaveBeenCalled();
+    expect($assets.get()).toBe(assets);
+    expect(getWebstudioData().pages.pages.size).toBe(3);
+    expect(hasCanonicalVariables(getWebstudioData())).toBe(false);
   });
 
   test("a page that cannot render rejects and uploads nothing", async () => {
@@ -975,7 +1143,7 @@ describe("applySiteTemplate", () => {
       const assets = $assets.get();
 
       const result = await applySiteTemplate({
-        ...template,
+        ...withFonts,
         pages: [template.pages[0], { ...template.pages[1], ...about }],
       });
 
@@ -1023,10 +1191,11 @@ describe("applySiteTemplate", () => {
     setStores(await createProvisionedProject(provisioning));
     $project.set(undefined);
 
-    expect(await applySiteTemplate(template)).toEqual({
+    expect(await applySiteTemplate(withFonts)).toEqual({
       status: "refused",
       reason: "no-project",
     });
+    expect(fetchFont).not.toHaveBeenCalled();
     expect(uploadAssets).not.toHaveBeenCalled();
     expect(getWebstudioData().pages.pages.size).toBe(3);
   });
@@ -1036,10 +1205,11 @@ describe("applySiteTemplate", () => {
     data.assets.set("asset-1", imageAsset("asset-1"));
     setStores(data);
 
-    expect(await applySiteTemplate(template)).toEqual({
+    expect(await applySiteTemplate(withFonts)).toEqual({
       status: "refused",
       reason: "touched",
     });
+    expect(fetchFont).not.toHaveBeenCalled();
     expect(uploadAssets).not.toHaveBeenCalled();
     expect(getWebstudioData().pages.pages.size).toBe(3);
   });

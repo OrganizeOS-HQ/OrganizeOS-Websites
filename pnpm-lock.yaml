@@ -2108,6 +2108,36 @@ importers:
         specifier: ^8.14.1
         version: 8.14.1
     devDependencies:
+      '@fontsource-variable/bricolage-grotesque':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource-variable/ibm-plex-sans':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource-variable/newsreader':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource-variable/public-sans':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource-variable/source-sans-3':
+        specifier: ^5.3.1
+        version: 5.3.1
+      '@fontsource/archivo-black':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/atkinson-hyperlegible':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/barlow':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/barlow-condensed':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/instrument-serif':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@testing-library/dom':
         specifier: ^10.4.0
         version: 10.4.0
@@ -3837,11 +3867,41 @@ packages:
   '@floating-ui/utils@0.2.9':
     resolution: {integrity: sha512-MDWhGtE+eHw5JW7lq4qhc5yRLS11ERl1c7Z6Xd0a58DozHES6EnNNwUWbMiG4J9Cgj053Bhk8zvlhFYKVhULwg==}
 
+  '@fontsource-variable/bricolage-grotesque@5.3.0':
+    resolution: {integrity: sha512-TLi9Q4hJjS2UvoTMRSS2nHu6c4R56lAw60NR9QYtVRCHn0XtsFpiEhNffZ8Glsoxu6wEEwLKBP8lb94J52PNBA==}
+
+  '@fontsource-variable/ibm-plex-sans@5.3.0':
+    resolution: {integrity: sha512-agG8tXFEo0hD9+J7npa4vbbWult52eMLVaQ6WQRlhs/iCAojrMAoejru85W9HTVXHfyUj96KM7gp/KGAS87XaQ==}
+
   '@fontsource-variable/inter@5.0.20':
     resolution: {integrity: sha512-dhzG4Zls/tIrf8h0FhTNi8jT/uFwNhdTY2vKe6DYqoXDYOfEcTVZDyh1hKml1rlLT44Y7OoKoGz8w7czDW7twQ==}
 
   '@fontsource-variable/manrope@5.0.20':
     resolution: {integrity: sha512-LKL0aM0DxYj8i/zUTb5Nru0mS3YoezPZaeWY7aIxEKVX1xVBLpPHlFq0NoK2iUXhL6HoD0XMYwc6KVa8I/ayKg==}
+
+  '@fontsource-variable/newsreader@5.3.0':
+    resolution: {integrity: sha512-rrzYi43qMpbzwuFtf9OkWH8sxAPVPcQQQEwXpPtwaKYeJ8yVg5aLs5kawmo1f2Q1t1M38TLmEKCkGVDsYwgdFw==}
+
+  '@fontsource-variable/public-sans@5.3.0':
+    resolution: {integrity: sha512-AVfkmAt50BMXWpOO21FAntiJFKGX6xTc2dSL8dxtDteONe9IuRXJWGbs0EbG955vAMCq23ENeuopuW87cGWDSQ==}
+
+  '@fontsource-variable/source-sans-3@5.3.1':
+    resolution: {integrity: sha512-u0p5Z/PM2e1uxYOMiodLM6NVzxHwULcB6Oi7QSr2WU/sdoLBFP/BeOZ3YYHeJ6rHsjPZA1nZweZVaV7sf2MAyQ==}
+
+  '@fontsource/archivo-black@5.3.0':
+    resolution: {integrity: sha512-7EsTIQ+Blf96ktpzTUpI7msi+u9/AJxM/GZxOSkEubVd1jSTrFSTNxMgfpX/8rQsjZ+19a+qvRbtcTEp5J/72g==}
+
+  '@fontsource/atkinson-hyperlegible@5.3.0':
+    resolution: {integrity: sha512-Sp8Ve8+rQmENY2Lv02VH7sLpntzTTvnncnJMTbRE7DX6TLxGraN4ykZfzaUWIoCFmaomwkvNiqmlPkrKBuDoSA==}
+
+  '@fontsource/barlow-condensed@5.3.0':
+    resolution: {integrity: sha512-RA7MmIx0v3eQ6Gcf74qLVLOwLB0GpPOzx+eU9iG/AmCnSJGcIWYeU8y6CEMGZ210MGwGg5CZhzLkkvyZdTTk1g==}
+
+  '@fontsource/barlow@5.3.0':
+    resolution: {integrity: sha512-tGR0y6QObRtKv71MOth44222+mdNFM/ZWFWDV1VLzNbG4oK9PNRlyJzmkck4vHAi9ibHBXgt4SlY51amFP55CA==}
+
+  '@fontsource/instrument-serif@5.3.0':
+    resolution: {integrity: sha512-mDiaIg0u67sYV59fie92Wz4sM8UiVlbL7fLxnFPCKkX15DMASEnQTREbaP5S5/3DCcsoAOcQ0sV9E4AeY4QqYQ==}
 
   '@fontsource/roboto-mono@5.0.18':
     resolution: {integrity: sha512-hKuwk/cy3i6fWPzazT5xjgWq4YNqZWDHVbJh2Wwj3KYvWGi2v3ToBw/4LKQ+ggEkPLcIG6VU8GpCT3Xtf+mbbA==}
@@ -4241,18 +4301,22 @@ packages:
 
   '@oslojs/asn1@0.2.3':
     resolution: {integrity: sha512-cZOLRzKfv3JTxIzNTAoiN0+utB0is9cQOOp5Xq++SE8MtIXXDLFblZGFrHCdTXLGXvUZmopeB/dFZrkh5MpKqQ==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   '@oslojs/binary@0.4.0':
     resolution: {integrity: sha512-xi1MOhP7t9TFV1nOmzG0qIdCXdFXbeMYskhfI5eakBlU8re/xO+qjdyiBO+hl+nK4z4lZWCDjlgH8BXUWQDWFw==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   '@oslojs/crypto@0.6.2':
     resolution: {integrity: sha512-2y39MOLkkCvaBdi2TrBDtk7106fayDHRLz11K1/UvtW28VgL5/TbV/tPRTmSA5dhvQQqLYDJj3zsBkjeP+aD2w==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   '@oslojs/encoding@0.4.1':
     resolution: {integrity: sha512-hkjo6MuIK/kQR5CrGNdAPZhS01ZCXuWDRJ187zh6qqF2+yMHZpD9fAYpX8q2bOO6Ryhl3XpCT6kUX76N8hhm4Q==}
 
   '@oslojs/oauth2@0.5.0':
     resolution: {integrity: sha512-t70+e4EgnzTbU4MrUWXzqWN2A6RJrlSSvwwuBv6E0Ap6/nsIXrjsdRWeTcSvvXTcC6fi0YdWaqEWLipcEm2Cgw==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   '@oxlint/binding-android-arm-eabi@1.56.0':
     resolution: {integrity: sha512-IyfYPthZyiSKwAv/dLjeO18SaK8MxLI9Yss2JrRDyweQAkuL3LhEy7pwIwI7uA3KQc1Vdn20kdmj3q0oUIQL6A==}
@@ -5549,6 +5613,7 @@ packages:
   '@smithy/core@3.26.0':
     resolution: {integrity: sha512-mLUktFAn+Pa2agl1J7VgtYNFWCX8/b4GMJSK1hCu4YCvtBfM6F8Os3EP4ry+DFFlXOf3wyvlgXhuUdFoy52D3g==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.4.2':
     resolution: {integrity: sha512-18UMDMyrAbDcpmL1gLUA7ww0fRTcdCrSjSJOi2Sbld+tVjwD/pW+OAwjlScFLR7vvBnhZrIPQ7kVuTf1mnJLug==}
@@ -9618,10 +9683,12 @@ packages:
 
   uuid@8.3.2:
     resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@9.0.1:
     resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uvu@0.5.6:
@@ -11240,9 +11307,29 @@ snapshots:
 
   '@floating-ui/utils@0.2.9': {}
 
+  '@fontsource-variable/bricolage-grotesque@5.3.0': {}
+
+  '@fontsource-variable/ibm-plex-sans@5.3.0': {}
+
   '@fontsource-variable/inter@5.0.20': {}
 
   '@fontsource-variable/manrope@5.0.20': {}
+
+  '@fontsource-variable/newsreader@5.3.0': {}
+
+  '@fontsource-variable/public-sans@5.3.0': {}
+
+  '@fontsource-variable/source-sans-3@5.3.1': {}
+
+  '@fontsource/archivo-black@5.3.0': {}
+
+  '@fontsource/atkinson-hyperlegible@5.3.0': {}
+
+  '@fontsource/barlow-condensed@5.3.0': {}
+
+  '@fontsource/barlow@5.3.0': {}
+
+  '@fontsource/instrument-serif@5.3.0': {}
 
   '@fontsource/roboto-mono@5.0.18': {}
 

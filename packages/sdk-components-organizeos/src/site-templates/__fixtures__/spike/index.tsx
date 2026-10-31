@@ -1,12 +1,14 @@
 import { $, css, ws } from "@webstudio-is/template";
+import sourceSans3Url from "@fontsource-variable/source-sans-3/files/source-sans-3-latin-wght-normal.woff2?url&no-inline";
 import { BLANK_CANONICAL_VALUES } from "../../canonical-variables";
 import type { SiteTemplate, SiteTemplatePage } from "../../types";
 import heroUrl from "./images/hero.jpg?url&no-inline";
 
 // A fixture that exists to prove the apply path end to end in a test org: one
-// page with a background image, two Events blocks (one to a section) and a
-// Sign-up form. It is not in the catalog (catalog.ts), so the chooser never
-// offers it; the apply tests and the preview tool import it from here.
+// page with a background image, a bundled body font, two Events blocks (one to
+// a section) and a Sign-up form. It is not in the catalog (catalog.ts), so the
+// chooser never offers it; the apply tests and the preview tool import it from
+// here.
 
 // A section of the page holding one Events block under a heading.
 const eventsSection = ({
@@ -164,12 +166,23 @@ export const spikeTemplate: SiteTemplate = {
   status: "draft",
   dependsOn: [],
   thumbnail: "hero.jpg",
-  variables: BLANK_CANONICAL_VALUES,
+  variables: {
+    ...BLANK_CANONICAL_VALUES,
+    "font-body": `"Source Sans 3", ${BLANK_CANONICAL_VALUES["font-body"]}`,
+  },
   images: {
     "hero.jpg": {
       url: heroUrl,
       sourceUrl: "organizeos:generated/spike/images/generate.py",
       alt: "Replace with a photo of your members at work",
+    },
+  },
+  fonts: {
+    "source-sans-3-latin-wght-normal.woff2": {
+      url: sourceSans3Url,
+      family: "Source Sans 3",
+      licence: "OFL-1.1",
+      source: "@fontsource-variable/source-sans-3",
     },
   },
   pages: [home],

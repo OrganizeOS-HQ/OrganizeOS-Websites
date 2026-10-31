@@ -37,7 +37,10 @@ import { $project } from "~/shared/sync/data-stores";
 import { registerFolderChildMutable } from "~/builder/features/pages/page-utils";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { uploadAssets } from "~/builder/shared/assets/upload-assets";
-import { getSha256Hash } from "~/builder/shared/assets/asset-utils";
+import {
+  getSha256Hash,
+  getSha256HashOfFile,
+} from "~/builder/shared/assets/asset-utils";
 import { deleteSubtreeMutable } from "../collection-pages";
 import {
   type OrganizeosPresetIds,
@@ -339,13 +342,36 @@ export const applySiteTemplateMutable = (
 };
 
 /**
+ * A template's fonts as files, fetched from the builder's origin: the upload
+ * by URL reads only images (`getImageNameAndType` in asset-utils.ts). Each
+ * file is named by its key and comes with the asset id uploadAssets gives a
+ * file, the SHA-256 of its bytes (upload-assets.tsx). A font that cannot be
+ * fetched throws.
+ */
+const fetchFontFiles = (template: SiteTemplate) =>
+  Promise.all(
+    Object.entries(template.fonts).map(async ([file, entry]) => {
+      const response = await fetch(new URL(entry.url, location.origin));
+      if (response.ok === false) {
+        throw new Error(`Font "${file}" could not be fetched`);
+      }
+      const font = new File([await response.arrayBuffer()], file, {
+        type: "font/woff2",
+      });
+      return { file, font, assetId: await getSha256HashOfFile(font) };
+    })
+  );
+
+/**
  * Apply a template from the chooser. An image's asset id is the one
  * uploadAssets gives its URL, the SHA-256 of the URL (upload-assets.tsx), so
- * the pages render with those ids, and the images are uploaded only once the
- * template is applied: a page that cannot render, or a refusal, leaves no
- * asset behind to make the project touched for good. An id the upload
- * returns that is not the rendered one is logged; a failed upload is
- * reported by the upload's own toast.
+ * the pages render with those ids. Fonts are fetched first and uploaded as
+ * files (fetchFontFiles); the pages name them by family, through the font
+ * variables. Images and fonts are uploaded only once the template is
+ * applied: a page that cannot render, a font that cannot be fetched, or a
+ * refusal, leaves no asset behind to make the project touched for good. An
+ * id the upload returns that is not the one computed here is logged; a
+ * failed upload is reported by the upload's own toast.
  */
 export const applySiteTemplate = async (
   template: SiteTemplate
@@ -377,6 +403,7 @@ export const applySiteTemplate = async (
     assetIds,
     generatePageId: nanoid,
   });
+  const fonts = await fetchFontFiles(template);
 
   // stays refused when the transaction skips its callback
   let result = { status: "refused", reason: "touched" } as ApplyResult;
@@ -385,7 +412,10 @@ export const applySiteTemplate = async (
       projectId: project.id,
       presetIds,
       variables: template.variables,
-      ignoreAssetIds: new Set(assetIds.values()),
+      ignoreAssetIds: new Set([
+        ...assetIds.values(),
+        ...fonts.map(({ assetId }) => assetId),
+      ]),
     });
   });
   if (result.status !== "applied") {
@@ -398,6 +428,19 @@ export const applySiteTemplate = async (
       console.error(
         `Image "${file}" was uploaded with an asset id its pages do not use`
       );
+    }
+  }
+  if (fonts.length > 0) {
+    const uploadedFonts = await uploadAssets(
+      "font",
+      fonts.map(({ font }) => font)
+    );
+    for (const { file, font, assetId } of fonts) {
+      if (uploadedFonts.get(font) !== assetId) {
+        console.error(
+          `Font "${file}" was uploaded with an asset id the apply did not expect`
+        );
+      }
     }
   }
   return result;
