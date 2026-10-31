@@ -1691,9 +1691,10 @@ anything yet.
   identity, so a piece used twice (Nav, Footer, a card) is a function, never a
   constant. `renderSiteTemplate` (`render.ts`) renders every page into a
   fragment, with the placements it recorded; the caller supplies the page ids
-  and the asset id of each image. `catalog.ts` lists `SITE_TEMPLATES` (the
-  first, Field Journal in `nonprofit/field-journal/`, a draft), and the
-  chooser offers `listedTemplates()`,
+  and the asset id of each image. `catalog.ts` lists `SITE_TEMPLATES` (Field
+  Journal in `nonprofit/field-journal/` and Porch Light in
+  `community/porch-light/`, both drafts), and the chooser offers
+  `listedTemplates()`,
   the `listed` ones in category order.
   Listing is the owner's call, made by changing `status` in a PR. Nothing the
   published site's copy reaches (`components.ts`, `metas.ts`, `hooks.ts`)

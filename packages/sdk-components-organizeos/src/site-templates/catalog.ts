@@ -1,3 +1,4 @@
+import { porchLightTemplate } from "./community/porch-light";
 import { fieldJournalTemplate } from "./nonprofit/field-journal";
 import { CATEGORY_ORDER, type SiteTemplate } from "./types";
 
@@ -5,7 +6,10 @@ import { CATEGORY_ORDER, type SiteTemplate } from "./types";
 // by changing its `status` in a PR (spec 6.1). Each template here is held to
 // checkSiteTemplate by catalog.test.ts. The spike is a fixture beside it
 // (__fixtures__/spike), not an entry.
-export const SITE_TEMPLATES: SiteTemplate[] = [fieldJournalTemplate];
+export const SITE_TEMPLATES: SiteTemplate[] = [
+  fieldJournalTemplate,
+  porchLightTemplate,
+];
 
 /** The templates the chooser offers: listed ones, by category order. */
 export const listedTemplates = (

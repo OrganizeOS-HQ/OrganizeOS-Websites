@@ -1,0 +1,8 @@
+{
+  "base": "#221519",
+  "accent-1": "#F0A3C4",
+  "accent-2": "#6CCFBF",
+  "text": "#FFF3D6",
+  "font-heading": "\"Bricolage Grotesque\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
+  "font-body": "\"Atkinson Hyperlegible\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
+}
