@@ -1939,15 +1939,15 @@ anything yet.
   direction board names to the family and weights it derives, and
   `bundled-fonts.test.ts` holds each template's `family` to the one derived
   from its file.
-- **Not yet run in a deployed builder.** The spike (OrganizeOS spec, section 7,
-  step 2) is `spike`, a Hero, two Events sections (one with an Event Card, one
-  with an Event List), and a Sign-up section with a Signup Form, with Source
-  Sans 3 as its bundled body font. It is a
-  fixture, not in the catalog, so the chooser no longer offers it, even with
-  `templateDrafts=1`. The run (apply to a test org, edit in Simple mode)
-  waits for a template in the catalog. Until that report is in, the
-  design's rules 3 and 4 (editable content in Content Blocks; platform blocks
-  placed, never bound) are unproven in a real builder.
+- **Not yet run in a deployed builder.** The spike (OrganizeOS spec, section
+  7, step 2) is `spike`, a Hero, two Events sections (one with an Event Card,
+  one with an Event List), and a Sign-up section with a Signup Form, with
+  Source Sans 3 as its bundled body font. It is a fixture, not in the catalog,
+  so the chooser no longer offers it, even with `templateDrafts=1`. The run
+  (apply to a test org, edit in Simple mode) waits for a template in the
+  catalog. Until that report is in, the design's rules 3 and 4 (editable
+  content in Content Blocks; platform blocks placed, never bound) are unproven
+  in a real builder.
 
 **Shipping in published sites**, `packages/cli/src/organizeos-components.ts`:
 

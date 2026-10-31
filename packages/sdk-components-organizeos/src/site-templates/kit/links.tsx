@@ -113,7 +113,10 @@ export const linkRowStyles = (
   }
 `;
 
-/** A link in a `linkRowStyles` row: spaced by LINK_GAP, at the top of its 44px line. */
+/**
+ * A link in a `linkRowStyles` row: spaced by LINK_GAP, at the top of its
+ * 44px line.
+ */
 export const linkInRowStyles = (
   from: "all" | "tablet"
 ): TemplateStyleDecl[] => css`

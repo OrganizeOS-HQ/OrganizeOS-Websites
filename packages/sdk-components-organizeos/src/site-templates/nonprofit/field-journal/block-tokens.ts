@@ -14,9 +14,10 @@ import {
 // Programs grid's idiom, the list's empty line as a ruled note across it,
 // and the Signup Form's fields and button in the template's own corners and
 // forest accent. Where a look is the template's own (./styles, the kit's
-// buttons) it is used, not restated; every declaration replaces the block's
-// own of the same key, so shorthands are written as the longhands the
-// blocks declare.
+// buttons) it is used, not restated. Every declaration replaces the block's
+// own of the same key, a longhand: `css` expands a shorthand
+// (`border-radius`) into the longhands the blocks declare, so either form
+// replaces them.
 
 export const blockTokens: SiteTemplate["blockTokens"] = {
   // A card is the Programs card without its photo slot: no box, a 1px rule

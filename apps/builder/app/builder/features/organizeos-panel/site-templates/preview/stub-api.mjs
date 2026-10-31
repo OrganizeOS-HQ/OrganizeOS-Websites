@@ -13,8 +13,9 @@ import { fileURLToPath } from "node:url";
 
 /**
  * The cover when the template names no preview event cover: the spike
- * fixture's picture, an original abstract image (OrganizeOS's own work). A path, not `new URL(path, import.meta.url)`, which Vite turns into
- * a dev server URL under the test.
+ * fixture's picture, an original abstract image (OrganizeOS's own work). A
+ * path, not `new URL(path, import.meta.url)`, which Vite turns into a dev
+ * server URL under the test.
  */
 const fallbackCoverImage = join(
   dirname(fileURLToPath(import.meta.url)),
