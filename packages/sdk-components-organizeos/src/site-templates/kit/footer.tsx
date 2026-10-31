@@ -63,8 +63,9 @@ const footerColumn = (
  * and a one-line tagline; then the simple footer's `links`, if any, as one
  * wrapping row; then the columns of links, if any; then `note`, if any, in a
  * box of its own (a paid-for-by or imprint line, at 14px). The links and the
- * columns sit beside the name from 768px up, wrapping under it when they do
- * not fit; on phones everything stacks to one column.
+ * columns sit beside the name from 768px up, the columns wrapping under it
+ * when they do not fit and the links narrowing the tagline instead; on
+ * phones everything stacks to one column.
  */
 export const footer = ({
   pageIds,
@@ -135,12 +136,27 @@ export const footer = ({
               key="name-and-tagline"
               ws:tag="div"
               ws:label="Name and tagline"
-              ws:style={css`
-                display: flex;
-                flex-direction: column;
-                row-gap: ${SPACE[8]};
-                max-width: ${CONTAINER.narrow};
-              `}
+              ws:style={[
+                ...css`
+                  display: flex;
+                  flex-direction: column;
+                  row-gap: ${SPACE[8]};
+                  max-width: ${CONTAINER.narrow};
+                `,
+                // a row of links is short: the name and tagline give way to
+                // it, their tagline wrapping, so it stays beside them on a
+                // tablet rather than dropping under them
+                ...(links.length === 0
+                  ? []
+                  : css`
+                      flex-grow: 1;
+                      flex-shrink: 1;
+                      flex-basis: 18rem;
+                      ${BREAKPOINT.landscape} {
+                        flex-basis: auto;
+                      }
+                    `),
+              ]}
             >
               <ws.element
                 ws:tag="p"

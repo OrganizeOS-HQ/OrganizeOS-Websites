@@ -16,7 +16,6 @@ import {
   pageHref,
   textLink,
 } from "./links";
-import { sample } from "./sample";
 
 /**
  * "split": the name on the left, the links and the button on the right.
@@ -51,8 +50,9 @@ const barStyles = (layout: TemplateStyleDecl[]) => [
 ];
 
 /**
- * The org's name as text where a logo goes, linking Home; a [bracketed]
- * placeholder in it keeps together (`sample`).
+ * The org's name as text where a logo goes, linking Home. Its spaces stay
+ * plain, a [bracketed] placeholder's too (no `sample`), so on the smallest
+ * phone the name wraps at them and the button keeps its place beside it.
  */
 const nameLink = (
   { pageIds, name, headingWeight }: NavOptions,
@@ -76,7 +76,7 @@ const nameLink = (
       ...focusRing(),
     ]}
   >
-    {sample(name)}
+    {name}
   </$.Link>
 );
 

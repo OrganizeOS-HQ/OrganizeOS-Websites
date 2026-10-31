@@ -103,6 +103,33 @@ describe("footer", () => {
         "flex-wrap": "wrap",
       });
     }
+    // from 768px up the name and tagline start from 18rem and grow, their
+    // tagline wrapping, so the links stay beside them on a tablet
+    for (const width of [1440, 991, 820, 768]) {
+      expect(
+        stylesAt(fragment, byLabel(fragment, "Name and tagline"), width)
+      ).toMatchObject({
+        "flex-grow": "1",
+        "flex-shrink": "1",
+        "flex-basis": "18rem",
+      });
+    }
+    // on phones, where the bar is a column, they take their own height
+    for (const width of [767, 390, 320]) {
+      expect(
+        stylesAt(fragment, byLabel(fragment, "Name and tagline"), width)[
+          "flex-basis"
+        ]
+      ).toBe("auto");
+    }
+    const columned = renderFooter({ tagline, columns });
+    expect(
+      stylesAt(
+        columned.fragment,
+        byLabel(columned.fragment, "Name and tagline"),
+        820
+      )
+    ).not.toHaveProperty("flex-basis");
     const without = renderFooter({ tagline });
     expect(
       without.fragment.instances.some((item) => item.label === "Links")
