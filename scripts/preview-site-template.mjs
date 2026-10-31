@@ -15,7 +15,8 @@
 // 4. In a temp folder, the publish workflow's build: `webstudio build` for
 //    React Router on Vercel (with --no-assets: the dump copied the files),
 //    `npm install`, `react-router build`, served by react-router-serve.
-// 5. Chromium takes a full-page screenshot of each page at 1440 and 390 and,
+// 5. Chromium takes a full-page screenshot of each page at 1440, 820 and 390
+//    (the owner sees 1440 and 390; 820 is the tablet range, for review) and,
 //    at 320, 390, 479, 767 and 991, checks sideways scroll, text under 14px
 //    (at 390 and 320), console errors and failed requests.
 //
@@ -47,7 +48,7 @@ const dumpConfig =
 const STUB_API_PORT = 4599;
 const STUB_API_BASE_URL = `http://127.0.0.1:${STUB_API_PORT}/api/public/v1`;
 
-const SCREENSHOT_WIDTHS = [1440, 390];
+const SCREENSHOT_WIDTHS = [1440, 820, 390];
 /** Each breakpoint's edge, and the smallest phone. */
 const OVERFLOW_WIDTHS = [320, 390, 479, 767, 991];
 const SMALL_TEXT_WIDTHS = [390, 320];
