@@ -172,12 +172,11 @@ const PORTRAIT_GAP = "6px";
  * down and to the right; the frame keeps that room inside its own column.
  * The photo has the template's corners and is cropped to fill the frame,
  * over an accent-1 field that shows when the photo is gone, and is ringed in
- * the base colour where it overlaps the block (PORTRAIT_GAP). With no file it
- * is the builder's placeholder, the "put your portrait here" slot.
+ * the base colour where it overlaps the block (PORTRAIT_GAP).
  */
 export const portrait = (
   { image, imageAlt }: PageContext,
-  file: string | undefined
+  file: string
 ): JSX.Element => (
   <ws.element
     ws:tag="div"
@@ -213,9 +212,8 @@ export const portrait = (
     />
     <$.Image
       ws:label="Photo"
-      {...(file === undefined
-        ? { alt: "Replace with a portrait" }
-        : { src: image(file), alt: imageAlt(file) })}
+      src={image(file)}
+      alt={imageAlt(file)}
       ws:style={css`
         position: relative;
         display: block;

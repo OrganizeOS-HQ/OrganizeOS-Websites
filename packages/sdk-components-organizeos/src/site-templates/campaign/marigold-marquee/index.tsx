@@ -25,12 +25,13 @@ import { volunteer } from "./pages/volunteer";
 // could be read as the candidate's.
 //
 // The photos, each cropped, resized and compressed:
-// - hero.jpg: a speaker seen from behind, addressing an audience. A public
-//   domain work of the National Cancer Institute (NIH), by its staff
-//   photographer Bill Branson, November 1988 (NCI Visuals Online 2385, "Reuse
-//   Restrictions: None"; Commons licence {{PD-USGov-HHS-NIH}}). Painted out:
-//   the printed emblem on a white cap in the back rows (filled with the cap's
-//   own crown); the crop leaves out a shopping bag's lettering at the left.
+// - hero.jpg: a speaker seen from behind, notes in hand, before the feet of
+//   a seated front row: no face in the frame. A public domain work of the
+//   National Cancer Institute (NIH), by its staff photographer Bill Branson,
+//   November 1988 (NCI Visuals Online 2385, "Reuse Restrictions: None";
+//   Commons licence {{PD-USGov-HHS-NIH}}). Cropped below the audience's faces
+//   and turned to greys, so its red carpet does not set a party colour beside
+//   the marigold.
 // - about.jpg: a figure in silhouette against a sunset sky. CC0 from Unsplash
 //   (photo kypCqYxosY4, Evan Kirby), published before Unsplash's licence
 //   changed on 5 June 2017: its image id (photo-1455595708577) is a

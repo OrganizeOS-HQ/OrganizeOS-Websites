@@ -7,7 +7,7 @@ import { HAIRLINE, RADIUS } from "./styles";
 // (SiteTemplate.blockTokens, and each events block's root style): the
 // featured event as a cover card with no chrome of its own (the marigold
 // panel around it is the frame), the Event List as dated rows with a mint
-// date column, each under a hairline, the empty line as a hairline box,
+// date column, each under a hairline, the empty line ruled as a row,
 // and the Signup Form's fields and button in the template's 6px corners.
 // Every declaration replaces the block's own of the same key, so shorthands
 // are written as the longhands the blocks declare.
@@ -108,37 +108,21 @@ export const blockTokens: SiteTemplate["blockTokens"] = {
       font-size: 40px;
     }
   `,
-  // No upcoming events (or none readable): a box outlined by a hairline,
-  // the slot the next event takes, its line set like a card's title.
+  // No upcoming events (or none readable): a line under a hairline, set like
+  // a card's title, so on the Events page it is one more ruled row between
+  // the hairlines the list's rows sit between (eventListStyle closes it).
   "OS Event Note": css`
     margin-top: 0;
     margin-bottom: 0;
     padding-top: ${SPACE[24]};
-    padding-right: ${SPACE[32]};
-    padding-bottom: ${SPACE[24]};
-    padding-left: ${SPACE[32]};
     border-top-width: 1px;
-    border-right-width: 1px;
-    border-bottom-width: 1px;
-    border-left-width: 1px;
     border-top-style: solid;
-    border-right-style: solid;
-    border-bottom-style: solid;
-    border-left-style: solid;
     border-top-color: ${HAIRLINE};
-    border-right-color: ${HAIRLINE};
-    border-bottom-color: ${HAIRLINE};
-    border-left-color: ${HAIRLINE};
-    border-top-left-radius: ${RADIUS};
-    border-top-right-radius: ${RADIUS};
-    border-bottom-left-radius: ${RADIUS};
-    border-bottom-right-radius: ${RADIUS};
     font-family: var(--font-heading);
     font-size: 24px;
     line-height: 1.2;
     ${BREAKPOINT.landscape} {
-      padding-right: ${SPACE[24]};
-      padding-left: ${SPACE[24]};
+      padding-top: ${SPACE[16]};
       font-size: 22px;
     }
   `,
@@ -208,7 +192,8 @@ export const eventCardStyle = (): BlockStyle => css`
 /**
  * The Event List's root on the Events page: one column of rows, each under
  * a hairline (OS Event Row), and the list closed by one beneath its last
- * row, as the issues' rows are.
+ * row, as the issues' rows are; with no events, beneath its one ruled line
+ * (OS Event Note).
  */
 export const eventListStyle = (): BlockStyle => css`
   grid-template-columns: minmax(0, 1fr);
