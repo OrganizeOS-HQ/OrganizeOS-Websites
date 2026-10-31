@@ -33,7 +33,6 @@ import {
   SITE_TEMPLATES,
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
-import { createPages } from "../../../../../../../packages/project-build/src/template";
 import { registerContainers } from "~/shared/sync/sync-stores";
 import {
   $assets,
@@ -59,9 +58,8 @@ import {
   SIGNUP_PAGE_PATH,
   UPCOMING_EVENTS_BINDING_NAME,
 } from "~/shared/organizeos-preset-ids";
-import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
-import { mergeSignupFormIntoBuild } from "~/shared/db/signup-form-preset.server";
 import { getOrganizeosPresetIds } from "../insert-organizeos-block";
+import { createProvisionedProject } from "./provisioned-project";
 import {
   applySiteTemplate,
   applySiteTemplateMutable,
@@ -80,44 +78,7 @@ registerContainers();
 const projectId = "project-1";
 const apiBaseUrl = "https://app.example.org/api/public/v1";
 const presetIds = await getOrganizeosPresetIds(projectId);
-const { resources: catalog } = await buildOrgResourcePresets({
-  projectId,
-  apiBaseUrl,
-  readToken: "osk_token",
-});
-
-/**
- * A project as provisioning leaves it: `createPages()` (Home and the 404
- * page), the catalog Resources seeded on every provision (the first block that
- * reads Forms or Upcoming Events creates it) and the seeded sign-up page.
- */
-const createProvisionedProject = async (): Promise<WebstudioData> => {
-  const data = createPages();
-  const seeded = await mergeSignupFormIntoBuild(
-    {
-      instances: [...data.instances.values()],
-      props: [...data.props.values()],
-      dataSources: [...data.dataSources.values()],
-      resources: catalog.filter(
-        (resource) =>
-          resource.id !== presetIds.forms.resourceId &&
-          resource.id !== presetIds.upcomingEvents.resourceId
-      ),
-      pages: data.pages,
-    },
-    { projectId, apiBaseUrl, readToken: "osk_token" }
-  );
-  const byId = <Item extends { id: string }>(items: Item[]) =>
-    new Map(items.map((item) => [item.id, item]));
-  return {
-    ...data,
-    instances: byId(seeded.instances),
-    props: byId(seeded.props),
-    dataSources: byId(seeded.dataSources),
-    resources: byId(seeded.resources),
-    pages: seeded.pages,
-  };
-};
+const provisioning = { projectId, apiBaseUrl, readToken: "osk_token" };
 
 const imageAsset = (id: string): Asset => ({
   id,
@@ -265,7 +226,7 @@ const stylesOf = (data: WebstudioData, instanceId: Instance["id"]) => {
 
 /** Global Root with a local style source declaring `--base: #000000`. */
 const withBlackBase = async () => {
-  const data = await createProvisionedProject();
+  const data = await createProvisionedProject(provisioning);
   data.styleSources.set("root-local", { type: "local", id: "root-local" });
   data.styleSourceSelections.set(ROOT_INSTANCE_ID, {
     instanceId: ROOT_INSTANCE_ID,
@@ -283,7 +244,7 @@ const withBlackBase = async () => {
 
 describe("isProjectUntouched", () => {
   test("a provisioned project (Home, 404, /newsletter) is untouched", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
 
     expect(getAllPages(data.pages).map((page) => page.path)).toEqual([
       "",
@@ -294,7 +255,7 @@ describe("isProjectUntouched", () => {
   });
 
   test("a Home child makes it touched", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     const home = data.pages.pages.get(data.pages.homePageId)!;
     data.instances.set("heading", {
       type: "instance",
@@ -311,7 +272,7 @@ describe("isProjectUntouched", () => {
   });
 
   test("another page makes it touched", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     data.instances.set("about-body", {
       type: "instance",
       id: "about-body",
@@ -332,7 +293,7 @@ describe("isProjectUntouched", () => {
   });
 
   test("an asset makes it touched unless ignored", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     data.assets.set("asset-hero", imageAsset("asset-hero"));
 
     expect(isProjectUntouched(data)).toBe(false);
@@ -380,7 +341,7 @@ describe("the canonical variables", () => {
   });
 
   test("creates Global Root's local style source when it has none", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     expect(data.styleSourceSelections.has(ROOT_INSTANCE_ID)).toBe(false);
 
     writeCanonicalVariablesMutable(data, BLANK_CANONICAL_VALUES, "overwrite");
@@ -403,7 +364,7 @@ describe("the canonical variables", () => {
   });
 
   test("hasCanonicalVariables reads Global Root on any breakpoint", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     expect(hasCanonicalVariables(data)).toBe(false);
 
     const mobile = [...data.breakpoints.values()].find(
@@ -434,7 +395,7 @@ describe("the canonical variables", () => {
   });
 
   test("a canonical name on another instance is not Global Root's", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     const home = data.pages.pages.get(data.pages.homePageId)!;
     data.styleSources.set("body-local", { type: "local", id: "body-local" });
     data.styleSourceSelections.set(home.rootInstanceId, {
@@ -467,7 +428,7 @@ describe("the canonical variables", () => {
 
 describe("applySiteTemplateMutable", () => {
   test("applies a two-page template", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     const homePageId = data.pages.homePageId;
     const oldBodyId = data.pages.pages.get(homePageId)!.rootInstanceId;
     data.pages.pages.get(homePageId)!.meta.language = JSON.stringify("en");
@@ -587,7 +548,7 @@ describe("applySiteTemplateMutable", () => {
   });
 
   test("links to Home point at the project's Home page", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     const pages = renderPages();
 
     applySiteTemplateMutable(data, pages, context);
@@ -601,7 +562,7 @@ describe("applySiteTemplateMutable", () => {
   });
 
   test("the old Home body goes with its local styles", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     const oldBodyId = data.pages.pages.get(
       data.pages.homePageId
     )!.rootInstanceId;
@@ -630,7 +591,7 @@ describe("applySiteTemplateMutable", () => {
   });
 
   test("an asset of the template's own images does not refuse it", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     data.assets.set("asset-hero", imageAsset("asset-hero"));
 
     const result = applySiteTemplateMutable(data, renderPages(), {
@@ -642,7 +603,7 @@ describe("applySiteTemplateMutable", () => {
   });
 
   test("applying twice refuses the second", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     applySiteTemplateMutable(data, renderPages(), context);
     const pagesBefore = data.pages.pages.size;
 
@@ -653,7 +614,7 @@ describe("applySiteTemplateMutable", () => {
   });
 
   test("a broken data link leaves blocks unbound", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     data.resources.delete(presetIds.events.resourceId);
     const resources = new Map(data.resources);
 
@@ -735,7 +696,7 @@ describe("applySiteTemplateMutable", () => {
       )?.value;
 
     test("binds each block to a binding of its own", async () => {
-      const data = await createProvisionedProject();
+      const data = await createProvisionedProject(provisioning);
       const resourceIdsBefore = new Set(data.resources.keys());
 
       const result = applySiteTemplateMutable(data, renderSpike(), context);
@@ -792,7 +753,7 @@ describe("applySiteTemplateMutable", () => {
     });
 
     test("a block whose ids its placement prefix does not match is left unbound", async () => {
-      const data = await createProvisionedProject();
+      const data = await createProvisionedProject(provisioning);
       const [home] = renderSpike();
       const root = home.fragment.children[0];
       expect(root?.type).toBe("id");
@@ -840,7 +801,7 @@ describe("applySiteTemplateMutable", () => {
   });
 
   test("refuses a fragment with resources", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     const before = structuredClone(data);
     const pages = renderPages();
     pages[1] = {
@@ -866,7 +827,7 @@ describe("applySiteTemplateMutable", () => {
   });
 
   test("refuses a taken path", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     const before = structuredClone(data);
     const pages = renderPages();
     pages[1] = { ...pages[1], path: SIGNUP_PAGE_PATH };
@@ -911,7 +872,7 @@ describe("applySiteTemplate", () => {
   });
 
   test("renders each image with the asset id its URL uploads as, and uploads once applied", async () => {
-    setStores(await createProvisionedProject());
+    setStores(await createProvisionedProject(provisioning));
     let aboutAtUpload: undefined | Page;
     uploadAssets.mockImplementationOnce(async (type: string, urls: URL[]) => {
       aboutAtUpload = findPage(getWebstudioData(), "/about");
@@ -959,7 +920,7 @@ describe("applySiteTemplate", () => {
   });
 
   test("a page that cannot render rejects and uploads nothing", async () => {
-    setStores(await createProvisionedProject());
+    setStores(await createProvisionedProject(provisioning));
     const assets = $assets.get();
     const broken: SiteTemplate = {
       ...template,
@@ -1011,7 +972,7 @@ describe("applySiteTemplate", () => {
   ])(
     "a refusal in the transaction ($reason) uploads nothing",
     async ({ reason, about }) => {
-      setStores(await createProvisionedProject());
+      setStores(await createProvisionedProject(provisioning));
       const assets = $assets.get();
 
       const result = await applySiteTemplate({
@@ -1027,7 +988,7 @@ describe("applySiteTemplate", () => {
   );
 
   test("an upload whose id is not the rendered one is logged", async () => {
-    setStores(await createProvisionedProject());
+    setStores(await createProvisionedProject(provisioning));
     uploadAssets.mockImplementationOnce(
       async (_type: string, urls: URL[]) =>
         new Map(urls.map((url) => [url, `other${url.pathname}`]))
@@ -1050,7 +1011,7 @@ describe("applySiteTemplate", () => {
   });
 
   test("clears the selection, as Create item page does", async () => {
-    const provisioned = await createProvisionedProject();
+    const provisioned = await createProvisionedProject(provisioning);
     setStores(provisioned);
     selectInstance([findPage(provisioned, SIGNUP_PAGE_PATH)!.rootInstanceId]);
 
@@ -1060,7 +1021,7 @@ describe("applySiteTemplate", () => {
   });
 
   test("refuses when no project is open", async () => {
-    setStores(await createProvisionedProject());
+    setStores(await createProvisionedProject(provisioning));
     $project.set(undefined);
 
     expect(await applySiteTemplate(template)).toEqual({
@@ -1072,7 +1033,7 @@ describe("applySiteTemplate", () => {
   });
 
   test("refuses a touched project before uploading anything", async () => {
-    const data = await createProvisionedProject();
+    const data = await createProvisionedProject(provisioning);
     data.assets.set("asset-1", imageAsset("asset-1"));
     setStores(data);
 

@@ -25,13 +25,11 @@ import {
   SITE_TEMPLATES,
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
-import { createPages } from "../../../../../../../../packages/project-build/src/template";
 import { getAssetData } from "../../../../../../../../packages/asset-uploader/src/utils/get-asset-data";
 import { registerContainers } from "~/shared/sync/sync-stores";
-import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
-import { mergeSignupFormIntoBuild } from "~/shared/db/signup-form-preset.server";
 import { getOrganizeosPresetIds } from "../../insert-organizeos-block";
 import { applySiteTemplateMutable } from "../apply-site-template";
+import { createProvisionedProject } from "../provisioned-project";
 
 /**
  * The preview tool's dump (wave 1 plan, Task A1), run by
@@ -111,48 +109,6 @@ const readPalette = async (file: string): Promise<CanonicalValues> => {
     );
   }
   return palette as CanonicalValues;
-};
-
-/**
- * A project as provisioning leaves it (apply-site-template.test.tsx):
- * `createPages()` (Home and the 404 page), the catalog Resources seeded on
- * every provision (a block's insert creates Forms and Upcoming Events) and the
- * seeded sign-up page.
- */
-const createProvisionedProject = async (
-  apiBaseUrl: string
-): Promise<WebstudioData> => {
-  const presetIds = await getOrganizeosPresetIds(projectId);
-  const { resources: catalog } = await buildOrgResourcePresets({
-    projectId,
-    apiBaseUrl,
-    readToken,
-  });
-  const data = createPages();
-  const seeded = await mergeSignupFormIntoBuild(
-    {
-      instances: [...data.instances.values()],
-      props: [...data.props.values()],
-      dataSources: [...data.dataSources.values()],
-      resources: catalog.filter(
-        (resource) =>
-          resource.id !== presetIds.forms.resourceId &&
-          resource.id !== presetIds.upcomingEvents.resourceId
-      ),
-      pages: data.pages,
-    },
-    { projectId, apiBaseUrl, readToken }
-  );
-  const byId = <Item extends { id: string }>(items: Item[]) =>
-    new Map(items.map((item) => [item.id, item]));
-  return {
-    ...data,
-    instances: byId(seeded.instances),
-    props: byId(seeded.props),
-    dataSources: byId(seeded.dataSources),
-    resources: byId(seeded.resources),
-    pages: seeded.pages,
-  };
 };
 
 /**
@@ -255,7 +211,11 @@ test("dump a template's site", async () => {
 
   // the builder's apply: renderSiteTemplate, then applySiteTemplateMutable
   // on the project data (applySiteTemplate in ../apply-site-template.ts)
-  const data = await createProvisionedProject(apiBaseUrl);
+  const data = await createProvisionedProject({
+    projectId,
+    apiBaseUrl,
+    readToken,
+  });
   const assetIds = new Map(
     Array.from(imageFiles, ([file, { asset }]) => [file, asset.id])
   );

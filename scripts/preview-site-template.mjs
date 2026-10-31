@@ -19,10 +19,12 @@
 //    at 320, 390, 479, 767 and 991, checks sideways scroll, text under 14px
 //    (at 390 and 320), console errors and failed requests.
 //
-// Writes previews/<template-id>/<palette>/<page-key>-<width>.png ("default"
-// is the template's own palette, otherwise the palette file's name) and
-// previews/<template-id>/report.json. Exits 1 when a check fails, 2 when the
-// tool cannot run.
+// Writes previews/<template-id>/<palette>/<page-key>-<width>.png and
+// previews/<template-id>/<palette>/report.json ("default" is the template's
+// own palette, otherwise the palette file's name). Exits 1 when a check fails,
+// 2 when the tool cannot run, 130 or 143 when SIGINT or SIGTERM stops it. The
+// temp folder, the servers, the browser and every command still running are
+// stopped however the tool ends (short of SIGKILL).
 
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
@@ -55,10 +57,88 @@ const VIEWPORT_HEIGHT = 900;
 const usage =
   "Usage: corepack pnpm preview:template <template-id> [--palette <file>]";
 
+/** Each signal the tool stops on, and its exit code. */
+const SIGNAL_EXIT_CODES = { SIGINT: 130, SIGTERM: 143 };
+/** How long a stopped command has to exit before it is killed. */
+const STOP_GRACE_MS = 5000;
+
+/** What to undo when the tool ends, in the order it was set up. */
+const stopping = [];
+/** The commands still running, each the leader of its own process group. */
+const running = new Set();
+/** The cleanup's promise, once it has started. */
+let cleanup;
+/** The signal that stopped the tool: the failures it causes are not faults. */
+let stoppedBy;
+
+/**
+ * Undoes `stopping`, last first, once however the tool ends. A step that
+ * fails is reported and the others still run, so the error that ended the
+ * tool is the one it reports.
+ */
+const stopAll = () => {
+  cleanup ??= (async () => {
+    for (const stop of stopping.toReversed()) {
+      try {
+        await stop();
+      } catch (error) {
+        console.error(
+          `Cleanup failed: ${error instanceof Error ? error.message : error}`
+        );
+      }
+    }
+  })();
+  return cleanup;
+};
+
+/**
+ * A command in a process group of its own, so that stopping it also stops
+ * what it started (npm's scripts, vitest's workers) and a signal from the
+ * terminal reaches only this tool, which stops it.
+ */
+const spawnCommand = (command, args, options) => {
+  if (cleanup !== undefined) {
+    throw new Error("The tool is stopping");
+  }
+  const child = spawn(command, args, { ...options, detached: true });
+  running.add(child);
+  child.once("exit", () => running.delete(child));
+  child.once("error", () => running.delete(child));
+  return child;
+};
+
+/** A command's process group ended: SIGTERM, then SIGKILL if it lingers. */
+const stopCommand = (child) =>
+  new Promise((resolveStop) => {
+    if (
+      child.pid === undefined ||
+      child.exitCode !== null ||
+      child.signalCode !== null
+    ) {
+      resolveStop();
+      return;
+    }
+    const signalGroup = (signal) => {
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        // the group has already gone
+      }
+    };
+    const timer = setTimeout(() => signalGroup("SIGKILL"), STOP_GRACE_MS);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolveStop();
+    });
+    signalGroup("SIGTERM");
+  });
+
+const stopCommands = () => Promise.all(Array.from(running, stopCommand));
+
 /** A command's output, shown only when it fails. */
 const run = (command, args, { cwd = repoRoot, env = {} } = {}) =>
   new Promise((resolveRun, reject) => {
-    const child = spawn(command, args, {
+    const child = spawnCommand(command, args, {
       cwd,
       env: { ...process.env, ...env },
       stdio: ["ignore", "pipe", "pipe"],
@@ -72,7 +152,9 @@ const run = (command, args, { cwd = repoRoot, env = {} } = {}) =>
         resolveRun();
         return;
       }
-      process.stderr.write(Buffer.concat(output));
+      if (stoppedBy === undefined) {
+        process.stderr.write(Buffer.concat(output));
+      }
       reject(new Error(`${command} ${args.join(" ")} exited with ${code}`));
     });
   });
@@ -105,7 +187,10 @@ const getFreePort = () =>
     });
   });
 
-/** react-router-serve on the site's server build, once it answers. */
+/**
+ * react-router-serve on the site's server build, once it answers: its
+ * origin. The server runs until the commands are stopped.
+ */
 const serveSite = async (siteDir) => {
   const { buildManifest } = JSON.parse(
     await readFile(
@@ -115,7 +200,7 @@ const serveSite = async (siteDir) => {
   );
   const [serverBundle] = Object.values(buildManifest.serverBundles);
   const port = await getFreePort();
-  const server = spawn(
+  const server = spawnCommand(
     join(siteDir, "node_modules", ".bin", "react-router-serve"),
     [serverBundle.file],
     {
@@ -129,15 +214,30 @@ const serveSite = async (siteDir) => {
       stdio: ["ignore", "pipe", "pipe"],
     }
   );
+  let spawnError;
+  server.once("error", (error) => {
+    spawnError = error;
+  });
   const output = [];
   server.stdout.on("data", (chunk) => output.push(chunk));
   server.stderr.on("data", (chunk) => output.push(chunk));
   const origin = `http://127.0.0.1:${port}`;
   for (let attempt = 0; ; attempt += 1) {
-    if (server.exitCode !== null || attempt === 150) {
-      server.kill();
-      process.stderr.write(Buffer.concat(output));
-      throw new Error("react-router-serve did not start");
+    if (
+      spawnError !== undefined ||
+      server.exitCode !== null ||
+      server.signalCode !== null ||
+      attempt === 150
+    ) {
+      await stopCommand(server);
+      if (stoppedBy === undefined) {
+        process.stderr.write(Buffer.concat(output));
+      }
+      throw new Error(
+        spawnError === undefined
+          ? "react-router-serve did not start"
+          : `react-router-serve did not start: ${spawnError.message}`
+      );
     }
     try {
       await fetch(origin);
@@ -146,16 +246,20 @@ const serveSite = async (siteDir) => {
       await delay(200);
     }
   }
-  return { origin, stop: () => server.kill() };
+  return origin;
 };
 
 /**
  * Playwright's own Chromium when it is installed, else the newest Chromium
  * build in PLAYWRIGHT_BROWSERS_PATH (another Playwright version's).
+ * Playwright's own SIGINT and SIGTERM handlers exit as soon as the browser has
+ * closed, before the rest of the cleanup, so they are off: the tool's own
+ * handlers close the browser.
  */
 const launchChromium = async () => {
+  const options = { handleSIGINT: false, handleSIGTERM: false };
   try {
-    return await chromium.launch();
+    return await chromium.launch(options);
   } catch (error) {
     if (String(error?.message).includes("Executable doesn't exist") === false) {
       throw error;
@@ -179,7 +283,7 @@ const launchChromium = async () => {
         { cause: error }
       );
     }
-    return await chromium.launch({ executablePath });
+    return await chromium.launch({ ...options, executablePath });
   }
 };
 
@@ -207,7 +311,12 @@ const loadEverything = async () => {
   ]);
 };
 
-/** In the page: each visible text smaller than the minimum, with its size. */
+/**
+ * In the page: each visible text smaller than the minimum, with its size. The
+ * fork's AGPL source offer, which every published page ends with, is not the
+ * template's text and is 12px by owner decision (2026-10-15), so it is left
+ * out.
+ */
 const findSmallText = (minFontSize) => {
   const found = [];
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -217,7 +326,9 @@ const findSmallText = (minFontSize) => {
     if (
       text === "" ||
       element === null ||
-      element.closest("script, style, noscript, template") !== null ||
+      element.closest(
+        "script, style, noscript, template, [data-organizeos-source-offer]"
+      ) !== null ||
       element.checkVisibility({ visibilityProperty: true }) === false
     ) {
       continue;
@@ -299,10 +410,13 @@ const parseArguments = () => {
 
 const main = async () => {
   const { templateId, paletteFile, paletteName } = parseArguments();
-  const outDir = join(repoRoot, "previews", templateId);
-  const screenshotDir = join(outDir, paletteName);
+  const outDir = join(repoRoot, "previews", templateId, paletteName);
   const siteDir = await mkdtemp(join(tmpdir(), `preview-${templateId}-`));
-  const stopping = [() => rm(siteDir, { recursive: true, force: true })];
+  stopping.push(
+    // retried: a stopped command's last processes may still be writing
+    () => rm(siteDir, { recursive: true, force: true, maxRetries: 3 }),
+    stopCommands
+  );
   try {
     const stubApi = await startStubApi();
     stopping.push(() => stubApi.close());
@@ -364,13 +478,12 @@ const main = async () => {
     await run(join(siteDir, "node_modules/.bin/react-router"), ["build"], {
       cwd: siteDir,
     });
-    const site = await serveSite(siteDir);
-    stopping.push(site.stop);
+    const origin = await serveSite(siteDir);
 
     const browser = await launchChromium();
     stopping.push(() => browser.close());
-    await rm(screenshotDir, { recursive: true, force: true });
-    await mkdir(screenshotDir, { recursive: true });
+    await rm(outDir, { recursive: true, force: true });
+    await mkdir(outDir, { recursive: true });
     const pages = JSON.parse(
       await readFile(join(siteDir, "preview-pages.json"), "utf8")
     );
@@ -390,10 +503,10 @@ const main = async () => {
       for (const width of widths) {
         const result = await inspectPage(
           browser,
-          new URL(path, site.origin).href,
+          new URL(path, origin).href,
           width,
           SCREENSHOT_WIDTHS.includes(width)
-            ? join(screenshotDir, `${key}-${width}.png`)
+            ? join(outDir, `${key}-${width}.png`)
             : undefined
         );
         if (OVERFLOW_WIDTHS.includes(width)) {
@@ -433,19 +546,34 @@ const main = async () => {
       }
       failed = failed || faults.length > 0;
     }
-    console.info(`Screenshots: ${screenshotDir}`);
+    console.info(`Screenshots: ${outDir}`);
     console.info(`Report: ${join(outDir, "report.json")}`);
     return failed ? 1 : 0;
   } finally {
-    for (const stop of stopping.reverse()) {
-      await stop();
-    }
+    await stopAll();
   }
 };
+
+// Node's default for these signals exits at once, skipping the cleanup.
+for (const [signal, exitCode] of Object.entries(SIGNAL_EXIT_CODES)) {
+  process.on(signal, async () => {
+    // a repeated signal: the cleanup is already under way
+    if (stoppedBy !== undefined) {
+      return;
+    }
+    stoppedBy = signal;
+    console.error(`${signal}: stopping`);
+    await stopAll();
+    process.exit(exitCode);
+  });
+}
 
 try {
   process.exitCode = await main();
 } catch (error) {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 2;
+  // after a signal, main fails on the commands it stopped
+  if (stoppedBy === undefined) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 2;
+  }
 }
