@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { encodeDataSourceVariable, type Instance } from "@webstudio-is/sdk";
 import { showAttribute } from "@webstudio-is/react-sdk";
 import { renderTemplate } from "@webstudio-is/template";
+import { toValue } from "@webstudio-is/css-engine";
 import * as metas from "./metas";
 import { meta } from "./signup-form.template";
 
@@ -23,6 +24,27 @@ const childInstances = (instance: Instance) =>
 
 const propsOf = (instance: Instance) =>
   fragment.props.filter((prop) => prop.instanceId === instance.id);
+
+/** The declarations on an instance's own local style source, as CSS text. */
+const localStylesOf = (instance: Instance) => {
+  const sources = new Set(
+    fragment.styleSourceSelections.find(
+      (selection) => selection.instanceId === instance.id
+    )?.values
+  );
+  return Object.fromEntries(
+    fragment.styles
+      .filter(
+        (decl) =>
+          sources.has(decl.styleSourceId) &&
+          fragment.styleSources.some(
+            (source) =>
+              source.id === decl.styleSourceId && source.type === "local"
+          )
+      )
+      .map((decl) => [decl.property, toValue(decl.value)])
+  );
+};
 
 const root = getInstance(fragment.children[0].value);
 const [formState] = fragment.dataSources;
@@ -161,4 +183,14 @@ test("every state a token styles is a state its component's meta lists", () => {
     }
   }
   expect(checked).toBeGreaterThan(0);
+});
+
+// A template sets its headings in --font-heading; the form's heading follows
+// it, and inherits as before on a site without the variable.
+test("the form's heading is set in the site's heading font", () => {
+  const [heading] = childInstances(childInstances(root)[0]);
+  expect(heading.tag).toBe("h2");
+  expect(localStylesOf(heading)).toEqual({
+    fontFamily: "var(--font-heading)",
+  });
 });

@@ -3,6 +3,7 @@ import { encodeDataSourceVariable, type Instance } from "@webstudio-is/sdk";
 import { showAttribute } from "@webstudio-is/react-sdk";
 import { CalendarIcon } from "@webstudio-is/icons/svg";
 import { renderTemplate } from "@webstudio-is/template";
+import { toValue } from "@webstudio-is/css-engine";
 import * as metas from "./metas";
 import { meta } from "./rsvp-form.template";
 import { meta as signupMeta } from "./signup-form.template";
@@ -28,6 +29,27 @@ const propsOf = (instance: Instance) =>
 
 const propValue = (instance: Instance, name: string) =>
   propsOf(instance).find((prop) => prop.name === name)?.value;
+
+/** The declarations on an instance's own local style source, as CSS text. */
+const localStylesOf = (instance: Instance) => {
+  const sources = new Set(
+    fragment.styleSourceSelections.find(
+      (selection) => selection.instanceId === instance.id
+    )?.values
+  );
+  return Object.fromEntries(
+    fragment.styles
+      .filter(
+        (decl) =>
+          sources.has(decl.styleSourceId) &&
+          fragment.styleSources.some(
+            (source) =>
+              source.id === decl.styleSourceId && source.type === "local"
+          )
+      )
+      .map((decl) => [decl.property, toValue(decl.value)])
+  );
+};
 
 const root = getInstance(fragment.children[0].value);
 const [rsvpState] = fragment.dataSources;
@@ -369,4 +391,14 @@ test("every OrganizeOS part of the template sits inside the root's descendants, 
   for (const listed of rootDescendants) {
     expect(used.has(listed), listed).toBe(true);
   }
+});
+
+// A template sets its headings in --font-heading; the form's heading follows
+// it, and inherits as before on a site without the variable.
+test("the form's heading is set in the site's heading font", () => {
+  const [heading] = contentChildren;
+  expect(heading.tag).toBe("h2");
+  expect(localStylesOf(heading)).toEqual({
+    fontFamily: "var(--font-heading)",
+  });
 });

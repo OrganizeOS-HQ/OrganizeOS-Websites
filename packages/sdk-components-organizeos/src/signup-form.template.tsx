@@ -40,7 +40,17 @@ export const signupFormTemplate = () => {
           gap: 16px;
         `}
       >
-        <ws.element ws:tag="h2">
+        {/*
+          The heading is in the site's heading font, as a template's own
+          headings are; on a site without the variable it inherits, as it
+          did before.
+        */}
+        <ws.element
+          ws:tag="h2"
+          ws:style={css`
+            font-family: var(--font-heading);
+          `}
+        >
           {new PlaceholderValue("Sign up for updates")}
         </ws.element>
         <organizeos.Field
