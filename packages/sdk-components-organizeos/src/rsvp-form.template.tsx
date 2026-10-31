@@ -85,12 +85,14 @@ export const rsvpFormTemplate = () => {
         {/*
           The heading is in the site's heading font, as a template's own
           headings are; on a site without the variable it inherits, as it
-          did before.
+          did before. Its lines are set as a heading's, so on a phone, where
+          it wraps, it does not take the body's looser line height.
         */}
         <ws.element
           ws:tag="h2"
           ws:style={css`
             font-family: var(--font-heading);
+            line-height: 1.2;
           `}
         >
           {new PlaceholderValue("RSVP to this event")}

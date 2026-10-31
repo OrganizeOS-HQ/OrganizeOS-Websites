@@ -1774,7 +1774,8 @@ anything yet.
   resolves a token it already has with "ours". The Signup Form's and the RSVP
   Form's headings are in `var(--font-heading)` (no fallback: on a site without
   the variable the declaration is invalid and the heading inherits, as before),
-  so a template's form heading matches its own headings.
+  so a template's form heading matches its own headings, at a line height of
+  1.2, so one that wraps on a phone sets as a heading, not at the body's.
 - **The check** (`checkSiteTemplate` in `check.ts`, with `style-scan.ts`; run
   over every `SITE_TEMPLATES` entry and the spike fixture by `catalog.test.ts`)
   returns one readable line per violation, and an empty list for a template that passes. It is a

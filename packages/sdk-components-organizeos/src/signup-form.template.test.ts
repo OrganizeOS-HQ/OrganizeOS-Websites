@@ -186,11 +186,14 @@ test("every state a token styles is a state its component's meta lists", () => {
 });
 
 // A template sets its headings in --font-heading; the form's heading follows
-// it, and inherits as before on a site without the variable.
-test("the form's heading is set in the site's heading font", () => {
+// it, and inherits as before on a site without the variable. Its lines are
+// set as a heading's, not at the body's looser line height, so a heading
+// that wraps on a phone reads as one.
+test("the form's heading is set in the site's heading font, at a heading's line height", () => {
   const [heading] = childInstances(childInstances(root)[0]);
   expect(heading.tag).toBe("h2");
   expect(localStylesOf(heading)).toEqual({
     fontFamily: "var(--font-heading)",
+    lineHeight: "1.2",
   });
 });
