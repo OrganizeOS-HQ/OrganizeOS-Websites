@@ -1,3 +1,8 @@
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { answerStubRequest, sampleEvents } from "./stub-api.mjs";
 
@@ -7,6 +12,23 @@ import { answerStubRequest, sampleEvents } from "./stub-api.mjs";
 // every other read, or for the events read too under --no-events.
 
 const apiBaseUrl = "http://127.0.0.1:4599/api/public/v1";
+
+const siteTemplates = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../../../../../packages/sdk-components-organizeos/src/site-templates"
+);
+const spikeHero = join(siteTemplates, "__fixtures__/spike/images/hero.jpg");
+const fieldJournalThumbnail = join(
+  siteTemplates,
+  "nonprofit/field-journal/images/hero.jpg"
+);
+
+/**
+ * Bytes as their digest: a failed comparison of two images prints two short
+ * strings, not a diff of hundreds of thousands of numbers.
+ */
+const digest = (bytes: string | Uint8Array) =>
+  createHash("sha256").update(bytes).digest("hex");
 
 const answer = (path: string, events: "sample" | "none" = "sample") =>
   answerStubRequest(path, { apiBaseUrl, events });
@@ -116,6 +138,42 @@ describe("the stub API", () => {
     expect(Array.from(image.body.slice(0, 2) as Uint8Array)).toEqual([
       0xff, 0xd8,
     ]);
+  });
+
+  // The script gives the stub the previewed template's thumbnail, so the
+  // first card shows one of the template's own photos.
+  test("the cover is the file it is given, as its type", async () => {
+    const [cover] = events.flatMap((event) =>
+      event.cover_image_url === null ? [] : [new URL(event.cover_image_url)]
+    );
+    const read = (coverImage: string) =>
+      answerStubRequest(cover.pathname, {
+        apiBaseUrl,
+        events: "sample",
+        coverImage,
+      });
+    const jpeg = await read(fieldJournalThumbnail);
+    expect(jpeg.contentType).toBe("image/jpeg");
+    expect(digest(jpeg.body)).toBe(
+      digest(await readFile(fieldJournalThumbnail))
+    );
+    const folder = await mkdtemp(join(tmpdir(), "stub-api-"));
+    try {
+      const png = join(folder, "thumbnail.png");
+      await writeFile(png, Uint8Array.from([0x89, 0x50, 0x4e, 0x47]));
+      expect((await read(png)).contentType).toBe("image/png");
+    } finally {
+      await rm(folder, { recursive: true, force: true });
+    }
+  });
+
+  // A template with no thumbnail among its images.
+  test("with no file given, the cover is the spike fixture's image", async () => {
+    const [cover] = events.flatMap((event) =>
+      event.cover_image_url === null ? [] : [new URL(event.cover_image_url)]
+    );
+    const fallback = await answer(cover.pathname);
+    expect(digest(fallback.body)).toBe(digest(await readFile(spikeHero)));
   });
 
   // The fields of a `GET /v1/events` item the Event List, the Event Card and

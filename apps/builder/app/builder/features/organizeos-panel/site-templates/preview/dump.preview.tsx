@@ -45,7 +45,10 @@ import { createProvisionedProject } from "../provisioned-project";
  * - PREVIEW_API_BASE_URL: the org's public API, which the catalog Resources
  *   read (the script's stub);
  * - PREVIEW_OUT_DIR: where `.webstudio/data.json` (the CLI's LOCAL_DATA_FILE),
- *   `public/assets/` and `preview-pages.json` (each page's key and path) go;
+ *   `public/assets/`, `preview-pages.json` (each page's key and path) and
+ *   `preview-thumbnail.json` (the template's thumbnail file, or null when its
+ *   images do not hold it, which the script's stub serves as the first sample
+ *   event's cover) go;
  * - PREVIEW_PALETTE_FILE (optional): a JSON file of the six canonical values,
  *   applied in place of the template's own.
  */
@@ -296,5 +299,9 @@ test("dump a template's site", async () => {
     JSON.stringify(
       pages.map(({ key, path }) => ({ key, path: path === "" ? "/" : path }))
     )
+  );
+  await writeFile(
+    join(outDir, "preview-thumbnail.json"),
+    JSON.stringify({ file: imageFiles.get(template.thumbnail)?.path ?? null })
   );
 }, 60_000);

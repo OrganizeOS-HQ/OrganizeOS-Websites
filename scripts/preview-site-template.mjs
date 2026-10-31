@@ -8,8 +8,11 @@
 // 1. A stub of the OrganizeOS public API on a fixed port
 //    (site-templates/preview/stub-api.mjs in the builder) answers the events
 //    read with three sample events, so the event cards show, and every other
-//    catalog request, the forms among them, with {"data": []}. With
-//    --no-events the events read is empty too: the blocks' empty state.
+//    catalog request, the forms among them, with {"data": []}. The first
+//    event's cover is the previewed template's own thumbnail photo, which the
+//    dump (step 3) names; a template whose images do not hold its thumbnail
+//    gets the spike fixture's picture. With --no-events the events read is
+//    empty too: the blocks' empty state.
 // 2. @organizeos/site-components and the CLI are built: the CLI's prebuild
 //    copies the blocks package's lib/ into the site.
 // 3. The dump (dump.preview.tsx in the builder's site-templates/preview/)
@@ -180,14 +183,18 @@ const run = (command, args, { cwd = repoRoot, env = {} } = {}) =>
     });
   });
 
-/** The stub API, answering the events read as `events` says. */
-const startStubApi = (events) =>
+/**
+ * The stub API, answering the events read as `stub.events` says, with
+ * `stub.coverImage` as the sample cover. It reads `stub` on each request, so
+ * the cover can be set once the dump has named the template's thumbnail.
+ */
+const startStubApi = (stub) =>
   new Promise((resolveServer, reject) => {
     const server = createServer(async (request, response) => {
       try {
         const { status, contentType, body } = await answerStubRequest(
           request.url ?? "/",
-          { apiBaseUrl: STUB_API_BASE_URL, events }
+          { apiBaseUrl: STUB_API_BASE_URL, ...stub }
         );
         response.writeHead(status, { "content-type": contentType });
         response.end(body);
@@ -558,7 +565,8 @@ const main = async () => {
     stopCommands
   );
   try {
-    const stubApi = await startStubApi(events);
+    const stub = { events, coverImage: undefined };
+    const stubApi = await startStubApi(stub);
     stopping.push(() => stubApi.close());
 
     console.info("Building the blocks and the CLI");
@@ -586,6 +594,10 @@ const main = async () => {
         },
       }
     );
+    const thumbnail = JSON.parse(
+      await readFile(join(siteDir, "preview-thumbnail.json"), "utf8")
+    );
+    stub.coverImage = thumbnail.file ?? undefined;
 
     console.info("Building the site");
     await run(

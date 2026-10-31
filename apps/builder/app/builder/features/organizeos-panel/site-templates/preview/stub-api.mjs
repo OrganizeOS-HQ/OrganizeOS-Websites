@@ -1,25 +1,34 @@
 // OrganizeOS fork: the preview tool's stub of the OrganizeOS public API
 // (scripts/preview-site-template.mjs, which serves it on a fixed port). The
 // published site's loader reads the catalog Resources from it, so a
-// template's preview shows its event cards with three sample events, or the
+// template's preview shows its event cards with three sample events, the
+// first with the previewed template's own thumbnail as its cover, or the
 // empty state under --no-events. Every other read, the forms among them, is
 // an org with no data. Plain JavaScript, so the script runs it with node
 // alone; stub-api.test.ts holds it to that.
 
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * The sample events' cover image: the spike fixture's picture, an original
- * abstract image (OrganizeOS's own work), served by the stub itself. A path,
- * not `new URL(path, import.meta.url)`, which Vite turns into a dev server URL
- * under the test.
+ * The cover when the script gives the stub none (a template whose thumbnail
+ * is not among its images): the spike fixture's picture, an original abstract
+ * image (OrganizeOS's own work). A path, not `new URL(path, import.meta.url)`,
+ * which Vite turns into a dev server URL under the test.
  */
-const coverImage = join(
+const fallbackCoverImage = join(
   dirname(fileURLToPath(import.meta.url)),
   "../../../../../../../../packages/sdk-components-organizeos/src/site-templates/__fixtures__/spike/images/hero.jpg"
 );
+
+/** A cover file's content type, by its extension. */
+const imageTypes = new Map([
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".png", "image/png"],
+  [".webp", "image/webp"],
+]);
 
 const coverPath = "/sample-events/cover.jpg";
 
@@ -133,20 +142,27 @@ export const sampleEvents = (apiBaseUrl) => {
 /**
  * The stub's answer to a request, by its path and query (`request.url`):
  * the events read (`/events`, with or without `?upcoming=true`) gets the
- * sample events, or none when `events` is "none"; the sample cover is the
- * image; anything else, the forms read among them, is `{"data": []}`.
+ * sample events, or none when `events` is "none"; the sample cover is
+ * `coverImage`, the previewed template's thumbnail file, or the spike
+ * fixture's picture when there is none; anything else, the forms read among
+ * them, is `{"data": []}`.
  *
  * @param {string} requestUrl
- * @param {{ apiBaseUrl: string, events: "sample" | "none" }} options
+ * @param {{ apiBaseUrl: string, events: "sample" | "none", coverImage?: string }} options
  * @returns {Promise<{ status: number, contentType: string, body: string | Uint8Array }>}
  */
-export const answerStubRequest = async (requestUrl, { apiBaseUrl, events }) => {
+export const answerStubRequest = async (
+  requestUrl,
+  { apiBaseUrl, events, coverImage = fallbackCoverImage }
+) => {
   const base = new URL(apiBaseUrl);
   const { pathname } = new URL(requestUrl, base.origin);
   if (pathname === coverPath) {
     return {
       status: 200,
-      contentType: "image/jpeg",
+      contentType:
+        imageTypes.get(extname(coverImage).toLowerCase()) ??
+        "application/octet-stream",
       body: await readFile(coverImage),
     };
   }
