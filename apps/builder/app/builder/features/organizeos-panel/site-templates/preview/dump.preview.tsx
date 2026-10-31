@@ -30,7 +30,10 @@ import { spikeTemplate } from "../../../../../../../../packages/sdk-components-o
 import { registerContainers } from "~/shared/sync/sync-stores";
 import { findCanonicalFontFamilies } from "~/shared/db/organizeos-canonical-fonts.server";
 import { getOrganizeosPresetIds } from "../../insert-organizeos-block";
-import { applySiteTemplateMutable } from "../apply-site-template";
+import {
+  applySiteTemplateMutable,
+  findPageAssetIds,
+} from "../apply-site-template";
 import { createProvisionedProject } from "../provisioned-project";
 
 /**
@@ -245,9 +248,13 @@ test("dump a template's site", async () => {
     throw new Error(`Blocks left unbound: ${result.unboundBlocks.join(", ")}`);
   }
 
+  // the images the apply uploads: those the pages show
+  const shownAssetIds = findPageAssetIds(pages);
   const fontFamilies = findStyleFontFamilies(data);
   const assetFiles = [
-    ...imageFiles.values(),
+    ...Array.from(imageFiles.values()).filter(({ asset }) =>
+      shownAssetIds.has(asset.id)
+    ),
     ...fontFiles.filter(
       ({ asset }) =>
         asset.type === "font" && fontFamilies.has(asset.meta.family)

@@ -386,6 +386,41 @@ export const applySiteTemplateMutable = (
   return { status: "applied", unboundBlocks };
 };
 
+/** Adds to `ids` every asset `value` holds, however deep. */
+const collectAssetIds = (value: unknown, ids: Set<string>) => {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectAssetIds(item, ids);
+    }
+    return;
+  }
+  if (typeof value !== "object" || value === null) {
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  if (record.type === "asset" && typeof record.value === "string") {
+    ids.add(record.value);
+    return;
+  }
+  for (const item of Object.values(record)) {
+    collectAssetIds(item, ids);
+  }
+};
+
+/**
+ * The asset ids the rendered pages show: an Image's (or any prop's) asset,
+ * and a background image's. A template image no page shows (its thumbnail,
+ * the chooser's picture, or its preview event cover) is not one of them.
+ */
+export const findPageAssetIds = (pages: RenderedPage[]): Set<string> => {
+  const ids = new Set<string>();
+  for (const { fragment } of pages) {
+    collectAssetIds(fragment.props, ids);
+    collectAssetIds(fragment.styles, ids);
+  }
+  return ids;
+};
+
 /**
  * A template's fonts as files, fetched from the builder's origin: the upload
  * by URL reads only images (`getImageNameAndType` in asset-utils.ts). Each
@@ -414,9 +449,11 @@ const fetchFontFiles = (template: SiteTemplate) =>
  * files (fetchFontFiles); the pages name them by family, through the font
  * variables. Images and fonts are uploaded only once the template is
  * applied: a page that cannot render, a font that cannot be fetched, or a
- * refusal, leaves no asset behind to make the project touched for good. An
- * id the upload returns that is not the one computed here is logged; a
- * failed upload is reported by the upload's own toast.
+ * refusal, leaves no asset behind to make the project touched for good. Only
+ * the images the pages show are uploaded (findPageAssetIds), so the
+ * thumbnail and the preview event cover leave no unused asset either. An id
+ * the upload returns that is not the one computed here is logged; a failed
+ * upload is reported by the upload's own toast.
  */
 export const applySiteTemplate = async (
   template: SiteTemplate
@@ -468,8 +505,15 @@ export const applySiteTemplate = async (
     return result;
   }
 
-  const uploaded = await uploadAssets("image", [...urls.values()]);
-  for (const [file, url] of urls) {
+  const shownAssetIds = findPageAssetIds(pages);
+  const shownUrls = Array.from(urls).filter(([file]) =>
+    shownAssetIds.has(assetIds.get(file) ?? "")
+  );
+  const uploaded = await uploadAssets(
+    "image",
+    shownUrls.map(([, url]) => url)
+  );
+  for (const [file, url] of shownUrls) {
     if (uploaded.get(url) !== assetIds.get(file)) {
       console.error(
         `Image "${file}" was uploaded with an asset id its pages do not use`

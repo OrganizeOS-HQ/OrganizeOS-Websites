@@ -110,18 +110,26 @@ export type SiteTemplate = {
   status: "draft" | "listed";
   /** The PRs the template needs merged first. */
   dependsOn: string[];
-  /** The chooser's picture of the template: a file name in `images`. */
+  /**
+   * The chooser's picture of the template: a file name in `images`. Applying
+   * uploads it only when a page shows it.
+   */
   thumbnail: string;
   /**
    * A file name in `images` that the preview tool's sample events show as
-   * the first event's cover (scripts/preview-site-template.mjs), in place of
-   * the thumbnail: one that no page with an events block shows, so a preview
-   * never shows a photo twice. Only the preview reads it; it is never applied
-   * to a site, whose events and covers are the org's.
+   * the first event's cover (scripts/preview-site-template.mjs): one that no
+   * page with an events block shows, so a preview never shows a photo twice.
+   * A template that places the cover card names one (the check holds it to
+   * that); without one the preview shows the spike fixture's picture. Only
+   * the preview reads it: applying uploads it only when a page shows it, and
+   * a site's events and covers are the org's.
    */
   previewEventCover?: string;
   variables: CanonicalValues;
-  /** By file name in the template's `images/` folder. */
+  /**
+   * By file name in the template's `images/` folder. Applying uploads those
+   * the pages show.
+   */
   images: Record<string, ImageEntry>;
   /**
    * By file name, a `.woff2` file: the fonts `--font-heading` and

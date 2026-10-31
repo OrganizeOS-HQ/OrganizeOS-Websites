@@ -1154,6 +1154,38 @@ describe("applySiteTemplate", () => {
     ]);
   });
 
+  // The thumbnail is only the chooser's picture, and the preview event cover
+  // only the preview's: shown on no page, either would be an asset the site
+  // never uses.
+  test("uploads only the images the pages show", async () => {
+    setStores(await createProvisionedProject(provisioning));
+    const unused = (file: string) => ({
+      url: `/site-templates/fixture/${file}`,
+      sourceUrl: `https://example.org/${file}`,
+      alt: "Replace with a photo",
+    });
+
+    const result = await applySiteTemplate({
+      ...template,
+      thumbnail: "thumbnail.jpg",
+      previewEventCover: "cover.jpg",
+      images: {
+        ...template.images,
+        "thumbnail.jpg": unused("thumbnail.jpg"),
+        "cover.jpg": unused("cover.jpg"),
+      },
+    });
+
+    expect(result).toEqual({ status: "applied", unboundBlocks: [] });
+    expect(uploadAssets).toHaveBeenCalledTimes(1);
+    const [type, urls] = uploadAssets.mock.calls[0] as [string, URL[]];
+    expect(type).toBe("image");
+    expect(urls.map((url) => url.href)).toEqual([
+      urlOf("/site-templates/fixture/hero.jpg"),
+      urlOf("/site-templates/fixture/team.jpg"),
+    ]);
+  });
+
   test("uploads each font as a file named by its key, once applied, after the images", async () => {
     setStores(await createProvisionedProject(provisioning));
     let aboutAtUpload: undefined | Page;
