@@ -36,7 +36,9 @@ const denim = (alpha: number) =>
  * own accent-1 shows, a plain denim field.
  * The label, an uppercase headline of up to three lines, one sentence and
  * one inverted Join button sit bottom-left. The hero is 4:5 on a portrait
- * phone and square on a landscape one, and grows when its text needs more.
+ * phone, and square from 480px to 767px, but no taller than the window less
+ * the nav's two rows and the hero's padding, so on a phone held sideways the
+ * text starts above the fold; it grows when its text needs more.
  */
 const hero = (context: PageContext) =>
   section({
@@ -105,7 +107,7 @@ const hero = (context: PageContext) =>
           min-height: clamp(380px, 38vw + 40px, 600px);
           ${BREAKPOINT.landscape} {
             row-gap: ${SPACE[16]};
-            min-height: calc(100vw - 112px);
+            min-height: min(calc(100vw - 112px), calc(100vh - 240px));
           }
           ${BREAKPOINT.portrait} {
             min-height: calc(125vw - 112px);

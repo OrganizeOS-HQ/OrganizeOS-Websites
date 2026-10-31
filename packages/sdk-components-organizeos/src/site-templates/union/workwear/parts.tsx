@@ -74,6 +74,7 @@ export const siteFooter = (pageIds: PageIds): JSX.Element =>
       </ws.element>
     ),
     headingWeight: LOOK.headingWeight,
+    headingCase: LOOK.headingCase,
   });
 
 export const quietLink = (pageIds: PageIds, link: SiteLink): JSX.Element => (
@@ -98,15 +99,14 @@ export const button = (
 );
 
 /**
- * A square photo at a fixed ratio (`4 / 5`), cropped to fill it, over an
+ * A square photo at a fixed ratio (`4 / 5`), cropped to fill it, in greys
+ * as the hero's is (any photo takes the cool palette the same way), over an
  * accent-1 field that shows when the photo is gone. `phoneRatio` replaces
- * the ratio below 768px, and `phonePosition` the crop. With no file it is
- * the builder's placeholder, the "put your image here" slot a Content
- * Block's new item starts with.
+ * the ratio below 768px, and `phonePosition` the crop.
  */
 export const photo = (
   { image, imageAlt }: PageContext,
-  file: string | undefined,
+  file: string,
   {
     ratio,
     phoneRatio = ratio,
@@ -121,9 +121,8 @@ export const photo = (
 ): JSX.Element => (
   <$.Image
     ws:label="Photo"
-    {...(file === undefined
-      ? { alt: "Replace with a photo" }
-      : { src: image(file), alt: imageAlt(file) })}
+    src={image(file)}
+    alt={imageAlt(file)}
     ws:style={css`
       display: block;
       width: 100%;
@@ -132,6 +131,7 @@ export const photo = (
       object-fit: cover;
       object-position: ${position};
       background-color: var(--accent-1);
+      filter: grayscale(1);
       ${BREAKPOINT.landscape} {
         aspect-ratio: ${phoneRatio};
         object-position: ${phonePosition};

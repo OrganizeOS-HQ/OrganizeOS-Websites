@@ -23,13 +23,16 @@ import { RULE } from "./styles";
 // and button, and the Event List as ruled rows with a fixed date column.
 //
 // The photos are public domain works of United States federal agencies,
-// from Wikimedia Commons, cropped, resized and compressed. Painted out: in
+// from Wikimedia Commons, cropped, resized, turned to greys (about.jpg's
+// levels stretched, as the faded slide was) and compressed. Painted out: in
 // hero.jpg, a company's logo and slogan on a white hard hat, a company's name
 // on a navy one, a name sticker on a third (each filled with the hat's own
 // shading and grain, the third keeping the edge between its crown and brim)
 // and a round sticker at the top edge (cloned from the hat beside it); in
 // about.jpg, an ID badge on a breast pocket (filled with the pocket's cloth).
-// The hero shows its photo in greys under the denim overlay (pages/home).
+// Every photo slot shows its photo in greys too (`filter: grayscale(1)`), so
+// a photo an org puts there takes the palette as these do; the hero's lies
+// under the denim overlay (pages/home).
 
 export const workwearTemplate: SiteTemplate = {
   id: "workwear",
@@ -84,8 +87,20 @@ export const workwearTemplate: SiteTemplate = {
   },
   pages: [home, about, knowYourRights, join, events, contactPage],
   blockTokens: {
-    // The Signup Form: square fields and button, the fields 48px tall in
-    // the body size, the button the template's own (52px, denim, 500).
+    // The Signup Form: its heading set as the template's h3s are (uppercase,
+    // condensed, tracked a little), square fields and button, the fields
+    // 48px tall in the body size, the button the template's own (52px,
+    // denim, 500).
+    "OS Form Heading": css`
+      font-size: 30px;
+      font-weight: 700;
+      line-height: 1.05;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      ${BREAKPOINT.landscape} {
+        font-size: 26px;
+      }
+    `,
     "OS Field": css`
       row-gap: 8px;
     `,

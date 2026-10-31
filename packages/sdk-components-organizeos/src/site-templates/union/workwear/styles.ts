@@ -19,10 +19,14 @@ import {
 // ring pass and small text does not. The styles every piece and page draws
 // with.
 
-/** The template's corners (square: none set) and weights, for the kit. */
+/**
+ * The template's corners (square: none set), weights and heading case, for
+ * the kit: its name and footer titles are set as the headings are.
+ */
 export const LOOK: KitStyle = {
   buttonWeight: 500,
   headingWeight: 700,
+  headingCase: "uppercase",
 };
 
 /** The page's own type and colours, which every section inherits. */
@@ -149,6 +153,13 @@ export const ruleAboveStyles = (): TemplateStyleDecl[] => css`
   border-top-width: ${RULE};
   border-top-style: solid;
   border-top-color: currentcolor;
+`;
+
+/** A full-width rule below a list, closing its last item's row. */
+export const ruleBelowStyles = (): TemplateStyleDecl[] => css`
+  border-bottom-width: ${RULE};
+  border-bottom-style: solid;
+  border-bottom-color: currentcolor;
 `;
 
 /** A stack of children with a gap. */

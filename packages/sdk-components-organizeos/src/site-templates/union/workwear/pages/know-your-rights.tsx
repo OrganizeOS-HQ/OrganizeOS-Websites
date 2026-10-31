@@ -11,11 +11,11 @@ import type { PageContext, SiteTemplatePage } from "../../../types";
 import { quietLink, sectionHeader, siteFooter, siteNav } from "../parts";
 import { ctaBand, faqSection, pageHeader } from "../sections";
 import {
-  RULE,
   bodyStyles,
   labelStyles,
   paragraphStyles,
   ruleAboveStyles,
+  ruleBelowStyles,
   stackStyles,
   subheadingStyles,
 } from "../styles";
@@ -82,11 +82,7 @@ const resources = (context: PageContext) =>
       <ws.element
         ws:tag="div"
         ws:label="Resources"
-        ws:style={css`
-          border-bottom-width: ${RULE};
-          border-bottom-style: solid;
-          border-bottom-color: var(--text);
-        `}
+        ws:style={ruleBelowStyles()}
       >
         {contentBlock({
           label: "Resources",

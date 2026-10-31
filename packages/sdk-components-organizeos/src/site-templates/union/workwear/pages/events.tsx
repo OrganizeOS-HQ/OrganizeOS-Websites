@@ -33,7 +33,7 @@ export const events: SiteTemplatePage = {
       })}
       {ctaBand({
         pageIds: context.pageIds,
-        heading: "Not a member yet? Join first",
+        heading: "Join before the next meeting",
         body: "Say what a member can do at meetings, and how soon after joining.",
         link: JOIN,
       })}

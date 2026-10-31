@@ -21,6 +21,7 @@ import {
   outlinedButtonStyles,
   paragraphStyles,
   ruleAboveStyles,
+  ruleBelowStyles,
   ruledCellStyles,
   ruledGridStyles,
   stackStyles,
@@ -154,15 +155,7 @@ export const valuesList = ({
     label: "Mission and values: List",
     children: keyed([
       sectionHeader({ pageIds, label: "Mission", heading, intro, link }),
-      <ws.element
-        ws:tag="div"
-        ws:label="Values"
-        ws:style={css`
-          border-bottom-width: ${RULE};
-          border-bottom-style: solid;
-          border-bottom-color: var(--text);
-        `}
-      >
+      <ws.element ws:tag="div" ws:label="Values" ws:style={ruleBelowStyles()}>
         {contentBlock({
           label: "Values",
           template: value(["[00]", "[Value]", "[What it means at work.]"]),

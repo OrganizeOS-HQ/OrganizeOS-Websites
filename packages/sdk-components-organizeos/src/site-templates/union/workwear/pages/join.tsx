@@ -11,6 +11,7 @@ import {
   numeralStyles,
   paragraphStyles,
   ruleAboveStyles,
+  ruleBelowStyles,
   stackStyles,
 } from "../styles";
 
@@ -83,16 +84,16 @@ const signUp = ({ placeBlock }: PageContext) =>
           <ws.element
             ws:tag="ol"
             ws:label="Steps"
-            ws:style={css`
-              align-self: stretch;
-              margin-top: ${SPACE[16]};
-              margin-bottom: 0;
-              padding-left: 0;
-              list-style-type: none;
-              border-bottom-width: ${RULE};
-              border-bottom-style: solid;
-              border-bottom-color: var(--text);
-            `}
+            ws:style={[
+              ...css`
+                align-self: stretch;
+                margin-top: ${SPACE[16]};
+                margin-bottom: 0;
+                padding-left: 0;
+                list-style-type: none;
+              `,
+              ...ruleBelowStyles(),
+            ]}
           >
             {contentBlock({
               label: "Steps",
@@ -111,9 +112,9 @@ const signUp = ({ placeBlock }: PageContext) =>
           </ws.element>
         </ws.element>
         {/*
-          The form opens with its own h2, whose top margin (about 22px) adds
-          to the box's: the box gives up as much at the top, so the form sits
-          evenly in it.
+          The form opens with its own h2 (its text the template's, its look
+          "OS Form Heading" in index.tsx), whose top margin adds to the box's:
+          the box gives up as much at the top, so the form sits evenly in it.
         */}
         <ws.element
           ws:tag="div"
@@ -138,7 +139,9 @@ const signUp = ({ placeBlock }: PageContext) =>
             }
           `}
         >
-          {placeBlock("@organizeos/site-components:SignupForm", "signup")}
+          {placeBlock("@organizeos/site-components:SignupForm", "signup", {
+            heading: "Sign up to join",
+          })}
         </ws.element>
       </ws.element>
     ),

@@ -11,12 +11,12 @@ import type { SiteTemplatePage } from "../../../types";
 import { JOIN, siteFooter, siteNav } from "../parts";
 import { ctaBand, pageHeader } from "../sections";
 import {
-  RULE,
   bodyStyles,
   headingStyles,
   labelStyles,
   paragraphStyles,
   ruleAboveStyles,
+  ruleBelowStyles,
   stackStyles,
   subheadingStyles,
 } from "../styles";
@@ -106,7 +106,7 @@ const contact = () =>
             ...ruleAboveStyles(),
             ...stackStyles(SPACE[24]),
             ...css`
-              padding-top: ${SPACE[24]};
+              padding-top: ${SPACE[16]};
             `,
           ]}
         >
@@ -128,11 +128,7 @@ const contact = () =>
         <ws.element
           ws:tag="div"
           ws:label="Methods"
-          ws:style={css`
-            border-bottom-width: ${RULE};
-            border-bottom-style: solid;
-            border-bottom-color: var(--text);
-          `}
+          ws:style={ruleBelowStyles()}
         >
           {contentBlock({
             label: "Contact methods",
