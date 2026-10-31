@@ -177,12 +177,12 @@ export const spikeTemplate: SiteTemplate = {
   images: {
     "hero.jpg": {
       url: heroUrl,
-      sourceUrl: "organizeos:generated/spike/images/generate.py",
+      sourceUrl: "organizeos:generated/__fixtures__/spike/images/generate.py",
       alt: "Replace with a photo of your members at work",
     },
     "cover.jpg": {
       url: coverUrl,
-      sourceUrl: "organizeos:generated/spike/images/generate.py",
+      sourceUrl: "organizeos:generated/__fixtures__/spike/images/generate.py",
       alt: "Replace with a photo of one of your events",
     },
   },

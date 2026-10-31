@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { BLANK_CANONICAL_VALUES } from "./canonical-variables";
 import { SITE_TEMPLATES, listedTemplates } from "./catalog";
@@ -19,6 +22,26 @@ describe("the catalog", () => {
       expect(checkSiteTemplate(template)).toEqual([]);
     }
   );
+
+  // An image OrganizeOS generated records the script that made it, by its
+  // path from this folder, so the image can be made again.
+  test("a generated image's source names its script, which exists", () => {
+    const folder = dirname(fileURLToPath(import.meta.url));
+    const generated = templates.flatMap((template) =>
+      Object.entries(template.images).flatMap(([file, { sourceUrl }]) =>
+        sourceUrl.startsWith("organizeos:generated/")
+          ? [{ image: `${template.id}/${file}`, sourceUrl }]
+          : []
+      )
+    );
+    expect(generated.length).toBeGreaterThan(0);
+    for (const { image, sourceUrl } of generated) {
+      const script = sourceUrl.slice("organizeos:generated/".length);
+      expect(existsSync(join(folder, script)), `${image}: ${script}`).toBe(
+        true
+      );
+    }
+  });
 
   test("every catalog template and the spike fixture have a unique id", () => {
     const ids = templates.map((template) => template.id);
