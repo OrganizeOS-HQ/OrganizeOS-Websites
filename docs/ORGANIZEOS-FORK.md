@@ -1740,14 +1740,15 @@ anything yet.
   a block whose root the fragment lacks is refused, not inserted unbound.
   An events block takes options,
   `placeBlock(key, placementId, { card, style })`, and a form block
-  `{ heading }`; one kind's options on the other kind's key is a type error:
+  `{ heading, submit }`; one kind's options on the other kind's key is a
+  type error:
   `card: "dated"` places the dated card (a date column of
   the month and the day number, in the tokens "OS Event Date" and "OS Event
   Day", beside the details, with no cover image) in place of the cover card,
   which stays the default and the Components panel's; `style` is local style
-  on the block's root, replacing its declarations by key; `heading` is the
-  template's text for the form's heading, in place of the block's own
-  placeholder.
+  on the block's root, replacing its declarations by key; `heading` and
+  `submit` are the template's text for the form's heading and its submit
+  button, in place of the block's own placeholders.
 - **Template block tokens.** `SiteTemplate.blockTokens` gives the template's
   look for the block tokens by name (`BlockTokenName`: "OS Form Heading",
   "OS Field", "OS Input", "OS Button", "OS Message", "OS Card", "OS Event

@@ -342,6 +342,43 @@ describe("placement options", () => {
     ]);
   });
 
+  const submitOf = (fragment: Fragment) =>
+    fragment.instances.find((instance) =>
+      instance.component.endsWith(":SubmitButton")
+    )?.children;
+
+  test("a form block takes its submit button's text, in place of its own placeholder", () => {
+    const { placeBlock } = createBlockPlacer();
+    const signup = renderTemplate(
+      placeBlock("@organizeos/site-components:SignupForm", "signup", {
+        heading: "Add your name",
+        submit: "Add your name",
+      })
+    );
+    expect(submitOf(signup)).toEqual([
+      { type: "text", value: "Add your name" },
+    ]);
+    const rsvp = renderTemplate(
+      placeBlock("@organizeos/site-components:RsvpForm", "rsvp", {
+        submit: "Count me in",
+      })
+    );
+    expect(submitOf(rsvp)).toEqual([{ type: "text", value: "Count me in" }]);
+    // with none, the block's own placeholders, as the Components panel inserts
+    const plainSignup = renderTemplate(
+      placeBlock("@organizeos/site-components:SignupForm", "plain-signup")
+    );
+    expect(submitOf(plainSignup)).toEqual([
+      { type: "text", value: "Sign up", placeholder: true },
+    ]);
+    const plainRsvp = renderTemplate(
+      placeBlock("@organizeos/site-components:RsvpForm", "plain-rsvp")
+    );
+    expect(submitOf(plainRsvp)).toEqual([
+      { type: "text", value: "RSVP", placeholder: true },
+    ]);
+  });
+
   test("a form block takes no events options, and an events block no form options", () => {
     const Signup = "@organizeos/site-components:SignupForm" as const;
     const List = "@organizeos/site-components:EventList" as const;
@@ -352,6 +389,8 @@ describe("placement options", () => {
     placeBlock(RsvpForm, "style", { style: [] });
     // @ts-expect-error an events block's placement takes no heading
     placeBlock(List, "heading", { heading: "Coming up" });
+    // @ts-expect-error an events block's placement takes no submit text
+    placeBlock(List, "submit", { submit: "Go" });
     // a key typed as any block's places, and takes no options
     const anyKey = SignupForm as BlockKey;
     expect(() => placeBlock(anyKey, "any")).not.toThrow();

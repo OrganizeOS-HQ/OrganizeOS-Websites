@@ -65,9 +65,13 @@ const field = (name: string, label: string, text: string) => (
 // Events binding by id when it inserts the block, and the designer picks the
 // event (`record`) in the Settings panel.
 //
-// `heading` is a site template's text for the form's heading
-// (placeBlock's `heading`); with none, the block's own placeholder.
-export const rsvpFormTemplate = ({ heading }: { heading?: string } = {}) => {
+// `heading` and `submit` are a site template's text for the form's heading
+// and its submit button (placeBlock's options); with none, the block's own
+// placeholders.
+export const rsvpFormTemplate = ({
+  heading,
+  submit,
+}: { heading?: string; submit?: string } = {}) => {
   const rsvpState = new Variable("rsvpState", "initial");
   return (
     <organizeos.RsvpForm
@@ -104,7 +108,7 @@ export const rsvpFormTemplate = ({ heading }: { heading?: string } = {}) => {
           {new PlaceholderValue("Also email me news from this organization")}
         </organizeos.EmailConsent>
         <organizeos.SubmitButton ws:tokens={[buttonToken]}>
-          {new PlaceholderValue("RSVP")}
+          {submit ?? new PlaceholderValue("RSVP")}
         </organizeos.SubmitButton>
       </ws.element>
       <ws.element

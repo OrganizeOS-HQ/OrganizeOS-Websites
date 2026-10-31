@@ -23,9 +23,13 @@ import { organizeos } from "./shared/proxy";
 // `data` is left unbound: the OrganizeOS panel binds it to the project's
 // Forms preset by id when it inserts the block.
 //
-// `heading` is a site template's text for the form's heading
-// (placeBlock's `heading`); with none, the block's own placeholder.
-export const signupFormTemplate = ({ heading }: { heading?: string } = {}) => {
+// `heading` and `submit` are a site template's text for the form's heading
+// and its submit button (placeBlock's options); with none, the block's own
+// placeholders.
+export const signupFormTemplate = ({
+  heading,
+  submit,
+}: { heading?: string; submit?: string } = {}) => {
   const formState = new Variable("formState", "initial");
   return (
     <organizeos.SignupForm
@@ -74,7 +78,7 @@ export const signupFormTemplate = ({ heading }: { heading?: string } = {}) => {
           <organizeos.FieldMessage ws:tokens={[messageToken]} />
         </organizeos.Field>
         <organizeos.SubmitButton ws:tokens={[buttonToken]}>
-          {new PlaceholderValue("Sign up")}
+          {submit ?? new PlaceholderValue("Sign up")}
         </organizeos.SubmitButton>
       </ws.element>
       <ws.element

@@ -41,6 +41,11 @@ export type FormBlockOptions = {
    * copy, which the org edits as its own.
    */
   heading?: string;
+  /**
+   * The text of the form's submit button, in place of the block's own
+   * placeholder ("Sign up", "RSVP"), so it can say the template's ask.
+   */
+  submit?: string;
 };
 
 /**
@@ -67,10 +72,10 @@ export type BlockPlacement = { key: BlockKey; rootId: string };
 type BlockOptions = EventsBlockOptions & FormBlockOptions;
 
 const factories: Record<BlockKey, (options: BlockOptions) => JSX.Element> = {
-  "@organizeos/site-components:SignupForm": ({ heading }) =>
-    signupFormTemplate({ heading }),
-  "@organizeos/site-components:RsvpForm": ({ heading }) =>
-    rsvpFormTemplate({ heading }),
+  "@organizeos/site-components:SignupForm": ({ heading, submit }) =>
+    signupFormTemplate({ heading, submit }),
+  "@organizeos/site-components:RsvpForm": ({ heading, submit }) =>
+    rsvpFormTemplate({ heading, submit }),
   "@organizeos/site-components:EventList": ({ card }) =>
     eventsTemplate({ label: "Event List", card }),
   "@organizeos/site-components:EventCard": ({ card }) =>
@@ -147,7 +152,7 @@ export const prefixWsIds = (
  * caller can tell the apply routine where each block's root is. An events
  * block's options pick its card and give its root a style of the template's,
  * on the clone, so the block's own template is left as it was; a form
- * block's give its heading the template's text.
+ * block's give its heading and its submit button the template's text.
  */
 export const createBlockPlacer = () => {
   const placements: BlockPlacement[] = [];
