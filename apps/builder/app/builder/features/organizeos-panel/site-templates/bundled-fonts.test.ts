@@ -2,26 +2,18 @@
  * @vitest-environment node
  */
 import { readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { SITE_TEMPLATES } from "@organizeos/site-components/site-templates";
 import { getAssetData } from "../../../../../../../packages/asset-uploader/src/utils/get-asset-data";
 import { spikeTemplate } from "../../../../../../../packages/sdk-components-organizeos/src/site-templates/__fixtures__/spike";
-import { BOARD_FONT_FILES } from "./__fixtures__/board-fonts";
 
 // What the builder stores for a template's font: the upload's own reading
-// of the file (getAssetData, which the asset upload route runs on it). The
-// node environment, since getAssetData's font reader checks Node's Buffer.
-
-/** The fonts' packages are devDependencies of the blocks package. */
-const requireFromBlocks = createRequire(
-  new URL(
-    "../../../../../../../packages/sdk-components-organizeos/package.json",
-    import.meta.url
-  )
-);
+// of the file (getAssetData, which the asset upload route runs on it). What it
+// derives from every font file the approved direction board names is held in
+// the asset uploader's organizeos-font-family.test.ts. The node environment,
+// since getAssetData's font reader checks Node's Buffer.
 
 /** apps/builder, the vitest root a root-relative `?url` import is under. */
 const vitestRoot = fileURLToPath(
@@ -39,40 +31,6 @@ const fileOfUrl = (url: string) => {
     : join(vitestRoot, path);
 };
 
-const deriveFont = async (path: string) => {
-  const data = await readFile(path);
-  const { format, meta } = await getAssetData({
-    type: "font",
-    size: data.byteLength,
-    data,
-    // the upload's name (getUniqueFilename), read only for a font with no family
-    name: basename(path).replace(/\.woff2$/, "_0123456789abcdefghijk.woff2"),
-  });
-  return { format, meta };
-};
-
-describe("the board's font files", () => {
-  test.each(BOARD_FONT_FILES)(
-    "$file derives $family",
-    async ({ file, family, weight }) => {
-      const { format, meta } = await deriveFont(
-        requireFromBlocks.resolve(file)
-      );
-      expect(format).toBe("woff2");
-      if (Array.isArray(weight)) {
-        expect(meta).toEqual({
-          family,
-          variationAxes: expect.objectContaining({
-            wght: expect.objectContaining({ min: weight[0], max: weight[1] }),
-          }),
-        });
-      } else {
-        expect(meta).toEqual({ family, style: "normal", weight });
-      }
-    }
-  );
-});
-
 describe("a template's fonts", () => {
   // The family a font variable names first is the one a publish keeps the
   // font by, so it must be the one the builder derives from the file.
@@ -86,7 +44,18 @@ describe("a template's fonts", () => {
     );
     expect(fonts.length).toBeGreaterThan(0);
     for (const { name, url, family } of fonts) {
-      const { meta } = await deriveFont(fileOfUrl(url));
+      const path = fileOfUrl(url);
+      const data = await readFile(path);
+      const { meta } = await getAssetData({
+        type: "font",
+        size: data.byteLength,
+        data,
+        // the upload's name (getUniqueFilename)
+        name: basename(path).replace(
+          /\.woff2$/,
+          "_0123456789abcdefghijk.woff2"
+        ),
+      });
       expect(meta, name).toEqual(expect.objectContaining({ family }));
     }
   });
