@@ -7,6 +7,7 @@
 export {
   BREAKPOINT,
   CONTAINER,
+  FOCUS_RING_VARIABLE,
   SPACE,
   type ContainerWidth,
   type KitStyle,

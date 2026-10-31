@@ -97,14 +97,27 @@ const sectionColours: Record<
 };
 
 /**
- * The focus ring of every link and button: 2px of `--accent-2` at a 2px
- * offset. A nested rule, so it goes last among an element's styles.
+ * The custom property (`--focus-ring`) a band sets to the colour of the
+ * focus rings inside it. The check holds `--accent-2` against the base
+ * alone, so on a band it can all but vanish; a band rings focus in its text
+ * colour, `--base`, which the check holds against accent-1, as it holds the
+ * text colour against the base. Unset, on the base, the ring is
+ * `--accent-2`. A base-coloured panel inside a band that holds the kit's
+ * links sets it back to `var(--accent-2)`.
+ */
+export const FOCUS_RING_VARIABLE = "focus-ring";
+
+/**
+ * The focus ring of every link and button: 2px at a 2px offset, of
+ * `--accent-2`, or of a band's text colour inside a band
+ * (`FOCUS_RING_VARIABLE`). A nested rule, so it goes last among an element's
+ * styles.
  */
 export const focusRing = (): TemplateStyleDecl[] => css`
   &:focus-visible {
     outline-width: 2px;
     outline-style: solid;
-    outline-color: var(--accent-2);
+    outline-color: var(--${FOCUS_RING_VARIABLE}, var(--accent-2));
     outline-offset: 2px;
   }
 `;
@@ -135,8 +148,9 @@ export const fontWeight = (weight: number | undefined): TemplateStyleDecl[] =>
 /**
  * A full-bleed `<section>` named `label` in the Navigator, in one of the
  * checked colour pairs (base by default), padded above and below, around a
- * container (`wide` by default) holding `children`. `id` is the target of an
- * in-page link (`#sign-up`).
+ * container (`wide` by default) holding `children`. A band (accent-1 or
+ * text) rings focus in its text colour (`FOCUS_RING_VARIABLE`). `id` is the
+ * target of an in-page link (`#sign-up`).
  */
 export const section = ({
   label,
@@ -163,6 +177,9 @@ export const section = ({
         padding-bottom: ${sectionPadding.base};
         background-color: var(--${colours.background});
         color: var(--${colours.text});
+        ${background === "base"
+          ? ""
+          : `--${FOCUS_RING_VARIABLE}: var(--${colours.text});`}
         ${BREAKPOINT.landscape} {
           padding-top: ${sectionPadding.phone};
           padding-bottom: ${sectionPadding.phone};

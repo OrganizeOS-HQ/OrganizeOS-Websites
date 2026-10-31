@@ -96,7 +96,7 @@ describe("buttonStyles", () => {
     });
     expect(stylesAt(fragment, button, 390)["padding-left"]).toBe("16px");
     expect(stateStyles(fragment, button, ":focus-visible")).toMatchObject({
-      "outline-color": "var(--accent-2)",
+      "outline-color": "var(--focus-ring, var(--accent-2))",
     });
   });
 

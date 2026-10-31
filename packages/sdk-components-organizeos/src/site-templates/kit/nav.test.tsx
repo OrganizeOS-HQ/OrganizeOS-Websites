@@ -165,7 +165,7 @@ describe("nav", () => {
         expect(stateStyles(fragment, target, ":focus-visible")).toEqual({
           "outline-width": "2px",
           "outline-style": "solid",
-          "outline-color": "var(--accent-2)",
+          "outline-color": "var(--focus-ring, var(--accent-2))",
           "outline-offset": "2px",
         });
       }

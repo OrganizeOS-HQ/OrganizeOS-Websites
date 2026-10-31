@@ -1,8 +1,21 @@
 import { describe, expect, test } from "vitest";
 import { css, renderTemplate, ws } from "@webstudio-is/template";
 import { initialBreakpoints } from "@webstudio-is/sdk";
-import { BREAKPOINT, CONTAINER, SPACE, container, section } from "./layout";
-import { byLabel, childInstances, propOf, stylesAt } from "./test-helpers";
+import {
+  BREAKPOINT,
+  CONTAINER,
+  SPACE,
+  container,
+  focusRing,
+  section,
+} from "./layout";
+import {
+  byLabel,
+  childInstances,
+  propOf,
+  stateStyles,
+  stylesAt,
+} from "./test-helpers";
 
 const renderBody = (children: JSX.Element) =>
   renderTemplate(<ws.element ws:tag="body">{children}</ws.element>);
@@ -158,6 +171,21 @@ describe("section", () => {
     expect(colours("text")).toEqual(["var(--text)", "var(--base)"]);
   });
 
+  test("on a band, rings focus in the band's text colour; on the base, leaves the ring alone", () => {
+    const ring = (background?: "base" | "accent-1" | "text") => {
+      const fragment = renderBody(
+        section({ label: "Band", background, children: content() })
+      );
+      return stylesAt(fragment, byLabel(fragment, "Band"), 1440)[
+        "--focus-ring"
+      ];
+    };
+    expect(ring()).toBeUndefined();
+    expect(ring("base")).toBeUndefined();
+    expect(ring("accent-1")).toBe("var(--base)");
+    expect(ring("text")).toBe("var(--base)");
+  });
+
   test("takes a narrower container", () => {
     for (const width of ["wide", "text", "narrow"] as const) {
       const fragment = renderBody(
@@ -201,5 +229,21 @@ describe("section", () => {
     // the body, then a section, its container and paragraph per call
     expect(ids).toHaveLength(7);
     expect(new Set(ids).size).toBe(7);
+  });
+});
+
+describe("focusRing", () => {
+  test("is 2px at a 2px offset, in the band's ring colour, accent-2 outside a band", () => {
+    const fragment = renderBody(
+      <ws.element ws:tag="a" ws:label="Link" ws:style={focusRing()} />
+    );
+    expect(
+      stateStyles(fragment, byLabel(fragment, "Link"), ":focus-visible")
+    ).toEqual({
+      "outline-width": "2px",
+      "outline-style": "solid",
+      "outline-color": "var(--focus-ring, var(--accent-2))",
+      "outline-offset": "2px",
+    });
   });
 });

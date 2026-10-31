@@ -412,6 +412,18 @@ describe("checkSiteTemplate", () => {
           color: var(--text, #000000);
         `,
       },
+      {
+        name: "a colour keyword for the kit's focus ring",
+        style: css`
+          --focus-ring: white;
+        `,
+      },
+      {
+        name: "a literal colour for the kit's focus ring",
+        style: css`
+          --focus-ring: #ffffff;
+        `,
+      },
     ])("$name is a violation", ({ style }) => {
       expectOneViolation(
         checkAbout(() => (
@@ -433,6 +445,20 @@ describe("checkSiteTemplate", () => {
               border-top-color: inherit;
               outline-color: initial;
               caret-color: unset;
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+
+    test("the kit's focus ring variable, set to a canonical colour and read with accent-2 behind it, is not a violation", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              --focus-ring: var(--base);
+              outline-color: var(--focus-ring, var(--accent-2));
             `}
           />
         ))

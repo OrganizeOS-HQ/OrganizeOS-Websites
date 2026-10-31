@@ -174,7 +174,7 @@ describe("footer", () => {
     for (const link of links) {
       expect(stylesAt(fragment, link, 320)["min-height"]).toBe("44px");
       expect(stateStyles(fragment, link, ":focus-visible")).toMatchObject({
-        "outline-color": "var(--accent-2)",
+        "outline-color": "var(--focus-ring, var(--accent-2))",
         "outline-offset": "2px",
       });
     }
