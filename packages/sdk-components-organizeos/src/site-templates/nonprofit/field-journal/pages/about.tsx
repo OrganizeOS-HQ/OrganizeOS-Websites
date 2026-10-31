@@ -53,7 +53,7 @@ const story = (context: PageContext) =>
         })}
         <ws.element ws:tag="div" ws:style={stackStyles(SPACE[16])}>
           {text("p", eyebrowStyles(), "Our story", "Eyebrow")}
-          {text("h2", headingStyles(), "How [Organization name] began")}
+          {text("h2", headingStyles(), "How the work began")}
           {text(
             "p",
             paragraphStyles(),
@@ -74,8 +74,11 @@ const story = (context: PageContext) =>
     ),
   });
 
+/** [number, name, a sentence] */
+type Value = [string, string, string];
+
 /** One value: its number in ochre, then its name and a sentence. */
-const value = ([number, name, line]: [string, string, string]) => (
+const value = ([number, name, line]: Value) => (
   <ws.element
     ws:tag="div"
     ws:label="Value"
@@ -113,31 +116,36 @@ const values = (context: PageContext) =>
       <ws.element ws:tag="div" ws:label="Values" ws:style={gridStyles(3)}>
         {contentBlock({
           label: "Values",
-          template: value(["[00]", "[Value]", "[What it means in practice.]"]),
-          items: [
+          template: value(["[00]", "[Value]", "[What it means.]"]),
+          items: (
             [
-              "01",
-              "[First value]",
-              "One sentence on what this value means in practice.",
-            ] as [string, string, string],
-            [
-              "02",
-              "[Second value]",
-              "One sentence on what this value means in practice.",
-            ] as [string, string, string],
-            [
-              "03",
-              "[Third value]",
-              "One sentence on what this value means in practice.",
-            ] as [string, string, string],
-          ].map(value),
+              [
+                "01",
+                "[First value]",
+                "One sentence on what this value means in practice.",
+              ],
+              [
+                "02",
+                "[Second value]",
+                "One sentence on what this value means in practice.",
+              ],
+              [
+                "03",
+                "[Third value]",
+                "One sentence on what this value means in practice.",
+              ],
+            ] as Value[]
+          ).map(value),
         })}
       </ws.element>,
     ]),
   });
 
+/** [name, role, a line about them] */
+type Person = [string, string, string];
+
 /** One person: name, role in ochre, a line about them. */
-const person = ([name, role, line]: [string, string, string]) => (
+const person = ([name, role, line]: Person) => (
   <ws.element
     ws:tag="div"
     ws:label="Person"
@@ -147,11 +155,13 @@ const person = ([name, role, line]: [string, string, string]) => (
     {text("p", eyebrowStyles(), role, "Role")}
     {text(
       "p",
-      css`
-        margin: 0;
-        font-size: 16px;
-        line-height: 1.5;
-      `,
+      [
+        ...paragraphStyles(),
+        ...css`
+          font-size: 16px;
+          line-height: 1.5;
+        `,
+      ],
       line
     )}
   </ws.element>
@@ -172,28 +182,30 @@ const team = (context: PageContext) =>
         {contentBlock({
           label: "People",
           template: person(["[Name]", "[Role]", "[A line about them.]"]),
-          items: [
+          items: (
             [
-              "[Full name]",
-              "[Executive director]",
-              "A line on what they do and how long they have been here.",
-            ] as [string, string, string],
-            [
-              "[Full name]",
-              "[Program lead]",
-              "A line on what they do and how long they have been here.",
-            ] as [string, string, string],
-            [
-              "[Full name]",
-              "[Volunteer coordinator]",
-              "A line on what they do and how long they have been here.",
-            ] as [string, string, string],
-            [
-              "[Full name]",
-              "[Board chair]",
-              "A line on what they do and how long they have been here.",
-            ] as [string, string, string],
-          ].map(person),
+              [
+                "[Full name]",
+                "[Executive director]",
+                "A line on what they do, and since when.",
+              ],
+              [
+                "[Full name]",
+                "[Program lead]",
+                "A line on what they do, and since when.",
+              ],
+              [
+                "[Full name]",
+                "[Coordinator]",
+                "A line on what they do, and since when.",
+              ],
+              [
+                "[Full name]",
+                "[Board chair]",
+                "A line on what they do, and since when.",
+              ],
+            ] as Person[]
+          ).map(person),
         })}
       </ws.element>,
     ]),
@@ -211,7 +223,7 @@ export const about: SiteTemplatePage = {
       {siteNav(context.pageIds)}
       {pageHeader({
         eyebrow: "About",
-        title: "Say in a sentence why [Organization name] exists",
+        title: "Say in a sentence why your organization exists",
         intro:
           "Add a sentence or two for someone who has just heard of you: what you do, where, and with whom.",
       })}
@@ -231,9 +243,11 @@ export const about: SiteTemplatePage = {
         pageIds: context.pageIds,
         eyebrow: "Take part",
         heading: "There is a place for you in this",
-        body: "Say in a sentence how someone new can start, such as [joining a volunteer day].",
+        body: "Say in a sentence how someone new can start, such as [a volunteer day].",
         primary: { label: "Get involved", pageKey: "get-involved" },
         secondary: DONATE,
+        // the Stats band's edge already divides the page
+        ruled: false,
       })}
       {siteFooter(context.pageIds)}
     </ws.element>

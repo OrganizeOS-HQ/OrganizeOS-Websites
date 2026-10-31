@@ -78,7 +78,7 @@ const opportunities = (context: PageContext) =>
               [
                 "[From home]",
                 "[A skills role]",
-                "Say which skills you are looking for, such as [design, writing or bookkeeping].",
+                "Say which skills you are looking for, such as [design] or [writing].",
               ],
             ] as Opportunity[]
           ).map((item) => opportunity(context, item)),
@@ -119,14 +119,14 @@ export const getInvolved: SiteTemplatePage = {
         eyebrow: "Get involved",
         title: "Say in one sentence how people can take part",
         intro:
-          "Add a sentence for someone ready to help: they do not need experience, only [an hour or two].",
+          "Add a sentence for someone ready to help: they need no experience, only [an hour or two].",
       })}
       {opportunities(context)}
       {signUpSection({
         placeBlock: context.placeBlock,
         eyebrow: "Volunteer",
         heading: "Hear when a role opens",
-        body: "Leave your details and [a volunteer coordinator] will write when there is a role that suits you.",
+        body: "Leave your details and [our coordinator] will write when a role suits you.",
         note: "We only use your details to contact you about volunteering.",
       })}
       {events(context)}

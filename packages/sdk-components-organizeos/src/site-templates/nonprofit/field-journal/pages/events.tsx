@@ -11,46 +11,22 @@ import {
 import { pageHeader, signUpSection } from "../sections";
 import { bodyStyles } from "../styles";
 
-// Events (spec section 4's page, Events: Featured plus list): the next event
-// and the full list in two sections with their own headings, one events
-// block to a section; then Sign-up.
+// Events: Page header, one Event List under its heading, then Sign-up. One
+// events section, so an org with no events sees one empty state.
 
-/** Events: Featured, the Event Card under its heading. */
-const featured = (context: PageContext) =>
-  section({
-    label: "Events: Featured",
-    children: keyed([
-      sectionHeader({
-        pageIds: context.pageIds,
-        eyebrow: "Next up",
-        heading: "Our next event",
-      }),
-      eventsFrame(
-        context.placeBlock(
-          "@organizeos/site-components:EventCard",
-          "next-event"
-        )
-      ),
-    ]),
-  });
-
-/** Events, the Event List of everything coming up. */
+/** Events: List, the Event List of everything coming up. */
 const upcoming = (context: PageContext) =>
   section({
-    label: "Events",
+    label: "Events: List",
     children: keyed([
       sectionHeader({
         pageIds: context.pageIds,
         eyebrow: "Calendar",
         heading: "Everything coming up",
-        intro:
-          "Every event you publish in OrganizeOS appears here, soonest first.",
+        intro: "Say how often you meet, and where most events take place.",
       }),
       eventsFrame(
-        context.placeBlock(
-          "@organizeos/site-components:EventList",
-          "all-events"
-        )
+        context.placeBlock("@organizeos/site-components:EventList", "events")
       ),
     ]),
   });
@@ -67,11 +43,9 @@ export const events: SiteTemplatePage = {
       {siteNav(context.pageIds)}
       {pageHeader({
         eyebrow: "Events",
-        title: "Come to something with [Organization name]",
-        intro:
-          "Add a sentence on the kinds of events you hold, such as [volunteer days, open evenings and talks].",
+        title: "Come to something with us",
+        intro: "Say what kinds of events you hold, such as [volunteer days].",
       })}
-      {featured(context)}
       {upcoming(context)}
       {signUpSection({
         placeBlock: context.placeBlock,

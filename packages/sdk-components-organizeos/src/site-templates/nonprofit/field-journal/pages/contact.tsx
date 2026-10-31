@@ -148,9 +148,9 @@ export const contact: SiteTemplatePage = {
       {siteNav(context.pageIds)}
       {pageHeader({
         eyebrow: "Contact",
-        title: "Get in touch with [Organization name]",
+        title: "Get in touch",
         intro:
-          "Add a sentence on who answers and how soon, such as [we reply within two working days].",
+          "Add a sentence on who answers and how soon, such as [within two days].",
       })}
       {contactSplit()}
       {faqSection({

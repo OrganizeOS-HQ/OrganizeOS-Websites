@@ -21,8 +21,9 @@ import { programs } from "./pages/programs";
 // is the platform's /donate, linked, never a page of the template.
 //
 // The photos are public domain works of United States federal agencies,
-// from Wikimedia Commons, resized and compressed; in the hero, a maker's
-// mark on the birdhouse and a glove's brand patch are painted out.
+// from Wikimedia Commons, resized and compressed. Painted out: in the hero, a
+// maker's mark on the birdhouse and a glove's brand patch; in about.jpg, a
+// billboard and a filling station's lettering and sign on the skyline.
 
 export const fieldJournalTemplate: SiteTemplate = {
   id: "field-journal",
@@ -57,7 +58,7 @@ export const fieldJournalTemplate: SiteTemplate = {
     "program-two.jpg": {
       url: programTwoUrl,
       sourceUrl:
-        "https://commons.wikimedia.org/wiki/File:EUCOM_Afghan_Evacuation_Operations_210822-F-FN350-1066.jpg",
+        "https://commons.wikimedia.org/wiki/File:Cherry_Point_Commissary_donates_more_than_30,000_lbs._to_food_bank_140702-M-SR938-047.jpg",
       alt: "Replace with a photo of your second program in action",
     },
     "program-three.jpg": {

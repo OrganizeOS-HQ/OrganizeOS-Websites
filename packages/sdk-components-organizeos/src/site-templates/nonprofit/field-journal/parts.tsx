@@ -29,12 +29,12 @@ export type PageIds = PageContext["pageIds"];
 /** The platform's donation page on the site's own host. */
 export const DONATE: SiteLink = { label: "Donate", href: "/donate" };
 
+// Four, so they take one row on a phone; Contact is in the footer.
 const NAV_LINKS: SiteLink[] = [
   { label: "About", pageKey: "about" },
   { label: "Programs", pageKey: "programs" },
   { label: "Get involved", pageKey: "get-involved" },
   { label: "Events", pageKey: "events" },
-  { label: "Contact", pageKey: "contact" },
 ];
 
 export const siteNav = (pageIds: PageIds): JSX.Element =>
@@ -43,7 +43,7 @@ export const siteNav = (pageIds: PageIds): JSX.Element =>
 export const siteFooter = (pageIds: PageIds): JSX.Element =>
   footer({
     pageIds,
-    tagline: "Say in one line what [Organization name] works toward.",
+    tagline: sample("Say in one line what [Organization name] works toward."),
     columns: [
       {
         heading: "Organization",
@@ -69,9 +69,9 @@ export const siteFooter = (pageIds: PageIds): JSX.Element =>
           margin: 0;
         `}
       >
-        {
+        {sample(
           "[Organization name] is a registered nonprofit, [registration number]."
-        }
+        )}
       </ws.element>
     ),
     headingWeight: LOOK.headingWeight,
@@ -129,7 +129,17 @@ export const actions = (
 export const keyed = (elements: JSX.Element[]): JSX.Element[] =>
   elements.map((element, index) => cloneElement(element, { key: index }));
 
-/** Plain text in a tag, unstyled beyond the given styles. */
+/**
+ * Sample text whose [bracketed] placeholders keep together: the spaces in a
+ * bracket are no-break, so "[Organization name]" never breaks across lines.
+ * Every placeholder is kept short enough to fit a 320px phone on one line.
+ */
+export const sample = (value: string): string =>
+  value.replace(/\[[^\]]*\]/g, (placeholder) =>
+    placeholder.replaceAll(" ", "\u00A0")
+  );
+
+/** Sample text in a tag, unstyled beyond the given styles. */
 export const text = (
   tag: string,
   styles: TemplateStyleDecl[],
@@ -141,18 +151,20 @@ export const text = (
     {...(label === undefined ? {} : { "ws:label": label })}
     ws:style={styles}
   >
-    {value}
+    {sample(value)}
   </ws.element>
 );
 
 /**
  * A square-cornered photo at a fixed ratio (`4 / 5`), cropped to fill it,
  * over an accent-1 field that shows when the photo is gone. `phoneRatio`
- * replaces the ratio below 768px.
+ * replaces the ratio below 768px. With no file it is the builder's
+ * placeholder, the "put your image here" slot a Content Block's new item
+ * starts with.
  */
 export const photo = (
   { image, imageAlt }: PageContext,
-  file: string,
+  file: string | undefined,
   {
     ratio,
     phoneRatio = ratio,
@@ -161,8 +173,9 @@ export const photo = (
 ): JSX.Element => (
   <$.Image
     ws:label="Photo"
-    src={image(file)}
-    alt={imageAlt(file)}
+    {...(file === undefined
+      ? { alt: "Replace with a photo" }
+      : { src: image(file), alt: imageAlt(file) })}
     ws:style={css`
       display: block;
       width: 100%;
@@ -180,7 +193,8 @@ export const photo = (
 
 /**
  * A section's heading block: the eyebrow, the h2 and a sentence, with an
- * optional quiet link to the page that has more, on the right.
+ * optional quiet link to the page that has more, on the right, on the
+ * baseline of the block's last line.
  */
 export const sectionHeader = ({
   pageIds,
@@ -201,7 +215,7 @@ export const sectionHeader = ({
     ws:style={css`
       display: flex;
       flex-wrap: wrap;
-      align-items: flex-end;
+      align-items: last baseline;
       justify-content: space-between;
       column-gap: ${SPACE[48]};
       row-gap: ${SPACE[16]};

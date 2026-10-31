@@ -24,7 +24,7 @@ import {
   stackStyles,
   subheadingStyles,
 } from "../styles";
-import { PROGRAMS, type Program } from "../sample-programs";
+import { PROGRAMS, PROGRAM_TEMPLATE, type Program } from "../sample-programs";
 
 // Home (directions 2.1 and section 3): Nav with Donate as its button; Hero:
 // Split with the photo on the right; Stats: Band, the page's one coloured
@@ -87,7 +87,7 @@ const hero = (context: PageContext) =>
         {photo(context, "hero.jpg", {
           ratio: "4 / 5",
           phoneRatio: "4 / 3",
-          position: "50% 15%",
+          position: "50% 30%",
         })}
       </ws.element>
     ),
@@ -136,7 +136,7 @@ const programs = (context: PageContext) =>
       <ws.element ws:tag="div" ws:label="Cards" ws:style={gridStyles(3)}>
         {contentBlock({
           label: "Programs",
-          template: programCard(context, PROGRAMS[0]),
+          template: programCard(context, PROGRAM_TEMPLATE),
           items: PROGRAMS.map((program) => programCard(context, program)),
         })}
       </ws.element>,
@@ -147,21 +147,18 @@ const programs = (context: PageContext) =>
 const events = (context: PageContext) =>
   section({
     label: "Events: Card grid",
-    children: (
-      <ws.element ws:tag="div">
-        {sectionHeader({
-          pageIds: context.pageIds,
-          eyebrow: "Events",
-          heading: "Come to something",
-          intro:
-            "Your upcoming events appear here as you publish them in OrganizeOS.",
-          link: { label: "All events", pageKey: "events" },
-        })}
-        {eventsFrame(
-          context.placeBlock("@organizeos/site-components:EventList", "events")
-        )}
-      </ws.element>
-    ),
+    children: keyed([
+      sectionHeader({
+        pageIds: context.pageIds,
+        eyebrow: "Events",
+        heading: "Come to something",
+        intro: "Say what kinds of events you hold, and who they are for.",
+        link: { label: "All events", pageKey: "events" },
+      }),
+      eventsFrame(
+        context.placeBlock("@organizeos/site-components:EventList", "events")
+      ),
+    ]),
   });
 
 export const home: SiteTemplatePage = {

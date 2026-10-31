@@ -8,7 +8,14 @@ import {
   section,
 } from "../../kit";
 import type { PageContext } from "../../types";
-import { actions, keyed, sectionHeader, text, type PageIds } from "./parts";
+import {
+  actions,
+  keyed,
+  sample,
+  sectionHeader,
+  text,
+  type PageIds,
+} from "./parts";
 import {
   eyebrowStyles,
   gridStyles,
@@ -61,7 +68,7 @@ export const pageHeader = ({
             `,
           ]}
         >
-          {title}
+          {sample(title)}
         </ws.element>
         {text("p", leadStyles(), intro)}
       </ws.element>
@@ -88,7 +95,7 @@ const stat = ([figure, label]: [string, string]): JSX.Element => (
         font-variant-numeric: lining-nums;
       `}
     >
-      {figure}
+      {sample(figure)}
     </ws.element>
     <ws.element
       ws:tag="p"
@@ -99,7 +106,7 @@ const stat = ([figure, label]: [string, string]): JSX.Element => (
         text-wrap-style: pretty;
       `}
     >
-      {label}
+      {sample(label)}
     </ws.element>
   </ws.element>
 );
@@ -131,7 +138,7 @@ export const statsBand = ({
           `,
         ]}
       >
-        {heading}
+        {sample(heading)}
       </ws.element>,
       <ws.element
         ws:tag="div"
@@ -162,7 +169,8 @@ export const statsBand = ({
 /**
  * Call to action band: Split, on the paper under a rule, as every item of
  * the template is: the ask on the left, its button and a quiet second link
- * on the right.
+ * on the right. After a coloured band, whose edge already divides the page,
+ * it has no rule (`ruled: false`).
  */
 export const ctaBand = ({
   pageIds,
@@ -171,6 +179,7 @@ export const ctaBand = ({
   body,
   primary,
   secondary,
+  ruled = true,
 }: {
   pageIds: PageIds;
   eyebrow: string;
@@ -178,28 +187,37 @@ export const ctaBand = ({
   body: string;
   primary: SiteLink;
   secondary?: SiteLink;
+  ruled?: boolean;
 }): JSX.Element =>
   section({
     label: "Call to action band: Split",
     children: (
       <ws.element
         ws:tag="div"
-        ws:style={css`
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) auto;
-          align-items: center;
-          column-gap: ${SPACE[64]};
-          row-gap: ${SPACE[32]};
-          padding-top: ${SPACE[48]};
-          border-top-width: 1px;
-          border-top-style: solid;
-          border-top-color: var(--text);
-          ${BREAKPOINT.landscape} {
-            grid-template-columns: minmax(0, 1fr);
-            row-gap: ${SPACE[24]};
-            padding-top: ${SPACE[32]};
-          }
-        `}
+        ws:style={[
+          ...css`
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            column-gap: ${SPACE[64]};
+            row-gap: ${SPACE[32]};
+            ${BREAKPOINT.landscape} {
+              grid-template-columns: minmax(0, 1fr);
+              row-gap: ${SPACE[24]};
+            }
+          `,
+          ...(ruled
+            ? css`
+                padding-top: ${SPACE[48]};
+                border-top-width: 1px;
+                border-top-style: solid;
+                border-top-color: var(--text);
+                ${BREAKPOINT.landscape} {
+                  padding-top: ${SPACE[32]};
+                }
+              `
+            : []),
+        ]}
       >
         <ws.element
           ws:tag="div"

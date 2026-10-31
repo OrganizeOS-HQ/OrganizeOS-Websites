@@ -11,7 +11,7 @@ import {
   ruleStyles,
   stackStyles,
 } from "../styles";
-import { PROGRAMS, type Program } from "../sample-programs";
+import { PROGRAMS, PROGRAM_TEMPLATE, type Program } from "../sample-programs";
 
 // Programs (the Issues or programs page): Page header, the programs as
 // alternating rows, and an ask to take part.
@@ -92,7 +92,12 @@ const programRows = (context: PageContext) =>
       >
         {contentBlock({
           label: "Programs",
-          template: programRow(context, PROGRAMS[0], DETAILS[0], false),
+          template: programRow(
+            context,
+            PROGRAM_TEMPLATE,
+            "[What happens in it, week to week.]",
+            false
+          ),
           items: PROGRAMS.map((program, index) =>
             programRow(context, program, DETAILS[index], index % 2 === 1)
           ),
@@ -122,7 +127,7 @@ export const programs: SiteTemplatePage = {
         pageIds: context.pageIds,
         eyebrow: "Take part",
         heading: "Every program runs on volunteers",
-        body: "Say in a sentence what a volunteer does here, such as [two hours on a Saturday morning].",
+        body: "Say in a sentence what a volunteer does here, such as [two hours a week].",
         primary: { label: "Get involved", pageKey: "get-involved" },
         secondary: DONATE,
       })}
