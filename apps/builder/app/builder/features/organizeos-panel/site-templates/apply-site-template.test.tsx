@@ -65,6 +65,7 @@ import {
 } from "~/shared/organizeos-preset-ids";
 import { getOrganizeosPresetIds } from "../insert-organizeos-block";
 import { createProvisionedProject } from "./provisioned-project";
+import { THUMBNAIL } from "./preview/preview-arguments.mjs";
 import {
   applySiteTemplate,
   applySiteTemplateMutable,
@@ -1184,10 +1185,10 @@ describe("applySiteTemplate", () => {
     ]);
   });
 
-  // The thumbnail is only the chooser's picture, and the preview event cover
-  // only the preview's: shown on no page, either would be an asset the site
-  // never uses.
-  test("uploads only the images the pages show", async () => {
+  // The thumbnail is only the chooser's picture (the file the preview tool's
+  // --thumbnail writes), and the preview event cover only the preview's:
+  // shown on no page, either would be an asset the site never uses.
+  test("uploads only the images the pages show, never the preview tool's thumbnail", async () => {
     setStores(await createProvisionedProject(provisioning));
     const unused = (file: string) => ({
       url: `/site-templates/fixture/${file}`,
@@ -1197,11 +1198,11 @@ describe("applySiteTemplate", () => {
 
     const result = await applySiteTemplate({
       ...template,
-      thumbnail: "thumbnail.jpg",
+      thumbnail: THUMBNAIL.file,
       previewEventCover: "cover.jpg",
       images: {
         ...template.images,
-        "thumbnail.jpg": unused("thumbnail.jpg"),
+        [THUMBNAIL.file]: unused(THUMBNAIL.file),
         "cover.jpg": unused("cover.jpg"),
       },
     });

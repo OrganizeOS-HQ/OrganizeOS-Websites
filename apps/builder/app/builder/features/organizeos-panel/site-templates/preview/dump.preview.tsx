@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { test, vi } from "vitest";
 import { enableMapSet } from "immer";
 import { nanoid } from "nanoid";
@@ -47,9 +47,11 @@ import { createProvisionedProject } from "../provisioned-project";
  *   read (the script's stub);
  * - PREVIEW_OUT_DIR: where `.webstudio/data.json` (the CLI's LOCAL_DATA_FILE),
  *   `public/assets/`, `preview-pages.json` (each page's key and path) and
- *   `preview-event-cover.json` go. The last holds the file of the template's
- *   `previewEventCover`, or null when it names none, which the script's stub
- *   serves as the first sample event's cover;
+ *   `preview-template.json` go. The last holds `previewEventCover`, the file
+ *   of the template's preview event cover, or null when it names none, which
+ *   the script's stub serves as the first sample event's cover; and
+ *   `imagesDir`, the template's images/ folder (its thumbnail's), where
+ *   --thumbnail writes, or null for a template with no image;
  * - PREVIEW_PALETTE_FILE (optional): a JSON file of the six canonical values,
  *   applied in place of the template's own.
  */
@@ -306,10 +308,15 @@ test("dump a template's site", async () => {
     )
   );
   const cover = template.previewEventCover;
+  // the thumbnail's file, else any image's, is in the template's images/
+  const folderImage =
+    imageFiles.get(template.thumbnail) ?? imageFiles.values().next().value;
   await writeFile(
-    join(outDir, "preview-event-cover.json"),
+    join(outDir, "preview-template.json"),
     JSON.stringify({
-      file: cover === undefined ? null : (imageFiles.get(cover)?.path ?? null),
+      previewEventCover:
+        cover === undefined ? null : (imageFiles.get(cover)?.path ?? null),
+      imagesDir: folderImage === undefined ? null : dirname(folderImage.path),
     })
   );
 }, 60_000);

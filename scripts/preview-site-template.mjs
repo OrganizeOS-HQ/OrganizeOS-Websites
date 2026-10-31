@@ -4,6 +4,7 @@
 // 2026-10-30-website-template-inventory-design.md, section 2, rule 9):
 //
 //   corepack pnpm preview:template <template-id> [--palette <file>] [--no-events]
+//   corepack pnpm preview:template <template-id> --thumbnail
 //
 // 1. A stub of the OrganizeOS public API on a fixed port
 //    (site-templates/preview/stub-api.mjs in the builder) answers the events
@@ -38,12 +39,24 @@
 //
 // Writes previews/<template-id>/<run>/<page-key>-<width>.png and
 // previews/<template-id>/<run>/report.json, where the run is the palette
-// ("default" is the template's own, otherwise the palette file's name),
-// followed by ".no-events" for a --no-events run. The report says which
-// events answer the run used. Exits 1 when a check fails, 2 when the tool
-// cannot run, 130 or 143 when SIGINT or SIGTERM stops it. The temp folder, the
-// servers, the browser and every command still running are stopped however
-// the tool ends (short of SIGKILL).
+// ("default" is the template's own, otherwise the palette file's name, which
+// is lowercase letters, digits and hyphens, since the run's folder is removed
+// first), followed by ".no-events" for a --no-events run. The report says
+// which events answer the run used.
+//
+// With --thumbnail, steps 1 to 4 run with the template's own palette and the
+// sample events, and step 5 is one picture in place of the checks: the top of
+// Home at 1440 wide, cropped to the chooser's 16:10 frame, written as
+// images/thumbnail.jpg in the template's folder (1600 by 1000, a JPEG under
+// 400 KB; THUMBNAIL in the builder's site-templates/preview/
+// preview-arguments.mjs). Nothing under previews/ changes. Applying a template
+// uploads only the images its pages show, so the thumbnail stays the
+// chooser's alone.
+//
+// Exits 1 when a check fails (or no JPEG quality fits a thumbnail under its
+// limit), 2 when the tool cannot run, 130 or 143 when SIGINT or SIGTERM stops
+// it. The temp folder, the servers, the browser and every command still
+// running are stopped however the tool ends (short of SIGKILL).
 
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
@@ -51,11 +64,15 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { parseArgs } from "node:util";
 import { chromium } from "playwright";
+import {
+  THUMBNAIL,
+  parsePreviewArguments,
+  readJpegSize,
+} from "../apps/builder/app/builder/features/organizeos-panel/site-templates/preview/preview-arguments.mjs";
 import { answerStubRequest } from "../apps/builder/app/builder/features/organizeos-panel/site-templates/preview/stub-api.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -79,9 +96,6 @@ const SMALL_TEXT_WIDTHS = [390, 320];
 const CLIPPED_TEXT_WIDTHS = OVERFLOW_WIDTHS;
 const MIN_FONT_SIZE = 14;
 const VIEWPORT_HEIGHT = 900;
-
-const usage =
-  "Usage: corepack pnpm preview:template <template-id> [--palette <file>] [--no-events]";
 
 /** Each signal the tool stops on, and its exit code. */
 const SIGNAL_EXIT_CODES = { SIGINT: 130, SIGTERM: 143 };
@@ -527,38 +541,58 @@ const inspectPage = async (browser, url, width, screenshotPath) => {
   return { overflow, smallText, clippedText, consoleErrors, failedRequests };
 };
 
-const parseArguments = () => {
-  const { values, positionals } = parseArgs({
-    allowPositionals: true,
-    options: {
-      palette: { type: "string" },
-      "no-events": { type: "boolean", default: false },
-    },
+/**
+ * The template's thumbnail (THUMBNAIL): Home's top at 1440 wide, drawn at
+ * 1600 by 1000 and written as a JPEG at the highest quality that fits under
+ * the limit, into `imagesDir`. Animations are finished and the caret hidden,
+ * so a run with the same template draws the same picture. Its file, or
+ * undefined when no quality fits.
+ */
+const writeThumbnail = async (browser, url, imagesDir) => {
+  const context = await browser.newContext({
+    viewport: THUMBNAIL.viewport,
+    deviceScaleFactor: THUMBNAIL.deviceScaleFactor,
   });
-  if (
-    positionals.length !== 1 ||
-    /^[a-z0-9-]+$/.test(positionals[0]) === false
-  ) {
-    throw new Error(usage);
+  const page = await context.newPage();
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.evaluate(loadEverything);
+  await page.waitForLoadState("networkidle");
+  let picture;
+  for (const quality of THUMBNAIL.qualities) {
+    const bytes = await page.screenshot({
+      type: "jpeg",
+      quality,
+      animations: "disabled",
+      caret: "hide",
+    });
+    if (bytes.byteLength <= THUMBNAIL.maxBytes) {
+      picture = { bytes, quality };
+      break;
+    }
   }
-  // pnpm runs the script from the repository root; a relative palette path
-  // is the caller's
-  const paletteFile =
-    values.palette === undefined
-      ? undefined
-      : resolve(process.env.INIT_CWD ?? process.cwd(), values.palette);
-  return {
-    templateId: positionals[0],
-    paletteFile,
-    paletteName:
-      paletteFile === undefined ? "default" : basename(paletteFile, ".json"),
-    events: values["no-events"] ? "none" : "sample",
-  };
+  await context.close();
+  if (picture === undefined) {
+    return;
+  }
+  const size = readJpegSize(picture.bytes);
+  if (size?.width !== THUMBNAIL.width || size?.height !== THUMBNAIL.height) {
+    throw new Error(
+      `The thumbnail came out ${size?.width}x${size?.height}, not ${THUMBNAIL.width}x${THUMBNAIL.height}`
+    );
+  }
+  const file = join(imagesDir, THUMBNAIL.file);
+  await writeFile(file, picture.bytes);
+  return { file, quality: picture.quality, bytes: picture.bytes.byteLength };
 };
 
 const main = async () => {
-  const { templateId, paletteFile, paletteName, events } = parseArguments();
-  const runName = events === "none" ? `${paletteName}.no-events` : paletteName;
+  // pnpm runs the script from the repository root; a relative palette path
+  // is the caller's
+  const { templateId, paletteFile, paletteName, runName, events, thumbnail } =
+    parsePreviewArguments(
+      process.argv.slice(2),
+      process.env.INIT_CWD ?? process.cwd()
+    );
   const outDir = join(repoRoot, "previews", templateId, runName);
   const siteDir = await mkdtemp(join(tmpdir(), `preview-${templateId}-`));
   stopping.push(
@@ -596,10 +630,10 @@ const main = async () => {
         },
       }
     );
-    const cover = JSON.parse(
-      await readFile(join(siteDir, "preview-event-cover.json"), "utf8")
+    const files = JSON.parse(
+      await readFile(join(siteDir, "preview-template.json"), "utf8")
     );
-    stub.previewEventCover = cover.file ?? undefined;
+    stub.previewEventCover = files.previewEventCover ?? undefined;
 
     console.info("Building the site");
     await run(
@@ -638,6 +672,29 @@ const main = async () => {
 
     const browser = await launchChromium();
     stopping.push(() => browser.close());
+
+    if (thumbnail) {
+      if (files.imagesDir === null) {
+        throw new Error(`${templateId} has no images folder`);
+      }
+      console.info(`Drawing ${templateId}'s thumbnail`);
+      const written = await writeThumbnail(
+        browser,
+        new URL("/", origin).href,
+        files.imagesDir
+      );
+      if (written === undefined) {
+        console.error(
+          `No JPEG quality fits the thumbnail under ${THUMBNAIL.maxBytes} bytes`
+        );
+        return 1;
+      }
+      console.info(
+        `Thumbnail: ${written.file} (${THUMBNAIL.width}x${THUMBNAIL.height}, quality ${written.quality}, ${written.bytes} bytes)`
+      );
+      return 0;
+    }
+
     await rm(outDir, { recursive: true, force: true });
     await mkdir(outDir, { recursive: true });
     const pages = JSON.parse(
