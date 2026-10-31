@@ -1959,28 +1959,48 @@ describe("checkSiteTemplate", () => {
       );
     });
 
-    test("accent-2 on base below 3:1 is a violation", () => {
+    // Templates set small text in accent-2 (an event's day, a link), so it
+    // is held to 4.5:1 as text is, unless the template declares it sets
+    // only large text there.
+    test("accent-2 on base below 4.5:1 is a violation", () => {
+      // 3.54:1: enough for the focus ring it draws, not for small text
       expectOneViolation(
         checkSiteTemplate(
           fixture({
+            variables: { ...BLANK_CANONICAL_VALUES, "accent-2": "#888888" },
+          })
+        ),
+        "accent-2",
+        "base",
+        "3.54:1",
+        "4.5:1",
+        '"large-text"'
+      );
+    });
+
+    test("accent-2 declared large text only, on base between 3:1 and 4.5:1, is not a violation", () => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            accent2: "large-text",
+            variables: { ...BLANK_CANONICAL_VALUES, "accent-2": "#888888" },
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test("accent-2 declared large text only, on base below 3:1, is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            accent2: "large-text",
             variables: { ...BLANK_CANONICAL_VALUES, "accent-2": "#aaaaaa" },
           })
         ),
         "accent-2",
         "base",
-        "3:1"
+        "below 3:1"
       );
-    });
-
-    test("accent-2 on base between 3:1 and 4.5:1 is not a violation", () => {
-      // 3.54:1: enough for the focus ring it draws, not for text
-      expect(
-        checkSiteTemplate(
-          fixture({
-            variables: { ...BLANK_CANONICAL_VALUES, "accent-2": "#888888" },
-          })
-        )
-      ).toEqual([]);
     });
 
     test("a colour that is not #rrggbb is a violation", () => {

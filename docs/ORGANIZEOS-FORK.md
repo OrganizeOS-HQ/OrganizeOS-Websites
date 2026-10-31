@@ -1689,9 +1689,11 @@ anything yet.
   `images` that only the preview tool reads, as its sample events' first cover:
   a photo no page with an events block shows, which a template that places the
   cover card names; never applied to a site), `variables` (the six canonical
-  values), `images` (by file name: `url` from a `?url&no-inline` import of the
-  file in the template's `images/` folder, `sourceUrl`, `alt`), `fonts` (by file
-  name, a `.woff2` file: `url` from a `?url&no-inline` import of the file in its
+  values), `accent2` (optional: `"large-text"` when the template sets only large
+  text in accent-2, which the check then holds to 3:1, not 4.5:1, on the base),
+  `images` (by file name: `url` from a `?url&no-inline` import of the file in
+  the template's `images/` folder, `sourceUrl`, `alt`), `fonts` (by file name, a
+  `.woff2` file: `url` from a `?url&no-inline` import of the file in its
   `@fontsource` package, `family`, `licence`, `source`; Fonts, below) and
   `pages` (`key`, `name`, `path`, `title`, `description` and a `body` function).
   A body takes a `PageContext` (every page's id by key, assigned before any body
@@ -1829,24 +1831,26 @@ anything yet.
   family is neither one of the template's fonts nor a system font (a generic
   family, `system-ui`, `-apple-system`, Georgia and the like); `--text` on
   `--base`, or `--base` on `--accent-1`, below 4.5:1, or `--accent-2` on
-  `--base`, which draws the focus ring, below 3:1; and, per page, a root that is
-  not one `<body>` element, a child of the body that is not a section labelled
-  with a name from `SECTION_LABELS` (`sections.ts`: the spec's section
-  vocabulary and its short forms, plus `Nav` and `Footer`, each alone or
-  followed by a variant after a colon, as in `Hero: Split`, never by a colon
-  alone), two Event Cards or Event Lists under one such section, a link to a
-  page the template does not have (a mistyped `pageIds` key) or to an element of
-  a page (applying gives the element a new id), a link by path (the `href` of
-  any element: a React Router site renders an `a` element as its Link too) to
-  anything but a route the platform serves (`PLATFORM_PATHS` in
-  `platform-paths.ts`, `/donate`), or to one without `reloadDocument` (the
-  published site's router has no route there; the kit's `linkProps` sets it), a
-  Resource, a repeated instance id, a count of `h1` other than one, a Signup
-  Form, RSVP Form or Share Code Carrier not placed with `placeBlock`, and, in
-  styles on elements outside a placed block's subtree (a block's token used by
-  the page's own element counts), in a placed block's root style and in
-  `blockTokens`, a literal colour or colour keyword where a colour goes, a
-  literal colour or a colour's name in unparsed text (a gradient, a
+  `--base`, which draws the focus ring and the templates' small accent text,
+  below 4.5:1, or below 3:1 for a template that declares `accent2: "large-text"`
+  (it sets only large text in accent-2: 24px and up, or 18.66px and up in bold);
+  and, per page, a root that is not one `<body>` element, a child of the body
+  that is not a section labelled with a name from `SECTION_LABELS`
+  (`sections.ts`: the spec's section vocabulary and its short forms, plus `Nav`
+  and `Footer`, each alone or followed by a variant after a colon, as in
+  `Hero: Split`, never by a colon alone), two Event Cards or Event Lists under
+  one such section, a link to a page the template does not have (a mistyped
+  `pageIds` key) or to an element of a page (applying gives the element a new
+  id), a link by path (the `href` of any element: a React Router site renders an
+  `a` element as its Link too) to anything but a route the platform serves
+  (`PLATFORM_PATHS` in `platform-paths.ts`, `/donate`), or to one without
+  `reloadDocument` (the published site's router has no route there; the kit's
+  `linkProps` sets it), a Resource, a repeated instance id, a count of `h1`
+  other than one, a Signup Form, RSVP Form or Share Code Carrier not placed with
+  `placeBlock`, and, in styles on elements outside a placed block's subtree (a
+  block's token used by the page's own element counts), in a placed block's root
+  style and in `blockTokens`, a literal colour or colour keyword where a colour
+  goes, a literal colour or a colour's name in unparsed text (a gradient, a
   `color-mix()`, a variable's fallback; a name counts as a whole word outside
   quoted strings), a variable outside the six and the two band variables, a band
   variable set to anything but a bare colour variable or read with no canonical

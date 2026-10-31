@@ -108,12 +108,20 @@ const systemFontFamilies = new Set([
 const fontLicences = new Set(["OFL-1.1", "Apache-2.0"]);
 
 // Text, and the base text on an accent-1 band, is read, so it needs 4.5:1
-// (WCAG AA). --accent-2 draws the focus ring, a graphic, which needs 3:1.
-const contrastChecks = [
-  { foreground: "text", background: "base", minimum: 4.5 },
-  { foreground: "base", background: "accent-1", minimum: 4.5 },
-  { foreground: "accent-2", background: "base", minimum: 3 },
-] as const;
+// (WCAG AA). --accent-2 draws the focus ring, a graphic, which needs 3:1,
+// and templates set text in it (an event's day, a link), which needs 4.5:1
+// unless the template declares it sets only large text there
+// (`accent2: "large-text"`), which needs 3:1.
+const contrastChecks = (template: SiteTemplate) =>
+  [
+    { foreground: "text", background: "base", minimum: 4.5 },
+    { foreground: "base", background: "accent-1", minimum: 4.5 },
+    {
+      foreground: "accent-2",
+      background: "base",
+      minimum: template.accent2 === "large-text" ? 3 : 4.5,
+    },
+  ] as const;
 
 // The project's own breakpoints, the only ones a template's styles use (the
 // wave's global constraints): the base, and the max-width ones every project
@@ -332,16 +340,20 @@ const checkFontVariables = (template: SiteTemplate): string[] => {
 };
 
 const checkContrast = (template: SiteTemplate): string[] =>
-  contrastChecks.flatMap(({ foreground, background, minimum }) => {
+  contrastChecks(template).flatMap(({ foreground, background, minimum }) => {
     const pair = `${foreground} on ${background}`;
     try {
       const ratio = contrastRatio(
         template.variables[foreground],
         template.variables[background]
       );
+      const smallAccentText =
+        foreground === "accent-2" && minimum > 3
+          ? ` for small text in accent-2 (a template that sets only large text in it declares accent2: "large-text", held to 3:1)`
+          : "";
       return ratio < minimum
         ? [
-            `Variables: ${pair} has a contrast of ${ratio.toFixed(2)}:1, below ${minimum}:1`,
+            `Variables: ${pair} has a contrast of ${ratio.toFixed(2)}:1, below ${minimum}:1${smallAccentText}`,
           ]
         : [];
     } catch (error) {

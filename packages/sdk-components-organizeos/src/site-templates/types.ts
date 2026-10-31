@@ -127,6 +127,13 @@ export type SiteTemplate = {
   previewEventCover?: string;
   variables: CanonicalValues;
   /**
+   * What the template sets in `--accent-2` on the base besides the focus
+   * ring: any text when unset, so the check holds accent-2 on base to 4.5:1
+   * as it holds text (WCAG AA); "large-text" when it sets only large text
+   * there (24px and up, or 18.66px and up in bold), held to 3:1.
+   */
+  accent2?: "large-text";
+  /**
    * By file name in the template's `images/` folder. Applying uploads those
    * the pages show.
    */
