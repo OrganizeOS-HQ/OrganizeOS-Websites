@@ -184,29 +184,45 @@ const parse = (property: CssProperty, css: string): StyleValue => {
 };
 
 /**
+ * Whether the palette's roles are the four canonical variables of a site
+ * template's site (`--base`, `--accent-1`, `--accent-2` and `--text`), the
+ * only sites whose styles read the band variables.
+ */
+const isCanonicalPalette = ({ base, accent1, accent2, text }: Palette) =>
+  base.variable === "base" &&
+  accent1.variable === "accent-1" &&
+  accent2.variable === "accent-2" &&
+  text?.variable === "text";
+
+/**
  * The variables a band sets for what sits inside it (`BAND_VARIABLES` in the
  * site templates' canonical-variables.ts): the colour of a focus ring and of
  * accent text, accent-2 elsewhere, which a site template's check holds
- * against the base alone. A dark preset makes the section a band: each takes
- * whichever of the palette's base and text is lighter, the one its white
- * reference text stands for, as a site template's band takes its text colour
- * (`--base` on a light palette, `--text` on a dark one). A light preset's
- * surface is the base's, so it sets none; applying any preset first clears
- * the ones a section holds (apply-preset.ts).
+ * against the base. Written only on a palette of the four canonical
+ * variables: no other site reads them. A dark preset makes the section a
+ * band: each takes whichever of the base and the text is lighter, the one
+ * its white reference text stands for, as a site template's band takes its
+ * text colour (`--base` on a light palette, `--text` on a dark one). A light
+ * preset's surface is the base's, so it sets both back to `--accent-2`, as a
+ * template's base panel inside a band does: what they are on the base unset,
+ * so a section inside a band, or one that is a band at a wider breakpoint,
+ * rings focus in accent-2 again. Applying any preset first clears the ones a
+ * section holds (apply-preset.ts).
  */
 export const getBandVariables = (
   preset: Pick<Preset, "tone">,
   palette: Palette
 ): PresetStyles => {
-  if (preset.tone === "light") {
+  if (isCanonicalPalette(palette) === false) {
     return [];
   }
   const text = palette.text ?? { rgba: defaultDarkText };
   const lighter =
     luminance(palette.base.rgba) >= luminance(text.rgba) ? palette.base : text;
+  const colour = preset.tone === "light" ? palette.accent2 : lighter;
   return BAND_VARIABLES.map((name) => {
     const property = `--${name}` as const;
-    return { property, value: parse(property, paint(lighter)) };
+    return { property, value: parse(property, paint(colour)) };
   });
 };
 

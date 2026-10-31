@@ -26,8 +26,9 @@ import { layerProperties, type PresetStyles } from "./presets";
  *    `background-color`, the nine layer lists and the band variables
  *    (`getBandVariables` in presets.ts), then sets the preset's values.
  *    Deleting first means a property the preset does not write cannot
- *    survive from an earlier background: a light preset leaves no band's
- *    ring or accent text behind.
+ *    survive from an earlier background: on a site whose palette is not
+ *    the canonical variables, where no preset writes them, a preset leaves
+ *    no band's ring or accent text behind.
  *
  * With no selected instance it does nothing.
  */

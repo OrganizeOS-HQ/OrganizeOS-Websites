@@ -70,7 +70,8 @@ export const ACCENT_TEXT_VARIABLE = "accent-text";
 /**
  * The variables a band sets for what sits inside it, each a canonical
  * colour; a base-coloured panel inside a band sets them back to
- * `var(--accent-2)`.
+ * `var(--accent-2)`, as the builder's light Background presets do on a
+ * site of the canonical variables.
  */
 export const BAND_VARIABLES = [
   FOCUS_RING_VARIABLE,
