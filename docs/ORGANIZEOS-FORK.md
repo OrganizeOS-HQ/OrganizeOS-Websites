@@ -1812,50 +1812,54 @@ anything yet.
   `platform-paths.ts`, mirrored from the OrganizeOS repository's
   `public-route-allowlist.ts`, `org-host-route.ts` and `middleware.ts`: `/join`,
   `/donate`, `/events/<slug>`, `/auth`, `/org-profile` and the rest, prefixes by
-  whole segment), a path the builder's page settings would refuse (`pagePath`
-  from `@webstudio-is/sdk`), two pages on one path, or no Home (path `""`); a
-  word on the neutrality deny list (party names and the like) in a title, a
-  description, a text or a string prop; a `thumbnail`, or a `previewEventCover`,
-  that is not a file in `images`; no `previewEventCover` in a template that
-  places the events blocks' cover card, or one that a page with an events block
-  shows (as an Image or a background), which a preview would show twice; an
-  image entry whose `url` is neither root-relative nor http(s) (a small file
-  Vite inlines as a `data:` URL, which the routine cannot upload), or without a
-  `sourceUrl` or alt text, or an image on the page's own elements that is not
-  one of the template's images or has no alt text (an Image with no `src` is
-  allowed: the builder draws its placeholder, the "put your image here" slot of
-  spec decision 3); a font whose key is not a `.woff2` file name, whose `url` is
-  neither root-relative nor http(s), with no `source`, with no licence or one
-  other than `OFL-1.1` or `Apache-2.0`, or whose `family` neither font variable
-  names first (a publish would leave it out), and a font variable whose first
-  family is neither one of the template's fonts nor a system font (a generic
-  family, `system-ui`, `-apple-system`, Georgia and the like); `--text` on
-  `--base`, or `--base` on `--accent-1`, below 4.5:1, or `--accent-2` on
-  `--base`, which draws the focus ring and the templates' small accent text,
-  below 4.5:1, or below 3:1 for a template that declares `accent2: "large-text"`
-  (it sets only large text in accent-2: 24px and up, or 18.66px and up in bold);
-  and, per page, a root that is not one `<body>` element, a child of the body
-  that is not a section labelled with a name from `SECTION_LABELS`
-  (`sections.ts`: the spec's section vocabulary and its short forms, plus `Nav`
-  and `Footer`, each alone or followed by a variant after a colon, as in
-  `Hero: Split`, never by a colon alone), two Event Cards or Event Lists under
-  one such section, a link to a page the template does not have (a mistyped
-  `pageIds` key) or to an element of a page (applying gives the element a new
-  id), a link by path (the `href` of any element: a React Router site renders an
-  `a` element as its Link too) to anything but a route the platform serves
-  (`PLATFORM_PATHS` in `platform-paths.ts`, `/donate`), or to one without
-  `reloadDocument` (the published site's router has no route there; the kit's
-  `linkProps` sets it), a panel with the base background inside a band (an
-  element that sets a band variable to anything but `var(--accent-2)`, as the
-  kit's band and a dark Background preset do) that does not set both band
-  variables back to `var(--accent-2)` at the base breakpoint or at the one where
-  it turns base (a link or a button is no panel: its own ring is drawn outside
-  it, on the band), a Resource, a repeated instance id, a count of `h1` other
-  than one, a Signup Form, RSVP Form or Share Code Carrier not placed with
-  `placeBlock`, and, in styles on elements outside a placed block's subtree (a
-  block's token used by the page's own element counts), in a placed block's root
-  style and in `blockTokens`, a literal colour or colour keyword where a colour
-  goes, a literal colour or a colour's name in unparsed text (a gradient, a
+  whole segment; below `/.well-known/`; and the static paths the middleware's
+  matcher leaves to the platform, as `/fonts/`, `/sw.js`, `/favicon.ico` and a
+  path ending in an image, font or sound extension outside `/assets/`; a test
+  holds every `PLATFORM_PATHS` entry to one of them), a path the builder's page
+  settings would refuse (`pagePath` from `@webstudio-is/sdk`), two pages on one
+  path, or no Home (path `""`); a word on the neutrality deny list (party names
+  and the like) in a title, a description, a text or a string prop; a
+  `thumbnail`, or a `previewEventCover`, that is not a file in `images`; no
+  `previewEventCover` in a template that places the events blocks' cover card,
+  or one that a page with an events block shows (as an Image or a background),
+  which a preview would show twice; an image entry whose `url` is neither
+  root-relative nor http(s) (a small file Vite inlines as a `data:` URL, which
+  the routine cannot upload), or without a `sourceUrl` or alt text, or an image
+  on the page's own elements that is not one of the template's images or has no
+  alt text (an Image with no `src` is allowed: the builder draws its
+  placeholder, the "put your image here" slot of spec decision 3); a font whose
+  key is not a `.woff2` file name, whose `url` is neither root-relative nor
+  http(s), with no `source`, with no licence or one other than `OFL-1.1` or
+  `Apache-2.0`, or whose `family` neither font variable names first (a publish
+  would leave it out), and a font variable whose first family is neither one of
+  the template's fonts nor a system font (a generic family, `system-ui`,
+  `-apple-system`, Georgia and the like); `--text` on `--base`, or `--base` on
+  `--accent-1`, below 4.5:1, or `--accent-2` on `--base`, which draws the focus
+  ring and the templates' small accent text, below 4.5:1, or below 3:1 for a
+  template that declares `accent2: "large-text"` (it sets only large text in
+  accent-2: 24px and up, or 18.66px and up in bold); and, per page, a root that
+  is not one `<body>` element, a child of the body that is not a section
+  labelled with a name from `SECTION_LABELS` (`sections.ts`: the spec's section
+  vocabulary and its short forms, plus `Nav` and `Footer`, each alone or
+  followed by a variant after a colon, as in `Hero: Split`, never by a colon
+  alone), two Event Cards or Event Lists under one such section, a link to a
+  page the template does not have (a mistyped `pageIds` key) or to an element of
+  a page (applying gives the element a new id), a link by path (the `href` of
+  any element: a React Router site renders an `a` element as its Link too) to
+  anything but a route the platform serves (`PLATFORM_PATHS` in
+  `platform-paths.ts`, `/donate`), or to one without `reloadDocument` (the
+  published site's router has no route there; the kit's `linkProps` sets it), a
+  panel with the base background inside a band (an element that sets a band
+  variable to anything but `var(--accent-2)`, as the kit's band and a dark
+  Background preset do) that does not set both band variables back to
+  `var(--accent-2)` at the base breakpoint or at the one where it turns base (a
+  link or a button is no panel: its own ring is drawn outside it, on the band),
+  a Resource, a repeated instance id, a count of `h1` other than one, a Signup
+  Form, RSVP Form or Share Code Carrier not placed with `placeBlock`, and, in
+  styles on elements outside a placed block's subtree (a block's token used by
+  the page's own element counts), in a placed block's root style and in
+  `blockTokens`, a literal colour or colour keyword where a colour goes, a
+  literal colour or a colour's name in unparsed text (a gradient, a
   `color-mix()`, a variable's fallback; a name counts as a whole word outside
   quoted strings), a variable outside the six and the two band variables, a band
   variable set to anything but a bare colour variable or read with no canonical

@@ -17,6 +17,7 @@ import {
 } from "./canonical-variables";
 import { NEUTRALITY_DENY_LIST, checkSiteTemplate } from "./check";
 import { section } from "./kit";
+import { PLATFORM_PATHS, isPlatformServedPath } from "./platform-paths";
 import type { BlockKey } from "./place-block";
 import type {
   FontEntry,
@@ -1616,6 +1617,20 @@ describe("checkSiteTemplate", () => {
       "/@local-000",
       "/org-profile",
       "/org-profile/local-000",
+      // the middleware's /.well-known/ branch
+      "/.well-known/security.txt",
+      "/.well-known/assetlinks.json",
+      // the paths its matcher leaves to the platform's static files
+      "/fonts/display",
+      "/icons/set",
+      "/screenshots/home",
+      "/sw.js",
+      "/workbox-4b3a.js",
+      "/manifest.webmanifest",
+      "/favicon.ico",
+      "/press/logo.svg",
+      "/brochure.png",
+      "/anthem.wav",
     ])("a page at %s, which the platform serves, is a violation", (path) => {
       expectOneViolation(
         checkSiteTemplate(fixture({ pages: [home, { ...aboutPage(), path }] })),
@@ -1637,10 +1652,24 @@ describe("checkSiteTemplate", () => {
       "/shop-local",
       "/org-profiles",
       "/organization",
+      "/fonts",
+      "/icons",
+      "/screenshots",
+      "/well-known",
+      "/press.html",
+      "/favicons",
     ])("a page at %s is not a platform path", (path) => {
       expect(
         checkSiteTemplate(fixture({ pages: [home, { ...aboutPage(), path }] }))
       ).toEqual([]);
+    });
+
+    // A route the platform serves on the site's host is linked by path, so
+    // it is one the platform answers itself there.
+    test("every path a template links by path is one the platform serves", () => {
+      for (const path of PLATFORM_PATHS) {
+        expect(isPlatformServedPath(path), path).toBe(true);
+      }
     });
 
     test.each(["about", "/About", "/about/", "/about us", "/s/about"])(
