@@ -1044,6 +1044,17 @@ describe("checkSiteTemplate", () => {
       ).toEqual([]);
     });
 
+    test("a preview event cover that is not one of the images is a violation", () => {
+      expect(
+        checkSiteTemplate(fixture({ previewEventCover: "hero.jpg" }))
+      ).toEqual([]);
+      expectOneViolation(
+        checkSiteTemplate(fixture({ previewEventCover: "cover.jpg" })),
+        "preview event cover",
+        '"cover.jpg"'
+      );
+    });
+
     test("a thumbnail that is not one of the images is a violation", () => {
       expectOneViolation(
         checkSiteTemplate(fixture({ thumbnail: "/thumbnail.jpg" })),

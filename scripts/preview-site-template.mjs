@@ -9,10 +9,10 @@
 //    (site-templates/preview/stub-api.mjs in the builder) answers the events
 //    read with three sample events, so the event cards show, and every other
 //    catalog request, the forms among them, with {"data": []}. The first
-//    event's cover is the previewed template's own thumbnail photo, which the
-//    dump (step 3) names; a template whose images do not hold its thumbnail
-//    gets the spike fixture's picture. With --no-events the events read is
-//    empty too: the blocks' empty state.
+//    event's cover is one of the previewed template's own photos, which the
+//    dump (step 3) names: its `previewEventCover`, a photo no page with
+//    events shows, else its thumbnail, else the spike fixture's picture.
+//    With --no-events the events read is empty too: the blocks' empty state.
 // 2. @organizeos/site-components and the CLI are built: the CLI's prebuild
 //    copies the blocks package's lib/ into the site.
 // 3. The dump (dump.preview.tsx in the builder's site-templates/preview/)
@@ -184,9 +184,9 @@ const run = (command, args, { cwd = repoRoot, env = {} } = {}) =>
   });
 
 /**
- * The stub API, answering the events read as `stub.events` says, with
- * `stub.coverImage` as the sample cover. It reads `stub` on each request, so
- * the cover can be set once the dump has named the template's thumbnail.
+ * The stub API, answering the events read as `stub.events` says, with the
+ * sample cover picked from `stub.coverImages`. It reads `stub` on each
+ * request, so the files can be set once the dump has named them.
  */
 const startStubApi = (stub) =>
   new Promise((resolveServer, reject) => {
@@ -565,7 +565,7 @@ const main = async () => {
     stopCommands
   );
   try {
-    const stub = { events, coverImage: undefined };
+    const stub = { events, coverImages: {} };
     const stubApi = await startStubApi(stub);
     stopping.push(() => stubApi.close());
 
@@ -594,10 +594,13 @@ const main = async () => {
         },
       }
     );
-    const thumbnail = JSON.parse(
-      await readFile(join(siteDir, "preview-thumbnail.json"), "utf8")
+    const covers = JSON.parse(
+      await readFile(join(siteDir, "preview-covers.json"), "utf8")
     );
-    stub.coverImage = thumbnail.file ?? undefined;
+    stub.coverImages = {
+      previewEventCover: covers.previewEventCover ?? undefined,
+      thumbnail: covers.thumbnail ?? undefined,
+    };
 
     console.info("Building the site");
     await run(

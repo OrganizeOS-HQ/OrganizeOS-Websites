@@ -46,9 +46,10 @@ import { createProvisionedProject } from "../provisioned-project";
  *   read (the script's stub);
  * - PREVIEW_OUT_DIR: where `.webstudio/data.json` (the CLI's LOCAL_DATA_FILE),
  *   `public/assets/`, `preview-pages.json` (each page's key and path) and
- *   `preview-thumbnail.json` (the template's thumbnail file, or null when its
- *   images do not hold it, which the script's stub serves as the first sample
- *   event's cover) go;
+ *   `preview-covers.json` go. The last holds the files of the template's
+ *   `previewEventCover` and `thumbnail`, each null when the template names
+ *   none or its images do not hold it, which the script's stub picks the
+ *   first sample event's cover from;
  * - PREVIEW_PALETTE_FILE (optional): a JSON file of the six canonical values,
  *   applied in place of the template's own.
  */
@@ -300,8 +301,13 @@ test("dump a template's site", async () => {
       pages.map(({ key, path }) => ({ key, path: path === "" ? "/" : path }))
     )
   );
+  const imagePath = (file: string | undefined) =>
+    file === undefined ? null : (imageFiles.get(file)?.path ?? null);
   await writeFile(
-    join(outDir, "preview-thumbnail.json"),
-    JSON.stringify({ file: imageFiles.get(template.thumbnail)?.path ?? null })
+    join(outDir, "preview-covers.json"),
+    JSON.stringify({
+      previewEventCover: imagePath(template.previewEventCover),
+      thumbnail: imagePath(template.thumbnail),
+    })
   );
 }, 60_000);

@@ -1677,7 +1677,10 @@ anything yet.
   `src/site-templates/` whose `index.tsx` exports one `SiteTemplate`: `id`,
   `category` (one of nine; `CATEGORY_ORDER` is the chooser's order), `name`,
   `oneLine`, `styleTags`, `status` (`draft` or `listed`), `dependsOn`,
-  `thumbnail` (a file name in `images`), `variables` (the six canonical
+  `thumbnail` (a file name in `images`), an optional `previewEventCover` (a
+  file name in `images` that only the preview tool reads: its sample events'
+  first cover, a photo no page with events shows; never applied to a site),
+  `variables` (the six canonical
   values), `images` (by file name: `url` from a `?url&no-inline` import of the
   file in the template's `images/` folder, `sourceUrl`, `alt`), `fonts` (by
   file name, a `.woff2` file: `url` from a `?url&no-inline` import of the file
@@ -1778,8 +1781,8 @@ anything yet.
   `/newsletter` or at `/*` (the 404 page's), a path the builder's page settings
   would refuse (`pagePath` from `@webstudio-is/sdk`), two pages on one path, or
   no Home (path `""`); a word on the neutrality deny list (party names and the
-  like) in a title, a description, a text or a string prop; a `thumbnail` that
-  is not a file in `images`; an image entry whose `url` is neither root-relative
+  like) in a title, a description, a text or a string prop; a `thumbnail`, or
+  a `previewEventCover`, that is not a file in `images`; an image entry whose `url` is neither root-relative
   nor http(s) (a small file Vite inlines as a `data:` URL, which the routine
   cannot upload), or without a `sourceUrl` or alt text, or an image on the
   page's own elements that is not one of the template's images or has no alt

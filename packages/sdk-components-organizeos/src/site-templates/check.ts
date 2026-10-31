@@ -235,6 +235,12 @@ const checkImageEntries = (template: SiteTemplate): string[] => [
     : [
         `The thumbnail "${template.thumbnail}" is not one of the template's images`,
       ]),
+  ...(template.previewEventCover === undefined ||
+  Object.hasOwn(template.images, template.previewEventCover)
+    ? []
+    : [
+        `The preview event cover "${template.previewEventCover}" is not one of the template's images`,
+      ]),
   ...Object.entries(template.images).flatMap(([file, entry]) => [
     ...(isUploadableUrl(entry.url)
       ? []

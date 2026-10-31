@@ -22,6 +22,10 @@ const fieldJournalThumbnail = join(
   siteTemplates,
   "nonprofit/field-journal/images/hero.jpg"
 );
+const fieldJournalAbout = join(
+  siteTemplates,
+  "nonprofit/field-journal/images/about.jpg"
+);
 
 /**
  * Bytes as their digest: a failed comparison of two images prints two short
@@ -140,40 +144,64 @@ describe("the stub API", () => {
     ]);
   });
 
-  // The script gives the stub the previewed template's thumbnail, so the
-  // first card shows one of the template's own photos.
-  test("the cover is the file it is given, as its type", async () => {
-    const [cover] = events.flatMap((event) =>
-      event.cover_image_url === null ? [] : [new URL(event.cover_image_url)]
-    );
-    const read = (coverImage: string) =>
-      answerStubRequest(cover.pathname, {
+  // The script gives the stub the previewed template's preview event cover
+  // and its thumbnail (each a file, or none), so the first card shows one of
+  // the template's own photos: the cover first, then the thumbnail, then the
+  // spike fixture's picture.
+  describe("the first event's cover", () => {
+    const coverPath = () => {
+      const [cover] = events.flatMap((event) =>
+        event.cover_image_url === null ? [] : [new URL(event.cover_image_url)]
+      );
+      return cover.pathname;
+    };
+    const read = (coverImages?: {
+      previewEventCover?: string;
+      thumbnail?: string;
+    }) =>
+      answerStubRequest(coverPath(), {
         apiBaseUrl,
         events: "sample",
-        coverImage,
+        coverImages,
       });
-    const jpeg = await read(fieldJournalThumbnail);
-    expect(jpeg.contentType).toBe("image/jpeg");
-    expect(digest(jpeg.body)).toBe(
-      digest(await readFile(fieldJournalThumbnail))
-    );
-    const folder = await mkdtemp(join(tmpdir(), "stub-api-"));
-    try {
-      const png = join(folder, "thumbnail.png");
-      await writeFile(png, Uint8Array.from([0x89, 0x50, 0x4e, 0x47]));
-      expect((await read(png)).contentType).toBe("image/png");
-    } finally {
-      await rm(folder, { recursive: true, force: true });
-    }
-  });
 
-  // A template with no thumbnail among its images.
-  test("with no file given, the cover is the spike fixture's image", async () => {
-    const [cover] = events.flatMap((event) =>
-      event.cover_image_url === null ? [] : [new URL(event.cover_image_url)]
-    );
-    const fallback = await answer(cover.pathname);
-    expect(digest(fallback.body)).toBe(digest(await readFile(spikeHero)));
+    test("is the template's preview event cover, before its thumbnail", async () => {
+      const cover = await read({
+        previewEventCover: fieldJournalAbout,
+        thumbnail: fieldJournalThumbnail,
+      });
+      expect(cover.contentType).toBe("image/jpeg");
+      expect(digest(cover.body)).toBe(
+        digest(await readFile(fieldJournalAbout))
+      );
+    });
+
+    test("is the thumbnail when the template names no preview event cover", async () => {
+      const cover = await read({ thumbnail: fieldJournalThumbnail });
+      expect(digest(cover.body)).toBe(
+        digest(await readFile(fieldJournalThumbnail))
+      );
+    });
+
+    test("is the spike fixture's picture when it is given neither", async () => {
+      for (const coverImages of [undefined, {}]) {
+        const cover = await read(coverImages);
+        expect(digest(cover.body)).toBe(digest(await readFile(spikeHero)));
+      }
+    });
+
+    test("is served as its file's type", async () => {
+      const folder = await mkdtemp(join(tmpdir(), "stub-api-"));
+      try {
+        const png = join(folder, "cover.png");
+        await writeFile(png, Uint8Array.from([0x89, 0x50, 0x4e, 0x47]));
+        expect((await read({ previewEventCover: png })).contentType).toBe(
+          "image/png"
+        );
+      } finally {
+        await rm(folder, { recursive: true, force: true });
+      }
+    });
   });
 
   // The fields of a `GET /v1/events` item the Event List, the Event Card and
