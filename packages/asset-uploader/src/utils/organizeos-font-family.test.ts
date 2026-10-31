@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename } from "node:path";
-import { describe, expect, test } from "vitest";
+import { afterAll, afterEach, describe, expect, test, vi } from "vitest";
 import { getAssetData } from "./get-asset-data";
 import { dropInstanceNames } from "./organizeos-font-family";
 
@@ -62,6 +62,36 @@ describe("dropInstanceNames", () => {
         dropInstanceNames({ family, subfamily: "Regular", weightClass: 200 }),
         family
       ).toEqual({ family: "Source Sans 3", weight: 200 });
+    }
+  });
+
+  // "Extra Bold" is one weight: its last word alone is another
+  test("a two-word weight goes whole when it is the declared weight", () => {
+    for (const [family, weightClass] of [
+      ["Foo Extra Bold", 800],
+      ["Foo Semi Bold", 600],
+      ["Foo Extra Light", 200],
+      ["Foo Ultra Light", 200],
+    ] as const) {
+      expect(
+        dropInstanceNames({ family, subfamily: "Regular", weightClass }),
+        family
+      ).toEqual({ family: "Foo", weight: weightClass });
+    }
+  });
+
+  test("a two-word weight stays whole when it is not the declared weight", () => {
+    for (const [family, weightClass] of [
+      ["Foo Extra Bold", 700],
+      ["Foo Semi Bold", 700],
+      ["Foo Extra Light", 300],
+      // no weight goes by "Ultra Black", so none matches it
+      ["Foo Ultra Black", 900],
+    ] as const) {
+      expect(
+        dropInstanceNames({ family, subfamily: "Regular", weightClass }),
+        family
+      ).toEqual({ family });
     }
   });
 
@@ -180,6 +210,17 @@ const BOARD_FONT_FILES: Array<{
 ];
 
 describe("the board's font files", () => {
+  // fontkit reports a table it cannot read on the console and goes on
+  const consoleError = vi.spyOn(console, "error");
+
+  afterEach(() => {
+    consoleError.mockClear();
+  });
+
+  afterAll(() => {
+    consoleError.mockRestore();
+  });
+
   test.each(BOARD_FONT_FILES)(
     "$file derives $family",
     async ({ file, family, weight }) => {
@@ -209,6 +250,7 @@ describe("the board's font files", () => {
             }
           : { family, style: "normal", weight }
       );
+      expect(consoleError).not.toHaveBeenCalled();
     }
   );
 });

@@ -1926,7 +1926,14 @@ anything yet.
   (`16pt`) always, and a last weight word when it is the weight the font's
   OS/2 table declares, which a static font then takes when its subfamily
   names none, so "Barlow Medium" is Barlow at 500 and "Archivo Black" at 400
-  keeps its name. It holds for every font uploaded, not only a template's.
+  keeps its name. A two-word weight ("Extra Bold", "Semi Bold") is one
+  weight: both words go when it is the declared weight, and neither when it
+  is not, so "Foo Extra Bold" at 700 keeps its name. It holds for every font
+  uploaded, not only a template's, and it merges two kinds of family that
+  were apart: a face named for its weight that declares it, as "Arial Black"
+  at 900, is Arial at 900 beside Arial's other weights; and an optical-size
+  cut ("Inter 18pt", "Inter 28pt") is the family without its size, so cuts
+  of one weight upload as the same family and weight.
   `organizeos-font-family.test.ts` there holds every font file the approved
   direction board names to the family and weights it derives, and
   `bundled-fonts.test.ts` holds each template's `family` to the one derived
