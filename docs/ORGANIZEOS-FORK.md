@@ -1876,10 +1876,12 @@ anything yet.
   `var(--font-body)`, an image by URL, and a media query other than the
   project's own breakpoints (the base, and max-width 991, 767 and 479px): one
   with a condition (`(hover: none)`, `(prefers-reduced-motion: reduce)`, alone
-  or beside a max-width), with a min-width, or that does not parse (`print`),
-  read as the template wrote it, from each body's JSX before it renders (the
-  render keeps a breakpoint's widths alone, so a condition would land on the
-  base or on its width's breakpoint, and it drops a query that does not parse);
+  or beside a max-width), or with a min-width, read as the template wrote it,
+  from each body's JSX before it renders (the render keeps a breakpoint's
+  widths alone, so a condition would land on the base or on its width's
+  breakpoint). Upstream `css()` drops `@media print`, non-px widths and
+  `@supports` before any JSX exists, so the check cannot see them: a template
+  must not write them;
   in `blockTokens`, a `color` of `var(--accent-2)` itself rather than through
   `--accent-text` (the kit's `ACCENT_TEXT`); and a `blockTokens` name no placed
   block wears.
