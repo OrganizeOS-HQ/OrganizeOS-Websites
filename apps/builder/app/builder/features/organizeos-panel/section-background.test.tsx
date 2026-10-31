@@ -16,7 +16,12 @@ import {
 } from "~/shared/nano-states";
 import { $instances, $pages, $styles } from "~/shared/sync/data-stores";
 import { applyPreset } from "./backgrounds/apply-preset";
-import { builtInPalette, presets, type Palette } from "./backgrounds/presets";
+import {
+  builtInPalette,
+  getBandVariables,
+  presets,
+  type Palette,
+} from "./backgrounds/presets";
 import {
   buildSectionStyleModel,
   listRootColorVariables,
@@ -265,11 +270,12 @@ describe("applying a preset", () => {
     expect(document.querySelector("[data-choose-asset]")).toBeNull();
     chooseImage(host, "image-scrim-dark");
     expect(applyPreset).toHaveBeenCalledTimes(1);
-    expect(applyPreset).toHaveBeenCalledWith(
-      presetById("image-scrim-dark").build(builtInPalette, {
+    expect(applyPreset).toHaveBeenCalledWith([
+      ...presetById("image-scrim-dark").build(builtInPalette, {
         imageAssetId: "photo",
-      })
-    );
+      }),
+      ...getBandVariables(presetById("image-scrim-dark"), builtInPalette),
+    ]);
     // the picker closed
     expect(document.querySelector("[data-choose-asset]")).toBeNull();
   });
@@ -297,6 +303,52 @@ describe("applying a preset", () => {
     expect(expanded("image-scrim-dark")).toBe("true");
     expect(expanded("image-scrim-light")).toBe("false");
     expect(document.querySelectorAll("[data-choose-asset]")).toHaveLength(1);
+  });
+});
+
+// As the site templates' kit bands do (site-templates canonical-variables.ts
+// BAND_VARIABLES): a dark preset makes the section a band, which rings focus
+// and sets accent text in its text colour; a light one makes it none.
+describe("band variables", () => {
+  const canonicalVariables = [
+    style(globalRoot, "--base", "#fff8ec"),
+    style(globalRoot, "--accent-1", "#1f3557"),
+    style(globalRoot, "--accent-2", "#c2470f"),
+    style(globalRoot, "--text", "#1a1a1a"),
+  ];
+  const sectionStyles = () => {
+    const local = $selectedStyleSources.get().get("section");
+    return Object.fromEntries(
+      Array.from($styles.get().values())
+        .filter((decl) => decl.styleSourceId === local)
+        .map((decl) => [decl.property, decl.value])
+    );
+  };
+
+  test("a dark preset sets the ring and accent text to the base", () => {
+    project({ styles: canonicalVariables });
+    selectInstance(sectionSelector);
+    const host = render();
+    update(() => presetButton(host, "tint-dark")?.click());
+    expect(sectionStyles()).toMatchObject({
+      "--focus-ring": { type: "var", value: "base" },
+      "--accent-text": { type: "var", value: "base" },
+    });
+  });
+
+  test("a light preset takes them off again", () => {
+    project({
+      styles: [
+        ...canonicalVariables,
+        style("section", "--focus-ring", "var(--base)"),
+        style("section", "--accent-text", "var(--base)"),
+      ],
+    });
+    selectInstance(sectionSelector);
+    const host = render();
+    update(() => presetButton(host, "wash-light")?.click());
+    expect(sectionStyles()).not.toHaveProperty("--focus-ring");
+    expect(sectionStyles()).not.toHaveProperty("--accent-text");
   });
 });
 

@@ -4,6 +4,8 @@ import type {
   StyleValue,
 } from "@webstudio-is/css-engine";
 import { parseCssValue } from "@webstudio-is/css-data";
+// The names file only, as section-background.tsx imports it.
+import { BAND_VARIABLES } from "@organizeos/site-components/site-templates/canonical-variables";
 import { composite, contrastRatio, luminance, type Rgba } from "./color";
 
 /**
@@ -179,6 +181,33 @@ const parse = (property: CssProperty, css: string): StyleValue => {
     throw new Error(`Preset wrote an invalid ${property}: ${css}`);
   }
   return value;
+};
+
+/**
+ * The variables a band sets for what sits inside it (`BAND_VARIABLES` in the
+ * site templates' canonical-variables.ts): the colour of a focus ring and of
+ * accent text, accent-2 elsewhere, which a site template's check holds
+ * against the base alone. A dark preset makes the section a band: each takes
+ * whichever of the palette's base and text is lighter, the one its white
+ * reference text stands for, as a site template's band takes its text colour
+ * (`--base` on a light palette, `--text` on a dark one). A light preset's
+ * surface is the base's, so it sets none; applying any preset first clears
+ * the ones a section holds (apply-preset.ts).
+ */
+export const getBandVariables = (
+  preset: Pick<Preset, "tone">,
+  palette: Palette
+): PresetStyles => {
+  if (preset.tone === "light") {
+    return [];
+  }
+  const text = palette.text ?? { rgba: defaultDarkText };
+  const lighter =
+    luminance(palette.base.rgba) >= luminance(text.rgba) ? palette.base : text;
+  return BAND_VARIABLES.map((name) => {
+    const property = `--${name}` as const;
+    return { property, value: parse(property, paint(lighter)) };
+  });
 };
 
 /**

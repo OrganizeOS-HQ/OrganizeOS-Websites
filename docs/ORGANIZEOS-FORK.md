@@ -1064,7 +1064,15 @@ canvas.
 - A preset writes ordinary styles only, to the element's **local** style
   source at the current breakpoint, base state, in one undo step:
   `background-color` and the nine layer longhands upstream's Backgrounds
-  section reads. It never writes to a token, adds no component, prop or
+  section reads, and the band variables `--focus-ring` and `--accent-text`
+  (`BAND_VARIABLES`, Site templates, below), which it first deletes. A dark
+  preset makes the element a band, as a template's kit band is: it sets both
+  to whichever of the palette's base and text is lighter (`--base` on a
+  light palette, `--text` on a dark one), so focus rings and a template's
+  accent text inside it read on the dark surface; a light preset, whose
+  surface is the base's, sets neither, so one that turns a band light takes
+  them off. Clearing a background in upstream's Backgrounds section leaves
+  them as they are. It never writes to a token, adds no component, prop or
   script, and keeps no link to the element; tinted stops are literal colors,
   so re-applying a preset picks up a palette change. A background the element
   takes from a token or another breakpoint is overridden here, by the local

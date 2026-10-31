@@ -5,6 +5,7 @@ import { parseAnyGradient } from "~/builder/features/style-panel/sections/backgr
 import { composite, contrastRatio, quantize, type Rgba } from "./color";
 import {
   builtInPalette,
+  getBandVariables,
   getReferenceTextColor,
   layerProperties,
   presets,
@@ -185,6 +186,67 @@ describe("presets", () => {
       "17,17,17,255"
     );
     expect(getReferenceTextColor(dark, builtInPalette)).toEqual(white);
+  });
+});
+
+// A band rings focus and sets accent text in its text colour, as the site
+// templates' kit does (site-templates/canonical-variables.ts BAND_VARIABLES):
+// accent-2 is checked against the base alone.
+describe("getBandVariables", () => {
+  const preset = (id: PresetId) => presets.find((item) => item.id === id)!;
+  const canonical = (base: number, text: number): Palette => ({
+    base: { rgba: { r: base, g: base, b: base, a: 1 }, variable: "base" },
+    accent1: { rgba: { r: 0.2, g: 0.3, b: 0.6, a: 1 }, variable: "accent-1" },
+    accent2: { rgba: { r: 0.9, g: 0.4, b: 0.2, a: 1 }, variable: "accent-2" },
+    text: { rgba: { r: text, g: text, b: text, a: 1 }, variable: "text" },
+  });
+
+  test("a dark preset sets both in the palette's lighter colour, the base on a light palette", () => {
+    for (const id of [
+      "bloom-dark",
+      "wash-dark",
+      "tint-dark",
+      "image-scrim-dark",
+    ] as const) {
+      expect(getBandVariables(preset(id), canonical(0.98, 0.1)), id).toEqual([
+        { property: "--focus-ring", value: { type: "var", value: "base" } },
+        { property: "--accent-text", value: { type: "var", value: "base" } },
+      ]);
+    }
+  });
+
+  test("on a dark palette, whose base is dark, the lighter colour is the text", () => {
+    expect(
+      getBandVariables(preset("bloom-dark"), canonical(0.08, 0.95))
+    ).toEqual([
+      { property: "--focus-ring", value: { type: "var", value: "text" } },
+      { property: "--accent-text", value: { type: "var", value: "text" } },
+    ]);
+  });
+
+  test("with no variables, the built-in palette's white is written as a colour", () => {
+    const written = getBandVariables(preset("tint-dark"), builtInPalette);
+    expect(written.map(({ property }) => property)).toEqual([
+      "--focus-ring",
+      "--accent-text",
+    ]);
+    for (const { value } of written) {
+      expect(value).toEqual(parseCssValue("--focus-ring", "rgb(255 255 255)"));
+    }
+  });
+
+  test("a light preset, whose surface is the base's, sets none", () => {
+    for (const id of [
+      "bloom-light",
+      "bloom-strong",
+      "wash-light",
+      "tint-light",
+      "image-scrim-light",
+    ] as const) {
+      expect(getBandVariables(preset(id), canonical(0.98, 0.1)), id).toEqual(
+        []
+      );
+    }
   });
 });
 

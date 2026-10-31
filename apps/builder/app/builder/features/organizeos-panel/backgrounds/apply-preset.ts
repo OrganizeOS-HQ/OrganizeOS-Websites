@@ -4,6 +4,7 @@ import {
   $selectedStyleSources,
   $selectedStyleState,
 } from "~/shared/nano-states";
+import { BAND_VARIABLES } from "@organizeos/site-components/site-templates/canonical-variables";
 import { createBatchUpdate } from "~/builder/features/style-panel/shared/use-style-data";
 import { layerProperties, type PresetStyles } from "./presets";
 
@@ -22,9 +23,11 @@ import { layerProperties, type PresetStyles } from "./presets";
  *    than exported. The selection is not part of the transaction, so undo
  *    restores the styles and leaves Local selected.
  * 2. In one batch, so one transaction and one undo step: deletes
- *    `background-color` and the nine layer lists, then sets the preset's
- *    values. Deleting first means a property the preset does not write
- *    cannot survive from an earlier background.
+ *    `background-color`, the nine layer lists and the band variables
+ *    (`getBandVariables` in presets.ts), then sets the preset's values.
+ *    Deleting first means a property the preset does not write cannot
+ *    survive from an earlier background: a light preset leaves no band's
+ *    ring or accent text behind.
  *
  * With no selected instance it does nothing.
  */
@@ -50,6 +53,9 @@ export const applyPreset = (styles: PresetStyles): void => {
   batch.deleteProperty("background-color");
   for (const property of layerProperties) {
     batch.deleteProperty(property);
+  }
+  for (const name of BAND_VARIABLES) {
+    batch.deleteProperty(`--${name}`);
   }
   for (const { property, value } of styles) {
     batch.setProperty(property)(value);

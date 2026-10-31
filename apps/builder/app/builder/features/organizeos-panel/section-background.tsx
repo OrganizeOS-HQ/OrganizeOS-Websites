@@ -36,6 +36,7 @@ import { $matchingBreakpoints } from "~/builder/features/style-panel/shared/mode
 import { luminance } from "./backgrounds/color";
 import {
   builtInPalette,
+  getBandVariables,
   presets,
   type Palette,
   type PaletteColor,
@@ -55,8 +56,9 @@ import { useDeferredContrastReport } from "./contrast-schedule";
  * (background-presets-section.tsx; spec 3.1, panel overhaul spec 5.2): a row
  * of preset thumbnails, each named in a tooltip, colored from Global Root's
  * color variables or the built-in palette. A click applies one through
- * `applyPreset`, as local styles; an Image with scrim preset opens the image
- * picker first. Under the row, one line of text when text inside fails AA
+ * `applyPreset`, as local styles, with the band variables a dark preset sets
+ * (`getBandVariables`); an Image with scrim preset opens the image picker
+ * first. Under the row, one line of text when text inside fails AA
  * after a scheduled run (contrast-schedule.ts). Nothing else: the canvas shows
  * the result (CLAUDE.md, "Builder UI: options, not explanations").
  */
@@ -270,7 +272,10 @@ export const SectionBackground = () => {
                 <AssetManager
                   accept="image/*"
                   onChange={(imageAssetId) => {
-                    applyPreset(preset.build(palette, { imageAssetId }));
+                    applyPreset([
+                      ...preset.build(palette, { imageAssetId }),
+                      ...getBandVariables(preset, palette),
+                    ]);
                     setPicking(undefined);
                   }}
                 />
@@ -292,7 +297,12 @@ export const SectionBackground = () => {
               key={preset.id}
               preset={preset}
               palette={palette}
-              onClick={() => applyPreset(preset.build(palette))}
+              onClick={() =>
+                applyPreset([
+                  ...preset.build(palette),
+                  ...getBandVariables(preset, palette),
+                ])
+              }
             />
           )
         )}
