@@ -47,9 +47,7 @@ describe("textLink", () => {
       value: true,
     });
   });
-});
 
-describe("textLink", () => {
   test("is underlined on hover and as the current page", () => {
     const fragment = renderTemplate(
       <ws.element ws:tag="body">
