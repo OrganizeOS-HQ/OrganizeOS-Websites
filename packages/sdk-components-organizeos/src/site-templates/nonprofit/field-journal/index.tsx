@@ -36,6 +36,9 @@ export const fieldJournalTemplate: SiteTemplate = {
   status: "draft",
   dependsOn: [],
   thumbnail: "hero.jpg",
+  // the preview's sample event cover: a photo on no page with events, so
+  // Home never shows one twice
+  previewEventCover: "about.jpg",
   variables: {
     base: "#F6F2E9",
     "accent-1": "#23533D",

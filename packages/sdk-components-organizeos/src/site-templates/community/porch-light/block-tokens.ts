@@ -6,20 +6,22 @@ import { RADIUS, gridStyles } from "./styles";
 // Porch Light's look for the platform blocks it places (SiteTemplate
 // .blockTokens and the Event List's root style): dated event cards like
 // flyers on a noticeboard, outlined 2px in the text colour with the
-// template's 20px corners, each with a day-number chip; and the Signup
-// Form's fields and button in the same outlines and pills. Every
+// template's 20px corners, each with a day-number chip; the list's empty
+// line as an empty, dashed slot on the board; and the Signup Form's fields
+// and button in the same outlines and pills. Every
 // declaration replaces the block's own of the same key, so shorthands are
 // written as the longhands the blocks declare.
 
 /**
- * A 2px solid outline in the text colour with corners of `radius`; solid
- * too, since the date column declares no border of its own.
+ * A 2px outline in the text colour with corners of `radius`, solid unless
+ * `style` says otherwise; its style is written out, since the date column
+ * and the note declare no border of their own.
  */
-const outline = (radius: string) => css`
-  border-top-style: solid;
-  border-right-style: solid;
-  border-bottom-style: solid;
-  border-left-style: solid;
+const outline = (radius: string, style: "solid" | "dashed" = "solid") => css`
+  border-top-style: ${style};
+  border-right-style: ${style};
+  border-bottom-style: ${style};
+  border-left-style: ${style};
   border-top-width: 2px;
   border-right-width: 2px;
   border-bottom-width: 2px;
@@ -48,6 +50,34 @@ export const blockTokens: SiteTemplate["blockTokens"] = {
         padding-right: ${SPACE[16]};
         padding-bottom: ${SPACE[16]};
         padding-left: ${SPACE[16]};
+      }
+    `,
+  ],
+  // "No upcoming events" (or "Events are unavailable"): an empty slot on the
+  // noticeboard across the whole grid, outlined as the cards are but dashed,
+  // with the line centred in the cards' title type.
+  "OS Event Note": [
+    ...outline(RADIUS, "dashed"),
+    ...css`
+      grid-column-start: 1;
+      grid-column-end: -1;
+      margin-top: 0;
+      margin-bottom: 0;
+      padding-top: ${SPACE[48]};
+      padding-right: ${SPACE[24]};
+      padding-bottom: ${SPACE[48]};
+      padding-left: ${SPACE[24]};
+      font-family: var(--font-heading);
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.015em;
+      text-align: center;
+      text-wrap-style: balance;
+      ${BREAKPOINT.landscape} {
+        padding-top: ${SPACE[32]};
+        padding-bottom: ${SPACE[32]};
+        font-size: 23px;
       }
     `,
   ],

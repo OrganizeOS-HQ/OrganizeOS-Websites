@@ -5,8 +5,9 @@ import { gridStyles } from "./styles";
 
 // Field Journal's look for the platform blocks it places (SiteTemplate
 // .blockTokens and the Event List's root style): the event cards in the
-// Programs grid's idiom, and the Signup Form's fields and button in the
-// template's own corners and forest accent. Every declaration replaces the
+// Programs grid's idiom, the list's empty line as a ruled note across it,
+// and the Signup Form's fields and button in the template's own corners and
+// forest accent. Every declaration replaces the
 // block's own of the same key, so shorthands are written as the longhands
 // the blocks declare.
 
@@ -31,6 +32,33 @@ export const blockTokens: SiteTemplate["blockTokens"] = {
     border-top-right-radius: 0;
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
+  `,
+  // A cover photo cropped to the Programs photos' 3:2, square, whatever the
+  // org uploads.
+  "OS Event Cover": css`
+    aspect-ratio: 3 / 2;
+    object-fit: cover;
+  `,
+  // "No upcoming events" (or "Events are unavailable"), across the whole
+  // grid under the cards' 1px rule, in Newsreader at the cards' title size:
+  // the section's first view for a new org reads as a page of the journal,
+  // not a line left over.
+  "OS Event Note": css`
+    grid-column-start: 1;
+    grid-column-end: -1;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: ${SPACE[16]};
+    border-top-width: 1px;
+    border-top-style: solid;
+    border-top-color: var(--text);
+    font-family: var(--font-heading);
+    font-size: 24px;
+    font-weight: 400;
+    line-height: 1.3;
+    ${BREAKPOINT.landscape} {
+      font-size: 22px;
+    }
   `,
   // The Programs cards' h3: Newsreader at 600, balanced.
   "OS Event Title": css`
