@@ -18,12 +18,13 @@ import {
 // templates' own buttons: where a link goes and how it looks.
 
 /**
- * A link to one of the template's pages by its key, or to an element of the
- * same page by an in-page anchor (`#sign-up`).
+ * A link to one of the template's pages by its key, to an element of the
+ * same page by an in-page anchor (`#sign-up`), or to a route the platform
+ * serves on the site's own host by its root-relative path (`/donate`).
  */
 export type SiteLink =
   | { label: string; pageKey: string }
-  | { label: string; href: `#${string}` };
+  | { label: string; href: `#${string}` | `/${string}` };
 
 /** A page's id as a link target; a key the template lacks fails its check. */
 export const pageHref = (
@@ -31,7 +32,7 @@ export const pageHref = (
   pageKey: string
 ): PageValue => new PageValue(pageIds[pageKey]);
 
-/** Where a link goes: its page's id, or its anchor as a plain string. */
+/** Where a link goes: its page's id, or its anchor or path as a plain string. */
 export const linkHref = (
   pageIds: PageContext["pageIds"],
   link: SiteLink

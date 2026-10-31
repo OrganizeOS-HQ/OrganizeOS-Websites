@@ -19,3 +19,4 @@ export {
 export { type SiteLink, buttonStyles, linkHref, textLinkStyles } from "./links";
 export { type NavVariant, nav } from "./nav";
 export { type FooterColumn, footer } from "./footer";
+export { contentBlock } from "./content-block";

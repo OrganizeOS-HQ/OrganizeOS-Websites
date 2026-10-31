@@ -6,11 +6,15 @@ import { byLabel, stateStyles, stylesAt } from "./test-helpers";
 const pageIds = { home: "page-home", about: "page-about" };
 
 describe("linkHref", () => {
-  test("a page key is the page's id, an anchor a plain string", () => {
+  test("a page key is the page's id, an anchor or a path a plain string", () => {
     expect(linkHref(pageIds, { label: "About", pageKey: "about" })).toEqual(
       new PageValue("page-about")
     );
     expect(linkHref(pageIds, { label: "FAQ", href: "#faq" })).toBe("#faq");
+    // a route the platform serves on the site's host, such as /donate
+    expect(linkHref(pageIds, { label: "Donate", href: "/donate" })).toBe(
+      "/donate"
+    );
   });
 });
 

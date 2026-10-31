@@ -1,10 +1,11 @@
+import { fieldJournalTemplate } from "./nonprofit/field-journal";
 import { CATEGORY_ORDER, type SiteTemplate } from "./types";
 
 // Every site template, listed or draft. Listing one is the owner's call, made
 // by changing its `status` in a PR (spec 6.1). Each template here is held to
-// checkSiteTemplate by catalog.test.ts. Empty until the first real template;
-// the spike is a fixture beside it (__fixtures__/spike), not an entry.
-export const SITE_TEMPLATES: SiteTemplate[] = [];
+// checkSiteTemplate by catalog.test.ts. The spike is a fixture beside it
+// (__fixtures__/spike), not an entry.
+export const SITE_TEMPLATES: SiteTemplate[] = [fieldJournalTemplate];
 
 /** The templates the chooser offers: listed ones, by category order. */
 export const listedTemplates = (
