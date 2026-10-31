@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import {
   $,
@@ -62,8 +63,10 @@ const home: SiteTemplatePage = {
         <$.Image src={image("hero.jpg")} alt={imageAlt("hero.jpg")} />
         <$.Link href={new PageValue(pageIds.about)}>{"Learn more"}</$.Link>
       </ws.element>
-      <ws.element ws:tag="section" ws:label="Events">
+      <ws.element ws:tag="section" ws:label="Events: Featured">
         {placeBlock(EventCard, "featured")}
+      </ws.element>
+      <ws.element ws:tag="section" ws:label="Events">
         {placeBlock(EventList, "upcoming")}
       </ws.element>
       <ws.element ws:tag="section" ws:label="Sign-up">
@@ -87,9 +90,11 @@ const aboutPage = (content: Content = defaultContent): SiteTemplatePage => ({
   description: "Say who you are and who you work with.",
   body: (context) => (
     <ws.element ws:tag="body">
-      <ws.element ws:tag="h1">{"About us"}</ws.element>
-      <$.Link href={new PageValue(context.pageIds.home)}>{"Home"}</$.Link>
-      {content(context)}
+      <ws.element ws:tag="section" ws:label="About">
+        <ws.element ws:tag="h1">{"About us"}</ws.element>
+        <$.Link href={new PageValue(context.pageIds.home)}>{"Home"}</$.Link>
+        {content(context)}
+      </ws.element>
     </ws.element>
   ),
 });
@@ -118,6 +123,25 @@ const fixture = (overrides: Partial<SiteTemplate> = {}): SiteTemplate => ({
 /** The fixture with one thing added to the About page. */
 const checkAbout = (content: Content) =>
   checkSiteTemplate(fixture({ pages: [home, aboutPage(content)] }));
+
+/** The fixture with a body of its own for the About page. */
+const checkBody = (body: Content) =>
+  checkSiteTemplate(fixture({ pages: [home, { ...aboutPage(), body }] }));
+
+const aboutSection = () => (
+  <ws.element ws:tag="section" ws:label="About">
+    <ws.element ws:tag="h1">{"About us"}</ws.element>
+  </ws.element>
+);
+
+/** The fixture with an element added beside the About section of the About page's body. */
+const checkAboutBody = (extra: Content) =>
+  checkBody((context) => (
+    <ws.element ws:tag="body">
+      {aboutSection()}
+      {extra(context)}
+    </ws.element>
+  ));
 
 const expectOneViolation = (violations: string[], ...mentions: string[]) => {
   expect(violations).toHaveLength(1);
@@ -162,6 +186,146 @@ describe("checkSiteTemplate", () => {
         expect(violation).toContain('"about"');
         expect(violation).toContain('"OS Card"');
       }
+    });
+  });
+
+  describe("events blocks", () => {
+    test.each([
+      {
+        name: "an Event Card and an Event List",
+        first: EventCard,
+        second: EventList,
+      },
+      { name: "two Event Lists", first: EventList, second: EventList },
+      { name: "two Event Cards", first: EventCard, second: EventCard },
+    ])("$name in one section are a violation", ({ first, second }) => {
+      expectOneViolation(
+        checkAboutBody(({ placeBlock }) => (
+          <ws.element ws:tag="section" ws:label="Events">
+            <ws.element ws:tag="div">{placeBlock(first, "first")}</ws.element>
+            <ws.element ws:tag="div">{placeBlock(second, "second")}</ws.element>
+          </ws.element>
+        )),
+        '"about"',
+        '"Events"'
+      );
+    });
+
+    test("three events blocks in one section are one violation", () => {
+      expectOneViolation(
+        checkAboutBody(({ placeBlock }) => (
+          <ws.element ws:tag="section" ws:label="Events">
+            {placeBlock(EventCard, "first")}
+            {placeBlock(EventList, "second")}
+            {placeBlock(EventList, "third")}
+          </ws.element>
+        )),
+        '"about"',
+        '"Events"',
+        "3"
+      );
+    });
+
+    test("each section that holds two is a violation of its own", () => {
+      const violations = checkBody(({ placeBlock }) => (
+        <ws.element ws:tag="body">
+          {aboutSection()}
+          <ws.element ws:tag="section" ws:label="Events: Featured">
+            {placeBlock(EventCard, "first")}
+            {placeBlock(EventList, "second")}
+          </ws.element>
+          <ws.element ws:tag="section" ws:label="Events">
+            {placeBlock(EventList, "third")}
+            {placeBlock(EventList, "fourth")}
+          </ws.element>
+        </ws.element>
+      ));
+      expect(violations).toHaveLength(2);
+      expect(violations[0]).toContain('"Events: Featured"');
+      expect(violations[1]).toContain('"Events"');
+    });
+
+    test("one events block in each of two sections is not a violation", () => {
+      expect(
+        checkBody(({ placeBlock }) => (
+          <ws.element ws:tag="body">
+            {aboutSection()}
+            <ws.element ws:tag="section" ws:label="Events: Featured">
+              {placeBlock(EventCard, "featured")}
+            </ws.element>
+            <ws.element ws:tag="section" ws:label="Events">
+              {placeBlock(EventList, "upcoming")}
+            </ws.element>
+          </ws.element>
+        ))
+      ).toEqual([]);
+    });
+
+    test("an events block beside a Sign-up form in one section is not a violation", () => {
+      expect(
+        checkAboutBody(({ placeBlock }) => (
+          <ws.element ws:tag="section" ws:label="Events">
+            {placeBlock(EventList, "upcoming")}
+            {placeBlock(SignupForm, "signup")}
+          </ws.element>
+        ))
+      ).toEqual([]);
+    });
+  });
+
+  describe("section labels", () => {
+    test.each(["Hero", "Hero: Split", "Nav", "Nav: Centered", "Issues", "FAQ"])(
+      "a top-level section labelled %s is not a violation",
+      (label) => {
+        expect(
+          checkAboutBody(() => <ws.element ws:tag="section" ws:label={label} />)
+        ).toEqual([]);
+      }
+    );
+
+    test.each(["Banner", "Heroic", "hero", "Hero:Split", "Events or news"])(
+      "a top-level section labelled %s is a violation",
+      (label) => {
+        expectOneViolation(
+          checkAboutBody(() => (
+            <ws.element ws:tag="section" ws:label={label} />
+          )),
+          '"about"',
+          `"${label}"`
+        );
+      }
+    );
+
+    test("a top-level element with no label is a violation", () => {
+      expectOneViolation(
+        checkAboutBody(() => <ws.element ws:tag="div" />),
+        '"about"',
+        "<div>",
+        "label"
+      );
+    });
+
+    test("text directly in the body is a violation", () => {
+      expectOneViolation(
+        checkBody(() => (
+          <ws.element ws:tag="body">
+            {aboutSection()}
+            {"Stray words"}
+          </ws.element>
+        )),
+        '"about"',
+        "text"
+      );
+    });
+
+    test("an element inside a section needs no label", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element ws:tag="div">
+            <ws.element ws:tag="p">{"Say who you are."}</ws.element>
+          </ws.element>
+        ))
+      ).toEqual([]);
     });
   });
 
@@ -355,7 +519,9 @@ describe("checkSiteTemplate", () => {
         ...aboutPage(),
         body: () => (
           <ws.element ws:tag="body">
-            <ws.element ws:tag="h2">{"About us"}</ws.element>
+            <ws.element ws:tag="section" ws:label="About">
+              <ws.element ws:tag="h2">{"About us"}</ws.element>
+            </ws.element>
           </ws.element>
         ),
       };
@@ -594,6 +760,27 @@ describe("checkSiteTemplate", () => {
     });
   });
 
+  // The check sees an image's URL, not the import query that made it, and
+  // rejects a data: URL (above). What keeps a template from importing an
+  // image or a font without ?url&no-inline, so Vite inlines it into the
+  // builder's production build, is that no other form is declared.
+  test("assets.d.ts declares only the ?url&no-inline imports of images and fonts", () => {
+    const declarations = readFileSync(
+      new URL("./assets.d.ts", import.meta.url),
+      "utf8"
+    );
+    const patterns = [...declarations.matchAll(/^declare module "(.+)"/gm)].map(
+      (match) => match[1]
+    );
+    expect(patterns.sort()).toEqual([
+      "*.jpeg?url&no-inline",
+      "*.jpg?url&no-inline",
+      "*.png?url&no-inline",
+      "*.webp?url&no-inline",
+      "*.woff2?url&no-inline",
+    ]);
+  });
+
   describe("neutrality", () => {
     test.each(NEUTRALITY_DENY_LIST)("%s in a text is a violation", (word) => {
       expectOneViolation(
@@ -668,6 +855,30 @@ describe("checkSiteTemplate", () => {
         "base",
         "accent-1"
       );
+    });
+
+    test("accent-2 on base below 3:1 is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            variables: { ...BLANK_CANONICAL_VALUES, "accent-2": "#aaaaaa" },
+          })
+        ),
+        "accent-2",
+        "base",
+        "3:1"
+      );
+    });
+
+    test("accent-2 on base between 3:1 and 4.5:1 is not a violation", () => {
+      // 3.54:1: enough for the focus ring it draws, not for text
+      expect(
+        checkSiteTemplate(
+          fixture({
+            variables: { ...BLANK_CANONICAL_VALUES, "accent-2": "#888888" },
+          })
+        )
+      ).toEqual([]);
     });
 
     test("a colour that is not #rrggbb is a violation", () => {

@@ -30,7 +30,7 @@ export const CATEGORY_ORDER: TemplateCategory[] = [
 ];
 
 export type ImageEntry = {
-  /** From a `?url` import of the file in the template's `images/` folder. */
+  /** From a `?url&no-inline` import of the file in the template's `images/` folder. */
   url: string;
   /** Where the image came from: its source (CC0 or OrganizeOS's own). */
   sourceUrl: string;

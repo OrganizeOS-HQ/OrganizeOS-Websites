@@ -5,8 +5,10 @@ import {
   pagePath,
 } from "@webstudio-is/sdk";
 import { contrastRatio } from "./canonical-variables";
+import type { BlockKey } from "./place-block";
 import { findStyleProblems } from "./style-scan";
 import { renderSiteTemplate, type RenderedPage } from "./render";
+import { isSectionLabel } from "./sections";
 import type { SiteTemplate } from "./types";
 
 // The rules every template is held to (spec section 2, checked as spec 6.1
@@ -42,13 +44,25 @@ const blockRootComponents = new Set([
   "@organizeos/site-components:ShareCodeCarrier",
 ]);
 
+// The platform blocks that list or feature events; a section holds one.
+const eventBlockKeys = new Set<BlockKey>([
+  "@organizeos/site-components:EventCard",
+  "@organizeos/site-components:EventList",
+]);
+
 // The org's provisioned sign-up page, which applying a template keeps (rule 8).
 const signupPagePath = "/newsletter";
 
 // The 404 page `createPages()` makes for every project.
 const notFoundPagePath = "/*";
 
-const minimumContrast = 4.5;
+// Text, and the base text on an accent-1 band, is read, so it needs 4.5:1
+// (WCAG AA). --accent-2 draws the focus ring, a graphic, which needs 3:1.
+const contrastChecks = [
+  { foreground: "text", background: "base", minimum: 4.5 },
+  { foreground: "base", background: "accent-1", minimum: 4.5 },
+  { foreground: "accent-2", background: "base", minimum: 3 },
+] as const;
 
 const pageName = (key: string) => `Page "${key}"`;
 
@@ -157,21 +171,17 @@ const checkImageEntries = (template: SiteTemplate): string[] => [
   ]),
 ];
 
-const checkContrast = (template: SiteTemplate): string[] => {
-  const pairs = [
-    ["text", "base"],
-    ["base", "accent-1"],
-  ] as const;
-  return pairs.flatMap(([foreground, background]) => {
+const checkContrast = (template: SiteTemplate): string[] =>
+  contrastChecks.flatMap(({ foreground, background, minimum }) => {
     const pair = `${foreground} on ${background}`;
     try {
       const ratio = contrastRatio(
         template.variables[foreground],
         template.variables[background]
       );
-      return ratio < minimumContrast
+      return ratio < minimum
         ? [
-            `Variables: ${pair} has a contrast of ${ratio.toFixed(2)}:1, below ${minimumContrast}:1`,
+            `Variables: ${pair} has a contrast of ${ratio.toFixed(2)}:1, below ${minimum}:1`,
           ]
         : [];
     } catch (error) {
@@ -179,15 +189,17 @@ const checkContrast = (template: SiteTemplate): string[] => {
       return [`Variables: ${pair} cannot be checked (${reason})`];
     }
   });
-};
 
-/** The ids of every placed block's root and everything under it. */
-const placedBlockIds = (page: RenderedPage) => {
-  const instances = new Map(
-    page.fragment.instances.map((instance) => [instance.id, instance])
-  );
+const instancesById = (fragment: WebstudioFragment) =>
+  new Map(fragment.instances.map((instance) => [instance.id, instance]));
+
+/** The ids of the instances `rootIds` name and everything under them. */
+const subtreeIds = (
+  instances: Map<Instance["id"], Instance>,
+  rootIds: Instance["id"][]
+) => {
   const ids = new Set<string>();
-  const pending = page.placements.map((placement) => placement.rootId);
+  const pending = [...rootIds];
   for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
     if (ids.has(id)) {
       continue;
@@ -202,11 +214,26 @@ const placedBlockIds = (page: RenderedPage) => {
   return ids;
 };
 
+/** The ids of every placed block's root and everything under it. */
+const placedBlockIds = (page: RenderedPage) =>
+  subtreeIds(
+    instancesById(page.fragment),
+    page.placements.map((placement) => placement.rootId)
+  );
+
+/** The page's body: the fragment's one root, when it is a <body>. */
+const bodyOf = (fragment: WebstudioFragment) => {
+  const [root, ...otherRoots] = fragment.children;
+  const instance =
+    root?.type === "id" && otherRoots.length === 0
+      ? fragment.instances.find((item) => item.id === root.value)
+      : undefined;
+  return instance?.tag === "body" ? instance : undefined;
+};
+
 const checkStyles = (page: RenderedPage, blockIds: Set<string>): string[] => {
   const { fragment } = page;
-  const instances = new Map(
-    fragment.instances.map((instance) => [instance.id, instance])
-  );
+  const instances = instancesById(fragment);
   // A style source is checked when any instance outside a placed block
   // selects it, so a block's token used by the page's own element is too.
   const checkedSources = new Set(
@@ -305,17 +332,74 @@ const checkPageLinks = (page: RenderedPage, pageIds: Set<string>): string[] => {
   });
 };
 
+// Every top-level child of a body is a section named from the vocabulary
+// (spec section 3), so the Navigator reads the same on every template. What
+// is inside a section is the template's own.
+const checkSectionLabels = (page: RenderedPage): string[] => {
+  const body = bodyOf(page.fragment);
+  if (body === undefined) {
+    return [];
+  }
+  const name = pageName(page.key);
+  const instances = instancesById(page.fragment);
+  return body.children.flatMap((child) => {
+    if (child.type !== "id") {
+      const kind = child.type === "text" ? "text" : "an expression";
+      return [`${name}: the body holds ${kind} outside a section`];
+    }
+    const instance = instances.get(child.value);
+    if (instance === undefined) {
+      return [];
+    }
+    if (instance.label === undefined) {
+      return [
+        `${name}: ${describeInstance(instance)} in the body has no label; every section carries a name from SECTION_LABELS`,
+      ];
+    }
+    return isSectionLabel(instance.label)
+      ? []
+      : [
+          `${name}: "${instance.label}" in the body is not a name from SECTION_LABELS (a variant follows a colon, as in "Hero: Split")`,
+        ];
+  });
+};
+
+// One events block per section: an Event Card (a featured event) or an Event
+// List, never both under one heading. The section is the child of the body
+// that a block sits under, however deep.
+const checkEventBlocks = (page: RenderedPage): string[] => {
+  const body = bodyOf(page.fragment);
+  const events = page.placements.filter((placement) =>
+    eventBlockKeys.has(placement.key)
+  );
+  if (body === undefined || events.length < 2) {
+    return [];
+  }
+  const instances = instancesById(page.fragment);
+  return body.children.flatMap((child) => {
+    const section =
+      child.type === "id" ? instances.get(child.value) : undefined;
+    if (section === undefined) {
+      return [];
+    }
+    const inSection = subtreeIds(instances, [section.id]);
+    const held = events.filter((placement) => inSection.has(placement.rootId));
+    if (held.length < 2) {
+      return [];
+    }
+    const kinds = held.map((placement) => componentName(placement.key));
+    return [
+      `${pageName(page.key)}: ${describeInstance(section)} holds ${held.length} events blocks (${kinds.join(", ")}); a section holds one`,
+    ];
+  });
+};
+
 const checkFragment = (page: RenderedPage): string[] => {
   const { fragment } = page;
   const name = pageName(page.key);
   const violations: string[] = [];
   // Applying makes the root the page's body.
-  const [root, ...otherRoots] = fragment.children;
-  const rootInstance =
-    root?.type === "id"
-      ? fragment.instances.find((instance) => instance.id === root.value)
-      : undefined;
-  if (rootInstance?.tag !== "body" || otherRoots.length > 0) {
+  if (bodyOf(fragment) === undefined) {
     violations.push(`${name}: the root is not one <body> element`);
   }
   if (fragment.resources.length > 0) {
@@ -412,6 +496,8 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
       ...checkStyles(page, blockIds),
       ...checkImageInstances(page, blockIds),
       ...checkFragment(page),
+      ...checkSectionLabels(page),
+      ...checkEventBlocks(page),
       ...checkFragmentText(page)
     );
   }

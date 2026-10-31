@@ -1,11 +1,47 @@
 import { $, css, ws } from "@webstudio-is/template";
 import { BLANK_CANONICAL_VALUES } from "../canonical-variables";
 import type { SiteTemplate, SiteTemplatePage } from "../types";
-import heroUrl from "./images/hero.jpg?url";
+import heroUrl from "./images/hero.jpg?url&no-inline";
 
 // A draft that exists to prove the apply path end to end in a test org: one
-// page with a background image, two Events blocks and a Sign-up form. It is
-// never listed.
+// page with a background image, two Events blocks (one to a section) and a
+// Sign-up form. It is never listed.
+
+// A section of the page holding one Events block under a heading.
+const eventsSection = ({
+  label,
+  heading,
+  block,
+}: {
+  label: string;
+  heading: string;
+  block: JSX.Element;
+}) => (
+  <ws.element
+    ws:tag="section"
+    ws:label={label}
+    ws:style={css`
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 64px 24px;
+    `}
+  >
+    <ws.element
+      ws:tag="h2"
+      ws:style={css`
+        margin: 0;
+        font-family: var(--font-heading);
+        font-size: 32px;
+      `}
+    >
+      {heading}
+    </ws.element>
+    {block}
+  </ws.element>
+);
 
 const home: SiteTemplatePage = {
   key: "home",
@@ -92,31 +128,16 @@ const home: SiteTemplatePage = {
           </$.Link>
         </ws.element>
       </ws.element>
-      <ws.element
-        ws:tag="section"
-        ws:label="Events"
-        ws:style={css`
-          display: flex;
-          flex-direction: column;
-          gap: 32px;
-          max-width: 1100px;
-          margin: 0 auto;
-          padding: 64px 24px;
-        `}
-      >
-        <ws.element
-          ws:tag="h2"
-          ws:style={css`
-            margin: 0;
-            font-family: var(--font-heading);
-            font-size: 32px;
-          `}
-        >
-          {"Upcoming events"}
-        </ws.element>
-        {placeBlock("@organizeos/site-components:EventCard", "featured")}
-        {placeBlock("@organizeos/site-components:EventList", "upcoming")}
-      </ws.element>
+      {eventsSection({
+        label: "Events: Featured",
+        heading: "Next event",
+        block: placeBlock("@organizeos/site-components:EventCard", "featured"),
+      })}
+      {eventsSection({
+        label: "Events",
+        heading: "Upcoming events",
+        block: placeBlock("@organizeos/site-components:EventList", "upcoming"),
+      })}
       <ws.element
         ws:tag="section"
         ws:label="Sign-up"

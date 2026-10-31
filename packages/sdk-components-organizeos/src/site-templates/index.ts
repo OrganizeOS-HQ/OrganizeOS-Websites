@@ -8,5 +8,6 @@ export * from "./canonical-variables";
 export * from "./place-block";
 export * from "./types";
 export * from "./render";
+export * from "./sections";
 export * from "./check";
 export * from "./catalog";
