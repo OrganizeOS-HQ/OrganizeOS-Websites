@@ -1,0 +1,711 @@
+{
+  "children": [
+    {
+      "type": "id",
+      "value": "0"
+    }
+  ],
+  "instances": [
+    {
+      "type": "instance",
+      "id": "0",
+      "component": "@organizeos/site-components:ShareCodeCarrier",
+      "children": [
+        {
+          "type": "id",
+          "value": "events"
+        },
+        {
+          "type": "id",
+          "value": "empty"
+        },
+        {
+          "type": "id",
+          "value": "unavailable"
+        }
+      ],
+      "label": "Event List"
+    },
+    {
+      "type": "instance",
+      "id": "events",
+      "component": "ws:collection",
+      "children": [
+        {
+          "type": "id",
+          "value": "2"
+        }
+      ],
+      "label": "Events"
+    },
+    {
+      "type": "instance",
+      "id": "2",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "id",
+          "value": "3"
+        },
+        {
+          "type": "id",
+          "value": "4"
+        },
+        {
+          "type": "id",
+          "value": "5"
+        },
+        {
+          "type": "id",
+          "value": "6"
+        },
+        {
+          "type": "id",
+          "value": "7"
+        }
+      ],
+      "label": "Event Card",
+      "tag": "article"
+    },
+    {
+      "type": "instance",
+      "id": "3",
+      "component": "Image",
+      "children": [],
+      "label": "Cover"
+    },
+    {
+      "type": "instance",
+      "id": "4",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "expression",
+          "value": "$ws$dataSource$1.title"
+        }
+      ],
+      "label": "Title",
+      "tag": "h3"
+    },
+    {
+      "type": "instance",
+      "id": "5",
+      "component": "Time",
+      "children": [],
+      "label": "Starts"
+    },
+    {
+      "type": "instance",
+      "id": "6",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "expression",
+          "value": "$ws$dataSource$1.location_name"
+        }
+      ],
+      "label": "Place",
+      "tag": "p"
+    },
+    {
+      "type": "instance",
+      "id": "7",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "text",
+          "value": "Details and RSVP",
+          "placeholder": true
+        }
+      ],
+      "label": "Event link",
+      "tag": "a"
+    },
+    {
+      "type": "instance",
+      "id": "empty",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "text",
+          "value": "No upcoming events.",
+          "placeholder": true
+        }
+      ],
+      "label": "No upcoming events",
+      "tag": "p"
+    },
+    {
+      "type": "instance",
+      "id": "unavailable",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "text",
+          "value": "Events are unavailable right now.",
+          "placeholder": true
+        }
+      ],
+      "label": "Events unavailable",
+      "tag": "p"
+    }
+  ],
+  "props": [
+    {
+      "id": "events:item",
+      "instanceId": "events",
+      "name": "item",
+      "type": "parameter",
+      "value": "1"
+    },
+    {
+      "id": "3:src",
+      "instanceId": "3",
+      "name": "src",
+      "type": "expression",
+      "value": "$ws$dataSource$1.cover_image_url"
+    },
+    {
+      "id": "3:alt",
+      "instanceId": "3",
+      "name": "alt",
+      "type": "expression",
+      "value": "$ws$dataSource$1.title"
+    },
+    {
+      "id": "3:data-ws-show",
+      "instanceId": "3",
+      "name": "data-ws-show",
+      "type": "expression",
+      "value": "($ws$dataSource$1.cover_image_url ?? \"\") !== \"\""
+    },
+    {
+      "id": "5:datetime",
+      "instanceId": "5",
+      "name": "datetime",
+      "type": "expression",
+      "value": "$ws$dataSource$1.start_time"
+    },
+    {
+      "id": "5:timeZone",
+      "instanceId": "5",
+      "name": "timeZone",
+      "type": "expression",
+      "value": "$ws$dataSource$1.timezone"
+    },
+    {
+      "id": "5:dateStyle",
+      "instanceId": "5",
+      "name": "dateStyle",
+      "type": "string",
+      "value": "full"
+    },
+    {
+      "id": "5:timeStyle",
+      "instanceId": "5",
+      "name": "timeStyle",
+      "type": "string",
+      "value": "short"
+    },
+    {
+      "id": "5:language",
+      "instanceId": "5",
+      "name": "language",
+      "type": "string",
+      "value": "en"
+    },
+    {
+      "id": "5:country",
+      "instanceId": "5",
+      "name": "country",
+      "type": "string",
+      "value": "US"
+    },
+    {
+      "id": "6:data-ws-show",
+      "instanceId": "6",
+      "name": "data-ws-show",
+      "type": "expression",
+      "value": "($ws$dataSource$1.location_name ?? \"\") !== \"\""
+    },
+    {
+      "id": "7:href",
+      "instanceId": "7",
+      "name": "href",
+      "type": "expression",
+      "value": "\"/events/\" + $ws$dataSource$1.slug"
+    },
+    {
+      "id": "7:reloadDocument",
+      "instanceId": "7",
+      "name": "reloadDocument",
+      "type": "boolean",
+      "value": true
+    }
+  ],
+  "breakpoints": [
+    {
+      "id": "base",
+      "label": ""
+    }
+  ],
+  "styleSources": [
+    {
+      "type": "local",
+      "id": "0:ws:style"
+    },
+    {
+      "type": "local",
+      "id": "3:ws:style"
+    },
+    {
+      "type": "local",
+      "id": "4:ws:style"
+    },
+    {
+      "type": "local",
+      "id": "6:ws:style"
+    },
+    {
+      "type": "token",
+      "id": "8",
+      "name": "OS Card"
+    }
+  ],
+  "styleSourceSelections": [
+    {
+      "instanceId": "0",
+      "values": ["0:ws:style"]
+    },
+    {
+      "instanceId": "3",
+      "values": ["3:ws:style"]
+    },
+    {
+      "instanceId": "4",
+      "values": ["4:ws:style"]
+    },
+    {
+      "instanceId": "6",
+      "values": ["6:ws:style"]
+    },
+    {
+      "instanceId": "2",
+      "values": ["8"]
+    }
+  ],
+  "styles": [
+    {
+      "breakpointId": "base",
+      "styleSourceId": "0:ws:style",
+      "property": "display",
+      "value": {
+        "type": "keyword",
+        "value": "grid"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "0:ws:style",
+      "property": "gridTemplateColumns",
+      "value": {
+        "type": "unparsed",
+        "value": "repeat(auto-fill,minmax(260px,1fr))"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "0:ws:style",
+      "property": "rowGap",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 24
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "0:ws:style",
+      "property": "columnGap",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 24
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "3:ws:style",
+      "property": "display",
+      "value": {
+        "type": "keyword",
+        "value": "block"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "3:ws:style",
+      "property": "width",
+      "value": {
+        "type": "unit",
+        "unit": "%",
+        "value": 100
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "3:ws:style",
+      "property": "height",
+      "value": {
+        "type": "keyword",
+        "value": "auto"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "4:ws:style",
+      "property": "marginTop",
+      "value": {
+        "type": "unit",
+        "unit": "number",
+        "value": 0
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "4:ws:style",
+      "property": "marginRight",
+      "value": {
+        "type": "unit",
+        "unit": "number",
+        "value": 0
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "4:ws:style",
+      "property": "marginBottom",
+      "value": {
+        "type": "unit",
+        "unit": "number",
+        "value": 0
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "4:ws:style",
+      "property": "marginLeft",
+      "value": {
+        "type": "unit",
+        "unit": "number",
+        "value": 0
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "6:ws:style",
+      "property": "marginTop",
+      "value": {
+        "type": "unit",
+        "unit": "number",
+        "value": 0
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "6:ws:style",
+      "property": "marginRight",
+      "value": {
+        "type": "unit",
+        "unit": "number",
+        "value": 0
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "6:ws:style",
+      "property": "marginBottom",
+      "value": {
+        "type": "unit",
+        "unit": "number",
+        "value": 0
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "6:ws:style",
+      "property": "marginLeft",
+      "value": {
+        "type": "unit",
+        "unit": "number",
+        "value": 0
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "display",
+      "value": {
+        "type": "keyword",
+        "value": "flex"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "flexDirection",
+      "value": {
+        "type": "keyword",
+        "value": "column"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "rowGap",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 8
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "columnGap",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 8
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "paddingTop",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 16
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "paddingRight",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 16
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "paddingBottom",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 16
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "paddingLeft",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 16
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderTopWidth",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 1
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderRightWidth",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 1
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderBottomWidth",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 1
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderLeftWidth",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 1
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderTopStyle",
+      "value": {
+        "type": "keyword",
+        "value": "solid"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderRightStyle",
+      "value": {
+        "type": "keyword",
+        "value": "solid"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderBottomStyle",
+      "value": {
+        "type": "keyword",
+        "value": "solid"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderLeftStyle",
+      "value": {
+        "type": "keyword",
+        "value": "solid"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderTopColor",
+      "value": {
+        "type": "unparsed",
+        "value": "color-mix(in srgb,var(--text, #18181b) 25%,var(--base, #ffffff))"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderRightColor",
+      "value": {
+        "type": "unparsed",
+        "value": "color-mix(in srgb,var(--text, #18181b) 25%,var(--base, #ffffff))"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderBottomColor",
+      "value": {
+        "type": "unparsed",
+        "value": "color-mix(in srgb,var(--text, #18181b) 25%,var(--base, #ffffff))"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderLeftColor",
+      "value": {
+        "type": "unparsed",
+        "value": "color-mix(in srgb,var(--text, #18181b) 25%,var(--base, #ffffff))"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderTopLeftRadius",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 8
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderTopRightRadius",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 8
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderBottomRightRadius",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 8
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "borderBottomLeftRadius",
+      "value": {
+        "type": "unit",
+        "unit": "px",
+        "value": 8
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "backgroundColor",
+      "value": {
+        "type": "var",
+        "value": "base",
+        "fallback": {
+          "type": "unparsed",
+          "value": "#ffffff"
+        }
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "8",
+      "property": "color",
+      "value": {
+        "type": "var",
+        "value": "text",
+        "fallback": {
+          "type": "unparsed",
+          "value": "#18181b"
+        }
+      }
+    }
+  ],
+  "dataSources": [
+    {
+      "type": "parameter",
+      "scopeInstanceId": "events",
+      "id": "1",
+      "name": "event"
+    }
+  ],
+  "resources": [],
+  "assets": []
+}

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { $, PageValue, css, ws } from "@webstudio-is/template";
+import { getStyleDeclKey } from "@webstudio-is/sdk";
+import { $, PageValue, css, renderTemplate, ws } from "@webstudio-is/template";
+import { cardToken } from "../events/event-card.template";
+import { meta as eventListMeta } from "../event-list.template";
 import { BLANK_CANONICAL_VALUES } from "./canonical-variables";
 import type { BlockKey } from "./place-block";
 import { renderSiteTemplate, type RenderedPage } from "./render";
@@ -267,5 +270,195 @@ describe("renderSiteTemplate", () => {
     expect(() =>
       render({ ...template, pages: [home, { ...about, key: "home" }] })
     ).toThrow(/"home"/);
+  });
+});
+
+describe("template block tokens", () => {
+  /** One page placing a dated Event List, its own styles only at 767px. */
+  const eventsPage: SiteTemplatePage = {
+    ...about,
+    key: "events",
+    path: "/events",
+    body: ({ placeBlock }) => (
+      <ws.element
+        ws:tag="body"
+        ws:style={css`
+          @media (max-width: 767px) {
+            color: var(--text);
+          }
+        `}
+      >
+        <ws.element ws:tag="h1">{"Events"}</ws.element>
+        {placeBlock(EventList, "upcoming", { card: "dated" })}
+      </ws.element>
+    ),
+  };
+
+  /** A page placing only a Signup Form, whose tokens the template leaves. */
+  const signupPage: SiteTemplatePage = {
+    ...about,
+    key: "join",
+    path: "/join",
+    body: ({ placeBlock }) => (
+      <ws.element ws:tag="body">
+        <ws.element ws:tag="h1">{"Join"}</ws.element>
+        {placeBlock("@organizeos/site-components:SignupForm", "signup")}
+      </ws.element>
+    ),
+  };
+
+  const withTokens: SiteTemplate = {
+    ...template,
+    pages: [home, eventsPage, signupPage],
+    blockTokens: {
+      "OS Card": css`
+        padding: 24px;
+        border-top-color: var(--accent-1);
+        text-transform: uppercase;
+      `,
+      "OS Event Date": css`
+        @media (max-width: 767px) {
+          color: var(--accent-2);
+        }
+        @media (max-width: 479px) {
+          width: 56px;
+        }
+      `,
+    },
+  };
+
+  /** A token's declarations in a page's fragment, by breakpoint width. */
+  const tokenStyles = (page: RenderedPage, name: string) => {
+    const { fragment } = page;
+    const sources = fragment.styleSources.filter(
+      (source) => source.type === "token" && source.name === name
+    );
+    expect(sources).toHaveLength(1);
+    return fragment.styles
+      .filter((style) => style.styleSourceId === sources[0].id)
+      .map((style) => ({
+        breakpoint: fragment.breakpoints.find(
+          (item) => item.id === style.breakpointId
+        ),
+        state: style.state,
+        property: style.property,
+        value: style.value,
+      }));
+  };
+
+  const declared = (
+    styles: ReturnType<typeof tokenStyles>,
+    property: string,
+    maxWidth?: number
+  ) =>
+    styles
+      .filter(
+        (style) =>
+          style.property === property &&
+          style.state === undefined &&
+          style.breakpoint?.maxWidth === maxWidth
+      )
+      .map((style) => style.value);
+
+  test("a declaration replaces the token's own of the same key, and the others are added", () => {
+    const page = byKey(render(withTokens), "events");
+    const styles = tokenStyles(page, "OS Card");
+    expect(declared(styles, "paddingTop")).toEqual([
+      { type: "unit", unit: "px", value: 24 },
+    ]);
+    expect(declared(styles, "paddingLeft")).toEqual([
+      { type: "unit", unit: "px", value: 24 },
+    ]);
+    expect(declared(styles, "borderTopColor")).toEqual([
+      { type: "var", value: "accent-1" },
+    ]);
+    // the token's own declarations the template does not name are kept
+    expect(declared(styles, "borderBottomColor")).toHaveLength(1);
+    expect(declared(styles, "display")).toEqual([
+      { type: "keyword", value: "flex" },
+    ]);
+    // and a declaration the token does not have is added
+    expect(declared(styles, "textTransform")).toEqual([
+      { type: "keyword", value: "uppercase" },
+    ]);
+    // one declaration per key
+    const keys = page.fragment.styles.map(getStyleDeclKey);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  test("a declaration under a media query goes on the page's breakpoint for it, added when the page has none", () => {
+    const page = byKey(render(withTokens), "events");
+    const { breakpoints } = page.fragment;
+    // the page's own 767, and the 479 that only the block token uses
+    expect(
+      breakpoints
+        .map(({ minWidth, maxWidth }) => maxWidth ?? minWidth ?? 0)
+        .sort((a, b) => a - b)
+    ).toEqual([0, 479, 767]);
+    expect(new Set(breakpoints.map(({ id }) => id)).size).toBe(3);
+    const styles = tokenStyles(page, "OS Event Date");
+    expect(declared(styles, "color", 767)).toEqual([
+      { type: "var", value: "accent-2" },
+    ]);
+    expect(declared(styles, "width", 479)).toEqual([
+      { type: "unit", unit: "px", value: 56 },
+    ]);
+    // the token's own base width is kept beside it
+    expect(declared(styles, "width")).toHaveLength(1);
+  });
+
+  test("breakpoints a token adds have ids of their own", () => {
+    const page = byKey(
+      render({
+        ...withTokens,
+        blockTokens: {
+          "OS Card": css`
+            @media (max-width: 991px) {
+              padding: 20px;
+            }
+            @media (max-width: 479px) {
+              padding: 12px;
+            }
+          `,
+        },
+      }),
+      "events"
+    );
+    const { breakpoints } = page.fragment;
+    expect(
+      breakpoints.map(({ maxWidth }) => maxWidth ?? 0).sort((a, b) => a - b)
+    ).toEqual([0, 479, 767, 991]);
+    expect(new Set(breakpoints.map(({ id }) => id)).size).toBe(4);
+    const styles = tokenStyles(page, "OS Card");
+    expect(declared(styles, "paddingTop", 991)).toEqual([
+      { type: "unit", unit: "px", value: 20 },
+    ]);
+    expect(declared(styles, "paddingTop", 479)).toEqual([
+      { type: "unit", unit: "px", value: 12 },
+    ]);
+  });
+
+  test("a page that places none of the tokens named is unchanged", () => {
+    const plain = byKey(render({ ...withTokens, blockTokens: {} }), "join");
+    const styled = byKey(render(withTokens), "join");
+    expect(styled.fragment).toEqual(plain.fragment);
+  });
+
+  test("leak into no other render: another template, the panel's block and the shared token", () => {
+    const tokenBefore = structuredClone(cardToken.styles);
+    const panelBefore = renderTemplate(eventListMeta.template);
+    const otherBefore = render({ ...withTokens, blockTokens: undefined });
+
+    render(withTokens);
+
+    expect(cardToken.styles).toEqual(tokenBefore);
+    expect(renderTemplate(eventListMeta.template)).toEqual(panelBefore);
+    expect(render({ ...withTokens, blockTokens: undefined })).toEqual(
+      otherBefore
+    );
+    const other = byKey(otherBefore, "events");
+    expect(declared(tokenStyles(other, "OS Card"), "paddingTop")).toEqual([
+      { type: "unit", unit: "px", value: 16 },
+    ]);
   });
 });

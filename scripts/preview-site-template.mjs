@@ -3,10 +3,13 @@
 // against the phone bar (OrganizeOS spec
 // 2026-10-30-website-template-inventory-design.md, section 2, rule 9):
 //
-//   corepack pnpm preview:template <template-id> [--palette <file>]
+//   corepack pnpm preview:template <template-id> [--palette <file>] [--no-events]
 //
-// 1. A stub of the OrganizeOS public API on a fixed port answers
-//    {"data": []} to every catalog request: an org with no events or forms.
+// 1. A stub of the OrganizeOS public API on a fixed port
+//    (site-templates/preview/stub-api.mjs in the builder) answers the events
+//    read with three sample events, so the event cards show, and every other
+//    catalog request, the forms among them, with {"data": []}. With
+//    --no-events the events read is empty too: the blocks' empty state.
 // 2. @organizeos/site-components and the CLI are built: the CLI's prebuild
 //    copies the blocks package's lib/ into the site.
 // 3. The dump (dump.preview.tsx in the builder's site-templates/preview/)
@@ -19,14 +22,18 @@
 //    and 320 (the owner sees 1440 and 390; 820 is the tablet range and 320
 //    the smallest phone, for review) and, at 320, 390, 479, 767, 768 and
 //    991, checks sideways scroll, text under 14px (at 390 and 320), console
-//    errors and failed requests.
+//    errors and failed requests; at those widths and 820 it also checks for
+//    clipped text, text that runs past its own box or a box around it (three
+//    unbreakable headings overlapping in their columns scroll nothing).
 //
-// Writes previews/<template-id>/<palette>/<page-key>-<width>.png and
-// previews/<template-id>/<palette>/report.json ("default" is the template's
-// own palette, otherwise the palette file's name). Exits 1 when a check fails,
-// 2 when the tool cannot run, 130 or 143 when SIGINT or SIGTERM stops it. The
-// temp folder, the servers, the browser and every command still running are
-// stopped however the tool ends (short of SIGKILL).
+// Writes previews/<template-id>/<run>/<page-key>-<width>.png and
+// previews/<template-id>/<run>/report.json, where the run is the palette
+// ("default" is the template's own, otherwise the palette file's name),
+// followed by ".no-events" for a --no-events run. The report says which
+// events answer the run used. Exits 1 when a check fails, 2 when the tool
+// cannot run, 130 or 143 when SIGINT or SIGTERM stops it. The temp folder, the
+// servers, the browser and every command still running are stopped however
+// the tool ends (short of SIGKILL).
 
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
@@ -39,6 +46,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { chromium } from "playwright";
+import { answerStubRequest } from "../apps/builder/app/builder/features/organizeos-panel/site-templates/preview/stub-api.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const builderDir = join(repoRoot, "apps/builder");
@@ -56,11 +64,13 @@ const SCREENSHOT_WIDTHS = [1440, 820, 390, 320];
  */
 const OVERFLOW_WIDTHS = [320, 390, 479, 767, 768, 991];
 const SMALL_TEXT_WIDTHS = [390, 320];
+/** The overflow widths and the tablet's, where columns are narrowest. */
+const CLIPPED_TEXT_WIDTHS = [...OVERFLOW_WIDTHS, 820];
 const MIN_FONT_SIZE = 14;
 const VIEWPORT_HEIGHT = 900;
 
 const usage =
-  "Usage: corepack pnpm preview:template <template-id> [--palette <file>]";
+  "Usage: corepack pnpm preview:template <template-id> [--palette <file>] [--no-events]";
 
 /** Each signal the tool stops on, and its exit code. */
 const SIGNAL_EXIT_CODES = { SIGINT: 130, SIGTERM: 143 };
@@ -164,11 +174,24 @@ const run = (command, args, { cwd = repoRoot, env = {} } = {}) =>
     });
   });
 
-const startStubApi = () =>
+/** The stub API, answering the events read as `events` says. */
+const startStubApi = (events) =>
   new Promise((resolveServer, reject) => {
-    const server = createServer((_request, response) => {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ data: [] }));
+    const server = createServer(async (request, response) => {
+      try {
+        const { status, contentType, body } = await answerStubRequest(
+          request.url ?? "/",
+          { apiBaseUrl: STUB_API_BASE_URL, events }
+        );
+        response.writeHead(status, { "content-type": contentType });
+        response.end(body);
+      } catch (error) {
+        console.error(
+          `The stub API failed: ${error instanceof Error ? error.message : error}`
+        );
+        response.writeHead(500);
+        response.end();
+      }
     });
     server.once("error", (error) =>
       reject(
@@ -346,6 +369,102 @@ const findSmallText = (minFontSize) => {
   return found;
 };
 
+/**
+ * In the page: each visible text wider than the box it is set in, by how far
+ * it runs past, rounded up. The boxes are the text's element, if it is not
+ * inline, and each element around it up to the body, their padding boxes:
+ * text that runs past one overlaps its neighbour or is cut off. An element
+ * can grow to an unbreakable heading and run past its column itself, so the
+ * text's own element is not enough. The walk stops at an element positioned
+ * out of the flow (absolute or fixed), which may sit past its parent on
+ * purpose. Words are measured, not the spaces between them: the space a line
+ * wraps at hangs past the box, which is not clipping. Text inside an element
+ * clipped on purpose (`clip`, as visually hidden text is) is left out, as is
+ * a run of less than a pixel, which is rounding.
+ */
+const findClippedText = () => {
+  const found = [];
+  const isClippedOnPurpose = (element) => {
+    for (let item = element; item !== null; item = item.parentElement) {
+      if (getComputedStyle(item).clip !== "auto") {
+        return true;
+      }
+    }
+    return false;
+  };
+  const edges = new Map();
+  /** An element's padding box, left and right, or undefined when inline. */
+  const edgesOf = (element) => {
+    if (edges.has(element) === false) {
+      const { display } = getComputedStyle(element);
+      if (display === "inline" || display === "contents") {
+        edges.set(element, undefined);
+      } else {
+        const left = element.getBoundingClientRect().left + element.clientLeft;
+        edges.set(element, { left, right: left + element.clientWidth });
+      }
+    }
+    return edges.get(element);
+  };
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    const text = node.textContent.replace(/\s+/g, " ").trim();
+    const element = node.parentElement;
+    if (
+      text === "" ||
+      element === null ||
+      element.closest("script, style, noscript, template") !== null ||
+      element.checkVisibility({ visibilityProperty: true }) === false ||
+      isClippedOnPurpose(element)
+    ) {
+      continue;
+    }
+    const boxes = [];
+    for (let item = element; item !== null; item = item.parentElement) {
+      const box = edgesOf(item);
+      if (box !== undefined) {
+        boxes.push({ element: item, ...box });
+      }
+      const { position } = getComputedStyle(item);
+      if (
+        item === document.body ||
+        position === "absolute" ||
+        position === "fixed"
+      ) {
+        break;
+      }
+    }
+    const range = document.createRange();
+    let worst;
+    for (const word of node.textContent.matchAll(/\S+/g)) {
+      range.setStart(node, word.index);
+      range.setEnd(node, word.index + word[0].length);
+      for (const rect of range.getClientRects()) {
+        if (rect.width === 0) {
+          continue;
+        }
+        for (const box of boxes) {
+          const past = Math.max(rect.right - box.right, box.left - rect.left);
+          if (past >= 1 && (worst === undefined || past > worst.past)) {
+            worst = { past, element: box.element };
+          }
+        }
+      }
+    }
+    if (worst !== undefined) {
+      const tag = (item) => item.tagName.toLowerCase();
+      const where =
+        worst.element === element
+          ? "its box"
+          : `the ${tag(worst.element)} around it`;
+      found.push(
+        `${tag(element)} "${text.slice(0, 80)}" runs ${Math.ceil(worst.past)}px past ${where}`
+      );
+    }
+  }
+  return found;
+};
+
 /** One page at one width: its screenshot if asked, and what it shows. */
 const inspectPage = async (browser, url, width, screenshotPath) => {
   // a desktop window of the phone's width: no mobile zoom-out to hide a
@@ -381,17 +500,25 @@ const inspectPage = async (browser, url, width, screenshotPath) => {
         (entry) => `${width}px: ${entry}`
       )
     : [];
+  const clippedText = CLIPPED_TEXT_WIDTHS.includes(width)
+    ? (await page.evaluate(findClippedText)).map(
+        (entry) => `${width}px: ${entry}`
+      )
+    : [];
   if (screenshotPath !== undefined) {
     await page.screenshot({ path: screenshotPath, fullPage: true });
   }
   await context.close();
-  return { overflow, smallText, consoleErrors, failedRequests };
+  return { overflow, smallText, clippedText, consoleErrors, failedRequests };
 };
 
 const parseArguments = () => {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { palette: { type: "string" } },
+    options: {
+      palette: { type: "string" },
+      "no-events": { type: "boolean", default: false },
+    },
   });
   if (
     positionals.length !== 1 ||
@@ -410,12 +537,14 @@ const parseArguments = () => {
     paletteFile,
     paletteName:
       paletteFile === undefined ? "default" : basename(paletteFile, ".json"),
+    events: values["no-events"] ? "none" : "sample",
   };
 };
 
 const main = async () => {
-  const { templateId, paletteFile, paletteName } = parseArguments();
-  const outDir = join(repoRoot, "previews", templateId, paletteName);
+  const { templateId, paletteFile, paletteName, events } = parseArguments();
+  const runName = events === "none" ? `${paletteName}.no-events` : paletteName;
+  const outDir = join(repoRoot, "previews", templateId, runName);
   const siteDir = await mkdtemp(join(tmpdir(), `preview-${templateId}-`));
   stopping.push(
     // retried: a stopped command's last processes may still be writing
@@ -423,7 +552,7 @@ const main = async () => {
     stopCommands
   );
   try {
-    const stubApi = await startStubApi();
+    const stubApi = await startStubApi(events);
     stopping.push(() => stubApi.close());
 
     console.info("Building the blocks and the CLI");
@@ -435,7 +564,9 @@ const main = async () => {
     ]);
     await run("corepack", ["pnpm", "--filter", "webstudio", "build"]);
 
-    console.info(`Applying ${templateId} (palette: ${paletteName})`);
+    console.info(
+      `Applying ${templateId} (palette: ${paletteName}, events: ${events})`
+    );
     await run(
       "corepack",
       ["pnpm", "exec", "vitest", "run", "--config", dumpConfig],
@@ -495,13 +626,14 @@ const main = async () => {
     const widths = [
       ...new Set([...SCREENSHOT_WIDTHS, ...OVERFLOW_WIDTHS]),
     ].sort((a, b) => b - a);
-    const report = { pages: [] };
+    const report = { events, pages: [] };
     for (const { key, path } of pages) {
       console.info(`Checking ${key} (${path})`);
       const pageReport = {
         key,
         overflow: {},
         smallText: new Set(),
+        clippedText: new Set(),
         consoleErrors: new Set(),
         failedRequests: new Set(),
       };
@@ -517,7 +649,12 @@ const main = async () => {
         if (OVERFLOW_WIDTHS.includes(width)) {
           pageReport.overflow[width] = result.overflow;
         }
-        for (const name of ["smallText", "consoleErrors", "failedRequests"]) {
+        for (const name of [
+          "smallText",
+          "clippedText",
+          "consoleErrors",
+          "failedRequests",
+        ]) {
           for (const entry of result[name]) {
             pageReport[name].add(entry);
           }
@@ -527,6 +664,7 @@ const main = async () => {
         key,
         overflow: pageReport.overflow,
         smallText: [...pageReport.smallText],
+        clippedText: [...pageReport.clippedText],
         consoleErrors: [...pageReport.consoleErrors],
         failedRequests: [...pageReport.failedRequests],
       });
@@ -543,6 +681,7 @@ const main = async () => {
           .filter(([, overflows]) => overflows)
           .map(([width]) => `scrolls sideways at ${width}px`),
         ...page.smallText.map((entry) => `small text at ${entry}`),
+        ...page.clippedText.map((entry) => `clipped text at ${entry}`),
         ...page.consoleErrors.map((entry) => `console error: ${entry}`),
         ...page.failedRequests.map((entry) => `failed request: ${entry}`),
       ];

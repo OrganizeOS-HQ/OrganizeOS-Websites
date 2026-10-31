@@ -1733,6 +1733,21 @@ anything yet.
   unchanged. The insert completion (`completeOrganizeosFragment`) takes an
   `instanceIdPrefix`: a bind resolves to `${prefix}${wsId}`, and with a prefix
   a block whose root the fragment lacks is refused, not inserted unbound.
+  An events block takes options,
+  `placeBlock(key, placementId, { card, style })`, and a form block given any
+  is a type error: `card: "dated"` places the dated card (a date column of
+  the month and the day number, in the tokens "OS Event Date" and "OS Event
+  Day", beside the details, with no cover image) in place of the cover card,
+  which stays the default and the Components panel's; `style` is local style
+  on the block's root, replacing its declarations by key.
+- **Template block tokens.** `SiteTemplate.blockTokens` gives the template's
+  look for the block tokens by name (`BlockTokenName`: "OS Field", "OS
+  Input", "OS Button", "OS Message", "OS Card", "OS Event Date" and "OS Event
+  Day"). `renderSiteTemplate` merges each declaration into the page
+  fragment's token of that name by key (one under a media query goes on the
+  fragment's breakpoint for it, added when the page has none), never into the
+  shared `token()` objects, and the apply routine writes them over a token of
+  that name the project already holds, which the insert's "ours" would keep.
 - **Block tokens read the site variables.** "OS Input", "OS Button" and "OS
   Card" (`shared/form-tokens.ts`, `events/event-card.template.tsx`) take their
   background and text colours from `--base`, `--text` and `--accent-1`, and the
@@ -1740,8 +1755,9 @@ anything yet.
   site that defines none looks as it did. The focus ring is longhands: the
   shorthand resolves a `var()` that has a fallback to the fallback when it is
   parsed. The names are written out in those files, which do not import the
-  module that lists them. Borders, the message grey and the error reds stay
-  literal. A project that already holds the old tokens keeps them: an insert
+  module that lists them. The input's resting border is `--text` and the
+  card's a `color-mix` of `--text` and `--base`, both as longhands. A project
+  that already holds the old tokens keeps them: an insert
   resolves a token it already has with "ours". The Signup Form's and the RSVP
   Form's headings are in `var(--font-heading)` (no fallback: on a site without
   the variable the declaration is invalid and the heading inherits, as before),
@@ -1779,10 +1795,13 @@ anything yet.
   there; the kit's `linkProps` sets it), a Resource, a repeated instance id, a count of
   `h1` other than one, a Signup Form, RSVP Form or Share Code Carrier not placed
   with `placeBlock`, and, in styles on elements outside a placed block's subtree
-  (a block's token used by the page's own element counts), a literal colour or
+  (a block's token used by the page's own element counts), in a placed
+  block's root style and in `blockTokens`, a literal colour or
   colour keyword where a colour goes, a variable outside the six, a
-  `font-family` that is not `var(--font-heading)` or `var(--font-body)`, and an
-  image by URL.
+  `font-family` that is not `var(--font-heading)` or `var(--font-body)`, an
+  image by URL, and a breakpoint other than the project's own (the base, and
+  max-width 991, 767 and 479px); and a `blockTokens` name no placed block
+  wears.
 - **The apply routine** (`apply-site-template.ts`) is one `updateWebstudioData`
   transaction, with `contentMode: false` and `conflictResolution: "ours"`
   whatever mode the builder is in, so root styles, tokens and assets are

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { encodeDataSourceVariable } from "@webstudio-is/sdk";
-import { renderTemplate, ws } from "@webstudio-is/template";
+import { renderTemplate, css, ws } from "@webstudio-is/template";
 import { eventsTemplate } from "../events/event-card.template";
 import { createBlockPlacer, prefixWsIds, type BlockKey } from "./place-block";
 
@@ -10,6 +10,20 @@ const SignupForm: BlockKey = "@organizeos/site-components:SignupForm";
 
 const instanceIds = (fragment: ReturnType<typeof renderTemplate>) =>
   fragment.instances.map((instance) => instance.id);
+
+type Fragment = ReturnType<typeof renderTemplate>;
+
+/** An instance's local declarations, as breakpoint, property and CSS-ish value. */
+const localStyles = (fragment: Fragment, instanceId: string) =>
+  fragment.styles
+    .filter((style) => style.styleSourceId === `${instanceId}:ws:style`)
+    .map(({ breakpointId, state, property, value }) => ({
+      breakpoint: fragment.breakpoints.find((item) => item.id === breakpointId)
+        ?.maxWidth,
+      state,
+      property,
+      value,
+    }));
 
 describe("placing blocks", () => {
   test("an Event Card and an Event List on one page get distinct ids", () => {
@@ -179,5 +193,133 @@ describe("prefixWsIds", () => {
       (instance) => instance.id === "root:named"
     );
     expect(named?.children).toEqual([{ type: "text", value: "text" }]);
+  });
+});
+
+describe("placement options", () => {
+  const RsvpForm: BlockKey = "@organizeos/site-components:RsvpForm";
+  const labelsOf = (fragment: Fragment) =>
+    fragment.instances.map((instance) => instance.label);
+
+  test("an events block places the cover card by default, and the dated card when asked", () => {
+    for (const key of [EventList, EventCard]) {
+      const { placeBlock } = createBlockPlacer();
+      const cover = renderTemplate(placeBlock(key, "cover"));
+      expect(labelsOf(cover)).toContain("Cover");
+      expect(labelsOf(cover)).not.toContain("Date");
+      const coverAgain = renderTemplate(
+        placeBlock(key, "cover-again", { card: "cover" })
+      );
+      expect(labelsOf(coverAgain)).toContain("Cover");
+      const dated = renderTemplate(placeBlock(key, "dated", { card: "dated" }));
+      expect(labelsOf(dated)).toContain("Date");
+      expect(labelsOf(dated)).not.toContain("Cover");
+      // the ids the insert binds by, under the placement's prefix
+      expect(instanceIds(dated)).toEqual(
+        expect.arrayContaining([
+          "dated",
+          "dated:events",
+          "dated:empty",
+          "dated:unavailable",
+        ])
+      );
+    }
+  });
+
+  test("the cover and the dated card on one page share one OS Card token", () => {
+    const { placeBlock } = createBlockPlacer();
+    const fragment = renderTemplate(
+      <ws.element ws:tag="body">
+        {placeBlock(EventCard, "featured")}
+        {placeBlock(EventList, "upcoming", { card: "dated" })}
+      </ws.element>
+    );
+    const cards = fragment.styleSources.filter(
+      (source) => source.type === "token" && source.name === "OS Card"
+    );
+    expect(cards).toHaveLength(1);
+    const wearers = fragment.styleSourceSelections.flatMap((selection) =>
+      selection.values.includes(cards[0].id) ? [selection.instanceId] : []
+    );
+    expect(
+      wearers.map(
+        (id) => fragment.instances.find((item) => item.id === id)?.tag
+      )
+    ).toEqual(["article", "article"]);
+    const ids = instanceIds(fragment);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test("style replaces the root's own declarations by key and adds the rest", () => {
+    const { placeBlock } = createBlockPlacer();
+    const fragment = renderTemplate(
+      placeBlock(EventList, "upcoming", {
+        style: css`
+          grid-template-columns: 1fr;
+          row-gap: 0;
+          @media (max-width: 767px) {
+            row-gap: 12px;
+          }
+        `,
+      })
+    );
+    const styles = localStyles(fragment, "upcoming");
+    const declared = (property: string, breakpoint?: number) =>
+      styles.filter(
+        (style) =>
+          style.property === property && style.breakpoint === breakpoint
+      );
+    // replaced: one declaration each
+    expect(declared("gridTemplateColumns").map(({ value }) => value)).toEqual([
+      { type: "unit", unit: "fr", value: 1 },
+    ]);
+    expect(declared("rowGap").map(({ value }) => value)).toEqual([
+      { type: "unit", unit: "number", value: 0 },
+    ]);
+    // kept
+    expect(declared("display").map(({ value }) => value)).toEqual([
+      { type: "keyword", value: "grid" },
+    ]);
+    expect(declared("columnGap").map(({ value }) => value)).toEqual([
+      { type: "unit", unit: "px", value: 24 },
+    ]);
+    // added, on its breakpoint
+    expect(declared("rowGap", 767).map(({ value }) => value)).toEqual([
+      { type: "unit", unit: "px", value: 12 },
+    ]);
+    expect(styles).toHaveLength(5);
+  });
+
+  test("style leaves the block's template as it was", () => {
+    const { placeBlock } = createBlockPlacer();
+    renderTemplate(
+      placeBlock(EventList, "styled", {
+        style: css`
+          grid-template-columns: 1fr;
+        `,
+      })
+    );
+    const plain = renderTemplate(
+      createBlockPlacer().placeBlock(EventList, "plain")
+    );
+    expect(
+      localStyles(plain, "plain").find(
+        (style) => style.property === "gridTemplateColumns"
+      )?.value
+    ).toEqual({
+      type: "unparsed",
+      value: "repeat(auto-fill,minmax(260px,1fr))",
+    });
+  });
+
+  test("a form block takes no options", () => {
+    const { placeBlock } = createBlockPlacer();
+    // @ts-expect-error a form block's placement takes no options
+    placeBlock(SignupForm, "signup", { card: "dated" });
+    // @ts-expect-error a form block's placement takes no options
+    placeBlock(RsvpForm, "rsvp", { style: [] });
+    // a key typed as any block's takes none either
+    const anyKey: BlockKey = EventList as BlockKey;
+    expect(() => placeBlock(anyKey, "any")).not.toThrow();
   });
 });

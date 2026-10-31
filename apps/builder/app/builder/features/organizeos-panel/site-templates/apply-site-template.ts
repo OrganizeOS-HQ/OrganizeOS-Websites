@@ -21,6 +21,7 @@ import {
   BLANK_CANONICAL_VALUES,
   CANONICAL_COLOR_NAMES,
   CANONICAL_FONT_NAMES,
+  getBlockTokenStyles,
   isCanonicalName,
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
@@ -220,6 +221,43 @@ const retargetHomeLinks = (
   }),
 });
 
+/**
+ * The template's block tokens written into the project's token of each name,
+ * each declaration replacing the token's own of the same key. The pages bring
+ * the template's look in their tokens, but the insert resolves a token the
+ * project already holds with "ours", which keeps that token as it stands: an
+ * admin who inserted an Event Card on /newsletter before choosing a template
+ * has one. A breakpoint the project lacks is added.
+ */
+const writeBlockTokensMutable = (
+  data: WebstudioData,
+  blockTokens: NonNullable<SiteTemplate["blockTokens"]>
+) => {
+  for (const source of data.styleSources.values()) {
+    if (source.type !== "token") {
+      continue;
+    }
+    const style = Object.entries(blockTokens).find(
+      ([name]) => name === source.name
+    )?.[1];
+    if (style === undefined) {
+      continue;
+    }
+    const { styles, newBreakpoints } = getBlockTokenStyles({
+      styleSourceId: source.id,
+      style,
+      breakpoints: Array.from(data.breakpoints.values()),
+      createBreakpointId: nanoid,
+    });
+    for (const breakpoint of newBreakpoints) {
+      data.breakpoints.set(breakpoint.id, breakpoint);
+    }
+    for (const decl of styles) {
+      data.styles.set(getStyleDeclKey(decl), decl);
+    }
+  }
+};
+
 /** Delete a page's body with its descendants and their local styles. */
 const deleteBodyMutable = (data: WebstudioData, bodyId: Instance["id"]) => {
   const localStyleSourceIds = findLocalStyleSourcesWithinInstances(
@@ -242,7 +280,8 @@ const deleteBodyMutable = (data: WebstudioData, bodyId: Instance["id"]) => {
  * while the chooser is open and while an apply awaits), when a page brings a
  * Resource, or when a page's path is taken. A placed block that cannot be
  * bound (its Events Resource is gone) is left in place, unbound, and named in
- * `unboundBlocks`.
+ * `unboundBlocks`. The template's block tokens are written over the project's
+ * tokens of their names last (writeBlockTokensMutable).
  */
 export const applySiteTemplateMutable = (
   data: WebstudioData,
@@ -252,11 +291,14 @@ export const applySiteTemplateMutable = (
     presetIds,
     variables,
     ignoreAssetIds,
+    blockTokens,
   }: {
     projectId: string;
     presetIds: OrganizeosPresetIds;
     variables: CanonicalValues;
     ignoreAssetIds: Set<string>;
+    /** The template's, which the pages were rendered with. */
+    blockTokens: SiteTemplate["blockTokens"];
   }
 ): ApplyResult => {
   const homePage = data.pages.pages.get(data.pages.homePageId);
@@ -338,6 +380,9 @@ export const applySiteTemplateMutable = (
       completeOrganizeosInsertMutable(data, completion, newInstanceIds);
     }
   }
+  if (blockTokens !== undefined) {
+    writeBlockTokensMutable(data, blockTokens);
+  }
   return { status: "applied", unboundBlocks };
 };
 
@@ -416,6 +461,7 @@ export const applySiteTemplate = async (
         ...assetIds.values(),
         ...fonts.map(({ assetId }) => assetId),
       ]),
+      blockTokens: template.blockTokens,
     });
   });
   if (result.status !== "applied") {

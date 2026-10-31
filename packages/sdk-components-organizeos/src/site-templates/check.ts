@@ -1,7 +1,10 @@
+import { camelCaseProperty, parseMediaQuery } from "@webstudio-is/css-data";
 import { hyphenateProperty } from "@webstudio-is/css-engine";
 import {
+  type Breakpoint,
   type Instance,
   type WebstudioFragment,
+  initialBreakpoints,
   pagePath,
 } from "@webstudio-is/sdk";
 import {
@@ -104,6 +107,36 @@ const contrastChecks = [
   { foreground: "base", background: "accent-1", minimum: 4.5 },
   { foreground: "accent-2", background: "base", minimum: 3 },
 ] as const;
+
+// The project's own breakpoints, the only ones a template's styles use (the
+// wave's global constraints): the base, and the max-width ones every project
+// is created with.
+const projectMaxWidths = initialBreakpoints.flatMap(({ maxWidth }) =>
+  maxWidth === undefined ? [] : [maxWidth]
+);
+
+type Media = Pick<Breakpoint, "minWidth" | "maxWidth" | "condition">;
+
+const describeMedia = ({ minWidth, maxWidth, condition }: Media) =>
+  [
+    ...(minWidth === undefined ? [] : [`(min-width: ${minWidth}px)`]),
+    ...(maxWidth === undefined ? [] : [`(max-width: ${maxWidth}px)`]),
+    ...(condition === undefined ? [] : [`(${condition})`]),
+  ].join(" and ");
+
+/** What is wrong with the breakpoint a declaration is under, if anything. */
+const findBreakpointProblem = (media: Media): string | undefined => {
+  const { minWidth, maxWidth, condition } = media;
+  if (
+    minWidth === undefined &&
+    condition === undefined &&
+    (maxWidth === undefined || projectMaxWidths.includes(maxWidth))
+  ) {
+    return;
+  }
+  const widths = projectMaxWidths.map((width) => `${width}px`).join(", ");
+  return `is under the media query ${describeMedia(media)}, not one of the project's breakpoints (the base, or max-width ${widths})`;
+};
 
 const pageName = (key: string) => `Page "${key}"`;
 
@@ -328,12 +361,25 @@ const bodyOf = (fragment: WebstudioFragment) => {
 const checkStyles = (page: RenderedPage, blockIds: Set<string>): string[] => {
   const { fragment } = page;
   const instances = instancesById(fragment);
+  const roots = new Set(page.placements.map((placement) => placement.rootId));
+  const isLocal = (styleSourceId: string) =>
+    fragment.styleSources.some(
+      (source) => source.id === styleSourceId && source.type === "local"
+    );
   // A style source is checked when any instance outside a placed block
-  // selects it, so a block's token used by the page's own element is too.
+  // selects it, so a block's token used by the page's own element is too. A
+  // placed block's root style is checked too: placeBlock's `style` puts the
+  // template's own declarations there.
   const checkedSources = new Set(
-    fragment.styleSourceSelections.flatMap((selection) =>
-      blockIds.has(selection.instanceId) ? [] : selection.values
-    )
+    fragment.styleSourceSelections.flatMap((selection) => {
+      if (roots.has(selection.instanceId)) {
+        return selection.values.filter(isLocal);
+      }
+      return blockIds.has(selection.instanceId) ? [] : selection.values;
+    })
+  );
+  const breakpoints = new Map(
+    fragment.breakpoints.map((breakpoint) => [breakpoint.id, breakpoint])
   );
   const describeSource = (styleSourceId: string) => {
     const source = fragment.styleSources.find(
@@ -352,11 +398,71 @@ const checkStyles = (page: RenderedPage, blockIds: Set<string>): string[] => {
     if (checkedSources.has(decl.styleSourceId) === false) {
       return [];
     }
-    return findStyleProblems(decl.property, decl.value).map(
-      (problem) =>
-        `${pageName(page.key)}: ${hyphenateProperty(decl.property)} on ${describeSource(decl.styleSourceId)} uses ${problem}`
-    );
+    const where = `${pageName(page.key)}: ${hyphenateProperty(decl.property)} on ${describeSource(decl.styleSourceId)}`;
+    const breakpoint = breakpoints.get(decl.breakpointId);
+    const breakpointProblem =
+      breakpoint === undefined ? undefined : findBreakpointProblem(breakpoint);
+    return [
+      ...findStyleProblems(decl.property, decl.value).map(
+        (problem) => `${where} uses ${problem}`
+      ),
+      ...(breakpointProblem === undefined
+        ? []
+        : [`${where} ${breakpointProblem}`]),
+    ];
   });
+};
+
+// A template's look for the block tokens is its own style: held to the
+// rules its page styles are.
+const checkBlockTokenStyles = (template: SiteTemplate): string[] =>
+  Object.entries(template.blockTokens ?? {}).flatMap(([name, style = []]) =>
+    style.flatMap(({ breakpoint, property, value }) => {
+      const where = `Block tokens: ${property} on "${name}"`;
+      const media = breakpoint === undefined ? {} : parseMediaQuery(breakpoint);
+      const breakpointProblem =
+        media === undefined
+          ? `is under the media query ${breakpoint}, which does not parse`
+          : findBreakpointProblem(media);
+      return [
+        ...findStyleProblems(camelCaseProperty(property), value).map(
+          (problem) => `${where} uses ${problem}`
+        ),
+        ...(breakpointProblem === undefined
+          ? []
+          : [`${where} ${breakpointProblem}`]),
+      ];
+    })
+  );
+
+// A block token the template restyles is worn by a block it places: a name
+// no placed block wears styles nothing.
+const checkBlockTokenNames = (
+  template: SiteTemplate,
+  pages: RenderedPage[]
+): string[] => {
+  const worn = new Set<string>();
+  for (const page of pages) {
+    const { fragment } = page;
+    const blockIds = placedBlockIds(page);
+    const selected = new Set(
+      fragment.styleSourceSelections.flatMap((selection) =>
+        blockIds.has(selection.instanceId) ? selection.values : []
+      )
+    );
+    for (const source of fragment.styleSources) {
+      if (source.type === "token" && selected.has(source.id)) {
+        worn.add(source.name);
+      }
+    }
+  }
+  return Object.keys(template.blockTokens ?? {}).flatMap((name) =>
+    worn.has(name)
+      ? []
+      : [
+          `Block tokens: "${name}" is worn by no block the template places, so it styles nothing`,
+        ]
+  );
 };
 
 // An image on the page's own elements comes from the template's images
@@ -606,6 +712,7 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
     ...checkFontEntries(template),
     ...checkContrast(template),
     ...checkFontVariables(template),
+    ...checkBlockTokenStyles(template),
   ];
   let pages: RenderedPage[];
   try {
@@ -624,6 +731,7 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
     return violations;
   }
   const pageIds = new Set(pages.map((page) => page.pageId));
+  violations.push(...checkBlockTokenNames(template, pages));
   for (const page of pages) {
     const blockIds = placedBlockIds(page);
     violations.push(

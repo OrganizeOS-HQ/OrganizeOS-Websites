@@ -198,6 +198,215 @@ describe("checkSiteTemplate", () => {
     });
   });
 
+  describe("placement options", () => {
+    test("a placed block's root style is checked as the page's own", () => {
+      expectOneViolation(
+        checkAbout(({ placeBlock }) =>
+          placeBlock(EventList, "upcoming", {
+            style: css`
+              background-color: #ffffff;
+            `,
+          })
+        ),
+        '"about"',
+        '"Event List"',
+        "background-color"
+      );
+    });
+
+    test("a root style that reads the canonical variables is not a violation", () => {
+      expect(
+        checkAbout(({ placeBlock }) =>
+          placeBlock(EventList, "upcoming", {
+            card: "dated",
+            style: css`
+              grid-template-columns: 1fr;
+              background-color: var(--base);
+              @media (max-width: 767px) {
+                row-gap: 12px;
+              }
+            `,
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test("a root style under a breakpoint the project does not have is a violation", () => {
+      expectOneViolation(
+        checkAbout(({ placeBlock }) =>
+          placeBlock(EventList, "upcoming", {
+            style: css`
+              @media (min-width: 768px) {
+                grid-template-columns: 1fr 1fr;
+              }
+            `,
+          })
+        ),
+        '"about"',
+        '"Event List"',
+        "min-width: 768px"
+      );
+    });
+  });
+
+  describe("breakpoints", () => {
+    test.each([
+      ["a min-width query", "@media (min-width: 768px)", "min-width: 768px"],
+      ["a width the project lacks", "@media (max-width: 600px)", "600px"],
+    ])("%s on the page's own element is a violation", (_name, media, text) => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:label="Narrow"
+            ws:style={css`
+              ${media} {
+                display: none;
+              }
+            `}
+          />
+        )),
+        '"about"',
+        '"Narrow"',
+        text
+      );
+    });
+
+    test("the project's own breakpoints are not violations", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              @media (max-width: 991px) {
+                display: block;
+              }
+              @media (max-width: 767px) {
+                display: flex;
+              }
+              @media (max-width: 479px) {
+                display: grid;
+              }
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+  });
+
+  describe("block tokens", () => {
+    test("block tokens that read the canonical variables, on the project's breakpoints, are not violations", () => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Card": css`
+                border-top-color: var(--accent-1);
+                font-family: var(--font-body);
+                @media (max-width: 479px) {
+                  padding: 8px;
+                }
+              `,
+              "OS Input": css`
+                border-top-color: var(--accent-1);
+              `,
+            },
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test.each([
+      {
+        name: "a literal colour",
+        style: css`
+          border-top-color: #000000;
+        `,
+        mentions: ["border-top-color", "#000000"],
+      },
+      {
+        name: "a variable outside the canonical set",
+        style: css`
+          color: var(--brand);
+        `,
+        mentions: ["--brand"],
+      },
+      {
+        name: "a literal font",
+        style: css`
+          font-family: Georgia;
+        `,
+        mentions: ["Georgia"],
+      },
+      {
+        name: "a min-width query",
+        style: css`
+          @media (min-width: 768px) {
+            width: 100%;
+          }
+        `,
+        mentions: ["min-width: 768px"],
+      },
+    ])("$name in a block token is a violation", ({ style, mentions }) => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ blockTokens: { "OS Card": style } })),
+        "Block tokens",
+        '"OS Card"',
+        ...mentions
+      );
+    });
+
+    test("a block token no placed block wears is a violation", () => {
+      // the fixture places cover cards and a Signup Form: no date column
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Card": css`
+                padding: 24px;
+              `,
+              "OS Event Date": css`
+                width: 56px;
+              `,
+            },
+          })
+        ),
+        "Block tokens",
+        '"OS Event Date"'
+      );
+    });
+
+    test("a dated card's tokens are worn once it is placed", () => {
+      expect(
+        checkAbout(({ placeBlock }) => (
+          <ws.element ws:tag="section" ws:label="Events">
+            {placeBlock(EventList, "dated", { card: "dated" })}
+          </ws.element>
+        ))
+      ).toEqual([]);
+      expect(
+        checkSiteTemplate(
+          fixture({
+            pages: [
+              home,
+              aboutPage(({ placeBlock }) =>
+                placeBlock(EventList, "dated", { card: "dated" })
+              ),
+            ],
+            blockTokens: {
+              "OS Event Date": css`
+                width: 56px;
+              `,
+              "OS Event Day": css`
+                color: var(--accent-2);
+              `,
+            },
+          })
+        )
+      ).toEqual([]);
+    });
+  });
+
   describe("events blocks", () => {
     test.each([
       {

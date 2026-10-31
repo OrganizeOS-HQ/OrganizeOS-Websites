@@ -196,6 +196,93 @@ const context = {
   presetIds,
   variables,
   ignoreAssetIds: new Set<string>(),
+  blockTokens: undefined,
+};
+
+/**
+ * The fixture with its Event List as dated cards, and a look for two of the
+ * block tokens: OS Card's top border and padding, and OS Event Date's width
+ * on the narrowest phones.
+ */
+const datedTemplate: SiteTemplate = {
+  ...template,
+  pages: [
+    {
+      ...template.pages[0],
+      body: ({ placeBlock }) => (
+        <ws.element ws:tag="body">
+          <ws.element ws:tag="h1">{"Your organization's goal"}</ws.element>
+          {placeBlock(EventList, "upcoming", { card: "dated" })}
+        </ws.element>
+      ),
+    },
+    template.pages[1],
+  ],
+  blockTokens: {
+    "OS Card": css`
+      padding: 24px;
+      border-top-color: var(--accent-1);
+    `,
+    "OS Event Date": css`
+      @media (max-width: 479px) {
+        width: 56px;
+      }
+    `,
+  },
+};
+
+const renderDatedPages = () =>
+  renderSiteTemplate(datedTemplate, {
+    assetIds: new Map([
+      ["hero.jpg", "asset-hero"],
+      ["team.jpg", "asset-team"],
+    ]),
+    generatePageId: () => `page-${++pageCount}`,
+  });
+
+/** The project's tokens of a name. */
+const tokensNamed = (data: WebstudioData, name: string) =>
+  [...data.styleSources.values()].filter(
+    (source) => source.type === "token" && source.name === name
+  );
+
+/** A token's declarations, by breakpoint width (undefined for the base). */
+const tokenDecls = (data: WebstudioData, styleSourceId: string) =>
+  [...data.styles.values()]
+    .filter((decl) => decl.styleSourceId === styleSourceId)
+    .map((decl) => ({
+      maxWidth: data.breakpoints.get(decl.breakpointId)?.maxWidth,
+      breakpointId: decl.breakpointId,
+      property: decl.property,
+      state: decl.state,
+      value: decl.value,
+    }));
+
+/**
+ * "OS Card" as an Event Card inserted on /newsletter before a template is
+ * chosen leaves it: its old literal border, and a declaration of its own.
+ */
+const withOldCardToken = async () => {
+  const data = await createProvisionedProject(provisioning);
+  data.styleSources.set("old-card", {
+    type: "token",
+    id: "old-card",
+    name: "OS Card",
+  });
+  for (const [property, value] of [
+    ["borderTopColor", parseCssValue("border-top-color", "#e4e4e7")],
+    ["paddingTop", parseCssValue("padding-top", "16px")],
+    ["cursor", parseCssValue("cursor", "pointer")],
+  ] as const) {
+    const decl: StyleDecl = {
+      styleSourceId: "old-card",
+      breakpointId: findBaseBreakpoint(data).id,
+      property,
+      value,
+    };
+    data.styles.set(getStyleDeclKey(decl), decl);
+  }
+  return data;
 };
 
 const findPage = (data: WebstudioData, path: string) =>
@@ -643,6 +730,100 @@ describe("applySiteTemplateMutable", () => {
         (instance) => instance.label === "Event List"
       )
     ).toBe(true);
+  });
+
+  describe("template block tokens", () => {
+    const datedContext = {
+      ...context,
+      blockTokens: datedTemplate.blockTokens,
+    };
+
+    test("the applied tokens wear the template's look, on the project's breakpoints", async () => {
+      const data = await createProvisionedProject(provisioning);
+      const breakpointsBefore = new Map(data.breakpoints);
+
+      const result = applySiteTemplateMutable(
+        data,
+        renderDatedPages(),
+        datedContext
+      );
+
+      expect(result).toEqual({ status: "applied", unboundBlocks: [] });
+      const [card] = tokensNamed(data, "OS Card");
+      expect(tokensNamed(data, "OS Card")).toHaveLength(1);
+      const cardDecls = tokenDecls(data, card.id);
+      expect(
+        cardDecls.filter((decl) => decl.property === "borderTopColor")
+      ).toEqual([
+        expect.objectContaining({
+          maxWidth: undefined,
+          value: { type: "var", value: "accent-1" },
+        }),
+      ]);
+      const [date] = tokensNamed(data, "OS Event Date");
+      const widths = tokenDecls(data, date.id).filter(
+        (decl) => decl.property === "width"
+      );
+      expect(widths.map(({ maxWidth, value }) => [maxWidth, value])).toEqual(
+        expect.arrayContaining([[479, { type: "unit", unit: "px", value: 56 }]])
+      );
+      // the provisioned 479 breakpoint, not one of the template's own
+      const phone = widths.find((decl) => decl.maxWidth === 479);
+      expect(breakpointsBefore.has(phone!.breakpointId)).toBe(true);
+      expect(data.breakpoints).toEqual(breakpointsBefore);
+    });
+
+    test("a token the project already holds takes the template's declarations, by key", async () => {
+      const data = await withOldCardToken();
+
+      applySiteTemplateMutable(data, renderDatedPages(), datedContext);
+
+      // reused, as an insert reuses a token by name ("ours")
+      expect(tokensNamed(data, "OS Card").map(({ id }) => id)).toEqual([
+        "old-card",
+      ]);
+      const byProperty = new Map(
+        tokenDecls(data, "old-card").map((decl) => [decl.property, decl])
+      );
+      expect(byProperty.get("borderTopColor")?.value).toEqual({
+        type: "var",
+        value: "accent-1",
+      });
+      expect(byProperty.get("paddingTop")?.value).toEqual({
+        type: "unit",
+        unit: "px",
+        value: 24,
+      });
+      expect(byProperty.get("paddingLeft")?.value).toEqual({
+        type: "unit",
+        unit: "px",
+        value: 24,
+      });
+      // what the template does not name is the project's
+      expect(byProperty.get("cursor")?.value).toEqual({
+        type: "keyword",
+        value: "pointer",
+      });
+      // and the dated card wears it
+      const home = data.pages.pages.get(data.pages.homePageId)!;
+      const article = [
+        ...findTreeInstanceIds(data.instances, home.rootInstanceId),
+      ]
+        .map((id) => data.instances.get(id)!)
+        .find((instance) => instance.tag === "article")!;
+      expect(data.styleSourceSelections.get(article.id)?.values).toEqual([
+        "old-card",
+      ]);
+    });
+
+    test("without block tokens a token the project already holds is kept as it is", async () => {
+      const data = await withOldCardToken();
+      const before = tokenDecls(data, "old-card");
+
+      applySiteTemplateMutable(data, renderDatedPages(), context);
+
+      expect(tokenDecls(data, "old-card")).toEqual(before);
+    });
   });
 
   describe("several blocks on one page", () => {
@@ -1175,6 +1356,22 @@ describe("applySiteTemplate", () => {
       expect.stringContaining('"team.jpg"'),
     ]);
     consoleError.mockRestore();
+  });
+
+  test("writes the template's block tokens over a token the project holds", async () => {
+    setStores(await withOldCardToken());
+
+    expect(await applySiteTemplate(datedTemplate)).toEqual({
+      status: "applied",
+      unboundBlocks: [],
+    });
+
+    const data = getWebstudioData();
+    expect(
+      tokenDecls(data, "old-card").find(
+        (decl) => decl.property === "borderTopColor"
+      )?.value
+    ).toEqual({ type: "var", value: "accent-1" });
   });
 
   test("clears the selection, as Create item page does", async () => {

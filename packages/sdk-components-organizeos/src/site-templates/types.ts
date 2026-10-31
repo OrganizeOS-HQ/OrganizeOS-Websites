@@ -1,6 +1,6 @@
 import type { AssetValue, TemplateStyleDecl } from "@webstudio-is/template";
 import type { CanonicalValues } from "./canonical-variables";
-import type { BlockKey } from "./place-block";
+import type { PlaceBlock } from "./place-block";
 
 // The site-template format (spec 6.1): a template is a module that exports one
 // SiteTemplate, rendered by ./render and held to the rules by ./check.
@@ -52,11 +52,28 @@ export type FontEntry = {
   source: string;
 };
 
+/**
+ * Declarations a template gives a platform block: what `css` returns, as
+ * page styles are written. A placed block's root style
+ * (`placeBlock`'s `style`) or a block token's look (`blockTokens`).
+ */
+export type BlockStyle = TemplateStyleDecl[];
+
+/** The tokens the platform blocks wear, which a template may restyle. */
+export type BlockTokenName =
+  | "OS Field"
+  | "OS Input"
+  | "OS Button"
+  | "OS Message"
+  | "OS Card"
+  | "OS Event Date"
+  | "OS Event Day";
+
 /** What a page's body is rendered with. Images are named by file. */
 export type PageContext = {
   /** Every page's id by its key, assigned before any body renders. */
   pageIds: Record<string, string>;
-  placeBlock: (key: BlockKey, placementId: string) => JSX.Element;
+  placeBlock: PlaceBlock;
   image: (file: string) => AssetValue;
   backgroundImage: (file: string) => TemplateStyleDecl[];
   imageAlt: (file: string) => string;
@@ -98,4 +115,12 @@ export type SiteTemplate = {
    */
   fonts: Record<string, FontEntry>;
   pages: SiteTemplatePage[];
+  /**
+   * The template's look for the block tokens, by name: each declaration
+   * replaces the token's own of the same key (breakpoint, state, property)
+   * or is added. One look per name, as a project holds one token per name:
+   * a block the org inserts later wears it too. Each name is worn by a block
+   * the template places.
+   */
+  blockTokens?: Partial<Record<BlockTokenName, BlockStyle>>;
 };

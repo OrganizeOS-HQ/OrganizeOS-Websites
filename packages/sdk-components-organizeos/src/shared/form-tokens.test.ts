@@ -1,13 +1,24 @@
 import { createElement } from "react";
 import { expect, test } from "vitest";
+import { generateCss } from "@webstudio-is/sdk";
 import { renderTemplate, ws, type Token } from "@webstudio-is/template";
-import { cardToken } from "../events/event-card.template";
+import {
+  cardToken,
+  eventDateToken,
+  eventDayToken,
+} from "../events/event-card.template";
 import { approvedPalettes } from "../site-templates/__fixtures__/approved-palettes";
 import {
   CANONICAL_COLOR_NAMES,
   contrastRatio,
 } from "../site-templates/canonical-variables";
-import { buttonToken, inputToken, messageToken } from "./form-tokens";
+import type { BlockTokenName } from "../site-templates/types";
+import {
+  buttonToken,
+  fieldToken,
+  inputToken,
+  messageToken,
+} from "./form-tokens";
 
 // The block tokens read the site's canonical variables (spec rule 2) with
 // their old literal colours as fallbacks, so a site that defines no variable
@@ -109,9 +120,96 @@ test("the focus ring keeps its width, style and offset as longhands", () => {
   }
 });
 
-test("the resting borders stay literal", () => {
-  expect(valueOf(inputToken, "borderTopColor")?.type).not.toBe("var");
-  expect(valueOf(cardToken, "borderTopColor")?.type).not.toBe("var");
+// The resting borders follow the site's colours. They are longhands: the
+// `border` shorthand resolves a `var()` that has a fallback to the fallback
+// when it is parsed. The input's edge is --text, which the check holds to
+// 4.5:1 on --base, above the 3:1 a field's edge needs (WCAG 1.4.11); the
+// card's is a quieter mix of the two.
+const sides = ["Top", "Right", "Bottom", "Left"];
+const cardBorder = {
+  type: "unparsed",
+  value: "color-mix(in srgb,var(--text, #18181b) 25%,var(--base, #ffffff))",
+};
+
+test("the resting borders read the site colours, as longhands", () => {
+  for (const side of sides) {
+    for (const token of [inputToken, cardToken]) {
+      expect(valueOf(token, `border${side}Width`), token.name).toEqual({
+        type: "unit",
+        unit: "px",
+        value: 1,
+      });
+      expect(valueOf(token, `border${side}Style`), token.name).toEqual({
+        type: "keyword",
+        value: "solid",
+      });
+    }
+    expect(valueOf(inputToken, `border${side}Color`)).toEqual(
+      variable("text", "#d4d4d8")
+    );
+    expect(valueOf(cardToken, `border${side}Color`)).toEqual(cardBorder);
+  }
+});
+
+test("the borders reach the published CSS with their variables", () => {
+  const fragment = renderTemplate(
+    createElement(
+      ws.element,
+      { "ws:tag": "div" },
+      createElement(ws.element, {
+        "ws:tag": "input",
+        "ws:tokens": [inputToken],
+      }),
+      createElement(ws.element, {
+        "ws:tag": "article",
+        "ws:tokens": [cardToken],
+      })
+    )
+  );
+  const { cssText } = generateCss({
+    assets: new Map(),
+    instances: new Map(fragment.instances.map((item) => [item.id, item])),
+    props: new Map(),
+    breakpoints: new Map(fragment.breakpoints.map((item) => [item.id, item])),
+    styles: new Map(
+      fragment.styles.map((item, index) => [String(index), item])
+    ),
+    styleSourceSelections: new Map(
+      fragment.styleSourceSelections.map((item) => [item.instanceId, item])
+    ),
+    componentMetas: new Map(),
+    assetBaseUrl: "/assets/",
+    atomic: true,
+  });
+  // the engine writes the four sides back as one `border`, which keeps the
+  // variable: a browser resolves it when the style is used, not parsed
+  const borders = cssText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("border:"));
+  expect(borders).toEqual([
+    "border: 1px solid var(--text, #d4d4d8)",
+    "border: 2px solid var(--text, #dc2626)",
+    "border: 1px solid color-mix(in srgb,var(--text, #18181b) 25%,var(--base, #ffffff))",
+  ]);
+});
+
+// Every block token a site template can restyle (SiteTemplate.blockTokens),
+// by the name the type lists: a token renamed or added without the type
+// fails here.
+test("BlockTokenName names every block token", () => {
+  const byName = {
+    "OS Field": fieldToken,
+    "OS Input": inputToken,
+    "OS Button": buttonToken,
+    "OS Message": messageToken,
+    "OS Card": cardToken,
+    "OS Event Date": eventDateToken,
+    "OS Event Day": eventDayToken,
+  } satisfies Record<BlockTokenName, Token>;
+  for (const [name, token] of Object.entries(byName)) {
+    expect(token.name).toBe(name);
+  }
 });
 
 // Every colour a block's text or border reads from a variable, on the
@@ -124,6 +222,8 @@ const tokens = [
   ["OS Button", buttonToken],
   ["OS Message", messageToken],
   ["OS Card", cardToken],
+  ["OS Event Date", eventDateToken],
+  ["OS Event Day", eventDayToken],
 ] as const;
 
 type Reading = {
@@ -167,6 +267,10 @@ test("the colours the contrast test reads are the ones the blocks read from vari
       background,
     ])
   ).toEqual([
+    ["OS Input borderTopColor", "text", "base"],
+    ["OS Input borderRightColor", "text", "base"],
+    ["OS Input borderBottomColor", "text", "base"],
+    ["OS Input borderLeftColor", "text", "base"],
     ["OS Input color", "text", "base"],
     ["OS Input borderTopColor[data-invalid]", "text", "base"],
     ["OS Input borderRightColor[data-invalid]", "text", "base"],
@@ -176,6 +280,8 @@ test("the colours the contrast test reads are the ones the blocks read from vari
     ["OS Message color", "text", "base"],
     ["OS Message color[data-invalid]", "text", "base"],
     ["OS Card color", "text", "base"],
+    ["OS Event Date color", "text", "base"],
+    ["OS Event Day color", "text", "base"],
   ]);
 });
 
