@@ -2,6 +2,7 @@ import atkinson400Url from "@fontsource/atkinson-hyperlegible/files/atkinson-hyp
 import atkinson700Url from "@fontsource/atkinson-hyperlegible/files/atkinson-hyperlegible-latin-700-normal.woff2?url&no-inline";
 import bricolageUrl from "@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wght-normal.woff2?url&no-inline";
 import type { SiteTemplate } from "../../types";
+import { blockTokens } from "./block-tokens";
 import aboutUrl from "./images/about.jpg?url&no-inline";
 import snapshotBlockPartyUrl from "./images/snapshot-block-party.jpg?url&no-inline";
 import snapshotGardenUrl from "./images/snapshot-garden.jpg?url&no-inline";
@@ -19,19 +20,23 @@ import { home } from "./pages/home";
 // 2026-10-31-website-template-directions.md, section 2.2). Its pages are in
 // ./pages; what they share is its look (./styles), its pieces (./parts), the
 // sections more than one page uses (./sections) and the ways to help Home and
-// Get involved both list (./sample-content).
+// Get involved both list (./sample-content); its look for the platform blocks
+// it places is ./block-tokens.
 //
 // The photos are public domain works of United States federal agencies, from
 // Wikimedia Commons, cropped, resized and compressed. Painted out: in
 // snapshot-garden.jpg, the brand patch on a cap and the brand on a pair of
 // sunglasses; in snapshot-block-party.jpg, a brand emblem on a T-shirt (its
 // print continued over it), an embroidered emblem on a cap's visor, a
-// printed carton in the bottom-left corner, and a third person cut off at
-// the left edge (the field behind cloned from the field between the two
-// volunteers); in snapshot-meeting.jpg, the printing on the back of a cap and
-// of a T-shirt; in about.jpg, the agency emblem on a cap and a name tag on a
-// jacket (each filled from the cap's or the jacket's own fabric) and a
-// vehicle maker's name; in story.jpg, the title on a booklet.
+// printed carton in the bottom-left corner (and the seam where that fill met
+// the cloth and the arm, cloned from the cloth and the arm beside it), and a
+// third person cut off at the left edge (the field behind cloned from the
+// field between the two volunteers, and a fleck of him left at her chin
+// cloned from the field beside it); in snapshot-meeting.jpg, the printing on
+// the back of a cap and of a T-shirt; in about.jpg, the agency emblem on a
+// cap and a name tag on a jacket (each filled from the cap's or the jacket's
+// own fabric) and a vehicle maker's name; in story.jpg, the title on a
+// booklet.
 
 export const porchLightTemplate: SiteTemplate = {
   id: "porch-light",
@@ -103,4 +108,5 @@ export const porchLightTemplate: SiteTemplate = {
     },
   },
   pages: [home, about, events, getInvolved, contact],
+  blockTokens,
 };

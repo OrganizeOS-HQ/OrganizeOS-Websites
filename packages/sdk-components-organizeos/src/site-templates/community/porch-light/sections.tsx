@@ -11,9 +11,9 @@ import {
   text,
 } from "../../kit";
 import type { PageContext } from "../../types";
+import { eventGridStyle } from "./block-tokens";
 import {
   buttons,
-  eventsBoard,
   photo,
   quietLink,
   sectionHeader,
@@ -233,8 +233,10 @@ export const opportunitiesSection = ({
   });
 
 /**
- * Events: Card grid. The Event List of everything coming up, in its
- * noticeboard, under its heading.
+ * Events: Card grid. The Event List of everything coming up under its
+ * heading: dated cards, each with a day-number chip, three up, two from
+ * 768px to 991px, and rows with the chip on the left on phones
+ * (./block-tokens).
  */
 export const eventsSection = ({
   placeBlock,
@@ -253,9 +255,10 @@ export const eventsSection = ({
     label: "Events: Card grid",
     children: keyed([
       sectionHeader({ pageIds, tag, heading, intro, link }),
-      eventsBoard(
-        placeBlock("@organizeos/site-components:EventList", "events")
-      ),
+      placeBlock("@organizeos/site-components:EventList", "events", {
+        card: "dated",
+        style: eventGridStyle(),
+      }),
     ]),
   });
 

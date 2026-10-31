@@ -232,32 +232,3 @@ export const sectionHeader = ({
     ])}
   </ws.element>
 );
-
-/**
- * A placed Event List in a noticeboard: a 2px outlined panel with the
- * template's corners, which holds its cards, and its "No upcoming events"
- * line when there are none. The block's cards are at least 260px wide, so
- * below 480px the panel's sides narrow with the window, to 8px on a 320px
- * phone, which leaves them room.
- */
-export const eventsBoard = (block: JSX.Element): JSX.Element => (
-  <ws.element
-    ws:tag="div"
-    ws:label="Events board"
-    ws:style={[
-      ...outlineStyles(),
-      ...css`
-        padding: ${SPACE[32]};
-        ${BREAKPOINT.landscape} {
-          padding: ${SPACE[16]};
-        }
-        ${BREAKPOINT.portrait} {
-          padding-left: clamp(8px, 10vw - 24px, 16px);
-          padding-right: clamp(8px, 10vw - 24px, 16px);
-        }
-      `,
-    ]}
-  >
-    {block}
-  </ws.element>
-);
