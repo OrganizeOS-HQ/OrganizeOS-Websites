@@ -235,6 +235,41 @@ describe("section", () => {
     expect(stylesAt(fragment, inner, 1440)).not.toHaveProperty("position");
   });
 
+  test("refuses styles that restate one of its own declarations", () => {
+    const restating = (styles: ReturnType<typeof css>) => () =>
+      section({
+        label: "Hero",
+        background: "accent-1",
+        styles,
+        children: content(),
+      });
+    expect(
+      restating(css`
+        padding-top: 0;
+      `)
+    ).toThrow(/"Hero".*padding-top/);
+    expect(
+      restating(css`
+        ${BREAKPOINT.landscape} {
+          padding-bottom: 0;
+        }
+      `)
+    ).toThrow(/padding-bottom/);
+    expect(
+      restating(css`
+        --focus-ring: var(--text);
+      `)
+    ).toThrow(/--focus-ring/);
+    // the same property under another breakpoint is the template's own
+    expect(
+      restating(css`
+        ${BREAKPOINT.portrait} {
+          padding-top: 40px;
+        }
+      `)
+    ).not.toThrow();
+  });
+
   test("carries an id for in-page links only when given one", () => {
     const fragment = renderTemplate(
       <ws.element ws:tag="body">

@@ -7,6 +7,7 @@ import {
   SPACE,
   container,
   fontWeight,
+  textCase,
 } from "./layout";
 import {
   type SiteLink,
@@ -28,7 +29,10 @@ const footerColumn = (
   pageIds: PageContext["pageIds"],
   column: FooterColumn,
   key: number,
-  headingWeight: number | undefined
+  {
+    headingWeight,
+    headingCase,
+  }: Pick<KitStyle, "headingWeight" | "headingCase">
 ) => (
   <ws.element
     key={key}
@@ -53,6 +57,7 @@ const footerColumn = (
             line-height: 1.3;
           `,
           ...fontWeight(headingWeight),
+          ...textCase(headingCase),
         ]}
       >
         {column.heading}
@@ -80,7 +85,8 @@ export const footer = ({
   columns = [],
   note,
   headingWeight,
-}: Pick<KitStyle, "headingWeight"> & {
+  headingCase,
+}: Pick<KitStyle, "headingWeight" | "headingCase"> & {
   pageIds: PageContext["pageIds"];
   name?: string;
   tagline: string;
@@ -174,6 +180,7 @@ export const footer = ({
                     line-height: 1.2;
                   `,
                   ...fontWeight(headingWeight),
+                  ...textCase(headingCase),
                 ]}
               >
                 {sample(name)}
@@ -230,7 +237,10 @@ export const footer = ({
                     `}
                   >
                     {columns.map((column, index) =>
-                      footerColumn(pageIds, column, index, headingWeight)
+                      footerColumn(pageIds, column, index, {
+                        headingWeight,
+                        headingCase,
+                      })
                     )}
                   </ws.element>,
                 ]),

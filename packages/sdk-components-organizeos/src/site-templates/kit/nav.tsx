@@ -8,6 +8,7 @@ import {
   focusRing,
   fontWeight,
   tapTarget,
+  textCase,
 } from "./layout";
 import {
   LINK_GAP,
@@ -58,7 +59,7 @@ const barStyles = (layout: TemplateStyleDecl[]) => [
  * phone the name wraps at them and the button keeps its place beside it.
  */
 const nameLink = (
-  { pageIds, name, headingWeight }: NavOptions,
+  { pageIds, name, headingWeight, headingCase }: NavOptions,
   layout: TemplateStyleDecl[]
 ) => (
   <$.Link
@@ -75,6 +76,7 @@ const nameLink = (
         text-decoration-line: none;
       `,
       ...fontWeight(headingWeight),
+      ...textCase(headingCase),
       ...layout,
       ...focusRing(),
     ]}

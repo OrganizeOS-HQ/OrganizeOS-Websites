@@ -290,6 +290,24 @@ describe("nav", () => {
     }
   });
 
+  test("sets the name in the template's heading case, and none unasked", () => {
+    const upper = renderNav({ links, cta: donate, headingCase: "uppercase" });
+    expect(stylesAt(upper, byLabel(upper, "Name"), 1440)).toMatchObject({
+      "text-transform": "uppercase",
+    });
+    for (const label of ["Links", "Button"]) {
+      expect(stylesAt(upper, byLabel(upper, label), 1440)).not.toHaveProperty(
+        "text-transform"
+      );
+    }
+    const plain = renderNav({ links, cta: donate });
+    for (const instance of plain.instances) {
+      expect(stylesAt(plain, instance, 1440)).not.toHaveProperty(
+        "text-transform"
+      );
+    }
+  });
+
   describe("centered", () => {
     const renderCentered = () =>
       renderNav({

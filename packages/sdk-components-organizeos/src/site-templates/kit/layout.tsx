@@ -135,6 +135,8 @@ export type KitStyle = {
   buttonWeight?: number;
   /** The weight of the kit's text in `--font-heading`: the name and the footer's column titles. */
   headingWeight?: number;
+  /** The case of that text, as the template's headings are set; as typed when unset. */
+  headingCase?: "uppercase";
 };
 
 /** A `font-weight` declaration, or none when the template sets no weight. */
@@ -145,6 +147,19 @@ export const fontWeight = (weight: number | undefined): TemplateStyleDecl[] =>
         font-weight: ${String(weight)};
       `;
 
+/** A `text-transform` declaration, or none when the template sets no case. */
+export const textCase = (
+  headingCase: KitStyle["headingCase"]
+): TemplateStyleDecl[] =>
+  headingCase === undefined
+    ? []
+    : css`
+        text-transform: ${headingCase};
+      `;
+
+const declarationKey = ({ breakpoint, state, property }: TemplateStyleDecl) =>
+  JSON.stringify([breakpoint ?? "", state ?? "", property]);
+
 /**
  * A full-bleed `<section>` named `label` in the Navigator, in one of the
  * checked colour pairs (base by default), padded above and below, around a
@@ -152,8 +167,9 @@ export const fontWeight = (weight: number | undefined): TemplateStyleDecl[] =>
  * text) rings focus in its text colour (`FOCUS_RING_VARIABLE`). `id` is the
  * target of an in-page link (`#sign-up`). `styles` adds the template's own
  * to the section's (`position: relative`, so a full-bleed image inside the
- * container can cover the section); they name none of the kit's properties,
- * whose declarations would then repeat.
+ * container can cover the section); one that restates a declaration of the
+ * kit's (the same property at the same breakpoint and state) throws, since
+ * the later of the two would win unseen.
  */
 export const section = ({
   label,
@@ -171,28 +187,33 @@ export const section = ({
   styles?: TemplateStyleDecl[];
 }): JSX.Element => {
   const colours = sectionColours[background];
+  const own = css`
+    padding-top: ${sectionPadding.base};
+    padding-bottom: ${sectionPadding.base};
+    background-color: var(--${colours.background});
+    color: var(--${colours.text});
+    ${background === "base"
+      ? ""
+      : `--${FOCUS_RING_VARIABLE}: var(--${colours.text});`}
+    ${BREAKPOINT.landscape} {
+      padding-top: ${sectionPadding.phone};
+      padding-bottom: ${sectionPadding.phone};
+    }
+  `;
+  const ownKeys = new Set(own.map(declarationKey));
+  const restated = styles.find((style) => ownKeys.has(declarationKey(style)));
+  if (restated !== undefined) {
+    throw new Error(
+      `Section "${label}": its styles restate the kit's ${restated.property}${restated.breakpoint === undefined ? "" : ` under ${restated.breakpoint}`}`
+    );
+  }
   return (
     <ws.element
       ws:tag="section"
       ws:label={label}
       // an undefined prop would render as a prop with no value
       {...(id === undefined ? {} : { id })}
-      ws:style={[
-        ...css`
-          padding-top: ${sectionPadding.base};
-          padding-bottom: ${sectionPadding.base};
-          background-color: var(--${colours.background});
-          color: var(--${colours.text});
-          ${background === "base"
-            ? ""
-            : `--${FOCUS_RING_VARIABLE}: var(--${colours.text});`}
-          ${BREAKPOINT.landscape} {
-            padding-top: ${sectionPadding.phone};
-            padding-bottom: ${sectionPadding.phone};
-          }
-        `,
-        ...styles,
-      ]}
+      ws:style={[...own, ...styles]}
     >
       <ws.element ws:tag="div" ws:style={container(width)}>
         {children}

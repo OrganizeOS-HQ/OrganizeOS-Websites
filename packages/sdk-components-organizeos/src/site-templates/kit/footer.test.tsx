@@ -303,6 +303,24 @@ describe("footer", () => {
     }
   });
 
+  test("sets the template's heading case on the name and the column titles, and none unasked", () => {
+    const upper = renderFooter({ tagline, columns, headingCase: "uppercase" });
+    for (const instance of upper.fragment.instances) {
+      const titled =
+        instance.label === "Name" || instance.label === "Column title";
+      expect(
+        stylesAt(upper.fragment, instance, 1440)["text-transform"],
+        instance.label
+      ).toBe(titled ? "uppercase" : undefined);
+    }
+    const plain = renderFooter({ tagline, columns });
+    for (const instance of plain.fragment.instances) {
+      expect(stylesAt(plain.fragment, instance, 1440)).not.toHaveProperty(
+        "text-transform"
+      );
+    }
+  });
+
   test("sits on the base colours under a rule in the text colour", () => {
     const { fragment, outer } = renderFooter({ tagline });
     expect(stylesAt(fragment, outer, 1440)).toMatchObject({
