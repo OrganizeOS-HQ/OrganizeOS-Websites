@@ -158,6 +158,24 @@ describe("section", () => {
     expect(colours("text")).toEqual(["var(--text)", "var(--base)"]);
   });
 
+  test("takes a narrower container", () => {
+    for (const width of ["wide", "text", "narrow"] as const) {
+      const fragment = renderBody(
+        section({ label: "About", width, children: content() })
+      );
+      const [inner] = childInstances(fragment, byLabel(fragment, "About"));
+      expect(stylesAt(fragment, inner, 1440)).toMatchObject({
+        "max-width": CONTAINER[width],
+        "padding-left": "40px",
+      });
+    }
+    const fragment = renderBody(
+      section({ label: "About", children: content() })
+    );
+    const [inner] = childInstances(fragment, byLabel(fragment, "About"));
+    expect(stylesAt(fragment, inner, 1440)["max-width"]).toBe("1120px");
+  });
+
   test("carries an id for in-page links only when given one", () => {
     const fragment = renderTemplate(
       <ws.element ws:tag="body">

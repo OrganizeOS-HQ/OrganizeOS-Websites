@@ -1,28 +1,82 @@
-import { $, css, ws } from "@webstudio-is/template";
+import { css, ws } from "@webstudio-is/template";
 import type { PageContext } from "../types";
-import { BREAKPOINT, CONTAINER, SPACE, container } from "./layout";
-import { type PageLink, pageHref, textLinkStyles } from "./nav";
+import {
+  BREAKPOINT,
+  CONTAINER,
+  type KitStyle,
+  SPACE,
+  container,
+  fontWeight,
+} from "./layout";
+import { type SiteLink, textLink } from "./links";
 
-/** A footer column: a heading over links to the template's pages. */
-export type FooterColumn = { heading: string; links: PageLink[] };
+/** A footer column: a title over links to pages or anchors. */
+export type FooterColumn = { heading: string; links: SiteLink[] };
+
+/**
+ * One column: a `nav` named by its title for assistive technology, the
+ * title as plain text (no heading, so a footer adds none to every page's
+ * outline), then its links.
+ */
+const footerColumn = (
+  pageIds: PageContext["pageIds"],
+  column: FooterColumn,
+  key: number,
+  headingWeight: number | undefined
+) => (
+  <ws.element
+    key={key}
+    ws:tag="nav"
+    ws:label="Column"
+    aria-label={column.heading}
+    ws:style={css`
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    `}
+  >
+    {[
+      <ws.element
+        key="title"
+        ws:tag="p"
+        ws:label="Column title"
+        ws:style={[
+          ...css`
+            margin: 0;
+            font-family: var(--font-heading);
+            line-height: 1.3;
+          `,
+          ...fontWeight(headingWeight),
+        ]}
+      >
+        {column.heading}
+      </ws.element>,
+      ...column.links.map((link, index) => textLink(pageIds, link, index)),
+    ]}
+  </ws.element>
+);
 
 /**
  * The site's footer on the base colours under a rule in the text colour:
  * the org's name and a one-line tagline, then the columns of links, if any
- * (with none it is the simple footer). The columns sit beside the name from
- * 768px up, wrapping under it when they do not fit; on phones everything
- * stacks to one column.
+ * (with none it is the simple footer), then `note`, if any, in a box of its
+ * own (a paid-for-by or imprint line, at 14px). The columns sit beside the
+ * name from 768px up, wrapping under it when they do not fit; on phones
+ * everything stacks to one column.
  */
 export const footer = ({
   pageIds,
   name = "[Organization name]",
   tagline,
   columns = [],
-}: {
+  note,
+  headingWeight,
+}: Pick<KitStyle, "headingWeight"> & {
   pageIds: PageContext["pageIds"];
   name?: string;
   tagline: string;
   columns?: FooterColumn[];
+  note?: JSX.Element | JSX.Element[];
 }): JSX.Element => (
   <ws.element
     ws:tag="footer"
@@ -47,12 +101,9 @@ export const footer = ({
         ...container("wide"),
         ...css`
           display: flex;
-          flex-wrap: wrap;
-          justify-content: space-between;
-          column-gap: ${SPACE[64]};
+          flex-direction: column;
           row-gap: ${SPACE[48]};
           ${BREAKPOINT.landscape} {
-            flex-direction: column;
             row-gap: ${SPACE[32]};
           }
         `,
@@ -60,90 +111,99 @@ export const footer = ({
     >
       {[
         <ws.element
-          key="name-and-tagline"
+          key="bar"
           ws:tag="div"
-          ws:label="Name and tagline"
           ws:style={css`
             display: flex;
-            flex-direction: column;
-            row-gap: ${SPACE[8]};
-            max-width: ${CONTAINER.narrow};
+            flex-wrap: wrap;
+            justify-content: space-between;
+            column-gap: ${SPACE[64]};
+            row-gap: ${SPACE[48]};
+            ${BREAKPOINT.landscape} {
+              flex-direction: column;
+              row-gap: ${SPACE[32]};
+            }
           `}
         >
-          <ws.element
-            ws:tag="p"
-            ws:label="Name"
-            ws:style={css`
-              margin: 0;
-              font-family: var(--font-heading);
-              font-size: 20px;
-              line-height: 1.2;
-            `}
-          >
-            {name}
-          </ws.element>
-          <ws.element
-            ws:tag="p"
-            ws:style={css`
-              margin: 0;
-            `}
-          >
-            {tagline}
-          </ws.element>
+          {[
+            <ws.element
+              key="name-and-tagline"
+              ws:tag="div"
+              ws:label="Name and tagline"
+              ws:style={css`
+                display: flex;
+                flex-direction: column;
+                row-gap: ${SPACE[8]};
+                max-width: ${CONTAINER.narrow};
+              `}
+            >
+              <ws.element
+                ws:tag="p"
+                ws:label="Name"
+                ws:style={[
+                  ...css`
+                    margin: 0;
+                    font-family: var(--font-heading);
+                    font-size: 20px;
+                    line-height: 1.2;
+                  `,
+                  ...fontWeight(headingWeight),
+                ]}
+              >
+                {name}
+              </ws.element>
+              <ws.element
+                ws:tag="p"
+                ws:style={css`
+                  margin: 0;
+                `}
+              >
+                {tagline}
+              </ws.element>
+            </ws.element>,
+            ...(columns.length === 0
+              ? []
+              : [
+                  <ws.element
+                    key="columns"
+                    ws:tag="div"
+                    ws:label="Columns"
+                    ws:style={css`
+                      display: flex;
+                      flex-wrap: wrap;
+                      column-gap: ${SPACE[48]};
+                      row-gap: ${SPACE[32]};
+                      ${BREAKPOINT.landscape} {
+                        flex-direction: column;
+                      }
+                    `}
+                  >
+                    {columns.map((column, index) =>
+                      footerColumn(pageIds, column, index, headingWeight)
+                    )}
+                  </ws.element>,
+                ]),
+          ]}
         </ws.element>,
-        ...(columns.length === 0
+        ...(note === undefined
           ? []
           : [
               <ws.element
-                key="columns"
+                key="note"
                 ws:tag="div"
-                ws:label="Columns"
+                ws:label="Note"
                 ws:style={css`
-                  display: flex;
-                  flex-wrap: wrap;
-                  column-gap: ${SPACE[48]};
-                  row-gap: ${SPACE[32]};
-                  ${BREAKPOINT.landscape} {
-                    flex-direction: column;
-                  }
+                  align-self: flex-start;
+                  max-width: ${CONTAINER.text};
+                  padding: ${SPACE[12]} ${SPACE[16]};
+                  border-width: 1px;
+                  border-style: solid;
+                  border-color: var(--text);
+                  font-size: 14px;
+                  line-height: 1.5;
                 `}
               >
-                {columns.map((column, columnIndex) => (
-                  <ws.element
-                    key={columnIndex}
-                    ws:tag="div"
-                    ws:label="Column"
-                    ws:style={css`
-                      display: flex;
-                      flex-direction: column;
-                      align-items: flex-start;
-                    `}
-                  >
-                    {[
-                      <ws.element
-                        key="heading"
-                        ws:tag="h2"
-                        ws:style={css`
-                          margin: 0;
-                          font-family: var(--font-heading);
-                          font-size: 1em;
-                          line-height: 1.3;
-                        `}
-                      >
-                        {column.heading}
-                      </ws.element>,
-                      ...column.links.map((link, index) => (
-                        <$.Link
-                          key={index}
-                          href={pageHref(pageIds, link.pageKey)}
-                          ws:style={textLinkStyles()}
-                        >
-                          {link.label}
-                        </$.Link>
-                      )),
-                    ]}
-                  </ws.element>
-                ))}
+                {note}
               </ws.element>,
             ]),
       ]}

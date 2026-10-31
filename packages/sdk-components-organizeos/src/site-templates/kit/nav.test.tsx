@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { renderTemplate, ws } from "@webstudio-is/template";
+import type { SiteLink } from "./links";
 import { nav } from "./nav";
 import {
   byLabel,
@@ -20,7 +21,7 @@ const pageIds = {
   donate: "page-donate",
 };
 
-const links = [
+const links: SiteLink[] = [
   { label: "About", pageKey: "about" },
   { label: "Programs", pageKey: "programs" },
   { label: "Events", pageKey: "events" },
@@ -28,19 +29,25 @@ const links = [
   { label: "Contact", pageKey: "contact" },
 ];
 
-const renderNav = (options: Omit<Parameters<typeof nav>[0], "pageIds">) => {
-  const fragment = renderTemplate(
+const donate: SiteLink = { label: "Donate", pageKey: "donate" };
+
+const renderNav = (options: Omit<Parameters<typeof nav>[0], "pageIds">) =>
+  renderTemplate(
     <ws.element ws:tag="body">{nav({ pageIds, ...options })}</ws.element>
   );
-  return { fragment, header: byLabel(fragment, "Nav") };
+
+const hrefOf = (
+  fragment: ReturnType<typeof renderNav>,
+  instance: ReturnType<typeof byLabel>
+) => {
+  const prop = propOf(fragment, instance, "href");
+  return { type: prop?.type, value: prop?.value };
 };
 
 describe("nav", () => {
   test("is a header labelled Nav: the name, the links, the button", () => {
-    const { fragment, header } = renderNav({
-      links,
-      cta: { label: "Donate", pageKey: "donate" },
-    });
+    const fragment = renderNav({ links, cta: donate });
+    const header = byLabel(fragment, "Nav");
     expect(header.tag).toBe("header");
     const [bar] = childInstances(fragment, header);
     expect(childInstances(fragment, bar).map((item) => item.label)).toEqual([
@@ -48,53 +55,59 @@ describe("nav", () => {
       "Links",
       "Button",
     ]);
+    const linksRow = byLabel(fragment, "Links");
+    expect(linksRow.tag).toBe("nav");
+    expect(propOf(fragment, linksRow, "aria-label")?.value).toBe("Main");
   });
 
   test("the name is text where a logo goes, linking Home", () => {
-    const { fragment } = renderNav({ links });
+    const fragment = renderNav({ links });
     const name = byLabel(fragment, "Name");
     expect(name.component).toBe("Link");
     expect(textOf(name)).toEqual(["[Organization name]"]);
-    expect(propOf(fragment, name, "href")).toMatchObject({
+    expect(hrefOf(fragment, name)).toEqual({
       type: "page",
       value: "page-home",
     });
     const named = renderNav({ links, name: "[Candidate name]" });
-    expect(textOf(byLabel(named.fragment, "Name"))).toEqual([
-      "[Candidate name]",
-    ]);
+    expect(textOf(byLabel(named, "Name"))).toEqual(["[Candidate name]"]);
   });
 
-  test("each link is a Link to its page by key, in order", () => {
-    const { fragment } = renderNav({ links });
+  test("links go to pages by key or to anchors, in order", () => {
+    const fragment = renderNav({
+      links: [...links.slice(0, 2), { label: "FAQ", href: "#faq" }],
+    });
     const items = childInstances(fragment, byLabel(fragment, "Links"));
-    expect(byLabel(fragment, "Links").tag).toBe("nav");
     expect(
       items.map((item) => ({
         component: item.component,
         text: textOf(item),
-        href: propOf(fragment, item, "href"),
+        href: hrefOf(fragment, item),
       }))
-    ).toEqual(
-      links.map(({ label, pageKey }) => ({
+    ).toEqual([
+      {
         component: "Link",
-        text: [label],
-        href: expect.objectContaining({
-          type: "page",
-          value: pageIds[pageKey as keyof typeof pageIds],
-        }),
-      }))
-    );
+        text: ["About"],
+        href: { type: "page", value: "page-about" },
+      },
+      {
+        component: "Link",
+        text: ["Programs"],
+        href: { type: "page", value: "page-programs" },
+      },
+      {
+        component: "Link",
+        text: ["FAQ"],
+        href: { type: "string", value: "#faq" },
+      },
+    ]);
   });
 
-  test("the button links its page, and is left out when there is none", () => {
-    const { fragment } = renderNav({
-      links,
-      cta: { label: "Donate", pageKey: "donate" },
-    });
+  test("the button links its page or anchor, and is left out when there is none", () => {
+    const fragment = renderNav({ links, cta: donate });
     const button = byLabel(fragment, "Button");
     expect(textOf(button)).toEqual(["Donate"]);
-    expect(propOf(fragment, button, "href")).toMatchObject({
+    expect(hrefOf(fragment, button)).toEqual({
       type: "page",
       value: "page-donate",
     });
@@ -102,67 +115,170 @@ describe("nav", () => {
       "background-color": "var(--accent-1)",
       color: "var(--base)",
     });
+    const anchored = renderNav({
+      links,
+      cta: { label: "Add your name", href: "#sign-up" },
+    });
+    expect(hrefOf(anchored, byLabel(anchored, "Button"))).toEqual({
+      type: "string",
+      value: "#sign-up",
+    });
     const without = renderNav({ links });
-    expect(
-      without.fragment.instances.some((item) => item.label === "Button")
-    ).toBe(false);
+    expect(without.instances.some((item) => item.label === "Button")).toBe(
+      false
+    );
   });
 
   test("the name, every link and the button are at least 44px tall, with the focus ring", () => {
-    const { fragment } = renderNav({
-      links,
-      cta: { label: "Donate", pageKey: "donate" },
-    });
-    const targets = [
-      byLabel(fragment, "Name"),
-      ...childInstances(fragment, byLabel(fragment, "Links")),
-      byLabel(fragment, "Button"),
-    ];
-    for (const target of targets) {
-      for (const width of [1440, 767, 320]) {
-        expect(stylesAt(fragment, target, width)["min-height"]).toBe("44px");
+    for (const variant of ["split", "centered"] as const) {
+      const fragment = renderNav({ links, cta: donate, variant });
+      // the centred nav holds the button in its links row
+      const targets = new Set([
+        byLabel(fragment, "Name"),
+        ...childInstances(fragment, byLabel(fragment, "Links")),
+        byLabel(fragment, "Button"),
+      ]);
+      expect(targets.size).toBe(7);
+      for (const target of targets) {
+        for (const width of [1440, 820, 767, 320]) {
+          expect(stylesAt(fragment, target, width)["min-height"]).toBe("44px");
+        }
+        expect(stateStyles(fragment, target, ":focus-visible")).toEqual({
+          "outline-width": "2px",
+          "outline-style": "solid",
+          "outline-color": "var(--accent-2)",
+          "outline-offset": "2px",
+        });
       }
-      expect(stateStyles(fragment, target, ":focus-visible")).toEqual({
-        "outline-width": "2px",
-        "outline-style": "solid",
-        "outline-color": "var(--accent-2)",
-        "outline-offset": "2px",
-      });
     }
   });
 
-  test("a link is underlined on hover and as the current page", () => {
-    const { fragment } = renderNav({ links });
-    const [link] = childInstances(fragment, byLabel(fragment, "Links"));
-    // the Link meta's "Current page" state, unquoted
-    for (const state of [":hover", "[aria-current=page]"]) {
-      expect(stateStyles(fragment, link, state)).toEqual({
-        "text-decoration-line": "underline",
-      });
-    }
-  });
+  describe("no item is left alone on a row", () => {
+    const names = ["[Organization name]", "Riverside Tenants Association"];
 
-  test("on phones the links take a row of their own under the name", () => {
-    const { fragment } = renderNav({
-      links,
-      cta: { label: "Donate", pageKey: "donate" },
+    test("from 992px up the bar is one row that never wraps; links wrap in their own box beside the button", () => {
+      for (const name of names) {
+        const fragment = renderNav({ name, links, cta: donate });
+        const [bar] = childInstances(fragment, byLabel(fragment, "Nav"));
+        for (const width of [1440, 1024, 992]) {
+          expect(stylesAt(fragment, bar, width)["flex-wrap"]).toBe("nowrap");
+          const linksRow = stylesAt(
+            fragment,
+            byLabel(fragment, "Links"),
+            width
+          );
+          expect(linksRow).toMatchObject({ "flex-wrap": "wrap" });
+          expect(linksRow).not.toHaveProperty("order");
+          expect(
+            stylesAt(fragment, byLabel(fragment, "Button"), width)[
+              "flex-shrink"
+            ]
+          ).toBe("0");
+        }
+      }
     });
-    const linksRow = byLabel(fragment, "Links");
-    const name = byLabel(fragment, "Name");
-    expect(stylesAt(fragment, linksRow, 768)).not.toHaveProperty("order");
-    expect(stylesAt(fragment, name, 768)).not.toHaveProperty("flex-grow");
-    for (const width of [767, 479, 320]) {
-      expect(stylesAt(fragment, linksRow, width)).toMatchObject({
-        order: "1",
-        "flex-basis": "100%",
-        "flex-wrap": "wrap",
-      });
-      // the name shares its row with the button, wrapping its own text
-      expect(stylesAt(fragment, name, width)).toMatchObject({
-        "flex-grow": "1",
-        "flex-basis": "0",
-      });
+
+    test("at 991px and below (768 and 900 among them) the name and the button share the first row and the links take the next", () => {
+      for (const name of names) {
+        const fragment = renderNav({ name, links, cta: donate });
+        const [bar] = childInstances(fragment, byLabel(fragment, "Nav"));
+        for (const width of [991, 900, 820, 768, 767, 479, 320]) {
+          expect(stylesAt(fragment, bar, width)["flex-wrap"]).toBe("wrap");
+          // the links come last and fill a row of their own
+          expect(
+            stylesAt(fragment, byLabel(fragment, "Links"), width)
+          ).toMatchObject({ order: "1", "flex-basis": "100%" });
+          // the name starts from nothing and wraps its own text, so the
+          // button always fits beside it
+          expect(
+            stylesAt(fragment, byLabel(fragment, "Name"), width)
+          ).toMatchObject({ "flex-grow": "1", "flex-basis": "0" });
+          expect(
+            stylesAt(fragment, byLabel(fragment, "Button"), width)
+          ).not.toHaveProperty("order");
+        }
+      }
+    });
+  });
+
+  test("draws with the template's corners and weights, and declares no weight of its own", () => {
+    const styled = renderNav({
+      links,
+      cta: donate,
+      buttonRadius: "999px",
+      buttonWeight: 600,
+      headingWeight: 700,
+    });
+    expect(stylesAt(styled, byLabel(styled, "Button"), 1440)).toMatchObject({
+      "border-top-left-radius": "999px",
+      "border-bottom-right-radius": "999px",
+      "font-weight": "600",
+    });
+    expect(stylesAt(styled, byLabel(styled, "Name"), 1440)["font-weight"]).toBe(
+      "700"
+    );
+    const plain = renderNav({ links, cta: donate });
+    for (const label of ["Name", "Button"]) {
+      const styles = stylesAt(plain, byLabel(plain, label), 1440);
+      expect(styles).not.toHaveProperty("font-weight");
+      expect(styles).not.toHaveProperty("border-top-left-radius");
     }
+  });
+
+  describe("centered", () => {
+    const renderCentered = () =>
+      renderNav({
+        variant: "centered",
+        links: [
+          { label: "Why", href: "#why" },
+          { label: "FAQ", href: "#faq" },
+          { label: "About", pageKey: "about" },
+        ],
+        cta: { label: "Add your name", href: "#sign-up" },
+      });
+
+    test("centres the name over one row of the links and the button", () => {
+      const fragment = renderCentered();
+      const header = byLabel(fragment, "Nav: Centered");
+      expect(header.tag).toBe("header");
+      const [bar] = childInstances(fragment, header);
+      expect(stylesAt(fragment, bar, 1440)).toMatchObject({
+        "flex-direction": "column",
+        "align-items": "center",
+        "text-align": "center",
+      });
+      expect(childInstances(fragment, bar).map((item) => item.label)).toEqual([
+        "Name",
+        "Links",
+      ]);
+      const linksRow = byLabel(fragment, "Links");
+      expect(stylesAt(fragment, linksRow, 320)).toMatchObject({
+        "flex-wrap": "wrap",
+        "justify-content": "center",
+      });
+      const items = childInstances(fragment, linksRow);
+      expect(items.map((item) => item.label ?? textOf(item)[0])).toEqual([
+        "Why",
+        "FAQ",
+        "About",
+        "Button",
+      ]);
+    });
+
+    test("anchors are plain string hrefs and page keys stay page links", () => {
+      const fragment = renderCentered();
+      const items = childInstances(fragment, byLabel(fragment, "Links"));
+      expect(items.map((item) => hrefOf(fragment, item))).toEqual([
+        { type: "string", value: "#why" },
+        { type: "string", value: "#faq" },
+        { type: "page", value: "page-about" },
+        { type: "string", value: "#sign-up" },
+      ]);
+      expect(hrefOf(fragment, byLabel(fragment, "Name"))).toEqual({
+        type: "page",
+        value: "page-home",
+      });
+    });
   });
 
   test("two calls make distinct instances", () => {

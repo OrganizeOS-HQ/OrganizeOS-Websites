@@ -4,17 +4,34 @@ import { BLANK_CANONICAL_VALUES } from "../canonical-variables";
 import { checkSiteTemplate } from "../check";
 import { renderSiteTemplate } from "../render";
 import type { PageContext, SiteTemplate, SiteTemplatePage } from "../types";
-import { BREAKPOINT, CONTAINER, footer, nav, section } from "./index";
+import {
+  BREAKPOINT,
+  CONTAINER,
+  type KitStyle,
+  type NavVariant,
+  type SiteLink,
+  footer,
+  nav,
+  section,
+} from "./index";
 
-const links = [
+const links: SiteLink[] = [
   { label: "About", pageKey: "about" },
   { label: "Events", pageKey: "events" },
+  { label: "Sign up", href: "#sign-up" },
 ];
+
+const look: KitStyle = {
+  buttonRadius: "999px",
+  buttonWeight: 600,
+  headingWeight: 700,
+};
 
 const body = (
   { pageIds }: PageContext,
   heading: string,
-  background: "base" | "accent-1" | "text"
+  background: "base" | "accent-1" | "text",
+  variant: NavVariant
 ) => (
   <ws.element
     ws:tag="body"
@@ -24,10 +41,18 @@ const body = (
       font-family: var(--font-body);
     `}
   >
-    {nav({ pageIds, links, cta: { label: "Join", pageKey: "events" } })}
+    {nav({
+      pageIds,
+      links,
+      cta: { label: "Join", pageKey: "events" },
+      variant,
+      ...look,
+    })}
     {section({
       label: "Hero",
       background,
+      id: "sign-up",
+      width: "text",
       children: (
         <ws.element
           ws:tag="h1"
@@ -47,6 +72,8 @@ const body = (
       pageIds,
       tagline: "Neighbours working together for [goal].",
       columns: [{ heading: "Take part", links }],
+      note: <ws.element ws:tag="p">{"[Paid for by the committee]"}</ws.element>,
+      ...look,
     })}
   </ws.element>
 );
@@ -54,14 +81,15 @@ const body = (
 const page = (
   key: string,
   path: string,
-  background: "base" | "accent-1" | "text"
+  background: "base" | "accent-1" | "text",
+  variant: NavVariant
 ): SiteTemplatePage => ({
   key,
   name: key,
   path,
   title: key,
   description: "Say who you are and who you work with.",
-  body: (context) => body(context, `The ${key} page`, background),
+  body: (context) => body(context, `The ${key} page`, background, variant),
 });
 
 const template: SiteTemplate = {
@@ -82,9 +110,9 @@ const template: SiteTemplate = {
     },
   },
   pages: [
-    page("home", "", "base"),
-    page("about", "/about", "accent-1"),
-    page("events", "/events", "text"),
+    page("home", "", "base", "split"),
+    page("about", "/about", "accent-1", "centered"),
+    page("events", "/events", "text", "split"),
   ],
 };
 

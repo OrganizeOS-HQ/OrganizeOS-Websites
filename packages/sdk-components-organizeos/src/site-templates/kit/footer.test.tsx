@@ -67,14 +67,22 @@ describe("footer", () => {
     );
   });
 
-  test("each column is a heading and Links to its pages by key", () => {
-    const { fragment } = renderFooter({ tagline, columns });
+  test("each column is a nav named by its title, the title as text, then its links", () => {
+    const { fragment } = renderFooter({
+      tagline,
+      columns: [
+        ...columns,
+        { heading: "On this page", links: [{ label: "FAQ", href: "#faq" }] },
+      ],
+    });
     const rendered = childInstances(fragment, byLabel(fragment, "Columns"));
     expect(
       rendered.map((column) => {
-        const [heading, ...links] = childInstances(fragment, column);
+        const [title, ...links] = childInstances(fragment, column);
         return {
-          heading: { tag: heading.tag, text: textOf(heading) },
+          tag: column.tag,
+          name: propOf(fragment, column, "aria-label")?.value,
+          title: { tag: title.tag, text: textOf(title) },
           links: links.map((link) => ({
             component: link.component,
             text: textOf(link),
@@ -82,16 +90,37 @@ describe("footer", () => {
           })),
         };
       })
-    ).toEqual(
-      columns.map((column) => ({
-        heading: { tag: "h2", text: [column.heading] },
+    ).toEqual([
+      ...columns.map((column) => ({
+        tag: "nav",
+        name: column.heading,
+        title: { tag: "p", text: [column.heading] },
         links: column.links.map(({ label, pageKey }) => ({
           component: "Link",
           text: [label],
           href: pageIds[pageKey as keyof typeof pageIds],
         })),
-      }))
-    );
+      })),
+      {
+        tag: "nav",
+        name: "On this page",
+        title: { tag: "p", text: ["On this page"] },
+        links: [{ component: "Link", text: ["FAQ"], href: "#faq" }],
+      },
+    ]);
+  });
+
+  test("adds no heading to the page's outline", () => {
+    const { fragment } = renderFooter({
+      tagline,
+      columns,
+      note: <ws.element ws:tag="p">{"[Paid for by]"}</ws.element>,
+    });
+    expect(
+      fragment.instances.filter((instance) =>
+        /^h[1-6]$/.test(instance.tag ?? "")
+      )
+    ).toEqual([]);
   });
 
   test("every link is at least 44px tall, with the focus ring", () => {
@@ -110,12 +139,69 @@ describe("footer", () => {
   });
 
   test("stacks to one column on phones", () => {
-    const { fragment, outer } = renderFooter({ tagline, columns });
-    const [bar] = childInstances(fragment, outer);
+    const { fragment } = renderFooter({ tagline, columns });
     const columnsRow = byLabel(fragment, "Columns");
+    const [bar] = fragment.instances.filter((instance) =>
+      childInstances(fragment, instance).includes(columnsRow)
+    );
     for (const row of [bar, columnsRow]) {
       expect(stylesAt(fragment, row, 768)["flex-direction"]).not.toBe("column");
       expect(stylesAt(fragment, row, 767)["flex-direction"]).toBe("column");
+    }
+  });
+
+  test("boxes a note under the columns, at 14px, only when given one", () => {
+    const { fragment, outer } = renderFooter({
+      tagline,
+      columns,
+      note: <ws.element ws:tag="p">{"[Paid for by the committee]"}</ws.element>,
+    });
+    const [column] = childInstances(fragment, outer);
+    const [bar, note] = childInstances(fragment, column);
+    expect(childInstances(fragment, bar).map((item) => item.label)).toEqual([
+      "Name and tagline",
+      "Columns",
+    ]);
+    expect(note.label).toBe("Note");
+    expect(stylesAt(fragment, column, 1440)["flex-direction"]).toBe("column");
+    const box = stylesAt(fragment, note, 320);
+    for (const side of ["top", "right", "bottom", "left"]) {
+      expect(box).toMatchObject({
+        [`border-${side}-width`]: "1px",
+        [`border-${side}-style`]: "solid",
+        [`border-${side}-color`]: "var(--text)",
+      });
+    }
+    expect(box).toMatchObject({
+      "font-size": "14px",
+      "align-self": "flex-start",
+    });
+    expect(childInstances(fragment, note).map((item) => textOf(item))).toEqual([
+      ["[Paid for by the committee]"],
+    ]);
+    const without = renderFooter({ tagline, columns });
+    expect(
+      without.fragment.instances.some((item) => item.label === "Note")
+    ).toBe(false);
+  });
+
+  test("sets the template's heading weight on the name and the column titles, and none unasked", () => {
+    const weighted = renderFooter({ tagline, columns, headingWeight: 600 });
+    const titled = weighted.fragment.instances.filter(
+      (instance) =>
+        instance.label === "Name" || instance.label === "Column title"
+    );
+    expect(titled).toHaveLength(3);
+    for (const instance of titled) {
+      expect(stylesAt(weighted.fragment, instance, 1440)["font-weight"]).toBe(
+        "600"
+      );
+    }
+    const plain = renderFooter({ tagline, columns });
+    for (const instance of plain.fragment.instances) {
+      expect(stylesAt(plain.fragment, instance, 1440)).not.toHaveProperty(
+        "font-weight"
+      );
     }
   });
 

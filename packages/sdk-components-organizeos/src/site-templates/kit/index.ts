@@ -9,11 +9,13 @@ export {
   CONTAINER,
   SPACE,
   type ContainerWidth,
+  type KitStyle,
   type SectionBackground,
   container,
   focusRing,
   section,
   tapTarget,
 } from "./layout";
-export { type PageLink, nav } from "./nav";
+export { type SiteLink, buttonStyles, linkHref, textLinkStyles } from "./links";
+export { type NavVariant, nav } from "./nav";
 export { type FooterColumn, footer } from "./footer";

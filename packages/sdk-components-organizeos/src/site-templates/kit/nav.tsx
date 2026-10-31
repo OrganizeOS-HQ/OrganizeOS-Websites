@@ -1,172 +1,242 @@
-import {
-  $,
-  PageValue,
-  css,
-  ws,
-  type TemplateStyleDecl,
-} from "@webstudio-is/template";
+import { $, css, ws, type TemplateStyleDecl } from "@webstudio-is/template";
 import type { PageContext } from "../types";
-import { BREAKPOINT, SPACE, container, focusRing, tapTarget } from "./layout";
-
-/** A link to one of the template's pages, named by its key. */
-export type PageLink = { label: string; pageKey: string };
-
-/** The page's id as a link target; a key the template lacks fails its check. */
-export const pageHref = (
-  pageIds: PageContext["pageIds"],
-  pageKey: string
-): PageValue => new PageValue(pageIds[pageKey]);
+import {
+  BREAKPOINT,
+  type KitStyle,
+  SPACE,
+  container,
+  focusRing,
+  fontWeight,
+  tapTarget,
+} from "./layout";
+import {
+  type SiteLink,
+  buttonStyles,
+  linkHref,
+  pageHref,
+  textLink,
+} from "./links";
 
 /**
- * The Link's "Current page" state, written as its meta writes it so the
- * Style panel offers it (a quoted value would be another state).
+ * "split": the name on the left, the links and the button on the right.
+ * "centered": the name centred over a centred row of the links and the
+ * button.
  */
-const currentPage = "[aria-current=page]";
+export type NavVariant = "split" | "centered";
 
-/**
- * A plain text link in the surrounding colour, underlined on hover and when
- * it is the current page.
- */
-export const textLinkStyles = (): TemplateStyleDecl[] => [
-  ...tapTarget(),
+type NavOptions = KitStyle & {
+  pageIds: PageContext["pageIds"];
+  name: string;
+  links: SiteLink[];
+  cta?: SiteLink;
+};
+
+const headerStyles = () => css`
+  background-color: var(--base);
+  color: var(--text);
+`;
+
+const barStyles = (layout: TemplateStyleDecl[]) => [
+  ...container("wide"),
   ...css`
-    color: inherit;
-    text-decoration-line: none;
-    text-underline-offset: 4px;
-    &:hover {
-      text-decoration-line: underline;
-    }
-    &${currentPage} {
-      text-decoration-line: underline;
+    padding-top: ${SPACE[16]};
+    padding-bottom: ${SPACE[16]};
+    ${BREAKPOINT.landscape} {
+      padding-top: ${SPACE[8]};
+      padding-bottom: ${SPACE[8]};
     }
   `,
-  ...focusRing(),
+  ...layout,
 ];
 
-/**
- * The site's top bar on the base colours: the org's name as text where a
- * logo goes, linking Home; the links; and at most one primary button, in
- * accent-1. One row from 768px up. On phones (BREAKPOINT.landscape) the name
- * and the button share the first row, the name wrapping before the button
- * would, and the links take a row of their own beneath, wrapping as they
- * need: CSS only, since a template ships no script.
- */
-export const nav = ({
-  pageIds,
-  name = "[Organization name]",
-  links,
-  cta,
-}: {
-  pageIds: PageContext["pageIds"];
-  name?: string;
-  links: PageLink[];
-  cta?: PageLink;
-}): JSX.Element => (
-  <ws.element
-    ws:tag="header"
-    ws:label="Nav"
-    ws:style={css`
-      background-color: var(--base);
-      color: var(--text);
-    `}
+/** The org's name as text where a logo goes, linking Home. */
+const nameLink = (
+  { pageIds, name, headingWeight }: NavOptions,
+  layout: TemplateStyleDecl[]
+) => (
+  <$.Link
+    key="name"
+    ws:label="Name"
+    href={pageHref(pageIds, "home")}
+    ws:style={[
+      ...tapTarget(),
+      ...css`
+        font-family: var(--font-heading);
+        font-size: 20px;
+        line-height: 1.2;
+        color: inherit;
+        text-decoration-line: none;
+      `,
+      ...fontWeight(headingWeight),
+      ...layout,
+      ...focusRing(),
+    ]}
   >
+    {name}
+  </$.Link>
+);
+
+const button = (
+  options: NavOptions,
+  cta: SiteLink,
+  layout: TemplateStyleDecl[] = []
+) => (
+  <$.Link
+    key="button"
+    ws:label="Button"
+    href={linkHref(options.pageIds, cta)}
+    ws:style={[...buttonStyles(options), ...layout]}
+  >
+    {cta.label}
+  </$.Link>
+);
+
+/**
+ * One row from 992px up, which never wraps: when the links do not fit they
+ * wrap within their own box, beside the button. At BREAKPOINT.tablet and
+ * below the name and the button share the first row, the name wrapping its
+ * own text before the button would leave the row, and the links take a row
+ * of their own beneath, wrapping as they need. So no item is ever left alone
+ * on a row, whatever the name's length.
+ */
+const splitNav = (options: NavOptions) => (
+  <ws.element ws:tag="header" ws:label="Nav" ws:style={headerStyles()}>
     <ws.element
       ws:tag="div"
-      ws:style={[
-        ...container("wide"),
-        ...css`
-          display: flex;
+      ws:style={barStyles(css`
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        column-gap: ${SPACE[32]};
+        ${BREAKPOINT.tablet} {
           flex-wrap: wrap;
-          align-items: center;
-          column-gap: ${SPACE[32]};
-          padding-top: ${SPACE[16]};
-          padding-bottom: ${SPACE[16]};
-          ${BREAKPOINT.landscape} {
-            column-gap: ${SPACE[16]};
-            padding-top: ${SPACE[8]};
-            padding-bottom: ${SPACE[8]};
-          }
-        `,
-      ]}
+        }
+        ${BREAKPOINT.landscape} {
+          column-gap: ${SPACE[16]};
+        }
+      `)}
     >
       {[
-        <$.Link
-          key="name"
-          ws:label="Name"
-          href={pageHref(pageIds, "home")}
-          ws:style={[
-            ...tapTarget(),
-            ...css`
-              margin-right: auto;
-              font-family: var(--font-heading);
-              font-size: 20px;
-              line-height: 1.2;
-              color: inherit;
-              text-decoration-line: none;
-              ${BREAKPOINT.landscape} {
-                flex-grow: 1;
-                flex-basis: 0;
-              }
-            `,
-            ...focusRing(),
-          ]}
-        >
-          {name}
-        </$.Link>,
+        nameLink(
+          options,
+          css`
+            margin-right: auto;
+            ${BREAKPOINT.tablet} {
+              flex-grow: 1;
+              flex-basis: 0;
+            }
+          `
+        ),
         <ws.element
           key="links"
           ws:tag="nav"
           ws:label="Links"
+          aria-label="Main"
           ws:style={css`
             display: flex;
             flex-wrap: wrap;
+            justify-content: flex-end;
             column-gap: ${SPACE[24]};
-            ${BREAKPOINT.landscape} {
+            ${BREAKPOINT.tablet} {
               order: 1;
               flex-basis: 100%;
+              justify-content: flex-start;
+            }
+            ${BREAKPOINT.landscape} {
               column-gap: ${SPACE[16]};
             }
           `}
         >
-          {links.map((link, index) => (
-            <$.Link
-              key={index}
-              href={pageHref(pageIds, link.pageKey)}
-              ws:style={textLinkStyles()}
-            >
-              {link.label}
-            </$.Link>
-          ))}
+          {options.links.map((link, index) =>
+            textLink(options.pageIds, link, index)
+          )}
         </ws.element>,
-        ...(cta === undefined
+        ...(options.cta === undefined
           ? []
           : [
-              <$.Link
-                key="button"
-                ws:label="Button"
-                href={pageHref(pageIds, cta.pageKey)}
-                ws:style={[
-                  ...tapTarget(),
-                  ...css`
-                    justify-content: center;
-                    padding-left: ${SPACE[24]};
-                    padding-right: ${SPACE[24]};
-                    background-color: var(--accent-1);
-                    color: var(--base);
-                    font-weight: 600;
-                    text-decoration-line: none;
-                    ${BREAKPOINT.landscape} {
-                      padding-left: ${SPACE[16]};
-                      padding-right: ${SPACE[16]};
-                    }
-                  `,
-                  ...focusRing(),
-                ]}
-              >
-                {cta.label}
-              </$.Link>,
+              button(
+                options,
+                options.cta,
+                css`
+                  flex-shrink: 0;
+                `
+              ),
             ]),
       ]}
     </ws.element>
   </ws.element>
 );
+
+/**
+ * The name centred over one centred row of the links and the button, which
+ * wraps, still centred, when it does not fit.
+ */
+const centeredNav = (options: NavOptions) => (
+  <ws.element
+    ws:tag="header"
+    ws:label="Nav: Centered"
+    ws:style={headerStyles()}
+  >
+    <ws.element
+      ws:tag="div"
+      ws:style={barStyles(css`
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        row-gap: ${SPACE[8]};
+        text-align: center;
+      `)}
+    >
+      {nameLink(
+        options,
+        css`
+          justify-content: center;
+        `
+      )}
+      <ws.element
+        ws:tag="nav"
+        ws:label="Links"
+        aria-label="Main"
+        ws:style={css`
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+          align-items: center;
+          column-gap: ${SPACE[24]};
+          row-gap: ${SPACE[8]};
+          ${BREAKPOINT.landscape} {
+            column-gap: ${SPACE[16]};
+          }
+        `}
+      >
+        {[
+          ...options.links.map((link, index) =>
+            textLink(options.pageIds, link, index)
+          ),
+          ...(options.cta === undefined ? [] : [button(options, options.cta)]),
+        ]}
+      </ws.element>
+    </ws.element>
+  </ws.element>
+);
+
+/**
+ * The site's top bar on the base colours: the org's name as text where a
+ * logo goes, linking Home; the links, to pages by key or to anchors on the
+ * page; and at most one primary button (`cta`), drawn with the template's
+ * KitStyle. CSS only, since a template ships no script.
+ */
+export const nav = ({
+  name = "[Organization name]",
+  variant = "split",
+  ...options
+}: KitStyle & {
+  pageIds: PageContext["pageIds"];
+  name?: string;
+  links: SiteLink[];
+  cta?: SiteLink;
+  variant?: NavVariant;
+}): JSX.Element =>
+  variant === "centered"
+    ? centeredNav({ name, ...options })
+    : splitNav({ name, ...options });

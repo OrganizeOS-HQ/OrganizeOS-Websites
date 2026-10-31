@@ -110,20 +110,45 @@ export const focusRing = (): TemplateStyleDecl[] => css`
 `;
 
 /**
+ * A template's choices the kit draws with, given to `nav`, `footer` and
+ * `buttonStyles` alike. Weights are the template's, never the kit's, so a
+ * single-weight face (Archivo Black, Instrument Serif) is never asked for a
+ * bold the browser would synthesize: unset, the kit declares none.
+ */
+export type KitStyle = {
+  /** The corners of the kit's buttons: "3px", "6px", "999px" for a pill; square when unset. */
+  buttonRadius?: string;
+  /** The weight of a button's label, in `--font-body`. */
+  buttonWeight?: number;
+  /** The weight of the kit's text in `--font-heading`: the name and the footer's column titles. */
+  headingWeight?: number;
+};
+
+/** A `font-weight` declaration, or none when the template sets no weight. */
+export const fontWeight = (weight: number | undefined): TemplateStyleDecl[] =>
+  weight === undefined
+    ? []
+    : css`
+        font-weight: ${String(weight)};
+      `;
+
+/**
  * A full-bleed `<section>` named `label` in the Navigator, in one of the
  * checked colour pairs (base by default), padded above and below, around a
- * wide container holding `children`. `id` is the target of an in-page link
- * (`#sign-up`).
+ * container (`wide` by default) holding `children`. `id` is the target of an
+ * in-page link (`#sign-up`).
  */
 export const section = ({
   label,
   children,
   background = "base",
+  width = "wide",
   id,
 }: {
   label: string;
   children: JSX.Element | JSX.Element[];
   background?: SectionBackground;
+  width?: ContainerWidth;
   id?: string;
 }): JSX.Element => {
   const colours = sectionColours[background];
@@ -144,7 +169,7 @@ export const section = ({
         }
       `}
     >
-      <ws.element ws:tag="div" ws:style={container("wide")}>
+      <ws.element ws:tag="div" ws:style={container(width)}>
         {children}
       </ws.element>
     </ws.element>
