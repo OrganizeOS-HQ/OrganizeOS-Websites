@@ -28,8 +28,7 @@ export const endorsements: SiteTemplatePage = {
         pageIds: context.pageIds,
         eyebrow: "In their words",
         heading: "Why they back the campaign",
-        intro:
-          "Say who stands behind [Candidate], and why their backing counts.",
+        intro: "Pick one line from each that says why, in their own words.",
         quotes: QUOTES,
       })}
       {donateBand({
