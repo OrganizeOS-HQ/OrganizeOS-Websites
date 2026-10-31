@@ -225,17 +225,32 @@ export const gridStyles = (
   }
 `;
 
-/** A 2px outline in `colour` with the template's corners. */
+/**
+ * A 2px outline in `colour`, with the template's corners or `radius`, solid
+ * or `style`.
+ */
 export const outlineStyles = (
-  colour = "var(--text)"
+  colour = "var(--text)",
+  {
+    radius = RADIUS,
+    style = "solid",
+  }: { radius?: string; style?: "solid" | "dashed" } = {}
 ): TemplateStyleDecl[] => css`
   border-width: 2px;
-  border-style: solid;
+  border-style: ${style};
   border-top-color: ${colour};
   border-right-color: ${colour};
   border-bottom-color: ${colour};
   border-left-color: ${colour};
-  border-radius: ${RADIUS};
+  border-radius: ${radius};
+`;
+
+/** A card's padding: 32px, 24px on phones. */
+export const cardPaddingStyles = (): TemplateStyleDecl[] => css`
+  padding: ${SPACE[32]};
+  ${BREAKPOINT.landscape} {
+    padding: ${SPACE[24]};
+  }
 `;
 
 /**
@@ -245,13 +260,10 @@ export const outlineStyles = (
 export const cardStyles = (gap: string = SPACE[12]): TemplateStyleDecl[] => [
   ...outlineStyles(),
   ...stackStyles(gap),
+  ...cardPaddingStyles(),
   ...css`
-    padding: ${SPACE[32]};
     background-color: var(--base);
     color: var(--text);
-    ${BREAKPOINT.landscape} {
-      padding: ${SPACE[24]};
-    }
   `,
 ];
 

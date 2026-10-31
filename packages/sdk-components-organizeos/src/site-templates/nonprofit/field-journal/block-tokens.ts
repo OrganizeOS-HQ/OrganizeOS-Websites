@@ -1,15 +1,22 @@
 import { css } from "@webstudio-is/template";
-import { BREAKPOINT, SPACE, focusRing } from "../../kit";
+import { BREAKPOINT, SPACE, buttonStyles } from "../../kit";
 import type { BlockStyle, SiteTemplate } from "../../types";
-import { gridStyles } from "./styles";
+import {
+  LOOK,
+  gridStyles,
+  quietLinkStyles,
+  ruleStyles,
+  subheadingStyles,
+} from "./styles";
 
 // Field Journal's look for the platform blocks it places (SiteTemplate
 // .blockTokens and the Event List's root style): the event cards in the
 // Programs grid's idiom, the list's empty line as a ruled note across it,
 // and the Signup Form's fields and button in the template's own corners and
-// forest accent. Every declaration replaces the
-// block's own of the same key, so shorthands are written as the longhands
-// the blocks declare.
+// forest accent. Where a look is the template's own (./styles, the kit's
+// buttons) it is used, not restated; every declaration replaces the block's
+// own of the same key, so shorthands are written as the longhands the
+// blocks declare.
 
 export const blockTokens: SiteTemplate["blockTokens"] = {
   // A card is the Programs card without its photo slot: no box, a 1px rule
@@ -43,51 +50,38 @@ export const blockTokens: SiteTemplate["blockTokens"] = {
   // grid under the cards' 1px rule, in Newsreader at the cards' title size:
   // the section's first view for a new org reads as a page of the journal,
   // not a line left over.
-  "OS Event Note": css`
-    grid-column-start: 1;
-    grid-column-end: -1;
-    margin-top: 0;
-    margin-bottom: 0;
-    padding-top: ${SPACE[16]};
-    border-top-width: 1px;
-    border-top-style: solid;
-    border-top-color: var(--text);
-    font-family: var(--font-heading);
-    font-size: 24px;
-    font-weight: 400;
-    line-height: 1.3;
-    ${BREAKPOINT.landscape} {
-      font-size: 22px;
-    }
-  `,
-  // The Programs cards' h3: Newsreader at 600, balanced.
-  "OS Event Title": css`
-    margin-top: ${SPACE[4]};
-    font-size: 24px;
-    font-weight: 600;
-    line-height: 1.25;
-    text-wrap-style: balance;
-    ${BREAKPOINT.landscape} {
-      font-size: 22px;
-    }
-  `,
-  // The template's quiet link: underlined 1px, 2px on hover, as wide as its
-  // words, with the kit's focus ring.
-  "OS Event Link": [
+  "OS Event Note": [
+    ...ruleStyles(),
     ...css`
-      align-self: flex-start;
-      text-decoration-thickness: 1px;
-      text-underline-offset: 6px;
-    `,
-    ...css`
-      &:hover {
-        text-decoration-thickness: 2px;
+      grid-column-start: 1;
+      grid-column-end: -1;
+      margin-top: 0;
+      margin-bottom: 0;
+      font-family: var(--font-heading);
+      font-size: 24px;
+      font-weight: 400;
+      line-height: 1.3;
+      ${BREAKPOINT.landscape} {
+        font-size: 22px;
       }
     `,
-    ...focusRing(),
+  ],
+  // The Programs cards' h3, with the card's 4px over it (above).
+  "OS Event Title": [
+    ...subheadingStyles().filter(({ property }) => property !== "margin-top"),
+    ...css`
+      margin-top: ${SPACE[4]};
+    `,
+  ],
+  // The template's quiet link, as wide as its words.
+  "OS Event Link": [
+    ...quietLinkStyles(),
+    ...css`
+      align-self: flex-start;
+    `,
   ],
   // Fields outlined 1px in forest, as the box the form sits in, with the
-  // buttons' 3px corners, at the page's 18px; an invalid field's 2px border
+  // buttons' corners, at the page's 18px; an invalid field's 2px border
   // still takes its pixel from the padding.
   "OS Input": [
     ...css`
@@ -99,10 +93,7 @@ export const blockTokens: SiteTemplate["blockTokens"] = {
       border-right-color: var(--accent-1);
       border-bottom-color: var(--accent-1);
       border-left-color: var(--accent-1);
-      border-top-left-radius: 3px;
-      border-top-right-radius: 3px;
-      border-bottom-left-radius: 3px;
-      border-bottom-right-radius: 3px;
+      border-radius: ${LOOK.buttonRadius ?? "0"};
       font-size: 18px;
     `,
     ...css`
@@ -114,26 +105,18 @@ export const blockTokens: SiteTemplate["blockTokens"] = {
       }
     `,
   ],
-  // The template's button (kit buttonStyles with LOOK): forest, 3px corners,
-  // 44px tall, as wide as its label.
-  "OS Button": css`
-    align-self: flex-start;
-    min-height: 44px;
-    padding-top: 0;
-    padding-right: ${SPACE[24]};
-    padding-bottom: 0;
-    padding-left: ${SPACE[24]};
-    border-top-left-radius: 3px;
-    border-top-right-radius: 3px;
-    border-bottom-left-radius: 3px;
-    border-bottom-right-radius: 3px;
-    font-size: 18px;
-    line-height: 1.3;
-    ${BREAKPOINT.landscape} {
-      padding-right: ${SPACE[16]};
-      padding-left: ${SPACE[16]};
-    }
-  `,
+  // The template's button (the kit's, with LOOK), as wide as its label, at
+  // the page's 18px, 44px tall as the nav's.
+  "OS Button": [
+    ...buttonStyles(LOOK),
+    ...css`
+      align-self: flex-start;
+      padding-top: 0;
+      padding-bottom: 0;
+      font-size: 18px;
+      line-height: 1.3;
+    `,
+  ],
 };
 
 /**

@@ -277,10 +277,13 @@ export const signUpSection = ({
           {text(
             "p",
             css`
-              margin: 0;
               margin-top: ${SPACE[12]};
+              margin-right: 0;
+              margin-bottom: 0;
+              margin-left: 0;
               font-size: 16px;
               line-height: 1.5;
+              text-wrap-style: pretty;
             `,
             note,
             "Note"
