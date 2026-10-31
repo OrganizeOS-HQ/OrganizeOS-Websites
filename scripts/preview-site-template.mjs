@@ -24,17 +24,17 @@
 //    `npm install`, `react-router build`, served by react-router-serve.
 // 5. Chromium takes a full-page screenshot of each page at 1440, 820, 390
 //    and 320 (the owner sees 1440 and 390; 820 is the tablet range and 320
-//    the smallest phone, for review) and, at 320, 390, 479, 767, 768 and
-//    991, checks sideways scroll, text under 14px (at 390 and 320), console
-//    errors and failed requests; at those widths and 820 it also checks for
-//    clipped text, text that runs past its own box or a box around it (three
-//    unbreakable headings overlapping in their columns scroll nothing). That
-//    check is a heuristic, with known limits: it also reports text that runs
-//    past a scroll container on purpose (a row that scrolls sideways) or a
-//    clipped track (a Marquee's), and it does not look past an absolutely or
-//    fixed positioned element, so such an element's text placed outside its
-//    parent is not reported. Templates use neither kind of scroller yet; a
-//    finding on one is read by eye before it is fixed.
+//    the smallest phone, for review) and, at 320, 390, 479, 767, 768, 820
+//    and 991, checks sideways scroll, text under 14px (at 390 and 320),
+//    console errors, failed requests and clipped text, text that runs past
+//    its own box or a box around it (three unbreakable headings overlapping
+//    in their columns scroll nothing). That check is a heuristic, with
+//    known limits: it also reports text that runs past a scroll container on
+//    purpose (a row that scrolls sideways) or a clipped track (a Marquee's),
+//    and it does not look past an absolutely or fixed positioned element, so
+//    such an element's text placed outside its parent is not reported.
+//    Templates use neither kind of scroller yet; a finding on one is read by
+//    eye before it is fixed.
 //
 // Writes previews/<template-id>/<run>/<page-key>-<width>.png and
 // previews/<template-id>/<run>/report.json, where the run is the palette
@@ -70,12 +70,13 @@ const STUB_API_BASE_URL = `http://127.0.0.1:${STUB_API_PORT}/api/public/v1`;
 const SCREENSHOT_WIDTHS = [1440, 820, 390, 320];
 /**
  * Each breakpoint's edge, the narrowest tablet (768, an iPad held upright,
- * just above the phone breakpoint) and the smallest phone.
+ * just above the phone breakpoint), the tablet's screenshot width and the
+ * smallest phone.
  */
-const OVERFLOW_WIDTHS = [320, 390, 479, 767, 768, 991];
+const OVERFLOW_WIDTHS = [320, 390, 479, 767, 768, 820, 991];
 const SMALL_TEXT_WIDTHS = [390, 320];
-/** The overflow widths and the tablet's, where columns are narrowest. */
-const CLIPPED_TEXT_WIDTHS = [...OVERFLOW_WIDTHS, 820];
+/** The overflow widths, the tablet's among them, where columns are narrowest. */
+const CLIPPED_TEXT_WIDTHS = OVERFLOW_WIDTHS;
 const MIN_FONT_SIZE = 14;
 const VIEWPORT_HEIGHT = 900;
 
