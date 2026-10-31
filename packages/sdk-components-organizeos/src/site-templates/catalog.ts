@@ -1,6 +1,7 @@
 import { marigoldMarqueeTemplate } from "./campaign/marigold-marquee";
 import { porchLightTemplate } from "./community/porch-light";
 import { fieldJournalTemplate } from "./nonprofit/field-journal";
+import { risoBroadsideTemplate } from "./single-issue/riso-broadside";
 import { CATEGORY_ORDER, type SiteTemplate } from "./types";
 import { workwearTemplate } from "./union/workwear";
 
@@ -13,6 +14,7 @@ export const SITE_TEMPLATES: SiteTemplate[] = [
   porchLightTemplate,
   workwearTemplate,
   marigoldMarqueeTemplate,
+  risoBroadsideTemplate,
 ];
 
 /** The templates the chooser offers: listed ones, by category order. */

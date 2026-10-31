@@ -1696,8 +1696,9 @@ anything yet.
   fragment, with the placements it recorded; the caller supplies the page ids
   and the asset id of each image. `catalog.ts` lists `SITE_TEMPLATES` (Field
   Journal in `nonprofit/field-journal/`, Porch Light in
-  `community/porch-light/`, Workwear in `union/workwear/` and Marigold
-  Marquee in `campaign/marigold-marquee/`, all drafts), and the chooser
+  `community/porch-light/`, Workwear in `union/workwear/`, Marigold
+  Marquee in `campaign/marigold-marquee/` and Riso Broadside in
+  `single-issue/riso-broadside/`, all drafts), and the chooser
   offers `listedTemplates()`,
   the `listed` ones in category order.
   Listing is the owner's call, made by changing `status` in a PR. Nothing the
