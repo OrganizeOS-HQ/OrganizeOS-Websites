@@ -927,6 +927,31 @@ describe("checkSiteTemplate", () => {
       }
     );
 
+    // A published React Router site renders an `a` element as the router's
+    // Link (the CLI's tagsOverrides), so the rule holds for it as for a Link.
+    test("an a element's href is held to the same rules", () => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element ws:tag="a" ws:label="Path anchor" href="/about">
+            {"Somewhere"}
+          </ws.element>
+        )),
+        '"about"',
+        '"Path anchor"',
+        '"/about"'
+      );
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element ws:tag="a" ws:label="Donate anchor" href="/donate">
+            {"Donate"}
+          </ws.element>
+        )),
+        '"about"',
+        '"Donate anchor"',
+        "reloadDocument"
+      );
+    });
+
     test("a link to a platform path reloads the page", () => {
       expect(
         checkAbout(() => (

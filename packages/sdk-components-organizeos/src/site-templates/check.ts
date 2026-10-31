@@ -614,7 +614,10 @@ const checkPageLinks = (page: RenderedPage, pageIds: Set<string>): string[] => {
 // A link by path goes to a route the platform serves (PLATFORM_PATHS), as a
 // document navigation: the published site's router has no route there and
 // would show its own 404. Any other page is linked by its key, so a rename
-// keeps the link. A placed block's links are its own.
+// keeps the link. A placed block's links are its own. Every instance's
+// `href` is read, not only a Link's: a published React Router site renders
+// an `a` element as the router's Link too (`tagsOverrides` in the CLI's
+// framework-react-router.ts), and a path is a path on any element.
 const checkPathLinks = (
   page: RenderedPage,
   blockIds: Set<string>
