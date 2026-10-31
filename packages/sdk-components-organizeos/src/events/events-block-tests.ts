@@ -152,6 +152,26 @@ export const describeEventsBlock = ({
       expect(propOf(unavailable, showAttribute)).toBeUndefined();
     });
 
+    test("the empty and unavailable boxes and the root declare no colour, so the text is the site's", () => {
+      const colourDeclarations = (instance: Instance) => {
+        const sourceIds =
+          fragment.styleSourceSelections.find(
+            (selection) => selection.instanceId === instance.id
+          )?.values ?? [];
+        return fragment.styles
+          .filter((style) => sourceIds.includes(style.styleSourceId))
+          .map((style) => style.property)
+          .filter((property) => property === "color");
+      };
+      for (const instance of [
+        root,
+        getInstance("empty"),
+        getInstance("unavailable"),
+      ]) {
+        expect(colourDeclarations(instance), instance.label).toEqual([]);
+      }
+    });
+
     test("the card reads the event through expressions over the parameter", () => {
       expect(card.component).toBe("ws:element");
       expect(card.tag).toBe("article");
