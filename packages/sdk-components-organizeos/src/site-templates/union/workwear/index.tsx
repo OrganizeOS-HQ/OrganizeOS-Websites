@@ -51,6 +51,10 @@ export const workwearTemplate: SiteTemplate = {
     "font-heading": `"Barlow Condensed", "Arial Narrow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`,
     "font-body": `"Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`,
   },
+  // Rust sets only large numerals on the base (numeralStyles in ./styles,
+  // 24px and up; an event's day, 44px), so it is held to large text's 3:1:
+  // 4.14:1 in this palette.
+  accent2: "large-text",
   images: {
     "hero.jpg": {
       url: heroUrl,
