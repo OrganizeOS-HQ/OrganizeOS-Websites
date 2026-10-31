@@ -1,6 +1,7 @@
 import newsreaderUrl from "@fontsource-variable/newsreader/files/newsreader-latin-wght-normal.woff2?url&no-inline";
 import sourceSans3Url from "@fontsource-variable/source-sans-3/files/source-sans-3-latin-wght-normal.woff2?url&no-inline";
 import type { SiteTemplate } from "../../types";
+import { blockTokens } from "./block-tokens";
 import aboutUrl from "./images/about.jpg?url&no-inline";
 import heroUrl from "./images/hero.jpg?url&no-inline";
 import programOneUrl from "./images/program-one.jpg?url&no-inline";
@@ -17,8 +18,9 @@ import { programs } from "./pages/programs";
 // 2026-10-30-website-template-inventory-design.md, section 5.1, template 1;
 // its look is 2026-10-31-website-template-directions.md, section 2.1). Its
 // pages are in ./pages; what they share is its look (./styles), its pieces
-// (./parts) and the sections more than one page uses (./sections). Donate
-// is the platform's /donate, linked, never a page of the template.
+// (./parts) and the sections more than one page uses (./sections); its look
+// for the platform blocks it places is ./block-tokens. Donate is the
+// platform's /donate, linked, never a page of the template.
 //
 // The photos are public domain works of United States federal agencies,
 // from Wikimedia Commons, resized and compressed. Painted out: in the hero, a
@@ -89,4 +91,5 @@ export const fieldJournalTemplate: SiteTemplate = {
     },
   },
   pages: [home, about, programs, getInvolved, events, contact],
+  blockTokens,
 };

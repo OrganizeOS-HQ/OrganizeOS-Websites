@@ -2,7 +2,7 @@ import { ws } from "@webstudio-is/template";
 import { SPACE, contentBlock, keyed, section, text } from "../../../kit";
 import type { PageContext, SiteTemplatePage } from "../../../types";
 import {
-  eventsFrame,
+  eventList,
   quietLink,
   sectionHeader,
   siteFooter,
@@ -20,7 +20,7 @@ import {
 } from "../styles";
 
 // Get involved (spec section 4's page): Page header, Volunteer
-// opportunities, Sign-up, Events: List, FAQ.
+// opportunities, Sign-up, Events: Card grid, FAQ.
 
 type Opportunity = [string, string, string];
 
@@ -85,10 +85,10 @@ const opportunities = (context: PageContext) =>
     ]),
   });
 
-/** Events: List, the Event List of volunteer days and gatherings. */
+/** Events: Card grid, the Event List of volunteer days and gatherings. */
 const events = (context: PageContext) =>
   section({
-    label: "Events: List",
+    label: "Events: Card grid",
     children: keyed([
       sectionHeader({
         pageIds: context.pageIds,
@@ -97,9 +97,7 @@ const events = (context: PageContext) =>
         intro: "Come to one first: it is the easiest way to start.",
         link: { label: "All events", pageKey: "events" },
       }),
-      eventsFrame(
-        context.placeBlock("@organizeos/site-components:EventList", "events")
-      ),
+      eventList(context),
     ]),
   });
 

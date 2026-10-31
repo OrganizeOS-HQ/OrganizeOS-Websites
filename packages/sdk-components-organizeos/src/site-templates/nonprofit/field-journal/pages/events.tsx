@@ -1,17 +1,17 @@
 import { ws } from "@webstudio-is/template";
 import { keyed, section } from "../../../kit";
 import type { PageContext, SiteTemplatePage } from "../../../types";
-import { eventsFrame, sectionHeader, siteFooter, siteNav } from "../parts";
+import { eventList, sectionHeader, siteFooter, siteNav } from "../parts";
 import { pageHeader, signUpSection } from "../sections";
 import { bodyStyles } from "../styles";
 
 // Events: Page header, one Event List under its heading, then Sign-up. One
 // events section, so an org with no events sees one empty state.
 
-/** Events: List, the Event List of everything coming up. */
+/** Events: Card grid, the Event List of everything coming up. */
 const upcoming = (context: PageContext) =>
   section({
-    label: "Events: List",
+    label: "Events: Card grid",
     children: keyed([
       sectionHeader({
         pageIds: context.pageIds,
@@ -19,9 +19,7 @@ const upcoming = (context: PageContext) =>
         heading: "Everything coming up",
         intro: "Say how often you meet, and where most events take place.",
       }),
-      eventsFrame(
-        context.placeBlock("@organizeos/site-components:EventList", "events")
-      ),
+      eventList(context),
     ]),
   });
 

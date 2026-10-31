@@ -13,6 +13,7 @@ import {
   text,
 } from "../../kit";
 import type { PageContext } from "../../types";
+import { eventGridStyle } from "./block-tokens";
 import {
   LOOK,
   eyebrowStyles,
@@ -215,23 +216,12 @@ export const sectionHeader = ({
 );
 
 /**
- * A placed Event Card or Event List under a rule, which frames its cards,
- * and its "No upcoming events" line when there are none.
+ * The Event List, its cards in the Programs grid's idiom: three up under
+ * their own rules, two from 768px to 991px, one on phones (./block-tokens).
  */
-export const eventsFrame = (block: JSX.Element): JSX.Element => (
-  <ws.element
-    ws:tag="div"
-    ws:label="Events frame"
-    ws:style={css`
-      padding-top: ${SPACE[32]};
-      border-top-width: 1px;
-      border-top-style: solid;
-      border-top-color: var(--text);
-      ${BREAKPOINT.landscape} {
-        padding-top: ${SPACE[24]};
-      }
-    `}
-  >
-    {block}
-  </ws.element>
-);
+export const eventList = ({
+  placeBlock,
+}: Pick<PageContext, "placeBlock">): JSX.Element =>
+  placeBlock("@organizeos/site-components:EventList", "events", {
+    style: eventGridStyle(),
+  });

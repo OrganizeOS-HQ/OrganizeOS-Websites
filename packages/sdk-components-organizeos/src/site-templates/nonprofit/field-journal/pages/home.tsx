@@ -11,7 +11,7 @@ import type { PageContext, SiteTemplatePage } from "../../../types";
 import {
   DONATE,
   actions,
-  eventsFrame,
+  eventList,
   photo,
   sectionHeader,
   siteFooter,
@@ -160,9 +160,7 @@ const events = (context: PageContext) =>
         intro: "Say what kinds of events you hold, and who they are for.",
         link: { label: "All events", pageKey: "events" },
       }),
-      eventsFrame(
-        context.placeBlock("@organizeos/site-components:EventList", "events")
-      ),
+      eventList(context),
     ]),
   });
 
