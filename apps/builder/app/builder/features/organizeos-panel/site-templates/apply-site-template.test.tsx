@@ -30,9 +30,9 @@ import {
   type RenderedPage,
   type SiteTemplate,
   BLANK_CANONICAL_VALUES,
-  SITE_TEMPLATES,
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
+import { spikeTemplate as spike } from "../../../../../../../packages/sdk-components-organizeos/src/site-templates/__fixtures__/spike";
 import { registerContainers } from "~/shared/sync/sync-stores";
 import {
   $assets,
@@ -641,7 +641,6 @@ describe("applySiteTemplateMutable", () => {
 
   describe("several blocks on one page", () => {
     // the spike: an Event Card, an Event List and a Signup Form on Home
-    const spike = SITE_TEMPLATES.find((item) => item.id === "spike")!;
     const renderSpike = () =>
       renderSiteTemplate(spike, {
         assetIds: new Map(

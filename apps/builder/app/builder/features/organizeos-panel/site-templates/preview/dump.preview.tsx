@@ -26,6 +26,7 @@ import {
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
 import { getAssetData } from "../../../../../../../../packages/asset-uploader/src/utils/get-asset-data";
+import { spikeTemplate } from "../../../../../../../../packages/sdk-components-organizeos/src/site-templates/__fixtures__/spike";
 import { registerContainers } from "~/shared/sync/sync-stores";
 import { getOrganizeosPresetIds } from "../../insert-organizeos-block";
 import { applySiteTemplateMutable } from "../apply-site-template";
@@ -39,7 +40,7 @@ import { createProvisionedProject } from "../provisioned-project";
  * publish workflow builds a site from.
  *
  * Read from the environment:
- * - PREVIEW_TEMPLATE_ID: the template, by id;
+ * - PREVIEW_TEMPLATE_ID: the template, by id (a catalog entry or a fixture);
  * - PREVIEW_API_BASE_URL: the org's public API, which the catalog Resources
  *   read (the script's stub);
  * - PREVIEW_OUT_DIR: where `.webstudio/data.json` (the CLI's LOCAL_DATA_FILE),
@@ -80,10 +81,17 @@ const readEnv = (name: string) => {
   return value;
 };
 
+/**
+ * Templates the tool runs that are not in the catalog: fixtures, which the
+ * chooser never offers (the spike proves the apply path).
+ */
+const PREVIEW_FIXTURES: SiteTemplate[] = [spikeTemplate];
+
 const findTemplate = (id: string): SiteTemplate => {
-  const template = SITE_TEMPLATES.find((item) => item.id === id);
+  const templates = [...SITE_TEMPLATES, ...PREVIEW_FIXTURES];
+  const template = templates.find((item) => item.id === id);
   if (template === undefined) {
-    const known = SITE_TEMPLATES.map((item) => item.id).join(", ");
+    const known = templates.map((item) => item.id).join(", ");
     throw new Error(`No template has the id "${id}". Known: ${known}`);
   }
   return template;

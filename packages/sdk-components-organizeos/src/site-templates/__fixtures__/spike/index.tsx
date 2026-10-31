@@ -1,11 +1,12 @@
 import { $, css, ws } from "@webstudio-is/template";
-import { BLANK_CANONICAL_VALUES } from "../canonical-variables";
-import type { SiteTemplate, SiteTemplatePage } from "../types";
+import { BLANK_CANONICAL_VALUES } from "../../canonical-variables";
+import type { SiteTemplate, SiteTemplatePage } from "../../types";
 import heroUrl from "./images/hero.jpg?url&no-inline";
 
-// A draft that exists to prove the apply path end to end in a test org: one
+// A fixture that exists to prove the apply path end to end in a test org: one
 // page with a background image, two Events blocks (one to a section) and a
-// Sign-up form. It is never listed.
+// Sign-up form. It is not in the catalog (catalog.ts), so the chooser never
+// offers it; the apply tests and the preview tool import it from here.
 
 // A section of the page holding one Events block under a heading.
 const eventsSection = ({
