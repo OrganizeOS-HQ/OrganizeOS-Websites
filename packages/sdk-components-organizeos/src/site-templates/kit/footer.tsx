@@ -8,7 +8,12 @@ import {
   container,
   fontWeight,
 } from "./layout";
-import { type SiteLink, textLink } from "./links";
+import {
+  type SiteLink,
+  linkInRowStyles,
+  linkRowStyles,
+  textLink,
+} from "./links";
 import { sample } from "./sample";
 
 /** A footer column: a title over links to pages or anchors. */
@@ -60,8 +65,8 @@ const footerColumn = (
 /**
  * The site's footer on the base colours under a rule in the text colour:
  * the org's name (a [bracketed] placeholder in it kept together, `sample`)
- * and a one-line tagline; then the simple footer's `links`, if any, as one
- * wrapping row; then the columns of links, if any; then `note`, if any, in a
+ * and a one-line tagline; then the simple footer's `links`, if any, as
+ * lines of text, balanced (`linkRowStyles`); then the columns of links, if any; then `note`, if any, in a
  * box of its own (a paid-for-by or imprint line, at 14px). The links and the
  * columns sit beside the name from 768px up, the columns wrapping under it
  * when they do not fit and the links narrowing the tagline instead; on
@@ -190,17 +195,21 @@ export const footer = ({
                     ws:tag="nav"
                     ws:label="Links"
                     aria-label="Footer"
-                    ws:style={css`
-                      display: flex;
-                      flex-wrap: wrap;
-                      align-items: center;
-                      column-gap: ${SPACE[24]};
-                      ${BREAKPOINT.landscape} {
-                        column-gap: ${SPACE[16]};
-                      }
-                    `}
+                    ws:style={[
+                      ...linkRowStyles("all"),
+                      // centred beside the name and tagline, as its links
+                      // were in a flex row; on phones the bar is a column
+                      ...css`
+                        align-self: center;
+                        ${BREAKPOINT.landscape} {
+                          align-self: stretch;
+                        }
+                      `,
+                    ]}
                   >
-                    {links.map((link, index) => textLink(pageIds, link, index))}
+                    {links.map((link, index) =>
+                      textLink(pageIds, link, index, linkInRowStyles("all"))
+                    )}
                   </ws.element>,
                 ]),
             ...(columns.length === 0

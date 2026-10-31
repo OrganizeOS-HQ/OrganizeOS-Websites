@@ -68,7 +68,7 @@ describe("footer", () => {
     );
   });
 
-  test("the simple footer's links are a wrapping row, a nav named Footer, after the name", () => {
+  test("the simple footer's links are a nav named Footer, after the name", () => {
     const { fragment, outer } = renderFooter({
       tagline,
       links: [
@@ -97,12 +97,6 @@ describe("footer", () => {
       "Name and tagline",
       "Links",
     ]);
-    for (const width of [1440, 767, 320]) {
-      expect(stylesAt(fragment, row, width)).toMatchObject({
-        display: "flex",
-        "flex-wrap": "wrap",
-      });
-    }
     // from 768px up the name and tagline start from 18rem and grow, their
     // tagline wrapping, so the links stay beside them on a tablet
     for (const width of [1440, 991, 820, 768]) {
@@ -134,6 +128,41 @@ describe("footer", () => {
     expect(
       without.fragment.instances.some((item) => item.label === "Links")
     ).toBe(false);
+  });
+
+  // As the nav's: links that need two lines on a phone wrap evenly, never
+  // with the last one alone. Each link's margin is as wide as the row's box
+  // reaches past its edge, so a line holds as many links as the flex gap let
+  // it, and beside the name the links end where they did.
+  test("the simple footer's links are lines of text, balanced, each link spaced by its own margin", () => {
+    const { fragment } = renderFooter({
+      tagline,
+      links: [
+        { label: "About", pageKey: "about" },
+        { label: "Events", pageKey: "events" },
+        { label: "Sign up", href: "#sign-up" },
+      ],
+    });
+    const row = byLabel(fragment, "Links");
+    for (const width of [1440, 991, 820, 768, 767, 390, 320]) {
+      const gap = width > 767 ? "24px" : "16px";
+      expect(stylesAt(fragment, row, width)).toMatchObject({
+        display: "block",
+        "text-wrap-mode": "wrap",
+        "text-wrap-style": "balance",
+        "margin-right": `-${gap}`,
+        // centred beside the name and tagline; on phones, where the bar is
+        // a column, the row's full width
+        "align-self": width > 767 ? "center" : "stretch",
+      });
+      for (const link of childInstances(fragment, row)) {
+        expect(stylesAt(fragment, link, width)).toMatchObject({
+          display: "inline-flex",
+          "vertical-align": "top",
+          "margin-right": gap,
+        });
+      }
+    }
   });
 
   test("each column is a nav named by its title, the title as text, then its links", () => {

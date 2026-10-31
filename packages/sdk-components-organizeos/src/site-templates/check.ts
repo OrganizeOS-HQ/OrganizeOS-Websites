@@ -441,33 +441,97 @@ const checkBlockTokenStyles = (template: SiteTemplate): string[] =>
     })
   );
 
+/** The names of the tokens the page's placed blocks wear. */
+const tokensWornByBlocks = (page: RenderedPage) => {
+  const { fragment } = page;
+  const blockIds = placedBlockIds(page);
+  const selected = new Set(
+    fragment.styleSourceSelections.flatMap((selection) =>
+      blockIds.has(selection.instanceId) ? selection.values : []
+    )
+  );
+  return new Set(
+    fragment.styleSources.flatMap((source) =>
+      source.type === "token" && selected.has(source.id) ? [source.name] : []
+    )
+  );
+};
+
 // A block token the template restyles is worn by a block it places: a name
 // no placed block wears styles nothing.
 const checkBlockTokenNames = (
   template: SiteTemplate,
   pages: RenderedPage[]
 ): string[] => {
-  const worn = new Set<string>();
-  for (const page of pages) {
-    const { fragment } = page;
-    const blockIds = placedBlockIds(page);
-    const selected = new Set(
-      fragment.styleSourceSelections.flatMap((selection) =>
-        blockIds.has(selection.instanceId) ? selection.values : []
-      )
-    );
-    for (const source of fragment.styleSources) {
-      if (source.type === "token" && selected.has(source.id)) {
-        worn.add(source.name);
-      }
-    }
-  }
+  const worn = new Set(pages.flatMap((page) => [...tokensWornByBlocks(page)]));
   return Object.keys(template.blockTokens ?? {}).flatMap((name) =>
     worn.has(name)
       ? []
       : [
           `Block tokens: "${name}" is worn by no block the template places, so it styles nothing`,
         ]
+  );
+};
+
+/** The stand-in asset id the check renders a template's image `file` with. */
+const standInAssetId = (file: string) => `asset:${file}`;
+
+/** Whether a style value is, or holds, the asset `assetId`. */
+const holdsAsset = (value: unknown, assetId: string): boolean => {
+  if (Array.isArray(value)) {
+    return value.some((item) => holdsAsset(item, assetId));
+  }
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    (record.type === "asset" && record.value === assetId) ||
+    Object.values(record).some((item) => holdsAsset(item, assetId))
+  );
+};
+
+/**
+ * Whether the page shows the image `assetId`: an Image's (or any prop's)
+ * asset, or a background image.
+ */
+const showsAsset = ({ props, styles }: WebstudioFragment, assetId: string) =>
+  props.some((prop) => prop.type === "asset" && prop.value === assetId) ||
+  styles.some(
+    (style) =>
+      style.property === "backgroundImage" && holdsAsset(style.value, assetId)
+  );
+
+// The preview tool shows the first sample event with the template's
+// previewEventCover. A template that places the cover card names one, so its
+// preview shows a photo of its own, not a stand-in; and no page with an
+// events block shows it, as an Image or a background, so a preview never
+// shows a photo twice. The cover card is the one whose image wears "OS Event
+// Cover".
+const checkPreviewEventCover = (
+  template: SiteTemplate,
+  pages: RenderedPage[]
+): string[] => {
+  const eventPages = pages.filter((page) =>
+    page.placements.some((placement) => eventBlockKeys.has(placement.key))
+  );
+  const cover = template.previewEventCover;
+  if (cover === undefined) {
+    return eventPages.some((page) =>
+      tokensWornByBlocks(page).has("OS Event Cover")
+    )
+      ? [
+          "The template places the events blocks' cover card, so it names a previewEventCover: one of its images, which the preview shows as the first sample event's cover",
+        ]
+      : [];
+  }
+  const assetId = standInAssetId(cover);
+  return eventPages.flatMap(({ key, fragment }) =>
+    showsAsset(fragment, assetId)
+      ? [
+          `${pageName(key)} shows the preview event cover "${cover}" and has an events block, so its preview would show the photo twice`,
+        ]
+      : []
   );
 };
 
@@ -725,7 +789,7 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
     let pageCount = 0;
     pages = renderSiteTemplate(template, {
       assetIds: new Map(
-        Object.keys(template.images).map((file) => [file, `asset:${file}`])
+        Object.keys(template.images).map((file) => [file, standInAssetId(file)])
       ),
       generatePageId: () => {
         pageCount += 1;
@@ -737,7 +801,10 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
     return violations;
   }
   const pageIds = new Set(pages.map((page) => page.pageId));
-  violations.push(...checkBlockTokenNames(template, pages));
+  violations.push(
+    ...checkBlockTokenNames(template, pages),
+    ...checkPreviewEventCover(template, pages)
+  );
   for (const page of pages) {
     const blockIds = placedBlockIds(page);
     violations.push(

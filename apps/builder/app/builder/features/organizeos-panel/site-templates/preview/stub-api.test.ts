@@ -17,15 +17,8 @@ const siteTemplates = join(
   dirname(fileURLToPath(import.meta.url)),
   "../../../../../../../../packages/sdk-components-organizeos/src/site-templates"
 );
+/** The stub's own fallback cover. */
 const spikeHero = join(siteTemplates, "__fixtures__/spike/images/hero.jpg");
-const fieldJournalThumbnail = join(
-  siteTemplates,
-  "nonprofit/field-journal/images/hero.jpg"
-);
-const fieldJournalAbout = join(
-  siteTemplates,
-  "nonprofit/field-journal/images/about.jpg"
-);
 
 /**
  * Bytes as their digest: a failed comparison of two images prints two short
@@ -145,9 +138,9 @@ describe("the stub API", () => {
   });
 
   // The script gives the stub the previewed template's preview event cover
-  // and its thumbnail (each a file, or none), so the first card shows one of
-  // the template's own photos: the cover first, then the thumbnail, then the
-  // spike fixture's picture.
+  // (a file, or none), so the first card shows one of the template's own
+  // photos; with none, the spike fixture's picture. The files here are temp
+  // files, so no template's photos are read.
   describe("the first event's cover", () => {
     const coverPath = () => {
       const [cover] = events.flatMap((event) =>
@@ -155,52 +148,49 @@ describe("the stub API", () => {
       );
       return cover.pathname;
     };
-    const read = (coverImages?: {
-      previewEventCover?: string;
-      thumbnail?: string;
-    }) =>
+    const read = (previewEventCover?: string) =>
       answerStubRequest(coverPath(), {
         apiBaseUrl,
         events: "sample",
-        coverImages,
+        previewEventCover,
       });
-
-    test("is the template's preview event cover, before its thumbnail", async () => {
-      const cover = await read({
-        previewEventCover: fieldJournalAbout,
-        thumbnail: fieldJournalThumbnail,
-      });
-      expect(cover.contentType).toBe("image/jpeg");
-      expect(digest(cover.body)).toBe(
-        digest(await readFile(fieldJournalAbout))
-      );
-    });
-
-    test("is the thumbnail when the template names no preview event cover", async () => {
-      const cover = await read({ thumbnail: fieldJournalThumbnail });
-      expect(digest(cover.body)).toBe(
-        digest(await readFile(fieldJournalThumbnail))
-      );
-    });
-
-    test("is the spike fixture's picture when it is given neither", async () => {
-      for (const coverImages of [undefined, {}]) {
-        const cover = await read(coverImages);
-        expect(digest(cover.body)).toBe(digest(await readFile(spikeHero)));
-      }
-    });
-
-    test("is served as its file's type", async () => {
+    /** Runs `check` with a temp file of `bytes` named `name`. */
+    const withFile = async (
+      name: string,
+      bytes: Uint8Array,
+      check: (path: string) => Promise<void>
+    ) => {
       const folder = await mkdtemp(join(tmpdir(), "stub-api-"));
       try {
-        const png = join(folder, "cover.png");
-        await writeFile(png, Uint8Array.from([0x89, 0x50, 0x4e, 0x47]));
-        expect((await read({ previewEventCover: png })).contentType).toBe(
-          "image/png"
-        );
+        const path = join(folder, name);
+        await writeFile(path, bytes);
+        await check(path);
       } finally {
         await rm(folder, { recursive: true, force: true });
       }
+    };
+    // a JPEG's start-of-image marker, then bytes of its own
+    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+
+    test("is the template's preview event cover", async () => {
+      await withFile("cover.jpg", jpeg, async (path) => {
+        const cover = await read(path);
+        expect(cover.contentType).toBe("image/jpeg");
+        expect(digest(cover.body)).toBe(digest(jpeg));
+      });
+    });
+
+    test("is the spike fixture's picture when the template names none", async () => {
+      const cover = await read(undefined);
+      expect(cover.contentType).toBe("image/jpeg");
+      expect(digest(cover.body)).toBe(digest(await readFile(spikeHero)));
+    });
+
+    test("is served as its file's type", async () => {
+      const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47]);
+      await withFile("cover.png", png, async (path) => {
+        expect((await read(path)).contentType).toBe("image/png");
+      });
     });
   });
 

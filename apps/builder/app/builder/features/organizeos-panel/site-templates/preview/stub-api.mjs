@@ -2,19 +2,18 @@
 // (scripts/preview-site-template.mjs, which serves it on a fixed port). The
 // published site's loader reads the catalog Resources from it, so a
 // template's preview shows its event cards with three sample events, the
-// first with one of the previewed template's own photos as its cover, or
-// the empty state under --no-events. Every other read, the forms among them, is
-// an org with no data. Plain JavaScript, so the script runs it with node
-// alone; stub-api.test.ts holds it to that.
+// first with the previewed template's preview event cover, or the empty
+// state under --no-events. Every other read, the forms among them, is an org
+// with no data. Plain JavaScript, so the script runs it with node alone;
+// stub-api.test.ts holds it to that.
 
 import { readFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * The cover when the script gives the stub no file of the template's: the
- * spike fixture's picture, an original abstract image (OrganizeOS's own
- * work). A path, not `new URL(path, import.meta.url)`, which Vite turns into
+ * The cover when the template names no preview event cover: the spike
+ * fixture's picture, an original abstract image (OrganizeOS's own work). A path, not `new URL(path, import.meta.url)`, which Vite turns into
  * a dev server URL under the test.
  */
 const fallbackCoverImage = join(
@@ -140,36 +139,25 @@ export const sampleEvents = (apiBaseUrl) => {
 };
 
 /**
- * The previewed template's files the sample cover may be, each a path or
- * none: its `previewEventCover`, a photo no page with events shows, and its
- * `thumbnail`.
- *
- * @typedef {{ previewEventCover?: string, thumbnail?: string }} CoverImages
- */
-
-/**
  * The stub's answer to a request, by its path and query (`request.url`):
  * the events read (`/events`, with or without `?upcoming=true`) gets the
  * sample events, or none when `events` is "none"; the sample cover is the
- * template's preview event cover, else its thumbnail, else the spike
- * fixture's picture; anything else, the forms read among them, is
+ * template's preview event cover (`previewEventCover`, its file), else the
+ * spike fixture's picture; anything else, the forms read among them, is
  * `{"data": []}`.
  *
  * @param {string} requestUrl
- * @param {{ apiBaseUrl: string, events: "sample" | "none", coverImages?: CoverImages }} options
+ * @param {{ apiBaseUrl: string, events: "sample" | "none", previewEventCover?: string }} options
  * @returns {Promise<{ status: number, contentType: string, body: string | Uint8Array }>}
  */
 export const answerStubRequest = async (
   requestUrl,
-  { apiBaseUrl, events, coverImages = {} }
+  { apiBaseUrl, events, previewEventCover }
 ) => {
   const base = new URL(apiBaseUrl);
   const { pathname } = new URL(requestUrl, base.origin);
   if (pathname === coverPath) {
-    const coverImage =
-      coverImages.previewEventCover ??
-      coverImages.thumbnail ??
-      fallbackCoverImage;
+    const coverImage = previewEventCover ?? fallbackCoverImage;
     return {
       status: 200,
       contentType:

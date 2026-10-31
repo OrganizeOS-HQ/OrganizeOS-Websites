@@ -10,9 +10,12 @@ import {
   tapTarget,
 } from "./layout";
 import {
+  LINK_GAP,
   type SiteLink,
   buttonStyles,
+  linkInRowStyles,
   linkProps,
+  linkRowStyles,
   pageHref,
   textLink,
 } from "./links";
@@ -96,30 +99,15 @@ const button = (
 );
 
 /**
- * The space after each link of the split nav's row from BREAKPOINT.tablet
- * down, where the row is lines of text, not a flex row with a gap. A link
- * sits at the top of its line, which is the link's own 44px.
- */
-const splitNavLinkStyles = (): TemplateStyleDecl[] => css`
-  ${BREAKPOINT.tablet} {
-    margin-right: ${SPACE[24]};
-    vertical-align: top;
-  }
-  ${BREAKPOINT.landscape} {
-    margin-right: ${SPACE[16]};
-  }
-`;
-
-/**
  * One row from 992px up, which never wraps: when the links do not fit they
  * wrap within their own box, beside the button. At BREAKPOINT.tablet and
  * below the name and the button share the first row, the name wrapping its
  * own text before the button would leave the row, and the links take a row
- * of their own beneath. That row is lines of text, balanced
- * (`text-wrap: balance`), so links that need two lines wrap two and two,
- * not three and one. So no item is ever left alone on a row, whatever the
- * name's length; a browser without balanced wrapping wraps the links as
- * they come.
+ * of their own beneath, as lines of text, balanced (`linkRowStyles`), so
+ * links that need two lines wrap two and two, not three and one; the row is
+ * a flex item that fills its line, so its basis is the bar's width and the
+ * width its margin takes back. So no item is ever left alone on a row,
+ * whatever the name's length.
  */
 const splitNav = (options: NavOptions) => (
   <ws.element ws:tag="header" ws:label="Nav" ws:style={headerStyles()}>
@@ -154,21 +142,25 @@ const splitNav = (options: NavOptions) => (
           ws:tag="nav"
           ws:label="Links"
           aria-label="Main"
-          ws:style={css`
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-            column-gap: ${SPACE[24]};
-            ${BREAKPOINT.tablet} {
-              order: 1;
-              flex-basis: 100%;
-              display: block;
-              text-wrap: balance;
-            }
-          `}
+          ws:style={[
+            ...css`
+              display: flex;
+              flex-wrap: wrap;
+              justify-content: flex-end;
+              column-gap: ${LINK_GAP.base};
+              ${BREAKPOINT.tablet} {
+                order: 1;
+                flex-basis: calc(100% + ${LINK_GAP.base});
+              }
+              ${BREAKPOINT.landscape} {
+                flex-basis: calc(100% + ${LINK_GAP.landscape});
+              }
+            `,
+            ...linkRowStyles("tablet"),
+          ]}
         >
           {options.links.map((link, index) =>
-            textLink(options.pageIds, link, index, splitNavLinkStyles())
+            textLink(options.pageIds, link, index, linkInRowStyles("tablet"))
           )}
         </ws.element>,
         ...(options.cta === undefined

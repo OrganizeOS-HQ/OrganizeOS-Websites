@@ -123,7 +123,14 @@ const fixture = (overrides: Partial<SiteTemplate> = {}): SiteTemplate => ({
       sourceUrl: "https://example.org/hero",
       alt: "Replace with a photo of your members",
     },
+    "cover.jpg": {
+      url: "/site-templates/fixture/cover.jpg",
+      sourceUrl: "https://example.org/cover",
+      alt: "Replace with a photo of one of your events",
+    },
   },
+  // Home places the cover card, and shows hero.jpg
+  previewEventCover: "cover.jpg",
   fonts: {},
   pages: [home, aboutPage()],
   ...overrides,
@@ -1004,6 +1011,7 @@ describe("checkSiteTemplate", () => {
         checkSiteTemplate(
           fixture({
             images: {
+              ...fixture().images,
               "hero.jpg": { ...fixture().images["hero.jpg"], sourceUrl: "" },
             },
           })
@@ -1021,7 +1029,10 @@ describe("checkSiteTemplate", () => {
       expectOneViolation(
         checkSiteTemplate(
           fixture({
-            images: { "hero.jpg": { ...fixture().images["hero.jpg"], url } },
+            images: {
+              ...fixture().images,
+              "hero.jpg": { ...fixture().images["hero.jpg"], url },
+            },
           })
         ),
         '"hero.jpg"',
@@ -1034,6 +1045,7 @@ describe("checkSiteTemplate", () => {
         checkSiteTemplate(
           fixture({
             images: {
+              ...fixture().images,
               "hero.jpg": {
                 ...fixture().images["hero.jpg"],
                 url: "https://example.org/hero.jpg",
@@ -1045,14 +1057,82 @@ describe("checkSiteTemplate", () => {
     });
 
     test("a preview event cover that is not one of the images is a violation", () => {
-      expect(
-        checkSiteTemplate(fixture({ previewEventCover: "hero.jpg" }))
-      ).toEqual([]);
       expectOneViolation(
-        checkSiteTemplate(fixture({ previewEventCover: "cover.jpg" })),
+        checkSiteTemplate(fixture({ previewEventCover: "missing.jpg" })),
         "preview event cover",
+        '"missing.jpg"'
+      );
+    });
+
+    // The preview shows the first sample event with it: a template with the
+    // cover card names one, or its preview shows a stand-in picture.
+    test("a template that places the cover card and names no preview event cover is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ previewEventCover: undefined })),
+        "cover card",
+        "previewEventCover"
+      );
+    });
+
+    test("a template whose events blocks all show the dated card needs no preview event cover", () => {
+      const dated: Content = ({ placeBlock }) =>
+        placeBlock(EventList, "dated", { card: "dated" });
+      expect(
+        checkSiteTemplate(
+          fixture({
+            previewEventCover: undefined,
+            pages: [
+              { ...aboutPage(), key: "home", path: "" },
+              aboutPage(dated),
+            ],
+          })
+        )
+      ).toEqual([]);
+    });
+
+    // So a preview never shows a photo twice.
+    test("a preview event cover shown on a page with an events block is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ previewEventCover: "hero.jpg" })),
+        'Page "home"',
+        '"hero.jpg"'
+      );
+      const events: Content = ({ placeBlock }) =>
+        placeBlock(EventList, "about-events");
+      expectOneViolation(
+        checkAbout((context) => (
+          <ws.element ws:tag="section" ws:label="Events">
+            <$.Image
+              src={context.image("cover.jpg")}
+              alt={context.imageAlt("cover.jpg")}
+            />
+            {events(context)}
+          </ws.element>
+        )),
+        'Page "about"',
         '"cover.jpg"'
       );
+      expectOneViolation(
+        checkAbout((context) => (
+          <ws.element
+            ws:tag="section"
+            ws:label="Events"
+            ws:style={context.backgroundImage("cover.jpg")}
+          >
+            {events(context)}
+          </ws.element>
+        )),
+        'Page "about"',
+        '"cover.jpg"'
+      );
+    });
+
+    test("a preview event cover shown on a page with no events block is not a violation", () => {
+      expect(
+        checkAbout(({ image, imageAlt }) => (
+          <$.Image src={image("cover.jpg")} alt={imageAlt("cover.jpg")} />
+        ))
+      ).toEqual([]);
     });
 
     test("a thumbnail that is not one of the images is a violation", () => {
@@ -1067,6 +1147,7 @@ describe("checkSiteTemplate", () => {
       const violations = checkSiteTemplate(
         fixture({
           images: {
+            ...fixture().images,
             "hero.jpg": { ...fixture().images["hero.jpg"], alt: " " },
           },
         })

@@ -77,8 +77,59 @@ export const textLinkStyles = (): TemplateStyleDecl[] => [
 ];
 
 /**
+ * The space after each link in a row of text links: 24px, 16px on phones,
+ * the gap such a row had as a flex row.
+ */
+export const LINK_GAP = { base: SPACE[24], landscape: SPACE[16] } as const;
+
+/**
+ * `body` for every width (`from: "all"`), or from BREAKPOINT.tablet down
+ * (`from: "tablet"`).
+ */
+const fromWidth = (from: "all" | "tablet", body: string) =>
+  from === "all" ? body : `${BREAKPOINT.tablet} { ${body} }`;
+
+/**
+ * A row of text links (`textLink`, with `linkInRowStyles`) as lines of text,
+ * balanced (`text-wrap: balance`): links that need two lines wrap evenly, two
+ * and two rather than three and one, so none is left alone on the last line.
+ * Each link is spaced by its own margin (LINK_GAP), and the row's margin
+ * takes the last one's back, its box reaching that far past its edge: so a
+ * line holds as many links as a flex row's gap let it, and a row that sits
+ * at the right ends where it did. `from` is where it applies. A browser
+ * without balanced wrapping wraps the links as they come.
+ */
+export const linkRowStyles = (
+  from: "all" | "tablet"
+): TemplateStyleDecl[] => css`
+  ${fromWidth(
+    from,
+    `display: block;
+      text-wrap: balance;
+      margin-right: -${LINK_GAP.base};`
+  )}
+  ${BREAKPOINT.landscape} {
+    margin-right: -${LINK_GAP.landscape};
+  }
+`;
+
+/** A link in a `linkRowStyles` row: spaced by LINK_GAP, at the top of its 44px line. */
+export const linkInRowStyles = (
+  from: "all" | "tablet"
+): TemplateStyleDecl[] => css`
+  ${fromWidth(
+    from,
+    `margin-right: ${LINK_GAP.base};
+    vertical-align: top;`
+  )}
+  ${BREAKPOINT.landscape} {
+    margin-right: ${LINK_GAP.landscape};
+  }
+`;
+
+/**
  * A text link to `link`; `key` only quiets React's list check. `styles` adds
- * to the link's own, as the nav's spacing does.
+ * to the link's own, as a row's spacing does.
  */
 export const textLink = (
   pageIds: PageContext["pageIds"],

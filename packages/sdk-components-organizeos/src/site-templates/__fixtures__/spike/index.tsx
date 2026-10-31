@@ -2,6 +2,7 @@ import { $, css, ws } from "@webstudio-is/template";
 import sourceSans3Url from "@fontsource-variable/source-sans-3/files/source-sans-3-latin-wght-normal.woff2?url&no-inline";
 import { BLANK_CANONICAL_VALUES } from "../../canonical-variables";
 import type { SiteTemplate, SiteTemplatePage } from "../../types";
+import coverUrl from "./images/cover.jpg?url&no-inline";
 import heroUrl from "./images/hero.jpg?url&no-inline";
 
 // A fixture that exists to prove the apply path end to end in a test org: one
@@ -166,6 +167,9 @@ export const spikeTemplate: SiteTemplate = {
   status: "draft",
   dependsOn: [],
   thumbnail: "hero.jpg",
+  // its Event Card and Event List show the cover card, and Home shows
+  // hero.jpg: the preview's sample cover is an image of its own
+  previewEventCover: "cover.jpg",
   variables: {
     ...BLANK_CANONICAL_VALUES,
     "font-body": `"Source Sans 3", ${BLANK_CANONICAL_VALUES["font-body"]}`,
@@ -175,6 +179,11 @@ export const spikeTemplate: SiteTemplate = {
       url: heroUrl,
       sourceUrl: "organizeos:generated/spike/images/generate.py",
       alt: "Replace with a photo of your members at work",
+    },
+    "cover.jpg": {
+      url: coverUrl,
+      sourceUrl: "organizeos:generated/spike/images/generate.py",
+      alt: "Replace with a photo of one of your events",
     },
   },
   fonts: {

@@ -204,10 +204,17 @@ describe("nav", () => {
         const [bar] = childInstances(fragment, byLabel(fragment, "Nav"));
         for (const width of [991, 900, 820, 768, 767, 479, 320]) {
           expect(stylesAt(fragment, bar, width)["flex-wrap"]).toBe("wrap");
-          // the links come last and fill a row of their own
+          // the links come last and fill a row of their own: their box is
+          // the row's width and the space after a link wider, the margin
+          // taking that back (below)
+          const gap = width > 767 ? "24px" : "16px";
           expect(
             stylesAt(fragment, byLabel(fragment, "Links"), width)
-          ).toMatchObject({ order: "1", "flex-basis": "100%" });
+          ).toMatchObject({
+            order: "1",
+            "flex-basis": `calc(100% + ${gap})`,
+            "margin-right": `-${gap}`,
+          });
           // the name starts from nothing and wraps its own text, so the
           // button always fits beside it
           expect(
@@ -221,7 +228,9 @@ describe("nav", () => {
     });
 
     // Four links that need two lines on a 320px phone wrap two and two, not
-    // three and one; links that fit stay on one line.
+    // three and one; links that fit stay on one line. Each link's margin is
+    // as wide as the box is wider than the row, so the last link of a line
+    // fits as it did beside a flex gap: a line holds as many links as before.
     test("at 991px and below the links are lines of text, balanced, each link spaced by its own margin", () => {
       const fragment = renderNav({ links, cta: donate });
       const linksRow = byLabel(fragment, "Links");
@@ -241,11 +250,16 @@ describe("nav", () => {
           "text-wrap-mode": "wrap",
           "text-wrap-style": "balance",
         });
+        const gap = width > 767 ? "24px" : "16px";
+        expect(stylesAt(fragment, linksRow, width)).toMatchObject({
+          "flex-basis": `calc(100% + ${gap})`,
+          "margin-right": `-${gap}`,
+        });
         for (const item of items) {
           expect(stylesAt(fragment, item, width)).toMatchObject({
             display: "inline-flex",
             "vertical-align": "top",
-            "margin-right": width > 767 ? "24px" : "16px",
+            "margin-right": gap,
           });
         }
       }
