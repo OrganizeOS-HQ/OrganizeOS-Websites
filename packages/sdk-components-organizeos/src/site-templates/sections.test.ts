@@ -65,7 +65,11 @@ describe("isSectionLabel", () => {
     "Hero - Split",
     "Split: Hero",
     "Events or news",
-  ])("%s is not a section label", (label) => {
+    // a colon with no variant after it
+    "Hero: ",
+    "Hero:  ",
+    "Events: ",
+  ])("%j is not a section label", (label) => {
     expect(isSectionLabel(label)).toBe(false);
   });
 });

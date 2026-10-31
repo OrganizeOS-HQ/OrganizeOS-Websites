@@ -44,9 +44,13 @@ export const SECTION_LABELS = [
 
 /**
  * Whether `label` is a section name, or one followed by a variant after a
- * colon (`Hero: Split`, `Nav: Centered`, `Events: Featured`).
+ * colon (`Hero: Split`, `Nav: Centered`, `Events: Featured`). A colon with
+ * no variant after it ("Hero: ") is neither.
  */
 export const isSectionLabel = (label: string): boolean =>
   SECTION_LABELS.some(
-    (name) => label === name || label.startsWith(`${name}: `)
+    (name) =>
+      label === name ||
+      (label.startsWith(`${name}: `) &&
+        label.slice(name.length + 2).trim() !== "")
   );
