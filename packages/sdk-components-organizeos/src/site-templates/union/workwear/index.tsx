@@ -6,6 +6,7 @@ import { ACCENT_TEXT, BREAKPOINT } from "../../kit";
 import type { SiteTemplate } from "../../types";
 import aboutUrl from "./images/about.jpg?url&no-inline";
 import heroUrl from "./images/hero.jpg?url&no-inline";
+import thumbnailUrl from "./images/thumbnail.jpg?url&no-inline";
 import { about } from "./pages/about";
 import { contactPage } from "./pages/contact";
 import { events } from "./pages/events";
@@ -33,6 +34,10 @@ import { RULE } from "./styles";
 // Every photo slot shows its photo in greys too (`filter: grayscale(1)`), so
 // a photo an org puts there takes the palette as these do; the hero's lies
 // under the denim overlay (pages/home).
+//
+// thumbnail.jpg, the chooser's picture, is OrganizeOS's own: the top of Home as
+// the preview tool draws it, which `corepack pnpm preview:template workwear
+// --thumbnail` writes. No page shows it, so applying never uploads it.
 
 export const workwearTemplate: SiteTemplate = {
   id: "workwear",
@@ -42,7 +47,7 @@ export const workwearTemplate: SiteTemplate = {
   styleTags: ["sturdy", "plain-spoken", "photo-led"],
   status: "draft",
   dependsOn: [],
-  thumbnail: "hero.jpg",
+  thumbnail: "thumbnail.jpg",
   variables: {
     base: "#E8EAEC",
     "accent-1": "#1F3557",
@@ -67,6 +72,12 @@ export const workwearTemplate: SiteTemplate = {
       sourceUrl:
         "https://commons.wikimedia.org/wiki/File:WORKERS_AT_THE_UNION_CARBIDE_URANIUM_MILL_-_NARA_-_543651.jpg",
       alt: "Replace with a photo from the local's early days, or of two of its members",
+    },
+    "thumbnail.jpg": {
+      url: thumbnailUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Home page, for the template chooser",
     },
   },
   fonts: {

@@ -8,6 +8,7 @@ import snapshotBlockPartyUrl from "./images/snapshot-block-party.jpg?url&no-inli
 import snapshotGardenUrl from "./images/snapshot-garden.jpg?url&no-inline";
 import snapshotMeetingUrl from "./images/snapshot-meeting.jpg?url&no-inline";
 import storyUrl from "./images/story.jpg?url&no-inline";
+import thumbnailUrl from "./images/thumbnail.jpg?url&no-inline";
 import { about } from "./pages/about";
 import { contact } from "./pages/contact";
 import { events } from "./pages/events";
@@ -37,6 +38,10 @@ import { home } from "./pages/home";
 // cap and a name tag on a jacket (each filled from the cap's or the jacket's
 // own fabric) and a vehicle maker's name; in story.jpg, the title on a
 // booklet.
+//
+// thumbnail.jpg, the chooser's picture, is OrganizeOS's own: the top of Home as
+// the preview tool draws it, which `corepack pnpm preview:template porch-light
+// --thumbnail` writes. No page shows it, so applying never uploads it.
 
 export const porchLightTemplate: SiteTemplate = {
   id: "porch-light",
@@ -46,7 +51,7 @@ export const porchLightTemplate: SiteTemplate = {
   styleTags: ["friendly", "bold", "photo-led"],
   status: "draft",
   dependsOn: [],
-  thumbnail: "snapshot-block-party.jpg",
+  thumbnail: "thumbnail.jpg",
   variables: {
     base: "#FFF3D6",
     "accent-1": "#7B2352",
@@ -85,6 +90,12 @@ export const porchLightTemplate: SiteTemplate = {
       sourceUrl:
         "https://commons.wikimedia.org/wiki/File:FEMA_-_44103_-_Community_Meeting_In_Bordeaux.jpg",
       alt: "Replace with a photo from one of your first meetings",
+    },
+    "thumbnail.jpg": {
+      url: thumbnailUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Home page, for the template chooser",
     },
   },
   fonts: {

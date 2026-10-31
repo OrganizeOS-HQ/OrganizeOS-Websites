@@ -4,6 +4,7 @@ import type { SiteTemplate } from "../../types";
 import { blockTokens } from "./block-tokens";
 import aboutUrl from "./images/about.jpg?url&no-inline";
 import heroUrl from "./images/hero.jpg?url&no-inline";
+import thumbnailUrl from "./images/thumbnail.jpg?url&no-inline";
 import volunteerUrl from "./images/volunteer.jpg?url&no-inline";
 import { about } from "./pages/about";
 import { endorsements } from "./pages/endorsements";
@@ -42,6 +43,11 @@ import { volunteer } from "./pages/volunteer";
 //   Painted out: the agency's red mark and the two lines of its name on the
 //   comment card at the front (filled with the card's own paper and grain);
 //   the crop leaves out that card's QR code.
+//
+// thumbnail.jpg, the chooser's picture, is OrganizeOS's own: the top of Home as
+// the preview tool draws it, which `corepack pnpm preview:template
+// marigold-marquee --thumbnail` writes. No page shows it, so applying never
+// uploads it.
 
 export const marigoldMarqueeTemplate: SiteTemplate = {
   id: "marigold-marquee",
@@ -51,7 +57,7 @@ export const marigoldMarqueeTemplate: SiteTemplate = {
   styleTags: ["confident", "high-contrast", "dark"],
   status: "draft",
   dependsOn: [],
-  thumbnail: "hero.jpg",
+  thumbnail: "thumbnail.jpg",
   // the preview's sample event cover: a photo on no page with events, so
   // Home never shows one twice
   previewEventCover: "volunteer.jpg",
@@ -81,6 +87,12 @@ export const marigoldMarqueeTemplate: SiteTemplate = {
       sourceUrl:
         "https://commons.wikimedia.org/wiki/File:LMR_Comp_scoping_meeting,_Hahnville,_03.05.2024_-_10.jpg",
       alt: "Replace with a photo of your volunteers signing in for a shift",
+    },
+    "thumbnail.jpg": {
+      url: thumbnailUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Home page, for the template chooser",
     },
   },
   fonts: {

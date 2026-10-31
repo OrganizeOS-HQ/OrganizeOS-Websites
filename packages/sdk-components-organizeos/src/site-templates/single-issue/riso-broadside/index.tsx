@@ -5,6 +5,7 @@ import { BREAKPOINT, SPACE } from "../../kit";
 import type { SiteTemplate } from "../../types";
 import { home } from "./home";
 import heroUrl from "./images/hero.jpg?url&no-inline";
+import thumbnailUrl from "./images/thumbnail.jpg?url&no-inline";
 import { RULE } from "./styles";
 
 // Riso Broadside, the first Single-issue drive or petition template
@@ -28,6 +29,11 @@ import { RULE } from "./styles";
 // mark (a ring and a wave) on the cover of a booklet on a lap, filled with
 // the cover's own shading and grain. The hero shows it in duotone
 // (./hero), so a photo an org puts there takes the palette the same way.
+//
+// thumbnail.jpg, the chooser's picture, is OrganizeOS's own: the top of Home as
+// the preview tool draws it, which `corepack pnpm preview:template
+// riso-broadside --thumbnail` writes. No page shows it, so applying never
+// uploads it.
 
 export const risoBroadsideTemplate: SiteTemplate = {
   id: "riso-broadside",
@@ -37,7 +43,7 @@ export const risoBroadsideTemplate: SiteTemplate = {
   styleTags: ["urgent", "printed", "photo-led"],
   status: "draft",
   dependsOn: [],
-  thumbnail: "hero.jpg",
+  thumbnail: "thumbnail.jpg",
   variables: {
     base: "#FFFFFF",
     "accent-1": "#2B2FC9",
@@ -52,6 +58,12 @@ export const risoBroadsideTemplate: SiteTemplate = {
       sourceUrl:
         "https://commons.wikimedia.org/wiki/File:CITIZENS%27_MEETING_ON_TRANSPORTATION,_A_FORUM_ON_%22STRATEGIES_FOR_CLEAN_AIR%22_PUT_FORTH_BY_NEW_YORK_CITY_EPA_-_NARA_-_554332.jpg",
       alt: "Replace with a photo of the people behind the ask, together",
+    },
+    "thumbnail.jpg": {
+      url: thumbnailUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Home page, for the template chooser",
     },
   },
   fonts: {

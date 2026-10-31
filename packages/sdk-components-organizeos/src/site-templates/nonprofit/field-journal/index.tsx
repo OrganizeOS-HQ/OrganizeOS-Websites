@@ -7,6 +7,7 @@ import heroUrl from "./images/hero.jpg?url&no-inline";
 import programOneUrl from "./images/program-one.jpg?url&no-inline";
 import programThreeUrl from "./images/program-three.jpg?url&no-inline";
 import programTwoUrl from "./images/program-two.jpg?url&no-inline";
+import thumbnailUrl from "./images/thumbnail.jpg?url&no-inline";
 import { about } from "./pages/about";
 import { contact } from "./pages/contact";
 import { events } from "./pages/events";
@@ -26,6 +27,11 @@ import { programs } from "./pages/programs";
 // from Wikimedia Commons, resized and compressed. Painted out: in the hero, a
 // maker's mark on the birdhouse and a glove's brand patch; in about.jpg, a
 // billboard and a filling station's lettering and sign on the skyline.
+//
+// thumbnail.jpg, the chooser's picture, is OrganizeOS's own: the top of Home as
+// the preview tool draws it, which `corepack pnpm preview:template
+// field-journal --thumbnail` writes. No page shows it, so applying never
+// uploads it.
 
 export const fieldJournalTemplate: SiteTemplate = {
   id: "field-journal",
@@ -35,7 +41,7 @@ export const fieldJournalTemplate: SiteTemplate = {
   styleTags: ["editorial", "warm", "photo-led"],
   status: "draft",
   dependsOn: [],
-  thumbnail: "hero.jpg",
+  thumbnail: "thumbnail.jpg",
   // the preview's sample event cover: a photo on no page with events, so
   // Home never shows one twice
   previewEventCover: "about.jpg",
@@ -77,6 +83,12 @@ export const fieldJournalTemplate: SiteTemplate = {
       sourceUrl:
         "https://commons.wikimedia.org/wiki/File:RMA-Urban_Roots_St_Paul-Ag_in_the_city_(20220928-RMA-CDP-0056).jpg",
       alt: "Replace with a photo of the place where your work began",
+    },
+    "thumbnail.jpg": {
+      url: thumbnailUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Home page, for the template chooser",
     },
   },
   fonts: {
