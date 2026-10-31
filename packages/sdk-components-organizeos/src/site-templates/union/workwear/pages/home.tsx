@@ -76,6 +76,7 @@ const hero = (context: PageContext) =>
           right: 0;
           bottom: 0;
           left: 0;
+          pointer-events: none;
           background-image:
             linear-gradient(
               to right,
