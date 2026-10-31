@@ -1750,22 +1750,23 @@ anything yet.
   `submit` are the template's text for the form's heading and its submit
   button, in place of the block's own placeholders.
 - **Template block tokens.** `SiteTemplate.blockTokens` gives the template's
-  look for the block tokens by name (`BlockTokenName`: "OS Form Heading",
-  "OS Field", "OS Input", "OS Button", "OS Message", "OS Card", "OS Event
-  Title", "OS Event Link", "OS Event Row", "OS Event Date", "OS Event Day",
-  "OS Event Cover" and "OS Event Note"). Both cards' titles wear "OS Event Title" (the heading
-  font) and their links "OS Event Link" (`--text`, underlined, 600, a 44px
-  tap target that keeps one line of the card's height); the dated card's row
-  wears "OS Event Row"; the cover card's image wears "OS Event Cover" (a
-  block the card's width at the image's own ratio, which a template crops
-  with `aspect-ratio` and `object-fit`); and an events block's "No upcoming
-  events" and "Events unavailable" lines wear "OS Event Note", which
-  declares nothing (no colour: the lines inherit `--text`), so a template
-  frames them. `renderSiteTemplate` merges each declaration into the page
-  fragment's token of that name by key (one under a media query goes on the
-  fragment's breakpoint for it, added when the page has none), never into the
-  shared `token()` objects, and the apply routine writes them over a token of
-  that name the project already holds, which the insert's "ours" would keep.
+  look for the block tokens by name (`BlockTokenName`: "OS Form Heading", "OS
+  Field", "OS Input", "OS Button", "OS Message", "OS Card", "OS Event Title",
+  "OS Event Link", "OS Event Row", "OS Event Date", "OS Event Day", "OS Event
+  Cover" and "OS Event Note"). Both cards' titles wear "OS Event Title" (the
+  heading font) and their links "OS Event Link" (`--text`, underlined, 600, a
+  44px tap target of padding that its margins take back, so the link takes
+  only its lines of the card's height, however many); the dated card's row
+  wears "OS Event Row"; the cover card's image wears "OS Event Cover" (a block
+  the card's width at the image's own ratio, which a template crops with
+  `aspect-ratio` and `object-fit`); and an events block's "No upcoming events"
+  and "Events unavailable" lines wear "OS Event Note", which declares nothing
+  (no colour: the lines inherit `--text`), so a template frames them.
+  `renderSiteTemplate` merges each declaration into the page fragment's token
+  of that name by key (one under a media query goes on the fragment's
+  breakpoint for it, added when the page has none), never into the shared
+  `token()` objects, and the apply routine writes them over a token of that
+  name the project already holds, which the insert's "ours" would keep.
 - **Block tokens read the site variables.** "OS Input", "OS Button" and "OS
   Card" (`shared/form-tokens.ts`, `events/event-card.template.tsx`) take their
   background and text colours from `--base`, `--text` and `--accent-1`, and the

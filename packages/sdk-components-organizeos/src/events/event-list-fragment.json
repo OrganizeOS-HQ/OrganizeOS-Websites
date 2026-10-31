@@ -791,6 +791,24 @@
     {
       "breakpointId": "base",
       "styleSourceId": "11",
+      "property": "paddingTop",
+      "value": {
+        "type": "unparsed",
+        "value": "calc((44px - 1lh)/2)"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "11",
+      "property": "paddingBottom",
+      "value": {
+        "type": "unparsed",
+        "value": "calc((44px - 1lh)/2)"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "11",
       "property": "marginTop",
       "value": {
         "type": "unparsed",

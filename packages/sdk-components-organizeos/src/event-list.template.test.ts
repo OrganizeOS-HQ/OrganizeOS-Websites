@@ -42,7 +42,8 @@ test("the Event List's description says what it lists", () => {
 // - the link wears "OS Event Link": --text, underlined and bolder, a 44px tap
 //   target. The browser's link blue was close to invisible on every dark
 //   palette, a readability defect, so the snapshot gives way for it (A7
-//   follow-up ruling);
+//   follow-up ruling). The target is padding that its margins take back, so
+//   a link that wraps keeps its lines in the card's flow (final wave);
 // - the start time wraps pretty, so "AM" is not left alone and a narrow
 //   card does not split the month from its day (the events round's ruling;
 //   it was balanced before);

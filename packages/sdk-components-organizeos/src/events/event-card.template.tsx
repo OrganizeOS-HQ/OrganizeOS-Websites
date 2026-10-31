@@ -100,16 +100,21 @@ export const eventTitleToken = token(
 
 // A card's link, in both cards. It reads `--text`, underlined and bolder,
 // where the browser's link blue was close to invisible on a dark base. It is
-// the kit's tap target (kit/layout.tsx `tapTarget`), at least 44px tall, and
-// its margins take back what that adds over one line of text, so the card
-// keeps its height; a browser without the `lh` unit drops the margins, and
-// the card is a little taller.
+// the kit's tap target (kit/layout.tsx `tapTarget`): padded to 44px over one
+// line of text, its margins taking the padding back, so the card keeps its
+// height and the text takes all its lines in the card's flow; a link that
+// wraps grows its card rather than overlapping the lines around it, and its
+// target stays at least 44px. A browser without the `lh` unit drops the
+// padding and the margins and keeps the 44px minimum, and the card is a
+// little taller.
 export const eventLinkToken = token(
   "OS Event Link",
   css`
     display: inline-flex;
     align-items: center;
     min-height: 44px;
+    padding-top: calc((44px - 1lh) / 2);
+    padding-bottom: calc((44px - 1lh) / 2);
     margin-top: calc((1lh - 44px) / 2);
     margin-bottom: calc((1lh - 44px) / 2);
     color: var(--text, #18181b);

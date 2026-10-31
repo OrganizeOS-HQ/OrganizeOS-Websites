@@ -357,9 +357,12 @@ describe("the title, link and row tokens", () => {
     });
   });
 
-  // The kit's tap target (kit/layout.tsx tapTarget), with margins that take
-  // back what it adds over one line, so the card keeps its height.
-  test("the link is a 44px tap target that takes one line of the card", () => {
+  // The kit's tap target (kit/layout.tsx tapTarget), padded to 44px over
+  // one line, with margins that take the padding back, so the card keeps
+  // its height. The text takes all its lines in the card's flow, so a link
+  // that wraps pushes its neighbours away rather than overlapping them, and
+  // its target is 44px more than a line taller.
+  test("the link is a 44px tap target that takes its lines of the card", () => {
     expect(valueOf(eventLinkToken, "display")).toEqual({
       type: "keyword",
       value: "inline-flex",
@@ -373,6 +376,12 @@ describe("the title, link and row tokens", () => {
       unit: "px",
       value: 44,
     });
+    for (const property of ["paddingTop", "paddingBottom"]) {
+      expect(valueOf(eventLinkToken, property), property).toEqual({
+        type: "unparsed",
+        value: "calc((44px - 1lh)/2)",
+      });
+    }
     for (const property of ["marginTop", "marginBottom"]) {
       expect(valueOf(eventLinkToken, property), property).toEqual({
         type: "unparsed",
