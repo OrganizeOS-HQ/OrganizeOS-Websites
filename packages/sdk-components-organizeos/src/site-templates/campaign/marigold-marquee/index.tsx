@@ -17,20 +17,30 @@ import { volunteer } from "./pages/volunteer";
 // section 5.1, template 4; its look is
 // 2026-10-31-website-template-directions.md, section 2.4, the wave's one dark
 // base). Its pages are in ./pages; what they share is its look (./styles),
-// its pieces (./parts), the sections more than one page uses (./sections)
+// its pieces (./parts), the sections its pages are built from (./sections)
 // and the sample items (./sample-content); its look for the platform blocks
 // it places is ./block-tokens. Donate is the platform's /donate, linked,
 // never a page of the template. Neutral for any party or none: no party,
 // position, real person or place is named, and no photo shows a face that
 // could be read as the candidate's.
 //
-// The two portraits are CC0 photos from Unsplash (2016 and 2017, before its
-// licence changed), by way of Wikimedia Commons, each a figure in
-// silhouette: cropped 4:5, resized and compressed. volunteer.jpg is a public
-// domain work of the US Army Corps of Engineers, from Wikimedia Commons,
-// cropped, resized and compressed; painted out: the agency's red mark and the
-// two lines of its name on the comment card at the front (filled with the
-// card's own paper and grain), and the crop leaves out that card's QR code.
+// The photos, each cropped, resized and compressed:
+// - hero.jpg: a speaker seen from behind, addressing an audience. A public
+//   domain work of the National Cancer Institute (NIH), by its staff
+//   photographer Bill Branson, November 1988 (NCI Visuals Online 2385, "Reuse
+//   Restrictions: None"; Commons licence {{PD-USGov-HHS-NIH}}). Painted out:
+//   the printed emblem on a white cap in the back rows (filled with the cap's
+//   own crown); the crop leaves out a shopping bag's lettering at the left.
+// - about.jpg: a figure in silhouette against a sunset sky. CC0 from Unsplash
+//   (photo kypCqYxosY4, Evan Kirby), published before Unsplash's licence
+//   changed on 5 June 2017: its image id (photo-1455595708577) is a
+//   timestamp, 2016-02-16, and the Wayback Machine holds its Unsplash page as
+//   of 2017-05-03 (web.archive.org/web/20170503081051/https://unsplash.com/
+//   photos/kypCqYxosY4), both recorded on the Commons page.
+// - volunteer.jpg: a public domain work of the US Army Corps of Engineers.
+//   Painted out: the agency's red mark and the two lines of its name on the
+//   comment card at the front (filled with the card's own paper and grain);
+//   the crop leaves out that card's QR code.
 
 export const marigoldMarqueeTemplate: SiteTemplate = {
   id: "marigold-marquee",
@@ -56,7 +66,7 @@ export const marigoldMarqueeTemplate: SiteTemplate = {
     "hero.jpg": {
       url: heroUrl,
       sourceUrl:
-        "https://commons.wikimedia.org/wiki/File:Silhouette_in_front_of_window_(Unsplash).jpg",
+        "https://commons.wikimedia.org/wiki/File:Woman_speaks_to_crowd.jpg",
       alt: "Replace with a portrait of your candidate, or a picture for your measure",
     },
     "about.jpg": {

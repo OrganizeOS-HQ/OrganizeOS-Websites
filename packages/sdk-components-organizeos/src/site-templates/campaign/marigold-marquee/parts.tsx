@@ -59,7 +59,7 @@ export const siteFooter = (pageIds: PageIds): JSX.Element =>
   footer({
     pageIds,
     name: NAME,
-    tagline: sample("[Candidate name] for [Office], [Year]."),
+    tagline: sample("[Candidate name] for [Office]"),
     columns: [
       {
         heading: "The campaign",
@@ -83,10 +83,11 @@ export const siteFooter = (pageIds: PageIds): JSX.Element =>
         ws:tag="p"
         ws:style={css`
           margin: 0;
+          text-wrap-style: pretty;
         `}
       >
         {sample(
-          "Paid for by [Committee name]. Replace with the exact wording your jurisdiction requires."
+          "Paid for by [Committee name]. Use the exact wording your jurisdiction requires."
         )}
       </ws.element>
     ),
@@ -160,16 +161,23 @@ export const buttons = ({
 const BLOCK_OFFSET = { base: SPACE[24], phone: SPACE[16] };
 
 /**
+ * The band of the page's own colour around a portrait, which parts it from
+ * the block behind: with no photo, the frame's accent-1 field and the block's
+ * would otherwise run together as one shape.
+ */
+const PORTRAIT_GAP = "6px";
+
+/**
  * A portrait in a 4:5 frame with a solid marigold block offset behind it,
  * down and to the right; the frame keeps that room inside its own column.
  * The photo has the template's corners and is cropped to fill the frame,
- * over an accent-1 field that shows when the photo is gone. With no file it
+ * over an accent-1 field that shows when the photo is gone, and is ringed in
+ * the base colour where it overlaps the block (PORTRAIT_GAP). With no file it
  * is the builder's placeholder, the "put your portrait here" slot.
  */
 export const portrait = (
   { image, imageAlt }: PageContext,
-  file: string | undefined,
-  { position = "50% 50%" }: { position?: string } = {}
+  file: string | undefined
 ): JSX.Element => (
   <ws.element
     ws:tag="div"
@@ -215,9 +223,9 @@ export const portrait = (
         height: auto;
         aspect-ratio: 4 / 5;
         object-fit: cover;
-        object-position: ${position};
         border-radius: ${RADIUS};
         background-color: var(--accent-1);
+        box-shadow: 0 0 0 ${PORTRAIT_GAP} var(--base);
       `}
     />
   </ws.element>
@@ -230,7 +238,7 @@ export const portrait = (
 export const photo = (
   { image, imageAlt }: PageContext,
   file: string,
-  { ratio, position = "50% 50%" }: { ratio: string; position?: string }
+  { ratio }: { ratio: string }
 ): JSX.Element => (
   <$.Image
     ws:label="Photo"
@@ -242,7 +250,6 @@ export const photo = (
       height: auto;
       aspect-ratio: ${ratio};
       object-fit: cover;
-      object-position: ${position};
       border-radius: ${RADIUS};
       background-color: var(--accent-1);
     `}

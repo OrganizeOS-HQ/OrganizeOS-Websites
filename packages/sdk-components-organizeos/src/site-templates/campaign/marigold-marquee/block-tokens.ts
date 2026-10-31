@@ -7,7 +7,7 @@ import { HAIRLINE, RADIUS } from "./styles";
 // (SiteTemplate.blockTokens, and each events block's root style): the
 // featured event as a cover card with no chrome of its own (the marigold
 // panel around it is the frame), the Event List as dated rows with a mint
-// date column, each closed by a hairline, the empty line as a hairline box,
+// date column, each under a hairline, the empty line as a hairline box,
 // and the Signup Form's fields and button in the template's 6px corners.
 // Every declaration replaces the block's own of the same key, so shorthands
 // are written as the longhands the blocks declare.
@@ -117,8 +117,14 @@ export const blockTokens: SiteTemplate["blockTokens"] = {
     padding-right: ${SPACE[32]};
     padding-bottom: ${SPACE[24]};
     padding-left: ${SPACE[32]};
-    border-width: 1px;
-    border-style: solid;
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-style: solid;
+    border-right-style: solid;
+    border-bottom-style: solid;
+    border-left-style: solid;
     border-top-color: ${HAIRLINE};
     border-right-color: ${HAIRLINE};
     border-bottom-color: ${HAIRLINE};
@@ -192,34 +198,28 @@ export const blockTokens: SiteTemplate["blockTokens"] = {
 };
 
 /**
- * The Event Card's root in the featured panel: one column, the card beside
- * the panel's text on a wide window (the second column, both rows, as tall
- * as its card or its empty line), after the text on phones.
+ * The Event Card's root in the featured panel: one column, as tall as its
+ * card or its empty line (the panel centres it beside the text).
  */
 export const eventCardStyle = (): BlockStyle => css`
   grid-template-columns: minmax(0, 1fr);
-  align-self: start;
-  grid-column-start: 2;
-  grid-row-start: 1;
-  grid-row-end: span 2;
-  ${BREAKPOINT.landscape} {
-    grid-column-start: auto;
-    grid-row-start: auto;
-    grid-row-end: auto;
-    order: 1;
-  }
 `;
 
 /**
  * The Event List's root on the Events page: one column of rows, each under
- * its own hairline (OS Event Row), so with no events the empty line's box
- * stands alone under the heading.
+ * a hairline (OS Event Row), and the list closed by one beneath its last
+ * row, as the issues' rows are.
  */
 export const eventListStyle = (): BlockStyle => css`
   grid-template-columns: minmax(0, 1fr);
   column-gap: 0;
   row-gap: ${SPACE[24]};
+  padding-bottom: ${SPACE[24]};
+  border-bottom-width: 1px;
+  border-bottom-style: solid;
+  border-bottom-color: ${HAIRLINE};
   ${BREAKPOINT.landscape} {
     row-gap: ${SPACE[16]};
+    padding-bottom: ${SPACE[16]};
   }
 `;

@@ -40,8 +40,8 @@ import {
   titleStyles,
 } from "./styles";
 
-// The sections more than one of Marigold Marquee's pages use, each a kit
-// section named from the vocabulary.
+// The sections Marigold Marquee's pages are built from, each a kit section
+// named from the vocabulary.
 
 /**
  * Page header: Plain, on the ink: the eyebrow names the page, the h1 says
@@ -243,8 +243,9 @@ export const issuesRows = ({
 /**
  * Events: Card grid, of one: the next event, featured in a marigold-outlined
  * panel beside the reason to come and a "See all dates" link to the Events
- * page, where the Event List is. On phones the card follows the text and the
- * link follows the card.
+ * page, where the Event List is; the two columns centred on each other, so
+ * the shorter one sits in the middle of the taller. On phones the card
+ * follows the text and its link.
  */
 export const featuredEvent = ({
   placeBlock,
@@ -268,7 +269,7 @@ export const featuredEvent = ({
           ...css`
             display: grid;
             grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
-            grid-template-rows: auto 1fr;
+            align-items: center;
             column-gap: ${SPACE[64]};
             row-gap: ${SPACE[24]};
             padding-top: ${SPACE[48]};
@@ -284,7 +285,6 @@ export const featuredEvent = ({
             }
             ${BREAKPOINT.landscape} {
               grid-template-columns: minmax(0, 1fr);
-              grid-template-rows: auto;
               row-gap: ${SPACE[24]};
               padding-top: ${SPACE[24]};
               padding-right: ${SPACE[16]};
@@ -298,16 +298,6 @@ export const featuredEvent = ({
           {text("p", eyebrowStyles(), eyebrow, "Eyebrow")}
           {text("h2", headingStyles(), heading)}
           {text("p", paragraphStyles(), intro)}
-        </ws.element>
-        <ws.element
-          ws:tag="div"
-          ws:style={css`
-            align-self: end;
-            ${BREAKPOINT.landscape} {
-              order: 2;
-            }
-          `}
-        >
           {quietLink(pageIds, { label: "See all dates", pageKey: "events" })}
         </ws.element>
         {placeBlock("@organizeos/site-components:EventCard", "featured", {
@@ -318,9 +308,9 @@ export const featuredEvent = ({
   });
 
 /**
- * Events: List. The Event List of everything coming up as dated rows, each
- * under a hairline as the issues' rows are; its looks are in the template's
- * blockTokens (./block-tokens).
+ * Events: List. The Event List of everything coming up as dated rows
+ * between hairlines, as the issues' rows are; its looks are in the
+ * template's blockTokens (./block-tokens).
  */
 export const eventsList = ({
   placeBlock,
@@ -384,8 +374,8 @@ const opportunity = (
 );
 
 /**
- * Volunteer opportunities: Cards, three up (two from 768px to 991px), one
- * column on phones, each under a mint top rule with a link to `link`.
+ * Volunteer opportunities: Cards, three up from 768px, one column on phones,
+ * each under a mint top rule with a link to `cardLink`.
  */
 export const opportunitiesSection = ({
   pageIds,
