@@ -788,6 +788,63 @@ describe("checkSiteTemplate", () => {
           --accent-text: var(--font-body);
         `,
       },
+      {
+        name: "a named colour inside an unparsed gradient",
+        style: css`
+          background-image: linear-gradient(to top, black, transparent);
+        `,
+      },
+      {
+        name: "a named colour inside an unparsed mask",
+        style: css`
+          mask-image: linear-gradient(to top, black, transparent);
+        `,
+      },
+      {
+        name: "a named colour inside color-mix()",
+        style: css`
+          border-top-color: color-mix(in srgb, var(--text) 25%, white);
+        `,
+      },
+      {
+        name: "a named colour as a variable's fallback",
+        style: css`
+          color: var(--text, white);
+        `,
+      },
+      ...[
+        "lab(50% 40 59)",
+        "lch(50% 40 60)",
+        "oklab(0.5 0.1 0.1)",
+        "oklch(0.5 0.1 120)",
+        "hwb(12 50% 0%)",
+      ].map((colour) => ({
+        name: `${colour.split("(")[0]}() inside an unparsed gradient`,
+        style: css`
+          background-image: linear-gradient(${colour}, var(--base));
+        `,
+      })),
+      ...[
+        "column-rule-color",
+        "accent-color",
+        "text-emphasis-color",
+        "-webkit-text-stroke-color",
+        "-webkit-tap-highlight-color",
+        "flood-color",
+        "lighting-color",
+        "stop-color",
+      ].map((property) => ({
+        name: `a keyword colour on ${property}`,
+        style: css`
+          ${property}: red;
+        `,
+      })),
+      {
+        name: "a keyword colour on scrollbar-color",
+        style: css`
+          scrollbar-color: var(--accent-1) red;
+        `,
+      },
     ])("$name is a violation", ({ style }) => {
       expectOneViolation(
         checkAbout(() => (
@@ -809,6 +866,23 @@ describe("checkSiteTemplate", () => {
               border-top-color: inherit;
               outline-color: initial;
               caret-color: unset;
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+
+    // A colour's name is a whole word of CSS: not part of a longer name, and
+    // not in a quoted string.
+    test("a colour's name inside a longer name or a string is not a violation", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              transition-property: background-color, color;
+              grid-template-areas: "tan red" "olive navy";
+              animation-name: fade-white;
             `}
           />
         ))

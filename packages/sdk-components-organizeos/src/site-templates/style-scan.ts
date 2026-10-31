@@ -1,4 +1,9 @@
-import { toValue, type StyleValue } from "@webstudio-is/css-engine";
+import { keywordValues } from "@webstudio-is/css-data";
+import {
+  hyphenateProperty,
+  toValue,
+  type StyleValue,
+} from "@webstudio-is/css-engine";
 import {
   BAND_VARIABLES,
   CANONICAL_COLOR_NAMES,
@@ -11,18 +16,31 @@ import {
 // variables are the band's (BAND_VARIABLES: the focus ring and the accent
 // text), which a band sets to a canonical colour.
 
+// The properties whose value is a colour, hyphenated: a keyword there is a
+// colour's name. Every border colour longhand is one too.
 const colourProperties = new Set([
   "color",
-  "backgroundColor",
-  "outlineColor",
+  "background-color",
+  "outline-color",
   "fill",
   "stroke",
-  "caretColor",
-  "textDecorationColor",
+  "caret-color",
+  "text-decoration-color",
+  "column-rule-color",
+  "accent-color",
+  "text-emphasis-color",
+  "-webkit-text-stroke-color",
+  "-webkit-tap-highlight-color",
+  "scrollbar-color",
+  "flood-color",
+  "lighting-color",
+  "stop-color",
 ]);
 
-const isColourProperty = (property: string) =>
-  colourProperties.has(property) || /^border\w*Color$/.test(property);
+const isColourProperty = (property: string) => {
+  const name = hyphenateProperty(property);
+  return colourProperties.has(name) || /^border(-[a-z]+)*-color$/.test(name);
+};
 
 const bandVariables: readonly string[] = BAND_VARIABLES;
 
@@ -46,7 +64,27 @@ const fontVariables = new Set(["font-heading", "font-body"]);
 
 const allowedFontKeywords = new Set(["inherit", "initial", "unset"]);
 
-const literalColourInText = /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|oklch\(|color\(/i;
+// A colour written out in unparsed text (a gradient, a color-mix()): a hex
+// colour, or a colour function.
+const literalColourInText =
+  /#[0-9a-f]{3,8}\b|(?<![\w-])(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/i;
+
+// The colours CSS names (`black`, `white`, the system colours such as
+// `Canvas`): every keyword a colour property takes but those that name no
+// colour of their own. In unparsed text a name is a whole word of CSS, not
+// part of a longer name (`background-color`, `fade-white`).
+const namedColours = keywordValues["background-color"].filter(
+  (keyword) => allowedColourKeywords.has(keyword.toLowerCase()) === false
+);
+
+const namedColourInText = new RegExp(
+  `(?<![\\w-])(?:${namedColours.join("|")})(?![\\w-])`,
+  "i"
+);
+
+// Quoted strings in unparsed text (`grid-template-areas: "tan red"`, a
+// `content` string) name no colour.
+const quotedStrings = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g;
 
 const variableInText = /var\(\s*--([\w-]+)/g;
 
@@ -122,7 +160,8 @@ const findFontProblem = (value: StyleValue): string | undefined => {
 /**
  * What is wrong with one style declaration's value, one phrase per problem:
  * a literal colour, a colour keyword where a colour goes, a literal colour
- * inside unparsed text (a gradient), a variable outside the canonical set
+ * or a colour's name inside unparsed text (a gradient, a `color-mix()`, a
+ * variable's fallback), a variable outside the canonical set
  * and the band's, a font-family that is not a font variable, an image by
  * URL rather than one of the template's images (an asset), or a band
  * variable set to anything but a bare canonical colour variable.
@@ -169,8 +208,13 @@ export const findStyleProblems = (
       problems.push(`the colour keyword "${item.value}"`);
     }
     if (item.type === "unparsed") {
-      if (literalColourInText.test(item.value)) {
+      const text = item.value.replace(quotedStrings, "");
+      if (literalColourInText.test(text)) {
         problems.push(`a literal colour in "${item.value}"`);
+      }
+      const named = namedColourInText.exec(text)?.[0];
+      if (named !== undefined) {
+        problems.push(`the named colour "${named}" in "${item.value}"`);
       }
       for (const [, name] of item.value.matchAll(variableInText)) {
         if (isAllowedVariable(name) === false) {
