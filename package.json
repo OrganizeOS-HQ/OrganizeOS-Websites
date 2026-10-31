@@ -25,7 +25,8 @@
     "local:publish-snapshot": "pnpm -r publish --access public --no-git-checks --registry http://localhost:4873",
     "local:dangerously-undo-version-snapshot": "git restore --source=$(git branch --show-current) '**/*/package.json'",
     "local:release": "pnpm build && pnpm dts && pnpm local:version-snapshot && pnpm local:publish-snapshot && pnpm local:dangerously-undo-version-snapshot && echo \"now execute\npnpm up -r -L '@webstudio-is/*' --registry http://localhost:4873\"",
-    "clean:deep": "bash ./cleanup.sh"
+    "clean:deep": "bash ./cleanup.sh",
+    "preview:template": "node scripts/preview-site-template.mjs"
   },
   "simple-git-hooks": {
     "pre-commit": "./node_modules/.bin/nano-staged"
@@ -46,6 +47,7 @@
     "esbuild": "^0.25.3",
     "nano-staged": "^0.8.0",
     "oxlint": "^1.56.0",
+    "playwright": "^1.50.1",
     "prettier": "3.5.3",
     "react": "18.3.0-canary-14898b6a9-20240318",
     "react-dom": "18.3.0-canary-14898b6a9-20240318",
