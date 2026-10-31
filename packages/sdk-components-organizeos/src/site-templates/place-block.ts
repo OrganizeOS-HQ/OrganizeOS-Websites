@@ -33,9 +33,20 @@ export type EventsBlockOptions = {
   style?: BlockStyle;
 };
 
+/** How a template places a form block. */
+export type FormBlockOptions = {
+  /**
+   * The text of the form's heading, in place of the block's own placeholder
+   * ("Sign up for updates", "RSVP to this event"): the template's sample
+   * copy, which the org edits as its own.
+   */
+  heading?: string;
+};
+
 /**
- * Places a platform block. Only the events blocks take options: a form
- * block given any is a type error.
+ * Places a platform block, an events block with EventsBlockOptions and a
+ * form block with FormBlockOptions: one kind's options on the other kind's
+ * key, or any options on a key typed as any block's, is a type error.
  */
 export type PlaceBlock = {
   (
@@ -43,17 +54,23 @@ export type PlaceBlock = {
     placementId: string,
     options?: EventsBlockOptions
   ): JSX.Element;
+  (
+    key: FormBlockKey,
+    placementId: string,
+    options?: FormBlockOptions
+  ): JSX.Element;
   (key: BlockKey, placementId: string): JSX.Element;
 };
 
 export type BlockPlacement = { key: BlockKey; rootId: string };
 
-const factories: Record<
-  BlockKey,
-  (options: EventsBlockOptions) => JSX.Element
-> = {
-  "@organizeos/site-components:SignupForm": signupFormTemplate,
-  "@organizeos/site-components:RsvpForm": rsvpFormTemplate,
+type BlockOptions = EventsBlockOptions & FormBlockOptions;
+
+const factories: Record<BlockKey, (options: BlockOptions) => JSX.Element> = {
+  "@organizeos/site-components:SignupForm": ({ heading }) =>
+    signupFormTemplate({ heading }),
+  "@organizeos/site-components:RsvpForm": ({ heading }) =>
+    rsvpFormTemplate({ heading }),
   "@organizeos/site-components:EventList": ({ card }) =>
     eventsTemplate({ label: "Event List", card }),
   "@organizeos/site-components:EventCard": ({ card }) =>
@@ -129,14 +146,15 @@ export const prefixWsIds = (
  * prefixed by its `placementId`, and the placer records what it placed so the
  * caller can tell the apply routine where each block's root is. An events
  * block's options pick its card and give its root a style of the template's,
- * on the clone, so the block's own template is left as it was.
+ * on the clone, so the block's own template is left as it was; a form
+ * block's give its heading the template's text.
  */
 export const createBlockPlacer = () => {
   const placements: BlockPlacement[] = [];
   const placeBlock: PlaceBlock = (
     key: BlockKey,
     placementId: string,
-    options: EventsBlockOptions = {}
+    options: BlockOptions = {}
   ): JSX.Element => {
     if (placements.some((placement) => placement.rootId === placementId)) {
       throw new Error(`Block placement "${placementId}" is used twice`);

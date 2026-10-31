@@ -312,14 +312,50 @@ describe("placement options", () => {
     });
   });
 
-  test("a form block takes no options", () => {
+  const headingOf = (fragment: Fragment) =>
+    fragment.instances.find((instance) => instance.tag === "h2")?.children;
+
+  test("a form block takes its heading's text, in place of its own placeholder", () => {
     const { placeBlock } = createBlockPlacer();
-    // @ts-expect-error a form block's placement takes no options
-    placeBlock(SignupForm, "signup", { card: "dated" });
-    // @ts-expect-error a form block's placement takes no options
-    placeBlock(RsvpForm, "rsvp", { style: [] });
-    // a key typed as any block's takes none either
-    const anyKey: BlockKey = EventList as BlockKey;
+    const signup = renderTemplate(
+      placeBlock("@organizeos/site-components:SignupForm", "signup", {
+        heading: "Sign up to join",
+      })
+    );
+    expect(headingOf(signup)).toEqual([
+      { type: "text", value: "Sign up to join" },
+    ]);
+    const rsvp = renderTemplate(
+      placeBlock("@organizeos/site-components:RsvpForm", "rsvp", {
+        heading: "Say you will come",
+      })
+    );
+    expect(headingOf(rsvp)).toEqual([
+      { type: "text", value: "Say you will come" },
+    ]);
+    // with none, the block's own placeholder, as the Components panel inserts
+    const plain = renderTemplate(
+      placeBlock("@organizeos/site-components:SignupForm", "plain")
+    );
+    expect(headingOf(plain)).toEqual([
+      { type: "text", value: "Sign up for updates", placeholder: true },
+    ]);
+  });
+
+  test("a form block takes no events options, and an events block no form options", () => {
+    const Signup = "@organizeos/site-components:SignupForm" as const;
+    const List = "@organizeos/site-components:EventList" as const;
+    const { placeBlock } = createBlockPlacer();
+    // @ts-expect-error a form block's placement takes no events options
+    placeBlock(Signup, "card", { card: "dated" });
+    // @ts-expect-error a form block's placement takes no events options
+    placeBlock(RsvpForm, "style", { style: [] });
+    // @ts-expect-error an events block's placement takes no heading
+    placeBlock(List, "heading", { heading: "Coming up" });
+    // a key typed as any block's places, and takes no options
+    const anyKey = SignupForm as BlockKey;
     expect(() => placeBlock(anyKey, "any")).not.toThrow();
+    // @ts-expect-error a key typed as any block's takes no options
+    placeBlock(anyKey, "any-heading", { heading: "Join" });
   });
 });

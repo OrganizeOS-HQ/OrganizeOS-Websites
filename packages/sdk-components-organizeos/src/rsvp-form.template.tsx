@@ -64,7 +64,10 @@ const field = (name: string, label: string, text: string) => (
 // `data` is left unbound: the OrganizeOS panel binds it to the block's own
 // Events binding by id when it inserts the block, and the designer picks the
 // event (`record`) in the Settings panel.
-export const rsvpFormTemplate = () => {
+//
+// `heading` is a site template's text for the form's heading
+// (placeBlock's `heading`); with none, the block's own placeholder.
+export const rsvpFormTemplate = ({ heading }: { heading?: string } = {}) => {
   const rsvpState = new Variable("rsvpState", "initial");
   return (
     <organizeos.RsvpForm
@@ -88,7 +91,7 @@ export const rsvpFormTemplate = () => {
           template's own headings are, at a heading's line height.
         */}
         <ws.element ws:tag="h2" ws:tokens={[formHeadingToken]}>
-          {new PlaceholderValue("RSVP to this event")}
+          {heading ?? new PlaceholderValue("RSVP to this event")}
         </ws.element>
         {field("first_name", "First name", "First name")}
         {field("last_name", "Last name", "Last name")}
