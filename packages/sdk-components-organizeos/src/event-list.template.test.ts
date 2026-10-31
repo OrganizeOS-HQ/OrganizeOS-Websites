@@ -43,7 +43,15 @@ test("the Event List's description says what it lists", () => {
 //   target. The browser's link blue was close to invisible on every dark
 //   palette, a readability defect, so the snapshot gives way for it (A7
 //   follow-up ruling);
-// - the start time's lines are balanced, so "AM" is not left alone.
+// - the start time wraps pretty, so "AM" is not left alone and a narrow
+//   card does not split the month from its day (the events round's ruling;
+//   it was balanced before);
+// - the cover Image's own declarations (block, full width, auto height)
+//   moved, unchanged, to the token "OS Event Cover" it now wears, so a
+//   template crops covers to a ratio of its own;
+// - the "No upcoming events" and "Events unavailable" lines wear "OS Event
+//   Note", which declares nothing, so a template frames them. Their ids
+//   ("empty", "unavailable"), which the insert binds by, are unchanged.
 test("the Event List is the fragment it was, but for the changes above", () => {
   expect(renderTemplate(meta.template)).toEqual(beforeDatedCards);
 });

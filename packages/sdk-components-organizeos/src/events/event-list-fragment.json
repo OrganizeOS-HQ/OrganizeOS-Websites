@@ -256,10 +256,6 @@
     },
     {
       "type": "local",
-      "id": "3:ws:style"
-    },
-    {
-      "type": "local",
       "id": "4:ws:style"
     },
     {
@@ -278,12 +274,22 @@
     {
       "type": "token",
       "id": "9",
-      "name": "OS Event Title"
+      "name": "OS Event Cover"
     },
     {
       "type": "token",
       "id": "10",
+      "name": "OS Event Title"
+    },
+    {
+      "type": "token",
+      "id": "11",
       "name": "OS Event Link"
+    },
+    {
+      "type": "token",
+      "id": "12",
+      "name": "OS Event Note"
     }
   ],
   "styleSourceSelections": [
@@ -292,12 +298,8 @@
       "values": ["0:ws:style"]
     },
     {
-      "instanceId": "3",
-      "values": ["3:ws:style"]
-    },
-    {
       "instanceId": "4",
-      "values": ["4:ws:style", "9"]
+      "values": ["4:ws:style", "10"]
     },
     {
       "instanceId": "5",
@@ -312,8 +314,20 @@
       "values": ["8"]
     },
     {
+      "instanceId": "3",
+      "values": ["9"]
+    },
+    {
       "instanceId": "7",
-      "values": ["10"]
+      "values": ["11"]
+    },
+    {
+      "instanceId": "empty",
+      "values": ["12"]
+    },
+    {
+      "instanceId": "unavailable",
+      "values": ["12"]
     }
   ],
   "styles": [
@@ -353,34 +367,6 @@
         "type": "unit",
         "unit": "px",
         "value": 24
-      }
-    },
-    {
-      "breakpointId": "base",
-      "styleSourceId": "3:ws:style",
-      "property": "display",
-      "value": {
-        "type": "keyword",
-        "value": "block"
-      }
-    },
-    {
-      "breakpointId": "base",
-      "styleSourceId": "3:ws:style",
-      "property": "width",
-      "value": {
-        "type": "unit",
-        "unit": "%",
-        "value": 100
-      }
-    },
-    {
-      "breakpointId": "base",
-      "styleSourceId": "3:ws:style",
-      "property": "height",
-      "value": {
-        "type": "keyword",
-        "value": "auto"
       }
     },
     {
@@ -438,7 +424,7 @@
       "property": "textWrapStyle",
       "value": {
         "type": "keyword",
-        "value": "balance"
+        "value": "pretty"
       }
     },
     {
@@ -740,6 +726,34 @@
     {
       "breakpointId": "base",
       "styleSourceId": "9",
+      "property": "display",
+      "value": {
+        "type": "keyword",
+        "value": "block"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "9",
+      "property": "width",
+      "value": {
+        "type": "unit",
+        "unit": "%",
+        "value": 100
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "9",
+      "property": "height",
+      "value": {
+        "type": "keyword",
+        "value": "auto"
+      }
+    },
+    {
+      "breakpointId": "base",
+      "styleSourceId": "10",
       "property": "fontFamily",
       "value": {
         "type": "var",
@@ -748,7 +762,7 @@
     },
     {
       "breakpointId": "base",
-      "styleSourceId": "10",
+      "styleSourceId": "11",
       "property": "display",
       "value": {
         "type": "keyword",
@@ -757,7 +771,7 @@
     },
     {
       "breakpointId": "base",
-      "styleSourceId": "10",
+      "styleSourceId": "11",
       "property": "alignItems",
       "value": {
         "type": "keyword",
@@ -766,7 +780,7 @@
     },
     {
       "breakpointId": "base",
-      "styleSourceId": "10",
+      "styleSourceId": "11",
       "property": "minHeight",
       "value": {
         "type": "unit",
@@ -776,7 +790,7 @@
     },
     {
       "breakpointId": "base",
-      "styleSourceId": "10",
+      "styleSourceId": "11",
       "property": "marginTop",
       "value": {
         "type": "unparsed",
@@ -785,7 +799,7 @@
     },
     {
       "breakpointId": "base",
-      "styleSourceId": "10",
+      "styleSourceId": "11",
       "property": "marginBottom",
       "value": {
         "type": "unparsed",
@@ -794,7 +808,7 @@
     },
     {
       "breakpointId": "base",
-      "styleSourceId": "10",
+      "styleSourceId": "11",
       "property": "color",
       "value": {
         "type": "var",
@@ -807,7 +821,7 @@
     },
     {
       "breakpointId": "base",
-      "styleSourceId": "10",
+      "styleSourceId": "11",
       "property": "fontWeight",
       "value": {
         "type": "unit",
@@ -817,7 +831,7 @@
     },
     {
       "breakpointId": "base",
-      "styleSourceId": "10",
+      "styleSourceId": "11",
       "property": "textDecorationLine",
       "value": {
         "type": "keyword",

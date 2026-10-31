@@ -239,14 +239,36 @@ export const describeEventsBlock = ({
       expect(literal("country")).toBe("US");
     });
 
-    test("the card, its title and its link wear the shared tokens, and the template makes no others", () => {
+    test("the card, its cover, title and link, and the two lines wear the shared tokens, and the template makes no others", () => {
       expect(
         fragment.styleSources.flatMap((source) =>
           source.type === "token" ? [source.name] : []
         )
-      ).toEqual(["OS Card", "OS Event Title", "OS Event Link"]);
+      ).toEqual([
+        "OS Card",
+        "OS Event Cover",
+        "OS Event Title",
+        "OS Event Link",
+        "OS Event Note",
+      ]);
+      const note = fragment.styleSources.find(
+        (source) => source.type === "token" && source.name === "OS Event Note"
+      );
+      for (const id of ["empty", "unavailable"]) {
+        expect(
+          fragment.styleSourceSelections.find(
+            (selection) => selection.instanceId === id
+          )?.values,
+          id
+        ).toEqual([note?.id]);
+      }
+      // the note declares nothing (event-card.template.test.ts)
+      expect(
+        fragment.styles.some((style) => style.styleSourceId === note?.id)
+      ).toBe(false);
       for (const [instance, name] of [
         [card, "OS Card"],
+        [byLabel("Cover"), "OS Event Cover"],
         [byLabel("Title"), "OS Event Title"],
         [byLabel("Event link"), "OS Event Link"],
       ] as const) {
@@ -266,15 +288,18 @@ export const describeEventsBlock = ({
       }
     });
 
-    // "AM" alone on a line reads badly; the date still wraps where it must
-    test("the start time's lines are balanced, and it still wraps", () => {
+    // "AM" alone on a line reads badly, and so does a month split from its
+    // day, which balanced lines gave in a narrow card ("Thursday, March /
+    // 11, 2027"): pretty wrapping moves only the last words down. The date
+    // still wraps where it must.
+    test("the start time wraps pretty, and it still wraps", () => {
       const starts = byLabel("Starts");
       const local = fragment.styles.filter(
         (style) => style.styleSourceId === `${starts.id}:ws:style`
       );
       expect(local.map(({ property, value }) => [property, value])).toEqual([
         ["textWrapMode", { type: "keyword", value: "wrap" }],
-        ["textWrapStyle", { type: "keyword", value: "balance" }],
+        ["textWrapStyle", { type: "keyword", value: "pretty" }],
       ]);
     });
 

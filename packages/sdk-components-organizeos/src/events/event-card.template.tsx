@@ -118,6 +118,25 @@ export const eventLinkToken = token(
   `
 );
 
+// The cover card's image: a block the card's width, at the image's own
+// ratio, as it was before it wore a token. A token, so a template crops its
+// covers to a ratio of its own (`aspect-ratio` and `object-fit`).
+export const eventCoverToken = token(
+  "OS Event Cover",
+  css`
+    display: block;
+    width: 100%;
+    height: auto;
+  `
+);
+
+// The line an events block shows when there are no upcoming events, and the
+// one it shows when the read failed. It declares nothing: the lines keep the
+// browser's paragraph and the site's text colour, inherited (no colour of
+// their own, so a dark palette reads), as they did before they wore it. A
+// token, so a template frames the note in its own look.
+export const eventNoteToken = token("OS Event Note", []);
+
 // The dated card's row of the date column and the details: a wrapping flex
 // row with the card's gaps. A token, so a template changes the gaps or stacks
 // the two (`flex-direction: column`).
@@ -149,11 +168,7 @@ export const eventCard = (event: Parameter) => (
   <ws.element ws:tag="article" ws:label="Event Card" ws:tokens={[cardToken]}>
     <$.Image
       ws:label="Cover"
-      ws:style={css`
-        display: block;
-        width: 100%;
-        height: auto;
-      `}
+      ws:tokens={[eventCoverToken]}
       src={expression`${event}.cover_image_url`}
       alt={expression`${event}.title`}
       ws:show={expression`(${event}.cover_image_url ?? "") !== ""`}
@@ -169,13 +184,15 @@ export const eventCard = (event: Parameter) => (
       {expression`${event}.title`}
     </ws.element>
     {/*
-      Balanced lines, so a time that wraps does not leave "AM" alone on its
-      line; it still wraps, so the full date fits a 320px phone.
+      Pretty wrapping, so a time that wraps does not leave "AM" alone on its
+      line, and moves only the last words down, where balanced lines split
+      the month from its day in a narrow card ("Thursday, March / 11, 2027");
+      it still wraps, so the full date fits a 320px phone.
     */}
     <$.Time
       ws:label="Starts"
       ws:style={css`
-        text-wrap: balance;
+        text-wrap: pretty;
       `}
       datetime={expression`${event}.start_time`}
       timeZone={expression`${event}.timezone`}
@@ -364,10 +381,20 @@ export const eventsTemplate = ({
       <ws.collection ws:id="events" ws:label="Events" item={event}>
         {card === "dated" ? datedEventCard(event) : eventCard(event)}
       </ws.collection>
-      <ws.element ws:tag="p" ws:id="empty" ws:label="No upcoming events">
+      <ws.element
+        ws:tag="p"
+        ws:id="empty"
+        ws:label="No upcoming events"
+        ws:tokens={[eventNoteToken]}
+      >
         {new PlaceholderValue("No upcoming events.")}
       </ws.element>
-      <ws.element ws:tag="p" ws:id="unavailable" ws:label="Events unavailable">
+      <ws.element
+        ws:tag="p"
+        ws:id="unavailable"
+        ws:label="Events unavailable"
+        ws:tokens={[eventNoteToken]}
+      >
         {new PlaceholderValue("Events are unavailable right now.")}
       </ws.element>
     </organizeos.ShareCodeCarrier>

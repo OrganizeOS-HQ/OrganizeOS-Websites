@@ -70,7 +70,9 @@ export type BlockTokenName =
   | "OS Event Link"
   | "OS Event Row"
   | "OS Event Date"
-  | "OS Event Day";
+  | "OS Event Day"
+  | "OS Event Cover"
+  | "OS Event Note";
 
 /** What a page's body is rendered with. Images are named by file. */
 export type PageContext = {

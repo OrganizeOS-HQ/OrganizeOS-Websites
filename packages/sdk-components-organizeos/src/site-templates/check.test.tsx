@@ -406,6 +406,52 @@ describe("checkSiteTemplate", () => {
       );
     });
 
+    test("the cover token is worn by the cover card alone, the note token by both cards' blocks", () => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Event Cover": css`
+                aspect-ratio: 3 / 2;
+                object-fit: cover;
+              `,
+              "OS Event Note": css`
+                margin-top: 0;
+              `,
+            },
+          })
+        )
+      ).toEqual([]);
+      const datedOnly = (blockTokens: SiteTemplate["blockTokens"]) =>
+        checkSiteTemplate(
+          fixture({
+            pages: [
+              { ...home, body: aboutPage().body, key: "home" },
+              aboutPage(({ placeBlock }) =>
+                placeBlock(EventList, "dated", { card: "dated" })
+              ),
+            ],
+            blockTokens,
+          })
+        );
+      expect(
+        datedOnly({
+          "OS Event Note": css`
+            margin-top: 0;
+          `,
+        })
+      ).toEqual([]);
+      expectOneViolation(
+        datedOnly({
+          "OS Event Cover": css`
+            object-fit: cover;
+          `,
+        }),
+        "Block tokens",
+        '"OS Event Cover"'
+      );
+    });
+
     test("a dated card's tokens are worn once it is placed", () => {
       expect(
         checkAbout(({ placeBlock }) => (

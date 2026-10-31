@@ -4,9 +4,11 @@ import { generateCss } from "@webstudio-is/sdk";
 import { renderTemplate, ws, type Token } from "@webstudio-is/template";
 import {
   cardToken,
+  eventCoverToken,
   eventDateToken,
   eventDayToken,
   eventLinkToken,
+  eventNoteToken,
   eventRowToken,
   eventTitleToken,
 } from "../events/event-card.template";
@@ -212,6 +214,8 @@ test("BlockTokenName names every block token", () => {
     "OS Event Row": eventRowToken,
     "OS Event Title": eventTitleToken,
     "OS Event Link": eventLinkToken,
+    "OS Event Cover": eventCoverToken,
+    "OS Event Note": eventNoteToken,
   } satisfies Record<BlockTokenName, Token>;
   for (const [name, token] of Object.entries(byName)) {
     expect(token.name).toBe(name);

@@ -8,9 +8,11 @@ import {
 import { showAttribute } from "@webstudio-is/react-sdk";
 import { renderTemplate, ws, type Token } from "@webstudio-is/template";
 import {
+  eventCoverToken,
   eventDateToken,
   eventDayToken,
   eventLinkToken,
+  eventNoteToken,
   eventRowToken,
   eventTitleToken,
   eventsTemplate,
@@ -296,6 +298,8 @@ describe("the dated card's tokens", () => {
       eventRowToken,
       eventTitleToken,
       eventLinkToken,
+      eventCoverToken,
+      eventNoteToken,
     ];
     for (const token of tokens) {
       for (const { property, value } of declarationsOf(token)) {
@@ -404,5 +408,62 @@ describe("the title, link and row tokens", () => {
       unit: "px",
       value: 8,
     });
+  });
+});
+
+describe("the cover and note tokens", () => {
+  test("are named OS Event Cover and OS Event Note", () => {
+    expect(eventCoverToken.name).toBe("OS Event Cover");
+    expect(eventNoteToken.name).toBe("OS Event Note");
+  });
+
+  // What the cover Image declared on its own before it wore the token, so a
+  // block inserted without a template's look is as it was.
+  test("the cover is a block the card's width, at the image's own ratio", () => {
+    expect(declarationsOf(eventCoverToken)).toEqual([
+      {
+        property: "display",
+        state: undefined,
+        value: { type: "keyword", value: "block" },
+      },
+      {
+        property: "width",
+        state: undefined,
+        value: { type: "unit", unit: "%", value: 100 },
+      },
+      {
+        property: "height",
+        state: undefined,
+        value: { type: "keyword", value: "auto" },
+      },
+    ]);
+  });
+
+  // The two lines kept no style of their own before (Task A4: their text is
+  // the site's --text, inherited), and the token adds none: it is there for
+  // a template's look.
+  test("the note declares nothing", () => {
+    expect(declarationsOf(eventNoteToken)).toEqual([]);
+  });
+
+  test("both cards' blocks wear them: the cover on the cover card's image, the note on both lines", () => {
+    for (const card of ["cover", "dated"] as const) {
+      const { fragment, byLabel, tokensOf } = render(
+        eventsTemplate({ label: "Event List", card })
+      );
+      const byId = (id: string) =>
+        fragment.instances.find((item) => item.id === id) as Instance;
+      expect(tokensOf(byId("empty")), card).toEqual(["OS Event Note"]);
+      expect(tokensOf(byId("unavailable")), card).toEqual(["OS Event Note"]);
+      if (card === "cover") {
+        const cover = byLabel("Cover");
+        expect(tokensOf(cover)).toEqual(["OS Event Cover"]);
+        expect(
+          fragment.styles.filter(
+            (style) => style.styleSourceId === `${cover.id}:ws:style`
+          )
+        ).toEqual([]);
+      }
+    }
   });
 });

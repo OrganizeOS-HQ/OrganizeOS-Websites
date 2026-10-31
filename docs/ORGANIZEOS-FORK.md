@@ -1743,10 +1743,16 @@ anything yet.
 - **Template block tokens.** `SiteTemplate.blockTokens` gives the template's
   look for the block tokens by name (`BlockTokenName`: "OS Field", "OS
   Input", "OS Button", "OS Message", "OS Card", "OS Event Title", "OS Event
-  Link", "OS Event Row", "OS Event Date" and "OS Event Day"). Both cards'
-  titles wear "OS Event Title" (the heading font) and their links "OS Event
-  Link" (`--text`, underlined, 600, a 44px tap target that keeps one line of
-  the card's height); the dated card's row wears "OS Event Row". `renderSiteTemplate` merges each declaration into the page
+  Link", "OS Event Row", "OS Event Date", "OS Event Day", "OS Event Cover"
+  and "OS Event Note"). Both cards' titles wear "OS Event Title" (the heading
+  font) and their links "OS Event Link" (`--text`, underlined, 600, a 44px
+  tap target that keeps one line of the card's height); the dated card's row
+  wears "OS Event Row"; the cover card's image wears "OS Event Cover" (a
+  block the card's width at the image's own ratio, which a template crops
+  with `aspect-ratio` and `object-fit`); and an events block's "No upcoming
+  events" and "Events unavailable" lines wear "OS Event Note", which
+  declares nothing (no colour: the lines inherit `--text`), so a template
+  frames them. `renderSiteTemplate` merges each declaration into the page
   fragment's token of that name by key (one under a media query goes on the
   fragment's breakpoint for it, added when the page has none), never into the
   shared `token()` objects, and the apply routine writes them over a token of
