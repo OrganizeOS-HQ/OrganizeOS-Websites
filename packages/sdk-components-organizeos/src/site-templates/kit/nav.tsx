@@ -12,7 +12,7 @@ import {
 import {
   type SiteLink,
   buttonStyles,
-  linkHref,
+  linkProps,
   pageHref,
   textLink,
 } from "./links";
@@ -84,7 +84,7 @@ const button = (
   <$.Link
     key="button"
     ws:label="Button"
-    href={linkHref(options.pageIds, cta)}
+    {...linkProps(options.pageIds, cta)}
     ws:style={[...buttonStyles(options), ...layout]}
   >
     {cta.label}

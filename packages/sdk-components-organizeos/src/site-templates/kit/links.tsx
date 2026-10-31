@@ -4,6 +4,7 @@ import {
   css,
   type TemplateStyleDecl,
 } from "@webstudio-is/template";
+import { type PlatformPath, isPlatformPath } from "../platform-paths";
 import type { PageContext } from "../types";
 import {
   BREAKPOINT,
@@ -20,11 +21,11 @@ import {
 /**
  * A link to one of the template's pages by its key, to an element of the
  * same page by an in-page anchor (`#sign-up`), or to a route the platform
- * serves on the site's own host by its root-relative path (`/donate`).
+ * serves on the site's own host by its path (`/donate`, PLATFORM_PATHS).
  */
 export type SiteLink =
   | { label: string; pageKey: string }
-  | { label: string; href: `#${string}` | `/${string}` };
+  | { label: string; href: `#${string}` | PlatformPath };
 
 /** A page's id as a link target; a key the template lacks fails its check. */
 export const pageHref = (
@@ -32,12 +33,22 @@ export const pageHref = (
   pageKey: string
 ): PageValue => new PageValue(pageIds[pageKey]);
 
-/** Where a link goes: its page's id, or its anchor or path as a plain string. */
-export const linkHref = (
+/**
+ * A Link's props for where it goes: `href`, its page's id or its anchor or
+ * path as a plain string; and for a platform path `reloadDocument`, since the
+ * published site's router has no route there and would show its own 404.
+ */
+export const linkProps = (
   pageIds: PageContext["pageIds"],
   link: SiteLink
-): PageValue | string =>
-  "href" in link ? link.href : pageHref(pageIds, link.pageKey);
+): { href: PageValue | string; reloadDocument?: true } => {
+  if ("href" in link === false) {
+    return { href: pageHref(pageIds, link.pageKey) };
+  }
+  return isPlatformPath(link.href)
+    ? { href: link.href, reloadDocument: true }
+    : { href: link.href };
+};
 
 /**
  * The Link's "Current page" state, written as its meta writes it so the
@@ -71,7 +82,7 @@ export const textLink = (
   link: SiteLink,
   key: number
 ): JSX.Element => (
-  <$.Link key={key} href={linkHref(pageIds, link)} ws:style={textLinkStyles()}>
+  <$.Link key={key} {...linkProps(pageIds, link)} ws:style={textLinkStyles()}>
     {link.label}
   </$.Link>
 );

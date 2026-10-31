@@ -129,6 +129,24 @@ describe("nav", () => {
     );
   });
 
+  test("a button to a platform path reloads the page", () => {
+    const fragment = renderNav({
+      links,
+      cta: { label: "Donate", href: "/donate" },
+    });
+    const button = byLabel(fragment, "Button");
+    expect(hrefOf(fragment, button)).toEqual({
+      type: "string",
+      value: "/donate",
+    });
+    expect(propOf(fragment, button, "reloadDocument")?.value).toBe(true);
+    // a page's button is a client navigation
+    const paged = renderNav({ links, cta: donate });
+    expect(propOf(paged, byLabel(paged, "Button"), "reloadDocument")).toBe(
+      undefined
+    );
+  });
+
   test("the name, every link and the button are at least 44px tall, with the focus ring", () => {
     for (const variant of ["split", "centered"] as const) {
       const fragment = renderNav({ links, cta: donate, variant });

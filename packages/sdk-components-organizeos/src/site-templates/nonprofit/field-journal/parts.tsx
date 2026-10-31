@@ -7,7 +7,7 @@ import {
   type SiteLink,
   buttonStyles,
   footer,
-  linkHref,
+  linkProps,
   nav,
 } from "../../kit";
 import type { PageContext } from "../../types";
@@ -80,7 +80,7 @@ export const siteFooter = (pageIds: PageIds): JSX.Element =>
 export const quietLink = (pageIds: PageIds, link: SiteLink): JSX.Element => (
   <$.Link
     ws:label="Link"
-    href={linkHref(pageIds, link)}
+    {...linkProps(pageIds, link)}
     ws:style={quietLinkStyles()}
   >
     {link.label}
@@ -90,7 +90,7 @@ export const quietLink = (pageIds: PageIds, link: SiteLink): JSX.Element => (
 export const button = (pageIds: PageIds, link: SiteLink): JSX.Element => (
   <$.Link
     ws:label="Button"
-    href={linkHref(pageIds, link)}
+    {...linkProps(pageIds, link)}
     ws:style={buttonStyles(LOOK)}
   >
     {link.label}

@@ -1768,7 +1768,10 @@ anything yet.
   alone or followed by a variant after a colon, as in `Hero: Split`), two Event
   Cards or Event Lists under one such section, a link to a page the template
   does not have (a mistyped `pageIds` key) or to an element of a page (applying
-  gives the element a new id), a Resource, a repeated instance id, a count of
+  gives the element a new id), a link by path to anything but a route the
+  platform serves (`PLATFORM_PATHS` in `platform-paths.ts`, `/donate`), or to
+  one without `reloadDocument` (the published site's router has no route
+  there; the kit's `linkProps` sets it), a Resource, a repeated instance id, a count of
   `h1` other than one, a Signup Form, RSVP Form or Share Code Carrier not placed
   with `placeBlock`, and, in styles on elements outside a placed block's subtree
   (a block's token used by the page's own element counts), a literal colour or

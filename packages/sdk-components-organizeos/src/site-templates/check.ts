@@ -10,6 +10,7 @@ import {
   firstFontFamily,
 } from "./canonical-variables";
 import type { BlockKey } from "./place-block";
+import { PLATFORM_PATHS, isPlatformPath } from "./platform-paths";
 import { findStyleProblems } from "./style-scan";
 import { renderSiteTemplate, type RenderedPage } from "./render";
 import { isSectionLabel } from "./sections";
@@ -425,6 +426,45 @@ const checkPageLinks = (page: RenderedPage, pageIds: Set<string>): string[] => {
   });
 };
 
+// A link by path goes to a route the platform serves (PLATFORM_PATHS), as a
+// document navigation: the published site's router has no route there and
+// would show its own 404. Any other page is linked by its key, so a rename
+// keeps the link. A placed block's links are its own.
+const checkPathLinks = (
+  page: RenderedPage,
+  blockIds: Set<string>
+): string[] => {
+  const { fragment } = page;
+  return fragment.props.flatMap((prop) => {
+    if (
+      prop.name !== "href" ||
+      prop.type !== "string" ||
+      prop.value.startsWith("/") === false ||
+      blockIds.has(prop.instanceId)
+    ) {
+      return [];
+    }
+    const where = `${pageName(page.key)}: the "href" of ${describePropOwner(fragment, prop.instanceId)}`;
+    if (isPlatformPath(prop.value) === false) {
+      return [
+        `${where} links to "${prop.value}", a path: a page of the template is linked by its key, and a path only to a route the platform serves (${PLATFORM_PATHS.join(", ")})`,
+      ];
+    }
+    const reloads = fragment.props.some(
+      (item) =>
+        item.instanceId === prop.instanceId &&
+        item.name === "reloadDocument" &&
+        item.type === "boolean" &&
+        item.value
+    );
+    return reloads
+      ? []
+      : [
+          `${where} links to the platform's "${prop.value}" without reloadDocument, so a published site looks for it among its own pages`,
+        ];
+  });
+};
+
 // Every top-level child of a body is a section named from the vocabulary
 // (spec section 3), so the Navigator reads the same on every template. What
 // is inside a section is the template's own.
@@ -588,6 +628,7 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
     violations.push(
       ...checkBlocks(page),
       ...checkPageLinks(page, pageIds),
+      ...checkPathLinks(page, blockIds),
       ...checkStyles(page, blockIds),
       ...checkImageInstances(page, blockIds),
       ...checkFragment(page),

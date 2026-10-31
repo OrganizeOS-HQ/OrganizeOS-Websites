@@ -1,20 +1,51 @@
 import { describe, expect, test } from "vitest";
 import { PageValue, renderTemplate, ws } from "@webstudio-is/template";
-import { buttonStyles, linkHref, textLink } from "./links";
-import { byLabel, stateStyles, stylesAt } from "./test-helpers";
+import { buttonStyles, linkProps, textLink } from "./links";
+import { byLabel, propOf, stateStyles, stylesAt } from "./test-helpers";
 
 const pageIds = { home: "page-home", about: "page-about" };
 
-describe("linkHref", () => {
-  test("a page key is the page's id, an anchor or a path a plain string", () => {
-    expect(linkHref(pageIds, { label: "About", pageKey: "about" })).toEqual(
-      new PageValue("page-about")
+describe("linkProps", () => {
+  test("a page key is the page's id, an anchor a plain string", () => {
+    expect(linkProps(pageIds, { label: "About", pageKey: "about" })).toEqual({
+      href: new PageValue("page-about"),
+    });
+    expect(linkProps(pageIds, { label: "FAQ", href: "#faq" })).toEqual({
+      href: "#faq",
+    });
+  });
+
+  // A published site's router has no route there: without a document
+  // navigation it shows the site's own 404.
+  test("a platform path reloads the page", () => {
+    expect(linkProps(pageIds, { label: "Donate", href: "/donate" })).toEqual({
+      href: "/donate",
+      reloadDocument: true,
+    });
+  });
+});
+
+describe("textLink", () => {
+  test("to a platform path renders with reloadDocument", () => {
+    const fragment = renderTemplate(
+      <ws.element ws:tag="body">
+        {textLink(pageIds, { label: "Donate", href: "/donate" }, 0)}
+      </ws.element>
     );
-    expect(linkHref(pageIds, { label: "FAQ", href: "#faq" })).toBe("#faq");
-    // a route the platform serves on the site's host, such as /donate
-    expect(linkHref(pageIds, { label: "Donate", href: "/donate" })).toBe(
-      "/donate"
+    const link = fragment.instances.find(
+      (instance) => instance.component === "Link"
     );
+    if (link === undefined) {
+      throw new Error("No link");
+    }
+    expect(propOf(fragment, link, "href")).toMatchObject({
+      type: "string",
+      value: "/donate",
+    });
+    expect(propOf(fragment, link, "reloadDocument")).toMatchObject({
+      type: "boolean",
+      value: true,
+    });
   });
 });
 

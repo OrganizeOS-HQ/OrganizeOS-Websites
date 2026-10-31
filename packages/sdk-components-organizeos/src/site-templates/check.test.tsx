@@ -587,6 +587,44 @@ describe("checkSiteTemplate", () => {
         "element"
       );
     });
+
+    // A published site's router has no route at a path the platform serves,
+    // and any other path is a page the template links by its key.
+    test.each(["/about", "/donate/spring", "//example.org"])(
+      "a link to the path %s is a violation",
+      (href) => {
+        expectOneViolation(
+          checkAbout(() => (
+            <$.Link ws:label="Path link" href={href} reloadDocument={true}>
+              {"Somewhere"}
+            </$.Link>
+          )),
+          '"about"',
+          '"Path link"',
+          `"${href}"`
+        );
+      }
+    );
+
+    test("a link to a platform path reloads the page", () => {
+      expect(
+        checkAbout(() => (
+          <$.Link href="/donate" reloadDocument={true}>
+            {"Donate"}
+          </$.Link>
+        ))
+      ).toEqual([]);
+      expectOneViolation(
+        checkAbout(() => (
+          <$.Link ws:label="Donate link" href="/donate">
+            {"Donate"}
+          </$.Link>
+        )),
+        '"about"',
+        '"Donate link"',
+        "reloadDocument"
+      );
+    });
   });
 
   describe("paths", () => {
