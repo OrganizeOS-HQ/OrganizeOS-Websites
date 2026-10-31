@@ -137,6 +137,8 @@ export type KitStyle = {
   headingWeight?: number;
   /** The case of that text, as the template's headings are set; as typed when unset. */
   headingCase?: "uppercase";
+  /** The size of the org's name in the nav, a face that sets small wanting more; 20px when unset. */
+  navNameSize?: string;
 };
 
 /** A `font-weight` declaration, or none when the template sets no weight. */

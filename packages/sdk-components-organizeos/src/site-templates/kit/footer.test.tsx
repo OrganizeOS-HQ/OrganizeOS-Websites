@@ -332,6 +332,24 @@ describe("footer", () => {
     });
   });
 
+  // A footer straight under a band would draw its rule as a seam on the
+  // band's edge.
+  test("drops its rule when asked, and declares no border then", () => {
+    const { fragment, outer } = renderFooter({ tagline, topRule: false });
+    const styles = stylesAt(fragment, outer, 1440);
+    expect(styles).toMatchObject({
+      "background-color": "var(--base)",
+      color: "var(--text)",
+    });
+    for (const property of [
+      "border-top-width",
+      "border-top-style",
+      "border-top-color",
+    ]) {
+      expect(styles).not.toHaveProperty(property);
+    }
+  });
+
   test("two calls make distinct instances", () => {
     const fragment = renderTemplate(
       <ws.element ws:tag="body">

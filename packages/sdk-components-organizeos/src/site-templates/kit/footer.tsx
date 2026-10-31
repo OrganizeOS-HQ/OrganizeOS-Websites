@@ -68,7 +68,9 @@ const footerColumn = (
 );
 
 /**
- * The site's footer on the base colours under a rule in the text colour:
+ * The site's footer on the base colours under a rule in the text colour
+ * (none with `topRule: false`, for a footer straight under a band, whose
+ * edge the rule would only seam):
  * the org's name (a [bracketed] placeholder in it kept together, `sample`)
  * and a one-line tagline; then the simple footer's `links`, if any, as
  * lines of text, balanced (`linkRowStyles`); then the columns of links, if any; then `note`, if any, in a
@@ -86,6 +88,7 @@ export const footer = ({
   note,
   headingWeight,
   headingCase,
+  topRule = true,
 }: Pick<KitStyle, "headingWeight" | "headingCase"> & {
   pageIds: PageContext["pageIds"];
   name?: string;
@@ -94,23 +97,33 @@ export const footer = ({
   links?: SiteLink[];
   columns?: FooterColumn[];
   note?: JSX.Element | JSX.Element[];
+  /** The rule above the footer; true unless the page ends on a band. */
+  topRule?: boolean;
 }): JSX.Element => (
   <ws.element
     ws:tag="footer"
     ws:label="Footer"
-    ws:style={css`
-      padding-top: ${SPACE[64]};
-      padding-bottom: ${SPACE[64]};
-      border-top-width: 1px;
-      border-top-style: solid;
-      border-top-color: var(--text);
-      background-color: var(--base);
-      color: var(--text);
-      ${BREAKPOINT.landscape} {
-        padding-top: ${SPACE[48]};
-        padding-bottom: ${SPACE[48]};
-      }
-    `}
+    ws:style={[
+      ...css`
+        padding-top: ${SPACE[64]};
+        padding-bottom: ${SPACE[64]};
+      `,
+      ...(topRule
+        ? css`
+            border-top-width: 1px;
+            border-top-style: solid;
+            border-top-color: var(--text);
+          `
+        : []),
+      ...css`
+        background-color: var(--base);
+        color: var(--text);
+        ${BREAKPOINT.landscape} {
+          padding-top: ${SPACE[48]};
+          padding-bottom: ${SPACE[48]};
+        }
+      `,
+    ]}
   >
     <ws.element
       ws:tag="div"

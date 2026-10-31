@@ -59,7 +59,13 @@ const barStyles = (layout: TemplateStyleDecl[]) => [
  * phone the name wraps at them and the button keeps its place beside it.
  */
 const nameLink = (
-  { pageIds, name, headingWeight, headingCase }: NavOptions,
+  {
+    pageIds,
+    name,
+    headingWeight,
+    headingCase,
+    navNameSize = "20px",
+  }: NavOptions,
   layout: TemplateStyleDecl[]
 ) => (
   <$.Link
@@ -70,7 +76,7 @@ const nameLink = (
       ...tapTarget(),
       ...css`
         font-family: var(--font-heading);
-        font-size: 20px;
+        font-size: ${navNameSize};
         line-height: 1.2;
         color: inherit;
         text-decoration-line: none;

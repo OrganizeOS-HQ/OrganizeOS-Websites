@@ -308,6 +308,17 @@ describe("nav", () => {
     }
   });
 
+  test("sets the name at the template's size, 20px unasked", () => {
+    const sized = renderNav({ links, cta: donate, navNameSize: "28px" });
+    expect(stylesAt(sized, byLabel(sized, "Name"), 1440)["font-size"]).toBe(
+      "28px"
+    );
+    const plain = renderNav({ links, cta: donate });
+    expect(stylesAt(plain, byLabel(plain, "Name"), 1440)["font-size"]).toBe(
+      "20px"
+    );
+  });
+
   describe("centered", () => {
     const renderCentered = () =>
       renderNav({
