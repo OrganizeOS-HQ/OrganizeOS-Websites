@@ -13,6 +13,7 @@ import type {
   ImageEntry,
   PageContext,
   SiteTemplate,
+  SiteTemplatePage,
 } from "./types";
 
 export type RenderedPage = {
@@ -154,6 +155,16 @@ export const renderSiteTemplate = (
     /** By image file name. */
     assetIds: Map<string, string>;
     generatePageId: () => string;
+    /**
+     * Called with each page's body as JSX, before it renders, and the blocks
+     * it placed: the check reads there what the render does not keep (each
+     * media query as written).
+     */
+    inspectBody?: (
+      page: SiteTemplatePage,
+      body: JSX.Element,
+      placements: BlockPlacement[]
+    ) => void;
   }
 ): RenderedPage[] => {
   const pageIds: Record<string, string> = {};
@@ -200,10 +211,9 @@ export const renderSiteTemplate = (
     };
     let fragment: WebstudioFragment;
     try {
-      fragment = mergeBlockTokens(
-        renderTemplate(page.body(context)),
-        template.blockTokens
-      );
+      const body = page.body(context);
+      options.inspectBody?.(page, body, placements);
+      fragment = mergeBlockTokens(renderTemplate(body), template.blockTokens);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`Page "${page.key}": ${message}`, { cause: error });

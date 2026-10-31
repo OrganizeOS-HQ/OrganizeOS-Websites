@@ -16,6 +16,7 @@ import {
   BLANK_CANONICAL_VALUES,
 } from "./canonical-variables";
 import { NEUTRALITY_DENY_LIST, checkSiteTemplate } from "./check";
+import { section } from "./kit";
 import type { BlockKey } from "./place-block";
 import type {
   FontEntry,
@@ -276,6 +277,119 @@ describe("checkSiteTemplate", () => {
         '"about"',
         '"Narrow"',
         text
+      );
+    });
+
+    // The render keeps a breakpoint's widths alone: a query with a
+    // condition lands on the base, or on the plain max-width breakpoint, and
+    // its styles show at every width there. So the check reads each query as
+    // the template wrote it.
+    const conditionQueries = [
+      {
+        name: "a condition alone",
+        query: "@media (prefers-reduced-motion: reduce)",
+        mention: "prefers-reduced-motion",
+      },
+      {
+        name: "a max-width and a condition",
+        query: "@media (max-width: 767px) and (hover: none)",
+        mention: "hover",
+      },
+    ];
+
+    test.each(conditionQueries)(
+      "$name on the page's own element is a violation",
+      ({ query, mention }) => {
+        expectOneViolation(
+          checkAbout(() => (
+            <ws.element
+              ws:tag="div"
+              ws:label="Narrow"
+              ws:style={css`
+                display: flex;
+                @media (max-width: 767px) {
+                  flex-direction: column;
+                }
+                ${query} {
+                  row-gap: 0px;
+                }
+              `}
+            />
+          )),
+          '"about"',
+          '"Narrow"',
+          "row-gap",
+          mention
+        );
+      }
+    );
+
+    test.each(conditionQueries)(
+      "$name in a kit section's styles is a violation",
+      ({ query, mention }) => {
+        expectOneViolation(
+          checkBody(() => (
+            <ws.element ws:tag="body">
+              {section({
+                label: "About",
+                styles: css`
+                  ${query} {
+                    row-gap: 0px;
+                  }
+                `,
+                children: <ws.element ws:tag="h1">{"About us"}</ws.element>,
+              })}
+            </ws.element>
+          )),
+          '"about"',
+          '"About"',
+          mention
+        );
+      }
+    );
+
+    test.each(conditionQueries)(
+      "$name in a placed block's root style is a violation",
+      ({ query, mention }) => {
+        expectOneViolation(
+          checkAbout(({ placeBlock }) =>
+            placeBlock(EventList, "upcoming", {
+              style: css`
+                @media (max-width: 767px) {
+                  column-gap: 8px;
+                }
+                ${query} {
+                  row-gap: 0px;
+                }
+              `,
+            })
+          ),
+          '"about"',
+          '"Event List"',
+          mention
+        );
+      }
+    );
+
+    test("a query that does not parse is a violation", () => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:label="Printed"
+            ws:style={[
+              {
+                breakpoint: "print",
+                property: "display",
+                value: { type: "keyword", value: "none" },
+              },
+            ]}
+          />
+        )),
+        '"about"',
+        '"Printed"',
+        "print",
+        "does not parse"
       );
     });
 

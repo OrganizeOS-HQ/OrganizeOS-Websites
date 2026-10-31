@@ -1686,32 +1686,31 @@ anything yet.
   `category` (one of nine; `CATEGORY_ORDER` is the chooser's order), `name`,
   `oneLine`, `styleTags`, `status` (`draft` or `listed`), `dependsOn`,
   `thumbnail` (a file name in `images`), `previewEventCover` (a file name in
-  `images` that only the preview tool reads, as its sample events' first
-  cover: a photo no page with an events block shows, which a template that
-  places the cover card names; never applied to a site), `variables` (the
-  six canonical values), `images` (by file name: `url` from a
-  `?url&no-inline` import of the file in the template's `images/` folder,
-  `sourceUrl`, `alt`), `fonts` (by file name, a `.woff2` file: `url` from a
-  `?url&no-inline` import of the file in its `@fontsource` package, `family`,
-  `licence`, `source`; Fonts, below) and `pages` (`key`, `name`, `path`,
-  `title`, `description` and a `body` function). A body takes a
-  `PageContext` (every page's id by key, assigned before any body renders, so a
-  link is a page value that survives a rename; `placeBlock`; `image`,
-  `backgroundImage` and `imageAlt` by file name) and returns fresh JSX rooted
-  at `<ws.element ws:tag="body">`: `renderTemplate` keys instances by element
-  identity, so a piece used twice (Nav, Footer, a card) is a function, never a
-  constant. `renderSiteTemplate` (`render.ts`) renders every page into a
+  `images` that only the preview tool reads, as its sample events' first cover:
+  a photo no page with an events block shows, which a template that places the
+  cover card names; never applied to a site), `variables` (the six canonical
+  values), `images` (by file name: `url` from a `?url&no-inline` import of the
+  file in the template's `images/` folder, `sourceUrl`, `alt`), `fonts` (by file
+  name, a `.woff2` file: `url` from a `?url&no-inline` import of the file in its
+  `@fontsource` package, `family`, `licence`, `source`; Fonts, below) and
+  `pages` (`key`, `name`, `path`, `title`, `description` and a `body` function).
+  A body takes a `PageContext` (every page's id by key, assigned before any body
+  renders, so a link is a page value that survives a rename; `placeBlock`;
+  `image`, `backgroundImage` and `imageAlt` by file name) and returns fresh JSX
+  rooted at `<ws.element ws:tag="body">`: `renderTemplate` keys instances by
+  element identity, so a piece used twice (Nav, Footer, a card) is a function,
+  never a constant. `renderSiteTemplate` (`render.ts`) renders every page into a
   fragment, with the placements it recorded; the caller supplies the page ids
-  and the asset id of each image. `catalog.ts` lists `SITE_TEMPLATES` (Field
+  and the asset id of each image, and may read each body's JSX before it renders
+  (`inspectBody`, as the check does). `catalog.ts` lists `SITE_TEMPLATES` (Field
   Journal in `nonprofit/field-journal/`, Porch Light in
-  `community/porch-light/`, Workwear in `union/workwear/`, Marigold
-  Marquee in `campaign/marigold-marquee/` and Riso Broadside in
-  `single-issue/riso-broadside/`, all drafts), and the chooser
-  offers `listedTemplates()`,
-  the `listed` ones in category order.
-  Listing is the owner's call, made by changing `status` in a PR. Nothing the
-  published site's copy reaches (`components.ts`, `metas.ts`, `hooks.ts`)
-  imports the folder (Shipping in published sites, below).
+  `community/porch-light/`, Workwear in `union/workwear/`, Marigold Marquee in
+  `campaign/marigold-marquee/` and Riso Broadside in
+  `single-issue/riso-broadside/`, all drafts), and the chooser offers
+  `listedTemplates()`, the `listed` ones in category order. Listing is the
+  owner's call, made by changing `status` in a PR. Nothing the published site's
+  copy reaches (`components.ts`, `metas.ts`, `hooks.ts`) imports the folder
+  (Shipping in published sites, below).
 - **The canonical variables** (`canonical-variables.ts`): `--base`,
   `--accent-1`, `--accent-2`, `--text`, `--font-heading` and `--font-body`. The
   blank-start values are `#ffffff`, `#18181b`, `#2563eb` and `#18181b`, and
@@ -1854,10 +1853,16 @@ anything yet.
   colour as its fallback (as `var(--focus-ring, var(--accent-2))`), a
   declaration of one of the six (only Global Root declares them, from the
   template's variables), a `font-family` that is not `var(--font-heading)` or
-  `var(--font-body)`, an image by URL, and a breakpoint other than the project's
-  own (the base, and max-width 991, 767 and 479px); in `blockTokens`, a `color`
-  of `var(--accent-2)` itself rather than through `--accent-text` (the kit's
-  `ACCENT_TEXT`); and a `blockTokens` name no placed block wears.
+  `var(--font-body)`, an image by URL, and a media query other than the
+  project's own breakpoints (the base, and max-width 991, 767 and 479px): one
+  with a condition (`(hover: none)`, `(prefers-reduced-motion: reduce)`, alone
+  or beside a max-width), with a min-width, or that does not parse (`print`),
+  read as the template wrote it, from each body's JSX before it renders (the
+  render keeps a breakpoint's widths alone, so a condition would land on the
+  base or on its width's breakpoint, and it drops a query that does not parse);
+  in `blockTokens`, a `color` of `var(--accent-2)` itself rather than through
+  `--accent-text` (the kit's `ACCENT_TEXT`); and a `blockTokens` name no placed
+  block wears.
 - **The apply routine** (`apply-site-template.ts`) is one `updateWebstudioData`
   transaction, with `contentMode: false` and `conflictResolution: "ours"`
   whatever mode the builder is in, so root styles, tokens and assets are

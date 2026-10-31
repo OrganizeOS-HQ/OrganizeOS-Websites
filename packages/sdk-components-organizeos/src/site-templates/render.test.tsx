@@ -271,6 +271,21 @@ describe("renderSiteTemplate", () => {
       render({ ...template, pages: [home, { ...about, key: "home" }] })
     ).toThrow(/"home"/);
   });
+
+  // what the render does not keep, the check reads from the JSX
+  test("inspectBody sees each page's body before it renders, with its placements", () => {
+    const seen: string[] = [];
+    renderSiteTemplate(template, {
+      assetIds,
+      generatePageId: pageIdCounter(),
+      inspectBody: (page, body, placements) => {
+        seen.push(
+          `${page.key}: <${body.props["ws:tag"]}>, ${placements.map(({ rootId }) => rootId).join(", ")}`
+        );
+      },
+    });
+    expect(seen).toEqual(["home: <body>, upcoming", "about: <body>, "]);
+  });
 });
 
 describe("template block tokens", () => {

@@ -1,3 +1,4 @@
+import { isValidElement } from "react";
 import { camelCaseProperty, parseMediaQuery } from "@webstudio-is/css-data";
 import { hyphenateProperty, type StyleValue } from "@webstudio-is/css-engine";
 import {
@@ -13,7 +14,8 @@ import {
   contrastRatio,
   firstFontFamily,
 } from "./canonical-variables";
-import type { BlockKey } from "./place-block";
+import type { Token, TemplateStyleDecl } from "@webstudio-is/template";
+import type { BlockKey, BlockPlacement } from "./place-block";
 import {
   PLATFORM_PATHS,
   isPlatformPath,
@@ -22,7 +24,7 @@ import {
 import { findStyleProblems } from "./style-scan";
 import { renderSiteTemplate, type RenderedPage } from "./render";
 import { isSectionLabel } from "./sections";
-import type { SiteTemplate } from "./types";
+import type { SiteTemplate, SiteTemplatePage } from "./types";
 
 // The rules every template is held to (spec section 2, checked as spec 6.1
 // lists). Each violation is one line naming the page, or the image or
@@ -141,6 +143,22 @@ const findBreakpointProblem = (media: Media): string | undefined => {
   }
   const widths = projectMaxWidths.map((width) => `${width}px`).join(", ");
   return `is under the media query ${describeMedia(media)}, not one of the project's breakpoints (the base, or max-width ${widths})`;
+};
+
+/**
+ * What is wrong with the media query a declaration is written under, if
+ * anything: one that does not parse, or one findBreakpointProblem refuses.
+ */
+const findMediaQueryProblem = (
+  mediaQuery: string | undefined
+): string | undefined => {
+  if (mediaQuery === undefined) {
+    return;
+  }
+  const media = parseMediaQuery(mediaQuery);
+  return media === undefined
+    ? `is under the media query ${mediaQuery}, which does not parse`
+    : findBreakpointProblem(media);
 };
 
 const pageName = (key: string) => `Page "${key}"`;
@@ -393,9 +411,6 @@ const checkStyles = (page: RenderedPage, blockIds: Set<string>): string[] => {
       return blockIds.has(selection.instanceId) ? [] : selection.values;
     })
   );
-  const breakpoints = new Map(
-    fragment.breakpoints.map((breakpoint) => [breakpoint.id, breakpoint])
-  );
   const describeSource = (styleSourceId: string) => {
     const source = fragment.styleSources.find(
       (item) => item.id === styleSourceId
@@ -414,18 +429,75 @@ const checkStyles = (page: RenderedPage, blockIds: Set<string>): string[] => {
       return [];
     }
     const where = `${pageName(page.key)}: ${hyphenateProperty(decl.property)} on ${describeSource(decl.styleSourceId)}`;
-    const breakpoint = breakpoints.get(decl.breakpointId);
-    const breakpointProblem =
-      breakpoint === undefined ? undefined : findBreakpointProblem(breakpoint);
-    return [
-      ...findStyleProblems(decl.property, decl.value).map(
-        (problem) => `${where} uses ${problem}`
-      ),
-      ...(breakpointProblem === undefined
-        ? []
-        : [`${where} ${breakpointProblem}`]),
-    ];
+    return findStyleProblems(decl.property, decl.value).map(
+      (problem) => `${where} uses ${problem}`
+    );
   });
+};
+
+/** An element of a page's JSX as a violation names it. */
+const describeElement = (element: JSX.Element) => {
+  const props: Record<string, unknown> = element.props;
+  if (typeof props["ws:label"] === "string") {
+    return `"${props["ws:label"]}"`;
+  }
+  if (typeof props["ws:tag"] === "string") {
+    return `a <${props["ws:tag"]}>`;
+  }
+  const { displayName } = element.type as { displayName?: string };
+  return `a ${displayName === undefined ? "component" : componentName(displayName)}`;
+};
+
+// The render keeps a breakpoint's widths alone (getBreakpointId in
+// renderTemplate, packages/template/src/jsx.ts): a query with a condition
+// lands on the base, or on the max-width breakpoint of its width, and one
+// that does not parse is dropped, so its styles show at the wrong widths or
+// not at all. So each query is read as the template wrote it, before the
+// render, in every style the page's own elements carry (their `ws:style`, a
+// kit section's `styles` among them, and their tokens') and in a placed
+// block's root style, where placeBlock's `style` goes. A placed block's
+// subtree is its own.
+const checkMediaQueries = (
+  page: SiteTemplatePage,
+  body: JSX.Element,
+  placements: BlockPlacement[]
+): string[] => {
+  const rootIds = new Set(placements.map((placement) => placement.rootId));
+  const violations = new Set<string>();
+  const checkDeclarations = (styles: TemplateStyleDecl[], where: string) => {
+    for (const { breakpoint, property } of styles) {
+      const problem = findMediaQueryProblem(breakpoint);
+      if (problem !== undefined) {
+        violations.add(
+          `${pageName(page.key)}: ${property} on ${where} ${problem}`
+        );
+      }
+    }
+  };
+  const visit = (node: unknown) => {
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        visit(item);
+      }
+      return;
+    }
+    if (isValidElement(node) === false) {
+      return;
+    }
+    const element = node as JSX.Element;
+    const props: Record<string, unknown> = element.props;
+    const styles = (props["ws:style"] ?? []) as TemplateStyleDecl[];
+    checkDeclarations(styles, describeElement(element));
+    if (rootIds.has(props["ws:id"] as string)) {
+      return;
+    }
+    for (const token of (props["ws:tokens"] ?? []) as Token[]) {
+      checkDeclarations(token.styles, `token "${token.name}"`);
+    }
+    visit(props.children);
+  };
+  visit(body);
+  return Array.from(violations);
 };
 
 /** Whether a value is accent-2 itself, not through a band's accent text. */
@@ -441,11 +513,7 @@ const checkBlockTokenStyles = (template: SiteTemplate): string[] =>
   Object.entries(template.blockTokens ?? {}).flatMap(([name, style = []]) =>
     style.flatMap(({ breakpoint, property, value }) => {
       const where = `Block tokens: ${property} on "${name}"`;
-      const media = breakpoint === undefined ? {} : parseMediaQuery(breakpoint);
-      const breakpointProblem =
-        media === undefined
-          ? `is under the media query ${breakpoint}, which does not parse`
-          : findBreakpointProblem(media);
+      const breakpointProblem = findMediaQueryProblem(breakpoint);
       return [
         ...findStyleProblems(camelCaseProperty(property), value).map(
           (problem) => `${where} uses ${problem}`
@@ -809,6 +877,7 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
     ...checkBlockTokenStyles(template),
   ];
   let pages: RenderedPage[];
+  const mediaQueryViolations: string[] = [];
   try {
     let pageCount = 0;
     pages = renderSiteTemplate(template, {
@@ -819,6 +888,9 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
         pageCount += 1;
         return `page:${pageCount}`;
       },
+      inspectBody: (page, body, placements) => {
+        mediaQueryViolations.push(...checkMediaQueries(page, body, placements));
+      },
     });
   } catch (error) {
     violations.push(error instanceof Error ? error.message : String(error));
@@ -826,6 +898,7 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
   }
   const pageIds = new Set(pages.map((page) => page.pageId));
   violations.push(
+    ...mediaQueryViolations,
     ...checkBlockTokenNames(template, pages),
     ...checkPreviewEventCover(template, pages)
   );
