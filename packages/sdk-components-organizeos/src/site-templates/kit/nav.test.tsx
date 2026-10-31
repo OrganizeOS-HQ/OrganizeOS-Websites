@@ -64,13 +64,14 @@ describe("nav", () => {
     const fragment = renderNav({ links });
     const name = byLabel(fragment, "Name");
     expect(name.component).toBe("Link");
-    expect(textOf(name)).toEqual(["[Organization name]"]);
+    // the placeholder's space is no-break, so it never splits across lines
+    expect(textOf(name)).toEqual(["[Organization\u00A0name]"]);
     expect(hrefOf(fragment, name)).toEqual({
       type: "page",
       value: "page-home",
     });
     const named = renderNav({ links, name: "[Candidate name]" });
-    expect(textOf(byLabel(named, "Name"))).toEqual(["[Candidate name]"]);
+    expect(textOf(byLabel(named, "Name"))).toEqual(["[Candidate\u00A0name]"]);
   });
 
   test("links go to pages by key or to anchors, in order", () => {

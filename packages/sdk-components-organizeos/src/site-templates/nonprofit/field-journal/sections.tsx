@@ -5,17 +5,11 @@ import {
   SPACE,
   type SiteLink,
   contentBlock,
+  sample,
   section,
 } from "../../kit";
 import type { PageContext } from "../../types";
-import {
-  actions,
-  keyed,
-  sample,
-  sectionHeader,
-  text,
-  type PageIds,
-} from "./parts";
+import { actions, keyed, sectionHeader, text, type PageIds } from "./parts";
 import {
   eyebrowStyles,
   gridStyles,

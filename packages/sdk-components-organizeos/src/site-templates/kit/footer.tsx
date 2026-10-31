@@ -9,6 +9,7 @@ import {
   fontWeight,
 } from "./layout";
 import { type SiteLink, textLink } from "./links";
+import { sample } from "./sample";
 
 /** A footer column: a title over links to pages or anchors. */
 export type FooterColumn = { heading: string; links: SiteLink[] };
@@ -58,16 +59,18 @@ const footerColumn = (
 
 /**
  * The site's footer on the base colours under a rule in the text colour:
- * the org's name and a one-line tagline, then the columns of links, if any
- * (with none it is the simple footer), then `note`, if any, in a box of its
- * own (a paid-for-by or imprint line, at 14px). The columns sit beside the
- * name from 768px up, wrapping under it when they do not fit; on phones
- * everything stacks to one column.
+ * the org's name (a [bracketed] placeholder in it kept together, `sample`)
+ * and a one-line tagline; then the simple footer's `links`, if any, as one
+ * wrapping row; then the columns of links, if any; then `note`, if any, in a
+ * box of its own (a paid-for-by or imprint line, at 14px). The links and the
+ * columns sit beside the name from 768px up, wrapping under it when they do
+ * not fit; on phones everything stacks to one column.
  */
 export const footer = ({
   pageIds,
   name = "[Organization name]",
   tagline,
+  links = [],
   columns = [],
   note,
   headingWeight,
@@ -75,6 +78,8 @@ export const footer = ({
   pageIds: PageContext["pageIds"];
   name?: string;
   tagline: string;
+  /** The simple footer's links: a row of pages or anchors. */
+  links?: SiteLink[];
   columns?: FooterColumn[];
   note?: JSX.Element | JSX.Element[];
 }): JSX.Element => (
@@ -150,7 +155,7 @@ export const footer = ({
                   ...fontWeight(headingWeight),
                 ]}
               >
-                {name}
+                {sample(name)}
               </ws.element>
               <ws.element
                 ws:tag="p"
@@ -161,6 +166,27 @@ export const footer = ({
                 {tagline}
               </ws.element>
             </ws.element>,
+            ...(links.length === 0
+              ? []
+              : [
+                  <ws.element
+                    key="links"
+                    ws:tag="nav"
+                    ws:label="Links"
+                    aria-label="Footer"
+                    ws:style={css`
+                      display: flex;
+                      flex-wrap: wrap;
+                      align-items: center;
+                      column-gap: ${SPACE[24]};
+                      ${BREAKPOINT.landscape} {
+                        column-gap: ${SPACE[16]};
+                      }
+                    `}
+                  >
+                    {links.map((link, index) => textLink(pageIds, link, index))}
+                  </ws.element>,
+                ]),
             ...(columns.length === 0
               ? []
               : [

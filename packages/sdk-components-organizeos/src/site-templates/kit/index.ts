@@ -25,3 +25,4 @@ export {
 export { type NavVariant, nav } from "./nav";
 export { type FooterColumn, footer } from "./footer";
 export { contentBlock } from "./content-block";
+export { sample } from "./sample";

@@ -16,6 +16,7 @@ import {
   pageHref,
   textLink,
 } from "./links";
+import { sample } from "./sample";
 
 /**
  * "split": the name on the left, the links and the button on the right.
@@ -49,7 +50,10 @@ const barStyles = (layout: TemplateStyleDecl[]) => [
   ...layout,
 ];
 
-/** The org's name as text where a logo goes, linking Home. */
+/**
+ * The org's name as text where a logo goes, linking Home; a [bracketed]
+ * placeholder in it keeps together (`sample`).
+ */
 const nameLink = (
   { pageIds, name, headingWeight }: NavOptions,
   layout: TemplateStyleDecl[]
@@ -72,7 +76,7 @@ const nameLink = (
       ...focusRing(),
     ]}
   >
-    {name}
+    {sample(name)}
   </$.Link>
 );
 

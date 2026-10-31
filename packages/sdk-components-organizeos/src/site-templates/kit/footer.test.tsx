@@ -52,11 +52,12 @@ describe("footer", () => {
     expect(outer.tag).toBe("footer");
     const about = byLabel(fragment, "Name and tagline");
     expect(childInstances(fragment, about).map((item) => textOf(item))).toEqual(
-      [["[Organization name]"], [tagline]]
+      // the placeholder's space is no-break, so it never splits across lines
+      [["[Organization\u00A0name]"], [tagline]]
     );
     const named = renderFooter({ tagline, name: "[Candidate name]" });
     expect(textOf(byLabel(named.fragment, "Name"))).toEqual([
-      "[Candidate name]",
+      "[Candidate\u00A0name]",
     ]);
   });
 
@@ -65,6 +66,47 @@ describe("footer", () => {
     expect(fragment.instances.some((item) => item.label === "Columns")).toBe(
       false
     );
+  });
+
+  test("the simple footer's links are a wrapping row, a nav named Footer, after the name", () => {
+    const { fragment, outer } = renderFooter({
+      tagline,
+      links: [
+        { label: "About", pageKey: "about" },
+        { label: "Events", pageKey: "events" },
+        { label: "Sign up", href: "#sign-up" },
+      ],
+    });
+    const row = byLabel(fragment, "Links");
+    expect(row.tag).toBe("nav");
+    expect(propOf(fragment, row, "aria-label")?.value).toBe("Footer");
+    expect(
+      childInstances(fragment, row).map((link) => [
+        link.component,
+        textOf(link),
+        propOf(fragment, link, "href")?.value,
+      ])
+    ).toEqual([
+      ["Link", ["About"], "page-about"],
+      ["Link", ["Events"], "page-events"],
+      ["Link", ["Sign up"], "#sign-up"],
+    ]);
+    const [column] = childInstances(fragment, outer);
+    const [bar] = childInstances(fragment, column);
+    expect(childInstances(fragment, bar).map((item) => item.label)).toEqual([
+      "Name and tagline",
+      "Links",
+    ]);
+    for (const width of [1440, 767, 320]) {
+      expect(stylesAt(fragment, row, width)).toMatchObject({
+        display: "flex",
+        "flex-wrap": "wrap",
+      });
+    }
+    const without = renderFooter({ tagline });
+    expect(
+      without.fragment.instances.some((item) => item.label === "Links")
+    ).toBe(false);
   });
 
   test("each column is a nav named by its title, the title as text, then its links", () => {

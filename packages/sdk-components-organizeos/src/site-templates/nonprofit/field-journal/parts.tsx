@@ -9,6 +9,7 @@ import {
   footer,
   linkProps,
   nav,
+  sample,
 } from "../../kit";
 import type { PageContext } from "../../types";
 import {
@@ -128,16 +129,6 @@ export const actions = (
  */
 export const keyed = (elements: JSX.Element[]): JSX.Element[] =>
   elements.map((element, index) => cloneElement(element, { key: index }));
-
-/**
- * Sample text whose [bracketed] placeholders keep together: the spaces in a
- * bracket are no-break, so "[Organization name]" never breaks across lines.
- * Every placeholder is kept short enough to fit a 320px phone on one line.
- */
-export const sample = (value: string): string =>
-  value.replace(/\[[^\]]*\]/g, (placeholder) =>
-    placeholder.replaceAll(" ", "\u00A0")
-  );
 
 /** Sample text in a tag, unstyled beyond the given styles. */
 export const text = (
