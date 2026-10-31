@@ -423,8 +423,10 @@ export const opportunitiesSection = ({
  * text), the page's one light section: the reason to sign up on the left,
  * the Signup Form under a heading of its own in an ink panel on the right (a
  * placed block's text reads --text, which is checked against the base
- * alone), under the text below 768px. The section is `#sign-up`, for in-page
- * links.
+ * alone), under the text below 768px. The panel sets the band's focus ring
+ * and accent text back to accent-2, which is checked against the base too:
+ * the band's own, its base colour, would vanish on the panel. The section is
+ * `#sign-up`, for in-page links.
  */
 export const signUpSection = ({
   placeBlock,
@@ -493,6 +495,8 @@ export const signUpSection = ({
             border-radius: ${RADIUS};
             background-color: var(--base);
             color: var(--text);
+            --focus-ring: var(--accent-2);
+            --accent-text: var(--accent-2);
             ${BREAKPOINT.tablet} {
               padding-top: ${SPACE[32]};
               padding-right: ${SPACE[32]};

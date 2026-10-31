@@ -266,7 +266,10 @@ export const eventsSection = ({
  * Sign-up: Centered, on the berry band: the reason to sign up centred in
  * the band's base text, then the Signup Form in a base-coloured panel, since
  * a placed block's text reads --text, which is checked against the base
- * alone. The section is `#sign-up`, for in-page links.
+ * alone. The panel sets the band's focus ring and accent text back to
+ * accent-2, which is checked against the base too: the band's own, its base
+ * colour, would vanish on the panel. The section is `#sign-up`, for in-page
+ * links.
  */
 export const signUpSection = ({
   placeBlock,
@@ -327,6 +330,8 @@ export const signUpSection = ({
             border-radius: ${RADIUS};
             background-color: var(--base);
             color: var(--text);
+            --focus-ring: var(--accent-2);
+            --accent-text: var(--accent-2);
             text-align: left;
             ${BREAKPOINT.landscape} {
               padding-top: ${SPACE[4]};
