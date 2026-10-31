@@ -150,7 +150,10 @@ export const fontWeight = (weight: number | undefined): TemplateStyleDecl[] =>
  * checked colour pairs (base by default), padded above and below, around a
  * container (`wide` by default) holding `children`. A band (accent-1 or
  * text) rings focus in its text colour (`FOCUS_RING_VARIABLE`). `id` is the
- * target of an in-page link (`#sign-up`).
+ * target of an in-page link (`#sign-up`). `styles` adds the template's own
+ * to the section's (`position: relative`, so a full-bleed image inside the
+ * container can cover the section); they name none of the kit's properties,
+ * whose declarations would then repeat.
  */
 export const section = ({
   label,
@@ -158,12 +161,14 @@ export const section = ({
   background = "base",
   width = "wide",
   id,
+  styles = [],
 }: {
   label: string;
   children: JSX.Element | JSX.Element[];
   background?: SectionBackground;
   width?: ContainerWidth;
   id?: string;
+  styles?: TemplateStyleDecl[];
 }): JSX.Element => {
   const colours = sectionColours[background];
   return (
@@ -172,19 +177,22 @@ export const section = ({
       ws:label={label}
       // an undefined prop would render as a prop with no value
       {...(id === undefined ? {} : { id })}
-      ws:style={css`
-        padding-top: ${sectionPadding.base};
-        padding-bottom: ${sectionPadding.base};
-        background-color: var(--${colours.background});
-        color: var(--${colours.text});
-        ${background === "base"
-          ? ""
-          : `--${FOCUS_RING_VARIABLE}: var(--${colours.text});`}
-        ${BREAKPOINT.landscape} {
-          padding-top: ${sectionPadding.phone};
-          padding-bottom: ${sectionPadding.phone};
-        }
-      `}
+      ws:style={[
+        ...css`
+          padding-top: ${sectionPadding.base};
+          padding-bottom: ${sectionPadding.base};
+          background-color: var(--${colours.background});
+          color: var(--${colours.text});
+          ${background === "base"
+            ? ""
+            : `--${FOCUS_RING_VARIABLE}: var(--${colours.text});`}
+          ${BREAKPOINT.landscape} {
+            padding-top: ${sectionPadding.phone};
+            padding-bottom: ${sectionPadding.phone};
+          }
+        `,
+        ...styles,
+      ]}
     >
       <ws.element ws:tag="div" ws:style={container(width)}>
         {children}

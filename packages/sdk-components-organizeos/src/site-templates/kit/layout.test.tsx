@@ -204,6 +204,37 @@ describe("section", () => {
     expect(stylesAt(fragment, inner, 1440)["max-width"]).toBe("1120px");
   });
 
+  test("adds a template's own styles to the section's, as a full-bleed image needs", () => {
+    const fragment = renderBody(
+      section({
+        label: "Hero",
+        background: "accent-1",
+        styles: css`
+          position: relative;
+          ${BREAKPOINT.landscape} {
+            overflow: hidden;
+          }
+        `,
+        children: content(),
+      })
+    );
+    const outer = byLabel(fragment, "Hero");
+    expect(stylesAt(fragment, outer, 1440)).toMatchObject({
+      position: "relative",
+      "padding-top": "96px",
+      "background-color": "var(--accent-1)",
+      "--focus-ring": "var(--base)",
+    });
+    expect(stylesAt(fragment, outer, 1440)).not.toHaveProperty("overflow-x");
+    expect(stylesAt(fragment, outer, 767)).toMatchObject({
+      "overflow-x": "hidden",
+      "padding-top": "56px",
+    });
+    // the container is unchanged
+    const [inner] = childInstances(fragment, outer);
+    expect(stylesAt(fragment, inner, 1440)).not.toHaveProperty("position");
+  });
+
   test("carries an id for in-page links only when given one", () => {
     const fragment = renderTemplate(
       <ws.element ws:tag="body">
