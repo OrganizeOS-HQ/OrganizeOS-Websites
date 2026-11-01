@@ -24,9 +24,12 @@ import { programs } from "./pages/programs";
 // platform's /donate, linked, never a page of the template.
 //
 // The photos are public domain works of United States federal agencies,
-// from Wikimedia Commons, resized and compressed. Painted out: in the hero, a
-// maker's mark on the birdhouse and a glove's brand patch; in about.jpg, a
-// billboard and a filling station's lettering and sign on the skyline.
+// from Wikimedia Commons, resized and compressed. No photo's subject is a
+// face (the owner's ruling of 2026-11-01): the hero is a volunteer seen from
+// behind, program-two a pair of hands. Painted out: in the hero, the shop
+// prints on the two front tote bags, refilled from the bag's own green and
+// grain; in about.jpg, a billboard and a filling station's lettering and sign
+// on the skyline. program-two's midtones are lifted (gamma 0.85).
 //
 // thumbnail.jpg, the chooser's picture, is OrganizeOS's own: the top of Home as
 // the preview tool draws it, which `corepack pnpm preview:template
@@ -56,9 +59,11 @@ export const fieldJournalTemplate: SiteTemplate = {
   images: {
     "hero.jpg": {
       url: heroUrl,
+      // USFWS Southeast, 2017, {{PD-USGov-FWS}}: volunteers carrying red
+      // spruce seedlings to planting sites on Pisgah National Forest
       sourceUrl:
-        "https://commons.wikimedia.org/wiki/File:National_Public_Lands_Day_2015_(21712958636).jpg",
-      alt: "Replace with a photo of one of your people at work, looking at the camera",
+        "https://commons.wikimedia.org/wiki/File:Volunteers_carry_trees_to_planting_sites_(37287300136).jpg",
+      alt: "Replace with a photo of your people at work",
     },
     "program-one.jpg": {
       url: programOneUrl,
@@ -68,8 +73,10 @@ export const fieldJournalTemplate: SiteTemplate = {
     },
     "program-two.jpg": {
       url: programTwoUrl,
+      // USDA, 2015, {{PD-USGov-USDA}}: a volunteer bagging gleaned potatoes
+      // at a food distribution warehouse
       sourceUrl:
-        "https://commons.wikimedia.org/wiki/File:Cherry_Point_Commissary_donates_more_than_30,000_lbs._to_food_bank_140702-M-SR938-047.jpg",
+        "https://commons.wikimedia.org/wiki/File:2015_Feds_Feeds_Families-Gleaning_at_MAGNET_(Food)_Warehouse_(20150911-DM-LSC-3017).jpg",
       alt: "Replace with a photo of your second program in action",
     },
     "program-three.jpg": {
