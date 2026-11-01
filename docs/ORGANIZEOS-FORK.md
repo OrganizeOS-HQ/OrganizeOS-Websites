@@ -1682,8 +1682,9 @@ sections 6.1 to 6.4; plan
 `docs/superpowers/plans/2026-10-30-website-template-foundations.md`): a whole
 site, pages and all, written as code in the fork and written once into an
 org's untouched project, from a chooser. The foundations ship one test
-template, `spike`, a fixture the catalog does not list, so no member is offered
-anything yet.
+template, `spike`, a fixture the catalog does not list; wave 1 adds the five
+starter templates, listed 2026-11-01 (OrganizeOS plan
+`docs/superpowers/plans/2026-10-31-website-templates-wave-1.md`).
 
 - **The module format** (`types.ts`). A template is a folder under
   `src/site-templates/` whose `index.tsx` exports one `SiteTemplate`: `id`,
@@ -1712,7 +1713,7 @@ anything yet.
   Journal in `nonprofit/field-journal/`, Porch Light in
   `community/porch-light/`, Workwear in `union/workwear/`, Marigold Marquee in
   `campaign/marigold-marquee/` and Riso Broadside in
-  `single-issue/riso-broadside/`, all drafts), and the chooser offers
+  `single-issue/riso-broadside/`, all listed), and the chooser offers
   `listedTemplates()`, the `listed` ones in category order. Listing is the
   owner's call, made by changing `status` in a PR. Nothing the published site's
   copy reaches (`components.ts`, `metas.ts`, `hooks.ts`) imports the folder
@@ -2078,8 +2079,8 @@ anything yet.
   one with an Event List), and a Sign-up section with a Signup Form, with
   Source Sans 3 as its bundled body font. It is a fixture, not in the catalog,
   so the chooser no longer offers it, even with `templateDrafts=1`. The run
-  (apply to a test org, edit in Simple mode) waits for a template in the
-  catalog. Until that report is in, the design's rules 3 and 4 (editable
+  (apply a listed template to a test org, edit in Simple mode) follows the
+  deploy. Until that report is in, the design's rules 3 and 4 (editable
   content in Content Blocks; platform blocks placed, never bound) are unproven
   in a real builder.
 
