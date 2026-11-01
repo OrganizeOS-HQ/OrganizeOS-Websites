@@ -55,7 +55,7 @@ export const workwearTemplate: SiteTemplate = {
   name: "Workwear",
   oneLine: "For a local, chapter or workers' committee.",
   styleTags: ["sturdy", "plain-spoken", "photo-led"],
-  status: "draft",
+  status: "listed",
   dependsOn: [],
   thumbnail: "thumbnail.jpg",
   variables: {

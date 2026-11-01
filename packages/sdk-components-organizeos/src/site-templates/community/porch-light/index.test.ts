@@ -90,9 +90,9 @@ const resolveColour = (
 };
 
 describe("Porch Light", () => {
-  test("is in the catalog as a draft", () => {
+  test("is in the catalog, listed", () => {
     expect(SITE_TEMPLATES).toContain(porchLightTemplate);
-    expect(porchLightTemplate.status).toBe("draft");
+    expect(porchLightTemplate.status).toBe("listed");
   });
 
   test("has the approved board's palette", () => {

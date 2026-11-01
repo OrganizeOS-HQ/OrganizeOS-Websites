@@ -25,9 +25,9 @@ const ownStyles = (fragment: WebstudioFragment, instance: Instance) => {
 };
 
 describe("Workwear", () => {
-  test("is in the catalog as a draft", () => {
+  test("is in the catalog, listed", () => {
     expect(SITE_TEMPLATES).toContain(workwearTemplate);
-    expect(workwearTemplate.status).toBe("draft");
+    expect(workwearTemplate.status).toBe("listed");
   });
 
   test("has the approved board's palette", () => {

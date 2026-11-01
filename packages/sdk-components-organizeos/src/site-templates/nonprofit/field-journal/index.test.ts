@@ -6,9 +6,9 @@ import { fieldJournalTemplate } from "./index";
 import evening from "./palettes/evening.json";
 
 describe("Field Journal", () => {
-  test("is in the catalog as a draft", () => {
+  test("is in the catalog, listed", () => {
     expect(SITE_TEMPLATES).toContain(fieldJournalTemplate);
-    expect(fieldJournalTemplate.status).toBe("draft");
+    expect(fieldJournalTemplate.status).toBe("listed");
   });
 
   test("has the approved board's palette", () => {

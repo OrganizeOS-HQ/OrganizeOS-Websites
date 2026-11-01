@@ -42,7 +42,7 @@ export const fieldJournalTemplate: SiteTemplate = {
   name: "Field Journal",
   oneLine: "A home for a nonprofit that organizes people around a cause.",
   styleTags: ["editorial", "warm", "photo-led"],
-  status: "draft",
+  status: "listed",
   dependsOn: [],
   thumbnail: "thumbnail.jpg",
   // the preview's sample event cover: a photo on no page with events, so

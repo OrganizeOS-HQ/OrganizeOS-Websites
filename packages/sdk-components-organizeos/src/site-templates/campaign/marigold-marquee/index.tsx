@@ -64,7 +64,7 @@ export const marigoldMarqueeTemplate: SiteTemplate = {
   name: "Marigold Marquee",
   oneLine: "For a candidate, ballot measure or chapter.",
   styleTags: ["confident", "high-contrast", "dark"],
-  status: "draft",
+  status: "listed",
   dependsOn: [],
   thumbnail: "thumbnail.jpg",
   // the preview's sample event cover: a photo on no page with events, so

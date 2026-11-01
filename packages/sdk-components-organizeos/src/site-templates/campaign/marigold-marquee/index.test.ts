@@ -91,9 +91,9 @@ const resolveColour = (
 };
 
 describe("Marigold Marquee", () => {
-  test("is in the catalog as a draft", () => {
+  test("is in the catalog, listed", () => {
     expect(SITE_TEMPLATES).toContain(marigoldMarqueeTemplate);
-    expect(marigoldMarqueeTemplate.status).toBe("draft");
+    expect(marigoldMarqueeTemplate.status).toBe("listed");
   });
 
   test("has the approved board's palette", () => {

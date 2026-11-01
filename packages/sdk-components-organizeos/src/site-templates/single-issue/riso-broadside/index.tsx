@@ -41,7 +41,7 @@ export const risoBroadsideTemplate: SiteTemplate = {
   name: "Riso Broadside",
   oneLine: "One page for one goal.",
   styleTags: ["urgent", "printed", "photo-led"],
-  status: "draft",
+  status: "listed",
   dependsOn: [],
   thumbnail: "thumbnail.jpg",
   variables: {

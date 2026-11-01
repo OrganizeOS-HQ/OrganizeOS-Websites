@@ -67,7 +67,7 @@ export const porchLightTemplate: SiteTemplate = {
   name: "Porch Light",
   oneLine: "For a neighborhood group, tenant association or volunteer network.",
   styleTags: ["friendly", "bold", "photo-led"],
-  status: "draft",
+  status: "listed",
   dependsOn: [],
   thumbnail: "thumbnail.jpg",
   variables: {
