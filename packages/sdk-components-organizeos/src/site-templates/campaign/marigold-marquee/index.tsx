@@ -39,10 +39,19 @@ import { volunteer } from "./pages/volunteer";
 //   timestamp, 2016-02-16, and the Wayback Machine holds its Unsplash page as
 //   of 2017-05-03 (web.archive.org/web/20170503081051/https://unsplash.com/
 //   photos/kypCqYxosY4), both recorded on the Commons page.
-// - volunteer.jpg: a public domain work of the US Army Corps of Engineers.
-//   Painted out: the agency's red mark and the two lines of its name on the
-//   comment card at the front (filled with the card's own paper and grain);
-//   the crop leaves out that card's QR code.
+// - volunteer.jpg: a phone bank seen from behind, six people at a long table
+//   with handsets to their ears, a clock on the wall above: no face in the
+//   frame (the owner's ruling of 2026-11-01). A public domain work of FEMA,
+//   by Ed Edahl, Milwaukee, September 2010 (FEMA Photo Library 45427; Commons
+//   licence {{PD-USGov-FEMA}}). From Commons' 1920px rendition, cropped to
+//   4:3, which leaves out a seventh caller seen in profile at the right edge
+//   and a poster at the left. Painted out, each filled with its own surface's
+//   shading and grain: on the wall, the agency's registration signs, an
+//   incident notice, a handwritten note, a calendar and two bulletin boards
+//   with their flyers (a union's among them); an event's slogans printed on
+//   the back of a black T-shirt (the chair in front of it kept) and small
+//   print on a white one; a lettered board under the table; a mark on a
+//   water bottle.
 //
 // thumbnail.jpg, the chooser's picture, is OrganizeOS's own: the top of Home as
 // the preview tool draws it, which `corepack pnpm preview:template
@@ -85,8 +94,8 @@ export const marigoldMarqueeTemplate: SiteTemplate = {
     "volunteer.jpg": {
       url: volunteerUrl,
       sourceUrl:
-        "https://commons.wikimedia.org/wiki/File:LMR_Comp_scoping_meeting,_Hahnville,_03.05.2024_-_10.jpg",
-      alt: "Replace with a photo of your volunteers signing in for a shift",
+        "https://commons.wikimedia.org/wiki/File:FEMA_-_45427_-_Phone_bank_for_residents_at_a_Disaster_Recovery_Center.jpg",
+      alt: "Replace with a photo of your volunteers on a shift, making calls or knocking on doors",
     },
     "thumbnail.jpg": {
       url: thumbnailUrl,
