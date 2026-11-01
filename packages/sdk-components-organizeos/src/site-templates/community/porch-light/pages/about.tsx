@@ -266,8 +266,9 @@ export const about: SiteTemplatePage = {
         context,
         imageSide: "left",
         file: "story.jpg",
-        // the phone's 4:3 crop keeps the heads in the back row whole
-        position: "50% 20%",
+        // the phone's 4:3 crop keeps the two at the front and the rows
+        // of chairs facing them
+        position: "50% 35%",
         tag: "Our story",
         heading: "How it started",
         paragraphs: [

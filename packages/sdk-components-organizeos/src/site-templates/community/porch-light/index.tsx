@@ -25,19 +25,37 @@ import { home } from "./pages/home";
 // it places is ./block-tokens.
 //
 // The photos are public domain works of United States federal agencies, from
-// Wikimedia Commons, cropped, resized and compressed. Painted out: in
-// snapshot-garden.jpg, the brand patch on a cap and the brand on a pair of
-// sunglasses; in snapshot-block-party.jpg, a brand emblem on a T-shirt (its
-// print continued over it), an embroidered emblem on a cap's visor, a
-// printed carton in the bottom-left corner (and the seam where that fill met
-// the cloth and the arm, cloned from the cloth and the arm beside it), and a
-// third person cut off at the left edge (the field behind cloned from the
-// field between the two volunteers, and a fleck of him left at her chin
-// cloned from the field beside it); in snapshot-meeting.jpg, the printing on
-// the back of a cap and of a T-shirt; in about.jpg, the agency emblem on a
-// cap and a name tag on a jacket (each filled from the cap's or the jacket's
-// own fabric) and a vehicle maker's name; in story.jpg, the title on a
-// booklet.
+// Wikimedia Commons, cropped, resized and compressed. None has a face as its
+// subject (owner ruling 2026-11-01): people are seen from behind, at work
+// with their heads down, or small in a street or a hall.
+// - snapshot-garden.jpg: volunteers' hands planting pansies in the People's
+//   Garden, Washington, D.C., 1 April 2022. USDA photo by Preston Keres
+//   (Commons licence {{PD-USGov-USDA}}; Flickr review: Public Domain Mark).
+//   Not retouched.
+// - snapshot-block-party.jpg: a block party on a street closed to traffic,
+//   seen from a stoop: a table of wares, a bicycle, balloons and roses. EPA
+//   DOCUMERICA, photographed by Suzanne Szasz, June 1973 (National Archives
+//   551686; Commons licence {{PD-USGov-EPA}}). The faded film's colour
+//   restored (each channel stretched from its 0.5th to its 99.5th
+//   percentile). Painted out: the lettering on three cards and a parking
+//   sign on the posts (each now a blank card of its own light), the design
+//   on a pennant, and a poster on a wall (the wall and the bush tops beside
+//   it cloned over it).
+// - snapshot-meeting.jpg: residents seen from behind at a community meeting.
+//   US Forest Service. Painted out: the printing on the back of a cap and of
+//   a T-shirt.
+// - about.jpg: neighbors with rakes and shovels planting a greenbelt for
+//   National Public Lands Day, Lompoc, California, 27 September 2024. U.S.
+//   Space Force photo by Airman 1st Class Olga Houtsma (DVIDS 8666458;
+//   Commons licence {{PD-USGov-Military-Space Force}}). Painted out: the
+//   printing on two work gloves, a logo on a glove's cuff, a brand mark on a
+//   sneaker, a logo on a boot, embroidery and a pin on one cap and a patch
+//   on another, the printed sleeves on a lopper's handle (the red handle run
+//   on over them), and the model badge on a pickup's door.
+// - story.jpg: residents on folding chairs, seen from behind, at a
+//   neighborhood meeting in a hall, Melbourne, Florida, 27 August 2008. FEMA
+//   photo by George Armstrong (FEMA photo 37821; Commons licence
+//   {{PD-USGov-FEMA}}). Cropped to leave out a flag. Not retouched.
 //
 // thumbnail.jpg, the chooser's picture, is OrganizeOS's own: the top of Home as
 // the preview tool draws it, which `corepack pnpm preview:template porch-light
@@ -64,13 +82,13 @@ export const porchLightTemplate: SiteTemplate = {
     "snapshot-garden.jpg": {
       url: snapshotGardenUrl,
       sourceUrl:
-        "https://commons.wikimedia.org/wiki/File:20220804-NRCS-TEW-0058_(52264014347).jpg",
+        "https://commons.wikimedia.org/wiki/File:The_People%27s_Garden_(20220401-FPAC-PJK-017).jpg",
       alt: "Replace with a photo of neighbors working on something together",
     },
     "snapshot-block-party.jpg": {
       url: snapshotBlockPartyUrl,
       sourceUrl:
-        "https://commons.wikimedia.org/wiki/File:Peterson_SFB_Neighborhood_Block_Party_(8644752).jpg",
+        "https://commons.wikimedia.org/wiki/File:BLOCK_PARTY_ON_EAST_35TH_STREET_BETWEEN_LEXINGTON_AND_MADISON_AVENUES._STREET_WAS_CLOSED_TO_MOTOR_TRAFFIC_AND_GIVEN..._-_NARA_-_551686.jpg",
       alt: "Replace with a photo of your group at one of its events",
     },
     "snapshot-meeting.jpg": {
@@ -82,13 +100,13 @@ export const porchLightTemplate: SiteTemplate = {
     "about.jpg": {
       url: aboutUrl,
       sourceUrl:
-        "https://commons.wikimedia.org/wiki/File:District_staff_welcome_neighbors_(6188456493).jpg",
+        "https://commons.wikimedia.org/wiki/File:Vandenberg_SFB_Takes_Action_for_National_Public_Lands_Day_(8666458).jpg",
       alt: "Replace with a photo of the people who started your group",
     },
     "story.jpg": {
       url: storyUrl,
       sourceUrl:
-        "https://commons.wikimedia.org/wiki/File:FEMA_-_44103_-_Community_Meeting_In_Bordeaux.jpg",
+        "https://commons.wikimedia.org/wiki/File:FEMA_-_37821_-_FEMA_CR_provides_disaster_information_at_community_meeting.jpg",
       alt: "Replace with a photo from one of your first meetings",
     },
     "thumbnail.jpg": {

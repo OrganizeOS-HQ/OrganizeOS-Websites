@@ -168,7 +168,7 @@ const hero = (context: PageContext) =>
             phoneTilt: "-1deg",
             large: true,
             position: "50% 25%",
-            phonePosition: "50% 10%",
+            phonePosition: "50% 85%",
           }),
           snapshot(context, "snapshot-meeting.jpg", {
             ratio: "1 / 1",
@@ -195,8 +195,8 @@ export const home: SiteTemplatePage = {
         context,
         imageSide: "right",
         file: "about.jpg",
-        // the phone's 4:3 crop keeps his cap and a little sky above it
-        position: "50% 5%",
+        // the phone's 4:3 crop keeps the neighbors' heads and their feet
+        position: "50% 65%",
         tag: "About us",
         heading: "Say how your group got started",
         paragraphs: [
