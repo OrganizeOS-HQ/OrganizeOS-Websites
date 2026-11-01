@@ -52,7 +52,7 @@ const history = (context: PageContext) =>
         {photo(context, "about.jpg", {
           ratio: "4 / 5",
           phoneRatio: "3 / 2",
-          // the phone's 3:2 band keeps both hard hats and faces
+          // the phone's 3:2 band keeps the welder's helmet, the arc and the lead
           phonePosition: "50% 20%",
         })}
         <ws.element ws:tag="div" ws:style={stackStyles(SPACE[16])}>

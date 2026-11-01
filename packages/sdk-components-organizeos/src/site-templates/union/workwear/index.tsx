@@ -24,13 +24,23 @@ import { RULE } from "./styles";
 // and button, and the Event List as ruled rows with a fixed date column.
 //
 // The photos are public domain works of United States federal agencies,
-// from Wikimedia Commons, cropped, resized, turned to greys (about.jpg's
-// levels stretched, as the faded slide was) and compressed. Painted out: in
-// hero.jpg, a company's logo and slogan on a white hard hat, a company's name
-// on a navy one, a name sticker on a third (each filled with the hat's own
-// shading and grain, the third keeping the edge between its crown and brim)
-// and a round sticker at the top edge (cloned from the hat beside it); in
-// about.jpg, an ID badge on a breast pocket (filled with the pocket's cloth).
+// from Wikimedia Commons, turned to greys (CSS grayscale()'s weights) and
+// compressed. No photo's subject is a face (the owner's ruling of
+// 2026-11-01):
+// - hero.jpg: a framer in a hard hat and harness setting a roof truss from a
+//   crane, his face turned down under the brim. NIOSH (CDC), 2012, posted on
+//   its own Flickr account as a United States Government Work (Commons
+//   licence {{PD-USGov-HHS-NIOSH}}, Flickr review passed). Painted out: a
+//   logo sticker, a second sticker and faint printing on the hard hat
+//   (filled with the hat's own shading and grain, the crown's outline
+//   against the sky carried on from beside it).
+// - about.jpg: a welder behind his helmet, making boilers for a ship in
+//   Chattanooga, June 1942, by Alfred T. Palmer for the Office of War
+//   Information (Library of Congress LC-DIG-fsac-1a35232; Commons licence
+//   {{PD-USGov-FSA}}; the Commons file is a restoration, scratches and dust
+//   removed). Cropped to 4:5 around him. Painted out: a glove maker's mark
+//   and name on his cuff (filled with the cuff's own leather and grain, the
+//   spark across it kept).
 // Every photo slot shows its photo in greys too (`filter: grayscale(1)`), so
 // a photo an org puts there takes the palette as these do; the hero's lies
 // under the denim overlay (pages/home).
@@ -64,14 +74,14 @@ export const workwearTemplate: SiteTemplate = {
     "hero.jpg": {
       url: heroUrl,
       sourceUrl:
-        "https://commons.wikimedia.org/wiki/File:BLM_Arizona_staff_huddle_(53166029612).jpg",
+        "https://commons.wikimedia.org/wiki/File:Framing_fall_prevention_(9253620797).jpg",
       alt: "Replace with a photo of your members at work or meeting together",
     },
     "about.jpg": {
       url: aboutUrl,
       sourceUrl:
-        "https://commons.wikimedia.org/wiki/File:WORKERS_AT_THE_UNION_CARBIDE_URANIUM_MILL_-_NARA_-_543651.jpg",
-      alt: "Replace with a photo from the local's early days, or of two of its members",
+        "https://commons.wikimedia.org/wiki/File:AlfredPalmerwelder1.jpg",
+      alt: "Replace with a photo from the local's early days, or of a member at work",
     },
     "thumbnail.jpg": {
       url: thumbnailUrl,

@@ -32,8 +32,9 @@ const denim = (alpha: number) =>
  * over the text's column, and below 992px, where the text spans the hero,
  * 74% at the top rising to 94% at the foot. From 74% up, the base-coloured
  * text holds 4.5:1 over a white or a black pixel, in either palette; to the
- * right the photo shows through a light tint. With no photo the section's
- * own accent-1 shows, a plain denim field.
+ * right the photo shows through a light tint. On phones the photo's crop
+ * sits right of centre, where the sample's framer stands. With no photo the
+ * section's own accent-1 shows, a plain denim field.
  * The label, an uppercase headline of up to three lines, one sentence and
  * one inverted Join button sit bottom-left. The hero is 4:5 on a portrait
  * phone, and square from 480px to 767px, but no taller than the window less
@@ -60,10 +61,10 @@ const hero = (context: PageContext) =>
           width: 100%;
           height: 100%;
           object-fit: cover;
-          object-position: 60% 30%;
+          object-position: 60% 40%;
           filter: grayscale(1);
           ${BREAKPOINT.landscape} {
-            object-position: 62% 30%;
+            object-position: 85% 40%;
           }
         `}
       />,
