@@ -229,7 +229,7 @@ No blocking browser gate. Upstream interrupted Firefox and Safari with a full-sc
 
 ## 7. OrganizeOS overlay (keep minimal for upstream merges)
 
-Changes confined to: env/config, the proprietary-package removal (this doc §2), auth/SSO + provisioning files (`services/auth-strategy/organizeos*`, `routes/internal.*` (among them the agent endpoint, `routes/internal.organizeos-agent.tsx`, with `ORGANIZEOS_AGENT_TOKEN` in `env/env.server.ts`, §5), `shared/db/provision.server.ts`, `shared/db/organizeos-*.server.ts`, `shared/db/collections-sync.server.ts`, and the data catalog `shared/db/resource-presets.server.ts` and `shared/db/signup-form-preset.server.tsx`, whose ids `shared/organizeos-preset-ids.ts` derives for the server and the browser alike), the blocks' deny list (`ORGANIZEOS_BLOCKS_DENY_ORG_IDS` in `env/env.server.ts`, which replaced the allowlist `ORGANIZEOS_BLOCKS_ORG_IDS`; parsed by `parseOrgDenyList` and passed to `resolveOrganizeosSite` by the loader in `routes/_ui.(builder).tsx`, which reports a malformed value once with `reportMalformedOrgDenyList`; and synced to the canvas by one marked `organizeosSite` line in `shared/sync/sync-stores.ts`), the catalog's survival of its bindings (one marked branch each in `shared/instance-utils/mutation.ts` `deleteInstanceMutable`, `shared/data-variables.ts` `deleteVariableMutable` and `settings-panel/variable-popover.tsx`: a Resource whose id is a derived v5 UUID is never deleted with a binding, §9), the session binding (`services/auth-strategy/organizeos-session.server.ts`, called from `extractAuthFromRequest` in `shared/context.server.ts`, `findAuthenticatedUser` in `services/auth.server.ts` and the loader of `routes/oauth.ws.authorize.tsx`; the two optional fields and the `4-organizeos` cookie version in `services/auth.server.utils.ts`; the fields carried by `services/token.server.ts`, `routes/oauth.ws.authorize.tsx`, `routes/oauth.ws.token.ts` and the `ws` callback in `services/builder-auth.server.ts`; `ORGANIZEOS_SESSION_BINDING` in `env/env.server.ts`; tests in `organizeos-session.server.test.ts`, `routes-tests/oauth-ws-authorize.server.test.ts` and `env/env.server.test.ts`, and cases in `services/token.server.test.ts` and `shared/context.server.test.ts`; §5), the draft preview (§5: `shared/organizeos-preview.server.ts`, called by one marked change in `routes/rest.resources-loader.ts`, with `WEBSITES2_PREVIEW_SECRET` in `env/env.server.ts`, the fixture copy in `shared/__fixtures__/`, tests in `shared/organizeos-preview.server.test.ts` and `routes-tests/rest-resources-loader.server.test.ts`; and the CLI's `packages/cli/src/organizeos-preview-header.ts`, called from one short marked hook in `prebuild.ts`, with its test and a case in `prebuild.test.ts`), the publish seam (`services/organizeos-publisher.server.ts`, `shared/db/publish-status.server.ts`, `publish-site.yml`), the guard level (§5: `ORGANIZEOS_GUARD_LEVEL` beside the switch in `packages/sdk-components-organizeos/src/org-script.ts`, its test `packages/cli/src/organizeos-guard-level.test.ts`, and the "Read the guard level" step of `publish-site.yml`), the Publish dialog's address read (§5: `shared/db/organizeos-site-addresses.server.ts`, `routes/rest.organizeos-site.$projectId.ts`, the fixture copy `shared/__fixtures__/site-addresses.json`, and `features/publish/organizeos-publish-addresses.ts` in the dialog; tests in `shared/db/organizeos-site-addresses.server.test.ts` and `routes-tests/rest-organizeos-site.server.test.ts`), asset serving (`shared/asset-response.server.ts`, the three `routes/cgi.*` loaders, `asset-uploader`'s S3 client), the CMS overlay (§9, "The CMS overlay": `builder/features/cms-panel/*`, with its tests, among them `cms-icon.tsx`, the database icon; in `sidebar-left/sidebar-left.tsx`, the one `<CmsRailButton />` after the tab triggers in the rail, the `ref={registerCmsRail}` on the rail's column, the `hideCmsOverlay()` branch in a tab trigger's click, and the one `<CmsOverlay />` outside the tab content; the per-panel `maxWidth` and `defaultWidth` in `PanelConfig`, which no panel sets since the CMS left the sidebar; `$computedResourceRequests` exported by one marked change in `shared/nano-states/props.ts`; `cmsPanelEnabled` on `OrganizeosSite` (`shared/organizeos-site.ts`), set by `resolveOrganizeosSite` from `ORGANIZEOS_CMS_PANEL` in `env/env.server.ts`, passed by the loader in `routes/_ui.(builder).tsx`; and the app's origin in that route's `frame-src`, through `builderFrameSrcPolicy` in `shared/frame-protection.ts`), frame protection (`shared/frame-protection.ts` and the `headers` exports of `root.tsx`, `routes/_ui.(builder).tsx`, `routes/_ui.dashboard.tsx` and `routes/_ui.$.tsx`), branding (`shared/branding.ts`; the OrganizeOS mark v3 in `shared/organizeos-logo.tsx`, the OrganizeOS repo's `LOGO_MARK_PATHS` drawn inline in the brand's in-app pair like its `BrandMark`, ink on light and cream on dark, shown where upstream showed its logo in `auth/login.tsx`, `features/menu/menu-button.tsx` and `builder/shared/loading.tsx` (those two on the dark topbar colour, so `on="dark"`) and `shared/error/error-message.client.tsx`; and `public/favicon.ico`, OrganizeOS's teal browser-tab favicon at 16, 32 and 48 px, packed by ImageMagick, `convert favicon-16x16.png favicon-32x32.png favicon-48x48.png favicon.ico`, from the OrganizeOS repo's `client/public/favicon-16x16.png` and `favicon-32x32.png` and a 48 px frame drawn from its `client/public/brand/organizeos-favicon.svg` by the favicon call of its `client/scripts/generate-pwa-icons.mjs`, `sharp(svg, { density: 300 }).resize(48, 48, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png({ compressionLevel: 9 })`, run with the builder's sharp 0.33.5), the OrganizeOS-only chrome behind `$organizeosSite` (`features/publish/organizeos-publish*.ts*`, small branches in `menu.tsx`, `topbar.tsx`, `publish.tsx`; `organizeosHomeUrl` in `shared/organizeos-site.ts`, which the menu's "Back to OrganizeOS" opens, with `shared/organizeos-site.test.ts`), the OrganizeOS blocks (§9: the `packages/sdk-components-organizeos` package, `@organizeos/site-components`, a `workspace:*` dependency in `apps/builder/package.json` and `packages/cli/package.json`, and so in `pnpm-lock.yaml`, registered by one `registerComponentLibrary` call in `canvas/canvas.tsx`; their builder UI, `features/organizeos-panel/*`: the blocks listed by one marked OrganizeOS section in `features/components/components.tsx` (its group, heading and links, and a click or Enter on a block routed to `insertOrganizeosBlock`), the Background presets section, one marked entry in `features/style-panel/sections/sections.ts`, the Motion tab, marked lines in `builder/inspector.tsx` with `$activeInspectorPanel` widened to take `"motion"` in `builder/shared/nano-states.ts`, the OrganizeOS data tab in `sidebar-left/sidebar-left.tsx` (shown only for an org the deny list does not deny) and `sidebar-left/types.ts`, the CMS page templates (§9: `collection-schema.ts`, `collection-layout.ts`, `collection-pages.ts`, `collection-list.ts` and `collection-row-menu.tsx`, with their tests, the collection rows in `organizeos-data.ts` and `organizeos-panel.tsx`, and cases in `shared/db/resource-presets.server.test.ts` and `shared/organizeos-preview.server.test.ts`), one branch in the canvas's drop handler, `canvas/shared/use-drag-drop.ts`, so a dropped block is bound to the project's data like a clicked one, and `features/organizeos-panel/overlay.wiring.test.ts` pinning the marked lines; an `onInsert` option on `insertWebstudioFragmentAt` (`shared/instance-utils/insert.ts`) that completes the insert in its own transaction, and an `onWrap` option on `wrapInstance` (`shared/instance-utils/mutation.ts`), a third optional parameter called inside the wrap's transaction after the content-model check, through which the Motion tab writes its Animate Children's props in the wrap's undo step (§9), with two cases in `shared/instance-utils/mutation.test.tsx` (its writes undo with the wrap; it is not called for a refused `li`); their record picker, `settings-panel/controls/organizeos-record.tsx`, behind one branch in `settings-panel/controls/combined.tsx`; and the CLI's copy of their build into every published site, `packages/cli/src/organizeos-components.ts`, called from short hooks in `prebuild.ts` and `framework-react-router.ts`, with cases in `prebuild.test.ts`; `organizeos-components.ts` also copies the package's `LICENSE` and computes the source-offer URL, used by one more short hook in `prebuild.ts`; `html.tsx` carries a second marked change, the source offer (its head links and the visible Source link at the end of the body, §1), with cases in `prebuild.test.ts` and `organizeos-components.test.ts`; the copy also carries `page.js`, the package's second entry for published pages (`src/page.ts`, built by the package's `vite.build.config.ts`), and `html.tsx` carries a third marked change, the page's share-code carrier imported from it (§8), through the placeholder `__ORGANIZEOS_PAGE__`, which the same `prebuild.ts` hook resolves beside the source URL and `packages/cli/src/organizeos-placeholders.d.ts` declares; the fixture `fixtures/react-router-vercel` carries copies of the cache module and of the html route changes), the org script pause (§10: `packages/sdk-components-organizeos/src/org-script.ts`, which the blocks package exports as `@organizeos/site-components/org-script` and builds with its own `vite.build.config.ts`; `acorn`, a dependency of the blocks package for the address rule, and so in `pnpm-lock.yaml`; `canvas/organizeos-org-script.tsx`, with one marked change in `canvas/canvas.tsx` that registers upstream's base library through it, and four marked changes in `canvas/features/webstudio-component/webstudio-component.tsx` (a skip in `useInstanceProps` of a `dangerouslySetInnerHTML` prop, a skip there of a tag the builder does not offer, or of an SVG `animate` or `set`, whether it is `instance.tag` or a `data-ws-tag` or `tag` prop on any component but `ws:element` and XML Node, a fallback to `div` in `WebstudioComponentCanvas` and `WebstudioComponentPreview` for a `ws:element` with such a tag, and a drop, in both renderers, of such a tag prop, an unsafe address, a `srcdoc` and an event handler attribute from every prop the component receives (`withoutPausedProps`, given the instance)) that keep both off every component; one marked branch in `shared/project-settings/section-general.tsx`; `features/publish/organizeos-publish-paused-script.ts`, whose banner is in `organizeos-publish.tsx`; and the CLI's `packages/cli/src/organizeos-org-script.ts`, called from one short marked hook in `prebuild.ts`; one marked header in `route-templates/xml.tsx` (§8); with tests beside each, among them `canvas/organizeos-org-script.wiring.test.ts`, `canvas/organizeos-org-script.props.test.tsx`, `packages/cli/src/organizeos-org-script.unsafe-values.test.ts` and `packages/cli/src/organizeos-publish-workflow.test.ts`), the guards' wiring (the `check:*` scripts and `checks` in the root `package.json`, and `.github/workflows/main.yml`, both of which also build the blocks' package, with the workspace packages it imports, before the tests), and the forced CLI route-template patches for the reverse-proxy host/auth/cache (§8), among them the published site's resource cache (`packages/cli/templates/react-router/app/organizeos-resource-cache.ts`, which one marked change in each of the react-router route templates `html.tsx`, `xml.tsx` and `text.tsx` calls, with its tests in `packages/cli/src/organizeos-resource-cache.test.ts` and cases in `prebuild.test.ts`, among them an item page's 404), and two bug fixes worth offering upstream: `packages/cli/src/asset-files.ts` waits for a failed download's write stream to close before deleting its `.tmp` file (otherwise a fast failure could delete it before the stream created it, leaving it behind and flaking `asset-files.test.ts`), and `createLocalStyleSource` in `apps/builder/app/shared/tailwind/tailwind.ts` writes an element's style source selection back when one already existed (otherwise an element that kept a token from a pasted `<style>` class rule lost every Tailwind style, with a case in `tailwind.test.tsx`). Avoid deep edits to shared component `.tsx`; isolate OrganizeOS code so `upstream main` can be merged with minimal conflict.
+Changes confined to: env/config, the proprietary-package removal (this doc §2), auth/SSO + provisioning files (`services/auth-strategy/organizeos*`, `routes/internal.*` (among them the agent endpoint, `routes/internal.organizeos-agent.tsx`, with `ORGANIZEOS_AGENT_TOKEN` in `env/env.server.ts`, §5), `shared/db/provision.server.ts`, `shared/db/organizeos-*.server.ts`, `shared/db/collections-sync.server.ts`, and the data catalog `shared/db/resource-presets.server.ts` and `shared/db/signup-form-preset.server.tsx`, whose ids `shared/organizeos-preset-ids.ts` derives for the server and the browser alike), the blocks' deny list (`ORGANIZEOS_BLOCKS_DENY_ORG_IDS` in `env/env.server.ts`, which replaced the allowlist `ORGANIZEOS_BLOCKS_ORG_IDS`; parsed by `parseOrgDenyList` and passed to `resolveOrganizeosSite` by the loader in `routes/_ui.(builder).tsx`, which reports a malformed value once with `reportMalformedOrgDenyList`; and synced to the canvas by one marked `organizeosSite` line in `shared/sync/sync-stores.ts`), the catalog's survival of its bindings (one marked branch each in `shared/instance-utils/mutation.ts` `deleteInstanceMutable`, `shared/data-variables.ts` `deleteVariableMutable` and `settings-panel/variable-popover.tsx`: a Resource whose id is a derived v5 UUID is never deleted with a binding, §9), the session binding (`services/auth-strategy/organizeos-session.server.ts`, called from `extractAuthFromRequest` in `shared/context.server.ts`, `findAuthenticatedUser` in `services/auth.server.ts` and the loader of `routes/oauth.ws.authorize.tsx`; the two optional fields and the `4-organizeos` cookie version in `services/auth.server.utils.ts`; the fields carried by `services/token.server.ts`, `routes/oauth.ws.authorize.tsx`, `routes/oauth.ws.token.ts` and the `ws` callback in `services/builder-auth.server.ts`; `ORGANIZEOS_SESSION_BINDING` in `env/env.server.ts`; tests in `organizeos-session.server.test.ts`, `routes-tests/oauth-ws-authorize.server.test.ts` and `env/env.server.test.ts`, and cases in `services/token.server.test.ts` and `shared/context.server.test.ts`; §5), the draft preview (§5: `shared/organizeos-preview.server.ts`, called by one marked change in `routes/rest.resources-loader.ts`, with `WEBSITES2_PREVIEW_SECRET` in `env/env.server.ts`, the fixture copy in `shared/__fixtures__/`, tests in `shared/organizeos-preview.server.test.ts` and `routes-tests/rest-resources-loader.server.test.ts`; and the CLI's `packages/cli/src/organizeos-preview-header.ts`, called from one short marked hook in `prebuild.ts`, with its test and a case in `prebuild.test.ts`), the publish seam (`services/organizeos-publisher.server.ts`, `shared/db/publish-status.server.ts`, `publish-site.yml`), the guard level (§5: `ORGANIZEOS_GUARD_LEVEL` beside the switch in `packages/sdk-components-organizeos/src/org-script.ts`, its test `packages/cli/src/organizeos-guard-level.test.ts`, and the "Read the guard level" step of `publish-site.yml`), the Publish dialog's address read (§5: `shared/db/organizeos-site-addresses.server.ts`, `routes/rest.organizeos-site.$projectId.ts`, the fixture copy `shared/__fixtures__/site-addresses.json`, and `features/publish/organizeos-publish-addresses.ts` in the dialog; tests in `shared/db/organizeos-site-addresses.server.test.ts` and `routes-tests/rest-organizeos-site.server.test.ts`), asset serving (`shared/asset-response.server.ts`, the three `routes/cgi.*` loaders, `asset-uploader`'s S3 client), the CMS overlay (§9, "The CMS overlay": `builder/features/cms-panel/*`, with its tests, among them `cms-icon.tsx`, the database icon; in `sidebar-left/sidebar-left.tsx`, the one `<CmsRailButton />` after the tab triggers in the rail, the `ref={registerCmsRail}` on the rail's column, the `hideCmsOverlay()` branch in a tab trigger's click, and the one `<CmsOverlay />` outside the tab content; the per-panel `maxWidth` and `defaultWidth` in `PanelConfig`, which no panel sets since the CMS left the sidebar; `$computedResourceRequests` exported by one marked change in `shared/nano-states/props.ts`; `cmsPanelEnabled` on `OrganizeosSite` (`shared/organizeos-site.ts`), set by `resolveOrganizeosSite` from `ORGANIZEOS_CMS_PANEL` in `env/env.server.ts`, passed by the loader in `routes/_ui.(builder).tsx`; and the app's origin in that route's `frame-src`, through `builderFrameSrcPolicy` in `shared/frame-protection.ts`), frame protection (`shared/frame-protection.ts` and the `headers` exports of `root.tsx`, `routes/_ui.(builder).tsx`, `routes/_ui.dashboard.tsx` and `routes/_ui.$.tsx`), branding (`shared/branding.ts`; the OrganizeOS mark v3 in `shared/organizeos-logo.tsx`, the OrganizeOS repo's `LOGO_MARK_PATHS` drawn inline in the brand's in-app pair like its `BrandMark`, ink on light and cream on dark, shown where upstream showed its logo in `auth/login.tsx`, `features/menu/menu-button.tsx` and `builder/shared/loading.tsx` (those two on the dark topbar colour, so `on="dark"`) and `shared/error/error-message.client.tsx`; and `public/favicon.ico`, OrganizeOS's teal browser-tab favicon at 16, 32 and 48 px, packed by ImageMagick, `convert favicon-16x16.png favicon-32x32.png favicon-48x48.png favicon.ico`, from the OrganizeOS repo's `client/public/favicon-16x16.png` and `favicon-32x32.png` and a 48 px frame drawn from its `client/public/brand/organizeos-favicon.svg` by the favicon call of its `client/scripts/generate-pwa-icons.mjs`, `sharp(svg, { density: 300 }).resize(48, 48, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).png({ compressionLevel: 9 })`, run with the builder's sharp 0.33.5), the OrganizeOS-only chrome behind `$organizeosSite` (`features/publish/organizeos-publish*.ts*`, small branches in `menu.tsx`, `topbar.tsx`, `publish.tsx`; `organizeosHomeUrl` in `shared/organizeos-site.ts`, which the menu's "Back to OrganizeOS" opens, with `shared/organizeos-site.test.ts`), the OrganizeOS blocks (§9: the `packages/sdk-components-organizeos` package, `@organizeos/site-components`, a `workspace:*` dependency in `apps/builder/package.json` and `packages/cli/package.json`, and so in `pnpm-lock.yaml`, registered by one `registerComponentLibrary` call in `canvas/canvas.tsx`; their builder UI, `features/organizeos-panel/*`: the blocks listed by one marked OrganizeOS section in `features/components/components.tsx` (its group, heading and links, and a click or Enter on a block routed to `insertOrganizeosBlock`), the Background presets section, one marked entry in `features/style-panel/sections/sections.ts`, the Motion tab, marked lines in `builder/inspector.tsx` with `$activeInspectorPanel` widened to take `"motion"` in `builder/shared/nano-states.ts`, the OrganizeOS data tab in `sidebar-left/sidebar-left.tsx` (shown only for an org the deny list does not deny) and `sidebar-left/types.ts`, the CMS page templates (§9: `collection-schema.ts`, `collection-layout.ts`, `collection-pages.ts`, `collection-list.ts` and `collection-row-menu.tsx`, with their tests, the collection rows in `organizeos-data.ts` and `organizeos-panel.tsx`, and cases in `shared/db/resource-presets.server.test.ts` and `shared/organizeos-preview.server.test.ts`), the site templates (§9, "Site templates": in the blocks package, the `src/site-templates/` folder (`canonical-variables.ts`, `place-block.ts`, `platform-paths.ts`, `types.ts`, `render.ts`, `check.ts`, `style-scan.ts`, `sections.ts`, `catalog.ts`, `index.ts`, `assets.d.ts`, the kit in `kit/`, the templates, each in a folder under its category (`nonprofit/field-journal/` and the rest) with its `images/`, `pages/` and `palettes/`, and the spike, a fixture in `__fixtures__/spike/` with its `images/`, which the catalog does not list and `index.ts` does not export, with tests beside the modules that hold logic; the `@fontsource` and `@fontsource-variable` packages whose `woff2` files the templates bundle, devDependencies in the package's `package.json` and so in `pnpm-lock.yaml`), exported by the package's `package.json` as `@organizeos/site-components/site-templates` and, alone, as `@organizeos/site-components/site-templates/canonical-variables`, with the two matching entries in its `vite.build.config.ts`, and imported by none of `components.ts`, `metas.ts` and `hooks.ts`; the block templates as factories, `signupFormTemplate` in `signup-form.template.tsx`, `rsvpFormTemplate` in `rsvp-form.template.tsx` and `rotatingTabsTemplate` in `rotating-tabs.template.tsx` (`block-factories.test.tsx`), and the block tokens reading the site variables in `shared/form-tokens.ts` and `events/event-card.template.tsx` (`shared/form-tokens.test.ts`); in the builder, `features/organizeos-panel/site-templates/` (`apply-site-template.ts`, `template-chooser.tsx` and `provisioned-project.ts`, with their tests, `bundled-fonts.test.ts`, and the preview tool's half, `preview/`: `dump.preview.tsx`, `vitest.preview.config.ts`, `stub-api.mjs` and `preview-arguments.mjs`, with their tests, and `palettes/`), one marked loop in `shared/db/canvas.server.ts`, with its import, that keeps a font the canonical font variables name (`findCanonicalFontFamilies` in `shared/db/organizeos-canonical-fonts.server.ts`, with its test), two marked changes in `getFontData` in `packages/asset-uploader/src/utils/font-data.ts`, with its import, that take from a font's family the instance its legacy name carries (`dropInstanceNames` in `organizeos-font-family.ts` beside it, with `organizeos-font-family.test.ts`), one marked import and one marked `<TemplateChooser />` mount in `builder/builder.tsx`, pinned by `overlay.wiring.test.ts`, the `instanceIdPrefix` option of `completeOrganizeosFragment` in `insert-organizeos-block.ts`, `getDefaultRoles` in `section-background.tsx` taking the roles by name (importing `site-templates/canonical-variables` alone), `deleteSubtreeMutable` exported from `collection-pages.ts`, and `SIGNUP_PAGE_PATH` moved from `shared/db/signup-form-preset.server.tsx` to `shared/organizeos-preset-ids.ts`, so the browser can read it; with cases in `insert-organizeos-block.test.tsx`, `section-background.test.tsx` and `shared/db/signup-form-preset.merge.server.test.tsx`), one branch in the canvas's drop handler, `canvas/shared/use-drag-drop.ts`, so a dropped block is bound to the project's data like a clicked one, and `features/organizeos-panel/overlay.wiring.test.ts` pinning the marked lines; an `onInsert` option on `insertWebstudioFragmentAt` (`shared/instance-utils/insert.ts`) that completes the insert in its own transaction, and an `onWrap` option on `wrapInstance` (`shared/instance-utils/mutation.ts`), a third optional parameter called inside the wrap's transaction after the content-model check, through which the Motion tab writes its Animate Children's props in the wrap's undo step (§9), with two cases in `shared/instance-utils/mutation.test.tsx` (its writes undo with the wrap; it is not called for a refused `li`); their record picker, `settings-panel/controls/organizeos-record.tsx`, behind one branch in `settings-panel/controls/combined.tsx`; and the CLI's copy of their build into every published site, `packages/cli/src/organizeos-components.ts`, called from short hooks in `prebuild.ts` and `framework-react-router.ts`, with cases in `prebuild.test.ts`; `organizeos-components.ts` also copies the package's `LICENSE` and computes the source-offer URL, used by one more short hook in `prebuild.ts`; `html.tsx` carries a second marked change, the source offer (its head links and the visible Source link at the end of the body, §1), with cases in `prebuild.test.ts` and `organizeos-components.test.ts`; the copy also carries `page.js`, the package's second entry for published pages (`src/page.ts`, built by the package's `vite.build.config.ts`), and `html.tsx` carries a third marked change, the page's share-code carrier imported from it (§8), through the placeholder `__ORGANIZEOS_PAGE__`, which the same `prebuild.ts` hook resolves beside the source URL and `packages/cli/src/organizeos-placeholders.d.ts` declares; the fixture `fixtures/react-router-vercel` carries copies of the cache module and of the html route changes), the org script pause (§10: `packages/sdk-components-organizeos/src/org-script.ts`, which the blocks package exports as `@organizeos/site-components/org-script` and builds with its own `vite.build.config.ts`; `acorn`, a dependency of the blocks package for the address rule, and so in `pnpm-lock.yaml`; `canvas/organizeos-org-script.tsx`, with one marked change in `canvas/canvas.tsx` that registers upstream's base library through it, and four marked changes in `canvas/features/webstudio-component/webstudio-component.tsx` (a skip in `useInstanceProps` of a `dangerouslySetInnerHTML` prop, a skip there of a tag the builder does not offer, or of an SVG `animate` or `set`, whether it is `instance.tag` or a `data-ws-tag` or `tag` prop on any component but `ws:element` and XML Node, a fallback to `div` in `WebstudioComponentCanvas` and `WebstudioComponentPreview` for a `ws:element` with such a tag, and a drop, in both renderers, of such a tag prop, an unsafe address, a `srcdoc` and an event handler attribute from every prop the component receives (`withoutPausedProps`, given the instance)) that keep both off every component; one marked branch in `shared/project-settings/section-general.tsx`; `features/publish/organizeos-publish-paused-script.ts`, whose banner is in `organizeos-publish.tsx`; and the CLI's `packages/cli/src/organizeos-org-script.ts`, called from one short marked hook in `prebuild.ts`; one marked header in `route-templates/xml.tsx` (§8); with tests beside each, among them `canvas/organizeos-org-script.wiring.test.ts`, `canvas/organizeos-org-script.props.test.tsx`, `packages/cli/src/organizeos-org-script.unsafe-values.test.ts` and `packages/cli/src/organizeos-publish-workflow.test.ts`), the preview tool (§9, "Site templates": `scripts/preview-site-template.mjs`, the root `package.json`'s `preview:template` script and its `playwright` devDependency, and so the root importer's entry in `pnpm-lock.yaml`, and the `previews/` line in `.gitignore`), the guards' wiring (the `check:*` scripts and `checks` in the root `package.json`, and `.github/workflows/main.yml`, both of which also build the blocks' package, with the workspace packages it imports, before the tests), and the forced CLI route-template patches for the reverse-proxy host/auth/cache (§8), among them the published site's resource cache (`packages/cli/templates/react-router/app/organizeos-resource-cache.ts`, which one marked change in each of the react-router route templates `html.tsx`, `xml.tsx` and `text.tsx` calls, with its tests in `packages/cli/src/organizeos-resource-cache.test.ts` and cases in `prebuild.test.ts`, among them an item page's 404), and two bug fixes worth offering upstream: `packages/cli/src/asset-files.ts` waits for a failed download's write stream to close before deleting its `.tmp` file (otherwise a fast failure could delete it before the stream created it, leaving it behind and flaking `asset-files.test.ts`), and `createLocalStyleSource` in `apps/builder/app/shared/tailwind/tailwind.ts` writes an element's style source selection back when one already existed (otherwise an element that kept a token from a pasted `<style>` class rule lost every Tailwind style, with a case in `tailwind.test.tsx`). Avoid deep edits to shared component `.tsx`; isolate OrganizeOS code so `upstream main` can be merged with minimal conflict.
 
 ## 8. Published-site route template patches
 
@@ -1030,9 +1030,11 @@ click applies the preset; an Image with scrim preset opens the image picker
 (the asset manager and its upload) and applies with the image chosen there,
 closing it. With one picker open, a click or tap on the other scrim preset
 opens that one's picker. The presets take their colors from Global Root's
-color variables, the lightest as the base, the darkest as the text and the
-others as the accents in the order they are defined (`getDefaultRoles`), or
-from a built-in palette when Global Root defines none. Under the row, one line
+color variables: by name when `--base`, `--accent-1`, `--accent-2` and `--text`
+are all there (Site templates, below), and otherwise the lightest as the base,
+the darkest as the text and the others as the accents in the order they are
+defined (`getDefaultRoles`), or from a built-in palette when Global Root
+defines none. Under the row, one line
 of plain text in the destructive color, "Text below AA contrast", appears only
 when text inside fails WCAG AA. That is all it shows, by the owner's rule in
 `CLAUDE.md` ("Builder UI: options, not explanations"): no palette menus, help
@@ -1059,14 +1061,26 @@ canvas.
   new one lands, so the previous element's line is never shown for the new
   one. No line shows while a run is pending, or when no text fails: all of
   it passes, there is none, or some can't be checked.
-- A preset writes ordinary styles only, to the element's **local** style
-  source at the current breakpoint, base state, in one undo step:
-  `background-color` and the nine layer longhands upstream's Backgrounds
-  section reads. It never writes to a token, adds no component, prop or
-  script, and keeps no link to the element; tinted stops are literal colors,
-  so re-applying a preset picks up a palette change. A background the element
-  takes from a token or another breakpoint is overridden here, by the local
-  style, without a notice.
+- A preset writes ordinary styles only, to the element's **local** style source
+  at the current breakpoint, base state, in one undo step: `background-color`
+  and the nine layer longhands upstream's Backgrounds section reads, and the
+  band variables `--focus-ring` and `--accent-text` (`BAND_VARIABLES`, Site
+  templates, below), which it first deletes. It writes those two only when the
+  palette is the four canonical variables (a site template's site, the only one
+  that reads them), and on any other site neither. A dark preset makes the
+  element a band, as a template's kit band is: it sets both to whichever of the
+  base and the text is lighter (`--base` on a light palette, `--text` on a dark
+  one), so focus rings and a template's accent text inside it read on the dark
+  surface. A light preset, whose surface is the base's, sets both to
+  `var(--accent-2)`, the reset a template's base panel inside a band makes and
+  what they are on the base unset: so a light surface nested in a band, or a
+  light preset at 767 on a section that is a dark band at the base breakpoint,
+  rings focus and sets accent text in accent-2 again. Clearing a background in
+  upstream's Backgrounds section leaves them as they are. It never writes to a
+  token, adds no component, prop or script, and keeps no link to the element;
+  tinted stops are literal colors, so re-applying a preset picks up a palette
+  change. A background the element takes from a token or another breakpoint is
+  overridden here, by the local style, without a notice.
 - The contrast check is advisory: it never blocks publish, and it never
   reports Pass for what it cannot compute (unreadable values, an image with
   no layer above it, blending, filters, opacity, interpolation methods and
@@ -1661,6 +1675,415 @@ code in the page's address only, never in a cookie or storage.
   of its own, and the page's carrier carries its link. Nothing changes in the
   published-site runtime packages.
 
+**Site templates**, `src/site-templates/` in the package and
+`features/organizeos-panel/site-templates/` in the builder (OrganizeOS design
+`docs/superpowers/specs/2026-10-30-website-template-inventory-design.md`,
+sections 6.1 to 6.4; plan
+`docs/superpowers/plans/2026-10-30-website-template-foundations.md`): a whole
+site, pages and all, written as code in the fork and written once into an
+org's untouched project, from a chooser. The foundations ship one test
+template, `spike`, a fixture the catalog does not list; wave 1 adds the five
+starter templates, listed 2026-11-01 (OrganizeOS plan
+`docs/superpowers/plans/2026-10-31-website-templates-wave-1.md`).
+
+- **The module format** (`types.ts`). A template is a folder under
+  `src/site-templates/` whose `index.tsx` exports one `SiteTemplate`: `id`,
+  `category` (one of nine; `CATEGORY_ORDER` is the chooser's order), `name`,
+  `oneLine`, `styleTags`, `status` (`draft` or `listed`), `dependsOn`,
+  `thumbnail` (a file name in `images`), `previewEventCover` (a file name in
+  `images` that only the preview tool reads, as its sample events' first cover:
+  a photo no page with an events block shows, which a template that places the
+  cover card names; never applied to a site), `variables` (the six canonical
+  values), `accent2` (optional: `"large-text"` when the template sets only large
+  text in accent-2, which the check then holds to 3:1, not 4.5:1, on the base),
+  `images` (by file name: `url` from a `?url&no-inline` import of the file in
+  the template's `images/` folder, `sourceUrl`, `alt`), `fonts` (by file name, a
+  `.woff2` file: `url` from a `?url&no-inline` import of the file in its
+  `@fontsource` package, `family`, `licence`, `source`; Fonts, below) and
+  `pages` (`key`, `name`, `path`, `title`, `description` and a `body` function).
+  A body takes a `PageContext` (every page's id by key, assigned before any body
+  renders, so a link is a page value that survives a rename; `placeBlock`;
+  `image`, `backgroundImage` and `imageAlt` by file name) and returns fresh JSX
+  rooted at `<ws.element ws:tag="body">`: `renderTemplate` keys instances by
+  element identity, so a piece used twice (Nav, Footer, a card) is a function,
+  never a constant. `renderSiteTemplate` (`render.ts`) renders every page into a
+  fragment, with the placements it recorded; the caller supplies the page ids
+  and the asset id of each image, and may read each body's JSX before it renders
+  (`inspectBody`, as the check does). `catalog.ts` lists `SITE_TEMPLATES` (Field
+  Journal in `nonprofit/field-journal/`, Porch Light in
+  `community/porch-light/`, Workwear in `union/workwear/`, Marigold Marquee in
+  `campaign/marigold-marquee/` and Riso Broadside in
+  `single-issue/riso-broadside/`, all listed), and the chooser offers
+  `listedTemplates()`, the `listed` ones in category order. Listing is the
+  owner's call, made by changing `status` in a PR. Nothing the published site's
+  copy reaches (`components.ts`, `metas.ts`, `hooks.ts`) imports the folder
+  (Shipping in published sites, below).
+- **The canonical variables** (`canonical-variables.ts`): `--base`,
+  `--accent-1`, `--accent-2`, `--text`, `--font-heading` and `--font-body`. The
+  blank-start values are `#ffffff`, `#18181b`, `#2563eb` and `#18181b`, and
+  `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif` for both fonts: the
+  look the blocks had before the variables. They sit on Global Root's local
+  style source at the base breakpoint, written by style key, so a second write
+  replaces the first. Provisioning writes none (its update path writes content
+  columns, not styles, and its seeds re-sync on every provision call). The file
+  holds the names, the values, `contrastRatio` and `firstFontFamily` (the family
+  a font value names first: `"Source Serif 4", Georgia, serif` reads
+  `Source Serif 4`), and imports nothing from the catalog: the Style panel
+  imports it alone, so the templates and their images stay out of the panel's
+  chunk. The Background presets take their roles by these names when all four
+  colours are there (Section backgrounds, above). It also names the two band
+  variables (`BAND_VARIABLES`), which a band sets for what sits inside it, each
+  to its text colour: `--focus-ring`, the colour of a focus ring, and
+  `--accent-text`, the colour of a template's accent-2 text; unset, on the base,
+  both are `--accent-2`, which the check holds against the base alone. The kit's
+  `section()` sets both to `var(--base)` on an accent-1 or text band, and the
+  Background presets' dark presets set them too; a base-coloured panel inside a
+  band sets them back to `var(--accent-2)` (the check holds a template to that).
+  The kit's `focusRing()` reads `var(--focus-ring, var(--accent-2))` and
+  `ACCENT_TEXT` is `var(--accent-text, var(--accent-2))`, which a template's
+  block tokens read for any text in accent-2: they are site-wide, so an events
+  block an org places on a band later wears them there.
+- **`placeBlock(key, placementId)`** (`place-block.ts`) is the only way a
+  template places a platform block. `key` is the Components-panel key
+  (`@organizeos/site-components:SignupForm`, `:RsvpForm`, `:EventList` or
+  `:EventCard`). It returns a deep clone of the block's template whose root has
+  the `ws:id` `placementId` and whose other `ws:id`s are
+  `${placementId}:${wsId}`: the Event blocks fix ids (`events`, `empty`,
+  `unavailable`) that the insert binds by, and two placements on one page would
+  collide. A descendant with no `ws:id` is left to the renderer, and only
+  `ws:id` and `children` are replaced, so a collection's parameter and the
+  variables its expressions read stay the same objects, bound to each other.
+  Each page has a placer of its own, which records every placement (key and root
+  id) beside the page's fragment and throws on a `placementId` used twice.
+  Nothing is written into the site to mark a block. This needs each block
+  template to be a factory: `signupFormTemplate`, `rsvpFormTemplate` and
+  `rotatingTabsTemplate` create their `Variable` inside the function, since
+  `renderTemplate` scopes a data source by its `Variable`, and a block's
+  `meta.template` is its factory called once, so the Components panel is
+  unchanged. The insert completion (`completeOrganizeosFragment`) takes an
+  `instanceIdPrefix`: a bind resolves to `${prefix}${wsId}`, and with a prefix a
+  block whose root the fragment lacks is refused, not inserted unbound. An
+  events block takes options, `placeBlock(key, placementId, { card, style })`,
+  and a form block `{ heading, submit }`; one kind's options on the other kind's
+  key is a type error: `card: "dated"` places the dated card (a date column of
+  the month and the day number, in the tokens "OS Event Date" and "OS Event
+  Day", beside the details, with no cover image) in place of the cover card,
+  which stays the default and the Components panel's; `style` is local style on
+  the block's root, replacing its declarations by key; `heading` and `submit`
+  are the template's text for the form's heading and its submit button, in place
+  of the block's own placeholders, set through the kit's `sample()`, so a
+  bracketed placeholder in either keeps together.
+- **Template block tokens.** `SiteTemplate.blockTokens` gives the template's
+  look for the block tokens by name (`BlockTokenName`: "OS Form Heading", "OS
+  Field", "OS Input", "OS Button", "OS Message", "OS Card", "OS Event Title",
+  "OS Event Link", "OS Event Row", "OS Event Date", "OS Event Day", "OS Event
+  Cover" and "OS Event Note"). Both cards' titles wear "OS Event Title" (the
+  heading font) and their links "OS Event Link" (`--text`, underlined, 600, a
+  44px tap target of padding that its margins take back, so the link takes only
+  its lines of the card's height, however many); the dated card's row wears "OS
+  Event Row"; the cover card's image wears "OS Event Cover" (a block the card's
+  width at the image's own ratio, which a template crops with `aspect-ratio` and
+  `object-fit`); and an events block's "No upcoming events" and "Events
+  unavailable" lines wear "OS Event Note", which declares nothing (no colour:
+  the lines inherit `--text`), so a template frames them. `renderSiteTemplate`
+  merges each declaration into the page fragment's token of that name by key
+  (one under a media query goes on the fragment's breakpoint for it, added when
+  the page has none), never into the shared `token()` objects, and the apply
+  routine writes the token so merged (the block's defaults with the template's
+  look, as the pages carry it) whole over a token of that name the project
+  already holds, which the insert's "ours" would keep as it stands: its
+  declarations are replaced, so no old literal the template does not restate is
+  left behind, and since the project is untouched the token is the seeded
+  sign-up page's or an earlier insert's, not the org's own work.
+- **Block tokens read the site variables.** "OS Input", "OS Button" and "OS
+  Card" (`shared/form-tokens.ts`, `events/event-card.template.tsx`) take their
+  background and text colours from `--base`, `--text` and `--accent-1`, and the
+  focus ring from `--accent-2`, each as `var(--name, <the old literal>)`, so a
+  site that defines none looks as it did. The focus ring is longhands: the
+  shorthand resolves a `var()` that has a fallback to the fallback when it is
+  parsed. The names are written out in those files, which do not import the
+  module that lists them. The input's resting border is `--text` and the
+  card's a `color-mix` of `--text` and `--base`, both as longhands. A project
+  that already holds the old tokens keeps them: an insert
+  resolves a token it already has with "ours". The Signup Form's and the RSVP
+  Form's headings wear "OS Form Heading": `var(--font-heading)` (no fallback:
+  on a site without the variable the declaration is invalid and the heading
+  inherits, as before), so a template's form heading matches its own
+  headings, at a line height of 1.2, so one that wraps on a phone sets as a
+  heading, not at the body's; a template sets their case and size there.
+- **The check** (`checkSiteTemplate` in `check.ts`, with `style-scan.ts`; run
+  over every `SITE_TEMPLATES` entry and the spike fixture by `catalog.test.ts`)
+  returns one readable line per violation, and an empty list for a template that
+  passes. It is a backstop to review, not a replacement. It fails a template
+  for: a page at `/newsletter` or at `/*` (the 404 page's), a page at a path the
+  platform answers itself on the site's host (`PLATFORM_SERVED_PATHS` in
+  `platform-paths.ts`, mirrored from the OrganizeOS repository's
+  `public-route-allowlist.ts`, `org-host-route.ts` and `middleware.ts`: `/join`,
+  `/donate`, `/events/<slug>`, `/auth`, `/org-profile` and the rest, prefixes by
+  whole segment; below `/.well-known/`; and the static paths the middleware's
+  matcher leaves to the platform, as `/fonts/`, `/sw.js`, `/favicon.ico` and a
+  path ending in an image, font or sound extension outside `/assets/`; a test
+  holds every `PLATFORM_PATHS` entry to one of them), a path the builder's page
+  settings would refuse (`pagePath` from `@webstudio-is/sdk`), two pages on one
+  path, or no Home (path `""`); a word on the neutrality deny list (party names
+  and the like) in a title, a description, a text or a string prop; a
+  `thumbnail`, or a `previewEventCover`, that is not a file in `images`; no
+  `previewEventCover` in a template that places the events blocks' cover card,
+  or one that a page with an events block shows (`findPageAssetIds`, as an Image
+  or a background), which a preview would show twice; an image entry whose `url`
+  is neither root-relative nor http(s) (a small file Vite inlines as a `data:`
+  URL, which the routine cannot upload), or without a `sourceUrl` or alt text,
+  or an image on the page's own elements that is not one of the template's
+  images or has no alt text (an Image with no `src` is allowed: the builder
+  draws its placeholder, the "put your image here" slot of spec decision 3); a
+  font whose key is not a `.woff2` file name, whose `url` is neither
+  root-relative nor http(s), with no `source`, with no licence or one other than
+  `OFL-1.1` or `Apache-2.0`, or whose `family` neither font variable names first
+  (a publish would leave it out), and a font variable whose first family is
+  neither one of the template's fonts nor a system font (a generic family,
+  `system-ui`, `-apple-system`, Georgia and the like); `--text` on `--base`, or
+  `--base` on `--accent-1`, below 4.5:1, or `--accent-2` on `--base`, which
+  draws the focus ring and the templates' small accent text, below 4.5:1, or
+  below 3:1 for a template that declares `accent2: "large-text"` (it sets only
+  large text in accent-2: 24px and up, or 18.66px and up in bold); and, per
+  page, a root that is not one `<body>` element, a child of the body that is not
+  a section labelled with a name from `SECTION_LABELS` (`sections.ts`: the
+  spec's section vocabulary and its short forms, plus `Nav` and `Footer`, each
+  alone or followed by a variant after a colon, as in `Hero: Split`, never by a
+  colon alone), two Event Cards or Event Lists under one such section, a link to
+  a page the template does not have (a mistyped `pageIds` key) or to an element
+  of a page (applying gives the element a new id), a link by path (the `href` of
+  any element: a React Router site renders an `a` element as its Link too) to
+  anything but a route the platform serves (`PLATFORM_PATHS` in
+  `platform-paths.ts`, `/donate`), or to one without `reloadDocument` (the
+  published site's router has no route there; the kit's `linkProps` sets it), a
+  panel with the base background inside a band (an element that sets a band
+  variable to anything but `var(--accent-2)`, as the kit's band and a dark
+  Background preset do) that does not set both band variables back to
+  `var(--accent-2)` at the base breakpoint or at the one where it turns base (a
+  link or a button is no panel: its own ring is drawn outside it, on the band),
+  a Resource, a repeated instance id, a count of `h1` other than one, a Signup
+  Form, RSVP Form or Share Code Carrier not placed with `placeBlock`, and, in
+  styles on elements outside a placed block's subtree (a block's token used by
+  the page's own element counts), in a placed block's root style and in
+  `blockTokens`, a literal colour or colour keyword where a colour goes, a
+  literal colour or a colour's name in unparsed text (a gradient, a
+  `color-mix()`, a variable's fallback; a name counts as a whole word outside
+  quoted strings), a variable outside the six and the two band variables, a band
+  variable set to anything but a bare colour variable or read with no canonical
+  colour as its fallback (as `var(--focus-ring, var(--accent-2))`), a
+  declaration of one of the six (only Global Root declares them, from the
+  template's variables), a `font-family` that is not `var(--font-heading)` or
+  `var(--font-body)`, an image by URL, and a media query other than the
+  project's own breakpoints (the base, and max-width 991, 767 and 479px): one
+  with a condition (`(hover: none)`, `(prefers-reduced-motion: reduce)`, alone
+  or beside a max-width), or with a min-width, read as the template wrote it,
+  from each body's JSX before it renders (the render keeps a breakpoint's
+  widths alone, so a condition would land on the base or on its width's
+  breakpoint). Upstream `css()` drops `@media print`, non-px widths and
+  `@supports` before any JSX exists, so the check cannot see them: a template
+  must not write them;
+  in `blockTokens`, a `color` of `var(--accent-2)` itself rather than through
+  `--accent-text` (the kit's `ACCENT_TEXT`); and a `blockTokens` name no placed
+  block wears.
+- **The apply routine** (`apply-site-template.ts`) is one `updateWebstudioData`
+  transaction, with `contentMode: false` and `conflictResolution: "ours"`
+  whatever mode the builder is in, so root styles, tokens and assets are
+  written. It runs only on an untouched project with none of the six variables
+  on Global Root: Home's body has no children, the only other pages are the 404
+  page (`/*`, which every project is created with) and the seeded sign-up page
+  (`SIGNUP_PAGE_PATH`, `/newsletter`), and the project has no assets. The
+  chooser checks this before it opens and the routine decides it again inside
+  the transaction, since two admins can apply at once and a chooser left open
+  goes stale (colours set after "Start blank" are never overwritten); it also
+  refuses, writing nothing, when a template page's path is taken or a rendered
+  page holds a Resource. It writes the template's six values over Global Root's,
+  each page's body with its tokens, styles and assets
+  (`insertWebstudioFragmentCopy`), and the page rows. Home keeps its row (id,
+  name and path) and takes the template's body, title and description, its old
+  empty body deleted with its local styles; a title or description already set
+  on Home is overwritten, since an untouched project can have them; every other
+  page is added at the root of the Pages tree; a link to the template's Home is
+  remapped to the project's. The seeded `/newsletter` page is never replaced.
+  Then each recorded placement gets the completion an insert runs
+  (`completeOrganizeosFragment` with `instanceIdPrefix` `${rootId}:`, then
+  `completeOrganizeosInsertMutable`), which binds the block to the org's data; a
+  block it cannot bind (its Events Resource is gone) stays in place, unbound,
+  and the chooser names it in an error toast. "Start blank"
+  (`startBlankMutable`) writes the blank-start values for any of the six that
+  Global Root lacks and overwrites none.
+- **The chooser** (`template-chooser.tsx`, mounted by one marked import and one
+  marked `<TemplateChooser />` in `builder/builder.tsx`): "Start from a
+  template", the offered templates under their category headings with a
+  thumbnail and one line each, and "Start blank". It is offered only when the
+  data is loaded, the permit is `build`, `admin` or `own` (a viewer's or content
+  editor's writes would not save), the project belongs to an OrganizeOS org not
+  on the blocks deny list (§4; a template places blocks), the project is
+  untouched with none of the six variables on Global Root, and at least one
+  template is offered. Both choices write the variables, which ends the offer
+  for every admin on every browser, so it keeps no per-browser state. Only a
+  choice closes it: Escape and an outside click do nothing. It has no help text
+  (`CLAUDE.md`, "Builder UI: options, not explanations"). A chosen template
+  opens its Home, in Simple mode (the builder's Content mode) when the plan
+  allows it (`$isContentModeAllowed`), in Design mode otherwise. A refused apply
+  says why in one error toast: the site already has content (touched, or one of
+  the variables set), the template's pages clash with the site's, or, for a
+  template holding a Resource or with no project open, that the template cannot
+  be applied. **Drafts** are offered beside the listed templates only when the
+  builder's URL carries `templateDrafts=1`, read once as the chooser mounts (the
+  builder rewrites its URL on a page or mode change and drops it); that is how
+  the owner reviews a draft in a test org.
+- **Images.** A template's images are imported with `?url&no-inline`, so the
+  builder's build bundles each one at a URL on the builder's own origin, never
+  inlined as a `data:` URL (`assets.d.ts` declares only that form, for images
+  and `woff2` fonts, so a bare `?url` import does not typecheck). The routine
+  renders the pages with each image's asset id computed first, the SHA-256 of
+  its URL, which is the id `uploadAssets` gives an upload by URL
+  (`getSha256Hash` in `asset-utils.ts`), and uploads the images by URL
+  (`uploadAssets("image", urls)`) only after the transaction returns an applied
+  result: a page that cannot render, or a refusal, leaves no asset behind, which
+  would make the project touched for good. It uploads only the images a rendered
+  page shows (`findPageAssetIds` in the package's `render.ts`: an Image's asset,
+  a background image, or an asset in any other prop or style; the check reads a
+  page's images through it too, so the two agree), so a thumbnail or a
+  `previewEventCover` no page shows leaves no unused asset; the preview's dump
+  keeps the same ones. An id `uploadAssets` returns that differs from the
+  computed one is logged; a failed upload is reported by the builder's own
+  upload toast. The builder's server fetches the URL, so a deployment that
+  protects its origin (a Vercel preview with Deployment Protection) answers with
+  its login page and every image fails. The package's own lib build emits each
+  image as a file of its own under `lib/`, which nothing in the builder reads
+  (it resolves the `webstudio` export condition to `src/`). A template's image
+  is a CC0 photograph, the builder's placeholder, or OrganizeOS's own work; the
+  spike's two are generated by `__fixtures__/spike/images/generate.py`, recorded
+  as their `sourceUrl`, `organizeos:generated/` and the script's path from
+  `src/site-templates/`, which `catalog.test.ts` holds to a file that exists.
+- **Fonts.** A template bundles its heading and body fonts (OrganizeOS spec
+  section 2, rule 10): `woff2` files of `@fontsource-variable` packages where
+  one exists, `@fontsource` static weights otherwise, devDependencies of the
+  blocks package, each imported with `?url&no-inline` and recorded in `fonts`
+  with its licence and source. A font variable names a bundled family first,
+  then a system stack. The upload by URL reads only images
+  (`getImageNameAndType` in `asset-utils.ts` names anything else a random
+  `.png`), so the routine fetches each font from the builder's origin before
+  the transaction, makes it a `File` named by its key, of type `font/woff2`,
+  with the id `uploadAssets` gives a file, the SHA-256 of its bytes
+  (`getSha256HashOfFile`), and uploads the files after the images, once the
+  apply is applied: `uploadAssets("font", files)`. A font that cannot be
+  fetched rejects the apply before anything is written. The upload route
+  derives a font's family from its file (`getAssetData`), and the template
+  records and names that family: a publish keeps a font asset only when a
+  style names its family (`loadProductionCanvasDataAndProject` in
+  `shared/db/canvas.server.ts`), which upstream reads from `fontFamily` styles
+  alone, so one marked loop there also keeps the families Global Root's
+  `--font-heading` and `--font-body` name first (`findCanonicalFontFamilies`).
+  The `@fontsource` files carry no typographic family name (name ID 16), and
+  the upload reads the legacy one, which can name an instance: "Public Sans
+  Thin" (a variable font's default), "Barlow Medium" (a static weight whose
+  subfamily is "Regular"), "Newsreader 16pt". Two marked changes in
+  `getFontData` (`packages/asset-uploader/src/utils/font-data.ts`) take it
+  off (`dropInstanceNames` in `organizeos-font-family.ts`): an optical size
+  (`16pt`) always, and a last weight word when it is the weight the font's
+  OS/2 table declares, which a static font then takes when its subfamily
+  names none, so "Barlow Medium" is Barlow at 500 and "Archivo Black" at 400
+  keeps its name. A two-word weight ("Extra Bold", "Semi Bold") is one
+  weight: both words go when it is the declared weight, and neither when it
+  is not, so "Foo Extra Bold" at 700 keeps its name. It holds for every font
+  uploaded, not only a template's, and it merges two kinds of family that
+  were apart: a face named for its weight that declares it, as "Arial Black"
+  at 900, is Arial at 900 beside Arial's other weights; and an optical-size
+  cut ("Inter 18pt", "Inter 28pt") is the family without its size, so cuts
+  of one weight upload as the same family and weight.
+  `organizeos-font-family.test.ts` there holds every font file the approved
+  direction board names to the family and weights it derives, and
+  `bundled-fonts.test.ts` holds each template's `family` to the one derived
+  from its file.
+- **The kit** (`kit/`, which the templates import and the site-templates module
+  does not export): the measurements and shared pieces every template is built
+  from (OrganizeOS spec `2026-10-31-website-template-directions.md`, section 1),
+  each piece a function that returns fresh JSX. `BREAKPOINT` (the project's
+  three max-width queries), `SPACE`, `CONTAINER` and `container()`,
+  `tapTarget()` (44px), `focusRing()` (2px at a 2px offset, in
+  `var(--focus-ring, var(--accent-2))`) and `ACCENT_TEXT`; `section()`, a
+  full-bleed section named for the Navigator in one of the checked colour pairs
+  (its `background` option: base, accent-1 or text, a band setting the band
+  variables to its text colour), whose `styles` add the template's own and throw
+  on one that restates a declaration of the kit's, or that sets
+  `background-color`, `background-image` or `color` at any breakpoint or state,
+  which are the `background` option's; `nav()` (split or centered) and
+  `footer()`; the links (`linkProps`, `textLink`, `buttonStyles`: a page by its
+  key, an anchor, or a platform path with `reloadDocument`); `contentBlock()`,
+  `keyed()` and `text()`; and `sample()`, which keeps a [bracketed] placeholder
+  on one line with no-break spaces. The template's choices the kit draws with
+  are its `KitStyle`: `buttonRadius`, `buttonWeight`, `headingWeight`,
+  `headingCase`, `navNameSize` and `footerNameSize` (20px when unset). A weight
+  the template does not set is never declared, so a single-weight face is never
+  asked for a bold the browser would synthesize.
+- **The preview tool**, `scripts/preview-site-template.mjs`
+  (`corepack pnpm preview:template <id> [--palette <file>] [--no-events]`, or
+  `<id> --thumbnail`), with its builder half in
+  `features/organizeos-panel/site-templates/preview/`: it renders a template
+  through the publish path and checks it against the phone bar (OrganizeOS spec
+  section 2, rule 9). It is a local tool: CI runs the tests of its modules
+  (`stub-api.test.ts`, `preview-arguments.test.ts`) and typechecks and lints the
+  dump, never the tool.
+  - The stub API (`stub-api.mjs`), on 127.0.0.1 at port 4599, which the dump
+    writes into the bundle's Resources, answers the events read with three
+    sample events: fixed dates in March 2027 in ascending order, in New York and
+    in Los Angeles (one an evening that is the next day in UTC), bracketed
+    titles and places, one online, the first with the template's
+    `previewEventCover` as its cover (the spike's picture when it names none).
+    Every other read, the forms' among them, gets `{"data": []}`, and
+    `--no-events` empties the events read too: the blocks' empty state.
+  - The dump (`dump.preview.tsx`, run by vitest with `vitest.preview.config.ts`
+    and never by the default run) applies the template to a project as
+    provisioning leaves it (`provisioned-project.ts`) through
+    `applySiteTemplateMutable`, with ids as a counter so two dumps differ only
+    in their palette, and writes the bundle the publish workflow syncs
+    (`.webstudio/data.json`), the images the pages show and the fonts a style
+    names (`public/assets/`), the pages' keys and paths (`preview-pages.json`),
+    and the preview cover's file and the template's images folder
+    (`preview-template.json`). `--palette <file>` applies a JSON file of the six
+    canonical values (an example is in `palettes/`) in place of the template's
+    own.
+  - The site is built as the publish workflow builds it (the blocks package and
+    the CLI first, then `webstudio build` for React Router on Vercel with
+    `--no-assets`, `npm install` and `react-router build`) and served by
+    `react-router-serve`. It needs Chromium: Playwright's own, else the newest
+    build in `PLAYWRIGHT_BROWSERS_PATH`
+    (`corepack pnpm exec playwright install chromium` installs one). Chromium
+    takes a full-page screenshot of each page at 1440, 820, 390 and 320 wide,
+    and checks, at 320, 390, 479, 767, 768, 820 and 991: sideways scroll, text
+    under 14px (at 390 and 320, the source offer's excepted), console errors,
+    failed requests, and clipped text (a heuristic: text that runs past its own
+    box or one around it).
+  - It writes `previews/<id>/<run>/<page>-<width>.png` and `report.json`, which
+    holds the events answer and, for each page, the overflow by width, the small
+    and the clipped text, the console errors and the failed requests. The run is
+    "default" or the palette file's name (lowercase letters, digits and hyphens:
+    the run's folder is removed first), with ".no-events" after it for a
+    `--no-events` run. It exits 0 when every check passes, 1 when one fails, 2
+    when it cannot run, and 130 or 143 on SIGINT or SIGTERM, and stops its
+    servers and browser and removes its temp folder however it ends.
+  - `--thumbnail` takes neither `--palette` nor `--no-events`: it runs the same
+    build with the template's own palette and the sample events and, in place of
+    the checks, writes `images/thumbnail.jpg` into the template's folder, the
+    chooser's picture of the template: the top of Home at 1440 wide, cropped to
+    the chooser's 16:10 frame, drawn at 1600 by 1000 and saved as a JPEG under
+    400 KB at the highest quality that fits (`THUMBNAIL` in
+    `preview-arguments.mjs`). Two runs write the same bytes, and nothing under
+    `previews/` changes. Applying uploads only the images a page shows, so the
+    thumbnail stays the chooser's alone.
+- **Not yet run in a deployed builder.** The spike (OrganizeOS spec, section
+  7, step 2) is `spike`, a Hero, two Events sections (one with an Event Card,
+  one with an Event List), and a Sign-up section with a Signup Form, with
+  Source Sans 3 as its bundled body font. It is a fixture, not in the catalog,
+  so the chooser no longer offers it, even with `templateDrafts=1`. The run
+  (apply a listed template to a test org, edit in Simple mode) follows the
+  deploy. Until that report is in, the design's rules 3 and 4 (editable
+  content in Content Blocks; platform blocks placed, never bound) are unproven
+  in a real builder.
+
 **Shipping in published sites**, `packages/cli/src/organizeos-components.ts`:
 
 - A site never installs the package. Prebuild clears `app/__organizeos__/`
@@ -1669,7 +2092,8 @@ code in the page's address only, never in a cookie or storage.
   and every module they reach through relative imports (static, re-exported
   and literal dynamic, parsed with acorn) into `app/__organizeos__/` with the
   package's `LICENSE` beside them (prebuild fails without the `LICENSE` or
-  `page.js`). That closure never reaches `metas.js` or `templates.js`.
+  `page.js`). That closure never reaches `metas.js`, `templates.js` or the site
+  templates (Site templates, above).
 - Every published page also offers the fork's source, in its head as the
   license and code-repository links and in a visible Source link at the end of
   its body (§1). That link is the last of the body's content, so a body laid

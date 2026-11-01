@@ -1,0 +1,405 @@
+import { describe, expect, test } from "vitest";
+import { css, renderTemplate, ws } from "@webstudio-is/template";
+import { initialBreakpoints } from "@webstudio-is/sdk";
+import {
+  ACCENT_TEXT,
+  BREAKPOINT,
+  CONTAINER,
+  SPACE,
+  container,
+  focusRing,
+  section,
+} from "./layout";
+import {
+  byLabel,
+  childInstances,
+  propOf,
+  stateStyles,
+  stylesAt,
+} from "./test-helpers";
+
+const renderBody = (children: JSX.Element) =>
+  renderTemplate(<ws.element ws:tag="body">{children}</ws.element>);
+
+const content = () => <ws.element ws:tag="p">{"Say who you are."}</ws.element>;
+
+describe("measurements", () => {
+  test("BREAKPOINT names the project's own max-width breakpoints", () => {
+    const { breakpoints } = renderTemplate(
+      <ws.element
+        ws:tag="body"
+        ws:style={css`
+          ${BREAKPOINT.tablet} {
+            color: var(--text);
+          }
+          ${BREAKPOINT.landscape} {
+            color: var(--text);
+          }
+          ${BREAKPOINT.portrait} {
+            color: var(--text);
+          }
+        `}
+      />
+    );
+    const projectWidths = initialBreakpoints.flatMap(({ maxWidth }) =>
+      maxWidth === undefined ? [] : [maxWidth]
+    );
+    expect(
+      breakpoints.map(({ minWidth, maxWidth }) => ({ minWidth, maxWidth }))
+    ).toEqual(
+      projectWidths.map((maxWidth) => ({ minWidth: undefined, maxWidth }))
+    );
+    expect(projectWidths).toEqual([991, 767, 479]);
+  });
+
+  test("SPACE is the shared spacing scale in px", () => {
+    expect(Object.values(SPACE)).toEqual([
+      "4px",
+      "8px",
+      "12px",
+      "16px",
+      "24px",
+      "32px",
+      "48px",
+      "64px",
+      "96px",
+    ]);
+    expect(SPACE[24]).toBe("24px");
+  });
+
+  test("CONTAINER holds the text measure, the form width and the content width", () => {
+    expect(CONTAINER).toEqual({
+      text: "65ch",
+      narrow: "40rem",
+      wide: "1120px",
+    });
+  });
+});
+
+describe("container", () => {
+  const renderContainer = (width: keyof typeof CONTAINER) => {
+    const fragment = renderBody(
+      <ws.element ws:tag="div" ws:label="Column" ws:style={container(width)} />
+    );
+    return { fragment, column: byLabel(fragment, "Column") };
+  };
+
+  test("centres a column of the width with 40px gutters, 20px on phones", () => {
+    const { fragment, column } = renderContainer("text");
+    expect(stylesAt(fragment, column, 1440)).toEqual({
+      "box-sizing": "content-box",
+      "max-width": "65ch",
+      "margin-left": "auto",
+      "margin-right": "auto",
+      "padding-left": "40px",
+      "padding-right": "40px",
+    });
+    for (const width of [768, 991]) {
+      expect(stylesAt(fragment, column, width)).toMatchObject({
+        "padding-left": "40px",
+        "padding-right": "40px",
+      });
+    }
+    for (const width of [767, 479, 390, 320]) {
+      expect(stylesAt(fragment, column, width)).toMatchObject({
+        "padding-left": "20px",
+        "padding-right": "20px",
+      });
+    }
+  });
+
+  test("takes each of the widths", () => {
+    for (const width of ["text", "narrow", "wide"] as const) {
+      const { fragment, column } = renderContainer(width);
+      expect(stylesAt(fragment, column, 1440)["max-width"]).toBe(
+        CONTAINER[width]
+      );
+    }
+  });
+});
+
+describe("section", () => {
+  test("is a labelled full-bleed section around a wide container", () => {
+    const fragment = renderBody(
+      section({ label: "About", children: content() })
+    );
+    const outer = byLabel(fragment, "About");
+    expect(outer.tag).toBe("section");
+    const [inner] = childInstances(fragment, outer);
+    expect(stylesAt(fragment, inner, 1440)).toMatchObject({
+      "max-width": "1120px",
+      "padding-left": "40px",
+      "padding-right": "40px",
+    });
+    expect(stylesAt(fragment, inner, 479)).toMatchObject({
+      "padding-left": "20px",
+      "padding-right": "20px",
+    });
+    expect(childInstances(fragment, inner).map((item) => item.tag)).toEqual([
+      "p",
+    ]);
+  });
+
+  test("pads 96px above and below, 56px on phones", () => {
+    const fragment = renderBody(
+      section({ label: "About", children: content() })
+    );
+    const outer = byLabel(fragment, "About");
+    expect(stylesAt(fragment, outer, 1440)).toMatchObject({
+      "padding-top": "96px",
+      "padding-bottom": "96px",
+    });
+    expect(stylesAt(fragment, outer, 767)).toMatchObject({
+      "padding-top": "56px",
+      "padding-bottom": "56px",
+    });
+    // full-bleed: no width and no side padding of its own
+    expect(stylesAt(fragment, outer, 1440)).not.toHaveProperty("max-width");
+    expect(stylesAt(fragment, outer, 320)).not.toHaveProperty("padding-left");
+  });
+
+  test("sets one of the checked background pairs, base by default", () => {
+    const colours = (background?: "base" | "accent-1" | "text") => {
+      const fragment = renderBody(
+        section({ label: "Band", background, children: content() })
+      );
+      const styles = stylesAt(fragment, byLabel(fragment, "Band"), 1440);
+      return [styles["background-color"], styles.color];
+    };
+    expect(colours()).toEqual(["var(--base)", "var(--text)"]);
+    expect(colours("base")).toEqual(["var(--base)", "var(--text)"]);
+    expect(colours("accent-1")).toEqual(["var(--accent-1)", "var(--base)"]);
+    expect(colours("text")).toEqual(["var(--text)", "var(--base)"]);
+  });
+
+  test("on a band, rings focus in the band's text colour; on the base, leaves the ring alone", () => {
+    const ring = (background?: "base" | "accent-1" | "text") => {
+      const fragment = renderBody(
+        section({ label: "Band", background, children: content() })
+      );
+      return stylesAt(fragment, byLabel(fragment, "Band"), 1440)[
+        "--focus-ring"
+      ];
+    };
+    expect(ring()).toBeUndefined();
+    expect(ring("base")).toBeUndefined();
+    expect(ring("accent-1")).toBe("var(--base)");
+    expect(ring("text")).toBe("var(--base)");
+  });
+
+  // A block token's accent-2 text (an event's day) is held against the base
+  // alone: on a band it takes the band's text colour, as the ring does.
+  test("on a band, sets accent text in the band's text colour; on the base, leaves it alone", () => {
+    const accentText = (background?: "base" | "accent-1" | "text") => {
+      const fragment = renderBody(
+        section({ label: "Band", background, children: content() })
+      );
+      return stylesAt(fragment, byLabel(fragment, "Band"), 1440)[
+        "--accent-text"
+      ];
+    };
+    expect(accentText()).toBeUndefined();
+    expect(accentText("base")).toBeUndefined();
+    expect(accentText("accent-1")).toBe("var(--base)");
+    expect(accentText("text")).toBe("var(--base)");
+  });
+
+  test("takes a narrower container", () => {
+    for (const width of ["wide", "text", "narrow"] as const) {
+      const fragment = renderBody(
+        section({ label: "About", width, children: content() })
+      );
+      const [inner] = childInstances(fragment, byLabel(fragment, "About"));
+      expect(stylesAt(fragment, inner, 1440)).toMatchObject({
+        "max-width": CONTAINER[width],
+        "padding-left": "40px",
+      });
+    }
+    const fragment = renderBody(
+      section({ label: "About", children: content() })
+    );
+    const [inner] = childInstances(fragment, byLabel(fragment, "About"));
+    expect(stylesAt(fragment, inner, 1440)["max-width"]).toBe("1120px");
+  });
+
+  test("adds a template's own styles to the section's, as a full-bleed image needs", () => {
+    const fragment = renderBody(
+      section({
+        label: "Hero",
+        background: "accent-1",
+        styles: css`
+          position: relative;
+          ${BREAKPOINT.landscape} {
+            overflow: hidden;
+          }
+        `,
+        children: content(),
+      })
+    );
+    const outer = byLabel(fragment, "Hero");
+    expect(stylesAt(fragment, outer, 1440)).toMatchObject({
+      position: "relative",
+      "padding-top": "96px",
+      "background-color": "var(--accent-1)",
+      "--focus-ring": "var(--base)",
+    });
+    expect(stylesAt(fragment, outer, 1440)).not.toHaveProperty("overflow-x");
+    expect(stylesAt(fragment, outer, 767)).toMatchObject({
+      "overflow-x": "hidden",
+      "padding-top": "56px",
+    });
+    // the container is unchanged
+    const [inner] = childInstances(fragment, outer);
+    expect(stylesAt(fragment, inner, 1440)).not.toHaveProperty("position");
+  });
+
+  test("refuses styles that restate one of its own declarations", () => {
+    const restating = (styles: ReturnType<typeof css>) => () =>
+      section({
+        label: "Hero",
+        background: "accent-1",
+        styles,
+        children: content(),
+      });
+    expect(
+      restating(css`
+        padding-top: 0;
+      `)
+    ).toThrow(/"Hero".*padding-top/);
+    expect(
+      restating(css`
+        ${BREAKPOINT.landscape} {
+          padding-bottom: 0;
+        }
+      `)
+    ).toThrow(/padding-bottom/);
+    expect(
+      restating(css`
+        --focus-ring: var(--text);
+      `)
+    ).toThrow(/--focus-ring/);
+    expect(
+      restating(css`
+        --accent-text: var(--text);
+      `)
+    ).toThrow(/--accent-text/);
+    // the same property under another breakpoint is the template's own
+    expect(
+      restating(css`
+        ${BREAKPOINT.portrait} {
+          padding-top: 40px;
+        }
+      `)
+    ).not.toThrow();
+  });
+
+  // A section's colours are one of the checked pairs, chosen with its
+  // `background` option, which also sets a band's variables: never through
+  // `styles`, at any breakpoint or state.
+  test.each([
+    {
+      name: "a background colour",
+      styles: css`
+        background-color: var(--accent-2);
+      `,
+      property: "background-color",
+    },
+    {
+      name: "a background colour under a breakpoint",
+      styles: css`
+        ${BREAKPOINT.landscape} {
+          background-color: var(--text);
+        }
+      `,
+      property: "background-color",
+    },
+    {
+      name: "a background colour on hover",
+      styles: css`
+        &:hover {
+          background-color: var(--accent-1);
+        }
+      `,
+      property: "background-color",
+    },
+    {
+      name: "the background shorthand",
+      styles: css`
+        background: var(--accent-1);
+      `,
+      // its longhands, the image's or the colour's first
+      property: "background-(image|color)",
+    },
+    {
+      name: "a background image",
+      styles: css`
+        background-image: linear-gradient(var(--base), var(--accent-1));
+      `,
+      property: "background-image",
+    },
+    {
+      name: "a text colour under a breakpoint",
+      styles: css`
+        ${BREAKPOINT.portrait} {
+          color: var(--accent-2);
+        }
+      `,
+      property: "color",
+    },
+  ])("refuses $name in its styles", ({ styles, property }) => {
+    for (const background of ["base", "accent-1", "text"] as const) {
+      expect(() =>
+        section({ label: "Hero", background, styles, children: content() })
+      ).toThrow(new RegExp(`"Hero".*${property}.*background`));
+    }
+  });
+
+  test("carries an id for in-page links only when given one", () => {
+    const fragment = renderTemplate(
+      <ws.element ws:tag="body">
+        {section({ label: "Sign-up", id: "sign-up", children: content() })}
+        {section({ label: "About", children: content() })}
+      </ws.element>
+    );
+    expect(propOf(fragment, byLabel(fragment, "Sign-up"), "id")).toMatchObject({
+      type: "string",
+      value: "sign-up",
+    });
+    expect(propOf(fragment, byLabel(fragment, "About"), "id")).toBeUndefined();
+  });
+
+  test("two calls make distinct instances", () => {
+    const fragment = renderTemplate(
+      <ws.element ws:tag="body">
+        {section({ label: "About", children: content() })}
+        {section({ label: "About", children: content() })}
+      </ws.element>
+    );
+    const ids = fragment.instances.map((instance) => instance.id);
+    // the body, then a section, its container and paragraph per call
+    expect(ids).toHaveLength(7);
+    expect(new Set(ids).size).toBe(7);
+  });
+});
+
+describe("ACCENT_TEXT", () => {
+  test("reads a band's accent text colour, accent-2 outside a band", () => {
+    expect(ACCENT_TEXT).toBe("var(--accent-text, var(--accent-2))");
+  });
+});
+
+describe("focusRing", () => {
+  test("is 2px at a 2px offset, in the band's ring colour, accent-2 outside a band", () => {
+    const fragment = renderBody(
+      <ws.element ws:tag="a" ws:label="Link" ws:style={focusRing()} />
+    );
+    expect(
+      stateStyles(fragment, byLabel(fragment, "Link"), ":focus-visible")
+    ).toEqual({
+      "outline-width": "2px",
+      "outline-style": "solid",
+      "outline-color": "var(--focus-ring, var(--accent-2))",
+      "outline-offset": "2px",
+    });
+  });
+});

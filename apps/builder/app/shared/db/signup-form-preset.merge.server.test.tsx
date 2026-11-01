@@ -3,12 +3,11 @@ import {
   parsePages,
   serializePages,
 } from "@webstudio-is/project-build/index.server";
-import { uuidV5 } from "../organizeos-preset-ids";
+import { SIGNUP_PAGE_PATH, uuidV5 } from "../organizeos-preset-ids";
 import {
   buildSignupFormData,
   mergeSignupFormIntoBuild,
   seedSignupFormPage,
-  SIGNUP_PAGE_PATH,
   type BuildContent,
 } from "./signup-form-preset.server";
 

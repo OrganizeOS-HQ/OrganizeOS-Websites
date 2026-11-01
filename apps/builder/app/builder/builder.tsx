@@ -72,6 +72,8 @@ import { DeleteUnusedCssVariablesDialog } from "~/builder/shared/css-variable-ut
 import { DeleteUnusedAssetsDialog } from "~/builder/shared/asset-manager/delete-unused-assets";
 import { KeyboardShortcutsDialog } from "./features/keyboard-shortcuts-dialog";
 import { TokenConflictDialog } from "~/shared/token-conflict-dialog";
+// OrganizeOS fork: the site-template chooser (organizeos-panel/site-templates/template-chooser.tsx)
+import { TemplateChooser } from "./features/organizeos-panel/site-templates/template-chooser";
 import type { User } from "~/shared/db/user.server";
 
 import {
@@ -533,6 +535,8 @@ export const Builder = (props: BuilderProps) => {
         <DeleteUnusedAssetsDialog />
         <KeyboardShortcutsDialog />
         <TokenConflictDialog />
+        {/* OrganizeOS fork: the site-template chooser, at first entry to an untouched project */}
+        <TemplateChooser />
         <Toaster />
       </div>
     </TooltipProvider>

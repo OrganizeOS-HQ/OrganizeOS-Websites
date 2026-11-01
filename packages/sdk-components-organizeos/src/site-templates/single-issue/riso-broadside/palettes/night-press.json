@@ -1,0 +1,8 @@
+{
+  "base": "#111114",
+  "accent-1": "#9497FF",
+  "accent-2": "#FF6BB5",
+  "text": "#FFFFFF",
+  "font-heading": "\"Instrument Serif\", Georgia, \"Times New Roman\", serif",
+  "font-body": "\"IBM Plex Sans\", system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
+}

@@ -1,0 +1,2247 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, test } from "vitest";
+import {
+  $,
+  PageValue,
+  PlaceholderValue,
+  ResourceValue,
+  css,
+  expression,
+  ws,
+} from "@webstudio-is/template";
+import { cardToken } from "../events/event-card.template";
+import { organizeos } from "../shared/proxy";
+import {
+  type CanonicalValues,
+  BLANK_CANONICAL_VALUES,
+} from "./canonical-variables";
+import { NEUTRALITY_DENY_LIST, checkSiteTemplate } from "./check";
+import { section } from "./kit";
+import { PLATFORM_PATHS, isPlatformServedPath } from "./platform-paths";
+import type { BlockKey } from "./place-block";
+import type {
+  FontEntry,
+  PageContext,
+  SiteTemplate,
+  SiteTemplatePage,
+} from "./types";
+
+const EventCard: BlockKey = "@organizeos/site-components:EventCard";
+const EventList: BlockKey = "@organizeos/site-components:EventList";
+const SignupForm: BlockKey = "@organizeos/site-components:SignupForm";
+
+const home: SiteTemplatePage = {
+  key: "home",
+  name: "Home",
+  path: "",
+  title: "Home",
+  description: "Say in one sentence what your organization is working toward.",
+  body: ({ pageIds, placeBlock, image, imageAlt, backgroundImage }) => (
+    <ws.element
+      ws:tag="body"
+      ws:style={[
+        ...css`
+          background-color: var(--base);
+          color: var(--text);
+          font-family: var(--font-body);
+        `,
+        ...backgroundImage("hero.jpg"),
+      ]}
+    >
+      <ws.element
+        ws:tag="section"
+        ws:label="Hero"
+        ws:style={css`
+          display: flex;
+          color: currentcolor;
+          border-top-color: transparent;
+          box-shadow: 0 0 4px var(--accent-1);
+          background-image: linear-gradient(var(--base), var(--accent-2));
+        `}
+      >
+        <ws.element
+          ws:tag="h1"
+          ws:style={css`
+            font-family: var(--font-heading);
+          `}
+        >
+          {"Say what your organization is working toward"}
+        </ws.element>
+        <ws.element ws:tag="p">
+          {new PlaceholderValue("Describe the people you work with.")}
+        </ws.element>
+        <$.Image src={image("hero.jpg")} alt={imageAlt("hero.jpg")} />
+        <$.Link href={new PageValue(pageIds.about)}>{"Learn more"}</$.Link>
+      </ws.element>
+      <ws.element ws:tag="section" ws:label="Events: Featured">
+        {placeBlock(EventCard, "featured")}
+      </ws.element>
+      <ws.element ws:tag="section" ws:label="Events">
+        {placeBlock(EventList, "upcoming")}
+      </ws.element>
+      <ws.element ws:tag="section" ws:label="Sign-up">
+        {placeBlock(SignupForm, "signup")}
+      </ws.element>
+    </ws.element>
+  ),
+};
+
+type Content = (context: PageContext) => JSX.Element;
+
+const defaultContent: Content = () => (
+  <ws.element ws:tag="p">{"Say who you are and who you work with."}</ws.element>
+);
+
+const aboutPage = (content: Content = defaultContent): SiteTemplatePage => ({
+  key: "about",
+  name: "About",
+  path: "/about",
+  title: "About",
+  description: "Say who you are and who you work with.",
+  body: (context) => (
+    <ws.element ws:tag="body">
+      <ws.element ws:tag="section" ws:label="About">
+        <ws.element ws:tag="h1">{"About us"}</ws.element>
+        <$.Link href={new PageValue(context.pageIds.home)}>{"Home"}</$.Link>
+        {content(context)}
+      </ws.element>
+    </ws.element>
+  ),
+});
+
+const fixture = (overrides: Partial<SiteTemplate> = {}): SiteTemplate => ({
+  id: "fixture",
+  category: "nonprofit",
+  name: "Fixture",
+  oneLine: "A two-page fixture",
+  styleTags: [],
+  status: "draft",
+  dependsOn: [],
+  thumbnail: "hero.jpg",
+  variables: BLANK_CANONICAL_VALUES,
+  images: {
+    "hero.jpg": {
+      url: "/site-templates/fixture/hero.jpg",
+      sourceUrl: "https://example.org/hero",
+      alt: "Replace with a photo of your members",
+    },
+    "cover.jpg": {
+      url: "/site-templates/fixture/cover.jpg",
+      sourceUrl: "https://example.org/cover",
+      alt: "Replace with a photo of one of your events",
+    },
+  },
+  // Home places the cover card, and shows hero.jpg
+  previewEventCover: "cover.jpg",
+  fonts: {},
+  pages: [home, aboutPage()],
+  ...overrides,
+});
+
+/** The fixture with one thing added to the About page. */
+const checkAbout = (content: Content) =>
+  checkSiteTemplate(fixture({ pages: [home, aboutPage(content)] }));
+
+/** The fixture with a body of its own for the About page. */
+const checkBody = (body: Content) =>
+  checkSiteTemplate(fixture({ pages: [home, { ...aboutPage(), body }] }));
+
+const aboutSection = () => (
+  <ws.element ws:tag="section" ws:label="About">
+    <ws.element ws:tag="h1">{"About us"}</ws.element>
+  </ws.element>
+);
+
+/** The fixture with an element added beside the About section of the About page's body. */
+const checkAboutBody = (extra: Content) =>
+  checkBody((context) => (
+    <ws.element ws:tag="body">
+      {aboutSection()}
+      {extra(context)}
+    </ws.element>
+  ));
+
+const expectOneViolation = (violations: string[], ...mentions: string[]) => {
+  expect(violations).toHaveLength(1);
+  for (const mention of mentions) {
+    expect(violations[0]).toContain(mention);
+  }
+};
+
+describe("checkSiteTemplate", () => {
+  test("a valid fixture has no violations", () => {
+    expect(checkSiteTemplate(fixture())).toEqual([]);
+  });
+
+  describe("platform blocks", () => {
+    test.each(["SignupForm", "RsvpForm", "ShareCodeCarrier"])(
+      "a %s written without placeBlock is a violation",
+      (component) => {
+        const Block = organizeos[component];
+        expectOneViolation(
+          checkAbout(() => <Block ws:label="Block" />),
+          '"about"',
+          component
+        );
+      }
+    );
+
+    test("a placed block's literal border colour is not a violation", () => {
+      expect(
+        checkAbout(({ placeBlock }) => placeBlock(EventCard, "featured"))
+      ).toEqual([]);
+    });
+
+    test("a block token used outside a placed block is checked", () => {
+      const violations = checkAbout(({ placeBlock }) => (
+        <ws.element ws:tag="div">
+          {placeBlock(EventCard, "featured")}
+          <ws.element ws:tag="article" ws:tokens={[cardToken]} />
+        </ws.element>
+      ));
+      expect(violations).not.toEqual([]);
+      for (const violation of violations) {
+        expect(violation).toContain('"about"');
+        expect(violation).toContain('"OS Card"');
+      }
+    });
+  });
+
+  describe("placement options", () => {
+    test("a placed block's root style is checked as the page's own", () => {
+      expectOneViolation(
+        checkAbout(({ placeBlock }) =>
+          placeBlock(EventList, "upcoming", {
+            style: css`
+              background-color: #ffffff;
+            `,
+          })
+        ),
+        '"about"',
+        '"Event List"',
+        "background-color"
+      );
+    });
+
+    test("a root style that reads the canonical variables is not a violation", () => {
+      expect(
+        checkAbout(({ placeBlock }) =>
+          placeBlock(EventList, "upcoming", {
+            card: "dated",
+            style: css`
+              grid-template-columns: 1fr;
+              background-color: var(--base);
+              @media (max-width: 767px) {
+                row-gap: 12px;
+              }
+            `,
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test("a root style under a breakpoint the project does not have is a violation", () => {
+      expectOneViolation(
+        checkAbout(({ placeBlock }) =>
+          placeBlock(EventList, "upcoming", {
+            style: css`
+              @media (min-width: 768px) {
+                grid-template-columns: 1fr 1fr;
+              }
+            `,
+          })
+        ),
+        '"about"',
+        '"Event List"',
+        "min-width: 768px"
+      );
+    });
+  });
+
+  describe("breakpoints", () => {
+    test.each([
+      ["a min-width query", "@media (min-width: 768px)", "min-width: 768px"],
+      ["a width the project lacks", "@media (max-width: 600px)", "600px"],
+    ])("%s on the page's own element is a violation", (_name, media, text) => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:label="Narrow"
+            ws:style={css`
+              ${media} {
+                display: none;
+              }
+            `}
+          />
+        )),
+        '"about"',
+        '"Narrow"',
+        text
+      );
+    });
+
+    // The render keeps a breakpoint's widths alone: a query with a
+    // condition lands on the base, or on the plain max-width breakpoint, and
+    // its styles show at every width there. So the check reads each query as
+    // the template wrote it.
+    const conditionQueries = [
+      {
+        name: "a condition alone",
+        query: "@media (prefers-reduced-motion: reduce)",
+        mention: "prefers-reduced-motion",
+      },
+      {
+        name: "a max-width and a condition",
+        query: "@media (max-width: 767px) and (hover: none)",
+        mention: "hover",
+      },
+    ];
+
+    test.each(conditionQueries)(
+      "$name on the page's own element is a violation",
+      ({ query, mention }) => {
+        expectOneViolation(
+          checkAbout(() => (
+            <ws.element
+              ws:tag="div"
+              ws:label="Narrow"
+              ws:style={css`
+                display: flex;
+                @media (max-width: 767px) {
+                  flex-direction: column;
+                }
+                ${query} {
+                  row-gap: 0px;
+                }
+              `}
+            />
+          )),
+          '"about"',
+          '"Narrow"',
+          "row-gap",
+          mention
+        );
+      }
+    );
+
+    test.each(conditionQueries)(
+      "$name in a kit section's styles is a violation",
+      ({ query, mention }) => {
+        expectOneViolation(
+          checkBody(() => (
+            <ws.element ws:tag="body">
+              {section({
+                label: "About",
+                styles: css`
+                  ${query} {
+                    row-gap: 0px;
+                  }
+                `,
+                children: <ws.element ws:tag="h1">{"About us"}</ws.element>,
+              })}
+            </ws.element>
+          )),
+          '"about"',
+          '"About"',
+          mention
+        );
+      }
+    );
+
+    test.each(conditionQueries)(
+      "$name in a placed block's root style is a violation",
+      ({ query, mention }) => {
+        expectOneViolation(
+          checkAbout(({ placeBlock }) =>
+            placeBlock(EventList, "upcoming", {
+              style: css`
+                @media (max-width: 767px) {
+                  column-gap: 8px;
+                }
+                ${query} {
+                  row-gap: 0px;
+                }
+              `,
+            })
+          ),
+          '"about"',
+          '"Event List"',
+          mention
+        );
+      }
+    );
+
+    test("a query that does not parse is a violation", () => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:label="Printed"
+            ws:style={[
+              {
+                breakpoint: "print",
+                property: "display",
+                value: { type: "keyword", value: "none" },
+              },
+            ]}
+          />
+        )),
+        '"about"',
+        '"Printed"',
+        "print",
+        "does not parse"
+      );
+    });
+
+    test("the project's own breakpoints are not violations", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              @media (max-width: 991px) {
+                display: block;
+              }
+              @media (max-width: 767px) {
+                display: flex;
+              }
+              @media (max-width: 479px) {
+                display: grid;
+              }
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+  });
+
+  describe("block tokens", () => {
+    test("block tokens that read the canonical variables, on the project's breakpoints, are not violations", () => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Card": css`
+                border-top-color: var(--accent-1);
+                font-family: var(--font-body);
+                @media (max-width: 479px) {
+                  padding: 8px;
+                }
+              `,
+              "OS Input": css`
+                border-top-color: var(--accent-1);
+              `,
+            },
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test.each([
+      {
+        name: "a literal colour",
+        style: css`
+          border-top-color: #000000;
+        `,
+        mentions: ["border-top-color", "#000000"],
+      },
+      {
+        name: "a variable outside the canonical set",
+        style: css`
+          color: var(--brand);
+        `,
+        mentions: ["--brand"],
+      },
+      {
+        name: "a literal font",
+        style: css`
+          font-family: Georgia;
+        `,
+        mentions: ["Georgia"],
+      },
+      {
+        name: "a min-width query",
+        style: css`
+          @media (min-width: 768px) {
+            width: 100%;
+          }
+        `,
+        mentions: ["min-width: 768px"],
+      },
+    ])("$name in a block token is a violation", ({ style, mentions }) => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ blockTokens: { "OS Card": style } })),
+        "Block tokens",
+        '"OS Card"',
+        ...mentions
+      );
+    });
+
+    // Block tokens are site-wide: an events block an org places on a band
+    // later wears them there, where accent-2 text is unchecked. Through the
+    // kit's accent text variable it takes the band's text colour.
+    test.each([
+      {
+        name: "bare accent-2",
+        style: css`
+          color: var(--accent-2);
+        `,
+      },
+      {
+        name: "accent-2 on hover",
+        style: css`
+          &:hover {
+            color: var(--accent-2);
+          }
+        `,
+      },
+      {
+        name: "accent-2 under a media query",
+        style: css`
+          @media (max-width: 767px) {
+            color: var(--accent-2);
+          }
+        `,
+      },
+    ])("a block token's text in $name is a violation", ({ style }) => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ blockTokens: { "OS Event Link": style } })),
+        "Block tokens",
+        '"OS Event Link"',
+        "accent-2",
+        "--accent-text"
+      );
+    });
+
+    test("a block token's text in accent-2 through the accent text variable is not a violation", () => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Event Link": css`
+                color: var(--accent-text, var(--accent-2));
+                text-decoration-color: var(--accent-2);
+              `,
+            },
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test("a block token no placed block wears is a violation", () => {
+      // the fixture places cover cards and a Signup Form: no date column
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Card": css`
+                padding: 24px;
+              `,
+              "OS Event Date": css`
+                width: 56px;
+              `,
+            },
+          })
+        ),
+        "Block tokens",
+        '"OS Event Date"'
+      );
+    });
+
+    test("the title and link tokens are worn by the cover card, the row token only by the dated one", () => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Event Title": css`
+                font-size: 20px;
+              `,
+              "OS Event Link": css`
+                color: var(--accent-1);
+              `,
+            },
+          })
+        )
+      ).toEqual([]);
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Event Row": css`
+                row-gap: 4px;
+              `,
+            },
+          })
+        ),
+        "Block tokens",
+        '"OS Event Row"'
+      );
+    });
+
+    test("the cover token is worn by the cover card alone, the note token by both cards' blocks", () => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Event Cover": css`
+                aspect-ratio: 3 / 2;
+                object-fit: cover;
+              `,
+              "OS Event Note": css`
+                margin-top: 0;
+              `,
+            },
+          })
+        )
+      ).toEqual([]);
+      const datedOnly = (blockTokens: SiteTemplate["blockTokens"]) =>
+        checkSiteTemplate(
+          fixture({
+            pages: [
+              { ...home, body: aboutPage().body, key: "home" },
+              aboutPage(({ placeBlock }) =>
+                placeBlock(EventList, "dated", { card: "dated" })
+              ),
+            ],
+            blockTokens,
+          })
+        );
+      expect(
+        datedOnly({
+          "OS Event Note": css`
+            margin-top: 0;
+          `,
+        })
+      ).toEqual([]);
+      expectOneViolation(
+        datedOnly({
+          "OS Event Cover": css`
+            object-fit: cover;
+          `,
+        }),
+        "Block tokens",
+        '"OS Event Cover"'
+      );
+    });
+
+    test("a dated card's tokens are worn once it is placed", () => {
+      expect(
+        checkAbout(({ placeBlock }) => (
+          <ws.element ws:tag="section" ws:label="Events">
+            {placeBlock(EventList, "dated", { card: "dated" })}
+          </ws.element>
+        ))
+      ).toEqual([]);
+      expect(
+        checkSiteTemplate(
+          fixture({
+            pages: [
+              home,
+              aboutPage(({ placeBlock }) =>
+                placeBlock(EventList, "dated", { card: "dated" })
+              ),
+            ],
+            blockTokens: {
+              "OS Event Date": css`
+                width: 56px;
+              `,
+              "OS Event Day": css`
+                color: var(--accent-text, var(--accent-2));
+              `,
+              "OS Event Row": css`
+                row-gap: 4px;
+              `,
+            },
+          })
+        )
+      ).toEqual([]);
+    });
+  });
+
+  // A band sets the band variables to its text colour for what sits inside
+  // it (the kit's section() on accent-1 or text, a dark Background preset).
+  // A base panel inside one sets them back to accent-2, or a focus ring and
+  // accent text inside it are the base on the base.
+  describe("bands", () => {
+    const panel = (style: ReturnType<typeof css>) => (
+      <ws.element ws:tag="div" ws:label="Form panel" ws:style={style}>
+        <ws.element ws:tag="p">{"Sign up"}</ws.element>
+      </ws.element>
+    );
+    const inBand = (
+      inner: JSX.Element,
+      background: "accent-1" | "text" = "accent-1"
+    ) =>
+      checkBody(() => (
+        <ws.element ws:tag="body">
+          {section({
+            label: "Sign-up",
+            background,
+            children: [
+              <ws.element key="h1" ws:tag="h1">
+                {"Sign up"}
+              </ws.element>,
+              <ws.element key="inner" ws:tag="div">
+                {inner}
+              </ws.element>,
+            ],
+          })}
+        </ws.element>
+      ));
+
+    test.each(["accent-1", "text"] as const)(
+      "a base panel inside a kit band on %s that does not reset the band variables is a violation",
+      (background) => {
+        expectOneViolation(
+          inBand(
+            panel(css`
+              background-color: var(--base);
+            `),
+            background
+          ),
+          '"about"',
+          '"Form panel"',
+          '"Sign-up"',
+          "--focus-ring and --accent-text",
+          "var(--accent-2)"
+        );
+      }
+    );
+
+    test("a base panel inside a band a preset's variables make is a violation", () => {
+      expectOneViolation(
+        checkAboutBody(() => (
+          <ws.element
+            ws:tag="section"
+            ws:label="Sign-up"
+            ws:style={css`
+              background-color: var(--accent-1);
+              --focus-ring: var(--text);
+              --accent-text: var(--text);
+            `}
+          >
+            {panel(css`
+              background-color: var(--base);
+            `)}
+          </ws.element>
+        )),
+        '"Form panel"',
+        '"Sign-up"'
+      );
+    });
+
+    test("a base panel that resets one of the two names the other", () => {
+      const [violation, ...others] = inBand(
+        panel(css`
+          background-color: var(--base);
+          --focus-ring: var(--accent-2);
+        `)
+      );
+      expect(others).toEqual([]);
+      expect(violation).toContain("--accent-text");
+      expect(violation).not.toContain("--focus-ring");
+    });
+
+    test("a base panel that resets both, at the base or where it turns base, is not a violation", () => {
+      expect(
+        inBand(
+          panel(css`
+            background-color: var(--base);
+            --focus-ring: var(--accent-2);
+            --accent-text: var(--accent-2);
+          `)
+        )
+      ).toEqual([]);
+      expect(
+        inBand(
+          panel(css`
+            @media (max-width: 767px) {
+              background-color: var(--base);
+              --focus-ring: var(--accent-2);
+              --accent-text: var(--accent-2);
+            }
+          `)
+        )
+      ).toEqual([]);
+    });
+
+    test("a panel that turns base under a breakpoint and resets only at another is a violation", () => {
+      expectOneViolation(
+        inBand(
+          panel(css`
+            @media (max-width: 767px) {
+              background-color: var(--base);
+            }
+            @media (max-width: 479px) {
+              --focus-ring: var(--accent-2);
+              --accent-text: var(--accent-2);
+            }
+          `)
+        ),
+        '"Form panel"'
+      );
+    });
+
+    // its ring is drawn outside it, on the band, in the band's colour
+    test("a base link or button inside a band is not a panel", () => {
+      expect(
+        inBand(
+          <$.Link
+            ws:label="Button"
+            href="/donate"
+            reloadDocument={true}
+            ws:style={css`
+              background-color: var(--base);
+            `}
+          >
+            {"Donate"}
+          </$.Link>
+        )
+      ).toEqual([]);
+      expect(
+        inBand(
+          <ws.element
+            ws:tag="button"
+            ws:style={css`
+              background-color: var(--base);
+            `}
+          >
+            {"Send"}
+          </ws.element>
+        )
+      ).toEqual([]);
+    });
+
+    test("a base panel inside a reset panel, or on the base, is not a violation", () => {
+      expect(
+        inBand(
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              --focus-ring: var(--accent-2);
+              --accent-text: var(--accent-2);
+            `}
+          >
+            {panel(css`
+              background-color: var(--base);
+            `)}
+          </ws.element>
+        )
+      ).toEqual([]);
+      expect(
+        checkAboutBody(() =>
+          section({
+            label: "Sign-up",
+            children: panel(css`
+              background-color: var(--base);
+            `),
+          })
+        )
+      ).toEqual([]);
+    });
+  });
+
+  describe("events blocks", () => {
+    test.each([
+      {
+        name: "an Event Card and an Event List",
+        first: EventCard,
+        second: EventList,
+      },
+      { name: "two Event Lists", first: EventList, second: EventList },
+      { name: "two Event Cards", first: EventCard, second: EventCard },
+    ])("$name in one section are a violation", ({ first, second }) => {
+      expectOneViolation(
+        checkAboutBody(({ placeBlock }) => (
+          <ws.element ws:tag="section" ws:label="Events">
+            <ws.element ws:tag="div">{placeBlock(first, "first")}</ws.element>
+            <ws.element ws:tag="div">{placeBlock(second, "second")}</ws.element>
+          </ws.element>
+        )),
+        '"about"',
+        '"Events"'
+      );
+    });
+
+    test("three events blocks in one section are one violation", () => {
+      expectOneViolation(
+        checkAboutBody(({ placeBlock }) => (
+          <ws.element ws:tag="section" ws:label="Events">
+            {placeBlock(EventCard, "first")}
+            {placeBlock(EventList, "second")}
+            {placeBlock(EventList, "third")}
+          </ws.element>
+        )),
+        '"about"',
+        '"Events"',
+        "3"
+      );
+    });
+
+    test("each section that holds two is a violation of its own", () => {
+      const violations = checkBody(({ placeBlock }) => (
+        <ws.element ws:tag="body">
+          {aboutSection()}
+          <ws.element ws:tag="section" ws:label="Events: Featured">
+            {placeBlock(EventCard, "first")}
+            {placeBlock(EventList, "second")}
+          </ws.element>
+          <ws.element ws:tag="section" ws:label="Events">
+            {placeBlock(EventList, "third")}
+            {placeBlock(EventList, "fourth")}
+          </ws.element>
+        </ws.element>
+      ));
+      expect(violations).toHaveLength(2);
+      expect(violations[0]).toContain('"Events: Featured"');
+      expect(violations[1]).toContain('"Events"');
+    });
+
+    test("one events block in each of two sections is not a violation", () => {
+      expect(
+        checkBody(({ placeBlock }) => (
+          <ws.element ws:tag="body">
+            {aboutSection()}
+            <ws.element ws:tag="section" ws:label="Events: Featured">
+              {placeBlock(EventCard, "featured")}
+            </ws.element>
+            <ws.element ws:tag="section" ws:label="Events">
+              {placeBlock(EventList, "upcoming")}
+            </ws.element>
+          </ws.element>
+        ))
+      ).toEqual([]);
+    });
+
+    test("an events block beside a Sign-up form in one section is not a violation", () => {
+      expect(
+        checkAboutBody(({ placeBlock }) => (
+          <ws.element ws:tag="section" ws:label="Events">
+            {placeBlock(EventList, "upcoming")}
+            {placeBlock(SignupForm, "signup")}
+          </ws.element>
+        ))
+      ).toEqual([]);
+    });
+  });
+
+  describe("section labels", () => {
+    test.each(["Hero", "Hero: Split", "Nav", "Nav: Centered", "Issues", "FAQ"])(
+      "a top-level section labelled %s is not a violation",
+      (label) => {
+        expect(
+          checkAboutBody(() => <ws.element ws:tag="section" ws:label={label} />)
+        ).toEqual([]);
+      }
+    );
+
+    test.each(["Banner", "Heroic", "hero", "Hero:Split", "Events or news"])(
+      "a top-level section labelled %s is a violation",
+      (label) => {
+        expectOneViolation(
+          checkAboutBody(() => (
+            <ws.element ws:tag="section" ws:label={label} />
+          )),
+          '"about"',
+          `"${label}"`
+        );
+      }
+    );
+
+    test("a top-level element with no label is a violation", () => {
+      expectOneViolation(
+        checkAboutBody(() => <ws.element ws:tag="div" />),
+        '"about"',
+        "<div>",
+        "label"
+      );
+    });
+
+    test("text directly in the body is a violation", () => {
+      expectOneViolation(
+        checkBody(() => (
+          <ws.element ws:tag="body">
+            {aboutSection()}
+            {"Stray words"}
+          </ws.element>
+        )),
+        '"about"',
+        "text"
+      );
+    });
+
+    test("an element inside a section needs no label", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element ws:tag="div">
+            <ws.element ws:tag="p">{"Say who you are."}</ws.element>
+          </ws.element>
+        ))
+      ).toEqual([]);
+    });
+  });
+
+  describe("colours and fonts", () => {
+    test.each([
+      {
+        name: "a literal colour",
+        style: css`
+          color: #ffffff;
+        `,
+      },
+      {
+        name: "a keyword colour",
+        style: css`
+          color: white;
+        `,
+      },
+      {
+        name: "a keyword border colour",
+        style: css`
+          border-top-color: red;
+        `,
+      },
+      {
+        name: "a colour inside an unparsed gradient",
+        style: css`
+          background-image: linear-gradient(#ffffff, var(--base));
+        `,
+      },
+      {
+        name: "an rgba() inside an unparsed gradient",
+        style: css`
+          background-image: linear-gradient(rgba(0, 0, 0, 0.5), var(--base));
+        `,
+      },
+      {
+        name: "a shadow's keyword colour",
+        style: css`
+          box-shadow: 0 0 4px black;
+        `,
+      },
+      {
+        name: "a shadow's literal colour",
+        style: css`
+          box-shadow: 0 0 4px #000000;
+        `,
+      },
+      {
+        name: "a filter's literal colour",
+        style: css`
+          filter: drop-shadow(0 0 4px #000000);
+        `,
+      },
+      {
+        name: "a non-canonical variable",
+        style: css`
+          color: var(--brand);
+        `,
+      },
+      {
+        name: "a non-canonical variable in an unparsed shadow",
+        style: css`
+          box-shadow: 1px 1px 2px var(--brand);
+        `,
+      },
+      {
+        name: "a non-canonical variable on any property",
+        style: css`
+          row-gap: var(--space);
+        `,
+      },
+      {
+        name: "a canonical variable's literal fallback",
+        style: css`
+          color: var(--text, #000000);
+        `,
+      },
+      {
+        name: "a colour keyword for the kit's focus ring",
+        style: css`
+          --focus-ring: white;
+        `,
+      },
+      {
+        name: "a literal colour for the kit's focus ring",
+        style: css`
+          --focus-ring: #ffffff;
+        `,
+      },
+      {
+        name: "a colour keyword for the kit's accent text",
+        style: css`
+          --accent-text: white;
+        `,
+      },
+      {
+        name: "a literal colour for the kit's accent text",
+        style: css`
+          --accent-text: #ffffff;
+        `,
+      },
+      {
+        name: "the kit's accent text set to a font variable",
+        style: css`
+          --accent-text: var(--font-body);
+        `,
+      },
+      {
+        name: "a named colour inside an unparsed gradient",
+        style: css`
+          background-image: linear-gradient(to top, black, transparent);
+        `,
+      },
+      {
+        name: "a named colour inside an unparsed mask",
+        style: css`
+          mask-image: linear-gradient(to top, black, transparent);
+        `,
+      },
+      {
+        name: "a named colour inside color-mix()",
+        style: css`
+          border-top-color: color-mix(in srgb, var(--text) 25%, white);
+        `,
+      },
+      {
+        name: "a named colour as a variable's fallback",
+        style: css`
+          color: var(--text, white);
+        `,
+      },
+      ...[
+        "lab(50% 40 59)",
+        "lch(50% 40 60)",
+        "oklab(0.5 0.1 0.1)",
+        "oklch(0.5 0.1 120)",
+        "hwb(12 50% 0%)",
+      ].map((colour) => ({
+        name: `${colour.split("(")[0]}() inside an unparsed gradient`,
+        style: css`
+          background-image: linear-gradient(${colour}, var(--base));
+        `,
+      })),
+      ...[
+        "column-rule-color",
+        "accent-color",
+        "text-emphasis-color",
+        "-webkit-text-stroke-color",
+        "-webkit-tap-highlight-color",
+        "flood-color",
+        "lighting-color",
+        "stop-color",
+      ].map((property) => ({
+        name: `a keyword colour on ${property}`,
+        style: css`
+          ${property}: red;
+        `,
+      })),
+      {
+        name: "a keyword colour on scrollbar-color",
+        style: css`
+          scrollbar-color: var(--accent-1) red;
+        `,
+      },
+    ])("$name is a violation", ({ style }) => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element ws:tag="div" ws:label="Broken" ws:style={style} />
+        )),
+        '"about"',
+        '"Broken"'
+      );
+    });
+
+    test("transparent, currentcolor and the global keywords are not violations", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              color: currentcolor;
+              background-color: transparent;
+              border-top-color: inherit;
+              outline-color: initial;
+              caret-color: unset;
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+
+    // A colour's name is a whole word of CSS: not part of a longer name, and
+    // not in a quoted string.
+    test("a colour's name inside a longer name or a string is not a violation", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              transition-property: background-color, color;
+              grid-template-areas: "tan red" "olive navy";
+              animation-name: fade-white;
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+
+    test("the kit's focus ring variable, set to a canonical colour and read with accent-2 behind it, is not a violation", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              --focus-ring: var(--base);
+              outline-color: var(--focus-ring, var(--accent-2));
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+
+    test("the kit's accent text variable, set to a canonical colour and read with accent-2 behind it, is not a violation", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              --accent-text: var(--base);
+              color: var(--accent-text, var(--accent-2));
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+
+    test("none and auto on colour properties are not violations", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="svg"
+            ws:style={css`
+              fill: none;
+              stroke: none;
+              caret-color: auto;
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+
+    test("a literal font is a violation; a font variable is not", () => {
+      const fontOf = (style: ReturnType<typeof css>) =>
+        checkAbout(() => (
+          <ws.element ws:tag="div" ws:label="Text" ws:style={style} />
+        ));
+      expectOneViolation(
+        fontOf(css`
+          font-family: Georgia;
+        `),
+        '"about"',
+        '"Text"',
+        "Georgia"
+      );
+      expect(
+        fontOf(css`
+          font-family: var(--font-body);
+        `)
+      ).toEqual([]);
+      expect(
+        fontOf(css`
+          font-family: inherit;
+        `)
+      ).toEqual([]);
+      expectOneViolation(
+        fontOf(css`
+          font-family: var(--base);
+        `),
+        '"Text"',
+        "--base"
+      );
+    });
+  });
+
+  // The six are Global Root's, set from the template's variables; an
+  // element that declares one restyles its subtree out of the palette. A
+  // band variable is unset on the base, so a read names a canonical colour
+  // behind it.
+  describe("custom properties", () => {
+    test.each([
+      "base",
+      "accent-1",
+      "accent-2",
+      "text",
+      "font-heading",
+      "font-body",
+    ])("--%s declared on an element is a violation", (name) => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:label="Panel"
+            ws:style={css`
+              --${name}: inherit;
+            `}
+          />
+        )),
+        '"about"',
+        '"Panel"',
+        `--${name}`,
+        "Global Root"
+      );
+    });
+
+    test("a canonical variable declared in a block token or a placed block's root style is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Card": css`
+                --text: inherit;
+              `,
+            },
+          })
+        ),
+        "Block tokens",
+        '"OS Card"',
+        "--text"
+      );
+      expectOneViolation(
+        checkAbout(({ placeBlock }) =>
+          placeBlock(EventList, "upcoming", {
+            style: css`
+              --accent-2: inherit;
+            `,
+          })
+        ),
+        '"Event List"',
+        "--accent-2"
+      );
+    });
+
+    test.each([
+      {
+        name: "the focus ring with no fallback",
+        style: css`
+          outline-color: var(--focus-ring);
+        `,
+        variable: "--focus-ring",
+      },
+      {
+        name: "the accent text with no fallback",
+        style: css`
+          color: var(--accent-text);
+        `,
+        variable: "--accent-text",
+      },
+      {
+        name: "the focus ring with no fallback in unparsed text",
+        style: css`
+          box-shadow: 0 0 0 2px var(--focus-ring);
+        `,
+        variable: "--focus-ring",
+      },
+      {
+        name: "the accent text behind a font variable",
+        style: css`
+          color: var(--accent-text, var(--font-body));
+        `,
+        variable: "--accent-text",
+      },
+      {
+        name: "the focus ring behind a font variable in unparsed text",
+        style: css`
+          box-shadow: 0 0 0 2px var(--focus-ring, var(--font-body));
+        `,
+        variable: "--focus-ring",
+      },
+    ])("$name is a violation", ({ style, variable }) => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element ws:tag="div" ws:label="Read" ws:style={style} />
+        )),
+        '"about"',
+        '"Read"',
+        variable
+      );
+    });
+
+    test("a band variable read in a block token with no fallback is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            blockTokens: {
+              "OS Event Link": css`
+                color: var(--accent-text);
+              `,
+            },
+          })
+        ),
+        "Block tokens",
+        '"OS Event Link"',
+        "--accent-text"
+      );
+    });
+
+    test("a band variable read with a canonical colour behind it is not a violation", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:style={css`
+              color: var(--accent-text, var(--text));
+              outline-color: var(--focus-ring, var(--accent-2));
+              box-shadow: 0 0 0 2px var(--focus-ring, var(--accent-2));
+            `}
+          />
+        ))
+      ).toEqual([]);
+    });
+  });
+
+  test("a Resource is a violation", () => {
+    const events = new ResourceValue("Events", {
+      url: expression`"https://example.org/events"`,
+      method: "get",
+      searchParams: [],
+      headers: [],
+    });
+    expectOneViolation(
+      checkAbout(() => <ws.element ws:tag="div" data={events} />),
+      '"about"',
+      "Resource"
+    );
+  });
+
+  test("a duplicate instance id is a violation", () => {
+    expectOneViolation(
+      checkAbout(() => (
+        <ws.element ws:tag="div">
+          <ws.element ws:tag="p" ws:id="twice" />
+          <ws.element ws:tag="p" ws:id="twice" />
+        </ws.element>
+      )),
+      '"about"',
+      '"twice"'
+    );
+  });
+
+  describe("headings", () => {
+    test("a second h1 is a violation", () => {
+      expectOneViolation(
+        checkAbout(() => <ws.element ws:tag="h1">{"Again"}</ws.element>),
+        '"about"',
+        "h1"
+      );
+    });
+
+    test("no h1 is a violation", () => {
+      const about: SiteTemplatePage = {
+        ...aboutPage(),
+        body: () => (
+          <ws.element ws:tag="body">
+            <ws.element ws:tag="section" ws:label="About">
+              <ws.element ws:tag="h2">{"About us"}</ws.element>
+            </ws.element>
+          </ws.element>
+        ),
+      };
+      expectOneViolation(
+        checkSiteTemplate(fixture({ pages: [home, about] })),
+        '"about"',
+        "h1"
+      );
+    });
+  });
+
+  describe("pages", () => {
+    test("a page rooted at an element that is not the body is a violation", () => {
+      const about: SiteTemplatePage = {
+        ...aboutPage(),
+        body: () => (
+          <ws.element ws:tag="div">
+            <ws.element ws:tag="h1">{"About us"}</ws.element>
+          </ws.element>
+        ),
+      };
+      expectOneViolation(
+        checkSiteTemplate(fixture({ pages: [home, about] })),
+        '"about"',
+        "<body>"
+      );
+    });
+
+    test("a link to a page the template does not have is a violation", () => {
+      expectOneViolation(
+        checkAbout(({ pageIds }) => (
+          <$.Link ws:label="Broken link" href={new PageValue(pageIds.abuot)}>
+            {"About"}
+          </$.Link>
+        )),
+        '"about"',
+        '"Broken link"',
+        "page"
+      );
+    });
+
+    test("a link to an element of a page is a violation", () => {
+      expectOneViolation(
+        checkAbout(({ pageIds }) => (
+          <$.Link
+            ws:label="Section link"
+            href={new PageValue(pageIds.home, "hero")}
+          >
+            {"Home"}
+          </$.Link>
+        )),
+        '"about"',
+        '"Section link"',
+        "element"
+      );
+    });
+
+    // A published site's router has no route at a path the platform serves,
+    // and any other path is a page the template links by its key.
+    test.each(["/about", "/donate/spring", "//example.org"])(
+      "a link to the path %s is a violation",
+      (href) => {
+        expectOneViolation(
+          checkAbout(() => (
+            <$.Link ws:label="Path link" href={href} reloadDocument={true}>
+              {"Somewhere"}
+            </$.Link>
+          )),
+          '"about"',
+          '"Path link"',
+          `"${href}"`
+        );
+      }
+    );
+
+    // A published React Router site renders an `a` element as the router's
+    // Link (the CLI's tagsOverrides), so the rule holds for it as for a Link.
+    test("an a element's href is held to the same rules", () => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element ws:tag="a" ws:label="Path anchor" href="/about">
+            {"Somewhere"}
+          </ws.element>
+        )),
+        '"about"',
+        '"Path anchor"',
+        '"/about"'
+      );
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element ws:tag="a" ws:label="Donate anchor" href="/donate">
+            {"Donate"}
+          </ws.element>
+        )),
+        '"about"',
+        '"Donate anchor"',
+        "reloadDocument"
+      );
+    });
+
+    test("a link to a platform path reloads the page", () => {
+      expect(
+        checkAbout(() => (
+          <$.Link href="/donate" reloadDocument={true}>
+            {"Donate"}
+          </$.Link>
+        ))
+      ).toEqual([]);
+      expectOneViolation(
+        checkAbout(() => (
+          <$.Link ws:label="Donate link" href="/donate">
+            {"Donate"}
+          </$.Link>
+        )),
+        '"about"',
+        '"Donate link"',
+        "reloadDocument"
+      );
+    });
+  });
+
+  describe("paths", () => {
+    test("a page at /newsletter is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({ pages: [home, { ...aboutPage(), path: "/newsletter" }] })
+        ),
+        '"about"',
+        "/newsletter"
+      );
+    });
+
+    test("a path shared by two pages is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            pages: [home, aboutPage(), { ...aboutPage(), key: "team" }],
+          })
+        ),
+        '"about"',
+        '"team"',
+        "/about"
+      );
+    });
+
+    test("a page at /* is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({ pages: [home, { ...aboutPage(), path: "/*" }] })
+        ),
+        '"about"',
+        "/*"
+      );
+    });
+
+    // The platform answers these itself on an org's site host
+    // (PLATFORM_SERVED_PATHS), so a page there would never show.
+    test.each([
+      "/join",
+      "/join/union",
+      "/donate",
+      "/events/spring-meeting",
+      "/unsubscribe",
+      "/giving/manage/abc",
+      "/checkout/success",
+      "/auth",
+      "/auth/callback",
+      "/dashboard",
+      "/embed/widget",
+      "/@local-000",
+      "/org-profile",
+      "/org-profile/local-000",
+      // the middleware's /.well-known/ branch
+      "/.well-known/security.txt",
+      "/.well-known/assetlinks.json",
+      // the paths its matcher leaves to the platform's static files
+      "/fonts/display",
+      "/icons/set",
+      "/screenshots/home",
+      "/sw.js",
+      "/workbox-4b3a.js",
+      "/manifest.webmanifest",
+      "/favicon.ico",
+      "/press/logo.svg",
+      "/brochure.png",
+      "/anthem.wav",
+    ])("a page at %s, which the platform serves, is a violation", (path) => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ pages: [home, { ...aboutPage(), path }] })),
+        '"about"',
+        path,
+        "the platform serves"
+      );
+    });
+
+    // Only /events/<slug> is the platform's; the prefixes are matched by whole
+    // segment, as the org host matches them.
+    test.each([
+      "/events",
+      "/authors",
+      "/joining",
+      "/join-us",
+      "/donations",
+      "/members",
+      "/shop-local",
+      "/org-profiles",
+      "/organization",
+      "/fonts",
+      "/icons",
+      "/screenshots",
+      "/well-known",
+      "/press.html",
+      "/favicons",
+    ])("a page at %s is not a platform path", (path) => {
+      expect(
+        checkSiteTemplate(fixture({ pages: [home, { ...aboutPage(), path }] }))
+      ).toEqual([]);
+    });
+
+    // A route the platform serves on the site's host is linked by path, so
+    // it is one the platform answers itself there.
+    test("every path a template links by path is one the platform serves", () => {
+      for (const path of PLATFORM_PATHS) {
+        expect(isPlatformServedPath(path), path).toBe(true);
+      }
+    });
+
+    test.each(["about", "/About", "/about/", "/about us", "/s/about"])(
+      "the path %s is a violation",
+      (path) => {
+        expectOneViolation(
+          checkSiteTemplate(
+            fixture({ pages: [home, { ...aboutPage(), path }] })
+          ),
+          '"about"',
+          `"${path}"`
+        );
+      }
+    );
+
+    test("no Home page is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({ pages: [{ ...home, path: "/home" }, aboutPage()] })
+        ),
+        "Home"
+      );
+    });
+  });
+
+  describe("images", () => {
+    test("an image without a source URL is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            images: {
+              ...fixture().images,
+              "hero.jpg": { ...fixture().images["hero.jpg"], sourceUrl: "" },
+            },
+          })
+        ),
+        '"hero.jpg"',
+        "source"
+      );
+    });
+
+    test.each([
+      "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+      "images/hero.jpg",
+      "//cdn.example.org/hero.jpg",
+    ])("an image at %s is a violation", (url) => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            images: {
+              ...fixture().images,
+              "hero.jpg": { ...fixture().images["hero.jpg"], url },
+            },
+          })
+        ),
+        '"hero.jpg"',
+        "URL"
+      );
+    });
+
+    test("an image at an https URL is not a violation", () => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            images: {
+              ...fixture().images,
+              "hero.jpg": {
+                ...fixture().images["hero.jpg"],
+                url: "https://example.org/hero.jpg",
+              },
+            },
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test("a preview event cover that is not one of the images is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ previewEventCover: "missing.jpg" })),
+        "preview event cover",
+        '"missing.jpg"'
+      );
+    });
+
+    // The preview shows the first sample event with it: a template with the
+    // cover card names one, or its preview shows a stand-in picture.
+    test("a template that places the cover card and names no preview event cover is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ previewEventCover: undefined })),
+        "cover card",
+        "previewEventCover"
+      );
+    });
+
+    test("a template whose events blocks all show the dated card needs no preview event cover", () => {
+      const dated: Content = ({ placeBlock }) =>
+        placeBlock(EventList, "dated", { card: "dated" });
+      expect(
+        checkSiteTemplate(
+          fixture({
+            previewEventCover: undefined,
+            pages: [
+              { ...aboutPage(), key: "home", path: "" },
+              aboutPage(dated),
+            ],
+          })
+        )
+      ).toEqual([]);
+    });
+
+    // So a preview never shows a photo twice.
+    test("a preview event cover shown on a page with an events block is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ previewEventCover: "hero.jpg" })),
+        'Page "home"',
+        '"hero.jpg"'
+      );
+      const events: Content = ({ placeBlock }) =>
+        placeBlock(EventList, "about-events");
+      expectOneViolation(
+        checkAbout((context) => (
+          <ws.element ws:tag="section" ws:label="Events">
+            <$.Image
+              src={context.image("cover.jpg")}
+              alt={context.imageAlt("cover.jpg")}
+            />
+            {events(context)}
+          </ws.element>
+        )),
+        'Page "about"',
+        '"cover.jpg"'
+      );
+      expectOneViolation(
+        checkAbout((context) => (
+          <ws.element
+            ws:tag="section"
+            ws:label="Events"
+            ws:style={context.backgroundImage("cover.jpg")}
+          >
+            {events(context)}
+          </ws.element>
+        )),
+        'Page "about"',
+        '"cover.jpg"'
+      );
+    });
+
+    // as the apply reads a page's images (findPageAssetIds), so the two
+    // agree on what a page shows
+    test("a preview event cover shown by any style on a page with an events block is a violation", () => {
+      expectOneViolation(
+        checkAbout((context) => (
+          <ws.element
+            ws:tag="section"
+            ws:label="Events"
+            ws:style={context
+              .backgroundImage("cover.jpg")
+              .map((decl) => ({ ...decl, property: "mask-image" as const }))}
+          >
+            {context.placeBlock(EventList, "about-events")}
+          </ws.element>
+        )),
+        'Page "about"',
+        '"cover.jpg"'
+      );
+    });
+
+    test("a preview event cover shown on a page with no events block is not a violation", () => {
+      expect(
+        checkAbout(({ image, imageAlt }) => (
+          <$.Image src={image("cover.jpg")} alt={imageAlt("cover.jpg")} />
+        ))
+      ).toEqual([]);
+    });
+
+    test("a thumbnail that is not one of the images is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ thumbnail: "/thumbnail.jpg" })),
+        "thumbnail",
+        '"/thumbnail.jpg"'
+      );
+    });
+
+    test("an image without alt text is a violation, and so is its Image", () => {
+      const violations = checkSiteTemplate(
+        fixture({
+          images: {
+            ...fixture().images,
+            "hero.jpg": { ...fixture().images["hero.jpg"], alt: " " },
+          },
+        })
+      );
+      // The entry, and Home's Image, whose alt is imageAlt("hero.jpg").
+      expect(violations).toEqual([
+        'Image "hero.jpg" has no alt text',
+        expect.stringMatching(/^Page "home": .* has no alt text$/),
+      ]);
+    });
+
+    test("an image that is not in the template's images is a violation", () => {
+      expectOneViolation(
+        checkAbout(({ image }) => (
+          <$.Image src={image("missing.jpg")} alt="Replace with a photo" />
+        )),
+        '"about"',
+        '"missing.jpg"'
+      );
+    });
+
+    test("an Image with a literal src is a violation", () => {
+      expectOneViolation(
+        checkAbout(() => (
+          <$.Image
+            ws:label="Photo"
+            src="https://example.org/photo.jpg"
+            alt="Replace with a photo"
+          />
+        )),
+        '"about"',
+        '"Photo"',
+        "src"
+      );
+    });
+
+    // The builder draws its placeholder, a grey picture frame, for an Image
+    // with no src: the "put your image here" slot (spec decision 3).
+    test("an Image with no src, and alt text, is not a violation", () => {
+      expect(
+        checkAbout(() => <$.Image alt="Replace with a photo of the program" />)
+      ).toEqual([]);
+      expectOneViolation(
+        checkAbout(() => <$.Image ws:label="Slot" />),
+        '"about"',
+        '"Slot"',
+        "alt"
+      );
+    });
+
+    test("an img with no alt is a violation", () => {
+      expectOneViolation(
+        checkAbout(({ image }) => (
+          <ws.element ws:tag="img" ws:label="Photo" src={image("hero.jpg")} />
+        )),
+        '"about"',
+        '"Photo"',
+        "alt"
+      );
+    });
+
+    test("a background image by URL is a violation", () => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element
+            ws:tag="div"
+            ws:label="Banner"
+            ws:style={css`
+              background-image: url(https://example.org/photo.jpg);
+            `}
+          />
+        )),
+        '"about"',
+        '"Banner"',
+        "https://example.org/photo.jpg"
+      );
+    });
+  });
+
+  describe("fonts", () => {
+    const sourceSerif: FontEntry = {
+      url: "/site-templates/fixture/source-serif-4-latin-wght-normal.woff2",
+      family: "Source Serif 4",
+      licence: "OFL-1.1",
+      source: "@fontsource-variable/source-serif-4",
+    };
+
+    /** The fixture with Source Serif 4 as its heading font. */
+    const withFont = ({
+      file = "source-serif-4-latin-wght-normal.woff2",
+      font = {},
+      variables = {},
+    }: {
+      file?: string;
+      font?: Partial<FontEntry>;
+      variables?: Partial<CanonicalValues>;
+    } = {}) =>
+      fixture({
+        variables: {
+          ...BLANK_CANONICAL_VALUES,
+          "font-heading": '"Source Serif 4", Georgia, serif',
+          ...variables,
+        },
+        fonts: { [file]: { ...sourceSerif, ...font } },
+      });
+
+    test("a font variable naming a bundled font first is not a violation", () => {
+      expect(checkSiteTemplate(withFont())).toEqual([]);
+      expect(
+        checkSiteTemplate(
+          withFont({
+            variables: { "font-body": "Source Serif 4, serif" },
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test("a font variable whose first family no font declares is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            variables: {
+              ...BLANK_CANONICAL_VALUES,
+              "font-body": '"Source Serif 4", Georgia, serif',
+            },
+          })
+        ),
+        "font-body",
+        '"Source Serif 4"'
+      );
+    });
+
+    // A publish keeps a font by its family, compared exactly.
+    test("a family is matched as the builder names it, case and all", () => {
+      const violations = checkSiteTemplate(
+        withFont({ font: { family: "source serif 4" } })
+      );
+      expect(violations).toEqual([
+        expect.stringMatching(
+          /"source-serif-4-latin-wght-normal.woff2".*"source serif 4"/
+        ),
+        expect.stringMatching(/font-heading.*"Source Serif 4"/),
+      ]);
+    });
+
+    test.each([
+      "system-ui, sans-serif",
+      "-apple-system, sans-serif",
+      "Georgia, serif",
+      '"Segoe UI", Roboto, sans-serif',
+      "serif",
+      "ui-monospace, monospace",
+    ])("a system font first (%s) needs no bundled font", (value) => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            variables: {
+              ...BLANK_CANONICAL_VALUES,
+              "font-heading": value,
+              "font-body": value,
+            },
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test("a font variable that names no family is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            variables: { ...BLANK_CANONICAL_VALUES, "font-body": " " },
+          })
+        ),
+        "font-body"
+      );
+    });
+
+    test.each(["licence", "source"] as const)(
+      "a font without a %s is a violation",
+      (field) => {
+        expectOneViolation(
+          checkSiteTemplate(withFont({ font: { [field]: " " } })),
+          '"source-serif-4-latin-wght-normal.woff2"',
+          field
+        );
+      }
+    );
+
+    test.each(["Apache-2.0", "OFL-1.1"])(
+      "a font under %s is not a violation",
+      (licence) => {
+        expect(checkSiteTemplate(withFont({ font: { licence } }))).toEqual([]);
+      }
+    );
+
+    test("a font under another licence is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(withFont({ font: { licence: "Proprietary" } })),
+        '"source-serif-4-latin-wght-normal.woff2"',
+        '"Proprietary"'
+      );
+    });
+
+    test.each([
+      "data:font/woff2;base64,d09GMgABAAAAAA==",
+      "files/source-serif-4.woff2",
+    ])("a font at %s is a violation", (url) => {
+      expectOneViolation(
+        checkSiteTemplate(withFont({ font: { url } })),
+        '"source-serif-4-latin-wght-normal.woff2"',
+        "URL"
+      );
+    });
+
+    test("a font not named as a .woff2 file is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(withFont({ file: "source-serif-4" })),
+        '"source-serif-4"',
+        ".woff2"
+      );
+    });
+
+    // A publish keeps a font only when a variable names its family first.
+    test("a font whose family neither variable names first is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          withFont({
+            variables: { "font-heading": 'Georgia, "Source Serif 4", serif' },
+          })
+        ),
+        '"source-serif-4-latin-wght-normal.woff2"',
+        '"Source Serif 4"'
+      );
+    });
+  });
+
+  // The check sees an image's URL, not the import query that made it, and
+  // rejects a data: URL (above). What keeps a template from importing an
+  // image or a font without ?url&no-inline, so Vite inlines it into the
+  // builder's production build, is that no other form is declared.
+  test("assets.d.ts declares only the ?url&no-inline imports of images and fonts", () => {
+    const declarations = readFileSync(
+      new URL("./assets.d.ts", import.meta.url),
+      "utf8"
+    );
+    const patterns = [...declarations.matchAll(/^declare module "(.+)"/gm)].map(
+      (match) => match[1]
+    );
+    expect(patterns.sort()).toEqual([
+      "*.jpeg?url&no-inline",
+      "*.jpg?url&no-inline",
+      "*.png?url&no-inline",
+      "*.webp?url&no-inline",
+      "*.woff2?url&no-inline",
+    ]);
+  });
+
+  describe("neutrality", () => {
+    test.each(NEUTRALITY_DENY_LIST)("%s in a text is a violation", (word) => {
+      expectOneViolation(
+        checkAbout(() => (
+          <ws.element ws:tag="p">{`Members of the ${word.toUpperCase()} club`}</ws.element>
+        )),
+        '"about"'
+      );
+    });
+
+    test.each([
+      {
+        where: "a placeholder",
+        content: () => (
+          <ws.element ws:tag="p">
+            {new PlaceholderValue("A Republican meeting")}
+          </ws.element>
+        ),
+        about: {},
+      },
+      {
+        where: "a string prop",
+        content: () => (
+          <ws.element ws:tag="div" aria-label="The Green  Party office" />
+        ),
+        about: {},
+      },
+      { where: "the title", content: defaultContent, about: { title: "GOP" } },
+      {
+        where: "the description",
+        content: defaultContent,
+        about: { description: "Our Socialist roots" },
+      },
+    ])("a deny-listed word in $where is a violation", ({ content, about }) => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({ pages: [home, { ...aboutPage(content), ...about }] })
+        ),
+        '"about"'
+      );
+    });
+
+    test("a deny-listed word inside another word is not a violation", () => {
+      expect(
+        checkAbout(() => (
+          <ws.element ws:tag="p">
+            {"Our magazine on gophers, conservatives and a progressive agenda"}
+          </ws.element>
+        ))
+      ).toEqual([]);
+    });
+  });
+
+  describe("contrast", () => {
+    test("text on base below 4.5:1 is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({ variables: { ...BLANK_CANONICAL_VALUES, text: "#777777" } })
+        ),
+        "text",
+        "base"
+      );
+    });
+
+    test("base on accent-1 below 4.5:1 is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            variables: { ...BLANK_CANONICAL_VALUES, "accent-1": "#999999" },
+          })
+        ),
+        "base",
+        "accent-1"
+      );
+    });
+
+    // Templates set small text in accent-2 (an event's day, a link), so it
+    // is held to 4.5:1 as text is, unless the template declares it sets
+    // only large text there.
+    test("accent-2 on base below 4.5:1 is a violation", () => {
+      // 3.54:1: enough for the focus ring it draws, not for small text
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            variables: { ...BLANK_CANONICAL_VALUES, "accent-2": "#888888" },
+          })
+        ),
+        "accent-2",
+        "base",
+        "3.54:1",
+        "4.5:1",
+        '"large-text"'
+      );
+    });
+
+    test("accent-2 declared large text only, on base between 3:1 and 4.5:1, is not a violation", () => {
+      expect(
+        checkSiteTemplate(
+          fixture({
+            accent2: "large-text",
+            variables: { ...BLANK_CANONICAL_VALUES, "accent-2": "#888888" },
+          })
+        )
+      ).toEqual([]);
+    });
+
+    test("accent-2 declared large text only, on base below 3:1, is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            accent2: "large-text",
+            variables: { ...BLANK_CANONICAL_VALUES, "accent-2": "#aaaaaa" },
+          })
+        ),
+        "accent-2",
+        "base",
+        "below 3:1"
+      );
+    });
+
+    test("a colour that is not #rrggbb is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({ variables: { ...BLANK_CANONICAL_VALUES, text: "red" } })
+        ),
+        "text"
+      );
+    });
+  });
+});

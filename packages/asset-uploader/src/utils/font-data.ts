@@ -7,6 +7,7 @@ import {
   type VariationAxes,
   type FontStyle,
 } from "@webstudio-is/fonts";
+import { dropInstanceNames } from "./organizeos-font-family";
 
 // same default fontkit uses internally
 const defaultLanguage = "en";
@@ -82,7 +83,13 @@ export const getFontData = (data: Uint8Array, fileName: string): FontData => {
     font.getName("preferredSubfamily", defaultLanguage) ??
     font.getName("fontSubfamily", defaultLanguage) ??
     "";
-  const family = normalizeFamily(originalFamily, subfamily, fileName);
+  // OrganizeOS fork: the family without the instance its legacy name can
+  // carry (organizeos-font-family.ts).
+  const { family, weight } = dropInstanceNames({
+    family: normalizeFamily(originalFamily, subfamily, fileName),
+    subfamily,
+    weightClass: font["OS/2"]?.usWeightClass,
+  });
   const isVariable = Object.keys(font.variationAxes).length !== 0;
 
   if (isVariable) {
@@ -97,6 +104,8 @@ export const getFontData = (data: Uint8Array, fileName: string): FontData => {
     format,
     family,
     ...parseSubfamily(subfamily),
+    // OrganizeOS fork: the weight the family named, when the subfamily names none
+    ...(weight === undefined ? {} : { weight }),
   };
 };
 

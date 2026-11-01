@@ -25,6 +25,7 @@ const sidebarLeft = read("../../sidebar-left/sidebar-left.tsx");
 const styleSections = read("../style-panel/sections/sections.ts");
 const inspector = read("../../inspector.tsx");
 const builderNanoStates = read("../../shared/nano-states.ts");
+const builder = read("../../builder.tsx");
 
 describe("the Components panel's OrganizeOS section", () => {
   test("components.tsx imports both OrganizeOS modules", () => {
@@ -160,6 +161,21 @@ describe("the canvas's drop", () => {
     expect(branch).toBeGreaterThan(-1);
     expect(fallback).toBeGreaterThan(-1);
     expect(branch).toBeLessThan(fallback);
+  });
+});
+
+describe("the site-template chooser", () => {
+  test("builder.tsx imports TemplateChooser from the OrganizeOS module and mounts it once, after the other dialogs and before the Toaster", () => {
+    expect(builder).toMatch(
+      /import\s*\{\s*TemplateChooser\s*\}\s*from\s*"\.\/features\/organizeos-panel\/site-templates\/template-chooser";/
+    );
+    expect(builder.match(/<TemplateChooser \/>/g)).toHaveLength(1);
+    const dialogs = builder.indexOf("<TokenConflictDialog />");
+    const mount = builder.indexOf("<TemplateChooser />");
+    const toaster = builder.indexOf("<Toaster />");
+    expect(dialogs).toBeGreaterThan(-1);
+    expect(mount).toBeGreaterThan(dialogs);
+    expect(toaster).toBeGreaterThan(mount);
   });
 });
 

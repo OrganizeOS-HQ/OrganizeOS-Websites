@@ -152,6 +152,26 @@ export const describeEventsBlock = ({
       expect(propOf(unavailable, showAttribute)).toBeUndefined();
     });
 
+    test("the empty and unavailable boxes and the root declare no colour, so the text is the site's", () => {
+      const colourDeclarations = (instance: Instance) => {
+        const sourceIds =
+          fragment.styleSourceSelections.find(
+            (selection) => selection.instanceId === instance.id
+          )?.values ?? [];
+        return fragment.styles
+          .filter((style) => sourceIds.includes(style.styleSourceId))
+          .map((style) => style.property)
+          .filter((property) => property === "color");
+      };
+      for (const instance of [
+        root,
+        getInstance("empty"),
+        getInstance("unavailable"),
+      ]) {
+        expect(colourDeclarations(instance), instance.label).toEqual([]);
+      }
+    });
+
     test("the card reads the event through expressions over the parameter", () => {
       expect(card.component).toBe("ws:element");
       expect(card.tag).toBe("article");
@@ -219,23 +239,68 @@ export const describeEventsBlock = ({
       expect(literal("country")).toBe("US");
     });
 
-    test("the card wears the shared OS Card token, and the template makes no other", () => {
+    test("the card, its cover, title and link, and the two lines wear the shared tokens, and the template makes no others", () => {
       expect(
         fragment.styleSources.flatMap((source) =>
           source.type === "token" ? [source.name] : []
         )
-      ).toEqual(["OS Card"]);
-      const token = fragment.styleSources.find(
-        (source) => source.type === "token"
+      ).toEqual([
+        "OS Card",
+        "OS Event Cover",
+        "OS Event Title",
+        "OS Event Link",
+        "OS Event Note",
+      ]);
+      const note = fragment.styleSources.find(
+        (source) => source.type === "token" && source.name === "OS Event Note"
       );
+      for (const id of ["empty", "unavailable"]) {
+        expect(
+          fragment.styleSourceSelections.find(
+            (selection) => selection.instanceId === id
+          )?.values,
+          id
+        ).toEqual([note?.id]);
+      }
+      // the note declares nothing (event-card.template.test.ts)
       expect(
-        fragment.styleSourceSelections.find(
-          (selection) => selection.instanceId === card.id
-        )?.values
-      ).toContain(token?.id);
-      expect(
-        fragment.styles.some((style) => style.styleSourceId === token?.id)
-      ).toBe(true);
+        fragment.styles.some((style) => style.styleSourceId === note?.id)
+      ).toBe(false);
+      for (const [instance, name] of [
+        [card, "OS Card"],
+        [byLabel("Cover"), "OS Event Cover"],
+        [byLabel("Title"), "OS Event Title"],
+        [byLabel("Event link"), "OS Event Link"],
+      ] as const) {
+        const token = fragment.styleSources.find(
+          (source) => source.type === "token" && source.name === name
+        );
+        expect(
+          fragment.styleSourceSelections.find(
+            (selection) => selection.instanceId === instance.id
+          )?.values,
+          name
+        ).toContain(token?.id);
+        expect(
+          fragment.styles.some((style) => style.styleSourceId === token?.id),
+          name
+        ).toBe(true);
+      }
+    });
+
+    // "AM" alone on a line reads badly, and so does a month split from its
+    // day, which balanced lines gave in a narrow card ("Thursday, March /
+    // 11, 2027"): pretty wrapping moves only the last words down. The date
+    // still wraps where it must.
+    test("the start time wraps pretty, and it still wraps", () => {
+      const starts = byLabel("Starts");
+      const local = fragment.styles.filter(
+        (style) => style.styleSourceId === `${starts.id}:ws:style`
+      );
+      expect(local.map(({ property, value }) => [property, value])).toEqual([
+        ["textWrapMode", { type: "keyword", value: "wrap" }],
+        ["textWrapStyle", { type: "keyword", value: "pretty" }],
+      ]);
     });
 
     test("the cover shows only for an event with an image", () => {

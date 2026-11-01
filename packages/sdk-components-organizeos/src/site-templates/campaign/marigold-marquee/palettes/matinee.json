@@ -1,0 +1,8 @@
+{
+  "base": "#F7F3EA",
+  "accent-1": "#A85400",
+  "accent-2": "#1A6B5C",
+  "text": "#12151A",
+  "font-heading": "\"Archivo Black\", \"Arial Black\", \"Helvetica Neue\", Arial, sans-serif",
+  "font-body": "\"Public Sans\", system-ui, -apple-system, \"Segoe UI\", Roboto, Arial, sans-serif"
+}

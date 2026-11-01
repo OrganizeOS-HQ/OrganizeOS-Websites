@@ -3,6 +3,7 @@ import { encodeDataSourceVariable, type Instance } from "@webstudio-is/sdk";
 import { showAttribute } from "@webstudio-is/react-sdk";
 import { CalendarIcon } from "@webstudio-is/icons/svg";
 import { renderTemplate } from "@webstudio-is/template";
+import { toValue } from "@webstudio-is/css-engine";
 import * as metas from "./metas";
 import { meta } from "./rsvp-form.template";
 import { meta as signupMeta } from "./signup-form.template";
@@ -28,6 +29,27 @@ const propsOf = (instance: Instance) =>
 
 const propValue = (instance: Instance, name: string) =>
   propsOf(instance).find((prop) => prop.name === name)?.value;
+
+/** The declarations on an instance's own local style source, as CSS text. */
+const localStylesOf = (instance: Instance) => {
+  const sources = new Set(
+    fragment.styleSourceSelections.find(
+      (selection) => selection.instanceId === instance.id
+    )?.values
+  );
+  return Object.fromEntries(
+    fragment.styles
+      .filter(
+        (decl) =>
+          sources.has(decl.styleSourceId) &&
+          fragment.styleSources.some(
+            (source) =>
+              source.id === decl.styleSourceId && source.type === "local"
+          )
+      )
+      .map((decl) => [decl.property, toValue(decl.value)])
+  );
+};
 
 const root = getInstance(fragment.children[0].value);
 const [rsvpState] = fragment.dataSources;
@@ -249,10 +271,11 @@ test("a descendant's selector is a string prop, as the CSS generator reads it", 
   }
 });
 
-test("parts are styled through the four shared OrganizeOS tokens, as the Signup Form's are", () => {
+test("parts are styled through the five shared OrganizeOS tokens, as the Signup Form's are", () => {
   expect(Array.from(tokenNames.values()).sort()).toEqual([
     "OS Button",
     "OS Field",
+    "OS Form Heading",
     "OS Input",
     "OS Message",
   ]);
@@ -369,4 +392,28 @@ test("every OrganizeOS part of the template sits inside the root's descendants, 
   for (const listed of rootDescendants) {
     expect(used.has(listed), listed).toBe(true);
   }
+});
+
+// A template sets its headings in --font-heading; the form's heading follows
+// it, and inherits as before on a site without the variable. Its lines are
+// set as a heading's, not at the body's looser line height, so a heading
+// that wraps on a phone reads as one.
+// It wears a token, "OS Form Heading", so a site template sets its case and
+// size (SiteTemplate.blockTokens), and has no local style of its own.
+test("the form's heading wears OS Form Heading: the site's heading font, at a heading's line height", () => {
+  const [heading] = contentChildren;
+  expect(heading.tag).toBe("h2");
+  expect(localStylesOf(heading)).toEqual({});
+  expect(tokensOf(heading)).toEqual(["OS Form Heading"]);
+  const [tokenId] =
+    fragment.styleSourceSelections.find(
+      (selection) => selection.instanceId === heading.id
+    )?.values ?? [];
+  expect(
+    Object.fromEntries(
+      fragment.styles
+        .filter((decl) => decl.styleSourceId === tokenId)
+        .map((decl) => [decl.property, toValue(decl.value)])
+    )
+  ).toEqual({ fontFamily: "var(--font-heading)", lineHeight: "1.2" });
 });

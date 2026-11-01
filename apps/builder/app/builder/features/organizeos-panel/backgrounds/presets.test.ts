@@ -5,6 +5,7 @@ import { parseAnyGradient } from "~/builder/features/style-panel/sections/backgr
 import { composite, contrastRatio, quantize, type Rgba } from "./color";
 import {
   builtInPalette,
+  getBandVariables,
   getReferenceTextColor,
   layerProperties,
   presets,
@@ -185,6 +186,94 @@ describe("presets", () => {
       "17,17,17,255"
     );
     expect(getReferenceTextColor(dark, builtInPalette)).toEqual(white);
+  });
+});
+
+// A band rings focus and sets accent text in its text colour, as the site
+// templates' kit does (site-templates/canonical-variables.ts BAND_VARIABLES):
+// accent-2 is checked against the base alone.
+describe("getBandVariables", () => {
+  const preset = (id: PresetId) => presets.find((item) => item.id === id)!;
+  const canonical = (base: number, text: number): Palette => ({
+    base: { rgba: { r: base, g: base, b: base, a: 1 }, variable: "base" },
+    accent1: { rgba: { r: 0.2, g: 0.3, b: 0.6, a: 1 }, variable: "accent-1" },
+    accent2: { rgba: { r: 0.9, g: 0.4, b: 0.2, a: 1 }, variable: "accent-2" },
+    text: { rgba: { r: text, g: text, b: text, a: 1 }, variable: "text" },
+  });
+
+  test("a dark preset sets both in the palette's lighter colour, the base on a light palette", () => {
+    for (const id of [
+      "bloom-dark",
+      "wash-dark",
+      "tint-dark",
+      "image-scrim-dark",
+    ] as const) {
+      expect(getBandVariables(preset(id), canonical(0.98, 0.1)), id).toEqual([
+        { property: "--focus-ring", value: { type: "var", value: "base" } },
+        { property: "--accent-text", value: { type: "var", value: "base" } },
+      ]);
+    }
+  });
+
+  test("on a dark palette, whose base is dark, the lighter colour is the text", () => {
+    expect(
+      getBandVariables(preset("bloom-dark"), canonical(0.08, 0.95))
+    ).toEqual([
+      { property: "--focus-ring", value: { type: "var", value: "text" } },
+      { property: "--accent-text", value: { type: "var", value: "text" } },
+    ]);
+  });
+
+  // Only a site template's site reads the band variables: elsewhere they
+  // would be declarations nothing reads.
+  test("with no variables, on the built-in palette, a dark preset writes neither", () => {
+    expect(getBandVariables(preset("tint-dark"), builtInPalette)).toEqual([]);
+  });
+
+  test("on a palette whose roles are not the four canonical variables, no preset writes either", () => {
+    const variable = (name: string, value: number) => ({
+      rgba: { r: value, g: value, b: value, a: 1 },
+      variable: name,
+    });
+    const own: Palette = {
+      base: variable("paper", 0.98),
+      accent1: variable("brand", 0.3),
+      accent2: variable("sky", 0.6),
+      text: variable("ink", 0.1),
+    };
+    // three canonical names and one of the site's own
+    const mixed: Palette = { ...canonical(0.98, 0.1), text: own.text };
+    for (const palette of [own, mixed]) {
+      for (const item of presets) {
+        expect(getBandVariables(item, palette), item.id).toEqual([]);
+      }
+    }
+  });
+
+  // A light preset's surface is the base's: as the kit's base panel inside
+  // a band does, it sets both back to accent-2, which is what they are on
+  // the base unset, so it also undoes a band from a wider breakpoint.
+  test("a light preset sets both back to accent-2", () => {
+    for (const id of [
+      "bloom-light",
+      "bloom-strong",
+      "wash-light",
+      "tint-light",
+      "image-scrim-light",
+    ] as const) {
+      for (const palette of [canonical(0.98, 0.1), canonical(0.08, 0.95)]) {
+        expect(getBandVariables(preset(id), palette), id).toEqual([
+          {
+            property: "--focus-ring",
+            value: { type: "var", value: "accent-2" },
+          },
+          {
+            property: "--accent-text",
+            value: { type: "var", value: "accent-2" },
+          },
+        ]);
+      }
+    }
   });
 });
 

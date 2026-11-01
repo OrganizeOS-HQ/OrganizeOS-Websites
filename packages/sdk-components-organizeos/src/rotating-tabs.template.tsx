@@ -10,22 +10,6 @@ import {
 } from "@webstudio-is/template";
 import { organizeos, radix } from "./shared/proxy";
 
-/**
- * Rotating Tabs (spec 4.2): upstream's Tabs with a Rotation Control as its
- * first child. The control drives the Tabs through their one public seam, the
- * `value` prop: both read the variable activeTab, and the control's
- * onValueChange sets it. Triggers and Contents keep upstream's index values
- * ("0", "1", "2"), since rotation advances by index.
- *
- * Every Content is force-mounted, so every `aria-controls` target exists and
- * every panel's text is in the server markup; Radix leaves force-mounted
- * panels visible, so each Content's Inactive state is `display: none`.
- *
- * Radii are the closed scale's: 16px for the panels, 10px for what sits in
- * them (the tab pills and the button).
- */
-const activeTab = new Variable("activeTab", "0");
-
 const triggerStyle = css`
   padding: 8px 16px;
   border: 1px solid #d4d4d8;
@@ -95,12 +79,27 @@ const content = (heading: string) => (
   </radix.TabsContent>
 );
 
-export const meta: TemplateMeta = {
-  category: "hidden",
-  label: "Rotating Tabs",
-  description: "Tabs that rotate on their own",
-  icon: RefreshCcwIcon,
-  template: (
+/**
+ * Rotating Tabs (spec 4.2): upstream's Tabs with a Rotation Control as its
+ * first child. The control drives the Tabs through their one public seam, the
+ * `value` prop: both read the variable activeTab, and the control's
+ * onValueChange sets it. Triggers and Contents keep upstream's index values
+ * ("0", "1", "2"), since rotation advances by index.
+ *
+ * Every Content is force-mounted, so every `aria-controls` target exists and
+ * every panel's text is in the server markup; Radix leaves force-mounted
+ * panels visible, so each Content's Inactive state is `display: none`.
+ *
+ * Radii are the closed scale's: 16px for the panels, 10px for what sits in
+ * them (the tab pills and the button).
+ *
+ * A function, not a constant: a site template places the block once per
+ * placement, and `renderTemplate` keys a data source by its Variable, so each
+ * call needs a Variable of its own to scope activeTab to its own root.
+ */
+export const rotatingTabsTemplate = () => {
+  const activeTab = new Variable("activeTab", "0");
+  return (
     <radix.Tabs
       value={expression`${activeTab}`}
       ws:style={css`
@@ -146,5 +145,13 @@ export const meta: TemplateMeta = {
       {content("For volunteers")}
       {content("For supporters")}
     </radix.Tabs>
-  ),
+  );
+};
+
+export const meta: TemplateMeta = {
+  category: "hidden",
+  label: "Rotating Tabs",
+  description: "Tabs that rotate on their own",
+  icon: RefreshCcwIcon,
+  template: rotatingTabsTemplate(),
 };
