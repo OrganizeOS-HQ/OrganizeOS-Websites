@@ -1,6 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import { parsePages } from "@webstudio-is/project-build/index.server";
 import { getStaticSiteMapXml } from "@webstudio-is/sdk";
+import { pagesForSitemap } from "@organizeos/site-components/org-script";
 import { parseBuilderUrl } from "@webstudio-is/http-client";
 import { isBuilder } from "../router-utils";
 import { createContext } from "../context.server";
@@ -39,7 +40,10 @@ export const loader = async ({ request }: { request: Request }) => {
 
   const pages = parsePages(build.pages);
 
-  const siteMap = getStaticSiteMapXml(pages, build.updatedAt);
+  // OrganizeOS fork: the sitemap reads each page's excludePageFromSearch as
+  // upstream does since webstudio-is/webstudio#6614, without evaluating it
+  // (pagesForSitemap, docs/ORGANIZEOS-FORK.md section 7).
+  const siteMap = getStaticSiteMapXml(pagesForSitemap(pages), build.updatedAt);
 
   return json(siteMap);
 };
