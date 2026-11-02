@@ -1108,7 +1108,11 @@ describe("a deadline on every request", () => {
     }
   });
 
-  test("a caller's own signal still aborts the request", async () => {
+  // The templates pass each loader's request.signal (upstream's
+  // loadResources), and the refresh is shared by every caller that waits on
+  // its key. So a caller's signal ends that caller's wait and nothing else:
+  // the request behind it answers only to its deadline.
+  test("a caller's own signal ends its own wait, with the signal's reason", async () => {
     fakeTimeout();
     const { cache, network } = setup();
     network.mockImplementationOnce(hang);
@@ -1118,7 +1122,53 @@ describe("a deadline on every request", () => {
     caller.abort(new Error("the visitor left"));
 
     expect(await failed).toMatchObject({ message: "the visitor left" });
-    expect(network.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(network.mock.calls[0][1]?.signal?.aborted).toBe(false);
+  });
+
+  test("a caller whose signal has already aborted gets its reason at once", async () => {
+    fakeTimeout();
+    const { cache, network } = setup();
+    const caller = new AbortController();
+    caller.abort(new Error("the visitor left"));
+
+    expect(await outcome(get(cache, { signal: caller.signal }))).toMatchObject({
+      message: "the visitor left",
+    });
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  test("one caller's abort does not abort the shared refresh", async () => {
+    fakeTimeout();
+    const { cache, network } = setup();
+    let sent: AbortSignal | undefined;
+    const response = Promise.withResolvers<Response>();
+    network.mockImplementationOnce((_input, init) => {
+      sent = init?.signal ?? undefined;
+      // Like the real fetch: rejects with the signal's reason once it aborts.
+      sent?.addEventListener("abort", () => {
+        response.reject(sent?.reason);
+      });
+      return response.promise;
+    });
+    const leaving = new AbortController();
+    const staying = new AbortController();
+
+    const left = outcome(get(cache, { signal: leaving.signal }));
+    const stayed = read(get(cache, { signal: staying.signal }));
+    const unsignalled = read(get(cache));
+    leaving.abort(new Error("the visitor left"));
+
+    expect(await left).toMatchObject({ message: "the visitor left" });
+    expect(sent?.aborted).toBe(false);
+    response.resolve(
+      reply({ body: "forms", headers: { "cache-control": cacheable } })
+    );
+    expect(await stayed).toBe("forms");
+    expect(await unsignalled).toBe("forms");
+    expect(network).toHaveBeenCalledTimes(1);
+    // and what it answered was stored for the next caller
+    expect(await read(get(cache))).toBe("forms");
+    expect(network).toHaveBeenCalledTimes(1);
   });
 });
 
