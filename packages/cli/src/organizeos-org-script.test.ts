@@ -1,10 +1,13 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import { Parser } from "acorn";
+import acornJsx from "acorn-jsx";
+import { transformSync } from "esbuild";
 import { describe, expect, test, vi } from "vitest";
 import {
   bundleVersion,
+  historicalPublishedProjectBundle,
   publishedProjectBundle,
   type PublishedProjectBundle,
 } from "@webstudio-is/protocol";
@@ -17,6 +20,7 @@ import {
 import {
   describeDroppedOrgScript,
   dropOrgScript,
+  refuseMdxWhilePaused,
 } from "./organizeos-org-script";
 
 const icons = [...templateIconCodes];
@@ -97,6 +101,7 @@ const createBundle = ({
   dataSources = [],
   code,
   xmlAbout = false,
+  projectSettings,
 }: {
   instances?: Array<[string, Instance]>;
   props?: Array<[string, Prop]>;
@@ -104,6 +109,8 @@ const createBundle = ({
   code?: string;
   /** the About page is an XML page, where XML Node and XML Time belong */
   xmlAbout?: boolean;
+  /** the project's settings column, which upstream reads before pages.meta */
+  projectSettings?: PublishedProjectBundle["build"]["projectSettings"];
 } = {}): PublishedProjectBundle => {
   const pages = [
     {
@@ -159,6 +166,7 @@ const createBundle = ({
       styleSourceSelections: [],
       styles: [],
       breakpoints: [],
+      ...(projectSettings === undefined ? {} : { projectSettings }),
     },
   });
 };
@@ -443,7 +451,6 @@ describe("dropOrgScript", () => {
           tag: "div />{globalThis.pwned = 1}<div",
         }),
         instance({ id: "mixed", component: "ws:element", tag: "Script" }),
-        instance({ id: "empty", component: "ws:element", tag: "" }),
         instance({ id: "kept", component: "ws:element", tag: "section" }),
       ],
       props: [
@@ -452,6 +459,18 @@ describe("dropOrgScript", () => {
         stringProp("kept", "id", "kept"),
       ],
     });
+    // An empty tag: the bundle schema refuses one since upstream 0.309.0
+    // ("Tag cannot be empty"), so prebuild never parses a bundle holding it,
+    // and the rule still drops it on its own. Added after parsing, before
+    // "kept" (the root lists it already).
+    const empty = instance({ id: "empty", component: "ws:element", tag: "" });
+    expect(
+      publishedProjectBundle.safeParse({
+        ...bundle,
+        build: { ...bundle.build, instances: [empty] },
+      }).success
+    ).toBe(false);
+    bundle.build.instances.splice(-1, 0, empty);
 
     const result = dropOrgScript(bundle);
 
@@ -1027,6 +1046,111 @@ describe("dropOrgScript", () => {
     expect(result.build.pages.pages).toEqual(bundle.build.pages.pages);
   });
 
+  // Upstream 0.309.0 keeps the project's settings in their own column, and
+  // prebuild reads its custom code before pages.meta's
+  // (`projectSettings?.meta ?? pages.meta`).
+  test("clears the custom code in the project's settings too, and keeps the rest of them", () => {
+    const bundle = createBundle({
+      code: '<script src="/pages.js"></script>',
+      projectSettings: {
+        meta: {
+          siteName: "Settings site",
+          code: '<script src="/settings.js"></script>',
+          auth: "auth-config",
+        },
+        compiler: { atomicStyles: false },
+      },
+      instances: [instance({ id: "root", component: "Body" })],
+    });
+
+    const result = dropOrgScript(bundle);
+
+    expect(result.build.projectSettings?.meta.code).toBeUndefined();
+    expect(result.build.projectSettings?.meta).toEqual({
+      siteName: "Settings site",
+      auth: "auth-config",
+    });
+    expect(result.build.projectSettings?.compiler).toEqual({
+      atomicStyles: false,
+    });
+    expect(result.build.pages.meta?.code).toBeUndefined();
+    // the input is untouched
+    expect(bundle.build.projectSettings?.meta.code).toBe(
+      '<script src="/settings.js"></script>'
+    );
+  });
+
+  test("reports custom code that only the project's settings hold", () => {
+    const bundle = createBundle({
+      projectSettings: {
+        meta: { siteName: "Site", code: "<script>1</script>" },
+        compiler: {},
+      },
+      instances: [instance({ id: "root", component: "Body" })],
+    });
+    const log = vi.fn();
+
+    const result = dropOrgScript(bundle, { log });
+
+    expect(result.build.projectSettings?.meta).toEqual({ siteName: "Site" });
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out the site's custom code."
+    );
+  });
+
+  test("returns a historical bundle's pages with their own fields", () => {
+    const bundle = createBundle({
+      code: "<script>1</script>",
+      instances: [instance({ id: "root", component: "Body" })],
+    });
+    const historical = historicalPublishedProjectBundle.parse({
+      ...bundle,
+      build: {
+        ...bundle.build,
+        pages: { ...bundle.build.pages, formComponentIdentityVersion: 1 },
+      },
+    });
+
+    const result = dropOrgScript(historical);
+
+    expect(result.build.pages.meta?.code).toBeUndefined();
+    expect(result.build.pages.formComponentIdentityVersion).toBe(1);
+  });
+
+  // D13: JSON-LD stays unavailable while org script is paused. It is the
+  // third component that writes raw HTML (the tripwire below), so publishing
+  // leaves it out as it does Markdown Embed.
+  test("drops a JSON-LD element and counts it", () => {
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("json-ld", "kept"),
+        }),
+        instance({ id: "json-ld", component: "JsonLd" }),
+        instance({ id: "kept", component: "Box" }),
+      ],
+      props: [
+        jsonProp("json-ld", "code", {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          name: "</script><script>alert(1)</script>",
+        }),
+      ],
+    });
+    const log = vi.fn();
+
+    const result = dropOrgScript(bundle, { log });
+
+    expect(instanceIds(result)).toEqual(["root", "kept"]);
+    expect(propIds(result)).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 JSON-LD element."
+    );
+    expect(dropOrgScript(bundle, { mayRun: true })).toBe(bundle);
+  });
+
   test("neutralizes a page root that is an embed, so the page still builds", () => {
     const bundle = createBundle({
       instances: [
@@ -1329,10 +1453,125 @@ describe("dropOrgScript", () => {
   });
 });
 
+// D7: while org script is paused, publishing refuses a build that would
+// materialize MDX. Prebuild turns a Content Block's MDX into instances after
+// dropOrgScript has run, and an MDX `ws:tag` takes any string, so nothing
+// would hold that content to the pause. The check reads the bundle alone, so
+// it runs before any asset body is read or downloaded.
+describe("refuseMdxWhilePaused", () => {
+  const refusal =
+    "This site uses MDX content, which publishing does not support yet.";
+
+  const asset = (id: string, name: string, format: string) => ({
+    id,
+    projectId: "project-id",
+    name,
+    type: "file" as const,
+    format,
+    size: 10,
+    meta: {},
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+
+  const assetProp = (instanceId: string, value: string): [string, Prop] => [
+    `${instanceId}:src`,
+    { id: `${instanceId}:src`, instanceId, name: "src", type: "asset", value },
+  ];
+
+  const withBlock = (
+    src: [string, Prop] | undefined,
+    assets: ReturnType<typeof asset>[]
+  ): PublishedProjectBundle => {
+    const bundle = createBundle({
+      instances: [
+        instance({ id: "root", component: "Body", children: ids("block") }),
+        instance({ id: "block", component: "ws:block" }),
+      ],
+      props: src === undefined ? [] : [src],
+    });
+    return { ...bundle, assets };
+  };
+
+  const mdx = asset("article", "article_abc.mdx", "mdx");
+  const md = asset("notes", "notes_abc.md", "md");
+  const image = asset("photo", "photo_abc.png", "png");
+
+  test.each([
+    ["an .mdx asset", assetProp("block", "article"), [mdx]],
+    ["an .md asset", assetProp("block", "notes"), [md]],
+    [
+      "an .mdx asset by a static expression",
+      expressionProp("block", "src", '"article"'),
+      [mdx],
+    ],
+    [
+      "an expression, while the bundle holds an .mdx asset",
+      expressionProp("block", "src", "$ws$dataSource$post.data.body"),
+      [image, mdx],
+    ],
+    [
+      "an expression, while the bundle holds an .md asset",
+      expressionProp("block", "src", "$ws$dataSource$post.data.body"),
+      [md],
+    ],
+    [
+      "an asset whose format says MDX in capitals",
+      assetProp("block", "article"),
+      [{ ...mdx, format: "MDX" }],
+    ],
+  ])("refuses a Content Block bound to %s", (_name, src, assets) => {
+    const bundle = withBlock(src, assets);
+
+    expect(() => refuseMdxWhilePaused(bundle)).toThrow(refusal);
+    // the error is that sentence alone
+    expect(() => refuseMdxWhilePaused(bundle)).toThrow(
+      expect.objectContaining({ message: refusal })
+    );
+  });
+
+  test("refuses a block whose asset the content index names as MDX", () => {
+    const bundle = withBlock(assetProp("block", "article"), [
+      { ...mdx, format: "bin", name: "article" },
+    ]);
+    const indexed = {
+      ...bundle,
+      assetIndex: {
+        documents: [{ _id: "article", extension: "mdx" }],
+      },
+    } as unknown as PublishedProjectBundle;
+
+    expect(() => refuseMdxWhilePaused(withBlock(undefined, []))).not.toThrow();
+    expect(() => refuseMdxWhilePaused(indexed)).toThrow(refusal);
+  });
+
+  test.each([
+    ["no source", undefined, [mdx]],
+    ["an image asset", assetProp("block", "photo"), [image, mdx]],
+    [
+      "an expression, while the bundle holds no MDX",
+      expressionProp("block", "src", "$ws$dataSource$post.data.body"),
+      [image],
+    ],
+  ])("publishes a Content Block with %s", (_name, src, assets) => {
+    expect(() => refuseMdxWhilePaused(withBlock(src, assets))).not.toThrow();
+  });
+
+  test("publishes MDX assets that no Content Block is bound to", () => {
+    const bundle = withBlock(undefined, [mdx, md]);
+    expect(() => refuseMdxWhilePaused(bundle)).not.toThrow();
+  });
+
+  test("lets a build with MDX through once org script may run", () => {
+    const bundle = withBlock(assetProp("block", "article"), [mdx]);
+    expect(() => refuseMdxWhilePaused(bundle, { mayRun: true })).not.toThrow();
+  });
+});
+
 describe("describeDroppedOrgScript", () => {
   const none = {
     htmlEmbeds: 0,
     markdownEmbeds: 0,
+    jsonLd: 0,
     elementsWithUnknownTag: 0,
     svgAnimations: 0,
     rawHtmlProps: 0,
@@ -1371,7 +1610,8 @@ describe("describeDroppedOrgScript", () => {
 });
 
 // T15. The switch pauses what the fork knows renders org-written markup:
-// HTML Embed and Markdown Embed. An upstream merge that adds another
+// HTML Embed, Markdown Embed and, by the owner's decision D13 (2026-11-01),
+// JSON-LD, which upstream 0.309.0 added. An upstream merge that adds another
 // component writing raw HTML into a page fails here, and gets a decision.
 describe("raw HTML in the runtime packages", () => {
   const root = fileURLToPath(new URL("../../..", import.meta.url));
@@ -1422,7 +1662,15 @@ describe("raw HTML in the runtime packages", () => {
     ]);
   });
 
-  test("only HTML Embed and Markdown Embed use dangerouslySetInnerHTML", () => {
+  // Each known user, and the component publishing leaves out for it
+  const rawHtmlUsers = {
+    "packages/sdk-components-react/src/html-embed.tsx": "HtmlEmbed",
+    // D13: JSON-LD stays under this tripwire, and unavailable while paused
+    "packages/sdk-components-react/src/json-ld.tsx": "JsonLd",
+    "packages/sdk-components-react/src/markdown-embed.tsx": "MarkdownEmbed",
+  };
+
+  test("only HTML Embed, Markdown Embed and JSON-LD use dangerouslySetInnerHTML", () => {
     const users = packages
       .flatMap((name) => sourceFiles(join(root, name)))
       .filter((file) =>
@@ -1431,10 +1679,25 @@ describe("raw HTML in the runtime packages", () => {
       .map((file) => relative(root, file))
       .sort();
 
-    expect(users).toEqual([
-      "packages/sdk-components-react/src/html-embed.tsx",
-      "packages/sdk-components-react/src/markdown-embed.tsx",
-    ]);
+    expect(users).toEqual(Object.keys(rawHtmlUsers).sort());
+  });
+
+  test("publishing leaves out each component that uses it", () => {
+    for (const component of Object.values(rawHtmlUsers)) {
+      const bundle = createBundle({
+        instances: [
+          instance({ id: "root", component: "Body", children: ids("user") }),
+          instance({ id: "user", component }),
+        ],
+        // markup that is not a template icon, as an embed's code
+        props: [stringProp("user", "code", "<b>org markup</b>")],
+      });
+
+      const result = dropOrgScript(bundle);
+
+      expect(instanceIds(result), component).toEqual(["root"]);
+      expect(propIds(result), component).toEqual([]);
+    }
   });
 
   // The generator renames a standard attribute to its React prop (`tabindex` to
@@ -1533,46 +1796,64 @@ describe("raw HTML in the runtime packages", () => {
   // its props on to its child fails here, and gets a decision: it joins
   // `triggerNames` above, and `forwarders` in
   // apps/builder/app/canvas/organizeos-org-script.props.test.tsx.
+  // The sources are TypeScript with JSX. esbuild strips the types and keeps
+  // the JSX, and acorn reads the rest (TypeScript 7's package has no compiler
+  // API to parse with).
+  type JsxNode = {
+    type: string;
+    [key: string]: unknown;
+  };
+  const jsxParser = Parser.extend(acornJsx());
   const forwarders = (source: string, fileName: string) => {
-    const file = ts.createSourceFile(
-      fileName,
-      source,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TSX
-    );
+    const { code } = transformSync(source, {
+      loader: fileName.endsWith(".tsx") ? "tsx" : "ts",
+      jsx: "preserve",
+      sourcefile: fileName,
+    });
+    const program = jsxParser.parse(code, {
+      ecmaVersion: "latest",
+      sourceType: "module",
+    }) as unknown as JsxNode;
     const found: string[] = [];
-    const visit = (node: ts.Node) => {
-      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
-        const { properties } = node.attributes;
-        const asChild = properties.some(
-          (property) =>
-            ts.isJsxAttribute(property) && property.name.getText() === "asChild"
+    const visit = (node: JsxNode, owners: string[]) => {
+      let ownerNames = owners;
+      if (
+        (node.type === "VariableDeclarator" ||
+          node.type === "FunctionDeclaration") &&
+        (node.id as JsxNode | null)?.type === "Identifier"
+      ) {
+        ownerNames = [...owners, (node.id as { name: string }).name];
+      }
+      if (node.type === "JSXOpeningElement") {
+        const attributes = node.attributes as JsxNode[];
+        const asChild = attributes.some(
+          (attribute) =>
+            attribute.type === "JSXAttribute" &&
+            (attribute.name as { name?: unknown }).name === "asChild"
         );
-        const spread = properties.some((property) =>
-          ts.isJsxSpreadAttribute(property)
+        const spread = attributes.some(
+          (attribute) => attribute.type === "JSXSpreadAttribute"
         );
         if (asChild && spread) {
-          let owner: ts.Node | undefined = node;
-          while (
-            owner !== undefined &&
-            ts.isVariableDeclaration(owner) === false &&
-            ts.isFunctionDeclaration(owner) === false
-          ) {
-            owner = owner.parent;
-          }
-          found.push(
-            owner !== undefined &&
-              (ts.isVariableDeclaration(owner) ||
-                ts.isFunctionDeclaration(owner))
-              ? (owner.name?.getText() ?? "?")
-              : "?"
-          );
+          found.push(ownerNames.at(-1) ?? "?");
         }
       }
-      ts.forEachChild(node, visit);
+      for (const [key, value] of Object.entries(node)) {
+        if (key === "type") {
+          continue;
+        }
+        for (const child of Array.isArray(value) ? value : [value]) {
+          if (
+            child !== null &&
+            typeof child === "object" &&
+            typeof (child as JsxNode).type === "string"
+          ) {
+            visit(child as JsxNode, ownerNames);
+          }
+        }
+      }
     };
-    visit(file);
+    visit(program, []);
     return found;
   };
 
