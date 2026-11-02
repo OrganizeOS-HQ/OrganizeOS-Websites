@@ -10,11 +10,6 @@ describe("component metas", () => {
     expect(
       componentMetas.has("@webstudio-is/sdk-components-react-radix:Accordion")
     ).toBe(true);
-    expect(
-      componentMetas.has(
-        "@webstudio-is/sdk-components-animation:AnimateChildren"
-      )
-    ).toBe(true);
     expect(componentMetas.size).toBeGreaterThan(Object.keys(coreMetas).length);
   });
 });

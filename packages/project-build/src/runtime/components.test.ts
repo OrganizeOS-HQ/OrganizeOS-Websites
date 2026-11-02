@@ -1784,52 +1784,12 @@ test("merges fragment token conflicts by replacing existing token styles", async
   );
 });
 
-test("inserts animation action props parsed from webstudio jsx fragments", async () => {
-  const parent = createParent();
-  const state = createState(parent);
-  const fragment = await parseWebstudioJsxFragment(
-    `<AnimateChildren action={{type:"view",animations:[{timing:{fill:"backwards",rangeStart:["entry",{type:"unit",value:0,unit:"%"}],rangeEnd:["entry",{type:"unit",value:100,unit:"%"}]},keyframes:[{styles:{opacity:{type:"unit",value:0,unit:"number"}}}]}]}}><ws.element ws:tag="h2">Reveal</ws.element></AnimateChildren>`
-  );
-
-  expect(fragment.props).toContainEqual(
-    expect.objectContaining({
-      name: "action",
-      type: "animationAction",
-      value: expect.objectContaining({ type: "view" }),
-    })
-  );
-
-  const mutation = await insertFragment(
-    state,
-    {
-      parentInstanceId: parent.id,
-      fragment,
-      conflictResolution: "merge",
-    },
-    {
-      createId: createIdFactory(),
-      projectId: "project-id",
-    }
-  );
-
-  expect(
-    getAddedValues<{ type: string; name: string }>(mutation, "props")
-  ).toContainEqual(
-    expect.objectContaining({
-      name: "action",
-      type: "animationAction",
-      value: expect.objectContaining({ type: "view" }),
-    })
-  );
-});
-
 test("detects likely Webstudio JSX fragments", () => {
   expect(isLikelyWebstudioJsxFragment("<Box />")).toBe(true);
   expect(isLikelyWebstudioJsxFragment('<ws.element ws:tag="section" />')).toBe(
     true
   );
   expect(isLikelyWebstudioJsxFragment("<Switch />")).toBe(true);
-  expect(isLikelyWebstudioJsxFragment("<VideoAnimation />")).toBe(true);
   expect(isLikelyWebstudioJsxFragment("</Box>")).toBe(false);
   expect(isLikelyWebstudioJsxFragment("<section>HTML</section>")).toBe(false);
   expect(isLikelyWebstudioJsxFragment("## Markdown")).toBe(false);

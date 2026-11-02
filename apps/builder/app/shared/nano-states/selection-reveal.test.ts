@@ -574,21 +574,15 @@ test("native options reveal the closest select using effective values and HTML t
   }
 });
 
-test("HeadSlot reveals its selected path while animation only reveals an exact selection", () => {
-  const animation = "@webstudio-is/sdk-components-animation:AnimateChildren";
-  const animationProp = "data-ws-animation-can-play-on-canvas";
+test("HeadSlot reveals its selected path", () => {
   const instances: Instances = new Map([
-    ["page", instance("page", "Body", "head", "animation")],
+    ["page", instance("page", "Body", "head", "box")],
     ["head", instance("head", "HeadSlot", "meta")],
     ["meta", instance("meta", "HeadMeta")],
-    ["animation", instance("animation", animation, "child")],
-    ["child", instance("child", "Box")],
+    ["box", instance("box", "Box")],
   ]);
   setupPage(instances);
-  const base = values([
-    [["head", "page"], { "data-ws-expand": false }],
-    [["animation", "page"], { [animationProp]: false }],
-  ]);
+  const base = values([[["head", "page"], { "data-ws-expand": false }]]);
   $propValuesByInstanceSelector.set(base);
   const authored = $props.get();
   for (const selector of [
@@ -603,28 +597,16 @@ test("HeadSlot reveals its selected path while animation only reveals an exact s
         ?.get("data-ws-expand")
     ).toBe(true);
   }
-  selectInstance(["animation", "page"]);
+  // Preview ignores the selection layer while it reveals the HeadSlot.
+  $builderMode.set("preview");
+  expect($propValuesByInstanceSelectorWithMemoryProps.get()).toBe(base);
+  $builderMode.set("design");
+  selectInstance(["box", "page"]);
   expect(
     $propValuesByInstanceSelectorWithMemoryProps
       .get()
       .get(key("head", "page"))
       ?.get("data-ws-expand")
-  ).toBe(false);
-  expect(
-    $propValuesByInstanceSelectorWithMemoryProps
-      .get()
-      .get(key("animation", "page"))
-      ?.get(animationProp)
-  ).toBe(true);
-  $builderMode.set("preview");
-  expect($propValuesByInstanceSelectorWithMemoryProps.get()).toBe(base);
-  $builderMode.set("design");
-  selectInstance(["child", "animation", "page"]);
-  expect(
-    $propValuesByInstanceSelectorWithMemoryProps
-      .get()
-      .get(key("animation", "page"))
-      ?.get(animationProp)
   ).toBe(false);
   selectInstance(undefined);
   expect($selectionOverrides.get().size).toBe(0);

@@ -5470,30 +5470,6 @@ describe("project session mcp adapter", () => {
       name: "components.get",
       input: { component: "Italic" },
     });
-    const animationGroupDetails = await adapter.callTool({
-      name: "components.get",
-      input: {
-        component: "@webstudio-is/sdk-components-animation:AnimateChildren",
-      },
-    });
-    const textAnimationDetails = await adapter.callTool({
-      name: "components.get",
-      input: {
-        component: "@webstudio-is/sdk-components-animation:AnimateText",
-      },
-    });
-    const staggerAnimationDetails = await adapter.callTool({
-      name: "components.get",
-      input: {
-        component: "@webstudio-is/sdk-components-animation:StaggerAnimation",
-      },
-    });
-    const videoAnimationDetails = await adapter.callTool({
-      name: "components.get",
-      input: {
-        component: "@webstudio-is/sdk-components-animation:VideoAnimation",
-      },
-    });
     const coveragePlanData = coveragePlan.structuredContent.data as {
       total: number;
       rootCount: number;
@@ -5671,14 +5647,6 @@ describe("project session mcp adapter", () => {
         partCount: expect.any(Number),
         roots: expect.arrayContaining([
           expect.objectContaining({
-            component: "@webstudio-is/sdk-components-animation:AnimateChildren",
-            covers: expect.arrayContaining([
-              // contentModel.children: direct child components count toward coverage.
-              "@webstudio-is/sdk-components-animation:AnimateText",
-              "@webstudio-is/sdk-components-animation:StaggerAnimation",
-            ]),
-          }),
-          expect.objectContaining({
             component: "@webstudio-is/sdk-components-react-radix:Select",
             hasTemplate: true,
             insertWith: "@webstudio-is/sdk-components-react-radix:Select",
@@ -5705,6 +5673,7 @@ describe("project session mcp adapter", () => {
           expect.objectContaining({
             component: "HeadSlot",
             covers: expect.arrayContaining([
+              // contentModel.children: direct child components count toward coverage.
               "HeadLink",
               "HeadMeta",
               "HeadTitle",
@@ -5716,12 +5685,6 @@ describe("project session mcp adapter", () => {
           }),
         ]),
         partComponents: expect.arrayContaining([
-          expect.objectContaining({
-            component: "@webstudio-is/sdk-components-animation:AnimateText",
-            coveredBy: expect.arrayContaining([
-              "@webstudio-is/sdk-components-animation:AnimateChildren",
-            ]),
-          }),
           expect.objectContaining({
             component:
               "@webstudio-is/sdk-components-react-radix:SelectItemIndicator",
@@ -5857,42 +5820,6 @@ describe("project session mcp adapter", () => {
         templateRootComponents: [
           "@webstudio-is/sdk-components-react-radix:Label",
         ],
-      })
-    );
-    expect(animationGroupDetails.structuredContent.data).toEqual(
-      expect.objectContaining({
-        component: "@webstudio-is/sdk-components-animation:AnimateChildren",
-        props: expect.objectContaining({
-          action: expect.objectContaining({ type: "animationAction" }),
-        }),
-      })
-    );
-    expect(textAnimationDetails.structuredContent.data).toEqual(
-      expect.objectContaining({
-        component: "@webstudio-is/sdk-components-animation:AnimateText",
-        props: expect.objectContaining({
-          slidingWindow: expect.objectContaining({ defaultValue: 5 }),
-          splitBy: expect.objectContaining({
-            options: expect.arrayContaining(["char", "space"]),
-          }),
-        }),
-      })
-    );
-    expect(staggerAnimationDetails.structuredContent.data).toEqual(
-      expect.objectContaining({
-        component: "@webstudio-is/sdk-components-animation:StaggerAnimation",
-        props: expect.objectContaining({
-          slidingWindow: expect.objectContaining({ defaultValue: 1 }),
-        }),
-      })
-    );
-    expect(videoAnimationDetails.structuredContent.data).toEqual(
-      expect.objectContaining({
-        component: "@webstudio-is/sdk-components-animation:VideoAnimation",
-        hasTemplate: true,
-        props: expect.objectContaining({
-          timeline: expect.objectContaining({ type: "boolean" }),
-        }),
       })
     );
     expect(selectDetails.structuredContent.data).toEqual(
@@ -7037,8 +6964,8 @@ describe("project session mcp adapter", () => {
     const instances = [
       { id: "body", component: "ws:element", depth: 0 },
       {
-        id: "animation-group",
-        component: "@webstudio-is/sdk-components-animation:AnimateChildren",
+        id: "switch",
+        component: "@webstudio-is/sdk-components-react-radix:Switch",
         depth: 1,
       },
     ];
@@ -7053,19 +6980,19 @@ describe("project session mcp adapter", () => {
         if (command === "insert-component") {
           expect(input).toEqual(
             expect.objectContaining({
-              parentInstanceId: "animation-group",
-              component: "@webstudio-is/sdk-components-animation:AnimateText",
+              parentInstanceId: "switch",
+              component: "@webstudio-is/sdk-components-react-radix:SwitchThumb",
             })
           );
           instances.push({
-            id: "animate-text",
-            component: "@webstudio-is/sdk-components-animation:AnimateText",
+            id: "switch-thumb",
+            component: "@webstudio-is/sdk-components-react-radix:SwitchThumb",
             depth: 2,
           });
           return createEnvelope({
             operationId: "instances.insertComponent",
             result: {
-              instanceIds: ["animate-text"],
+              instanceIds: ["switch-thumb"],
               parentInstanceId:
                 isTestRecord(input) &&
                 typeof input.parentInstanceId === "string"
@@ -7090,25 +7017,25 @@ describe("project session mcp adapter", () => {
       input: {
         pagePath: "/design-system",
         parentInstanceId: "body",
-        component: "@webstudio-is/sdk-components-animation:AnimateText",
+        component: "@webstudio-is/sdk-components-react-radix:SwitchThumb",
       },
     });
 
     expect(executeOperation).toHaveBeenNthCalledWith(2, {
       command: "insert-component",
       input: expect.objectContaining({
-        parentInstanceId: "animation-group",
-        component: "@webstudio-is/sdk-components-animation:AnimateText",
+        parentInstanceId: "switch",
+        component: "@webstudio-is/sdk-components-react-radix:SwitchThumb",
       }),
       dryRun: false,
     });
     expect(result.structuredContent.data).toEqual(
       expect.objectContaining({
         inserted: expect.objectContaining({
-          component: "@webstudio-is/sdk-components-animation:AnimateText",
+          component: "@webstudio-is/sdk-components-react-radix:SwitchThumb",
           mode: "component",
         }),
-        parentInstanceId: "animation-group",
+        parentInstanceId: "switch",
       })
     );
   });
