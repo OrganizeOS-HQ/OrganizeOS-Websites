@@ -1,146 +1,31 @@
 import { type FocusEventHandler, useId } from "react";
 import { useStore } from "@nanostores/react";
-import { z } from "zod";
 import {
   Checkbox,
+  cssVar,
   Flex,
   Grid,
   InputErrorsTooltip,
   InputField,
   Label,
   Link,
-  ProBadge,
+  ProChip,
   Select,
   Text,
   Tooltip,
-  rawTheme,
 } from "@webstudio-is/design-system";
-import {
-  homePagePath,
-  pageName,
-  pagePath,
-  projectNewRedirectPath,
-  documentTypes,
-  getPagePath,
-  isLiteralExpression,
-  type Page,
-  type Pages,
-} from "@webstudio-is/sdk";
+import { isLiteralExpression } from "@webstudio-is/expression";
+import { documentTypes, type Pages } from "@webstudio-is/sdk";
 import { HomeIcon, InfoCircleIcon } from "@webstudio-is/icons";
-import {
-  BindingControl,
-  BindingPopover,
-} from "~/builder/shared/binding-popover";
-import { computeExpression } from "~/shared/data-variables";
+import { BindableExpressionControl } from "~/builder/shared/bindable-expression";
 import { $permissions } from "~/shared/nano-states";
-import { $pageRootScope, isPathAvailable } from "../page-utils";
-import { validatePathnamePattern } from "~/builder/shared/url-pattern";
-import {
-  LOOP_ERROR,
-  wouldCreateLoop,
-} from "~/shared/redirects/redirect-loop-detection";
-import type { Errors, OnChange, Values } from "./shared";
+import { $pageRootScope } from "../page-utils";
+import type {
+  PageSettingsErrors,
+  PageSettingsValues,
+} from "@webstudio-is/project-build/runtime";
+import { usePageSettingsText, type OnChange } from "./shared";
 import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
-
-// 2xx, 3xx, 4xx, 5xx
-const statusRegex = /^[2345]\d\d$/;
-const status = z
-  .number()
-  .refine(
-    (value) => statusRegex.test(String(value)),
-    "Status code expects 2xx, 3xx, 4xx or 5xx"
-  );
-
-const generalValues = z.object({
-  name: pageName,
-  path: pagePath,
-  status: status.optional(),
-  redirect: z.optional(projectNewRedirectPath.or(z.literal(""))),
-  documentType: z.optional(z.enum(documentTypes)),
-});
-
-const homePageGeneralValues = generalValues.extend({
-  path: homePagePath,
-});
-
-const computePageRoute = (values: Values, pages: Pages) => {
-  if (values.isHomePage) {
-    return "/";
-  }
-  const foldersPath = getPagePath(values.parentFolderId, pages);
-  return [foldersPath, values.path]
-    .filter(Boolean)
-    .join("/")
-    .replace(/\/+/g, "/");
-};
-
-export const validateGeneralSection = ({
-  pages,
-  pageId,
-  values,
-  variableValues,
-}: {
-  pages: undefined | Pages;
-  pageId: undefined | Page["id"];
-  values: Values;
-  variableValues: Map<string, unknown>;
-}): Errors => {
-  const computedValues = {
-    name: values.name,
-    path: values.path,
-    status: computeExpression(values.status ?? `undefined`, variableValues),
-    redirect: computeExpression(values.redirect, variableValues),
-    documentType: values.documentType,
-  };
-
-  const validator = values.isHomePage ? homePageGeneralValues : generalValues;
-  const parsedResult = validator.safeParse(computedValues);
-  const errors: Errors = {};
-  if (parsedResult.success === false) {
-    Object.assign(errors, parsedResult.error.formErrors.fieldErrors);
-  }
-
-  if (pages !== undefined && values.path !== undefined) {
-    if (
-      isPathAvailable({
-        pages,
-        path: values.path,
-        parentFolderId: values.parentFolderId,
-        pageId,
-      }) === false
-    ) {
-      errors.path = errors.path ?? [];
-      errors.path.push("All paths must be unique");
-    }
-    const messages = validatePathnamePattern(values.path);
-    if (messages.length > 0) {
-      errors.path = errors.path ?? [];
-      errors.path.push(...messages);
-    }
-  }
-
-  if (
-    pages !== undefined &&
-    values.path !== undefined &&
-    computedValues.redirect &&
-    typeof computedValues.redirect === "string" &&
-    computedValues.redirect !== ""
-  ) {
-    const existingRedirects = pages.redirects ?? [];
-    if (
-      wouldCreateLoop(
-        computePageRoute(values, pages),
-        computedValues.redirect,
-        existingRedirects
-      )
-    ) {
-      errors.redirect = errors.redirect ?? [];
-      errors.redirect.push(LOOP_ERROR);
-    }
-  }
-
-  return errors;
-};
 
 const autoSelectHandler: FocusEventHandler<HTMLInputElement> = (event) =>
   event.target.select();
@@ -162,7 +47,7 @@ const PathField = ({
     <Grid gap={1}>
       <Flex align="center" gap={1}>
         <Label htmlFor={id}>Path</Label>
-        {allowDynamicData === false && <ProBadge>{planBadgeLabel}</ProBadge>}
+        {allowDynamicData === false && <ProChip>{planBadgeLabel}</ProChip>}
         <Tooltip
           content={
             <>
@@ -185,7 +70,7 @@ const PathField = ({
           variant="wrapped"
         >
           <InfoCircleIcon
-            color={rawTheme.colors.foregroundSubtle}
+            color={cssVar("--foreground-secondary")}
             tabIndex={-1}
           />
         </Tooltip>
@@ -219,6 +104,13 @@ const StatusField = ({
 }) => {
   const id = useId();
   const { variableValues, scope, aliases } = useStore($pageRootScope);
+  const parseStatus = (value: string) => {
+    if (value === "") {
+      return;
+    }
+    const number = Number(value);
+    return Number.isNaN(number) || String(number) !== value ? value : number;
+  };
   return (
     <Grid gap={1}>
       <Flex align="center" gap={1}>
@@ -241,47 +133,42 @@ const StatusField = ({
           variant="wrapped"
         >
           <InfoCircleIcon
-            color={rawTheme.colors.foregroundSubtle}
+            color={cssVar("--foreground-secondary")}
             tabIndex={-1}
           />
         </Tooltip>
       </Flex>
-      <BindingControl>
-        {showBindingControls && (
-          <BindingPopover
-            scope={scope}
-            aliases={aliases}
-            variant={isLiteralExpression(value) ? "default" : "bound"}
-            value={value}
-            onChange={onChange}
-            onRemove={(evaluatedValue) =>
-              onChange(JSON.stringify(evaluatedValue ?? ""))
-            }
-          />
+      <BindableExpressionControl
+        expression={value ?? ""}
+        value={usePageSettingsText(value, variableValues)}
+        bound={value !== undefined && isLiteralExpression(value) === false}
+        showBinding={showBindingControls}
+        scope={scope}
+        aliases={aliases}
+        onChangeValue={(value) => {
+          const status = parseStatus(value);
+          if (status === undefined) {
+            onChange(undefined);
+            return;
+          }
+          onChange(JSON.stringify(status));
+        }}
+        onChangeExpression={onChange}
+        onRemove={(value) => onChange(JSON.stringify(value ?? ""))}
+        renderControl={({ value, readOnly, onChangeValue }) => (
+          <InputErrorsTooltip errors={errors}>
+            <InputField
+              inputMode="numeric"
+              color={errors && "error"}
+              id={id}
+              placeholder="200"
+              disabled={disabled || readOnly}
+              value={value}
+              onChange={(event) => onChangeValue(event.target.value)}
+            />
+          </InputErrorsTooltip>
         )}
-        <InputErrorsTooltip errors={errors}>
-          <InputField
-            inputMode="numeric"
-            color={errors && "error"}
-            id={id}
-            placeholder="200"
-            disabled={disabled || isLiteralExpression(value) === false}
-            value={String(computeExpression(value, variableValues) ?? "")}
-            onChange={(event) => {
-              if (event.target.value === "") {
-                onChange(undefined);
-              } else {
-                const number = Number(event.target.value);
-                const status =
-                  Number.isNaN(number) || String(number) !== event.target.value
-                    ? event.target.value
-                    : number;
-                onChange(JSON.stringify(status));
-              }
-            }}
-          />
-        </InputErrorsTooltip>
-      </BindingControl>
+      />
     </Grid>
   );
 };
@@ -306,7 +193,7 @@ const RedirectField = ({
     <Grid gap={1}>
       <Flex align="center" gap={1}>
         <Label htmlFor={id}>Redirect </Label>
-        {allowDynamicData === false && <ProBadge>{planBadgeLabel}</ProBadge>}
+        {allowDynamicData === false && <ProChip>{planBadgeLabel}</ProChip>}
         <Tooltip
           content={
             <>
@@ -327,36 +214,35 @@ const RedirectField = ({
           variant="wrapped"
         >
           <InfoCircleIcon
-            color={rawTheme.colors.foregroundSubtle}
+            color={cssVar("--foreground-secondary")}
             tabIndex={-1}
           />
         </Tooltip>
       </Flex>
 
-      <BindingControl>
-        {showBindingControls && (
-          <BindingPopover
-            scope={scope}
-            aliases={aliases}
-            variant={isLiteralExpression(value) ? "default" : "bound"}
-            value={value}
-            onChange={onChange}
-            onRemove={(evaluatedValue) =>
-              onChange(JSON.stringify(evaluatedValue ?? ""))
-            }
-          />
+      <BindableExpressionControl
+        expression={value ?? ""}
+        value={usePageSettingsText(value, variableValues)}
+        bound={value !== undefined && isLiteralExpression(value) === false}
+        showBinding={showBindingControls}
+        scope={scope}
+        aliases={aliases}
+        onChangeValue={(value) => onChange(JSON.stringify(value))}
+        onChangeExpression={onChange}
+        onRemove={(value) => onChange(JSON.stringify(value ?? ""))}
+        renderControl={({ value, readOnly, onChangeValue }) => (
+          <InputErrorsTooltip errors={errors}>
+            <InputField
+              color={errors && "error"}
+              id={id}
+              placeholder="/another-path"
+              disabled={disabled || readOnly}
+              value={value}
+              onChange={(event) => onChangeValue(event.target.value)}
+            />
+          </InputErrorsTooltip>
         )}
-        <InputErrorsTooltip errors={errors}>
-          <InputField
-            color={errors && "error"}
-            id={id}
-            placeholder="/another-path"
-            disabled={disabled || isLiteralExpression(value) === false}
-            value={String(computeExpression(value, variableValues))}
-            onChange={(event) => onChange(JSON.stringify(event.target.value))}
-          />
-        </InputErrorsTooltip>
-      </BindingControl>
+      />
     </Grid>
   );
 };
@@ -371,6 +257,7 @@ export const GeneralSection = ({
   canEditName = true,
   canEditPath = true,
   showHomePageControl = true,
+  canSetHomePage = true,
   showPathField = true,
   showStatusField = true,
   showRedirectField = true,
@@ -379,14 +266,15 @@ export const GeneralSection = ({
   onChange,
 }: {
   autoSelect?: boolean;
-  errors: Errors;
-  values: Values;
+  errors: PageSettingsErrors;
+  values: PageSettingsValues;
   pages: Pages;
   isEditorContext?: boolean;
   nameLabel?: string;
   canEditName?: boolean;
   canEditPath?: boolean;
   showHomePageControl?: boolean;
+  canSetHomePage?: boolean;
   showPathField?: boolean;
   showStatusField?: boolean;
   showRedirectField?: boolean;
@@ -432,9 +320,16 @@ export const GeneralSection = ({
                   “{values.name}” is the home page
                 </Text>
               </>
+            ) : canSetHomePage === false ? (
+              <>
+                <HomeIcon color={cssVar("--foreground-secondary")} />
+                <Text color="subtle">
+                  Stage this page for publish before setting it as the home page
+                </Text>
+              </>
             ) : values.parentFolderId !== pages.rootFolderId ? (
               <>
-                <HomeIcon color={rawTheme.colors.foregroundSubtle} />
+                <HomeIcon color={cssVar("--foreground-secondary")} />
                 <Text
                   css={{
                     overflowWrap: "anywhere",
@@ -449,7 +344,7 @@ export const GeneralSection = ({
               </>
             ) : values.documentType !== "html" ? (
               <>
-                <HomeIcon color={rawTheme.colors.foregroundSubtle} />
+                <HomeIcon color={cssVar("--foreground-secondary")} />
                 <Text
                   css={{
                     overflowWrap: "anywhere",

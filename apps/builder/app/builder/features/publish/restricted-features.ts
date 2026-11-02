@@ -1,12 +1,16 @@
 import type { ReactNode } from "react";
 import {
-  getAllPages,
+  getPublishablePages,
+  hasCustomResponseHeaders,
+  isAssetsResource,
   isPathnamePattern,
   type DataSource,
   type Instance,
   type Pages,
+  type Resources,
 } from "@webstudio-is/sdk";
-import { findPageAndSelectorByInstanceId } from "~/shared/instance-utils/lookup";
+import { findPageAndSelectorByInstanceId } from "@webstudio-is/project-build/runtime";
+import type { ProjectSettings } from "@webstudio-is/project-build";
 
 export type RestrictedFeature =
   | undefined
@@ -24,12 +28,16 @@ export type RestrictedFeaturesPermissions = {
 
 export const getRestrictedFeatures = ({
   pages,
+  projectSettings,
   dataSources,
+  resources,
   instances,
   permissions,
 }: {
   pages: Pages | undefined;
+  projectSettings?: ProjectSettings;
   dataSources: Map<string, DataSource>;
+  resources: Resources;
   instances: Map<string, Instance>;
   permissions: RestrictedFeaturesPermissions;
 }) => {
@@ -37,17 +45,20 @@ export const getRestrictedFeatures = ({
   if (pages === undefined) {
     return features;
   }
+  const publishablePages = getPublishablePages(pages);
+  const publishablePageIds = new Set(publishablePages.map((page) => page.id));
+  const projectMeta = projectSettings?.meta;
   if (
     permissions.maxContactEmailsPerProject === 0 &&
-    (pages.meta?.contactEmail ?? "").trim()
+    (projectMeta?.contactEmail ?? "").trim()
   ) {
     features.set("Custom contact email", undefined);
   }
   if (permissions.allowAuth === false) {
-    if ((pages.meta?.auth ?? "").trim()) {
+    if ((projectMeta?.auth ?? "").trim()) {
       features.set("Project auth", undefined);
     }
-    for (const page of getAllPages(pages)) {
+    for (const page of publishablePages) {
       if (page.meta.auth !== undefined) {
         features.set("Page auth", {
           navigate: {
@@ -60,7 +71,12 @@ export const getRestrictedFeatures = ({
     }
   }
   if (permissions.allowDynamicData === false) {
-    for (const page of getAllPages(pages)) {
+    // Headers share the Pro publishing entitlement used by dynamic pages and
+    // resources. Only changes from the defaults require it.
+    if (hasCustomResponseHeaders(projectMeta?.customHeaders)) {
+      features.set("Custom headers", undefined);
+    }
+    for (const page of publishablePages) {
       const navigate = {
         pageId: page.id,
         instanceSelector: [page.rootInstanceId],
@@ -75,13 +91,23 @@ export const getRestrictedFeatures = ({
     for (const dataSource of dataSources.values()) {
       if (dataSource.type === "resource") {
         const instanceId = dataSource.scopeInstanceId ?? "";
-        features.set("Resource variable", {
-          navigate: findPageAndSelectorByInstanceId(
-            pages,
-            instances,
-            instanceId
-          ),
-        });
+        const navigate = findPageAndSelectorByInstanceId(
+          pages,
+          instances,
+          instanceId
+        );
+        if (publishablePageIds.has(navigate.pageId) === false) {
+          continue;
+        }
+        const resource = resources.get(dataSource.resourceId);
+        features.set(
+          resource !== undefined && isAssetsResource(resource)
+            ? "Assets resource"
+            : "Resource variable",
+          {
+            navigate,
+          }
+        );
       }
     }
   }

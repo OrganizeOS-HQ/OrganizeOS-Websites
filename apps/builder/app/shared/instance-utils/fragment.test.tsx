@@ -1,16 +1,22 @@
 import {
+  fragmentTesting,
   detectFragmentTokenConflicts,
+  detectPageTokenConflicts,
   extractWebstudioFragment,
   insertWebstudioFragmentCopy,
-  detectPageTokenConflicts,
-} from "./fragment";
-import { __testing__ } from "./fragment";
+} from "@webstudio-is/project-build/runtime";
 import { getWebstudioData } from "./data";
 import { enableMapSet } from "immer";
 import { describe, test, expect, beforeEach } from "vitest";
 import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
-import { $, ws, css, renderData, token } from "@webstudio-is/template";
+import {
+  createTemplateComponentFixture,
+  ws,
+  css,
+  renderData,
+  token,
+} from "@webstudio-is/template";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import type {
   Asset,
@@ -46,14 +52,19 @@ import {
   $resources,
 } from "~/shared/sync/data-stores";
 import { registerContainers } from "../sync/sync-stores";
-import { getInstancePath } from "../nano-states";
+import { getInstancePath } from "@webstudio-is/project-build/runtime";
+import { isFragmentContentModeCopyableProp } from "@webstudio-is/project-build/runtime";
+
+const Body = createTemplateComponentFixture("Body");
+const Box = createTemplateComponentFixture("Box");
+const Fragment = createTemplateComponentFixture("Fragment");
+const Slot = createTemplateComponentFixture("Slot");
 
 const {
-  getFragmentContentModeCapabilities,
   getFragmentInstancesData,
   insertFragmentAssetsMutable,
   insertFragmentBreakpointsMutable,
-} = __testing__;
+} = fragmentTesting;
 
 enableMapSet();
 registerContainers();
@@ -234,7 +245,7 @@ describe("fragment copy helpers", () => {
     ]);
     let didMergeDueToLimit = false;
 
-    const mergedBreakpointIds = insertFragmentBreakpointsMutable({
+    const { mergedBreakpointIds } = insertFragmentBreakpointsMutable({
       fragment: createFragment({
         breakpoints: [
           baseBreakpoint,
@@ -242,6 +253,7 @@ describe("fragment copy helpers", () => {
         ],
       }),
       breakpoints,
+      createId: () => "generated-breakpoint",
       onBreakpointLimitMerge: () => {
         didMergeDueToLimit = true;
       },
@@ -286,14 +298,15 @@ describe("fragment copy helpers", () => {
       });
       const { fragmentInstances } = getFragmentInstancesData(fragment);
 
-      const capabilities = getFragmentContentModeCapabilities({
+      const isCopyable = isFragmentContentModeCopyableProp({
+        prop: fragment.props[0],
         fragment,
         fragmentInstances,
         styleSources: new Map(),
+        metas: $registeredComponentMetas.get(),
       });
 
-      expect(capabilities.contentRootIds).toEqual(new Set(["link"]));
-      expect(capabilities.editablePropIds.has("href-prop")).toBe(true);
+      expect(isCopyable).toBe(true);
     } finally {
       $registeredComponentMetas.set(registeredComponentMetas);
     }
@@ -491,6 +504,80 @@ describe("insert webstudio fragment copy", () => {
 
   $project.set({ id: "current_project" } as Project);
 
+  test("copies Form actions with scoped Resource IDs and keeps external IDs", () => {
+    const externalResource = {
+      id: "external-source",
+      scopeInstanceId: "body",
+      type: "resource" as const,
+      name: "Shared request",
+      resourceId: "external-request",
+    };
+    const data = getWebstudioDataStub({
+      dataSources: new Map([[externalResource.id, externalResource]]),
+    });
+    let nextId = 0;
+    const { newInstanceIds, newDataSourceIds } = insertWebstudioFragmentCopy({
+      data,
+      fragment: {
+        ...emptyFragment,
+        instances: [createInstance("form", "ResourceForm", [])],
+        dataSources: [
+          {
+            id: "scoped-source",
+            scopeInstanceId: "form",
+            type: "resource",
+            name: "Form request",
+            resourceId: "scoped-request",
+          },
+        ],
+        resources: [
+          {
+            id: "scoped-request",
+            name: "Form request",
+            method: "post",
+            url: '"https://example.com/submit"',
+            headers: [],
+          },
+        ],
+        props: [
+          {
+            id: "action",
+            instanceId: "form",
+            name: "action",
+            type: "json",
+            value: [
+              { dataSourceId: "scoped-source" },
+              { dataSourceId: "external-source" },
+            ],
+          },
+        ],
+      },
+      availableVariables: [externalResource],
+      projectId: "",
+      createId: () => `copy-${++nextId}`,
+    });
+
+    const copiedFormId = newInstanceIds.get("form");
+    const copiedScopedId = newDataSourceIds.get("scoped-source");
+    expect(copiedFormId).toBeDefined();
+    expect(copiedScopedId).toBeDefined();
+    expect(copiedScopedId).not.toBe("scoped-source");
+    expect(data.dataSources.get(copiedScopedId ?? "")?.scopeInstanceId).toBe(
+      copiedFormId
+    );
+    expect(
+      Array.from(data.props.values()).find(
+        (prop) => prop.instanceId === copiedFormId && prop.name === "action"
+      )
+    ).toMatchObject({
+      type: "json",
+      value: [
+        { dataSourceId: copiedScopedId },
+        { dataSourceId: "external-source" },
+      ],
+    });
+  });
+
   beforeEach(() => {
     $assets.set(new Map());
     $breakpoints.set(new Map());
@@ -504,19 +591,19 @@ describe("insert webstudio fragment copy", () => {
 
   test("duplicate shared slot child in shared slot content", () => {
     const data = renderData(
-      <$.Body ws:id="body">
-        <$.Slot ws:id="slot1">
-          <$.Fragment ws:id="fragment">
+      <Body ws:id="body">
+        <Slot ws:id="slot1">
+          <Fragment ws:id="fragment">
             <ws.element ws:tag="div" ws:id="div"></ws.element>
-          </$.Fragment>
-        </$.Slot>
-        <$.Slot ws:id="slot2">
+          </Fragment>
+        </Slot>
+        <Slot ws:id="slot2">
           {/* same ids */}
-          <$.Fragment ws:id="fragment">
+          <Fragment ws:id="fragment">
             <ws.element ws:tag="div" ws:id="div"></ws.element>
-          </$.Fragment>
-        </$.Slot>
-      </$.Body>
+          </Fragment>
+        </Slot>
+      </Body>
     );
 
     const instancePath =
@@ -555,19 +642,19 @@ describe("insert webstudio fragment copy", () => {
 
   test("copy shared slot child outside keeps copy independent from slot content", () => {
     const data = renderData(
-      <$.Body ws:id="body">
-        <$.Slot ws:id="slot1">
-          <$.Fragment ws:id="fragment">
+      <Body ws:id="body">
+        <Slot ws:id="slot1">
+          <Fragment ws:id="fragment">
             <ws.element ws:tag="div" ws:id="div"></ws.element>
-          </$.Fragment>
-        </$.Slot>
-        <$.Slot ws:id="slot2">
+          </Fragment>
+        </Slot>
+        <Slot ws:id="slot2">
           {/* same ids */}
-          <$.Fragment ws:id="fragment">
+          <Fragment ws:id="fragment">
             <ws.element ws:tag="div" ws:id="div"></ws.element>
-          </$.Fragment>
-        </$.Slot>
-      </$.Body>
+          </Fragment>
+        </Slot>
+      </Body>
     );
 
     const fragment = extractWebstudioFragment(data, "div");
@@ -615,23 +702,23 @@ describe("insert webstudio fragment copy", () => {
 
   test("copy nested shared slot child outside keeps copy independent from slot content", () => {
     const data = renderData(
-      <$.Body ws:id="body">
-        <$.Slot ws:id="slot1">
-          <$.Fragment ws:id="fragment">
+      <Body ws:id="body">
+        <Slot ws:id="slot1">
+          <Fragment ws:id="fragment">
             <ws.element ws:tag="div" ws:id="div">
-              <$.Box ws:id="box"></$.Box>
+              <Box ws:id="box"></Box>
             </ws.element>
-          </$.Fragment>
-        </$.Slot>
-        <$.Slot ws:id="slot2">
+          </Fragment>
+        </Slot>
+        <Slot ws:id="slot2">
           {/* same ids */}
-          <$.Fragment ws:id="fragment">
+          <Fragment ws:id="fragment">
             <ws.element ws:tag="div" ws:id="div">
-              <$.Box ws:id="box"></$.Box>
+              <Box ws:id="box"></Box>
             </ws.element>
-          </$.Fragment>
-        </$.Slot>
-      </$.Body>
+          </Fragment>
+        </Slot>
+      </Body>
     );
 
     const fragment = extractWebstudioFragment(data, "box");
@@ -793,7 +880,9 @@ describe("insert webstudio fragment copy", () => {
       fragment,
       availableVariables: [],
       projectId: "current_project",
+      metas: defaultMetasMap,
       contentMode: true,
+      contentModeCopyableProp: isFragmentContentModeCopyableProp,
     });
     const newInstanceId = newInstanceIds.get("templateBox");
 
@@ -880,7 +969,9 @@ describe("insert webstudio fragment copy", () => {
       fragment,
       availableVariables: [],
       projectId: "current_project",
+      metas: $registeredComponentMetas.get(),
       contentMode: true,
+      contentModeCopyableProp: isFragmentContentModeCopyableProp,
     });
     const newInstanceId = newInstanceIds.get("item");
 
@@ -934,7 +1025,9 @@ describe("insert webstudio fragment copy", () => {
       fragment,
       availableVariables: [],
       projectId: "current_project",
+      metas: defaultMetasMap,
       contentMode: true,
+      contentModeCopyableProp: isFragmentContentModeCopyableProp,
     });
     const newInstanceId = newInstanceIds.get("image");
 
@@ -1772,16 +1865,16 @@ describe("insert webstudio fragment copy", () => {
     });
     expect(Array.from(data.styleSourceSelections.values())).toEqual([
       {
-        instanceId: expect.not.stringMatching("box"),
-        values: [expect.not.stringMatching("localId"), "tokenId"],
+        instanceId: expect.not.stringMatching(/^box$/),
+        values: [expect.not.stringMatching(/^localId$/), "tokenId"],
       },
     ]);
     expect(Array.from(data.styleSources.values())).toEqual([
-      { id: expect.not.stringMatching("localId"), type: "local" },
+      { id: expect.not.stringMatching(/^localId$/), type: "local" },
     ]);
     expect(Array.from(data.styles.values())).toEqual([
       {
-        styleSourceId: expect.not.stringMatching("localId"),
+        styleSourceId: expect.not.stringMatching(/^localId$/),
         breakpointId: "base",
         property: "color",
         value: { type: "keyword", value: "red" },
@@ -2223,8 +2316,8 @@ describe("detectPageTokenConflicts", () => {
 
   test("detectFragmentTokenConflicts returns token style conflicts", () => {
     const targetData = renderData(
-      <$.Body ws:id="body">
-        <$.Box
+      <Body ws:id="body">
+        <Box
           ws:id="existing-box"
           ws:tokens={[
             token(
@@ -2234,15 +2327,15 @@ describe("detectPageTokenConflicts", () => {
               `
             ),
           ]}
-        ></$.Box>
-      </$.Body>
+        ></Box>
+      </Body>
     );
     setDataStores(targetData);
     $pages.set(createDefaultPages({ rootInstanceId: "body" }));
 
     const sourceData = renderData(
-      <$.Body ws:id="source-body">
-        <$.Box
+      <Body ws:id="source-body">
+        <Box
           ws:id="source-box"
           ws:tokens={[
             token(
@@ -2252,12 +2345,16 @@ describe("detectPageTokenConflicts", () => {
               `
             ),
           ]}
-        ></$.Box>
-      </$.Body>
+        ></Box>
+      </Body>
     );
 
     const conflicts = detectFragmentTokenConflicts({
       fragment: extractWebstudioFragment(sourceData, "source-box"),
+      targetData: {
+        ...targetData,
+        pages: createDefaultPages({ rootInstanceId: "body" }),
+      },
     });
 
     expect(conflicts).toHaveLength(1);
@@ -2268,9 +2365,9 @@ describe("detectPageTokenConflicts", () => {
   test("returns empty array when no conflicts exist", () => {
     // Set up target project data (no tokens)
     const targetData = renderData(
-      <$.Body ws:id="body">
-        <$.Box ws:id="existing-box"></$.Box>
-      </$.Body>
+      <Body ws:id="body">
+        <Box ws:id="existing-box"></Box>
+      </Body>
     );
     setDataStores(targetData);
     const pages = createDefaultPages({ rootInstanceId: "body" });
@@ -2278,8 +2375,8 @@ describe("detectPageTokenConflicts", () => {
 
     // Create source data with a token
     const sourceData = renderData(
-      <$.Body ws:id="source-body">
-        <$.Box
+      <Body ws:id="source-body">
+        <Box
           ws:id="source-box"
           ws:tokens={[
             token(
@@ -2289,8 +2386,8 @@ describe("detectPageTokenConflicts", () => {
               `
             ),
           ]}
-        ></$.Box>
-      </$.Body>
+        ></Box>
+      </Body>
     );
     const sourcePages = createDefaultPages({ rootInstanceId: "source-body" });
     const sourceWebstudioData: WebstudioData = {
@@ -2300,6 +2397,7 @@ describe("detectPageTokenConflicts", () => {
 
     const conflicts = detectPageTokenConflicts({
       sourceData: sourceWebstudioData,
+      targetData: { ...targetData, pages },
       pageId: sourcePages.homePageId,
     });
 
@@ -2310,8 +2408,8 @@ describe("detectPageTokenConflicts", () => {
   test("returns conflicts when token conflicts exist", () => {
     // Set up target project with a "primary" token
     const targetData = renderData(
-      <$.Body ws:id="body">
-        <$.Box
+      <Body ws:id="body">
+        <Box
           ws:id="existing-box"
           ws:tokens={[
             token(
@@ -2321,8 +2419,8 @@ describe("detectPageTokenConflicts", () => {
               `
             ),
           ]}
-        ></$.Box>
-      </$.Body>
+        ></Box>
+      </Body>
     );
     setDataStores(targetData);
     const pages = createDefaultPages({ rootInstanceId: "body" });
@@ -2330,8 +2428,8 @@ describe("detectPageTokenConflicts", () => {
 
     // Create source data with same "primary" token but different styles
     const sourceData = renderData(
-      <$.Body ws:id="source-body">
-        <$.Box
+      <Body ws:id="source-body">
+        <Box
           ws:id="source-box"
           ws:tokens={[
             token(
@@ -2341,8 +2439,8 @@ describe("detectPageTokenConflicts", () => {
               `
             ),
           ]}
-        ></$.Box>
-      </$.Body>
+        ></Box>
+      </Body>
     );
     const sourcePages = createDefaultPages({ rootInstanceId: "source-body" });
     const sourceWebstudioData: WebstudioData = {
@@ -2352,6 +2450,7 @@ describe("detectPageTokenConflicts", () => {
 
     const conflicts = detectPageTokenConflicts({
       sourceData: sourceWebstudioData,
+      targetData: { ...targetData, pages },
       pageId: sourcePages.homePageId,
     });
 
@@ -2363,8 +2462,8 @@ describe("detectPageTokenConflicts", () => {
   test("detects conflicts from ROOT_INSTANCE tokens", () => {
     // Set up target project with a "header" token
     const targetData = renderData(
-      <$.Body ws:id="body">
-        <$.Box
+      <Body ws:id="body">
+        <Box
           ws:id="existing-box"
           ws:tokens={[
             token(
@@ -2374,8 +2473,8 @@ describe("detectPageTokenConflicts", () => {
               `
             ),
           ]}
-        ></$.Box>
-      </$.Body>
+        ></Box>
+      </Body>
     );
     setDataStores(targetData);
     const pages = createDefaultPages({ rootInstanceId: "body" });
@@ -2383,9 +2482,9 @@ describe("detectPageTokenConflicts", () => {
 
     // Create source data with a ROOT_INSTANCE that has conflicting "header" token
     const sourceBodyData = renderData(
-      <$.Body ws:id="source-body">
-        <$.Box ws:id="source-box"></$.Box>
-      </$.Body>
+      <Body ws:id="source-body">
+        <Box ws:id="source-box"></Box>
+      </Body>
     );
     // Add a global "header" token with different styles (simulating ROOT_INSTANCE content)
     const headerTokenId = "header-token-id";
@@ -2425,6 +2524,7 @@ describe("detectPageTokenConflicts", () => {
 
     const conflicts = detectPageTokenConflicts({
       sourceData: sourceWebstudioData,
+      targetData: { ...targetData, pages },
       pageId: sourcePages.homePageId,
     });
 
@@ -2434,12 +2534,12 @@ describe("detectPageTokenConflicts", () => {
   });
 
   test("throws error when page not found", () => {
-    const targetData = renderData(<$.Body ws:id="body"></$.Body>);
+    const targetData = renderData(<Body ws:id="body"></Body>);
     setDataStores(targetData);
     const pages = createDefaultPages({ rootInstanceId: "body" });
     $pages.set(pages);
 
-    const sourceData = renderData(<$.Body ws:id="source-body"></$.Body>);
+    const sourceData = renderData(<Body ws:id="source-body"></Body>);
     const sourcePages = createDefaultPages({ rootInstanceId: "source-body" });
     const sourceWebstudioData: WebstudioData = {
       ...sourceData,
@@ -2449,6 +2549,7 @@ describe("detectPageTokenConflicts", () => {
     expect(() =>
       detectPageTokenConflicts({
         sourceData: sourceWebstudioData,
+        targetData: { ...targetData, pages },
         pageId: "non-existent-page-id",
       })
     ).toThrow("Page not found");

@@ -1,3 +1,6 @@
+import { mergeRefs } from "@react-aria/utils";
+import { resolveManagedFormErrorSlot } from "@webstudio-is/sdk";
+import { parseError } from "~/shared/error/error-parse";
 import {
   useEffect,
   forwardRef,
@@ -5,6 +8,8 @@ import {
   useRef,
   useLayoutEffect,
   useMemo,
+  useState,
+  useContext,
   Fragment,
   type ReactNode,
   type JSX,
@@ -13,7 +18,6 @@ import { $getSelection, $isRangeSelection } from "lexical";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { mergeRefs } from "@react-aria/utils";
 import type {
   Instance,
   Instances,
@@ -21,21 +25,15 @@ import type {
   WsComponentMeta,
 } from "@webstudio-is/sdk";
 import {
-  findTreeInstanceIds,
   collectionComponent,
   descendantComponent,
   blockComponent,
+  blockBodyComponent,
   blockTemplateComponent,
-  getIndexesWithinAncestors,
+  getContentBlockSource,
   elementComponent,
 } from "@webstudio-is/sdk";
 import { indexProperty, tagProperty } from "@webstudio-is/sdk/runtime";
-import {
-  checksTagProp,
-  elementTagMayRender,
-  propNameMayRun,
-  withoutPausedProps,
-} from "@organizeos/site-components/org-script";
 import {
   idAttribute,
   componentAttribute,
@@ -46,7 +44,7 @@ import {
   standardAttributesToReactProps,
   getCollectionEntries,
 } from "@webstudio-is/react-sdk";
-import { rawTheme } from "@webstudio-is/design-system";
+import { rawTheme, toast } from "@webstudio-is/design-system";
 import {
   Input,
   Link,
@@ -58,35 +56,84 @@ import {
   $propValuesByInstanceSelectorWithMemoryProps,
   getIndexedInstanceId,
   $registeredComponentMetas,
+  $indexesWithinAncestors,
+  $variableValuesByInstanceSelector,
+  $isDesignMode,
   $selectedInstanceRenderState,
-  findBlockSelector,
   $selectedPageHash,
 } from "~/shared/nano-states";
-import { $props } from "~/shared/sync/data-stores";
+import { $project, $props, $dataSources } from "~/shared/sync/data-stores";
 import { $textEditingInstanceSelector } from "~/shared/nano-states";
 import { $instances } from "~/shared/sync/data-stores";
 import {
   type InstanceSelector,
   areInstanceSelectorsEqual,
-} from "~/shared/instance-utils/tree";
+} from "@webstudio-is/project-build/runtime";
+import { findBlockSelector } from "@webstudio-is/project-build/runtime";
 import { inflateInstance } from "~/canvas/inflator";
 import { getIsVisuallyHidden } from "~/shared/visually-hidden";
-import { serverSyncStore } from "~/shared/sync/sync-stores";
 import { TextEditor } from "../text-editor";
-import { $selectedPage, getInstanceKey } from "~/shared/nano-states";
+import { getInstanceKey } from "~/shared/nano-states";
 import { selectInstance } from "~/shared/nano-states";
 import { $currentSystem } from "~/shared/system";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import {
   createInstanceChildrenElements,
+  createManagedFormErrorElements,
   type WebstudioComponentProps,
 } from "~/canvas/elements";
 import { Block } from "../build-mode/block";
+import { BlockBody } from "../build-mode/block-body";
 import { BlockTemplate } from "../build-mode/block-template";
 import {
   editablePlaceholderAttribute,
   editingPlaceholderVariable,
 } from "~/canvas/shared/styles";
-import { richTextPlaceholders } from "~/shared/content-model";
+import { richTextPlaceholders } from "@webstudio-is/project-build/runtime";
+import {
+  acquireExternalContentRoot,
+  updateExternalContentFrontmatter,
+} from "~/shared/external-content-roots";
+import {
+  $externalContentRoots,
+  findExternalContentRoot,
+  findExternalContentRootEntryBySelector,
+  getExternalContentRoots,
+  resolveExternalContentOccurrence,
+} from "~/shared/external-content-mutations";
+import {
+  getSelectedContentBlockDocumentBindingPath,
+  getFrontmatterWriteTarget,
+} from "~/shared/content-block-document";
+import {
+  formatContentBlockDiagnostic,
+  takeNewContentBlockDiagnostics,
+} from "~/shared/content-block-diagnostics";
+import { resolveContentBlockOccurrenceAssetId } from "~/shared/content-block-source-utils";
+import { $resourcesState } from "~/shared/resources";
+import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
+
+import {
+  PreviewResourceForm,
+  submitManagedFormFromPreview,
+  getPreviewResourceFormProps,
+} from "./preview-resource-form";
+import { getPreviewCurrentUrl } from "./preview-current-url";
+
+const getHtmlEmbedCanvasProps = ({
+  component,
+  isSafeMode,
+  resourcesState,
+}: {
+  component: string;
+  isSafeMode: boolean | undefined;
+  resourcesState: "pending" | "settled";
+}) =>
+  component === "HtmlEmbed"
+    ? {
+        $ws$executeScripts: isSafeMode !== true && resourcesState === "settled",
+      }
+    : {};
 
 const computeComponentKey = (props: Record<string, unknown>) => {
   const assetId = props.$webstudio$canvasOnly$assetId;
@@ -100,28 +147,13 @@ const computeComponentKey = (props: Record<string, unknown>) => {
   );
 };
 
-const getPreviewCurrentUrl = (
-  currentSystem: {
-    pathname: string;
-    search: Record<string, string | undefined>;
-  },
-  hash: string
-) => {
-  // Preview renders inside the builder canvas route, so window.location points
-  // at the builder shell, not the page being previewed. Recreate the page URL
-  // from the selected page system data so :local-link state matches preview
-  // navigation, including query params and hash-only links.
-  const currentUrl = new URL(currentSystem.pathname, "https://webstudio.local");
-  currentUrl.search = new URLSearchParams(
-    Object.entries(currentSystem.search).filter(
-      (entry): entry is [string, string] => entry[1] !== undefined
-    )
-  ).toString();
-  currentUrl.hash = hash;
-  return currentUrl;
+export const __testing__ = {
+  PreviewResourceForm,
+  submitManagedFormFromPreview,
+  computeComponentKey,
+  getPreviewCurrentUrl,
+  getHtmlEmbedCanvasProps,
 };
-
-export const __testing__ = { computeComponentKey, getPreviewCurrentUrl };
 
 const PreviewLinkCurrentUrlProvider = ({
   children,
@@ -233,6 +265,9 @@ const ContentEditable = ({
   return renderComponentWithRef(ref);
 };
 
+// Canvas documents intentionally do not inherit Builder theme variables.
+const canvasErrorColor = "#d13a3a";
+
 const ErrorStub = forwardRef<
   HTMLDivElement,
   {
@@ -245,8 +280,8 @@ const ErrorStub = forwardRef<
       ref={ref}
       style={{
         padding: rawTheme.spacing[5],
-        border: `1px solid ${rawTheme.colors.borderDestructiveMain}`,
-        color: rawTheme.colors.foregroundDestructive,
+        border: `1px solid ${canvasErrorColor}`,
+        color: canvasErrorColor,
       }}
     />
   );
@@ -273,7 +308,16 @@ const InvalidCollectionDataStub = forwardRef<
     <ErrorStub ref={ref} {...props}>
       The Collection component requires an array in the data property. When
       binding external data, it is likely that the array is nested somewhere
-      within, and you need to provide the correct path in the binding.
+      within, and you need to provide the correct path in the binding.{" "}
+      <a
+        style={{ color: "inherit" }}
+        target="_blank"
+        href="https://docs.webstudio.is/university/core-components/collection#whats-an-array"
+        // avoid preventing click by events interceptor
+        onClickCapture={(event) => event.stopPropagation()}
+      >
+        Learn more
+      </a>
     </ErrorStub>
   );
 });
@@ -323,17 +367,6 @@ const getInstanceSelector = (
   return;
 };
 
-const $indexesWithinAncestors = computed(
-  [$registeredComponentMetas, $instances, $selectedPage],
-  (metas, instances, page) => {
-    return getIndexesWithinAncestors(
-      metas,
-      instances,
-      page ? [page.rootInstanceId] : []
-    );
-  }
-);
-
 const useInstanceProps = (instanceSelector: InstanceSelector) => {
   const instanceKey = getInstanceKey(instanceSelector);
   const [instanceId] = instanceSelector;
@@ -354,11 +387,7 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
         const instancePropsObject: Record<Prop["name"], unknown> = {};
         const instance = instances.get(instanceId);
         const tag = instance?.tag;
-        // OrganizeOS fork: org script is paused. A tag the builder does not
-        // offer (script, or JSX syntax), or an SVG animate or set, never
-        // reaches the component that makes an element from it
-        // (docs/ORGANIZEOS-FORK.md section 10).
-        if (tag !== undefined && elementTagMayRender(tag)) {
+        if (tag !== undefined) {
           instancePropsObject[tagProperty] = tag;
         }
         const meta = metas.get(instance?.component ?? "");
@@ -370,24 +399,6 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
         const instanceProps = propValuesByInstanceSelector.get(instanceKey);
         if (instanceProps) {
           for (const [name, value] of instanceProps) {
-            // OrganizeOS fork: org script is paused. A prop that writes raw
-            // markup into the element never reaches it (docs/ORGANIZEOS-FORK.md
-            // section 10).
-            if (propNameMayRun(name) === false) {
-              continue;
-            }
-            // ... and so does a data-ws-tag or tag prop that is not a tag the
-            // builder offers, or is animate or set, once evaluated (an
-            // expression too), on any component but ws:element: Box, Text,
-            // Heading and Dialog Title make their element from it, and a Radix
-            // trigger passes it on to the child it renders (see
-            // withoutPausedProps below)
-            if (
-              checksTagProp(instance?.component ?? "", name) &&
-              elementTagMayRender(value) === false
-            ) {
-              continue;
-            }
             let propName = name;
             // convert html attribute only when component has tags
             // and does not specify own property with this name
@@ -488,7 +499,7 @@ const getEditableComponentPlaceholder = (
     return;
   }
   const isContentBlockChild =
-    undefined !== findBlockSelector(instanceSelector, instances);
+    undefined !== findBlockSelector({ anchor: instanceSelector, instances });
   // The paragraph contains only an "editing" placeholder within the content block.
   if (tag === "p" && isContentBlockChild && mode === "editing") {
     return "Write something or press '/' for commands...";
@@ -496,29 +507,224 @@ const getEditableComponentPlaceholder = (
   return placeholder;
 };
 
-export const WebstudioComponentCanvas = forwardRef<
+const ExternalContentRootLoader = ({
+  instance,
+  instanceSelector,
+  includeUnresolvedTemplatePlaceholders,
+  showDiagnostics,
+}: {
+  instance: Instance;
+  instanceSelector: InstanceSelector;
+  includeUnresolvedTemplatePlaceholders: boolean;
+  showDiagnostics: boolean;
+}) => {
+  const allProps = useStore($props);
+  const project = useStore($project);
+  const variableValues = useStore($variableValuesByInstanceSelector);
+  const externalContentRoots = useStore($externalContentRoots);
+  const renderScope = getInstanceKey(instanceSelector);
+  const source = useMemo(
+    () =>
+      getContentBlockSource({
+        blockInstanceId: instance.id,
+        props: allProps.values(),
+      }),
+    [allProps, instance.id]
+  );
+  const [sourceAssetId, setSourceAssetId] = useState<string>();
+  useEffect(() => {
+    let active = true;
+    if (source === undefined) {
+      setSourceAssetId(undefined);
+      return;
+    }
+    void resolveContentBlockOccurrenceAssetId({
+      source,
+      instanceSelector,
+      variableValuesByRenderScope: variableValues,
+    }).then((assetId) => {
+      if (active) {
+        setSourceAssetId(assetId);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [instanceSelector, source, variableValues]);
+
+  const diagnosticsSnapshot = findExternalContentRoot(
+    externalContentRoots,
+    instance.id,
+    renderScope
+  );
+
+  useEffect(() => {
+    if (showDiagnostics === false) {
+      return;
+    }
+    for (const diagnostic of takeNewContentBlockDiagnostics(
+      diagnosticsSnapshot?.diagnostics ?? [],
+      diagnosticsSnapshot?.identity?.revision
+    )) {
+      toast.warn(formatContentBlockDiagnostic(diagnostic));
+    }
+  }, [
+    diagnosticsSnapshot?.diagnostics,
+    diagnosticsSnapshot?.identity?.revision,
+    showDiagnostics,
+  ]);
+
+  useLayoutEffect(() => {
+    if (project === undefined || sourceAssetId === undefined) {
+      return;
+    }
+    let active = true;
+    const controller = new AbortController();
+    let release: (() => void) | undefined;
+    void acquireExternalContentRoot({
+      projectId: project.id,
+      assetId: sourceAssetId,
+      blockInstanceId: instance.id,
+      renderScope,
+      includeUnresolvedTemplatePlaceholders,
+      signal: controller.signal,
+    })
+      .then((nextRelease) => {
+        if (active === false) {
+          nextRelease();
+          return;
+        }
+        release = nextRelease;
+      })
+      .catch((error) => {
+        if (active) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Unable to load MDX content"
+          );
+        }
+      });
+    return () => {
+      active = false;
+      controller.abort();
+      release?.();
+    };
+  }, [
+    includeUnresolvedTemplatePlaceholders,
+    instance.id,
+    project,
+    renderScope,
+    sourceAssetId,
+  ]);
+  return null;
+};
+
+const getExternalContentInstance = ({
+  sourceInstance,
+  sourceInstanceSelector,
+  instances,
+}: {
+  sourceInstance: Instance;
+  sourceInstanceSelector: InstanceSelector;
+  instances: Instances;
+}) => {
+  const occurrence = resolveExternalContentOccurrence({
+    sourceInstance,
+    sourceSelector: sourceInstanceSelector,
+    instances,
+    roots: getExternalContentRoots(),
+  });
+  return occurrence === undefined
+    ? undefined
+    : { instance: occurrence.instance, instanceSelector: occurrence.selector };
+};
+
+const getUpdatedText = (
+  rootInstanceId: Instance["id"],
+  updates: readonly Instance[]
+) => {
+  const byId = new Map(updates.map((instance) => [instance.id, instance]));
+  const visit = (instanceId: Instance["id"]): string | undefined => {
+    const instance = byId.get(instanceId);
+    if (instance === undefined) {
+      return;
+    }
+    let value = "";
+    for (const child of instance.children) {
+      if (child.type === "expression") {
+        return;
+      }
+      if (child.type === "text") {
+        value += child.value;
+        continue;
+      }
+      const nested = visit(child.value);
+      if (nested === undefined) {
+        return;
+      }
+      value += nested;
+    }
+    return value;
+  };
+  return visit(rootInstanceId);
+};
+
+const getCanvasPageChildren = (
+  instance: Instance,
+  instanceSelector: InstanceSelector,
+  children: ReactNode
+) => {
+  if (
+    instanceSelector.length !== 1 ||
+    instance.component !== elementComponent ||
+    instance.tag !== "body"
+  ) {
+    return children;
+  }
+
+  // React keeps <body> mounted across page changes. Give its authored content
+  // one removable host node so teardown does not visit component-mutated DOM.
+  return <div style={{ display: "contents" }}>{children}</div>;
+};
+
+const WebstudioComponentCanvasInner = forwardRef<
   HTMLElement,
   WebstudioComponentProps
 >(({ instance, instanceSelector, components, ...restProps }, ref) => {
   const instanceId = instance.id;
   const instances = useStore($instances);
+  const dataSources = useStore($dataSources);
   const allProps = useStore($props);
+  const resolvedInstance = resolveManagedFormErrorSlot(
+    instance,
+    instances,
+    dataSources,
+    allProps
+  );
+  const externalContentRoots = useStore($externalContentRoots);
   const metas = useStore($registeredComponentMetas);
+  const resourcesState = useStore($resourcesState);
+  const { isSafeMode } = useContext(ReactSdkContext);
 
   const textEditingInstanceSelector = useStore($textEditingInstanceSelector);
 
   const { [showAttribute]: show = true, ...instanceProps } =
     useInstanceProps(instanceSelector);
-
   const children =
-    getTextContent(instanceProps) ??
-    createInstanceChildrenElements({
-      instances,
-      instanceSelector,
-      children: instance.children,
-      Component: WebstudioComponentCanvas,
-      components,
-    });
+    resolvedInstance !== instance
+      ? createManagedFormErrorElements(
+          resolvedInstance.children[0].value,
+          instanceSelector
+        )
+      : (getTextContent(instanceProps) ??
+        createInstanceChildrenElements({
+          instances,
+          instanceSelector,
+          children: instance.children,
+          Component: WebstudioComponentCanvas,
+          components,
+        }));
   /**
    * Prevents edited element from having a size of 0 on the first render.
    * Directly using `children` in Text Edit
@@ -528,8 +734,7 @@ export const WebstudioComponentCanvas = forwardRef<
 
   useInflateOnNewElement(instanceId);
 
-  // this assumes presence of `useStore($selectedInstanceSelector)` above
-  // we rely on root re-rendering after selected instance changes
+  // The resolved prop store re-renders the root after selection changes.
   useEffect(() => {
     // 1 means root
     if (instanceSelector.length === 1) {
@@ -552,13 +757,6 @@ export const WebstudioComponentCanvas = forwardRef<
 
   if (instance.component === elementComponent) {
     Component = instance.tag ?? "div";
-    // OrganizeOS fork: org script is paused. React hoists a `script` that has
-    // `async` and `src` into <head> and runs it, and an SVG animate or set can
-    // set a link's href to a javascript: URL (docs/ORGANIZEOS-FORK.md
-    // section 10).
-    if (elementTagMayRender(Component) === false) {
-      Component = "div";
-    }
     // replace to enable uncontrolled state
     if (Component === "input") {
       Component = Input as AnyComponent;
@@ -603,20 +801,15 @@ export const WebstudioComponentCanvas = forwardRef<
     Component = Block;
   }
 
+  if (instance.component === blockBodyComponent) {
+    Component = BlockBody;
+  }
+
   if (instance.component === blockTemplateComponent) {
     Component = BlockTemplate;
   }
 
-  // OrganizeOS fork: org script is paused. Every prop this component
-  // receives, its own or passed in by a parent (Radix's Slot merges a
-  // trigger's props onto its child, in restProps, past useInstanceProps), is
-  // checked here: a tag the builder does not offer, an unsafe address, a
-  // srcdoc and an event handler attribute are dropped, by the instance's
-  // component and tag (docs/ORGANIZEOS-FORK.md section 10).
-  const mergedProps = withoutPausedProps(
-    instance,
-    mergeProps(restProps, instanceProps, "delete")
-  );
+  const mergedProps = mergeProps(restProps, instanceProps, "delete");
 
   const props: {
     [componentAttribute]: string;
@@ -624,6 +817,11 @@ export const WebstudioComponentCanvas = forwardRef<
     [selectorIdAttribute]: string;
   } & Record<string, unknown> = {
     ...mergedProps,
+    ...getHtmlEmbedCanvasProps({
+      component: instance.component,
+      isSafeMode,
+      resourcesState,
+    }),
     // current props should override bypassed from parent
     // important for data-ws-* props
     tabIndex: 0,
@@ -648,7 +846,7 @@ export const WebstudioComponentCanvas = forwardRef<
   const instanceElement = (
     <>
       <Component key={key} {...props} ref={ref}>
-        {children}
+        {getCanvasPageChildren(instance, instanceSelector, children)}
       </Component>
     </>
   );
@@ -663,11 +861,37 @@ export const WebstudioComponentCanvas = forwardRef<
     return instanceElement;
   }
 
+  const contentModel = metas.get(instance.component)?.contentModel;
+  const expressionChild =
+    instance.children.length === 1 && instance.children[0].type === "expression"
+      ? instance.children[0]
+      : undefined;
+  const externalEntry = findExternalContentRootEntryBySelector(
+    externalContentRoots,
+    instanceSelector
+  );
+  const candidateRoot = externalEntry?.[1];
+  const frontmatterPath =
+    expressionChild === undefined
+      ? undefined
+      : getSelectedContentBlockDocumentBindingPath({
+          binding: expressionChild,
+          instanceSelector,
+          instances,
+          props: allProps,
+          sourceBlockInstanceId: candidateRoot?.sourceBlockInstanceId,
+          renderedBlockInstanceId: candidateRoot?.blockInstanceId,
+        });
   return (
     <TextEditor
       rootInstanceSelector={instanceSelector}
       instances={instances}
       props={allProps}
+      plainText={
+        frontmatterPath !== undefined ||
+        (contentModel?.children.length === 1 &&
+          contentModel.children[0] === "text")
+      }
       contentEditable={
         <ContentEditable
           placeholder={getEditableComponentPlaceholder(
@@ -678,24 +902,60 @@ export const WebstudioComponentCanvas = forwardRef<
             "editing"
           )}
           renderComponentWithRef={(elementRef) => (
-            <Component {...props} ref={mergeRefs(ref, elementRef)}>
+            <Component
+              {...props}
+              data-ws-text-editing=""
+              ref={mergeRefs(ref, elementRef)}
+            >
               {initialContentEditableContent.current}
             </Component>
           )}
         />
       }
       onChange={(instancesList) => {
-        serverSyncStore.createTransaction([$instances], (instances) => {
-          const deletedTreeIds = findTreeInstanceIds(instances, instance.id);
-          for (const updatedInstance of instancesList) {
-            instances.set(updatedInstance.id, updatedInstance);
-            // exclude reused instances
-            deletedTreeIds.delete(updatedInstance.id);
+        if (frontmatterPath !== undefined) {
+          const value = getUpdatedText(instance.id, instancesList);
+          if (externalEntry === undefined) {
+            toast.error("The MDX content source is not ready for editing.");
+            return;
           }
-          for (const instanceId of deletedTreeIds) {
-            instances.delete(instanceId);
+          const [rootKey, externalRoot] = externalEntry;
+          if (externalRoot.document === undefined) {
+            toast.error("The MDX content source is not ready for editing.");
+            return;
           }
+          if (
+            getFrontmatterWriteTarget({
+              assetId: externalRoot.assetId ?? "",
+              sources: externalRoot.frontmatterSources,
+              value: externalRoot.document.frontmatter.properties,
+              path: frontmatterPath,
+            }) === undefined
+          ) {
+            toast.error("Open the referenced file to edit this value.");
+            return;
+          }
+          if (value === undefined) {
+            toast.error("This frontmatter value must remain plain text.");
+            return;
+          }
+          void updateExternalContentFrontmatter({
+            rootKey,
+            path: frontmatterPath,
+            value,
+          }).catch((error) => {
+            toast.error(parseError(error).message);
+          });
+          return;
+        }
+        const result = executeRuntimeMutation({
+          id: "instances.updateTextTree",
+          input: {
+            rootInstanceId: instance.id,
+            instances: instancesList,
+          },
         });
+        return result?.result.idMap;
       }}
       onSelectInstance={(instanceId) => {
         const instances = $instances.get();
@@ -711,11 +971,57 @@ export const WebstudioComponentCanvas = forwardRef<
   );
 });
 
-export const WebstudioComponentPreview = forwardRef<
+export const WebstudioComponentCanvas = forwardRef<
+  HTMLElement,
+  WebstudioComponentProps
+>(({ instance, instanceSelector, ...props }, ref) => {
+  const instances = useStore($instances);
+  const isDesignMode = useStore($isDesignMode);
+  const externalContent = isDesignMode
+    ? undefined
+    : getExternalContentInstance({
+        sourceInstance: instance,
+        sourceInstanceSelector: instanceSelector,
+        instances,
+      });
+  const renderedInstance = externalContent?.instance ?? instance;
+  const renderedInstanceSelector =
+    externalContent?.instanceSelector ?? instanceSelector;
+  return (
+    <>
+      {instance.component === blockComponent ? (
+        <ExternalContentRootLoader
+          instance={instance}
+          instanceSelector={instanceSelector}
+          includeUnresolvedTemplatePlaceholders={true}
+          showDiagnostics={true}
+        />
+      ) : null}
+      <WebstudioComponentCanvasInner
+        {...props}
+        ref={ref}
+        instance={renderedInstance}
+        instanceSelector={renderedInstanceSelector}
+      />
+    </>
+  );
+});
+
+const WebstudioComponentPreviewInner = forwardRef<
   HTMLElement,
   WebstudioComponentProps
 >(({ instance, instanceSelector, components, ...restProps }, ref) => {
   const instances = useStore($instances);
+  const dataSources = useStore($dataSources);
+  const allProps = useStore($props);
+  const resolvedInstance = resolveManagedFormErrorSlot(
+    instance,
+    instances,
+    dataSources,
+    allProps
+  );
+  const resourcesState = useStore($resourcesState);
+  const { isSafeMode } = useContext(ReactSdkContext);
   const { [showAttribute]: show = true, ...instanceProps } =
     useInstanceProps(instanceSelector);
   const props: {
@@ -723,17 +1029,19 @@ export const WebstudioComponentPreview = forwardRef<
     [idAttribute]: string;
     [selectorIdAttribute]: string;
   } & Record<string, unknown> = {
-    // OrganizeOS fork: org script is paused. A tag, an unsafe address, a
-    // srcdoc and an event handler attribute are dropped from every prop this
-    // component receives (see WebstudioComponentCanvas).
-    ...withoutPausedProps(
-      instance,
-      mergeProps(restProps, instanceProps, "merge")
-    ),
+    ...mergeProps(restProps, instanceProps, "merge"),
+    ...getHtmlEmbedCanvasProps({
+      component: instance.component,
+      isSafeMode,
+      resourcesState,
+    }),
     [idAttribute]: instance.id,
     [componentAttribute]: instance.component,
     [selectorIdAttribute]: instanceSelector.join(","),
   };
+  if (instance.component === "ResourceForm") {
+    Object.assign(props, getPreviewResourceFormProps(instance.id));
+  }
   if (show === false) {
     return <></>;
   }
@@ -769,12 +1077,12 @@ export const WebstudioComponentPreview = forwardRef<
     instance.component
   );
 
+  if (instance.component === "ResourceForm") {
+    Component = PreviewResourceForm as AnyComponent;
+  }
+
   if (instance.component === elementComponent) {
     Component = instance.tag ?? "div";
-    // OrganizeOS fork: org script is paused (see WebstudioComponentCanvas)
-    if (elementTagMayRender(Component) === false) {
-      Component = "div";
-    }
     // replace to enable uncontrolled state
     if (Component === "input") {
       Component = Input as AnyComponent;
@@ -794,6 +1102,10 @@ export const WebstudioComponentPreview = forwardRef<
     Component = Block;
   }
 
+  if (instance.component === blockBodyComponent) {
+    Component = BlockBody;
+  }
+
   if (instance.component === blockTemplateComponent) {
     Component = BlockTemplate;
   }
@@ -804,14 +1116,23 @@ export const WebstudioComponentPreview = forwardRef<
 
   const element = (
     <Component {...props} ref={ref}>
-      {getTextContent(instanceProps) ??
-        createInstanceChildrenElements({
-          instances,
-          instanceSelector,
-          children: instance.children,
-          Component: WebstudioComponentPreview,
-          components,
-        })}
+      {getCanvasPageChildren(
+        instance,
+        instanceSelector,
+        (resolvedInstance !== instance
+          ? createManagedFormErrorElements(
+              resolvedInstance.children[0].value,
+              instanceSelector
+            )
+          : getTextContent(instanceProps)) ??
+          createInstanceChildrenElements({
+            instances,
+            instanceSelector,
+            children: resolvedInstance.children,
+            Component: WebstudioComponentPreview,
+            components,
+          })
+      )}
     </Component>
   );
 
@@ -826,4 +1147,37 @@ export const WebstudioComponentPreview = forwardRef<
   }
 
   return element;
+});
+
+export const WebstudioComponentPreview = forwardRef<
+  HTMLElement,
+  WebstudioComponentProps
+>(({ instance, instanceSelector, ...props }, ref) => {
+  const instances = useStore($instances);
+  const externalContent = getExternalContentInstance({
+    sourceInstance: instance,
+    sourceInstanceSelector: instanceSelector,
+    instances,
+  });
+  const renderedInstance = externalContent?.instance ?? instance;
+  const renderedInstanceSelector =
+    externalContent?.instanceSelector ?? instanceSelector;
+  return (
+    <>
+      {instance.component === blockComponent ? (
+        <ExternalContentRootLoader
+          instance={instance}
+          instanceSelector={instanceSelector}
+          includeUnresolvedTemplatePlaceholders={false}
+          showDiagnostics={false}
+        />
+      ) : null}
+      <WebstudioComponentPreviewInner
+        {...props}
+        ref={ref}
+        instance={renderedInstance}
+        instanceSelector={renderedInstanceSelector}
+      />
+    </>
+  );
 });

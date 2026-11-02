@@ -49,10 +49,13 @@ import {
   $selectedInstanceSelector,
   $selectedPage,
 } from "~/shared/nano-states";
-import { findAllEditableInstanceSelector } from "~/shared/instance-utils/lookup";
-import type { InstanceSelector } from "~/shared/instance-utils/tree";
+import {
+  findAllNavigableTextInstanceSelectors,
+  type InstanceSelector,
+} from "@webstudio-is/project-build/runtime";
 import { getAllElementsByInstanceSelector } from "~/shared/dom-utils";
 import { createComputedStyleDeclStore } from "~/builder/features/style-panel/shared/model";
+import { cssVar, declareCssVar } from "@webstudio-is/design-system";
 
 const userSheet = createRegularStyleSheet({ name: "user-styles" });
 const stateSheet = createRegularStyleSheet({ name: "state-styles" });
@@ -78,10 +81,9 @@ export const editablePlaceholderAttribute = "data-ws-editable-placeholder";
 // @todo replace with modern typed attr() when supported in all browsers
 // see the second edge case
 // https://developer.mozilla.org/en-US/docs/Web/CSS/attr#backwards_compatibility
-export const editingPlaceholderVariable = "--ws-editing-placeholder";
-
-const hasExpressionChildren = (instance: Instance) =>
-  instance.children.some((child) => child.type === "expression");
+export const editingPlaceholderVariable = declareCssVar(
+  "--editing-placeholder"
+);
 
 const helperStylesShared = [
   // Display a placeholder text for elements that are editable but currently empty
@@ -96,7 +98,7 @@ const helperStylesShared = [
     position: relative;
     display: block;
     &:after {
-      content: var(${editingPlaceholderVariable});
+      content: ${cssVar(editingPlaceholderVariable)};
       position: absolute;
       left: 0;
       right: 0;
@@ -199,31 +201,20 @@ const subscribeDesignModeHelperStyles = () => {
  * Groups selectors into chunks to avoid overly long :is() selectors.
  */
 const computeEditableCursorRules = (
-  editableInstanceSelectors: InstanceSelector[],
-  instances: Map<Instance["id"], Instance>
+  editableInstanceSelectors: InstanceSelector[]
 ) => {
   const rules: string[] = [];
   // 20 is arbitrary but keeps selector length reasonable
   const chunkSize = 20;
   for (let i = 0; i < editableInstanceSelectors.length; i += chunkSize) {
-    const chunk = editableInstanceSelectors
-      .slice(i, i + chunkSize)
-      .filter((selector) => {
-        const instance = instances.get(selector[0]);
-        if (instance === undefined) {
-          return false;
-        }
-        // Instances with expression children are not directly editable
-        return hasExpressionChildren(instance) === false;
-      });
-    if (chunk.length === 0) {
-      continue;
-    }
+    const chunk = editableInstanceSelectors.slice(i, i + chunkSize);
     const selectors = chunk.map(
       (selector) => `[${idAttribute}="${selector[0]}"]`
     );
     rules.push(
-      `:is(${selectors.join(", ")}), :is(${selectors.join(", ")}) a { cursor: text; }`
+      `:is(${selectors.join(", ")}), :is(${selectors.join(
+        ", "
+      )}) a { cursor: text; }`
     );
   }
   return rules;
@@ -245,20 +236,17 @@ const subscribeContentEditModeHelperStyles = () => {
     // to better distinguish clickable vs editable elements, needs more investigation
     const rootInstanceId = $selectedPage.get()?.rootInstanceId;
     if (rootInstanceId !== undefined) {
-      const editableInstanceSelectors: InstanceSelector[] = [];
       const instances = $instances.get();
 
-      findAllEditableInstanceSelector({
+      const editableInstanceSelectors = findAllNavigableTextInstanceSelectors({
         instanceSelector: [rootInstanceId],
         instances,
         props: $props.get(),
         metas: $registeredComponentMetas.get(),
-        results: editableInstanceSelectors,
       });
 
       for (const rule of computeEditableCursorRules(
-        editableInstanceSelectors,
-        instances
+        editableInstanceSelectors
       )) {
         helpersSheet.addPlaintextRule(rule);
       }
@@ -918,7 +906,6 @@ export const __testing__ = {
   computeStylesDiff,
   toDeclarationParams,
   toVarValue,
-  hasExpressionChildren,
   renderStateStyles,
   simulateConditionBreakpoints,
   shouldRenderInBackgroundTask,

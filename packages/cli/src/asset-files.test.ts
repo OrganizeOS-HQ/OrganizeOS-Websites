@@ -12,9 +12,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Asset } from "@webstudio-is/sdk";
 import {
+  createLocalAssetDataReader,
+  createLocalUpdateAssetContentInput,
+  downloadAssetFiles,
   getLocalAssetPath,
   materializeAssetFile,
-  uploadAssetFiles,
 } from "./asset-files";
 
 const originalCwd = process.cwd();
@@ -29,12 +31,6 @@ const asset = {
   format: "png",
   size: 6,
   meta: { width: 1, height: 1 },
-} satisfies Asset;
-
-const otherAsset = {
-  ...asset,
-  id: "asset-2",
-  name: "other.png",
 } satisfies Asset;
 
 beforeEach(async () => {
@@ -55,6 +51,62 @@ test("rejects asset paths outside the asset directory", () => {
   expect(() => getLocalAssetPath("folder\\image.png")).toThrow(
     "Asset path escapes .webstudio/assets"
   );
+});
+
+test("creates a local asset data reader", async () => {
+  await mkdir(".webstudio/assets", { recursive: true });
+  await writeFile(".webstudio/assets/image.png", "asset", "utf8");
+
+  const readAssetData = createLocalAssetDataReader(readFile);
+  const data = await readAssetData({ name: "image.png" });
+
+  expect(
+    Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString()
+  ).toBe("asset");
+});
+
+test("creates asset content readers from inline content or a file", async () => {
+  await writeFile("content.json", '{"source":"file"}', "utf8");
+  const fromContent = createLocalUpdateAssetContentInput({
+    assetId: "asset",
+    expectedName: "content_old.json",
+    extension: "json",
+    content: '{"source":"inline"}',
+    readFile,
+  });
+  const fromPath = createLocalUpdateAssetContentInput({
+    assetId: "asset",
+    expectedName: "content_old.json",
+    path: "content.json",
+    readFile,
+  });
+
+  await expect(fromContent.readAssetData()).resolves.toBe(
+    '{"source":"inline"}'
+  );
+  expect(fromContent.extension).toBe("json");
+  await expect(fromPath.readAssetData()).resolves.toEqual(
+    Buffer.from('{"source":"file"}')
+  );
+});
+
+test("requires exactly one asset content source", () => {
+  const base = {
+    assetId: "asset",
+    expectedName: "content_old.json",
+    readFile,
+  };
+
+  expect(() => createLocalUpdateAssetContentInput(base)).toThrow(
+    "requires exactly one"
+  );
+  expect(() =>
+    createLocalUpdateAssetContentInput({
+      ...base,
+      path: "content.json",
+      content: "content",
+    })
+  ).toThrow("requires exactly one");
 });
 
 test("materializes asset files from the synced asset cache before fetching", async () => {
@@ -91,6 +143,59 @@ test("downloads asset files when they are missing from the synced asset cache", 
   expect(fetch).toHaveBeenCalledWith(
     "https://example.com/cgi/image/image.png?format=raw"
   );
+});
+
+test("downloads no more than 10 asset files concurrently", async () => {
+  let active = 0;
+  let peak = 0;
+  const releases: Array<() => void> = [];
+  const fetch = vi.fn(async () => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise<void>((resolve) => releases.push(resolve));
+    active -= 1;
+    return new Response("article");
+  });
+  globalThis.fetch = fetch;
+  const assets = Array.from({ length: 20 }, (_, index) => ({
+    ...asset,
+    id: `article-${index}`,
+    name: `article-${index}.mdx`,
+    type: "file" as const,
+    format: "mdx",
+    meta: {},
+  }));
+
+  const downloading = downloadAssetFiles({
+    assets,
+    origin: "https://example.com",
+  });
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(10));
+  expect(peak).toBe(10);
+  releases.splice(0).forEach((release) => release());
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(20));
+  expect(peak).toBe(10);
+  releases.splice(0).forEach((release) => release());
+  await downloading;
+});
+
+test("retries asset download once after a server error", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(new Response("failed", { status: 500 }))
+    .mockResolvedValueOnce(new Response("downloaded"));
+  globalThis.fetch = fetch;
+
+  await materializeAssetFile({
+    asset,
+    origin: "https://example.com",
+    targetAssetsDirectory: "public/assets",
+  });
+
+  await expect(readFile("public/assets/image.png", "utf8")).resolves.toBe(
+    "downloaded"
+  );
+  expect(fetch).toHaveBeenCalledTimes(2);
 });
 
 test("removes temporary files when asset download fails", async () => {
@@ -164,103 +269,4 @@ test("fails clearly when asset download response has no body", async () => {
 
   await expect(access("public/assets/image.png")).rejects.toThrow();
   await expect(access("public/assets/image.png.tmp")).rejects.toThrow();
-});
-
-test("uploads assets as binary requests", async () => {
-  await mkdir(".webstudio/assets", { recursive: true });
-  await writeFile(".webstudio/assets/image.png", "synced", "utf8");
-  const fetch = vi.fn(
-    async () =>
-      new Response(JSON.stringify({ ok: true }), {
-        headers: { "content-type": "application/json" },
-      })
-  );
-  globalThis.fetch = fetch;
-
-  await uploadAssetFiles({
-    assets: [asset],
-    authToken: "token",
-    origin: "https://apps.webstudio.is",
-    projectId: "project-1",
-  });
-
-  expect(fetch).toHaveBeenCalledOnce();
-  const [, init] = fetch.mock.calls[0] as unknown as [URL, RequestInit];
-  expect(init.body).toBeInstanceOf(Blob);
-  await expect((init.body as Blob).text()).resolves.toBe("synced");
-});
-
-test("retries failed asset uploads once", async () => {
-  await mkdir(".webstudio/assets", { recursive: true });
-  await writeFile(".webstudio/assets/image.png", "synced", "utf8");
-  const fetch = vi
-    .fn()
-    .mockResolvedValueOnce(
-      new Response(JSON.stringify({ errors: "Temporary failure" }), {
-        headers: { "content-type": "application/json" },
-      })
-    )
-    .mockResolvedValueOnce(
-      new Response(JSON.stringify({ ok: true }), {
-        headers: { "content-type": "application/json" },
-      })
-    );
-  globalThis.fetch = fetch;
-
-  await uploadAssetFiles({
-    assets: [asset],
-    authToken: "token",
-    origin: "https://apps.webstudio.is",
-    projectId: "project-1",
-  });
-
-  expect(fetch).toHaveBeenCalledTimes(2);
-});
-
-test("reports all asset uploads that fail after retry", async () => {
-  await mkdir(".webstudio/assets", { recursive: true });
-  await writeFile(".webstudio/assets/image.png", "synced", "utf8");
-  await writeFile(".webstudio/assets/other.png", "other", "utf8");
-  const fetch = vi.fn(
-    async () =>
-      new Response(JSON.stringify({ errors: "Upload failed" }), {
-        headers: { "content-type": "application/json" },
-      })
-  );
-  globalThis.fetch = fetch;
-
-  let message = "";
-  try {
-    await uploadAssetFiles({
-      assets: [asset, otherAsset],
-      authToken: "token",
-      origin: "https://apps.webstudio.is",
-      projectId: "project-1",
-    });
-  } catch (error) {
-    message = error instanceof Error ? error.message : String(error);
-  }
-
-  expect(message).toContain("Failed to upload assets:");
-  expect(message).toContain("image.png: Upload failed");
-  expect(message).toContain("other.png: Upload failed");
-  expect(fetch).toHaveBeenCalledTimes(4);
-});
-
-test("reports missing local asset files with upload failures", async () => {
-  let message = "";
-  try {
-    await uploadAssetFiles({
-      assets: [asset],
-      authToken: "token",
-      origin: "https://apps.webstudio.is",
-      projectId: "project-1",
-    });
-  } catch (error) {
-    message = error instanceof Error ? error.message : String(error);
-  }
-
-  expect(message).toContain("Failed to upload assets:");
-  expect(message).toContain("image.png:");
-  expect(message).toContain("no such file or directory");
 });

@@ -1,19 +1,22 @@
 import { describe, expect, test } from "vitest";
-import type { Prop, PropMeta } from "@webstudio-is/sdk";
+import type {
+  Instance,
+  Prop,
+  PropMeta,
+  WsComponentMeta,
+} from "@webstudio-is/sdk";
+import { blockComponent, contentBlockSourceProp } from "@webstudio-is/sdk";
 import { textContentAttribute } from "@webstudio-is/react-sdk";
 import { __testing__ } from "./use-props-logic";
-import type { ContentModeCapabilities } from "@webstudio-is/project/content-mode-permissions";
+import type { ContentModeCapabilities } from "@webstudio-is/project-build/runtime";
 
-const {
-  isPropVisibleInContentMode,
-  getStartingValue,
-  getDefaultMetaForType,
-  getAndDelete,
-} = __testing__;
+const { isPropVisibleInContentMode, getAndDelete, canShowTextContent } =
+  __testing__;
 
 const getInput = (
   input: Partial<Parameters<typeof isPropVisibleInContentMode>[0]> = {}
 ): Parameters<typeof isPropVisibleInContentMode>[0] => ({
+  component: "Box",
   propName: "title",
   props: [],
   propsMetas: new Map(),
@@ -65,6 +68,52 @@ describe("isPropVisibleInContentMode", () => {
     ).toBe(true);
   });
 
+  test("shows only the exact frontmatter-bound shell property", () => {
+    const title: Prop = {
+      id: "title-prop",
+      instanceId: "editable-instance",
+      name: "title",
+      type: "expression",
+      value: "$ws$dataSource$document.frontmatter.title",
+    };
+    const description: Prop = {
+      id: "description-prop",
+      instanceId: "editable-instance",
+      name: "description",
+      type: "string",
+      value: "Designed description",
+    };
+    const capabilities = {
+      ...getInput().capabilities,
+      editableInstanceIds: new Set<string>(),
+      frontmatterBoundPropIds: new Set([title.id]),
+    };
+
+    expect(
+      isPropVisibleInContentMode(
+        getInput({ props: [title, description], capabilities })
+      )
+    ).toBe(true);
+    expect(
+      isPropVisibleInContentMode(
+        getInput({
+          propName: "description",
+          props: [title, description],
+          capabilities,
+        })
+      )
+    ).toBe(false);
+    expect(
+      isPropVisibleInContentMode(
+        getInput({
+          propName: textContentAttribute,
+          props: [title, description],
+          capabilities,
+        })
+      )
+    ).toBe(false);
+  });
+
   test("shows existing asset props as content", () => {
     const prop: Prop = {
       id: "image-prop",
@@ -88,11 +137,12 @@ describe("isPropVisibleInContentMode", () => {
     ).toBe(true);
   });
 
-  test("shows unset file controls as content-editable asset props", () => {
+  test("uses metadata to expose unset file controls in Content mode", () => {
     const fileMeta: PropMeta = {
       type: "string",
       control: "file",
       required: false,
+      contentMode: true,
     };
 
     expect(
@@ -103,6 +153,77 @@ describe("isPropVisibleInContentMode", () => {
         })
       )
     ).toBe(true);
+  });
+
+  test("does not expose a generic file control without Content mode metadata", () => {
+    expect(
+      isPropVisibleInContentMode(
+        getInput({
+          propName: "upload",
+          propsMetas: new Map([
+            ["upload", { type: "string", control: "file", required: false }],
+          ]),
+        })
+      )
+    ).toBe(false);
+  });
+
+  test("keeps explicitly Design-mode file controls out of Content mode", () => {
+    const fileMeta: PropMeta = {
+      type: "string",
+      control: "file",
+      required: false,
+      contentMode: false,
+    };
+
+    expect(
+      isPropVisibleInContentMode(
+        getInput({
+          propName: "src",
+          propsMetas: new Map([["src", fileMeta]]),
+        })
+      )
+    ).toBe(false);
+  });
+
+  test("shows an existing Content Block source without making it editable", () => {
+    const source: Prop = {
+      id: "source-prop",
+      instanceId: "editable-instance",
+      name: contentBlockSourceProp,
+      type: "asset",
+      value: "post",
+    };
+    const sourceMeta: PropMeta = {
+      type: "string",
+      control: "file",
+      required: false,
+      contentMode: false,
+    };
+
+    expect(
+      isPropVisibleInContentMode(
+        getInput({
+          component: blockComponent,
+          propName: contentBlockSourceProp,
+          props: [source],
+          propsMetas: new Map([[contentBlockSourceProp, sourceMeta]]),
+          capabilities: {
+            ...getInput().capabilities,
+            editableInstanceIds: new Set(),
+          },
+        })
+      )
+    ).toBe(true);
+    expect(
+      isPropVisibleInContentMode(
+        getInput({
+          component: blockComponent,
+          propName: contentBlockSourceProp,
+          propsMetas: new Map([[contentBlockSourceProp, sourceMeta]]),
+        })
+      )
+    ).toBe(false);
   });
 
   test("shows only props marked as content mode in metadata", () => {
@@ -137,130 +258,6 @@ describe("isPropVisibleInContentMode", () => {
   });
 });
 
-describe("getStartingValue", () => {
-  test("returns defaults for primitive editable prop metas", () => {
-    expect(
-      getStartingValue(
-        {
-          type: "string",
-          control: "text",
-          required: false,
-          defaultValue: "Text",
-        },
-        false
-      )
-    ).toEqual({ type: "string", value: "Text" });
-    expect(
-      getStartingValue(
-        {
-          type: "number",
-          control: "number",
-          required: false,
-          defaultValue: 12,
-        },
-        false
-      )
-    ).toEqual({ type: "number", value: 12 });
-    expect(
-      getStartingValue(
-        {
-          type: "boolean",
-          control: "boolean",
-          required: false,
-        },
-        true
-      )
-    ).toEqual({ type: "boolean", value: true });
-  });
-
-  test("returns defaults for list and action metas", () => {
-    expect(
-      getStartingValue(
-        {
-          type: "string[]",
-          control: "multi-select",
-          required: false,
-          options: ["a", "b"],
-        },
-        false
-      )
-    ).toEqual({ type: "string[]", value: [] });
-    expect(
-      getStartingValue(
-        {
-          type: "action",
-          control: "action",
-          required: false,
-        },
-        false
-      )
-    ).toEqual({ type: "action", value: [] });
-  });
-
-  test("does not create a starting value for file controls", () => {
-    expect(
-      getStartingValue(
-        {
-          type: "string",
-          control: "file",
-          required: false,
-        },
-        false
-      )
-    ).toBeUndefined();
-  });
-});
-
-describe("getDefaultMetaForType", () => {
-  test("returns fallback meta for primitive prop types", () => {
-    expect(getDefaultMetaForType("string")).toEqual({
-      type: "string",
-      control: "text",
-      required: false,
-    });
-    expect(getDefaultMetaForType("number")).toEqual({
-      type: "number",
-      control: "number",
-      required: false,
-    });
-    expect(getDefaultMetaForType("boolean")).toEqual({
-      type: "boolean",
-      control: "boolean",
-      required: false,
-    });
-  });
-
-  test("returns fallback meta for known special prop types", () => {
-    expect(getDefaultMetaForType("asset")).toEqual({
-      type: "string",
-      control: "file",
-      required: false,
-    });
-    expect(getDefaultMetaForType("page")).toEqual({
-      type: "string",
-      control: "url",
-      required: false,
-    });
-    expect(getDefaultMetaForType("action")).toEqual({
-      type: "action",
-      control: "action",
-      required: false,
-    });
-  });
-
-  test("throws for prop types that require explicit metadata", () => {
-    expect(() => getDefaultMetaForType("string[]")).toThrow("must have a meta");
-    expect(() => getDefaultMetaForType("json")).toThrow("must have a meta");
-    expect(() => getDefaultMetaForType("expression")).toThrow(
-      "must have a meta"
-    );
-    expect(() => getDefaultMetaForType("parameter")).toThrow(
-      "must have a meta"
-    );
-    expect(() => getDefaultMetaForType("resource")).toThrow("must have a meta");
-  });
-});
-
 describe("getAndDelete", () => {
   test("returns and removes an existing map value", () => {
     const map = new Map([["key", 1]]);
@@ -274,5 +271,91 @@ describe("getAndDelete", () => {
 
     expect(getAndDelete(map, "missing")).toBeUndefined();
     expect(map).toEqual(new Map([["key", 1]]));
+  });
+});
+
+describe("canShowTextContent", () => {
+  const metas = new Map<string, WsComponentMeta>();
+  const props = new Map<string, Prop>();
+
+  test("shows directly selected scalar content inside a rich-text tree", () => {
+    const paragraph: Instance = {
+      type: "instance",
+      id: "paragraph",
+      component: "ws:element",
+      tag: "p",
+      children: [
+        { type: "text", value: "Prefix" },
+        { type: "id", value: "nested" },
+      ],
+    };
+    const instance: Instance = {
+      type: "instance",
+      id: "nested",
+      component: "ws:element",
+      tag: "span",
+      children: [{ type: "text", value: "static" }],
+    };
+    const instances = new Map([
+      [paragraph.id, paragraph],
+      [instance.id, instance],
+    ]);
+    expect(
+      canShowTextContent({
+        instance,
+        instanceSelector: [instance.id, paragraph.id],
+        instances,
+        props,
+        metas,
+        isContentMode: false,
+      })
+    ).toBe(true);
+    const boundInstance: Instance = {
+      ...instance,
+      children: [{ type: "expression", value: "value" }],
+    };
+    expect(
+      canShowTextContent({
+        instance: boundInstance,
+        instanceSelector: [boundInstance.id, paragraph.id],
+        instances: new Map([
+          [paragraph.id, paragraph],
+          [boundInstance.id, boundInstance],
+        ]),
+        props,
+        metas,
+        isContentMode: false,
+      })
+    ).toBe(true);
+  });
+
+  test("preserves existing text eligibility on non-text-capable components", () => {
+    const instance: Instance = {
+      type: "instance",
+      id: "head-slot",
+      component: "HeadSlot",
+      children: [{ type: "text", value: "Legacy text" }],
+    };
+    const metas = new Map<string, WsComponentMeta>([
+      [
+        "HeadSlot",
+        {
+          label: "Head slot",
+          Icon: () => null,
+          contentModel: { category: "instance", children: ["instance"] },
+        } as WsComponentMeta,
+      ],
+    ]);
+
+    expect(
+      canShowTextContent({
+        instance,
+        instanceSelector: [instance.id],
+        instances: new Map([[instance.id, instance]]),
+        props: new Map(),
+        metas,
+        isContentMode: false,
+      })
+    ).toBe(true);
   });
 });

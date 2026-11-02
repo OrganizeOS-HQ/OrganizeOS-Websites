@@ -1,4 +1,5 @@
 import type { AppContext } from "../context/context.server";
+import type { AuthPermit, ProjectPermit } from "./project-permits";
 import type { Role } from "./role";
 import memoize from "memoize";
 import {
@@ -7,10 +8,6 @@ import {
 } from "../context/project-plan.server";
 
 type Relation = Role;
-
-export type AuthPermit = "view" | "edit" | "build" | "admin" | "own";
-
-type TokenAuthPermit = Exclude<AuthPermit, "own">;
 
 type CheckInput = {
   namespace: "Project";
@@ -24,7 +21,7 @@ type CheckInput = {
   };
 };
 
-const permitToRelationRewrite: Record<TokenAuthPermit, Relation[]> = {
+const permitToRelationRewrite: Record<ProjectPermit, Relation[]> = {
   view: ["viewers", "editors", "builders", "administrators"],
   edit: ["editors", "builders", "administrators"],
   build: ["builders", "administrators"],
@@ -103,6 +100,7 @@ const check = async (
     .from("AuthorizationToken")
     .select("token")
     .eq("token", subjectSet.id)
+    .eq("projectId", input.id)
     .in("relation", [...permitToRelationRewrite[input.permit]])
     .maybeSingle();
 

@@ -1,5 +1,11 @@
-import { applyPatches, enableMapSet, enablePatches, type Patch } from "immer";
+import type { Patch } from "immer";
+import { migrateResourceFormInstancesMutable } from "@webstudio-is/project-migrations";
 import {
+  hasHistoricalFormComponentIdentityVersion,
+  migratePages,
+} from "@webstudio-is/project-migrations/pages";
+import {
+  type Asset,
   type Breakpoints,
   breakpoints,
   type Breakpoint,
@@ -27,9 +33,15 @@ import {
   getHomePage,
 } from "@webstudio-is/sdk";
 import {
-  findCycles,
   type MarketplaceProduct,
+  type ProjectSettings,
   marketplaceProduct,
+} from "@webstudio-is/project-build";
+import {
+  findCycles,
+  getPropAssetError,
+} from "@webstudio-is/project-build/runtime";
+import {
   parsePages,
   serializePages,
   parseStyleSourceSelections,
@@ -41,11 +53,13 @@ import {
   parseInstanceData,
   serializeConfig,
   serializeData,
-} from "@webstudio-is/project-build";
+} from "@webstudio-is/project-build/persistence";
+import type {
+  BuilderPatch,
+  BuilderPatchTransaction,
+} from "@webstudio-is/project-build/contracts";
+import { applyBuilderNamespacePatches } from "@webstudio-is/project-build/state";
 import type { Database } from "@webstudio-is/postgrest/index.server";
-
-enableMapSet();
-enablePatches();
 
 type TouchedKeys = {
   keys: Set<string>;
@@ -65,6 +79,23 @@ const addTouchedPatchKeys = (touched: TouchedKeys, patches: Patch[]) => {
       continue;
     }
     touched.keys.add(`${key}`);
+  }
+};
+
+const applyBuildNamespacePatches = <State>(
+  namespace: string,
+  state: State,
+  patches: Parameters<typeof applyBuilderNamespacePatches>[1]
+) => {
+  try {
+    return applyBuilderNamespacePatches(state, patches);
+  } catch (error) {
+    throw new Error(
+      `Cannot apply "${namespace}" patches: ${
+        error instanceof Error ? error.message : String(error)
+      }. Patches: ${JSON.stringify(patches)}`,
+      { cause: error }
+    );
   }
 };
 
@@ -96,11 +127,10 @@ const validateTouchedMap = <Value>(
 
 export type BuildPatchChange = {
   namespace: string;
-  patches: Array<Patch>;
+  patches: BuilderPatch[];
 };
 
-export type BuildPatchTransaction = {
-  id: string;
+export type BuildPatchTransaction = Omit<BuilderPatchTransaction, "payload"> & {
   payload: BuildPatchChange[];
 };
 
@@ -110,6 +140,7 @@ export type BuildPatchUpdateResult =
       update?: Database["public"]["Tables"]["Build"]["Update"];
       nextVersion: number;
       assetPatches: Patch[][];
+      assetFolderPatches: Patch[][];
       previewImageAssetId?: string | null;
     }
   | { status: "version_mismatched"; errors: string }
@@ -127,10 +158,18 @@ export const createBuildPatchUpdate = async ({
   build,
   clientVersion,
   transactions,
+  loadAssets,
 }: {
   build: Database["public"]["Tables"]["Build"]["Row"];
   clientVersion: number;
   transactions: BuildPatchTransaction[];
+  loadAssets: (
+    ids: string[],
+    patches: Patch[]
+  ) => Promise<{
+    assets: Asset[];
+    changedAssetIds: Set<string>;
+  }>;
 }): Promise<BuildPatchUpdateResult> => {
   const lastTransactionId = transactions.at(-1)?.id;
 
@@ -144,7 +183,12 @@ export const createBuildPatchUpdate = async ({
   const serverVersion = build.version;
   if (clientVersion !== serverVersion) {
     if (lastTransactionId === build.lastTransactionId) {
-      return { status: "ok", assetPatches: [], nextVersion: serverVersion };
+      return {
+        status: "ok",
+        assetPatches: [],
+        assetFolderPatches: [],
+        nextVersion: serverVersion,
+      };
     }
 
     return singlePlayerVersionMismatchResult;
@@ -161,6 +205,7 @@ export const createBuildPatchUpdate = async ({
     styleSourceSelections?: StyleSourceSelections;
     styles?: Styles;
     marketplaceProduct?: MarketplaceProduct;
+    projectSettings?: ProjectSettings;
   } = {};
 
   let previewImageAssetId: string | null | undefined = undefined;
@@ -173,6 +218,32 @@ export const createBuildPatchUpdate = async ({
   const touchedStyleSources = createTouchedKeys();
   const touchedStyleSourceSelections = createTouchedKeys();
   const assetPatches: Patch[][] = [];
+  const assetFolderPatches: Patch[][] = [];
+
+  // Persist the identity transition in the same Build update as either namespace.
+  // A pages-only edit must not erase the historical discriminator while Form
+  // instances still depend on it.
+  const touchesFormIdentity = transactions.some((transaction) =>
+    transaction.payload.some(
+      ({ namespace, patches }) =>
+        patches.length > 0 &&
+        (namespace === "pages" || namespace === "instances")
+    )
+  );
+  if (touchesFormIdentity) {
+    const rawPages = parseConfig<unknown>(build.pages);
+    const hasModernFormMarker =
+      hasHistoricalFormComponentIdentityVersion(rawPages);
+    buildData.pages = migratePages(rawPages);
+    buildData.instances = parseInstanceData(build.instances);
+    const changedInstanceIds = migrateResourceFormInstancesMutable(
+      buildData.instances.values(),
+      hasModernFormMarker
+    );
+    for (const instanceId of changedInstanceIds) {
+      touchedInstances.keys.add(instanceId);
+    }
+  }
 
   for (const transaction of transactions) {
     for (const change of transaction.payload) {
@@ -185,7 +256,7 @@ export const createBuildPatchUpdate = async ({
         const pages = buildData.pages ?? parsePages(build.pages);
         const currentSocialImageAssetId =
           getHomePage(pages).meta.socialImageAssetId;
-        buildData.pages = applyPatches(pages, patches);
+        buildData.pages = applyBuildNamespacePatches("pages", pages, patches);
         const newSocialImageAssetId = getHomePage(buildData.pages).meta
           .socialImageAssetId;
         if (currentSocialImageAssetId !== newSocialImageAssetId) {
@@ -194,12 +265,46 @@ export const createBuildPatchUpdate = async ({
         continue;
       }
 
+      if (namespace === "projectSettings") {
+        const projectSettings =
+          buildData.projectSettings ??
+          parseConfig<ProjectSettings>(build.projectSettings);
+        const nextProjectSettings = applyBuildNamespacePatches(
+          "projectSettings",
+          projectSettings,
+          patches
+        );
+        buildData.projectSettings = nextProjectSettings;
+        continue;
+      }
+
       if (namespace === "instances") {
         addTouchedPatchKeys(touchedInstances, patches);
         const instances =
           buildData.instances ?? parseInstanceData(build.instances);
 
-        buildData.instances = applyPatches(instances, patches);
+        const patchedInstances = applyBuildNamespacePatches(
+          "instances",
+          instances,
+          patches
+        );
+
+        // The stored instances were migrated before applying patches. A stale
+        // client may still send Form for a managed form, while an existing
+        // WebhookForm must keep its identity if that client replaces it.
+        let normalizedInstances: Instances | undefined;
+        for (const [instanceId, instance] of patchedInstances) {
+          if (instance.component !== "Form") {
+            continue;
+          }
+          const component =
+            instances.get(instanceId)?.component === "WebhookForm"
+              ? "WebhookForm"
+              : "ResourceForm";
+          normalizedInstances ??= new Map(patchedInstances);
+          normalizedInstances.set(instanceId, { ...instance, component });
+        }
+        buildData.instances = normalizedInstances ?? patchedInstances;
 
         const cycles = findCycles(buildData.instances?.values() ?? []);
         if (cycles.length > 0) {
@@ -220,7 +325,7 @@ export const createBuildPatchUpdate = async ({
       if (namespace === "props") {
         addTouchedPatchKeys(touchedProps, patches);
         const props = buildData.props ?? parseData<Prop>(build.props);
-        buildData.props = applyPatches(props, patches);
+        buildData.props = applyBuildNamespacePatches("props", props, patches);
         continue;
       }
 
@@ -229,12 +334,18 @@ export const createBuildPatchUpdate = async ({
         continue;
       }
 
+      if (namespace === "assetFolders") {
+        assetFolderPatches.push(patches);
+        continue;
+      }
+
       if (namespace === "styleSourceSelections") {
         addTouchedPatchKeys(touchedStyleSourceSelections, patches);
         const styleSourceSelections =
           buildData.styleSourceSelections ??
           parseStyleSourceSelections(build.styleSourceSelections);
-        buildData.styleSourceSelections = applyPatches(
+        buildData.styleSourceSelections = applyBuildNamespacePatches(
+          "styleSourceSelections",
           styleSourceSelections,
           patches
         );
@@ -245,7 +356,11 @@ export const createBuildPatchUpdate = async ({
         addTouchedPatchKeys(touchedStyleSources, patches);
         const styleSources =
           buildData.styleSources ?? parseData<StyleSource>(build.styleSources);
-        buildData.styleSources = applyPatches(styleSources, patches);
+        buildData.styleSources = applyBuildNamespacePatches(
+          "styleSources",
+          styleSources,
+          patches
+        );
         continue;
       }
 
@@ -253,7 +368,11 @@ export const createBuildPatchUpdate = async ({
         addTouchedPatchKeys(touchedStyles, patches);
 
         const styles = buildData.styles ?? parseStyles(build.styles);
-        buildData.styles = applyPatches(styles, patches);
+        buildData.styles = applyBuildNamespacePatches(
+          "styles",
+          styles,
+          patches
+        );
         continue;
       }
 
@@ -261,7 +380,11 @@ export const createBuildPatchUpdate = async ({
         addTouchedPatchKeys(touchedDataSources, patches);
         const dataSources =
           buildData.dataSources ?? parseData<DataSource>(build.dataSources);
-        buildData.dataSources = applyPatches(dataSources, patches);
+        buildData.dataSources = applyBuildNamespacePatches(
+          "dataSources",
+          dataSources,
+          patches
+        );
         continue;
       }
 
@@ -269,7 +392,11 @@ export const createBuildPatchUpdate = async ({
         addTouchedPatchKeys(touchedResources, patches);
         const resources =
           buildData.resources ?? parseData<Resource>(build.resources);
-        buildData.resources = applyPatches(resources, patches);
+        buildData.resources = applyBuildNamespacePatches(
+          "resources",
+          resources,
+          patches
+        );
         continue;
       }
 
@@ -277,7 +404,11 @@ export const createBuildPatchUpdate = async ({
         addTouchedPatchKeys(touchedBreakpoints, patches);
         const breakpoints =
           buildData.breakpoints ?? parseData<Breakpoint>(build.breakpoints);
-        buildData.breakpoints = applyPatches(breakpoints, patches);
+        buildData.breakpoints = applyBuildNamespacePatches(
+          "breakpoints",
+          breakpoints,
+          patches
+        );
         continue;
       }
 
@@ -286,7 +417,8 @@ export const createBuildPatchUpdate = async ({
           buildData.marketplaceProduct ??
           parseConfig<MarketplaceProduct>(build.marketplaceProduct);
 
-        buildData.marketplaceProduct = applyPatches(
+        buildData.marketplaceProduct = applyBuildNamespacePatches(
+          "marketplaceProduct",
           marketplaceProduct,
           patches
         );
@@ -327,6 +459,57 @@ export const createBuildPatchUpdate = async ({
     update.props = serializeData<Prop>(propsData);
   }
 
+  if (buildData.props || buildData.instances || assetPatches.length > 0) {
+    const previousInstances = parseInstanceData(build.instances);
+    const nextInstances = buildData.instances ?? previousInstances;
+    const nextProps = buildData.props ?? parseData<Prop>(build.props);
+    const assetProps = new Map<string, Extract<Prop, { type: "asset" }>>();
+    const changedPropIds = new Set<string>();
+    for (const [id, prop] of nextProps) {
+      if (
+        touchedProps.wholeMap ||
+        touchedProps.keys.has(id) ||
+        nextInstances.get(prop.instanceId)?.component !==
+          previousInstances.get(prop.instanceId)?.component
+      ) {
+        changedPropIds.add(id);
+      }
+      if (
+        prop.type === "asset" &&
+        (changedPropIds.has(id) || assetPatches.length > 0)
+      ) {
+        assetProps.set(id, prop);
+      }
+    }
+    if (assetProps.size > 0) {
+      const loaded = await loadAssets(
+        [...new Set([...assetProps.values()].map((prop) => prop.value))],
+        assetPatches.flat()
+      );
+      const assets = new Map(loaded.assets.map((asset) => [asset.id, asset]));
+      for (const [id, prop] of assetProps) {
+        if (
+          !changedPropIds.has(id) &&
+          !loaded.changedAssetIds.has(prop.value)
+        ) {
+          continue;
+        }
+        const instance = nextInstances.get(prop.instanceId);
+        if (instance === undefined) {
+          continue;
+        }
+        const error = getPropAssetError({
+          instance,
+          prop,
+          asset: assets.get(prop.value),
+        });
+        if (error !== undefined) {
+          return { status: "error", errors: error };
+        }
+      }
+    }
+  }
+
   if (buildData.dataSources) {
     const dataSourcesData = buildData.dataSources;
     validateTouchedMap(dataSources, dataSourcesData, touchedDataSources);
@@ -363,16 +546,25 @@ export const createBuildPatchUpdate = async ({
     update.styles = serializeStyles(stylesData);
   }
 
-  if (buildData.marketplaceProduct) {
-    const marketplaceProductData = buildData.marketplaceProduct;
-    update.marketplaceProduct = serializeConfig<MarketplaceProduct>(
-      marketplaceProduct.parse(marketplaceProductData)
+  if (Object.hasOwn(buildData, "marketplaceProduct")) {
+    update.marketplaceProduct =
+      buildData.marketplaceProduct === undefined
+        ? serializeConfig({})
+        : serializeConfig<MarketplaceProduct>(
+            marketplaceProduct.parse(buildData.marketplaceProduct)
+          );
+  }
+
+  if (buildData.projectSettings) {
+    update.projectSettings = serializeConfig<ProjectSettings>(
+      buildData.projectSettings
     );
   }
 
   return {
     status: "ok",
     assetPatches,
+    assetFolderPatches,
     update,
     nextVersion: clientVersion + 1,
     previewImageAssetId,

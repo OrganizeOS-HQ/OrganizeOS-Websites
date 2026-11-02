@@ -7,36 +7,27 @@ import {
 import {
   applyContentModeTransaction,
   getContentModeCapabilities,
-} from "@webstudio-is/project/content-mode-permissions";
+} from "@webstudio-is/project-build/runtime";
 import {
-  coreMetas,
   type Breakpoint,
   type Prop,
   type StyleSource,
-  type WsComponentMeta,
 } from "@webstudio-is/sdk";
 import {
   parseData,
   parseInstanceData,
-} from "@webstudio-is/project-build/build-parser.server";
-import { parseStyleSourceSelections } from "@webstudio-is/project-build/style-source-selections.server";
-import { parseStyles } from "@webstudio-is/project-build/styles.server";
-import * as baseComponentMetas from "@webstudio-is/sdk-components-react/metas";
-import * as radixComponentMetas from "@webstudio-is/sdk-components-react-radix/metas";
+  parseStyleSourceSelections,
+  parseStyles,
+} from "@webstudio-is/project-build/persistence";
+import { migrateResourceFormInstancesMutable } from "@webstudio-is/project-migrations";
+import { hasHistoricalFormComponentIdentityVersion } from "@webstudio-is/project-migrations/pages";
 import env from "~/env/env.server";
 import { readAccessToken } from "~/services/token.server";
+import { componentMetas } from "~/shared/component-metas.server";
 import type {
   NormalizedPatchRequest,
   PatchEntry,
 } from "./patch-normalize.server";
-
-const componentMetas = new Map<string, WsComponentMeta>(
-  Object.entries({
-    ...coreMetas,
-    ...baseComponentMetas,
-    ...radixComponentMetas,
-  })
-);
 
 export type AuthorizedPatchEntry = {
   entry: PatchEntry;
@@ -131,6 +122,7 @@ const hasProjectPermit = async ({
 };
 
 export const createContentModeCapabilities = (build: {
+  pages: string;
   instances: string;
   props: string;
   styleSources: string;
@@ -138,8 +130,13 @@ export const createContentModeCapabilities = (build: {
   styles: string;
   breakpoints: string;
 }) => {
+  const instances = parseInstanceData(build.instances);
+  migrateResourceFormInstancesMutable(
+    instances.values(),
+    hasHistoricalFormComponentIdentityVersion(JSON.parse(build.pages))
+  );
   return getContentModeCapabilities({
-    instances: parseInstanceData(build.instances),
+    instances,
     metas: componentMetas,
     props: parseData<Prop>(build.props),
     styleSources: parseData<StyleSource>(build.styleSources),

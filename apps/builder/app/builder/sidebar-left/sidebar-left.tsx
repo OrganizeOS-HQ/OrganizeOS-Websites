@@ -1,5 +1,11 @@
 import { useRef, type ReactNode } from "react";
-import { Kbd, rawTheme, Text } from "@webstudio-is/design-system";
+import {
+  cssVar,
+  Kbd,
+  rawTheme,
+  Text,
+  treeActionBoundary,
+} from "@webstudio-is/design-system";
 import { useSubscribe, type Publish } from "~/shared/pubsub";
 import {
   $dragAndDropState,
@@ -221,8 +227,10 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
   const tabsWrapperRef = useRef<HTMLDivElement>(null);
   const returnTabRef = useRef<SidebarPanelName | undefined>(undefined);
 
-  useSubscribe("dragEnd", () => {
-    setActiveSidebarPanel("auto");
+  useSubscribe("dragEnd", ({ isCanceled }) => {
+    if (isCanceled === false) {
+      setActiveSidebarPanel("auto");
+    }
   });
 
   useOnDropEffect(() => {
@@ -279,7 +287,7 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
         <Flex
           grow
           direction="column"
-          css={{ borderRight: `1px solid ${theme.colors.borderMain}` }}
+          css={{ borderRight: `1px solid ${cssVar("--border-default")}` }}
           // OrganizeOS fork: the CMS overlay starts at the rail's right edge.
           ref={registerCmsRail}
         >
@@ -333,11 +341,11 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
         }}
         resizable
         css={{
-          "--sidebar-left-panel-width": `${getSidebarPanelWidth(
+          [treeActionBoundary]: `${getSidebarPanelWidth(
             activePanel,
             activePanelConfig?.defaultWidth
           )}`,
-          width: "var(--sidebar-left-panel-width)",
+          width: cssVar(treeActionBoundary),
           minWidth: theme.sizes.sidebarWidth,
           maxWidth: activePanelConfig?.maxWidth ?? theme.spacing[35],
           // We need the node to be rendered but hidden
@@ -355,7 +363,7 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
             position: "relative",
             height: "100%",
             flexGrow: 1,
-            background: theme.colors.backgroundPanel,
+            background: cssVar("--background-primary"),
           }}
           direction="column"
         >

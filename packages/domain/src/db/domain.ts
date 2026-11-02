@@ -5,8 +5,9 @@ import {
   createErrorResponse,
   getPlanFeaturesByOwnerId,
 } from "@webstudio-is/trpc-interface/index.server";
+import { createId } from "@webstudio-is/sdk";
 import * as projectApi from "@webstudio-is/project/index.server";
-import { unpublishBuild } from "@webstudio-is/project-build/index.server";
+import { unpublishBuild } from "@webstudio-is/project-build/server";
 import { validateDomain } from "./validate";
 import { cnameFromUserId } from "./cname-from-user-id";
 import type { Project } from "@webstudio-is/project";
@@ -69,7 +70,7 @@ export const create = async (
     .from("Domain")
     .upsert(
       {
-        id: crypto.randomUUID(),
+        id: createId(),
         domain,
         status: "INITIALIZING",
       },
@@ -94,7 +95,7 @@ export const create = async (
   }
 
   const domainId = domainRow.data.id;
-  const txtRecord = crypto.randomUUID();
+  const txtRecord = createId();
 
   const result = await context.postgrest.client.from("ProjectDomain").insert({
     domainId,
@@ -230,15 +231,7 @@ export const remove = async (
   await unpublishBuild(
     { projectId: props.projectId, domain: domain.domain },
     context
-  ).catch((error) => {
-    if (
-      error instanceof Error &&
-      error.message === `Domain ${domain.domain} is not published`
-    ) {
-      return;
-    }
-    throw error;
-  });
+  );
 
   const deleteResult = await context.postgrest.client
     .from("ProjectDomain")

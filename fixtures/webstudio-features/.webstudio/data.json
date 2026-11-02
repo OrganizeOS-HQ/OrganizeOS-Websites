@@ -1,5 +1,5 @@
 {
-  "bundleVersion": "bundle-a6dad953",
+  "bundleVersion": "bundle-1sh9iaz",
   "build": {
     "id": "1b66ee06-8ea5-4420-9a0e-e0d3a67aca32",
     "projectId": "cddc1d44-af37-4cb6-a430-d300cf6f932d",
@@ -7,11 +7,6 @@
     "createdAt": "2026-01-15T16:19:55.574+00:00",
     "updatedAt": "2026-01-15T16:19:55.574+00:00",
     "pages": {
-      "meta": {
-        "siteName": "KittyGuardedZone",
-        "faviconAssetId": "7cf5892080fa66b5e6175ffd2d27c304ee6b09ce1f21847a95000225ad1afa59",
-        "code": "<script>console.log('KittyGuardedZone')</script>\n"
-      },
       "homePageId": "7Db64ZXgYiRqKSQNR-qTQ",
       "rootFolderId": "root",
       "pages": [
@@ -3263,7 +3258,7 @@
           "instanceId": "zJkrskDJhaEk-nOSRWrGg",
           "name": "data",
           "type": "expression",
-          "value": "[\n  {\n    \"path\": \"/\",\n    \"lastModified\": \"2024-05-07\"\n  },\n  {\n    \"path\": \"/olegs-test\",\n    \"lastModified\": \"2024-05-07\"\n  }\n]"
+          "value": "[\n  {\n    \"path\": \"/\",\n    \"lastModified\": \"2024-05-07\"\n  },\n  {\n    \"path\": \"/acme-test\",\n    \"lastModified\": \"2024-05-07\"\n  }\n]"
         }
       ],
       [
@@ -4765,7 +4760,7 @@
         {
           "type": "instance",
           "id": "isNSM3wXcnHFikwNPlEOL",
-          "component": "Form",
+          "component": "WebhookForm",
           "label": "Form with custom props",
           "children": [
             {
@@ -4913,7 +4908,7 @@
         {
           "type": "instance",
           "id": "-1RvizaBcVpHsjvnYxn1c",
-          "component": "Form",
+          "component": "WebhookForm",
           "label": "Default form",
           "children": [
             {
@@ -6878,13 +6873,27 @@
           "id": "oIYuHoIwG7GM5J9cCSsai",
           "name": "assets",
           "control": "system",
-          "method": "get",
+          "method": "post",
           "url": "\"/$resources/assets\"",
           "searchParams": [],
-          "headers": []
+          "headers": [
+            {
+              "name": "Content-Type",
+              "value": "\"application/json\""
+            }
+          ],
+          "body": "{\n  query: ({\n    output: {\n        mode: \"fields\",\n        includeMetadata: false,\n        fields: [[\"url\"], [\"width\"], [\"height\"]],\n      },\n    content: {\n        mode: \"none\",\n      },\n    result: \"many\",\n    where: {\n        all: [],\n      },\n    sort: [],\n    limit: 1000,\n    offset: 0,\n  }),\n}"
         }
       ]
     ],
+    "projectSettings": {
+      "meta": {
+        "siteName": "KittyGuardedZone",
+        "faviconAssetId": "7cf5892080fa66b5e6175ffd2d27c304ee6b09ce1f21847a95000225ad1afa59",
+        "code": "<script>console.log('KittyGuardedZone')</script>\n"
+      },
+      "compiler": {}
+    },
     "deployment": {
       "destination": "saas",
       "domains": ["webstudio-fixture-project-a-0su3o"],
@@ -7224,9 +7233,25 @@
       "size": 19680,
       "name": "e-mail-39993_vrxyjxQv3j67Krs62Vz7Y.mp3",
       "createdAt": "2026-01-14T01:59:48.958+00:00",
+      "updatedAt": "2026-01-14T01:59:48.958+00:00",
       "format": "mp3",
       "meta": {},
       "type": "file"
+    },
+    {
+      "id": "42e55b0464790758b9352d675cf28fadfcf8a3259fc1e890100617d3e731be88",
+      "projectId": "cddc1d44-af37-4cb6-a430-d300cf6f932d",
+      "size": 377924,
+      "name": "cabinsketch-bold_TLCbytfxf8ENHwZ6ze3Jj.ttf",
+      "createdAt": "2026-01-14T01:10:46.647+00:00",
+      "updatedAt": "2026-01-14T01:10:46.647+00:00",
+      "format": "ttf",
+      "meta": {
+        "family": "CabinSketch",
+        "style": "normal",
+        "weight": 700
+      },
+      "type": "font"
     },
     {
       "id": "4afe692f78ec0530e355a551a3860302c4478037db7b25a3bdae82c32c78634d",
@@ -7234,9 +7259,13 @@
       "size": 901185,
       "name": "webm-example_2r_6VmRBjhAy3ldaqz0gk.webm",
       "createdAt": "2026-01-14T02:59:19.806+00:00",
+      "updatedAt": "2026-01-14T02:59:19.806+00:00",
       "format": "webm",
-      "meta": {},
-      "type": "file"
+      "meta": {
+        "width": 480,
+        "height": 270
+      },
+      "type": "video"
     },
     {
       "id": "7cf5892080fa66b5e6175ffd2d27c304ee6b09ce1f21847a95000225ad1afa59",
@@ -7244,6 +7273,7 @@
       "size": 268326,
       "name": "cat_silhouette_BDpTbUFSpVbfUWQZNxbBG.png",
       "createdAt": "2025-06-20T17:59:02.94+00:00",
+      "updatedAt": "2025-06-20T17:59:02.94+00:00",
       "format": "png",
       "meta": {
         "width": 790,
@@ -7257,6 +7287,7 @@
       "size": 2906,
       "name": "small-avif-kitty_FnabJsioMWpBtXZSGf4DR.webp",
       "createdAt": "2023-09-12T09:44:22.12+00:00",
+      "updatedAt": "2023-09-12T09:44:24.24+00:00",
       "format": "webp",
       "meta": {
         "width": 100,
@@ -7270,9 +7301,13 @@
       "size": 170479,
       "name": "video_QamtUWsD-ShifhzZLoNIv_ald_1xtyEb3uHhFb7nCQa.mp4",
       "createdAt": "2026-01-14T02:59:28.168+00:00",
+      "updatedAt": "2026-01-14T02:59:28.168+00:00",
       "format": "mp4",
-      "meta": {},
-      "type": "file"
+      "meta": {
+        "width": 202,
+        "height": 360
+      },
+      "type": "video"
     },
     {
       "id": "cd939c56-bcdd-4e64-bd9c-567a9bccd3da",
@@ -7280,6 +7315,7 @@
       "size": 210614,
       "name": "_937084ed-a798-49fe-8664-df93a2af605e_uiBk3o6UWdqolyakMvQJ9.jpeg",
       "createdAt": "2023-09-06T11:28:43.031+00:00",
+      "updatedAt": "2023-09-06T11:28:46.868+00:00",
       "format": "jpeg",
       "meta": {
         "width": 1024,
@@ -7288,10 +7324,56 @@
       "type": "image"
     }
   ],
+  "assetFolders": [],
   "user": {
-    "email": "hello@webstudio.is"
+    "email": "hello@webstudio.is",
+    "username": "admin"
   },
   "projectDomain": "webstudio-fixture-project-a-0su3o",
   "projectTitle": "webstudio-fixture-project-a",
+  "assetIndex": {
+    "format": "webstudio-content-database",
+    "version": 1,
+    "assetRevision": "sha256:55e51683a123fa9724ffe8c4e71de1e342708975690008480005002d2c1e739e",
+    "documents": [
+      {
+        "_id": "2b151fc7b4b0324e6ab78c40f72c7f59273f81fb1be3d08b3f9976428601b95e"
+      },
+      {
+        "_id": "42e55b0464790758b9352d675cf28fadfcf8a3259fc1e890100617d3e731be88"
+      },
+      {
+        "_id": "4afe692f78ec0530e355a551a3860302c4478037db7b25a3bdae82c32c78634d"
+      },
+      {
+        "_id": "7cf5892080fa66b5e6175ffd2d27c304ee6b09ce1f21847a95000225ad1afa59"
+      },
+      {
+        "_id": "9a8bc926-7804-4d3f-af81-69196b1d2ed8"
+      },
+      {
+        "_id": "cbf6b1b052e52b256cef54a032a546bf43bf3f5441be4d1c5eeaabce26903d78"
+      },
+      {
+        "_id": "cd939c56-bcdd-4e64-bd9c-567a9bccd3da"
+      }
+    ],
+    "fieldCatalog": {
+      "format": "webstudio-builder-asset-field-catalog",
+      "version": 1,
+      "canonicalRevision": "sha256:55e51683a123fa9724ffe8c4e71de1e342708975690008480005002d2c1e739e",
+      "documentCount": 7,
+      "fields": {}
+    },
+    "database": {
+      "maxBytes": 512000,
+      "unboundedBytes": 1023,
+      "sourceDocumentCount": 7
+    },
+    "integrity": {
+      "algorithm": "sha256",
+      "checksum": "sha256:8ec5939a945f85326475b8351e5a343e82b9c6971c490550a9e2dd4079503225"
+    }
+  },
   "origin": "https://main.development.webstudio.is"
 }

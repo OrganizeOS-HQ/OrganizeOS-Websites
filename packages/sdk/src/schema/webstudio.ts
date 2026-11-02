@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { asset, type Assets } from "./assets";
+import type { AssetFolders } from "./asset-folders";
 import { dataSource, type DataSources } from "./data-sources";
 import { resource, type Resources } from "./resources";
 import { instance, instanceChild, type Instances } from "./instances";
@@ -28,6 +29,7 @@ export const webstudioFragment = z.object({
   styleSourceSelections: z.array(styleSourceSelection),
   styleSources: z.array(styleSource),
   styles: z.array(styleDecl),
+  referenceTokenIds: z.array(z.string()).optional(),
 });
 
 export type WebstudioFragment = z.infer<typeof webstudioFragment>;
@@ -40,6 +42,7 @@ export type WebstudioFragment = z.infer<typeof webstudioFragment>;
 export type WebstudioData = {
   pages: Pages;
   assets: Assets;
+  assetFolders?: AssetFolders;
   dataSources: DataSources;
   resources: Resources;
   instances: Instances;

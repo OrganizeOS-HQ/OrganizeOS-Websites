@@ -1,6 +1,6 @@
 import { renderToString } from "react-dom/server";
 import { type LoaderFunctionArgs, redirect } from "react-router";
-import { isLocalResource, loadResources } from "@webstudio-is/sdk/runtime";
+import { isLocalResource, loadResources, getSystemSearch } from "@webstudio-is/sdk/runtime";
 import { authenticateRequest } from "@webstudio-is/wsauth";
 import {
   ReactSdkContext,
@@ -10,9 +10,8 @@ import { Page, breakpoints, siteName } from "__CLIENT__";
 import { getPageMeta, getRemixParams, getResources } from "__SERVER__";
 import { assetBaseUrl, imageLoader } from "__CONSTANTS__";
 import { sitemap } from "__SITEMAP__";
-import { assets } from "__ASSETS__";
 import { authRoutes } from "__AUTH__";
-import { siteResourceCache } from "../organizeos-resource-cache";
+import { createGeneratedAssetResourceFetch } from "__ASSET_QUERY_RUNTIME__";
 
 /**
  * A realm the browser can show to the site's own visitors.
@@ -97,17 +96,7 @@ const customFetch: typeof fetch = (input, init) => {
     return Promise.resolve(response);
   }
 
-  if (isLocalResource(input, "assets")) {
-    const response = new Response(JSON.stringify(assets));
-    response.headers.set("content-type", "application/json; charset=utf-8");
-    return Promise.resolve(response);
-  }
-
-  // OrganizeOS fork: through the site's in-memory resource cache
-  // (organizeos-resource-cache.ts), one per server instance for every route,
-  // which keeps each response only as long as its own Cache-Control allows.
-  // Behind it is the global fetch, as before.
-  return siteResourceCache(input, init);
+  return fetch(input, init);
 };
 
 export const loader = async (arg: LoaderFunctionArgs) => {
@@ -125,14 +114,30 @@ export const loader = async (arg: LoaderFunctionArgs) => {
 
   const system = {
     params,
-    search: Object.fromEntries(url.searchParams),
+    ...getSystemSearch(url.searchParams),
     origin: url.origin,
     pathname: url.pathname,
   };
 
+  const generatedFetch = await createGeneratedAssetResourceFetch({
+    request: arg.request,
+    context: arg.context,
+    fallback: customFetch,
+  });
   const resources = await loadResources(
-    customFetch,
-    getResources({ system }).data
+    generatedFetch,
+    getResources({ system }).data,
+    url,
+    { signal: arg.request.signal }
+  );
+  Object.assign(
+    resources,
+    await loadResources(
+      generatedFetch,
+      getResources({ system, resources }).contentData ?? new Map(),
+      url,
+      { signal: arg.request.signal }
+    )
   );
   const pageMeta = getPageMeta({ system, resources });
 
@@ -174,12 +179,6 @@ export const loader = async (arg: LoaderFunctionArgs) => {
       "Content-Type": "application/xml",
       "Cache-Control":
         authRoute === undefined ? "public, max-age=600" : "private, no-store",
-      // OrganizeOS fork: an XML element can be a script in another namespace,
-      // so the page answers sandboxed and is never read as another type, and
-      // nothing it carries runs on the org host (docs/ORGANIZEOS-FORK.md
-      // section 8). Crawlers and feed readers ignore the policy.
-      "Content-Security-Policy": "sandbox",
-      "X-Content-Type-Options": "nosniff",
     },
   });
 };

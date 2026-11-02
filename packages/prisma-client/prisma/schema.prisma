@@ -35,20 +35,54 @@ model File {
   isDeleted         Boolean      @default(false)
   uploaderProject   Project?     @relation(fields: [uploaderProjectId], references: [id])
   uploaderProjectId String?
+  contentHash       String?      @db.VarChar(64)
   assets            Asset[]
 }
 
 model Asset {
-  id               String             @default(uuid()) // not unique!
+  id               String              @default(uuid()) // not unique!
   projectId        String
-  file             File               @relation(fields: [name], references: [name])
+  file             File                @relation(fields: [name], references: [name])
   name             String
   filename         String?
   description      String?
+  folderId         String?
+  folder           AssetFolder?        @relation(fields: [folderId, projectId], references: [id, projectId], onDelete: NoAction)
+  // The child primary key permits one row. Prisma represents this as a list
+  // because the relation field order differs from the project-first key and a
+  // singular relation would require a redundant reverse-order unique index.
+  fileMetadata     AssetFileMetadata[]
   Project          Project[]
   DashboardProject DashboardProject[]
 
   @@id([id, projectId])
+}
+
+model AssetFileMetadata {
+  projectId          String
+  assetId            String
+  revision           String
+  document           Json
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  asset              Asset    @relation(fields: [assetId, projectId], references: [id, projectId], onDelete: Cascade)
+
+  @@id([projectId, assetId])
+}
+
+model AssetFolder {
+  id        String        @default(uuid())
+  projectId String
+  project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  parentId  String?
+  parent    AssetFolder?  @relation("AssetFolderChildren", fields: [parentId, projectId], references: [id, projectId], onDelete: NoAction)
+  children  AssetFolder[] @relation("AssetFolderChildren")
+  assets    Asset[]
+  createdAt DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@id([id, projectId])
+  @@index([projectId, parentId])
 }
 
 model User {
@@ -149,6 +183,7 @@ model Project {
   build                     Build[]
   isDeleted                 Boolean                      @default(false)
   files                     File[]
+  assetFolders              AssetFolder[]
   projectDomain             ProjectDomain[]
   authorizationToken        AuthorizationToken[]
   previewImageAsset         Asset?                       @relation(fields: [previewImageAssetId, id], references: [id, projectId])
@@ -197,6 +232,7 @@ model Build {
   resources             String @default("[]")
   instances             String @default("[]")
   marketplaceProduct    String @default("{}")
+  projectSettings       String @default("{\"meta\":{},\"compiler\":{}}")
 
   deployment    String?
   publishStatus PublishStatus @default(PENDING)
@@ -223,8 +259,9 @@ model AuthorizationToken {
   relation  AuthorizationRelation @default(viewers)
   createdAt DateTime              @default(now()) @db.Timestamptz(3)
 
-  canClone Boolean @default(true)
-  canCopy  Boolean @default(true)
+  canClone  Boolean @default(true)
+  canCopy   Boolean @default(true)
+  canUseApi Boolean @default(false)
 
   @@id([token, projectId])
   @@unique([token])
@@ -286,12 +323,12 @@ view LatestStaticBuildPerProject {
 }
 
 model Workspace {
-  id        String    @id @default(uuid())
+  id        String            @id @default(uuid())
   name      String
-  isDefault Boolean   @default(false)
-  isDeleted Boolean   @default(false)
-  createdAt DateTime  @default(now()) @db.Timestamptz(3)
-  user      User      @relation(fields: [userId], references: [id])
+  isDefault Boolean           @default(false)
+  isDeleted Boolean           @default(false)
+  createdAt DateTime          @default(now()) @db.Timestamptz(3)
+  user      User              @relation(fields: [userId], references: [id])
   userId    String
   projects  Project[]
   members   WorkspaceMember[]
@@ -304,7 +341,7 @@ model WorkspaceMember {
   workspace   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   workspaceId String
   userId      String
-  relation    AuthorizationRelation  @default(administrators)
+  relation    AuthorizationRelation @default(administrators)
   createdAt   DateTime              @default(now()) @db.Timestamptz(3)
   removedAt   DateTime?             @db.Timestamptz(3)
 

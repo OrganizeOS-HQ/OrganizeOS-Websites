@@ -2,14 +2,10 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const env = vi.hoisted(() => ({
   TRPC_SERVER_API_TOKEN: undefined as string | undefined,
-  POSTGREST_URL: "http://localhost:3000",
+  POSTGREST_URL: "http://test-postgrest",
   POSTGREST_API_KEY: "",
   PUBLISHER_HOST: "wstd.work",
-  ORGANIZEOS_SSO_PUBLIC_KEY: undefined as string | undefined,
-  ORGANIZEOS_SESSION_BINDING: "observe" as "observe" | "enforce",
 }));
-
-const rpc = vi.hoisted(() => vi.fn());
 
 const authenticator = vi.hoisted(() => ({
   isAuthenticated: vi.fn(),
@@ -56,10 +52,6 @@ vi.mock("@webstudio-is/plans/index.server", () => ({
   getPlanInfo: vi.fn(),
 }));
 
-vi.mock("@webstudio-is/postgrest/index.server", () => ({
-  createClient: vi.fn(() => ({ rpc })),
-}));
-
 vi.mock("~/services/session.server", () => ({
   readLoginSessionBloomFilter: vi.fn(),
 }));
@@ -69,24 +61,21 @@ vi.mock("./router-utils", () => ({
   isCanvas,
 }));
 
-vi.mock("@webstudio-is/http-client", () => ({
-  parseBuilderUrl: vi.fn(),
-}));
+import { createTestServer, db, json } from "@webstudio-is/postgrest/testing";
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import { procedure, router } from "@webstudio-is/trpc-interface/index.server";
+import { createContext, extractAuthFromRequest } from "./context.server";
 
-import { extractAuthFromRequest } from "./context.server";
-import { resetOrganizeosBindingCache } from "~/services/auth-strategy/organizeos-session.server";
+const server = createTestServer();
 
 describe("extractAuthFromRequest", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     env.TRPC_SERVER_API_TOKEN = undefined;
     authenticator.isAuthenticated.mockResolvedValue(undefined);
     builderAuthenticator.isAuthenticated.mockResolvedValue(undefined);
     isBuilder.mockReturnValue(false);
     isCanvas.mockReturnValue(false);
-    env.ORGANIZEOS_SSO_PUBLIC_KEY = undefined;
-    env.ORGANIZEOS_SESSION_BINDING = "observe";
-    rpc.mockReset();
-    resetOrganizeosBindingCache();
   });
 
   test("does not treat an empty service token as service authorization", async () => {
@@ -109,54 +98,84 @@ describe("extractAuthFromRequest", () => {
     const auth = await extractAuthFromRequest(request);
 
     expect(auth.isServiceCall).toBe(true);
+    expect(authenticator.isAuthenticated).not.toHaveBeenCalled();
   });
 
-  describe("OrganizeOS session binding", () => {
-    const boundSession = {
-      userId: "builder-user",
-      createdAt: 1,
-      organizeosSid: "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b",
-      organizeosUserId: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
-    };
+  test("prefers an explicit token without reading the cookie session", async () => {
+    const request = new Request("https://webstudio.is/trpc", {
+      headers: { "x-auth-token": "project-token" },
+    });
 
-    test.each([
-      ["dashboard", false],
-      ["builder", true],
-    ])(
-      "a dead binding reads as no %s session under enforce",
-      async (_label, builder) => {
-        env.ORGANIZEOS_SSO_PUBLIC_KEY = "pem";
-        env.ORGANIZEOS_SESSION_BINDING = "enforce";
-        isBuilder.mockReturnValue(builder);
-        authenticator.isAuthenticated.mockResolvedValue(boundSession);
-        builderAuthenticator.isAuthenticated.mockResolvedValue(boundSession);
-        rpc.mockResolvedValue({ data: false, error: null });
-        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const auth = await extractAuthFromRequest(request);
 
-        const auth = await extractAuthFromRequest(
-          new Request("https://webstudio.is/trpc")
-        );
+    expect(auth.authToken).toBe("project-token");
+    expect(auth.sessionData).toBeUndefined();
+    expect(authenticator.isAuthenticated).not.toHaveBeenCalled();
+  });
 
-        expect(auth.sessionData).toBeNull();
-        expect(rpc).toHaveBeenCalledWith("websites2_sso_session_live", {
-          p_session_id: boundSession.organizeosSid,
-          p_user_id: boundSession.organizeosUserId,
-        });
-        warn.mockRestore();
-      }
+  test("reads the cookie session when no explicit credential is available", async () => {
+    const sessionData = { userId: "user-1", createdAt: 1 };
+    authenticator.isAuthenticated.mockResolvedValue(sessionData);
+
+    const auth = await extractAuthFromRequest(
+      new Request("https://webstudio.is/trpc")
     );
 
-    test("a live binding keeps the session", async () => {
-      env.ORGANIZEOS_SSO_PUBLIC_KEY = "pem";
-      env.ORGANIZEOS_SESSION_BINDING = "enforce";
-      authenticator.isAuthenticated.mockResolvedValue(boundSession);
-      rpc.mockResolvedValue({ data: true, error: null });
+    expect(auth.authToken).toBeUndefined();
+    expect(auth.sessionData).toBe(sessionData);
+  });
+});
 
-      const auth = await extractAuthFromRequest(
-        new Request("https://webstudio.is/trpc")
-      );
-
-      expect(auth.sessionData).toEqual(boundSession);
+describe("invalid token authorization", () => {
+  const appRouter = router({ check: procedure.query(() => "authorized") });
+  const request = () =>
+    fetchRequestHandler({
+      endpoint: "/trpc",
+      req: new Request("http://localhost/trpc/check", {
+        headers: { "x-auth-token": "private-token" },
+      }),
+      router: appRouter,
+      createContext: ({ req }) => createContext(req),
     });
+
+  test.each([
+    { scenario: "revoked token", rows: [] },
+    { scenario: "unavailable project", rows: [{ project: null }] },
+    {
+      scenario: "project without an owner",
+      rows: [{ project: { userId: null } }],
+    },
+  ])("returns a structured 401 for $scenario", async ({ rows }) => {
+    server.use(db.get("AuthorizationToken", () => json(rows)));
+    const response = await request();
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      error: {
+        data: { code: "UNAUTHORIZED", webstudioCode: "INVALID_AUTH_TOKEN" },
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("private-token");
+  });
+
+  test("reports a database outage as a server failure rather than invalid credentials", async () => {
+    server.use(
+      db.get("AuthorizationToken", () =>
+        json(
+          { code: "08006", message: "Database unavailable" },
+          { status: 503 }
+        )
+      )
+    );
+    const response = await request();
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      error: { data: { code: "INTERNAL_SERVER_ERROR" } },
+    });
+    expect(body).not.toMatchObject({
+      error: { data: { webstudioCode: "INVALID_AUTH_TOKEN" } },
+    });
+    expect(JSON.stringify(body)).not.toContain("private-token");
   });
 });

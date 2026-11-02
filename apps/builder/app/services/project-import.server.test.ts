@@ -5,6 +5,11 @@ import {
   createPublishedProjectBundleFixture,
 } from "@webstudio-is/protocol/fixtures";
 import { type PublishedProjectBundle } from "@webstudio-is/protocol";
+import { createAssetRows } from "@webstudio-is/asset-uploader/server";
+import {
+  ContentCollectionError,
+  createDefaultCollectionConfig,
+} from "@webstudio-is/content-engine";
 import {
   __testing__,
   importPublishedProjectBundle,
@@ -12,13 +17,33 @@ import {
 
 const {
   assertBundleVersion,
-  assertImportedAssetFilesUploaded,
+  normalizeImportedAssetFolderData,
   assertImportedAssetNames,
   assertProjectBuildPermit,
   createBuildImportUpdate,
-  createImportedAssetRows,
   getImportedPreviewImageAssetId,
+  loadImportedAssetFiles,
 } = __testing__;
+
+const createFileRow = ({
+  name,
+  format,
+  size,
+  meta = {},
+}: {
+  name: string;
+  format: string;
+  size: number;
+  meta?: Record<string, unknown>;
+}) => ({
+  name,
+  format,
+  description: null,
+  size,
+  createdAt: "2026-09-03T00:00:00.000Z",
+  updatedAt: "2026-09-03T00:00:00.000Z",
+  meta: JSON.stringify(meta),
+});
 
 const createData = (
   overrides: Partial<PublishedProjectBundle> = {}
@@ -84,7 +109,13 @@ const createPostgrestClient = (
   calls: string[],
   options: {
     existingFileNames?: string[];
+    existingFiles?: ReturnType<typeof createFileRow>[];
     fileFilters?: [string, string][];
+    selectedFileNameBatches?: string[][];
+    restoredFileFilters?: [string, string][];
+    restoredFileNameBatches?: string[][];
+    insertedFolders?: Array<{ id: string; projectId: string }>;
+    buildUpdateCount?: number;
   } = {}
 ) => ({
   from: (table: string) => {
@@ -94,24 +125,42 @@ const createPostgrestClient = (
           options.fileFilters?.push([column, value]);
           return selectFiles;
         },
-        in: async () => {
+        in: async (_column: string, names: string[]) => {
           calls.push("files-select");
+          options.selectedFileNameBatches?.push(names);
+          const requestedNames = new Set(names);
+          const existingFiles =
+            options.existingFiles ??
+            (options.existingFileNames ?? []).map((name) =>
+              createFileRow({
+                name,
+                format: name.split(".").at(-1) ?? "",
+                size: 1,
+                meta: name.endsWith(".png") ? { width: 1, height: 1 } : {},
+              })
+            );
           return {
-            data: (options.existingFileNames ?? []).map((name) => ({
-              name,
-            })),
+            data: existingFiles.filter((file) => requestedNames.has(file.name)),
             error: undefined,
           };
         },
       };
       return {
         select: () => selectFiles,
-        update: () => ({
-          in: async () => {
-            calls.push("files-restore");
-            return { error: undefined };
-          },
-        }),
+        update: () => {
+          const restoreFiles = {
+            eq: (column: string, value: string) => {
+              options.restoredFileFilters?.push([column, value]);
+              return restoreFiles;
+            },
+            in: async (_column: string, names: string[]) => {
+              calls.push("files-restore");
+              options.restoredFileNameBatches?.push(names);
+              return { error: undefined };
+            },
+          };
+          return restoreFiles;
+        },
         insert: async () => {
           calls.push("files-insert");
           return { error: undefined };
@@ -124,7 +173,10 @@ const createPostgrestClient = (
         update: () => ({
           match: async () => {
             calls.push("build-update");
-            return { count: 1, error: undefined };
+            return {
+              count: options.buildUpdateCount ?? 1,
+              error: undefined,
+            };
           },
         }),
       };
@@ -155,6 +207,22 @@ const createPostgrestClient = (
         }),
         insert: async () => {
           calls.push("assets-insert");
+          return { error: undefined };
+        },
+      };
+    }
+
+    if (table === "AssetFolder") {
+      return {
+        delete: () => ({
+          eq: async () => {
+            calls.push("asset-folders-delete");
+            return { error: undefined };
+          },
+        }),
+        insert: async (rows: Array<{ id: string; projectId: string }>) => {
+          calls.push("asset-folders-insert");
+          options.insertedFolders?.push(...rows);
           return { error: undefined };
         },
       };
@@ -233,6 +301,39 @@ describe("build import helpers", () => {
     ]);
   });
 
+  test.each([
+    { marker: 1, expected: "ResourceForm" },
+    { marker: undefined, expected: "WebhookForm" },
+  ])(
+    "imports historical Form as $expected with canonical pages",
+    ({ marker, expected }) => {
+      const data = createData();
+      if (marker !== undefined) {
+        Object.assign(data.build.pages, {
+          formComponentIdentityVersion: marker,
+        });
+      }
+      data.build.instances.push([
+        "form",
+        { id: "form", type: "instance", component: "Form", children: [] },
+      ]);
+      const update = createBuildImportUpdate({
+        data,
+        lastTransactionId: "import-tx",
+        updatedAt: "2024-02-01T00:00:00.000Z",
+        version: 4,
+      });
+      expect(JSON.parse(update.pages)).not.toHaveProperty(
+        "formComponentIdentityVersion"
+      );
+      expect(
+        JSON.parse(update.instances).find(
+          (instance: { id: string }) => instance.id === "form"
+        )?.component
+      ).toBe(expected);
+    }
+  );
+
   test("uses imported home social image only when corresponding asset exists", () => {
     expect(getImportedPreviewImageAssetId(createData())).toBe("asset-1");
 
@@ -243,8 +344,8 @@ describe("build import helpers", () => {
 
   test("remaps imported asset rows to destination project", () => {
     expect(
-      createImportedAssetRows({
-        assets: [
+      createAssetRows(
+        [
           createData().assets[0],
           {
             ...createData().assets[0],
@@ -253,8 +354,8 @@ describe("build import helpers", () => {
             description: undefined,
           },
         ],
-        projectId: "destination-project",
-      })
+        "destination-project"
+      )
     ).toEqual([
       {
         id: "asset-1",
@@ -262,6 +363,7 @@ describe("build import helpers", () => {
         name: "image.png",
         filename: "Image",
         description: "Hero image",
+        folderId: null,
       },
       {
         id: "asset-2",
@@ -269,8 +371,54 @@ describe("build import helpers", () => {
         name: "image.png",
         filename: null,
         description: null,
+        folderId: null,
       },
     ]);
+  });
+
+  test("validates folder hierarchy and moves orphaned assets to root", () => {
+    const parent = {
+      id: "parent",
+      projectId: "source-project",
+      name: "Parent",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const child = { ...parent, id: "child", name: "Child", parentId: "parent" };
+
+    expect(() =>
+      normalizeImportedAssetFolderData(
+        [child, parent],
+        [{ ...createData().assets[0], folderId: "child" }]
+      )
+    ).not.toThrow();
+    expect(() =>
+      normalizeImportedAssetFolderData(
+        [parent],
+        [{ ...createData().assets[0], folderId: "missing" }]
+      )
+    ).not.toThrow();
+    expect(
+      normalizeImportedAssetFolderData(
+        [parent],
+        [{ ...createData().assets[0], folderId: "missing" }]
+      ).assets[0]
+    ).not.toHaveProperty("folderId");
+  });
+
+  test("normalizes imported asset folder names", () => {
+    const normalized = normalizeImportedAssetFolderData(
+      [
+        {
+          id: "folder",
+          projectId: "source-project",
+          name: "  Media  ",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      []
+    );
+
+    expect(normalized.folders[0]?.name).toBe("Media");
   });
 
   test("updates the build before replacing asset rows", async () => {
@@ -296,12 +444,212 @@ describe("build import helpers", () => {
 
     expect(calls).toEqual([
       "files-select",
-      "files-restore",
       "build-update",
       "project-preview-reset",
       "assets-delete",
+      "asset-folders-delete",
       "assets-insert",
+      "files-restore",
       "project-preview-update",
+    ]);
+  });
+
+  test("does not restore imported files when the build version changed", async () => {
+    const calls: string[] = [];
+
+    await expect(
+      importPublishedProjectBundle(
+        {
+          ctx: {
+            postgrest: {
+              client: createPostgrestClient(calls, {
+                existingFileNames: ["image.png"],
+                buildUpdateCount: 0,
+              }),
+            },
+          } as never,
+          data: createData(),
+          projectId: "target-project",
+        },
+        { hasProjectPermit, loadDevBuildByProjectId }
+      )
+    ).rejects.toThrow("build changed");
+
+    expect(calls).toEqual(["files-select", "build-update"]);
+  });
+
+  test("rejects an invalid imported collection before changing the project", async () => {
+    const calls: string[] = [];
+    const configSource = createDefaultCollectionConfig();
+    const configAsset = {
+      id: "config",
+      projectId: "source-project",
+      name: "config-storage.json",
+      filename: "collection",
+      folderId: "posts",
+      type: "file" as const,
+      format: "json",
+      size: configSource.length,
+      description: null,
+      createdAt: "2026-09-03T00:00:00.000Z",
+      meta: {},
+    };
+
+    await expect(
+      importPublishedProjectBundle(
+        {
+          ctx: {
+            postgrest: {
+              client: createPostgrestClient(calls, {
+                existingFiles: [
+                  createFileRow({
+                    name: configAsset.name,
+                    format: "json",
+                    size: configSource.length,
+                  }),
+                ],
+              }),
+            },
+          } as never,
+          data: createData({
+            assets: [configAsset],
+            assetFolders: [
+              {
+                id: "posts",
+                projectId: "source-project",
+                name: "Posts",
+                createdAt: "2026-09-03T00:00:00.000Z",
+              },
+            ],
+          }),
+          projectId: "target-project",
+        },
+        {
+          hasProjectPermit,
+          loadDevBuildByProjectId,
+          assetStore: {
+            readFile: async () => ({
+              data: new Blob([configSource]).stream(),
+              contentLength: configSource.length,
+            }),
+          },
+        }
+      )
+    ).rejects.toThrow('Collection template "template.mdx" not found');
+
+    expect(calls).toEqual(["files-select"]);
+  });
+
+  test("validates imported collections against destination file metadata", async () => {
+    const calls: string[] = [];
+    const configSource = createDefaultCollectionConfig();
+    const templateSource = "---\ndraft: true\n---\n\nStart writing.\n";
+    const configAsset = {
+      id: "config",
+      projectId: "source-project",
+      name: "config-storage.json",
+      filename: "collection",
+      folderId: "posts",
+      type: "file" as const,
+      format: "json",
+      size: configSource.length,
+      description: null,
+      createdAt: "2026-09-03T00:00:00.000Z",
+      meta: {},
+    };
+    const templateAsset = {
+      ...configAsset,
+      id: "template",
+      name: "template-storage.mdx",
+      filename: "template",
+      format: "mdx",
+      size: templateSource.length,
+    };
+
+    await expect(
+      importPublishedProjectBundle(
+        {
+          ctx: {
+            postgrest: {
+              client: createPostgrestClient(calls, {
+                existingFiles: [
+                  createFileRow({
+                    name: configAsset.name,
+                    format: "json",
+                    size: configSource.length,
+                  }),
+                  createFileRow({
+                    name: templateAsset.name,
+                    format: "txt",
+                    size: templateSource.length,
+                  }),
+                ],
+              }),
+            },
+          } as never,
+          data: createData({
+            assets: [configAsset, templateAsset],
+            assetFolders: [
+              {
+                id: "posts",
+                projectId: "source-project",
+                name: "Posts",
+                createdAt: "2026-09-03T00:00:00.000Z",
+              },
+            ],
+          }),
+          projectId: "target-project",
+        },
+        {
+          hasProjectPermit,
+          loadDevBuildByProjectId,
+          assetStore: {
+            readFile: async (name) => {
+              const source =
+                name === configAsset.name ? configSource : templateSource;
+              return {
+                data: new Blob([source]).stream(),
+                contentLength: source.length,
+              };
+            },
+          },
+        }
+      )
+    ).rejects.toBeInstanceOf(ContentCollectionError);
+
+    expect(calls).toEqual(["files-select"]);
+  });
+
+  test("inserts the complete folder hierarchy in one request", async () => {
+    const calls: string[] = [];
+    const insertedFolders: Array<{ id: string; projectId: string }> = [];
+    const parent = {
+      id: "parent",
+      projectId: "source-project",
+      name: "Parent",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    const child = { ...parent, id: "child", name: "Child", parentId: "parent" };
+
+    await importPublishedProjectBundle(
+      {
+        ctx: {
+          postgrest: {
+            client: createPostgrestClient(calls, { insertedFolders }),
+          },
+        } as never,
+        data: createData({ assets: [], assetFolders: [child, parent] }),
+        projectId: "target-project",
+      },
+      { hasProjectPermit, loadDevBuildByProjectId }
+    );
+
+    expect(calls.filter((call) => call === "asset-folders-insert")).toEqual([
+      "asset-folders-insert",
+    ]);
+    expect(insertedFolders).toEqual([
+      { ...parent, projectId: "target-project", parentId: null },
+      { ...child, projectId: "target-project" },
     ]);
   });
 
@@ -345,7 +693,10 @@ describe("build import helpers", () => {
           loadDevBuildByProjectId,
         }
       )
-    ).rejects.toThrow('Imported asset files are missing: ["image.png"]');
+    ).rejects.toMatchObject({
+      webstudioCode: "MISSING_IMPORTED_ASSET_FILES",
+      missingAssetNames: ["image.png"],
+    });
   });
 
   test("requires uploaded destination file rows for imported assets", async () => {
@@ -353,7 +704,7 @@ describe("build import helpers", () => {
     const fileFilters: [string, string][] = [];
 
     await expect(
-      assertImportedAssetFilesUploaded({
+      loadImportedAssetFiles({
         assets: createData().assets,
         ctx: {
           postgrest: {
@@ -365,9 +716,9 @@ describe("build import helpers", () => {
         } as never,
         projectId: "target-project",
       })
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ fileNames: new Set(["image.png"]) });
 
-    expect(calls).toEqual(["files-select", "files-restore"]);
+    expect(calls).toEqual(["files-select"]);
     expect(fileFilters).toEqual([
       ["status", "UPLOADED"],
       ["uploaderProjectId", "target-project"],
@@ -376,6 +727,7 @@ describe("build import helpers", () => {
 
   test("makes imported file rows visible", async () => {
     const calls: string[] = [];
+    const restoredFileFilters: [string, string][] = [];
 
     await importPublishedProjectBundle(
       {
@@ -383,6 +735,7 @@ describe("build import helpers", () => {
           postgrest: {
             client: createPostgrestClient(calls, {
               existingFileNames: ["image.png"],
+              restoredFileFilters,
             }),
           },
         } as never,
@@ -396,6 +749,48 @@ describe("build import helpers", () => {
     );
 
     expect(calls).toContain("files-restore");
+    expect(restoredFileFilters).toEqual([
+      ["uploaderProjectId", "target-project"],
+    ]);
+  });
+
+  test("chunks imported file lookups and restores by bounded filter size", async () => {
+    const fileNames = Array.from(
+      { length: 12 },
+      (_, index) => `${String(index).padStart(2, "0")}-${"a".repeat(490)}.png`
+    );
+    const assets = fileNames.map((name, index) => ({
+      ...createData().assets[0],
+      id: `asset-${index}`,
+      name,
+    }));
+    const selectedFileNameBatches: string[][] = [];
+    const restoredFileNameBatches: string[][] = [];
+
+    await importPublishedProjectBundle(
+      {
+        ctx: {
+          postgrest: {
+            client: createPostgrestClient([], {
+              existingFileNames: fileNames,
+              selectedFileNameBatches,
+              restoredFileNameBatches,
+            }),
+          },
+        } as never,
+        data: createData({ assets }),
+        projectId: "target-project",
+      },
+      {
+        hasProjectPermit,
+        loadDevBuildByProjectId,
+      }
+    );
+
+    expect(selectedFileNameBatches.length).toBeGreaterThan(1);
+    expect(restoredFileNameBatches.length).toBeGreaterThan(1);
+    expect(new Set(selectedFileNameBatches.flat())).toEqual(new Set(fileNames));
+    expect(new Set(restoredFileNameBatches.flat())).toEqual(new Set(fileNames));
   });
 
   test("rejects imported asset names with path separators", () => {
@@ -406,13 +801,13 @@ describe("build import helpers", () => {
     ).toThrow("Imported asset name is invalid: ../image.png");
   });
 
-  test("rejects duplicated imported asset names", () => {
+  test("allows imported assets to share one storage file", () => {
     expect(() =>
       assertImportedAssetNames([
         createData().assets[0],
         { ...createData().assets[0], id: "asset-2" },
       ])
-    ).toThrow("Imported asset name is duplicated: image.png");
+    ).not.toThrow();
   });
 
   test("rejects duplicated imported asset ids", () => {

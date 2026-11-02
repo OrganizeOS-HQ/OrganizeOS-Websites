@@ -56,19 +56,32 @@ const resource = z.object({
   control: z.literal("resource"),
   type: z.literal("resource"),
   defaultValue: z.string().optional(),
+  // Safe resource fields copied to same-named props in generated components.
+  generatedProps: z.array(z.enum(["method"])).optional(),
 });
 
 const code = z.object({
   ...common,
   control: z.literal("code"),
   type: z.literal("string"),
-  language: z.union([z.literal("html"), z.literal("markdown")]),
+  language: z.union([
+    z.literal("html"),
+    z.literal("json"),
+    z.literal("markdown"),
+  ]),
   defaultValue: z.string().optional(),
 });
 
 const codeText = z.object({
   ...common,
   control: z.literal("codetext"),
+  type: z.literal("string"),
+  defaultValue: z.string().optional(),
+});
+
+const jsonCode = z.object({
+  ...common,
+  control: z.literal("json-code"),
   type: z.literal("string"),
   defaultValue: z.string().optional(),
 });
@@ -166,13 +179,18 @@ const json = z.object({
   defaultValue: z.unknown().optional(),
 });
 
-// we neither generate date nor support it in props panel, listed here for completeness
+const formAction = z.object({
+  ...common,
+  control: z.literal("form-action"),
+  type: z.literal("json"),
+  defaultValue: z.unknown().optional(),
+});
+
 const date = z.object({
   ...common,
   control: z.literal("date"),
 
-  // @todo not sure what type should be here
-  // (we don't support Date yet, added for completeness)
+  // Dates are stored as strings, not JavaScript Date objects.
   type: z.literal("string"),
   defaultValue: z.string().optional(),
 });
@@ -184,11 +202,17 @@ const action = z.object({
   defaultValue: z.undefined().optional(),
 });
 
-const textContent = z.object({
+export const textContentPropMeta = z.object({
   ...common,
   control: z.literal("textContent"),
   type: z.literal("string"),
   defaultValue: z.string().optional(),
+  editor: z
+    .object({
+      control: z.literal("code"),
+      languageProp: z.string().optional(),
+    })
+    .optional(),
 });
 
 const animationAction = z.object({
@@ -206,6 +230,7 @@ export const propMeta = z.union([
   resource,
   code,
   codeText,
+  jsonCode,
   color,
   boolean,
   radio,
@@ -218,9 +243,10 @@ export const propMeta = z.union([
   file,
   url,
   json,
+  formAction,
   date,
   action,
-  textContent,
+  textContentPropMeta,
   animationAction,
 ]);
 

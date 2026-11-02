@@ -37,7 +37,13 @@ const presetStyle = {
 } satisfies PresetStyle<ListTag>;
 
 export const meta: WsComponentMeta = {
+  deprecated: true,
   presetStyle,
+  renderedTag: {
+    prop: "ordered",
+    values: { true: "ol", false: "ul" },
+    default: "ul",
+  },
   initialProps: ["id", "class", "ordered", "start", "reversed"],
   props,
 };

@@ -11,6 +11,7 @@ import type { WsComponentMeta } from "./schema/component-meta";
 import type { Instance } from "./schema/instances";
 import { tagProperty } from "./runtime";
 import { tags } from "./__generated__/tags";
+import { contentBlockSourceProp } from "./schema/content-block";
 
 export const rootComponent = "ws:root";
 
@@ -25,6 +26,7 @@ const rootMeta: WsComponentMeta = {
 export const elementComponent = "ws:element";
 
 const elementMeta: WsComponentMeta = {
+  selectionReveal: { type: "native-option" },
   label: "Element",
   // convert [object Module] to [object Object] to enable structured cloning
   presetStyle: { ...normalize },
@@ -43,8 +45,12 @@ export const portalComponent = "Slot";
 
 export const collectionComponent = "ws:collection";
 
+export const collectionDescription =
+  "Use Collection when an array or object from a resource or data variable should render repeated UI. Collection iterates the complete value and renders its child structure once for every item, exposing the current item and key to descendants.";
+
 const collectionMeta: WsComponentMeta = {
   label: "Collection",
+  description: collectionDescription,
   icon: ListViewIcon,
   contentModel: {
     category: "instance",
@@ -111,7 +117,18 @@ const descendantMeta: WsComponentMeta = {
 
 export const blockComponent = "ws:block";
 
+export const blockBodyComponent = "ws:content-block-body";
+
 export const blockTemplateComponent = "ws:block-template";
+
+export const blockBodyMeta: WsComponentMeta = {
+  category: "hidden",
+  label: "Content Block Body",
+  contentModel: {
+    category: "none",
+    children: ["instance"],
+  },
+};
 
 export const blockTemplateMeta: WsComponentMeta = {
   icon: AddTemplateInstanceIcon,
@@ -126,7 +143,21 @@ const blockMeta: WsComponentMeta = {
   icon: ContentBlockIcon,
   contentModel: {
     category: "instance",
-    children: [blockTemplateComponent, "instance"],
+    children: [blockBodyComponent, blockTemplateComponent, "instance"],
+    descendants: [blockBodyComponent],
+  },
+  initialProps: [contentBlockSourceProp],
+  props: {
+    [contentBlockSourceProp]: {
+      type: "string",
+      control: "file",
+      label: "Source",
+      description:
+        "Create an .mdx file in Assets, then select or bind it here.",
+      required: false,
+      accept: ".mdx",
+      contentMode: false,
+    },
   },
 };
 
@@ -136,6 +167,7 @@ export const coreMetas = {
   [collectionComponent]: collectionMeta,
   [descendantComponent]: descendantMeta,
   [blockComponent]: blockMeta,
+  [blockBodyComponent]: blockBodyMeta,
   [blockTemplateComponent]: blockTemplateMeta,
 };
 
@@ -147,9 +179,11 @@ export const isCoreComponent = (component: Instance["component"]) =>
   component === collectionComponent ||
   component === descendantComponent ||
   component === blockComponent ||
+  component === blockBodyComponent ||
   component === blockTemplateComponent;
 
 export const isComponentDetachable = (component: Instance["component"]) =>
   component !== rootComponent &&
+  component !== blockBodyComponent &&
   component !== blockTemplateComponent &&
   component !== descendantComponent;

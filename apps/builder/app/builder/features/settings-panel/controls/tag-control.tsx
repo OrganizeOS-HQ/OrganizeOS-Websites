@@ -3,10 +3,9 @@ import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import { Box, Combobox, Select, theme } from "@webstudio-is/design-system";
 import { elementsByTag } from "@webstudio-is/html-data";
-import { tags } from "@webstudio-is/sdk";
 import { $selectedInstance, $selectedInstancePath } from "~/shared/nano-states";
-import { updateWebstudioData } from "~/shared/instance-utils/data";
-import { isTreeSatisfyingContentModel } from "~/shared/content-model";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
+import { getValidTagsForInstance } from "@webstudio-is/project-build/runtime";
 import { $registeredComponentMetas } from "~/shared/nano-states";
 import { $instances } from "~/shared/sync/data-stores";
 import { $props } from "~/shared/sync/data-stores";
@@ -21,20 +20,13 @@ const $satisfyingTags = computed(
       return satisfyingTags;
     }
     const [{ instance, instanceSelector }] = instancePath;
-    const newInstances = new Map(instances);
-    for (const tag of tags) {
-      newInstances.set(instance.id, { ...instance, tag });
-      const isSatisfying = isTreeSatisfyingContentModel({
-        instances: newInstances,
-        props,
-        metas,
-        instanceSelector,
-      });
-      if (isSatisfying) {
-        satisfyingTags.push(tag);
-      }
-    }
-    return satisfyingTags;
+    return getValidTagsForInstance({
+      instanceId: instance.id,
+      instanceSelector,
+      instances,
+      props,
+      metas,
+    });
   }
 );
 
@@ -55,16 +47,13 @@ export const TagControl = ({ meta, prop }: ControlProps<"tag">) => {
     if (instance === undefined) {
       return;
     }
-    const instanceId = instance.id;
-    updateWebstudioData((data) => {
-      // clean legacy <Box tag> and <Text tag>
-      if (prop) {
-        data.props.delete(prop.id);
-      }
-      const instance = data.instances.get(instanceId);
-      if (instance) {
-        instance.tag = value;
-      }
+    executeRuntimeMutation({
+      id: "instances.setTag",
+      input: {
+        instanceId: instance.id,
+        tag: value,
+        legacyPropName: prop?.name,
+      },
     });
   };
   return (

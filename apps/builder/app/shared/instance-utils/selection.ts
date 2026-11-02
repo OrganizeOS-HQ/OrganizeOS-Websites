@@ -3,7 +3,7 @@ import {
   areInstanceSelectorsEqual,
   isDescendantOrSelf,
   type InstanceSelector,
-} from "./tree";
+} from "@webstudio-is/project-build/runtime";
 
 export const areSelectorListsEqual = (
   left: InstanceSelector[],
@@ -185,6 +185,18 @@ export const canResolveInstanceSelector = (
     const instanceId = instanceSelector[index];
     const baseInstanceId = getIndexedBaseInstanceId(instanceId);
     if (baseInstanceId !== undefined && parentId === baseInstanceId) {
+      continue;
+    }
+
+    const indexedParentId = getIndexedBaseInstanceId(parentId);
+    if (
+      indexedParentId !== undefined &&
+      instances
+        .get(indexedParentId)
+        ?.children.some(
+          (child) => child.type === "id" && child.value === instanceId
+        ) === true
+    ) {
       continue;
     }
 

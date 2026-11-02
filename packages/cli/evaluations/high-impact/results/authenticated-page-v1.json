@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 3,
+  "kind": "high-impact-minimal-context-agent-evaluation-result",
+  "fixtureId": "authenticated-page-v1",
+  "outcome": "passed",
+  "cli": "source",
+  "provider": "openai",
+  "model": "gpt-5.4-mini",
+  "reasoningEffort": "low",
+  "commandSha256": "3150ac354964486518b633ed39c3c58807dd68c80a875b01a5acfce14dbeadf6",
+  "exitCode": 0,
+  "metrics": {
+    "durationMs": 61462,
+    "tokens": {
+      "input": 172843,
+      "cachedInput": 146688,
+      "uncachedInput": 26155,
+      "cacheWriteInput": 0,
+      "output": 1768,
+      "reasoningOutput": 574,
+      "total": 174611,
+      "cachedInputRate": 0.8487
+    },
+    "mcpCatalog": {
+      "responses": 1,
+      "totalResponseBytes": 61453,
+      "maxResponseBytes": 61453,
+      "latestToolCount": 196,
+      "latestResponseBytes": 61453,
+      "latestInputSchemaBytes": 35007,
+      "latestDescriptionBytes": 6407
+    },
+    "toolCalls": {
+      "total": 5,
+      "succeeded": 5,
+      "failed": 0,
+      "failuresByTool": {},
+      "failuresByCode": {},
+      "issuesByCode": {},
+      "issuesByPath": {},
+      "durationsByTool": {
+        "create-page": {
+          "count": 1,
+          "totalMs": 35,
+          "p95Ms": 35,
+          "maxMs": 35
+        },
+        "insert-fragment-verified": {
+          "count": 1,
+          "totalMs": 82,
+          "p95Ms": 82,
+          "maxMs": 82
+        },
+        "inspect-auth-context": {
+          "count": 1,
+          "totalMs": 36,
+          "p95Ms": 36,
+          "maxMs": 36
+        },
+        "meta.guide": {
+          "count": 1,
+          "totalMs": 2,
+          "p95Ms": 2,
+          "maxMs": 2
+        },
+        "verify-page-responsive": {
+          "count": 1,
+          "totalMs": 11466,
+          "p95Ms": 11466,
+          "maxMs": 11466
+        }
+      },
+      "responseBytesByTool": {
+        "create-page": {
+          "count": 1,
+          "totalBytes": 2050,
+          "p95Bytes": 2050,
+          "maxBytes": 2050
+        },
+        "insert-fragment-verified": {
+          "count": 1,
+          "totalBytes": 2956,
+          "p95Bytes": 2956,
+          "maxBytes": 2956
+        },
+        "inspect-auth-context": {
+          "count": 1,
+          "totalBytes": 2644,
+          "p95Bytes": 2644,
+          "maxBytes": 2644
+        },
+        "meta.guide": {
+          "count": 1,
+          "totalBytes": 12314,
+          "p95Bytes": 12314,
+          "maxBytes": 12314
+        },
+        "verify-page-responsive": {
+          "count": 1,
+          "totalBytes": 11800,
+          "p95Bytes": 11800,
+          "maxBytes": 11800
+        }
+      },
+      "retries": 0,
+      "focusedReads": 1,
+      "broadReads": 0,
+      "dryRuns": 0,
+      "plannedMutations": 0,
+      "committedMutations": 2,
+      "verifications": 2,
+      "totalDurationMs": 11621,
+      "p50DurationMs": 36,
+      "p95DurationMs": 11466,
+      "totalResponseBytes": 31764,
+      "p50ResponseBytes": 2956,
+      "p95ResponseBytes": 12314,
+      "maxResponseBytes": 12314,
+      "timeToFirstMutationMs": 25867,
+      "timeToFirstVerificationMs": 32553
+    }
+  },
+  "callSequence": [
+    "meta.guide",
+    "inspect-auth-context",
+    "create-page",
+    "insert-fragment-verified",
+    "verify-page-responsive"
+  ],
+  "checks": {
+    "guidance": "passed",
+    "privacy": "passed",
+    "expressions": "passed",
+    "boundedReads": "passed",
+    "bindingVerification": "passed",
+    "audit": "passed",
+    "visualEvidence": "passed",
+    "accountPage": "passed",
+    "authStates": "passed",
+    "providerConvention": "passed",
+    "editableStructure": "passed",
+    "usageCaptured": "passed"
+  }
+}

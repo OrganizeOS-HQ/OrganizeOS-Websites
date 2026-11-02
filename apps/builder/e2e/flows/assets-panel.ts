@@ -1,6 +1,7 @@
 import path from "node:path";
-import type { Page } from "playwright";
+import type { Page } from "@playwright/test";
 import { waitForChangeToBeSaved } from "./sync-status";
+import { dragPointer } from "./drag";
 
 const assetFixturePath = (filename: string) =>
   path.join(process.cwd(), "e2e", "fixtures", "assets", filename);
@@ -16,9 +17,80 @@ const getAssetTitleLocator = ({
   return page.locator(`[title^="${name}"]`).first();
 };
 
-export const openAssetsPanel = async ({ page }: { page: Page }) => {
-  await page.getByRole("tab", { name: "Assets" }).click();
-  await page.getByRole("button", { name: "Upload asset" }).waitFor();
+const getAssetsPanel = (page: Page) =>
+  page.getByRole("tabpanel", { name: "Assets" });
+
+const openAddAssetMenu = async (page: Page) => {
+  await getAssetsPanel(page).getByRole("button", { name: "Add asset" }).click();
+};
+
+export const openAssetsPanel = async ({
+  page,
+  force = false,
+}: {
+  page: Page;
+  force?: boolean;
+}) => {
+  await page.getByRole("tab", { name: "Assets" }).click({ force });
+  await getAssetsPanel(page)
+    .getByRole("button", { name: "Add asset" })
+    .waitFor();
+};
+
+export const createAssetFolder = async ({
+  page,
+  name,
+  useAsContentCollection = false,
+}: {
+  page: Page;
+  name: string;
+  useAsContentCollection?: boolean;
+}) => {
+  await openAddAssetMenu(page);
+  await page.getByRole("menuitem", { name: "Create folder" }).click();
+  const dialog = page.getByRole("dialog", { name: "New folder" });
+  await dialog.getByLabel("Name", { exact: true }).fill(name);
+  if (useAsContentCollection) {
+    await dialog.getByLabel("Use as content collection").check();
+  }
+  await Promise.all([
+    waitForChangeToBeSaved({ page }),
+    dialog.getByRole("button", { name: "Create folder" }).click(),
+  ]);
+  if (useAsContentCollection) {
+    const collectionCreatedDialog = page.getByRole("dialog", {
+      name: "Collection created",
+    });
+    await collectionCreatedDialog.getByRole("button", { name: "Done" }).click();
+  }
+  return page.getByRole("button", { name: `Folder ${name}`, exact: true });
+};
+
+export const dragAssetToFolder = async ({
+  page,
+  assetTitle,
+  folderName,
+}: {
+  page: Page;
+  assetTitle: string;
+  folderName: string;
+}) => {
+  const asset = page.getByTitle(assetTitle);
+  const folder = page.getByRole("button", {
+    name: `Folder ${folderName}`,
+    exact: true,
+  });
+  await Promise.all([
+    waitForChangeToBeSaved({ page, timeout: 30_000 }),
+    dragPointer({
+      page,
+      source: asset,
+      target: folder,
+      ready: async () =>
+        (await folder.getAttribute("data-is-drop-over")) === "true",
+    }),
+  ]);
+  await asset.waitFor({ state: "hidden" });
 };
 
 export const uploadAsset = async ({
@@ -29,15 +101,17 @@ export const uploadAsset = async ({
   filename: string;
 }) => {
   const fileChooserPromise = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Upload asset" }).click();
+  await openAddAssetMenu(page);
+  await page.getByRole("menuitem", { name: "Upload", exact: true }).click();
   const fileChooser = await fileChooserPromise;
+  const save = waitForChangeToBeSaved({ page });
   await fileChooser.setFiles(assetFixturePath(filename));
   const title = await waitForAsset({ page, filename });
-  await waitForChangeToBeSaved({ page });
+  await save;
   return title;
 };
 
-export const openAssetDetails = async ({
+export const openAssetSettings = async ({
   page,
   filename,
 }: {
@@ -46,8 +120,12 @@ export const openAssetDetails = async ({
 }) => {
   const asset = page.getByTitle(filename);
   await asset.hover();
-  await asset.getByRole("button", { name: "Options" }).click();
-  await page.getByText("Asset details").waitFor();
+  await asset
+    .locator("..")
+    .getByRole("button", { name: `Actions for ${filename}` })
+    .click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await page.getByText("Asset settings").waitFor();
 };
 
 export const replaceSelectedAsset = async ({
@@ -60,9 +138,10 @@ export const replaceSelectedAsset = async ({
   const fileChooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Replace asset" }).click();
   const fileChooser = await fileChooserPromise;
+  const save = waitForChangeToBeSaved({ page });
   await fileChooser.setFiles(assetFixturePath(filename));
   const title = await waitForAsset({ page, filename });
-  await waitForChangeToBeSaved({ page });
+  await save;
   return title;
 };
 
@@ -74,8 +153,12 @@ export const deleteSelectedAsset = async ({
   filename: string;
 }) => {
   await page.getByRole("button", { name: "Delete" }).click();
+  const deleteDialog = page.getByRole("dialog", { name: "Delete asset?" });
+  await deleteDialog.waitFor();
+  const save = waitForChangeToBeSaved({ page });
+  await deleteDialog.getByRole("button", { name: "Delete" }).click();
   await page.getByTitle(filename).waitFor({ state: "hidden" });
-  await waitForChangeToBeSaved({ page });
+  await save;
 };
 
 export const waitForAsset = async ({
@@ -102,6 +185,24 @@ export const chooseAssetByFilename = async ({
   filename: string;
 }) => {
   const title = await waitForAsset({ page, filename });
-  await page.getByAltText(title, { exact: true }).last().click();
+  await page.getByTitle(title, { exact: true }).last().click();
   return title;
+};
+
+export const getAssetIdByFilename = async ({
+  page,
+  filename,
+}: {
+  page: Page;
+  filename: string;
+}) => {
+  const title = await waitForAsset({ page, filename });
+  const dragKey = await page
+    .getByTitle(title)
+    .locator("xpath=ancestor-or-self::*[@data-asset-manager-drag-key][1]")
+    .getAttribute("data-asset-manager-drag-key");
+  if (dragKey?.startsWith("asset:") !== true) {
+    throw new Error(`Expected uploaded asset ${filename} to expose its id`);
+  }
+  return dragKey.slice("asset:".length);
 };

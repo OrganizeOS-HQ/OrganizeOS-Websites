@@ -4,6 +4,7 @@ import { createReadableStreamFromReadable } from "@remix-run/node";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   getMimeTypeByFilename,
+  getFileExtension,
   isAllowedExtension,
   decodePathFragment,
 } from "@webstudio-is/sdk";
@@ -54,7 +55,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   // Validate file extension against allowed types
-  const extension = name.split(".").pop()?.toLowerCase();
+  const extension = getFileExtension(name)?.toLowerCase();
   const contentType = getMimeTypeByFilename(name);
 
   // Reject files with disallowed extensions or MIME types

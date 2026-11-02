@@ -102,7 +102,7 @@ const CloneProjectView = ({
             }}
             gap="1"
           >
-            <Label>Project Title</Label>
+            <Label>Project title</Label>
             <InputField
               name="title"
               defaultValue={title}
@@ -114,6 +114,7 @@ const CloneProjectView = ({
           </Flex>
           <DialogActions>
             <Button
+              color="primary"
               type="submit"
               state={state === "idle" ? undefined : "pending"}
             >
@@ -151,6 +152,7 @@ export const CloneProjectDialog = ({
   const { handleSubmit, errors, state } = useCloneProjectWithDialog({
     projectId: id,
     authToken,
+    // oxlint-disable-next-line react-hooks/rules-of-hooks -- our useEffectEvent is a stable callback
     onCreate: handleOnCreate,
   });
 

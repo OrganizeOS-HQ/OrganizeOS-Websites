@@ -1,6 +1,7 @@
+import { TRPCError } from "@trpc/server";
 import { type AppContext } from "@webstudio-is/trpc-interface/index.server";
 import env from "~/env/env.server";
-import { createOrganizeosPublisher } from "~/services/organizeos-publisher.server";
+import { authenticator } from "~/services/auth.server";
 import { trpcSharedClient } from "~/services/trpc.server";
 import { entryApi } from "./entri/entri-api.server";
 
@@ -11,19 +12,27 @@ import {
 } from "@webstudio-is/plans/index.server";
 import { staticEnv } from "~/env/env.static.server";
 import { createClient } from "@webstudio-is/postgrest/index.server";
-import {
-  readBuilderSession,
-  readDashboardSession,
-} from "~/services/auth-strategy/organizeos-session.server";
+import { builderAuthenticator } from "~/services/builder-auth.server";
 import { readLoginSessionBloomFilter } from "~/services/session.server";
 import type { BloomFilter } from "~/services/bloom-filter.server";
 import { isBuilder, isCanvas } from "./router-utils";
-import { parseBuilderUrl } from "@webstudio-is/http-client";
+import { parseBuilderUrl } from "@webstudio-is/protocol";
 import {
   apiClient,
   apiClientHeader,
+  apiClientContractVersionHeader,
   apiClientVersionHeader,
 } from "@webstudio-is/trpc-interface/api-compatibility";
+
+export class InvalidAuthTokenError extends TRPCError {
+  constructor() {
+    super({
+      code: "UNAUTHORIZED",
+      message: "The authorization token is invalid or no longer available",
+      cause: { webstudioCode: "INVALID_AUTH_TOKEN" },
+    });
+  }
+}
 
 export const extractAuthFromRequest = async (request: Request) => {
   if (isCanvas(request)) {
@@ -36,14 +45,19 @@ export const extractAuthFromRequest = async (request: Request) => {
     request.headers.get("x-auth-token") ??
     undefined;
 
-  // OrganizeOS: both readers check the session's OrganizeOS binding.
-  const sessionData = isBuilder(request)
-    ? await readBuilderSession(request)
-    : await readDashboardSession(request);
-
   const isServiceCall = isServiceAuthorization(
     request.headers.get("Authorization")
   );
+
+  // Explicit credentials always win. In particular, an invalid supplied token
+  // must fail during context creation instead of falling back to a potentially
+  // more privileged browser session.
+  const sessionData =
+    authToken === undefined && isServiceCall === false
+      ? isBuilder(request)
+        ? await builderAuthenticator.isAuthenticated(request)
+        : await authenticator.isAuthenticated(request)
+      : undefined;
 
   return {
     authToken,
@@ -69,17 +83,19 @@ const createTokenAuthorizationContext = async (
     .from("AuthorizationToken")
     .select("project:Project(id, userId)")
     .eq("token", authToken)
-    .single();
+    .maybeSingle();
 
   if (projectOwnerIdByToken.error) {
-    throw new Error(`Project owner can't be found for token ${authToken}`);
+    throw new Error("Failed to verify authorization token");
+  }
+
+  if (projectOwnerIdByToken.data === null) {
+    throw new InvalidAuthTokenError();
   }
 
   const ownerId = projectOwnerIdByToken.data.project?.userId ?? null;
   if (ownerId === null) {
-    throw new Error(
-      `Project ${projectOwnerIdByToken.data.project?.id} has null userId`
-    );
+    throw new InvalidAuthTokenError();
   }
 
   return {
@@ -152,27 +168,9 @@ const getRequestOrigin = (urlStr: string) => {
   return url.origin;
 };
 
-// OrganizeOS: when the publish-executor dispatch is configured, Publish
-// triggers our GitHub Actions workflow instead of webstudio's cloud publisher.
-const organizeosPublisher =
-  env.ORGANIZEOS_PUBLISH_REPO && env.ORGANIZEOS_PUBLISH_GITHUB_TOKEN
-    ? createOrganizeosPublisher({
-        // Narrow-cast: the publisher uses a minimal select/eq/single slice of
-        // the client, typed structurally on its side.
-        client: createClient(
-          env.POSTGREST_URL,
-          env.POSTGREST_API_KEY
-        ) as unknown as Parameters<
-          typeof createOrganizeosPublisher
-        >[0]["client"],
-        repo: env.ORGANIZEOS_PUBLISH_REPO,
-        githubToken: env.ORGANIZEOS_PUBLISH_GITHUB_TOKEN,
-      })
-    : undefined;
-
 const createDeploymentContext = (builderOrigin: string) => {
   const context: AppContext["deployment"] = {
-    deploymentTrpc: organizeosPublisher ?? trpcSharedClient.deployment,
+    deploymentTrpc: trpcSharedClient.deployment,
     env: {
       BUILDER_ORIGIN: getRequestOrigin(builderOrigin),
       GITHUB_REF_NAME: staticEnv.GITHUB_REF_NAME ?? "undefined",
@@ -213,12 +211,15 @@ const createApiClientContext = (request: Request): AppContext["apiClient"] => {
     return {
       type: "unknown",
       version: undefined,
+      contractVersion: undefined,
     };
   }
 
   return {
     type: client.data,
     version: request.headers.get(apiClientVersionHeader) ?? undefined,
+    contractVersion:
+      request.headers.get(apiClientContractVersionHeader) ?? undefined,
   };
 };
 

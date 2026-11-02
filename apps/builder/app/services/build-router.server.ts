@@ -19,16 +19,21 @@ import {
 import { normalizePatchRequest } from "~/shared/sync/patch/patch-normalize.server";
 import { loadById } from "@webstudio-is/project/index.server";
 import type { BuildPatchTransaction } from "@webstudio-is/project/index.server";
-import { loadDevBuildByProjectId } from "@webstudio-is/project-build/index.server";
+import { loadDevBuildByProjectId } from "@webstudio-is/project-build/server";
+import { parseWebstudioJsxFragment } from "@webstudio-is/project-build/transfer/server";
 import { serializePages } from "@webstudio-is/project-migrations/pages";
-import { loadAssetsByProject } from "@webstudio-is/asset-uploader/index.server";
+import { loadAssetDataByProject } from "@webstudio-is/asset-uploader/server";
 import {
   checkProjectBuildPermissionInput,
   importProjectBundleInput,
+  bundleVersion,
   publishedProjectBundle,
+  historicalPublishedProjectBundle,
 } from "@webstudio-is/protocol";
+import { removeAgentInstructionsFromProjectSettings } from "@webstudio-is/project-build";
+import { hydrateRestorePointTransaction } from "@webstudio-is/project-build/project-session";
 import {
-  loadPublishedProjectBundleByBuildId,
+  loadProjectBundleByBuildId,
   loadPublishedProjectBundleByProjectId,
 } from "~/shared/db";
 import {
@@ -39,6 +44,86 @@ import {
   readStagedUploadText,
   removeStagedUpload,
 } from "./staged-upload.server";
+import { throwApiClientUpdateRequired } from "./api-compatibility.server";
+import {
+  buildRestorePointInput,
+  commitBuildTransactions,
+} from "./api-build.server";
+import { assertApiProjectPermit } from "./api-permits.server";
+import { loadContentDatabasePublishDiagnostics } from "./content-database-publish-diagnostics.server";
+
+const projectBundleInput = z.object({
+  projectId: z.string(),
+  bundleVersion: z.union([z.string(), z.number()]).optional(),
+});
+
+const buildBundleInput = z.object({
+  buildId: z.string(),
+  bundleVersion: z.union([z.string(), z.number()]).optional(),
+  contentIndex: z.literal("client").optional(),
+});
+
+const assertCliBundleVersion = (
+  ctx: AppContext,
+  clientBundleVersion: string | number | undefined
+) => {
+  if (ctx.apiClient?.type === "cli" && clientBundleVersion !== bundleVersion) {
+    throwApiClientUpdateRequired({
+      expectedVersion: bundleVersion,
+      receivedVersion: clientBundleVersion,
+      target: "cli",
+    });
+  }
+};
+
+const prepareProjectBundleForClient = async (
+  ctx: AppContext,
+  bundle: z.infer<typeof publishedProjectBundle>
+) => {
+  if (ctx.apiClient?.type === "cli") {
+    const canView = await authorizeProject.hasProjectPermit(
+      { projectId: bundle.build.projectId, permit: "view" },
+      ctx
+    );
+    if (canView === false) {
+      throw new AuthorizationError("You don't have access to this project");
+    }
+    return bundle;
+  }
+  return {
+    ...bundle,
+    build: {
+      ...bundle.build,
+      projectSettings:
+        bundle.build.projectSettings === undefined
+          ? undefined
+          : removeAgentInstructionsFromProjectSettings(
+              bundle.build.projectSettings
+            ),
+    },
+  };
+};
+
+const createLoadProjectBundleByBuildIdHandler =
+  (dependencies: {
+    loadProjectBundleByBuildId: typeof loadProjectBundleByBuildId;
+    prepareProjectBundleForClient: typeof prepareProjectBundleForClient;
+  }) =>
+  async (ctx: AppContext, input: z.infer<typeof buildBundleInput>) => {
+    assertCliBundleVersion(ctx, input.bundleVersion);
+    return await dependencies.prepareProjectBundleForClient(
+      ctx,
+      await dependencies.loadProjectBundleByBuildId(input.buildId, ctx, {
+        contentIndex: input.contentIndex,
+      })
+    );
+  };
+
+const loadProjectBundleByBuildIdHandler =
+  createLoadProjectBundleByBuildIdHandler({
+    loadProjectBundleByBuildId,
+    prepareProjectBundleForClient,
+  });
 
 type ImportProjectBundleDependencies = {
   importPublishedProjectBundle: typeof importPublishedProjectBundle;
@@ -67,7 +152,7 @@ const createImportProjectBundleHandler =
         });
         return await importPublishedProjectBundle({
           ctx,
-          data: publishedProjectBundle.parse(JSON.parse(text)),
+          data: historicalPublishedProjectBundle.parse(JSON.parse(text)),
           ignoreVersionCheck: input.ignoreVersionCheck,
           projectId: input.projectId,
         });
@@ -184,19 +269,34 @@ export const loadBuilderDataByProjectId = async (
     throw new Error("Project must have project userId defined");
   }
 
-  const build = await loadDevBuildByProjectId(ctx, project.id);
-  const assets = await loadAssetsByProject(project.id, ctx);
+  const [build, assetData] = await Promise.all([
+    loadDevBuildByProjectId(ctx, project.id),
+    loadAssetDataByProject(project.id, ctx),
+  ]);
 
   return {
     ...build,
     pages: serializePages(build.pages),
-    assets,
+    ...assetData,
     project,
     publisherHost: env.PUBLISHER_HOST,
   };
 };
 
 export const buildRouter = router({
+  createJsxFragment: procedure
+    .input(z.object({ projectId: z.string(), source: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const canView = await authorizeProject.hasProjectPermit(
+        { projectId: input.projectId, permit: "view" },
+        ctx
+      );
+      if (canView === false) {
+        throw new AuthorizationError("You don't have access to this project");
+      }
+      return await parseWebstudioJsxFragment(input.source);
+    }),
+
   loadData: procedure
     .input(z.object({ projectId: z.string() }))
     .query(async ({ ctx, input }) => {
@@ -204,21 +304,41 @@ export const buildRouter = router({
     }),
 
   loadProjectBundleByBuildId: procedure
-    .input(z.object({ buildId: z.string() }))
+    .input(buildBundleInput)
     .query(async ({ ctx, input }) => {
-      return await loadPublishedProjectBundleByBuildId(input.buildId, ctx);
+      return await loadProjectBundleByBuildIdHandler(ctx, input);
     }),
 
   loadProjectBundleByProjectId: procedure
+    .input(projectBundleInput)
+    .query(async ({ ctx, input }) => {
+      assertCliBundleVersion(ctx, input.bundleVersion);
+      return await prepareProjectBundleForClient(
+        ctx,
+        await loadPublishedProjectBundleByProjectId(input.projectId, ctx)
+      );
+    }),
+
+  contentDatabasePublishDiagnostics: procedure
     .input(z.object({ projectId: z.string() }))
     .query(async ({ ctx, input }) => {
-      return await loadPublishedProjectBundleByProjectId(input.projectId, ctx);
+      const canEdit = await authorizeProject.hasProjectPermit(
+        { projectId: input.projectId, permit: "edit" },
+        ctx
+      );
+      if (canEdit === false) {
+        throw new AuthorizationError(
+          "You don't have permission to edit this project."
+        );
+      }
+      return await loadContentDatabasePublishDiagnostics(input.projectId, ctx);
     }),
 
   checkProjectBuildPermission: procedure
     .input(checkProjectBuildPermissionInput)
     .query(async ({ ctx, input }) => {
       await assertProjectBuildPermit({ ctx, projectId: input.projectId });
+      return { supportsStructuredImportErrors: true };
     }),
 
   importProjectBundle: procedure.input(importProjectBundleInput).mutation(
@@ -228,6 +348,20 @@ export const buildRouter = router({
       removeStagedUpload,
     })
   ),
+
+  restorePoint: procedure
+    .input(buildRestorePointInput)
+    .mutation(async ({ ctx, input }) => {
+      await assertApiProjectPermit(ctx, input.projectId, "build");
+      const build = await loadDevBuildByProjectId(ctx, input.projectId);
+      return await commitBuildTransactions({
+        ctx,
+        projectId: input.projectId,
+        buildId: build.id,
+        clientVersion: input.baseVersion,
+        transactions: input.transactions.map(hydrateRestorePointTransaction),
+      });
+    }),
 
   createCollabToken: procedure
     .input(
@@ -327,4 +461,8 @@ export const buildRouter = router({
 
 export const __testing__ = {
   createImportProjectBundleHandler,
+  createLoadProjectBundleByBuildIdHandler,
+  assertCliBundleVersion,
+  loadContentDatabasePublishDiagnostics,
+  prepareProjectBundleForClient,
 };

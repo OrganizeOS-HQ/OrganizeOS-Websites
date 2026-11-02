@@ -24,16 +24,15 @@ import {
   focusCommandPanel,
 } from "../command-state";
 import { InstanceList, showInstance } from "../shared/instance-list";
-import { deleteVariableMutable } from "~/shared/data-variables";
-import { updateWebstudioData } from "~/shared/instance-utils/data";
 import {
   DeleteDataVariableDialog,
   RenameDataVariableDialog,
+  deleteDataVariable,
 } from "~/builder/shared/data-variable-utils";
 import type { BaseOption } from "../shared/types";
 import { formatUsageCount, getUsageSearchTerms } from "../shared/usage-utils";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
-import { findVariableUsagesByInstance } from "~/shared/data-variables";
+import { findVariableUsagesByInstance } from "@webstudio-is/project-build/runtime";
 
 export type DataVariableOption = BaseOption & {
   type: "dataVariable";
@@ -128,7 +127,7 @@ export const DataVariablesGroup = ({
         name="dataVariable"
         heading={
           <CommandGroupHeading>
-            Data variables ({options.length})
+            Variables ({options.length})
           </CommandGroupHeading>
         }
         actions={[
@@ -201,9 +200,7 @@ export const DataVariablesGroup = ({
           focusCommandPanel();
         }}
         onConfirm={(variableId) => {
-          updateWebstudioData((data) => {
-            deleteVariableMutable(data, variableId);
-          });
+          deleteDataVariable(variableId);
           toast.success(`Variable "${variableDialog?.name}" deleted`);
           setVariableDialog(undefined);
         }}

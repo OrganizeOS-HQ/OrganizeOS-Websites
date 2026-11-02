@@ -1,5 +1,6 @@
 import { useStore } from "@nanostores/react";
 import {
+  PanelContent,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -10,6 +11,7 @@ import {
   ScrollArea,
   theme,
   Box,
+  cssVar,
 } from "@webstudio-is/design-system";
 import { atom } from "nanostores";
 import { Fragment } from "react";
@@ -86,6 +88,13 @@ const additionalShortcuts = [
     description: "Switch to breakpoint by number (1-9)",
     category: "Top bar",
     defaultHotkeys: ["1-9"],
+  },
+  {
+    name: "selectAllAssets",
+    label: "Select all assets and folders",
+    description: "Select all currently rendered assets and folders",
+    category: "Panels",
+    defaultHotkeys: ["meta+a", "ctrl+a"],
   },
 ];
 
@@ -194,6 +203,7 @@ export const KeyboardShortcutsDialog = () => {
       "toggleComponentsPanel",
       "toggleNavigatorPanel",
       "openStylePanel",
+      "selectAllAssets",
       "openSettingsPanel",
     ],
 
@@ -284,7 +294,7 @@ export const KeyboardShortcutsDialog = () => {
                     as="span"
                     css={{
                       paddingInline: 4,
-                      border: `1px solid ${theme.colors.borderNeutral}`,
+                      border: `1px solid ${cssVar("--border-default")}`,
                       borderRadius: theme.borderRadius[2],
                     }}
                   >
@@ -321,10 +331,10 @@ export const KeyboardShortcutsDialog = () => {
       >
         <DialogTitle>Keyboard shortcuts</DialogTitle>
         <ScrollArea>
-          <Grid columns={2} gap={3} css={{ padding: theme.panel.padding }}>
+          <PanelContent as={Grid} columns={2} gap={3}>
             <Grid gap={5}>{leftCategories.map(renderCategory)}</Grid>
             <Grid gap={5}>{rightCategories.map(renderCategory)}</Grid>
-          </Grid>
+          </PanelContent>
         </ScrollArea>
       </DialogContent>
     </Dialog>

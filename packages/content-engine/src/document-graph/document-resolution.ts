@@ -1,0 +1,434 @@
+import { LRUCache } from "lru-cache";
+import { awaitWithSignal, createConcurrencyLimiter } from "../async-utils";
+import { ByteLimitExceededError, readBytePrefix } from "../byte-stream";
+import { contentEngineLimits } from "../limits";
+import {
+  assembleDocument,
+  getAdaptedDocumentProperties,
+  parseDocumentSource,
+  resolveAdaptedDocumentAssetReferences,
+  selectDocumentRepresentation,
+  type AdaptedDocument,
+} from "./document-adapter";
+import type { DocumentFormat } from "./document-format";
+import {
+  getDocumentGraphClosure,
+  type DocumentGraph,
+  type DocumentGraphNode,
+} from "./graph";
+import {
+  assertDocumentSourceIdentity,
+  type DocumentSource,
+  type DocumentSourceLoader,
+} from "./document-source";
+import { getDocumentSourceCacheKey } from "./cached-document-loader";
+import { resolveDocumentGraph, type ResolvedDocumentGraph } from "./resolver";
+import {
+  emitDocumentGraphRuntimeEvent,
+  getDocumentGraphErrorCode,
+  type DocumentGraphRuntimeObserver,
+} from "./observability";
+import type {
+  AssetRuntimeData,
+  AssetValueReferences,
+} from "../asset-value-references";
+
+export type DocumentResolutionLimitErrorCode =
+  | "DOCUMENT_COUNT_EXCEEDED"
+  | "CONTENT_LIMIT_EXCEEDED"
+  | "TOTAL_BYTES_EXCEEDED";
+
+export class DocumentResolutionLimitError extends Error {
+  readonly code: DocumentResolutionLimitErrorCode;
+  readonly documentId?: string;
+  readonly documentCount?: number;
+  readonly documentLimit?: number;
+  readonly contentByteLimit?: number;
+  readonly totalBytes?: number;
+  readonly totalByteLimit?: number;
+
+  constructor({
+    code,
+    message,
+    documentId,
+    documentCount,
+    documentLimit,
+    contentByteLimit,
+    totalBytes,
+    totalByteLimit,
+    cause,
+  }: {
+    code: DocumentResolutionLimitErrorCode;
+    message: string;
+    documentId?: string;
+    documentCount?: number;
+    documentLimit?: number;
+    contentByteLimit?: number;
+    totalBytes?: number;
+    totalByteLimit?: number;
+    cause?: unknown;
+  }) {
+    super(message, { cause });
+    this.name = "DocumentResolutionLimitError";
+    this.code = code;
+    this.documentId = documentId;
+    this.documentCount = documentCount;
+    this.documentLimit = documentLimit;
+    this.contentByteLimit = contentByteLimit;
+    this.totalBytes = totalBytes;
+    this.totalByteLimit = totalByteLimit;
+  }
+}
+
+type SessionDocumentSource = Readonly<{
+  format: DocumentFormat;
+  revision: string;
+  bytes: Uint8Array;
+  byteLength: number;
+  parse: () => Promise<AdaptedDocument>;
+}>;
+
+type ResolveDocumentGraphInput = {
+  graph: DocumentGraph;
+  rootIds: readonly string[];
+  maximumTotalBytes?: number;
+  maximumDocuments?: number;
+  onEvent?: DocumentGraphRuntimeObserver;
+  allowUnresolvedReferences?: boolean;
+  transformDocument?: (input: {
+    node: DocumentGraphNode;
+    document: AdaptedDocument;
+  }) => AdaptedDocument;
+};
+
+export type DocumentResolutionSession = Readonly<{
+  getCached: (node: DocumentGraphNode) => DocumentSource | undefined;
+  resolve: (
+    input: ResolveDocumentGraphInput
+  ) => Promise<ResolvedDocumentGraph<AdaptedDocument>>;
+}>;
+
+const resolveWithSessionDocumentLoader = async ({
+  graph,
+  rootIds,
+  concurrency,
+  maximumBytes,
+  maximumTotalBytes = contentEngineLimits.hydratedTotalBytes,
+  maximumDocuments = contentEngineLimits.documentGraphDocuments,
+  signal,
+  onEvent,
+  allowUnresolvedReferences = false,
+  transformDocument,
+  load,
+}: ResolveDocumentGraphInput & {
+  concurrency: number;
+  maximumBytes: number;
+  signal?: AbortSignal;
+  load: (
+    node: DocumentGraphNode,
+    options: { signal?: AbortSignal }
+  ) => Promise<SessionDocumentSource>;
+}): Promise<ResolvedDocumentGraph<AdaptedDocument>> => {
+  const documentCount = getDocumentGraphClosure({ graph, rootIds }).length;
+  const resolutionEvent = { rootCount: rootIds.length, documentCount };
+  emitDocumentGraphRuntimeEvent(onEvent, {
+    type: "resolution-started",
+    ...resolutionEvent,
+  });
+  try {
+    if (documentCount > maximumDocuments) {
+      throw new DocumentResolutionLimitError({
+        code: "DOCUMENT_COUNT_EXCEEDED",
+        message: "Document graph resolution exceeds the document limit",
+        documentCount,
+        documentLimit: maximumDocuments,
+      });
+    }
+    let totalBytes = 0;
+    // Source reads stay concurrent, while budgets and parsing follow graph order.
+    let previousDocument = Promise.resolve();
+    const resolved = await resolveDocumentGraph<
+      AdaptedDocument,
+      AdaptedDocument
+    >({
+      graph,
+      rootIds,
+      concurrency,
+      signal,
+      load: async (node, options) => {
+        const turn = previousDocument;
+        let releaseTurn = () => {};
+        previousDocument = new Promise<void>((resolve) => {
+          releaseTurn = resolve;
+        });
+        let loaded: PromiseSettledResult<SessionDocumentSource>;
+        try {
+          loaded = { status: "fulfilled", value: await load(node, options) };
+        } catch (reason) {
+          loaded = { status: "rejected", reason };
+        }
+        await turn;
+        try {
+          if (loaded.status === "rejected") {
+            throw loaded.reason;
+          }
+          if (loaded.value.byteLength > maximumBytes) {
+            throw new DocumentResolutionLimitError({
+              code: "CONTENT_LIMIT_EXCEEDED",
+              message: `Document ${node.id} exceeds the byte limit`,
+              documentId: node.id,
+              contentByteLimit: maximumBytes,
+              cause: new ByteLimitExceededError(),
+            });
+          }
+          const nextTotalBytes = totalBytes + loaded.value.byteLength;
+          if (nextTotalBytes > maximumTotalBytes) {
+            throw new DocumentResolutionLimitError({
+              code: "TOTAL_BYTES_EXCEEDED",
+              message: "Document graph resolution exceeds the total byte limit",
+              documentId: node.id,
+              totalBytes: nextTotalBytes,
+              totalByteLimit: maximumTotalBytes,
+            });
+          }
+          totalBytes = nextTotalBytes;
+          return await loaded.value.parse();
+        } finally {
+          releaseTurn();
+        }
+      },
+      select: ({ reference, value }) =>
+        selectDocumentRepresentation({
+          document: value,
+          representation: reference.representation,
+        }),
+      assemble: ({ node, source, references }) => {
+        const document = assembleDocument({
+          document: source,
+          references,
+          allowUnresolvedReferences,
+        });
+        return transformDocument?.({ node, document }) ?? document;
+      },
+    });
+    emitDocumentGraphRuntimeEvent(onEvent, {
+      type: "resolution-completed",
+      ...resolutionEvent,
+    });
+    return resolved;
+  } catch (error) {
+    emitDocumentGraphRuntimeEvent(onEvent, {
+      type: "resolution-failed",
+      ...resolutionEvent,
+      errorCode: getDocumentGraphErrorCode(error),
+    });
+    throw error;
+  }
+};
+
+export const createDocumentResolutionSession = ({
+  load,
+  concurrency,
+  signal,
+  maximumDocumentBytes = contentEngineLimits.hydratedFileBytes,
+  maximumCacheBytes = contentEngineLimits.hydratedTotalBytes * 4,
+}: {
+  load: DocumentSourceLoader;
+  concurrency: number;
+  signal?: AbortSignal;
+  maximumDocumentBytes?: number;
+  maximumCacheBytes?: number;
+}): DocumentResolutionSession => {
+  if (Number.isSafeInteger(concurrency) === false || concurrency <= 0) {
+    throw new TypeError("Document resolution concurrency must be positive");
+  }
+  if (
+    Number.isSafeInteger(maximumDocumentBytes) === false ||
+    maximumDocumentBytes <= 0
+  ) {
+    throw new TypeError("Document resolution byte limit must be positive");
+  }
+  if (
+    Number.isSafeInteger(maximumCacheBytes) === false ||
+    maximumCacheBytes <= 0
+  ) {
+    throw new TypeError(
+      "Document resolution cache byte limit must be positive"
+    );
+  }
+  const cached = new LRUCache<string, SessionDocumentSource>({
+    maxSize: maximumCacheBytes,
+    sizeCalculation: ({ byteLength }) => Math.max(1, byteLength),
+  });
+  const pending = new Map<string, Promise<SessionDocumentSource>>();
+  const limit = createConcurrencyLimiter({ concurrency, signal });
+
+  const assertSessionSignal = (requestedSignal?: AbortSignal) => {
+    if (requestedSignal !== undefined && requestedSignal !== signal) {
+      throw new TypeError("Document resolution session signal does not match");
+    }
+    signal?.throwIfAborted();
+  };
+
+  const waitForSessionTask = async <Result>(task: Promise<Result>) => {
+    assertSessionSignal();
+    return await awaitWithSignal(task, signal);
+  };
+
+  const loadSessionDocument = async (
+    node: DocumentGraphNode,
+    options: { signal?: AbortSignal }
+  ) => {
+    assertSessionSignal(options.signal);
+    const key = getDocumentSourceCacheKey(node);
+    const cachedDocument = cached.get(key);
+    if (cachedDocument !== undefined) {
+      return cachedDocument;
+    }
+    const previous = pending.get(key);
+    if (previous !== undefined) {
+      return await waitForSessionTask(previous);
+    }
+    const request = limit(async () => {
+      assertSessionSignal(options.signal);
+      const source = assertDocumentSourceIdentity({
+        node,
+        source: await load(node, { signal }),
+      });
+      assertSessionSignal(options.signal);
+      const bytes = await readBytePrefix(
+        source.source,
+        maximumDocumentBytes + 1
+      );
+      assertSessionSignal(options.signal);
+      let parsed: Promise<AdaptedDocument> | undefined;
+      const entry = Object.freeze({
+        format: source.format,
+        revision: source.revision,
+        bytes,
+        byteLength: bytes.byteLength,
+        parse: () => {
+          parsed ??= parseDocumentSource({
+            format: source.format,
+            source: bytes,
+            maximumBytes: maximumDocumentBytes,
+          });
+          return parsed;
+        },
+      });
+      if (entry.byteLength <= maximumCacheBytes) {
+        cached.set(key, entry);
+      }
+      return entry;
+    });
+    pending.set(key, request);
+    try {
+      return await waitForSessionTask(request);
+    } finally {
+      pending.delete(key);
+    }
+  };
+
+  const getCached = (node: DocumentGraphNode): DocumentSource | undefined => {
+    assertSessionSignal();
+    const entry = cached.get(getDocumentSourceCacheKey(node));
+    if (entry === undefined || entry.byteLength > maximumDocumentBytes) {
+      return;
+    }
+    return Object.freeze({
+      format: entry.format,
+      revision: entry.revision,
+      source: entry.bytes.slice(),
+    });
+  };
+
+  return Object.freeze({
+    getCached,
+    resolve: async (input: ResolveDocumentGraphInput) => {
+      return await resolveWithSessionDocumentLoader({
+        ...input,
+        concurrency,
+        maximumBytes: maximumDocumentBytes,
+        signal,
+        load: loadSessionDocument,
+      });
+    },
+  });
+};
+
+/** Resolves one document's graph-backed properties and local Asset references. */
+export const resolveDocumentGraphProperties = async ({
+  graph,
+  rootId,
+  load,
+  assetValueReferences,
+  runtimeAssets,
+  concurrency = contentEngineLimits.concurrentContentReads,
+}: {
+  graph: DocumentGraph;
+  rootId: string;
+  load: DocumentSourceLoader;
+  assetValueReferences?: AssetValueReferences;
+  runtimeAssets?: Readonly<Record<string, AssetRuntimeData>>;
+  concurrency?: number;
+}) => {
+  const resolution = await createDocumentResolutionSession({
+    load,
+    concurrency,
+  }).resolve({
+    graph,
+    rootIds: [rootId],
+    allowUnresolvedReferences: true,
+    transformDocument: ({ node, document }) =>
+      resolveAdaptedDocumentAssetReferences({
+        document,
+        references: assetValueReferences?.[node.id],
+        runtimeAssets,
+      }),
+  });
+  return getAdaptedDocumentProperties(resolution.roots[0]);
+};
+
+/** Resolves parsed JSON and Markdown values without depending on storage. */
+export const resolveAdaptedDocumentGraph = async ({
+  graph,
+  rootIds,
+  concurrency,
+  maximumBytes = contentEngineLimits.hydratedFileBytes,
+  maximumTotalBytes = contentEngineLimits.hydratedTotalBytes,
+  maximumDocuments = contentEngineLimits.documentGraphDocuments,
+  signal,
+  load,
+  onEvent,
+  allowUnresolvedReferences = false,
+}: {
+  graph: DocumentGraph;
+  rootIds: readonly string[];
+  concurrency: number;
+  maximumBytes?: number;
+  maximumTotalBytes?: number;
+  maximumDocuments?: number;
+  signal?: AbortSignal;
+  load: (
+    node: DocumentGraphNode,
+    options: { signal?: AbortSignal }
+  ) => Promise<DocumentSource>;
+  onEvent?: DocumentGraphRuntimeObserver;
+  allowUnresolvedReferences?: boolean;
+}): Promise<ResolvedDocumentGraph<AdaptedDocument>> => {
+  const session = createDocumentResolutionSession({
+    load,
+    concurrency,
+    signal,
+    maximumDocumentBytes: maximumBytes,
+    maximumCacheBytes: Math.max(maximumBytes, maximumTotalBytes),
+  });
+  return await session.resolve({
+    graph,
+    rootIds,
+    maximumTotalBytes,
+    maximumDocuments,
+    onEvent,
+    allowUnresolvedReferences,
+  });
+};

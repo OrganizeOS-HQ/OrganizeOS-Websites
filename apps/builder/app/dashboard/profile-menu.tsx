@@ -16,6 +16,7 @@ import {
 import { useNavigate } from "@remix-run/react";
 import { logoutPath } from "~/shared/router-utils";
 import type { User } from "~/shared/db/user.server";
+import { ColorSchemeMenu } from "~/shared/color-scheme-menu";
 
 const getAvatarLetter = (title?: string) => {
   return (title || "X").charAt(0).toLocaleUpperCase();
@@ -34,7 +35,7 @@ const ProfileButton = forwardRef<
     <Flex gap="2" align="center">
       <Button
         color="ghost"
-        aria-label="Profile Menu"
+        aria-label="Profile menu"
         {...rest}
         ref={forwardedRef}
         prefix={
@@ -70,14 +71,16 @@ export const ProfileMenu = ({ user }: { user: User }) => {
       <DropdownMenuTrigger asChild>
         <ProfileButton image={user.image || undefined} name={nameOrEmail} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" width="regular">
+      <DropdownMenuContent align="start" sideOffset={4} width="regular">
         <DropdownMenuLabel>
           {user.username ?? defaultUserName}
           <Text>{user.email}</Text>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <ColorSchemeMenu />
+        <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => navigate(logoutPath())}>
-          Sign Out
+          Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

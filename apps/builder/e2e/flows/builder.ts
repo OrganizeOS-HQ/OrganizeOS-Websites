@@ -1,5 +1,5 @@
-import type { Frame, Page } from "playwright";
-import { getProjectBuilderUrl } from "../harness";
+import type { Frame, Page } from "@playwright/test";
+import { getProjectBuilderUrl } from "../test";
 
 const delay = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -7,6 +7,17 @@ const delay = (ms: number) =>
 const builderNetworkIdleTimeout =
   Number.parseInt(process.env.E2E_BUILDER_NETWORK_IDLE_TIMEOUT_MS ?? "", 10) ||
   5_000;
+
+export const getCanvasInstanceSelector = (instanceSelector: string[]) =>
+  `[data-ws-selector="${instanceSelector.join(",")}"]`;
+
+export const getCanvasInstance = ({
+  canvas,
+  instanceSelector,
+}: {
+  canvas: Frame;
+  instanceSelector: string[];
+}) => canvas.locator(getCanvasInstanceSelector(instanceSelector)).first();
 
 export const getCanvasFrame = async (page: Page) => {
   const iframe = await page.locator("iframe").first().elementHandle();
@@ -104,13 +115,23 @@ export const openProjectBuilder = async ({
   projectId,
   authToken,
   mode,
+  features,
+  pageId,
 }: {
   page: Page;
   projectId: string;
   authToken?: string;
   mode?: "content" | "preview";
+  features?: string[];
+  pageId?: string;
 }): Promise<Frame> => {
-  await page.goto(getProjectBuilderUrl({ projectId, authToken, mode }));
+  const url = new URL(
+    getProjectBuilderUrl({ projectId, authToken, mode, features })
+  );
+  if (pageId !== undefined) {
+    url.searchParams.set("pageId", pageId);
+  }
+  await page.goto(url.href);
   await page
     .waitForLoadState("networkidle", { timeout: builderNetworkIdleTimeout })
     .catch(() => undefined);
