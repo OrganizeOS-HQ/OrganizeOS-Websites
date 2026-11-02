@@ -334,6 +334,44 @@ describe("applyPreset", () => {
     expect($styles.get().get(getStyleDeclKey(color))).toEqual(color);
   });
 
+  // A light preset makes the section no band: the ring and accent text
+  // a band set go back to accent-2.
+  test("clears the band variables a section holds, and writes those it is given", () => {
+    const local: StyleSource = { type: "local", id: "local" };
+    const color = decl("local", "color", keyword("black"));
+    const variable = (value: string): StyleValue => ({ type: "var", value });
+    setup({
+      styleSources: [local],
+      selection: ["local"],
+      selected: "local",
+      styles: [
+        decl("local", "--focus-ring", variable("base")),
+        decl("local", "--accent-text", variable("base")),
+        color,
+      ],
+    });
+    applyPreset(buildPreset("bloom-light"));
+    const properties = () =>
+      declsOf("local").map((item) => String(item.property));
+    expect(properties()).not.toContain("--focus-ring");
+    expect(properties()).not.toContain("--accent-text");
+    expect($styles.get().get(getStyleDeclKey(color))).toEqual(color);
+
+    applyPreset([
+      ...buildPreset("bloom-dark"),
+      { property: "--focus-ring", value: variable("text") },
+      { property: "--accent-text", value: variable("text") },
+    ]);
+    expect(
+      declsOf("local")
+        .filter((item) => String(item.property).startsWith("--"))
+        .map((item) => [item.property, item.value])
+    ).toEqual([
+      ["--focus-ring", variable("text")],
+      ["--accent-text", variable("text")],
+    ]);
+  });
+
   test("writes at the selected breakpoint", () => {
     const local: StyleSource = { type: "local", id: "local" };
     const baseColor = decl("local", "background-color", keyword("red"));

@@ -263,32 +263,48 @@ export type OrganizeosBlockCompletion =
  * adds with it (completeOrganizeosInsertMutable), never touches a store.
  * `component` is the template's key, which names the block's table entry; a
  * key with no entry is returned as it is.
+ *
+ * A block a site template placed lives in a fragment of the whole page, where
+ * every `ws:id` below its root is `${instanceIdPrefix}${wsId}` (place-block.ts).
+ * With `instanceIdPrefix`, a bind resolves to that id, and a block whose root
+ * the fragment lacks is refused, not returned as it is: it would be inserted
+ * unbound.
  */
 export const completeOrganizeosFragment = ({
   component,
   fragment,
   presetIds,
   resources,
+  instanceIdPrefix,
 }: {
   component: string;
   fragment: WebstudioFragment;
   presetIds: OrganizeosPresetIds;
   resources: Resources;
+  instanceIdPrefix?: string;
 }): OrganizeosBlockCompletion => {
   const entry = organizeosBlockData.get(component);
   const rootChild = fragment.children.find((child) => child.type === "id");
   const root = fragment.instances.find(
     (instance) => instance.id === rootChild?.value
   );
-  if (entry === undefined || root === undefined) {
+  if (entry === undefined) {
     return { status: "ready", fragment };
+  }
+  if (root === undefined) {
+    return instanceIdPrefix === undefined
+      ? { status: "ready", fragment }
+      : { status: "refused" };
   }
 
   // A bind names an instance of the template by its `ws:id`. One the fragment
   // lacks is a template bug (the template tests catch it); nothing is written.
   const instanceIds = new Set(fragment.instances.map(({ id }) => id));
   const binds = entry.binds.map((bind) => ({
-    instanceId: bind.instance === "root" ? root.id : bind.instance,
+    instanceId:
+      bind.instance === "root"
+        ? root.id
+        : `${instanceIdPrefix ?? ""}${bind.instance}`,
     prop: bind.prop,
     value: bind.value,
   }));

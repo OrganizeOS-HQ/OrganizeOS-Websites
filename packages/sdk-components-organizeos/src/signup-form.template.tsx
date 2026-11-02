@@ -10,20 +10,28 @@ import {
 import {
   buttonToken,
   fieldToken,
+  formHeadingToken,
   inputToken,
   messageToken,
 } from "./shared/form-tokens";
 import { organizeos } from "./shared/proxy";
 
-const formState = new Variable("formState", "initial");
-
+// A function, not a constant: a site template places the form once per
+// placement, and `renderTemplate` keys a data source by its Variable, so each
+// call needs a Variable of its own to scope the state to its own root.
+//
 // `data` is left unbound: the OrganizeOS panel binds it to the project's
 // Forms preset by id when it inserts the block.
-export const meta: TemplateMeta = {
-  category: "hidden",
-  label: "Signup Form",
-  description: "Newsletter and contact signups",
-  template: (
+//
+// `heading` and `submit` are a site template's text for the form's heading
+// and its submit button (placeBlock's options); with none, the block's own
+// placeholders.
+export const signupFormTemplate = ({
+  heading,
+  submit,
+}: { heading?: string; submit?: string } = {}) => {
+  const formState = new Variable("formState", "initial");
+  return (
     <organizeos.SignupForm
       state={expression`${formState}`}
       onStateChange={
@@ -40,8 +48,12 @@ export const meta: TemplateMeta = {
           gap: 16px;
         `}
       >
-        <ws.element ws:tag="h2">
-          {new PlaceholderValue("Sign up for updates")}
+        {/*
+          The heading wears "OS Form Heading": the site's heading font, as a
+          template's own headings are, at a heading's line height.
+        */}
+        <ws.element ws:tag="h2" ws:tokens={[formHeadingToken]}>
+          {heading ?? new PlaceholderValue("Sign up for updates")}
         </ws.element>
         <organizeos.Field
           ws:label="Field: Email"
@@ -66,7 +78,7 @@ export const meta: TemplateMeta = {
           <organizeos.FieldMessage ws:tokens={[messageToken]} />
         </organizeos.Field>
         <organizeos.SubmitButton ws:tokens={[buttonToken]}>
-          {new PlaceholderValue("Sign up")}
+          {submit ?? new PlaceholderValue("Sign up")}
         </organizeos.SubmitButton>
       </ws.element>
       <ws.element
@@ -102,5 +114,12 @@ export const meta: TemplateMeta = {
         {new PlaceholderValue("Signups are not available right now.")}
       </ws.element>
     </organizeos.SignupForm>
-  ),
+  );
+};
+
+export const meta: TemplateMeta = {
+  category: "hidden",
+  label: "Signup Form",
+  description: "Newsletter and contact signups",
+  template: signupFormTemplate(),
 };

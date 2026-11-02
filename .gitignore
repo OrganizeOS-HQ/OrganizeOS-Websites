@@ -67,3 +67,6 @@ packages/prisma-client/src/__generated__
 
 # copilot instructions
 .github/instructions
+
+# site-template previews (scripts/preview-site-template.mjs)
+previews/

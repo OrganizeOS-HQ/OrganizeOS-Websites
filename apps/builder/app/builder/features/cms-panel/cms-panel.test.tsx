@@ -257,6 +257,13 @@ describe("the CMS overlay in the builder", () => {
     return event;
   };
 
+  // jsdom has no PointerEvent constructor; the listener reads only the target.
+  const pointerDown = (target: EventTarget) => {
+    act(() => {
+      target.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    });
+  };
+
   // The sidebar's tab content observes its size, and jsdom 20 has no
   // ResizeObserver.
   class FakeResizeObserver {
@@ -446,6 +453,37 @@ describe("the CMS overlay in the builder", () => {
       expect(element?.style.zIndex).toBe("2");
       expect(frame()?.style.width).toBe("100%");
       expect(frame()?.style.height).toBe("100%");
+      // The corner below the rail, over the footer's left end.
+      const corner = element?.querySelector<HTMLElement>(
+        "[data-cms-overlay-corner]"
+      );
+      expect(corner?.style.position).toBe("fixed");
+      expect(corner?.style.left).toBe("0px");
+      expect(corner?.style.width).toBe("41px");
+      expect(corner?.style.top).toBe("800px");
+      expect(corner?.style.bottom).toBe("0px");
+    });
+
+    test("a press on the top bar hides it, so the builder's menu opens over the canvas", () => {
+      render();
+      const nav = document.createElement("nav");
+      const trigger = document.createElement("button");
+      nav.appendChild(trigger);
+      document.body.appendChild(nav);
+      clickRail();
+      expect(overlay()?.style.display).toBe("block");
+      pointerDown(trigger);
+      expect(overlay()?.style.display).toBe("none");
+      nav.remove();
+    });
+
+    test("a press inside the overlay or on the CMS button does not hide it", () => {
+      render();
+      clickRail();
+      pointerDown(frame() as HTMLElement);
+      expect(overlay()?.style.display).toBe("block");
+      pointerDown(railButton() as HTMLElement);
+      expect(overlay()?.style.display).toBe("block");
     });
 
     test("moves focus into the frame on open", () => {

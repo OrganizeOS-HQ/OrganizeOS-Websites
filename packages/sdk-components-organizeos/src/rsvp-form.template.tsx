@@ -11,12 +11,11 @@ import {
 import {
   buttonToken,
   fieldToken,
+  formHeadingToken,
   inputToken,
   messageToken,
 } from "./shared/form-tokens";
 import { organizeos } from "./shared/proxy";
-
-const rsvpState = new Variable("rsvpState", "initial");
 
 // Guests, Shift Options and Questions draw their own controls, so a template
 // cannot place them as children: it places `ws:descendant` instances, which
@@ -58,15 +57,23 @@ const field = (name: string, label: string, text: string) => (
   </organizeos.Field>
 );
 
+// A function, not a constant: a site template places the form once per
+// placement, and `renderTemplate` keys a data source by its Variable, so each
+// call needs a Variable of its own to scope the state to its own root.
+//
 // `data` is left unbound: the OrganizeOS panel binds it to the block's own
 // Events binding by id when it inserts the block, and the designer picks the
 // event (`record`) in the Settings panel.
-export const meta: TemplateMeta = {
-  category: "hidden",
-  label: "RSVP Form",
-  description: "RSVPs for one of your events",
-  icon: CalendarIcon,
-  template: (
+//
+// `heading` and `submit` are a site template's text for the form's heading
+// and its submit button (placeBlock's options); with none, the block's own
+// placeholders.
+export const rsvpFormTemplate = ({
+  heading,
+  submit,
+}: { heading?: string; submit?: string } = {}) => {
+  const rsvpState = new Variable("rsvpState", "initial");
+  return (
     <organizeos.RsvpForm
       state={expression`${rsvpState}`}
       onStateChange={
@@ -83,8 +90,12 @@ export const meta: TemplateMeta = {
           gap: 16px;
         `}
       >
-        <ws.element ws:tag="h2">
-          {new PlaceholderValue("RSVP to this event")}
+        {/*
+          The heading wears "OS Form Heading": the site's heading font, as a
+          template's own headings are, at a heading's line height.
+        */}
+        <ws.element ws:tag="h2" ws:tokens={[formHeadingToken]}>
+          {heading ?? new PlaceholderValue("RSVP to this event")}
         </ws.element>
         {field("first_name", "First name", "First name")}
         {field("last_name", "Last name", "Last name")}
@@ -97,7 +108,7 @@ export const meta: TemplateMeta = {
           {new PlaceholderValue("Also email me news from this organization")}
         </organizeos.EmailConsent>
         <organizeos.SubmitButton ws:tokens={[buttonToken]}>
-          {new PlaceholderValue("RSVP")}
+          {submit ?? new PlaceholderValue("RSVP")}
         </organizeos.SubmitButton>
       </ws.element>
       <ws.element
@@ -147,5 +158,13 @@ export const meta: TemplateMeta = {
         {new PlaceholderValue("RSVPs are not available right now.")}
       </ws.element>
     </organizeos.RsvpForm>
-  ),
+  );
+};
+
+export const meta: TemplateMeta = {
+  category: "hidden",
+  label: "RSVP Form",
+  description: "RSVPs for one of your events",
+  icon: CalendarIcon,
+  template: rsvpFormTemplate(),
 };

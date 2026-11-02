@@ -9,17 +9,30 @@ import { getStyleDeclKey, ROOT_INSTANCE_ID } from "@webstudio-is/sdk";
 import { camelCaseProperty } from "@webstudio-is/css-data";
 import { registerContainers } from "~/shared/sync/sync-stores";
 import {
+  $selectedBreakpointId,
   $selectedPageId,
   $selectedStyleSources,
   $selectedStyleState,
   selectInstance,
 } from "~/shared/nano-states";
-import { $instances, $pages, $styles } from "~/shared/sync/data-stores";
+import {
+  $breakpoints,
+  $instances,
+  $pages,
+  $styles,
+} from "~/shared/sync/data-stores";
+import { getComputedStyleDecl } from "~/shared/style-object-model";
 import { applyPreset } from "./backgrounds/apply-preset";
-import { builtInPalette, presets, type Palette } from "./backgrounds/presets";
+import {
+  builtInPalette,
+  getBandVariables,
+  presets,
+  type Palette,
+} from "./backgrounds/presets";
 import {
   buildSectionStyleModel,
   listRootColorVariables,
+  withRoot,
 } from "./backgrounds/style-model";
 import {
   el,
@@ -265,11 +278,12 @@ describe("applying a preset", () => {
     expect(document.querySelector("[data-choose-asset]")).toBeNull();
     chooseImage(host, "image-scrim-dark");
     expect(applyPreset).toHaveBeenCalledTimes(1);
-    expect(applyPreset).toHaveBeenCalledWith(
-      presetById("image-scrim-dark").build(builtInPalette, {
+    expect(applyPreset).toHaveBeenCalledWith([
+      ...presetById("image-scrim-dark").build(builtInPalette, {
         imageAssetId: "photo",
-      })
-    );
+      }),
+      ...getBandVariables(presetById("image-scrim-dark"), builtInPalette),
+    ]);
     // the picker closed
     expect(document.querySelector("[data-choose-asset]")).toBeNull();
   });
@@ -300,6 +314,136 @@ describe("applying a preset", () => {
   });
 });
 
+// As the site templates' kit bands do (site-templates canonical-variables.ts
+// BAND_VARIABLES): a dark preset makes the section a band, which rings focus
+// and sets accent text in its text colour; a light one makes it none.
+describe("band variables", () => {
+  const canonicalVariables = [
+    style(globalRoot, "--base", "#fff8ec"),
+    style(globalRoot, "--accent-1", "#1f3557"),
+    style(globalRoot, "--accent-2", "#c2470f"),
+    style(globalRoot, "--text", "#1a1a1a"),
+  ];
+  const sectionStyles = () => {
+    const local = $selectedStyleSources.get().get("section");
+    return Object.fromEntries(
+      Array.from($styles.get().values())
+        .filter((decl) => decl.styleSourceId === local)
+        .map((decl) => [decl.property, decl.value])
+    );
+  };
+
+  test("a dark preset sets the ring and accent text to the base", () => {
+    project({ styles: canonicalVariables });
+    selectInstance(sectionSelector);
+    const host = render();
+    update(() => presetButton(host, "tint-dark")?.click());
+    expect(sectionStyles()).toMatchObject({
+      "--focus-ring": { type: "var", value: "base" },
+      "--accent-text": { type: "var", value: "base" },
+    });
+  });
+
+  test("a light preset sets them back to accent-2", () => {
+    project({
+      styles: [
+        ...canonicalVariables,
+        style("section", "--focus-ring", "var(--base)"),
+        style("section", "--accent-text", "var(--base)"),
+      ],
+    });
+    selectInstance(sectionSelector);
+    const host = render();
+    update(() => presetButton(host, "wash-light")?.click());
+    expect(sectionStyles()).toMatchObject({
+      "--focus-ring": { type: "var", value: "accent-2" },
+      "--accent-text": { type: "var", value: "accent-2" },
+    });
+  });
+
+  // What text inside an element reads for a variable, at the given widths.
+  const readAt = (
+    instanceSelector: string[],
+    property: `--${string}`,
+    matchingBreakpoints = ["base"]
+  ) =>
+    getComputedStyleDecl({
+      model: {
+        ...buildSectionStyleModel(sectionSelector),
+        matchingBreakpoints,
+      },
+      instanceSelector: withRoot(instanceSelector),
+      property,
+    }).computedValue;
+
+  // As the kit's base panel inside a band: what sits on the light surface
+  // rings focus and sets accent text in accent-2 again.
+  test("a light surface nested in a dark band reads accent-2 inside it", () => {
+    project({
+      children: [el("panel", "Box", [el("text", "Text", ["Hello"])])],
+      styles: canonicalVariables,
+    });
+    selectInstance(sectionSelector);
+    const host = render();
+    update(() => presetButton(host, "bloom-dark")?.click());
+    update(() => selectInstance(["panel", ...sectionSelector]));
+    update(() => presetButton(host, "tint-light")?.click());
+    const text = ["text", "panel", ...sectionSelector];
+    const accent2 = readAt(text, "--accent-2");
+    expect(accent2).toMatchObject({ type: "color" });
+    expect(readAt(text, "--focus-ring")).toEqual(accent2);
+    expect(readAt(text, "--accent-text")).toEqual(accent2);
+    // and the band around it still reads the base
+    expect(readAt(sectionSelector, "--focus-ring")).toEqual(
+      readAt(sectionSelector, "--base")
+    );
+  });
+
+  // A dark band on wide screens that turns light on phones: unset at 767,
+  // the variables would cascade in from the base breakpoint's band.
+  test("a light preset at 767 after a dark preset at the base breakpoint reads accent-2 at 767", () => {
+    project({ styles: canonicalVariables });
+    $breakpoints.set(
+      new Map([
+        ...$breakpoints.get(),
+        ["landscape", { id: "landscape", label: "", maxWidth: 767 }],
+      ])
+    );
+    selectInstance(sectionSelector);
+    const host = render();
+    update(() => presetButton(host, "wash-dark")?.click());
+    update(() => $selectedBreakpointId.set("landscape"));
+    update(() => presetButton(host, "wash-light")?.click());
+    const phone = ["base", "tablet", "landscape"];
+    expect(readAt(sectionSelector, "--accent-2", phone)).toMatchObject({
+      type: "color",
+    });
+    expect(readAt(sectionSelector, "--focus-ring", phone)).toEqual(
+      readAt(sectionSelector, "--accent-2", phone)
+    );
+    expect(readAt(sectionSelector, "--accent-text", phone)).toEqual(
+      readAt(sectionSelector, "--accent-2", phone)
+    );
+    // wider, the band stays
+    expect(readAt(sectionSelector, "--focus-ring")).toEqual(
+      readAt(sectionSelector, "--base")
+    );
+  });
+
+  // Only a site template's site reads them.
+  test("on a site whose colours are its own, no preset writes them", () => {
+    project({ styles: rootVariables });
+    selectInstance(sectionSelector);
+    const host = render();
+    update(() => presetButton(host, "tint-dark")?.click());
+    expect(sectionStyles()).not.toHaveProperty("--focus-ring");
+    expect(sectionStyles()).not.toHaveProperty("--accent-text");
+    update(() => presetButton(host, "tint-light")?.click());
+    expect(sectionStyles()).not.toHaveProperty("--focus-ring");
+    expect(sectionStyles()).not.toHaveProperty("--accent-text");
+  });
+});
+
 describe("palette", () => {
   test("the defaults: lightest base, darkest text, accents in order", () => {
     const color = (variable: string, value: number) => ({
@@ -315,6 +459,47 @@ describe("palette", () => {
       ])
     ).toEqual({ base: "paper", text: "ink", accent1: "a", accent2: "b" });
     expect(getDefaultRoles([])).toEqual({});
+  });
+
+  test("roles follow the canonical names", () => {
+    const color = (variable: string, value: number) => ({
+      variable,
+      rgba: { r: value, g: value, b: value, a: 1 },
+    });
+    // A dark base and a light text: the luminance rule would swap them.
+    expect(
+      getDefaultRoles([
+        color("base", 0.05),
+        color("accent-1", 0.5),
+        color("accent-2", 0.6),
+        color("text", 0.95),
+      ])
+    ).toEqual({
+      base: "base",
+      accent1: "accent-1",
+      accent2: "accent-2",
+      text: "text",
+    });
+  });
+
+  test("three canonical names fall back to luminance", () => {
+    const color = (variable: string, value: number) => ({
+      variable,
+      rgba: { r: value, g: value, b: value, a: 1 },
+    });
+    expect(
+      getDefaultRoles([
+        color("base", 0.05),
+        color("text", 0.95),
+        color("accent-1", 0.5),
+        color("brand", 0.6),
+      ])
+    ).toEqual({
+      base: "text",
+      text: "base",
+      accent1: "accent-1",
+      accent2: "brand",
+    });
   });
 
   test("with no variables, the presets take the built-in palette", () => {

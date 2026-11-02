@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { encodeDataSourceVariable, type Instance } from "@webstudio-is/sdk";
 import { showAttribute } from "@webstudio-is/react-sdk";
 import { renderTemplate } from "@webstudio-is/template";
+import { toValue } from "@webstudio-is/css-engine";
 import * as metas from "./metas";
 import { meta } from "./signup-form.template";
 
@@ -23,6 +24,52 @@ const childInstances = (instance: Instance) =>
 
 const propsOf = (instance: Instance) =>
   fragment.props.filter((prop) => prop.instanceId === instance.id);
+
+/** The declarations on an instance's own local style source, as CSS text. */
+const localStylesOf = (instance: Instance) => {
+  const sources = new Set(
+    fragment.styleSourceSelections.find(
+      (selection) => selection.instanceId === instance.id
+    )?.values
+  );
+  return Object.fromEntries(
+    fragment.styles
+      .filter(
+        (decl) =>
+          sources.has(decl.styleSourceId) &&
+          fragment.styleSources.some(
+            (source) =>
+              source.id === decl.styleSourceId && source.type === "local"
+          )
+      )
+      .map((decl) => [decl.property, toValue(decl.value)])
+  );
+};
+
+/** The declarations of each token an instance wears, by the token's name. */
+const tokenStylesOf = (instance: Instance) => {
+  const selected = new Set(
+    fragment.styleSourceSelections.find(
+      (selection) => selection.instanceId === instance.id
+    )?.values
+  );
+  return Object.fromEntries(
+    fragment.styleSources.flatMap((source) =>
+      source.type === "token" && selected.has(source.id)
+        ? [
+            [
+              source.name,
+              Object.fromEntries(
+                fragment.styles
+                  .filter((decl) => decl.styleSourceId === source.id)
+                  .map((decl) => [decl.property, toValue(decl.value)])
+              ),
+            ],
+          ]
+        : []
+    )
+  );
+};
 
 const root = getInstance(fragment.children[0].value);
 const [formState] = fragment.dataSources;
@@ -108,7 +155,7 @@ test("the form's content holds an Email and a First name Field, and a Submit But
   }
 });
 
-test("parts are styled through the four shared OrganizeOS tokens", () => {
+test("parts are styled through the five shared OrganizeOS tokens", () => {
   const tokens = new Map(
     fragment.styleSources.flatMap((source) =>
       source.type === "token" ? [[source.id, source.name]] : []
@@ -117,6 +164,7 @@ test("parts are styled through the four shared OrganizeOS tokens", () => {
   expect(Array.from(tokens.values()).sort()).toEqual([
     "OS Button",
     "OS Field",
+    "OS Form Heading",
     "OS Input",
     "OS Message",
   ]);
@@ -161,4 +209,22 @@ test("every state a token styles is a state its component's meta lists", () => {
     }
   }
   expect(checked).toBeGreaterThan(0);
+});
+
+// A template sets its headings in --font-heading; the form's heading follows
+// it, and inherits as before on a site without the variable. Its lines are
+// set as a heading's, not at the body's looser line height, so a heading
+// that wraps on a phone reads as one.
+// It wears a token, "OS Form Heading", so a site template sets its case and
+// size (SiteTemplate.blockTokens), and has no local style of its own.
+test("the form's heading wears OS Form Heading: the site's heading font, at a heading's line height", () => {
+  const [heading] = childInstances(childInstances(root)[0]);
+  expect(heading.tag).toBe("h2");
+  expect(localStylesOf(heading)).toEqual({});
+  expect(tokenStylesOf(heading)).toEqual({
+    "OS Form Heading": {
+      fontFamily: "var(--font-heading)",
+      lineHeight: "1.2",
+    },
+  });
 });

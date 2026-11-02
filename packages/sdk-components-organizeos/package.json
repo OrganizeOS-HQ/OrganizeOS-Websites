@@ -37,6 +37,16 @@
       "types": "./lib/types/templates.d.ts",
       "import": "./lib/templates.js"
     },
+    "./site-templates/canonical-variables": {
+      "webstudio": "./src/site-templates/canonical-variables.ts",
+      "types": "./lib/types/site-templates/canonical-variables.d.ts",
+      "import": "./lib/site-templates/canonical-variables.js"
+    },
+    "./site-templates": {
+      "webstudio": "./src/site-templates/index.ts",
+      "types": "./lib/types/site-templates/index.d.ts",
+      "import": "./lib/site-templates/index.js"
+    },
     "./org-script": {
       "webstudio": "./src/org-script.ts",
       "types": "./lib/types/org-script.d.ts",
@@ -65,6 +75,16 @@
     "acorn": "^8.14.1"
   },
   "devDependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/ibm-plex-sans": "^5.3.0",
+    "@fontsource-variable/newsreader": "^5.3.0",
+    "@fontsource-variable/public-sans": "^5.3.0",
+    "@fontsource-variable/source-sans-3": "^5.3.1",
+    "@fontsource/archivo-black": "^5.3.0",
+    "@fontsource/atkinson-hyperlegible": "^5.3.0",
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@fontsource/instrument-serif": "^5.3.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.2.0",
     "@types/react": "^18.2.70",

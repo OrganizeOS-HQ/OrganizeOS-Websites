@@ -14,6 +14,7 @@ import {
 import { serializePages } from "@webstudio-is/project-migrations/pages";
 import { loadById } from "@webstudio-is/project/index.server";
 import { getUserById } from "./user.server";
+import { findCanonicalFontFamilies } from "./organizeos-canonical-fonts.server";
 
 const getPair = <Item extends { id: string }>(item: Item): [string, Item] => [
   item.id,
@@ -77,6 +78,12 @@ const loadProductionCanvasDataAndProject = async (
         fontFamilySet.add(fontFamily);
       }
     }
+  }
+  // OrganizeOS fork: and the families the site's canonical font variables
+  // (--font-heading, --font-body on Global Root) name first, which are
+  // custom properties, not fontFamily styles.
+  for (const fontFamily of findCanonicalFontFamilies(build)) {
+    fontFamilySet.add(fontFamily);
   }
 
   // Filter unused font assets but include all other asset types (images, videos, audio, documents)
