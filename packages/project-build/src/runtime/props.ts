@@ -31,6 +31,8 @@ import { runtimeGeneratedIdInput } from "./generated-id-input";
 import { validateHtmlEmbedCode } from "./html-embed";
 import { createRuntimeMutation } from "./mutation";
 import { isDynamicPropType } from "./accessibility-analysis";
+// OrganizeOS fork: catalog Resources outlive their bindings (fork doc section 9).
+import { isOrganizeosCatalogResourceId } from "./organizeos-catalog";
 
 export const showAttributeMeta: PropMeta = {
   label: "Show",
@@ -740,7 +742,11 @@ export const getPropDeletePlan = ({
   const resourceIds = new Set<string>();
   for (const propId of propIds) {
     const prop = propById.get(propId);
-    if (prop?.type === "resource") {
+    if (
+      prop?.type === "resource" &&
+      // OrganizeOS fork: a catalog Resource outlives its bindings (fork doc section 9).
+      isOrganizeosCatalogResourceId(prop.value) === false
+    ) {
       resourceIds.add(prop.value);
     }
   }

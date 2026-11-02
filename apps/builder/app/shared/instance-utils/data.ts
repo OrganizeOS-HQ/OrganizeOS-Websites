@@ -440,6 +440,64 @@ export const executeRuntimeMutationSequence = <
   return results as RuntimeMutationSequenceResults<Operations>;
 };
 
+// OrganizeOS fork (fork doc section 9): stages runtime mutations, and writes
+// of the caller's own, that depend on each other's results, then commits them
+// once: one transaction, one undo step. The OrganizeOS inserts (insert a
+// fragment, then bind its instances to a catalog Resource) and the Motion
+// tab's wrap (wrap, then write the wrapper's props) use it. `execute` runs a
+// mutation operation on the staged state and stages it; `stage` stages a
+// mutation the caller built. Nothing is committed when `stage` throws.
+export type RuntimeMutationAccumulator = Pick<
+  ReturnType<typeof createRuntimeMutationAccumulator>,
+  "state" | "stage"
+> & {
+  execute: <Id extends BuilderRuntimeMutationOperationId>(operation: {
+    id: Id;
+    input: BuilderRuntimeOperationInput<Id>;
+    context?: RuntimeMutationContext;
+  }) => RuntimeMutationResult<Id>["result"];
+};
+
+export const executeStagedRuntimeMutation = async <T>(
+  stage: (accumulator: RuntimeMutationAccumulator) => Promise<T> | T
+): Promise<T> => {
+  if (canCommitWebstudioData() === false) {
+    throw Error(
+      "Page templates can be edited only in design mode, with build access."
+    );
+  }
+  const accumulator = createRuntimeMutationAccumulator(getWebstudioData());
+  const execute = <Id extends BuilderRuntimeMutationOperationId>({
+    id,
+    input,
+    context,
+  }: {
+    id: Id;
+    input: BuilderRuntimeOperationInput<Id>;
+    context?: RuntimeMutationContext;
+  }) =>
+    accumulator.stage(
+      requireSynchronousResult(
+        id,
+        executeBuilderRuntimeOperation<RuntimeMutationResult<Id>>({
+          id,
+          state: accumulator.state,
+          input,
+          context: { ...getRuntimeMutationContext(), ...context },
+        })
+      )
+    ) as RuntimeMutationResult<Id>["result"];
+  const result = await stage({
+    get state() {
+      return accumulator.state;
+    },
+    stage: accumulator.stage,
+    execute,
+  });
+  commitRuntimeMutation(accumulator.complete({}));
+  return result;
+};
+
 export const executeRuntimeMutationAsync = async <
   Id extends BuilderRuntimeMutationOperationId,
 >({

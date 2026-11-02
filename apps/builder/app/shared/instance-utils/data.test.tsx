@@ -9,14 +9,17 @@ import {
 } from "@webstudio-is/sdk";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import {
+  createRuntimeMutation,
   findCycles,
   extractWebstudioFragment,
+  produceWebstudioDataMutation,
 } from "@webstudio-is/project-build/runtime";
 import type { BuilderRuntimeOperationInput } from "@webstudio-is/project-build/runtime";
 import {
   executeRuntimeMutation,
   executeRuntimeMutationAsync,
   executeRuntimeMutationSequence,
+  executeStagedRuntimeMutation,
   getWebstudioData,
   migrateLoadedWebstudioData,
   type RuntimeMutationOperation,
@@ -700,6 +703,244 @@ describe("data store helpers", () => {
     expect($props.get()).toEqual(new Map());
     serverSyncStore.redo();
     expect(Array.from($props.get().values())).toHaveLength(2);
+  });
+
+  // OrganizeOS fork (docs/ORGANIZEOS-FORK.md section 9): the OrganizeOS
+  // inserts and the Motion tab's wrap stage several mutations and commit them
+  // once.
+  test("executeStagedRuntimeMutation commits several mutations as one undo step", async () => {
+    setBaseStores();
+    // a catalog Resource's id, derived by provisioning (a v5 UUID)
+    const catalogResourceId = "385fcd4c-92f8-5d7c-abfe-cb941b8f2449";
+
+    const boxId = await executeStagedRuntimeMutation(async (accumulator) => {
+      const { rootInstanceIds } = accumulator.execute({
+        id: "instances.insertFragment",
+        input: {
+          parentInstanceId: "body",
+          fragment: {
+            children: [{ type: "id", value: "template-box" }],
+            instances: [
+              {
+                ...createInstance("template-box", elementComponent, []),
+                tag: "div",
+              },
+            ],
+            styleSourceSelections: [],
+            styleSources: [],
+            breakpoints: [],
+            styles: [],
+            dataSources: [],
+            resources: [],
+            props: [],
+            assets: [],
+          },
+        },
+      });
+      const [insertedId] = rootInstanceIds;
+      // an asynchronous step between two stages, as deriving a v5 id is
+      await Promise.resolve();
+      // a write of the caller's own: a Resource under a fixed id and its
+      // binding on the inserted instance
+      const { payload } = produceWebstudioDataMutation(
+        accumulator.state,
+        (draft) => {
+          draft.resources?.set(catalogResourceId, {
+            id: catalogResourceId,
+            name: "Events",
+            method: "get",
+            url: '"https://api.example.org/v1/events"',
+            headers: [],
+          });
+          draft.dataSources?.set("binding", {
+            type: "resource",
+            id: "binding",
+            scopeInstanceId: insertedId,
+            name: "OrganizeOS Events",
+            resourceId: catalogResourceId,
+          });
+        }
+      );
+      accumulator.stage(
+        createRuntimeMutation({
+          payload,
+          result: {},
+          invalidatesNamespaces: ["resources", "dataSources"],
+        })
+      );
+      accumulator.execute({
+        id: "instances.updateProps",
+        input: {
+          updates: [
+            {
+              instanceId: insertedId,
+              name: "id",
+              type: "string",
+              value: "events",
+            },
+          ],
+        },
+      });
+      return insertedId;
+    });
+
+    const expectCommitted = () => {
+      expect($instances.get().get("body")?.children).toEqual([
+        { type: "id", value: boxId },
+      ]);
+      expect($resources.get().has(catalogResourceId)).toBe(true);
+      expect($dataSources.get().get("binding")).toMatchObject({
+        scopeInstanceId: boxId,
+        resourceId: catalogResourceId,
+      });
+      expect(Array.from($props.get().values())).toEqual([
+        expect.objectContaining({
+          instanceId: boxId,
+          name: "id",
+          value: "events",
+        }),
+      ]);
+    };
+    expectCommitted();
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(1);
+
+    serverSyncStore.undo();
+    expect($instances.get().has(boxId)).toBe(false);
+    expect($instances.get().get("body")?.children).toEqual([]);
+    expect($resources.get()).toEqual(new Map());
+    expect($dataSources.get()).toEqual(new Map());
+    expect($props.get()).toEqual(new Map());
+
+    serverSyncStore.redo();
+    expectCommitted();
+  });
+
+  test("executeStagedRuntimeMutation wraps and writes the wrapper's props in one undo step", async () => {
+    setBaseStores();
+    $instances.set(
+      new Map([
+        [
+          "body",
+          createInstance("body", "Body", [{ type: "id", value: "box" }]),
+        ],
+        ["box", { ...createInstance("box", elementComponent, []), tag: "div" }],
+      ])
+    );
+
+    const wrapperId = await executeStagedRuntimeMutation((accumulator) => {
+      const { instanceSelector } = accumulator.execute({
+        id: "instances.wrap",
+        input: {
+          instanceSelector: ["box", "body"],
+          component: elementComponent,
+          tag: "div",
+        },
+      });
+      const [wrapperId] = instanceSelector;
+      accumulator.execute({
+        id: "instances.updateProps",
+        input: {
+          updates: [
+            {
+              instanceId: wrapperId,
+              name: "title",
+              type: "string",
+              value: "Animate Children",
+            },
+          ],
+        },
+      });
+      return wrapperId;
+    });
+
+    expect($instances.get().get("body")?.children).toEqual([
+      { type: "id", value: wrapperId },
+    ]);
+    expect($instances.get().get(wrapperId)?.children).toEqual([
+      { type: "id", value: "box" },
+    ]);
+    expect(Array.from($props.get().values())).toEqual([
+      expect.objectContaining({ instanceId: wrapperId, name: "title" }),
+    ]);
+
+    serverSyncStore.undo();
+    expect($instances.get().get("body")?.children).toEqual([
+      { type: "id", value: "box" },
+    ]);
+    expect($instances.get().has(wrapperId)).toBe(false);
+    expect($props.get()).toEqual(new Map());
+  });
+
+  test.each(["synchronous", "asynchronous"] as const)(
+    "a throw inside stage commits nothing (%s)",
+    async (mode) => {
+      setBaseStores();
+      const stage = (
+        accumulator: Parameters<
+          Parameters<typeof executeStagedRuntimeMutation>[0]
+        >[0]
+      ) => {
+        accumulator.execute({
+          id: "instances.updateProps",
+          input: {
+            updates: [
+              {
+                instanceId: "body",
+                name: "id",
+                type: "string",
+                value: "main",
+              },
+            ],
+          },
+        });
+        throw Error("The insert was refused");
+      };
+
+      await expect(
+        executeStagedRuntimeMutation(
+          mode === "synchronous"
+            ? stage
+            : async (accumulator) => {
+                await Promise.resolve();
+                return stage(accumulator);
+              }
+        )
+      ).rejects.toThrow("The insert was refused");
+
+      expect($props.get()).toEqual(new Map());
+      expect(serverSyncStore.transactionManager.currentStack).toEqual([]);
+      expect(serverSyncStore.popAll()).toEqual([]);
+    }
+  );
+
+  test("executeStagedRuntimeMutation stages nothing on a page template without build access", async () => {
+    setBaseStores();
+    const pages = $pages.get()!;
+    pages.pageTemplates = new Map([
+      [
+        "template",
+        {
+          id: "template",
+          name: "Template",
+          title: "Template",
+          rootInstanceId: "template-root",
+          meta: {},
+        },
+      ],
+    ]);
+    $pages.set({ ...pages });
+    $selectedPageId.set("template");
+    $authPermit.set("view");
+    let staged = false;
+
+    await expect(
+      executeStagedRuntimeMutation(() => {
+        staged = true;
+      })
+    ).rejects.toThrow("Page templates can be edited only in design mode");
+
+    expect(staged).toBe(false);
+    expect(serverSyncStore.popAll()).toEqual([]);
   });
 
   test("runtime bridge keeps sync changes scoped to changed namespaces", () => {

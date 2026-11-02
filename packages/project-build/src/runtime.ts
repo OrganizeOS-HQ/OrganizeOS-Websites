@@ -40,6 +40,8 @@ export * from "./runtime/mdx-paste";
 export * from "./runtime/mdx-source";
 export * from "./runtime/mdx-template-migration";
 export * from "./runtime/mdx-template-resolution";
+// OrganizeOS fork: the catalog id test, for the builder's agreement test (fork doc section 9).
+export * from "./runtime/organizeos-catalog";
 export * from "./runtime/output";
 export * from "./runtime/page-copy";
 export * from "./runtime/pages";

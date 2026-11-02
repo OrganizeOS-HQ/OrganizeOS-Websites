@@ -49,6 +49,8 @@ import {
   unsupportedReadwriteExpressionError,
 } from "./expression-validation";
 import { createRuntimeMutation } from "./mutation";
+// OrganizeOS fork: catalog Resources outlive their bindings (fork doc section 9).
+import { isOrganizeosCatalogResourceId } from "./organizeos-catalog";
 import { findSerializedPageByInput, getSerializedPages } from "./pages";
 import { validatePageSelector } from "./page-selector";
 import { createPropDeletePayload, createPropRenamePayload } from "./props";
@@ -979,7 +981,11 @@ export const getInstanceDeleteTargets = ({
       continue;
     }
     propIds.add(prop.id);
-    if (prop.type === "resource") {
+    if (
+      prop.type === "resource" &&
+      // OrganizeOS fork: a catalog Resource outlives its bindings (fork doc section 9).
+      isOrganizeosCatalogResourceId(prop.value) === false
+    ) {
       resourceIds.add(prop.value);
     }
   }
@@ -989,7 +995,11 @@ export const getInstanceDeleteTargets = ({
       continue;
     }
     dataSourceIds.add(dataSource.id);
-    if (dataSource.type === "resource") {
+    if (
+      dataSource.type === "resource" &&
+      // OrganizeOS fork: a catalog Resource outlives its bindings (fork doc section 9).
+      isOrganizeosCatalogResourceId(dataSource.resourceId) === false
+    ) {
       resourceIds.add(dataSource.resourceId);
     }
   }

@@ -1,13 +1,17 @@
 import { createHash } from "node:crypto";
 import { describe, expect, test } from "vitest";
 import type { Resource } from "@webstudio-is/sdk";
+import { isOrganizeosCatalogResourceId } from "@webstudio-is/project-build/runtime";
 import {
   EVENTS_BINDING_NAME,
+  FORMS_PRESET_KEY,
   FORMS_PRESET_NAME,
+  STATIC_PRESET_KEYS,
   UPCOMING_EVENTS_BINDING_NAME,
   UPCOMING_EVENTS_PRESET_KEY,
   UPCOMING_EVENTS_RESOURCE_NAME,
   findCatalogResources,
+  getCollectionPresetKey,
   getResourcePresetIds,
   isPresetId,
   parseCollectionUrl,
@@ -123,6 +127,52 @@ describe("isPresetId", () => {
     expect(isPresetId("V1StGXR8_Z5jdHi6B-myT")).toBe(false);
     // a v4 UUID is not one of ours
     expect(isPresetId("f0e1d2c3-b4a5-4697-8877-665544332211")).toBe(false);
+  });
+});
+
+// project-build's runtime keeps a catalog Resource when a binding goes, and
+// cannot import the builder, so it carries its own copy of the test
+// (docs/ORGANIZEOS-FORK.md section 9).
+describe("isOrganizeosCatalogResourceId", () => {
+  test("isOrganizeosCatalogResourceId agrees with isPresetId", async () => {
+    const keys = [
+      ...STATIC_PRESET_KEYS,
+      FORMS_PRESET_KEY,
+      UPCOMING_EVENTS_PRESET_KEY,
+      getCollectionPresetKey("blog"),
+      getCollectionPresetKey("Volunteer Shifts"),
+    ];
+    const derived: string[] = [];
+    for (const projectId of [
+      "project-1",
+      "f0e1d2c3-b4a5-4697-8877-665544332211",
+    ]) {
+      for (const key of keys) {
+        const { resourceId, bindingId } = await getResourcePresetIds(
+          projectId,
+          key
+        );
+        derived.push(resourceId, bindingId);
+      }
+      derived.push(await uuidV5(`${projectId}:signup:body`));
+    }
+    const notDerived = [
+      "V1StGXR8_Z5jdHi6B-myT",
+      "f0e1d2c3-b4a5-4697-8877-665544332211",
+      derived[0].toUpperCase(),
+      `${derived[0]}\n`,
+      ` ${derived[0]}`,
+      derived[0].replaceAll("-", ""),
+      "",
+    ];
+    for (const id of derived) {
+      expect(isPresetId(id)).toBe(true);
+      expect(isOrganizeosCatalogResourceId(id)).toBe(true);
+    }
+    for (const id of notDerived) {
+      expect(isPresetId(id)).toBe(false);
+      expect(isOrganizeosCatalogResourceId(id)).toBe(false);
+    }
   });
 });
 

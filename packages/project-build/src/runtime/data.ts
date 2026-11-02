@@ -75,6 +75,8 @@ import {
 } from "./expression-validation";
 import { runtimeGeneratedIdInput } from "./generated-id-input";
 import { createRuntimeMutation } from "./mutation";
+// OrganizeOS fork: catalog Resources outlive their bindings (fork doc section 9).
+import { isOrganizeosCatalogResourceId } from "./organizeos-catalog";
 import {
   paginateOutput,
   projectOutput,
@@ -1182,7 +1184,11 @@ export const deleteVariableMutable = (
     }
     prop.value = removeFormActionsForResources(prop.value, removedIds);
   }
-  if (dataSource.type === "resource") {
+  if (
+    dataSource.type === "resource" &&
+    // OrganizeOS fork: a catalog Resource outlives its bindings (fork doc section 9).
+    isOrganizeosCatalogResourceId(dataSource.resourceId) === false
+  ) {
     data.resources.delete(dataSource.resourceId);
   }
   if (data.pages !== undefined) {
@@ -1490,7 +1496,11 @@ const createDataSourceUpsertPayload = ({
     (draft) => {
       if (dataSource.type === "variable") {
         const previous = draft.dataSources.get(dataSource.id);
-        if (previous?.type === "resource") {
+        if (
+          previous?.type === "resource" &&
+          // OrganizeOS fork: a catalog Resource outlives its bindings (fork doc section 9).
+          isOrganizeosCatalogResourceId(previous.resourceId) === false
+        ) {
           draft.resources.delete(previous.resourceId);
         }
       }
@@ -3528,6 +3538,13 @@ export const deleteResource = (
   );
   if (resource === undefined) {
     return throwBuilderRuntimeError("NOT_FOUND", "Resource not found");
+  }
+  // OrganizeOS fork: a catalog Resource is never deleted, forced or not (fork doc section 9, owner decision D12).
+  if (isOrganizeosCatalogResourceId(resource.id)) {
+    return throwBuilderRuntimeError(
+      "BAD_REQUEST",
+      "This Resource belongs to the organization's data catalog and cannot be deleted."
+    );
   }
   if (state.pages === undefined || state.instances === undefined) {
     return throwBuilderRuntimeError(
