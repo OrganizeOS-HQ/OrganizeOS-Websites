@@ -1403,7 +1403,7 @@ describe("raw HTML in the runtime packages", () => {
         : [];
     });
 
-  test("reads the eight packages from the check", () => {
+  test("reads the runtime packages from the check", () => {
     expect(packages).toEqual([
       "packages/sdk",
       "packages/react-sdk",
@@ -1413,6 +1413,12 @@ describe("raw HTML in the runtime packages", () => {
       "packages/sdk-components-react-remix",
       "packages/image",
       "packages/wsauth",
+      "packages/content-engine",
+      "packages/expression",
+      "packages/query-builder",
+      "packages/css-engine",
+      "packages/fonts",
+      "packages/icons",
     ]);
   });
 
