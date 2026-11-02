@@ -10,10 +10,12 @@
 #   2. no package.json names it: the workspace packages, the CLI site templates
 #      (a template that lists it makes every published site install the EULA
 #      package from npm) and the fixtures; nor does .gitmodules;
-#   3. no module specifier in the source of apps/ or packages/ names it: no
-#      import, export, require or dynamic import, and no quoted specifier such
-#      as an alias or the component registry's import source, which becomes
-#      the import in every generated site;
+#   3. no module specifier in the source of apps/ or packages/ names it,
+#      template sources the CLI copies into sites (*.ts.template) included: no
+#      import, export, require, require.resolve or dynamic import, and no
+#      quoted specifier or regular expression such as an alias or the
+#      component registry's import source, which becomes the import in every
+#      generated site;
 #   4. pnpm-lock.yaml has no entry for it;
 #   5. the proprietary EULA license banner appears nowhere we ship.
 #
@@ -62,18 +64,24 @@ if [ -f .gitmodules ] && found -n -e "$name" .gitmodules; then
   report ".gitmodules above points at the proprietary package."
 fi
 
-# 3. Module specifiers in apps/ and packages/ source: the package name, or a
-#    subpath of it, as a whole quoted string, or as a template literal passed to
-#    import() or require(). A component id ("...:AnimateChildren") is not one.
-#    package.json files are covered by name in step 2.
+# 3. Module specifiers in apps/ and packages/ source, *.template included: the
+#    package name, or a subpath of it, as a whole quoted string (a leading ^, as
+#    in a RegExp source, too); as a template literal passed to import(),
+#    require() or require.resolve(); or in a regular expression literal, which
+#    escapes its slash (an alias's find: /^@webstudio-is\/...). A component id
+#    ("...:AnimateChildren") is not one. package.json files are covered by name
+#    in step 2.
 specifier="@webstudio-is/$name"
-quoted="[\"']${specifier}(/[^\"'[:space:]]*)?[\"']"
-template="(import|require)[[:space:]]*\([[:space:]]*\`${specifier}(/[^\`[:space:]]*)?\`"
+quoted="[\"']\^?${specifier}(/[^\"'[:space:]]*)?[\"']"
+template="(import|require|require\.resolve)[[:space:]]*\([[:space:]]*\`${specifier}(/[^\`[:space:]]*)?\`"
+# A literal backslash, then the slash: '\\/' in the ERE.
+regex='@webstudio-is\\/'"${name}"
 if found -rInE \
   --include="*.ts" --include="*.tsx" --include="*.mts" --include="*.cts" \
   --include="*.js" --include="*.jsx" --include="*.mjs" --include="*.cjs" \
-  --include="*.json" --exclude=package.json --exclude-dir=node_modules \
-  -e "${quoted}|${template}" apps packages; then
+  --include="*.json" --include="*.template" \
+  --exclude=package.json --exclude-dir=node_modules \
+  -e "${quoted}|${template}|${regex}" apps packages; then
   report "source above imports or names the proprietary package as a module."
 fi
 

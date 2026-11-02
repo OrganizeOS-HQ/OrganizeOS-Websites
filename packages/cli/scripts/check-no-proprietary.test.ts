@@ -19,6 +19,8 @@ const scriptPath = fileURLToPath(
 
 // Assembled from parts, so that this file passes the check it tests.
 const packageName = ["@webstudio-is", "sdk-components-animation"].join("/");
+// The name as a regular expression literal writes it, with an escaped slash.
+const regexName = ["@webstudio-is", "sdk-components-animation"].join("\\/");
 const banner = ["LicenseRef-Webstudio", "Inc-Proprietary"].join(",");
 
 let root: string;
@@ -128,6 +130,39 @@ test.each([
     source: JSON.stringify({
       compilerOptions: { paths: { [packageName]: ["../animation/src"] } },
     }),
+  },
+  {
+    // Template sources the CLI copies into every generated site.
+    path: "packages/cli/templates/ssg/app/route-templates/text/+route.ts.template",
+    source: `import { AnimateChildren } from "${packageName}";`,
+  },
+  {
+    path: "packages/cli/templates/ssg/app/route-templates/page/+Page.tsx.template",
+    source: `export { AnimateText } from '${packageName}/components';`,
+  },
+  {
+    path: "packages/cli/src/plugin.mjs",
+    source: `export { AnimateChildren } from "${packageName}";`,
+  },
+  {
+    path: "packages/cli/src/resolve-quoted.ts",
+    source: `const entry = require.resolve("${packageName}/metas");`,
+  },
+  {
+    path: "packages/cli/src/resolve-template.ts",
+    source: "const entry = require.resolve(`" + packageName + "`);",
+  },
+  {
+    path: "apps/builder/vite.config.ts",
+    source: `export const alias = [{ find: "${packageName}", replacement: "./private-src" }];`,
+  },
+  {
+    path: "apps/builder/vite.regex.config.ts",
+    source: `export const alias = [{ find: /^${regexName}/, replacement: "./private-src" }];`,
+  },
+  {
+    path: "apps/builder/vite.regexp.config.ts",
+    source: `export const alias = [{ find: new RegExp("^${packageName}"), replacement: "./private-src" }];`,
   },
 ])("fails on a module specifier in $path", async ({ path, source }) => {
   await write(path, `${source}\n`);
