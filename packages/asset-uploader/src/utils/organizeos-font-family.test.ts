@@ -241,6 +241,8 @@ describe("the board's font files", () => {
         Array.isArray(weight)
           ? {
               family,
+              // upstream #6153: a variable file's meta carries its style too
+              style: "normal",
               variationAxes: expect.objectContaining({
                 wght: expect.objectContaining({
                   min: weight[0],
