@@ -23,6 +23,7 @@ import {
   readAssetRestJson,
 } from "./asset-rest.server";
 import { preventCrossOriginCookie } from "./no-cross-origin-cookie";
+import { assetResponseHeaders } from "~/shared/asset-response.server";
 
 export const parseRequestRange = (value: string | null, size: number) => {
   if (value === null) {
@@ -90,6 +91,11 @@ export const createAssetContentLoader =
           `bytes ${range.offset}-${range.offset + range.length - 1}/${asset.size}`
         );
       }
+      // OrganizeOS fork: these bytes answer on the builder's origin, so an
+      // uploaded .html or .svg gets the sandbox /cgi/* sends (fork doc 4).
+      assetResponseHeaders(
+        headers.get("content-type") ?? "application/octet-stream"
+      ).forEach((value, name) => headers.set(name, value));
       return new Response(
         Readable.toWeb(Readable.from(content.data)) as ReadableStream,
         { status: range === undefined ? 200 : 206, headers }

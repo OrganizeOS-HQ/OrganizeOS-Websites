@@ -2,7 +2,7 @@ import { Sha256 } from "@aws-crypto/sha256-js";
 import { SignatureV4 } from "@smithy/signature-v4";
 import type { AssetObjectStore } from "../../client";
 import { uploadToS3 } from "./upload";
-import { readFromS3 } from "./read";
+import { readFromS3, readResponseFromS3 } from "./read";
 
 type S3StorageOptions = {
   endpoint: string;
@@ -32,7 +32,7 @@ const createS3Signer = (options: S3StorageOptions) =>
 
 export const createS3AssetObjectStore = (
   options: S3ClientOptions
-): AssetObjectStore => {
+): AssetObjectStore & Required<Pick<AssetObjectStore, "readFileResponse">> => {
   const signer = createS3Signer(options);
   const uploadFile: AssetObjectStore["uploadFile"] = async (
     name,
@@ -59,6 +59,14 @@ export const createS3AssetObjectStore = (
     uploadFile,
     readFile: (name, range) =>
       readFromS3({
+        signer,
+        name,
+        range,
+        endpoint: options.endpoint,
+        bucket: options.bucket,
+      }),
+    readFileResponse: (name, { range }) =>
+      readResponseFromS3({
         signer,
         name,
         range,

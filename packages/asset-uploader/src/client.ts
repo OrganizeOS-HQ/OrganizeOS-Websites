@@ -29,15 +29,6 @@ export type AssetObjectWriter = {
     assetInfoFallback: AssetInfoFallback | undefined,
     assetDataOverride?: AssetDataOverride
   ) => Promise<AssetData>;
-  /**
-   * Streams an uploaded file back, or resolves to undefined when there is no
-   * such file. Only clients whose files live off the server have one: the
-   * /cgi routes read the fs client's directory themselves.
-   */
-  readFile?: (
-    name: string,
-    options?: { range?: string }
-  ) => Promise<Response | undefined>;
 };
 
 export type AssetObjectReader = {
@@ -48,6 +39,16 @@ export type AssetObjectReader = {
     data: AsyncIterable<Uint8Array>;
     contentLength?: number;
   }>;
+  /**
+   * Streams an uploaded file back as storage answered, `range` passed through
+   * as a Range header, or resolves to undefined when there is no such file.
+   * Only clients whose files live off the server have one: the /cgi routes
+   * read the fs client's directory themselves.
+   */
+  readFileResponse?: (
+    name: string,
+    init: { range?: string }
+  ) => Promise<Response | undefined>;
 };
 
 export type AssetObjectStore = AssetObjectWriter & AssetObjectReader;

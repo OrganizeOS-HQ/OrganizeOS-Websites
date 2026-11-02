@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import type { Asset } from "@webstudio-is/sdk";
+import { assetContentDescriptorHeader } from "@webstudio-is/protocol/asset-resource-api";
 import {
   createAssetContentLoader,
   parseRequestRange,
@@ -65,5 +66,53 @@ describe("Assets REST content download", () => {
       range: { offset: 2, length: 4 },
       asset,
     });
+  });
+
+  test.each<[string, Asset]>([
+    ["text/html", { ...asset, name: "page_x.html", format: "html", size: 7 }],
+    [
+      "image/svg+xml",
+      {
+        ...asset,
+        name: "logo_x.svg",
+        type: "image",
+        format: "svg",
+        size: 7,
+        meta: { width: 1, height: 1 },
+      },
+    ],
+  ])("content route sandboxes html and svg: %s", async (mime, stored) => {
+    const dependencies = {
+      preventCrossOriginCookie: vi.fn(),
+      createRepository: vi.fn(async () => ({
+        get: vi.fn(async () => stored),
+        readContent: vi.fn(async () => ({
+          asset: stored,
+          data: {
+            async *[Symbol.asyncIterator]() {
+              yield new TextEncoder().encode("<svg/>!");
+            },
+          },
+          contentLength: 7,
+        })),
+      })) as never,
+    };
+
+    const response = await createAssetContentLoader(dependencies)({
+      request: new Request(
+        "https://webstudio.is/rest/assets/asset-1/content?projectId=project-1"
+      ),
+      params: { assetId: "asset-1" },
+    } as never);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(mime);
+    expect(response.headers.get("content-security-policy")).toBe("sandbox");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get(assetContentDescriptorHeader)).not.toBeNull();
+    expect(response.headers.get("cache-control")).toBe(
+      "private, no-store, max-age=0"
+    );
+    expect(await response.text()).toBe("<svg/>!");
   });
 });

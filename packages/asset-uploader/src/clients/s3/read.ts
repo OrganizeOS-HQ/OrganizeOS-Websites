@@ -55,3 +55,50 @@ export const readFromS3 = async ({
       : {}),
   };
 };
+
+/**
+ * Fetches an uploaded file with a signed GET, so the bucket can stay private,
+ * and returns storage's answer for the /cgi routes to stream back.
+ *
+ * Resolves to undefined when storage has no such object and throws on any
+ * other storage error, so a caller never forwards the provider's error body.
+ * A 206 or 416 answer to `range` is returned as is.
+ */
+export const readResponseFromS3 = async ({
+  signer,
+  name,
+  endpoint,
+  bucket,
+  range,
+}: {
+  signer: SignatureV4;
+  name: string;
+  endpoint: string;
+  bucket: string;
+  range?: string;
+}): Promise<Response | undefined> => {
+  const url = createS3ObjectUrl({ endpoint, bucket, key: name });
+  const request = await signS3Request({
+    signer,
+    url,
+    method: "GET",
+    headers: range === undefined ? {} : { range },
+  });
+  const headers = createS3FetchHeaders(request.headers);
+  // left unsigned: proxies in front of storage may rewrite it
+  headers.set("accept-encoding", "identity");
+
+  const response = await fetch(url, { method: "GET", headers });
+
+  if (response.status === 404) {
+    await response.body?.cancel();
+    return;
+  }
+  if (response.ok === false && response.status !== 416) {
+    await response.body?.cancel();
+    throw Error(
+      `Cannot read file ${name}: storage responded ${response.status}`
+    );
+  }
+  return response;
+};

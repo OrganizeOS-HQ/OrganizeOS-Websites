@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { AssetClient } from "@webstudio-is/asset-uploader/index.server";
+import type { AssetObjectStore } from "@webstudio-is/asset-uploader/server";
 import {
   assetResponseHeaders,
   isUploadedFileName,
@@ -15,9 +15,12 @@ afterEach(() => {
 const request = (headers?: HeadersInit) =>
   new Request("https://builder.test/cgi/asset/file", { headers });
 
-const storage = (readFile?: AssetClient["readFile"]): AssetClient => ({
+const storage = (
+  readFileResponse?: AssetObjectStore["readFileResponse"]
+): AssetObjectStore => ({
   uploadFile: vi.fn(),
-  readFile,
+  readFile: vi.fn(),
+  readFileResponse,
 });
 
 /** Loader helpers throw their error Responses; settle either outcome. */
@@ -89,16 +92,16 @@ describe("serveStoredAsset", () => {
   });
 
   test("refuses a name that is not an uploaded file before asking storage", async () => {
-    const readFile = vi.fn();
+    const readFileResponse = vi.fn();
     const response = await settle(
       serveStoredAsset({
-        client: storage(readFile),
+        client: storage(readFileResponse),
         name: ".",
         request: request(),
       })
     );
     expect(response?.status).toBe(404);
-    expect(readFile).not.toHaveBeenCalled();
+    expect(readFileResponse).not.toHaveBeenCalled();
   });
 
   test("answers 404 for a missing file", async () => {
@@ -128,7 +131,7 @@ describe("serveStoredAsset", () => {
   });
 
   test("streams the file typed by its name, with storage's cache headers only", async () => {
-    const readFile = vi.fn(
+    const readFileResponse = vi.fn(
       async () =>
         new Response("<svg/>", {
           headers: {
@@ -142,13 +145,15 @@ describe("serveStoredAsset", () => {
     );
 
     const response = await serveStoredAsset({
-      client: storage(readFile),
+      client: storage(readFileResponse),
       name: "logo_x.svg",
       request: request({ range: "bytes=0-" }),
       headers: { "Access-Control-Allow-Origin": "https://builder.test" },
     });
 
-    expect(readFile).toHaveBeenCalledWith("logo_x.svg", { range: "bytes=0-" });
+    expect(readFileResponse).toHaveBeenCalledWith("logo_x.svg", {
+      range: "bytes=0-",
+    });
     expect(response?.status).toBe(200);
     expect(await response?.text()).toBe("<svg/>");
     expect(Object.fromEntries(response?.headers ?? [])).toEqual({
