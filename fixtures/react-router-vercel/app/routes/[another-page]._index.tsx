@@ -28,7 +28,7 @@ import {
   formIdFieldName,
   managedFormIdFieldName,
 } from "@webstudio-is/sdk/form";
-import { authenticateProjectRequest } from "@webstudio-is/wsauth";
+import { authenticateRequest } from "@webstudio-is/wsauth";
 import {
   ReactSdkContext,
   PageSettingsMeta,
@@ -63,6 +63,145 @@ import {
   validateManagedFormEmail,
 } from "../__generated__/$resources.managed-form-fetch.server";
 import { assetUrlsByPath } from "../__generated__/$resources.assets";
+import { siteResourceCache } from "../organizeos-resource-cache";
+// OrganizeOS fork: the page's share-code carrier (PageWithSourceOffer).
+import { PageShareCodeCarrier } from "../__organizeos__/page.js";
+// OrganizeOS fork: the source offer's visible link (PageWithSourceOffer).
+import { Children, cloneElement, isValidElement, type ReactNode } from "react";
+
+/**
+ * OrganizeOS fork: the source offer (AGPL-3.0, ORGANIZEOS-FORK.md §1). This
+ * site carries the fork's code: the @organizeos/site-components build in
+ * app/__organizeos__/ (with its LICENSE), organizeos-resource-cache.ts and
+ * these route templates. So every page names that license and links the
+ * fork's source in its head (see links), and shows a small visible "Source"
+ * link at the end of its body (SourceOffer), as AGPL-3.0 section 13 asks the
+ * offer to be prominent (owner decision of 2026-10-15).
+ * Prebuild fills in the link: the fork's repository at the commit the CLI was
+ * built from when it knows it (the publish workflow's GITHUB_SHA), the
+ * repository itself otherwise.
+ */
+const organizeosSourceUrl =
+  "https://github.com/OrganizeOS-HQ/OrganizeOS-Websites";
+
+/**
+ * The visible half of the source offer. Its styles are inline and minimal, so
+ * no class of the org's CSS reaches it and it leaks none into it (it inherits
+ * the body's color): a block in the normal flow, small and quiet, never
+ * positioned over the design. In a <body> laid out as a grid, gridColumn gives
+ * it a whole row instead of the next cell. (A row flex <body> puts it beside
+ * the content, one that clips its overflow can hide it, and a body color that
+ * does not contrast with the page's end can make it unreadable,
+ * ORGANIZEOS-FORK.md §1.)
+ */
+const SourceOffer = () => (
+  <div
+    data-organizeos-source-offer=""
+    style={{
+      display: "block",
+      textAlign: "center",
+      fontSize: "12px",
+      lineHeight: 1.5,
+      padding: "8px",
+      opacity: 0.7,
+      color: "inherit",
+      gridColumn: "1 / -1",
+    }}
+  >
+    <a
+      href={organizeosSourceUrl}
+      rel="code-repository"
+      title="Source code of this site (AGPL-3.0)"
+      aria-label="Source code of this site (AGPL-3.0)"
+      style={{ color: "inherit", textDecoration: "underline" }}
+    >
+      Source
+    </a>
+  </div>
+);
+
+/**
+ * The page with the source offer as the last of its <body>'s children (before
+ * the scripts Body adds).
+ *
+ * The <body> is the generated Page's own root, a Body from
+ * @webstudio-is/sdk-components-react-router, which stays byte-identical to
+ * upstream (ORGANIZEOS-FORK.md §1) and renders the scripts after its children.
+ * Nothing this route renders can sit inside it from outside, and a sibling of
+ * Page would sit beside <body> under <html>. So Page, a component that only
+ * returns that element, is called here and the offer appended to its children.
+ */
+const PageWithSourceOffer = ({ system }: ComponentProps<typeof Page>) => {
+  const page = Page({ system });
+  if (isValidElement<{ children?: ReactNode }>(page) === false) {
+    return page;
+  }
+  return cloneElement(
+    page,
+    undefined,
+    ...Children.toArray(page.props.children),
+    <SourceOffer key="organizeos-source-offer" />,
+    // OrganizeOS fork: a visitor's share code (?r=) goes with every click on a
+    // same-origin link to the organization's platform pages, a designer's own
+    // included (the copy of @organizeos/site-components' page module,
+    // ORGANIZEOS-FORK.md §8). It renders nothing, so the source offer stays
+    // the last of the body's content.
+    <PageShareCodeCarrier key="organizeos-share-code" />
+  );
+};
+
+/**
+ * A realm the browser can show to the site's own visitors.
+ *
+ * wsauth is kept byte-identical to upstream (ORGANIZEOS-FORK.md §1), and its
+ * 401 sends `Basic realm="Webstudio"`. The browser prints a realm verbatim in
+ * its password prompt, so that is the one upstream string that reaches past an
+ * admin to the org's AUDIENCE -- a visitor to acme.organizeos.org being asked
+ * to sign in to a product they have never heard of. Naming the site itself
+ * beats naming any platform here: it tells the visitor what they are
+ * authenticating to.
+ *
+ * A realm is a quoted-string (RFC 7235), so anything that could terminate or
+ * escape the quoting is dropped rather than encoded, and an empty or missing
+ * site name falls back to a neutral word.
+ */
+const authRealm = () => {
+  const cleaned = (siteName ?? "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f"\\]/g, "")
+    .trim();
+  return cleaned === "" ? "Protected" : cleaned;
+};
+
+/** Re-issue a wsauth 401 with our realm, leaving status, body and cache alone. */
+const withSiteRealm = (response: Response) => {
+  const headers = new Headers(response.headers);
+  headers.set("WWW-Authenticate", `Basic realm="${authRealm()}"`);
+  return new Response(response.body, { status: response.status, headers });
+};
+
+const authenticateProductionRequest = (request: Request) => {
+  // OrganizeOS fork: upstream skipped page authentication whenever the request
+  // host was projectDomain or a subdomain of it, because projectDomain was the
+  // Webstudio staging label and staging carries its own separate credentials.
+  // Here Project.domain IS the org's platform subdomain, so "acme" matched
+  // "acme.organizeos.org" -- the site's PRIMARY PUBLIC HOST -- and every
+  // password-protected page was readable by anyone there, while the same page
+  // stayed protected on a custom domain. There is no staging host in this fork,
+  // so the skip has nothing left to protect and is gone.
+  //
+  // This is safe for unprotected sites: authenticateRequest returns early when
+  // no auth route matches the pathname, so only pages the org explicitly
+  // protected are ever challenged.
+  try {
+    return authenticateRequest(request, authRoutes);
+  } catch (thrown) {
+    if (thrown instanceof Response && thrown.status === 401) {
+      throw withSiteRealm(thrown);
+    }
+    throw thrown;
+  }
+};
 
 const customFetch: typeof fetch = (input, init) => {
   if (typeof input !== "string") {
@@ -94,15 +233,20 @@ const customFetch: typeof fetch = (input, init) => {
     return Promise.resolve(response);
   }
 
-  return cachedFetch(projectId, input, init);
+  // OrganizeOS fork: through the site's in-memory resource cache
+  // (organizeos-resource-cache.ts), one per server instance for every route,
+  // which keeps each response only as long as its own Cache-Control allows.
+  // Behind it is the cachedFetch upstream calls here, so a request that opts
+  // into the Cache API still reaches it.
+  return siteResourceCache(input, init, (input, init) =>
+    cachedFetch(projectId, input, init)
+  );
 };
 
 export const loader = async (arg: LoaderFunctionArgs) => {
-  const authRoute = authenticateProjectRequest(
-    arg.request,
-    authRoutes,
-    projectDomain
-  );
+  // Throws 401 when the org configured page-level basic auth; the return
+  // value is unused since responses are always no-store.
+  authenticateProductionRequest(arg.request);
 
   const url = new URL(arg.request.url);
   const host =
@@ -171,7 +315,13 @@ export const loader = async (arg: LoaderFunctionArgs) => {
       status: pageMeta.status,
       headers: {
         "Cache-Control":
-          authRoute === undefined ? "public, max-age=600" : "private, no-store",
+          // OrganizeOS: always no-store. Pages carry live data via server-side
+          // Resources, and the upstream edge honors this header, so max-age=600
+          // would serve ten-minute-stale HTML to the platform reverse proxy.
+          // The single caching layer is the resource cache in
+          // organizeos-resource-cache.ts, which keeps each resource only as
+          // long as its own Cache-Control allows.
+          "no-store",
       },
     }
   );
@@ -250,6 +400,12 @@ export const links: LinksFunction = () => {
     });
   }
 
+  // OrganizeOS fork: the source offer (see organizeosSourceUrl).
+  result.push(
+    { rel: "license", href: "https://www.gnu.org/licenses/agpl-3.0.html" },
+    { rel: "code-repository", href: organizeosSourceUrl }
+  );
+
   return result;
 };
 
@@ -263,7 +419,7 @@ export const action = async ({
 }: ActionFunctionArgs): Promise<
   { success: true } | { success: false; errors: string[] } | ManagedFormResponse
 > => {
-  authenticateProjectRequest(request, authRoutes, projectDomain);
+  authenticateProductionRequest(request);
 
   let isManagedFormRequest = false;
   try {
@@ -353,7 +509,8 @@ export const action = async ({
 const PageBoundary = memo(
   ({ url, system }: ComponentProps<typeof Page> & { url: string }) => {
     // Use the URL as the key to force scripts in HTML Embed to reload on dynamic pages
-    return <Page key={url} system={system} />;
+    // OrganizeOS fork: through PageWithSourceOffer, the source offer's link.
+    return <PageWithSourceOffer key={url} system={system} />;
   },
   // React Router can rerender the current route while the next route loaders are
   // still pending. Keep the generated page out of that pending-navigation render

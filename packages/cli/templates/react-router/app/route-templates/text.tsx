@@ -6,6 +6,7 @@ import { getPageMeta, getRemixParams, getResources } from "__SERVER__";
 import { sitemap } from "__SITEMAP__";
 import { authRoutes } from "__AUTH__";
 import { createGeneratedAssetResourceFetch } from "__ASSET_QUERY_RUNTIME__";
+import { siteResourceCache } from "../organizeos-resource-cache";
 
 /**
  * A realm the browser can show to the site's own visitors.
@@ -88,7 +89,11 @@ const customFetch: typeof fetch = (input, init) => {
     return Promise.resolve(response);
   }
 
-  return fetch(input, init);
+  // OrganizeOS fork: through the site's in-memory resource cache
+  // (organizeos-resource-cache.ts), one per server instance for every route,
+  // which keeps each response only as long as its own Cache-Control allows.
+  // Behind it is the global fetch, as before.
+  return siteResourceCache(input, init);
 };
 
 export const loader = async (arg: LoaderFunctionArgs) => {

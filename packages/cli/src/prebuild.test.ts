@@ -10,8 +10,8 @@ import {
   utimes,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join, relative } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -22,7 +22,14 @@ import {
   type DefaultTreeAdapterMap,
 } from "parse5";
 import { build } from "esbuild";
-import { loadConfigFromFile } from "vite";
+import { loadConfigFromFile, transformWithEsbuild } from "vite";
+import * as React from "react";
+import type { ComponentType } from "react";
+import * as jsxRuntime from "react/jsx-runtime";
+import { renderToStaticMarkup } from "react-dom/server";
+import { log } from "@clack/prompts";
+import { templateIconCodes } from "@organizeos/site-components/org-script";
+import * as organizeosPage from "@organizeos/site-components/page";
 import { bundleVersion } from "@webstudio-is/protocol";
 import { isProtectedResourceReentry } from "@webstudio-is/sdk/protected-resource-fetch";
 import type { Asset, DataSource, Instance, Prop } from "@webstudio-is/sdk";
@@ -64,6 +71,68 @@ import {
   prebuild,
 } from "./prebuild";
 import { generateResponseHeadersModule } from "./response-headers";
+import {
+  ORGANIZEOS_PAGE_MODULE,
+  findModuleClosure,
+  resolveOrganizeosComponentsModule,
+} from "./organizeos-components";
+
+// OrganizeOS fork: Vitest's module runner has no import.meta.resolve, and it
+// resolves @organizeos/site-components with the webstudio condition, to the
+// package's source. Hand the CLI that source: it finds the package's build
+// from there, as it does when it runs from source (organizeos-components.ts).
+vi.mock("./organizeos-components", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./organizeos-components")>();
+  return {
+    ...actual,
+    resolveOrganizeosComponentsModule: () =>
+      actual.resolveOrganizeosComponentsModule(
+        () =>
+          new URL(
+            "../../sdk-components-organizeos/src/components.ts",
+            import.meta.url
+          ).href
+      ),
+  };
+});
+
+// OrganizeOS fork: while org script is paused, publishing refuses a build that
+// would materialize MDX (D7, refuseMdxWhilePaused) and leaves out what the
+// pause covers (dropOrgScript, organizeos-org-script.ts), a bound Content Block
+// `src` and a ws:element whose tag the builder does not offer among it. A few
+// of upstream's cases below publish exactly that, to cover what upstream builds
+// once the switch is on (MDX materialization, an XML page of ws:element). Each
+// of them publishes as if org script may run (publishAsIfOrgScriptMayRun); the
+// fork's own cases run with the pause in place.
+const orgScript = vi.hoisted(() => ({ mayRun: false }));
+vi.mock("./organizeos-org-script", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./organizeos-org-script")>();
+  return {
+    ...actual,
+    dropOrgScript: <Bundle extends Parameters<typeof actual.dropOrgScript>[0]>(
+      bundle: Bundle,
+      options: Parameters<typeof actual.dropOrgScript>[1] = {}
+    ) =>
+      actual.dropOrgScript(
+        bundle,
+        orgScript.mayRun ? { ...options, mayRun: true } : options
+      ),
+    refuseMdxWhilePaused: (
+      bundle: Parameters<typeof actual.refuseMdxWhilePaused>[0],
+      options: Parameters<typeof actual.refuseMdxWhilePaused>[1] = {}
+    ) =>
+      actual.refuseMdxWhilePaused(
+        bundle,
+        orgScript.mayRun ? { ...options, mayRun: true } : options
+      ),
+  };
+});
+/** For upstream's cases that publish what the pause covers (see orgScript). */
+const publishAsIfOrgScriptMayRun = () => {
+  orgScript.mayRun = true;
+};
 
 const createSsgAssetResourceFetch = (options: {
   deploymentId: string;
@@ -228,6 +297,45 @@ const getFilePaths = async (dir: string): Promise<string[]> => {
   return paths.flat();
 };
 
+/**
+ * OrganizeOS fork: the page's server module builds the request `name` makes
+ * and loads it as one of the page's resources (upstream's request graph).
+ */
+const expectRequest = (resources: string, name: string | undefined) => {
+  expect(name).toBeDefined();
+  expect(resources).toMatch(
+    new RegExp(`const ${name} = \\([^)]*\\): ResourceRequest => \\{`)
+  );
+  expect(resources).toMatch(
+    new RegExp(`outputName: "${name}", [^\\n]*createRequest: ${name},`)
+  );
+};
+
+/** Runs a TSX module as CommonJS, resolving its imports from `imports`. */
+const runModule = async (
+  code: string,
+  imports: Record<string, unknown>
+): Promise<Record<string, unknown>> => {
+  const { code: js } = await transformWithEsbuild(code, "module.tsx", {
+    loader: "tsx",
+    format: "cjs",
+    jsx: "automatic",
+  });
+  const module = { exports: {} as Record<string, unknown> };
+  const load = (id: string) => {
+    if (id in imports === false) {
+      throw Error(`"${id}" is not available to the module`);
+    }
+    return imports[id];
+  };
+  new Function("module", "exports", "require", js)(
+    module,
+    module.exports,
+    load
+  );
+  return module.exports;
+};
+
 const getImportSources = async (source: string) => {
   const result = await build({
     stdin: { contents: source, loader: "tsx" },
@@ -267,6 +375,84 @@ const getTextContent = (node: DefaultTreeAdapterMap["node"]): string => {
   return "";
 };
 
+/**
+ * OrganizeOS fork: a generated route module as the site ships it, run with
+ * runModule. Its generated neighbours are the real ones prebuild wrote (the
+ * page's server module, the asset query runtime, the form fetch), and the sdk
+ * and react-router are the real packages; the client module, the stylesheet,
+ * the sitemap, the assets and the constants are stood in, and `imports`
+ * replaces any of them.
+ */
+const loadGeneratedRoute = async (
+  file: string,
+  generated: string,
+  imports: Record<string, unknown> = {}
+) => {
+  const generatedDir = join("app", "__generated__");
+  const sdk = await import("@webstudio-is/sdk");
+  const server = await runModule(
+    await readFile(join(generatedDir, `${generated}.server.tsx`), "utf8"),
+    {
+      "@webstudio-is/sdk": sdk,
+      "@webstudio-is/sdk/to-string":
+        await import("@webstudio-is/sdk/to-string"),
+      "@webstudio-is/react-sdk": await import("@webstudio-is/react-sdk"),
+    }
+  );
+  const assetQueryRuntime = await runModule(
+    await readFile(
+      join(generatedDir, "$resources.asset-query-runtime.ts"),
+      "utf8"
+    ),
+    {}
+  );
+  const managedFormFetch = await runModule(
+    await readFile(
+      join(generatedDir, "$resources.managed-form-fetch.server.ts"),
+      "utf8"
+    ),
+    {
+      "@webstudio-is/sdk/protected-resource-fetch":
+        await import("@webstudio-is/sdk/protected-resource-fetch"),
+      "@webstudio-is/sdk/protected-resource-fetch-node":
+        await import("@webstudio-is/sdk/protected-resource-fetch-node"),
+    }
+  );
+  return runModule(await readFile(file, "utf8"), {
+    react: React,
+    "react/jsx-runtime": jsxRuntime,
+    "react-dom/server": await import("react-dom/server"),
+    "react-router": await import("react-router"),
+    "@webstudio-is/sdk/runtime": await import("@webstudio-is/sdk/runtime"),
+    "@webstudio-is/sdk/form/server":
+      await import("@webstudio-is/sdk/form/server"),
+    "@webstudio-is/sdk/form": await import("@webstudio-is/sdk/form"),
+    "@webstudio-is/wsauth": await import("@webstudio-is/wsauth"),
+    "@webstudio-is/react-sdk/runtime":
+      await import("@webstudio-is/react-sdk/runtime"),
+    [`../__generated__/${generated}`]: {
+      projectId: "project-id",
+      Page: () => null,
+      breakpoints: [],
+    },
+    [`../__generated__/${generated}.server`]: server,
+    "../constants.mjs": {},
+    "../__generated__/index.css?url": { default: "" },
+    "../__generated__/$resources.sitemap.xml": { sitemap: [] },
+    "../__generated__/$resources.assets": { assets: {}, assetUrlsByPath: {} },
+    "../__generated__/$resources.wsauth.server": { authRoutes: [] },
+    "../__generated__/$resources.asset-query-runtime": assetQueryRuntime,
+    "../__generated__/$resources.managed-form-fetch.server": managedFormFetch,
+    "../organizeos-resource-cache": {
+      siteResourceCache: (
+        await import("../templates/react-router/app/organizeos-resource-cache")
+      ).createResourceCache(),
+    },
+    "../__organizeos__/page.js": { PageShareCodeCarrier: () => null },
+    ...imports,
+  });
+};
+
 const createSiteData = (
   overrides: {
     assets?: Asset[];
@@ -280,9 +466,11 @@ const createSiteData = (
       isDraft?: boolean;
     }>;
     instances?: Array<[string, Omit<Instance, "type">]>;
-    props?: Array<[string, Prop]>;
-    dataSources?: Array<[string, DataSource]>;
-    resources?: Array<[string, Resource]>;
+    // OrganizeOS fork: the fork's cases below build some of these as plain
+    // records; the bundle schema checks them when prebuild reads the bundle.
+    props?: Array<[string, Prop | Record<string, unknown>]>;
+    dataSources?: Array<[string, DataSource | Record<string, unknown>]>;
+    resources?: Array<[string, Resource | Record<string, unknown>]>;
     pageMeta?: Record<string, unknown>;
     redirects?: Redirects;
     formComponentIdentityVersion?: number;
@@ -458,6 +646,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  orgScript.mayRun = false;
   consoleInfo.mockRestore();
   process.chdir(originalCwd);
   globalThis.fetch = originalFetch;
@@ -1319,6 +1508,8 @@ describe("prebuild", () => {
   test.each([true, false, undefined])(
     "requires direct MDX source content (available: %s)",
     async (hasSource) => {
+      // OrganizeOS fork: MDX publishes only with the switch on (orgScript)
+      publishAsIfOrgScriptMayRun();
       const source = "# Published from MDX";
       const article: AssetFileDocument = {
         ...indexedDocument,
@@ -1413,6 +1604,8 @@ describe("prebuild", () => {
   );
 
   test("materializes Content Blocks introduced by an MDX template", async () => {
+    // OrganizeOS fork: MDX publishes only with the switch on (orgScript)
+    publishAsIfOrgScriptMayRun();
     const outerSource = '<ws.element ws:name="Nested" />';
     const innerSource = "# Nested published content";
     const createMdxDocument = (
@@ -1518,6 +1711,8 @@ describe("prebuild", () => {
   });
 
   test("warns and stops excessive published Content Block expansion", async () => {
+    // OrganizeOS fork: MDX publishes only with the switch on (orgScript)
+    publishAsIfOrgScriptMayRun();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const source = "# Published";
     const article: AssetFileDocument = {
@@ -1594,6 +1789,9 @@ describe("prebuild", () => {
   });
 
   test("materializes finite dynamic MDX candidates without publishing unrelated files", async () => {
+    // OrganizeOS fork: MDX publishes only with the switch on, and the pause
+    // leaves out a bound Content Block src (orgScript)
+    publishAsIfOrgScriptMayRun();
     const createDocument = (
       id: string,
       extension: "json" | "mdx",
@@ -1777,6 +1975,9 @@ describe("prebuild", () => {
   });
 
   test("rejects a dynamic MDX source without a content database", async () => {
+    // OrganizeOS fork: the pause leaves out a bound Content Block src, so
+    // only with the switch on is there a dynamic source to reject (orgScript)
+    publishAsIfOrgScriptMayRun();
     const siteData = createSiteData({
       instances: [
         [
@@ -2512,9 +2713,12 @@ sitemap.map((page) => page.path);`
     await expect(
       readFile("app/__generated__/$resources.redirects.ts", "utf8")
     ).resolves.toContain("/dl.php?filename=file.pdf");
-    await expect(readFile("app/constants.mjs", "utf8")).resolves.toContain(
-      "return `/_vercel/image?${searchParams}`"
-    );
+    // OrganizeOS fork: published images are served as originals
+    // (templates/react-router-vercel/app/constants.mjs, ORGANIZEOS-FORK.md
+    // section 8), where upstream builds /_vercel/image URLs.
+    const constants = await readFile("app/constants.mjs", "utf8");
+    expect(constants).toContain("return props.src;");
+    expect(constants).not.toContain("return `/_vercel/image?");
     await expect(readFile("app/routes/[_image].$.ts", "utf8")).rejects.toThrow(
       "ENOENT"
     );
@@ -2541,6 +2745,3229 @@ sitemap.map((page) => page.path);`
     expect(packageJson.dependencies).not.toHaveProperty(
       "@webstudio-is/content-engine"
     );
+  });
+
+  // OrganizeOS fork: the OrganizeOS blocks ship inside the site as a copy of
+  // their build (organizeos-components.ts).
+  const organizeosDir = join("app", "__organizeos__");
+
+  const expectCopyToBeTheClosure = async () => {
+    const entryPath = resolveOrganizeosComponentsModule();
+    // the components module, and the page module every html route mounts
+    const modules = new Set([
+      ...(await findModuleClosure(entryPath)).modules,
+      ...(
+        await findModuleClosure(
+          join(dirname(entryPath), ORGANIZEOS_PAGE_MODULE)
+        )
+      ).modules,
+    ]);
+    const copied = await getFilePaths(organizeosDir);
+    expect(copied.map((path) => relative(organizeosDir, path)).sort()).toEqual(
+      [
+        ...[...modules].map((path) => relative(dirname(entryPath), path)),
+        // the package's, so the copy carries its license
+        "LICENSE",
+      ].sort()
+    );
+  };
+
+  test("imports the OrganizeOS blocks from the copy of their build", async () => {
+    await writeSiteData(
+      createSiteData({
+        instances: [
+          [
+            "root",
+            {
+              id: "root",
+              component: "Box",
+              children: [{ type: "id", value: "signup" }],
+            },
+          ],
+          [
+            "signup",
+            {
+              id: "signup",
+              component: "@organizeos/site-components:SignupForm",
+              children: [],
+            },
+          ],
+        ],
+      })
+    );
+
+    await prebuild({
+      assets: false,
+      template: ["react-router", "react-router-vercel"],
+    });
+
+    // The page module sits in app/__generated__/ and imports the block by a
+    // path relative to that folder, which reaches the copy.
+    const pagePath = join("app", "__generated__", "_index.tsx");
+    const page = await readFile(pagePath, "utf8");
+    const importSource = page.match(
+      /import \{ SignupForm as \w+ \} from "([^"]+)";/
+    )?.[1];
+    expect(importSource).toBe("../__organizeos__/components.js");
+    await expect(
+      readFile(join(dirname(pagePath), importSource as string), "utf8")
+    ).resolves.toEqual(
+      await readFile(resolveOrganizeosComponentsModule(), "utf8")
+    );
+    // Everything the copy imports came with it, and nothing else did.
+    await expectCopyToBeTheClosure();
+  });
+
+  test("imports the Share Code Carrier, an Event List's root, from the copy of the build", async () => {
+    await writeSiteData(
+      createSiteData({
+        instances: [
+          [
+            "root",
+            {
+              id: "root",
+              component: "Box",
+              children: [{ type: "id", value: "events" }],
+            },
+          ],
+          [
+            "events",
+            {
+              id: "events",
+              component: "@organizeos/site-components:ShareCodeCarrier",
+              children: [],
+            },
+          ],
+        ],
+      })
+    );
+
+    await prebuild({
+      assets: false,
+      template: ["react-router", "react-router-vercel"],
+    });
+
+    const pagePath = join("app", "__generated__", "_index.tsx");
+    const page = await readFile(pagePath, "utf8");
+    const [, localName, importSource] =
+      page.match(/import \{ ShareCodeCarrier as (\w+) \} from "([^"]+)";/) ??
+      [];
+    expect(importSource).toBe("../__organizeos__/components.js");
+    // the page renders it
+    expect(page).toContain(`<${localName}`);
+    // and the copy of the build exports it
+    const copy = await readFile(
+      join(dirname(pagePath), importSource as string),
+      "utf8"
+    );
+    expect(copy).toMatch(/export \{[^}]*\bas ShareCodeCarrier\b[^}]*\}/);
+    await expectCopyToBeTheClosure();
+  });
+
+  test("a second prebuild in the same folder leaves no stale file in the OrganizeOS copy", async () => {
+    await prebuild({
+      assets: false,
+      template: ["react-router", "react-router-vercel"],
+    });
+    await writeFile(join(organizeosDir, "stale.js"), "stale", "utf8");
+    await mkdir(join(organizeosDir, "removed"), { recursive: true });
+    await writeFile(join(organizeosDir, "removed", "part.js"), "stale", "utf8");
+
+    await prebuild({
+      assets: false,
+      template: ["react-router", "react-router-vercel"],
+    });
+
+    await expectCopyToBeTheClosure();
+  });
+
+  // OrganizeOS fork: a site carries the fork's AGPL code, so the copy ships
+  // its license and every html page links the fork's source
+  // (route-templates/html.tsx, organizeos-components.ts).
+  describe("offers the fork's source", () => {
+    const repository = "https://github.com/OrganizeOS-HQ/OrganizeOS-Websites";
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+
+    /** The generated html route's links function, the head it renders. */
+    const prebuildLinks = async () => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+      const route = await readFile(join("app", "routes", "_index.tsx"), "utf8");
+      const start = route.indexOf("export const links: LinksFunction");
+      return {
+        route,
+        links: route.slice(start, route.indexOf("\n};\n", start)),
+      };
+    };
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    test("every html page links the license and the fork at the commit the publish workflow built", async () => {
+      vi.stubEnv("GITHUB_REPOSITORY", "OrganizeOS-HQ/OrganizeOS-Websites");
+      vi.stubEnv("GITHUB_SHA", sha);
+
+      const { route, links } = await prebuildLinks();
+
+      expect(route).toContain(
+        `const organizeosSourceUrl = "${repository}/tree/${sha}";`
+      );
+      expect(route).not.toContain("__ORGANIZEOS_SOURCE_URL__");
+      expect(links).toContain(
+        `{ rel: "license", href: "https://www.gnu.org/licenses/agpl-3.0.html" },`
+      );
+      expect(links).toContain(
+        `{ rel: "code-repository", href: organizeosSourceUrl }`
+      );
+    });
+
+    test("without a commit it links the fork's repository", async () => {
+      vi.stubEnv("GITHUB_REPOSITORY", undefined);
+      vi.stubEnv("GITHUB_SHA", undefined);
+
+      const { route } = await prebuildLinks();
+
+      expect(route).toContain(`const organizeosSourceUrl = "${repository}";`);
+    });
+
+    test("the copy of the blocks carries the package's LICENSE", async () => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+
+      await expect(
+        readFile(join(organizeosDir, "LICENSE"), "utf8")
+      ).resolves.toEqual(
+        await readFile(
+          new URL("../../sdk-components-organizeos/LICENSE", import.meta.url),
+          "utf8"
+        )
+      );
+    });
+
+    // Owner decision of 2026-10-15: AGPL-3.0 section 13 asks that the offer be
+    // prominent, so besides the head links every html page ends its <body>
+    // with a small visible "Source" link. The <body> is rendered by the
+    // generated Page (its Body component, which the byte-identical
+    // sdk-components-react-router package owns), so the route appends the link
+    // to the children of the element Page returns.
+    describe("ends every html page's body with a visible Source link", () => {
+      /** Code with its whitespace collapsed, so prettier's wrapping is no part of a test. */
+      const compact = (code: string) => code.replace(/\s+/g, " ");
+
+      /** The element the route renders for the link: the wrapper and its anchor. */
+      const getSourceOffer = (route: string) =>
+        compact(route).match(
+          /<div [^>]*data-organizeos-source-offer[^>]*>.*?<\/div>/
+        )?.[0] ?? "";
+
+      /** Where the link goes: the value of the constant its href names. */
+      const getLinkTarget = (route: string) => {
+        const name = getSourceOffer(route).match(/<a [^>]*href=\{(\w+)\}/)?.[1];
+        return route.match(new RegExp(`const ${name} = "([^"]*)";`))?.[1];
+      };
+
+      test("it links the fork at the commit the publish workflow built", async () => {
+        vi.stubEnv("GITHUB_REPOSITORY", "OrganizeOS-HQ/OrganizeOS-Websites");
+        vi.stubEnv("GITHUB_SHA", sha);
+
+        const { route } = await prebuildLinks();
+        const offer = getSourceOffer(route);
+
+        expect(offer).toContain("data-organizeos-source-offer");
+        // the code-repository relation only: the anchor's target is a source
+        // tree, not a license document, so it makes no license claim (the
+        // head's license link names the AGPL text)
+        expect(offer).toMatch(/<a [^>]*rel="code-repository"/);
+        expect(offer).not.toMatch(/rel="[^"]*license/);
+        expect(offer).toContain(`title="Source code of this site (AGPL-3.0)"`);
+        expect(offer).toContain(
+          `aria-label="Source code of this site (AGPL-3.0)"`
+        );
+        // the visible text
+        expect(offer).toMatch(/>\s*Source\s*<\/a>/);
+        expect(getLinkTarget(route)).toBe(`${repository}/tree/${sha}`);
+        expect(route).not.toContain("__ORGANIZEOS_SOURCE_URL__");
+      });
+
+      test("without a commit it links the fork's repository", async () => {
+        vi.stubEnv("GITHUB_REPOSITORY", undefined);
+        vi.stubEnv("GITHUB_SHA", undefined);
+
+        const { route } = await prebuildLinks();
+
+        expect(getSourceOffer(route)).toContain("data-organizeos-source-offer");
+        expect(getLinkTarget(route)).toBe(repository);
+      });
+
+      test("it is the last of the page's content in the body, before the scripts the Body appends, and the page's Body is where it goes", async () => {
+        const { route } = await prebuildLinks();
+        const code = compact(route);
+
+        // The page is rendered through the wrapper that appends the link ...
+        expect(code).toContain(
+          "<PageWithSourceOffer key={url} system={system} />"
+        );
+        expect(code).not.toContain("<Page key={url}");
+        // ... after the page's own children, never before them.
+        const children = code.indexOf("page.props.children");
+        const link = code.indexOf("<SourceOffer", children);
+        expect(children).toBeGreaterThan(-1);
+        expect(link).toBeGreaterThan(children);
+      });
+
+      // The tests above read the route's text. These render it: the
+      // PageWithSourceOffer the site ships, around the generated Page, whose
+      // root is the real Body of @webstudio-is/sdk-components-react-router.
+      // Only react-router's Scripts and ScrollRestoration are stand-ins (the
+      // real ones need a router); they render the <script> elements the real
+      // Body puts after its children.
+      describe("rendered", () => {
+        type Wrapper = ComponentType<{ system: unknown }>;
+
+        /**
+         * The route's PageWithSourceOffer, as the site ships it, around
+         * `Page`, with the page's share-code carrier from `pageModule`: the
+         * package's own page module unless a test stands in for it.
+         */
+        const loadWrapper = async (
+          route: string,
+          Page: unknown,
+          pageModule: unknown = organizeosPage
+        ) => {
+          const start = route.indexOf("const organizeosSourceUrl");
+          const wrapper = route.indexOf("const PageWithSourceOffer", start);
+          const end = route.indexOf("\n};\n", wrapper) + "\n};\n".length;
+          const reactImport = route.match(
+            /import \{[^}]*\bisValidElement\b[^}]*\} from "react";/
+          )?.[0];
+          const [carrierImport, carrierSource] =
+            route.match(/import \{ PageShareCodeCarrier \} from "([^"]+)";/) ??
+            [];
+          expect(start).toBeGreaterThan(-1);
+          expect(wrapper).toBeGreaterThan(start);
+          expect(end).toBeGreaterThan(wrapper);
+          expect(reactImport).toBeDefined();
+          expect(carrierImport).toBeDefined();
+          const exports = await runModule(
+            [
+              reactImport,
+              carrierImport,
+              `import { Page } from "./page";`,
+              route.slice(start, end),
+              `export { PageWithSourceOffer };`,
+            ].join("\n"),
+            {
+              react: React,
+              "react/jsx-runtime": jsxRuntime,
+              "./page": { Page },
+              [carrierSource as string]: pageModule,
+            }
+          );
+          return exports.PageWithSourceOffer as Wrapper;
+        };
+
+        /** The generated Page of the home page, rendering `Body` as its root. */
+        const loadGeneratedPage = async (Body: unknown) => {
+          const exports = await runModule(
+            await readFile(join("app", "__generated__", "_index.tsx"), "utf8"),
+            {
+              react: React,
+              "react/jsx-runtime": jsxRuntime,
+              "@webstudio-is/react-sdk/runtime":
+                await import("@webstudio-is/react-sdk/runtime"),
+              "@webstudio-is/sdk-components-react-router": { Body },
+            }
+          );
+          return exports.Page;
+        };
+
+        /** The real Body, with react-router's script elements stood in. */
+        const importBody = async () => {
+          vi.resetModules();
+          vi.doMock("react-router", async (importOriginal) => ({
+            ...(await importOriginal<typeof import("react-router")>()),
+            Scripts: () =>
+              React.createElement("script", { "data-scripts": "" }),
+            ScrollRestoration: () =>
+              React.createElement("script", { "data-scroll-restoration": "" }),
+          }));
+          const { Body } =
+            await import("@webstudio-is/sdk-components-react-router");
+          return Body;
+        };
+
+        afterEach(() => {
+          vi.doUnmock("react-router");
+          vi.resetModules();
+        });
+
+        const renderInHtml = (element: React.ReactElement) =>
+          renderToStaticMarkup(
+            React.createElement(
+              "html",
+              null,
+              React.createElement("head"),
+              element
+            )
+          );
+
+        test("the link is inside the <body>, after the page's content and before the scripts", async () => {
+          await writeSiteData(
+            createSiteData({
+              instances: [
+                [
+                  "root",
+                  {
+                    id: "root",
+                    component: "Body",
+                    children: [
+                      { type: "id", value: "first" },
+                      { type: "id", value: "second" },
+                    ],
+                  },
+                ],
+                [
+                  "first",
+                  {
+                    id: "first",
+                    component: elementComponent,
+                    tag: "p",
+                    children: [],
+                  },
+                ],
+                [
+                  "second",
+                  {
+                    id: "second",
+                    component: elementComponent,
+                    tag: "p",
+                    children: [],
+                  },
+                ],
+              ],
+            })
+          );
+          const { route } = await prebuildLinks();
+          const PageWithSourceOffer = await loadWrapper(
+            route,
+            await loadGeneratedPage(await importBody())
+          );
+
+          const html = renderInHtml(
+            React.createElement(PageWithSourceOffer, { system: {} })
+          );
+
+          // <body> comes right after <head> and nothing follows it: the link
+          // is not a sibling of the page's root under <html>
+          expect(html).toMatch(/^<html><head><\/head><body[ >]/);
+          expect(html).toMatch(/<\/body><\/html>$/);
+          const body = html.slice(
+            html.indexOf("<body"),
+            html.lastIndexOf("</body>")
+          );
+          expect(body.match(/data-organizeos-source-offer/g)).toHaveLength(1);
+          // the wrapper is not hidden from sight or from assistive technology
+          expect(body).not.toMatch(
+            /<div data-organizeos-source-offer=""[^>]*\s(hidden|aria-hidden)[\s=>]/
+          );
+          // the page's two paragraphs, the link, then the scripts
+          expect(body).toMatch(
+            /^<body[^>]*><p [^>]*><\/p><p [^>]*><\/p><div data-organizeos-source-offer=""[^>]*><a [^>]*>Source<\/a><\/div><script data-scripts=""><\/script><script data-scroll-restoration=""><\/script>$/
+          );
+        });
+
+        test("the page's share-code carrier renders once, after the link, and adds nothing to the markup", async () => {
+          const { route } = await prebuildLinks();
+          const Page = () =>
+            React.createElement(
+              "body",
+              null,
+              React.createElement("p", { id: "content" })
+            );
+          // a stand-in that shows where the route renders the carrier
+          const PageWithSourceOffer = await loadWrapper(route, Page, {
+            PageShareCodeCarrier: () =>
+              React.createElement("i", { "data-carrier": "" }),
+          });
+          const offer =
+            '<div data-organizeos-source-offer=""[^>]*><a [^>]*>Source</a></div>';
+          expect(
+            renderInHtml(
+              React.createElement(PageWithSourceOffer, { system: {} })
+            )
+          ).toMatch(
+            new RegExp(
+              `<body><p id="content"></p>${offer}<i data-carrier=""></i></body>`
+            )
+          );
+
+          // the package's carrier renders nothing, so the link stays the last
+          // of the body's content
+          const html = renderInHtml(
+            React.createElement(await loadWrapper(route, Page), { system: {} })
+          );
+          expect(html).toMatch(
+            new RegExp(`<body><p id="content"></p>${offer}</body>`)
+          );
+        });
+
+        test("it renders what Page renders when that is not an element", async () => {
+          const { route } = await prebuildLinks();
+          const PageWithSourceOffer = await loadWrapper(route, () => null);
+
+          expect(
+            renderToStaticMarkup(
+              React.createElement(PageWithSourceOffer, { system: {} })
+            )
+          ).toBe("");
+        });
+      });
+
+      test("it styles itself inline, small, and never overlays the design", async () => {
+        const { route } = await prebuildLinks();
+        const offer = getSourceOffer(route);
+
+        for (const declaration of [
+          `display: "block"`,
+          `textAlign: "center"`,
+          `fontSize: "12px"`,
+          `lineHeight: 1.5`,
+          `padding: "8px"`,
+          `opacity: 0.7`,
+          `color: "inherit"`,
+          // in a grid body it fills a whole row instead of the next cell
+          `gridColumn: "1 / -1"`,
+        ]) {
+          expect(offer).toContain(declaration);
+        }
+        expect(offer).not.toMatch(/position|zIndex|float|top:|bottom:/);
+        // visible: nothing hides it from a sighted visitor or from assistive
+        // technology, which would defeat the point of a prominent offer
+        expect(offer).not.toMatch(
+          /\bhidden\b|visibility|aria-hidden|clip|display: "none"/
+        );
+        // no class: nothing for the org's CSS to reach, nothing of ours to leak
+        expect(offer).not.toContain("className");
+      });
+
+      test("the xml and text routes do not carry it", async () => {
+        await writeSiteData(
+          createSiteData({
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: "Home",
+                path: "",
+                rootInstanceId: "root",
+                meta: {},
+              },
+              {
+                id: "feed",
+                name: "Feed",
+                title: "Feed",
+                path: "/feed.xml",
+                rootInstanceId: "xml-root",
+                meta: { documentType: "xml" },
+              },
+              {
+                id: "notes",
+                name: "Notes",
+                title: "Notes",
+                path: "/notes.txt",
+                rootInstanceId: "root",
+                meta: { documentType: "text" },
+              },
+            ],
+            instances: [
+              ["root", { id: "root", component: "Box", children: [] }],
+              [
+                "xml-root",
+                {
+                  id: "xml-root",
+                  component: "Box",
+                  children: [{ type: "id", value: "xml-feed" }],
+                },
+              ],
+              [
+                "xml-feed",
+                {
+                  id: "xml-feed",
+                  component: elementComponent,
+                  tag: "rss",
+                  children: [],
+                },
+              ],
+            ],
+          })
+        );
+        await prebuild({
+          assets: false,
+          template: ["react-router", "react-router-vercel"],
+        });
+
+        const html = await readFile(
+          join("app", "routes", "_index.tsx"),
+          "utf8"
+        );
+        const xml = await readFile(
+          join("app", "routes", "[feed.xml]._index.tsx"),
+          "utf8"
+        );
+        const text = await readFile(
+          join("app", "routes", "[notes.txt]._index.tsx"),
+          "utf8"
+        );
+
+        expect(html).toContain("data-organizeos-source-offer");
+        expect(xml).not.toContain("data-organizeos-source-offer");
+        expect(text).not.toContain("data-organizeos-source-offer");
+      });
+    });
+  });
+
+  // OrganizeOS fork: every html page mounts the page's share-code carrier from
+  // the copy of the blocks' build (route-templates/html.tsx,
+  // organizeos-components.ts, ORGANIZEOS-FORK.md §8).
+  describe("mounts the page's share-code carrier", () => {
+    const page = (id: string, path: string, meta = {}) => ({
+      id,
+      name: id,
+      title: id,
+      path,
+      rootInstanceId: "root",
+      meta,
+    });
+
+    test("every html route imports the page's share-code carrier from the copy of the build and renders it", async () => {
+      await writeSiteData(
+        createSiteData({
+          pages: [page("home", ""), page("another", "/another-page")],
+        })
+      );
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+
+      const builtPage = join(
+        dirname(resolveOrganizeosComponentsModule()),
+        ORGANIZEOS_PAGE_MODULE
+      );
+      for (const routeFile of ["_index.tsx", "[another-page]._index.tsx"]) {
+        const routePath = join("app", "routes", routeFile);
+        const route = await readFile(routePath, "utf8");
+        expect(route, routeFile).not.toContain("__ORGANIZEOS_PAGE__");
+        // what the generated route holds, its comments aside
+        const code = route
+          .split("\n")
+          .filter((line) => line.trim().startsWith("//") === false)
+          .join("\n");
+        const [carrierImport, importSource] =
+          code.match(/^import \{ PageShareCodeCarrier \} from "([^"]+)";$/m) ??
+          [];
+        expect(carrierImport, routeFile).toBe(
+          'import { PageShareCodeCarrier } from "../__organizeos__/page.js";'
+        );
+        const start = code.indexOf("const PageWithSourceOffer");
+        expect(
+          code.slice(start, code.indexOf("\n};\n", start) + "\n};".length),
+          routeFile
+        ).toBe(
+          [
+            "const PageWithSourceOffer = ({ system }: ComponentProps<typeof Page>) => {",
+            "  const page = Page({ system });",
+            "  if (isValidElement<{ children?: ReactNode }>(page) === false) {",
+            "    return page;",
+            "  }",
+            "  return cloneElement(",
+            "    page,",
+            "    undefined,",
+            "    ...Children.toArray(page.props.children),",
+            '    <SourceOffer key="organizeos-source-offer" />,',
+            '    <PageShareCodeCarrier key="organizeos-share-code" />',
+            "  );",
+            "};",
+          ].join("\n")
+        );
+        // the import reaches the copy, which is the package's built page
+        // module and exports the carrier
+        const copy = await readFile(
+          join(dirname(routePath), importSource as string),
+          "utf8"
+        );
+        expect(copy).toEqual(await readFile(builtPage, "utf8"));
+        expect(copy).toMatch(
+          /export \{[^}]*\bas PageShareCodeCarrier\b[^}]*\}/
+        );
+      }
+      // the page module came with everything it imports, and nothing else did
+      await expectCopyToBeTheClosure();
+    });
+
+    test("the xml and text routes do not import it", async () => {
+      await writeSiteData(
+        createSiteData({
+          pages: [
+            page("home", ""),
+            page("feed", "/feed.xml", { documentType: "xml" }),
+            page("notes", "/notes.txt", { documentType: "text" }),
+          ],
+        })
+      );
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+
+      const html = await readFile(join("app", "routes", "_index.tsx"), "utf8");
+      expect(html).toContain("<PageShareCodeCarrier");
+      for (const routeFile of [
+        "[feed.xml]._index.tsx",
+        "[notes.txt]._index.tsx",
+      ]) {
+        const route = await readFile(join("app", "routes", routeFile), "utf8");
+        expect(route, routeFile).not.toContain("PageShareCodeCarrier");
+        expect(route, routeFile).not.toContain("__organizeos__/page.js");
+        expect(route, routeFile).not.toContain("__ORGANIZEOS_PAGE__");
+      }
+    });
+  });
+
+  // OrganizeOS fork: a page loads a data source only when its scope is on the
+  // page or is :root. The builder now scopes a Signup Form's Forms binding to
+  // the block's own root, so only the page that holds the block loads Forms;
+  // older pre-deploy branches wrote it at :root, and an unscoped binding
+  // loads nowhere.
+  describe("compiles a Signup Form's data from the Forms preset", () => {
+    const formsBinding = {
+      type: "resource",
+      id: "forms-binding",
+      name: "OrganizeOS Forms",
+      resourceId: "forms-resource",
+    };
+
+    // With `secondPage`, the site has a second page without the block.
+    const writeSignupForm = (
+      binding: Record<string, unknown>,
+      { secondPage = false }: { secondPage?: boolean } = {}
+    ) =>
+      writeSiteData(
+        createSiteData({
+          ...(secondPage && {
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: "Home",
+                path: "",
+                rootInstanceId: "root",
+                meta: {},
+              },
+              {
+                id: "about",
+                name: "About",
+                title: "About",
+                path: "/about",
+                rootInstanceId: "about-root",
+                meta: {},
+              },
+            ],
+          }),
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Box",
+                children: [{ type: "id", value: "signup" }],
+              },
+            ],
+            [
+              "signup",
+              {
+                id: "signup",
+                component: "@organizeos/site-components:SignupForm",
+                children: [],
+              },
+            ],
+            ...(secondPage
+              ? [
+                  [
+                    "about-root",
+                    { id: "about-root", component: "Box", children: [] },
+                  ] satisfies [string, unknown],
+                ]
+              : []),
+          ],
+          props: [
+            [
+              "signup-data",
+              {
+                id: "signup-data",
+                instanceId: "signup",
+                name: "data",
+                type: "expression",
+                value: `${encodeDataSourceVariable(formsBinding.id)}.data`,
+              },
+            ],
+          ],
+          dataSources: [[formsBinding.id, binding]],
+          resources: [
+            [
+              "forms-resource",
+              {
+                id: "forms-resource",
+                name: "OrganizeOS Forms",
+                method: "get",
+                url: `"https://app.example.org/api/public/v1/forms"`,
+                headers: [
+                  { name: "Authorization", value: `"Bearer osk_test"` },
+                ],
+              },
+            ],
+          ],
+        })
+      );
+
+    const prebuildPage = async (pageFile = "_index") => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+      const generatedDir = join("app", "__generated__");
+      return {
+        page: await readFile(join(generatedDir, `${pageFile}.tsx`), "utf8"),
+        // the page's resources module, which its loader runs on the server
+        resources: await readFile(
+          join(generatedDir, `${pageFile}.server.tsx`),
+          "utf8"
+        ),
+      };
+    };
+
+    test("to the Forms resource when the binding is scoped at :root", async () => {
+      await writeSignupForm({ ...formsBinding, scopeInstanceId: ":root" });
+
+      const { page, resources } = await prebuildPage();
+
+      const [, variable, request] =
+        page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
+      expect(variable).toBeDefined();
+      expect(page).toContain(`data={${variable}?.data}`);
+      expectRequest(resources, request);
+      expect(resources).toContain(
+        `url: "https://app.example.org/api/public/v1/forms",`
+      );
+      expect(resources).toContain(
+        `{ name: "Authorization", value: "Bearer osk_test" },`
+      );
+    });
+
+    test("to the Forms resource on the page that holds the block, when the binding is scoped to the block's root", async () => {
+      await writeSignupForm(
+        { ...formsBinding, scopeInstanceId: "signup" },
+        { secondPage: true }
+      );
+
+      const { page, resources } = await prebuildPage();
+
+      const [, variable, request] =
+        page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
+      expect(variable).toBeDefined();
+      expect(page).toContain(`data={${variable}?.data}`);
+      expectRequest(resources, request);
+      expect(resources).toContain(
+        `url: "https://app.example.org/api/public/v1/forms",`
+      );
+      expect(resources).toContain(
+        `{ name: "Authorization", value: "Bearer osk_test" },`
+      );
+    });
+
+    test("to no request on a page without the block, when the binding is scoped to the block's root", async () => {
+      await writeSignupForm(
+        { ...formsBinding, scopeInstanceId: "signup" },
+        { secondPage: true }
+      );
+
+      const { page, resources } = await prebuildPage("[about]._index");
+
+      expect(page).not.toContain("SignupForm");
+      expect(page).not.toContain("useResource(");
+      expect(resources).not.toContain("/v1/forms");
+      expect(resources).not.toContain("OrganizeOS Forms");
+      expect(resources).not.toContain("): ResourceRequest =>");
+    });
+
+    test("to undefined when the binding has no scope", async () => {
+      await writeSignupForm(formsBinding);
+
+      const { page, resources } = await prebuildPage();
+
+      expect(page).toContain("data={undefined?.data}");
+      expect(page).not.toContain("useResource(");
+      expect(resources).not.toContain("/v1/forms");
+      expect(resources).not.toContain("OrganizeOS Forms");
+    });
+  });
+
+  // OrganizeOS fork: an Event List's Upcoming Events binding is scoped to the
+  // block's root, so only the page that holds the block loads the events. The
+  // collection reads the list only when the loader's `ok` is true, so it agrees
+  // with the two state boxes, which show on `ok` too. The condition is
+  // parenthesized: the page iterates `Object.entries(<bind> ?? {})`, and `??`
+  // binds tighter than `?:`, so unparenthesized it guards only the `[]` branch
+  // and a 200 without a list throws during render.
+  describe("compiles an Event List's data from the Upcoming Events preset", () => {
+    const upcomingBinding = {
+      type: "resource",
+      id: "upcoming-binding",
+      name: "OrganizeOS Upcoming Events",
+      resourceId: "upcoming-resource",
+      scopeInstanceId: "list",
+    };
+    const variable = encodeDataSourceVariable(upcomingBinding.id);
+    const eventParameter = encodeDataSourceVariable("event-parameter");
+
+    // The collection's list: an Event List's, or an Event Card's first event.
+    const eventListData = `${variable}.data.data`;
+    const eventCardData = `${variable}.data.data.slice(0, 1)`;
+
+    // What the page's collection iterates: the argument of its
+    // `Object.entries(`, without the `// @ts-ignore` line before it.
+    const getIterated = (page: string) =>
+      page
+        .match(
+          /Object\.entries\(\s*(?:\/\/[^\n]*\n)?([\s\S]*?)\s*\)\.map\(/
+        )?.[1]
+        .trim();
+
+    const writeEventList = ({
+      secondPage = false,
+      list = eventListData,
+    }: { secondPage?: boolean; list?: string } = {}) =>
+      writeSiteData(
+        createSiteData({
+          ...(secondPage && {
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: "Home",
+                path: "",
+                rootInstanceId: "root",
+                meta: {},
+              },
+              {
+                id: "about",
+                name: "About",
+                title: "About",
+                path: "/about",
+                rootInstanceId: "about-root",
+                meta: {},
+              },
+            ],
+          }),
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Box",
+                children: [{ type: "id", value: "list" }],
+              },
+            ],
+            [
+              "list",
+              {
+                id: "list",
+                component: "ws:element",
+                tag: "div",
+                children: [
+                  { type: "id", value: "events" },
+                  { type: "id", value: "empty" },
+                  { type: "id", value: "unavailable" },
+                ],
+              },
+            ],
+            [
+              "events",
+              {
+                id: "events",
+                component: "ws:collection",
+                children: [{ type: "id", value: "card" }],
+              },
+            ],
+            [
+              "card",
+              {
+                id: "card",
+                component: "ws:element",
+                tag: "article",
+                children: [{ type: "id", value: "title" }],
+              },
+            ],
+            [
+              "title",
+              {
+                id: "title",
+                component: "ws:element",
+                tag: "h3",
+                children: [
+                  { type: "expression", value: `${eventParameter}.title` },
+                ],
+              },
+            ],
+            [
+              "empty",
+              {
+                id: "empty",
+                component: "ws:element",
+                tag: "p",
+                children: [],
+              },
+            ],
+            [
+              "unavailable",
+              {
+                id: "unavailable",
+                component: "ws:element",
+                tag: "p",
+                children: [],
+              },
+            ],
+            ...(secondPage
+              ? [
+                  [
+                    "about-root",
+                    { id: "about-root", component: "Box", children: [] },
+                  ] satisfies [string, unknown],
+                ]
+              : []),
+          ],
+          props: [
+            [
+              "events-item",
+              {
+                id: "events-item",
+                instanceId: "events",
+                name: "item",
+                type: "parameter",
+                value: "event-parameter",
+              },
+            ],
+            [
+              "events-data",
+              {
+                id: "events-data",
+                instanceId: "events",
+                name: "data",
+                type: "expression",
+                value: `(${variable}.ok === true ? ${list} : [])`,
+              },
+            ],
+            [
+              "empty-show",
+              {
+                id: "empty-show",
+                instanceId: "empty",
+                name: "data-ws-show",
+                type: "expression",
+                value: `${variable}.ok === true && ${variable}.data.data.length === 0`,
+              },
+            ],
+            [
+              "unavailable-show",
+              {
+                id: "unavailable-show",
+                instanceId: "unavailable",
+                name: "data-ws-show",
+                type: "expression",
+                value: `${variable}.ok === false`,
+              },
+            ],
+          ],
+          dataSources: [
+            [upcomingBinding.id, upcomingBinding],
+            [
+              "event-parameter",
+              {
+                type: "parameter",
+                id: "event-parameter",
+                name: "event",
+                scopeInstanceId: "events",
+              },
+            ],
+          ],
+          resources: [
+            [
+              "upcoming-resource",
+              {
+                id: "upcoming-resource",
+                name: "Upcoming Events",
+                method: "get",
+                url: `"https://app.example.org/api/public/v1/events?upcoming=true"`,
+                headers: [
+                  { name: "Authorization", value: `"Bearer osk_test"` },
+                ],
+              },
+            ],
+          ],
+        })
+      );
+
+    const prebuildPage = async (pageFile = "_index") => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+      const generatedDir = join("app", "__generated__");
+      return {
+        page: await readFile(join(generatedDir, `${pageFile}.tsx`), "utf8"),
+        resources: await readFile(
+          join(generatedDir, `${pageFile}.server.tsx`),
+          "utf8"
+        ),
+      };
+    };
+
+    test("to a loader that fetches Upcoming Events, and a collection over the guarded list", async () => {
+      await writeEventList({ secondPage: true });
+
+      const { page, resources } = await prebuildPage();
+
+      const [, variable, request] =
+        page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
+      expect(variable).toBeDefined();
+      // the list is read only when the loader says `ok`, and the whole
+      // condition is what `?? {}` guards
+      expect(page).toContain("Object.entries(");
+      expect(getIterated(page)).toBe(
+        `(${variable}?.ok === true ? ${variable}?.data?.data : []) ?? {}`
+      );
+      expect(page).toContain(".map(([_key, event]: any) => {");
+      expect(page).toContain("{renderText(event?.title)}");
+      // the boxes show on the loader's `ok`
+      expect(page).toContain(
+        `{(${variable}?.ok === true && ${variable}?.data?.data?.length === 0) &&`
+      );
+      expect(page).toContain(`{(${variable}?.ok === false) &&`);
+      // and the loader requests Upcoming Events, query included
+      expectRequest(resources, request);
+      expect(resources).toContain(
+        `url: "https://app.example.org/api/public/v1/events?upcoming=true",`
+      );
+      expect(resources).toContain(
+        `{ name: "Authorization", value: "Bearer osk_test" },`
+      );
+    });
+
+    test("with an Event Card's first event only", async () => {
+      await writeEventList({ list: eventCardData });
+
+      const { page } = await prebuildPage();
+
+      const [, variable] =
+        page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
+      expect(getIterated(page)).toBe(
+        `(${variable}?.ok === true ? ${variable}?.data?.data?.slice?.(0, 1) : []) ?? {}`
+      );
+    });
+
+    // The published page's render must not throw on a body without a list: the
+    // block degrades to nothing, and the page still renders.
+    describe.each([
+      ["an Event List", eventListData, 2],
+      ["an Event Card", eventCardData, 1],
+    ])("%s's iteration", (_case, list, items) => {
+      const iterate = async (result: unknown) => {
+        await writeEventList({ list });
+        const { page } = await prebuildPage();
+        const [, variable] =
+          page.match(/let (\w+) = useResource\("(\w+)"\)/) ?? [];
+        return new Function(
+          variable,
+          `return Object.entries(${getIterated(page)});`
+        )(result) as unknown[];
+      };
+
+      test("covers the events of a successful read", async () => {
+        const events = [{ title: "a" }, { title: "b" }];
+        expect(
+          await iterate({ ok: true, data: { data: events } })
+        ).toHaveLength(items);
+      });
+
+      test.each([
+        ["a 200 whose body is not JSON", { ok: true, data: "<html></html>" }],
+        ["a 200 whose body has no list", { ok: true, data: {} }],
+        ["a 200 whose list is null", { ok: true, data: { data: null } }],
+        ["a 200 whose body is null", { ok: true, data: null }],
+        ["a 503", { ok: false, data: { error: "unavailable" } }],
+        [
+          "a 429, with its retryAfter",
+          { ok: false, data: { error: "rate_limited", retryAfter: 30 } },
+        ],
+        ["a Resource that has not loaded", undefined],
+      ])("is empty, and does not throw, after %s", async (_name, result) => {
+        expect(await iterate(result)).toEqual([]);
+      });
+    });
+
+    test("to no request on a page without the block", async () => {
+      await writeEventList({ secondPage: true });
+
+      const { page, resources } = await prebuildPage("[about]._index");
+
+      expect(page).not.toContain("Object.entries(");
+      expect(page).not.toContain("useResource(");
+      expect(resources).not.toContain("upcoming=true");
+      expect(resources).not.toContain("Upcoming Events");
+      expect(resources).not.toContain("): ResourceRequest =>");
+    });
+  });
+
+  // OrganizeOS fork: every page route's loader fetches its resources through
+  // the site's one in-memory cache, which the react-router template carries
+  // (templates/react-router/app/organizeos-resource-cache.ts).
+  describe("routes resource fetches through the site's resource cache", () => {
+    const cacheModule = join("app", "organizeos-resource-cache.ts");
+    const routes = [
+      {
+        documentType: "html",
+        file: join("app", "routes", "_index.tsx"),
+        // with the cachedFetch it called before behind the cache
+        fallback: `return siteResourceCache(input, init, (input, init) =>\n    cachedFetch(projectId, input, init)\n  );`,
+      },
+      {
+        documentType: "xml",
+        file: join("app", "routes", "[feed.xml]._index.tsx"),
+        fallback: "return siteResourceCache(input, init);",
+      },
+      {
+        documentType: "text",
+        file: join("app", "routes", "[notes.txt]._index.tsx"),
+        fallback: "return siteResourceCache(input, init);",
+      },
+    ];
+
+    /** The last statement of a route's customFetch: its fallback. */
+    const getFallback = (route: string) => {
+      const start = route.indexOf("const customFetch: typeof fetch");
+      const body = route.slice(start, route.indexOf("\n};\n", start));
+      return body.slice(body.lastIndexOf("\n  return ")).trim();
+    };
+
+    beforeEach(async () => {
+      await writeSiteData(
+        createSiteData({
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: "Home",
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+            {
+              id: "feed",
+              name: "Feed",
+              title: "Feed",
+              path: "/feed.xml",
+              rootInstanceId: "xml-root",
+              meta: { documentType: "xml" },
+            },
+            {
+              id: "notes",
+              name: "Notes",
+              title: "Notes",
+              path: "/notes.txt",
+              rootInstanceId: "root",
+              meta: { documentType: "text" },
+            },
+          ],
+          instances: [
+            ["root", { id: "root", component: "Box", children: [] }],
+            [
+              "xml-root",
+              {
+                id: "xml-root",
+                component: "Box",
+                children: [{ type: "id", value: "xml-feed" }],
+              },
+            ],
+            [
+              "xml-feed",
+              {
+                id: "xml-feed",
+                component: elementComponent,
+                tag: "rss",
+                children: [],
+              },
+            ],
+          ],
+        })
+      );
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+    });
+
+    test("copies the cache module into the site unchanged", async () => {
+      await expect(readFile(cacheModule, "utf8")).resolves.toEqual(
+        await readFile(
+          new URL(
+            "../templates/react-router/app/organizeos-resource-cache.ts",
+            import.meta.url
+          ),
+          "utf8"
+        )
+      );
+    });
+
+    test.each(routes)(
+      "the $documentType route falls back to the site's shared cache and makes none of its own",
+      async ({ file, fallback }) => {
+        const route = await readFile(file, "utf8");
+
+        expect(route).toContain(
+          `import { siteResourceCache } from "../organizeos-resource-cache";`
+        );
+        // The import, from app/routes/, reaches the copied module.
+        expect(join(dirname(file), "../organizeos-resource-cache.ts")).toBe(
+          cacheModule
+        );
+        expect(getFallback(route)).toBe(fallback);
+        // One cache per server instance, shared by every route.
+        expect(route).not.toContain("createResourceCache");
+      }
+    );
+
+    // Upstream 0.309.0 posts a form through the generated protected fetch
+    // (createManagedFormResourceFetch); only the GETs a deprecated Webhook
+    // Form depends on go through customFetch, and so through the cache, as
+    // the loader's do.
+    test("the form action posts through the protected fetch, never the cache", async () => {
+      const route = await readFile(routes[0].file, "utf8");
+      const action = route.slice(route.indexOf("export const action"));
+
+      expect(action).toContain(
+        "const protectedFetch = createManagedFormResourceFetch({"
+      );
+      expect(action.match(/resourceFetch: protectedFetch,/g)).toHaveLength(2);
+      expect(action).toContain("fallback: customFetch,");
+      expect(action).not.toContain("siteResourceCache");
+    });
+  });
+
+  // OrganizeOS fork: page authentication runs on every host in all three
+  // react-router route templates (ORGANIZEOS-FORK.md section 8). Upstream
+  // skipped it when the request host was projectDomain or a subdomain of it;
+  // here projectDomain is the org's platform subdomain label ("acme"), so
+  // "acme.organizeos.org", the site's primary public host, skipped it.
+  describe("routes challenge a protected path on the project's own host", () => {
+    const realm = "Acme Club";
+    const login = "member";
+    const password = "secret";
+    const routes = [
+      {
+        documentType: "html",
+        file: join("app", "routes", "_index.tsx"),
+        generated: "_index",
+        path: "/",
+      },
+      {
+        documentType: "xml",
+        file: join("app", "routes", "[feed.xml]._index.tsx"),
+        generated: "[feed.xml]._index",
+        path: "/feed.xml",
+      },
+      {
+        documentType: "text",
+        file: join("app", "routes", "[notes.txt]._index.tsx"),
+        generated: "[notes.txt]._index",
+        path: "/notes.txt",
+      },
+    ];
+    const projectHosts = [
+      "acme.organizeos.org",
+      "acme",
+      "acme.organizeos.org:443",
+    ];
+
+    beforeEach(async () => {
+      const siteData = createSiteData({
+        pageMeta: { siteName: realm },
+        pages: [
+          {
+            id: "home",
+            name: "Home",
+            title: "Home",
+            path: "",
+            rootInstanceId: "root",
+            meta: {},
+          },
+          {
+            id: "feed",
+            name: "Feed",
+            title: "Feed",
+            path: "/feed.xml",
+            rootInstanceId: "xml-root",
+            meta: { documentType: "xml" },
+          },
+          {
+            id: "notes",
+            name: "Notes",
+            title: "Notes",
+            path: "/notes.txt",
+            rootInstanceId: "root",
+            meta: { documentType: "text" },
+          },
+        ],
+        instances: [
+          ["root", { id: "root", component: "Box", children: [] }],
+          [
+            "xml-root",
+            {
+              id: "xml-root",
+              component: "Box",
+              children: [{ type: "id", value: "xml-feed" }],
+            },
+          ],
+          [
+            "xml-feed",
+            {
+              id: "xml-feed",
+              component: elementComponent,
+              tag: "rss",
+              children: [],
+            },
+          ],
+        ],
+      });
+      // In this fork Project.domain is the org's platform subdomain label.
+      siteData.projectDomain = "acme";
+      await writeSiteData(siteData);
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+    });
+
+    /** What the generated client module exports, as the route imports it. */
+    const readClientExports = async (generated: string) => {
+      const source = await readFile(
+        join("app", "__generated__", `${generated}.tsx`),
+        "utf8"
+      );
+      const read = (name: string) => {
+        const match = source.match(new RegExp(`export const ${name} = (.*);`));
+        return JSON.parse(match?.[1] ?? "null") as unknown;
+      };
+      return {
+        projectId: read("projectId"),
+        projectDomain: read("projectDomain"),
+        siteName: read("siteName"),
+      };
+    };
+
+    /**
+     * A route's loader as the site ships it, with the real wsauth guarding
+     * the path, the generated server module and the sdk's resource loading;
+     * the client module, the stylesheet and the site data stood in.
+     */
+    const loadLoader = async ({
+      file,
+      generated,
+      path,
+    }: (typeof routes)[number]) => {
+      const { authenticateRequest, createBasicAuthRoute } =
+        await import("@webstudio-is/wsauth");
+      const exports = await loadGeneratedRoute(file, generated, {
+        "@webstudio-is/wsauth": { authenticateRequest },
+        [`../__generated__/${generated}`]: {
+          ...(await readClientExports(generated)),
+          Page: () => null,
+          breakpoints: [],
+        },
+        "../__generated__/$resources.wsauth.server": {
+          authRoutes: [createBasicAuthRoute({ route: path, login, password })],
+        },
+      });
+      return (host: string, authorization?: string) =>
+        (exports.loader as (arg: unknown) => Promise<unknown>)({
+          request: new Request(`https://site.example${path}`, {
+            headers: {
+              "x-forwarded-host": host,
+              ...(authorization === undefined ? {} : { authorization }),
+            },
+          }),
+          params: {},
+          context: { EXCLUDE_FROM_SEARCH: false },
+        });
+    };
+
+    test("the generated client module exports the project domain and the site name", async () => {
+      for (const { generated } of routes) {
+        expect(await readClientExports(generated)).toMatchObject({
+          projectDomain: "acme",
+          siteName: realm,
+        });
+      }
+    });
+
+    describe.each(routes)("the $documentType route", (route) => {
+      test.each(projectHosts)(
+        "answers 401 with the site's realm on %s",
+        async (host) => {
+          const load = await loadLoader(route);
+
+          const thrown = await load(host).then(
+            () => undefined,
+            (error: unknown) => error
+          );
+
+          expect(thrown).toBeInstanceOf(Response);
+          const response = thrown as Response;
+          expect(response.status).toBe(401);
+          expect(response.headers.get("WWW-Authenticate")).toBe(
+            `Basic realm="${realm}"`
+          );
+          expect(response.headers.get("Cache-Control")).toBe(
+            "private, no-store"
+          );
+        }
+      );
+
+      test("answers 401 with the site's realm on a custom domain", async () => {
+        const load = await loadLoader(route);
+
+        const thrown = await load("club.example.org").then(
+          () => undefined,
+          (error: unknown) => error
+        );
+
+        expect((thrown as Response).status).toBe(401);
+        expect((thrown as Response).headers.get("WWW-Authenticate")).toBe(
+          `Basic realm="${realm}"`
+        );
+      });
+
+      test.each(projectHosts)(
+        "serves the page to the right password on %s",
+        async (host) => {
+          const load = await loadLoader(route);
+          const credentials = Buffer.from(`${login}:${password}`).toString(
+            "base64"
+          );
+
+          const result = await load(host, `Basic ${credentials}`);
+
+          // html answers with react-router's data() (no status means 200);
+          // xml and text with a Response
+          const status =
+            result instanceof Response
+              ? result.status
+              : ((result as { init: { status?: number } }).init.status ?? 200);
+          expect(status).toBe(200);
+        }
+      );
+
+      test("never compares the request host with the project domain", async () => {
+        const source = await readFile(route.file, "utf8");
+        const start = source.indexOf("const authenticateProductionRequest");
+        const authenticate = source.slice(
+          start,
+          source.indexOf("\n};\n", start)
+        );
+
+        expect(start).toBeGreaterThan(-1);
+        // no `=== projectDomain`, `projectDomain !== undefined &&` and the like
+        expect(source).not.toMatch(
+          /[=!]==?\s*projectDomain|projectDomain\s*[=!]==?/
+        );
+        expect(source).not.toContain("startsWith(`${projectDomain}.`)");
+        // every request is authenticated, and a 401 carries the site's realm
+        expect(authenticate).toContain(
+          "authenticateRequest(request, authRoutes)"
+        );
+        expect(authenticate).toContain("thrown.status === 401");
+        expect(authenticate).toContain("withSiteRealm(thrown)");
+        expect(source).toContain('`Basic realm="${authRealm()}"`');
+      });
+    });
+
+    // Upstream 0.309.0 put the host skip back into wsauth itself:
+    // authenticateProjectRequest(request, routes, projectDomain) skips a
+    // request whose host is projectDomain or under it, which is the org's own
+    // host here. So no template may call it, the defaults (not on the publish
+    // path) included.
+    test("no route template imports authenticateProjectRequest", async () => {
+      const templatesDir = fileURLToPath(
+        new URL("../templates", import.meta.url)
+      );
+      const templateFiles = (
+        await Promise.all(
+          ["react-router", "defaults"].map((template) =>
+            getFilePaths(join(templatesDir, template, "app", "route-templates"))
+          )
+        )
+      ).flat();
+      expect(templateFiles.map((file) => relative(templatesDir, file))).toEqual(
+        expect.arrayContaining([
+          join("react-router", "app", "route-templates", "html.tsx"),
+          join("react-router", "app", "route-templates", "xml.tsx"),
+          join("react-router", "app", "route-templates", "text.tsx"),
+          join("defaults", "app", "route-templates", "html.tsx"),
+          join("defaults", "app", "route-templates", "xml.tsx"),
+          join("defaults", "app", "route-templates", "text.tsx"),
+        ])
+      );
+      for (const file of templateFiles) {
+        expect(await readFile(file, "utf8"), file).not.toContain(
+          "authenticateProjectRequest"
+        );
+      }
+      // nor does any route prebuild wrote
+      for (const { file } of routes) {
+        expect(await readFile(file, "utf8"), file).not.toContain(
+          "authenticateProjectRequest"
+        );
+      }
+    });
+
+    // As production serves it: the OrganizeOS proxy fetches the deployment
+    // origin, so the request's URL is the *.vercel.app host and the org's
+    // host comes as x-forwarded-host (client/lib/websites2/site-proxy.ts).
+    test("a protected html, xml or text path answers 401 on the project's own host", async () => {
+      const deployment = "https://acme-site-abc123.vercel.app";
+      const asRequest = (path: string, init: RequestInit = {}) =>
+        new Request(`${deployment}${path}`, {
+          ...init,
+          headers: { "x-forwarded-host": "acme.organizeos.org" },
+        });
+      for (const route of routes) {
+        const { createBasicAuthRoute } = await import("@webstudio-is/wsauth");
+        const exports = await loadGeneratedRoute(route.file, route.generated, {
+          [`../__generated__/${route.generated}`]: {
+            ...(await readClientExports(route.generated)),
+            Page: () => null,
+            breakpoints: [],
+          },
+          "../__generated__/$resources.wsauth.server": {
+            authRoutes: [
+              createBasicAuthRoute({ route: route.path, login, password }),
+            ],
+          },
+        });
+        const calls = [
+          (exports.loader as (arg: unknown) => Promise<unknown>)({
+            request: asRequest(route.path),
+            params: {},
+            context: { EXCLUDE_FROM_SEARCH: false },
+          }),
+          ...(route.documentType === "html"
+            ? [
+                (exports.action as (arg: unknown) => Promise<unknown>)({
+                  request: asRequest(route.path, {
+                    method: "POST",
+                    body: new FormData(),
+                  }),
+                  params: {},
+                  context: {},
+                }),
+              ]
+            : []),
+        ];
+        for (const call of calls) {
+          const thrown = await call.then(
+            () => undefined,
+            (error: unknown) => error
+          );
+          expect(thrown, route.documentType).toBeInstanceOf(Response);
+          expect((thrown as Response).status, route.documentType).toBe(401);
+          expect(
+            (thrown as Response).headers.get("WWW-Authenticate"),
+            route.documentType
+          ).toBe(`Basic realm="${realm}"`);
+        }
+      }
+    });
+  });
+
+  // OrganizeOS fork, review focus 6 of the 0.309.0 merge: upstream posts a
+  // form through createNodeProtectedResourceFetch, which denies the request
+  // URL's host and projectDomain, each with its registrable domain and every
+  // subdomain (getDeniedResourceHostnames), and has no allowance at 0.309.0. A
+  // Signup Form posts to the platform on organizeos.org. That works only
+  // because the OrganizeOS proxy fetches the deployment origin: the request
+  // URL's host is the *.vercel.app host and projectDomain the bare label.
+  // Were the URL's host ever the org's own host, every signup would fail. A
+  // change belongs in the CLI-generated module, never in a runtime package.
+  test("a published site's form fetch never denies the platform's domain", async () => {
+    vi.stubEnv("WEBSTUDIO_FORM_EVALUATION_RECEIVER_PORT", undefined);
+    try {
+      const siteData = createSiteData();
+      siteData.projectDomain = "acme";
+      await writeSiteData(siteData);
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+      const protectedFetch =
+        await import("@webstudio-is/sdk/protected-resource-fetch");
+      const created: Array<{ deniedHostnames: readonly string[] }> = [];
+      const generated = await runModule(
+        await readFile(
+          join(
+            "app",
+            "__generated__",
+            "$resources.managed-form-fetch.server.ts"
+          ),
+          "utf8"
+        ),
+        {
+          "@webstudio-is/sdk/protected-resource-fetch": protectedFetch,
+          "@webstudio-is/sdk/protected-resource-fetch-node": {
+            createNodeProtectedResourceFetch: (options: {
+              deniedHostnames: readonly string[];
+            }) => {
+              created.push(options);
+              return Object.assign(async () => new Response(), {
+                validateDestination: (url: URL) =>
+                  protectedFetch.validateProtectedResourceDestination(
+                    url,
+                    options.deniedHostnames
+                  ),
+              });
+            },
+          },
+        }
+      );
+      const formFetch = (
+        generated.createManagedFormResourceFetch as (input: {
+          request: Request;
+          context: unknown;
+          projectDomain?: string;
+        }) => { validateDestination: (url: URL) => void }
+      )({
+        request: new Request("https://acme-site-abc123.vercel.app/", {
+          method: "POST",
+          headers: { "x-forwarded-host": "acme.organizeos.org" },
+        }),
+        context: {},
+        projectDomain: siteData.projectDomain,
+      });
+
+      expect(created).toHaveLength(1);
+      const [{ deniedHostnames }] = created;
+      expect(deniedHostnames.length).toBeGreaterThan(0);
+      for (const hostname of deniedHostnames) {
+        expect(hostname).not.toMatch(/(^|\.)organizeos\.org$/);
+      }
+      // so a signup reaches the platform's public API
+      expect(() =>
+        formFetch.validateDestination(
+          new URL(
+            "https://app.organizeos.org/api/public/v1/forms/f/submissions"
+          )
+        )
+      ).not.toThrow();
+      // while the site's own deployment stays denied
+      expect(() =>
+        formFetch.validateDestination(
+          new URL("https://acme-site-abc123.vercel.app/")
+        )
+      ).toThrow("Resource destination is not allowed");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  // OrganizeOS fork: a CMS item page (/blog/:slug, made by the builder's
+  // Create item page) sets its status to 404 when its Resource does not answer
+  // with the item, and the html route answers with that status and the page's
+  // own body, its "not found" box, so a missing item is a real 404.
+  describe("answers an item page with the status its meta computes", () => {
+    const itemVariable = encodeDataSourceVariable("current-post");
+    const system = "$ws$system";
+    const found = `(${system}.params.slug ?? "") !== "" && ${itemVariable}?.ok === true && ${itemVariable}.data.data.slug === ${system}.params.slug`;
+    const itemUrl =
+      "https://app.example.org/api/public/v1/collections/blog/items/";
+
+    beforeEach(async () => {
+      const pages = [
+        {
+          id: "home",
+          name: "Home",
+          title: `"Home"`,
+          path: "",
+          rootInstanceId: "root",
+          meta: {},
+        },
+        {
+          id: "blog-item",
+          name: "Blog template",
+          title: `(${found}) ? ${itemVariable}.data.data.name : "Page not found"`,
+          path: "/blog/:slug",
+          rootInstanceId: "item-root",
+          meta: { status: `(${found}) ? 200 : 404` },
+        },
+      ];
+      await writeSiteData(
+        createSiteData({
+          pages,
+          instances: [
+            ["root", { id: "root", component: "Box", children: [] }],
+            ["item-root", { id: "item-root", component: "Box", children: [] }],
+          ],
+          dataSources: [
+            [
+              "current-post",
+              {
+                type: "resource",
+                id: "current-post",
+                name: "Current post",
+                scopeInstanceId: "item-root",
+                resourceId: "current-post-resource",
+              },
+            ],
+          ],
+          resources: [
+            [
+              "current-post-resource",
+              {
+                id: "current-post-resource",
+                name: "Current post",
+                method: "get",
+                url: `${JSON.stringify(itemUrl)} + (${system}.params.slug ?? "-")`,
+                headers: [
+                  { name: "Authorization", value: `"Bearer osk_test"` },
+                ],
+              },
+            ],
+          ],
+        })
+      );
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+    });
+
+    /**
+     * The item route's loader as the site ships it, with its generated
+     * resources and meta, the sdk's resource loading, a fresh resource cache
+     * and react-router's data(); the client module and auth stood in.
+     */
+    const loadItemLoader = async () => {
+      const exports = await loadGeneratedRoute(
+        join("app", "routes", "[blog].$slug._index.tsx"),
+        "[blog].$slug._index",
+        { "@webstudio-is/wsauth": { authenticateRequest: () => undefined } }
+      );
+      const loader = exports.loader as (arg: unknown) => Promise<{
+        data: { pageMeta: { status?: number; title: string } };
+        init: { status?: number } | null;
+      }>;
+      return (slug: string) =>
+        loader({
+          request: new Request(`https://site.example/blog/${slug}`),
+          params: { slug },
+          context: { EXCLUDE_FROM_SEARCH: false },
+        });
+    };
+
+    const answer = (status: number, body: unknown) => async () =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "public, s-maxage=60",
+        },
+      });
+
+    test("200 with the item's title when the Resource answers with the item", async () => {
+      const network = vi.fn<typeof fetch>(
+        answer(200, { data: { slug: "hello", name: "Hello" } })
+      );
+      globalThis.fetch = network;
+
+      const result = await (await loadItemLoader())("hello");
+
+      expect(network).toHaveBeenCalledWith(
+        `${itemUrl}hello`,
+        expect.objectContaining({ method: "get" })
+      );
+      expect(result.init?.status).toBe(200);
+      expect(result.data.pageMeta.title).toBe("Hello");
+    });
+
+    test.each([
+      {
+        name: "answers 404",
+        fetch: answer(404, { error: "Not found" }),
+      },
+      {
+        name: "answers with another item",
+        fetch: answer(200, { data: { slug: "other", name: "Other" } }),
+      },
+      {
+        name: "fails",
+        fetch: async (): Promise<Response> => {
+          throw new TypeError("fetch failed");
+        },
+      },
+    ])(
+      "404 with the page, not an error, when the Resource $name",
+      async ({ fetch }) => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        globalThis.fetch = vi.fn<typeof globalThis.fetch>(fetch);
+
+        const result = await (await loadItemLoader())("missing");
+
+        expect(result.init?.status).toBe(404);
+        expect(result.data.pageMeta.status).toBe(404);
+        expect(result.data.pageMeta.title).toBe("Page not found");
+      }
+    );
+
+    test("a second request for a missing item reads the 404 the cache kept", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const network = vi.fn<typeof fetch>(answer(404, { error: "Not found" }));
+      globalThis.fetch = network;
+      const load = await loadItemLoader();
+
+      expect((await load("missing")).init?.status).toBe(404);
+      expect((await load("missing")).init?.status).toBe(404);
+      expect(network).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // OrganizeOS fork: org script is paused (organizeos-org-script.ts)
+  // OrganizeOS fork: organizeos-preview-header.ts
+  test("fails a build whose Resource headers name X-OOS-Preview, in any casing", async () => {
+    await writeSiteData(
+      createSiteData({
+        resources: [
+          [
+            "news",
+            {
+              id: "news",
+              name: "News",
+              method: "get",
+              url: `"https://app.organizeos.org/api/public/v1/collections/news/items"`,
+              headers: [{ name: "x-OOS-preview", value: `"v1.a.b"` }],
+            },
+          ],
+        ],
+      })
+    );
+    await expect(
+      prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      })
+    ).rejects.toThrow(/X-OOS-Preview.*"News"/);
+  });
+
+  describe("leaves an org's own script out", () => {
+    const scriptEmbed = '<script>alert("embed")</script>';
+
+    const generated = async (file = "_index") => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+      const generatedDir = join("app", "__generated__");
+      return {
+        page: await readFile(join(generatedDir, `${file}.tsx`), "utf8"),
+        resources: await readFile(
+          join(generatedDir, `${file}.server.tsx`),
+          "utf8"
+        ),
+      };
+    };
+
+    // T12
+    test("leaves out HTML Embeds and custom code", async () => {
+      await writeSiteData(
+        createSiteData({
+          pageMeta: { code: '<script src="/custom.js"></script>' },
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "box" },
+                  { type: "id", value: "remote" },
+                  { type: "id", value: "jsx" },
+                ],
+              },
+            ],
+            [
+              "box",
+              {
+                id: "box",
+                component: "Box",
+                children: [{ type: "id", value: "embed" }],
+              },
+            ],
+            ["embed", { id: "embed", component: "HtmlEmbed", children: [] }],
+            [
+              "remote",
+              {
+                id: "remote",
+                component: elementComponent,
+                tag: "script",
+                children: [],
+              },
+            ],
+            [
+              "jsx",
+              {
+                id: "jsx",
+                component: elementComponent,
+                tag: "div />{globalThis.pwned = 1}<div",
+                children: [],
+              },
+            ],
+          ],
+          props: [
+            [
+              "embed-code",
+              {
+                id: "embed-code",
+                instanceId: "embed",
+                name: "code",
+                type: "string",
+                value: scriptEmbed,
+              },
+            ],
+            [
+              "remote-src",
+              {
+                id: "remote-src",
+                instanceId: "remote",
+                name: "src",
+                type: "string",
+                value: "https://evil.example/x.js",
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).not.toContain("alert");
+      expect(page).not.toContain("HtmlEmbed");
+      expect(page).not.toContain("custom.js");
+      expect(page).not.toContain("evil.example");
+      expect(page).not.toContain("<script");
+      expect(page).not.toContain("pwned");
+      // The page still exports its custom code, and now it holds nothing
+      expect(page).toMatch(
+        /export const CustomCode = \(\) => \{\s*return \(<><\/>\);/
+      );
+      expect(page).not.toContain("const Script");
+      // ... and still renders the Box
+      expect(page).toContain("<Box");
+    });
+
+    test("leaves out Markdown Embeds and the SVG animate and set elements", async () => {
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "markdown" },
+                  { type: "id", value: "svg" },
+                ],
+              },
+            ],
+            [
+              "markdown",
+              { id: "markdown", component: "MarkdownEmbed", children: [] },
+            ],
+            [
+              "svg",
+              {
+                id: "svg",
+                component: elementComponent,
+                tag: "svg",
+                children: [{ type: "id", value: "link" }],
+              },
+            ],
+            [
+              "link",
+              {
+                id: "link",
+                component: elementComponent,
+                tag: "a",
+                children: [
+                  { type: "id", value: "animate" },
+                  { type: "id", value: "set" },
+                  { type: "id", value: "transform" },
+                ],
+              },
+            ],
+            [
+              "animate",
+              {
+                id: "animate",
+                component: elementComponent,
+                tag: "animate",
+                children: [],
+              },
+            ],
+            [
+              "set",
+              {
+                id: "set",
+                component: elementComponent,
+                tag: "set",
+                children: [],
+              },
+            ],
+            [
+              "transform",
+              {
+                id: "transform",
+                component: elementComponent,
+                tag: "animateTransform",
+                children: [],
+              },
+            ],
+          ],
+          props: [
+            [
+              "markdown-code",
+              {
+                id: "markdown-code",
+                instanceId: "markdown",
+                name: "code",
+                type: "string",
+                value: "[x](javascript:void0)",
+              },
+            ],
+            [
+              "animate-values",
+              {
+                id: "animate-values",
+                instanceId: "animate",
+                name: "values",
+                type: "string",
+                value: "javascript:void0",
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).not.toContain("MarkdownEmbed");
+      expect(page).not.toContain("javascript:");
+      expect(page).not.toContain("<animate ");
+      expect(page).not.toContain("<set ");
+      expect(page).toContain("<svg");
+      expect(page).toContain("<Link");
+      expect(page).toContain("<animateTransform");
+    });
+
+    // T12, for the props that choose or fill an element
+    describe("props that choose an element or fill it with markup", () => {
+      const jsonProp = (
+        id: string,
+        instanceId: string,
+        name: string,
+        value: unknown
+      ): [string, Record<string, unknown>] => [
+        id,
+        { id, instanceId, name, type: "json", value },
+      ];
+      const stringProp = (
+        id: string,
+        instanceId: string,
+        name: string,
+        value: string
+      ): [string, Record<string, unknown>] => [
+        id,
+        { id, instanceId, name, type: "string", value },
+      ];
+      const expressionProp = (
+        id: string,
+        instanceId: string,
+        name: string,
+        value: string
+      ): [string, Record<string, unknown>] => [
+        id,
+        { id, instanceId, name, type: "expression", value },
+      ];
+      const children = (...ids: string[]) =>
+        ids.map((value) => ({ type: "id" as const, value }));
+
+      /** The home page the site ships, rendered with the real Box, Text and Heading. */
+      const renderHome = async () => {
+        const { page } = await generated();
+        const exports = await runModule(page, {
+          react: React,
+          "react/jsx-runtime": jsxRuntime,
+          "@webstudio-is/react-sdk/runtime":
+            await import("@webstudio-is/react-sdk/runtime"),
+          "@webstudio-is/sdk-components-react/components":
+            await import("@webstudio-is/sdk-components-react/components"),
+          "@webstudio-is/sdk-components-react-router": {
+            Body: (props: Record<string, unknown>) =>
+              React.createElement("body", props),
+          },
+        });
+        const Page = exports.Page as ComponentType<Record<string, unknown>>;
+        return {
+          page,
+          html: renderToStaticMarkup(
+            React.createElement(Page, {
+              system: { params: {}, search: {}, origin: "https://x" },
+            })
+          ),
+        };
+      };
+
+      test("a Box, Text and Heading with a data-ws-tag prop of script ship no script element", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              [
+                "root",
+                {
+                  id: "root",
+                  component: "Body",
+                  children: children("box", "text", "heading", "kept"),
+                },
+              ],
+              ["box", { id: "box", component: "Box", children: [] }],
+              [
+                "text",
+                {
+                  id: "text",
+                  component: "Text",
+                  children: [
+                    { type: "text", value: "alert(document.cookie)" } as never,
+                  ],
+                },
+              ],
+              [
+                "heading",
+                { id: "heading", component: "Heading", children: [] },
+              ],
+              ["kept", { id: "kept", component: "Box", children: [] }],
+            ],
+            props: [
+              stringProp("box-tag", "box", "data-ws-tag", "script"),
+              stringProp("box-src", "box", "src", "https://evil.example/x.js"),
+              stringProp("text-tag", "text", "data-ws-tag", "script"),
+              expressionProp(
+                "heading-tag",
+                "heading",
+                "data-ws-tag",
+                `"script"`
+              ),
+              stringProp("kept-tag", "kept", "data-ws-tag", "nav"),
+            ],
+          })
+        );
+
+        const { page, html } = await renderHome();
+
+        expect(page).not.toContain("script");
+        expect(page).not.toContain("evil.example");
+        expect(html).not.toContain("<script");
+        expect(html).not.toContain("evil.example");
+        expect(html).not.toContain("alert(");
+        // ... and a data-ws-tag prop that is a tag the builder offers stays
+        expect(html).toContain("<nav");
+      });
+
+      test("a DialogTitle whose tag prop is not an offered tag is left out", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              [
+                "root",
+                {
+                  id: "root",
+                  component: "Body",
+                  children: children("script", "expression", "kept"),
+                },
+              ],
+              [
+                "script",
+                {
+                  id: "script",
+                  component:
+                    "@webstudio-is/sdk-components-react-radix:DialogTitle",
+                  children: [],
+                },
+              ],
+              [
+                "expression",
+                {
+                  id: "expression",
+                  component:
+                    "@webstudio-is/sdk-components-react-radix:DialogTitle",
+                  children: [],
+                },
+              ],
+              [
+                "kept",
+                {
+                  id: "kept",
+                  component:
+                    "@webstudio-is/sdk-components-react-radix:DialogTitle",
+                  children: [],
+                },
+              ],
+            ],
+            props: [
+              stringProp("script-tag", "script", "tag", "script"),
+              expressionProp("expression-tag", "expression", "tag", `"script"`),
+              stringProp("kept-tag", "kept", "tag", "h2"),
+            ],
+          })
+        );
+
+        const { page } = await generated();
+
+        expect(page).not.toContain("script");
+        expect(page).toContain('tag={"h2"}');
+      });
+
+      test("a Radix trigger that passes a tag prop on to its child ships neither", async () => {
+        // Radix's Slot merges a trigger's props onto its first child, and a Box,
+        // Text or Heading makes its element from the data-ws-tag or tag prop it
+        // finds there. The published page does the same merge at run time.
+        const radix = "@webstudio-is/sdk-components-react-radix";
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              [
+                "root",
+                {
+                  id: "root",
+                  component: "Body",
+                  children: children("dialog", "collapsible", "popover"),
+                },
+              ],
+              [
+                "dialog",
+                {
+                  id: "dialog",
+                  component: `${radix}:Dialog`,
+                  children: children("dialog-trigger"),
+                },
+              ],
+              [
+                "dialog-trigger",
+                {
+                  id: "dialog-trigger",
+                  component: `${radix}:DialogTrigger`,
+                  children: children("dialog-child"),
+                },
+              ],
+              [
+                "dialog-child",
+                { id: "dialog-child", component: "Box", children: [] },
+              ],
+              [
+                "collapsible",
+                {
+                  id: "collapsible",
+                  component: `${radix}:Collapsible`,
+                  children: children("collapsible-trigger"),
+                },
+              ],
+              [
+                "collapsible-trigger",
+                {
+                  id: "collapsible-trigger",
+                  component: `${radix}:CollapsibleTrigger`,
+                  children: children("collapsible-child"),
+                },
+              ],
+              [
+                "collapsible-child",
+                { id: "collapsible-child", component: "Heading", children: [] },
+              ],
+              [
+                "popover",
+                {
+                  id: "popover",
+                  component: `${radix}:Popover`,
+                  children: children("popover-trigger"),
+                },
+              ],
+              [
+                "popover-trigger",
+                {
+                  id: "popover-trigger",
+                  component: `${radix}:PopoverTrigger`,
+                  children: children("popover-child"),
+                },
+              ],
+              [
+                "popover-child",
+                { id: "popover-child", component: "Box", children: [] },
+              ],
+            ],
+            props: [
+              stringProp("a", "dialog-trigger", "data-ws-tag", "script"),
+              stringProp(
+                "b",
+                "dialog-trigger",
+                "src",
+                "https://evil.example/x.js"
+              ),
+              expressionProp(
+                "c",
+                "collapsible-trigger",
+                "tag",
+                `"scr" + "ipt"`
+              ),
+              stringProp(
+                "d",
+                "collapsible-trigger",
+                "src",
+                "https://evil.example/y.js"
+              ),
+              stringProp("e", "popover-trigger", "data-ws-tag", "nav"),
+            ],
+          })
+        );
+
+        const { page } = await generated();
+
+        expect(page).not.toContain("evil.example");
+        expect(page).not.toContain("script");
+        expect(page).not.toContain("DialogTrigger");
+        expect(page).not.toContain("CollapsibleTrigger");
+        // ... and the trigger that passes a tag the builder offers stays
+        expect(page).toContain("PopoverTrigger");
+        expect(page).toContain('data-ws-tag={"nav"}');
+      });
+
+      test("a dangerouslySetInnerHTML prop ships no markup, and its element stays", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              [
+                "root",
+                {
+                  id: "root",
+                  component: "Body",
+                  children: children("json", "expression", "box"),
+                },
+              ],
+              [
+                "json",
+                {
+                  id: "json",
+                  component: elementComponent,
+                  tag: "div",
+                  children: [],
+                },
+              ],
+              [
+                "expression",
+                {
+                  id: "expression",
+                  component: elementComponent,
+                  tag: "div",
+                  children: [],
+                },
+              ],
+              ["box", { id: "box", component: "Box", children: [] }],
+            ],
+            props: [
+              jsonProp("json-html", "json", "dangerouslySetInnerHTML", {
+                __html: "<img src=x onerror=alert(1)>",
+              }),
+              stringProp("json-id", "json", "id", "json"),
+              expressionProp(
+                "expression-html",
+                "expression",
+                "dangerouslySetInnerHTML",
+                `{__html: "<img src=x onerror=alert(2)>"}`
+              ),
+              jsonProp("box-html", "box", "dangerouslySetInnerHTML", {
+                __html: "<script>alert(3)</script>",
+              }),
+            ],
+          })
+        );
+
+        const { page, html } = await renderHome();
+
+        expect(page).not.toContain("dangerouslySetInnerHTML");
+        expect(page).not.toContain("onerror");
+        expect(html).not.toContain("onerror");
+        expect(html).not.toContain("<img");
+        expect(html).not.toContain("<script");
+        // the elements stay
+        expect(html).toContain('<div id="json" class="w-element"></div>');
+        expect(html).toContain('<div class="w-element"></div>');
+        expect(html).toContain('<div class="w-box"></div>');
+      });
+    });
+
+    // T13. A guard: passes before and after.
+    test("keeps the template icons", async () => {
+      const chevron = [...templateIconCodes].find((icon) =>
+        icon.includes("m4 6 4 4 4-4")
+      );
+      expect(chevron).toBeDefined();
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "icon" }],
+              },
+            ],
+            ["icon", { id: "icon", component: "HtmlEmbed", children: [] }],
+          ],
+          props: [
+            [
+              "icon-code",
+              {
+                id: "icon-code",
+                instanceId: "icon",
+                name: "code",
+                type: "string",
+                value: chevron,
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).toContain("HtmlEmbed");
+      expect(page).toContain("m4 6 4 4 4-4");
+    });
+
+    // T14
+    test("a Resource used only inside a dropped embed is not loaded", async () => {
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "embed" }],
+              },
+            ],
+            ["embed", { id: "embed", component: "HtmlEmbed", children: [] }],
+          ],
+          props: [
+            [
+              "embed-code",
+              {
+                id: "embed-code",
+                instanceId: "embed",
+                name: "code",
+                type: "expression",
+                value: `${encodeDataSourceVariable("html")}.data`,
+              },
+            ],
+          ],
+          dataSources: [
+            [
+              "html",
+              {
+                type: "resource",
+                id: "html",
+                scopeInstanceId: "embed",
+                name: "html",
+                resourceId: "html-resource",
+              },
+            ],
+          ],
+          resources: [
+            [
+              "html-resource",
+              {
+                id: "html-resource",
+                name: "html",
+                method: "get",
+                url: `"https://cms.example.org/private/html"`,
+                headers: [],
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page, resources } = await generated();
+
+      expect(resources).not.toContain("cms.example.org");
+      expect(page).not.toContain("useResource(");
+    });
+
+    test("logs what it left out", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      await writeSiteData(
+        createSiteData({
+          pageMeta: { code: "<style>x{}</style>" },
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "embed" }],
+              },
+            ],
+            ["embed", { id: "embed", component: "HtmlEmbed", children: [] }],
+          ],
+        })
+      );
+
+      await generated();
+
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed and the site's custom code."
+      );
+    });
+
+    // Upstream 0.309.0 keeps the project's settings in their own column, and
+    // the page module reads its custom code first
+    // (`projectSettings?.meta ?? pages.meta`).
+    test("the org script in projectSettings is dropped and reported", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      const siteData = createSiteData({
+        pageMeta: { code: '<script src="/pages.js"></script>' },
+      });
+      const build = {
+        ...siteData.build,
+        projectSettings: {
+          meta: {
+            siteName: "Settings Site",
+            code: '<script src="/settings.js"></script><style>x{}</style>',
+          },
+          compiler: { atomicStyles: true },
+        },
+      };
+      await writeSiteData({ ...siteData, build });
+
+      const { page } = await generated();
+
+      expect(page).not.toContain("settings.js");
+      expect(page).not.toContain("pages.js");
+      expect(page).not.toContain("<script");
+      expect(page).not.toContain("const Script");
+      expect(page).toMatch(
+        /export const CustomCode = \(\) => \{\s*return \(<><\/>\);/
+      );
+      // the rest of the settings still reach the page
+      expect(page).toContain('export const siteName = "Settings Site";');
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out the site's custom code."
+      );
+    });
+
+    // D7: prebuild turns a Content Block's MDX into instances after
+    // dropOrgScript has run, so while org script is paused a build that would
+    // do that is refused, from the bundle alone, before any asset is read
+    // (refuseMdxWhilePaused).
+    describe("MDX content", () => {
+      const refusal =
+        "This site uses MDX content, which publishing does not support yet.";
+
+      const mdxDocument = (
+        id: string,
+        source: string,
+        extension: "md" | "mdx" = "mdx"
+      ): AssetFileDocument => ({
+        ...indexedDocument,
+        _id: id,
+        name: `${id}.${extension}`,
+        path: `${id}.${extension}`,
+        key: id,
+        extension,
+        mimeType: extension === "mdx" ? "text/mdx" : "text/markdown",
+        size: new TextEncoder().encode(source).byteLength,
+        revision: `${id}-revision`,
+        contentRef: `${id}.${extension}`,
+        properties: {},
+      });
+
+      /** A home page with a Content Block whose source is `src`. */
+      const writeContentBlock = async ({
+        documents,
+        src,
+      }: {
+        documents: Array<[AssetFileDocument, string]>;
+        src: Prop;
+      }) => {
+        const siteData = createSiteData({
+          assets: documents.map(([document]) =>
+            createAssetForIndexedDocument(document)
+          ),
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Box",
+                children: [{ type: "id", value: "content" }],
+              },
+            ],
+            [
+              "content",
+              {
+                id: "content",
+                component: "ws:block",
+                children: [{ type: "id", value: "content-templates" }],
+              },
+            ],
+            [
+              "content-templates",
+              {
+                id: "content-templates",
+                component: "ws:block-template",
+                children: [],
+              },
+            ],
+          ],
+          props: [[src.id, src]],
+        });
+        const siteDataWithIndex = {
+          ...siteData,
+          assetIndex: await createTestAssetIndex(
+            documents.map(([document]) => document),
+            Object.fromEntries(
+              documents.map(([document, source]) => [
+                document.contentRef,
+                source,
+              ])
+            )
+          ),
+        };
+        await writeSiteData(siteDataWithIndex);
+      };
+
+      const assetSource = (value: string): Prop => ({
+        id: "content-src",
+        instanceId: "content",
+        name: "src",
+        type: "asset",
+        value,
+      });
+
+      test.each([
+        ["an .mdx asset", "mdx" as const],
+        ["an .md asset", "md" as const],
+      ])(
+        "a build that would materialize MDX is refused while org script is paused (%s)",
+        async (_name, extension) => {
+          const document = mdxDocument("article", "# Article", extension);
+          await writeContentBlock({
+            documents: [[document, "# Article"]],
+            src: assetSource("article"),
+          });
+          const network = vi.fn<typeof fetch>();
+          globalThis.fetch = network;
+
+          await expect(
+            prebuild({
+              assets: true,
+              template: ["react-router", "react-router-vercel"],
+            })
+          ).rejects.toThrow(expect.objectContaining({ message: refusal }));
+          // refused before anything was written, read or downloaded
+          await expect(readdir("app")).rejects.toThrow("ENOENT");
+          expect(network).not.toHaveBeenCalled();
+        }
+      );
+
+      test("a build that would materialize MDX is refused while org script is paused (an expression that can select one)", async () => {
+        const document = mdxDocument("article", "# Article");
+        await writeContentBlock({
+          documents: [[document, "# Article"]],
+          src: {
+            id: "content-src",
+            instanceId: "content",
+            name: "src",
+            type: "expression",
+            value: `${encodeDataSourceVariable("post")}.data.body`,
+          },
+        });
+
+        await expect(
+          prebuild({
+            assets: false,
+            template: ["react-router", "react-router-vercel"],
+          })
+        ).rejects.toThrow(refusal);
+      });
+
+      // A belt-and-braces case for when D7 is lifted: an MDX `ws:tag` takes
+      // any string, and the generator writes a ws:element's tag into the page
+      // module as code. Today the refusal stops it; lifting D7 without holding
+      // the materialized instances to the pause's tag rule fails here.
+      test("an MDX `ws:tag` holding JSX syntax never reaches a page module", async () => {
+        const source =
+          '<ws.element ws:tag="div />{globalThis.pwned = 1}<div">Hello</ws.element>\n';
+        const document = mdxDocument("article", source);
+        await writeContentBlock({
+          documents: [[document, source]],
+          src: assetSource("article"),
+        });
+
+        const outcome = await prebuild({
+          assets: false,
+          template: ["react-router", "react-router-vercel"],
+        }).then(
+          () => undefined,
+          (error: unknown) => error
+        );
+
+        const written = await getFilePaths("app").catch(() => []);
+        for (const file of written) {
+          expect(await readFile(file, "utf8"), file).not.toContain("pwned");
+        }
+        expect(outcome).toMatchObject({ message: refusal });
+      });
+    });
+  });
+
+  // OrganizeOS fork: while org script is paused, publishing also leaves out
+  // unsafe addresses, srcdoc, event handler attributes, XML elements on HTML
+  // pages and redirects to an unsafe address (organizeos-org-script.ts,
+  // propMayShip in @organizeos/site-components/org-script).
+  describe("leaves unsafe values out", () => {
+    type SiteData = Parameters<typeof createSiteData>[0];
+    type Instances = NonNullable<NonNullable<SiteData>["instances"]>;
+    type Props = NonNullable<NonNullable<SiteData>["props"]>;
+
+    const element = (
+      id: string,
+      component: string,
+      tag?: string,
+      children: string[] = []
+    ): Instances[number] => [
+      id,
+      {
+        id,
+        component,
+        ...(tag === undefined ? {} : { tag }),
+        children: children.map((value) => ({ type: "id", value })),
+      },
+    ];
+
+    const prop = (
+      instanceId: string,
+      name: string,
+      value: unknown,
+      type = "string"
+    ): Props[number] => [
+      `${instanceId}:${name}`,
+      { id: `${instanceId}:${name}`, instanceId, name, type, value },
+    ];
+
+    // Each element carries its id, so the page shows that it still renders
+    const onHome = (
+      instances: Instances,
+      props: Props,
+      overrides: SiteData = {}
+    ) =>
+      writeSiteData(
+        createSiteData({
+          instances: [
+            element(
+              "root",
+              "Body",
+              undefined,
+              instances.flatMap(([id]) =>
+                instances.some(([, parent]) =>
+                  parent.children.some((child) => child.value === id)
+                )
+                  ? []
+                  : [id]
+              )
+            ),
+            ...instances,
+          ],
+          props: [...instances.map(([id]) => prop(id, "id", id)), ...props],
+          ...overrides,
+        })
+      );
+
+    const build = () =>
+      prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+
+    const read = async (file = "_index") => {
+      const generatedDir = join("app", "__generated__");
+      return {
+        page: await readFile(join(generatedDir, `${file}.tsx`), "utf8"),
+        server: await readFile(
+          join(generatedDir, `${file}.server.tsx`),
+          "utf8"
+        ),
+      };
+    };
+
+    const generated = async () => {
+      await build();
+      return read();
+    };
+
+    const expectRendered = (page: string, ids: string[]) => {
+      for (const id of ids) {
+        expect(page, id).toContain(`id={${JSON.stringify(id)}}`);
+      }
+    };
+
+    test("drops javascript: and data: addresses from links, sources, forms and objects", async () => {
+      await onHome(
+        [
+          element("object-json", elementComponent, "object"),
+          element("link", "Link"),
+          element("anchor", elementComponent, "a"),
+          element("frame", elementComponent, "iframe"),
+          element("object", elementComponent, "object"),
+          element("form", elementComponent, "form"),
+          element("button", elementComponent, "button"),
+          element("svg", elementComponent, "svg", ["svg-link"]),
+          element("svg-link", elementComponent, "a"),
+          element("image", "Image"),
+        ],
+        [
+          prop("object-json", "data", ["javascript:alert(1)"], "json"),
+          prop("link", "href", "javascript:alert(1)"),
+          prop("anchor", "href", " \tJaVaScRiPt:alert(1)"),
+          prop("frame", "src", "data:text/html,<script>alert(1)</script>"),
+          prop("object", "data", "data:text/html,<script>alert(1)</script>"),
+          prop("form", "action", "javascript:alert(1)"),
+          prop("button", "formaction", "javascript:alert(1)"),
+          prop("svg-link", "xlink:href", "javascript:alert(1)"),
+          prop("image", "src", "data:image/png;base64,AAAA"),
+        ]
+      );
+
+      const { page } = await generated();
+
+      expect(page.toLowerCase()).not.toContain("javascript:");
+      expect(page.toLowerCase()).not.toContain("data:");
+      expect(page).not.toContain("alert(1)");
+      expectRendered(page, [
+        "object-json",
+        "link",
+        "anchor",
+        "frame",
+        "object",
+        "form",
+        "button",
+        "svg-link",
+        "image",
+      ]);
+    });
+
+    // A guard: passes before and after
+    test("keeps http, https, mailto, tel and sms addresses, relative paths and fragments", async () => {
+      const addresses = [
+        "http://example.org/a",
+        "https://example.org/b",
+        "mailto:a@example.org",
+        "tel:+15555550123",
+        "sms:+15555550123",
+        "/about",
+        "#top",
+      ];
+      await onHome(
+        addresses.map((_address, index) => element(`link-${index}`, "Link")),
+        addresses.map((address, index) =>
+          prop(`link-${index}`, "href", address)
+        )
+      );
+
+      const { page } = await generated();
+
+      for (const address of addresses) {
+        expect(page).toContain(`href={${JSON.stringify(address)}}`);
+      }
+    });
+
+    test("drops a bound address that decides nothing and publishes one whose fixed start decides", async () => {
+      const variable = encodeDataSourceVariable("target");
+      await onHome(
+        [element("bound", "Link"), element("fixed", "Link")],
+        [
+          prop("bound", "href", `${variable}`, "expression"),
+          prop("fixed", "href", `"/go/" + ${variable}`, "expression"),
+        ],
+        {
+          dataSources: [
+            [
+              "target",
+              {
+                type: "variable",
+                id: "target",
+                scopeInstanceId: "root",
+                name: "target",
+                value: { type: "string", value: "next" },
+              },
+            ],
+          ],
+        }
+      );
+
+      const { page } = await generated();
+
+      expectRendered(page, ["bound", "fixed"]);
+      expect(page.match(/href=\{/g)).toHaveLength(1);
+      // upstream 0.309.0 writes a bound attribute as `x == null ? x : String(x)`
+      expect(page).toMatch(
+        /href=\{"\/go\/" \+ (\w+)(?:\}| == null \? "\/go\/" \+ \1 : String\("\/go\/" \+ \1\)\})/
+      );
+    });
+
+    test("publishes the Event Card's link, its document navigation and its cover image", async () => {
+      // the card as the Event Card and Event List templates make it
+      // (event-card.template.tsx), over the collection's event parameter
+      const event = encodeDataSourceVariable("event-parameter");
+      await onHome(
+        [
+          element("list", elementComponent, "div", ["events"]),
+          element("events", "ws:collection", undefined, ["card"]),
+          element("card", elementComponent, "article", ["cover", "link"]),
+          element("cover", "Image"),
+          element("link", elementComponent, "a"),
+        ],
+        [
+          prop("events", "item", "event-parameter", "parameter"),
+          prop(
+            "events",
+            "data",
+            encodeDataSourceVariable("events"),
+            "expression"
+          ),
+          prop("cover", "src", `${event}.cover_image_url`, "expression"),
+          prop("link", "href", `"/events/" + ${event}.slug`, "expression"),
+          prop("link", "reloadDocument", true, "boolean"),
+        ],
+        {
+          dataSources: [
+            [
+              "events",
+              {
+                type: "variable",
+                id: "events",
+                scopeInstanceId: "list",
+                name: "events",
+                value: {
+                  type: "json",
+                  value: [{ slug: "drive", cover_image_url: "/a.png" }],
+                },
+              },
+            ],
+            [
+              "event-parameter",
+              {
+                type: "parameter",
+                id: "event-parameter",
+                name: "event",
+                scopeInstanceId: "events",
+              },
+            ],
+          ],
+        }
+      );
+
+      const { page } = await generated();
+
+      expect(page).toContain('href={"/events/" + event?.slug}');
+      expect(page).toContain("reloadDocument={true}");
+      // upstream 0.309.0 writes a bound attribute as `x == null ? x : String(x)`
+      expect(page).toContain(
+        "src={event?.cover_image_url == null ? event?.cover_image_url : String(event?.cover_image_url)}"
+      );
+    });
+
+    test("drops srcdoc and event handler attributes", async () => {
+      await onHome(
+        [
+          element("frame", elementComponent, "iframe"),
+          element("bound-frame", elementComponent, "iframe"),
+          element("custom", elementComponent, "div"),
+        ],
+        [
+          prop("frame", "srcdoc", "<script>alert(1)</script>"),
+          prop("bound-frame", "srcdoc", '"<p>" + 1', "expression"),
+          prop("custom", "is", "x-y"),
+          prop("custom", "onclick", "alert(1)"),
+          prop("custom", "onmouseover", '"alert(1)"', "expression"),
+        ]
+      );
+
+      const { page } = await generated();
+
+      expect(page.toLowerCase()).not.toContain("srcdoc");
+      expect(page).not.toContain("onclick");
+      expect(page).not.toContain("onmouseover");
+      expect(page).not.toContain("alert(1)");
+      expect(page).toContain('is={"x-y"}');
+      expectRendered(page, ["frame", "bound-frame", "custom"]);
+    });
+
+    const xmlPages = [
+      {
+        id: "home",
+        name: "Home",
+        title: "Home",
+        path: "",
+        rootInstanceId: "root",
+        meta: {},
+      },
+      {
+        id: "feed",
+        name: "Feed",
+        title: "Feed",
+        path: "/feed.xml",
+        rootInstanceId: "xml-root",
+        meta: { documentType: "xml" },
+      },
+    ];
+
+    test("leaves an XML Node out of an HTML page and keeps it on an XML page", async () => {
+      await writeSiteData(
+        createSiteData({
+          pages: xmlPages,
+          instances: [
+            element("root", "Body", undefined, ["box", "html-node"]),
+            element("box", "Box"),
+            element("html-node", "XmlNode"),
+            element("xml-root", "Body", undefined, ["xml-node"]),
+            element("xml-node", "XmlNode"),
+          ],
+          props: [
+            prop("html-node", "tag", "x-custom"),
+            prop("html-node", "onmouseover", "alert(1)"),
+            prop("xml-node", "tag", "rss"),
+            prop("xml-node", "version", "2.0"),
+          ],
+        })
+      );
+
+      await build();
+      const { page } = await read();
+      const { page: feed } = await read("[feed.xml]._index");
+
+      expect(page).not.toContain("XmlNode");
+      expect(page).not.toContain("onmouseover");
+      expect(page).toContain("<Box");
+      expect(feed).toContain("<XmlNode");
+      expect(feed).toContain('tag={"rss"}');
+    });
+
+    test("an XML page answers with a sandbox policy and nosniff", async () => {
+      await writeSiteData(
+        createSiteData({
+          pages: xmlPages,
+          instances: [
+            element("root", "Body"),
+            element("xml-root", "Body", undefined, ["xml-node"]),
+            element("xml-node", "XmlNode"),
+          ],
+          props: [prop("xml-node", "tag", "rss")],
+        })
+      );
+
+      await build();
+      const route = await readFile(
+        join("app", "routes", "[feed.xml]._index.tsx"),
+        "utf8"
+      );
+
+      expect(route).toContain('"Content-Type": "application/xml"');
+      expect(route).toContain('"Content-Security-Policy": "sandbox"');
+      expect(route).toContain('"X-Content-Type-Options": "nosniff"');
+    });
+
+    test("drops a page redirect and a project redirect to an unsafe target", async () => {
+      await writeSiteData(
+        createSiteData({
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: "Home",
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+            {
+              id: "unsafe",
+              name: "Unsafe",
+              title: "Unsafe",
+              path: "/unsafe",
+              rootInstanceId: "root",
+              meta: { redirect: '"javascript:alert(1)"', status: "302" },
+            },
+            {
+              id: "safe",
+              name: "Safe",
+              title: "Safe",
+              path: "/safe",
+              rootInstanceId: "root",
+              meta: { redirect: '"/landing"', status: "301" },
+            },
+          ],
+          instances: [element("root", "Body")],
+          redirects: [
+            { old: "/go", new: "javascript:alert(1)" },
+            { old: "/old", new: "/new" },
+          ],
+        })
+      );
+
+      await build();
+      const { server: unsafe } = await read("[unsafe]._index");
+      const { server: safe } = await read("[safe]._index");
+      const redirects = await readFile(
+        join("app", "__generated__", "$resources.redirects.ts"),
+        "utf8"
+      );
+
+      expect(unsafe.toLowerCase()).not.toContain("javascript:");
+      expect(redirects.toLowerCase()).not.toContain("javascript:");
+      expect(safe).toContain('"/landing"');
+      expect(redirects).toContain('"new": "/new"');
+    });
   });
 
   test("generates homepage, leaf, nested, dynamic, and 404 React Router routes", async () => {
@@ -7634,6 +11061,9 @@ export const createManagedFormResourceFetch = () => {
   }, 30_000);
 
   test("keeps resources used by XML collection pages in the request graph", async () => {
+    // OrganizeOS fork: the pause leaves out a ws:element whose tag the
+    // builder does not offer (urlset, url), on an XML page too (orgScript)
+    publishAsIfOrgScriptMayRun();
     const siteData = createSiteData({
       pages: [
         {

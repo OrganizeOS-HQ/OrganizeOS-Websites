@@ -140,6 +140,18 @@ import {
   materializeAssetFiles,
 } from "./asset-files";
 import { formatZodIssues } from "./zod-utils";
+import { pinRuntimeDependencies } from "./runtime-version";
+import {
+  ORGANIZEOS_DIR,
+  ORGANIZEOS_PAGE_MODULE,
+  ORGANIZEOS_PAGE_PLACEHOLDER,
+  ORGANIZEOS_SOURCE_URL_PLACEHOLDER,
+  copyOrganizeosComponents,
+  getOrganizeosSourceUrl,
+  resolveOrganizeosComponentsModule,
+} from "./organizeos-components";
+import { dropOrgScript, refuseMdxWhilePaused } from "./organizeos-org-script";
+import { assertNoPreviewHeader } from "./organizeos-preview-header";
 import { createFramework as createRemixFramework } from "./framework-remix";
 import { createFramework as createReactRouterFramework } from "./framework-react-router";
 import { createFramework as createVikeSsgFramework } from "./framework-vike-ssg";
@@ -989,7 +1001,20 @@ export const prebuild = async (options: {
       }
     );
   }
-  const siteData = parsedSiteData.data;
+  // OrganizeOS fork: org script is paused, so the build that every step below
+  // reads has none: no HTML Embed, no custom code (organizeos-org-script.ts).
+  const siteData = dropOrgScript(parsedSiteData.data, {
+    log: options.silent ? undefined : (message) => log.info(message),
+  });
+  // OrganizeOS fork: no Resource carries the builder's draft-preview header
+  // (organizeos-preview-header.ts).
+  assertNoPreviewHeader(siteData.build.resources);
+  // OrganizeOS fork: and a build that would materialize MDX is refused, from
+  // the bundle alone, before any asset body is read (D7,
+  // organizeos-org-script.ts). It reads the bundle as synced: the pause drops
+  // a bound Content Block src as an address, and a dynamic MDX source gets
+  // the same plain refusal as a static one.
+  refuseMdxWhilePaused(parsedSiteData.data);
   const pages = migratePages(siteData.build.pages);
   const migratedInstances = new Map(siteData.build.instances);
   // Saved Form identities may still need the deprecated Webhook Form migration.
@@ -1132,6 +1157,32 @@ export const createManagedFormResourceFetch = ({ request, context, projectDomain
     for (const template of options.template) {
       await copyTemplates(template);
     }
+
+    // OrganizeOS fork: the templates carry the monorepo version placeholder,
+    // which upstream's publish step would have stamped. Pin it to the upstream
+    // release the site installs from npm (see runtime-version.ts).
+    const sitePackageJsonPath = join(cwd(), "package.json");
+    await writeFile(
+      sitePackageJsonPath,
+      JSON.stringify(
+        pinRuntimeDependencies(
+          JSON.parse(await readFile(sitePackageJsonPath, "utf8"))
+        ),
+        null,
+        "  "
+      ),
+      "utf8"
+    );
+
+    // OrganizeOS fork: a site never installs @organizeos/site-components; its
+    // built components ship inside the site as app source instead, with the
+    // package's LICENSE (organizeos-components.ts). The copy is made again
+    // from scratch, so nothing a previous build left in it stays.
+    await rm(join(appRoot, ORGANIZEOS_DIR), { recursive: true, force: true });
+    await copyOrganizeosComponents(
+      appRoot,
+      resolveOrganizeosComponentsModule()
+    );
   }
 
   const preserveRouteTemplates =
@@ -2092,6 +2143,13 @@ export const createManagedFormResourceFetch = ({ request, context, projectDomain
         .replaceAll(
           "__CSS__",
           importFrom(`./app/__generated__/index.css`, file)
+        )
+        // OrganizeOS fork: the source offer's link, and the copy of the page
+        // module the html route mounts (organizeos-components.ts).
+        .replaceAll(ORGANIZEOS_SOURCE_URL_PLACEHOLDER, getOrganizeosSourceUrl())
+        .replaceAll(
+          ORGANIZEOS_PAGE_PLACEHOLDER,
+          importFrom(`./app/${ORGANIZEOS_DIR}/${ORGANIZEOS_PAGE_MODULE}`, file)
         );
       await writeGeneratedFile(file, content);
     }

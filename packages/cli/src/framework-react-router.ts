@@ -6,6 +6,11 @@ import {
   createFrameworkComponentRegistry,
 } from "@webstudio-is/sdk-components-registry/framework";
 import * as reactRouterComponents from "@webstudio-is/sdk-components-react-router";
+import * as organizeosComponentMetas from "@organizeos/site-components/metas";
+import {
+  ORGANIZEOS_COMPONENTS_IMPORT,
+  ORGANIZEOS_NAMESPACE,
+} from "./organizeos-components";
 import {
   cleanupFrameworkTemplates,
   getFrameworkTemplatesDirectory,
@@ -41,6 +46,13 @@ export const createFramework = async (
     routerComponents: reactRouterComponents,
     routerComponentPackage: reactRouter,
   });
+  // OrganizeOS fork: the OrganizeOS blocks join the registry's maps, imported
+  // from the copy prebuild makes in the site (organizeos-components.ts).
+  for (const [name, meta] of Object.entries(organizeosComponentMetas)) {
+    components[`${ORGANIZEOS_NAMESPACE}:${name}`] =
+      `${ORGANIZEOS_COMPONENTS_IMPORT}:${name}`;
+    metas[`${ORGANIZEOS_NAMESPACE}:${name}`] = meta;
+  }
 
   return {
     metas,

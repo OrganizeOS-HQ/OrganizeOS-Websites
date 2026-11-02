@@ -12,6 +12,7 @@ import { assetBaseUrl, imageLoader } from "__CONSTANTS__";
 import { sitemap } from "__SITEMAP__";
 import { authRoutes } from "__AUTH__";
 import { createGeneratedAssetResourceFetch } from "__ASSET_QUERY_RUNTIME__";
+import { siteResourceCache } from "../organizeos-resource-cache";
 
 /**
  * A realm the browser can show to the site's own visitors.
@@ -96,7 +97,11 @@ const customFetch: typeof fetch = (input, init) => {
     return Promise.resolve(response);
   }
 
-  return fetch(input, init);
+  // OrganizeOS fork: through the site's in-memory resource cache
+  // (organizeos-resource-cache.ts), one per server instance for every route,
+  // which keeps each response only as long as its own Cache-Control allows.
+  // Behind it is the global fetch, as before.
+  return siteResourceCache(input, init);
 };
 
 export const loader = async (arg: LoaderFunctionArgs) => {
@@ -179,6 +184,12 @@ export const loader = async (arg: LoaderFunctionArgs) => {
       "Content-Type": "application/xml",
       "Cache-Control":
         authRoute === undefined ? "public, max-age=600" : "private, no-store",
+      // OrganizeOS fork: an XML element can be a script in another namespace,
+      // so the page answers sandboxed and is never read as another type, and
+      // nothing it carries runs on the org host (docs/ORGANIZEOS-FORK.md
+      // section 8). Crawlers and feed readers ignore the policy.
+      "Content-Security-Policy": "sandbox",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 };

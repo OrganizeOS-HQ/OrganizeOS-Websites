@@ -35,6 +35,45 @@ import { apiCompatibilityHeaders } from "./api";
 import { materializeManagedAgents } from "../managed-agents";
 import { prebuild } from "../prebuild";
 
+// OrganizeOS fork: Vitest's module runner has no import.meta.resolve, so hand
+// the CLI the blocks package's source, from which it finds the build, as
+// prebuild.test.ts does (organizeos-components.ts).
+vi.mock("../organizeos-components", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../organizeos-components")>();
+  return {
+    ...actual,
+    resolveOrganizeosComponentsModule: () =>
+      actual.resolveOrganizeosComponentsModule(
+        () =>
+          new URL(
+            "../../../sdk-components-organizeos/src/components.ts",
+            import.meta.url
+          ).href
+      ),
+  };
+});
+
+// OrganizeOS fork: these upstream cases sync and publish MDX, which publishing
+// refuses while org script is paused (D7, refuseMdxWhilePaused), and they
+// cover what upstream builds once the switch is on. So here prebuild runs as
+// if org script may run; prebuild.test.ts covers the pause.
+vi.mock("../organizeos-org-script", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../organizeos-org-script")>();
+  return {
+    ...actual,
+    dropOrgScript: <Bundle extends Parameters<typeof actual.dropOrgScript>[0]>(
+      bundle: Bundle,
+      options: Parameters<typeof actual.dropOrgScript>[1] = {}
+    ) => actual.dropOrgScript(bundle, { ...options, mayRun: true }),
+    refuseMdxWhilePaused: (
+      bundle: Parameters<typeof actual.refuseMdxWhilePaused>[0],
+      options: Parameters<typeof actual.refuseMdxWhilePaused>[1] = {}
+    ) => actual.refuseMdxWhilePaused(bundle, { ...options, mayRun: true }),
+  };
+});
+
 const originalCwd = process.cwd();
 let tempDir: string;
 const indicator = {
