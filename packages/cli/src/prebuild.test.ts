@@ -319,6 +319,47 @@ describe("generateRedirectsModule", () => {
 });
 
 describe("prebuild", () => {
+  // OrganizeOS fork: the sitemap reads excludePageFromSearch without
+  // evaluating it, as upstream does since webstudio-is/webstudio#6614.
+  test("the sitemap reads each page's excludePageFromSearch without evaluating it", async () => {
+    const marker = "__organizeosPrebuildSitemapMarker";
+    const globals = globalThis as Record<string, unknown>;
+    const page = (
+      id: string,
+      path: string,
+      excludePageFromSearch?: string
+    ) => ({
+      id,
+      name: id,
+      title: `"${id}"`,
+      path,
+      rootInstanceId: "root",
+      meta:
+        excludePageFromSearch === undefined ? {} : { excludePageFromSearch },
+    });
+    await writeSiteData(
+      createSiteData({
+        pages: [
+          page("home", ""),
+          page("hidden", "/hidden", "true"),
+          page("code", "/code", `(globalThis.${marker} = true)`),
+        ],
+      })
+    );
+    try {
+      await prebuild({ assets: false, template: ["defaults"] });
+      expect(globals[marker]).toBeUndefined();
+      const sitemap = await readFile(
+        "app/__generated__/$resources.sitemap.xml.ts",
+        "utf8"
+      );
+      expect(sitemap).toContain('"path": "/code"');
+      expect(sitemap).not.toContain('"path": "/hidden"');
+    } finally {
+      delete globals[marker];
+    }
+  });
+
   test("scaffolds generated files and stores redirects as data", async () => {
     await mkdir("app/__generated__", { recursive: true });
     await mkdir("app/routes", { recursive: true });

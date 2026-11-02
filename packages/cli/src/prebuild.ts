@@ -64,6 +64,7 @@ import {
   resolveOrganizeosComponentsModule,
 } from "./organizeos-components";
 import { dropOrgScript } from "./organizeos-org-script";
+import { pagesForSitemap } from "@organizeos/site-components/org-script";
 import { assertNoPreviewHeader } from "./organizeos-preview-header";
 
 const createRemixFramework = async () =>
@@ -753,7 +754,10 @@ export const prebuild = async (options: {
     join(generatedDir, "$resources.sitemap.xml.ts"),
     `
       export const sitemap = ${JSON.stringify(
-        getStaticSiteMapXml(pages, siteData.build.updatedAt),
+        // OrganizeOS fork: each page's excludePageFromSearch is read as
+        // upstream reads it since webstudio-is/webstudio#6614, without
+        // evaluating it (pagesForSitemap, in the org script module).
+        getStaticSiteMapXml(pagesForSitemap(pages), siteData.build.updatedAt),
         null,
         2
       )};

@@ -8,7 +8,13 @@ import {
   PlayIcon,
   SpinnerIcon,
 } from "@webstudio-is/icons/svg";
-import { elementComponent, tags, type Prop } from "@webstudio-is/sdk";
+import {
+  elementComponent,
+  tags,
+  type Page,
+  type Pages,
+  type Prop,
+} from "@webstudio-is/sdk";
 import { tagProperty } from "@webstudio-is/sdk/runtime";
 import {
   allowedUrlSchemes,
@@ -20,11 +26,13 @@ import {
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
   pageRedirectMayShip,
+  pagesForSitemap,
   pausedPropNames,
   pausedSvgTags,
   projectRedirectMayShip,
   propMayShip,
   propNameMayRun,
+  sitemapExcludesPage,
   tagPropNames,
   templateIconCodes,
   urlExpressionMayRun,
@@ -1064,5 +1072,98 @@ describe("withoutPausedProps", () => {
       "data-ws-tag": "script",
     };
     expect(withoutPausedProps({ component: "Box" }, props, true)).toBe(props);
+  });
+});
+
+describe("sitemapExcludesPage", () => {
+  test("excludes a page only for the literal true", () => {
+    expect(sitemapExcludesPage("true")).toBe(true);
+    expect(sitemapExcludesPage(" true ")).toBe(true);
+    expect(sitemapExcludesPage("(true)")).toBe(true);
+    expect(sitemapExcludesPage("true // note")).toBe(true);
+    expect(sitemapExcludesPage("true /* note */")).toBe(true);
+    expect(sitemapExcludesPage("(true) // note")).toBe(true);
+    expect(sitemapExcludesPage("true\n//")).toBe(true);
+  });
+
+  test("keeps every other value listed", () => {
+    for (const value of [
+      undefined,
+      "",
+      "false",
+      '"true"',
+      "1",
+      "$ws$dataSource$id",
+      "true && true",
+      "true /*",
+      "true; false",
+      "!false",
+      "(",
+    ]) {
+      expect(sitemapExcludesPage(value)).toBe(false);
+    }
+  });
+
+  test("evaluates nothing", () => {
+    const marker = "__organizeosSitemapMarker";
+    const globals = globalThis as Record<string, unknown>;
+    try {
+      expect(sitemapExcludesPage(`(globalThis.${marker} = true)`)).toBe(false);
+      expect(globals[marker]).toBeUndefined();
+    } finally {
+      delete globals[marker];
+    }
+  });
+});
+
+describe("pagesForSitemap", () => {
+  const page = (id: string, excludePageFromSearch?: string): Page => ({
+    id,
+    name: id,
+    title: `"${id}"`,
+    path: `/${id}`,
+    rootInstanceId: `${id}-root`,
+    meta: { excludePageFromSearch },
+  });
+  const pages: Pages = {
+    meta: { siteName: "Site" },
+    homePageId: "home",
+    rootFolderId: "root",
+    pages: new Map([
+      ["home", page("home")],
+      ["hidden", page("hidden", "true")],
+      ["bound", page("bound", "$ws$dataSource$id")],
+      ["code", page("code", "(globalThis.x = true)")],
+    ]),
+    folders: new Map(),
+  } as unknown as Pages;
+
+  test("keeps the literal true and drops every other value", () => {
+    const result = pagesForSitemap(pages);
+    expect(
+      Array.from(result.pages.values(), (item) => [
+        item.id,
+        item.meta.excludePageFromSearch,
+      ])
+    ).toEqual([
+      ["home", undefined],
+      ["hidden", "true"],
+      ["bound", undefined],
+      ["code", undefined],
+    ]);
+  });
+
+  test("changes neither the pages passed in nor anything but the setting", () => {
+    const before = structuredClone(pages);
+    const result = pagesForSitemap(pages);
+    expect(pages).toEqual(before);
+    const withoutSetting = (value: Pages) => ({
+      ...value,
+      pages: Array.from(value.pages, ([id, item]) => [
+        id,
+        { ...item, meta: { ...item.meta, excludePageFromSearch: undefined } },
+      ]),
+    });
+    expect(withoutSetting(result)).toEqual(withoutSetting(pages));
   });
 });
