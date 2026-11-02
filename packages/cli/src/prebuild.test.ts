@@ -1725,6 +1725,273 @@ describe("prebuild", () => {
     });
   });
 
+  // OrganizeOS fork: page authentication runs on every host in all three
+  // react-router route templates (ORGANIZEOS-FORK.md section 8). Upstream
+  // skipped it when the request host was projectDomain or a subdomain of it;
+  // here projectDomain is the org's platform subdomain label ("acme"), so
+  // "acme.organizeos.org", the site's primary public host, skipped it.
+  describe("routes challenge a protected path on the project's own host", () => {
+    const realm = "Acme Club";
+    const login = "member";
+    const password = "secret";
+    const routes = [
+      {
+        documentType: "html",
+        file: join("app", "routes", "_index.tsx"),
+        generated: "_index",
+        path: "/",
+      },
+      {
+        documentType: "xml",
+        file: join("app", "routes", "[feed.xml]._index.tsx"),
+        generated: "[feed.xml]._index",
+        path: "/feed.xml",
+      },
+      {
+        documentType: "text",
+        file: join("app", "routes", "[notes.txt]._index.tsx"),
+        generated: "[notes.txt]._index",
+        path: "/notes.txt",
+      },
+    ];
+    const projectHosts = [
+      "acme.organizeos.org",
+      "acme",
+      "acme.organizeos.org:443",
+    ];
+
+    beforeEach(async () => {
+      const siteData = createSiteData({
+        pageMeta: { siteName: realm },
+        pages: [
+          {
+            id: "home",
+            name: "Home",
+            title: "Home",
+            path: "",
+            rootInstanceId: "root",
+            meta: {},
+          },
+          {
+            id: "feed",
+            name: "Feed",
+            title: "Feed",
+            path: "/feed.xml",
+            rootInstanceId: "xml-root",
+            meta: { documentType: "xml" },
+          },
+          {
+            id: "notes",
+            name: "Notes",
+            title: "Notes",
+            path: "/notes.txt",
+            rootInstanceId: "root",
+            meta: { documentType: "text" },
+          },
+        ],
+        instances: [
+          ["root", { id: "root", component: "Box", children: [] }],
+          [
+            "xml-root",
+            {
+              id: "xml-root",
+              component: "Box",
+              children: [{ type: "id", value: "xml-feed" }],
+            },
+          ],
+          [
+            "xml-feed",
+            {
+              id: "xml-feed",
+              component: elementComponent,
+              tag: "rss",
+              children: [],
+            },
+          ],
+        ],
+      });
+      // In this fork Project.domain is the org's platform subdomain label.
+      siteData.projectDomain = "acme";
+      await writeSiteData(siteData);
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+    });
+
+    /** What the generated client module exports, as the route imports it. */
+    const readClientExports = async (generated: string) => {
+      const source = await readFile(
+        join("app", "__generated__", `${generated}.tsx`),
+        "utf8"
+      );
+      const read = (name: string) => {
+        const match = source.match(new RegExp(`export const ${name} = (.*);`));
+        return JSON.parse(match?.[1] ?? "null") as unknown;
+      };
+      return {
+        projectId: read("projectId"),
+        projectDomain: read("projectDomain"),
+        siteName: read("siteName"),
+      };
+    };
+
+    /**
+     * A route's loader as the site ships it, with the real wsauth guarding
+     * the path, the generated server module and the sdk's resource loading;
+     * the client module, the stylesheet and the site data stood in.
+     */
+    const loadLoader = async ({
+      file,
+      generated,
+      path,
+    }: (typeof routes)[number]) => {
+      const { authenticateRequest, createBasicAuthRoute } = await import(
+        "@webstudio-is/wsauth"
+      );
+      const server = await runModule(
+        await readFile(
+          join("app", "__generated__", `${generated}.server.tsx`),
+          "utf8"
+        ),
+        {}
+      );
+      const exports = await runModule(await readFile(file, "utf8"), {
+        react: React,
+        "react/jsx-runtime": jsxRuntime,
+        "react-dom/server": await import("react-dom/server"),
+        "react-router": await import("react-router"),
+        "@webstudio-is/sdk/runtime": await import("@webstudio-is/sdk/runtime"),
+        "@webstudio-is/wsauth": { authenticateRequest },
+        "@webstudio-is/react-sdk/runtime": await import(
+          "@webstudio-is/react-sdk/runtime"
+        ),
+        [`../__generated__/${generated}`]: {
+          ...(await readClientExports(generated)),
+          Page: () => null,
+          breakpoints: [],
+        },
+        [`../__generated__/${generated}.server`]: server,
+        "../constants.mjs": {},
+        "../__generated__/index.css?url": { default: "" },
+        "../__generated__/$resources.sitemap.xml": { sitemap: [] },
+        "../__generated__/$resources.assets": { assets: {} },
+        "../__generated__/$resources.wsauth.server": {
+          authRoutes: [createBasicAuthRoute({ route: path, login, password })],
+        },
+        "../organizeos-resource-cache": {
+          siteResourceCache: (
+            await import(
+              "../templates/react-router/app/organizeos-resource-cache"
+            )
+          ).createResourceCache(),
+        },
+        "../__organizeos__/page.js": { PageShareCodeCarrier: () => null },
+      });
+      return (host: string, authorization?: string) =>
+        (exports.loader as (arg: unknown) => Promise<unknown>)({
+          request: new Request(`https://site.example${path}`, {
+            headers: {
+              "x-forwarded-host": host,
+              ...(authorization === undefined ? {} : { authorization }),
+            },
+          }),
+          params: {},
+          context: { EXCLUDE_FROM_SEARCH: false },
+        });
+    };
+
+    test("the generated client module exports the project domain and the site name", async () => {
+      for (const { generated } of routes) {
+        expect(await readClientExports(generated)).toMatchObject({
+          projectDomain: "acme",
+          siteName: realm,
+        });
+      }
+    });
+
+    describe.each(routes)("the $documentType route", (route) => {
+      test.each(projectHosts)(
+        "answers 401 with the site's realm on %s",
+        async (host) => {
+          const load = await loadLoader(route);
+
+          const thrown = await load(host).then(
+            () => undefined,
+            (error: unknown) => error
+          );
+
+          expect(thrown).toBeInstanceOf(Response);
+          const response = thrown as Response;
+          expect(response.status).toBe(401);
+          expect(response.headers.get("WWW-Authenticate")).toBe(
+            `Basic realm="${realm}"`
+          );
+          expect(response.headers.get("Cache-Control")).toBe(
+            "private, no-store"
+          );
+        }
+      );
+
+      test("answers 401 with the site's realm on a custom domain", async () => {
+        const load = await loadLoader(route);
+
+        const thrown = await load("club.example.org").then(
+          () => undefined,
+          (error: unknown) => error
+        );
+
+        expect((thrown as Response).status).toBe(401);
+        expect((thrown as Response).headers.get("WWW-Authenticate")).toBe(
+          `Basic realm="${realm}"`
+        );
+      });
+
+      test.each(projectHosts)(
+        "serves the page to the right password on %s",
+        async (host) => {
+          const load = await loadLoader(route);
+          const credentials = Buffer.from(`${login}:${password}`).toString(
+            "base64"
+          );
+
+          const result = await load(host, `Basic ${credentials}`);
+
+          // html answers with react-router's data() (no status means 200);
+          // xml and text with a Response
+          const status =
+            result instanceof Response
+              ? result.status
+              : ((result as { init: { status?: number } }).init.status ?? 200);
+          expect(status).toBe(200);
+        }
+      );
+
+      test("never compares the request host with the project domain", async () => {
+        const source = await readFile(route.file, "utf8");
+        const start = source.indexOf("const authenticateProductionRequest");
+        const authenticate = source.slice(
+          start,
+          source.indexOf("\n};\n", start)
+        );
+
+        expect(start).toBeGreaterThan(-1);
+        // no `=== projectDomain`, `projectDomain !== undefined &&` and the like
+        expect(source).not.toMatch(
+          /[=!]==?\s*projectDomain|projectDomain\s*[=!]==?/
+        );
+        expect(source).not.toContain("startsWith(`${projectDomain}.`)");
+        // every request is authenticated, and a 401 carries the site's realm
+        expect(authenticate).toContain(
+          "authenticateRequest(request, authRoutes)"
+        );
+        expect(authenticate).toContain("thrown.status === 401");
+        expect(authenticate).toContain("withSiteRealm(thrown)");
+        expect(source).toContain('`Basic realm="${authRealm()}"`');
+      });
+    });
+  });
+
   // OrganizeOS fork: a CMS item page (/blog/:slug, made by the builder's
   // Create item page) sets its status to 404 when its Resource does not answer
   // with the item, and the html route answers with that status and the page's

@@ -246,10 +246,17 @@ the org's platform subdomain (§5), so `acme` matched `acme.organizeos.org` —
 the site's primary public host — and a page the org had password-protected was
 readable by anyone there, while the same page stayed protected on a custom
 domain. There is no staging host here, so the skip protected nothing and was
-removed. Unprotected sites are unaffected: `authenticateRequest` returns early
-when no auth route matches the path.
+removed from all three react-router route templates, `html.tsx`, `xml.tsx` and
+`text.tsx` (the first fix covered `html.tsx` alone, which left a protected XML
+or text page readable on the org's own host). Each one's
+`authenticateProductionRequest` calls `authenticateRequest(request, authRoutes)`
+and re-issues a 401 with the site's name as its realm (`withSiteRealm`, from
+`siteName`), the same block in all three. Unprotected sites are unaffected:
+`authenticateRequest` returns early when no auth route matches the path.
 
-Do not reinstate a host-based skip when merging upstream.
+Do not reinstate a host-based skip in `html.tsx`, `xml.tsx` or `text.tsx` when
+merging upstream (`prebuild.test.ts`, "routes challenge a protected path on the
+project's own host", which runs all three).
 
 **Published images are served as originals.** The `imageLoader` in
 `packages/cli/templates/react-router-vercel/app/constants.mjs` (and its copy in
