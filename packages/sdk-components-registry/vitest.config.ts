@@ -1,22 +1,10 @@
-/** Matches Builder component resolution when private implementations exist. */
-import { existsSync } from "node:fs";
-import path from "node:path";
+/** Matches Builder component resolution. */
 import { defineConfig } from "vitest/config";
 
-const rootDir = ["..", "../..", "../../.."]
-  .map((directory) => path.join(import.meta.dirname, directory))
-  .find((directory) => existsSync(path.join(directory, ".git")));
-
-const hasPrivateComponents = existsSync(
-  path.join(
-    rootDir ?? "",
-    "packages/sdk-components-animation/private-src/components.ts"
-  )
-);
-
-const conditions = hasPrivateComponents
-  ? ["webstudio-private", "webstudio"]
-  : ["webstudio"];
+// OrganizeOS fork: "webstudio" only. Upstream adds "webstudio-private" when the
+// animation package's private sources are checked out; that package is
+// proprietary and removed from the fork (docs/ORGANIZEOS-FORK.md section 2).
+const conditions = ["webstudio"];
 
 export default defineConfig({
   resolve: { conditions },

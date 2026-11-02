@@ -15,4 +15,5 @@ for (const library of componentMetaLibraries) {
   }
 }
 
-export { animationComponentNamespace, radixComponentNamespace } from "./shared";
+// OrganizeOS fork: no animationComponentNamespace (docs/ORGANIZEOS-FORK.md section 2).
+export { radixComponentNamespace } from "./shared";

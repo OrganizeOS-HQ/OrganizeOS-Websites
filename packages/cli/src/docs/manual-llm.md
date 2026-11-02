@@ -135,15 +135,6 @@ If a component has a registered template with required parts, JSX must include t
 
 ## Animation Components
 
-Before creating animation examples, inspect the exact components with focused discovery:
-
-```sh
-webstudio components.get '{"component":"@webstudio-is/sdk-components-animation:AnimateChildren"}'
-webstudio components.get '{"component":"@webstudio-is/sdk-components-animation:AnimateText"}'
-webstudio components.get '{"component":"@webstudio-is/sdk-components-animation:StaggerAnimation"}'
-webstudio components.get '{"component":"@webstudio-is/sdk-components-animation:VideoAnimation"}'
-```
-
 Use Animation Group (`AnimateChildren`) as the controller. Put normal instances directly inside it, or put Text Animation, Stagger Animation, or Video Animation directly inside it. Text, Stagger, and Video are helper components with `contentModel.category: "none"` and should not be used as standalone section roots.
 
 Define timing and CSS changes on the Animation Group `action` prop. Use `type:"view"` for viewport entry/exit progress and `type:"scroll"` for scroll-progress timelines. For in animations, keep the canvas styles as the final state and use `fill:"backwards"` with keyframes that describe the starting state. For out animations, use `fill:"forwards"` with keyframes that describe the ending state.

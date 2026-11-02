@@ -50,7 +50,6 @@
   "dependencies": {
     "@webstudio-is/icons": "workspace:*",
     "@webstudio-is/sdk": "workspace:*",
-    "@webstudio-is/sdk-components-animation": "workspace:*",
     "@webstudio-is/sdk-components-react": "workspace:*",
     "@webstudio-is/sdk-components-react-radix": "workspace:*"
   },

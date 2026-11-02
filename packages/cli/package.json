@@ -4,6 +4,7 @@
   "description": "Webstudio CLI",
   "author": "Webstudio <github@webstudio.is>",
   "homepage": "https://webstudio.is",
+  "private": true,
   "type": "module",
   "bin": {
     "webstudio-cli": "./bin.js",

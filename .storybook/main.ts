@@ -2,9 +2,6 @@ import * as path from "node:path";
 import { defaultClientConditions } from "vite";
 import type { StorybookConfig } from "@storybook/react-vite";
 import storySources from "./story-sources.json" with { type: "json" };
-import { hasPrivateStorySources } from "./story-settings";
-
-const repositoryRoot = path.resolve(__dirname, "..");
 
 export default {
   stories: storySources,
@@ -34,9 +31,9 @@ export default {
       },
       resolve: {
         ...config.resolve,
-        conditions: hasPrivateStorySources(repositoryRoot)
-          ? ["webstudio-private", "webstudio", ...defaultClientConditions]
-          : ["webstudio", ...defaultClientConditions],
+        // OrganizeOS fork: never "webstudio-private", the proprietary animation
+        // package's private sources (docs/ORGANIZEOS-FORK.md section 2).
+        conditions: ["webstudio", ...defaultClientConditions],
 
         alias: [
           {

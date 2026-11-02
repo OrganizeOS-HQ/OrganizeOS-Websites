@@ -2,15 +2,9 @@
 import { coreMetas } from "@webstudio-is/sdk";
 import { coreTemplates } from "./core-templates";
 import * as baseTemplates from "@webstudio-is/sdk-components-react/templates";
-import * as animationTemplates from "@webstudio-is/sdk-components-animation/templates";
 import * as radixTemplates from "@webstudio-is/sdk-components-react-radix/templates";
+import { componentMetaLibraries, radixComponentNamespace } from "./shared";
 import {
-  animationComponentNamespace,
-  componentMetaLibraries,
-  radixComponentNamespace,
-} from "./shared";
-import {
-  animationComponentLibrary,
   baseComponentLibrary,
   componentIds,
   radixComponentLibrary,
@@ -28,6 +22,7 @@ const getLibraryMetas = (namespace?: string) => {
   return library.metas;
 };
 
+// OrganizeOS fork: no animation library (docs/ORGANIZEOS-FORK.md section 2).
 export const canvasComponentLibraries = [
   {
     components: {},
@@ -47,12 +42,5 @@ export const canvasComponentLibraries = [
     componentIds,
     metas: getLibraryMetas(radixComponentNamespace),
     templates: radixTemplates,
-  },
-  {
-    namespace: animationComponentNamespace,
-    components: animationComponentLibrary.components,
-    componentIds,
-    metas: getLibraryMetas(animationComponentNamespace),
-    templates: animationTemplates,
   },
 ] as const;

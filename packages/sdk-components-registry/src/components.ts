@@ -2,14 +2,8 @@
 import type { Instance } from "@webstudio-is/sdk";
 import * as baseComponents from "@webstudio-is/sdk-components-react/components";
 import { canvasComponents as baseCanvasComponents } from "@webstudio-is/sdk-components-react/canvas-components";
-import * as animationComponents from "@webstudio-is/sdk-components-animation";
-import * as publicAnimationComponents from "@webstudio-is/sdk-components-animation/components";
 import * as radixComponents from "@webstudio-is/sdk-components-react-radix";
-import {
-  animationComponentNamespace,
-  getComponentName,
-  radixComponentNamespace,
-} from "./shared";
+import { getComponentName, radixComponentNamespace } from "./shared";
 
 export const baseComponentLibrary = {
   components: { ...baseComponents, ...baseCanvasComponents },
@@ -20,15 +14,10 @@ export const radixComponentLibrary = {
   components: radixComponents,
 };
 
-export const animationComponentLibrary = {
-  namespace: animationComponentNamespace,
-  components: animationComponents,
-};
-
+// OrganizeOS fork: no animation library (docs/ORGANIZEOS-FORK.md section 2).
 export const componentLibraries = [
   baseComponentLibrary,
   radixComponentLibrary,
-  animationComponentLibrary,
 ] as const;
 
 const mutableComponentIds = new Map<object, Instance["component"]>();
@@ -53,11 +42,6 @@ const componentImplementationLibraries = [
   { components: baseComponents },
   { components: baseCanvasComponents },
   radixComponentLibrary,
-  animationComponentLibrary,
-  {
-    namespace: animationComponentNamespace,
-    components: publicAnimationComponents,
-  },
 ] as const;
 
 for (const library of componentImplementationLibraries) {

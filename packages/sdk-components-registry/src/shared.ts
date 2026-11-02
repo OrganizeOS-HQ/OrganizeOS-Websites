@@ -1,14 +1,11 @@
 import type { WsComponentMeta } from "@webstudio-is/sdk";
 import * as baseMetas from "@webstudio-is/sdk-components-react/metas";
-import * as animationMetas from "@webstudio-is/sdk-components-animation/metas";
 import * as radixMetas from "@webstudio-is/sdk-components-react-radix/metas";
 
 export const baseComponentImportSource =
   "@webstudio-is/sdk-components-react/components";
 export const radixComponentNamespace =
   "@webstudio-is/sdk-components-react-radix";
-export const animationComponentNamespace =
-  "@webstudio-is/sdk-components-animation";
 
 export type ComponentMetaLibrary = {
   namespace?: string;
@@ -16,6 +13,8 @@ export type ComponentMetaLibrary = {
   metas: Record<string, WsComponentMeta>;
 };
 
+// OrganizeOS fork: no animation library. Upstream's animation package is
+// EULA-proprietary and removed from the fork (docs/ORGANIZEOS-FORK.md section 2).
 export const componentMetaLibraries: readonly ComponentMetaLibrary[] = [
   {
     importSource: baseComponentImportSource,
@@ -25,11 +24,6 @@ export const componentMetaLibraries: readonly ComponentMetaLibrary[] = [
     namespace: radixComponentNamespace,
     importSource: radixComponentNamespace,
     metas: radixMetas,
-  },
-  {
-    namespace: animationComponentNamespace,
-    importSource: animationComponentNamespace,
-    metas: animationMetas,
   },
 ];
 

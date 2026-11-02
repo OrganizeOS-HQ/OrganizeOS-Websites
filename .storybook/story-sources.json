@@ -33,10 +33,5 @@
     "directory": "../packages/sdk-components-react-radix",
     "titlePrefix": "SDK components React Radix",
     "files": "**/*.stories.tsx"
-  },
-  {
-    "directory": "../packages/sdk-components-animation",
-    "titlePrefix": "SDK components animation",
-    "files": "**/*.stories.tsx"
   }
 ]

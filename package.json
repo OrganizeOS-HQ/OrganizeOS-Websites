@@ -11,6 +11,8 @@
     "dev": "pnpm --filter=@webstudio-is/builder dev:local",
     "evaluations": "pnpm --filter webstudio evaluations",
     "lint": "oxlint --deny-warnings",
+    "check:no-proprietary": "bash ./scripts/check-no-proprietary.sh",
+    "check:runtime-upstream": "bash ./scripts/check-runtime-upstream.sh",
     "check:package-boundaries": "node scripts/check-package-boundaries.mjs",
     "check:generated-api": "pnpm --filter @webstudio-is/project-build generate-runtime-operation-contracts && pnpm --filter @webstudio-is/builder generate-server-only-api-metadata && node scripts/check-clean-files.mjs packages/project-build/src/contracts/__generated__/runtime-operation-contracts.ts packages/protocol/src/builder-api/__generated__/server-only-router-operation-metadata.ts",
     "check:generated-docs": "pnpm --filter @webstudio-is/project-build generate-docs && pnpm --filter webstudio generate-docs && pnpm docs:mcp:typecheck && pnpm docs:content-engine:test && pnpm docs:mcp:check && pnpm docs:content-engine:check && node scripts/check-clean-files.mjs packages/project-build/src/docs.generated.ts packages/cli/src/docs.generated.ts",
@@ -26,7 +28,7 @@
     "test:builder:core": "pnpm --filter @webstudio-is/builder exec vitest run --project 'core-*'",
     "test:builder:app": "pnpm --filter @webstudio-is/builder exec vitest run --project 'app-*'",
     "fixtures": "pnpm -r fixtures:link && pnpm -r fixtures:sync && pnpm -r fixtures:build",
-    "checks": "pnpm -r test && pnpm -r typecheck && pnpm lint && pnpm check:package-boundaries && pnpm check:generated-api && pnpm check:generated-docs && pnpm fixtures",
+    "checks": "pnpm check:no-proprietary && pnpm check:runtime-upstream && pnpm --filter \"@organizeos/site-components...\" build && pnpm -r test && pnpm -r typecheck && pnpm lint && pnpm check:package-boundaries && pnpm check:generated-api && pnpm check:generated-docs && pnpm fixtures",
     "e2e:builder": "pnpm --filter=@webstudio-is/builder e2e",
     "e2e:builder:build": "pnpm --filter=@webstudio-is/builder build",
     "e2e:builder:dev:backend": "pnpm --filter=@webstudio-is/builder e2e:dev:backend",
@@ -48,7 +50,8 @@
     "local:publish-snapshot": "pnpm -r publish --access public --no-git-checks --registry http://localhost:4873",
     "local:dangerously-undo-version-snapshot": "git restore --source=$(git branch --show-current) '**/*/package.json'",
     "local:release": "pnpm build && pnpm dts && pnpm local:version-snapshot && pnpm local:publish-snapshot && pnpm local:dangerously-undo-version-snapshot && echo \"now execute\npnpm up -r -L '@webstudio-is/*' --registry http://localhost:4873\"",
-    "clean:deep": "bash ./cleanup.sh"
+    "clean:deep": "bash ./cleanup.sh",
+    "preview:template": "node scripts/preview-site-template.mjs"
   },
   "simple-git-hooks": {
     "pre-commit": "./node_modules/.bin/nano-staged"
@@ -72,6 +75,7 @@
     "oxfmt": "0.58.0",
     "oxlint": "^1.73.0",
     "parse5": "7.3.0",
+    "playwright": "^1.50.1",
     "react": "18.3.0-canary-14898b6a9-20240318",
     "react-dom": "18.3.0-canary-14898b6a9-20240318",
     "simple-git-hooks": "^2.11.1",
