@@ -15,6 +15,20 @@ Work that touches both sides needs both repositories; attach the other one with 
 - Specs and plans for builder work live in the OrganizeOS repo, beside the platform half they almost always touch.
 - **Every spec and plan gets a Fable review before implementation starts:** dispatch the `spec-reviewer` subagent ([`.claude/agents/spec-reviewer.md`](.claude/agents/spec-reviewer.md): Fable, medium effort, read-only). This holds for a plan written in a session here as much as for one written in the OrganizeOS repo, and for the design of any change to auth, SSO, provisioning, publishing or asset serving that has no spec. Apply its findings or record in the spec or plan why not; a finding that contradicts an owner decision goes to the owner. Implementation subagents stay on Opus or Sonnet.
 
+## Usage efficiency
+
+Owner rules (2026-11-02); the same rules as the OrganizeOS repo's `CLAUDE.md` § Usage efficiency.
+
+- **One session per PR.** Context lives in the docs and plans, not the conversation. Once a PR merges, start the next piece of work in a fresh session.
+- **Few agents, matched to the work.** At most two implementation agents per PR; each re-reads the codebase from scratch.
+  - Run mechanical work on Sonnet: wording sweeps, test-assertion updates, renames.
+  - Keep design, security-sensitive and multi-file logic on Opus.
+  - Skip a separate research agent when the build agent will read the same files; give the build agent the paths instead.
+- **Parallel agents edit in their own worktree** (`isolation: "worktree"`), and the lead merges their branches. The main checkout stays clean while they run.
+- **Commit before you stop.** End every turn with your own work committed and pushed (a `wip:` commit is fine on a `claude/*` branch).
+- **Let the PR wake you.** After opening a PR, subscribe to its activity and end the turn. Do not poll CI status; read a job's log only when that job failed.
+- **Keep the Fable plan reviews** (see Planning). They cost little and catch real bugs.
+
 ## Keep the overlay small
 
 OrganizeOS changes stay in the files `docs/ORGANIZEOS-FORK.md` section 7 lists, so upstream merges stay tractable, and the published-site runtime packages stay byte-identical to upstream (section 1).
