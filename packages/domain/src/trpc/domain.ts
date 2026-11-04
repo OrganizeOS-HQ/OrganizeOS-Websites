@@ -174,23 +174,25 @@ export const domainRouter = router({
           domain: input.domain,
         });
 
-        // Extract subdomain for DB lookup (strip publisher host suffix)
-        // e.g., "myproject.wstd.work" → "myproject", "custom.com" → "custom.com"
-        const dbDomain = input.domain.replace(`.${env.PUBLISHER_HOST}`, "");
-
-        // Always unpublish in DB regardless of worker deletion result
-        await unpublishBuild(
-          { projectId: input.projectId, domain: dbDomain },
-          ctx
-        );
-
-        // If worker deletion failed (and not NOT_IMPLEMENTED), return error
+        // OrganizeOS fork: a refusal returns before the database is touched.
+        // The OrganizeOS publisher always refuses an unpublish, and
+        // unpublishBuild deletes a production Build whose last domain this
+        // is (docs/ORGANIZEOS-FORK.md section 7).
         if (result.success === false && result.error !== "NOT_IMPLEMENTED") {
           return {
             success: false,
             message: `Failed to unpublish ${input.domain}: ${result.error}`,
           };
         }
+
+        // Extract subdomain for DB lookup (strip publisher host suffix)
+        // e.g., "myproject.wstd.work" → "myproject", "custom.com" → "custom.com"
+        const dbDomain = input.domain.replace(`.${env.PUBLISHER_HOST}`, "");
+
+        await unpublishBuild(
+          { projectId: input.projectId, domain: dbDomain },
+          ctx
+        );
 
         return {
           success: true,
