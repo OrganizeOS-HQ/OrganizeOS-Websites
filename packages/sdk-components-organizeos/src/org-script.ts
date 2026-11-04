@@ -1,9 +1,10 @@
-import { parseExpressionAt, type Expression } from "acorn";
+import { parseExpressionAt, tokenizer, type Expression } from "acorn";
 import {
   collectionComponent,
   elementComponent,
   tags,
   type Instance,
+  type Pages,
   type Prop,
 } from "@webstudio-is/sdk";
 
@@ -658,3 +659,64 @@ export const withoutPausedProps = <Props extends Record<string, unknown>>(
   }
   return result;
 };
+
+/**
+ * Whether a page's `excludePageFromSearch` leaves it out of the sitemap, read
+ * as upstream's sitemap reads it since webstudio-is/webstudio#6614: only a
+ * value that is the literal `true` excludes, and nothing is evaluated. Any
+ * other value, a bound one included (a collection's item page), keeps the page
+ * listed, as before.
+ */
+export const sitemapExcludesPage = (
+  expression: string | undefined
+): boolean => {
+  if (expression === undefined) {
+    return false;
+  }
+  let node: Expression;
+  try {
+    node = parseExpressionAt(expression, 0, {
+      ecmaVersion: "latest",
+      preserveParens: true,
+    });
+    // As upstream reads it: only whitespace or comments may follow.
+    const trailing = tokenizer(expression.slice(node.end), {
+      ecmaVersion: "latest",
+    }).getToken();
+    if (trailing.type.label !== "eof") {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  while (node.type === "ParenthesizedExpression") {
+    node = node.expression;
+  }
+  return node.type === "Literal" && node.value === true;
+};
+
+/**
+ * The pages with every `excludePageFromSearch` reduced to what the sitemap
+ * reads (sitemapExcludesPage): `"true"`, or none. The runtime package's
+ * getStaticSiteMapXml, which the builder's sitemap and prebuild call, then
+ * never evaluates a page setting. The pages passed in are not changed.
+ */
+export const pagesForSitemap = (pages: Pages): Pages => ({
+  ...pages,
+  pages: new Map(
+    Array.from(pages.pages, ([id, page]) => [
+      id,
+      {
+        ...page,
+        meta: {
+          ...page.meta,
+          excludePageFromSearch: sitemapExcludesPage(
+            page.meta.excludePageFromSearch
+          )
+            ? "true"
+            : undefined,
+        },
+      },
+    ])
+  ),
+});

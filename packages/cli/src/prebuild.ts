@@ -151,6 +151,7 @@ import {
   resolveOrganizeosComponentsModule,
 } from "./organizeos-components";
 import { dropOrgScript, refuseMdxWhilePaused } from "./organizeos-org-script";
+import { pagesForSitemap } from "@organizeos/site-components/org-script";
 import { assertNoPreviewHeader } from "./organizeos-preview-header";
 import { createFramework as createRemixFramework } from "./framework-remix";
 import { createFramework as createReactRouterFramework } from "./framework-react-router";
@@ -2208,7 +2209,13 @@ export const action = async (args: Parameters<typeof pageAction>[0]) => {
     }
   }
 
-  const sitemap = getStaticSiteMapXml(pages, siteData.build.updatedAt);
+  // OrganizeOS fork: each page's excludePageFromSearch is read as upstream
+  // reads it since webstudio-is/webstudio#6614, without evaluating it
+  // (pagesForSitemap, in the org script module).
+  const sitemap = getStaticSiteMapXml(
+    pagesForSitemap(pages),
+    siteData.build.updatedAt
+  );
   await writeGeneratedFile(
     `${sitemapModule}.ts`,
     `
