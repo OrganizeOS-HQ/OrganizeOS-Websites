@@ -4799,6 +4799,176 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
     ]);
   });
 
+  // OrganizeOS fork, D15: the /newsletter form provisioning seeds since
+  // 0.309.0, a ResourceForm whose action Resource posts the form's formData.
+  // Its records are the builder's own output, pinned by
+  // apps/builder/app/shared/db/__fixtures__/signup-form.json (its test,
+  // "the published-site fixture", fails when the preset changes).
+  test("the provisioned ResourceForm submits to /v1/signups on its published site", async () => {
+    const fixture = JSON.parse(
+      await readFile(
+        new URL(
+          "../../../apps/builder/app/shared/db/__fixtures__/signup-form.json",
+          import.meta.url
+        ),
+        "utf8"
+      )
+    ) as {
+      readToken: string;
+      bodyId: string;
+      pageId: string;
+      instances: Instance[];
+      props: Prop[];
+      dataSources: DataSource[];
+      resources: Array<{ id: string }>;
+    };
+    const form = fixture.instances.find(
+      (instance) => instance.component === "ResourceForm"
+    );
+    expect(form).toBeDefined();
+    const siteData = createSiteData({
+      pages: [
+        {
+          id: "home",
+          name: "Home",
+          title: '"Home"',
+          path: "",
+          rootInstanceId: "root",
+          meta: {},
+        },
+        {
+          id: fixture.pageId,
+          name: "Newsletter",
+          title: '"Newsletter"',
+          path: "/newsletter",
+          rootInstanceId: fixture.bodyId,
+          meta: {},
+        },
+      ],
+      instances: [
+        [
+          "root",
+          { id: "root", component: "ws:element", tag: "body", children: [] },
+        ],
+        ...fixture.instances.map(
+          (instance) => [instance.id, instance] as [string, Instance]
+        ),
+      ],
+      props: fixture.props.map((prop) => [prop.id, prop]),
+      dataSources: fixture.dataSources.map((dataSource) => [
+        dataSource.id,
+        dataSource,
+      ]),
+      resources: fixture.resources.map((resource) => [resource.id, resource]),
+    });
+    siteData.projectDomain = "acme";
+    await writeSiteData(siteData);
+    await prebuild({
+      assets: false,
+      template: ["react-router", "react-router-vercel"],
+    });
+
+    const pageModule = await readFile(
+      join("app", "__generated__", "[newsletter]._index.tsx"),
+      "utf8"
+    );
+    expect(pageModule).toMatch(/\bResourceForm\b/);
+    expect(pageModule).not.toContain("WebhookForm");
+
+    // The generated Node fetch module, with its destination policy kept and
+    // only the transport stubbed (createNodeProtectedResourceFetch resolves
+    // DNS and connects).
+    await writeFile(
+      join("app", "__generated__", "$resources.managed-form-fetch.server.ts"),
+      `import { getDeniedResourceHostnames, validateProtectedResourceDestination } from "@webstudio-is/sdk/protected-resource-fetch";
+export const createManagedFormEmailSender = () => undefined;
+export const validateManagedFormEmail = () => undefined;
+export const createManagedFormResourceFetch = ({ request, projectDomain }: { request: Request; projectDomain?: string }) => {
+  const deniedHostnames = getDeniedResourceHostnames([new URL(request.url).hostname, projectDomain]);
+  const validateDestination = (url: URL) => validateProtectedResourceDestination(url, deniedHostnames);
+  return Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+    validateDestination(new URL(String(input instanceof Request ? input.url : input)));
+    return (globalThis as unknown as { __organizeosSignupFetch: typeof fetch }).__organizeosSignupFetch(input, init);
+  }, { validateDestination });
+};
+`
+    );
+    await symlink(join(originalCwd, "node_modules"), "node_modules", "dir");
+    await build({
+      stdin: {
+        contents: 'export { action } from "./app/routes/[newsletter]._index"',
+        resolveDir: tempDir,
+      },
+      outfile: join(tempDir, "organizeos-resource-form-action.mjs"),
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      packages: "external",
+      loader: { ".css": "text" },
+    });
+    const { action } = await import(
+      pathToFileURL(join(tempDir, "organizeos-resource-form-action.mjs")).href
+    );
+    const received: Array<{
+      url: string;
+      method: string;
+      authorization: string | null;
+      contentType: string | null;
+      body: unknown;
+    }> = [];
+    vi.stubGlobal(
+      "__organizeosSignupFetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        received.push({
+          url: request.url,
+          method: request.method,
+          authorization: request.headers.get("Authorization"),
+          contentType: request.headers.get("Content-Type"),
+          body: await request.json(),
+        });
+        return Response.json({ ok: true }, { status: 201 });
+      })
+    );
+
+    const submission = new FormData();
+    submission.set(managedFormIdFieldName, form!.id);
+    submission.set(formBotFieldName, "brave");
+    submission.set(managedFormArrayNamesFieldName, "[]");
+    submission.set("email", "ada@example.org");
+    submission.set("first_name", "Ada");
+    submission.set("last_name", "Lovelace");
+    // As production serves it: the proxy fetches the deployment origin and
+    // sends the org's host as x-forwarded-host (client/lib/websites2/site-proxy.ts).
+    await expect(
+      action({
+        request: new Request(
+          `https://acme-site-abc123.vercel.app/newsletter?${managedFormRequestParamName}=1`,
+          {
+            method: "POST",
+            headers: { "x-forwarded-host": "acme.organizeos.org" },
+            body: submission,
+          }
+        ),
+        context: {},
+        params: {},
+      })
+    ).resolves.toMatchObject({ success: true });
+    expect(received).toEqual([
+      {
+        url: "https://app.organizeos.org/api/public/v1/signups",
+        method: "POST",
+        authorization: `Bearer ${fixture.readToken}`,
+        contentType: expect.stringMatching(/^application\/json\b/),
+        body: {
+          email: "ada@example.org",
+          first_name: "Ada",
+          last_name: "Lovelace",
+        },
+      },
+    ]);
+  });
+
   // OrganizeOS fork: a CMS item page (/blog/:slug, made by the builder's
   // Create item page) sets its status to 404 when its Resource does not answer
   // with the item, and the html route answers with that status and the page's

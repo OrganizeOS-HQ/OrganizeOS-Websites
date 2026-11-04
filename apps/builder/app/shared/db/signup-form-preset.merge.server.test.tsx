@@ -56,6 +56,76 @@ const makeBase = (): BuildContent => ({
   },
 });
 
+// Nothing in the build points at a record that is not there: a prop's or a
+// data source's instance, an instance's child, a page's root.
+const expectNothingDangles = (build: BuildContent) => {
+  const instanceIds = new Set(build.instances.map((i) => i.id));
+  const dangling = [
+    ...build.props
+      .filter((prop) => instanceIds.has(prop.instanceId) === false)
+      .map((prop) => `prop ${prop.id}`),
+    ...build.dataSources
+      .filter(
+        (dataSource) =>
+          instanceIds.has(dataSource.scopeInstanceId ?? "") === false
+      )
+      .map((dataSource) => `data source ${dataSource.id}`),
+    ...build.instances.flatMap((instance) =>
+      instance.children
+        .filter(
+          (child) =>
+            child.type === "id" && instanceIds.has(child.value) === false
+        )
+        .map((child) => `child ${child.value} of ${instance.id}`)
+    ),
+    ...[...build.pages.pages.values()]
+      .filter((page) => instanceIds.has(page.rootInstanceId) === false)
+      .map((page) => `root of page ${page.id}`),
+  ];
+  expect(dangling).toEqual([]);
+};
+
+// Stateful fake of the Build table; the update honours its match on version.
+const makeBuildRowContext = (base: BuildContent, builderSaves = 0) => {
+  const row = {
+    id: "build-1",
+    version: 3,
+    instances: JSON.stringify(base.instances),
+    props: JSON.stringify(base.props),
+    dataSources: JSON.stringify(base.dataSources),
+    resources: JSON.stringify(base.resources),
+    pages: serializePages(base.pages),
+  };
+  const state = { row, writes: [] as Array<Record<string, unknown>> };
+  let saves = builderSaves;
+  const client = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          is: () => ({
+            single: async () => ({ data: { ...state.row }, error: null }),
+          }),
+        }),
+      }),
+      update: (payload: Record<string, unknown>) => ({
+        match: async (match: Record<string, unknown>) => {
+          state.writes.push({ ...payload, match });
+          if (saves > 0) {
+            saves -= 1;
+            state.row.version += 1;
+          }
+          if (state.row.version !== match.version) {
+            return { error: null, count: 0 };
+          }
+          Object.assign(state.row, payload);
+          return { error: null, count: 1 };
+        },
+      }),
+    }),
+  };
+  return { context: { postgrest: { client } } as never, state };
+};
+
 describe("mergeSignupFormIntoBuild", () => {
   test("adds a Newsletter page whose root resolves to a seeded body instance", async () => {
     const merged = await mergeSignupFormIntoBuild(makeBase(), args);
@@ -361,28 +431,160 @@ describe("an existing org's stored signup form", () => {
     return base;
   };
 
-  test("is replaced by the ResourceForm on the next provision, leaving none of its records", async () => {
+  // The earlier form's elements, by role, at their place in its render order.
+  const legacyRoles = [
+    [0, "ResourceForm", undefined],
+    [2, "ws:element", "div"],
+    [3, "ws:element", "label"],
+    [4, "ws:element", "input"],
+    [5, "ws:element", "label"],
+    [6, "ws:element", "input"],
+    [7, "ws:element", "label"],
+    [8, "ws:element", "input"],
+    [9, "ws:element", "button"],
+    [10, "ws:element", "div"],
+    [11, "ws:element", "div"],
+  ] as const;
+
+  test("becomes the ResourceForm on the next provision under its element ids, and keeps nothing else of the earlier form", async () => {
     const merged = await mergeSignupFormIntoBuild(await legacyBuild(), args);
+    expectNothingDangles(merged);
     const fresh = await mergeSignupFormIntoBuild(makeBase(), args);
 
-    // exactly what a new org gets
-    expect(merged).toEqual(fresh);
+    // exactly what a new org gets, the replaced records where they were
+    const byId = <Item extends { id: string }>(items: Item[]) =>
+      [...items].sort((a, b) => a.id.localeCompare(b.id));
+    for (const key of [
+      "instances",
+      "props",
+      "dataSources",
+      "resources",
+    ] as const) {
+      expect(byId<{ id: string }>(merged[key])).toEqual(
+        byId<{ id: string }>(fresh[key])
+      );
+    }
+    expect(merged.pages).toEqual(fresh.pages);
     expect(merged.instances.map((i) => i.component)).not.toContain("Form");
     expect(merged.resources.map((r) => r.name)).toEqual([SIGNUP_RESOURCE_NAME]);
-    // no id an element of the earlier form held, which an org may have
-    // styled, names an element of the new one
-    const legacyIds = new Set(
-      await Promise.all(Array.from({ length: 12 }, (_, n) => legacyId(n)))
+    expect(merged.props.map((prop) => prop.name)).not.toContain("state");
+
+    // every element keeps the id it had, as the element of the same role
+    const instances = new Map(merged.instances.map((i) => [i.id, i]));
+    for (const [n, component, tag] of legacyRoles) {
+      const instance = instances.get(await legacyId(n));
+      expect({ n, component: instance?.component, tag: instance?.tag }).toEqual(
+        { n, component, tag }
+      );
+    }
+    const inputNames = await Promise.all(
+      ([4, 6, 8] as const).map(async (n) => {
+        const id = await legacyId(n);
+        const prop = merged.props.find(
+          (prop) => prop.instanceId === id && prop.name === "name"
+        );
+        return prop?.type === "string" ? prop.value : undefined;
+      })
     );
-    expect(merged.instances.filter(({ id }) => legacyIds.has(id))).toEqual([]);
-    // and nothing points at a record that is gone
-    const instanceIds = new Set(merged.instances.map((i) => i.id));
-    for (const prop of merged.props) {
-      expect(instanceIds.has(prop.instanceId)).toBe(true);
+    expect(inputNames).toEqual(["email", "first_name", "last_name"]);
+    // and so does formState
+    expect(
+      merged.dataSources.find(
+        (dataSource) =>
+          dataSource.type === "variable" && dataSource.name === "formState"
+      )?.id
+    ).toBe(await legacyId(1));
+  });
+
+  test("an org's styles, props and the children it added stay on the same elements", async () => {
+    const legacy = await legacyBuild();
+    const [form, content, emailInput, button] = await Promise.all(
+      [0, 2, 4, 9].map(legacyId)
+    );
+    const { bodyId } = await buildSignupFormData(args);
+    // The styles column, which provisioning never writes, keyed by element.
+    const styleSourceSelections = [
+      { instanceId: form, values: ["org-form-local"] },
+      { instanceId: emailInput, values: ["org-email-local", "org-token"] },
+    ];
+    const styles = [
+      {
+        styleSourceId: "org-form-local",
+        breakpointId: "base",
+        property: "gap",
+        value: { type: "unit", unit: "px", value: 12 },
+      },
+    ];
+    // A prop and children the org added in the builder.
+    legacy.props.push({
+      id: "org-placeholder",
+      instanceId: emailInput,
+      name: "placeholder",
+      type: "string",
+      value: "you@example.org",
+    });
+    const added = (id: string, tag: string): Instance => ({
+      type: "instance",
+      id,
+      component: "ws:element",
+      tag,
+      children: [{ type: "text", value: id }],
+    });
+    legacy.instances.push(
+      added("org-heading", "h1"),
+      added("org-note", "p"),
+      added("org-hint", "p")
+    );
+    const instance = (id: string) => legacy.instances.find((i) => i.id === id)!;
+    instance(bodyId).children.unshift({ type: "id", value: "org-heading" });
+    instance(content).children.push({ type: "id", value: "org-note" });
+    instance(form).children.splice(1, 0, { type: "id", value: "org-hint" });
+
+    const merged = await mergeSignupFormIntoBuild(legacy, args);
+    expectNothingDangles(merged);
+    const byId = new Map(merged.instances.map((i) => [i.id, i]));
+
+    // the styles still name the same elements
+    expect(byId.get(form)?.component).toBe("ResourceForm");
+    expect(
+      merged.props.find(
+        (prop) => prop.instanceId === emailInput && prop.name === "name"
+      )
+    ).toMatchObject({ value: "email" });
+    const styled = styleSourceSelections.find(({ values }) =>
+      values.includes(styles[0].styleSourceId)
+    );
+    expect(byId.get(styled!.instanceId)?.component).toBe("ResourceForm");
+    for (const { instanceId } of styleSourceSelections) {
+      expect(byId.has(instanceId)).toBe(true);
     }
-    for (const dataSource of merged.dataSources) {
-      expect(instanceIds.has(dataSource.scopeInstanceId ?? "")).toBe(true);
+    // the org's prop is kept
+    expect(merged.props).toContainEqual(
+      expect.objectContaining({ id: "org-placeholder", instanceId: emailInput })
+    );
+    // and each child stays where the org put it
+    const ids = (id: string) =>
+      byId
+        .get(id)!
+        .children.flatMap((child) =>
+          child.type === "id" ? [child.value] : []
+        );
+    expect(ids(bodyId)).toEqual(["org-heading", form]);
+    expect(ids(form)).toEqual([
+      content,
+      "org-hint",
+      await legacyId(10),
+      await legacyId(11),
+    ]);
+    expect(ids(content).slice(-2)).toEqual([button, "org-note"]);
+    for (const id of ["org-heading", "org-note", "org-hint"]) {
+      expect(byId.get(id)).toEqual(added(id, byId.get(id)!.tag!));
     }
+
+    // and a second provision changes nothing more
+    expect(
+      await mergeSignupFormIntoBuild(structuredClone(merged), args)
+    ).toEqual(merged);
   });
 
   test("provisioning writes no formComponentIdentityVersion marker, so the build's other stored Forms read as before", async () => {
@@ -395,16 +597,21 @@ describe("an existing org's stored signup form", () => {
       component: "Form",
       children: [],
     });
+    const { context, state } = makeBuildRowContext(base);
 
-    const merged = await mergeSignupFormIntoBuild(base, args);
-    const storedPages: unknown = JSON.parse(serializePages(merged.pages));
-    expect(storedPages).not.toHaveProperty("formComponentIdentityVersion");
+    await seedSignupFormPage(context, args);
 
-    // Read as 0.309.0 loads a build.
-    const instances: Instance[] = structuredClone(merged.instances);
+    // what provisioning wrote, as it wrote it
+    expect(state.writes).toHaveLength(1);
+    const writtenPages: unknown = JSON.parse(state.row.pages);
+    expect(writtenPages).toHaveProperty("homePageId");
+    expect(writtenPages).not.toHaveProperty("formComponentIdentityVersion");
+
+    // read as 0.309.0 loads a build
+    const instances = JSON.parse(state.row.instances) as Instance[];
     migrateResourceFormInstancesMutable(
       instances,
-      hasHistoricalFormComponentIdentityVersion(storedPages)
+      hasHistoricalFormComponentIdentityVersion(writtenPages)
     );
     const byId = new Map(instances.map((i) => [i.id, i.component]));
     expect(byId.get("their-form")).toBe("WebhookForm");
@@ -447,47 +654,8 @@ describe("SIGNUP_PAGE_PATH", () => {
 });
 
 describe("seedSignupFormPage", () => {
-  // Stateful fake of the Build table; the update honours its match on version.
-  const makeContext = (builderSaves: number) => {
-    const base = makeBase();
-    const row = {
-      id: "build-1",
-      version: 3,
-      instances: JSON.stringify(base.instances),
-      props: "[]",
-      dataSources: "[]",
-      resources: "[]",
-      pages: serializePages(base.pages),
-    };
-    const state = { row, writes: [] as Array<Record<string, unknown>> };
-    let saves = builderSaves;
-    const client = {
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            is: () => ({
-              single: async () => ({ data: { ...state.row }, error: null }),
-            }),
-          }),
-        }),
-        update: (payload: Record<string, unknown>) => ({
-          match: async (match: Record<string, unknown>) => {
-            state.writes.push({ ...payload, match });
-            if (saves > 0) {
-              saves -= 1;
-              state.row.version += 1;
-            }
-            if (state.row.version !== match.version) {
-              return { error: null, count: 0 };
-            }
-            Object.assign(state.row, payload);
-            return { error: null, count: 1 };
-          },
-        }),
-      }),
-    };
-    return { context: { postgrest: { client } } as never, state };
-  };
+  const makeContext = (builderSaves: number) =>
+    makeBuildRowContext(makeBase(), builderSaves);
 
   test("writes with compare-and-swap on the version, bumps it, and then writes nothing", async () => {
     const { context, state } = makeContext(0);

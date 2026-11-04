@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
   createScope,
@@ -185,5 +187,37 @@ describe("buildSignupFormData", () => {
       (r) => r.name === SIGNUP_RESOURCE_NAME
     );
     expect(signup?.url).toBe(`"https://app.example.org/api/public/v1/signups"`);
+  });
+});
+
+// The form a provisioned org gets, as the published-site case in
+// packages/cli/src/prebuild.test.ts ("the provisioned ResourceForm submits to
+// /v1/signups on its published site") builds and posts it. Regenerate after a
+// change to the preset: UPDATE_SIGNUP_FORM_FIXTURE=1, then this test.
+describe("the published-site fixture", () => {
+  const fixtureArgs = {
+    projectId: "0f1e2d3c-4b5a-4697-8877-665544332211",
+    apiBaseUrl: "https://app.organizeos.org/api/public/v1",
+    readToken: "osk_signup_fixture",
+  };
+  const fixturePath = fileURLToPath(
+    new URL("./__fixtures__/signup-form.json", import.meta.url)
+  );
+
+  test("is the form the preset builds", async () => {
+    const { data, bodyId, pageId } = await buildSignupFormData(fixtureArgs);
+    const built = {
+      ...fixtureArgs,
+      bodyId,
+      pageId,
+      instances: [...data.instances.values()],
+      props: [...data.props.values()],
+      dataSources: [...data.dataSources.values()],
+      resources: [...data.resources.values()],
+    };
+    if (process.env.UPDATE_SIGNUP_FORM_FIXTURE === "1") {
+      writeFileSync(fixturePath, `${JSON.stringify(built, null, 2)}\n`);
+    }
+    expect(JSON.parse(readFileSync(fixturePath, "utf8"))).toEqual(built);
   });
 });

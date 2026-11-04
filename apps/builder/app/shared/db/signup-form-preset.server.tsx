@@ -72,16 +72,40 @@ export const SIGNUP_FORM_FIELD_NAMES = [
 export const SIGNUP_RESOURCE_NAME = "Newsletter signup";
 
 /**
- * The form's records take the ids `{projectId}:{family}:{n}`, n below
- * SIGNUP_ID_SPACE. The ResourceForm has a family of its own: the Form before
- * it (0.274) took `signup`, and no id that held one of its elements, which an
- * org may have styled, names a different element now. A re-seed removes every
- * record under either family that the current form does not have, so an org
- * keeps nothing of a form an earlier preset rendered.
+ * The form's ids are `{projectId}:{family}:{n}`, n below SIGNUP_ID_SPACE.
+ *
+ * Its elements and its `formState` variable keep the ids the Form before it
+ * (provisioned before 0.309.0) held under the `signup` family, by role, so
+ * every org's styles, props and children on them carry over to the
+ * ResourceForm. The index of each is its place in that Form's render order:
+ * the Form, then `formState` (its first prop's variable), then its subtree.
+ * Only the records the Form never had, the `formData` parameter, the action
+ * Resource and its data source, take the `signup-form` family.
+ *
+ * A re-seed removes every record under either family that the current form
+ * does not carry (the Form's Resource-typed action and its Resource, its
+ * `state` prop), so nothing of an earlier form is left.
  */
 const SIGNUP_ID_FAMILY = "signup-form";
 const LEGACY_SIGNUP_ID_FAMILY = "signup";
 const SIGNUP_ID_SPACE = 64;
+
+const SIGNUP_ELEMENT_INDEX = {
+  form: 0,
+  content: 2,
+  emailLabel: 3,
+  emailInput: 4,
+  firstNameLabel: 5,
+  firstNameInput: 6,
+  lastNameLabel: 7,
+  lastNameInput: 8,
+  button: 9,
+  success: 10,
+  error: 11,
+} as const;
+const SIGNUP_FORM_STATE_INDEX = 1;
+
+type SignupElementIds = Record<keyof typeof SIGNUP_ELEMENT_INDEX, string>;
 
 // A server module renders the template without the component libraries:
 // this marker stands for the managed Form, and renderData persists it under
@@ -92,7 +116,7 @@ const renderOptions: RenderTemplateOptions = {
 };
 
 /** The signup form subtree wrapped in a page body. */
-const signupFormTemplate = (bodyId: string) => {
+const signupFormTemplate = (bodyId: string, ids: SignupElementIds) => {
   const formState = new Variable("formState", "initial");
   const formData = new Parameter(formDataParameterName);
   // url and Authorization are literals, set once the template is rendered.
@@ -105,6 +129,7 @@ const signupFormTemplate = (bodyId: string) => {
   return (
     <ws.element ws:tag="body" ws:id={bodyId}>
       <ResourceForm
+        ws:id={ids.form}
         action={new FormActionsValue([signup])}
         formData={formData}
         onStateChange={
@@ -112,32 +137,43 @@ const signupFormTemplate = (bodyId: string) => {
         }
       >
         <ws.element
+          ws:id={ids.content}
           ws:tag="div"
           ws:label="Form Content"
           ws:show={expression`${formState} === 'initial' || ${formState} === 'error'`}
         >
-          <ws.element ws:tag="label">
+          <ws.element ws:id={ids.emailLabel} ws:tag="label">
             {new PlaceholderValue("Email")}
           </ws.element>
           <ws.element
+            ws:id={ids.emailInput}
             ws:tag="input"
             name="email"
             type="email"
             required={true}
           />
-          <ws.element ws:tag="label">
+          <ws.element ws:id={ids.firstNameLabel} ws:tag="label">
             {new PlaceholderValue("First name")}
           </ws.element>
-          <ws.element ws:tag="input" name="first_name" />
-          <ws.element ws:tag="label">
+          <ws.element
+            ws:id={ids.firstNameInput}
+            ws:tag="input"
+            name="first_name"
+          />
+          <ws.element ws:id={ids.lastNameLabel} ws:tag="label">
             {new PlaceholderValue("Last name")}
           </ws.element>
-          <ws.element ws:tag="input" name="last_name" />
-          <ws.element ws:tag="button">
+          <ws.element
+            ws:id={ids.lastNameInput}
+            ws:tag="input"
+            name="last_name"
+          />
+          <ws.element ws:id={ids.button} ws:tag="button">
             {new PlaceholderValue("Sign up")}
           </ws.element>
         </ws.element>
         <ws.element
+          ws:id={ids.success}
           ws:tag="div"
           ws:label="Success"
           ws:show={expression`${formState} === 'success'`}
@@ -145,6 +181,7 @@ const signupFormTemplate = (bodyId: string) => {
           {new PlaceholderValue("Thanks for signing up!")}
         </ws.element>
         <ws.element
+          ws:id={ids.error}
           ws:tag="div"
           ws:label="Error"
           ws:show={expression`${formState} === 'error'`}
@@ -185,22 +222,46 @@ export const buildSignupFormData = async ({
     uuidV5(`${projectId}:signup:body`),
     uuidV5(`${projectId}:signup:page`),
   ]);
-  const template = () => signupFormTemplate(bodyId);
+  const legacyIds = await Promise.all(
+    Array.from({ length: SIGNUP_ELEMENT_INDEX.error + 1 }, (_, index) =>
+      uuidV5(`${projectId}:${LEGACY_SIGNUP_ID_FAMILY}:${index}`)
+    )
+  );
+  const elementIds = Object.fromEntries(
+    Object.entries(SIGNUP_ELEMENT_INDEX).map(([role, index]) => [
+      role,
+      legacyIds[index],
+    ])
+  ) as SignupElementIds;
+  const template = () => signupFormTemplate(bodyId, elementIds);
 
-  // renderData takes a synchronous id generator, and uuidV5 is async. So count
-  // the ids one render asks for, derive them, and render again handing them
-  // out in order: both renders walk the same template the same way, so the nth
-  // id is uuidV5("{projectId}:signup-form:{n}").
+  // Every element carries its id; renderData asks its generator only for the
+  // variables, the parameter and the Resource. It is synchronous and uuidV5
+  // is async, so render once with the place of each request as its id, derive
+  // the ids, and render again handing them out in order: both renders walk
+  // the same template the same way. `formState` takes the id the earlier Form
+  // gave it; the nth other request takes uuidV5("{projectId}:signup-form:{n}").
   let count = 0;
-  renderData(template(), () => String(count++), [], renderOptions);
+  const draft = renderData(
+    template(),
+    () => String(count++),
+    [],
+    renderOptions
+  );
   if (count > SIGNUP_ID_SPACE) {
     throw new Error(
       `The signup form derives ${count} ids, more than its ${SIGNUP_ID_SPACE}`
     );
   }
+  const formStatePlace = [...draft.dataSources.values()].find(
+    (dataSource) =>
+      dataSource.type === "variable" && dataSource.name === "formState"
+  )?.id;
   const ids = await Promise.all(
     Array.from({ length: count }, (_, index) =>
-      uuidV5(`${projectId}:${SIGNUP_ID_FAMILY}:${index}`)
+      String(index) === formStatePlace
+        ? legacyIds[SIGNUP_FORM_STATE_INDEX]
+        : uuidV5(`${projectId}:${SIGNUP_ID_FAMILY}:${index}`)
     )
   );
   let counter = 0;
@@ -257,6 +318,50 @@ const isSignupRecordId = (id: string, signupIds: Set<string>) => {
 };
 
 /**
+ * An element's children after a re-seed: the template's, with every child an
+ * org added (an instance that is not one of the preset's) kept, placed after
+ * the template child it followed. The template's own children and text keep
+ * the template's order, as every re-seed has.
+ */
+const keepAddedChildren = (
+  existing: Instance["children"],
+  incoming: Instance["children"],
+  isPresetInstance: (id: string) => boolean
+): Instance["children"] => {
+  const addedAfter = new Map<string | undefined, Instance["children"]>();
+  let anchor: string | undefined;
+  for (const child of existing) {
+    if (child.type !== "id") {
+      continue;
+    }
+    if (isPresetInstance(child.value)) {
+      anchor = child.value;
+      continue;
+    }
+    addedAfter.set(anchor, [...(addedAfter.get(anchor) ?? []), child]);
+  }
+  if (addedAfter.size === 0) {
+    return incoming;
+  }
+  const children = [...(addedAfter.get(undefined) ?? [])];
+  const placed = new Set<string | undefined>([undefined]);
+  for (const child of incoming) {
+    children.push(child);
+    if (child.type === "id" && addedAfter.has(child.value)) {
+      children.push(...addedAfter.get(child.value)!);
+      placed.add(child.value);
+    }
+  }
+  // after an element the template no longer has: at the end
+  for (const [after, added] of addedAfter) {
+    if (placed.has(after) === false) {
+      children.push(...added);
+    }
+  }
+  return children;
+};
+
+/**
  * The records of `existing`, without those under a preset id that `incoming`
  * does not carry: what is left of a form an earlier preset rendered.
  */
@@ -281,10 +386,12 @@ const withoutStaleSignupRecords = <Item extends { id: string }>(
  * starter form ships unstyled; the org styles it in the builder.
  * Deterministic ids make this idempotent: a re-seed replaces in place, in
  * order, and moves a page seeded at an older path (`/signup`) to the current
- * one under the same id. It also drops every record under a preset id that
- * the current form does not have, so the Form an org was provisioned with
- * before 0.309.0, whose action Resource took the Form's own id, leaves
- * nothing behind.
+ * one under the same id. An element keeps every child an org added to it
+ * (keepAddedChildren), and its styles and props, which are keyed to its id.
+ * The re-seed also drops every record under a preset id that the current
+ * form does not have, so the Form an org was provisioned with before 0.309.0
+ * becomes the ResourceForm under the same element ids, and its
+ * Resource-typed action and the Resource keyed by its id are gone.
  *
  * When another page already answers at SIGNUP_PAGE_PATH, nothing is moved
  * there: a page seeded earlier keeps its path and gets its content re-synced
@@ -323,7 +430,30 @@ export const mergeSignupFormIntoBuild = async (
       withoutStaleSignupRecords(existing, incoming.values(), signupIds),
       [...incoming.values()]
     );
-  const instances = merge(build.instances, data.instances);
+  const existingInstances = new Map(
+    build.instances.map((instance) => [instance.id, instance])
+  );
+  const isPresetInstance = (id: string) =>
+    data.instances.has(id) || isSignupRecordId(id, signupIds);
+  const incomingInstances = new Map(
+    Array.from(data.instances, ([id, instance]) => {
+      const existing = existingInstances.get(id);
+      return [
+        id,
+        existing === undefined
+          ? instance
+          : {
+              ...instance,
+              children: keepAddedChildren(
+                existing.children,
+                instance.children,
+                isPresetInstance
+              ),
+            },
+      ];
+    })
+  );
+  const instances = merge(build.instances, incomingInstances);
   const props = merge(build.props, data.props);
   const dataSources = merge(build.dataSources, data.dataSources);
   const resources = merge(build.resources, data.resources);
