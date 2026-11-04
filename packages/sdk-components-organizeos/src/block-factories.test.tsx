@@ -5,6 +5,7 @@ import { rotatingTabsTemplate } from "./rotating-tabs.template";
 import { rsvpFormTemplate } from "./rsvp-form.template";
 import { signupFormTemplate } from "./signup-form.template";
 import { $, organizeos, radix } from "./shared/proxy";
+import * as siteTemplates from "./site-templates";
 
 // A site template places a block once per placement, so a factory must give
 // each call a Variable of its own: `renderTemplate` keys a data source by the
@@ -65,4 +66,9 @@ test("a proxied component renders as its namespaced id", () => {
   // the same name is the same marker, and a symbol is not a component
   expect(organizeos.SignupForm).toBe(organizeos.SignupForm);
   expect(Reflect.get(organizeos, Symbol.iterator)).toBe(undefined);
+  // the builder reads the same markers from the site-templates entry
+  expect(siteTemplates.$).toBe($);
+  expect(siteTemplates.organizeos).toBe(organizeos);
+  expect(siteTemplates.radix).toBe(radix);
+  expect(siteTemplates.localStylesFirst).toEqual(expect.any(Function));
 });

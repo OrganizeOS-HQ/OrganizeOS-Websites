@@ -16,3 +16,6 @@ export * from "./check";
 export * from "./catalog";
 // for the builder's insert of a block (completeOrganizeosFragment)
 export { localStylesFirst } from "../shared/style-order";
+// components by registered name, for the builder's own templates and tests
+// (0.309.0's template package has no $ of its own)
+export { $, organizeos, radix } from "../shared/proxy";
