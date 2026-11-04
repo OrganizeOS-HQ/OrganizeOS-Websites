@@ -7,18 +7,24 @@ import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { setEnv } from "@webstudio-is/feature-flags";
-import { elementComponent, type Instance, type Prop } from "@webstudio-is/sdk";
-import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
-import * as baseComponents from "@webstudio-is/sdk-components-react/components";
-import * as baseComponentMetas from "@webstudio-is/sdk-components-react/metas";
-import * as baseComponentTemplates from "@webstudio-is/sdk-components-react/templates";
-import * as radixComponents from "@webstudio-is/sdk-components-react-radix";
-import * as radixComponentMetas from "@webstudio-is/sdk-components-react-radix/metas";
 import {
+  blockComponent,
+  blockTemplateComponent,
+  elementComponent,
+  type Instance,
+  type Prop,
+} from "@webstudio-is/sdk";
+import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
+import { canvasComponentLibraries } from "@webstudio-is/sdk-components-registry/canvas";
+import {
+  $builderMode,
   $dataSourceVariables,
+  $propValuesByInstanceSelector,
   $registeredComponents,
+  getInstanceKey,
   registerComponentLibrary,
 } from "~/shared/nano-states";
+import { $externalContentRoots } from "~/shared/external-content-mutations";
 import {
   $dataSources,
   $instances,
@@ -32,7 +38,10 @@ import {
   WebstudioComponentCanvas,
   WebstudioComponentPreview,
 } from "./features/webstudio-component";
-import { withOrgScriptPolicy } from "./organizeos-org-script";
+import {
+  withOrgScriptPolicy,
+  withoutBuiltWithWebstudio,
+} from "./organizeos-org-script";
 
 // The canvas copies every prop of an instance onto its component, so a prop
 // named dangerouslySetInnerHTML would put raw markup into the builder's own
@@ -91,20 +100,12 @@ const prepare = ({
   instances: Array<[string, Instance]>;
   props: Array<[string, Prop]>;
 }) => {
-  // the library the canvas registers, with org script paused
-  registerComponentLibrary(
-    withOrgScriptPolicy({
-      components: baseComponents,
-      metas: baseComponentMetas,
-      templates: baseComponentTemplates,
-    })
-  );
-  registerComponentLibrary({
-    namespace: radixNamespace,
-    components: radixComponents as never,
-    metas: radixComponentMetas,
-    templates: {},
-  });
+  // the libraries the canvas registers, with org script paused (canvas.tsx)
+  for (const library of canvasComponentLibraries) {
+    registerComponentLibrary(
+      withOrgScriptPolicy(withoutBuiltWithWebstudio(library))
+    );
+  }
   $instances.set(new Map(instances));
   $props.set(new Map(props));
   $pages.set(
@@ -113,7 +114,24 @@ const prepare = ({
   $selectedPageId.set("home");
 };
 
-const mount = (renderer: Renderer, element: ReactNode) => {
+// 0.309.0 computes prop values asynchronously (computePropValues in
+// shared/nano-states/props.ts), so a render first waits for the values of
+// the stores prepare set: otherwise no prop reaches a component, and a check
+// that nothing unsafe rendered passes for nothing.
+const settleProps = () =>
+  new Promise<void>((resolve, reject) => {
+    const unsubscribe = $propValuesByInstanceSelector.listen(() => {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve();
+    });
+    const timer = setTimeout(() => {
+      unsubscribe();
+      reject(new Error("The prop values did not settle"));
+    }, 2000);
+  });
+
+const mountNow = (renderer: Renderer, element: ReactNode) => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -136,10 +154,15 @@ const mount = (renderer: Renderer, element: ReactNode) => {
   return container;
 };
 
+const mount = async (renderer: Renderer, element: ReactNode) => {
+  await settleProps();
+  return mountNow(renderer, element);
+};
+
 const componentOf = (renderer: Renderer) =>
   renderer === "preview" ? WebstudioComponentPreview : WebstudioComponentCanvas;
 
-const render = ({
+const render = async ({
   instances,
   props,
   renderer,
@@ -170,8 +193,8 @@ describe.each(renderers)(
       (window as { pwned?: number }).pwned = undefined;
     });
 
-    test("without the markup, on a ws:element with a JSON value and with an expression", () => {
-      const dom = render({
+    test("without the markup, on a ws:element with a JSON value and with an expression", async () => {
+      const dom = await render({
         renderer,
         instances: [
           instance({ id: "body", children: ids("json", "expression") }),
@@ -220,8 +243,8 @@ describe.each(renderers)(
       expect(dom.querySelectorAll("div").length).toBeGreaterThanOrEqual(3);
     });
 
-    test("without the markup, on a Box", () => {
-      const dom = render({
+    test("without the markup, on a Box", async () => {
+      const dom = await render({
         renderer,
         instances: [
           instance({ id: "body", children: ids("box") }),
@@ -246,8 +269,8 @@ describe.each(renderers)(
       expect((window as { pwned?: number }).pwned).toBeUndefined();
     });
 
-    test("keeps the other props, whatever they look like", () => {
-      const dom = render({
+    test("keeps the other props, whatever they look like", async () => {
+      const dom = await render({
         renderer,
         instances: [
           instance({ id: "body", children: ids("kept") }),
@@ -306,8 +329,8 @@ describe.each(renderers)(
       expect(dom.querySelector("script")).toBeNull();
     };
 
-    test("without a script, on a ws:element with tag script, an async prop and a src", () => {
-      const dom = render({
+    test("without a script, on a ws:element with tag script, an async prop and a src", async () => {
+      const dom = await render({
         renderer,
         instances: [
           instance({ id: "body", children: ids("script") }),
@@ -324,10 +347,10 @@ describe.each(renderers)(
       expect(dom.querySelector("[data-ws-id=script]")?.tagName).toBe("DIV");
     });
 
-    test("without a script, on a ws:element with the tag SCRIPT and inline code", () => {
+    test("without a script, on a ws:element with the tag SCRIPT and inline code", async () => {
       // React creates anything but the exact string "script" with
       // document.createElement, which makes a live script element
-      const dom = render({
+      const dom = await render({
         renderer,
         instances: [
           instance({
@@ -359,8 +382,8 @@ describe.each(renderers)(
       ["Heading", "H1"],
     ])(
       "without a script, on a %s with a data-ws-tag prop of script and an async expression",
-      (component, fallback) => {
-        const dom = render({
+      async (component, fallback) => {
+        const dom = await render({
           renderer,
           instances: [
             instance({ id: "body", children: ids("c") }),
@@ -378,8 +401,8 @@ describe.each(renderers)(
       }
     );
 
-    test("without a script, on a Box whose instance tag is script", () => {
-      const dom = render({
+    test("without a script, on a Box whose instance tag is script", async () => {
+      const dom = await render({
         renderer,
         instances: [
           instance({ id: "body", children: ids("box") }),
@@ -395,8 +418,8 @@ describe.each(renderers)(
       expect(dom.querySelector("[data-ws-id=box]")?.tagName).toBe("DIV");
     });
 
-    test("without a script, on a Box whose legacy tag prop is an expression that evaluates to script", () => {
-      const dom = render({
+    test("without a script, on a Box whose legacy tag prop is an expression that evaluates to script", async () => {
+      const dom = await render({
         renderer,
         instances: [
           instance({ id: "body", children: ids("box") }),
@@ -413,8 +436,8 @@ describe.each(renderers)(
       expect(dom.querySelector("[data-ws-id=box]")?.tagName).toBe("DIV");
     });
 
-    test("without a script, on a Dialog Title whose tag is an expression that evaluates to script", () => {
-      const dom = render({
+    test("without a script, on a Dialog Title whose tag is an expression that evaluates to script", async () => {
+      const dom = await render({
         renderer,
         instances: [
           instance({ id: "body", children: ids("dialog") }),
@@ -438,8 +461,8 @@ describe.each(renderers)(
       expect(document.querySelector("[data-ws-id=title]")).not.toBeNull();
     });
 
-    test("without crashing, on a tag prop whose value is not a string", () => {
-      const dom = render({
+    test("without crashing, on a tag prop whose value is not a string", async () => {
+      const dom = await render({
         renderer,
         instances: [
           instance({ id: "body", children: ids("number", "array") }),
@@ -457,8 +480,8 @@ describe.each(renderers)(
     });
 
     // The guards: an element the builder offers is created as before
-    test("keeps a ws:element whose tag the builder offers", () => {
-      const dom = render({
+    test("keeps a ws:element whose tag the builder offers", async () => {
+      const dom = await render({
         renderer,
         instances: [
           instance({ id: "body", children: ids("section", "svg") }),
@@ -474,8 +497,8 @@ describe.each(renderers)(
       expect(dom.querySelector("[data-ws-id=svg]")?.tagName).toBe("svg");
     });
 
-    test("keeps the tag a Box, a Heading and a Dialog Title are given, when the builder offers it", () => {
-      const dom = render({
+    test("keeps the tag a Box, a Heading and a Dialog Title are given, when the builder offers it", async () => {
+      const dom = await render({
         renderer,
         instances: [
           instance({
@@ -577,8 +600,11 @@ describe.each(renderers)(
 
     test.each(cases)(
       "without a script, in a %s over %s with the tag prop of the trigger",
-      (trigger, parents, child, fallback, name) => {
-        const dom = render({
+      async (trigger, parents, child, fallback, name) => {
+        // the browser runner's own scripts (Vite's client) are in the head
+        const headScripts =
+          document.head.querySelectorAll("script[src]").length;
+        const dom = await render({
           renderer,
           instances: forwarderTree(trigger, parents, child),
           props: [
@@ -595,7 +621,9 @@ describe.each(renderers)(
 
         expect(evilScripts().length).toBe(0);
         expect(dom.querySelector("script")).toBeNull();
-        expect(document.head.querySelector("script[src]")).toBeNull();
+        expect(document.head.querySelectorAll("script[src]")).toHaveLength(
+          headScripts
+        );
         // the child is rendered, as its own default element
         expect(document.querySelector("[data-ws-id=child]")?.tagName).toBe(
           fallback
@@ -605,8 +633,8 @@ describe.each(renderers)(
 
     test.each(["data-ws-tag", "tag"])(
       "without a script, when the trigger's %s prop is an expression that evaluates to script",
-      (name) => {
-        const dom = render({
+      async (name) => {
+        const dom = await render({
           renderer,
           instances: forwarderTree(
             "CollapsibleTrigger",
@@ -628,10 +656,10 @@ describe.each(renderers)(
       }
     );
 
-    test("without a script, when the trigger's own instance tag is script", () => {
+    test("without a script, when the trigger's own instance tag is script", async () => {
       // the generator writes instance.tag as a data-ws-tag prop on every
       // component but ws:element, and the canvas does the same
-      const dom = render({
+      const dom = await render({
         renderer,
         instances: forwarderTree("DialogTrigger", ["Dialog"], "Box", {
           tag: "script",
@@ -646,10 +674,10 @@ describe.each(renderers)(
       expect(dom.querySelector("script")).toBeNull();
     });
 
-    test("without a script, when the trigger that holds the tag prop passes it to a child that is itself a trigger", () => {
+    test("without a script, when the trigger that holds the tag prop passes it to a child that is itself a trigger", async () => {
       // the outer trigger's props go to the inner trigger, which spreads them
       // on to the Box
-      const dom = render({
+      const dom = await render({
         renderer,
         instances: [
           instance({ id: "body", children: ids("popover") }),
@@ -687,8 +715,8 @@ describe.each(renderers)(
       expect(document.querySelector("[data-ws-id=child]")?.tagName).toBe("DIV");
     });
 
-    test("without crashing, on a trigger whose tag prop is not a string", () => {
-      render({
+    test("without crashing, on a trigger whose tag prop is not a string", async () => {
+      await render({
         renderer,
         instances: forwarderTree("PopoverTrigger", ["Popover"], "Text"),
         props: [
@@ -701,8 +729,8 @@ describe.each(renderers)(
     });
 
     // The guards: what the builder offers is created as before
-    test("keeps a tag the builder offers, passed down by a trigger", () => {
-      render({
+    test("keeps a tag the builder offers, passed down by a trigger", async () => {
+      await render({
         renderer,
         instances: forwarderTree("DialogTrigger", ["Dialog"], "Box"),
         props: [prop("trigger", "data-ws-tag", "string", "nav")],
@@ -711,8 +739,8 @@ describe.each(renderers)(
       expect(document.querySelector("[data-ws-id=child]")?.tagName).toBe("NAV");
     });
 
-    test("keeps the tag of an XML Node, which takes any tag name by design", () => {
-      const dom = render({
+    test("keeps the tag of an XML Node, which takes any tag name by design", async () => {
+      const dom = await render({
         renderer,
         instances: [
           instance({ id: "body", children: ids("urlset") }),
@@ -733,8 +761,8 @@ describe.each(renderers)(
       expect(dom.textContent).toContain("<xhtml:link");
     });
 
-    test("keeps the attributes of a ws:element, whose tag is its own", () => {
-      const dom = render({
+    test("keeps the attributes of a ws:element, whose tag is its own", async () => {
+      const dom = await render({
         renderer,
         instances: [
           instance({ id: "body", children: ids("div") }),
@@ -767,7 +795,7 @@ describe.each(renderers)(
     // React dedupes hoisted scripts by src, so each renderer has its own
     const src = `https://evil.example/passed-${renderer}.js`;
 
-    test("without a script, on a Box given a data-ws-tag of script, an async prop and a src", () => {
+    test("without a script, on a Box given a data-ws-tag of script, an async prop and a src", async () => {
       const box: Instance = {
         type: "instance",
         id: "box",
@@ -782,7 +810,7 @@ describe.each(renderers)(
         src,
       };
 
-      const dom = mount(
+      const dom = await mount(
         renderer,
         <Component
           instance={box}
@@ -858,11 +886,11 @@ describe.each(renderers)(
           (name === "href" && element.getAttribute(name) === "#") === false
       );
 
-    test("without the attribute, wherever it is set", () => {
+    test("without the attribute, wherever it is set", async () => {
       variable("target", pwn);
       variable("html", "<script>parent.pwned = 1</script>");
       variable("list", [pwn]);
-      const dom = render({
+      const dom = await render({
         renderer,
         instances: [
           instance({
@@ -957,8 +985,8 @@ describe.each(renderers)(
       expect((window as { pwned?: number }).pwned).toBeUndefined();
     });
 
-    test("without the address a Dialog Trigger passes to a Link that has none of its own", () => {
-      const dom = render({
+    test("without the address a Dialog Trigger passes to a Link that has none of its own", async () => {
+      const dom = await render({
         renderer,
         instances: forwarderTree("DialogTrigger", ["Dialog"], "Link"),
         props: [prop("trigger", "href", "string", pwn)],
@@ -970,7 +998,7 @@ describe.each(renderers)(
       expect(dom.innerHTML.toLowerCase()).not.toContain("javascript:");
     });
 
-    test("without an address a parent passes in", () => {
+    test("without an address a parent passes in", async () => {
       const link: Instance = {
         type: "instance",
         id: "link",
@@ -981,7 +1009,7 @@ describe.each(renderers)(
       const Component = componentOf(renderer);
       const passedIn: Record<string, unknown> = { href: pwn };
 
-      const dom = mount(
+      const dom = await mount(
         renderer,
         <Component
           instance={link}
@@ -998,7 +1026,7 @@ describe.each(renderers)(
     });
 
     // The guards: what may run is rendered as before
-    test("keeps safe addresses, an Image src bound to an https value and a Collection's data", () => {
+    test("keeps safe addresses, an Image src bound to an https value and a Collection's data", async () => {
       variable("cover", "https://cdn.example.org/a.png");
       variable("records", [pwn, "/b"]);
       const safe = [
@@ -1009,7 +1037,7 @@ describe.each(renderers)(
         "/a",
         "#b",
       ];
-      const dom = render({
+      const dom = await render({
         renderer,
         instances: [
           instance({
@@ -1057,40 +1085,43 @@ describe.each(renderers)(
 
     // The design mode removes every handler (upstream's mergeProps), so only
     // the preview runs one
-    test.runIf(renderer === "preview")("keeps an action's handler", () => {
-      variable("clicked", "no");
-      const dom = render({
-        renderer,
-        instances: [
-          instance({ id: "body", children: ids("button") }),
-          instance({ id: "button", tag: "button" }),
-        ],
-        props: [
-          [
-            "button:onClick",
-            {
-              id: "button:onClick",
-              instanceId: "button",
-              name: "onClick",
-              type: "action",
-              value: [
-                {
-                  type: "execute",
-                  args: [],
-                  code: `$ws$dataSource$clicked = "yes"`,
-                },
-              ],
-            },
+    test.runIf(renderer === "preview")(
+      "keeps an action's handler",
+      async () => {
+        variable("clicked", "no");
+        const dom = await render({
+          renderer,
+          instances: [
+            instance({ id: "body", children: ids("button") }),
+            instance({ id: "button", tag: "button" }),
           ],
-        ],
-      });
+          props: [
+            [
+              "button:onClick",
+              {
+                id: "button:onClick",
+                instanceId: "button",
+                name: "onClick",
+                type: "action",
+                value: [
+                  {
+                    type: "execute",
+                    args: [],
+                    code: `$ws$dataSource$clicked = "yes"`,
+                  },
+                ],
+              },
+            ],
+          ],
+        });
 
-      act(() => {
-        dom.querySelector<HTMLElement>("[data-ws-id=button]")?.click();
-      });
+        act(() => {
+          dom.querySelector<HTMLElement>("[data-ws-id=button]")?.click();
+        });
 
-      expect($dataSourceVariables.get().get("clicked")).toBe("yes");
-    });
+        expect($dataSourceVariables.get().get("clicked")).toBe("yes");
+      }
+    );
   }
 );
 
@@ -1108,8 +1139,8 @@ describe.each(renderers)("the %s renders no SVG animate or set", (renderer) => {
         element.localName === "animate" || element.localName === "set"
     );
 
-  test("without an animate or set on a ws:element in an SVG link, and with animateTransform and animateMotion", () => {
-    const dom = render({
+  test("without an animate or set on a ws:element in an SVG link, and with animateTransform and animateMotion", async () => {
+    const dom = await render({
       renderer,
       instances: [
         instance({ id: "body", children: ids("svg") }),
@@ -1148,8 +1179,8 @@ describe.each(renderers)("the %s renders no SVG animate or set", (renderer) => {
   });
 
   // each falls back to its own default element
-  test("without an animate or set on a Box, Text, Heading or Dialog Title given one as its tag", () => {
-    const dom = render({
+  test("without an animate or set on a Box, Text, Heading or Dialog Title given one as its tag", async () => {
+    const dom = await render({
       renderer,
       instances: [
         instance({
@@ -1181,8 +1212,8 @@ describe.each(renderers)("the %s renders no SVG animate or set", (renderer) => {
     expect(document.querySelector("[data-ws-id=title]")).not.toBeNull();
   });
 
-  test("without an animate a Radix trigger passes down to a Box", () => {
-    render({
+  test("without an animate a Radix trigger passes down to a Box", async () => {
+    await render({
       renderer,
       instances: forwarderTree("PopoverTrigger", ["Popover"], "Box"),
       props: [
@@ -1196,7 +1227,7 @@ describe.each(renderers)("the %s renders no SVG animate or set", (renderer) => {
     expect(document.querySelector("[data-ws-id=child]")?.tagName).toBe("DIV");
   });
 
-  test("without a set a parent passes in", () => {
+  test("without a set a parent passes in", async () => {
     const box: Instance = {
       type: "instance",
       id: "box",
@@ -1211,7 +1242,7 @@ describe.each(renderers)("the %s renders no SVG animate or set", (renderer) => {
       to: pwn,
     };
 
-    const dom = mount(
+    const dom = await mount(
       renderer,
       <Component
         instance={box}
@@ -1225,3 +1256,168 @@ describe.each(renderers)("the %s renders no SVG animate or set", (renderer) => {
     expect(dom.querySelector("[data-ws-id=box]")?.tagName).toBe("DIV");
   });
 });
+
+// A Content Block bound to an MDX document renders the document's instances in
+// place of its own: the outer renderer substitutes the occurrence instance
+// (an external content root) before the inner renderer, which holds the
+// checks, sees it. So what an MDX document holds passes the same checks. The
+// canvas substitutes in Content mode only; the preview always does.
+describe.each(renderers)(
+  "the %s renders an MDX occurrence through the checks",
+  (renderer) => {
+    afterEach(() => {
+      $builderMode.set("design");
+      $externalContentRoots.set(new Map());
+      delete (window as { pwned?: number }).pwned;
+    });
+
+    // a Content Block holds its templates list first, then its items
+    const occurrence = (children: string[]): Array<[string, Instance]> => [
+      instance({ id: "body", children: ids("block") }),
+      instance({
+        id: "block",
+        component: blockComponent,
+        children: ids("templates", "own"),
+      }),
+      instance({ id: "templates", component: blockTemplateComponent }),
+      instance({
+        id: "own",
+        tag: "p",
+        children: [{ type: "text", value: "the block's own" }],
+      }),
+      instance({
+        id: "runtime-block",
+        component: blockComponent,
+        children: ids("runtime-templates", ...children),
+      }),
+      instance({ id: "runtime-templates", component: blockTemplateComponent }),
+    ];
+
+    const prepareOccurrence = (
+      instances: Array<[string, Instance]>,
+      instanceIds: string[]
+    ) => {
+      prepare({ instances, props: [] });
+      $externalContentRoots.set(
+        new Map([
+          [
+            "root",
+            {
+              sourceBlockInstanceId: "block",
+              sourceRenderScope: getInstanceKey(["block", "body"]),
+              blockInstanceId: "runtime-block",
+              instanceIds: new Set([
+                "runtime-block",
+                "runtime-templates",
+                ...instanceIds,
+              ]),
+              mutationRevision: 0,
+            },
+          ],
+        ])
+      );
+      if (renderer === "canvas") {
+        $builderMode.set("content");
+      }
+    };
+
+    const bodyElement = () =>
+      createInstanceElement({
+        instances: $instances.get(),
+        instanceId: "body",
+        instanceSelector: ["body"],
+        Component: componentOf(renderer),
+        components: $registeredComponents.get(),
+      });
+
+    test("without a script, an animate or a script tag on a Box", async () => {
+      const children = ["mdx-p", "mdx-script", "mdx-svg", "mdx-box"];
+      prepareOccurrence(
+        [
+          ...occurrence(children),
+          instance({
+            id: "mdx-p",
+            tag: "p",
+            children: [{ type: "text", value: "mdx occurrence" }],
+          }),
+          instance({
+            id: "mdx-script",
+            tag: "script",
+            children: [{ type: "text", value: "window.pwned=1" }],
+          }),
+          instance({ id: "mdx-svg", tag: "svg", children: ids("mdx-animate") }),
+          instance({ id: "mdx-animate", tag: "animate" }),
+          instance({ id: "mdx-box", component: "Box", tag: "script" }),
+        ],
+        [...children, "mdx-animate"]
+      );
+      const scriptsBefore = document.querySelectorAll("script").length;
+      const dom = await mount(renderer, bodyElement());
+
+      // the occurrence rendered, not the block's own children
+      expect(dom.textContent).toContain("mdx occurrence");
+      expect(dom.textContent).not.toContain("the block's own");
+      expect(document.querySelectorAll("script").length).toBe(scriptsBefore);
+      expect(dom.querySelector("animate")).toBeNull();
+      expect(dom.querySelector('[data-ws-id="mdx-script"]')?.tagName).toBe(
+        "DIV"
+      );
+      expect(dom.querySelector('[data-ws-id="mdx-box"]')?.tagName).toBe("DIV");
+      expect((window as { pwned?: number }).pwned).toBeUndefined();
+    });
+
+    // 0.309.0 computes no props for an occurrence's instances (the walk
+    // follows instance.children from the page root, and the runtime block is
+    // nobody's child), so the values are seeded here. They stand in for any
+    // path that computes them, as a later upstream change may.
+    test("without an unsafe address, a raw embed or a script tag prop, from the props the occurrence is given", async () => {
+      const children = ["mdx-link", "mdx-ok", "mdx-embed", "mdx-box"];
+      prepareOccurrence(
+        [
+          ...occurrence(children),
+          instance({
+            id: "mdx-link",
+            tag: "a",
+            children: [{ type: "text", value: "unsafe" }],
+          }),
+          instance({
+            id: "mdx-ok",
+            tag: "a",
+            children: [{ type: "text", value: "safe" }],
+          }),
+          instance({ id: "mdx-embed", component: "HtmlEmbed" }),
+          instance({ id: "mdx-box", component: "Box" }),
+        ],
+        children
+      );
+      await settleProps();
+      const seeded = new Map($propValuesByInstanceSelector.get());
+      const at = (id: string) => getInstanceKey([id, "runtime-block", "body"]);
+      seeded.set(
+        at("mdx-link"),
+        new Map([["href", "javascript:window.pwned=1"]])
+      );
+      seeded.set(at("mdx-ok"), new Map([["href", "https://ok.example/"]]));
+      seeded.set(at("mdx-embed"), new Map([["code", html]]));
+      seeded.set(
+        at("mdx-box"),
+        new Map<string, unknown>([
+          ["data-ws-tag", "script"],
+          ["async", true],
+          ["src", `https://evil.example/mdx-${renderer}.js`],
+        ])
+      );
+      $propValuesByInstanceSelector.set(seeded);
+      const dom = mountNow(renderer, bodyElement());
+
+      // the control: the seeded props reach the occurrence's instances
+      expect(dom.querySelector('a[href="https://ok.example/"]')).not.toBeNull();
+      expect(dom.querySelector('a[href^="javascript:"]')).toBeNull();
+      expect(dom.textContent).toContain("HTML Embed is paused");
+      expect(dom.querySelector("#pwn")).toBeNull();
+      expect(evilScripts().length).toBe(0);
+      expect(dom.querySelector('[data-ws-id="mdx-box"]')?.tagName).toBe("DIV");
+      expect((window as { pwned?: number }).pwned).toBeUndefined();
+    });
+  }
+);

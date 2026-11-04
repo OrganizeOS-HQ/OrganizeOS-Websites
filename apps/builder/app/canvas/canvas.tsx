@@ -14,7 +14,14 @@ import type { Components } from "@webstudio-is/react-sdk";
 import { wsImageLoader, wsVideoLoader } from "@webstudio-is/image";
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import { canvasComponentLibraries } from "@webstudio-is/sdk-components-registry/canvas";
+import * as organizeosComponents from "@organizeos/site-components";
+import * as organizeosComponentMetas from "@organizeos/site-components/metas";
+import * as organizeosTemplates from "@organizeos/site-components/templates";
 import { ErrorMessage } from "~/shared/error";
+import {
+  withOrgScriptPolicy,
+  withoutBuiltWithWebstudio,
+} from "./organizeos-org-script";
 import { $publisher, publish } from "~/shared/pubsub";
 import {
   registerContainers,
@@ -264,8 +271,26 @@ export const Canvas = () => {
 
   useMount(() => {
     for (const library of canvasComponentLibraries) {
-      registerComponentLibrary(library);
+      // OrganizeOS fork: org script is paused (organizeos-org-script.tsx,
+      // docs/ORGANIZEOS-FORK.md section 10): the policy hides HTML Embed,
+      // Content Embed, Markdown Embed and JSON-LD and swaps in the canvas's
+      // stand-ins. And no "Built with Webstudio" badge, an upstream ad on the
+      // customer's published site (section 1).
+      registerComponentLibrary(
+        withOrgScriptPolicy(withoutBuiltWithWebstudio(library))
+      );
     }
+    // OrganizeOS fork: the OrganizeOS blocks (packages/sdk-components-organizeos,
+    // section 9). Their metas are hidden, so upstream's grouping in the
+    // Components panel skips them, and the panel's OrganizeOS section lists
+    // them. Every build that uses a block records this namespace, so it can
+    // never change.
+    registerComponentLibrary({
+      namespace: "@organizeos/site-components",
+      components: organizeosComponents,
+      metas: organizeosComponentMetas,
+      templates: organizeosTemplates,
+    });
   });
 
   useMount(initCanvasApi);
