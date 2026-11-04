@@ -12,6 +12,7 @@ import { checkCsrf } from "~/services/csrf-session.server";
 import { safeResourceFetch } from "~/services/safe-resource-fetch.server";
 import { privateNoStoreResponseHeaders } from "~/services/cache-control.server";
 import { createContext } from "~/shared/context.server";
+import { createPreviewAssertion } from "~/shared/organizeos-preview.server";
 import {
   loadResourceRequestList,
   resourceRequestListSchema,
@@ -47,6 +48,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const includeDiagnostics = searchParams.get("diagnostics") === "true";
   const inspectResourceKey = searchParams.get("inspect") ?? undefined;
 
+  // OrganizeOS fork: the canvas's draft preview. A fetch to the app's
+  // /api/public/v1/collections/ carries X-OOS-Preview for a signed-in,
+  // authorized user of an OrganizeOS project; every other fetch goes out
+  // unchanged (shared/organizeos-preview.server.ts). It is added here, after
+  // the request was keyed and captured for inspection.
+  const withPreview = createPreviewAssertion(request);
+
   // Hope Remix will have customFetch by default, see https://kit.svelte.dev/docs/load#making-fetch-requests
   const customFetch: typeof fetch = (input, init) => {
     if (typeof input !== "string") {
@@ -80,7 +88,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       return assetsOpenApiLoader({ request });
     }
 
-    return safeResourceFetch(input, init);
+    // OrganizeOS fork: see withPreview above.
+    return withPreview(input, init).then((next) =>
+      safeResourceFetch(input, next)
+    );
   };
 
   const requestJson = await request.json();

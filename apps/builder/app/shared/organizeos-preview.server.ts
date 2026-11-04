@@ -49,7 +49,8 @@ import { createContext } from "./context.server";
  * `exp = iat + 60`; `mac` is base64url, unpadded, of HMAC-SHA256 over the
  * ASCII payload segment. The header replaces any stored `X-OOS-Preview`
  * whatever its casing: a duplicated header reaches the platform comma-joined,
- * and it refuses that as malformed.
+ * and it refuses that as malformed. A fetch that carries it goes out with
+ * `redirect: "manual"`, so no redirect takes it to another host.
  */
 
 export const PREVIEW_HEADER = "X-OOS-Preview";
@@ -306,6 +307,8 @@ export const createPreviewAssertion = (
         secret
       )
     );
-    return { ...init, headers };
+    // A redirect is answered, never followed: following it would carry the
+    // assertion to wherever the app's answer points.
+    return { ...init, headers, redirect: "manual" };
   };
 };

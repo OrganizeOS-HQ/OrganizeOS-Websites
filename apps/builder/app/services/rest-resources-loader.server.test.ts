@@ -1,16 +1,33 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { ResourceRequest } from "@webstudio-is/sdk";
 import { getResourceKey } from "~/shared/resource-utils";
 
 // OrganizeOS fork: the loader's marked change, end to end. The preview's own
 // conditions are covered by shared/organizeos-preview.server.test.ts; here
-// they all hold, and the test checks what reaches fetch and what the client
-// is keyed by.
+// they all hold, and the test checks what reaches the SSRF-guarded fetch and
+// what the client is keyed by.
 
-// shared/resources.ts re-exports the key from resource-utils.ts; the rest of
-// it is browser code.
-vi.mock("~/shared/resources", async () => ({
-  getResourceKey: (await import("~/shared/resource-utils")).getResourceKey,
+const { createContext, hasProjectPermit, safeResourceFetch } = vi.hoisted(
+  () => ({
+    createContext: vi.fn(),
+    hasProjectPermit: vi.fn(),
+    safeResourceFetch: vi.fn(),
+  })
+);
+
+vi.mock("~/shared/context.server", () => ({ createContext }));
+vi.mock("@webstudio-is/trpc-interface/index.server", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@webstudio-is/trpc-interface/index.server")
+    >();
+  return {
+    ...actual,
+    authorizeProject: { ...actual.authorizeProject, hasProjectPermit },
+  };
+});
+vi.mock("~/services/safe-resource-fetch.server", () => ({
+  safeResourceFetch,
 }));
 vi.mock("~/services/no-cross-origin-cookie", () => ({
   preventCrossOriginCookie: () => {},
@@ -47,23 +64,47 @@ vi.mock("~/shared/organizeos-preview.server", async (importOriginal) => {
 
 const { action } = await import("../routes/rest.resources-loader");
 
+const projectId = "11111111-1111-4111-8111-111111111111";
+
+const globalFetch = vi.fn(async () => {
+  throw new Error("The resources loader must not use the global fetch");
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  createContext.mockResolvedValue({
+    authorization: { type: "user", userId: "user-1" },
+  });
+  hasProjectPermit.mockResolvedValue(true);
+  safeResourceFetch.mockImplementation(async () =>
+    Response.json({ items: [] })
+  );
+  vi.stubGlobal("fetch", globalFetch);
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const projectId = "11111111-1111-4111-8111-111111111111";
-
-const call = async (requests: ResourceRequest[]) => {
+const call = async (requests: ResourceRequest[], search = "") => {
   const response = (await action({
     request: new Request(
-      `https://p-${projectId}.builder.organizeos.org/rest/resources-loader`,
+      `https://p-${projectId}.builder.organizeos.org/rest/resources-loader${search}`,
       { method: "POST", body: JSON.stringify(requests) }
     ),
     params: {},
     context: {},
   })) as Response;
-  return (await response.json()) as Array<[string, unknown]>;
+  return await response.json();
 };
+
+const sentHeaders = () =>
+  new Map(
+    safeResourceFetch.mock.calls.map((args) => {
+      const [url, init] = args as [string, RequestInit];
+      return [url, { init, headers: new Headers(init.headers) }];
+    })
+  );
 
 describe("rest.resources-loader with the draft preview", () => {
   const collections: ResourceRequest = {
@@ -84,30 +125,62 @@ describe("rest.resources-loader with the draft preview", () => {
     headers: [{ name: "Authorization", value: "Bearer osk_token" }],
   };
 
-  test("replaces the stored header with one minted assertion, and keys the result as the client does", async () => {
-    const fetch = vi.fn(async () => Response.json({ items: [] }));
-    vi.stubGlobal("fetch", fetch);
+  test("a canvas fetch to the app origin carries X-OOS-Preview and goes through safeResourceFetch", async () => {
+    const output = (await call([collections, events])) as Array<
+      [string, unknown]
+    >;
 
-    const output = await call([collections, events]);
-
+    // keyed as the client keys it, before the assertion was added
     expect(output.map(([key]) => key)).toEqual([
       getResourceKey(collections),
       getResourceKey(events),
     ]);
+    expect(globalFetch).not.toHaveBeenCalled();
+    expect(safeResourceFetch).toHaveBeenCalledTimes(2);
 
-    const byUrl = new Map(
-      fetch.mock.calls.map((args) => {
-        const [url, init] = args as unknown as [string, RequestInit];
-        return [url, new Headers(init.headers)];
-      })
-    );
-    const previewed = byUrl.get(collections.url)!;
-    const header = previewed.get("X-OOS-Preview")!;
+    const sent = sentHeaders();
+    const previewed = sent.get(collections.url)!;
+    const header = previewed.headers.get("X-OOS-Preview")!;
+    // one minted assertion, replacing the stored value
     expect(header).toMatch(/^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
     expect(header).not.toContain("stored");
-    expect(previewed.get("authorization")).toBe("Bearer osk_token");
+    expect(previewed.headers.get("authorization")).toBe("Bearer osk_token");
+    // a redirect must not carry the assertion anywhere else
+    expect(previewed.init.redirect).toBe("manual");
 
-    const other = byUrl.get(events.url)!;
-    expect(other.get("X-OOS-Preview")).toBeNull();
+    const other = sent.get(events.url)!;
+    expect(other.headers.get("X-OOS-Preview")).toBeNull();
+    expect(other.init.redirect).toBeUndefined();
+  });
+
+  test("the inspect response never echoes X-OOS-Preview", async () => {
+    const inspected: ResourceRequest = {
+      ...collections,
+      headers: [{ name: "Authorization", value: "Bearer osk_token" }],
+    };
+    const output = (await call(
+      [inspected],
+      `?inspect=${encodeURIComponent(getResourceKey(inspected))}`
+    )) as { resources: Array<[string, unknown]>; inspection?: unknown };
+
+    // the assertion was minted and sent
+    const header = sentHeaders()
+      .get(inspected.url)!
+      .headers.get("X-OOS-Preview")!;
+    expect(header).toMatch(/^v1\./);
+    // and the inspection describes the request without it
+    expect(output.inspection).toBeDefined();
+    const echoed = JSON.stringify(output);
+    expect(echoed).not.toMatch(/x-oos-preview/i);
+    expect(echoed).not.toContain(header);
+    expect(echoed).not.toContain(header.split(".")[2]);
+  });
+
+  test("refuses an anonymous request before any fetch", async () => {
+    createContext.mockResolvedValue({ authorization: { type: "anonymous" } });
+    const thrown = await call([collections]).catch((error: unknown) => error);
+    expect(thrown).toBeInstanceOf(Response);
+    expect((thrown as Response).status).toBe(401);
+    expect(safeResourceFetch).not.toHaveBeenCalled();
   });
 });
