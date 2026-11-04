@@ -1,6 +1,5 @@
 import {
   getPagePath,
-  replaceFormActionsWithResources,
   type DataSource,
   type Instance,
   type Pages,
@@ -8,16 +7,20 @@ import {
   type Resource,
   type WebstudioData,
 } from "@webstudio-is/sdk";
+import { formDataParameterName } from "@webstudio-is/sdk/runtime";
 import { parsePages, serializePages } from "@webstudio-is/project-build/server";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import {
-  $,
   ws,
   ActionValue,
   expression,
+  FormActionsValue,
+  Parameter,
   PlaceholderValue,
   renderData,
+  ResourceValue,
   Variable,
+  type RenderTemplateOptions,
 } from "@webstudio-is/template";
 import { SIGNUP_PAGE_PATH, uuidV5 } from "../organizeos-preset-ids";
 import {
@@ -30,17 +33,22 @@ import {
  *
  * Builds a Webstudio form whose submit posts to the OrganizeOS /v1/signups
  * write endpoint. The mechanics:
- *  - The Form has a string `action` prop. replaceFormActionsWithResources turns
- *    it into a server-side ACTION resource (a prop of type 'resource' + a
- *    resource keyed by the form instance id). On submit the runtime posts the
- *    form to the page's server action, which overlays the FormData onto the
- *    resource body and runs it SERVER-SIDE, so the Authorization token never
- *    reaches the browser.
+ *  - The form is Webstudio's managed Form, persisted as `ResourceForm` (owner
+ *    decision D15 of the 0.309.0 merge). Its `action` names one Resource,
+ *    scoped to the form, whose body is the form's `formData` parameter. On
+ *    submit the runtime posts the form to the page's server action, which runs
+ *    that Resource SERVER-SIDE, so the Authorization token never reaches the
+ *    browser.
  *  - We inject the org read token into that resource's Authorization header
  *    as a literal expression (evaluated server-side only; see below).
  *  - Input `name` attributes become the JSON body keys, so they MUST match the
  *    /v1/signups schema (email, first_name, last_name).
  *  - A `formState` variable drives initial/success/error visibility.
+ *  - The form is written as `ResourceForm` itself, never as `Form` with
+ *    pages' `formComponentIdentityVersion`: that marker is a historical input
+ *    upstream no longer writes, and on pages it would make 0.309.0 read every
+ *    other stored `Form` of the build (an org's own Webhook Form) as a
+ *    ResourceForm, which its Resource-typed action is not.
  *
  * This module ASSEMBLES the form data (pure, testable), and
  * seedSignupFormPage merges it into the org's dev build as a "Newsletter" page
@@ -60,15 +68,45 @@ export const SIGNUP_FORM_FIELD_NAMES = [
   "last_name",
 ] as const;
 
+/** The name of the form's action Resource, as the builder lists it. */
+export const SIGNUP_RESOURCE_NAME = "Newsletter signup";
+
+/**
+ * The form's records take the ids `{projectId}:{family}:{n}`, n below
+ * SIGNUP_ID_SPACE. The ResourceForm has a family of its own: the Form before
+ * it (0.274) took `signup`, and no id that held one of its elements, which an
+ * org may have styled, names a different element now. A re-seed removes every
+ * record under either family that the current form does not have, so an org
+ * keeps nothing of a form an earlier preset rendered.
+ */
+const SIGNUP_ID_FAMILY = "signup-form";
+const LEGACY_SIGNUP_ID_FAMILY = "signup";
+const SIGNUP_ID_SPACE = 64;
+
+// A server module renders the template without the component libraries:
+// this marker stands for the managed Form, and renderData persists it under
+// its registered id.
+const ResourceForm = (_props: Record<string, unknown>) => null;
+const renderOptions: RenderTemplateOptions = {
+  componentIds: new Map([[ResourceForm, "ResourceForm"]]),
+};
+
 /** The signup form subtree wrapped in a page body. */
-const signupFormTemplate = (actionUrl: string, bodyId: string) => {
+const signupFormTemplate = (bodyId: string) => {
   const formState = new Variable("formState", "initial");
+  const formData = new Parameter(formDataParameterName);
+  // url and Authorization are literals, set once the template is rendered.
+  const signup = new ResourceValue(SIGNUP_RESOURCE_NAME, {
+    method: "post",
+    url: expression`""`,
+    headers: [{ name: "Content-Type", value: expression`"application/json"` }],
+    body: expression`${formData}`,
+  });
   return (
     <ws.element ws:tag="body" ws:id={bodyId}>
-      <$.Form
-        action={actionUrl}
-        method="post"
-        state={expression`${formState}`}
+      <ResourceForm
+        action={new FormActionsValue([signup])}
+        formData={formData}
         onStateChange={
           new ActionValue(["state"], expression`${formState} = state`)
         }
@@ -113,7 +151,7 @@ const signupFormTemplate = (actionUrl: string, bodyId: string) => {
         >
           {new PlaceholderValue("Something went wrong. Please try again.")}
         </ws.element>
-      </$.Form>
+      </ResourceForm>
     </ws.element>
   );
 };
@@ -128,9 +166,9 @@ export type SignupFormData = {
 };
 
 /**
- * Assemble the signup form: render the template with deterministic ids, convert
- * the form action into a server-side action resource, inject the org token
- * header as a literal. Pure: no I/O (async only because the id derivation is).
+ * Assemble the signup form: render the template with deterministic ids, point
+ * its action resource at /v1/signups and inject the org token header as a
+ * literal. Pure: no I/O (async only because the id derivation is).
  * Deterministic per projectId, so re-seeding converges instead of duplicating.
  */
 export const buildSignupFormData = async ({
@@ -147,38 +185,38 @@ export const buildSignupFormData = async ({
     uuidV5(`${projectId}:signup:body`),
     uuidV5(`${projectId}:signup:page`),
   ]);
-  const template = () => signupFormTemplate(`${base}/signups`, bodyId);
+  const template = () => signupFormTemplate(bodyId);
 
   // renderData takes a synchronous id generator, and uuidV5 is async. So count
   // the ids one render asks for, derive them, and render again handing them
   // out in order: both renders walk the same template the same way, so the nth
-  // id is uuidV5("{projectId}:signup:{n}"), exactly as before.
+  // id is uuidV5("{projectId}:signup-form:{n}").
   let count = 0;
-  renderData(template(), () => String(count++));
+  renderData(template(), () => String(count++), [], renderOptions);
+  if (count > SIGNUP_ID_SPACE) {
+    throw new Error(
+      `The signup form derives ${count} ids, more than its ${SIGNUP_ID_SPACE}`
+    );
+  }
   const ids = await Promise.all(
     Array.from({ length: count }, (_, index) =>
-      uuidV5(`${projectId}:signup:${index}`)
+      uuidV5(`${projectId}:${SIGNUP_ID_FAMILY}:${index}`)
     )
   );
   let counter = 0;
-  const data = renderData(template(), () => ids[counter++]);
+  const data = renderData(template(), () => ids[counter++], [], renderOptions);
 
-  // Turn the form's string action into a server-side action resource.
-  replaceFormActionsWithResources({
-    props: data.props,
-    instances: data.instances,
-    resources: data.resources,
-  });
-
-  // Inject the org read token into the action resource's Authorization header
-  // as a LITERAL expression. Variables are instance-scoped and page codegen
-  // drops out-of-scope ones (the publish spike produced "Bearer " + undefined
-  // via the variable route); resource headers are evaluated only server-side,
-  // so the literal is equivalent security-wise, and the deterministic ids mean
-  // a re-seed rewrites it on token rotation.
+  // Point the action resource at /v1/signups and inject the org read token
+  // into its Authorization header, both as LITERAL expressions. Variables are
+  // instance-scoped and page codegen drops out-of-scope ones (the publish
+  // spike produced "Bearer " + undefined via the variable route); resource
+  // headers are evaluated only server-side, so the literal is equivalent
+  // security-wise, and the deterministic ids mean a re-seed rewrites it on
+  // token rotation.
   const authHeaderValue = JSON.stringify(`Bearer ${readToken}`);
   for (const resource of data.resources.values()) {
-    if (resource.name === "action") {
+    if (resource.name === SIGNUP_RESOURCE_NAME) {
+      resource.url = JSON.stringify(`${base}/signups`);
       resource.headers.push({ name: "Authorization", value: authHeaderValue });
     }
   }
@@ -194,6 +232,46 @@ export type BuildContent = {
   pages: Pages;
 };
 
+/** Every id the preset may have derived for a project, in either family. */
+const getSignupIds = async (projectId: string) =>
+  new Set(
+    await Promise.all(
+      [SIGNUP_ID_FAMILY, LEGACY_SIGNUP_ID_FAMILY].flatMap((family) =>
+        Array.from({ length: SIGNUP_ID_SPACE }, (_, index) =>
+          uuidV5(`${projectId}:${family}:${index}`)
+        )
+      )
+    )
+  );
+
+/**
+ * Whether a record's id is one the preset derives: a derived id itself (an
+ * instance, a data source, a Resource an earlier preset keyed by its Form's
+ * id), `resource:{id}` (renderData's Resource ids) or `{id}:{name}` (its prop
+ * ids). A derived id is a UUID, so it holds no colon.
+ */
+const isSignupRecordId = (id: string, signupIds: Set<string>) => {
+  const bare = id.startsWith("resource:") ? id.slice("resource:".length) : id;
+  const separator = bare.indexOf(":");
+  return signupIds.has(separator === -1 ? bare : bare.slice(0, separator));
+};
+
+/**
+ * The records of `existing`, without those under a preset id that `incoming`
+ * does not carry: what is left of a form an earlier preset rendered.
+ */
+const withoutStaleSignupRecords = <Item extends { id: string }>(
+  existing: Item[],
+  incoming: Iterable<Item>,
+  signupIds: Set<string>
+) => {
+  const incomingIds = new Set(Array.from(incoming, (item) => item.id));
+  return existing.filter(
+    (item) =>
+      isSignupRecordId(item.id, signupIds) === false || incomingIds.has(item.id)
+  );
+};
+
 /**
  * Merge the signup form into a build's content and add a "Newsletter" page at
  * SIGNUP_PAGE_PATH. Pure: mutates only the returned values (pages is mutated
@@ -203,7 +281,10 @@ export type BuildContent = {
  * starter form ships unstyled; the org styles it in the builder.
  * Deterministic ids make this idempotent: a re-seed replaces in place, in
  * order, and moves a page seeded at an older path (`/signup`) to the current
- * one under the same id.
+ * one under the same id. It also drops every record under a preset id that
+ * the current form does not have, so the Form an org was provisioned with
+ * before 0.309.0, whose action Resource took the Form's own id, leaves
+ * nothing behind.
  *
  * When another page already answers at SIGNUP_PAGE_PATH, nothing is moved
  * there: a page seeded earlier keeps its path and gets its content re-synced
@@ -233,12 +314,19 @@ export const mergeSignupFormIntoBuild = async (
     return build;
   }
 
-  const instances = upsertById(build.instances, [...data.instances.values()]);
-  const props = upsertById(build.props, [...data.props.values()]);
-  const dataSources = upsertById(build.dataSources, [
-    ...data.dataSources.values(),
-  ]);
-  const resources = upsertById(build.resources, [...data.resources.values()]);
+  const signupIds = await getSignupIds(projectId);
+  const merge = <Item extends { id: string }>(
+    existing: Item[],
+    incoming: Map<string, Item>
+  ) =>
+    upsertById(
+      withoutStaleSignupRecords(existing, incoming.values(), signupIds),
+      [...incoming.values()]
+    );
+  const instances = merge(build.instances, data.instances);
+  const props = merge(build.props, data.props);
+  const dataSources = merge(build.dataSources, data.dataSources);
+  const resources = merge(build.resources, data.resources);
 
   pages.pages.set(
     pageId,

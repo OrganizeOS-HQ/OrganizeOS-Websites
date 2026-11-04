@@ -4533,6 +4533,272 @@ sitemap.map((page) => page.path);`
     }
   });
 
+  // OrganizeOS fork, owner decision D15 of the 0.309.0 merge: the builder's
+  // provisioning seeded every org a /newsletter page whose signup form is a
+  // Form with a Resource action (apps/builder/app/shared/db/
+  // signup-form-preset.server.tsx before 0.309.0). Its pages carry no
+  // formComponentIdentityVersion, so 0.309.0 reads that Form as the
+  // deprecated WebhookForm, and its published site must still post a signup.
+  // Records as that preset stored them: the action Resource takes the Form's
+  // id, and its url and headers are literals.
+  test("an existing org's stored Form, read without the marker, still submits to /v1/signups on its published site", async () => {
+    const formState = encodeDataSourceVariable("signup-state");
+    const input = (id: string, name: string): [string, Prop] => [
+      `${id}-name`,
+      {
+        id: `${id}-name`,
+        instanceId: id,
+        name: "name",
+        type: "string",
+        value: name,
+      },
+    ];
+    const siteData = createSiteData({
+      pages: [
+        {
+          id: "home",
+          name: "Home",
+          title: '"Home"',
+          path: "",
+          rootInstanceId: "root",
+          meta: {},
+        },
+        {
+          id: "signup-page",
+          name: "Newsletter",
+          title: '"Newsletter"',
+          path: "/newsletter",
+          rootInstanceId: "signup-body",
+          meta: {},
+        },
+      ],
+      instances: [
+        [
+          "root",
+          { id: "root", component: "ws:element", tag: "body", children: [] },
+        ],
+        [
+          "signup-body",
+          {
+            id: "signup-body",
+            component: "ws:element",
+            tag: "body",
+            children: [{ type: "id", value: "signup-form" }],
+          },
+        ],
+        [
+          "signup-form",
+          {
+            id: "signup-form",
+            component: "Form",
+            children: [
+              { type: "id", value: "signup-email" },
+              { type: "id", value: "signup-first-name" },
+              { type: "id", value: "signup-last-name" },
+              { type: "id", value: "signup-submit" },
+            ],
+          },
+        ],
+        ...["signup-email", "signup-first-name", "signup-last-name"].map(
+          (id) =>
+            [
+              id,
+              { id, component: "ws:element", tag: "input", children: [] },
+            ] as [string, Omit<Instance, "type">]
+        ),
+        [
+          "signup-submit",
+          {
+            id: "signup-submit",
+            component: "ws:element",
+            tag: "button",
+            children: [{ type: "text", value: "Sign up" }],
+          },
+        ],
+      ],
+      props: [
+        [
+          "signup-form-action",
+          {
+            id: "signup-form-action",
+            instanceId: "signup-form",
+            name: "action",
+            type: "resource",
+            value: "signup-form",
+          },
+        ],
+        [
+          "signup-form-state",
+          {
+            id: "signup-form-state",
+            instanceId: "signup-form",
+            name: "state",
+            type: "expression",
+            value: formState,
+          },
+        ],
+        [
+          "signup-form-on-state-change",
+          {
+            id: "signup-form-on-state-change",
+            instanceId: "signup-form",
+            name: "onStateChange",
+            type: "action",
+            value: [
+              {
+                type: "execute",
+                args: ["state"],
+                code: `${formState} = state`,
+              },
+            ],
+          },
+        ],
+        input("signup-email", "email"),
+        input("signup-first-name", "first_name"),
+        input("signup-last-name", "last_name"),
+      ],
+      dataSources: [
+        [
+          "signup-state",
+          {
+            id: "signup-state",
+            scopeInstanceId: "signup-body",
+            name: "formState",
+            type: "variable",
+            value: { type: "string", value: "initial" },
+          },
+        ],
+      ],
+      resources: [
+        [
+          "signup-form",
+          {
+            id: "signup-form",
+            name: "action",
+            method: "post",
+            url: JSON.stringify(
+              "https://app.organizeos.org/api/public/v1/signups"
+            ),
+            headers: [
+              {
+                name: "Content-Type",
+                value: JSON.stringify("application/json"),
+              },
+              {
+                name: "Authorization",
+                value: JSON.stringify("Bearer osk_token"),
+              },
+            ],
+          },
+        ],
+      ],
+    });
+    siteData.projectDomain = "acme";
+    expect("formComponentIdentityVersion" in siteData.build.pages).toBe(true);
+    expect(JSON.parse(JSON.stringify(siteData.build.pages))).not.toHaveProperty(
+      "formComponentIdentityVersion"
+    );
+    await writeSiteData(siteData);
+    await prebuild({
+      assets: false,
+      template: ["react-router", "react-router-vercel"],
+    });
+
+    // Read without the marker, the stored Form is a WebhookForm.
+    const pageModule = await readFile(
+      join("app", "__generated__", "[newsletter]._index.tsx"),
+      "utf8"
+    );
+    expect(pageModule).toContain("WebhookForm");
+    expect(pageModule).not.toMatch(/\bResourceForm\b/);
+
+    // The generated Node fetch module, with its destination policy kept and
+    // only the transport stubbed (createNodeProtectedResourceFetch resolves
+    // DNS and connects).
+    await writeFile(
+      join("app", "__generated__", "$resources.managed-form-fetch.server.ts"),
+      `import { getDeniedResourceHostnames, validateProtectedResourceDestination } from "@webstudio-is/sdk/protected-resource-fetch";
+export const createManagedFormEmailSender = () => undefined;
+export const validateManagedFormEmail = () => undefined;
+export const createManagedFormResourceFetch = ({ request, projectDomain }: { request: Request; projectDomain?: string }) => {
+  const deniedHostnames = getDeniedResourceHostnames([new URL(request.url).hostname, projectDomain]);
+  const validateDestination = (url: URL) => validateProtectedResourceDestination(url, deniedHostnames);
+  return Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+    validateDestination(new URL(String(input instanceof Request ? input.url : input)));
+    return (globalThis as unknown as { __organizeosSignupFetch: typeof fetch }).__organizeosSignupFetch(input, init);
+  }, { validateDestination });
+};
+`
+    );
+    await symlink(join(originalCwd, "node_modules"), "node_modules", "dir");
+    await build({
+      stdin: {
+        contents: 'export { action } from "./app/routes/[newsletter]._index"',
+        resolveDir: tempDir,
+      },
+      outfile: join(tempDir, "organizeos-signup-action.mjs"),
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      packages: "external",
+      loader: { ".css": "text" },
+    });
+    const { action } = await import(
+      pathToFileURL(join(tempDir, "organizeos-signup-action.mjs")).href
+    );
+    const received: Array<{
+      url: string;
+      method: string;
+      authorization: string | null;
+      body: unknown;
+    }> = [];
+    vi.stubGlobal(
+      "__organizeosSignupFetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        received.push({
+          url: request.url,
+          method: request.method,
+          authorization: request.headers.get("Authorization"),
+          body: await request.json(),
+        });
+        return Response.json({ ok: true }, { status: 201 });
+      })
+    );
+
+    const form = new FormData();
+    form.set(formIdFieldName, "action");
+    form.set(formBotFieldName, "brave");
+    form.set("email", "ada@example.org");
+    form.set("first_name", "Ada");
+    form.set("last_name", "Lovelace");
+    // As production serves it: the proxy fetches the deployment origin and
+    // sends the org's host as x-forwarded-host (client/lib/websites2/site-proxy.ts).
+    await expect(
+      action({
+        request: new Request("https://acme-site-abc123.vercel.app/newsletter", {
+          method: "POST",
+          headers: { "x-forwarded-host": "acme.organizeos.org" },
+          body: form,
+        }),
+        context: {},
+        params: {},
+      })
+    ).resolves.toEqual({ success: true });
+    expect(received).toEqual([
+      {
+        url: "https://app.organizeos.org/api/public/v1/signups",
+        method: "POST",
+        authorization: "Bearer osk_token",
+        body: {
+          email: "ada@example.org",
+          first_name: "Ada",
+          last_name: "Lovelace",
+        },
+      },
+    ]);
+  });
+
   // OrganizeOS fork: a CMS item page (/blog/:slug, made by the builder's
   // Create item page) sets its status to 404 when its Resource does not answer
   // with the item, and the html route answers with that status and the page's

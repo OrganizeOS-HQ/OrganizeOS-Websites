@@ -17,6 +17,10 @@ import {
   upsertById,
   V1_RESOURCE_PRESETS,
 } from "./resource-presets.server";
+import {
+  buildSignupFormData,
+  SIGNUP_RESOURCE_NAME,
+} from "./signup-form-preset.server";
 
 describe("buildOrgResourcePresets", () => {
   const args = {
@@ -623,7 +627,9 @@ describe("seedProjectResourcePresets", () => {
           resources: JSON.stringify([
             {
               ...userResource,
-              url: `"https://example.org/?" + ${encodeDataSourceVariable(fundraisers.id)}.status`,
+              url: `"https://example.org/?" + ${encodeDataSourceVariable(
+                fundraisers.id
+              )}.status`,
             },
           ]),
         },
@@ -837,6 +843,50 @@ describe("seedProjectResourcePresets", () => {
         ...slugs,
         headers: [{ name: "Authorization", value: `"Bearer osk_t2"` }],
       });
+    });
+
+    // OrganizeOS fork, D15 of the 0.309.0 merge: the /newsletter form is a
+    // ResourceForm whose action Resource posts to /v1/signups; an org
+    // provisioned before it still has a Form whose action Resource took the
+    // Form's id. A rotated token reaches either, keeping its form's body.
+    test("reaches the signup form's action Resource, the ResourceForm's and the earlier Form's alike", async () => {
+      const { data } = await buildSignupFormData({
+        ...args,
+        readToken: "osk_old",
+      });
+      const signup = [...data.resources.values()].find(
+        ({ name }) => name === SIGNUP_RESOURCE_NAME
+      )!;
+      const earlier: Resource = {
+        id: "c716572d-0000-5000-8000-000000000000",
+        name: "action",
+        method: "post",
+        url: `"https://app.example.org/api/public/v1/signups"`,
+        headers: [
+          { name: "Content-Type", value: `"application/json"` },
+          { name: "Authorization", value: `"Bearer osk_old"` },
+        ],
+      };
+      const { context, state } = makeBuildContext({
+        build: { resources: JSON.stringify([signup, earlier]) },
+      });
+      await seedProjectResourcePresets(context, args);
+
+      const resources = parseRow(state.row).resources;
+      const rotated = (resource: Resource) => ({
+        ...resource,
+        headers: resource.headers.map((header) =>
+          header.name === "Authorization"
+            ? { ...header, value: `"Bearer ${args.readToken}"` }
+            : header
+        ),
+      });
+      expect(resources.find(({ id }) => id === signup.id)).toEqual(
+        rotated(signup)
+      );
+      expect(resources.find(({ id }) => id === earlier.id)).toEqual(
+        rotated(earlier)
+      );
     });
 
     test("replaces another org's token on a Resource pasted onto this org's API", async () => {
