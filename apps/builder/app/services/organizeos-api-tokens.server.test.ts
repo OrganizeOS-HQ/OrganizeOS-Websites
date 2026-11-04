@@ -70,7 +70,10 @@ const serviceOwnerId = "a1b2c3d4-0000-4000-8000-000000000001";
 const orgAdminId = "a1b2c3d4-0000-4000-8000-000000000002";
 
 const createContext = (
-  authorization: AppContext["authorization"],
+  // only the fields the checks read
+  authorization:
+    | { type: "user"; userId: string }
+    | { type: "token"; authToken: string },
   planFeatures: PlanFeatures
 ) =>
   ({
