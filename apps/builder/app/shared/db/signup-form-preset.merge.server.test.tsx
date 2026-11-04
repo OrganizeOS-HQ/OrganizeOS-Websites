@@ -1,8 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  parsePages,
-  serializePages,
-} from "@webstudio-is/project-build/index.server";
+import { parsePages, serializePages } from "@webstudio-is/project-build/server";
 import { SIGNUP_PAGE_PATH, uuidV5 } from "../organizeos-preset-ids";
 import {
   buildSignupFormData,

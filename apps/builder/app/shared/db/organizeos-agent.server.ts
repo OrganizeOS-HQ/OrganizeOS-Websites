@@ -1,10 +1,10 @@
 import { detectAssetType, type Instance, type Pages } from "@webstudio-is/sdk";
-import { parsePages } from "@webstudio-is/project-build/index.server";
+import { parsePages } from "@webstudio-is/project-build/server";
 import type { Client } from "@webstudio-is/postgrest/index.server";
 import {
   richTextContentComponents,
   richTextContentTags,
-} from "../content-model";
+} from "@webstudio-is/project-build/runtime";
 import { deriveProjectId } from "./provision.server";
 
 /**

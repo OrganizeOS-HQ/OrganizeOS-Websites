@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { parseBuilderUrl } from "@webstudio-is/http-client";
+import { parseBuilderUrl } from "@webstudio-is/protocol";
 import { createClient } from "@webstudio-is/postgrest/index.server";
 import {
   authorizeProject,

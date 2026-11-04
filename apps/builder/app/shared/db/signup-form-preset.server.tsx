@@ -8,10 +8,7 @@ import {
   type Resource,
   type WebstudioData,
 } from "@webstudio-is/sdk";
-import {
-  parsePages,
-  serializePages,
-} from "@webstudio-is/project-build/index.server";
+import { parsePages, serializePages } from "@webstudio-is/project-build/server";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import {
   $,
