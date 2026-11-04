@@ -3,7 +3,6 @@
   "include": [
     "src/components.ts",
     "src/metas.ts",
-    "src/hooks.ts",
     "src/org-script.ts",
     "src/page.ts"
   ],

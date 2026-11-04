@@ -509,7 +509,7 @@ const checkMediaQueries = (
       return;
     }
     for (const token of (props["ws:tokens"] ?? []) as Token[]) {
-      checkDeclarations(token.styles, `token "${token.name}"`);
+      checkDeclarations(token.styles ?? [], `token "${token.name}"`);
     }
     visit(props.children);
   };

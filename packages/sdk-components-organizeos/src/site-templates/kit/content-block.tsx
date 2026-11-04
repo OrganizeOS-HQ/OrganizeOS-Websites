@@ -7,7 +7,7 @@ import { ws } from "@webstudio-is/template";
 // own, on the published site or the canvas, so its items are laid out by the
 // element that holds it, as a grid's cells or a stack's rows.
 
-const BlockTemplate = ws["block-template"];
+const BlockTemplate = ws.blockTemplate;
 
 /**
  * The block named `label` in the Navigator: `template` is the item a new one

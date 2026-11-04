@@ -1,4 +1,5 @@
-import { $, css, ws } from "@webstudio-is/template";
+import { css, ws } from "@webstudio-is/template";
+import { $ } from "../../../../shared/proxy";
 import { BREAKPOINT, SPACE, keyed, sample, section, text } from "../../../kit";
 import type { PageContext, SiteTemplatePage } from "../../../types";
 import { JOIN, button, siteFooter, siteNav } from "../parts";

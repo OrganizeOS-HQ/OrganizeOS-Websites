@@ -1,4 +1,5 @@
-import { $, css, ws } from "@webstudio-is/template";
+import { css, ws } from "@webstudio-is/template";
+import { $ } from "../../../shared/proxy";
 import sourceSans3Url from "@fontsource-variable/source-sans-3/files/source-sans-3-latin-wght-normal.woff2?url&no-inline";
 import { BLANK_CANONICAL_VALUES } from "../../canonical-variables";
 import type { SiteTemplate, SiteTemplatePage } from "../../types";
