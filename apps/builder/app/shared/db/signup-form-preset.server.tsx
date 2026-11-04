@@ -320,45 +320,94 @@ const isSignupRecordId = (id: string, signupIds: Set<string>) => {
 /**
  * An element's children after a re-seed: the template's, with every child an
  * org added (an instance that is not one of the preset's) kept, placed after
- * the template child it followed. The template's own children and text keep
- * the template's order, as every re-seed has.
+ * the template child it followed: an element, by its id, or a text, by its
+ * place among the element's texts (a link or an icon after "Sign up" stays
+ * after it). The template's own children and text keep the template's order,
+ * as every re-seed has.
  */
 const keepAddedChildren = (
   existing: Instance["children"],
   incoming: Instance["children"],
   isPresetInstance: (id: string) => boolean
 ): Instance["children"] => {
+  // The key of a template child an org child can follow, or undefined for an
+  // org child.
+  const anchorKeys = (children: Instance["children"]) => {
+    let texts = 0;
+    return children.map((child) => {
+      if (child.type !== "id") {
+        return `text:${texts++}`;
+      }
+      return isPresetInstance(child.value) ? `id:${child.value}` : undefined;
+    });
+  };
   const addedAfter = new Map<string | undefined, Instance["children"]>();
   let anchor: string | undefined;
-  for (const child of existing) {
-    if (child.type !== "id") {
-      continue;
+  anchorKeys(existing).forEach((key, index) => {
+    if (key !== undefined) {
+      anchor = key;
+      return;
     }
-    if (isPresetInstance(child.value)) {
-      anchor = child.value;
-      continue;
-    }
-    addedAfter.set(anchor, [...(addedAfter.get(anchor) ?? []), child]);
-  }
+    addedAfter.set(anchor, [
+      ...(addedAfter.get(anchor) ?? []),
+      existing[index],
+    ]);
+  });
   if (addedAfter.size === 0) {
     return incoming;
   }
   const children = [...(addedAfter.get(undefined) ?? [])];
   const placed = new Set<string | undefined>([undefined]);
-  for (const child of incoming) {
-    children.push(child);
-    if (child.type === "id" && addedAfter.has(child.value)) {
-      children.push(...addedAfter.get(child.value)!);
-      placed.add(child.value);
+  anchorKeys(incoming).forEach((key, index) => {
+    children.push(incoming[index]);
+    if (addedAfter.has(key)) {
+      children.push(...addedAfter.get(key)!);
+      placed.add(key);
     }
-  }
-  // after an element the template no longer has: at the end
+  });
+  // after a child the template no longer has: at the end
   for (const [after, added] of addedAfter) {
     if (placed.has(after) === false) {
       children.push(...added);
     }
   }
   return children;
+};
+
+/**
+ * The preset elements an org has wrapped: each a direct child of one of its
+ * own instances (the builder's "Wrap in" keeps the wrapped element's id and
+ * gives the wrapper a new one) that a page still reaches. The template leaves
+ * them where the org put them instead of adding them to its own parent too,
+ * which would give one instance two parents and render it twice.
+ */
+const findWrappedPresetInstances = (
+  instances: Instance[],
+  rootInstanceIds: Iterable<string>,
+  isPresetInstance: (id: string) => boolean
+) => {
+  const byId = new Map(instances.map((instance) => [instance.id, instance]));
+  const reached = new Set<string>();
+  const wrapped = new Set<string>();
+  const queue = [...rootInstanceIds];
+  while (queue.length > 0) {
+    const id = queue.pop()!;
+    if (reached.has(id)) {
+      continue;
+    }
+    reached.add(id);
+    const isOrgInstance = isPresetInstance(id) === false;
+    for (const child of byId.get(id)?.children ?? []) {
+      if (child.type !== "id") {
+        continue;
+      }
+      if (isOrgInstance && isPresetInstance(child.value)) {
+        wrapped.add(child.value);
+      }
+      queue.push(child.value);
+    }
+  }
+  return wrapped;
 };
 
 /**
@@ -387,7 +436,9 @@ const withoutStaleSignupRecords = <Item extends { id: string }>(
  * Deterministic ids make this idempotent: a re-seed replaces in place, in
  * order, and moves a page seeded at an older path (`/signup`) to the current
  * one under the same id. An element keeps every child an org added to it
- * (keepAddedChildren), and its styles and props, which are keyed to its id.
+ * (keepAddedChildren), and its styles and props, which are keyed to its id;
+ * an element the org wrapped stays in its wrapper
+ * (findWrappedPresetInstances).
  * The re-seed also drops every record under a preset id that the current
  * form does not have, so the Form an org was provisioned with before 0.309.0
  * becomes the ResourceForm under the same element ids, and its
@@ -453,7 +504,29 @@ export const mergeSignupFormIntoBuild = async (
       ];
     })
   );
-  const instances = merge(build.instances, incomingInstances);
+  const merged = merge(build.instances, incomingInstances);
+  const wrapped = findWrappedPresetInstances(
+    merged,
+    [
+      bodyId,
+      ...Array.from(pages.pages.values(), (page) => page.rootInstanceId),
+    ],
+    isPresetInstance
+  );
+  const instances =
+    wrapped.size === 0
+      ? merged
+      : merged.map((instance) =>
+          incomingInstances.has(instance.id)
+            ? {
+                ...instance,
+                children: instance.children.filter(
+                  (child) =>
+                    child.type !== "id" || wrapped.has(child.value) === false
+                ),
+              }
+            : instance
+        );
   const props = merge(build.props, data.props);
   const dataSources = merge(build.dataSources, data.dataSources);
   const resources = merge(build.resources, data.resources);

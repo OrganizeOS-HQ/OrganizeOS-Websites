@@ -193,7 +193,8 @@ describe("buildSignupFormData", () => {
 // The form a provisioned org gets, as the published-site case in
 // packages/cli/src/prebuild.test.ts ("the provisioned ResourceForm submits to
 // /v1/signups on its published site") builds and posts it. Regenerate after a
-// change to the preset: UPDATE_SIGNUP_FORM_FIXTURE=1, then this test.
+// change to the preset: UPDATE_SIGNUP_FORM_FIXTURE=1, then this test, locally;
+// under CI the variable fails the test rather than rewrite what it checks.
 describe("the published-site fixture", () => {
   const fixtureArgs = {
     projectId: "0f1e2d3c-4b5a-4697-8877-665544332211",
@@ -216,6 +217,10 @@ describe("the published-site fixture", () => {
       resources: [...data.resources.values()],
     };
     if (process.env.UPDATE_SIGNUP_FORM_FIXTURE === "1") {
+      expect(
+        process.env.CI ?? "",
+        "UPDATE_SIGNUP_FORM_FIXTURE rewrites the fixture it checks; regenerate it locally, not under CI"
+      ).toBe("");
       writeFileSync(fixturePath, `${JSON.stringify(built, null, 2)}\n`);
     }
     expect(JSON.parse(readFileSync(fixturePath, "utf8"))).toEqual(built);

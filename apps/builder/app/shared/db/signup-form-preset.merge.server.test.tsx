@@ -57,7 +57,8 @@ const makeBase = (): BuildContent => ({
 });
 
 // Nothing in the build points at a record that is not there: a prop's or a
-// data source's instance, an instance's child, a page's root.
+// data source's instance, an instance's child, a page's root. And no instance
+// has two parents, which would render it twice.
 const expectNothingDangles = (build: BuildContent) => {
   const instanceIds = new Set(build.instances.map((i) => i.id));
   const dangling = [
@@ -83,7 +84,26 @@ const expectNothingDangles = (build: BuildContent) => {
       .map((page) => `root of page ${page.id}`),
   ];
   expect(dangling).toEqual([]);
+  const parents = new Map<string, string[]>();
+  for (const instance of build.instances) {
+    for (const child of instance.children) {
+      if (child.type === "id") {
+        parents.set(child.value, [
+          ...(parents.get(child.value) ?? []),
+          instance.id,
+        ]);
+      }
+    }
+  }
+  expect(
+    [...parents].filter(([, instanceParents]) => instanceParents.length > 1)
+  ).toEqual([]);
 };
+
+const childIds = (build: BuildContent, id: string) =>
+  build.instances
+    .find((instance) => instance.id === id)!
+    .children.flatMap((child) => (child.type === "id" ? [child.value] : []));
 
 // Stateful fake of the Build table; the update honours its match on version.
 const makeBuildRowContext = (base: BuildContent, builderSaves = 0) => {
@@ -582,6 +602,154 @@ describe("an existing org's stored signup form", () => {
     }
 
     // and a second provision changes nothing more
+    expect(
+      await mergeSignupFormIntoBuild(structuredClone(merged), args)
+    ).toEqual(merged);
+  });
+
+  // The builder's "Wrap in" keeps the wrapped element's id and gives the
+  // wrapper a new one, in the wrapped element's place.
+  describe("an element the org wrapped", () => {
+    const wrap = (
+      build: BuildContent,
+      parentId: string,
+      wrappedIds: string[],
+      wrapperId: string
+    ) => {
+      const parent = build.instances.find((i) => i.id === parentId)!;
+      const at = parent.children.findIndex(
+        (child) => child.type === "id" && child.value === wrappedIds[0]
+      );
+      parent.children = parent.children.filter(
+        (child) =>
+          child.type !== "id" || wrappedIds.includes(child.value) === false
+      );
+      parent.children.splice(at, 0, { type: "id", value: wrapperId });
+      build.instances.push({
+        type: "instance",
+        id: wrapperId,
+        component: "ws:element",
+        tag: "div",
+        children: wrappedIds.map((value) => ({ type: "id", value })),
+      });
+      return build;
+    };
+
+    // Every element of the form is in the tree exactly once.
+    const expectEachPresetElementOnce = async (build: BuildContent) => {
+      const { data, bodyId } = await buildSignupFormData(args);
+      const counts = new Map<string, number>();
+      for (const instance of build.instances) {
+        for (const child of instance.children) {
+          if (child.type === "id") {
+            counts.set(child.value, (counts.get(child.value) ?? 0) + 1);
+          }
+        }
+      }
+      const presetIds = [...data.instances.keys()].filter(
+        (id) => id !== bodyId
+      );
+      expect(presetIds.map((id) => [id, counts.get(id)])).toEqual(
+        presetIds.map((id) => [id, 1])
+      );
+    };
+
+    test("the form in a container in the body stays in it, provisioned twice", async () => {
+      const { bodyId } = await buildSignupFormData(args);
+      const form = await legacyId(0);
+      const provisioned = await mergeSignupFormIntoBuild(makeBase(), args);
+      const wrapped = wrap(provisioned, bodyId, [form], "org-container");
+
+      const once = await mergeSignupFormIntoBuild(
+        structuredClone(wrapped),
+        args
+      );
+      const twice = await mergeSignupFormIntoBuild(structuredClone(once), args);
+
+      for (const build of [once, twice]) {
+        expectNothingDangles(build);
+        await expectEachPresetElementOnce(build);
+        expect(childIds(build, bodyId)).toEqual(["org-container"]);
+        expect(childIds(build, "org-container")).toEqual([form]);
+      }
+      expect(twice).toEqual(once);
+    });
+
+    test("the email label and input in a row inside the content stay in it, provisioned twice", async () => {
+      const [content, emailLabel, emailInput, firstLabel, firstInput] =
+        await Promise.all([2, 3, 4, 5, 6].map(legacyId));
+      const [lastLabel, lastInput, button] = await Promise.all(
+        [7, 8, 9].map(legacyId)
+      );
+      const wrapped = wrap(
+        await legacyBuild(),
+        content,
+        [emailLabel, emailInput],
+        "org-row"
+      );
+
+      const once = await mergeSignupFormIntoBuild(
+        structuredClone(wrapped),
+        args
+      );
+      const twice = await mergeSignupFormIntoBuild(structuredClone(once), args);
+
+      for (const build of [once, twice]) {
+        expectNothingDangles(build);
+        await expectEachPresetElementOnce(build);
+        expect(childIds(build, content)).toEqual([
+          "org-row",
+          firstLabel,
+          firstInput,
+          lastLabel,
+          lastInput,
+          button,
+        ]);
+        expect(childIds(build, "org-row")).toEqual([emailLabel, emailInput]);
+      }
+      expect(twice).toEqual(once);
+    });
+  });
+
+  test("a child the org put after a template text stays after it", async () => {
+    const legacy = await legacyBuild();
+    const [emailLabel, button] = await Promise.all([3, 9].map(legacyId));
+    const instance = (id: string) => legacy.instances.find((i) => i.id === id)!;
+    // a link after the label's text, an icon after "Sign up", and a badge the
+    // org put before the button's text
+    instance(emailLabel).children = [
+      { type: "text", value: "Email" },
+      { type: "id", value: "org-link" },
+    ];
+    instance(button).children = [
+      { type: "id", value: "org-badge" },
+      { type: "text", value: "Sign up" },
+      { type: "id", value: "org-icon" },
+    ];
+    for (const id of ["org-link", "org-icon", "org-badge"]) {
+      legacy.instances.push({
+        type: "instance",
+        id,
+        component: "ws:element",
+        tag: "span",
+        children: [],
+      });
+    }
+
+    const merged = await mergeSignupFormIntoBuild(legacy, args);
+    expectNothingDangles(merged);
+    const children = (id: string) =>
+      merged.instances.find((i) => i.id === id)!.children;
+
+    expect(children(emailLabel)).toEqual([
+      { type: "text", value: "Email", placeholder: true },
+      { type: "id", value: "org-link" },
+    ]);
+    expect(children(button)).toEqual([
+      { type: "id", value: "org-badge" },
+      { type: "text", value: "Sign up", placeholder: true },
+      { type: "id", value: "org-icon" },
+    ]);
     expect(
       await mergeSignupFormIntoBuild(structuredClone(merged), args)
     ).toEqual(merged);
