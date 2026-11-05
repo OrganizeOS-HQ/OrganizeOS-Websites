@@ -68,6 +68,8 @@ export const ErrorMessage = ({
         css={{
           fontSize: theme.spacing[21],
           lineHeight: 1,
+          // OrganizeOS fork: page text in either scheme, not the card's inverse
+          color: cssVar("--foreground-primary", "#11181c"),
         }}
         variant={"bigTitle"}
       >
