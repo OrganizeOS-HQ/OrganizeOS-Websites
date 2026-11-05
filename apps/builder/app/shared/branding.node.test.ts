@@ -23,13 +23,16 @@ const trees = [
   ],
   ["packages/project-build/src", "packages/project-build/src/db/build.ts"],
   ["packages/domain/src", "packages/domain/src/db/domain.ts"],
+  ["packages/project/src", "packages/project/src/db/build-patch-core.ts"],
 ] as const;
 
 /**
  * The part of TypeScript's compiler API that finds comments. The builder's own
  * typescript (7, the native compiler) has no JavaScript API, so it comes from
  * packages/generate-arg-types, which pins typescript 5 for
- * react-docgen-typescript. If that pin goes, this fails to load, loudly.
+ * react-docgen-typescript. If that pin goes, the require finds another
+ * typescript (the root's 7), so the load checks what it got and throws, naming
+ * the cause.
  */
 type Token = {
   kind: number;
@@ -53,6 +56,7 @@ type TypeScript = {
     text: string,
     pos: number
   ) => CommentRange[] | undefined;
+  version: string;
   ScriptTarget: { Latest: number };
   ScriptKind: { TS: number; TSX: number };
   SyntaxKind: {
@@ -62,9 +66,21 @@ type TypeScript = {
     LastJSDocNode: number;
   };
 };
-const ts = createRequire(
-  join(repositoryRoot, "packages/generate-arg-types/package.json")
-)("typescript") as TypeScript;
+const loadTypeScript = (packageJson: string) => {
+  const loaded = createRequire(join(repositoryRoot, packageJson))(
+    "typescript"
+  ) as Partial<TypeScript>;
+  if (
+    typeof loaded.createSourceFile !== "function" ||
+    String(loaded.version).startsWith("5.") === false
+  ) {
+    throw new Error(
+      `The plan guard needs TypeScript 5's compiler API, from the typescript that ${packageJson} pins; it found typescript ${String(loaded.version)}, without createSourceFile.`
+    );
+  }
+  return loaded as TypeScript;
+};
+const ts = loadTypeScript("packages/generate-arg-types/package.json");
 
 const isShipped = (path: string) =>
   /\.(ts|tsx)$/.test(path) &&
@@ -98,14 +114,15 @@ const blankComments = (path: string, source: string) => {
     path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
   );
   const ranges = new Map<string, CommentRange>();
+  const isJSDoc = (node: Token) =>
+    node.kind >= ts.SyntaxKind.FirstJSDocNode &&
+    node.kind <= ts.SyntaxKind.LastJSDocNode;
   const visit = (node: Token) => {
-    if (
-      node.kind >= ts.SyntaxKind.FirstJSDocNode &&
-      node.kind <= ts.SyntaxKind.LastJSDocNode
-    ) {
-      return;
-    }
-    const children = node.getChildren(sourceFile);
+    // A doc comment is parsed onto the node after it, the end of the file
+    // included, as children; its text is in that token's trivia, read below
+    const children = node
+      .getChildren(sourceFile)
+      .filter((child) => isJSDoc(child) === false);
     if (children.length > 0) {
       children.forEach(visit);
       return;
@@ -139,7 +156,8 @@ const pricingPattern = /webstudio\.is\/pricing/;
 
 const planPatterns = [
   /Webstudio\s+Cloud/,
-  /upgrade to (a |the )?Pro\b/i,
+  /upgrade to (a |the )?(Pro|Team)\b/i,
+  /\b(Pro|Team)\s+plan\b/i,
   /must have a Pro plan/i,
   /\bPro(\s+\w+)?\s+features?\b/i,
   /\brequires? Pro\b/i,
@@ -167,7 +185,7 @@ const isReplacedRuntimeCopy = (path: string, lineText: string) =>
 
 // Blanking a comment can only remove these words, never make them, so a file
 // without them needs no parse
-const mayNamePlan = /webstudio|\bpro\b/i;
+const mayNamePlan = /webstudio|\b(pro|team)\b/i;
 
 const findHitsInSource = (
   path: string,
@@ -242,6 +260,14 @@ describe("the plan guard itself", () => {
     );
   });
 
+  test("loads TypeScript 5, and names the cause when it finds another", () => {
+    expect(ts.version).toMatch(/^5\./);
+    // the builder's own typescript is 7, without the JavaScript API
+    expect(() => loadTypeScript("apps/builder/package.json")).toThrow(
+      /needs TypeScript 5's compiler API, from the typescript that apps\/builder\/package\.json pins; it found typescript 7\./
+    );
+  });
+
   test("blanks only comments, keeping every line", () => {
     const source = [
       'const routes = ["/*", "/"]; // Upgrade to PRO',
@@ -256,6 +282,7 @@ describe("the plan guard itself", () => {
       ");",
       "/** gone */",
       "export const last = 1; /* gone */",
+      "/** a doc comment that ends the file, gone */",
     ].join("\n");
     const blanked = blankComments("planted.tsx", source);
     expect(blanked.split("\n")).toHaveLength(source.split("\n").length);
@@ -320,13 +347,21 @@ describe("the plan guard itself", () => {
     "The link's author must have a Pro plan.",
     "Custom headers on a custom domain require Pro.",
     "Webstudio\n      Cloud supplies CSP",
+    "Sharing links over insecure channels can expose project access. Upgrade to\n      the Team plan for safer collaboration.",
+    "Realtime collaboration is available on the Team plan.",
   ])("finds %j", (copy) => {
     const source = `export const Copy = () => (\n  <Text>\n    ${copy}\n  </Text>\n);\nexport const copy = \`${copy}\`;\n`;
-    expect(
-      findHitsInSource("planted.tsx", source, planPatterns, {
-        comments: "blanked",
-      })
-    ).toHaveLength(2);
+    // the copy as JSX text from line 3, and in a template string after it
+    const extra = copy.split("\n").length - 1;
+    const lines = findHitsInSource("planted.tsx", source, planPatterns, {
+      comments: "blanked",
+    }).map((hit) => Number(hit.match(/^planted\.tsx:(\d+) /)?.[1]));
+    const inJsx = (line: number) => line >= 3 && line <= 3 + extra;
+    const inTemplate = (line: number) =>
+      line >= 6 + extra && line <= 6 + 2 * extra;
+    expect(lines.some(inJsx), "as JSX text").toBe(true);
+    expect(lines.some(inTemplate), "in a template").toBe(true);
+    expect(lines.every((line) => inJsx(line) || inTemplate(line))).toBe(true);
   });
 
   test("allows a replaced runtime message only on its own line in its own file", () => {

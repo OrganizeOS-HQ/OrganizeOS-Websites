@@ -1693,6 +1693,12 @@ describe("patchBuild", () => {
     );
 
     expect(result).toEqual(singlePlayerVersionMismatchResult);
+    // OrganizeOS fork: the message names no Webstudio tier
+    expect(result).toEqual({
+      status: "version_mismatched",
+      errors:
+        "You are currently in single-player mode. The project has been edited in a different tab, browser, or by another user. Please reload the page to get the latest version.",
+    });
   });
 
   test("returns version_mismatched when optimistic update affects no rows", async () => {
