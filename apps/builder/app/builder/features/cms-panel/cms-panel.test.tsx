@@ -61,7 +61,10 @@ registerContainers();
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 const orgId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const platformUrl = "https://app.organizeos.org";
+// Chromium loads the frame's src, which is built from this. A loopback port
+// nothing listens on refuses it at once; the live platform here would be
+// fetched on every run, and the suite would depend on the network.
+const platformUrl = "http://127.0.0.1:9";
 
 const site: OrganizeosSite = {
   organizationId: orgId,
