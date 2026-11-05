@@ -146,6 +146,25 @@ const planPatterns = [
   /<(Pro)?Chip\b[^>]*>\s*Pro\s*<\/(Pro)?Chip>/i,
 ];
 
+/**
+ * The lines that name Webstudio's service only to replace it: each holds a
+ * runtime package's own message, matched where the builder shows something
+ * else. A line is allowed by its file and its whole text, so any other copy in
+ * that file still fails.
+ */
+const replacedRuntimeCopy = [
+  {
+    // packages/sdk/src/schema/response-headers.ts's platform-header message
+    path: "apps/builder/app/shared/project-settings/section-headers.tsx",
+    line: 'message === "This header is managed by Webstudio Cloud"',
+  },
+];
+
+const isReplacedRuntimeCopy = (path: string, lineText: string) =>
+  replacedRuntimeCopy.some(
+    (allowed) => allowed.path === path && allowed.line === lineText.trim()
+  );
+
 // Blanking a comment can only remove these words, never make them, so a file
 // without them needs no parse
 const mayNamePlan = /webstudio|\bpro\b/i;
@@ -160,14 +179,17 @@ const findHitsInSource = (
     return [];
   }
   const text = comments === "blanked" ? blankComments(path, source) : source;
+  const lines = source.split("\n");
   return patterns.flatMap((pattern) =>
     Array.from(
       text.matchAll(new RegExp(pattern.source, `${pattern.flags}g`)),
       (match) => {
         const line = text.slice(0, match.index).split("\n").length;
-        return `${path}:${line} ${match[0]}`;
+        return isReplacedRuntimeCopy(path, lines[line - 1])
+          ? []
+          : [`${path}:${line} ${match[0]}`];
       }
-    )
+    ).flat()
   );
 };
 
@@ -305,6 +327,26 @@ describe("the plan guard itself", () => {
         comments: "blanked",
       })
     ).toHaveLength(2);
+  });
+
+  test("allows a replaced runtime message only on its own line in its own file", () => {
+    for (const { path, line } of replacedRuntimeCopy) {
+      // the line is still there, so the entry cannot outlive it
+      expect(
+        readFileSync(join(repositoryRoot, path), "utf8")
+          .split("\n")
+          .map((text) => text.trim())
+      ).toContain(line);
+      const planted = `const a = (message: string) =>\n  ${line}\n    ? "the platform"\n    : message;\nconst b = "Webstudio Cloud";\n`;
+      expect(
+        findHitsInSource(path, planted, planPatterns, { comments: "blanked" })
+      ).toEqual([`${path}:5 Webstudio Cloud`]);
+      expect(
+        findHitsInSource("elsewhere.ts", planted, planPatterns, {
+          comments: "blanked",
+        })
+      ).toHaveLength(2);
+    }
   });
 
   test("finds nothing in comments, or in words that only start with Pro", () => {
