@@ -585,7 +585,7 @@ describe("the OrganizeOS Publish dialog", () => {
     ).toEqual(["Resource variable"]);
   });
 
-  test("an MDX-bound Content Block shows that publishing does not support MDX, and Publish stays enabled", async () => {
+  test("an MDX-bound Content Block shows that publishing fails while it uses MDX, and Publish stays enabled", async () => {
     const instances: Instance[] = [
       {
         type: "instance",
@@ -599,21 +599,28 @@ describe("the OrganizeOS Publish dialog", () => {
         component: blockComponent,
         children: [],
       },
+      // on no page: publishing reads the whole build, so it counts too
+      {
+        type: "instance",
+        id: "orphan",
+        component: blockComponent,
+        children: [],
+      },
     ];
     $instances.set(new Map(instances.map((item) => [item.id, item])));
     $props.set(
-      new Map([
-        [
-          "block-src",
+      new Map(
+        ["block", "orphan"].map((instanceId) => [
+          `${instanceId}-src`,
           {
-            id: "block-src",
-            instanceId: "block",
+            id: `${instanceId}-src`,
+            instanceId,
             name: "src",
             type: "asset",
             value: "doc",
           },
-        ],
-      ])
+        ])
+      )
     );
     $assets.set(
       new Map([
@@ -639,12 +646,17 @@ describe("the OrganizeOS Publish dialog", () => {
     );
     // the heading and the list: nothing else
     expect(list?.previousElementSibling?.textContent).toBe(
-      "Publishing does not support MDX yet:"
+      "Publishing fails while these use MDX:"
     );
     expect(list?.nextElementSibling).toBeNull();
-    expect(
-      Array.from(list?.querySelectorAll("li") ?? [], (item) => item.textContent)
-    ).toEqual(["Content Block on Home"]);
+    const items = Array.from(list?.querySelectorAll("li") ?? []);
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Content Block on Home",
+      "Content Block",
+    ]);
+    // the block on a page is a button to it; the orphan has nowhere to go
+    expect(items[0].querySelector("button")).not.toBeNull();
+    expect(items[1].querySelector("button")).toBeNull();
     const publish = Array.from(host.querySelectorAll("button")).find(
       (button) => button.textContent === "Publish"
     );

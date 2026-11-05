@@ -274,7 +274,7 @@ const MdxBlocksBanner = () => {
   }
   return (
     <PanelBanner variant="warning">
-      <Text variant="regularBold">Publishing does not support MDX yet:</Text>
+      <Text variant="regularBold">Publishing fails while these use MDX:</Text>
       <PausedItemList items={mdxBlocks} />
     </PanelBanner>
   );
