@@ -272,7 +272,7 @@ describe("project settings runtime", () => {
       "Contact email is invalid."
     );
     expect(validateContactEmail("hello@webstudio.is", 0)).toBe(
-      "Upgrade to PRO to customize the contact email."
+      "Custom recipients are not included in your plan. Your organization's plan is managed in OrganizeOS."
     );
     expect(
       validateContactEmail("hello@webstudio.is, support@webstudio.is", 1)

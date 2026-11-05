@@ -5,11 +5,9 @@ import {
   Flex,
   Grid,
   InfoTooltip,
-  LinkButton,
   ProChip,
   Text,
   Tooltip,
-  theme,
 } from "@webstudio-is/design-system";
 import {
   customResponseHeader,
@@ -31,6 +29,7 @@ import {
   responseHeaderNames,
 } from "./response-header-suggestions";
 import { getExistingRoutePaths, sectionSpacing } from "./utils";
+import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
 
 export const SectionHeaders = ({
   executeMutation = executeRuntimeMutation,
@@ -90,7 +89,9 @@ export const SectionHeaders = ({
     <Grid gap={3} css={sectionSpacing}>
       <Flex align="center" gap={1}>
         <Text variant="titles">Headers</Text>
-        {allowDynamicData === false && <ProChip>Pro</ProChip>}
+        {/* OrganizeOS fork: plan copy names no Webstudio tier, service or
+            pricing page (planBadgeLabel, planUpgradeHint) */}
+        {allowDynamicData === false && <ProChip>{planBadgeLabel}</ProChip>}
         <InfoTooltip
           label="About response headers"
           content={
@@ -103,9 +104,9 @@ export const SectionHeaders = ({
               </Text>
               <br />
               <Text>
-                /* applies to every path; / applies only to the root. Webstudio
-                Cloud supplies CSP, X-Frame-Options, and Referrer-Policy when
-                they are not set. X-Powered-By, X-Content-Type-Options, and
+                /* applies to every path; / applies only to the root. CSP,
+                X-Frame-Options, and Referrer-Policy get defaults when they are
+                not set. X-Powered-By, X-Content-Type-Options, and
                 Strict-Transport-Security are managed by the platform and cannot
                 be configured here. Cookie, connection, and response-body
                 framing headers are also unavailable. Publish to apply changes.
@@ -114,17 +115,9 @@ export const SectionHeaders = ({
                 <>
                   <br />
                   <Text>
-                    Custom headers on a custom domain require Pro. Defaults and
-                    staging are free.
+                    Custom headers on a custom domain are not included in your
+                    plan. {planUpgradeHint}
                   </Text>
-                  <LinkButton
-                    color="primary"
-                    css={{ marginTop: theme.spacing[5], width: "100%" }}
-                    href="https://webstudio.is/pricing"
-                    target="_blank"
-                  >
-                    Upgrade
-                  </LinkButton>
                 </>
               )}
             </>

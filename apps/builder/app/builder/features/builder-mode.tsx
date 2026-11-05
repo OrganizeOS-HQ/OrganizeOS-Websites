@@ -35,6 +35,7 @@ import {
   setBuilderMode,
 } from "~/shared/nano-states";
 import { emitCommand } from "~/builder/shared/commands";
+import { planBadgeLabel } from "~/shared/branding";
 
 export const BuilderModeDropDown = () => {
   const builderMode = useStore($builderMode);
@@ -123,7 +124,12 @@ export const BuilderModeDropDown = () => {
                     <Box>{title}</Box>
                   </Flex>
                   <DropdownMenuItemRightSlot>
-                    {enabled ? <Kbd value={shortcut} /> : <Chip>Pro</Chip>}
+                    {/* OrganizeOS fork: the plan badge names no Webstudio tier */}
+                    {enabled ? (
+                      <Kbd value={shortcut} />
+                    ) : (
+                      <Chip>{planBadgeLabel}</Chip>
+                    )}
                   </DropdownMenuItemRightSlot>
                   &nbsp;
                 </DropdownMenuRadioItem>

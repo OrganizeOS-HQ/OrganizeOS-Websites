@@ -26,6 +26,7 @@ import {
 } from "@webstudio-is/project-build/runtime";
 import { validateDataVariableName } from "~/builder/shared/data-variable-utils";
 import { $permissions, $selectedInstance } from "~/shared/nano-states";
+import { planBadgeLabel } from "~/shared/branding";
 import {
   $dataSources,
   $instances,
@@ -166,7 +167,8 @@ export const TypeField = ({
   const getResourceTypeLabel = (label: string) => (
     <Flex direction="row" gap="2" align="center">
       {label}
-      {allowDynamicData === false && <ProChip>Pro</ProChip>}
+      {/* OrganizeOS fork: the plan badge names no Webstudio tier */}
+      {allowDynamicData === false && <ProChip>{planBadgeLabel}</ProChip>}
     </Flex>
   );
   const optionsList: Array<{
@@ -216,8 +218,8 @@ export const TypeField = ({
     {
       value: "email-resource",
       label: getResourceTypeLabel("Email resource"),
-      description:
-        "Send a plain-text email through Webstudio Cloud when a Form is submitted.",
+      // OrganizeOS fork: names no Webstudio service
+      description: "Send a plain-text email when a Form is submitted.",
     },
     {
       value: "sitemap-resource",

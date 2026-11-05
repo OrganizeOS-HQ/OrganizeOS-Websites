@@ -819,7 +819,8 @@ describe("patchBuild", () => {
     );
     expect(result).toMatchObject({
       status: "error",
-      errors: "Upgrade to PRO to customize the contact email.",
+      errors:
+        "Custom recipients are not included in your plan. Your organization's plan is managed in OrganizeOS.",
     });
     expect(didUpdateBuild).toBe(false);
   });

@@ -487,8 +487,9 @@ export const createProductionBuild = async (
     }
     const plan = await getProjectPlanFeatures(props.projectId, context);
     if (plan.allowDynamicData !== true) {
+      // OrganizeOS fork: names no Webstudio tier
       throw new AuthorizationError(
-        "Custom headers are a Pro feature. Upgrade to Pro or reset the response headers to defaults to publish to custom domains. You can still publish to staging."
+        "Custom headers are not included in your plan. Reset the response headers to defaults to publish to custom domains. You can still publish to staging."
       );
     }
   } catch (error) {

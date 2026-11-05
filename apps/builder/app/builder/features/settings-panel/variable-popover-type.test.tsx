@@ -22,6 +22,7 @@ import { registerContainers } from "~/shared/sync/sync-stores";
 import { __testing__ } from "./variable-popover";
 import { VariablePopoverTrigger } from "./variable-popover";
 import { JsonForm } from "./variable-editors/json-editor";
+import { planBadgeLabel } from "~/shared/branding";
 
 import { SystemResourceForm } from "./variable-editors/system-resource-editor";
 
@@ -75,9 +76,10 @@ test("System resource types are listed directly in Type", async () => {
       .querySelector<HTMLElement>("[data-radix-popper-content-wrapper]")
       ?.getBoundingClientRect().width
   ).toBe(selects[0].getBoundingClientRect().width);
+  // OrganizeOS fork: the plan badge is planBadgeLabel
   const topLevelOptions = Array.from(
     document.querySelectorAll<HTMLElement>('[role="option"]')
-  ).map((option) => option.textContent?.replace(/Pro$/, "").trim());
+  ).map((option) => option.textContent?.replace(planBadgeLabel, "").trim());
   expect(topLevelOptions).toEqual([
     "String",
     "Number",
@@ -151,7 +153,7 @@ test("Email Resource type displays its approved description", async () => {
     '[data-select-description="content"]'
   );
   expect(description?.textContent).toContain(
-    "Send a plain-text email through Webstudio Cloud when a Form is submitted."
+    "Send a plain-text email when a Form is submitted."
   );
 });
 

@@ -4,7 +4,9 @@ import { page, userEvent } from "@vitest/browser/context";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { defaultPlanFeatures } from "@webstudio-is/plans";
 import { TooltipProvider } from "@webstudio-is/design-system";
+import { validateContactEmail } from "@webstudio-is/project-build/contracts";
 import { $planFeatures } from "~/shared/nano-states";
+import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
 import { $projectSettings } from "~/shared/sync/data-stores";
 import { SectionEmails } from "./section-emails";
 
@@ -46,19 +48,18 @@ test("shows the free and paid address limits in Project Emails", async () => {
       .getByPlaceholder("John <john@example.com>, pete@example.com")
       .fill("one@example.com")
   );
+  // OrganizeOS fork: the plan copy names no Webstudio tier
   expect(
-    page
-      .getByRole("tooltip")
-      .getByText("Upgrade to PRO to customize the contact email.")
+    page.getByRole("tooltip").getByText(customRecipientsNotInPlan)
   ).toBeVisible();
   expect($projectSettings.get()?.meta.contactEmail).toBeUndefined();
+  expect(document.body.textContent).toContain(planBadgeLabel);
 
   await act(async () =>
     $planFeatures.set({ ...defaultPlanFeatures, maxContactEmailsPerProject: 1 })
   );
-  expect(document.body.textContent).not.toContain(
-    "Upgrade to PRO to customize the contact email."
-  );
+  expect(document.body.textContent).not.toContain(customRecipientsNotInPlan);
+  expect(document.body.textContent).not.toContain(planBadgeLabel);
   await act(async () =>
     page
       .getByPlaceholder("John <john@example.com>, pete@example.com")
@@ -68,6 +69,16 @@ test("shows the free and paid address limits in Project Emails", async () => {
     page.getByRole("tooltip").getByText("Only 1 emails are allowed.")
   ).toBeVisible();
   expect($projectSettings.get()?.meta.contactEmail).toBeUndefined();
+});
+
+// OrganizeOS fork: project-build cannot import the builder's branding, so its
+// message is held to planUpgradeHint here
+const customRecipientsNotInPlan = `Custom recipients are not included in your plan. ${planUpgradeHint}`;
+
+test("the contract's plan message is the builder's plan copy", () => {
+  expect(validateContactEmail("one@example.com", 0)).toBe(
+    customRecipientsNotInPlan
+  );
 });
 
 test("subject and body are configured on each Email Resource", () => {

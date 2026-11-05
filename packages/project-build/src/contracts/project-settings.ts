@@ -21,7 +21,9 @@ export const validateContactEmail = (
     emails.length > maxContactEmailsPerProject
   ) {
     if (maxContactEmailsPerProject === 0) {
-      return `Upgrade to PRO to customize the contact email.`;
+      // OrganizeOS fork: names no Webstudio tier; the builder's branding.ts
+      // planUpgradeHint, which section-emails.test.tsx holds this to
+      return "Custom recipients are not included in your plan. Your organization's plan is managed in OrganizeOS.";
     }
     return `Only ${maxContactEmailsPerProject} emails are allowed.`;
   }

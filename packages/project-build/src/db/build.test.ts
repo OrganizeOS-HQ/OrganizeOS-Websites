@@ -481,7 +481,7 @@ describe("createProductionBuild (msw)", () => {
       );
       if (denied) {
         await expect(result).rejects.toThrow(
-          "Custom headers are a Pro feature"
+          "Custom headers are not included in your plan"
         );
         expect(removeBuild).toHaveBeenCalledOnce();
       } else {
@@ -618,7 +618,7 @@ describe("createProductionBuild (msw)", () => {
       );
       if (denied) {
         await expect(result).rejects.toThrow(
-          "Custom headers are a Pro feature"
+          "Custom headers are not included in your plan"
         );
         expect(removeBuild).toHaveBeenCalledOnce();
       } else {
@@ -703,7 +703,7 @@ describe("createProductionBuild (msw)", () => {
       );
       if (!allowed && !staging && value !== "SAMEORIGIN" && value !== null) {
         await expect(result).rejects.toThrow(
-          "Custom headers are a Pro feature"
+          "Custom headers are not included in your plan"
         );
         expect(removeBuild).toHaveBeenCalledOnce();
       } else {

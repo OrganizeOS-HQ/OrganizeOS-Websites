@@ -21,6 +21,7 @@ import { $permissions } from "~/shared/nano-states";
 import { $projectSettings } from "~/shared/sync/data-stores";
 import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import { sectionSpacing } from "./utils";
+import { planBadgeLabel } from "~/shared/branding";
 
 const InfoTooltip = ({
   label,
@@ -75,7 +76,10 @@ export const SectionEmails = () => {
         <Flex gap={1} align="center">
           <Label htmlFor="project-contact-email">
             Recipients{" "}
-            {maxContactEmailsPerProject === 0 && <ProChip>Pro</ProChip>}
+            {/* OrganizeOS fork: the plan badge names no Webstudio tier */}
+            {maxContactEmailsPerProject === 0 && (
+              <ProChip>{planBadgeLabel}</ProChip>
+            )}
           </Label>
           <InfoTooltip
             label="Recipients"

@@ -1,8 +1,8 @@
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { userEvent } from "@vitest/browser/context";
-import { afterEach, expect, test } from "vitest";
-import { TooltipProvider } from "@webstudio-is/design-system";
+import { afterEach, expect, test, vi } from "vitest";
+import { TooltipProvider, toast } from "@webstudio-is/design-system";
 import { defaultPlanFeatures } from "@webstudio-is/plans";
 import {
   $authPermit,
@@ -10,6 +10,7 @@ import {
   $planFeatures,
   setBuilderMode,
 } from "~/shared/nano-states";
+import { planBadgeLabel } from "~/shared/branding";
 import { BuilderModeDropDown } from "./builder-mode";
 
 (
@@ -56,11 +57,12 @@ test("shows the Content shortcut for an owned free project", async () => {
 
   expect(contentItem).toBeDefined();
   expect(contentItem?.hasAttribute("data-disabled")).toBe(false);
-  expect(contentItem?.textContent).not.toContain("Pro");
+  // OrganizeOS fork: the plan badge is planBadgeLabel
+  expect(contentItem?.textContent).not.toContain(planBadgeLabel);
   expect(contentItem?.querySelector("kbd")).not.toBeNull();
 });
 
-test("shows the shortcut without the Pro badge when Content is allowed", async () => {
+test("shows the shortcut without the plan badge when Content is allowed", async () => {
   $authPermit.set("own");
   $planFeatures.set({ ...defaultPlanFeatures, allowContentMode: true });
 
@@ -69,10 +71,10 @@ test("shows the shortcut without the Pro badge when Content is allowed", async (
   expect(contentItem).toBeDefined();
   expect(contentItem?.hasAttribute("data-disabled")).toBe(false);
   expect(contentItem?.querySelector("kbd")).not.toBeNull();
-  expect(contentItem?.textContent).not.toContain("Pro");
+  expect(contentItem?.textContent).not.toContain(planBadgeLabel);
 });
 
-test("shows Content as a disabled Pro option on a shared free project", async () => {
+test("shows Content as a disabled option with the plan badge on a shared free project", async () => {
   $authPermit.set("build");
   $planFeatures.set(defaultPlanFeatures);
 
@@ -80,7 +82,9 @@ test("shows Content as a disabled Pro option on a shared free project", async ()
 
   expect(contentItem).toBeDefined();
   expect(contentItem?.hasAttribute("data-disabled")).toBe(true);
-  expect(contentItem?.textContent).toContain("Pro");
+  expect(contentItem?.textContent).toContain(planBadgeLabel);
+  // no Webstudio tier
+  expect(contentItem?.textContent).not.toMatch(/\bPro\b/);
   expect(contentItem?.querySelector("kbd")).toBeNull();
 });
 
@@ -98,8 +102,13 @@ test("shows the shortcut on a shared Pro project", async () => {
 test("opens a free Content-only share link in Preview mode", () => {
   $authPermit.set("edit");
   $planFeatures.set(defaultPlanFeatures);
+  const info = vi.spyOn(toast, "info").mockImplementation(() => "");
 
   setBuilderMode("content");
 
   expect($builderMode.get()).toBe("preview");
+  // OrganizeOS fork: the notice names no Webstudio tier
+  expect(info).toHaveBeenCalledTimes(1);
+  expect(String(info.mock.calls[0][0])).not.toMatch(/\bPro\b/);
+  info.mockRestore();
 });

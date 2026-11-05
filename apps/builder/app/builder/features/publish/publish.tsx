@@ -1507,7 +1507,10 @@ const UpgradeBanner = ({ hasCustomDomains }: { hasCustomDomains: boolean }) => {
           width={rawTheme.spacing[28]}
           style={{ aspectRatio: "4.1" }}
         />
-        <Text variant="regularBold">Following Pro features are used:</Text>
+        {/* OrganizeOS fork: names no Webstudio tier */}
+        <Text variant="regularBold">
+          Your plan does not include these features:
+        </Text>
         <Text as="ul" color="destructive" css={{ paddingLeft: "1em" }}>
           {Array.from(restrictedFeatures).map(
             ([message, { navigate, view, info } = {}], index) => (
