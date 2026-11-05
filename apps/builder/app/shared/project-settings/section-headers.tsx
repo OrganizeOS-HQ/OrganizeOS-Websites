@@ -69,6 +69,7 @@ export const SectionHeaders = ({
       setSaveError(
         error instanceof ZodError
           ? error.issues
+              // OrganizeOS fork: the platform, not Webstudio Cloud
               .map((issue) => organizeosIssueMessage(issue.message))
               .join(". ")
           : "Invalid response header"
@@ -175,6 +176,7 @@ export const SectionHeaders = ({
             for (const issue of result.error.issues) {
               const field = String(issue.path[0] ?? "value");
               (errors[field] ??= []).push(
+                // OrganizeOS fork: the platform, not Webstudio Cloud
                 organizeosIssueMessage(issue.message)
               );
             }
