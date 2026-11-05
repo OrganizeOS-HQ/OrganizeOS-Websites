@@ -446,7 +446,12 @@ export const executeRuntimeMutationSequence = <
 // fragment, then bind its instances to a catalog Resource) and the Motion
 // tab's wrap (wrap, then write the wrapper's props) use it. `execute` runs a
 // mutation operation on the staged state and stages it; `stage` stages a
-// mutation the caller built. Nothing is committed when `stage` throws.
+// mutation the caller built. Nothing is committed when `stage` throws. A
+// synchronous stage is committed before the call returns, so no write can
+// land between staging and the commit; an asynchronous one commits against
+// the state taken at the call. A refusal of the commit itself (a component
+// placed in MDX content) is toasted by commitRuntimeMutation before it
+// throws: the OrganizeOS inserts rely on that and do not toast it again.
 export type RuntimeMutationAccumulator = Pick<
   ReturnType<typeof createRuntimeMutationAccumulator>,
   "state" | "stage"
@@ -487,13 +492,14 @@ export const executeStagedRuntimeMutation = async <T>(
         })
       )
     ) as RuntimeMutationResult<Id>["result"];
-  const result = await stage({
+  const staged = stage({
     get state() {
       return accumulator.state;
     },
     stage: accumulator.stage,
     execute,
   });
+  const result = staged instanceof Promise ? await staged : staged;
   commitRuntimeMutation(accumulator.complete({}));
   return result;
 };

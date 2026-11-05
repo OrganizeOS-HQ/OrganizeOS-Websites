@@ -871,6 +871,47 @@ describe("data store helpers", () => {
     expect($props.get()).toEqual(new Map());
   });
 
+  // A synchronous stage is committed before the call returns: no microtask
+  // runs between staging and the commit, so no write can land in between and
+  // be lost under the staged state.
+  test("executeStagedRuntimeMutation commits a synchronous stage before it returns", async () => {
+    setBaseStores();
+
+    const committed = executeStagedRuntimeMutation((accumulator) => {
+      accumulator.execute({
+        id: "instances.updateProps",
+        input: {
+          updates: [
+            { instanceId: "body", name: "id", type: "string", value: "staged" },
+          ],
+        },
+      });
+      return "done";
+    });
+
+    expect(Array.from($props.get().values())).toEqual([
+      expect.objectContaining({ name: "id", value: "staged" }),
+    ]);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(1);
+    // a write after the call, before its promise settles, stays on top
+    executeRuntimeMutation({
+      id: "instances.updateProps",
+      input: {
+        updates: [
+          { instanceId: "body", name: "title", type: "string", value: "later" },
+        ],
+      },
+    });
+    await expect(committed).resolves.toBe("done");
+    expect(
+      Array.from($props.get().values()).map(({ name, value }) => [name, value])
+    ).toEqual([
+      ["id", "staged"],
+      ["title", "later"],
+    ]);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(2);
+  });
+
   test.each(["synchronous", "asynchronous"] as const)(
     "a throw inside stage commits nothing (%s)",
     async (mode) => {

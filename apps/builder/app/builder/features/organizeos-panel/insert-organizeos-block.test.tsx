@@ -104,9 +104,10 @@ vi.mock("~/shared/fetch.client", () => ({ fetch: loaderFetch }));
 vi.mock("~/shared/instance-utils/data", { spy: true });
 vi.mock("~/shared/instance-utils/insert", { spy: true });
 
-// An edit can land between the insert's completion, which reads the stores,
-// and the transaction that writes the preset; this opens that gap: `run`
-// goes just before the next staged transaction takes its state.
+// `run` goes just before the next staged transaction takes its state, after
+// the completion has read the stores. Production has no such gap (the
+// completion and the synchronous stage run in one task); the hook proves that
+// the Resource-exists recheck reads the staged state, not the completion's.
 const beforeNextTransaction = async (run: () => void) => {
   const actual = await vi.importActual<
     typeof import("~/shared/instance-utils/data")
