@@ -14,7 +14,9 @@ export * from "./render";
 export * from "./sections";
 export * from "./check";
 export * from "./catalog";
-// for the builder's insert of a block (completeOrganizeosFragment)
+// beside the renderer that applies it; the builder's block insert imports it
+// from "@organizeos/site-components/style-order", which keeps the catalog
+// out of the canvas
 export { localStylesFirst } from "../shared/style-order";
 // components by registered name, for the builder's own templates and tests
 // (0.309.0's template package has no $ of its own)

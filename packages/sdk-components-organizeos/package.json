@@ -42,6 +42,11 @@
       "types": "./lib/types/site-templates/index.d.ts",
       "import": "./lib/site-templates/index.js"
     },
+    "./style-order": {
+      "webstudio": "./src/shared/style-order.ts",
+      "types": "./lib/types/shared/style-order.d.ts",
+      "import": "./lib/shared/style-order.js"
+    },
     "./org-script": {
       "webstudio": "./src/org-script.ts",
       "types": "./lib/types/org-script.d.ts",

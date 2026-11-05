@@ -9,7 +9,9 @@ import {
   type WebstudioFragment,
   encodeDataSourceVariable,
 } from "@webstudio-is/sdk";
-import { localStylesFirst } from "@organizeos/site-components/site-templates";
+// the narrow export: the site-templates barrel would bring the template
+// catalog into the canvas, which imports this module (use-drag-drop.ts)
+import { localStylesFirst } from "@organizeos/site-components/style-order";
 import { builderApi } from "~/shared/builder-api";
 import { platformName } from "~/shared/branding";
 import {

@@ -23,6 +23,7 @@ const styleSections = read("../style-panel/sections/sections.ts");
 const inspector = read("../../inspector.tsx");
 const builderNanoStates = read("../../shared/nano-states.ts");
 const builder = read("../../builder.tsx");
+const insertBlock = read("./insert-organizeos-block.ts");
 
 describe("the Components panel's OrganizeOS section", () => {
   test("components.tsx imports both OrganizeOS modules", () => {
@@ -91,8 +92,10 @@ describe("the Components panel's OrganizeOS section", () => {
     );
   });
 
-  // upstream's category is a string, so the OrganizeOS one fits
-  test("the Groups category takes the OrganizeOS category", () => {
+  // Not a fork line: it watches upstream's type, which withOrganizeosGroups'
+  // result has to fit. A narrower upstream category would drop the
+  // OrganizeOS group's.
+  test("upstream's Groups category stays a string, so the OrganizeOS category fits", () => {
     expect(components).toMatch(/type Groups = Array<\{\s*category: string;/);
   });
 });
@@ -154,6 +157,19 @@ describe("the canvas's drop", () => {
     expect(start).toBeGreaterThan(-1);
     expect(useDragDrop.slice(start)).toMatch(
       /if \(dragPayload\.type === "insert"\) \{\s*if \(isOrganizeosBlock\(dragPayload\.dragComponent\)\) \{\s*void insertOrganizeosBlock\(dragPayload\.dragComponent, insertable\);\s*return true;\s*\}\s*return insertWebstudioComponentAt\(dragPayload\.dragComponent, insertable\);/
+    );
+  });
+});
+
+describe("the block insert's imports", () => {
+  // the canvas imports the insert (use-drag-drop.ts): the site-templates
+  // barrel would bring the template catalog and its images into it
+  test("insert-organizeos-block.ts takes localStylesFirst from the narrow export, never the site-templates barrel", () => {
+    expect(insertBlock).toMatch(
+      /import \{ localStylesFirst \} from "@organizeos\/site-components\/style-order";/
+    );
+    expect(insertBlock).not.toMatch(
+      /from "@organizeos\/site-components\/site-templates"/
     );
   });
 });
