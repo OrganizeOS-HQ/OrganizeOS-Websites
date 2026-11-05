@@ -1659,9 +1659,11 @@ code in the page's address only, never in a cookie or storage.
   not the `href` was rewritten, which keeps a client-side router out: a
   published link may route by its own `to`, not the DOM `href`, and would drop
   the code, even on a link an earlier Ctrl-click, middle-click or context
-  menu, or the first click of a double-click, has already given its `r`. The
-  platform's carrier adopts the same rule (OrganizeOS plan
-  `docs/superpowers/plans/2026-11-05-share-code-new-tab-gestures.md`). Any
+  menu, or the first click of a double-click, has already given its `r`.
+  OrganizeOS plan `docs/superpowers/plans/2026-11-05-share-code-new-tab-gestures.md`
+  brings the platform's carrier to the same rule; until it lands, the
+  platform's carrier acts on a click only and leaves a link that already has
+  `r` to its default. Any
   other click (a modifier key or another button, `target="_blank"`,
   `download`) follows the `href`. A middle-click and a context menu only add
   the code to the `href`, as a modified click does, and are never cancelled,
@@ -2388,8 +2390,7 @@ options, and the limits found since in review):
 - **Share codes** are carried on a click, a middle-click or a context menu,
   after hydration, by every same-origin link to a platform page, and by the
   forms: not by a long press on iOS or iPadOS, whose Safari raises no
-  `contextmenu` (WebKit bug 213953), nor by a middle-click in Safari before
-  18.2, which has no `auxclick`, nor by dragging a link to a tab, and not
+  `contextmenu` (WebKit bug 213953), nor by dragging a link to a tab, and not
   between the site's own pages. On iOS the page's own address still carries
   the code. Without JavaScript, or before hydration, nothing is
   carried. A site published before the blocks carried the code sends none
