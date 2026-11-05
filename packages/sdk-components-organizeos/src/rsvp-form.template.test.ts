@@ -366,9 +366,8 @@ test("every OrganizeOS part of the template sits inside the root's descendants, 
   const rootDescendants = new Set(metas.RsvpForm.contentModel?.descendants);
   const ownDescendants = (component: string) =>
     new Set(
-      metas[
-        component.replace(`${namespace}:`, "") as keyof typeof metas
-      ]?.contentModel?.descendants
+      metas[component.replace(`${namespace}:`, "") as keyof typeof metas]
+        ?.contentModel?.descendants
     );
   const walk = (instance: Instance, ancestors: Instance[]) => {
     for (const child of childInstances(instance)) {

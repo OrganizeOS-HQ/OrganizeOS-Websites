@@ -417,7 +417,7 @@ const runsAt = (calls: TitledCall[], path: string[]) =>
       return false;
     }
     let wanted = path.length - 2;
-    for (let current: TitledCall | undefined = call; current; ) {
+    for (let current: TitledCall | undefined = call; current;) {
       if (current.mayNotRun) {
         return false;
       }

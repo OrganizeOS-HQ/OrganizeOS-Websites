@@ -223,9 +223,8 @@ describe("parseOrgDenyList", () => {
 describe("reportMalformedOrgDenyList", () => {
   test("logs once per instance, without the value, when an entry is not an organization id", async () => {
     vi.resetModules();
-    const { reportMalformedOrgDenyList } = await import(
-      "./organizeos-site.server"
-    );
+    const { reportMalformedOrgDenyList } =
+      await import("./organizeos-site.server");
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     reportMalformedOrgDenyList(undefined);
     reportMalformedOrgDenyList(ORG_ID);
