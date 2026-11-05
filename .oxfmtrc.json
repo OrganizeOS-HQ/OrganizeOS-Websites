@@ -13,6 +13,7 @@
     "**/*.jsonc",
     "docs/**",
     "packages/cli/templates/**",
-    "fixtures/**/__generated__/**"
+    "fixtures/**/__generated__/**",
+    "packages/sdk-components-organizeos/src/field/__fixtures__/convergence-field.fixture.json"
   ]
 }
