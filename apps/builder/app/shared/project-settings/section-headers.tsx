@@ -31,6 +31,12 @@ import {
 import { getExistingRoutePaths, sectionSpacing } from "./utils";
 import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
 
+// OrganizeOS fork: the sdk's platform-header message names Webstudio Cloud
+const organizeosIssueMessage = (message: string) =>
+  message === "This header is managed by Webstudio Cloud"
+    ? "This header is managed by the platform."
+    : message;
+
 export const SectionHeaders = ({
   executeMutation = executeRuntimeMutation,
 }: {
@@ -62,7 +68,9 @@ export const SectionHeaders = ({
     } catch (error) {
       setSaveError(
         error instanceof ZodError
-          ? error.issues.map((issue) => issue.message).join(". ")
+          ? error.issues
+              .map((issue) => organizeosIssueMessage(issue.message))
+              .join(". ")
           : "Invalid response header"
       );
       return false;
@@ -103,6 +111,7 @@ export const SectionHeaders = ({
                 rule in this list wins.
               </Text>
               <br />
+              {/* OrganizeOS fork: names no Webstudio service */}
               <Text>
                 /* applies to every path; / applies only to the root. CSP,
                 X-Frame-Options, and Referrer-Policy get defaults when they are
@@ -114,6 +123,7 @@ export const SectionHeaders = ({
               {allowDynamicData === false && (
                 <>
                   <br />
+                  {/* OrganizeOS fork: planUpgradeHint, no Upgrade link */}
                   <Text>
                     Custom headers on a custom domain are not included in your
                     plan. {planUpgradeHint}
@@ -164,7 +174,9 @@ export const SectionHeaders = ({
           if (!result.success) {
             for (const issue of result.error.issues) {
               const field = String(issue.path[0] ?? "value");
-              (errors[field] ??= []).push(issue.message);
+              (errors[field] ??= []).push(
+                organizeosIssueMessage(issue.message)
+              );
             }
           }
           return errors;

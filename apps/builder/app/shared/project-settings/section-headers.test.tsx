@@ -376,3 +376,40 @@ test.each(["Content-Security-Policy", "X-Custom-Header"])(
     expect(executeRuntimeMutation).not.toHaveBeenCalled();
   }
 );
+
+// OrganizeOS fork: the sdk's message for a platform header names Webstudio
+// Cloud; the section shows the platform instead (D4)
+test("a platform header is managed by the platform, as the field says", async () => {
+  const { route, name, value } = render();
+  await type(route, "/*");
+  await type(name, "X-Powered-By");
+  await type(value, "x");
+  await act(async () =>
+    page.getByRole("button", { name: "Add", exact: true }).click()
+  );
+  expect(executeRuntimeMutation).not.toHaveBeenCalled();
+  await act(async () => page.getByPlaceholder("Header name").element().focus());
+  expect(document.body.textContent).toContain(
+    "This header is managed by the platform."
+  );
+  expect(document.body.textContent).not.toContain("Webstudio");
+});
+
+test("a platform header saved by an older client is managed by the platform, as the save error says", async () => {
+  $projectSettings.set({
+    meta: { customHeaders: [{ name: "X-Powered-By", value: "x" }] },
+    compiler: {},
+  } as never);
+  const { route, name, value } = render();
+  await type(route, "/*");
+  await type(name, "Content-Security-Policy");
+  await type(value, "frame-ancestors 'self'");
+  await act(async () =>
+    page.getByRole("button", { name: "Add", exact: true }).click()
+  );
+  expect(executeRuntimeMutation).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain(
+    "This header is managed by the platform."
+  );
+  expect(document.body.textContent).not.toContain("Webstudio");
+});
