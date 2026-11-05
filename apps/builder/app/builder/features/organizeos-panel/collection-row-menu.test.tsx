@@ -179,13 +179,22 @@ const setProject = (catalog = blogAndFaq) => {
   $planFeatures.set({ ...defaultPlanFeatures, allowDynamicData: true });
 };
 
-/** Lets every pending promise, the catalog's hashing among them, settle. */
+/** Lets pending promises settle: before a check that something did not happen. */
 const settle = async () => {
   for (let index = 0; index < 30; index += 1) {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
   }
+};
+
+/**
+ * Waits until `read` passes: what the panel reaches in no fixed number of
+ * turns (its rows wait on the catalog's WebCrypto hashing).
+ */
+const until = async <T,>(read: () => T): Promise<T> => {
+  await settle();
+  return vi.waitFor(read, { timeout: 5000, interval: 20 });
 };
 
 const render = async () => {
@@ -197,15 +206,39 @@ const render = async () => {
       createElement(TooltipProvider, null, createElement(OrganizeosPanel))
     );
   });
-  await settle();
+  // the catalog has resolved: its collection rows are there
+  await until(() =>
+    expect(
+      document.querySelector(
+        "[data-organizeos-collection], [data-organizeos-orphan]"
+      )
+    ).not.toBeNull()
+  );
   return container;
 };
 
 const row = (slug: string) =>
   document.querySelector(`[data-organizeos-collection="${slug}"]`);
 
+/** A collection's row, once it has rendered. */
+const findRow = (slug: string) =>
+  until(() => {
+    const element = row(slug);
+    expect(element, slug).not.toBeNull();
+    return element as HTMLElement;
+  });
+
+const orphanRow = () =>
+  until(() => {
+    const element = document.querySelector<HTMLElement>(
+      "[data-organizeos-orphan]"
+    );
+    expect(element).not.toBeNull();
+    return element as HTMLElement;
+  });
+
 const openMenu = async (slug: string) => {
-  const trigger = row(slug)?.querySelector(
+  const trigger = (await findRow(slug)).querySelector(
     "[data-organizeos-collection-menu]"
   ) as HTMLElement;
   act(() => {
@@ -213,10 +246,13 @@ const openMenu = async (slug: string) => {
       new MouseEvent("pointerdown", { bubbles: true, button: 0 })
     );
   });
-  await settle();
-  return Array.from(
-    document.querySelectorAll<HTMLElement>('[role="menuitem"]')
-  );
+  return until(() => {
+    const items = Array.from(
+      document.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    );
+    expect(items.length).toBeGreaterThan(0);
+    return items;
+  });
 };
 
 const menuItem = (items: HTMLElement[], text: string) =>
@@ -227,6 +263,30 @@ const choose = async (item: HTMLElement) => {
     item.click();
   });
   await settle();
+};
+
+/** Create item page from the blog row's menu, and the page once it is made. */
+const createBlogItemPage = async () => {
+  await choose(menuItem(await openMenu("blog"), "Create item page"));
+  return until(() => {
+    const page = findCollectionItemPage("blog");
+    expect(page).toBeDefined();
+    return page as Page;
+  });
+};
+
+// As the server's catalog sync does when a collection goes; a staged write
+// may not (staged-data.ts).
+const removeBlogFromCatalog = () => {
+  $resources.set(
+    new Map(
+      [...$resources.get()].filter(
+        ([id]) =>
+          blogAndFaq.find((resource) => resource.name === "Blog posts")?.id !==
+          id
+      )
+    )
+  );
 };
 
 const addListForm = () =>
@@ -256,7 +316,7 @@ afterEach(() => {
 describe("a collection row's menu", () => {
   test("replaces the row's button with a '...' menu: Create item page, Add list, Add to this page", async () => {
     await render();
-    expect(row("blog")?.textContent).toEqual("Blog posts");
+    expect((await findRow("blog")).textContent).toEqual("Blog posts");
     const trigger = row("blog")?.querySelector("button");
     expect(trigger?.textContent).toEqual("");
     expect(trigger?.getAttribute("aria-haspopup")).toEqual("menu");
@@ -270,25 +330,25 @@ describe("a collection row's menu", () => {
 
   test("other catalog rows keep their button", async () => {
     const host = await render();
-    const rows = host.querySelector("[data-organizeos-data]");
-    expect(rows?.textContent).toContain("EventsAdd to this page");
+    await until(() =>
+      expect(
+        host.querySelector("[data-organizeos-data]")?.textContent
+      ).toContain("EventsAdd to this page")
+    );
   });
 
   test("Create item page creates it, switches to it and says 'Item page created', with no action", async () => {
     const success = vi.spyOn(toast, "success");
     await render();
-    await choose(menuItem(await openMenu("blog"), "Create item page"));
-    const page = findCollectionItemPage("blog") as Page;
-    expect(page).toBeDefined();
+    const page = await createBlogItemPage();
     expect($selectedPageId.get()).toEqual(page.id);
-    expect(success).toHaveBeenCalledTimes(1);
+    await until(() => expect(success).toHaveBeenCalledTimes(1));
     expect(success).toHaveBeenCalledWith("Item page created");
   });
 
   test("once the item page exists, the entry reads Open item page and opens it", async () => {
     await render();
-    await choose(menuItem(await openMenu("blog"), "Create item page"));
-    const page = findCollectionItemPage("blog") as Page;
+    const page = await createBlogItemPage();
     $selectedPageId.set($pages.get()?.homePageId);
     await settle();
     const items = await openMenu("blog");
@@ -303,14 +363,16 @@ describe("a collection row's menu", () => {
     await render();
     const pages = $pages.get();
     await choose(menuItem(await openMenu("blog"), "Create item page"));
-    expect(error).toHaveBeenCalledWith(loadCollectionError);
+    await until(() => expect(error).toHaveBeenCalledWith(loadCollectionError));
     expect($pages.get()).toBe(pages);
   });
 
   test("Add to this page binds the Resource, and then shows 'On this page' with the entry disabled", async () => {
     await render();
     await choose(menuItem(await openMenu("blog"), "Add to this page"));
-    expect(row("blog")?.textContent).toContain("On this page");
+    await until(() =>
+      expect(row("blog")?.textContent).toContain("On this page")
+    );
     const items = await openMenu("blog");
     expect(
       menuItem(items, "Add to this page").hasAttribute("data-disabled")
@@ -325,6 +387,8 @@ describe("a collection row's menu", () => {
       const item = menuItem(items, name);
       expect(item.hasAttribute("data-disabled"), name).toBe(true);
       expect(item.textContent).toEqual(`${name}Not in plan`);
+      // a plain label: never a link to a pricing page
+      expect(item.querySelector("a, [href]"), name).toBeNull();
     }
     expect(
       menuItem(items, "Add to this page").hasAttribute("data-disabled")
@@ -363,7 +427,7 @@ describe("the Add list popover", () => {
 
   test("the Link switch is on and enabled once it has one", async () => {
     await render();
-    await choose(menuItem(await openMenu("blog"), "Create item page"));
+    await createBlogItemPage();
     const form = await openAddList();
     const link = form.querySelector('[role="switch"]') as HTMLButtonElement;
     expect(link.disabled).toBe(false);
@@ -383,11 +447,13 @@ describe("the Add list popover", () => {
         form.querySelector("[data-organizeos-add-list-submit]") as HTMLElement
       ).click();
     });
-    await settle();
-    const list = Array.from($instances.get().values()).find(
-      (instance) => instance.label === "Blog posts list"
+    await until(() =>
+      expect(
+        Array.from($instances.get().values()).find(
+          (instance) => instance.label === "Blog posts list"
+        )
+      ).toBeDefined()
     );
-    expect(list).toBeDefined();
     const resource = Array.from($resources.get().values()).find(
       ({ name }) => name === "Blog posts list"
     );
@@ -421,8 +487,7 @@ describe("the Add list popover", () => {
         form.querySelector("[data-organizeos-add-list-submit]") as HTMLElement
       ).click();
     });
-    await settle();
-    expect(error).toHaveBeenCalledWith(loadCollectionError);
+    await until(() => expect(error).toHaveBeenCalledWith(loadCollectionError));
   });
 });
 
@@ -449,7 +514,7 @@ describe("an item page at an old address", () => {
 
   test("a renamed collection address marks its row 'Item page uses an old address'", async () => {
     await render();
-    await choose(menuItem(await openMenu("blog"), "Create item page"));
+    await createBlogItemPage();
     expect(document.body.textContent).not.toContain(
       "Item page uses an old address"
     );
@@ -461,14 +526,16 @@ describe("an item page at an old address", () => {
       { slug: "news", name: "Blog posts" },
       { slug: "faq", name: "FAQ" },
     ]);
-    await updateWebstudioDataStaged((data) => {
-      for (const resource of blogAndFaq) {
-        data.resources.delete(resource.id);
-      }
-      for (const resource of renamed) {
-        data.resources.set(resource.id, resource);
-      }
-    });
+    // as the server's catalog sync does; a staged write may not
+    // (staged-data.ts)
+    $resources.set(
+      new Map([
+        ...[...$resources.get()].filter(([id]) =>
+          blogAndFaq.every((resource) => resource.id !== id)
+        ),
+        ...renamed.map((resource) => [resource.id, resource] as const),
+      ])
+    );
     const data = {
       pages: $pages.get()!,
       dataSources: $dataSources.get(),
@@ -483,28 +550,25 @@ describe("an item page at an old address", () => {
       )
     ).toEqual(["Blog posts template"]);
     await render();
-    expect(row("news")?.textContent).toContain("Item page uses an old address");
-    expect(row("faq")?.textContent).not.toContain(
+    await until(() =>
+      expect(row("news")?.textContent).toContain(
+        "Item page uses an old address"
+      )
+    );
+    expect((await findRow("faq")).textContent).not.toContain(
       "Item page uses an old address"
     );
   });
 
   test("with no row of the same name, the page gets a row of its own", async () => {
     await render();
-    await choose(menuItem(await openMenu("blog"), "Create item page"));
+    await createBlogItemPage();
     act(() => {
       root?.unmount();
     });
-    await updateWebstudioDataStaged((data) => {
-      for (const resource of blogAndFaq) {
-        if (resource.name === "Blog posts") {
-          data.resources.delete(resource.id);
-        }
-      }
-    });
+    removeBlogFromCatalog();
     await render();
-    const orphan = document.querySelector("[data-organizeos-orphan]");
-    expect(orphan?.textContent).toEqual(
+    expect((await orphanRow()).textContent).toEqual(
       "Blog posts templateItem page uses an old address"
     );
   });
@@ -523,7 +587,7 @@ describe("Remove from sitemap", () => {
 
   test("shows when the sitemap lists a collection with no item page, and removes its part", async () => {
     await render();
-    await choose(menuItem(await openMenu("blog"), "Create item page"));
+    await createBlogItemPage();
     let items = await openMenu("blog");
     expect(menuItem(items, "Remove from sitemap")).toBeUndefined();
     act(() => {
@@ -535,32 +599,24 @@ describe("Remove from sitemap", () => {
     await render();
     items = await openMenu("blog");
     await choose(menuItem(items, "Remove from sitemap"));
-    expect(listSitemapCollections()).toEqual([]);
+    await until(() => expect(listSitemapCollections()).toEqual([]));
   });
 
   test("a sitemap part of a collection no longer in the catalog gets a row with the button", async () => {
     await render();
-    await choose(menuItem(await openMenu("blog"), "Create item page"));
+    await createBlogItemPage();
     act(() => {
       root?.unmount();
     });
     $selectedPageId.set($pages.get()?.homePageId);
     await deleteItemPage();
-    await updateWebstudioDataStaged((data) => {
-      for (const resource of blogAndFaq) {
-        if (resource.name === "Blog posts") {
-          data.resources.delete(resource.id);
-        }
-      }
-    });
+    removeBlogFromCatalog();
     await render();
-    const orphan = document.querySelector("[data-organizeos-orphan]");
-    expect(orphan?.textContent).toEqual("blogRemove from sitemap");
+    const orphan = await orphanRow();
+    expect(orphan.textContent).toEqual("blogRemove from sitemap");
     act(() => {
-      (orphan?.querySelector("button") as HTMLElement).click();
+      (orphan.querySelector("button") as HTMLElement).click();
     });
-    // the removal is a staged write, committed a microtask later
-    await settle();
-    expect(listSitemapCollections()).toEqual([]);
+    await until(() => expect(listSitemapCollections()).toEqual([]));
   });
 });
