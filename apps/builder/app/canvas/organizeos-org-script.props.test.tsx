@@ -1,6 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
 import type { ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
@@ -77,6 +74,19 @@ afterEach(() => {
 // container, so look at the whole document
 const evilScripts = () =>
   document.querySelectorAll<HTMLScriptElement>('script[src*="evil.example"]');
+
+// React dedupes a hoisted script by its src for the life of the document,
+// which every case of this file shares: a src a case has used makes the next
+// case that uses it pass whatever the canvas renders. So each src is used once.
+const usedScriptSources = new Set<string>();
+const evilScriptSource = (name: string) => {
+  const url = `https://evil.example/${name}.js`;
+  if (usedScriptSources.has(url)) {
+    throw new Error(`${url} is used by two cases`);
+  }
+  usedScriptSources.add(url);
+  return url;
+};
 
 const ids = (...list: string[]): Instance["children"] =>
   list.map((value) => ({ type: "id", value }));
@@ -321,8 +331,8 @@ describe.each(renderers)(
   (renderer) => {
     // React hoists a <script async src> into <head> and creates it with
     // document.createElement, so a browser fetches and runs it. Each case has
-    // its own src, because React dedupes hoisted scripts by src.
-    const src = (name: string) => `https://evil.example/${renderer}-${name}.js`;
+    // its own src (evilScriptSource).
+    const src = (name: string) => evilScriptSource(`${renderer}-${name}`);
 
     const expectNoScript = (dom: HTMLElement) => {
       expect(evilScripts().length).toBe(0);
@@ -582,7 +592,8 @@ const forwarderTree = (
 describe.each(renderers)(
   "the %s renders a legacy component inside a Radix trigger that passes a tag down",
   (renderer) => {
-    const src = (name: string) => `https://evil.example/${renderer}-${name}.js`;
+    const src = (name: string) =>
+      evilScriptSource(`${renderer}-trigger-${name}`);
 
     const fallbacks: Array<[string, string]> = [
       ["Box", "DIV"],
@@ -658,14 +669,17 @@ describe.each(renderers)(
 
     test("without a script, when the trigger's own instance tag is script", async () => {
       // the generator writes instance.tag as a data-ws-tag prop on every
-      // component but ws:element, and the canvas does the same
+      // component but ws:element, and the canvas does the same. Two checks
+      // stop it, each alone: the trigger's tag gate in useInstanceProps, and
+      // the child's withoutPausedProps. So this fails only when both are
+      // gone; the wiring pins hold each one.
       const dom = await render({
         renderer,
         instances: forwarderTree("DialogTrigger", ["Dialog"], "Box", {
           tag: "script",
         }),
         props: [
-          prop("trigger", "src", "string", src("instance-tag")),
+          prop("trigger", "src", "string", src("own-instance-tag")),
           prop("trigger", "async", "boolean", true),
         ],
       });

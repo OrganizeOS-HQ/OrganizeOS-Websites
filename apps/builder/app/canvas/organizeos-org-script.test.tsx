@@ -1,7 +1,7 @@
 import { createRef, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import {
   blockComponent,
   type Instance,
@@ -143,6 +143,21 @@ const render = (mode: Mode, ui: ReactNode) => {
 
 // The registry's base library (canvasComponentLibraries: core, base, Radix)
 const [core, library, radix] = canvasComponentLibraries;
+
+/**
+ * The props React holds for a host element: what a component passed to it,
+ * including a name React leaves off the DOM. It reads React DOM's own key on
+ * the node; a test that uses it checks a prop it knows is there first.
+ */
+const hostProps = (element: Element): Record<string, unknown> => {
+  const key = Object.keys(element).find((name) =>
+    name.startsWith("__reactProps$")
+  );
+  expect(key, "React DOM's props key on the element").toBeDefined();
+  return (element as unknown as Record<string, Record<string, unknown>>)[
+    key as string
+  ];
+};
 
 describe("withOrgScriptPolicy", () => {
   // T4
@@ -537,33 +552,28 @@ describe("PausedHtmlEmbed", () => {
   });
 
   // The canvas gives every HTML Embed $ws$executeScripts after its props
-  // (webstudio-component.tsx): upstream's embed reads it; the notice must not
-  // put it on its div, where React refuses the name.
-  test("renders no $ws$executeScripts", () => {
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const host = render(
-        modes[1],
-        <PausedHtmlEmbed code={scriptAndHandler} $ws$executeScripts />
-      );
-      const notice = host.firstElementChild as HTMLDivElement;
-      expect(notice.textContent).toContain("HTML Embed is paused");
-      expect(
-        notice
-          .getAttributeNames()
-          .filter((name) => name.toLowerCase().includes("executescripts"))
-      ).toEqual([]);
-      expect(
-        errors.mock.calls.filter((call) =>
-          call.some((arg) => String(arg).includes("$ws$executeScripts"))
-        )
-      ).toEqual([]);
-    } finally {
-      errors.mockRestore();
-    }
+  // (webstudio-component.tsx), which upstream's embed reads. The notice must
+  // not pass it to its div. React leaves a $-named attribute off the DOM (and
+  // warns once per name), so neither the DOM nor the console shows it: the
+  // test reads the props React holds for the div instead.
+  test("passes no $ws$executeScripts to the notice's element", () => {
+    const host = render(
+      modes[1],
+      <PausedHtmlEmbed
+        data-ws-id="embed-3"
+        code={scriptAndHandler}
+        $ws$executeScripts
+      />
+    );
+    const notice = host.firstElementChild as HTMLDivElement;
+    expect(notice.textContent).toContain("HTML Embed is paused");
+    const props = hostProps(notice);
+    // the control: these are the props the embed passed on
+    expect(props["data-ws-id"]).toBe("embed-3");
+    expect(Object.keys(props)).not.toContain("$ws$executeScripts");
   });
 
-  test("passes $ws$executeScripts on to upstream's embed for an icon", () => {
+  test("still renders an icon given $ws$executeScripts", () => {
     const host = render(
       modes[1],
       <PausedHtmlEmbed code={MenuIcon} $ws$executeScripts />
@@ -594,15 +604,19 @@ describe("PausedMarkdownEmbed", () => {
       expect(host.querySelector("script")).toBeNull();
     });
 
-    test("shows the notice and puts no code into the DOM", () => {
+    // Only what tells the stand-in from upstream's sanitizing embed: the
+    // notice shows, and none of the markdown renders (upstream renders the
+    // link, without its address). That no script or javascript: address
+    // reaches the DOM no longer tells them apart, since upstream's embed
+    // drops both too.
+    test("shows the notice, and none of the markdown", () => {
       const host = render(mode, <PausedMarkdownEmbed code={markdown} />);
       expect(host.textContent).toContain("Markdown Embed is paused");
       expect(host.querySelector("a")).toBeNull();
-      expect(host.querySelector("script")).toBeNull();
-      expect(host.innerHTML).not.toContain("javascript:");
-      expect(host.innerHTML).not.toContain("window.x");
     });
 
+    // upstream's embed throws on code that is not a string, so without the
+    // stand-in this fails on the render, before these assertions
     test("shows the notice for code that is not a string", () => {
       const host = render(
         mode,
