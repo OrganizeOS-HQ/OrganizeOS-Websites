@@ -388,7 +388,9 @@ test("a platform header is managed by the platform, as the field says", async ()
     page.getByRole("button", { name: "Add", exact: true }).click()
   );
   expect(executeRuntimeMutation).not.toHaveBeenCalled();
-  await act(async () => page.getByPlaceholder("Header name").element().focus());
+  await act(async () =>
+    (page.getByPlaceholder("Header name").element() as HTMLElement).focus()
+  );
   expect(document.body.textContent).toContain(
     "This header is managed by the platform."
   );
