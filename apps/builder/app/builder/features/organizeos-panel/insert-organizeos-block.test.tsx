@@ -3,20 +3,20 @@ import { enableMapSet } from "immer";
 import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import {
-  $,
   Parameter,
   expression,
   renderData,
   renderTemplate,
   ws,
 } from "@webstudio-is/template";
+import { lintExpression } from "@webstudio-is/expression";
+import { isTreeSatisfyingContentModel } from "@webstudio-is/project-build/runtime";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import * as radixMetas from "@webstudio-is/sdk-components-react-radix/metas";
 import {
   ROOT_INSTANCE_ID,
   coreMetas,
   encodeDataSourceVariable,
-  lintExpression,
   type DataSource,
   type Instance,
   type Resource,
@@ -24,20 +24,25 @@ import {
 } from "@webstudio-is/sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
-import { createBlockPlacer } from "@organizeos/site-components/site-templates";
+import {
+  $,
+  createBlockPlacer,
+  localStylesFirst,
+} from "@organizeos/site-components/site-templates";
 import {
   $organizeosSite,
   $propValuesByInstanceSelector,
   $registeredComponentMetas,
   $variableValuesByInstanceSelector,
   getInstanceKey,
-  getInstancePath,
   registerComponentLibrary,
   selectInstance,
+  subscribeResourceRequestPlan,
   subscribeResources,
 } from "~/shared/nano-states";
 import { $selectedPageId } from "~/shared/nano-states/pages";
-import { registerContainers } from "~/shared/sync/sync-stores";
+import { $authPermit, $builderMode } from "~/shared/nano-states/misc";
+import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
 import {
   $assets,
   $breakpoints,
@@ -56,12 +61,16 @@ import {
   computeResourceRequest,
   getResourceKey,
 } from "~/shared/resources";
-import { getComponentTemplateData } from "~/shared/instance-utils/insert";
-import { isTreeSatisfyingContentModel } from "~/shared/content-model";
-import { updateWebstudioData } from "~/shared/instance-utils/data";
-import { deleteInstanceMutable } from "~/shared/instance-utils/mutation";
-import { deleteVariableMutable } from "~/shared/data-variables";
+import {
+  getComponentTemplateData,
+  insertWebstudioComponentAt,
+} from "~/shared/instance-utils/insert";
+import {
+  executeRuntimeMutation,
+  executeStagedRuntimeMutation,
+} from "~/shared/instance-utils/data";
 import { instanceText } from "~/shared/copy-paste/plugin-instance";
+import { commitCanvasDragDrop } from "~/canvas/shared/use-drag-drop";
 import { emitCommand } from "~/builder/shared/commands";
 import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
 import eventsBody from "../../../../../../packages/sdk-components-organizeos/src/__fixtures__/events.json";
@@ -77,34 +86,36 @@ import {
   organizeosBlockData,
 } from "./insert-organizeos-block";
 
-const { toastError, loaderFetch, beforeNextTransaction } = vi.hoisted(() => ({
+const { toastError, toastInfo, loaderFetch } = vi.hoisted(() => ({
   toastError: vi.fn(),
+  toastInfo: vi.fn(),
   // the builder's resources loader posts to /rest/resources-loader with this
   loaderFetch: vi.fn(),
-  // runs once, just before the next transaction opens
-  beforeNextTransaction: { run: undefined as undefined | (() => void) },
 }));
 vi.mock("~/shared/builder-api", () => ({
-  builderApi: { toast: { error: toastError } },
+  builderApi: { toast: { error: toastError, info: toastInfo } },
 }));
 vi.mock("~/shared/fetch.client", () => ({ fetch: loaderFetch }));
+// Spied, not replaced: a factory that imports the original module waits on
+// itself in the browser runner (the module is in an import cycle).
+vi.mock("~/shared/instance-utils/data", { spy: true });
+vi.mock("~/shared/instance-utils/insert", { spy: true });
+
 // An edit can land between the insert's completion, which reads the stores,
-// and the transaction that writes the preset; this opens that gap.
-vi.mock("~/shared/instance-utils/data", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("~/shared/instance-utils/data")>();
-  return {
-    ...actual,
-    updateWebstudioData: (
-      ...args: Parameters<typeof actual.updateWebstudioData>
-    ) => {
-      const { run } = beforeNextTransaction;
-      beforeNextTransaction.run = undefined;
-      run?.();
-      return actual.updateWebstudioData(...args);
-    },
-  };
-});
+// and the transaction that writes the preset; this opens that gap: `run`
+// goes just before the next staged transaction takes its state.
+const beforeNextTransaction = async (run: () => void) => {
+  const actual = await vi.importActual<
+    typeof import("~/shared/instance-utils/data")
+  >("~/shared/instance-utils/data");
+  const ran = { value: false };
+  vi.mocked(executeStagedRuntimeMutation).mockImplementationOnce((stage) => {
+    ran.value = true;
+    run();
+    return actual.executeStagedRuntimeMutation(stage);
+  });
+  return ran;
+};
 
 enableMapSet();
 registerContainers();
@@ -271,8 +282,12 @@ const setProject = (
   const pages = createDefaultPages({ rootInstanceId: "bodyId" });
   $pages.set(pages);
   $selectedPageId.set(pages.homePageId);
+  $builderMode.set("design");
+  $authPermit.set("build");
   selectInstance(["bodyId"]);
   $project.set({ id: projectId } as Project);
+  serverSyncStore.transactionManager.currentStack = [];
+  serverSyncStore.transactionManager.undoneStack = [];
   $organizeosSite.set({
     organizationId: "org-1",
     manageUrl: "https://app.example.org/dashboard",
@@ -396,8 +411,11 @@ const formsBody = {
 };
 const formsResult = { ok: true, status: 200, statusText: "", data: formsBody };
 
-const cacheFormsResult = () => {
-  const request = computeResourceRequest(expectedFormsResource, new Map());
+const cacheFormsResult = async () => {
+  const request = await computeResourceRequest(
+    expectedFormsResource,
+    new Map()
+  );
   $resourcesCache.set(new Map([[getResourceKey(request), formsResult]]));
 };
 
@@ -418,6 +436,9 @@ const expectNothingWritten = (before: ReturnType<typeof getStores>) => {
     expect(after[name as keyof typeof after], name).toBe(store);
   }
 };
+
+// The number of undo steps so far: an insert adds exactly one.
+const undoDepth = () => serverSyncStore.transactionManager.currentStack.length;
 
 // The completion table entry of the test block: what an Event List's will be,
 // with the collection and the empty box named by the ids the template gives.
@@ -440,22 +461,33 @@ const upcomingBlockData: BlockData = {
   ],
 };
 
+// 0.309.0 computes prop and variable values asynchronously, and a resource's
+// value only while its request plan is subscribed (the builder subscribes it
+// in builder.tsx): every read of a value waits for it.
+let unsubscribePlan: undefined | (() => void);
+
 beforeEach(() => {
   organizeosBlockData.set(testBlock, upcomingBlockData);
   organizeosBlockData.delete(plainBlock);
   toastError.mockClear();
+  toastInfo.mockClear();
   loaderFetch.mockReset();
-  beforeNextTransaction.run = undefined;
+  vi.mocked(executeStagedRuntimeMutation).mockClear();
+  vi.mocked(insertWebstudioComponentAt).mockClear();
   $resourcesCache.set(new Map());
+  unsubscribePlan = subscribeResourceRequestPlan(() => {});
 });
 
 afterEach(() => {
+  unsubscribePlan?.();
+  unsubscribePlan = undefined;
   vi.useRealTimers();
 });
 
 describe("insertOrganizeosBlock", () => {
   test("gives the block its own binding, scoped to its root, of the existing Forms Resource", async () => {
     setProject(withForms);
+    const resources = $resources.get();
 
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
 
@@ -464,7 +496,9 @@ describe("insertOrganizeosBlock", () => {
     expect($instances.get().get("bodyId")?.children).toEqual([
       { type: "id", value: root.id },
     ]);
-    // the Resource is used as it is, never rewritten or copied
+    // the catalog Resource is used as it is: no Resource is written at all
+    // (the catalog's change guard refuses a write that alters one)
+    expect($resources.get()).toBe(resources);
     expect($resources.get()).toEqual(
       new Map(provisioned.resources.map((resource) => [resource.id, resource]))
     );
@@ -477,7 +511,8 @@ describe("insertOrganizeosBlock", () => {
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
 
     // from the Events base with /forms and the Events Authorization header:
-    // exactly what provisioning writes for this project
+    // exactly what provisioning writes for this project, field for field
+    expect($resources.get().get(forms.resourceId)).toStrictEqual(formsResource);
     expect($resources.get().get(forms.resourceId)).toEqual(
       expectedFormsResource
     );
@@ -495,8 +530,10 @@ describe("insertOrganizeosBlock", () => {
   test("adds the block, its binding and the Forms Resource in one undoable step", async () => {
     setProject(withoutForms);
     const before = getStores();
+    const depth = undoDepth();
 
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    expect(undoDepth()).toBe(depth + 1);
     emitCommand("undo");
 
     expect(getStores()).toEqual(before);
@@ -516,13 +553,13 @@ describe("insertOrganizeosBlock", () => {
   test("keeps a Forms Resource that appeared between the completion and the transaction", async () => {
     setProject(withoutForms);
     const edited = { ...formsResource, name: "Forms (edited)" };
-    beforeNextTransaction.run = () => {
+    const ran = await beforeNextTransaction(() => {
       $resources.set(new Map($resources.get()).set(edited.id, edited));
-    };
+    });
 
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
 
-    expect(beforeNextTransaction.run).toBeUndefined();
+    expect(ran.value).toBe(true);
     expect($resources.get().get(forms.resourceId)).toBe(edited);
     expect(getBlockBindings()[0]).toEqual([
       expect.objectContaining({ resourceId: forms.resourceId }),
@@ -571,6 +608,106 @@ describe("insertOrganizeosBlock", () => {
       { type: "id", value: root.id },
       { type: "id", value: "boxId" },
     ]);
+  });
+
+  test("a block dropped on the canvas inserts through here, bound, where it is dropped", async () => {
+    setProject(withForms);
+    const data = renderData(
+      <$.Body ws:id="bodyId">
+        <$.Box ws:id="boxId"></$.Box>
+      </$.Body>
+    );
+    $instances.set(data.instances);
+
+    expect(
+      commitCanvasDragDrop({
+        dragPayload: {
+          origin: "panel",
+          type: "insert",
+          dragComponent: signupForm,
+        },
+        dropTarget: {
+          itemSelector: ["bodyId"],
+          placement: {
+            closestChildIndex: 0,
+            indexAdjustment: 0,
+            childrenOrientation: { type: "vertical", reverse: false },
+          },
+          indexWithinChildren: 0,
+        },
+      })
+    ).toBe(true);
+
+    await vi.waitFor(() => expect(getBlockRoots()).toHaveLength(1));
+    expectBoundToOwnBinding();
+    const [root] = getBlockRoots();
+    expect($instances.get().get("bodyId")?.children).toEqual([
+      { type: "id", value: root.id },
+      { type: "id", value: "boxId" },
+    ]);
+    // never upstream's template insert, which would leave it unbound
+    expect(insertWebstudioComponentAt).not.toHaveBeenCalled();
+  });
+
+  // 0.309.0's renderer lists a selection's tokens first (upstream #6408); the
+  // blocks were drawn with their local styles first, so a site template's
+  // block token restyles a block (ruling canvas OQ1)
+  test("puts each instance's local styles ahead of its tokens", async () => {
+    const eventList = "@organizeos/site-components:EventList";
+    const styleSourceTypes = (values: string[]) =>
+      values.map((id) => $styleSources.get().get(id)?.type);
+    setProject(withForms);
+
+    expect(await insertOrganizeosBlock(eventList)).toBe(true);
+
+    const mixed = [...$styleSourceSelections.get().values()].filter(
+      ({ values }) => {
+        const types = styleSourceTypes(values);
+        return types.includes("local") && types.includes("token");
+      }
+    );
+    expect(mixed.length).toBeGreaterThan(0);
+    for (const { values } of mixed) {
+      const types = styleSourceTypes(values);
+      expect(types).toEqual([
+        ...types.filter((type) => type === "local"),
+        ...types.filter((type) => type !== "local"),
+      ]);
+    }
+  });
+
+  test("refuses without build access, with the runtime's message once, writing nothing", async () => {
+    setProject(withoutForms);
+    // a page template, the one place the runtime layer refuses a commit
+    const pages = $pages.get()!;
+    $pages.set({
+      ...pages,
+      pageTemplates: new Map([
+        [
+          "template",
+          {
+            id: "template",
+            name: "Template",
+            title: "Template",
+            rootInstanceId: "bodyId",
+            meta: {},
+          },
+        ],
+      ]),
+    });
+    $selectedPageId.set("template");
+    $authPermit.set("view");
+    const before = getStores();
+    const depth = undoDepth();
+
+    expect(await insertOrganizeosBlock(signupForm)).toBe(false);
+
+    expectNothingWritten(before);
+    expect(undoDepth()).toBe(depth);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith(
+      "Page templates can be edited only in design mode, with build access."
+    );
   });
 
   describe("refuses, writing nothing", () => {
@@ -710,7 +847,6 @@ describe("the inserted block's data", () => {
     vi.useFakeTimers();
     const unsubscribe = subscribeResources();
     await vi.advanceTimersByTimeAsync(1000);
-    unsubscribe();
 
     // Forms alone: nothing else in the catalog is used on the page
     expect(loaderFetch).toHaveBeenCalledTimes(1);
@@ -725,8 +861,12 @@ describe("the inserted block's data", () => {
         headers: [{ name: "Authorization", value: "Bearer osk_eventstoken" }],
       },
     ]);
-    expect(getBlockDataValues()).toEqual([formsBody]);
-    expect(getBlockScopeFormsValues()).toEqual([formsResult]);
+    // read before the plan is unsubscribed, which empties it
+    await vi.waitFor(() => {
+      expect(getBlockDataValues()).toEqual([formsBody]);
+      expect(getBlockScopeFormsValues()).toEqual([formsResult]);
+    });
+    unsubscribe();
   });
 
   test("the builder loads nothing on a page without a block", async () => {
@@ -765,10 +905,12 @@ describe("the inserted block's data", () => {
       new Map($dataSources.get()).set(globalForms.id, globalForms)
     );
     expect([...$dataSources.get().keys()].slice(-1)).toEqual([globalForms.id]);
-    cacheFormsResult();
+    await cacheFormsResult();
 
-    expect(getBlockDataValues()).toEqual([formsBody]);
-    expect(getBlockScopeFormsValues()).toEqual([formsResult]);
+    await vi.waitFor(() => {
+      expect(getBlockDataValues()).toEqual([formsBody]);
+      expect(getBlockScopeFormsValues()).toEqual([formsResult]);
+    });
   });
 });
 
@@ -776,7 +918,7 @@ describe("a copy of an inserted block, with a page variable named Forms", () => 
   const insertNextToPageForms = async () => {
     setProject({ ...withForms, dataSources: [pageForms] });
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
-    cacheFormsResult();
+    await cacheFormsResult();
   };
 
   test("keeps its own binding when it is duplicated, and reads the same forms", async () => {
@@ -788,18 +930,25 @@ describe("a copy of an inserted block, with a page variable named Forms", () => 
     // own copy of the Resource
     expect(getBlockRoots()).toHaveLength(2);
     expectBoundToOwnBinding({ copies: 1 });
-    expect(getBlockDataValues()).toEqual([formsBody, formsBody]);
+    await vi.waitFor(() =>
+      expect(getBlockDataValues()).toEqual([formsBody, formsBody])
+    );
   });
 
   test("keeps its own binding when it is copied and pasted", async () => {
     await insertNextToPageForms();
 
-    const clipboardData = instanceText.onCopy?.() ?? "";
-    expect(await instanceText.onPaste?.(clipboardData)).toBe(true);
+    const clipboardData = (await instanceText.onCopy?.()) ?? "";
+    expect(await instanceText.onPaste?.(clipboardData)).toEqual({
+      success: true,
+      data: { handled: true },
+    });
 
     expect(getBlockRoots()).toHaveLength(2);
     expectBoundToOwnBinding({ copies: 1 });
-    expect(getBlockDataValues()).toEqual([formsBody, formsBody]);
+    await vi.waitFor(() =>
+      expect(getBlockDataValues()).toEqual([formsBody, formsBody])
+    );
   });
 });
 
@@ -811,11 +960,9 @@ describe("deleting what uses the catalog", () => {
     const [first, second] = getBlockRoots();
     const [[firstBinding]] = getBlockBindings();
 
-    updateWebstudioData((data) => {
-      deleteInstanceMutable(
-        data,
-        getInstancePath([first.id, "bodyId"], data.instances)
-      );
+    executeRuntimeMutation({
+      id: "instances.deleteBySelector",
+      input: { instanceSelector: [first.id, "bodyId"] },
     });
 
     expect($dataSources.get().has(firstBinding.id)).toBe(false);
@@ -823,9 +970,9 @@ describe("deleting what uses the catalog", () => {
       expectedFormsResource
     );
     // so the other block still reads it
-    cacheFormsResult();
+    await cacheFormsResult();
     expect(getBlockRoots()).toEqual([second]);
-    expect(getBlockDataValues()).toEqual([formsBody]);
+    await vi.waitFor(() => expect(getBlockDataValues()).toEqual([formsBody]));
   });
 
   test("a deleted copy takes its own copy of the Resource", async () => {
@@ -837,11 +984,9 @@ describe("deleting what uses the catalog", () => {
     const copiedResourceId = (copyBinding as { resourceId: string }).resourceId;
     expect(copiedResourceId).not.toBe(forms.resourceId);
 
-    updateWebstudioData((data) => {
-      deleteInstanceMutable(
-        data,
-        getInstancePath([copy.id, "bodyId"], data.instances)
-      );
+    executeRuntimeMutation({
+      id: "instances.deleteBySelector",
+      input: { instanceSelector: [copy.id, "bodyId"] },
     });
 
     expect($resources.get().has(copiedResourceId)).toBe(false);
@@ -853,8 +998,9 @@ describe("deleting what uses the catalog", () => {
     expect(await insertOrganizeosBlock(signupForm)).toBe(true);
     const [[binding]] = getBlockBindings();
 
-    updateWebstudioData((data) => {
-      deleteVariableMutable(data, binding.id);
+    executeRuntimeMutation({
+      id: "variables.delete",
+      input: { dataSourceId: binding.id },
     });
 
     expect($dataSources.get().has(binding.id)).toBe(false);
@@ -899,8 +1045,11 @@ describe("an Events block, through the completion table", () => {
     statusText: "",
     data,
   });
-  const cacheUpcomingResult = (result: unknown) => {
-    const request = computeResourceRequest(expectedUpcomingResource, new Map());
+  const cacheUpcomingResult = async (result: unknown) => {
+    const request = await computeResourceRequest(
+      expectedUpcomingResource,
+      new Map()
+    );
     $resourcesCache.set(new Map([[getResourceKey(request), result]]));
   };
 
@@ -909,7 +1058,10 @@ describe("an Events block, through the completion table", () => {
 
     expect(await insertOrganizeosBlock(testBlock)).toBe(true);
 
-    // exactly what provisioning writes for this project
+    // exactly what provisioning writes for this project, field for field
+    expect($resources.get().get(upcomingEvents.resourceId)).toStrictEqual(
+      upcomingResource
+    );
     expect($resources.get().get(upcomingEvents.resourceId)).toEqual(
       expectedUpcomingResource
     );
@@ -933,9 +1085,12 @@ describe("an Events block, through the completion table", () => {
 
   test("uses an Upcoming Events Resource the project has as it is", async () => {
     setProject(withForms);
+    const resources = $resources.get();
 
     expect(await insertOrganizeosBlock(testBlock)).toBe(true);
 
+    // no Resource is written at all
+    expect($resources.get()).toBe(resources);
     expect($resources.get()).toEqual(
       new Map(provisioned.resources.map((resource) => [resource.id, resource]))
     );
@@ -947,12 +1102,13 @@ describe("an Events block, through the completion table", () => {
   test("keeps an Upcoming Events Resource that appeared between the completion and the transaction", async () => {
     setProject(withoutUpcoming);
     const edited = { ...upcomingResource, name: "Upcoming (edited)" };
-    beforeNextTransaction.run = () => {
+    const ran = await beforeNextTransaction(() => {
       $resources.set(new Map($resources.get()).set(edited.id, edited));
-    };
+    });
 
     expect(await insertOrganizeosBlock(testBlock)).toBe(true);
 
+    expect(ran.value).toBe(true);
     expect($resources.get().get(upcomingEvents.resourceId)).toBe(edited);
   });
 
@@ -1041,26 +1197,34 @@ describe("an Events block, through the completion table", () => {
         ?.get(name);
     const body = { data: [{ title: "a" }, { title: "b" }] };
 
-    cacheUpcomingResult(upcomingResult(body));
-    expect(read(collection, "data")).toEqual(body.data);
-    expect(read(empty, "data-ws-show")).toBe(false);
+    await cacheUpcomingResult(upcomingResult(body));
+    await vi.waitFor(() => {
+      expect(read(collection, "data")).toEqual(body.data);
+      expect(read(empty, "data-ws-show")).toBe(false);
+    });
 
-    cacheUpcomingResult(upcomingResult({ data: [] }));
-    expect(read(collection, "data")).toEqual([]);
-    expect(read(empty, "data-ws-show")).toBe(true);
+    await cacheUpcomingResult(upcomingResult({ data: [] }));
+    await vi.waitFor(() => {
+      expect(read(collection, "data")).toEqual([]);
+      expect(read(empty, "data-ws-show")).toBe(true);
+    });
 
     // a failed read hands over an error body, never a list
-    cacheUpcomingResult(upcomingResult({ error: "unavailable" }, 503));
-    expect(read(collection, "data")).toEqual([]);
-    expect(read(empty, "data-ws-show")).toBe(false);
+    await cacheUpcomingResult(upcomingResult({ error: "unavailable" }, 503));
+    await vi.waitFor(() => {
+      expect(read(collection, "data")).toEqual([]);
+      expect(read(empty, "data-ws-show")).toBe(false);
+    });
   });
 
   test("one undo removes the block, its binding and an Upcoming Events Resource it created", async () => {
     setProject(withoutUpcoming);
     const before = getStores();
+    const depth = undoDepth();
 
     expect(await insertOrganizeosBlock(testBlock)).toBe(true);
     expect($resources.get().has(upcomingEvents.resourceId)).toBe(true);
+    expect(undoDepth()).toBe(depth + 1);
     emitCommand("undo");
 
     expect(getStores()).toEqual(before);
@@ -1312,8 +1476,11 @@ describe("the inserted Event List's and Event Card's data", () => {
     statusText: "",
     data,
   });
-  const cacheUpcoming = (result?: unknown) => {
-    const request = computeResourceRequest(expectedUpcomingResource, new Map());
+  const cacheUpcoming = async (result?: unknown) => {
+    const request = await computeResourceRequest(
+      expectedUpcomingResource,
+      new Map()
+    );
     $resourcesCache.set(
       new Map(result === undefined ? [] : [[getResourceKey(request), result]])
     );
@@ -1438,38 +1605,42 @@ describe("the inserted Event List's and Event Card's data", () => {
   test("renders the fixture's events in order, each start time in the event's own zone, with the link to its page", async () => {
     setProject(withForms);
     expect(await insertOrganizeosBlock(eventList)).toBe(true);
-    cacheUpcoming(cachedResult(eventsBody));
+    await cacheUpcoming(cachedResult(eventsBody));
 
-    const block = readBlock(getRoot("Event List").id);
+    await vi.waitFor(() => {
+      const block = readBlock(getRoot("Event List").id);
 
-    expect(block.collectionData).toEqual(eventsBody.data);
-    expect(block.items.length).toBeGreaterThan(0);
-    eventsBody.data.forEach((event, index) => {
-      expect(block.timeZone(index)).toBe(event.timezone);
-      expect(block.datetime(index)).toBe(event.start_time);
-      // the platform's event page on the site's own host, as a document
-      // navigation (the site has no route there)
-      expect(block.href(index)).toBe(`/events/${event.slug}`);
-      expect(block.reloadDocument(index)).toBe(true);
+      expect(block.collectionData).toEqual(eventsBody.data);
+      expect(block.items.length).toBeGreaterThan(0);
+      eventsBody.data.forEach((event, index) => {
+        expect(block.timeZone(index)).toBe(event.timezone);
+        expect(block.datetime(index)).toBe(event.start_time);
+        // the platform's event page on the site's own host, as a document
+        // navigation (the site has no route there)
+        expect(block.href(index)).toBe(`/events/${event.slug}`);
+        expect(block.reloadDocument(index)).toBe(true);
+      });
+      expect(block.timeZone(0)).toBe("America/Chicago");
+      expect(block.timeZone(2)).toBe("America/Los_Angeles");
+      // neither the empty box nor the Unavailable box
+      expect(block.emptyShown).toBe(false);
+      expect(block.unavailableShown).toBe(false);
     });
-    expect(block.timeZone(0)).toBe("America/Chicago");
-    expect(block.timeZone(2)).toBe("America/Los_Angeles");
-    // neither the empty box nor the Unavailable box
-    expect(block.emptyShown).toBe(false);
-    expect(block.unavailableShown).toBe(false);
   });
 
   test("shows the empty box, and no item, for an empty list", async () => {
     setProject(withForms);
     expect(await insertOrganizeosBlock(eventList)).toBe(true);
-    cacheUpcoming(cachedResult({ data: [] }));
+    await cacheUpcoming(cachedResult({ data: [] }));
 
-    const block = readBlock(getRoot("Event List").id);
+    await vi.waitFor(() => {
+      const block = readBlock(getRoot("Event List").id);
 
-    expect(block.collectionData).toEqual([]);
-    expect(block.items).toEqual([]);
-    expect(block.emptyShown).toBe(true);
-    expect(block.unavailableShown).toBe(false);
+      expect(block.collectionData).toEqual([]);
+      expect(block.items).toEqual([]);
+      expect(block.emptyShown).toBe(true);
+      expect(block.unavailableShown).toBe(false);
+    });
   });
 
   test.each([
@@ -1484,53 +1655,63 @@ describe("the inserted Event List's and Event Card's data", () => {
     async (_case, result) => {
       setProject(withForms);
       expect(await insertOrganizeosBlock(eventList)).toBe(true);
-      cacheUpcoming(result);
+      await cacheUpcoming(result);
 
-      const block = readBlock(getRoot("Event List").id);
+      await vi.waitFor(() => {
+        const block = readBlock(getRoot("Event List").id);
 
-      expect(block.collectionData).toEqual([]);
-      expect(block.items).toEqual([]);
-      expect(block.emptyShown).toBe(false);
-      expect(block.unavailableShown).toBe(true);
+        expect(block.collectionData).toEqual([]);
+        expect(block.items).toEqual([]);
+        expect(block.emptyShown).toBe(false);
+        expect(block.unavailableShown).toBe(true);
+      });
     }
   );
 
   test("shows nothing while the Resource has not loaded", async () => {
     setProject(withForms);
     expect(await insertOrganizeosBlock(eventList)).toBe(true);
-    cacheUpcoming();
+    await cacheUpcoming();
 
-    const block = readBlock(getRoot("Event List").id);
+    await vi.waitFor(() => {
+      const block = readBlock(getRoot("Event List").id);
 
-    expect(block.collectionData).toEqual([]);
-    expect(block.items).toEqual([]);
-    expect(block.emptyShown).toBe(false);
-    expect(block.unavailableShown).toBe(false);
+      expect(block.collectionData).toEqual([]);
+      expect(block.items).toEqual([]);
+      expect(block.emptyShown).toBe(false);
+      expect(block.unavailableShown).toBe(false);
+    });
   });
 
   test("an Event Card renders the first event only, and the same boxes", async () => {
     setProject(withForms);
     expect(await insertOrganizeosBlock(eventCard)).toBe(true);
-    cacheUpcoming(cachedResult(eventsBody));
+    await cacheUpcoming(cachedResult(eventsBody));
 
-    let block = readBlock(getRoot("Event Card").id);
+    await vi.waitFor(() => {
+      const block = readBlock(getRoot("Event Card").id);
 
-    expect(block.collectionData).toEqual(eventsBody.data.slice(0, 1));
-    expect(block.timeZone(0)).toBe(eventsBody.data[0].timezone);
-    expect(block.href(0)).toBe(`/events/${eventsBody.data[0].slug}`);
-    expect(block.reloadDocument(0)).toBe(true);
-    expect(block.items.some((key) => key.includes("[1]"))).toBe(false);
-    expect(block.emptyShown).toBe(false);
+      expect(block.collectionData).toEqual(eventsBody.data.slice(0, 1));
+      expect(block.timeZone(0)).toBe(eventsBody.data[0].timezone);
+      expect(block.href(0)).toBe(`/events/${eventsBody.data[0].slug}`);
+      expect(block.reloadDocument(0)).toBe(true);
+      expect(block.items.some((key) => key.includes("[1]"))).toBe(false);
+      expect(block.emptyShown).toBe(false);
+    });
 
-    cacheUpcoming(cachedResult({ data: [] }));
-    block = readBlock(getRoot("Event Card").id);
-    expect(block.collectionData).toEqual([]);
-    expect(block.emptyShown).toBe(true);
+    await cacheUpcoming(cachedResult({ data: [] }));
+    await vi.waitFor(() => {
+      const block = readBlock(getRoot("Event Card").id);
+      expect(block.collectionData).toEqual([]);
+      expect(block.emptyShown).toBe(true);
+    });
 
-    cacheUpcoming(cachedResult({ error: "unavailable" }, 503));
-    block = readBlock(getRoot("Event Card").id);
-    expect(block.collectionData).toEqual([]);
-    expect(block.unavailableShown).toBe(true);
+    await cacheUpcoming(cachedResult({ error: "unavailable" }, 503));
+    await vi.waitFor(() => {
+      const block = readBlock(getRoot("Event Card").id);
+      expect(block.collectionData).toEqual([]);
+      expect(block.unavailableShown).toBe(true);
+    });
   });
 
   test("the builder's loader requests Upcoming Events for the page, and nothing else", async () => {
@@ -1551,7 +1732,6 @@ describe("the inserted Event List's and Event Card's data", () => {
     vi.useFakeTimers();
     const unsubscribe = subscribeResources();
     await vi.advanceTimersByTimeAsync(1000);
-    unsubscribe();
 
     expect(loaderFetch).toHaveBeenCalledTimes(1);
     expect(JSON.parse(loaderFetch.mock.calls[0][1].body)).toEqual([
@@ -1563,16 +1743,22 @@ describe("the inserted Event List's and Event Card's data", () => {
         headers: [{ name: "Authorization", value: "Bearer osk_eventstoken" }],
       },
     ]);
-    expect(readBlock(getRoot("Event List").id).collectionData).toEqual(
-      eventsBody.data
+    // read before the plan is unsubscribed, which empties it
+    await vi.waitFor(() =>
+      expect(readBlock(getRoot("Event List").id).collectionData).toEqual(
+        eventsBody.data
+      )
     );
+    unsubscribe();
   });
 
   test("one undo removes the Event List, its binding and the Upcoming Events Resource it created", async () => {
     setProject(withoutUpcoming);
     const before = getStores();
+    const depth = undoDepth();
 
     expect(await insertOrganizeosBlock(eventList)).toBe(true);
+    expect(undoDepth()).toBe(depth + 1);
     emitCommand("undo");
 
     expect(getStores()).toEqual(before);
@@ -1625,8 +1811,8 @@ describe("the inserted RSVP Form", () => {
     statusText: "",
     data,
   });
-  const cacheEvents = (result?: unknown) => {
-    const request = computeResourceRequest(eventsResource, new Map());
+  const cacheEvents = async (result?: unknown) => {
+    const request = await computeResourceRequest(eventsResource, new Map());
     $resourcesCache.set(
       new Map(result === undefined ? [] : [[getResourceKey(request), result]])
     );
@@ -1748,11 +1934,19 @@ describe("the inserted RSVP Form", () => {
     expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
     const [root] = getRoots();
 
-    cacheEvents();
+    await cacheEvents();
+    // the root's values are computed, and its data is not among them
+    await vi.waitFor(() =>
+      expect(
+        $propValuesByInstanceSelector
+          .get()
+          .get(getInstanceKey([root.id, "bodyId"]))
+      ).toBeDefined()
+    );
     expect(getRootData(root)).toBeUndefined();
 
-    cacheEvents(cachedResult(eventsBody));
-    expect(getRootData(root)).toEqual(eventsBody);
+    await cacheEvents(cachedResult(eventsBody));
+    await vi.waitFor(() => expect(getRootData(root)).toEqual(eventsBody));
     // the fixture has the event with shifts and questions the form reads
     expect(eventsBody.data.some((event) => event.shifts.length > 0)).toBe(true);
     expect(eventsBody.data.some((event) => event.questions.length > 0)).toBe(
@@ -1774,10 +1968,10 @@ describe("the inserted RSVP Form", () => {
       expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
       const [root] = getRoots();
 
-      cacheEvents(result);
+      await cacheEvents(result);
 
+      await vi.waitFor(() => expect(getRootData(root)).toEqual(result.data));
       const data = getRootData(root);
-      expect(data).toEqual(result.data);
       expect(Array.isArray((data as { data?: unknown }).data)).toBe(false);
     }
   );
@@ -1800,7 +1994,6 @@ describe("the inserted RSVP Form", () => {
     vi.useFakeTimers();
     const unsubscribe = subscribeResources();
     await vi.advanceTimersByTimeAsync(1000);
-    unsubscribe();
 
     expect(loaderFetch).toHaveBeenCalledTimes(1);
     expect(JSON.parse(loaderFetch.mock.calls[0][1].body)).toEqual([
@@ -1812,7 +2005,11 @@ describe("the inserted RSVP Form", () => {
         headers: [{ name: "Authorization", value: "Bearer osk_eventstoken" }],
       },
     ]);
-    expect(getRootData(getRoots()[0])).toEqual(eventsBody);
+    // read before the plan is unsubscribed, which empties it
+    await vi.waitFor(() =>
+      expect(getRootData(getRoots()[0])).toEqual(eventsBody)
+    );
+    unsubscribe();
   });
 
   test("an RSVP Form and an Event List on one page each bring a binding of their own Resource, scoped to their own root", async () => {
@@ -1846,8 +2043,10 @@ describe("the inserted RSVP Form", () => {
   test("one undo removes the RSVP Form and its binding, and a Resource it did not create is left", async () => {
     setProject(withForms);
     const before = getStores();
+    const depth = undoDepth();
 
     expect(await insertOrganizeosBlock(rsvpForm)).toBe(true);
+    expect(undoDepth()).toBe(depth + 1);
     emitCommand("undo");
 
     expect(getStores()).toEqual(before);
@@ -2157,6 +2356,40 @@ describe("completeOrganizeosFragment", () => {
     ).toEqual([]);
   });
 
+  test("orders each selection's local styles ahead of its tokens", () => {
+    const eventList = "@organizeos/site-components:EventList";
+    const template = getComponentTemplateData(eventList);
+    const types = (
+      fragment: typeof template,
+      selection: (typeof template.styleSourceSelections)[number]
+    ) =>
+      selection.values.map(
+        (id) => fragment.styleSources.find((source) => source.id === id)?.type
+      );
+    // upstream's renderer lists the tokens first
+    expect(
+      template.styleSourceSelections.some(
+        (selection) => types(template, selection)[0] === "token"
+      )
+    ).toBe(true);
+
+    const completion = completeOrganizeosFragment({
+      component: eventList,
+      fragment: template,
+      ...presets,
+    });
+
+    expect(completion.status).toBe("ready");
+    const { fragment } = completion as { fragment: typeof template };
+    for (const selection of fragment.styleSourceSelections) {
+      const order = types(fragment, selection);
+      expect(order).toEqual([
+        ...order.filter((type) => type === "local"),
+        ...order.filter((type) => type !== "local"),
+      ]);
+    }
+  });
+
   test("leaves a fragment whose root reads no platform data alone", () => {
     const fragment = getComponentTemplateData("Box");
     expect(
@@ -2178,10 +2411,13 @@ describe("completeOrganizeosFragment", () => {
     const instanceIdPrefix = `${placementId}:`;
     const getPlacedBlock = () => {
       const { placeBlock } = createBlockPlacer();
-      const page = renderTemplate(
-        <ws.element ws:tag="body">
-          {placeBlock(eventCard, placementId)}
-        </ws.element>
+      // ordered as renderSiteTemplate orders a page, local styles first
+      const page = localStylesFirst(
+        renderTemplate(
+          <ws.element ws:tag="body">
+            {placeBlock(eventCard, placementId)}
+          </ws.element>
+        )
       );
       return {
         ...page,

@@ -33,6 +33,11 @@ import {
   findClosestDroppableInstanceSelector,
   findClosestRichText,
 } from "@webstudio-is/project-build/runtime";
+// OrganizeOS fork: a dropped OrganizeOS block (fork doc section 7)
+import {
+  insertOrganizeosBlock,
+  isOrganizeosBlock,
+} from "~/builder/features/organizeos-panel/insert-organizeos-block";
 
 declare module "~/shared/pubsub" {
   export interface PubsubMap {
@@ -130,6 +135,13 @@ export const commitCanvasDragDrop = ({
     position: dropTarget.indexWithinChildren,
   };
   if (dragPayload.type === "insert") {
+    // OrganizeOS fork: a block dropped from the Components panel's OrganizeOS
+    // section is bound to the project's data as it is inserted, as a clicked
+    // one is.
+    if (isOrganizeosBlock(dragPayload.dragComponent)) {
+      void insertOrganizeosBlock(dragPayload.dragComponent, insertable);
+      return true;
+    }
     return insertWebstudioComponentAt(dragPayload.dragComponent, insertable);
   }
   if (dragPayload.type === "insertImageAsset") {
