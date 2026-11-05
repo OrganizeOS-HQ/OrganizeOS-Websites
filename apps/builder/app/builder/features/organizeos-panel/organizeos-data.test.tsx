@@ -23,6 +23,7 @@ import {
 import { $selectedPageId } from "~/shared/nano-states/pages";
 import { $authPermit, $builderMode } from "~/shared/nano-states/misc";
 import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
+import { getWebstudioData } from "~/shared/instance-utils/data";
 import {
   $assets,
   $breakpoints,
@@ -36,7 +37,11 @@ import {
   $styleSources,
   $styles,
 } from "~/shared/sync/data-stores";
-import { $resourcesCache, getResourceKey } from "~/shared/resources";
+import {
+  __testing__ as resourcesLoader,
+  $resourcesCache,
+  getResourceKey,
+} from "~/shared/resources";
 import {
   findCatalogResources,
   getResourcePresetIds,
@@ -47,11 +52,15 @@ import {
   isCatalogResourceOnPage,
 } from "./organizeos-data";
 
-const { loaderFetch } = vi.hoisted(() => ({
+const { loaderFetch, toastError } = vi.hoisted(() => ({
   // the builder's resources loader posts to /rest/resources-loader with this
   loaderFetch: vi.fn(),
+  toastError: vi.fn(),
 }));
 vi.mock("~/shared/fetch.client", () => ({ fetch: loaderFetch }));
+vi.mock("~/shared/builder-api", () => ({
+  builderApi: { toast: { error: toastError } },
+}));
 
 enableMapSet();
 registerContainers();
@@ -127,6 +136,9 @@ const useOnBox = (binding: DataSource) => {
 
 beforeEach(() => {
   loaderFetch.mockReset();
+  toastError.mockClear();
+  // the loader keeps what it loaded: a case loads nothing an earlier one did
+  resourcesLoader.reset();
   $resourcesCache.set(new Map());
 });
 
@@ -137,6 +149,7 @@ afterEach(() => {
 describe("addCatalogResourceToPage", () => {
   test("binds the Resource at the page's root, named like it, once", async () => {
     setProject();
+    const before = getWebstudioData();
 
     expect(await addCatalogResourceToPage(events.resourceId)).toBe(true);
     expect(getEventsBindings()).toEqual([
@@ -155,6 +168,12 @@ describe("addCatalogResourceToPage", () => {
 
     expect(await addCatalogResourceToPage(events.resourceId)).toBe(false);
     expect(getEventsBindings()).toHaveLength(1);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(1);
+
+    // and one undo takes it back
+    serverSyncStore.undo();
+    expect(getEventsBindings()).toEqual([]);
+    expect(getWebstudioData()).toEqual(before);
   });
 
   test("takes the next free name when the page root already has one", async () => {
@@ -337,10 +356,19 @@ describe("addCatalogResourceToPage", () => {
     $selectedPageId.set("template");
     $authPermit.set("view");
     const before = $dataSources.get();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     expect(await addCatalogResourceToPage(events.resourceId)).toBe(false);
+    consoleError.mockRestore();
     expect($dataSources.get()).toBe(before);
     expect(serverSyncStore.transactionManager.currentStack).toHaveLength(0);
+    // the runtime's refusal is what the admin sees
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith(
+      "Page templates can be edited only in design mode, with build access."
+    );
   });
 });
 
@@ -402,8 +430,47 @@ describe("Upcoming Events in the Data section", () => {
     expect(getUpcomingBindings()).toHaveLength(1);
   });
 
-  test("the builder loads the upcoming read for the page, and Events not at all", async () => {
+  test("the builder loads the upcoming read for the page, and not Events, which another page reads", async () => {
     setProject();
+    // another page reads Events, through a binding of its own
+    const pages = $pages.get()!;
+    $pages.set({
+      ...pages,
+      pages: new Map(pages.pages).set("other", {
+        ...pages.pages.get(pages.homePageId)!,
+        id: "other",
+        name: "Other",
+        path: "/other",
+        rootInstanceId: "otherBody",
+      }),
+    });
+    $instances.set(
+      new Map($instances.get()).set("otherBody", {
+        type: "instance",
+        id: "otherBody",
+        component: "Body",
+        children: [],
+      })
+    );
+    const otherBinding: DataSource = {
+      type: "resource",
+      id: "other-events",
+      scopeInstanceId: "otherBody",
+      name: "Events",
+      resourceId: events.resourceId,
+    };
+    $dataSources.set(
+      new Map($dataSources.get()).set(otherBinding.id, otherBinding)
+    );
+    $props.set(
+      new Map($props.get()).set("other-reads-events", {
+        id: "other-reads-events",
+        instanceId: "otherBody",
+        name: "title",
+        type: "expression",
+        value: `${encodeDataVariableId(otherBinding.id)}.data`,
+      })
+    );
     expect(await addCatalogResourceToPage(upcoming.resourceId)).toBe(true);
     const [binding] = getUpcomingBindings();
     useOnBox(binding);
@@ -421,7 +488,6 @@ describe("Upcoming Events in the Data section", () => {
     vi.useFakeTimers();
     const unsubscribe = subscribeResources();
     await vi.advanceTimersByTimeAsync(1000);
-    unsubscribe();
 
     expect(loaderFetch).toHaveBeenCalledTimes(1);
     const requests = JSON.parse(
@@ -433,6 +499,17 @@ describe("Upcoming Events in the Data section", () => {
         "https://staging.example.org/api/public/v1/events?upcoming=true",
       ],
     ]);
+
+    // the other page, opened, loads its Events
+    $selectedPageId.set("other");
+    await vi.advanceTimersByTimeAsync(1000);
+    unsubscribe();
+    expect(loaderFetch).toHaveBeenCalledTimes(2);
+    expect(
+      (JSON.parse(loaderFetch.mock.calls[1][1].body) as ResourceRequest[]).map(
+        ({ url }) => url
+      )
+    ).toEqual(["https://staging.example.org/api/public/v1/events"]);
   });
 });
 

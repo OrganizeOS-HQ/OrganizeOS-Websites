@@ -525,6 +525,22 @@ describe("choosing", () => {
     }
   );
 
+  test("a refusal of the runtime's says its own message, and keeps the dialog open", async () => {
+    const message =
+      "Page templates can be edited only in design mode, with build access.";
+    vi.mocked(applySiteTemplate).mockResolvedValue({
+      status: "refused",
+      reason: "runtime",
+      message,
+    });
+    render();
+    await choose("union");
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith(message);
+    expect(dialog()).not.toBeNull();
+    expect(setBuilderMode).not.toHaveBeenCalled();
+  });
+
   test("a rejected apply shows an error and keeps the dialog open", async () => {
     const consoleError = vi
       .spyOn(console, "error")

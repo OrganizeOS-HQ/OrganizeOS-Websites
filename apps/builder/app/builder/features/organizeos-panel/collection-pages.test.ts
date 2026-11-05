@@ -53,8 +53,41 @@ import {
   removeCollectionFromSitemap,
 } from "./collection-pages";
 
-const { loaderFetch } = vi.hoisted(() => ({ loaderFetch: vi.fn() }));
+const { loaderFetch, toastError } = vi.hoisted(() => ({
+  loaderFetch: vi.fn(),
+  toastError: vi.fn(),
+}));
 vi.mock("~/shared/fetch.client", () => ({ fetch: loaderFetch }));
+vi.mock("~/shared/builder-api", () => ({
+  builderApi: { toast: { error: toastError } },
+}));
+
+// What the runtime layer says when it refuses a commit.
+const noBuildAccess =
+  "Page templates can be edited only in design mode, with build access.";
+
+// A page template, selected without build access: the one place the runtime
+// layer refuses a commit.
+const selectPageTemplateWithoutBuildAccess = () => {
+  const pages = $pages.get() as Pages;
+  $pages.set({
+    ...pages,
+    pageTemplates: new Map([
+      [
+        "template",
+        {
+          id: "template",
+          name: "Template",
+          title: "Template",
+          rootInstanceId: "homeBody",
+          meta: {},
+        },
+      ],
+    ]),
+  });
+  $selectedPageId.set("template");
+  $authPermit.set("view");
+};
 
 enableMapSet();
 registerContainers();
@@ -185,6 +218,7 @@ const setProject = (
 
 beforeEach(() => {
   loaderFetch.mockClear();
+  toastError.mockClear();
   items = { blog: [{ slug: "first-post" }], faq: [] };
   schemaFails = false;
   setProject();
@@ -447,31 +481,18 @@ describe("createCollectionItemPage", () => {
     expect(getWebstudioData()).toEqual(before);
   });
 
-  test("without build access, returns the error and writes nothing", async () => {
-    // a page template, the one place the runtime layer refuses a commit
-    const pages = $pages.get() as Pages;
-    $pages.set({
-      ...pages,
-      pageTemplates: new Map([
-        [
-          "template",
-          {
-            id: "template",
-            name: "Template",
-            title: "Template",
-            rootInstanceId: "homeBody",
-            meta: {},
-          },
-        ],
-      ]),
-    });
-    $selectedPageId.set("template");
-    $authPermit.set("view");
+  test("without build access, returns the runtime's refusal and writes nothing", async () => {
+    selectPageTemplateWithoutBuildAccess();
     const before = getWebstudioData();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
+    // the row menu toasts this error
     expect(await createCollectionItemPage("blog")).toEqual({
-      error: loadCollectionError,
+      error: noBuildAccess,
     });
+    consoleError.mockRestore();
 
     expect(getWebstudioData()).toEqual(before);
     expect(serverSyncStore.transactionManager.currentStack).toHaveLength(0);
@@ -920,6 +941,26 @@ describe("the sitemap page", () => {
     ).toBe(false);
     // nothing else to remove
     expect(await removeCollectionFromSitemap("blog")).toBe(false);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("Remove from sitemap without build access toasts the runtime's refusal, removing nothing", async () => {
+    await createBlogPage();
+    selectPageTemplateWithoutBuildAccess();
+    const before = getWebstudioData();
+    const depth = serverSyncStore.transactionManager.currentStack.length;
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    expect(await removeCollectionFromSitemap("blog")).toBe(false);
+    consoleError.mockRestore();
+
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith(noBuildAccess);
+    expect(listSitemapCollections()).toEqual(["blog"]);
+    expect(getWebstudioData()).toEqual(before);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(depth);
   });
 
   test("the item page and the sitemap are one undo step", async () => {

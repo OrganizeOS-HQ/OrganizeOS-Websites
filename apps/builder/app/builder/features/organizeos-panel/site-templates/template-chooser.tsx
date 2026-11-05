@@ -127,9 +127,9 @@ const categoryLabels: Record<TemplateCategory, string> = {
   foundation: "Foundation",
 };
 
-/** What a refused apply says, by its reason. */
+/** What a refused apply says, by its reason; the runtime's says its own. */
 const refusalMessages: Record<
-  Extract<ApplyResult, { status: "refused" }>["reason"],
+  Exclude<Extract<ApplyResult, { status: "refused" }>["reason"], "runtime">,
   string
 > = {
   touched: "This site already has content.",
@@ -164,7 +164,11 @@ const chooseTemplate = async (template: SiteTemplate) => {
     return;
   }
   if (result.status === "refused") {
-    builderApi.toast.error(refusalMessages[result.reason]);
+    builderApi.toast.error(
+      result.reason === "runtime"
+        ? result.message
+        : refusalMessages[result.reason]
+    );
     return;
   }
   const homePageId = $pages.get()?.homePageId;

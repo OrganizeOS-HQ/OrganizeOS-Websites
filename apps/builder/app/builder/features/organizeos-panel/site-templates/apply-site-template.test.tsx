@@ -1480,7 +1480,7 @@ describe("applySiteTemplate", () => {
     expect(getWebstudioData()).toEqual(before);
   });
 
-  test("without build access, it is refused, writing and uploading nothing", async () => {
+  test("without build access, it is refused with the runtime's message, writing and uploading nothing", async () => {
     const provisioned = await createProvisionedProject(provisioning);
     setStores(provisioned);
     // a page template, the one place the runtime layer refuses a commit
@@ -1508,9 +1508,12 @@ describe("applySiteTemplate", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
 
+    // the chooser toasts the message
     expect(await applySiteTemplate(withFonts)).toEqual({
       status: "refused",
-      reason: "touched",
+      reason: "runtime",
+      message:
+        "Page templates can be edited only in design mode, with build access.",
     });
 
     expect(consoleError).toHaveBeenCalledWith(

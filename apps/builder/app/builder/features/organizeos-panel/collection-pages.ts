@@ -23,6 +23,7 @@ import { RichText } from "@organizeos/site-components/templates";
 import { findAvailableVariables } from "@webstudio-is/project-build/runtime";
 import { getWebstudioData } from "~/shared/instance-utils/data";
 import { selectInstance, selectPage } from "~/shared/nano-states";
+import { builderApi } from "~/shared/builder-api";
 import { $pages } from "~/shared/sync/data-stores";
 import { addToFolderMutable, updateWebstudioDataStaged } from "./staged-data";
 import {
@@ -853,8 +854,8 @@ export const deleteSubtreeMutable = (
 /**
  * Remove from sitemap: drop one collection's part from the generated sitemap,
  * its `ws:collection` and its `/slugs` Resource, in one transaction. Resolves
- * whether it removed anything; false when the runtime layer refuses the
- * write. A hand-made sitemap is never edited.
+ * whether it removed anything; false, with the runtime's message, when the
+ * runtime layer refuses the write. A hand-made sitemap is never edited.
  */
 export const removeCollectionFromSitemap = async (
   slug: string
@@ -884,6 +885,9 @@ export const removeCollectionFromSitemap = async (
     });
   } catch (error) {
     console.error(error);
+    builderApi.toast.error(
+      error instanceof Error ? error.message : "Cannot remove from sitemap."
+    );
     return false;
   }
 };
@@ -933,9 +937,11 @@ export const createCollectionItemPage = async (
     });
   } catch (error) {
     // the runtime layer refused the write (a page template without build
-    // access): nothing was written
+    // access): nothing was written, and its message says why
     console.error(error);
-    return { error: loadCollectionError };
+    return {
+      error: error instanceof Error ? error.message : loadCollectionError,
+    };
   }
   if (outcome.created) {
     selectInstance(undefined);

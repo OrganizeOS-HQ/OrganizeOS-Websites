@@ -13,6 +13,7 @@ import {
   rebindTreeVariablesMutable,
 } from "@webstudio-is/project-build/runtime";
 import { $selectedPage } from "~/shared/nano-states";
+import { builderApi } from "~/shared/builder-api";
 import { isOrganizeosBlocksEnabled } from "./insert-organizeos-block";
 import { updateWebstudioDataStaged } from "./staged-data";
 
@@ -113,8 +114,9 @@ const addCatalogResourceToPageMutable = (
  * visible at the page root, its own or `:root`'s, has that name), scoped to
  * the page's root and referencing the Resource by id. Decided inside the
  * transaction, so a page that already has it (see isCatalogResourceOnPage)
- * gets no second one. Resolves whether it added one; false, writing nothing,
- * when the runtime layer refuses the write.
+ * gets no second one. Resolves whether it added one; false, writing nothing
+ * and toasting the runtime's message, when the runtime layer refuses the
+ * write.
  *
  * Known limit: two builder tabs that add the same Resource at once both pass
  * that check against their own state, and single-player sync refuses the
@@ -134,6 +136,9 @@ export const addCatalogResourceToPage = async (
     );
   } catch (error) {
     console.error(error);
+    builderApi.toast.error(
+      error instanceof Error ? error.message : "Cannot add to this page."
+    );
     return false;
   }
 };

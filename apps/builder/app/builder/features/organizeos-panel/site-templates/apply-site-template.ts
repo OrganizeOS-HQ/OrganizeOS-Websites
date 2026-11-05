@@ -192,7 +192,9 @@ export type ApplyResult =
   | {
       status: "refused";
       reason: "touched" | "path-taken" | "resources" | "no-project";
-    };
+    }
+  // the runtime layer refused the write, and says why
+  | { status: "refused"; reason: "runtime"; message: string };
 
 const isHomePage = (page: Pick<RenderedPage, "path">) => page.path === "";
 
@@ -477,8 +479,8 @@ const fetchFontFiles = (template: SiteTemplate) =>
  * cover leave no unused asset either. An id
  * the upload returns that is not the one computed here is logged; a failed
  * upload is reported by the upload's own toast. Where the runtime layer
- * refuses the write (a page template without build access), it is refused,
- * writing and uploading nothing.
+ * refuses the write (a page template without build access), it is refused
+ * with the runtime's message, writing and uploading nothing.
  */
 export const applySiteTemplate = async (
   template: SiteTemplate
@@ -533,10 +535,17 @@ export const applySiteTemplate = async (
       throw error;
     }
     // The runtime layer refused the write before it began (a page template
-    // without build access): a refusal, as the write that wrote nothing was
-    // before (ruling data OQ3).
+    // without build access): a refusal, with the runtime's own message
+    // (ruling data OQ3, amended).
     console.error(error);
-    return { status: "refused", reason: "touched" };
+    return {
+      status: "refused",
+      reason: "runtime",
+      message:
+        error instanceof Error
+          ? error.message
+          : "This template cannot be applied.",
+    };
   }
   if (result.status !== "applied") {
     return result;
