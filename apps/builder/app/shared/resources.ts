@@ -339,6 +339,16 @@ const queueInvalidatedResource = (resource: ResourceRequest) => {
   updatePending();
 };
 
+// OrganizeOS fork: the CMS panel and the record picker reload a request they
+// changed (fork doc section 9).
+export const invalidateResource = (
+  request: ResourceRequest,
+  requestFetch: typeof fetch = fetch
+) => {
+  queueInvalidatedResource(request);
+  startLoading(requestFetch);
+};
+
 /** Keep an explicitly requested preview alive until its dialog releases it. */
 export const loadResourcePreview = (
   resource: ResourceRequest,

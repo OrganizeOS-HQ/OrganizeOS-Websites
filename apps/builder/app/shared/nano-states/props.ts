@@ -303,7 +303,11 @@ const $resourceRequestPlan = atom<ResourceRequestPlan>(
 );
 
 // OrganizeOS fork: exported for the CMS panel, which invalidates a saved
-// collection's requests (builder/features/cms-panel).
+// collection's requests (builder/features/cms-panel), and the record picker,
+// which reloads a request that failed (settings-panel/controls/
+// organizeos-record.tsx). The last plan computed while
+// subscribeResourceRequestPlan runs (the builder's subscribeResources); empty
+// otherwise.
 export const $computedResourceRequests = computed(
   $resourceRequestPlan,
   (plan) => plan.requests
