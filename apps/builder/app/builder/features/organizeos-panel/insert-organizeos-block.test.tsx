@@ -10,7 +10,10 @@ import {
   ws,
 } from "@webstudio-is/template";
 import { lintExpression } from "@webstudio-is/expression";
-import { isTreeSatisfyingContentModel } from "@webstudio-is/project-build/runtime";
+import {
+  isOrganizeosCatalogResourceId,
+  isTreeSatisfyingContentModel,
+} from "@webstudio-is/project-build/runtime";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import * as radixMetas from "@webstudio-is/sdk-components-react-radix/metas";
 import {
@@ -337,6 +340,9 @@ const expectBoundToOwnBinding = ({ copies = 0 } = {}) => {
     const [binding] = bindings[index] as [
       Extract<DataSource, { type: "resource" }>,
     ];
+    // the block's own binding, never a catalog one (a v5 id, which the
+    // catalog's change guard keeps)
+    expect(isOrganizeosCatalogResourceId(binding.id), binding.id).toBe(false);
     expect(props[index]).toEqual({
       id: expect.any(String),
       instanceId: root.id,
@@ -351,6 +357,7 @@ const expectBoundToOwnBinding = ({ copies = 0 } = {}) => {
   expect(
     resourceIds.filter((resourceId) => resourceId === forms.resourceId)
   ).toHaveLength(roots.length - copies);
+  expect(isOrganizeosCatalogResourceId(forms.resourceId)).toBe(true);
   for (const resourceId of resourceIds) {
     expect($resources.get().get(resourceId)).toEqual({
       ...expectedFormsResource,
