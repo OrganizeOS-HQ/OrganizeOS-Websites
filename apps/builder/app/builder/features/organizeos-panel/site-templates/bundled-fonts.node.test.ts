@@ -1,6 +1,3 @@
-/**
- * @vitest-environment node
- */
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";

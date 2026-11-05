@@ -7,7 +7,6 @@ import {
   type StyleDecl,
   type WebstudioData,
   type WebstudioFragment,
-  ROOT_FOLDER_ID,
   ROOT_INSTANCE_ID,
   findTreeInstanceIds,
   getAllPages,
@@ -26,17 +25,15 @@ import {
   isCanonicalName,
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
-import { SIGNUP_PAGE_PATH } from "~/shared/organizeos-preset-ids";
 import {
-  getWebstudioData,
-  updateWebstudioData,
-} from "~/shared/instance-utils/data";
-import { insertWebstudioFragmentCopy } from "~/shared/instance-utils/fragment";
-import { findLocalStyleSourcesWithinInstances } from "~/shared/instance-utils/tree";
-import { deleteLocalStyleSourcesMutable } from "~/shared/style-source-utils";
+  deleteLocalStyleSourcesMutable,
+  findLocalStyleSourcesWithinInstances,
+  insertWebstudioFragmentCopy,
+} from "@webstudio-is/project-build/runtime";
+import { SIGNUP_PAGE_PATH } from "~/shared/organizeos-preset-ids";
+import { getWebstudioData } from "~/shared/instance-utils/data";
 import { selectInstance } from "~/shared/nano-states";
 import { $project } from "~/shared/sync/data-stores";
-import { registerFolderChildMutable } from "~/builder/features/pages/page-utils";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { uploadAssets } from "~/builder/shared/assets/upload-assets";
 import {
@@ -44,6 +41,7 @@ import {
   getSha256HashOfFile,
 } from "~/builder/shared/assets/asset-utils";
 import { deleteSubtreeMutable } from "../collection-pages";
+import { addToFolderMutable, updateWebstudioDataStaged } from "../staged-data";
 import {
   type OrganizeosPresetIds,
   completeOrganizeosFragment,
@@ -58,8 +56,11 @@ import {
  * Root, each page's body is inserted as a fragment in design mode, Home takes
  * the template's body, title and description, the other pages are added at the
  * root of the Pages tree, and each platform block the template placed is bound to the
- * org's data as an inserted block is. All in one `updateWebstudioData`
- * transaction, so the builder's undo removes it in one step.
+ * org's data as an inserted block is. All in one staged transaction
+ * (staged-data.ts), so the builder's undo removes it in one step. The page
+ * bodies have no parent to insert them into, so they are copied into the
+ * transaction's data (insertWebstudioFragmentCopy), which keeps the copy's id
+ * map for the blocks.
  */
 
 /** The page `createPages()` makes for every project. */
@@ -381,7 +382,6 @@ export const applySiteTemplateMutable = (
   }
 
   writeCanonicalVariablesMutable(data, variables, "overwrite");
-  selectInstance(undefined);
   const templateHomeId = pages.find(isHomePage)?.pageId;
   const unboundBlocks: string[] = [];
   for (const page of pages) {
@@ -417,7 +417,7 @@ export const applySiteTemplateMutable = (
         rootInstanceId: bodyId,
         meta: { description: JSON.stringify(page.description) },
       });
-      registerFolderChildMutable(data.pages, page.pageId, ROOT_FOLDER_ID);
+      addToFolderMutable(data.pages, page.pageId);
     }
 
     // Each block through a view of its page: the block's root as the only
@@ -476,7 +476,9 @@ const fetchFontFiles = (template: SiteTemplate) =>
  * reads a page's images with too), so the thumbnail and the preview event
  * cover leave no unused asset either. An id
  * the upload returns that is not the one computed here is logged; a failed
- * upload is reported by the upload's own toast.
+ * upload is reported by the upload's own toast. Where the runtime layer
+ * refuses the write (a page template without build access), it is refused,
+ * writing and uploading nothing.
  */
 export const applySiteTemplate = async (
   template: SiteTemplate
@@ -510,23 +512,37 @@ export const applySiteTemplate = async (
   });
   const fonts = await fetchFontFiles(template);
 
-  // stays refused when the transaction skips its callback
-  let result = { status: "refused", reason: "touched" } as ApplyResult;
-  updateWebstudioData((data) => {
-    result = applySiteTemplateMutable(data, pages, {
-      projectId: project.id,
-      presetIds,
-      variables: template.variables,
-      ignoreAssetIds: new Set([
-        ...assetIds.values(),
-        ...fonts.map(({ assetId }) => assetId),
-      ]),
-      blockTokens: template.blockTokens,
+  let staged = false;
+  let result: ApplyResult;
+  try {
+    result = await updateWebstudioDataStaged((data) => {
+      staged = true;
+      return applySiteTemplateMutable(data, pages, {
+        projectId: project.id,
+        presetIds,
+        variables: template.variables,
+        ignoreAssetIds: new Set([
+          ...assetIds.values(),
+          ...fonts.map(({ assetId }) => assetId),
+        ]),
+        blockTokens: template.blockTokens,
+      });
     });
-  });
+  } catch (error) {
+    if (staged) {
+      throw error;
+    }
+    // The runtime layer refused the write before it began (a page template
+    // without build access): a refusal, as the write that wrote nothing was
+    // before (ruling data OQ3).
+    console.error(error);
+    return { status: "refused", reason: "touched" };
+  }
   if (result.status !== "applied") {
     return result;
   }
+  // the selected instance may have been in Home's old body
+  selectInstance(undefined);
 
   const shownAssetIds = findPageAssetIds(pages);
   const shownUrls = Array.from(urls).filter(([file]) =>

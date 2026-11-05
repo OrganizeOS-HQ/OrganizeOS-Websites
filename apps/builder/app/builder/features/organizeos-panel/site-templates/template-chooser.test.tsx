@@ -32,8 +32,9 @@ import {
   setBuilderMode,
 } from "~/shared/nano-states";
 import { $selectedPageId } from "~/shared/nano-states/pages";
-import { updateWebstudioData } from "~/shared/instance-utils/data";
+import { $builderMode } from "~/shared/nano-states/misc";
 import { $dataLoadingState } from "~/builder/shared/nano-states";
+import { updateWebstudioDataStaged } from "../staged-data";
 import {
   type ApplyResult,
   applySiteTemplate,
@@ -55,14 +56,13 @@ vi.mock(
     SITE_TEMPLATES: catalog,
   })
 );
-vi.mock("./apply-site-template", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./apply-site-template")>()),
-  applySiteTemplate: vi.fn(),
-}));
-vi.mock("~/shared/nano-states", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("~/shared/nano-states")>()),
-  setBuilderMode: vi.fn(),
-}));
+// Spied, not replaced: a factory that imports the original module waits on
+// itself in the browser runner (both modules are in import cycles). Each
+// test sets what the spies do.
+vi.mock("./apply-site-template", { spy: true });
+// setBuilderMode's own module: the barrel re-exports with `export *`, which
+// the browser runner cannot spy
+vi.mock("~/shared/nano-states/misc", { spy: true });
 vi.mock("~/shared/builder-api", () => ({
   builderApi: { toast: { error: toastError } },
 }));
@@ -210,8 +210,8 @@ const rootVariables = () => {
     .sort();
 };
 
-const applied = (template: SiteTemplate): ApplyResult => {
-  updateWebstudioData((data) => {
+const applied = async (template: SiteTemplate): Promise<ApplyResult> => {
+  await updateWebstudioDataStaged((data) => {
     writeCanonicalVariablesMutable(data, template.variables, "overwrite");
   });
   return { status: "applied", unboundBlocks: [] };
@@ -229,13 +229,15 @@ beforeEach(() => {
     blocksEnabled: true,
   });
   $authPermit.set("own");
+  $builderMode.set("design");
   $planFeatures.set({ ...defaultPlanFeatures, allowContentMode: true });
   $dataLoadingState.set("loaded");
   vi.mocked(applySiteTemplate).mockReset();
   vi.mocked(applySiteTemplate).mockImplementation(async (template) =>
     applied(template)
   );
-  vi.mocked(setBuilderMode).mockClear();
+  vi.mocked(setBuilderMode).mockReset();
+  vi.mocked(setBuilderMode).mockImplementation(() => {});
   toastError.mockClear();
 });
 
@@ -321,11 +323,11 @@ describe("the offer", () => {
     expect($isTemplateChooserOffered.get()).toBe(false);
   });
 
-  test("not offered once Global Root declares a canonical variable", () => {
+  test("not offered once Global Root declares a canonical variable", async () => {
     render();
     expect(dialog()).not.toBeNull();
-    act(() => {
-      updateWebstudioData((data) => {
+    await act(async () => {
+      await updateWebstudioDataStaged((data) => {
         writeCanonicalVariablesMutable(data, BLANK_CANONICAL_VALUES, "fill");
       });
     });
@@ -400,19 +402,65 @@ describe("the dialog", () => {
 });
 
 describe("choosing", () => {
-  test("Start blank writes the variables and closes", () => {
+  test("Start blank writes the variables and closes", async () => {
     render();
-    act(() => {
+    await act(async () => {
       startBlankButton()?.click();
     });
-    expect(rootVariables()).toEqual(
-      [...CANONICAL_COLOR_NAMES, ...CANONICAL_FONT_NAMES]
-        .map((name) => `--${name}`)
-        .sort()
+    // a staged write, committed a microtask later
+    await vi.waitFor(() =>
+      expect(rootVariables()).toEqual(
+        [...CANONICAL_COLOR_NAMES, ...CANONICAL_FONT_NAMES]
+          .map((name) => `--${name}`)
+          .sort()
+      )
     );
     expect($isTemplateChooserOffered.get()).toBe(false);
+    await settle();
     expect(dialog()).toBeNull();
     expect(applySiteTemplate).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("a Start blank the runtime refuses says why, writes nothing and keeps the dialog", async () => {
+    // a page template outside design mode, where the runtime layer refuses
+    // a commit
+    const pages = $pages.get()!;
+    $pages.set({
+      ...pages,
+      pageTemplates: new Map([
+        [
+          "template",
+          {
+            id: "template",
+            name: "Template",
+            title: "Template",
+            rootInstanceId: pages.pages.get(pages.homePageId)!.rootInstanceId,
+            meta: {},
+          },
+        ],
+      ]),
+    });
+    $selectedPageId.set("template");
+    $builderMode.set("content");
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    render();
+
+    await act(async () => {
+      startBlankButton()?.click();
+    });
+    await settle();
+
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith(
+      "Page templates can be edited only in design mode, with build access."
+    );
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(rootVariables()).toEqual([]);
+    expect($isTemplateChooserOffered.get()).toBe(true);
+    expect(dialog()).not.toBeNull();
   });
 
   test("choosing a template applies it and switches to Simple mode when allowed", async () => {
@@ -429,6 +477,8 @@ describe("choosing", () => {
   });
 
   test("stays in Design mode when content mode is not allowed", async () => {
+    // a builder, not the owner: 0.309.0 always allows the owner content mode
+    $authPermit.set("build");
     $planFeatures.set({ ...defaultPlanFeatures, allowContentMode: false });
     render();
     await choose("union");
@@ -439,7 +489,7 @@ describe("choosing", () => {
 
   test("blocks left unbound are named in one error", async () => {
     vi.mocked(applySiteTemplate).mockImplementation(async (template) => ({
-      ...applied(template),
+      ...(await applied(template)),
       unboundBlocks: ["Event List", "Event Card", "Event List"],
     }));
     render();

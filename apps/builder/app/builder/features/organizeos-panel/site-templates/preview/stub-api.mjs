@@ -5,7 +5,7 @@
 // first with the previewed template's preview event cover, or the empty
 // state under --no-events. Every other read, the forms among them, is an org
 // with no data. Plain JavaScript, so the script runs it with node alone;
-// stub-api.test.ts holds it to that.
+// stub-api.node.test.ts holds it to that.
 
 import { readFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
