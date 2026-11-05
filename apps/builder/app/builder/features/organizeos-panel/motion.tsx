@@ -1,18 +1,23 @@
 import type { ReactNode } from "react";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
-import { nanoid } from "nanoid";
 import {
   ROOT_INSTANCE_ID,
   type Instance,
   type Instances,
   type Page,
-  type Prop,
-  type WebstudioData,
 } from "@webstudio-is/sdk";
 import {
+  BuilderRuntimeError,
+  isRichTextContent,
+  isTreeSatisfyingContentModel,
+  type InstanceSelector,
+} from "@webstudio-is/project-build/runtime";
+import {
   theme,
+  cssVar,
   styled,
+  toast,
   Button,
   Flex,
   Grid,
@@ -20,14 +25,18 @@ import {
   Text,
 } from "@webstudio-is/design-system";
 import {
+  $registeredComponentMetas,
+  $selectedInstancePath,
   $selectedInstanceSelector,
   $selectedPage,
   selectInstance,
 } from "~/shared/nano-states";
 import { $instances, $props } from "~/shared/sync/data-stores";
-import type { InstanceSelector } from "~/shared/instance-utils/tree";
-import { updateWebstudioData } from "~/shared/instance-utils/data";
-import { wrapInstance } from "~/shared/instance-utils/mutation";
+import {
+  executeRuntimeMutation,
+  executeStagedRuntimeMutation,
+} from "~/shared/instance-utils/data";
+import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { useDraftValue } from "~/builder/shared/use-draft-value";
 import { FieldLabel } from "~/builder/features/settings-panel/property-label";
 import { organizeosNamespace } from "./insert-organizeos-block";
@@ -95,81 +104,142 @@ export const getMotionTarget = (
   return { kind: "wrap", instanceId };
 };
 
-/** Sets a prop of the instance, keeping the prop's id when it exists. */
-const setPropMutable = (
-  data: WebstudioData,
-  instanceId: Instance["id"],
-  value: Pick<Prop, "name" | "type" | "value">
-) => {
-  let existing: undefined | Prop;
-  for (const prop of data.props.values()) {
-    if (prop.instanceId === instanceId && prop.name === value.name) {
-      existing = prop;
-      break;
-    }
-  }
-  const id = existing?.id ?? nanoid();
-  data.props.set(id, { id, instanceId, ...value } as Prop);
-};
-
-/** Writes a preset's `action` and `stagger`, replacing any before. */
-export const writeMotionPresetMutable = (
-  data: WebstudioData,
+/**
+ * The props a preset writes, as instances.updateProps updates: it keeps an
+ * existing prop's id, so a preset replaces the action and stagger before it.
+ */
+const getMotionPresetUpdates = (
   instanceId: Instance["id"],
   preset: Pick<MotionPreset, "action" | "stagger">
-) => {
-  setPropMutable(data, instanceId, {
+) => [
+  {
+    instanceId,
     name: "action",
-    type: "animationAction",
+    type: "animationAction" as const,
     // a copy: the store freezes what it holds
     value: structuredClone(preset.action),
-  });
-  setPropMutable(data, instanceId, {
+  },
+  {
+    instanceId,
     name: "stagger",
-    type: "number",
+    type: "number" as const,
     value: preset.stagger,
-  });
-};
+  },
+];
 
 /** A stagger the field accepts: a finite number, clamped to 0..20. */
 export const clampMotionStagger = (value: number) =>
   Number.isFinite(value) ? Math.min(maxStagger, Math.max(0, value)) : 0;
 
 /**
- * Applies a preset to the selection, in one undo step either way: wrapping
- * writes both props inside the wrap's transaction (`onWrap`), and an
- * existing wrapper takes both in one transaction. `wrapInstance` refuses,
- * with its own toast, what the content model or rich text does not allow
- * (for example a list item, whose parent takes only list items).
+ * Applies a preset to the selection, in one undo step either way. An existing
+ * wrapper takes both props in one transaction. A wrap is staged with both
+ * props and committed once (executeStagedRuntimeMutation); what the content
+ * model or rich text does not allow (for example a list item, whose parent
+ * takes only list items) is refused with a toast, and nothing is written.
+ *
+ * The runtime's wrap checks content models against the static registry, which
+ * has no OrganizeOS metas, so there an Animate Children is tagless and fits
+ * anywhere. The check here uses the builder's registered metas, as the
+ * builder's own wrap did before 0.309.0 (ruling panels OQ1). Without build
+ * access the wrap is refused with the runtime's message.
  */
-export const applyMotionPreset = (preset: MotionPreset) => {
+export const applyMotionPreset = async (preset: MotionPreset) => {
   const target = getMotionTarget(
     $selectedInstanceSelector.get(),
     $instances.get(),
     $selectedPage.get()
   );
-  if (target.kind === "wrap") {
-    wrapInstance(animateChildrenComponent, undefined, {
-      onWrap: (data, newInstanceId) =>
-        writeMotionPresetMutable(data, newInstanceId, preset),
-    });
-  }
-  if (target.kind === "wrapper") {
-    updateWebstudioData((data) =>
-      writeMotionPresetMutable(data, target.instanceId, preset)
+  let staged = false;
+  try {
+    if (target.kind === "wrapper") {
+      executeRuntimeMutation({
+        id: "instances.updateProps",
+        input: { updates: getMotionPresetUpdates(target.instanceId, preset) },
+      });
+      return;
+    }
+    // the selection's selector as upstream's wrapInstance reads it
+    const selected = $selectedInstancePath.get()?.[0];
+    if (target.kind !== "wrap" || selected === undefined) {
+      return;
+    }
+    const metas = $registeredComponentMetas.get();
+    // synchronous: an asynchronous stage would commit against the state
+    // taken at the call
+    const instanceSelector = await executeStagedRuntimeMutation(
+      (accumulator) => {
+        const instances = () => accumulator.state.instances ?? new Map();
+        const props = () => accumulator.state.props ?? new Map();
+        if (
+          isRichTextContent({
+            instances: instances(),
+            props: props(),
+            metas,
+            instanceSelector: selected.instanceSelector,
+          })
+        ) {
+          throw Error("Cannot wrap textual content");
+        }
+        const { instanceSelector } = accumulator.execute({
+          id: "instances.wrap",
+          input: {
+            instanceSelector: selected.instanceSelector,
+            component: animateChildrenComponent,
+          },
+        });
+        if (
+          isTreeSatisfyingContentModel({
+            instances: instances(),
+            props: props(),
+            metas,
+            instanceSelector,
+          }) === false
+        ) {
+          throw Error(
+            `Cannot wrap in ${getInstanceLabel({
+              component: animateChildrenComponent,
+            })}`
+          );
+        }
+        accumulator.execute({
+          id: "instances.updateProps",
+          input: {
+            updates: getMotionPresetUpdates(instanceSelector[0], preset),
+          },
+        });
+        staged = true;
+        return instanceSelector;
+      }
+    );
+    selectInstance(instanceSelector);
+  } catch (error) {
+    // The commit toasts its own refusal (a wrap inside MDX content) before it
+    // throws it, so that one is not toasted again (ruling data OQ7).
+    if (staged && error instanceof BuilderRuntimeError) {
+      return;
+    }
+    toast.error(
+      error instanceof Error ? error.message : "Cannot wrap instance"
     );
   }
 };
 
-/** Sets an Animate Children's stagger, clamped to 0..20. */
+/** Sets an Animate Children's stagger, clamped to 0..20, keeping the prop's id. */
 export const setMotionStagger = (instanceId: Instance["id"], value: number) => {
-  updateWebstudioData((data) =>
-    setPropMutable(data, instanceId, {
-      name: "stagger",
-      type: "number",
-      value: clampMotionStagger(value),
-    })
-  );
+  executeRuntimeMutation({
+    id: "instances.updateProps",
+    input: {
+      updates: [
+        {
+          instanceId,
+          name: "stagger",
+          type: "number",
+          value: clampMotionStagger(value),
+        },
+      ],
+    },
+  });
 };
 
 const $motionTarget = computed(
@@ -201,11 +271,11 @@ const PresetButton = styled("button", {
   boxSizing: "border-box",
   padding: theme.spacing[3],
   borderRadius: theme.borderRadius[2],
-  border: `1px solid ${theme.colors.borderMain}`,
+  border: `1px solid ${cssVar("--border-default")}`,
   textAlign: "center",
   cursor: "pointer",
-  "&:hover": { background: theme.colors.backgroundHover },
-  "&:focus-visible": { borderColor: theme.colors.borderFocus },
+  "&:hover": { background: cssVar("--overlay-interaction-hover") },
+  "&:focus-visible": { borderColor: cssVar("--border-focus") },
 });
 
 const StaggerField = ({
@@ -288,7 +358,7 @@ export const Motion = ({ editor }: { editor?: ReactNode }) => {
               key={preset.id}
               type="button"
               data-motion-preset={preset.id}
-              onClick={() => applyMotionPreset(preset)}
+              onClick={() => void applyMotionPreset(preset)}
             >
               <Text variant="small">{preset.label}</Text>
             </PresetButton>

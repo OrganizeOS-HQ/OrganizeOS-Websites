@@ -5,7 +5,12 @@ import { enableMapSet } from "immer";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TooltipProvider, toast } from "@webstudio-is/design-system";
 import { createDefaultPages } from "@webstudio-is/project-build";
-import { $, renderData, ws } from "@webstudio-is/template";
+import { BuilderRuntimeError } from "@webstudio-is/project-build/runtime";
+import {
+  createTemplateComponentFixture,
+  renderData,
+  ws,
+} from "@webstudio-is/template";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import {
@@ -15,6 +20,7 @@ import {
   type Prop,
 } from "@webstudio-is/sdk";
 import {
+  $authPermit,
   $registeredComponentMetas,
   $selectedInstanceSelector,
   registerComponentLibrary,
@@ -23,6 +29,7 @@ import {
 import { $selectedPageId } from "~/shared/nano-states/pages";
 import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
 import { $instances, $pages, $props } from "~/shared/sync/data-stores";
+import { executeStagedRuntimeMutation } from "~/shared/instance-utils/data";
 import {
   $selectedInstanceInitialPropNames,
   $selectedInstancePropsMetas,
@@ -36,6 +43,10 @@ import {
   setMotionStagger,
 } from "./motion";
 import { motionPresets } from "./motion/presets";
+
+// The staged commit, real unless a test stands in for it (a factory that
+// imports the original deadlocks in the browser runner)
+vi.mock("~/shared/instance-utils/data", { spy: true });
 
 enableMapSet();
 registerContainers();
@@ -55,7 +66,9 @@ registerComponentLibrary({
 });
 
 const [reveal, revealStaggered, parallax] = motionPresets;
-const AnimateChildren = $[animateChildrenComponent];
+const AnimateChildren = createTemplateComponentFixture(
+  animateChildrenComponent
+);
 
 let root: Root | undefined;
 let container: HTMLElement | undefined;
@@ -104,14 +117,41 @@ const render = () => {
   return container;
 };
 
-const click = (host: HTMLElement, presetId: string) => {
+// A wrap commits after its staged mutation resolves, a few microtasks later.
+const click = async (host: HTMLElement, presetId: string) => {
   const button = host.querySelector<HTMLButtonElement>(
     `[data-motion-preset="${presetId}"]`
   );
   expect(button).not.toBeNull();
-  act(() => {
+  await act(async () => {
     button?.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
+};
+
+const undoDepth = () => serverSyncStore.transactionManager.currentStack.length;
+
+// A page template, selected without build access: the one place the runtime
+// layer refuses a commit (shared/instance-utils/data.ts).
+const selectPageTemplateWithoutBuildAccess = () => {
+  const pages = $pages.get()!;
+  $pages.set({
+    ...pages,
+    pageTemplates: new Map([
+      [
+        "template",
+        {
+          id: "template",
+          name: "Template",
+          title: "Template",
+          rootInstanceId: "body",
+          meta: {},
+        },
+      ],
+    ]),
+  });
+  $selectedPageId.set("template");
+  $authPermit.set("view");
 };
 
 beforeEach(() => {
@@ -194,10 +234,11 @@ describe("the Motion area", () => {
     expect(host.querySelector("[data-motion-presets]")).toBeNull();
   });
 
-  test("a preset wraps a plain element, with both props, in one undo step", () => {
+  test("a preset wraps a plain element, with both props, in one undo step", async () => {
     project();
     selectInstance(["section", "body"]);
     const before = getStores();
+    const stack = undoDepth();
     const host = render();
     expect(
       host
@@ -207,8 +248,10 @@ describe("the Motion area", () => {
     // no Stagger field until there is a wrapper
     expect(host.querySelector("[data-motion-stagger]")).toBeNull();
 
-    click(host, revealStaggered.id);
+    await click(host, revealStaggered.id);
 
+    // the wrap and both props: one transaction
+    expect(undoDepth()).toBe(stack + 1);
     const [wrapperId, ...parent] = $selectedInstanceSelector.get() ?? [];
     expect(parent).toEqual(["body"]);
     const wrapper = $instances.get().get(wrapperId);
@@ -231,7 +274,7 @@ describe("the Motion area", () => {
     expect(getStores()).toEqual(before);
   });
 
-  test("a preset replaces an existing wrapper's action and stagger", () => {
+  test("a preset replaces an existing wrapper's action and stagger", async () => {
     project([
       {
         id: "actionProp",
@@ -258,8 +301,11 @@ describe("the Motion area", () => {
         ?.getAttribute("data-motion-target")
     ).toBe("wrapper");
 
-    click(host, parallax.id);
+    const stack = undoDepth();
+    await click(host, parallax.id);
 
+    // one transaction
+    expect(undoDepth()).toBe(stack + 1);
     // no second wrapper, the same props, both replaced
     expect($instances.get().size).toBe(before.instances.size);
     expect($props.get().get("actionProp")).toEqual({
@@ -278,20 +324,20 @@ describe("the Motion area", () => {
     expect(getStores()).toEqual(before);
   });
 
-  test("a preset on a wrapper without props writes both", () => {
+  test("a preset on a wrapper without props writes both", async () => {
     project();
     selectInstance(["wrapper", "body"]);
-    applyMotionPreset(reveal);
+    await applyMotionPreset(reveal);
     expect(propsOf("wrapper")).toEqual({
       action: { type: "animationAction", value: reveal.action },
       stagger: { type: "number", value: 0 },
     });
   });
 
-  test("the written action is a copy, not the preset itself", () => {
+  test("the written action is a copy, not the preset itself", async () => {
     project();
     selectInstance(["wrapper", "body"]);
-    applyMotionPreset(reveal);
+    await applyMotionPreset(reveal);
     const prop = Array.from($props.get().values()).find(
       (prop) => prop.name === "action"
     );
@@ -384,15 +430,81 @@ describe("the Motion area", () => {
     expect(propsOf("wrapper").stagger).toEqual({ type: "number", value: 0 });
   });
 
-  test("a list item is refused by wrapInstance's content-model toast, writing nothing", () => {
+  // The runtime's wrap alone accepts it (its registry has no OrganizeOS metas,
+  // so the wrapper is tagless and fits anywhere): the builder's metas refuse it.
+  test("a list item is refused with the content model's toast, writing nothing", async () => {
     const toastError = vi.spyOn(toast, "error");
     project();
     selectInstance(["item", "list", "body"]);
     const before = getStores();
-    applyMotionPreset(reveal);
+    const stack = undoDepth();
+    await applyMotionPreset(reveal);
+    expect(toastError).toHaveBeenCalledTimes(1);
     expect(toastError).toHaveBeenCalledWith("Cannot wrap in Animate Children");
+    // neither the wrapper nor its props
     expect(getStores()).toEqual(before);
+    expect($props.get().size).toBe(0);
+    expect(undoDepth()).toBe(stack);
     expect($selectedInstanceSelector.get()).toEqual(["item", "list", "body"]);
+  });
+
+  test("a wrap without build access toasts the refusal and writes nothing", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    project();
+    selectPageTemplateWithoutBuildAccess();
+    selectInstance(["section", "body"]);
+    const before = getStores();
+    const stack = undoDepth();
+    await expect(applyMotionPreset(reveal)).resolves.toBeUndefined();
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith(
+      "Page templates can be edited only in design mode, with build access."
+    );
+    expect(getStores()).toEqual(before);
+    expect(undoDepth()).toBe(stack);
+    expect($selectedInstanceSelector.get()).toEqual(["section", "body"]);
+  });
+
+  // commitRuntimeMutation toasts its own refusal (a wrap inside MDX content)
+  // and then throws it: no second toast (ruling data OQ7)
+  test("the commit's own refusal is not toasted again, and nothing is written", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    const actual = await vi.importActual<
+      typeof import("~/shared/instance-utils/data")
+    >("~/shared/instance-utils/data");
+    // the wrap and its props are staged, then the commit refuses
+    vi.mocked(executeStagedRuntimeMutation).mockImplementationOnce((stage) =>
+      actual.executeStagedRuntimeMutation(async (accumulator) => {
+        await stage(accumulator);
+        throw new BuilderRuntimeError("BAD_REQUEST", "Refused by the commit.");
+      })
+    );
+    project();
+    selectInstance(["section", "body"]);
+    const before = getStores();
+    await applyMotionPreset(reveal);
+    expect(toastError).not.toHaveBeenCalled();
+    expect(getStores()).toEqual(before);
+    expect($selectedInstanceSelector.get()).toEqual(["section", "body"]);
+  });
+
+  test("a runtime refusal before anything is staged toasts its message once", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    const actual = await vi.importActual<
+      typeof import("~/shared/instance-utils/data")
+    >("~/shared/instance-utils/data");
+    vi.mocked(executeStagedRuntimeMutation).mockImplementationOnce(() =>
+      actual.executeStagedRuntimeMutation(() => {
+        throw new BuilderRuntimeError("BAD_REQUEST", "Refused here.");
+      })
+    );
+    project();
+    selectInstance(["section", "body"]);
+    const before = getStores();
+    await applyMotionPreset(reveal);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith("Refused here.");
+    expect(getStores()).toEqual(before);
   });
 });
 

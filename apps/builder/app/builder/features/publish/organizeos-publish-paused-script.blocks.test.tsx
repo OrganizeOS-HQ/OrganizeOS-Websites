@@ -8,7 +8,10 @@ import {
   publishedProjectBundle,
   type PublishedProjectBundle,
 } from "@webstudio-is/protocol";
-import { $, renderData } from "@webstudio-is/template";
+import {
+  createTemplateComponentFixture,
+  renderData,
+} from "@webstudio-is/template";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import { coreMetas, getAllPages, type Prop } from "@webstudio-is/sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
@@ -42,7 +45,10 @@ import {
   organizeosBlockData,
   organizeosNamespace,
 } from "../organizeos-panel/insert-organizeos-block";
-import { applyMotionPreset } from "../organizeos-panel/motion";
+import {
+  animateChildrenComponent,
+  applyMotionPreset,
+} from "../organizeos-panel/motion";
 import { motionPresets } from "../organizeos-panel/motion/presets";
 // What prebuild runs on the project bundle. A test of the builder reaches into
 // the CLI for it, as the OrganizeOS section's tests reach into the blocks
@@ -81,6 +87,8 @@ registerComponentLibrary({
   templates: organizeosTemplates,
 });
 
+const Body = createTemplateComponentFixture("Body");
+
 const projectId = "project-1";
 const bodyId = "bodyId";
 const provisioned = await buildOrgResourcePresets({
@@ -97,7 +105,7 @@ const panelBlocks = groupOrganizeosBlocks(
 ).flatMap((section) => section.blocks.map((block) => block.name));
 
 const setProject = () => {
-  const data = renderData(<$.Body ws:id={bodyId}></$.Body>);
+  const data = renderData(<Body ws:id={bodyId}></Body>);
   $instances.set(data.instances);
   $props.set(data.props);
   $breakpoints.set(new Map());
@@ -134,8 +142,15 @@ const insertEveryBlock = async () => {
   // the first block, wrapped with a preset
   const [first] = $instances.get().get(bodyId)?.children ?? [];
   selectInstance([first.value, bodyId]);
-  applyMotionPreset(motionPresets[1]);
+  await applyMotionPreset(motionPresets[1]);
   expect(toastError).not.toHaveBeenCalled();
+  // Motion refuses with the design system's toast, not builderApi's: the
+  // body's first child is the new wrapper, or every test here fails
+  const [wrapper] = $instances.get().get(bodyId)?.children ?? [];
+  expect(wrapper).not.toEqual(first);
+  expect(
+    wrapper?.type === "id" && $instances.get().get(wrapper.value)?.component
+  ).toBe(animateChildrenComponent);
 };
 
 // The project bundle prebuild reads, as the server serializes a build
