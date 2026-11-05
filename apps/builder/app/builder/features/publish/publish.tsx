@@ -1941,6 +1941,11 @@ export const PublishButton = ({ projectId }: PublishProps) => {
     }
   }, [publishDialog, dismissCountdown]);
   useEffect(() => {
+    // OrganizeOS fork: an OrganizeOS site's dialog follows the executor
+    // (organizeos-publish.tsx), so upstream's status refresh never runs for it.
+    if (organizeosSite !== undefined) {
+      return;
+    }
     // Refresh a build that finished while the popover was closed, including
     // after a publish status request failed.
     if (publishDialog === "publish" && publishProgress.isPublishing === false) {
@@ -1980,6 +1985,7 @@ export const PublishButton = ({ projectId }: PublishProps) => {
       };
     }
   }, [
+    organizeosSite,
     projectId,
     publishDialog,
     publishProgress.isPublishing,
