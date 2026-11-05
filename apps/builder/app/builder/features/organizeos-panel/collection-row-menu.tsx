@@ -184,7 +184,7 @@ const GatedLabel = ({
 }) => (
   <Flex direction="row" gap="2" align="center">
     {children}
-    {/* a plain label: never upstream's ProChip, which links to its pricing */}
+    {/* a plain label (Chip, planBadgeLabel), as every plan badge is */}
     {gated && <Chip>{planBadgeLabel}</Chip>}
   </Flex>
 );
