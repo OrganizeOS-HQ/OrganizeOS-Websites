@@ -23,7 +23,7 @@ import {
   xmlComponents,
 } from "@organizeos/site-components/org-script";
 import { platformName } from "~/shared/branding";
-import { findPageAndSelectorByInstanceId } from "~/shared/instance-utils/lookup";
+import { findPageAndSelectorByInstanceId } from "@webstudio-is/project-build/runtime";
 
 /**
  * What the Publish dialog lists as paused (docs/ORGANIZEOS-FORK.md section 10).
