@@ -47,7 +47,9 @@ describe("jsx paste plugin", () => {
     expect(isLikelyWebstudioJsx("<Box />")).toBe(true);
     expect(isLikelyWebstudioJsx('<ws.element ws:tag="section" />')).toBe(true);
     expect(isLikelyWebstudioJsx("<Switch />")).toBe(true);
-    expect(isLikelyWebstudioJsx("<VideoAnimation />")).toBe(true);
+    // OrganizeOS fork: the registry has no animation components
+    // (docs/ORGANIZEOS-FORK.md section 2), so their JSX is not Webstudio's
+    expect(isLikelyWebstudioJsx("<VideoAnimation />")).toBe(false);
     expect(isLikelyWebstudioJsx("</Box>")).toBe(false);
     expect(isLikelyWebstudioJsx("<section>HTML</section>")).toBe(false);
     expect(isLikelyWebstudioJsx("## Markdown")).toBe(false);
