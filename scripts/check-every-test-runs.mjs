@@ -198,6 +198,29 @@ for (const project of workflowProjects) {
   addToLeg(`builder ${project}`, builderProjects.get(project));
 }
 
+// `pnpm checks` runs the builder the way CI does, one project at a time
+// (test:builder:projects): two browser projects in one Vitest run can stall.
+const localProjects = new Set(
+  rootPackage.scripts?.["test:builder:projects"]
+    ?.match(/^for project in ([\w\s-]+); do /)?.[1]
+    .trim()
+    .split(/\s+/) ?? []
+);
+for (const project of builderProjects.keys()) {
+  if (localProjects.has(project) === false) {
+    failures.push(
+      `package.json script "test:builder:projects" does not run the builder's Vitest project "${project}"`
+    );
+  }
+}
+for (const project of localProjects) {
+  if (builderProjects.has(project) === false) {
+    failures.push(
+      `package.json script "test:builder:projects" runs the builder project "${project}", which collects no file`
+    );
+  }
+}
+
 rmSync(temporaryDirectory, { recursive: true, force: true });
 
 const running = new Set([...legs.values()].flat());
