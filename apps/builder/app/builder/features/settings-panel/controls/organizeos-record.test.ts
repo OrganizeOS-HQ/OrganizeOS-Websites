@@ -30,6 +30,7 @@ import {
   registerComponentLibrary,
   selectInstance,
   subscribeResourceRequestPlan,
+  $variableValuesByInstanceSelector,
 } from "~/shared/nano-states";
 import { $selectedPageId } from "~/shared/nano-states/pages";
 import { registerContainers } from "~/shared/sync/sync-stores";
@@ -1124,9 +1125,14 @@ describe("the record picker's load line", () => {
     // the loader answers a second or more later: no line meanwhile
     expect(line(host)).toBeUndefined();
     // a change elsewhere recomputes the same failure: still none
+    const values = $variableValuesByInstanceSelector.get();
     act(() => {
       $props.set(new Map($props.get()));
     });
+    // the variables were computed again
+    await vi.waitFor(() =>
+      expect($variableValuesByInstanceSelector.get()).not.toBe(values)
+    );
     await settle();
     expect($selectedInstanceFailedLoads.get()).toEqual([failedRead]);
     expect(line(host)).toBeUndefined();
@@ -1223,6 +1229,26 @@ describe("the record picker's binding", () => {
   const bindingVariant = (host: HTMLElement) =>
     host.querySelector("[data-variant]")?.getAttribute("data-variant");
 
+  const readOnlyNote =
+    "The value is controlled by an expression and cannot be changed.";
+
+  // what the label (the Signup Form's meta names `record` "Form") shows when
+  // it is clicked, as upstream's label test opens it
+  const labelContent = async (host: HTMLElement) => {
+    const label = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.textContent === "Form"
+    );
+    expect(label).toBeDefined();
+    act(() => label?.click());
+    // the content is open: its title names the property
+    await vi.waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
+        "Form"
+      )
+    );
+    return document.querySelector('[role="tooltip"]')?.textContent ?? "";
+  };
+
   // what the picker passes upstream's control last
   const controlProps = () => {
     const call = vi.mocked(BindableExpressionControl).mock.lastCall;
@@ -1255,6 +1281,8 @@ describe("the record picker's binding", () => {
       type: "string",
       value: contactForm.id,
     });
+    // the label opens, and says nothing of an expression
+    expect(await labelContent(host)).not.toContain(readOnlyNote);
   });
 
   test("bound, it shows the bound record and is read-only", async () => {
@@ -1278,6 +1306,8 @@ describe("the record picker's binding", () => {
       expression: encodeDataSourceVariable("v"),
       bindingState: { overwritable: false, variant: "bound" },
     });
+    // the label is read-only too
+    expect(await labelContent(host)).toContain(readOnlyNote);
   });
 
   test("the binding popover binds an expression, and clearing it writes the evaluated record", async () => {
