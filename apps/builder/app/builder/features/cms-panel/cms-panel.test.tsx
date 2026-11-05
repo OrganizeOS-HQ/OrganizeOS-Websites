@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+// The design system's colours, so that var() resolves in computed styles
+import "@webstudio-is/design-system/global.css";
 import { createElement, isValidElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
@@ -44,6 +44,9 @@ import {
   getCmsPanelSrc,
 } from "./cms-panel";
 import { CmsIcon } from "./cms-icon";
+// Read as text through Vite: the suite runs in the browser, without node:fs
+import topbarSource from "../../shared/topbar.tsx?raw";
+import toastSource from "../../../../../../packages/design-system/src/components/toast.tsx?raw";
 
 vi.mock("~/shared/resources", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/shared/resources")>()),
@@ -93,9 +96,6 @@ const unavailableCases: Array<[string, () => void]> = [
   ["the viewers relation", () => $workspaceRole.set("viewers")],
   ["a view-only permit", () => $authPermit.set("view")],
 ];
-
-const readSource = (path: string) =>
-  readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
 
 describe("$isCmsPanelAvailable", () => {
   beforeEach(setAvailable);
@@ -171,11 +171,10 @@ describe("CmsIcon", () => {
 
 describe("the overlay's stacking", () => {
   test("sits above the top bar and below the toast layer", () => {
-    const topbar = readSource("../../shared/topbar.tsx");
-    const toastSource = readSource(
-      "../../../../../../packages/design-system/src/components/toast.tsx"
-    );
-    expect(topbar.match(/zIndex: (\d+)/g)).toEqual(["zIndex: 1", "zIndex: 1"]);
+    expect(topbarSource.match(/zIndex: (\d+)/g)).toEqual([
+      "zIndex: 1",
+      "zIndex: 1",
+    ]);
     expect(toastSource).toMatch(/zIndex: theme\.zIndices\.max/);
     expect(rawTheme.zIndices.max).toBe("999");
     expect(CMS_OVERLAY_Z_INDEX).toBe(2);
@@ -341,19 +340,24 @@ describe("the CMS overlay in the builder", () => {
     test("opens and hides the overlay, with an active state while open", () => {
       render();
       expect(frame()).toBeNull();
-      expect(railButton()?.getAttribute("data-state")).toBe("inactive");
       expect(railButton()?.getAttribute("aria-pressed")).toBe("false");
+      const closed = getComputedStyle(railButton()!).backgroundColor;
 
       clickRail();
       expect($isCmsOverlayOpen.get()).toBe(true);
       expect(isShown()).toBe(true);
-      expect(railButton()?.getAttribute("data-state")).toBe("active");
       expect(railButton()?.getAttribute("aria-pressed")).toBe("true");
+      // IconButton styles aria-pressed; a data-state of its own styles nothing
+      const open = getComputedStyle(railButton()!).backgroundColor;
+      expect(open).not.toBe("rgba(0, 0, 0, 0)");
+      expect(open).not.toBe(closed);
+      expect(railButton()?.hasAttribute("data-state")).toBe(false);
 
       clickRail();
       expect($isCmsOverlayOpen.get()).toBe(false);
       expect(isShown()).toBe(false);
-      expect(railButton()?.getAttribute("data-state")).toBe("inactive");
+      expect(railButton()?.getAttribute("aria-pressed")).toBe("false");
+      expect(getComputedStyle(railButton()!).backgroundColor).toBe(closed);
     });
   });
 
@@ -393,6 +397,34 @@ describe("the CMS overlay in the builder", () => {
   });
 
   describe("the overlay", () => {
+    test("paints its box and the corner under the rail like the rail, in either colour scheme", () => {
+      render();
+      clickRail();
+      const corner = document.querySelector<HTMLElement>(
+        "[data-cms-overlay-corner]"
+      );
+      const probe = document.createElement("div");
+      probe.style.background = "var(--background-primary)";
+      document.body.appendChild(probe);
+      const painted: string[] = [];
+      try {
+        for (const scheme of ["light", "dark"]) {
+          document.documentElement.dataset.colorScheme = scheme;
+          const panel = getComputedStyle(probe).backgroundColor;
+          expect(panel, scheme).not.toBe("rgba(0, 0, 0, 0)");
+          expect(getComputedStyle(overlay()!).backgroundColor, scheme).toBe(
+            panel
+          );
+          expect(getComputedStyle(corner!).backgroundColor, scheme).toBe(panel);
+          painted.push(panel);
+        }
+      } finally {
+        probe.remove();
+        delete document.documentElement.dataset.colorScheme;
+      }
+      expect(painted[0]).not.toBe(painted[1]);
+    });
+
     test("frames the CMS screen of the loader's org, sandboxed", () => {
       render();
       clickRail();
