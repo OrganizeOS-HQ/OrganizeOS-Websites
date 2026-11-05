@@ -470,14 +470,12 @@ describe("the OrganizeOS Publish dialog", () => {
     expect(host.textContent).not.toContain("plan is managed in");
   });
 
-  // The catalog's bindings: a block's binding as provisioning writes it (a v5
-  // id and a v5 resourceId), a :root binding of the catalog, a binding of the
-  // page's own to a catalog Resource, and a catalog binding whose Resource id
-  // is not a v5 one
+  // The catalog's bindings, each a binding of a catalog Resource (a v5
+  // resourceId), as every writer makes them: a block's binding as provisioning
+  // writes it, a :root binding of the catalog, and a page's own binding
   const catalogBindings = async () => {
     const events = await getResourcePresetIds("project-1", "events");
     const forms = await getResourcePresetIds("project-1", "forms");
-    const stats = await getResourcePresetIds("project-1", "stats");
     const dataSources: DataSource[] = [
       {
         id: "page-events",
@@ -485,13 +483,6 @@ describe("the OrganizeOS Publish dialog", () => {
         name: "Events here",
         scopeInstanceId: "body",
         resourceId: events.resourceId,
-      },
-      {
-        id: stats.bindingId,
-        type: "resource",
-        name: "OrganizeOS Stats",
-        scopeInstanceId: ROOT_INSTANCE_ID,
-        resourceId: "stats-resource",
       },
       {
         id: events.bindingId,
@@ -508,17 +499,15 @@ describe("the OrganizeOS Publish dialog", () => {
         resourceId: forms.resourceId,
       },
     ];
-    const resources: Resource[] = [
-      events.resourceId,
-      forms.resourceId,
-      "stats-resource",
-    ].map((id) => ({
-      id,
-      name: "Catalog",
-      method: "get",
-      url: '"https://app.organizeos.org/api/v1/events"',
-      headers: [],
-    }));
+    const resources: Resource[] = [events.resourceId, forms.resourceId].map(
+      (id) => ({
+        id,
+        name: "Catalog",
+        method: "get",
+        url: '"https://app.organizeos.org/api/v1/events"',
+        headers: [],
+      })
+    );
     return { dataSources, resources };
   };
 
@@ -551,39 +540,50 @@ describe("the OrganizeOS Publish dialog", () => {
     expect(host.querySelectorAll("li")).toHaveLength(0);
   });
 
-  test("an org's own Resource is still a plan feature beside the catalog's", async () => {
-    const { dataSources, resources } = await catalogBindings();
-    setData(
-      [
-        ...dataSources,
-        {
-          id: "own-binding",
-          type: "resource",
-          name: "Our API",
-          scopeInstanceId: "body",
-          resourceId: "own-resource",
-        },
-      ],
-      [
-        ...resources,
-        {
-          id: "own-resource",
-          name: "Our API",
-          method: "get",
-          url: '"https://api.acme.org/items"',
-          headers: [],
-        },
-      ]
-    );
-    setProject(null);
-    const host = await render();
-    expect(textOf(host, /^This site uses features/)).toBe(
-      "This site uses features your plan does not include:"
-    );
-    expect(
-      Array.from(host.querySelectorAll("li"), (item) => item.textContent)
-    ).toEqual(["Resource variable"]);
-  });
+  // Only the Resource says what the catalog is (controller ruling): an own
+  // Resource is a plan feature, through any binding id
+  test.each([
+    ["its own binding", async () => "own-binding"],
+    [
+      "a binding with a catalog-looking id",
+      async () => (await getResourcePresetIds("project-1", "stats")).bindingId,
+    ],
+  ])(
+    "an org's own Resource is still a plan feature beside the catalog's, through %s",
+    async (_name, bindingId) => {
+      const { dataSources, resources } = await catalogBindings();
+      setData(
+        [
+          ...dataSources,
+          {
+            id: await bindingId(),
+            type: "resource",
+            name: "Our API",
+            scopeInstanceId: ROOT_INSTANCE_ID,
+            resourceId: "own-resource",
+          },
+        ],
+        [
+          ...resources,
+          {
+            id: "own-resource",
+            name: "Our API",
+            method: "get",
+            url: '"https://api.acme.org/items"',
+            headers: [],
+          },
+        ]
+      );
+      setProject(null);
+      const host = await render();
+      expect(textOf(host, /^This site uses features/)).toBe(
+        "This site uses features your plan does not include:"
+      );
+      expect(
+        Array.from(host.querySelectorAll("li"), (item) => item.textContent)
+      ).toEqual(["Resource variable"]);
+    }
+  );
 
   test("an MDX-bound Content Block shows that publishing fails while it uses MDX, and Publish stays enabled", async () => {
     const instances: Instance[] = [

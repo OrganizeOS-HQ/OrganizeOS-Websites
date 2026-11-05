@@ -76,15 +76,15 @@ import {
 const POLL_INTERVAL_MS = 10_000;
 
 /**
- * A binding of the org's data catalog: a resource DataSource whose id or
- * Resource is one of the catalog's v5 ids (provisioning's block bindings and
- * its :root bindings). The platform provides the catalog, so it is no plan
- * feature; an org's own Resources are.
+ * A binding of the org's data catalog: a resource DataSource whose Resource is
+ * one of the catalog's v5 ids. Every writer binds the catalog that way
+ * (provisioning's block and :root bindings, a page's own binding). The
+ * platform provides the catalog, so it is no plan feature; an org's own
+ * Resources are, whatever their binding's id (controller ruling).
  */
 const isCatalogBinding = (dataSource: DataSource) =>
   dataSource.type === "resource" &&
-  (isOrganizeosCatalogResourceId(dataSource.id) ||
-    isOrganizeosCatalogResourceId(dataSource.resourceId));
+  isOrganizeosCatalogResourceId(dataSource.resourceId);
 
 const withoutCatalogBindings = (dataSources: DataSources) =>
   new Map(
