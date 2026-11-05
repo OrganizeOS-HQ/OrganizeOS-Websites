@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { MenuIcon } from "@webstudio-is/icons/svg";
 import type { Instance, Prop } from "@webstudio-is/sdk";
-import { $instances, $pages, $props } from "~/shared/sync/data-stores";
+import {
+  $instances,
+  $pages,
+  $projectSettings,
+  $props,
+} from "~/shared/sync/data-stores";
 import { $editingPageId, $selectedPageId } from "~/shared/nano-states";
 import { $openProjectSettings } from "~/shared/nano-states/project-settings";
 import { PausedScriptBanner } from "./organizeos-publish";
@@ -30,13 +35,22 @@ let container: HTMLElement | undefined;
 const setBuild = ({
   code,
   customCode,
+  legacyCustomCode,
 }: {
   code: string;
+  /** where 0.309.0 saves it */
   customCode?: string;
+  /** the pages' meta, where builds saved it before 0.309.0 */
+  legacyCustomCode?: string;
 }) => {
   const pages = createDefaultPages({ rootInstanceId: "root" });
-  pages.meta = customCode === undefined ? undefined : { code: customCode };
+  pages.meta =
+    legacyCustomCode === undefined ? undefined : { code: legacyCustomCode };
   $pages.set(pages);
+  $projectSettings.set({
+    meta: customCode === undefined ? {} : { code: customCode },
+    compiler: {},
+  });
   const instances: Instance[] = [
     {
       type: "instance",
@@ -136,6 +150,14 @@ describe("PausedScriptBanner", () => {
     expect(
       Array.from(host.querySelectorAll("li"), (item) => item.textContent)
     ).toEqual(["Element with an unsupported tag on Home"]);
+  });
+
+  test("lists the custom code a build kept in its pages' meta", () => {
+    setBuild({ code: MenuIcon, legacyCustomCode: "<style>x{}</style>" });
+    const host = renderBanner();
+    expect(
+      Array.from(host.querySelectorAll("li"), (item) => item.textContent)
+    ).toEqual(["Custom code (Project settings)"]);
   });
 
   test("opens Project settings from the custom code item", () => {

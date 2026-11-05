@@ -3,13 +3,17 @@ import {
   ROOT_FOLDER_ID,
   blockComponent,
   blockTemplateComponent,
+  type Asset,
   type Instance,
   type Page,
   type Pages,
   type Prop,
 } from "@webstudio-is/sdk";
 import { MenuIcon } from "@webstudio-is/icons/svg";
-import { findPausedScript } from "./organizeos-publish-paused-script";
+import {
+  findMdxBlocks,
+  findPausedScript,
+} from "./organizeos-publish-paused-script";
 
 const createPage = (id: string, name: string): Page => ({
   id,
@@ -556,6 +560,60 @@ describe("findPausedScript", () => {
     ]);
   });
 
+  // 0.309.0 keeps the custom code in the project's settings, and a build that
+  // loads strips the pages' meta; publishing drops it from both
+  test("lists the custom code saved in project settings", () => {
+    expect(
+      find({
+        projectSettings: { meta: { code: "<script>1</script>" }, compiler: {} },
+      })
+    ).toEqual([
+      { label: "Custom code (Project settings)", view: "projectSettings" },
+    ]);
+    // once, when both hold it
+    expect(
+      find({
+        pages: createPages({ code: "<style>x{}</style>" }),
+        projectSettings: { meta: { code: "<script>1</script>" }, compiler: {} },
+      })
+    ).toHaveLength(1);
+    expect(
+      find({ projectSettings: { meta: { code: " \n " }, compiler: {} } })
+    ).toEqual([]);
+    expect(find({ projectSettings: { meta: {}, compiler: {} } })).toEqual([]);
+  });
+
+  test("lists JSON-LD with its page", () => {
+    // D13: it writes its code into a script element as raw HTML
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("box") },
+      { id: "box", component: "Box", children: ids("json-ld") },
+      { id: "json-ld", component: "JsonLd" },
+      { id: "about-root", component: "Body", children: ids("about-json-ld") },
+      { id: "about-json-ld", component: "JsonLd" },
+    ]);
+    const props = toProps([
+      stringProp("json-ld", "code", '{"@type":"Organization"}'),
+    ]);
+
+    expect(find({ instances, props })).toEqual([
+      {
+        label: "JSON-LD on Home",
+        navigate: {
+          pageId: "home",
+          instanceSelector: ["json-ld", "box", "home-root"],
+        },
+      },
+      {
+        label: "JSON-LD on About",
+        navigate: {
+          pageId: "about",
+          instanceSelector: ["about-json-ld", "about-root"],
+        },
+      },
+    ]);
+  });
+
   test("lists the custom code last", () => {
     const instances = createInstances([
       { id: "home-root", component: "Body", children: ids("embed") },
@@ -832,5 +890,159 @@ describe("findPausedScript", () => {
       "HTML Embed on Home",
       "XML element on Home",
     ]);
+  });
+});
+
+// D7: publishing refuses a build with a Content Block bound to Markdown or MDX
+// (refuseMdxWhilePaused in packages/cli/src/organizeos-org-script.ts), so the
+// dialog lists those blocks by the same rule
+describe("findMdxBlocks", () => {
+  const fileAsset = (id: string, name: string, format: string): Asset => ({
+    id,
+    projectId: "project-id",
+    name,
+    type: "file",
+    format,
+    size: 10,
+    meta: {},
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  const mdx = fileAsset("article", "article_abc.mdx", "mdx");
+  const md = fileAsset("notes", "notes_abc.md", "md");
+  const image = fileAsset("photo", "photo_abc.png", "png");
+  const text = fileAsset("readme", "readme_abc.txt", "txt");
+
+  const toAssets = (list: Asset[]) =>
+    new Map(list.map((asset) => [asset.id, asset]));
+
+  const assetProp = (instanceId: string, value: string): Prop => ({
+    id: `${instanceId}-src`,
+    instanceId,
+    name: "src",
+    type: "asset",
+    value,
+  });
+
+  const expressionSrc = (instanceId: string, value: string): Prop => ({
+    id: `${instanceId}-src`,
+    instanceId,
+    name: "src",
+    type: "expression",
+    value,
+  });
+
+  const blockOnHome = createInstances([
+    { id: "home-root", component: "Body", children: ids("block") },
+    { id: "block", component: blockComponent },
+  ]);
+
+  const findBlocks = (
+    overrides: Partial<Parameters<typeof findMdxBlocks>[0]> = {}
+  ) =>
+    findMdxBlocks({
+      pages: createPages(),
+      instances: blockOnHome,
+      props: toProps([]),
+      assets: toAssets([]),
+      mayRun: false,
+      ...overrides,
+    });
+
+  const listed = [
+    {
+      label: "Content Block on Home",
+      navigate: { pageId: "home", instanceSelector: ["block", "home-root"] },
+    },
+  ];
+
+  test.each([
+    ["an .mdx asset", assetProp("block", "article"), [mdx]],
+    ["an .md asset", assetProp("block", "notes"), [md]],
+    [
+      "an .mdx asset by a static expression",
+      expressionSrc("block", '"article"'),
+      [mdx],
+    ],
+    [
+      "an expression, while the project holds an .mdx asset",
+      expressionSrc("block", "$ws$dataSource$post.data.body"),
+      [image, mdx],
+    ],
+    [
+      "an expression, while the project holds an .md asset",
+      expressionSrc("block", "$ws$dataSource$post.data.body"),
+      [md],
+    ],
+    [
+      "an asset whose format alone says MDX, in capitals",
+      assetProp("block", "article"),
+      [fileAsset("article", "article", "MDX")],
+    ],
+    [
+      "an asset whose name alone says .MD",
+      assetProp("block", "notes"),
+      [fileAsset("notes", "notes_abc.MD", "bin")],
+    ],
+  ])("lists a Content Block bound to %s", (_name, src, assets) => {
+    expect(
+      findBlocks({ props: toProps([src]), assets: toAssets(assets) })
+    ).toEqual(listed);
+  });
+
+  test.each([
+    ["no source", undefined, [mdx]],
+    ["an image asset", assetProp("block", "photo"), [image, mdx]],
+    ["a .txt asset", assetProp("block", "readme"), [text, mdx]],
+    [
+      "an expression, while the project holds no Markdown or MDX",
+      expressionSrc("block", "$ws$dataSource$post.data.body"),
+      [image, text],
+    ],
+  ])("lists nothing for a Content Block with %s", (_name, src, assets) => {
+    expect(
+      findBlocks({
+        props: toProps(src === undefined ? [] : [src]),
+        assets: toAssets(assets),
+      })
+    ).toEqual([]);
+  });
+
+  test("lists a block on a draft page and one no page holds, as publishing refuses either", () => {
+    const pages = createPages();
+    const about = pages.pages.get("about");
+    if (about === undefined) {
+      throw new Error("no about page");
+    }
+    about.isDraft = true;
+    const instances = createInstances([
+      { id: "home-root", component: "Body" },
+      { id: "about-root", component: "Body", children: ids("draft-block") },
+      { id: "draft-block", component: blockComponent },
+      { id: "orphan-block", component: blockComponent },
+    ]);
+    const props = toProps([
+      assetProp("draft-block", "article"),
+      assetProp("orphan-block", "article"),
+    ]);
+
+    expect(
+      findBlocks({ pages, instances, props, assets: toAssets([mdx]) })
+    ).toEqual([
+      {
+        label: "Content Block on About",
+        navigate: {
+          pageId: "about",
+          instanceSelector: ["draft-block", "about-root"],
+        },
+      },
+      { label: "Content Block" },
+    ]);
+  });
+
+  test("lists nothing when the switch is on, or before the pages load", () => {
+    const props = toProps([assetProp("block", "article")]);
+    const assets = toAssets([mdx]);
+    expect(findBlocks({ props, assets, mayRun: true })).toEqual([]);
+    expect(findBlocks({ props, assets, pages: undefined })).toEqual([]);
   });
 });

@@ -11,7 +11,7 @@ import {
   Text,
   Tooltip,
   css,
-  rawTheme,
+  cssVar,
   textVariants,
   theme,
   toast,
@@ -20,11 +20,14 @@ import {
 import { AlertIcon, CheckCircleIcon } from "@webstudio-is/icons";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
 import {
+  $assets,
   $dataSources,
   $instances,
   $pages,
   $project,
+  $projectSettings,
   $props,
+  $resources,
 } from "~/shared/sync/data-stores";
 import {
   $editingPageId,
@@ -39,8 +42,10 @@ import { platformName } from "~/shared/branding";
 import { getRestrictedFeatures } from "./restricted-features";
 import { $openProjectSettings } from "~/shared/nano-states/project-settings";
 import {
+  findMdxBlocks,
   findPausedScript,
   pausedScriptExplanation,
+  type PausedScriptItem,
 } from "./organizeos-publish-paused-script";
 import {
   getOrganizeosPublishState,
@@ -68,16 +73,42 @@ import {
 
 const POLL_INTERVAL_MS = 10_000;
 
+// The stores upstream's dialog passes (publish.tsx): 0.309.0 reads the contact
+// email, project auth and custom headers from the project's settings, and the
+// Resources to name each resource binding
 const $restrictedFeatures = computed(
-  [$pages, $dataSources, $instances, $permissions],
-  (pages, dataSources, instances, permissions) =>
-    getRestrictedFeatures({ pages, dataSources, instances, permissions })
+  [
+    $pages,
+    $projectSettings,
+    $dataSources,
+    $resources,
+    $instances,
+    $permissions,
+  ],
+  (pages, projectSettings, dataSources, resources, instances, permissions) =>
+    getRestrictedFeatures({
+      pages,
+      projectSettings,
+      dataSources,
+      resources,
+      instances,
+      permissions,
+    })
 );
 
 // OrganizeOS fork: what publishing leaves out while org script is paused
 const $pausedScript = computed(
-  [$pages, $instances, $props],
-  (pages, instances, props) => findPausedScript({ pages, instances, props })
+  [$pages, $projectSettings, $instances, $props],
+  (pages, projectSettings, instances, props) =>
+    findPausedScript({ pages, projectSettings, instances, props })
+);
+
+// OrganizeOS fork: the Content Blocks that make publishing refuse the build
+// while org script is paused (owner decision D7)
+const $mdxBlocks = computed(
+  [$pages, $instances, $props, $assets],
+  (pages, instances, props, assets) =>
+    findMdxBlocks({ pages, instances, props, assets })
 );
 
 const refreshProject = async () => {
@@ -112,7 +143,7 @@ const StatusLine = ({ state }: { state: OrganizeosPublishState }) => {
     case "published":
       return (
         <Flex gap="1" align="center">
-          <CheckCircleIcon color={rawTheme.colors.foregroundSuccessText} />
+          <CheckCircleIcon color={cssVar("--foreground-positive")} />
           <Text>
             Published <RelativeTime time={state.at} />
           </Text>
@@ -121,7 +152,7 @@ const StatusLine = ({ state }: { state: OrganizeosPublishState }) => {
     case "failed":
       return (
         <Flex gap="1" align="center">
-          <AlertIcon color={rawTheme.colors.foregroundDestructive} />
+          <AlertIcon color={cssVar("--foreground-negative")} />
           <Text color="destructive">
             {state.timedOut ? "Publishing did not finish" : "Publish failed"}{" "}
             <RelativeTime time={state.at} />
@@ -191,9 +222,9 @@ const RestrictedFeaturesBanner = ({ manageUrl }: { manageUrl: string }) => {
 };
 
 /**
- * Lists the embeds, animations, unsafe values and custom code that this publish
- * leaves out while an org's own script is paused (docs/ORGANIZEOS-FORK.md
- * section 10).
+ * Lists the embeds, JSON-LD, animations, unsafe values and custom code that
+ * this publish leaves out while an org's own script is paused
+ * (docs/ORGANIZEOS-FORK.md section 10).
  * Information only: Publish still runs, and drops them. What the org saved is
  * kept, so the list empties when the switch is turned on.
  */
@@ -205,42 +236,65 @@ export const PausedScriptBanner = () => {
   return (
     <PanelBanner variant="warning">
       <Text variant="regularBold">Paused, not published</Text>
-      <Text as="ul" css={{ paddingLeft: "1em" }}>
-        {pausedScript.map(({ label, navigate, view }, index) => (
-          <li key={index}>
-            {navigate !== undefined || view !== undefined ? (
-              <button
-                className={buttonLinkClass}
-                type="button"
-                onClick={() => {
-                  if (navigate !== undefined) {
-                    $selectedPageId.set(navigate.pageId);
-                    selectInstance(navigate.instanceSelector);
-                  }
-                  if (view === "projectSettings") {
-                    $openProjectSettings.set("general");
-                  }
-                  if (view === "pageSettings" && navigate !== undefined) {
-                    setActiveSidebarPanel("pages");
-                    $editingPageId.set(navigate.pageId);
-                  }
-                  if (view === "projectRedirects") {
-                    $openProjectSettings.set("redirects");
-                  }
-                }}
-              >
-                {label}
-              </button>
-            ) : (
-              label
-            )}
-          </li>
-        ))}
-      </Text>
+      <PausedItemList items={pausedScript} />
       <Text>{pausedScriptExplanation}</Text>
     </PanelBanner>
   );
 };
+
+/**
+ * The Content Blocks bound to Markdown or MDX, which publishing refuses while
+ * org script is paused (findMdxBlocks). Publish stays enabled: publishing
+ * decides, from more than the builder loads.
+ */
+const MdxBlocksBanner = () => {
+  const mdxBlocks = useStore($mdxBlocks);
+  if (mdxBlocks.length === 0) {
+    return;
+  }
+  return (
+    <PanelBanner variant="warning">
+      <Text variant="regularBold">Publishing does not support MDX yet:</Text>
+      <PausedItemList items={mdxBlocks} />
+    </PanelBanner>
+  );
+};
+
+/** Each item selects its element, or opens its settings, when clicked. */
+const PausedItemList = ({ items }: { items: PausedScriptItem[] }) => (
+  <Text as="ul" css={{ paddingLeft: "1em" }}>
+    {items.map(({ label, navigate, view }, index) => (
+      <li key={index}>
+        {navigate !== undefined || view !== undefined ? (
+          <button
+            className={buttonLinkClass}
+            type="button"
+            onClick={() => {
+              if (navigate !== undefined) {
+                $selectedPageId.set(navigate.pageId);
+                selectInstance(navigate.instanceSelector);
+              }
+              if (view === "projectSettings") {
+                $openProjectSettings.set("general");
+              }
+              if (view === "pageSettings" && navigate !== undefined) {
+                setActiveSidebarPanel("pages");
+                $editingPageId.set(navigate.pageId);
+              }
+              if (view === "projectRedirects") {
+                $openProjectSettings.set("redirects");
+              }
+            }}
+          >
+            {label}
+          </button>
+        ) : (
+          label
+        )}
+      </li>
+    ))}
+  </Text>
+);
 
 const newTabLink = {
   target: "_blank",
@@ -311,8 +365,8 @@ const CannotGoLiveWarning = ({
   }
   return (
     <Flex gap="1" align="center">
-      <AlertIcon color={rawTheme.colors.backgroundAlertMain} />
-      <Text css={{ color: theme.colors.backgroundAlertMain }}>
+      <AlertIcon color={cssVar("--foreground-warning")} />
+      <Text css={{ color: cssVar("--foreground-warning") }}>
         This version can&apos;t go live yet. Publish again after the next
         builder update.
       </Text>
@@ -454,6 +508,7 @@ export const OrganizeosPublishContent = ({
       <CannotGoLiveWarning addresses={addresses} />
       {error !== undefined && <Text color="destructive">{error}</Text>}
       <RestrictedFeaturesBanner manageUrl={site.manageUrl} />
+      <MdxBlocksBanner />
       <PausedScriptBanner />
 
       <Button

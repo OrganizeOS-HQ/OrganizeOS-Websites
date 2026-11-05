@@ -5,13 +5,20 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TooltipProvider, toast } from "@webstudio-is/design-system";
 import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
+import { defaultPlanFeatures } from "@webstudio-is/plans";
+import { blockComponent, type Instance } from "@webstudio-is/sdk";
 import {
+  $assets,
   $dataSources,
   $instances,
   $pages,
   $project,
+  $projectSettings,
   $props,
+  $resources,
 } from "~/shared/sync/data-stores";
+import { $planFeatures } from "~/shared/nano-states";
+import { getResourcePresetIds } from "~/shared/organizeos-preset-ids";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
 import { OrganizeosPublishContent } from "./organizeos-publish";
 import type { LatestBuildLike } from "./organizeos-publish-status";
@@ -141,6 +148,12 @@ beforeEach(() => {
   );
   $props.set(new Map());
   $dataSources.set(new Map());
+  // 0.309.0 keeps the project's settings in their own store, and the plan
+  // banner reads them and the Resources (getRestrictedFeatures)
+  $projectSettings.set({ meta: {}, compiler: {} });
+  $resources.set(new Map());
+  $assets.set(new Map());
+  $planFeatures.set(defaultPlanFeatures);
   routeFetch.mockReset();
   routeAnswers({ ...addresses, status: "not_launched" });
 });
@@ -432,12 +445,11 @@ describe("the OrganizeOS Publish dialog", () => {
 
   test("the plan banner ends with its Open in OrganizeOS link alone, to the Website area", async () => {
     setProject(null);
-    const pages = $pages.get();
-    if (pages === undefined) {
-      throw new Error("no pages");
-    }
     // the default plan includes no custom contact email
-    $pages.set({ ...pages, meta: { contactEmail: "team@acme.org" } });
+    $projectSettings.set({
+      meta: { contactEmail: "team@acme.org" },
+      compiler: {},
+    });
     const host = await render();
     const list = Array.from(host.querySelectorAll("ul")).find((item) =>
       item.textContent?.includes("Custom contact email")
@@ -450,6 +462,142 @@ describe("the OrganizeOS Publish dialog", () => {
       "https://app.organizeos.org/acme/website"
     );
     expect(host.textContent).not.toContain("plan is managed in");
+  });
+
+  test("a project with catalog data sources and allowDynamicData: false renders the dialog", async () => {
+    // Every org project binds the catalog's Resources; the plan banner reads
+    // each one, so the dialog has to be given them
+    const { resourceId, bindingId } = await getResourcePresetIds(
+      "project-1",
+      "events"
+    );
+    $instances.set(
+      new Map([
+        [
+          "body",
+          { type: "instance", id: "body", component: "Body", children: [] },
+        ],
+      ])
+    );
+    $dataSources.set(
+      new Map([
+        [
+          bindingId,
+          {
+            id: bindingId,
+            type: "resource",
+            name: "OrganizeOS Events",
+            scopeInstanceId: "body",
+            resourceId,
+          },
+        ],
+      ])
+    );
+    $resources.set(
+      new Map([
+        [
+          resourceId,
+          {
+            id: resourceId,
+            name: "Events",
+            method: "get",
+            url: '"https://app.organizeos.org/api/v1/events"',
+            headers: [],
+          },
+        ],
+      ])
+    );
+    expect($planFeatures.get().allowDynamicData).toBe(false);
+    setProject(null);
+    const host = await render();
+    const publish = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.textContent === "Publish"
+    );
+    expect(publish).toBeDefined();
+    expect(textOf(host, /^This site uses features/)).toBe(
+      "This site uses features your plan does not include:"
+    );
+    expect(
+      Array.from(host.querySelectorAll("li"), (item) => item.textContent)
+    ).toEqual(["Resource variable"]);
+  });
+
+  test("an MDX-bound Content Block shows that publishing does not support MDX, and Publish stays enabled", async () => {
+    const instances: Instance[] = [
+      {
+        type: "instance",
+        id: "body",
+        component: "Body",
+        children: [{ type: "id", value: "block" }],
+      },
+      {
+        type: "instance",
+        id: "block",
+        component: blockComponent,
+        children: [],
+      },
+    ];
+    $instances.set(new Map(instances.map((item) => [item.id, item])));
+    $props.set(
+      new Map([
+        [
+          "block-src",
+          {
+            id: "block-src",
+            instanceId: "block",
+            name: "src",
+            type: "asset",
+            value: "doc",
+          },
+        ],
+      ])
+    );
+    $assets.set(
+      new Map([
+        [
+          "doc",
+          {
+            id: "doc",
+            projectId: "project-1",
+            name: "doc_abc.mdx",
+            type: "file",
+            format: "mdx",
+            size: 10,
+            meta: {},
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      ])
+    );
+    setProject(null);
+    const host = await render();
+    const list = Array.from(host.querySelectorAll("ul")).find((item) =>
+      item.textContent?.includes("Content Block")
+    );
+    // the heading and the list: nothing else
+    expect(list?.previousElementSibling?.textContent).toBe(
+      "Publishing does not support MDX yet:"
+    );
+    expect(list?.nextElementSibling).toBeNull();
+    expect(
+      Array.from(list?.querySelectorAll("li") ?? [], (item) => item.textContent)
+    ).toEqual(["Content Block on Home"]);
+    const publish = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.textContent === "Publish"
+    );
+    expect(publish?.disabled).toBe(false);
+  });
+
+  test("lists the custom code saved in project settings as paused", async () => {
+    $projectSettings.set({
+      meta: { code: "<script>1</script>" },
+      compiler: {},
+    });
+    setProject(null);
+    const host = await render();
+    expect(
+      Array.from(host.querySelectorAll("li"), (item) => item.textContent)
+    ).toEqual(["Custom code (Project settings)"]);
   });
 
   test("the Publish button has no tooltip", async () => {
