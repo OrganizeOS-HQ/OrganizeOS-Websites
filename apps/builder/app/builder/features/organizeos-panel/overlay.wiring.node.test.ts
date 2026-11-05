@@ -1,13 +1,10 @@
-/**
- * @vitest-environment node
- */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 
 // The OrganizeOS builder UI is mounted in upstream files by a few marked
 // lines (docs/ORGANIZEOS-FORK.md section 7). This reads those files, the way
-// canvas/organizeos-org-script.wiring.test.ts reads the canvas: an upstream
+// canvas/organizeos-org-script.wiring.node.test.ts reads the canvas: an upstream
 // merge that reflows one of them and drops a line fails here instead of
 // silently unmounting a piece of the UI.
 
@@ -36,7 +33,6 @@ describe("the Components panel's OrganizeOS section", () => {
       "OrganizeosGroupFooter",
       "organizeosGroupLabel",
       "withOrganizeosGroups",
-      "type OrganizeosCategory",
     ]) {
       expect(components).toMatch(
         new RegExp(
@@ -49,20 +45,20 @@ describe("the Components panel's OrganizeOS section", () => {
     );
   });
 
-  test("handleInsert sends a block to insertOrganizeosBlock before upstream's template insert", () => {
-    const handleInsert = components.slice(
-      components.indexOf("const handleInsert = (component: string) => {")
+  test("handleInsert sends a block to insertOrganizeosBlock before upstream's component insert", () => {
+    const start = components.indexOf(
+      "const handleInsert = async (component: string) => {"
     );
-    const branch = handleInsert.search(
-      /if \(isOrganizeosBlock\(component\)\) \{\s*void insertOrganizeosBlock\(component\);\s*\} else if \(component === elementComponent\)/
-    );
-    expect(branch).toBeGreaterThan(-1);
-    expect(branch).toBeLessThan(
-      handleInsert.indexOf("getComponentTemplateData(component)")
+    expect(start).toBeGreaterThan(-1);
+    expect(components.slice(start)).toMatch(
+      /^const handleInsert = async \(component: string\) => \{\s*if \(isOrganizeosBlock\(component\)\) \{\s*void insertOrganizeosBlock\(component\);\s*\} else \{\s*await insertWebstudioComponentAt\(component\);\s*\}\s*onClose\(\);/
     );
   });
 
   test("the panel's groups are upstream's, composed with the OrganizeOS groups", () => {
+    expect(components).toMatch(
+      /const selectedPage = useStore\(\$selectedPage\);/
+    );
     expect(components).toMatch(
       /const organizeosGroups = useStore\(\$organizeosComponentGroups\);/
     );
@@ -95,10 +91,9 @@ describe("the Components panel's OrganizeOS section", () => {
     );
   });
 
+  // upstream's category is a string, so the OrganizeOS one fits
   test("the Groups category takes the OrganizeOS category", () => {
-    expect(components).toMatch(
-      /type Groups = Array<\{\s*category:[^;]*\|\s*"found"\s*\|\s*OrganizeosCategory;/
-    );
+    expect(components).toMatch(/type Groups = Array<\{\s*category: string;/);
   });
 });
 
@@ -151,16 +146,15 @@ describe("the Inspector's Motion tab", () => {
 });
 
 describe("the canvas's drop", () => {
-  test("use-drag-drop.ts sends a dropped block to insertOrganizeosBlock before the template fallback", () => {
-    const branch = useDragDrop.search(
-      /else if \(isOrganizeosBlock\(dragPayload\.dragComponent\)\) \{\s*void insertOrganizeosBlock\(dragPayload\.dragComponent, insertable\);/
+  test("commitCanvasDragDrop sends a dropped block to insertOrganizeosBlock before upstream's component insert", () => {
+    expect(useDragDrop).toMatch(
+      /import\s*\{\s*insertOrganizeosBlock,\s*isOrganizeosBlock,?\s*\}\s*from\s*"~\/builder\/features\/organizeos-panel\/insert-organizeos-block"/
     );
-    const fallback = useDragDrop.search(
-      /const fragment = getComponentTemplateData\(dragPayload\.dragComponent\);\s*if \(fragment\) \{\s*insertWebstudioFragmentAt\(fragment, insertable\);/
+    const start = useDragDrop.indexOf("export const commitCanvasDragDrop = (");
+    expect(start).toBeGreaterThan(-1);
+    expect(useDragDrop.slice(start)).toMatch(
+      /if \(dragPayload\.type === "insert"\) \{\s*if \(isOrganizeosBlock\(dragPayload\.dragComponent\)\) \{\s*void insertOrganizeosBlock\(dragPayload\.dragComponent, insertable\);\s*return true;\s*\}\s*return insertWebstudioComponentAt\(dragPayload\.dragComponent, insertable\);/
     );
-    expect(branch).toBeGreaterThan(-1);
-    expect(fallback).toBeGreaterThan(-1);
-    expect(branch).toBeLessThan(fallback);
   });
 });
 
