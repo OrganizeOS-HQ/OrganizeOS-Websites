@@ -1,4 +1,3 @@
-import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { userEvent } from "@vitest/browser/context";
@@ -38,11 +37,9 @@ const renderMenu = () => {
   root = createRoot(container);
   act(() => {
     root?.render(
-      createElement(
-        TooltipProvider,
-        null,
-        createElement(Menu, { defaultOpen: true })
-      )
+      <TooltipProvider>
+        <Menu defaultOpen />
+      </TooltipProvider>
     );
   });
 };

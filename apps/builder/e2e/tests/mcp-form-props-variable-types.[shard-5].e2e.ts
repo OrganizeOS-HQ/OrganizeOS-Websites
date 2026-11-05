@@ -88,11 +88,12 @@ test("MCP-authored new Form exposes Form controls and hides native rendered-tag 
   await expect(type).toContainText("REST resource");
   await type.click();
   expect(
-    await page
-      .getByRole("option")
-      .evaluateAll((options) =>
-        options.map((option) => option.textContent?.replace(/Pro$/, "").trim())
+    await page.getByRole("option").evaluateAll((options) =>
+      // OrganizeOS fork: the plan badge reads "Not in plan" (planBadgeLabel)
+      options.map((option) =>
+        option.textContent?.replace(/Not in plan$/, "").trim()
       )
+    )
   ).toEqual([
     "String",
     "Number",
