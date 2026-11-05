@@ -40,6 +40,7 @@ import {
   urlValueMayRun,
   withoutBlockedTagProps,
   withoutPausedProps,
+  readLiteralValue,
 } from "./org-script";
 
 const icons = {
@@ -1165,5 +1166,57 @@ describe("pagesForSitemap", () => {
       ]),
     });
     expect(withoutSetting(result)).toEqual(withoutSetting(pages));
+  });
+});
+
+describe("readLiteralValue", () => {
+  test("reads JSON and the literal forms the variable dialog writes", () => {
+    expect(readLiteralValue(`{"a": [1, "b", true, null]}`)).toEqual({
+      value: { a: [1, "b", true, null] },
+    });
+    expect(readLiteralValue(`{ a: 1, "b c": -2.5, 3: \`x\` }`)).toEqual({
+      value: { a: 1, "b c": -2.5, "3": "x" },
+    });
+    expect(readLiteralValue(` ["x", "y"] `)).toEqual({ value: ["x", "y"] });
+    expect(readLiteralValue(`undefined`)).toEqual({ value: undefined });
+    expect(readLiteralValue(`"text"`)).toEqual({ value: "text" });
+    // as the builder formats an object, in parentheses
+    expect(readLiteralValue(`({\n  "a": 1\n})`)).toEqual({ value: { a: 1 } });
+  });
+
+  test("keeps a __proto__ key as an own property", () => {
+    const read = readLiteralValue(`{"__proto__": {"x": 1}}`);
+    const value = read?.value as Record<string, unknown>;
+    expect(Object.getPrototypeOf(value)).toBe(Object.prototype);
+    expect(Object.hasOwn(value, "__proto__")).toBe(true);
+  });
+
+  test.each([
+    `a`,
+    `f()`,
+    `[1].map(String)`,
+    `{ a: b }`,
+    `{ a }`,
+    `{ [k]: 1 }`,
+    `{ get a() { return 1 } }`,
+    `{ a() {} }`,
+    `[...a]`,
+    `[1, , 2]`,
+    `/x/`,
+    `1n`,
+    `\`\${a}\``,
+    `-a`,
+    `!1`,
+    `1 + 1`,
+    `1) || (2`,
+    `1), (globalThis.x = 1`,
+    `1); (2`,
+    `1 /* x */) || (2`,
+    `1; 2`,
+    `1 // x`,
+    `() => 1`,
+    ``,
+  ])("refuses %s", (text) => {
+    expect(readLiteralValue(text)).toBeUndefined();
   });
 });

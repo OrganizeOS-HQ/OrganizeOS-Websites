@@ -52,6 +52,11 @@ import {
   ExpressionEditor,
   formatValue,
 } from "~/builder/shared/expression-editor";
+// OrganizeOS fork: the pause (docs/ORGANIZEOS-FORK.md section 10)
+import {
+  orgScriptMayRun,
+  readLiteralValue,
+} from "@organizeos/site-components/org-script";
 import {
   $permissions,
   $variableValuesByInstanceSelector,
@@ -500,13 +505,28 @@ const BooleanForm = forwardRef<
 });
 BooleanForm.displayName = "BooleanForm";
 
-const validateJsonValue = (expression: string) => {
+// OrganizeOS fork: exported for its test (docs/ORGANIZEOS-FORK.md section 10)
+export const validateJsonValue = (expression: string) => {
+  // OrganizeOS fork: while org script is paused, a value must read as data
+  // (docs/ORGANIZEOS-FORK.md section 10)
+  if (
+    orgScriptMayRun() === false &&
+    expression.trim() !== "" &&
+    readLiteralValue(expression) === undefined
+  ) {
+    return "error";
+  }
   const diagnostics = lintExpression({ expression });
   // prevent saving with any message including unset variable
   return diagnostics.length > 0 ? "error" : "";
 };
 
 const parseJsonValue = (expression: string) => {
+  // OrganizeOS fork: while org script is paused, a stored value is read as
+  // data, never run (docs/ORGANIZEOS-FORK.md section 10)
+  if (orgScriptMayRun() === false) {
+    return readLiteralValue(expression)?.value;
+  }
   try {
     expression = transpileExpression({ expression, executable: true });
     // wrap with parentheses to treat {} as object instead of block
@@ -765,7 +785,13 @@ const VariablePopoverContent = ({
   const isSystemVariable = variable?.id === SYSTEM_VARIABLE_ID;
   const [value, setValue] = useState<unknown>(() => {
     if (variable?.type === "variable") {
-      if (variable.value.type === "json") {
+      // OrganizeOS fork: every value the form edits as JSON starts as the
+      // builder's own JSON text, a string list too (docs/ORGANIZEOS-FORK.md section 10)
+      if (
+        variable.value.type !== "string" &&
+        variable.value.type !== "number" &&
+        variable.value.type !== "boolean"
+      ) {
         return formatValue(variable.value.value);
       }
       return variable.value.value;
