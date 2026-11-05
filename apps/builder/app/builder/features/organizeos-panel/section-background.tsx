@@ -13,6 +13,7 @@ import { ROOT_INSTANCE_ID } from "@webstudio-is/sdk";
 import { CANONICAL_COLOR_NAMES } from "@organizeos/site-components/site-templates/canonical-variables";
 import {
   theme,
+  cssVar,
   styled,
   Flex,
   FloatingPanel,
@@ -29,7 +30,7 @@ import {
   $styleSourceSelections,
   $styles,
 } from "~/shared/sync/data-stores";
-import type { InstanceSelector } from "~/shared/instance-utils/tree";
+import type { InstanceSelector } from "@webstudio-is/project-build/runtime";
 import { AssetManager } from "~/builder/shared/asset-manager";
 import { AssetUpload } from "~/builder/shared/assets";
 import { $matchingBreakpoints } from "~/builder/features/style-panel/shared/model";
@@ -207,11 +208,11 @@ const PresetButton = styled("button", {
   width: "100%",
   aspectRatio: "1",
   borderRadius: theme.borderRadius[2],
-  border: `1px solid ${theme.colors.borderMain}`,
+  border: `1px solid ${cssVar("--border-default")}`,
   cursor: "pointer",
-  "&:hover": { borderColor: theme.colors.borderFocus },
+  "&:hover": { borderColor: cssVar("--border-focus") },
   "&:focus-visible": {
-    outline: `1px solid ${theme.colors.borderFocus}`,
+    outline: `1px solid ${cssVar("--border-focus")}`,
     outlineOffset: 1,
   },
 });

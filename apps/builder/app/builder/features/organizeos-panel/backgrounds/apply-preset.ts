@@ -1,3 +1,4 @@
+import type { CssProperty } from "@webstudio-is/css-engine";
 import {
   $selectedInstance,
   $selectedInstanceStyleSources,
@@ -5,6 +6,7 @@ import {
   $selectedStyleState,
 } from "~/shared/nano-states";
 import { BAND_VARIABLES } from "@organizeos/site-components/site-templates/canonical-variables";
+import { $styleSources } from "~/shared/sync/data-stores";
 import { createBatchUpdate } from "~/builder/features/style-panel/shared/use-style-data";
 import { layerProperties, type PresetStyles } from "./presets";
 
@@ -22,13 +24,17 @@ import { layerProperties, type PresetStyles } from "./presets";
  *    (`style-panel/style-source-section.tsx`), re-implemented here rather
  *    than exported. The selection is not part of the transaction, so undo
  *    restores the styles and leaves Local selected.
- * 2. In one batch, so one transaction and one undo step: deletes
+ * 2. In one batch, so one transaction and one undo step: sets the preset's
+ *    values, and clears what the preset does not write of
  *    `background-color`, the nine layer lists and the band variables
- *    (`getBandVariables` in presets.ts), then sets the preset's values.
- *    Deleting first means a property the preset does not write cannot
- *    survive from an earlier background: on a site whose palette is not
- *    the canonical variables, where no preset writes them, a preset leaves
- *    no band's ring or accent text behind.
+ *    (`getBandVariables` in presets.ts). Clearing means a property the
+ *    preset does not write cannot survive from an earlier background: on a
+ *    site whose palette is not the canonical variables, where no preset
+ *    writes them, a preset leaves no band's ring or accent text behind. Only
+ *    what it does not write is cleared, because the runtime runs a batch's
+ *    deletes after its sets.
+ * 3. Selects the local source the write persisted: the runtime creates a
+ *    missing one under its own id, not the one the selection showed.
  *
  * With no selected instance it does nothing.
  */
@@ -51,15 +57,33 @@ export const applyPreset = (styles: PresetStyles): void => {
   $selectedStyleState.set(undefined);
 
   const batch = createBatchUpdate();
-  batch.deleteProperty("background-color");
-  for (const property of layerProperties) {
-    batch.deleteProperty(property);
-  }
-  for (const name of BAND_VARIABLES) {
-    batch.deleteProperty(`--${name}`);
+  // setProperty drops an invalid value, so the property it names is cleared
+  const written = new Set(
+    styles
+      .filter(({ value }) => value.type !== "invalid")
+      .map(({ property }) => property)
+  );
+  const cleared: CssProperty[] = [
+    "background-color",
+    ...layerProperties,
+    ...BAND_VARIABLES.map((name) => `--${name}` as CssProperty),
+  ];
+  for (const property of cleared) {
+    if (written.has(property) === false) {
+      batch.deleteProperty(property);
+    }
   }
   for (const { property, value } of styles) {
     batch.setProperty(property)(value);
   }
   batch.publish();
+
+  const persisted = $selectedInstanceStyleSources
+    .get()
+    .find((styleSource) => styleSource.type === "local");
+  if (persisted !== undefined && $styleSources.get().has(persisted.id)) {
+    const next = new Map($selectedStyleSources.get());
+    next.set(instance.id, persisted.id);
+    $selectedStyleSources.set(next);
+  }
 };

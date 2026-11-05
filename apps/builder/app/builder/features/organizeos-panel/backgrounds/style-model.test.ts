@@ -82,6 +82,25 @@ describe("buildSectionStyleModel", () => {
     expect(model.instanceTags.get("body")).toBe("body");
     expect(model.matchingStates.size).toBe(0);
   });
+
+  // as upstream's $instanceTags reads it: a List's tag is its `ordered` prop's
+  test("tags a List by its ordered prop, ol or ul", () => {
+    setupProject({
+      tree: page([el("ordered", "List"), el("unordered", "List")]),
+      props: [
+        {
+          id: "ordered-prop",
+          instanceId: "ordered",
+          name: "ordered",
+          type: "boolean",
+          value: true,
+        },
+      ],
+    });
+    const model = buildSectionStyleModel(section);
+    expect(model.instanceTags.get("ordered")).toBe("ol");
+    expect(model.instanceTags.get("unordered")).toBe("ul");
+  });
 });
 
 describe("resolveFontSize and resolveFontWeight", () => {

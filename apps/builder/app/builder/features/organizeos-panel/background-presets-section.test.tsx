@@ -151,6 +151,10 @@ const contrastCalls = () => vi.mocked(checkSectionContrast).mock.calls.length;
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  // The scheduled contrast run takes setTimeout, which the fake timers drive,
+  // where there is no requestIdleCallback; Chromium has one, so the suite
+  // removes it. The two scheduler cases below set their own.
+  vi.stubGlobal("requestIdleCallback", undefined);
   registerTestMetas();
   selectInstance(undefined);
   $selectedStyleSources.set(new Map());
