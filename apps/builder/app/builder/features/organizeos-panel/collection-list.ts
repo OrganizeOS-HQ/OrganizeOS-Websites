@@ -394,7 +394,8 @@ export const insertCollectionList = async (
     assets: [],
     resources: [],
   };
-  // no conflictResolution: the wrapper brings no tokens
+  // the wrapper brings no tokens and no content-model warnings of its own,
+  // so neither conflictResolution nor allowContentModelWarnings
   const inserted = await insertCompletedFragment({
     fragment,
     complete: (data, _newInstanceIds, rootId) =>

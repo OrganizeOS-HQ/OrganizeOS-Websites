@@ -88,6 +88,7 @@ import {
   insertOrganizeosBlock,
   organizeosBlockData,
 } from "./insert-organizeos-block";
+import { insertCompletedFragment } from "./staged-data";
 
 const { toastError, toastInfo, loaderFetch } = vi.hoisted(() => ({
   toastError: vi.fn(),
@@ -103,6 +104,7 @@ vi.mock("~/shared/fetch.client", () => ({ fetch: loaderFetch }));
 // itself in the browser runner (the module is in an import cycle).
 vi.mock("~/shared/instance-utils/data", { spy: true });
 vi.mock("~/shared/instance-utils/insert", { spy: true });
+vi.mock("./staged-data", { spy: true });
 
 // `run` goes just before the next staged transaction takes its state, after
 // the completion has read the stores. Production has no such gap (the
@@ -482,6 +484,7 @@ beforeEach(() => {
   loaderFetch.mockReset();
   vi.mocked(executeStagedRuntimeMutation).mockClear();
   vi.mocked(insertWebstudioComponentAt).mockClear();
+  vi.mocked(insertCompletedFragment).mockClear();
   $resourcesCache.set(new Map());
   unsubscribePlan = subscribeResourceRequestPlan(() => {});
 });
@@ -1299,6 +1302,59 @@ describe("an Events block, through the completion table", () => {
     expect(getInstanceProps(collection.id, "data")[0]?.value).toBe(
       encodeDataSourceVariable(getResourceBindings()[0].id)
     );
+  });
+
+  // The insert returns only its roots' ids, and the rest are found by walking
+  // the inserted tree against the template: here a walk that misses one.
+  test.each([
+    ["the block's root", (id: string) => id === "root"],
+    ["a bound instance", (id: string) => id === "events"],
+  ])(
+    "refuses, writing nothing, when the insert's ids miss %s",
+    async (_case, isMissed) => {
+      setProject(withForms);
+      const before = getStores();
+      const depth = undoDepth();
+      const actual =
+        await vi.importActual<typeof import("./staged-data")>("./staged-data");
+      vi.mocked(insertCompletedFragment).mockImplementationOnce((args) =>
+        actual.insertCompletedFragment({
+          ...args,
+          complete: (data, ids, rootId) => {
+            const rootTemplateId = args.fragment.children[0]?.value;
+            args.complete(
+              data,
+              new Map(
+                [...ids].filter(
+                  ([templateId]) =>
+                    isMissed(
+                      templateId === rootTemplateId ? "root" : templateId
+                    ) === false
+                )
+              ),
+              rootId
+            );
+          },
+        })
+      );
+
+      expect(await insertOrganizeosBlock(testBlock)).toBe(false);
+
+      expectNothingWritten(before);
+      expect(undoDepth()).toBe(depth);
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(toastError).toHaveBeenCalledWith("Cannot add Test Event Block.");
+    }
+  );
+
+  test("refuses anything but an OrganizeOS block, writing nothing", async () => {
+    setProject(withForms);
+    const before = getStores();
+
+    expect(await insertOrganizeosBlock("Box")).toBe(false);
+
+    expectNothingWritten(before);
+    expect(insertCompletedFragment).not.toHaveBeenCalled();
   });
 
   describe("refuses, writing nothing", () => {

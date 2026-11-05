@@ -437,6 +437,30 @@ export const completeOrganizeosInsertMutable = (
 };
 
 /**
+ * Whether the insert mapped every id the completion writes by: the block's
+ * root and each bound instance. A miss would leave the block, or one of its
+ * props, unbound while the insert reports success.
+ */
+const isCompletionMapped = (
+  completion: Extract<OrganizeosBlockCompletion, { status: "ready" }>,
+  newInstanceIds: Map<Instance["id"], Instance["id"]>
+) => {
+  if (completion.binding === undefined) {
+    return true;
+  }
+  const rootChild = completion.fragment.children.find(
+    (child) => child.type === "id"
+  );
+  return (
+    rootChild !== undefined &&
+    newInstanceIds.has(rootChild.value) &&
+    completion.binding.binds.every((bind) =>
+      newInstanceIds.has(bind.instanceId)
+    )
+  );
+};
+
+/**
  * Whether the org behind this project may use the blocks: it is not on the
  * deny list (`ORGANIZEOS_BLOCKS_DENY_ORG_IDS`, resolved by the builder's
  * loader into `$organizeosSite`).
@@ -449,12 +473,16 @@ export const isOrganizeosBlocksEnabled = () =>
  * Components panel inserts a template, after completing it, in one
  * transaction (staged-data.ts). Refuses with a toast, writing nothing, when
  * the org is not on the blocks' deny list, the project's data is not
- * connected, or the runtime layer refuses the commit.
+ * connected, the insert cannot be bound by its ids, or the runtime layer
+ * refuses the commit. Anything but an OrganizeOS block is refused, silently.
  */
 export const insertOrganizeosBlock = async (
   component: string,
   insertable?: Insertable
 ): Promise<boolean> => {
+  if (isOrganizeosBlock(component) === false) {
+    return false;
+  }
   const project = $project.get();
   if (project === undefined) {
     return false;
@@ -501,7 +529,14 @@ export const insertOrganizeosBlock = async (
     fragment: completion.fragment,
     insertable,
     conflictResolution: "ours",
-    complete: (data, newInstanceIds) =>
-      completeOrganizeosInsertMutable(data, completion, newInstanceIds),
+    // the runtime's registry has no OrganizeOS metas (ruling data OQ1)
+    allowContentModelWarnings: true,
+    complete: (data, newInstanceIds) => {
+      // refused, writing nothing, rather than inserted unbound
+      if (isCompletionMapped(completion, newInstanceIds) === false) {
+        throw Error(`Cannot add ${label}.`);
+      }
+      completeOrganizeosInsertMutable(data, completion, newInstanceIds);
+    },
   });
 };

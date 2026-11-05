@@ -1,17 +1,23 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { enableMapSet } from "immer";
 import {
+  ROOT_INSTANCE_ID,
   coreMetas,
   elementComponent,
+  type Breakpoint,
+  type DataSource,
   type Instance,
   type Instances,
+  type Resource,
   type WebstudioFragment,
 } from "@webstudio-is/sdk";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
+import * as organizeosMetas from "@organizeos/site-components/metas";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { BuilderRuntimeError } from "@webstudio-is/project-build/runtime";
 import {
   $registeredComponentMetas,
+  registerComponentLibrary,
   selectInstance,
   $selectedInstanceSelector,
 } from "~/shared/nano-states";
@@ -60,6 +66,13 @@ registerContainers();
 $registeredComponentMetas.set(
   new Map(Object.entries({ ...defaultMetas, ...coreMetas }))
 );
+// the builder knows the OrganizeOS metas; the runtime's registry does not
+registerComponentLibrary({
+  namespace: "@organizeos/site-components",
+  components: {},
+  metas: organizeosMetas,
+  templates: {},
+});
 
 const instance = (
   id: Instance["id"],
@@ -276,6 +289,156 @@ describe("updateWebstudioDataStaged", () => {
   });
 });
 
+describe("stageWebstudioDataMutable's catalog guard", () => {
+  // the ids provisioning derives are v5 UUIDs
+  const catalogId = "385fcd4c-92f8-5d7c-abfe-cb941b8f2449";
+  const catalogBindingId = "6f1c2a9e-1b2c-5d3e-8f4a-1234567890ab";
+  const catalogResource: Resource = {
+    id: catalogId,
+    name: "Events",
+    method: "get",
+    url: `"https://app.example.org/api/public/v1/events"`,
+    headers: [{ name: "Authorization", value: `"Bearer osk_token"` }],
+  };
+  const catalogBinding: DataSource = {
+    type: "resource",
+    id: catalogBindingId,
+    scopeInstanceId: ROOT_INSTANCE_ID,
+    name: "Events",
+    resourceId: catalogId,
+  };
+  const ownResource: Resource = {
+    id: "own-resource",
+    name: "Own",
+    method: "get",
+    url: `"https://example.org/own"`,
+    headers: [],
+  };
+  const withCatalog = () => {
+    $resources.set(
+      new Map([
+        [catalogId, catalogResource],
+        [ownResource.id, ownResource],
+      ])
+    );
+    $dataSources.set(new Map([[catalogBindingId, catalogBinding]]));
+  };
+
+  test.each([
+    [
+      "changes a catalog Resource",
+      (
+        data: Parameters<Parameters<typeof updateWebstudioDataStaged>[0]>[0]
+      ) => {
+        data.resources.get(catalogId)!.url = `"https://evil.example/"`;
+      },
+    ],
+    [
+      "replaces a catalog Resource",
+      (
+        data: Parameters<Parameters<typeof updateWebstudioDataStaged>[0]>[0]
+      ) => {
+        data.resources.set(catalogId, { ...catalogResource });
+      },
+    ],
+    [
+      "deletes a catalog Resource",
+      (
+        data: Parameters<Parameters<typeof updateWebstudioDataStaged>[0]>[0]
+      ) => {
+        data.resources.delete(catalogId);
+      },
+    ],
+    [
+      "changes a catalog :root binding",
+      (
+        data: Parameters<Parameters<typeof updateWebstudioDataStaged>[0]>[0]
+      ) => {
+        data.dataSources.get(catalogBindingId)!.name = "Renamed";
+      },
+    ],
+    [
+      "deletes a catalog :root binding",
+      (
+        data: Parameters<Parameters<typeof updateWebstudioDataStaged>[0]>[0]
+      ) => {
+        data.dataSources.delete(catalogBindingId);
+      },
+    ],
+  ])("refuses a recipe that %s, staging nothing", async (_case, recipe) => {
+    withCatalog();
+    const before = getStores();
+
+    await expect(updateWebstudioDataStaged(recipe)).rejects.toThrow(
+      "Cannot change your organization's data catalog."
+    );
+
+    expectNothingWritten(before);
+  });
+
+  test("adds a missing catalog Resource, and changes the project's own", async () => {
+    $resources.set(new Map([[ownResource.id, ownResource]]));
+
+    await updateWebstudioDataStaged((data) => {
+      data.resources.set(catalogId, catalogResource);
+      data.resources.get(ownResource.id)!.name = "Own (edited)";
+      data.dataSources.set(catalogBindingId, catalogBinding);
+    });
+
+    expect($resources.get().get(catalogId)).toEqual(catalogResource);
+    expect($resources.get().get(ownResource.id)?.name).toBe("Own (edited)");
+    expect($dataSources.get().get(catalogBindingId)).toEqual(catalogBinding);
+  });
+
+  test("leaves the catalog alone, and writes, when the recipe does not touch it", async () => {
+    withCatalog();
+    const resources = $resources.get();
+
+    await updateWebstudioDataStaged((data) => {
+      data.dataSources.set("page-binding", {
+        ...catalogBinding,
+        id: "page-binding",
+        scopeInstanceId: "body",
+      });
+    });
+
+    expect($resources.get()).toBe(resources);
+    expect($dataSources.get().get(catalogBindingId)).toBe(catalogBinding);
+    expect($dataSources.get().has("page-binding")).toBe(true);
+  });
+
+  test("refuses an insert whose completion changes the catalog, toasting once", async () => {
+    withCatalog();
+    const before = getStores();
+
+    expect(
+      await insertCompletedFragment({
+        fragment: {
+          children: [{ type: "id", value: "root" }],
+          instances: [instance("root", elementComponent, [], "div")],
+          props: [],
+          dataSources: [],
+          resources: [],
+          styleSourceSelections: [],
+          styleSources: [],
+          styles: [],
+          breakpoints: [],
+          assets: [],
+        },
+        complete: (data) => {
+          data.resources.delete(catalogId);
+        },
+      })
+    ).toBe(false);
+
+    expectNothingWritten(before);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith(
+      "Cannot change your organization's data catalog."
+    );
+  });
+});
+
 describe("addToFolderMutable", () => {
   test("appends to the root folder", () => {
     const pages = createDefaultPages({ rootInstanceId: "body" });
@@ -431,5 +594,131 @@ describe("insertCompletedFragment", () => {
 
     expectNothingWritten(before);
     expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("a fragment with no place to go writes nothing and is left to upstream's own warning", async () => {
+    const before = getStores();
+    const complete = vi.fn();
+
+    expect(
+      await insertCompletedFragment({
+        // a descendant goes inside a component that declares it, never a Box
+        fragment: {
+          ...fragment,
+          instances: [instance("root", "ws:descendant")],
+        },
+        complete,
+      })
+    ).toBe(false);
+
+    expect(complete).not.toHaveBeenCalled();
+    expectNothingWritten(before);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("says once when the project's breakpoints were merged, in one undo step", async () => {
+    // the base and eight more: the limit
+    $breakpoints.set(
+      new Map<Breakpoint["id"], Breakpoint>([
+        ["base", { id: "base", label: "Base" }],
+        ...Array.from(
+          { length: 8 },
+          (_, index) =>
+            [
+              `bp-${index}`,
+              {
+                id: `bp-${index}`,
+                label: `${index}`,
+                maxWidth: 100 * (index + 1),
+              },
+            ] as [Breakpoint["id"], Breakpoint]
+        ),
+      ])
+    );
+    const complete = vi.fn();
+
+    expect(
+      await insertCompletedFragment({
+        fragment: {
+          ...fragment,
+          breakpoints: [{ id: "extra", label: "Extra", maxWidth: 850 }],
+          styleSources: [{ type: "local", id: "local" }],
+          styleSourceSelections: [{ instanceId: "root", values: ["local"] }],
+          styles: [
+            {
+              styleSourceId: "local",
+              breakpointId: "extra",
+              property: "color",
+              value: { type: "keyword", value: "red" },
+            },
+          ],
+        },
+        complete,
+      })
+    ).toBe(true);
+
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect($breakpoints.get().size).toBe(9);
+    expect(toastInfo).toHaveBeenCalledTimes(1);
+    expect(toastInfo).toHaveBeenCalledWith(
+      "Some breakpoints were merged because the project reached the breakpoint limit."
+    );
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(1);
+  });
+
+  describe("the content model's own warnings", () => {
+    // what the builder's metas allow and the runtime's registry, which has no
+    // OrganizeOS metas, refuses: Rich Text's descendants
+    const richText: WebstudioFragment = {
+      ...fragment,
+      instances: [
+        instance("root", "@organizeos/site-components:RichText", [
+          { type: "id", value: "paragraph" },
+        ]),
+        instance("paragraph", "ws:descendant"),
+      ],
+      props: [
+        {
+          id: "selector",
+          instanceId: "paragraph",
+          name: "selector",
+          type: "string",
+          value: " p",
+        },
+      ],
+    };
+
+    test("refuse a fragment inserted without the option, toasting once and writing nothing", async () => {
+      const before = getStores();
+      const complete = vi.fn();
+
+      expect(
+        await insertCompletedFragment({ fragment: richText, complete })
+      ).toBe(false);
+
+      expect(complete).not.toHaveBeenCalled();
+      expectNothingWritten(before);
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(toastError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Placing "descendant" element inside a "RichText"'
+        )
+      );
+    });
+
+    test("let it in with the option", async () => {
+      expect(
+        await insertCompletedFragment({
+          fragment: richText,
+          allowContentModelWarnings: true,
+          complete: () => {},
+        })
+      ).toBe(true);
+
+      expect(toastError).not.toHaveBeenCalled();
+      expect(
+        [...$instances.get().values()].map(({ component }) => component)
+      ).toContain("@organizeos/site-components:RichText");
+    });
   });
 });

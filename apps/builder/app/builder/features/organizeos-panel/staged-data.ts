@@ -1,13 +1,16 @@
-import type {
-  Instance,
-  Instances,
-  WebstudioData,
-  WebstudioFragment,
+import {
+  type DataSource,
+  type Instance,
+  type Instances,
+  type WebstudioData,
+  type WebstudioFragment,
+  ROOT_INSTANCE_ID,
 } from "@webstudio-is/sdk";
 import {
   type ConflictResolution,
   BuilderRuntimeError,
   createRuntimeMutation,
+  isOrganizeosCatalogResourceId,
   produceWebstudioDataMutation,
 } from "@webstudio-is/project-build/runtime";
 import {
@@ -30,23 +33,77 @@ import { builderApi } from "~/shared/builder-api";
  * Every caller derives its asynchronous ids (the catalog's v5 ids, hashes,
  * fetches) before the call, keeps the recipe synchronous, and catches the
  * rejection.
+ *
+ * These writes are patches of the caller's own, so they bypass the runtime's
+ * catalog guards (Task 6's, and the change guard of the data-automatic plan's
+ * PR A). A caller must never change or delete an existing catalog Resource
+ * (a v5 id, isOrganizeosCatalogResourceId) or a catalog `:root` binding (a
+ * resource DataSource at `:root` whose id and resourceId are v5 ids):
+ * stageWebstudioDataMutable refuses a recipe that does. Adding a missing one
+ * is allowed, in provisioning's exact shape: the block insert and the
+ * site-template apply do that (D8).
  */
+
+const catalogChangeMessage = "Cannot change your organization's data catalog.";
+
+const isCatalogRootBinding = (dataSource: DataSource) =>
+  dataSource.type === "resource" &&
+  dataSource.scopeInstanceId === ROOT_INSTANCE_ID &&
+  isOrganizeosCatalogResourceId(dataSource.id) &&
+  isOrganizeosCatalogResourceId(dataSource.resourceId);
+
+/**
+ * Throws when `after` lacks, or holds another value for, a catalog Resource
+ * or a catalog `:root` binding that `before` has. Untouched entries keep their
+ * identity through a produce, so identity is the test.
+ */
+const assertCatalogKept = (
+  before: Partial<Pick<WebstudioData, "resources" | "dataSources">>,
+  after: Partial<Pick<WebstudioData, "resources" | "dataSources">>
+) => {
+  for (const [id, resource] of before.resources ?? []) {
+    if (
+      isOrganizeosCatalogResourceId(id) &&
+      after.resources?.get(id) !== resource
+    ) {
+      throw Error(catalogChangeMessage);
+    }
+  }
+  for (const [id, dataSource] of before.dataSources ?? []) {
+    if (
+      isCatalogRootBinding(dataSource) &&
+      after.dataSources?.get(id) !== dataSource
+    ) {
+      throw Error(catalogChangeMessage);
+    }
+  }
+};
 
 /**
  * A write of the panels' own, staged on the accumulator's state. The recipe
- * returns primitives only: its draft is revoked after it.
+ * returns primitives only: its draft is revoked after it. Refuses, staging
+ * nothing, a recipe that changes or deletes the catalog (see above).
  */
 export const stageWebstudioDataMutable = <T>(
   accumulator: RuntimeMutationAccumulator,
   recipe: (data: WebstudioData) => T
 ): T => {
   let result!: T;
-  const { payload } = produceWebstudioDataMutation(
-    accumulator.state as WebstudioData,
+  const before = accumulator.state as WebstudioData;
+  const { data: after, payload } = produceWebstudioDataMutation(
+    before,
     (draft) => {
       result = recipe(draft);
     }
   );
+  if (
+    payload.some(
+      ({ namespace }) =>
+        namespace === "resources" || namespace === "dataSources"
+    )
+  ) {
+    assertCatalogKept(before, after);
+  }
   accumulator.stage(
     createRuntimeMutation({
       payload,
@@ -121,17 +178,25 @@ export const mapInsertedInstanceIds = (
  * the fragment's ids mapped to the inserted ones and the inserted root's id.
  * Selects the inserted root. A fragment with no place to go is refused with
  * upstream's own toast; any other refusal (the content model, no build
- * access) toasts its message once. Either way nothing is written.
+ * access, a throw in `complete`) toasts its message once. Either way nothing
+ * is written.
+ *
+ * `allowContentModelWarnings` lets in the content-model warnings the fragment
+ * has on its own, as upstream's paste does; where it goes is still checked.
+ * Only the OrganizeOS blocks need it: the runtime checks against the static
+ * registry, which has no OrganizeOS metas (ruling data OQ1).
  */
 export const insertCompletedFragment = async ({
   fragment,
   insertable,
   conflictResolution,
+  allowContentModelWarnings = false,
   complete,
 }: {
   fragment: WebstudioFragment;
   insertable?: Insertable;
   conflictResolution?: ConflictResolution;
+  allowContentModelWarnings?: boolean;
   complete: (
     data: WebstudioData,
     newInstanceIds: Map<Instance["id"], Instance["id"]>,
@@ -139,7 +204,9 @@ export const insertCompletedFragment = async ({
   ) => void;
 }): Promise<boolean> => {
   // toasts "… has no place here" itself
-  const target = findClosestInsertable(fragment, insertable);
+  const target = findClosestInsertable(fragment, insertable, {
+    allowContentModelWarnings,
+  });
   const parentInstanceId = target?.parentSelector[0];
   if (target === undefined || parentInstanceId === undefined) {
     return false;
@@ -156,11 +223,9 @@ export const insertCompletedFragment = async ({
           insertIndex:
             typeof target.position === "number" ? target.position : undefined,
         },
-        // The runtime checks the content model against the static registry,
-        // which has no OrganizeOS metas: allow what the fragment has on its
-        // own (Rich Text's descendants), and still check where it goes
-        // (ruling data OQ1).
-        context: { allowLegacyContentModelWarnings: true },
+        ...(allowContentModelWarnings
+          ? { context: { allowLegacyContentModelWarnings: true } }
+          : {}),
       });
       const [rootId] = result.rootInstanceIds;
       if (rootId === undefined) {
