@@ -153,7 +153,7 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   // The scheduled contrast run takes setTimeout, which the fake timers drive,
   // where there is no requestIdleCallback; Chromium has one, so the suite
-  // removes it. The two scheduler cases below set their own.
+  // removes it. The three scheduler cases below set their own.
   vi.stubGlobal("requestIdleCallback", undefined);
   registerTestMetas();
   selectInstance(undefined);
@@ -293,12 +293,15 @@ describe("Background presets", () => {
     expect(contrastCalls()).toBe(calls + 1);
   });
 
-  test("without requestIdleCallback (jsdom 20, and deleted from globalThis explicitly) it renders, nothing throws, and the report lands through setTimeout after 150 ms", () => {
+  test("with Chromium's requestIdleCallback deleted from globalThis (Safari has none) it renders, nothing throws, and the report lands through setTimeout after 150 ms", () => {
     const scope = globalThis as {
       requestIdleCallback?: unknown;
       cancelIdleCallback?: unknown;
     };
-    // jsdom 20 has none; delete it anyway, in case a later jsdom adds it
+    // Chromium's own, not the suite's stub, is the one deleted
+    vi.unstubAllGlobals();
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    expect(typeof scope.requestIdleCallback).toBe("function");
     const saved = {
       requestIdleCallback: scope.requestIdleCallback,
       cancelIdleCallback: scope.cancelIdleCallback,
@@ -323,6 +326,27 @@ describe("Background presets", () => {
       if (saved.cancelIdleCallback !== undefined) {
         scope.cancelIdleCallback = saved.cancelIdleCallback;
       }
+    }
+  });
+
+  test("with Chromium's own requestIdleCallback and real timers, the run is scheduled through it with { timeout: 150 } and the report lands", async () => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    // calls through to the browser's own
+    const scheduled = vi.spyOn(globalThis, "requestIdleCallback");
+    try {
+      project({ styles: [style("text", "color", "#aaaaaa")] });
+      selectInstance(sectionSelector);
+      const host = render(createElement(Section));
+      expect(scheduled).toHaveBeenCalledWith(expect.any(Function), {
+        timeout: 150,
+      });
+      await vi.waitFor(() =>
+        expect(contrastLine(host)).toBe("Text below AA contrast")
+      );
+    } finally {
+      scheduled.mockRestore();
     }
   });
 
