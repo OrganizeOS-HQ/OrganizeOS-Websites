@@ -7,6 +7,7 @@ import {
   type Assets,
   type Instance,
   type Instances,
+  type Page,
   type Pages,
   type Prop,
   type Props,
@@ -147,6 +148,100 @@ const hasBlockedTag = (instance: Instance, props: Prop[]) =>
       (prop.type !== "string" || elementTagMayRun(prop.value, false) === false)
   );
 
+/**
+ * How the dialog names an instance that publishing drops whole (`classify` in
+ * packages/cli/src/organizeos-org-script.ts), or undefined.
+ */
+const findDroppedLabel = (
+  instance: Instance,
+  props: Prop[],
+  publishedOnHtmlPages: Set<Instance["id"]>
+): undefined | string => {
+  if (instance.component === "HtmlEmbed") {
+    // Only a static icon stays, in every code prop: an expression is only
+    // known when the page renders, and an embed with no code prints a
+    // placeholder
+    const codeProps = props.filter((prop) => prop.name === "code");
+    const isIcon =
+      codeProps.length > 0 &&
+      codeProps.every(
+        (prop) =>
+          prop.type === "string" && htmlEmbedCodeMayRun(prop.value, false)
+      );
+    return isIcon ? undefined : "HTML Embed";
+  }
+  if (instance.component === "MarkdownEmbed") {
+    return "Markdown Embed";
+  }
+  if (instance.component === "JsonLd") {
+    return "JSON-LD";
+  }
+  if (hasBlockedTag(instance, props)) {
+    // it goes with its props, so no raw HTML property is listed for it
+    return "Element with an unsupported tag";
+  }
+  const paused = findStaticTags(instance, props).find((tag) =>
+    pausedSvgTags.has(tag)
+  );
+  if (paused !== undefined) {
+    return `SVG ${paused} element`;
+  }
+  if (
+    xmlComponents.has(instance.component) &&
+    publishedOnHtmlPages.has(instance.id)
+  ) {
+    return "XML element";
+  }
+};
+
+/**
+ * What dropped instances take with them, as dropOrgScript removes it:
+ * everything inside them, except what an instance that stays also holds (a
+ * Fragment that another Slot shows), and what that keeps in turn.
+ */
+const findInsideDropped = (
+  instances: Instances,
+  dropped: Set<Instance["id"]>
+) => {
+  const parentIds = new Map<Instance["id"], Set<Instance["id"]>>();
+  for (const instance of instances.values()) {
+    for (const child of instance.children) {
+      if (child.type === "id") {
+        const parents = parentIds.get(child.value) ?? new Set();
+        parents.add(instance.id);
+        parentIds.set(child.value, parents);
+      }
+    }
+  }
+  const removed = new Set(dropped);
+  const pending = [...dropped];
+  while (pending.length > 0) {
+    const instance = instances.get(pending.pop() as string);
+    for (const child of instance?.children ?? []) {
+      if (child.type === "id" && removed.has(child.value) === false) {
+        removed.add(child.value);
+        pending.push(child.value);
+      }
+    }
+  }
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const id of removed) {
+      if (dropped.has(id)) {
+        continue;
+      }
+      for (const parentId of parentIds.get(id) ?? []) {
+        if (removed.has(parentId) === false) {
+          removed.delete(id);
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+  return new Set([...removed].filter((id) => dropped.has(id) === false));
+};
+
 export const findPausedScript = ({
   pages,
   projectSettings,
@@ -181,7 +276,8 @@ export const findPausedScript = ({
       ])
   );
 
-  const items: PausedScriptItem[] = [];
+  // What the pages publish, each instance once, in the order they show it
+  const published: Array<{ instance: Instance; page: Page }> = [];
   const seen = new Set<Instance["id"]>();
   for (const page of getAllPages(pages)) {
     // only what a page publishes is listed
@@ -189,71 +285,63 @@ export const findPausedScript = ({
       instances,
       page.rootInstanceId
     )) {
-      if (seen.has(instanceId)) {
+      const instance = instances.get(instanceId);
+      if (seen.has(instanceId) || instance === undefined) {
         continue;
       }
       seen.add(instanceId);
-      const instance = instances.get(instanceId);
-      if (instance === undefined) {
-        continue;
-      }
-      const instanceProps = propsByInstance.get(instance.id) ?? [];
-      const labels: string[] = [];
-      if (instance.component === "HtmlEmbed") {
-        const code = instanceProps.find((prop) => prop.name === "code");
-        // an expression is only known when the page renders: it is dropped
-        if (
-          htmlEmbedCodeMayRun(
-            code?.type === "string" ? code.value : undefined
-          ) === false
-        ) {
-          labels.push("HTML Embed");
-        }
-      } else if (instance.component === "MarkdownEmbed") {
-        labels.push("Markdown Embed");
-      } else if (instance.component === "JsonLd") {
-        labels.push("JSON-LD");
-      } else if (hasBlockedTag(instance, instanceProps)) {
-        // it goes with its props, so no raw HTML property is listed for it
-        labels.push("Element with an unsupported tag");
-      } else {
-        const paused = findStaticTags(instance, instanceProps).find((tag) =>
-          pausedSvgTags.has(tag)
-        );
-        if (paused !== undefined) {
-          labels.push(`SVG ${paused} element`);
-        } else if (
-          xmlComponents.has(instance.component) &&
-          publishedOnHtmlPages.has(instance.id)
-        ) {
-          labels.push("XML element");
-        }
-      }
-      // an instance that is dropped takes its props with it
-      if (labels.length === 0) {
-        for (const prop of instanceProps) {
-          if (pausedPropNames.has(prop.name)) {
-            labels.push("Raw HTML property");
-          } else if (propMayShip(instance, prop, false) === false) {
-            labels.push(unsafePropLabel(prop.name));
-          }
+      published.push({ instance, page });
+    }
+  }
+
+  // What publishing drops whole, and what it takes with it
+  const droppedLabels = new Map<Instance["id"], string>();
+  for (const { instance } of published) {
+    const label = findDroppedLabel(
+      instance,
+      propsByInstance.get(instance.id) ?? [],
+      publishedOnHtmlPages
+    );
+    if (label !== undefined) {
+      droppedLabels.set(instance.id, label);
+    }
+  }
+  const insideDropped = findInsideDropped(
+    instances,
+    new Set(droppedLabels.keys())
+  );
+
+  const items: PausedScriptItem[] = [];
+  for (const { instance, page } of published) {
+    const instanceProps = propsByInstance.get(instance.id) ?? [];
+    const dropped = droppedLabels.get(instance.id);
+    const labels: string[] = [];
+    if (dropped !== undefined) {
+      labels.push(dropped);
+    } else if (insideDropped.has(instance.id) === false) {
+      // an instance that is dropped, or held by one, takes its props with it
+      for (const prop of instanceProps) {
+        if (pausedPropNames.has(prop.name)) {
+          labels.push("Raw HTML property");
+        } else if (propMayShip(instance, prop, false) === false) {
+          labels.push(unsafePropLabel(prop.name));
         }
       }
-      if (labels.length === 0) {
-        continue;
-      }
-      const { pageId, instanceSelector } = findPageAndSelectorByInstanceId(
-        pages,
-        instances,
-        instance.id
-      );
-      const owner = pages.pages.get(pageId);
-      for (const label of labels) {
-        items.push({
-          label: `${label} on ${owner?.name ?? page.name}`,
-          navigate: { pageId, instanceSelector },
-        });
-      }
+    }
+    if (labels.length === 0) {
+      continue;
+    }
+    const { pageId, instanceSelector } = findPageAndSelectorByInstanceId(
+      pages,
+      instances,
+      instance.id
+    );
+    const owner = pages.pages.get(pageId);
+    for (const label of labels) {
+      items.push({
+        label: `${label} on ${owner?.name ?? page.name}`,
+        navigate: { pageId, instanceSelector },
+      });
     }
   }
 

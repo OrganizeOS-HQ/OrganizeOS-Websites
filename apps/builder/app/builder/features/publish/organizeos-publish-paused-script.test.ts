@@ -460,6 +460,71 @@ describe("findPausedScript", () => {
     ]);
   });
 
+  // dropOrgScript keeps an HTML Embed only when every code it holds is a
+  // template icon
+  test("judges every code prop of an HTML Embed, as publishing does", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("mixed", "icons") },
+      { id: "mixed", component: "HtmlEmbed" },
+      { id: "icons", component: "HtmlEmbed" },
+    ]);
+    const props = toProps([
+      { ...stringProp("mixed", "code", MenuIcon), id: "mixed-code-1" },
+      {
+        ...stringProp("mixed", "code", "<script>1</script>"),
+        id: "mixed-code-2",
+      },
+      { ...stringProp("icons", "code", MenuIcon), id: "icons-code-1" },
+      { ...stringProp("icons", "code", MenuIcon), id: "icons-code-2" },
+    ]);
+
+    expect(find({ instances, props })).toEqual([
+      {
+        label: "HTML Embed on Home",
+        navigate: { pageId: "home", instanceSelector: ["mixed", "home-root"] },
+      },
+    ]);
+  });
+
+  // dropOrgScript drops what a dropped instance holds with it, and counts no
+  // prop of it; what a kept instance also holds stays
+  test("lists no prop of what a dropped element holds, and the props of what a kept Slot shows there too", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("script", "kept-slot"),
+      },
+      {
+        id: "script",
+        component: "ws:element",
+        tag: "script",
+        children: ids("inner", "dropped-slot"),
+      },
+      { id: "inner", component: "Box", children: ids("inner-link") },
+      { id: "inner-link", component: "Link" },
+      { id: "dropped-slot", component: "Slot", children: ids("fragment") },
+      { id: "kept-slot", component: "Slot", children: ids("fragment") },
+      { id: "fragment", component: "Fragment", children: ids("shown") },
+      { id: "shown", component: "Box" },
+    ]);
+    const props = toProps([
+      jsonProp("inner", "dangerouslySetInnerHTML", { __html: "<b>1</b>" }),
+      stringProp("inner-link", "href", "javascript:alert(1)"),
+      jsonProp("shown", "dangerouslySetInnerHTML", { __html: "<b>2</b>" }),
+    ]);
+
+    expect(find({ instances, props }).map((item) => item.label)).toEqual([
+      "Element with an unsupported tag on Home",
+      "Raw HTML property on Home",
+    ]);
+    expect(
+      find({ instances, props }).find((item) =>
+        item.label.startsWith("Raw HTML")
+      )?.navigate?.instanceSelector[0]
+    ).toBe("shown");
+  });
+
   test("lists nothing for a dangerouslySetInnerHTML prop of an instance that is listed anyway", () => {
     const instances = createInstances([
       { id: "home-root", component: "Body", children: ids("embed") },
