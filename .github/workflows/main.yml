@@ -1,100 +1,40 @@
-name: Main workflow
+name: CI
 
 on:
   push:
     branches:
       - main
   pull_request:
-  workflow_call:
 
+# cancel in-progress runs on new commits to the same PR
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
 permissions:
-  contents: read # to fetch code (actions/checkout)
+  contents: read
 
+env:
+  DATABASE_URL: postgres://
+  AUTH_SECRET: test
+
+# OrganizeOS fork CI: upstream's toolchain (oxfmt, oxlint, Vitest projects with
+# Chromium) without upstream's webstudio-cloud jobs (deploys, visual
+# regression, fixture sizes, the builder e2e suite, the private submodule and
+# the Supabase migrations job), which need webstudio's infrastructure and
+# secrets. No job here holds a secret or a GitHub environment, and no checkout
+# picks a ref of its own: each runs on the commit the event names.
 jobs:
-  ssg-artifact:
-    name: Packaged SSG Assets build
-    timeout-minutes: 7
-    runs-on: ubuntu-24.04-arm
-    environment:
-      name: development
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'safe-to-deploy' }}
-
-      - uses: ./.github/actions/submodules-checkout
-        with:
-          submodules-ssh-key: ${{ secrets.PRIVATE_GITHUB_DEPLOY_TOKEN }}
-
-      - uses: ./.github/actions/ci-setup
-
-      - name: Build packaged SSG fixture
-        run: pnpm --filter webstudio test:ssg-package
-
-  tests:
-    name: tests (${{ matrix.environment }}, ${{ matrix.suite.name }})
-    timeout-minutes: ${{ (matrix.suite.name == 'builder-app' || matrix.suite.name == 'packages') && 12 || 7 }}
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        environment:
-          - empty
-          - development
-        suite:
-          - name: packages
-            script: test:packages
-            browsers: chromium-firefox
-          - name: cli
-            script: test:cli
-            browsers: none
-          - name: builder-core
-            script: test:builder:core
-            browsers: chromium
-          - name: builder-app
-            script: test:builder:app
-            browsers: chromium
-    environment:
-      name: ${{ matrix.environment }}
-    env:
-      DATABASE_URL: postgres://
-      AUTH_SECRET: test
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'safe-to-deploy' }}
-
-      - uses: ./.github/actions/test-suite
-        with:
-          submodules-ssh-key: ${{ secrets.PRIVATE_GITHUB_DEPLOY_TOKEN }}
-          script: ${{ matrix.suite.script }}
-          browsers: ${{ matrix.suite.browsers }}
-
   checks:
-    timeout-minutes: 7
-
-    environment:
-      name: empty
-
-    env:
-      DATABASE_URL: postgres://
-      AUTH_SECRET: test
-
+    timeout-minutes: 20
     runs-on: ubuntu-24.04-arm
 
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'safe-to-deploy' }}
+          # Full history: check:runtime-upstream diffs against the upstream base
+          # commit (scripts/upstream-base.txt), which a shallow clone lacks.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
 
@@ -103,103 +43,142 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Pnpm install
-        run: |
-          pnpm install
+      - name: Install
+        id: install
+        run: pnpm install --frozen-lockfile
 
-      - run: |
-          pnpm oxfmt --check
+      # Each check below runs once the install succeeded, whatever the checks
+      # before it found, so one run reports every failing check.
+
+      - name: Format
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm oxfmt --check
 
       - name: Lint
-        run: |
-          pnpm lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm lint
+
+      - name: No proprietary code (AGPL-only fork)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm check:no-proprietary
+
+      - name: Runtime packages byte-identical to upstream
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm check:runtime-upstream
 
       - name: Package boundaries
-        run: |
-          pnpm check:package-boundaries
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm check:package-boundaries
 
       - name: Generated API contracts
-        run: |
-          pnpm check:generated-api
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm check:generated-api
 
       - name: Generated CLI docs
-        run: |
-          pnpm check:generated-docs
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm check:generated-docs
+
+      - name: Every test file runs in a tests leg
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm check:every-test-runs
 
       - name: Typecheck
-        run: |
-          pnpm -r typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        # Exclude fixtures (generated example projects): their generated code
+        # still imports the removed proprietary animation package. The build
+        # excludes them the same way (pnpm -r --filter='!./fixtures/*').
+        run: pnpm -r --filter='!./fixtures/*' typecheck
 
-  check-size:
-    timeout-minutes: 7
-
-    runs-on: ubuntu-24.04-arm
-
-    environment:
-      name: development
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'safe-to-deploy' }}
-
-      - uses: ./.github/actions/submodules-checkout
-        with:
-          submodules-ssh-key: ${{ secrets.PRIVATE_GITHUB_DEPLOY_TOKEN }}
-
-      - uses: ./.github/actions/ci-setup
-
-      - run: pnpm --filter "{./fixtures/*}..." build
-
-      - run: pnpm check:fixture-sizes
-
-  builder-e2e-build:
-    name: builder-e2e build
-    timeout-minutes: 7
-
-    runs-on: ubuntu-24.04
-
-    environment:
-      name: development
-
-    outputs:
-      shards: ${{ steps.build.outputs.shards }}
-
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'safe-to-deploy' }}
-
-      - id: build
-        uses: ./.github/actions/builder-e2e-build
-        with:
-          submodules-ssh-key: ${{ secrets.PRIVATE_GITHUB_DEPLOY_TOKEN }}
-
-  builder-e2e:
-    name: builder-e2e (${{ matrix.shard }})
-    timeout-minutes: 12
-
-    needs: builder-e2e-build
-
+  tests:
+    name: tests (${{ matrix.leg }})
+    timeout-minutes: 20
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.builder-e2e-build.outputs.shards) }}
-
-    environment:
-      name: development
+        # One builder Vitest project per leg: a suite that cannot load can
+        # stall a whole browser run without a report, and then hides only its
+        # own project's results. check:every-test-runs fails when a builder
+        # project has no leg here.
+        include:
+          - leg: packages
+            script: test:packages
+            browser: true
+          - leg: cli
+            script: test:cli
+            site-components: true
+          - leg: builder core-server
+            project: core-server
+            # preview-form-route.server.test.ts launches Chromium itself
+            browser: true
+          - leg: builder core-browser-builder-settings
+            project: core-browser-builder-settings
+            browser: true
+          - leg: builder core-browser-builder-features
+            project: core-browser-builder-features
+            browser: true
+          - leg: builder app-browser-builder-shared
+            project: app-browser-builder-shared
+            browser: true
+          - leg: builder app-browser-shared-heavy
+            project: app-browser-shared-heavy
+            browser: true
+          - leg: builder app-browser-shared
+            project: app-browser-shared
+            browser: true
+          - leg: builder app-browser-canvas-dashboard
+            project: app-browser-canvas-dashboard
+            browser: true
 
     steps:
       - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          allow-unsafe-pr-checkout: ${{ github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'safe-to-deploy' }}
 
-      - uses: ./.github/actions/builder-e2e-shard
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v5
         with:
-          submodules-ssh-key: ${{ secrets.PRIVATE_GITHUB_DEPLOY_TOKEN }}
-          shard: ${{ matrix.shard }}
-          partition: ${{ matrix.partition }}
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the OrganizeOS site components
+        # The CLI tests copy this package's build into a generated site, as the
+        # publish executor does (packages/cli/src/organizeos-components.ts),
+        # and run the publish workflow's switch check on its org-script entry,
+        # which imports the builds of the workspace packages it depends on.
+        # Every other leg reads the workspace packages' sources through the
+        # "webstudio" export condition and needs no build.
+        if: matrix.site-components
+        run: pnpm --filter "@organizeos/site-components..." build
+
+      - name: Cache Chromium
+        if: matrix.browser
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/ms-playwright/chromium-*
+            ~/.cache/ms-playwright/chromium_headless_shell-*
+            ~/.cache/ms-playwright/ffmpeg-*
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Chromium
+        if: matrix.browser
+        run: pnpm --filter @webstudio-is/builder exec playwright install --with-deps chromium
+
+      - name: Test
+        if: matrix.script
+        env:
+          SCRIPT: ${{ matrix.script }}
+        run: pnpm run "$SCRIPT"
+
+      - name: Test the visual-regression scripts
+        if: matrix.leg == 'packages'
+        run: pnpm visual-regression:test
+
+      - name: Test the builder project
+        if: matrix.project
+        env:
+          PROJECT: ${{ matrix.project }}
+        run: pnpm --filter @webstudio-is/builder exec vitest run --project "$PROJECT"
