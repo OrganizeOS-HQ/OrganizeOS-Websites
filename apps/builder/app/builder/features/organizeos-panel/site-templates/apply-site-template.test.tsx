@@ -64,6 +64,7 @@ import {
   UPCOMING_EVENTS_BINDING_NAME,
 } from "~/shared/organizeos-preset-ids";
 import { getOrganizeosPresetIds } from "../insert-organizeos-block";
+import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
 import { createProvisionedProject } from "./provisioned-project";
 import { THUMBNAIL } from "./preview/thumbnail.mjs";
 import {
@@ -539,7 +540,7 @@ describe("the canonical variables", () => {
 // ResourceForm brings one of its own, which the apply leaves alone.
 const addedResourceBindings = (
   data: WebstudioData,
-  provisioned: ReadonlySet<string>
+  provisioned: ReadonlyMap<string, unknown>
 ) =>
   [...data.dataSources.values()].flatMap((dataSource) =>
     dataSource.type === "resource" && provisioned.has(dataSource.id) === false
@@ -547,10 +548,24 @@ const addedResourceBindings = (
       : []
   );
 
+// ... and every binding provisioning wrote is still there as it was, the
+// sign-up form's among them.
+const expectProvisionedBindingsKept = (
+  data: WebstudioData,
+  provisioned: WebstudioData["dataSources"]
+) => {
+  expect(
+    [...provisioned.values()].filter(({ type }) => type === "resource")
+  ).not.toEqual([]);
+  for (const [id, dataSource] of provisioned) {
+    expect(data.dataSources.get(id), id).toEqual(dataSource);
+  }
+};
+
 describe("applySiteTemplateMutable", () => {
   test("applies a two-page template", async () => {
     const data = await createProvisionedProject(provisioning);
-    const provisionedDataSourceIds = new Set(data.dataSources.keys());
+    const provisionedDataSources = structuredClone(data.dataSources);
     const homePageId = data.pages.homePageId;
     const oldBodyId = data.pages.pages.get(homePageId)!.rootInstanceId;
     data.pages.pages.get(homePageId)!.meta.language = JSON.stringify("en");
@@ -640,7 +655,8 @@ describe("applySiteTemplateMutable", () => {
     const eventList = childrenOf(data, home.rootInstanceId).find(
       (instance) => instance.label === "Event List"
     )!;
-    const bindings = addedResourceBindings(data, provisionedDataSourceIds);
+    const bindings = addedResourceBindings(data, provisionedDataSources);
+    expectProvisionedBindingsKept(data, provisionedDataSources);
     expect(bindings).toEqual([
       {
         type: "resource",
@@ -735,7 +751,7 @@ describe("applySiteTemplateMutable", () => {
 
   test("a broken data link leaves blocks unbound", async () => {
     const data = await createProvisionedProject(provisioning);
-    const provisionedDataSourceIds = new Set(data.dataSources.keys());
+    const provisionedDataSources = structuredClone(data.dataSources);
     data.resources.delete(presetIds.events.resourceId);
     const resources = new Map(data.resources);
 
@@ -745,7 +761,8 @@ describe("applySiteTemplateMutable", () => {
       status: "applied",
       unboundBlocks: ["Event List"],
     });
-    expect(addedResourceBindings(data, provisionedDataSourceIds)).toEqual([]);
+    expect(addedResourceBindings(data, provisionedDataSources)).toEqual([]);
+    expectProvisionedBindingsKept(data, provisionedDataSources);
     expect(data.resources).toEqual(resources);
     // left in place, shown empty
     const home = data.pages.pages.get(data.pages.homePageId)!;
@@ -933,13 +950,14 @@ describe("applySiteTemplateMutable", () => {
     test("binds each block to a binding of its own", async () => {
       const data = await createProvisionedProject(provisioning);
       const resourceIdsBefore = new Set(data.resources.keys());
-      const provisionedDataSourceIds = new Set(data.dataSources.keys());
+      const provisionedDataSources = structuredClone(data.dataSources);
 
       const result = applySiteTemplateMutable(data, renderSpike(), context);
 
       expect(result).toEqual({ status: "applied", unboundBlocks: [] });
       const { card, list, form } = findBlockRoots(data);
-      const bindings = addedResourceBindings(data, provisionedDataSourceIds);
+      const bindings = addedResourceBindings(data, provisionedDataSources);
+      expectProvisionedBindingsKept(data, provisionedDataSources);
       expect(bindings.map((binding) => binding.scopeInstanceId).sort()).toEqual(
         [card.id, list.id, form.id].sort()
       );
@@ -986,11 +1004,23 @@ describe("applySiteTemplateMutable", () => {
       ).toEqual(
         [presetIds.forms.resourceId, presetIds.upcomingEvents.resourceId].sort()
       );
+      // in provisioning's exact shape (D8): the catalog's change guard
+      // refuses any other
+      const { resources: provisioned } =
+        await buildOrgResourcePresets(provisioning);
+      for (const id of [
+        presetIds.forms.resourceId,
+        presetIds.upcomingEvents.resourceId,
+      ]) {
+        expect(data.resources.get(id), id).toStrictEqual(
+          provisioned.find((resource) => resource.id === id)
+        );
+      }
     });
 
     test("a block whose ids its placement prefix does not match is left unbound", async () => {
       const data = await createProvisionedProject(provisioning);
-      const provisionedDataSourceIds = new Set(data.dataSources.keys());
+      const provisionedDataSources = structuredClone(data.dataSources);
       const [home] = renderSpike();
       const root = home.fragment.children[0];
       expect(root?.type).toBe("id");
@@ -1014,10 +1044,11 @@ describe("applySiteTemplateMutable", () => {
       });
       const { card, list, form } = findBlockRoots(data);
       expect(
-        addedResourceBindings(data, provisionedDataSourceIds)
+        addedResourceBindings(data, provisionedDataSources)
           .map((binding) => binding.scopeInstanceId)
           .sort()
       ).toEqual([card.id, form.id].sort());
+      expectProvisionedBindingsKept(data, provisionedDataSources);
       const collection = childrenOf(data, list.id).find(
         (child) => child.label === "Events"
       )!;
@@ -1524,6 +1555,36 @@ describe("applySiteTemplate", () => {
       })
     );
     consoleError.mockRestore();
+    expect(uploadAssets).not.toHaveBeenCalled();
+    expect(getWebstudioData()).toEqual(before);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(0);
+  });
+
+  // the copy (insertWebstudioFragmentCopy) refuses inside the write: not a
+  // refusal of the apply's, but an error the chooser reports
+  test("an error inside the write rejects with it, writing and uploading nothing", async () => {
+    setStores(await createProvisionedProject(provisioning));
+    const before = getWebstudioData();
+    const withBareForm: SiteTemplate = {
+      ...template,
+      pages: [
+        template.pages[0],
+        {
+          ...template.pages[1],
+          // a bare Form, which the copy cannot tell apart from a legacy one
+          body: () => (
+            <ws.element ws:tag="body">
+              <$.Form />
+            </ws.element>
+          ),
+        },
+      ],
+    };
+
+    await expect(applySiteTemplate(withBareForm)).rejects.toThrow(
+      "This copied Form uses an older format"
+    );
+
     expect(uploadAssets).not.toHaveBeenCalled();
     expect(getWebstudioData()).toEqual(before);
     expect(serverSyncStore.transactionManager.currentStack).toHaveLength(0);
