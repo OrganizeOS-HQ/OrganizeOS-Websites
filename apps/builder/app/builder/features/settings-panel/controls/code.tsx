@@ -1,4 +1,6 @@
 import { useStore } from "@nanostores/react";
+// OrganizeOS fork: the HTML check reads the code with parse5 (docs/ORGANIZEOS-FORK.md section 10)
+import { parseFragment, serialize, type DefaultTreeAdapterMap } from "parse5";
 import { useState } from "react";
 import {
   Button,
@@ -82,10 +84,37 @@ const parseSvg = (value: string) => {
   return doc.documentElement.outerHTML;
 };
 
+// OrganizeOS fork: read the code with parse5, not into a document of the
+// builder's, so nothing in it runs or loads; read in a div, as an element's
+// innerHTML is, and write < and > in attribute values as entities, as
+// current browsers do (docs/ORGANIZEOS-FORK.md section 10)
+const htmlContext = parseFragment("<div></div>").childNodes[0];
 const parseHtml = (value: string) => {
-  const div = document.createElement("div");
-  div.innerHTML = value;
-  return div.innerHTML;
+  const fragment = parseFragment(
+    htmlContext as DefaultTreeAdapterMap["parentNode"],
+    value,
+    {}
+  );
+  const nodes: DefaultTreeAdapterMap["node"][] = [...fragment.childNodes];
+  for (const node of nodes) {
+    if ("attrs" in node) {
+      for (const attr of node.attrs) {
+        // a parsed value never holds NUL, so it marks what to write back
+        attr.value = attr.value
+          .replaceAll("<", "\0lt;")
+          .replaceAll(">", "\0gt;");
+      }
+    }
+    if ("childNodes" in node) {
+      nodes.push(...node.childNodes);
+    }
+    if ("content" in node) {
+      nodes.push(...node.content.childNodes);
+    }
+  }
+  return serialize(fragment)
+    .replaceAll("\0lt;", "&lt;")
+    .replaceAll("\0gt;", "&gt;");
 };
 
 // The problem is to identify broken HTML and because browser is flexible and always tries to fix it we never
@@ -98,7 +127,8 @@ const parseHtml = (value: string) => {
 //    - different amount of whitespace
 //    - unifying `boolean=""` is the same as `boolean`
 //    - xmlns attirbute which is always reordered first
-const validateHtml = (value: string): Error | undefined => {
+// OrganizeOS fork: exported for its test (docs/ORGANIZEOS-FORK.md section 10)
+export const validateHtml = (value: string): Error | undefined => {
   const maxChars = 50_000;
   if (value.length > maxChars) {
     return {

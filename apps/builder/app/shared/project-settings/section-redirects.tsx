@@ -32,6 +32,8 @@ import {
 } from "@webstudio-is/icons";
 import { ImportRedirectsDialog } from "./import-redirects-dialog";
 import { redirectSourcePath, projectNewRedirectPath } from "@webstudio-is/sdk";
+// OrganizeOS fork: the pause (docs/ORGANIZEOS-FORK.md section 10)
+import { urlMayRun } from "@organizeos/site-components/org-script";
 import type { PageRedirect } from "@webstudio-is/sdk";
 import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -128,6 +130,12 @@ const validateToPath = (toPath: string, fromPath?: string): string[] => {
   const toPathValidationResult = projectNewRedirectPath.safeParse(toPath);
   if (toPathValidationResult.success === false) {
     return toPathValidationResult.error.format()._errors;
+  }
+
+  // OrganizeOS fork: a target that may not run while org script is paused
+  // (docs/ORGANIZEOS-FORK.md section 10)
+  if (urlMayRun(toPath) === false) {
+    return ["This address is not allowed."];
   }
 
   if (hasInvalidLocalTargetParams(toPath, fromPath)) {
@@ -476,10 +484,15 @@ export const SectionRedirects = () => {
                         <Tooltip content={redirect.old}>
                           <Link
                             underline="hover"
-                            href={new URL(
-                              redirect.old,
-                              publishedOrigin
-                            ).toString()}
+                            href={
+                              // OrganizeOS fork: no link to a path that may not run (docs/ORGANIZEOS-FORK.md section 10)
+                              urlMayRun(redirect.old)
+                                ? new URL(
+                                    redirect.old,
+                                    publishedOrigin
+                                  ).toString()
+                                : undefined
+                            }
                             css={{
                               wordBreak: "break-all",
                               overflow: "hidden",
@@ -495,10 +508,15 @@ export const SectionRedirects = () => {
                         <Tooltip content={redirect.new}>
                           <Link
                             underline="hover"
-                            href={new URL(
-                              redirect.new,
-                              publishedOrigin
-                            ).toString()}
+                            href={
+                              // OrganizeOS fork: no link to a target that may not run (docs/ORGANIZEOS-FORK.md section 10)
+                              urlMayRun(redirect.new)
+                                ? new URL(
+                                    redirect.new,
+                                    publishedOrigin
+                                  ).toString()
+                                : undefined
+                            }
                             css={{
                               wordBreak: "break-all",
                               overflow: "hidden",
