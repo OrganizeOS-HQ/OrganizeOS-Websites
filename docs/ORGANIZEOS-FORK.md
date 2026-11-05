@@ -330,15 +330,17 @@ one platform call per resource again (§9, the rollout gate).
 from the copy of the blocks' package (`app/__organizeos__/page.js`, the
 package's page entry, `src/page.ts`), appended after the source offer in
 `PageWithSourceOffer`, in one marked change. It is the blocks' carrier,
-`attachShareCodeCarrier`, on the document (§9, "Share codes"): a click on any
+`attachShareCodeCarrier`, on the document (§9, "Share codes"): a click, a
+middle-click or a context menu (a right click or a long press) on any
 same-origin link to a platform page, a designer's own included, carries the
 visit's `?r=` code there, and a plain click goes by document, which keeps the
-site's router out. It renders nothing, reads the code only at the click and
+site's router out. It renders nothing, reads the code only at the event and
 writes no cookie or storage, so the server's markup is the same whatever the
 address. With a block's carrier on the same page, the document's
-capture-phase listener runs before the block root's, so a click gets the code
-once and navigates at most once. The route imports it through the placeholder
-`__ORGANIZEOS_PAGE__`, which prebuild's marked hook resolves to the path from
+capture-phase listeners run before the block root's, so each of those gets
+the code once and a click navigates at most once. The route imports it
+through the placeholder `__ORGANIZEOS_PAGE__`, which prebuild's marked hook
+resolves to the path from
 the route to the copy (`../__organizeos__/page.js`), as upstream resolves
 `__CLIENT__`. `packages/cli/src/organizeos-placeholders.d.ts` declares it, so
 the template typechecks in the CLI, where no copy exists. The copy is part of
@@ -1638,8 +1640,10 @@ code in the page's address only, never in a cookie or storage.
   that answer before any rate limit, form or event read, or write, so a
   platform that does not take the code costs the credit, never the
   submission.
-- **Links.** `attachShareCodeCarrier` carries the code on a click on a link
-  to a platform page on the same host. It listens on each platform block's
+- **Links.** `attachShareCodeCarrier` carries the code on a click, a
+  middle-click (`auxclick`, button 1) or a context menu (`contextmenu`: a
+  right click, a long press or the keyboard's menu key) on a link to a
+  platform page on the same host. It listens on each platform block's
   root, through `useShareCodeCarrier` (the two forms' `<form>`, and the
   **Share Code Carrier**, the root of the Event List and the Event Card), and
   on the document of every published page, through `PageShareCodeCarrier`,
@@ -1648,25 +1652,31 @@ code in the page's address only, never in a cookie or storage.
   too. The list, `platformPathPatterns`, is the platform's own: donate,
   fundraise, petitions, join, shop, cart, checkout and an event's page; the
   donor self-service pages, whose links carry a token from email, are not on
-  it. The code is read at the click, and a click another handler cancelled is left
-  alone. The carrier adds the code to the link's `href` unless the link
-  already has an `r`, which it keeps. A plain click then has its default
+  it. The code is read at the event, and an event another handler cancelled
+  is left alone. The carrier adds the code to the link's `href` unless the
+  link already has an `r`, which it keeps. A plain click then has its default
   prevented and goes to that address by document (`navigateTo`), whether or
   not the `href` was rewritten, which keeps a client-side router out: a
   published link may route by its own `to`, not the DOM `href`, and would drop
-  the code, even on a link an earlier Ctrl-click or the first click of a
-  double-click has already given its `r`. Here the fork departs from the
-  platform's own carrier, which leaves a link that already has `r` to its
-  default. Any other click (a modifier key or another button,
-  `target="_blank"`, `download`) follows the `href`. Nothing stops the click's
-  propagation, and a carrier inside another acts once: both listen in the
-  capture phase, which reaches the document, then an outer root, before an
-  inner one, so the outer carrier cancels a plain click and sends it by
-  document before the inner one leaves it as cancelled, and gives any other
-  click its `r` before the inner one keeps it. A click therefore gets one `r`
-  and at most one navigation however many carriers the page has. `navigateTo`
-  does the same for an after-submit page that is a platform page. Nothing
-  happens on the canvas or in the Preview.
+  the code, even on a link an earlier Ctrl-click, middle-click or context
+  menu, or the first click of a double-click, has already given its `r`. The
+  platform's carrier adopts the same rule (OrganizeOS plan
+  `docs/superpowers/plans/2026-11-05-share-code-new-tab-gestures.md`). Any
+  other click (a modifier key or another button, `target="_blank"`,
+  `download`) follows the `href`. A middle-click and a context menu only add
+  the code to the `href`, as a modified click does, and are never cancelled,
+  so the browser opens the new tab or the menu with it. Every item of the
+  menu uses it, "Copy link address" included (owner decision, 2026-11-05: the
+  code is meant to be shared and is already in the page's address). Nothing
+  stops an event's propagation, and a carrier inside another acts once: both
+  listen in the capture phase, which reaches the document, then an outer
+  root, before an inner one, so the outer carrier cancels a plain click and
+  sends it by document before the inner one leaves it as cancelled, and gives
+  any other click, middle-click or context menu its `r` before the inner one
+  keeps it. A link therefore gets one `r`, and a click at most one
+  navigation, however many carriers the page has. `navigateTo` does the same
+  for an after-submit page that is a platform page. Nothing happens on the
+  canvas or in the Preview.
 - **Share Code Carrier** (`@organizeos/site-components:ShareCodeCarrier`): a
   hidden `div` that passes every prop through, takes any children and has no
   props of its own, the root for blocks that are templates over native
@@ -2375,10 +2385,13 @@ options, and the limits found since in review):
     beyond the pilot.
 - No self-serve "Reconnect data": once the builder is enabled, nothing re-seeds
   a project's catalog, so a refused insert needs support to re-provision.
-- **Share codes** are carried on a click, after hydration, by every
-  same-origin link to a platform page and by the forms: not by a
-  middle-click, a long press or a copied link address, and not between the
-  site's own pages. Without JavaScript, or before hydration, nothing is
+- **Share codes** are carried on a click, a middle-click or a context menu,
+  after hydration, by every same-origin link to a platform page, and by the
+  forms: not by a long press on iOS or iPadOS, whose Safari raises no
+  `contextmenu` (WebKit bug 213953), nor by a middle-click in Safari before
+  18.2, which has no `auxclick`, nor by dragging a link to a tab, and not
+  between the site's own pages. On iOS the page's own address still carries
+  the code. Without JavaScript, or before hydration, nothing is
   carried. A site published before the blocks carried the code sends none
   until it is republished, and one published before the page's carrier
   carries it from its blocks' links and forms only. A plain click on a
@@ -2539,8 +2552,10 @@ page's carrier cancels a plain click on a same-origin link to a platform page
 in the document's capture phase, and a block's carrier does the same within its
 block, both before any handler on the link itself (a React `onClick`, an inline
 `onclick`) runs, so once org script returns a designer's handler on such a link
-cannot cancel that click: the carrier has already sent it by document. Then
-this section moves to history.
+cannot cancel that click: the carrier has already sent it by document. The
+carriers never cancel a middle-click or a context menu, so a designer's
+handler for those still decides them; the carrier has only set the link's
+`href` first. Then this section moves to history.
 The package builds the `org-script` entry with `vite.build.config.ts`, which
 extends the root `vite.sdk-components.config.ts` (left as upstream's) with one
 entry. It is not named `vite.config.ts` because Vitest picks up the nearest
