@@ -9,6 +9,8 @@ import {
   type ShouldRevalidateFunction,
 } from "@remix-run/react";
 import designSystemGlobalCss from "@webstudio-is/design-system/global.css?url";
+// OrganizeOS fork: the teal accent (owner decision D3), after global.css
+import organizeosColorsCss from "~/shared/organizeos-colors.css?url";
 import {
   json,
   type LinksFunction,
@@ -35,7 +37,10 @@ import {
 export const links: LinksFunction = () => {
   // `links` returns an array of objects whose
   // properties map to the `<link />` component props
-  return [{ rel: "stylesheet", href: designSystemGlobalCss }];
+  return [
+    { rel: "stylesheet", href: designSystemGlobalCss },
+    { rel: "stylesheet", href: organizeosColorsCss },
+  ];
 };
 
 const Document = (props: {
