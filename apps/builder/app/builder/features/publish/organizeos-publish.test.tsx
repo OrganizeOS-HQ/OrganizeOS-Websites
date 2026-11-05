@@ -6,7 +6,13 @@ import { TooltipProvider, toast } from "@webstudio-is/design-system";
 import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { defaultPlanFeatures } from "@webstudio-is/plans";
-import { blockComponent, type Instance } from "@webstudio-is/sdk";
+import {
+  ROOT_INSTANCE_ID,
+  blockComponent,
+  type DataSource,
+  type Instance,
+  type Resource,
+} from "@webstudio-is/sdk";
 import {
   $assets,
   $dataSources,
@@ -464,13 +470,59 @@ describe("the OrganizeOS Publish dialog", () => {
     expect(host.textContent).not.toContain("plan is managed in");
   });
 
-  test("a project with catalog data sources and allowDynamicData: false renders the dialog", async () => {
-    // Every org project binds the catalog's Resources; the plan banner reads
-    // each one, so the dialog has to be given them
-    const { resourceId, bindingId } = await getResourcePresetIds(
-      "project-1",
-      "events"
-    );
+  // The catalog's bindings: a block's binding as provisioning writes it (a v5
+  // id and a v5 resourceId), a :root binding of the catalog, a binding of the
+  // page's own to a catalog Resource, and a catalog binding whose Resource id
+  // is not a v5 one
+  const catalogBindings = async () => {
+    const events = await getResourcePresetIds("project-1", "events");
+    const forms = await getResourcePresetIds("project-1", "forms");
+    const stats = await getResourcePresetIds("project-1", "stats");
+    const dataSources: DataSource[] = [
+      {
+        id: "page-events",
+        type: "resource",
+        name: "Events here",
+        scopeInstanceId: "body",
+        resourceId: events.resourceId,
+      },
+      {
+        id: stats.bindingId,
+        type: "resource",
+        name: "OrganizeOS Stats",
+        scopeInstanceId: ROOT_INSTANCE_ID,
+        resourceId: "stats-resource",
+      },
+      {
+        id: events.bindingId,
+        type: "resource",
+        name: "OrganizeOS Events",
+        scopeInstanceId: "body",
+        resourceId: events.resourceId,
+      },
+      {
+        id: forms.bindingId,
+        type: "resource",
+        name: "OrganizeOS Forms",
+        scopeInstanceId: ROOT_INSTANCE_ID,
+        resourceId: forms.resourceId,
+      },
+    ];
+    const resources: Resource[] = [
+      events.resourceId,
+      forms.resourceId,
+      "stats-resource",
+    ].map((id) => ({
+      id,
+      name: "Catalog",
+      method: "get",
+      url: '"https://app.organizeos.org/api/v1/events"',
+      headers: [],
+    }));
+    return { dataSources, resources };
+  };
+
+  const setData = (dataSources: DataSource[], resources: Resource[]) => {
     $instances.set(
       new Map([
         [
@@ -479,34 +531,15 @@ describe("the OrganizeOS Publish dialog", () => {
         ],
       ])
     );
-    $dataSources.set(
-      new Map([
-        [
-          bindingId,
-          {
-            id: bindingId,
-            type: "resource",
-            name: "OrganizeOS Events",
-            scopeInstanceId: "body",
-            resourceId,
-          },
-        ],
-      ])
-    );
-    $resources.set(
-      new Map([
-        [
-          resourceId,
-          {
-            id: resourceId,
-            name: "Events",
-            method: "get",
-            url: '"https://app.organizeos.org/api/v1/events"',
-            headers: [],
-          },
-        ],
-      ])
-    );
+    $dataSources.set(new Map(dataSources.map((item) => [item.id, item])));
+    $resources.set(new Map(resources.map((item) => [item.id, item])));
+  };
+
+  test("a project with catalog data sources and allowDynamicData: false renders the dialog, with no plan banner for them", async () => {
+    // Every org project binds the catalog's Resources, which the platform
+    // provides: they are not a plan feature (controller ruling)
+    const { dataSources, resources } = await catalogBindings();
+    setData(dataSources, resources);
     expect($planFeatures.get().allowDynamicData).toBe(false);
     setProject(null);
     const host = await render();
@@ -514,6 +547,36 @@ describe("the OrganizeOS Publish dialog", () => {
       (button) => button.textContent === "Publish"
     );
     expect(publish).toBeDefined();
+    expect(host.textContent).not.toContain("This site uses features");
+    expect(host.querySelectorAll("li")).toHaveLength(0);
+  });
+
+  test("an org's own Resource is still a plan feature beside the catalog's", async () => {
+    const { dataSources, resources } = await catalogBindings();
+    setData(
+      [
+        ...dataSources,
+        {
+          id: "own-binding",
+          type: "resource",
+          name: "Our API",
+          scopeInstanceId: "body",
+          resourceId: "own-resource",
+        },
+      ],
+      [
+        ...resources,
+        {
+          id: "own-resource",
+          name: "Our API",
+          method: "get",
+          url: '"https://api.acme.org/items"',
+          headers: [],
+        },
+      ]
+    );
+    setProject(null);
+    const host = await render();
     expect(textOf(host, /^This site uses features/)).toBe(
       "This site uses features your plan does not include:"
     );

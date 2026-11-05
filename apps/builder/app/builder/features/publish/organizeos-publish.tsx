@@ -18,6 +18,8 @@ import {
   useIsTruncated,
 } from "@webstudio-is/design-system";
 import { AlertIcon, CheckCircleIcon } from "@webstudio-is/icons";
+import type { DataSource, DataSources } from "@webstudio-is/sdk";
+import { isOrganizeosCatalogResourceId } from "@webstudio-is/project-build/runtime";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
 import {
   $assets,
@@ -73,6 +75,24 @@ import {
 
 const POLL_INTERVAL_MS = 10_000;
 
+/**
+ * A binding of the org's data catalog: a resource DataSource whose id or
+ * Resource is one of the catalog's v5 ids (provisioning's block bindings and
+ * its :root bindings). The platform provides the catalog, so it is no plan
+ * feature; an org's own Resources are.
+ */
+const isCatalogBinding = (dataSource: DataSource) =>
+  dataSource.type === "resource" &&
+  (isOrganizeosCatalogResourceId(dataSource.id) ||
+    isOrganizeosCatalogResourceId(dataSource.resourceId));
+
+const withoutCatalogBindings = (dataSources: DataSources) =>
+  new Map(
+    Array.from(dataSources).filter(
+      ([, dataSource]) => isCatalogBinding(dataSource) === false
+    )
+  );
+
 // The stores upstream's dialog passes (publish.tsx): 0.309.0 reads the contact
 // email, project auth and custom headers from the project's settings, and the
 // Resources to name each resource binding
@@ -89,7 +109,7 @@ const $restrictedFeatures = computed(
     getRestrictedFeatures({
       pages,
       projectSettings,
-      dataSources,
+      dataSources: withoutCatalogBindings(dataSources),
       resources,
       instances,
       permissions,
