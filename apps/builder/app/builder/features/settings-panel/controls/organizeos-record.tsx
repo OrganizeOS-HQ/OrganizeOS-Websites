@@ -1,23 +1,19 @@
 import { useId, useState } from "react";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
-import {
-  decodeDataVariableId,
-  getExpressionIdentifiers,
-} from "@webstudio-is/sdk";
+import { decodeDataVariableId } from "@webstudio-is/sdk";
+import { getExpressionIdentifiers } from "@webstudio-is/expression";
+import { validatePrimitiveValue } from "@webstudio-is/project-build/runtime";
 import {
   Flex,
   Select,
   Text,
   css,
+  cssVar,
   textVariants,
   theme,
 } from "@webstudio-is/design-system";
-import {
-  BindingControl,
-  BindingPopover,
-  validatePrimitiveValue,
-} from "~/builder/shared/binding-popover";
+import { BindableExpressionControl } from "~/builder/shared/bindable-expression";
 import {
   $computedResourceRequests,
   $propValuesByInstanceSelector,
@@ -39,12 +35,10 @@ import {
 import {
   type ControlProps,
   VerticalLayout,
-  $selectedInstanceScope,
-  updateExpressionValue,
-  useBindingState,
   humanizeAttribute,
 } from "../shared";
 import { PropertyLabel } from "../property-label";
+import { useBindableControl } from "./use-bindable-control";
 
 /**
  * The record picker (spec section 3.3): an OrganizeOS block's `record` prop,
@@ -428,7 +422,7 @@ const reloadClass = css({
   cursor: "pointer",
   ...textVariants.link,
   "&:focus-visible": {
-    outline: `1px solid ${theme.colors.borderFocus}`,
+    outline: `1px solid ${cssVar("--border-focus")}`,
     outlineOffset: 1,
     borderRadius: theme.borderRadius[3],
   },
@@ -442,9 +436,11 @@ const getOptionKey = (option: OrganizeosRecordOption) =>
 const getOptionLabel = (option: OrganizeosRecordOption) => option.label;
 
 /**
- * A select with `select.tsx`'s binding support, over the options above, and a
- * line under it, with Reload, when the records failed to load. Nothing shows
- * while they load.
+ * A select with `select.tsx`'s binding support (useBindableControl), over the
+ * options above, and a line under it, with Reload, when the records failed to
+ * load. Nothing shows while they load. A bound record is read-only in the
+ * select, as every bound control is upstream: it is changed through the
+ * binding popover.
  */
 export const OrganizeosRecordControl = ({
   instanceId,
@@ -473,56 +469,52 @@ export const OrganizeosRecordControl = ({
     failedLoads.every((result) => reloading.includes(result));
 
   const label = humanizeAttribute(meta.label || propName);
-  const { scope, aliases } = useStore($selectedInstanceScope);
-  const expression =
-    prop?.type === "expression" ? prop.value : JSON.stringify(computedValue);
-  const { overwritable, variant } = useBindingState(
-    prop?.type === "expression" ? prop.value : undefined
-  );
+  const binding = useBindableControl({
+    boundExpression: prop?.type === "expression" ? prop : undefined,
+    fallbackExpression: JSON.stringify(computedValue),
+  });
 
   return (
     <VerticalLayout
       label={
-        <PropertyLabel name={propName} readOnly={overwritable === false} />
+        <PropertyLabel
+          name={propName}
+          readOnly={binding.bindingState.overwritable === false}
+        />
       }
     >
       <Flex css={{ gap: theme.spacing[3] }} direction="column">
-        <BindingControl>
-          <Select
-            fullWidth
-            id={id}
-            disabled={overwritable === false}
-            value={selected}
-            placeholder={picker.placeholder}
-            options={options}
-            getLabel={getOptionLabel}
-            getValue={getOptionKey}
-            // type to find an option by its label, not its key
-            getItemProps={(option) => ({ textValue: option.label })}
-            onChange={(option) => {
-              if (prop?.type === "expression") {
-                updateExpressionValue(prop.value, option.value);
-              } else {
-                onChange({ type: "string", value: option.value });
-              }
-            }}
-          />
-          <BindingPopover
-            scope={scope}
-            aliases={aliases}
-            // Checked as the text control checks it, not against the options:
-            // a bound id may name a record that has not loaded yet.
-            validate={(value) => validatePrimitiveValue(value, label)}
-            variant={variant}
-            value={expression}
-            onChange={(newExpression) =>
-              onChange({ type: "expression", value: newExpression })
-            }
-            onRemove={(evaluatedValue) =>
-              onChange({ type: "string", value: toRecordValue(evaluatedValue) })
-            }
-          />
-        </BindingControl>
+        <BindableExpressionControl
+          {...binding}
+          value={selected}
+          // Checked as the text control checks it, not against the options:
+          // a bound id may name a record that has not loaded yet.
+          validate={(value) => validatePrimitiveValue(value, label)}
+          onChangeValue={(option) =>
+            onChange({ type: "string", value: option?.value ?? "" })
+          }
+          onChangeExpression={(value) =>
+            onChange({ type: "expression", value })
+          }
+          onRemove={(value) =>
+            onChange({ type: "string", value: toRecordValue(value) })
+          }
+          renderControl={({ value, readOnly, onChangeValue }) => (
+            <Select
+              fullWidth
+              id={id}
+              disabled={readOnly}
+              value={value}
+              placeholder={picker.placeholder}
+              options={options}
+              getLabel={getOptionLabel}
+              getValue={getOptionKey}
+              // type to find an option by its label, not its key
+              getItemProps={(option) => ({ textValue: option.label })}
+              onChange={onChangeValue}
+            />
+          )}
+        />
         {failedLoads.length > 0 && isReloading === false && (
           <Text color="subtle" data-record-load-failed>
             {picker.loadFailed}{" "}
