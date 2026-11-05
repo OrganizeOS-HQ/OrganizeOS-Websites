@@ -39,6 +39,7 @@ export const links: LinksFunction = () => {
   // properties map to the `<link />` component props
   return [
     { rel: "stylesheet", href: designSystemGlobalCss },
+    // OrganizeOS fork: the teal accent, after global.css so that it wins
     { rel: "stylesheet", href: organizeosColorsCss },
   ];
 };

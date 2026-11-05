@@ -1481,6 +1481,8 @@ const buttonLinkClass = css({
   ...textVariants.link,
 }).toString();
 
+// OrganizeOS fork: the banner's plan copy names no Webstudio tier and links no
+// pricing page; each upgrade link is planUpgradeHint (shared/branding.ts)
 const UpgradeBanner = ({ hasCustomDomains }: { hasCustomDomains: boolean }) => {
   const restrictedFeatures = useStore($restrictedFeatures);
   const { canAddDomain } = useCanAddDomain();
@@ -1922,8 +1924,9 @@ type PublishProps = {
 export const PublishButton = ({ projectId }: PublishProps) => {
   const organizeosSite = useStore($organizeosSite);
   const requestedDialog = useStore($publishDialog);
-  // An OrganizeOS site has no export: the executor is its only publisher, so
-  // the Export view (a keyboard shortcut can still request it) shows Publish.
+  // OrganizeOS fork: an OrganizeOS site has no export. The executor is its
+  // only publisher, so the Export view (a keyboard shortcut can still request
+  // it) shows Publish.
   const publishDialog =
     requestedDialog === "export" && organizeosSite !== undefined
       ? "publish"
@@ -2024,6 +2027,7 @@ export const PublishButton = ({ projectId }: PublishProps) => {
       open={publishDialog !== "none"}
       onOpenChange={handleOpenChange}
     >
+      {/* OrganizeOS fork: the tooltip names no Webstudio service */}
       <Tooltip
         side="bottom"
         content={tooltipContent ?? "Publish your site"}

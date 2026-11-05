@@ -152,6 +152,7 @@ test("Email Resource type displays its approved description", async () => {
   const description = document.querySelector<HTMLElement>(
     '[data-select-description="content"]'
   );
+  // OrganizeOS fork: the description names no Webstudio service
   expect(description?.textContent).toContain(
     "Send a plain-text email when a Form is submitted."
   );
