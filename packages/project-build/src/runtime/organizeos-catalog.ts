@@ -5,8 +5,8 @@
 // runtime never deletes one with a binding, and resources.delete refuses one.
 //
 // A copy of isPresetId in apps/builder/app/shared/organizeos-preset-ids.ts,
-// which this package cannot import; organizeos-preset-ids.test.ts pins the two
-// to agree.
+// which this package cannot import; organizeos-preset-ids.node.test.ts pins
+// the two to agree.
 const UUID_V5_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 

@@ -12,7 +12,7 @@ import { isOrganizeosCatalogResourceId } from "./organizeos-catalog";
 
 // uuidV5("project-1:v1:events:resource"): the id provisioning writes for the
 // Events catalog Resource of the provisioning tests' project
-// (apps/builder/app/shared/organizeos-preset-ids.test.ts pins it).
+// (apps/builder/app/shared/organizeos-preset-ids.node.test.ts pins it).
 const catalogResourceId = "385fcd4c-92f8-5d7c-abfe-cb941b8f2449";
 // A nanoid: a Resource Webstudio creates for one binding and deletes with it.
 const ownResourceId = "V1StGXR8_Z5jdHi6B-myT";

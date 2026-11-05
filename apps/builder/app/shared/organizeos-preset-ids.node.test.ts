@@ -36,8 +36,8 @@ const nodeUuidV5 = (name: string): string => {
 };
 
 describe("uuidV5", () => {
-  // This file runs in the builder's browser environment (jsdom), on the same
-  // WebCrypto call the server makes in Node.
+  // This file runs in Node (it needs node:crypto for the reference), on the
+  // WebCrypto call the builder makes in the browser and the server in Node.
   test("derives the ids provisioning has always written", async () => {
     // "project-1" is the project id of the provisioning tests.
     expect(await uuidV5("project-1:v1:events:resource")).toBe(
