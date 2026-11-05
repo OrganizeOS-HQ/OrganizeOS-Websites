@@ -8,7 +8,8 @@ import { TooltipProvider, toast } from "@webstudio-is/design-system";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { defaultPlanFeatures } from "@webstudio-is/plans";
 import type { Page, ResourceRequest } from "@webstudio-is/sdk";
-import { $, renderData } from "@webstudio-is/template";
+import { renderData } from "@webstudio-is/template";
+import { $ } from "@organizeos/site-components/site-templates";
 import {
   $authPermit,
   $organizeosSite,
@@ -31,7 +32,6 @@ import {
   $styles,
 } from "~/shared/sync/data-stores";
 import { getResourceKey } from "~/shared/resources";
-import { updateWebstudioData } from "~/shared/instance-utils/data";
 import {
   buildCollectionResourcePresets,
   buildOrgResourcePresets,
@@ -48,6 +48,7 @@ import {
   parseItemResourceSlug,
 } from "./organizeos-data";
 import { OrganizeosPanel } from "./organizeos-panel";
+import { updateWebstudioDataStaged } from "./staged-data";
 
 const { loaderFetch } = vi.hoisted(() => ({ loaderFetch: vi.fn() }));
 vi.mock("~/shared/fetch.client", () => ({ fetch: loaderFetch }));
@@ -460,7 +461,7 @@ describe("an item page at an old address", () => {
       { slug: "news", name: "Blog posts" },
       { slug: "faq", name: "FAQ" },
     ]);
-    updateWebstudioData((data) => {
+    await updateWebstudioDataStaged((data) => {
       for (const resource of blogAndFaq) {
         data.resources.delete(resource.id);
       }
@@ -494,7 +495,7 @@ describe("an item page at an old address", () => {
     act(() => {
       root?.unmount();
     });
-    updateWebstudioData((data) => {
+    await updateWebstudioDataStaged((data) => {
       for (const resource of blogAndFaq) {
         if (resource.name === "Blog posts") {
           data.resources.delete(resource.id);
@@ -510,9 +511,9 @@ describe("an item page at an old address", () => {
 });
 
 describe("Remove from sitemap", () => {
-  const deleteItemPage = () => {
+  const deleteItemPage = async () => {
     const page = findCollectionItemPage("blog") as Page;
-    updateWebstudioData((data) => {
+    await updateWebstudioDataStaged((data) => {
       data.pages.pages.delete(page.id);
       for (const folder of data.pages.folders.values()) {
         folder.children = folder.children.filter((id) => id !== page.id);
@@ -529,7 +530,7 @@ describe("Remove from sitemap", () => {
       root?.unmount();
     });
     $selectedPageId.set($pages.get()?.homePageId);
-    deleteItemPage();
+    await deleteItemPage();
     expect(listSitemapCollections()).toEqual(["blog"]);
     await render();
     items = await openMenu("blog");
@@ -544,8 +545,8 @@ describe("Remove from sitemap", () => {
       root?.unmount();
     });
     $selectedPageId.set($pages.get()?.homePageId);
-    deleteItemPage();
-    updateWebstudioData((data) => {
+    await deleteItemPage();
+    await updateWebstudioDataStaged((data) => {
       for (const resource of blogAndFaq) {
         if (resource.name === "Blog posts") {
           data.resources.delete(resource.id);
@@ -558,6 +559,8 @@ describe("Remove from sitemap", () => {
     act(() => {
       (orphan?.querySelector("button") as HTMLElement).click();
     });
+    // the removal is a staged write, committed a microtask later
+    await settle();
     expect(listSitemapCollections()).toEqual([]);
   });
 });

@@ -175,7 +175,7 @@ const DataSection = () => {
               <Button
                 color="neutral"
                 css={{ flexShrink: 0 }}
-                onClick={() => addCatalogResourceToPage(resource.id)}
+                onClick={() => void addCatalogResourceToPage(resource.id)}
               >
                 Add to this page
               </Button>

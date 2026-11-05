@@ -3,6 +3,7 @@ import { useStore } from "@nanostores/react";
 import {
   theme,
   Button,
+  Chip,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -13,7 +14,6 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-  ProBadge,
   Select,
   SmallIconButton,
   Switch,
@@ -184,7 +184,8 @@ const GatedLabel = ({
 }) => (
   <Flex direction="row" gap="2" align="center">
     {children}
-    {gated && <ProBadge>{planBadgeLabel}</ProBadge>}
+    {/* a plain label: never upstream's ProChip, which links to its pricing */}
+    {gated && <Chip>{planBadgeLabel}</Chip>}
   </Flex>
 );
 
@@ -273,13 +274,13 @@ export const CollectionRow = ({
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={isOnPage}
-                  onSelect={() => addCatalogResourceToPage(resource.id)}
+                  onSelect={() => void addCatalogResourceToPage(resource.id)}
                 >
                   Add to this page
                 </DropdownMenuItem>
                 {isSitemapOrphan && (
                   <DropdownMenuItem
-                    onSelect={() => removeCollectionFromSitemap(slug)}
+                    onSelect={() => void removeCollectionFromSitemap(slug)}
                   >
                     Remove from sitemap
                   </DropdownMenuItem>
@@ -328,7 +329,7 @@ export const OrphanRow = ({
         <Button
           color="neutral"
           css={{ flexShrink: 0 }}
-          onClick={() => removeCollectionFromSitemap(sitemapSlug)}
+          onClick={() => void removeCollectionFromSitemap(sitemapSlug)}
         >
           Remove from sitemap
         </Button>

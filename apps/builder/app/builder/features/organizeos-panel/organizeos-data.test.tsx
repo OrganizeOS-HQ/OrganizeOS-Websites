@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { enableMapSet } from "immer";
 import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
-import { $, renderData } from "@webstudio-is/template";
+import { renderData } from "@webstudio-is/template";
+import { findAvailableVariables } from "@webstudio-is/project-build/runtime";
+import { $ } from "@organizeos/site-components/site-templates";
 import {
   ROOT_INSTANCE_ID,
   encodeDataVariableId,
@@ -19,7 +21,8 @@ import {
   subscribeResources,
 } from "~/shared/nano-states";
 import { $selectedPageId } from "~/shared/nano-states/pages";
-import { registerContainers } from "~/shared/sync/sync-stores";
+import { $authPermit, $builderMode } from "~/shared/nano-states/misc";
+import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
 import {
   $assets,
   $breakpoints,
@@ -34,7 +37,6 @@ import {
   $styles,
 } from "~/shared/sync/data-stores";
 import { $resourcesCache, getResourceKey } from "~/shared/resources";
-import { findAvailableVariables } from "~/shared/data-variables";
 import {
   findCatalogResources,
   getResourcePresetIds,
@@ -89,8 +91,12 @@ const setProject = ({
   const pages = createDefaultPages({ rootInstanceId: "bodyId" });
   $pages.set(pages);
   $selectedPageId.set(pages.homePageId);
+  $builderMode.set("design");
+  $authPermit.set("build");
   selectInstance(["boxId", "bodyId"]);
   $project.set({ id: projectId } as Project);
+  serverSyncStore.transactionManager.currentStack = [];
+  serverSyncStore.transactionManager.undoneStack = [];
   $organizeosSite.set({
     organizationId: "org-1",
     manageUrl: "https://app.example.org/dashboard",
@@ -106,6 +112,19 @@ const getEventsBindings = () =>
       dataSource.resourceId === events.resourceId
   );
 
+// 0.309.0 loads a Resource only for a page whose expressions read it
+// (getPageResourceRootIds), in the builder and on a published page alike
+const useOnBox = (binding: DataSource) => {
+  const prop: Prop = {
+    id: "box-uses-it",
+    instanceId: "boxId",
+    name: "title",
+    type: "expression",
+    value: `${encodeDataVariableId(binding.id)}.data`,
+  };
+  $props.set(new Map([...$props.get(), [prop.id, prop]]));
+};
+
 beforeEach(() => {
   loaderFetch.mockReset();
   $resourcesCache.set(new Map());
@@ -116,10 +135,10 @@ afterEach(() => {
 });
 
 describe("addCatalogResourceToPage", () => {
-  test("binds the Resource at the page's root, named like it, once", () => {
+  test("binds the Resource at the page's root, named like it, once", async () => {
     setProject();
 
-    expect(addCatalogResourceToPage(events.resourceId)).toBe(true);
+    expect(await addCatalogResourceToPage(events.resourceId)).toBe(true);
     expect(getEventsBindings()).toEqual([
       {
         type: "resource",
@@ -131,12 +150,14 @@ describe("addCatalogResourceToPage", () => {
     ]);
     // never a copy of the Resource, nor a change to it
     expect($resources.get().get(events.resourceId)).toBe(eventsResource);
+    // one undo step
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(1);
 
-    expect(addCatalogResourceToPage(events.resourceId)).toBe(false);
+    expect(await addCatalogResourceToPage(events.resourceId)).toBe(false);
     expect(getEventsBindings()).toHaveLength(1);
   });
 
-  test("takes the next free name when the page root already has one", () => {
+  test("takes the next free name when the page root already has one", async () => {
     setProject({
       dataSources: [
         {
@@ -149,7 +170,7 @@ describe("addCatalogResourceToPage", () => {
       ],
     });
 
-    expect(addCatalogResourceToPage(events.resourceId)).toBe(true);
+    expect(await addCatalogResourceToPage(events.resourceId)).toBe(true);
     expect(getEventsBindings()).toEqual([
       expect.objectContaining({ name: "Events 2", scopeInstanceId: "bodyId" }),
     ]);
@@ -157,7 +178,7 @@ describe("addCatalogResourceToPage", () => {
     expect($dataSources.get().get("own-events")?.name).toBe("Events");
   });
 
-  test("takes the next free name when `:root` already has one, and `:root` keeps its expressions", () => {
+  test("takes the next free name when `:root` already has one, and `:root` keeps its expressions", async () => {
     setProject({
       dataSources: [
         {
@@ -181,7 +202,7 @@ describe("addCatalogResourceToPage", () => {
     };
     $props.set(new Map([...$props.get(), [prop.id, prop]]));
 
-    expect(addCatalogResourceToPage(events.resourceId)).toBe(true);
+    expect(await addCatalogResourceToPage(events.resourceId)).toBe(true);
     expect(getEventsBindings()).toEqual([
       expect.objectContaining({ name: "Events 2", scopeInstanceId: "bodyId" }),
     ]);
@@ -189,7 +210,7 @@ describe("addCatalogResourceToPage", () => {
     expect($props.get().get(prop.id)).toEqual(prop);
   });
 
-  test("takes the next free name when an unscoped binding has it, which counts as `:root`", () => {
+  test("takes the next free name when an unscoped binding has it, which counts as `:root`", async () => {
     // what older provisioning wrote next to each Resource: no scope, so the
     // builder's variable scope treats it as a `:root` variable
     const unscoped: DataSource = {
@@ -200,14 +221,14 @@ describe("addCatalogResourceToPage", () => {
     };
     setProject({ dataSources: [unscoped] });
 
-    expect(addCatalogResourceToPage(events.resourceId)).toBe(true);
+    expect(await addCatalogResourceToPage(events.resourceId)).toBe(true);
     expect(getEventsBindings()).toEqual([
       unscoped,
       expect.objectContaining({ name: "Events 2", scopeInstanceId: "bodyId" }),
     ]);
   });
 
-  test("a name used only inside a block is still free on the page root", () => {
+  test("a name used only inside a block is still free on the page root", async () => {
     setProject({
       dataSources: [
         {
@@ -220,15 +241,15 @@ describe("addCatalogResourceToPage", () => {
       ],
     });
 
-    expect(addCatalogResourceToPage(events.resourceId)).toBe(true);
+    expect(await addCatalogResourceToPage(events.resourceId)).toBe(true);
     expect(getEventsBindings()).toEqual([
       expect.objectContaining({ name: "Events", scopeInstanceId: "bodyId" }),
     ]);
   });
 
-  test("the data panel lists it on the page's elements, and the builder loads it", async () => {
+  test("the data panel lists it on the page's elements, and the builder loads it once one uses it", async () => {
     setProject();
-    expect(addCatalogResourceToPage(events.resourceId)).toBe(true);
+    expect(await addCatalogResourceToPage(events.resourceId)).toBe(true);
     const [binding] = getEventsBindings();
 
     expect(
@@ -238,6 +259,7 @@ describe("addCatalogResourceToPage", () => {
         dataSources: $dataSources.get(),
       })
     ).toContainEqual(binding);
+    useOnBox(binding);
 
     const eventsResult = {
       ok: true,
@@ -256,7 +278,6 @@ describe("addCatalogResourceToPage", () => {
     vi.useFakeTimers();
     const unsubscribe = subscribeResources();
     await vi.advanceTimersByTimeAsync(1000);
-    unsubscribe();
 
     // Events alone: nothing else in the catalog is used on the page
     expect(loaderFetch).toHaveBeenCalledTimes(1);
@@ -265,27 +286,61 @@ describe("addCatalogResourceToPage", () => {
         (request) => request.url
       )
     ).toEqual(["https://staging.example.org/api/public/v1/events"]);
-    expect(
-      $variableValuesByInstanceSelector
-        .get()
-        .get(getInstanceKey(["boxId", "bodyId", ROOT_INSTANCE_ID]))
-        ?.get(binding.id)
-    ).toEqual(eventsResult);
+    // read before the plan is unsubscribed, which empties it; the values
+    // are computed asynchronously
+    await vi.waitFor(() =>
+      expect(
+        $variableValuesByInstanceSelector
+          .get()
+          .get(getInstanceKey(["boxId", "bodyId", ROOT_INSTANCE_ID]))
+          ?.get(binding.id)
+      ).toEqual(eventsResult)
+    );
+    unsubscribe();
   });
 
-  test("adds nothing where the org is denied the blocks", () => {
+  test("adds nothing where the org is denied the blocks", async () => {
     setProject({ blocksEnabled: false });
 
-    expect(addCatalogResourceToPage(events.resourceId)).toBe(false);
+    expect(await addCatalogResourceToPage(events.resourceId)).toBe(false);
     expect(getEventsBindings()).toEqual([]);
   });
 
-  test("adds nothing for a Resource the project does not have", () => {
+  test("adds nothing for a Resource the project does not have", async () => {
     setProject();
     const before = $dataSources.get();
 
-    expect(addCatalogResourceToPage("missing")).toBe(false);
+    expect(await addCatalogResourceToPage("missing")).toBe(false);
     expect($dataSources.get()).toBe(before);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(0);
+  });
+
+  test("adds nothing without build access", async () => {
+    setProject();
+    // a page template, the one place the runtime layer refuses a commit
+    const pages = $pages.get()!;
+    $pages.set({
+      ...pages,
+      pageTemplates: new Map([
+        [
+          "template",
+          {
+            id: "template",
+            name: "Template",
+            title: "Template",
+            rootInstanceId: "bodyId",
+            meta: {},
+          },
+        ],
+      ]),
+    });
+    $selectedPageId.set("template");
+    $authPermit.set("view");
+    const before = $dataSources.get();
+
+    expect(await addCatalogResourceToPage(events.resourceId)).toBe(false);
+    expect($dataSources.get()).toBe(before);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(0);
   });
 });
 
@@ -320,10 +375,10 @@ describe("Upcoming Events in the Data section", () => {
     expect((await keys()).map(([key]) => key)).not.toContain("upcoming-events");
   });
 
-  test('"Add to this page" names its binding Upcoming Events, scoped to the page root, once', () => {
+  test('"Add to this page" names its binding Upcoming Events, scoped to the page root, once', async () => {
     setProject();
 
-    expect(addCatalogResourceToPage(upcoming.resourceId)).toBe(true);
+    expect(await addCatalogResourceToPage(upcoming.resourceId)).toBe(true);
     expect(getUpcomingBindings()).toEqual([
       {
         type: "resource",
@@ -343,13 +398,15 @@ describe("Upcoming Events in the Data section", () => {
     // Events is a Resource of its own: this page does not have it
     expect(getEventsBindings()).toEqual([]);
 
-    expect(addCatalogResourceToPage(upcoming.resourceId)).toBe(false);
+    expect(await addCatalogResourceToPage(upcoming.resourceId)).toBe(false);
     expect(getUpcomingBindings()).toHaveLength(1);
   });
 
   test("the builder loads the upcoming read for the page, and Events not at all", async () => {
     setProject();
-    expect(addCatalogResourceToPage(upcoming.resourceId)).toBe(true);
+    expect(await addCatalogResourceToPage(upcoming.resourceId)).toBe(true);
+    const [binding] = getUpcomingBindings();
+    useOnBox(binding);
     loaderFetch.mockImplementation(async (_url: string, init: RequestInit) => {
       const requests = JSON.parse(String(init.body)) as ResourceRequest[];
       return {

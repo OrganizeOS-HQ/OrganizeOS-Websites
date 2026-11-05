@@ -17,7 +17,6 @@ import {
   type StyleProperty,
 } from "@webstudio-is/css-engine";
 import { parseCssValue } from "@webstudio-is/css-data";
-import { insertWebstudioFragmentAt } from "~/shared/instance-utils/insert";
 import { findSummaryField, pickRoles } from "./collection-layout";
 import {
   type CollectionCatalog,
@@ -27,6 +26,7 @@ import {
   loadCollectionSchema,
 } from "./collection-schema";
 import { createInstanceWriter, getFreeVariableName } from "./collection-pages";
+import { insertCompletedFragment } from "./staged-data";
 
 /**
  * Add list (OrganizeOS design `2026-10-27-cms-page-templates-design.md`
@@ -358,9 +358,10 @@ export type InsertCollectionListResult =
 /**
  * Add list, from the data tab's popover: reads the collection's schema, then
  * inserts the block at the selection, else at the end of the page, the way
- * the Components panel inserts. `{ error }` when the schema cannot be read;
- * `inserted: false` when the block has no place at the selection (the insert
- * says so itself).
+ * the Components panel inserts, and builds it under its wrapper in the same
+ * transaction (staged-data.ts). `{ error }` when the schema cannot be read;
+ * `inserted: false` when the block has no place at the selection or the
+ * runtime layer refuses the write (the insert says so itself).
  */
 export const insertCollectionList = async (
   options: CollectionListOptions
@@ -393,14 +394,11 @@ export const insertCollectionList = async (
     assets: [],
     resources: [],
   };
-  const inserted = insertWebstudioFragmentAt(fragment, undefined, undefined, {
-    onInsert: (data, newInstanceIds) => {
-      const rootId = newInstanceIds.get(wrapper.id);
-      if (rootId === undefined) {
-        return;
-      }
-      addCollectionListMutable(data, { rootId, schema, catalog, options });
-    },
+  // no conflictResolution: the wrapper brings no tokens
+  const inserted = await insertCompletedFragment({
+    fragment,
+    complete: (data, _newInstanceIds, rootId) =>
+      addCollectionListMutable(data, { rootId, schema, catalog, options }),
   });
   return { inserted };
 };

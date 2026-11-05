@@ -9,7 +9,6 @@ import {
   type Resource,
   type StyleDecl,
   type WebstudioData,
-  ROOT_FOLDER_ID,
   SYSTEM_VARIABLE_ID,
   elementComponent,
   encodeDataVariableId,
@@ -21,14 +20,11 @@ import {
 import { sitemapResourceUrl } from "@webstudio-is/sdk/runtime";
 import { renderTemplate } from "@webstudio-is/template";
 import { RichText } from "@organizeos/site-components/templates";
-import { findAvailableVariables } from "~/shared/data-variables";
-import {
-  getWebstudioData,
-  updateWebstudioData,
-} from "~/shared/instance-utils/data";
+import { findAvailableVariables } from "@webstudio-is/project-build/runtime";
+import { getWebstudioData } from "~/shared/instance-utils/data";
 import { selectInstance, selectPage } from "~/shared/nano-states";
 import { $pages } from "~/shared/sync/data-stores";
-import { registerFolderChildMutable } from "~/builder/features/pages/page-utils";
+import { addToFolderMutable, updateWebstudioDataStaged } from "./staged-data";
 import {
   type CollectionField,
   findSummaryField,
@@ -51,8 +47,8 @@ import {
  *
  * Upstream's `createPage` is private (`page-settings.tsx`), so its few lines
  * are repeated here with the exported upstream parts, and every meta field is
- * set inline. Everything goes into one `updateWebstudioData` transaction, so
- * the builder's undo removes it in one step.
+ * set inline. Everything goes into one staged transaction (staged-data.ts),
+ * so the builder's undo removes it in one step.
  */
 
 /** The rule for a collection slug, the one provisioning validates against. */
@@ -472,7 +468,7 @@ export const createItemPageMutable = (
       excludePageFromSearch: expressions.excludePageFromSearch,
     },
   });
-  registerFolderChildMutable(data.pages, pageId, ROOT_FOLDER_ID);
+  addToFolderMutable(data.pages, pageId);
   addItemLayoutMutable(data, { bodyId, schema, expressions });
 };
 
@@ -744,7 +740,7 @@ const createSitemapPageMutable = (data: WebstudioData) => {
     rootInstanceId: bodyId,
     meta: { documentType: "xml" },
   });
-  registerFolderChildMutable(data.pages, pageId, ROOT_FOLDER_ID);
+  addToFolderMutable(data.pages, pageId);
   return pageId;
 };
 
@@ -856,32 +852,40 @@ export const deleteSubtreeMutable = (
 
 /**
  * Remove from sitemap: drop one collection's part from the generated sitemap,
- * its `ws:collection` and its `/slugs` Resource, in one transaction. Returns
- * whether it removed anything. A hand-made sitemap is never edited.
+ * its `ws:collection` and its `/slugs` Resource, in one transaction. Resolves
+ * whether it removed anything; false when the runtime layer refuses the
+ * write. A hand-made sitemap is never edited.
  */
-export const removeCollectionFromSitemap = (slug: string) => {
-  let removed = false;
-  updateWebstudioData((data) => {
-    const page = findSitemapPage(data.pages);
-    const root = page && findMarkedSitemapRoot(data, page);
-    if (page === undefined || root === undefined) {
-      return;
-    }
-    for (const part of findSitemapParts(data, page, root)) {
-      if (part.slug !== slug) {
-        continue;
+export const removeCollectionFromSitemap = async (
+  slug: string
+): Promise<boolean> => {
+  try {
+    return await updateWebstudioDataStaged((data) => {
+      const page = findSitemapPage(data.pages);
+      const root = page && findMarkedSitemapRoot(data, page);
+      if (page === undefined || root === undefined) {
+        return false;
       }
-      if (part.collectionId !== undefined) {
-        deleteSubtreeMutable(data, root.id, part.collectionId);
+      let removed = false;
+      for (const part of findSitemapParts(data, page, root)) {
+        if (part.slug !== slug) {
+          continue;
+        }
+        if (part.collectionId !== undefined) {
+          deleteSubtreeMutable(data, root.id, part.collectionId);
+        }
+        data.dataSources.delete(part.binding.id);
+        if (part.binding.type === "resource") {
+          data.resources.delete(part.binding.resourceId);
+        }
+        removed = true;
       }
-      data.dataSources.delete(part.binding.id);
-      if (part.binding.type === "resource") {
-        data.resources.delete(part.binding.resourceId);
-      }
-      removed = true;
-    }
-  });
-  return removed;
+      return removed;
+    });
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
 };
 
 /**
@@ -914,24 +918,28 @@ export const createCollectionItemPage = async (
   }
   const firstItemSlug = await loadFirstItemSlug(catalog, slug);
 
-  let pageId: undefined | Page["id"];
-  let created = false;
-  updateWebstudioData((data) => {
-    // decided again inside the transaction: the reads above are async
-    const inTransaction = findCollectionItemPage(slug, data.pages);
-    if (inTransaction !== undefined) {
-      pageId = inTransaction.id;
-      return;
-    }
-    pageId = nanoid();
-    createItemPageMutable(data, { pageId, schema, catalog, firstItemSlug });
-    addCollectionToSitemapMutable(data, { schema, catalog });
-    created = true;
-    selectInstance(undefined);
-  });
-  if (pageId === undefined) {
+  let outcome: { pageId: Page["id"]; created: boolean };
+  try {
+    outcome = await updateWebstudioDataStaged((data) => {
+      // decided again inside the transaction: the reads above are async
+      const inTransaction = findCollectionItemPage(slug, data.pages);
+      if (inTransaction !== undefined) {
+        return { pageId: inTransaction.id, created: false };
+      }
+      const pageId = nanoid();
+      createItemPageMutable(data, { pageId, schema, catalog, firstItemSlug });
+      addCollectionToSitemapMutable(data, { schema, catalog });
+      return { pageId, created: true };
+    });
+  } catch (error) {
+    // the runtime layer refused the write (a page template without build
+    // access): nothing was written
+    console.error(error);
     return { error: loadCollectionError };
   }
-  selectPage(pageId);
-  return { pageId, created };
+  if (outcome.created) {
+    selectInstance(undefined);
+  }
+  selectPage(outcome.pageId);
+  return outcome;
 };
