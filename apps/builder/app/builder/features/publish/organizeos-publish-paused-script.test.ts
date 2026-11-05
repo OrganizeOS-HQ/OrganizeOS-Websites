@@ -525,6 +525,83 @@ describe("findPausedScript", () => {
     ).toBe("shown");
   });
 
+  // dropOrgScript finds what it drops in the whole build, so an element it
+  // drops in a Content Block's templates, or on no page, takes a shared
+  // Fragment with it as well
+  test.each([
+    [
+      "a Content Block template's Slot",
+      [
+        { id: "home-root", component: "Body", children: ids("block") },
+        {
+          id: "block",
+          component: blockComponent,
+          children: ids("template", "on-page"),
+        },
+        {
+          id: "template",
+          component: blockTemplateComponent,
+          children: ids("in-template"),
+        },
+        {
+          id: "in-template",
+          component: "ws:element",
+          tag: "script",
+          children: ids("template-slot"),
+        },
+        { id: "template-slot", component: "Slot", children: ids("fragment") },
+        {
+          id: "on-page",
+          component: "ws:element",
+          tag: "script",
+          children: ids("page-slot"),
+        },
+        { id: "page-slot", component: "Slot", children: ids("fragment") },
+        { id: "fragment", component: "Fragment", children: ids("inner") },
+        { id: "inner", component: "Box" },
+      ] as InstanceInit[],
+      ["on-page", "block", "home-root"],
+    ],
+    [
+      "the Slot of a dropped element on no page",
+      [
+        { id: "home-root", component: "Body", children: ids("on-page") },
+        {
+          id: "orphan",
+          component: "ws:element",
+          tag: "script",
+          children: ids("orphan-slot"),
+        },
+        { id: "orphan-slot", component: "Slot", children: ids("fragment") },
+        {
+          id: "on-page",
+          component: "ws:element",
+          tag: "script",
+          children: ids("page-slot"),
+        },
+        { id: "page-slot", component: "Slot", children: ids("fragment") },
+        { id: "fragment", component: "Fragment", children: ids("inner") },
+        { id: "inner", component: "Box" },
+      ] as InstanceInit[],
+      ["on-page", "home-root"],
+    ],
+  ])(
+    "lists no prop of a Fragment that a dropped element shares with %s",
+    (_name, list, selector) => {
+      const instances = createInstances(list);
+      const props = toProps([
+        jsonProp("inner", "dangerouslySetInnerHTML", { __html: "<b>x</b>" }),
+      ]);
+
+      expect(find({ instances, props })).toEqual([
+        {
+          label: "Element with an unsupported tag on Home",
+          navigate: { pageId: "home", instanceSelector: selector },
+        },
+      ]);
+    }
+  );
+
   test("lists nothing for a dangerouslySetInnerHTML prop of an instance that is listed anyway", () => {
     const instances = createInstances([
       { id: "home-root", component: "Body", children: ids("embed") },

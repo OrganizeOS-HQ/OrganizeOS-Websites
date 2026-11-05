@@ -294,9 +294,12 @@ export const findPausedScript = ({
     }
   }
 
-  // What publishing drops whole, and what it takes with it
+  // What publishing drops whole, found in the whole build as dropOrgScript
+  // finds it (a Content Block's templates and instances on no page too, which
+  // can share a Fragment with a page), and what that takes with it. Only what
+  // a page publishes is listed.
   const droppedLabels = new Map<Instance["id"], string>();
-  for (const { instance } of published) {
+  for (const instance of instances.values()) {
     const label = findDroppedLabel(
       instance,
       propsByInstance.get(instance.id) ?? [],
