@@ -122,7 +122,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("the Publish button of an OrganizeOS site", () => {
+describe("the Publish button and its status refresh", () => {
   test("the Publish dialog renders OrganizeosPublishContent with its own title for an OrganizeOS site, and does not poll the project", async () => {
     $project.set(createProject(null));
     $publishDialog.set("publish");
@@ -145,6 +145,22 @@ describe("the Publish button of an OrganizeOS site", () => {
       "/rest/organizeos-site/project-1"
     );
     expect(projectQueries()).toHaveLength(0);
+  });
+
+  test("upstream's status refresh still runs for a project no org owns", async () => {
+    // the gate's negative control: the same render, without an org site
+    $organizeosSite.set(undefined);
+    // upstream's dialog lists the project's domains
+    $project.set({
+      ...createProject(null),
+      domainsVirtual: [],
+    } as unknown as Project);
+    $publishDialog.set("publish");
+    await render();
+    expect(projectQueries().length).toBeGreaterThan(0);
+    expect(routeFetch.mock.calls.map(([url]) => String(url))).not.toContain(
+      "/rest/organizeos-site/project-1"
+    );
   });
 
   test("a pending publish is polled once per interval, by the OrganizeOS dialog alone", async () => {

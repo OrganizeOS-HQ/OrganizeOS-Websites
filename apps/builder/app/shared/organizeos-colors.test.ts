@@ -47,6 +47,22 @@ const contrast = (
   return (light + 0.05) / (dark + 0.05);
 };
 
+// What upstream's recipe makes of the teal, measured once in Chromium, beside
+// what it makes of upstream's own blue (color-contrast.browser.test.ts), per
+// scheme: each derived colour follows the accent in both
+const derived = {
+  light: {
+    "--foreground-accent": { teal: "#198476", upstream: "#096cff" },
+    "--border-focus": { teal: "#368e80", upstream: "#297aff" },
+    "--background-text-selection": { teal: "#198476", upstream: "#096cff" },
+  },
+  dark: {
+    "--foreground-accent": { teal: "#a6c5bf", upstream: "#a0c1f6" },
+    "--border-focus": { teal: "#2e877a", upstream: "#1a6df2" },
+    "--background-text-selection": { teal: "#59b8a8", upstream: "#439cff" },
+  },
+} as const;
+
 describe("the builder's colours", () => {
   test.each(schemes)("the accent is the OrganizeOS teal (%s)", (scheme) => {
     document.documentElement.dataset.colorScheme = scheme;
@@ -55,15 +71,26 @@ describe("the builder's colours", () => {
         .getPropertyValue("--theme-color-accent")
         .trim()
     ).toBe("#23a997");
-    // what upstream's recipe makes of it: a darker teal, capped at its
-    // chromatic luminance, measured once in Chromium
+    // a darker teal, capped at the recipe's chromatic luminance
     const accent = readColor("--background-accent");
     expect(toHex(accent)).toBe("#198476");
     expect(accent.g).toBeGreaterThan(accent.b);
     expect(accent.b).toBeGreaterThan(accent.r);
-    expect(toHex(readColor("--foreground-accent"))).not.toBe("#096cff");
-    expect(toHex(readColor("--border-focus"))).not.toBe("#297aff");
   });
+
+  test.each(schemes)(
+    "the focus ring, the accent text and the selection follow it (%s)",
+    (scheme) => {
+      document.documentElement.dataset.colorScheme = scheme;
+      for (const [name, { teal, upstream }] of Object.entries(
+        derived[scheme]
+      )) {
+        const color = toHex(readColor(name));
+        expect(color, name).toBe(teal);
+        expect(color, name).not.toBe(upstream);
+      }
+    }
+  );
 
   test.each(schemes)("text on the accent stays readable (%s)", (scheme) => {
     document.documentElement.dataset.colorScheme = scheme;

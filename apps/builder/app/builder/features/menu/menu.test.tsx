@@ -156,7 +156,7 @@ describe("the builder menu", () => {
     ]);
   });
 
-  test("View offers Theme, upstream's colour scheme menu", async () => {
+  test("View offers Hide UI, Undock navigator and Theme, upstream's three", async () => {
     $organizeosSite.set(site);
     renderMenu();
     const view = item("View");
@@ -164,6 +164,17 @@ describe("the builder menu", () => {
     await act(async () => {
       await userEvent.click(view!);
     });
-    expect(item("Theme")).toBeDefined();
+    // the submenu is the second menu, portalled beside the first
+    const menus = document.body.querySelectorAll<HTMLElement>('[role="menu"]');
+    expect(menus).toHaveLength(2);
+    const submenu = menus[1];
+    expect(
+      Array.from(
+        submenu.querySelectorAll<HTMLElement>(
+          '[role="menuitem"], [role="menuitemcheckbox"]'
+        ),
+        labelOf
+      )
+    ).toEqual(["Hide UI", "Undock navigator", "Theme"]);
   });
 });

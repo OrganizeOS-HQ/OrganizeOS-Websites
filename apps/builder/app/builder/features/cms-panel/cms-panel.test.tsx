@@ -443,6 +443,20 @@ describe("the CMS overlay in the builder", () => {
       expect(CMS_FRAME_SANDBOX.split(" ")).toContain("allow-modals");
     });
 
+    test("frames the CMS light while the builder is dark", () => {
+      // owner decision D2: the frame stays light until the native CMS
+      document.documentElement.dataset.colorScheme = "dark";
+      try {
+        render();
+        clickRail();
+        expect(frame()?.getAttribute("src")).toBe(
+          `${platformUrl}/cms-panel/${orgId}?theme=light`
+        );
+      } finally {
+        delete document.documentElement.dataset.colorScheme;
+      }
+    });
+
     test("takes the org from $organizeosSite, never from the page URL", () => {
       window.history.replaceState(
         null,
