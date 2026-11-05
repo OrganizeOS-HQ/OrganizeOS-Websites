@@ -96,7 +96,8 @@ export const getMotionTarget = (
     instanceId === ROOT_INSTANCE_ID ||
     instanceId === page?.rootInstanceId ||
     instance.component === "Body" ||
-    // nothing to wrap it in: wrapInstance refuses it too
+    // nothing to wrap it in: the runtime's instances.wrap refuses a selector
+    // of one entry too
     selector.length === 1
   ) {
     return { kind: "refused" };
@@ -132,17 +133,23 @@ export const clampMotionStagger = (value: number) =>
   Number.isFinite(value) ? Math.min(maxStagger, Math.max(0, value)) : 0;
 
 /**
- * Applies a preset to the selection, in one undo step either way. An existing
- * wrapper takes both props in one transaction. A wrap is staged with both
- * props and committed once (executeStagedRuntimeMutation); what the content
- * model or rich text does not allow (for example a list item, whose parent
- * takes only list items) is refused with a toast, and nothing is written.
+ * Applies a preset to the selection, in one undo step either way, each staged
+ * and committed once (executeStagedRuntimeMutation): an existing wrapper takes
+ * both props, and a wrap is staged with both props. What the content model or
+ * rich text does not allow (for example a list item, whose parent takes only
+ * list items) is refused with a toast, and nothing is written.
  *
  * The runtime's wrap checks content models against the static registry, which
  * has no OrganizeOS metas, so there an Animate Children is tagless and fits
  * anywhere. The check here uses the builder's registered metas, as the
  * builder's own wrap did before 0.309.0 (ruling panels OQ1). Without build
- * access the wrap is refused with the runtime's message.
+ * access either is refused with the runtime's message.
+ *
+ * Every refusal is toasted once. The commit toasts its own (a write inside
+ * MDX content that its Templates do not hold) before it throws it, so a
+ * BuilderRuntimeError thrown once everything is staged is not toasted again
+ * (ruling data OQ7); one thrown while staging is. Both paths stage, so that
+ * line is known on each.
  */
 export const applyMotionPreset = async (preset: MotionPreset) => {
   const target = getMotionTarget(
@@ -153,9 +160,13 @@ export const applyMotionPreset = async (preset: MotionPreset) => {
   let staged = false;
   try {
     if (target.kind === "wrapper") {
-      executeRuntimeMutation({
-        id: "instances.updateProps",
-        input: { updates: getMotionPresetUpdates(target.instanceId, preset) },
+      const { instanceId } = target;
+      await executeStagedRuntimeMutation((accumulator) => {
+        accumulator.execute({
+          id: "instances.updateProps",
+          input: { updates: getMotionPresetUpdates(instanceId, preset) },
+        });
+        staged = true;
       });
       return;
     }
@@ -214,8 +225,7 @@ export const applyMotionPreset = async (preset: MotionPreset) => {
     );
     selectInstance(instanceSelector);
   } catch (error) {
-    // The commit toasts its own refusal (a wrap inside MDX content) before it
-    // throws it, so that one is not toasted again (ruling data OQ7).
+    // the commit's own refusal, already toasted (see above)
     if (staged && error instanceof BuilderRuntimeError) {
       return;
     }

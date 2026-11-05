@@ -151,6 +151,19 @@ const insertEveryBlock = async () => {
   expect(
     wrapper?.type === "id" && $instances.get().get(wrapper.value)?.component
   ).toBe(animateChildrenComponent);
+  // with the props the preset writes, so the fixture carries an animation
+  // action through both checks
+  const wrapperProps = [...$props.get().values()].filter(
+    (prop) => wrapper?.type === "id" && prop.instanceId === wrapper.value
+  );
+  expect(
+    wrapperProps
+      .map(({ name, type }) => ({ name, type }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  ).toEqual([
+    { name: "action", type: "animationAction" },
+    { name: "stagger", type: "number" },
+  ]);
 };
 
 // The project bundle prebuild reads, as the server serializes a build

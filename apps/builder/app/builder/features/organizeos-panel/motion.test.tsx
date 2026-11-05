@@ -15,6 +15,8 @@ import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import {
   ROOT_INSTANCE_ID,
+  blockComponent,
+  blockTemplateComponent,
   coreMetas,
   type Instance,
   type Prop,
@@ -29,7 +31,11 @@ import {
 import { $selectedPageId } from "~/shared/nano-states/pages";
 import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
 import { $instances, $pages, $props } from "~/shared/sync/data-stores";
-import { executeStagedRuntimeMutation } from "~/shared/instance-utils/data";
+import {
+  type RuntimeMutationAccumulator,
+  executeStagedRuntimeMutation,
+} from "~/shared/instance-utils/data";
+import { $externalContentRoots } from "~/shared/external-content-mutations";
 import {
   $selectedInstanceInitialPropNames,
   $selectedInstancePropsMetas,
@@ -69,6 +75,11 @@ const [reveal, revealStaggered, parallax] = motionPresets;
 const AnimateChildren = createTemplateComponentFixture(
   animateChildrenComponent
 );
+const Block = createTemplateComponentFixture(blockComponent);
+const BlockTemplate = createTemplateComponentFixture(blockTemplateComponent);
+
+// the permit the suite starts with, restored after each test
+const initialAuthPermit = $authPermit.get();
 
 let root: Root | undefined;
 let container: HTMLElement | undefined;
@@ -89,13 +100,95 @@ const project = (wrapperProps: Prop[] = []) => {
       <AnimateChildren ws:id="wrapper">
         <ws.element ws:tag="div" ws:id="child"></ws.element>
       </AnimateChildren>
+      <ws.element ws:tag="p" ws:id="paragraph">
+        {"Some "}
+        <ws.element ws:tag="b" ws:id="bold">
+          bold
+        </ws.element>
+        {" text"}
+      </ws.element>
+      <Block ws:id="block">
+        <BlockTemplate ws:id="templates"></BlockTemplate>
+        <ws.element ws:tag="div" ws:id="note"></ws.element>
+      </Block>
     </ws.element>
   );
   $instances.set(data.instances);
   $props.set(new Map(wrapperProps.map((prop) => [prop.id, prop])));
+  $externalContentRoots.set(new Map());
   const pages = createDefaultPages({ rootInstanceId: "body" });
   $pages.set(pages);
   $selectedPageId.set(pages.homePageId);
+  // build access, which only a page template asks for
+  $authPermit.set("own");
+};
+
+/**
+ * The Content Block's content as MDX content: the block's root owns `note`,
+ * and its Templates hold nothing, so the commit refuses any new instance
+ * there (commitRuntimeMutation in shared/instance-utils/data.ts).
+ */
+const asMdxContent = () => {
+  $externalContentRoots.set(
+    new Map([
+      [
+        "root",
+        {
+          blockInstanceId: "block",
+          renderScope: JSON.stringify(["block", "body"]),
+          instanceIds: new Set(["note"]),
+          mutationRevision: 0,
+        },
+      ],
+    ])
+  );
+};
+
+const mdxRefusal =
+  "This component is not in this Content Block’s Templates and cannot be added to MDX content. Add it to Templates first, or keep it outside MDX content.";
+
+/**
+ * Runs Motion's own stage on an accumulator whose `execute` refuses the
+ * operation `refused` with a BuilderRuntimeError, as the runtime refuses a
+ * wrap or a prop update it does not accept.
+ */
+const refuseWhileStaging = async (refused: string) => {
+  const actual = await vi.importActual<
+    typeof import("~/shared/instance-utils/data")
+  >("~/shared/instance-utils/data");
+  vi.mocked(executeStagedRuntimeMutation).mockImplementationOnce((stage) =>
+    actual.executeStagedRuntimeMutation((accumulator) =>
+      stage({
+        get state() {
+          return accumulator.state;
+        },
+        stage: accumulator.stage,
+        execute: ((operation) => {
+          if (operation.id === refused) {
+            throw new BuilderRuntimeError("BAD_REQUEST", "Refused here.");
+          }
+          return accumulator.execute(operation);
+        }) as RuntimeMutationAccumulator["execute"],
+      })
+    )
+  );
+};
+
+/**
+ * Runs Motion's whole stage, then refuses the commit the way
+ * commitRuntimeMutation does: it toasts its message, then throws it.
+ */
+const refuseTheCommit = async () => {
+  const actual = await vi.importActual<
+    typeof import("~/shared/instance-utils/data")
+  >("~/shared/instance-utils/data");
+  vi.mocked(executeStagedRuntimeMutation).mockImplementationOnce((stage) =>
+    actual.executeStagedRuntimeMutation(async (accumulator) => {
+      await stage(accumulator);
+      toast.error("Refused by the commit.");
+      throw new BuilderRuntimeError("BAD_REQUEST", "Refused by the commit.");
+    })
+  );
 };
 
 const getStores = () => ({ instances: $instances.get(), props: $props.get() });
@@ -165,6 +258,10 @@ afterEach(() => {
   container?.remove();
   root = undefined;
   container = undefined;
+  $authPermit.set(initialAuthPermit);
+  $externalContentRoots.set(new Map());
+  // drops a stand-in a test did not use, back to the real staged commit
+  vi.mocked(executeStagedRuntimeMutation).mockReset();
   vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -465,46 +562,108 @@ describe("the Motion area", () => {
     expect($selectedInstanceSelector.get()).toEqual(["section", "body"]);
   });
 
-  // commitRuntimeMutation toasts its own refusal (a wrap inside MDX content)
-  // and then throws it: no second toast (ruling data OQ7)
-  test("the commit's own refusal is not toasted again, and nothing is written", async () => {
+  test("text inside rich text is refused with one toast, writing nothing", async () => {
     const toastError = vi.spyOn(toast, "error");
-    const actual = await vi.importActual<
-      typeof import("~/shared/instance-utils/data")
-    >("~/shared/instance-utils/data");
-    // the wrap and its props are staged, then the commit refuses
-    vi.mocked(executeStagedRuntimeMutation).mockImplementationOnce((stage) =>
-      actual.executeStagedRuntimeMutation(async (accumulator) => {
-        await stage(accumulator);
-        throw new BuilderRuntimeError("BAD_REQUEST", "Refused by the commit.");
-      })
-    );
     project();
-    selectInstance(["section", "body"]);
-    const before = getStores();
-    await applyMotionPreset(reveal);
-    expect(toastError).not.toHaveBeenCalled();
-    expect(getStores()).toEqual(before);
-    expect($selectedInstanceSelector.get()).toEqual(["section", "body"]);
-  });
-
-  test("a runtime refusal before anything is staged toasts its message once", async () => {
-    const toastError = vi.spyOn(toast, "error");
-    const actual = await vi.importActual<
-      typeof import("~/shared/instance-utils/data")
-    >("~/shared/instance-utils/data");
-    vi.mocked(executeStagedRuntimeMutation).mockImplementationOnce(() =>
-      actual.executeStagedRuntimeMutation(() => {
-        throw new BuilderRuntimeError("BAD_REQUEST", "Refused here.");
+    selectInstance(["bold", "paragraph", "body"]);
+    expect(
+      getMotionTarget($selectedInstanceSelector.get(), $instances.get(), {
+        rootInstanceId: "body",
       })
-    );
-    project();
-    selectInstance(["section", "body"]);
+    ).toEqual({ kind: "wrap", instanceId: "bold" });
     const before = getStores();
+    const stack = undoDepth();
     await applyMotionPreset(reveal);
     expect(toastError).toHaveBeenCalledTimes(1);
-    expect(toastError).toHaveBeenCalledWith("Refused here.");
+    expect(toastError).toHaveBeenCalledWith("Cannot wrap textual content");
     expect(getStores()).toEqual(before);
+    expect(undoDepth()).toBe(stack);
+    expect($selectedInstanceSelector.get()).toEqual([
+      "bold",
+      "paragraph",
+      "body",
+    ]);
+  });
+
+  // The commit's own refusal: commitRuntimeMutation toasts it, then throws
+  // it, and Motion does not toast it again (ruling data OQ7).
+  test("a wrap inside MDX content is refused by the commit with one toast, writing nothing", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    project();
+    asMdxContent();
+    selectInstance(["note", "block", "body"]);
+    const before = getStores();
+    const stack = undoDepth();
+    await applyMotionPreset(reveal);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith(mdxRefusal);
+    expect(getStores()).toEqual(before);
+    expect(undoDepth()).toBe(stack);
+    expect($selectedInstanceSelector.get()).toEqual(["note", "block", "body"]);
+  });
+
+  test.each([
+    ["a wrap", ["section", "body"]],
+    ["an existing wrapper's props", ["wrapper", "body"]],
+  ])(
+    "the commit's own refusal of %s is toasted once, by the commit, and nothing is written",
+    async (_case, selector) => {
+      const toastError = vi.spyOn(toast, "error");
+      await refuseTheCommit();
+      project();
+      selectInstance(selector);
+      const before = getStores();
+      const stack = undoDepth();
+      await applyMotionPreset(reveal);
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(toastError).toHaveBeenCalledWith("Refused by the commit.");
+      expect(getStores()).toEqual(before);
+      expect(undoDepth()).toBe(stack);
+      expect($selectedInstanceSelector.get()).toEqual(selector);
+    }
+  );
+
+  // A runtime refusal inside Motion's own stage is toasted by nobody else.
+  test.each([
+    ["a wrap", "instances.wrap", ["section", "body"]],
+    ["a wrap's props", "instances.updateProps", ["section", "body"]],
+    [
+      "an existing wrapper's props",
+      "instances.updateProps",
+      ["wrapper", "body"],
+    ],
+  ])(
+    "the runtime's refusal of %s while staging is toasted once, and nothing is written",
+    async (_case, refused, selector) => {
+      const toastError = vi.spyOn(toast, "error");
+      await refuseWhileStaging(refused);
+      project();
+      selectInstance(selector);
+      const before = getStores();
+      const stack = undoDepth();
+      await applyMotionPreset(reveal);
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(toastError).toHaveBeenCalledWith("Refused here.");
+      expect(getStores()).toEqual(before);
+      expect(undoDepth()).toBe(stack);
+      expect($selectedInstanceSelector.get()).toEqual(selector);
+    }
+  );
+
+  test("a preset on an existing wrapper without build access toasts the refusal and writes nothing", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    project();
+    selectPageTemplateWithoutBuildAccess();
+    selectInstance(["wrapper", "body"]);
+    const before = getStores();
+    const stack = undoDepth();
+    await expect(applyMotionPreset(reveal)).resolves.toBeUndefined();
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith(
+      "Page templates can be edited only in design mode, with build access."
+    );
+    expect(getStores()).toEqual(before);
+    expect(undoDepth()).toBe(stack);
   });
 });
 
