@@ -13,7 +13,7 @@ afterEach(() => {
 const readColor = (name: string) => {
   const sample = document.createElement("span");
   sample.style.color = `var(${name})`;
-  document.body.append(sample);
+  document.body.appendChild(sample);
   const canvas = document.createElement("canvas");
   canvas.width = 1;
   canvas.height = 1;
