@@ -480,6 +480,7 @@ describe("createProductionBuild (msw)", () => {
         createContext()
       );
       if (denied) {
+        // OrganizeOS fork: the message names no Webstudio tier
         await expect(result).rejects.toThrow(
           "Custom headers are not included in your plan"
         );
@@ -617,6 +618,7 @@ describe("createProductionBuild (msw)", () => {
         context
       );
       if (denied) {
+        // OrganizeOS fork: the message names no Webstudio tier
         await expect(result).rejects.toThrow(
           "Custom headers are not included in your plan"
         );
@@ -702,6 +704,7 @@ describe("createProductionBuild (msw)", () => {
         context
       );
       if (!allowed && !staging && value !== "SAMEORIGIN" && value !== null) {
+        // OrganizeOS fork: the message names no Webstudio tier
         await expect(result).rejects.toThrow(
           "Custom headers are not included in your plan"
         );

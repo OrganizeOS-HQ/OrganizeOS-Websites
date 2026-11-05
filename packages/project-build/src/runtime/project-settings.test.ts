@@ -271,6 +271,7 @@ describe("project settings runtime", () => {
     expect(validateContactEmail("not-an-email")).toBe(
       "Contact email is invalid."
     );
+    // OrganizeOS fork: the message names no Webstudio tier
     expect(validateContactEmail("hello@webstudio.is", 0)).toBe(
       "Custom recipients are not included in your plan. Your organization's plan is managed in OrganizeOS."
     );

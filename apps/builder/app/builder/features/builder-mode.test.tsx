@@ -10,6 +10,7 @@ import {
   $planFeatures,
   setBuilderMode,
 } from "~/shared/nano-states";
+// OrganizeOS fork: plan copy (shared/branding.ts)
 import { planBadgeLabel } from "~/shared/branding";
 import { BuilderModeDropDown } from "./builder-mode";
 
@@ -62,6 +63,7 @@ test("shows the Content shortcut for an owned free project", async () => {
   expect(contentItem?.querySelector("kbd")).not.toBeNull();
 });
 
+// OrganizeOS fork: the badge is planBadgeLabel, not "Pro"
 test("shows the shortcut without the plan badge when Content is allowed", async () => {
   $authPermit.set("own");
   $planFeatures.set({ ...defaultPlanFeatures, allowContentMode: true });
@@ -74,6 +76,7 @@ test("shows the shortcut without the plan badge when Content is allowed", async 
   expect(contentItem?.textContent).not.toContain(planBadgeLabel);
 });
 
+// OrganizeOS fork: the badge is planBadgeLabel, not "Pro"
 test("shows Content as a disabled option with the plan badge on a shared free project", async () => {
   $authPermit.set("build");
   $planFeatures.set(defaultPlanFeatures);
