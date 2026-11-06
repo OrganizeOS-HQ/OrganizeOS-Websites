@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createDefaultPages } from "@webstudio-is/project-build";
+import { serializePages } from "@webstudio-is/project-build/persistence";
 import type { CompactBuild } from "@webstudio-is/project-build";
 import {
   createTestServer,
@@ -87,6 +88,29 @@ test("separates validated restore points from raw build patches", () => {
 
 const server = createTestServer();
 
+// OrganizeOS fork: every build write reads the columns the save check covers
+// (organizeos-code-check.server.ts); by default they hold a build with no
+// values to check
+const savedBuildColumns = (
+  columns: Record<string, string> = {
+    pages: serializePages(createDefaultPages({ rootInstanceId: "root" })),
+    instances: "[]",
+    props: "[]",
+    resources: "[]",
+    dataSources: "[]",
+  }
+) =>
+  db.get("Build", ({ request }) =>
+    new URL(request.url).searchParams.get("select") ===
+    "pages,instances,props,resources,dataSources"
+      ? json(columns)
+      : undefined
+  );
+
+beforeEach(() => {
+  server.use(savedBuildColumns());
+});
+
 type ProjectSummaryInput = Parameters<typeof serializeProjectSummary>[0];
 type SnapshotBuildInput = Parameters<typeof createBuildSnapshot>[0]["build"];
 
@@ -99,12 +123,13 @@ const createContext = (
   }
 ) =>
   ({
+    ...testContext,
     authorization,
     planFeatures: {
       allowAdditionalPermissions,
     },
     apiClient: { type: "browser", version: undefined },
-  }) as AppContext;
+  }) as unknown as AppContext;
 
 const createToken = (
   overrides: Partial<Awaited<ReturnType<typeof authDb.getTokenInfo>>> = {}

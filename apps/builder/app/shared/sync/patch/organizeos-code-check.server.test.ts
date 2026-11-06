@@ -152,6 +152,36 @@ describe("findRefusedEntries", () => {
     expect(findRefusedEntries(saved, [rename, other]).size).toBe(0);
   });
 
+  test("checks every record of a namespace an entry replaces whole", () => {
+    const replace = (props: Prop[]) =>
+      entry("props", [
+        {
+          op: "replace",
+          path: [],
+          value: new Map(props.map((prop) => [prop.id, prop])),
+        },
+      ]);
+    const refused = replace([expressionProp("p", `"a".constructor`)]);
+    expect(findRefusedEntries(build(), [refused]).has(refused)).toBe(true);
+    const clean = replace([expressionProp("p", `"a"`)]);
+    expect(findRefusedEntries(build(), [clean]).size).toBe(0);
+    // a saved failing value the replacement keeps is left alone
+    const saved = build([expressionProp("p", "a()")]);
+    const kept = replace([expressionProp("p", "a()")]);
+    expect(findRefusedEntries(saved, [kept]).size).toBe(0);
+  });
+
+  test("checks every record of a namespace replaced whole with an array", () => {
+    const refused = entry("props", [
+      {
+        op: "replace",
+        path: [],
+        value: [expressionProp("p", `"a".constructor`)],
+      },
+    ]);
+    expect(findRefusedEntries(build(), [refused]).has(refused)).toBe(true);
+  });
+
   test("applies an entry that removes a failing value", () => {
     const saved = build([expressionProp("p", "a()")]);
     const remove = entry("props", [{ op: "remove", path: ["p"] }]);

@@ -1,6 +1,6 @@
 import { access } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { z } from "zod";
 import {
   createTestServer,
@@ -10,6 +10,7 @@ import {
 } from "@webstudio-is/postgrest/testing";
 import { defaultPlanFeatures } from "@webstudio-is/plans";
 import { createDefaultPages } from "@webstudio-is/project-build";
+import { serializePages } from "@webstudio-is/project-build/persistence";
 import { parseWebstudioJsxFragment } from "@webstudio-is/project-build/transfer/server";
 import { applyBuilderNamespacePatches } from "@webstudio-is/project-build/state";
 import { createPublishedProjectBundleFixture } from "@webstudio-is/protocol/fixtures";
@@ -57,6 +58,29 @@ const server = createTestServer();
 
 import { assertContentOrBuildTransactions } from "./api-content-permissions.server";
 const { assertApiPublishDomains } = __testing__;
+
+// OrganizeOS fork: every build write reads the columns the save check covers
+// (organizeos-code-check.server.ts); by default they hold a build with no
+// values to check
+const savedBuildColumns = (
+  columns: Record<string, string> = {
+    pages: serializePages(createDefaultPages({ rootInstanceId: "root" })),
+    instances: "[]",
+    props: "[]",
+    resources: "[]",
+    dataSources: "[]",
+  }
+) =>
+  postgrestDb.get("Build", ({ request }) =>
+    new URL(request.url).searchParams.get("select") ===
+    "pages,instances,props,resources,dataSources"
+      ? json(columns)
+      : undefined
+  );
+
+beforeEach(() => {
+  server.use(savedBuildColumns());
+});
 
 const createContext = (
   allowAdditionalPermissions: boolean,
@@ -1740,6 +1764,87 @@ describe("api router permits", () => {
         caller.build.patch({ ...input, baseVersion })
       ).rejects.toThrow();
     }
+    expect(patchBuild).not.toHaveBeenCalled();
+  });
+
+  // OrganizeOS fork: every build write passes the save check
+  // (organizeos-code-check.server.ts)
+  test("a build patch with a value that fails input validation is not saved", async () => {
+    const title = {
+      id: "title",
+      instanceId: "outside",
+      name: "title",
+      type: "expression" as const,
+      value: `"a"`,
+    };
+    const build = createEditableContentBuild();
+    build.props = [title] as typeof build.props;
+    server.use(
+      savedBuildColumns({
+        pages: serializePages(createDefaultPages({ rootInstanceId: "root" })),
+        instances: JSON.stringify(build.instances),
+        props: JSON.stringify([title]),
+        resources: "[]",
+        dataSources: "[]",
+      })
+    );
+    vi.spyOn(authDb, "getTokenInfo").mockResolvedValue(createToken());
+    vi.spyOn(authorizeProject, "hasProjectPermit").mockResolvedValue(true);
+    vi.spyOn(projectBuild, "loadDevBuildByProjectId").mockResolvedValue(build);
+    const patchBuild = vi
+      .spyOn(projectApi, "patchBuild")
+      .mockResolvedValue({ status: "ok", version: 4 });
+    const write = (value: string) =>
+      createCaller(createContext(true)).build.patch({
+        projectId: "project-1",
+        baseVersion: 3,
+        transactions: [
+          {
+            id: "write",
+            payload: [
+              {
+                namespace: "props",
+                patches: [{ op: "replace", path: ["title", "value"], value }],
+              },
+            ],
+          },
+        ],
+      });
+    await expect(write(`"a".constructor`)).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "This change has a value that cannot be saved",
+    });
+    expect(patchBuild).not.toHaveBeenCalled();
+    await expect(write(`"b"`)).resolves.toEqual({ version: 4 });
+    expect(patchBuild).toHaveBeenCalledTimes(1);
+  });
+
+  test("a runtime operation that writes a value failing input validation is not saved", async () => {
+    vi.spyOn(authDb, "getTokenInfo").mockResolvedValue(createToken());
+    vi.spyOn(authorizeProject, "hasProjectPermit").mockResolvedValue(true);
+    vi.spyOn(projectBuild, "loadDevBuildByProjectId").mockResolvedValue(
+      createEditableContentBuild()
+    );
+    vi.spyOn(assetUploader, "loadAssetDataByProject").mockResolvedValue({
+      assets: [],
+      assetFolders: [],
+    });
+    const patchBuild = vi
+      .spyOn(projectApi, "patchBuild")
+      .mockResolvedValue({ status: "ok", version: 4 });
+    await expect(
+      createCaller(createContext(true)).instances.updateProps({
+        projectId: "project-1",
+        updates: [
+          {
+            instanceId: "outside",
+            name: "title",
+            type: "expression",
+            value: `"a".constructor`,
+          },
+        ],
+      })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(patchBuild).not.toHaveBeenCalled();
   });
 

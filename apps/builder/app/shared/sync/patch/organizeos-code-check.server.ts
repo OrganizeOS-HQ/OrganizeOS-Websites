@@ -57,14 +57,17 @@ type Namespace = keyof CheckedData;
 
 type Change = { namespace: string; patches: Patch[] };
 
-const changesOf = (entry: PatchEntry) =>
+/** What the check reads of an entry: its transaction's changes. */
+type CheckedEntry = { transaction: Pick<PatchEntry["transaction"], "payload"> };
+
+const changesOf = (entry: CheckedEntry) =>
   (entry.transaction.payload as Change[]).filter(
     (change) =>
       checkedNamespaces.has(change.namespace) && change.patches.length > 0
   );
 
 /** Whether any entry writes to a namespace whose values are checked. */
-export const writesCheckedValues = (entries: PatchEntry[]) =>
+export const writesCheckedValues = (entries: CheckedEntry[]) =>
   entries.some((entry) => changesOf(entry).length > 0);
 
 /** The failures of the records touched, each as a stable key. */
@@ -113,17 +116,37 @@ const failuresOf = (
   return failures;
 };
 
+/**
+ * A record namespace as a map by id: a namespace replaced whole may hold a
+ * map, an array of records or an array of [id, record] entries.
+ */
+const recordsOf = (value: unknown): Map<string, unknown> => {
+  if (value instanceof Map) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return new Map(
+      value.map((item) =>
+        Array.isArray(item)
+          ? [String(item[0]), item[1]]
+          : [String((item as { id: unknown }).id), item]
+      )
+    );
+  }
+  throw new Error("Not a record namespace");
+};
+
 const reasonOf = (key: string) => key.slice(key.lastIndexOf(":") + 1);
 
 /**
  * The entries to refuse, each with the reason, applying the others in order.
  * `build` holds the columns as the database stores them.
  */
-export const findRefusedEntries = (
+export const findRefusedEntries = <Entry extends CheckedEntry>(
   build: Record<"pages" | Exclude<Namespace, "pages">, string | null>,
-  entries: PatchEntry[]
-): Map<PatchEntry, string> => {
-  const refused = new Map<PatchEntry, string>();
+  entries: Entry[]
+): Map<Entry, string> => {
+  const refused = new Map<Entry, string>();
   let data: CheckedData = {
     pages: parsePages(build.pages ?? ""),
     instances: parseData<Instance>(build.instances ?? "[]"),
@@ -137,24 +160,38 @@ export const findRefusedEntries = (
       continue;
     }
     const touched = new Map<Namespace, Set<string>>();
+    const replacedWhole = new Set<Namespace>();
     let next: CheckedData = data;
     try {
-      for (const { namespace, patches } of changes) {
-        const keys = touched.get(namespace as Namespace) ?? new Set<string>();
-        for (const patch of patches) {
+      for (const change of changes) {
+        const namespace = change.namespace as Namespace;
+        const keys = touched.get(namespace) ?? new Set<string>();
+        for (const patch of change.patches) {
           if (patch.path.length > 0) {
             keys.add(String(patch.path[0]));
+          } else {
+            replacedWhole.add(namespace);
           }
         }
-        touched.set(namespace as Namespace, keys);
+        touched.set(namespace, keys);
+        const patched = applyPatches(next[namespace], change.patches);
         next = {
           ...next,
-          [namespace]: applyPatches(next[namespace as Namespace], patches),
+          [namespace]: namespace === "pages" ? patched : recordsOf(patched),
         };
       }
     } catch {
       // a patch that does not apply fails where upstream applies it
       continue;
+    }
+    // a namespace replaced whole touches every record before and after
+    for (const namespace of replacedWhole) {
+      if (namespace !== "pages") {
+        touched.set(
+          namespace,
+          new Set([...data[namespace].keys(), ...next[namespace].keys()])
+        );
+      }
     }
     const before = failuresOf(data, touched);
     const added = [...failuresOf(next, touched)].find(
@@ -170,11 +207,11 @@ export const findRefusedEntries = (
 };
 
 /** Loads what findRefusedEntries reads, only when an entry writes it. */
-export const findRefusedPatchEntries = async (
+export const findRefusedPatchEntries = async <Entry extends CheckedEntry>(
   context: AppContext,
   buildId: string,
-  entries: PatchEntry[]
-): Promise<Map<PatchEntry, string>> => {
+  entries: Entry[]
+): Promise<Map<Entry, string>> => {
   if (writesCheckedValues(entries) === false) {
     return new Map();
   }
@@ -191,3 +228,22 @@ export const findRefusedPatchEntries = async (
     entries
   );
 };
+
+/**
+ * Whether a set of transactions written together, in order, passes the save
+ * check: every build write that is not a patch request (the API's build
+ * patch, the runtime operations and restoring a restore point) commits only
+ * when no transaction is refused.
+ */
+export const transactionsPassCodeCheck = async (
+  context: AppContext,
+  buildId: string,
+  transactions: Array<CheckedEntry["transaction"]>
+) =>
+  (
+    await findRefusedPatchEntries(
+      context,
+      buildId,
+      transactions.map((transaction) => ({ transaction }))
+    )
+  ).size === 0;

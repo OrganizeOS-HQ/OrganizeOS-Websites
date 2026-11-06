@@ -8,6 +8,10 @@ import {
   loadBuilderDataByProjectId,
 } from "./build-router.server";
 import { authorizeProject } from "@webstudio-is/trpc-interface/index.server";
+import { createDefaultPages } from "@webstudio-is/project-build";
+import { serializePages } from "@webstudio-is/project-build/persistence";
+import * as projectBuild from "@webstudio-is/project-build/server";
+import * as projectApi from "@webstudio-is/project/index.server";
 import { getApiCompatibilityPayload } from "@webstudio-is/trpc-interface/api-compatibility";
 import {
   createAssetIndex,
@@ -487,3 +491,82 @@ test.each([true, false])(
     }
   }
 );
+
+// OrganizeOS fork: every build write passes the save check
+// (organizeos-code-check.server.ts)
+describe("build router restore points", () => {
+  const savedColumns = {
+    pages: serializePages(createDefaultPages({ rootInstanceId: "root" })),
+    instances: JSON.stringify([
+      { type: "instance", id: "root", component: "Body", children: [] },
+    ]),
+    props: "[]",
+    resources: "[]",
+    dataSources: "[]",
+  };
+  const context = {
+    authorization: { type: "user", userId: "user-1" },
+    postgrest: {
+      client: {
+        from: () => ({
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: savedColumns, error: null }),
+            }),
+          }),
+        }),
+      },
+    },
+  } as never;
+  const restore = (value: string) =>
+    buildRouter.createCaller(context).restorePoint({
+      projectId: "project-1",
+      baseVersion: 1,
+      transactions: [
+        {
+          id: "restore",
+          payload: [
+            {
+              namespace: "props",
+              patches: [
+                {
+                  op: "replace",
+                  path: [],
+                  value: [
+                    [
+                      "title",
+                      {
+                        id: "title",
+                        instanceId: "root",
+                        name: "title",
+                        type: "expression",
+                        value,
+                      },
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+  test("a restore point with a value that fails input validation is not restored", async () => {
+    vi.spyOn(authorizeProject, "hasProjectPermit").mockResolvedValue(true);
+    vi.spyOn(projectBuild, "loadDevBuildByProjectId").mockResolvedValue({
+      id: "build-1",
+      version: 1,
+    } as Awaited<ReturnType<typeof projectBuild.loadDevBuildByProjectId>>);
+    const patchBuild = vi
+      .spyOn(projectApi, "patchBuild")
+      .mockResolvedValue({ status: "ok", version: 2 });
+    await expect(restore(`"a".constructor`)).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "This change has a value that cannot be saved",
+    });
+    expect(patchBuild).not.toHaveBeenCalled();
+    await expect(restore(`"a"`)).resolves.toEqual({ version: 2 });
+    expect(patchBuild).toHaveBeenCalledTimes(1);
+  });
+});
