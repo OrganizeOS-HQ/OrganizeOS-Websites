@@ -509,6 +509,12 @@ describe("findCodeCheckFailure", () => {
     });
   });
 
+  test("skips an empty resource body, which is not generated", () => {
+    expect(
+      findCodeCheckFailure({ resources: [resource({ body: "" })] })
+    ).toBeUndefined();
+  });
+
   test("pagesToCheck reads page templates as well", () => {
     const template = { ...page({ description: "a()" }), id: "template" };
     const { path: _path, ...pageTemplate } = template;

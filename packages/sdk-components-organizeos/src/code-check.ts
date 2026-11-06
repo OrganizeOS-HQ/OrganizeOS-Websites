@@ -598,7 +598,8 @@ export const checkResource = (
       return failure;
     }
   }
-  if (resource.body !== undefined) {
+  // the generator skips an empty body
+  if (resource.body !== undefined && resource.body.length > 0) {
     return fail("body", checkValueExpression(resource.body));
   }
 };
