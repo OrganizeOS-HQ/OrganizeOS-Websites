@@ -66,6 +66,7 @@ import {
 import { dropOrgScript } from "./organizeos-org-script";
 import { pagesForSitemap } from "@organizeos/site-components/org-script";
 import { assertNoPreviewHeader } from "./organizeos-preview-header";
+import { assertBuildCodeValid } from "./organizeos-code-check";
 
 const createRemixFramework = async () =>
   (await import("./framework-remix")).createFramework();
@@ -321,6 +322,9 @@ export const prebuild = async (options: {
     Object.entries(coreMetas)
   );
   const pages = migratePages(siteData.build.pages);
+  // OrganizeOS fork: a value that fails input validation stops the build,
+  // named (organizeos-code-check.ts).
+  assertBuildCodeValid(siteData.build, pages);
   const allPages = getAllPages(pages);
   await writeWsAuthResources(generatedDir, pages);
   const siteDataByPage: SiteDataByPage = {};
