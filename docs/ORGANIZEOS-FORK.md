@@ -28,7 +28,7 @@ The upstream `@webstudio-is/sdk-components-animation` package is **EULA-propriet
 
 This removes the Webstudio "Animate" components from the palette — acceptable; they are not in OrganizeOS's requirements. The CLI's LLM manual (`packages/cli/src/docs/manual-llm.md`) and upstream's MCP guidance in `packages/project-build/src/mcp.ts` still describe Animation Groups, which this fork does not register: prose, which the guard allows, though it misleads an agent; dropping it is a follow-up.
 
-**CI guard:** `pnpm check:no-proprietary` (`scripts/check-no-proprietary.sh`, run in `checks` and in the CI workflow) keeps the package out of what ships (owner decision D6, 2026-11-01). It fails if the package directory exists; if any `package.json` names it (the workspace packages, the CLI site templates, where a listing would make every published site install the EULA package from npm, and the fixtures), or `.gitmodules` does; if a module specifier in the source of `apps/` or `packages/` names it, the template sources the CLI copies into sites (`*.ts.template`) included: an import, export, `require`, `require.resolve` or dynamic import, a quoted specifier or a regular expression (an alias, or the registry's import source, which becomes the import in every generated site); if `pnpm-lock.yaml` has an entry for it; or if the proprietary EULA license banner appears anywhere we ship. Prose and test names may mention the package, a persisted component id such as `…:AnimateChildren` among them. Its self-test, `packages/cli/scripts/check-no-proprietary.test.ts`, plants each violation in a copy of the tree. Do not bypass it. Three generated pages of `fixtures/webstudio-features` still import the package; fixtures are not shipped or built in CI, so the import scan leaves them out, while their manifests stay in the name scan.
+**CI guard:** `pnpm check:no-proprietary` (`scripts/check-no-proprietary.sh`, run in `checks` and in the CI workflow) keeps the package out of what ships (owner decision D6, 2026-11-01). It fails if the package directory exists; if any `package.json` names it (the workspace packages, the CLI site templates, where a listing would make every published site install the EULA package from npm, and the fixtures), or `.gitmodules` does; if a module specifier in the source of `apps/` or `packages/` names it, the template sources the CLI copies into sites (`*.ts.template`) included: an import, export, `require`, `require.resolve` or dynamic import, a quoted specifier or a regular expression (an alias, or the registry's import source, which becomes the import in every generated site); if `pnpm-lock.yaml` has an entry for it; or if the proprietary EULA license banner appears anywhere we ship. Prose and test names may mention the package, a persisted component id such as `…:AnimateChildren` among them. Its self-test, `packages/cli/scripts/check-no-proprietary.test.ts`, plants each violation in a copy of the tree. Do not bypass it. Three generated pages of `fixtures/webstudio-features` still import the package; fixtures are not shipped or built in CI, so the import scan leaves them out, while their manifests stay in the name scan. CI's typecheck leaves that fixture out for the same reason (§7).
 
 ## 3. Data-binding — enabled via env, no code patch
 
@@ -307,14 +307,38 @@ can be merged with minimal conflict.
   only files the formatter ignores (this doc, under `docs/**`) passes the hook.
   `.github/workflows/main.yml`: one workflow, a `checks` job and a `tests` job
   of nine legs (the packages, the CLI, and one per builder Vitest project), with
-  no secret, environment or checkout ref; only its cli leg builds the blocks
-  package. `scripts/check-every-test-runs.mjs` fails when a tracked test file
-  runs in no leg; it exempts upstream's three builder e2e harness suites, since
-  the fork does not run upstream's e2e suite (owner decision D14). Two of that
+  no secret, environment or checkout ref, and checkouts that keep no token in
+  the clone (`persist-credentials: false`); only its cli leg builds the blocks
+  package. The typecheck covers every package and fixture but two fixtures the
+  fork never regenerates: `webstudio-features`, whose generated pages import
+  the removed animation package (§2), and `react-router-vercel`, whose html
+  routes import the copy prebuild writes (§8). Each builder project's step has
+  a 10-minute limit of its own and runs with `DEBUG=vitest:browser:pool`, which
+  logs the files of every browser session Vitest opens, so a run that stalls
+  fails inside the job's limit and its log names the files in flight; nothing
+  is retried. The visual-regression step runs when the package tests fail
+  too. `scripts/check-every-test-runs.mjs` fails when a tracked test file runs
+  in no leg; it exempts upstream's three builder e2e harness suites, since the
+  fork does not run upstream's e2e suite (owner decision D14). Two of that
   suite's files follow the fork all the same:
   `apps/builder/e2e/flows/builder.ts` dismisses no blocking alert (§6), and
   `apps/builder/e2e/tests/mcp-form-props-variable-types.[shard-5].e2e.ts`
-  (marked) reads the plan badge's label.
+  (marked) reads the plan badge's label. The check also holds the `tests` job
+  to its shape. The legs are the matrix's `include` entries. Four steps,
+  `Install`, `Test`, `Test the visual-regression scripts` and
+  `Test the builder project`, must each match the text the check holds (name,
+  `id`, condition, limit, env and command; comment lines aside), so changing
+  one of them means changing the check too. The job sets no key but `name`,
+  `timeout-minutes`, `runs-on`, `strategy` and `steps`, so it has no
+  job-level `if:`, and `continue-on-error` appears nowhere in it.
+  `.github/workflows/lint-pull-request.yaml`, upstream's PR title check,
+  rewritten (an `OrganizeOS fork:` comment heads it): it runs on
+  `pull_request` alone, with `contents: read` and `pull-requests: read` (the
+  action reads the pull request for its current title), and its one action,
+  `amannn/action-semantic-pull-request`, is pinned to the commit of its
+  `v6.1.1` tag. Upstream's `pull_request_target` trigger and its two comment
+  steps, which needed `pull-requests: write`, are gone: a bad title fails the
+  check with the action's own message.
 - **Auth, SSO, provisioning and the agent (§5).**
   `services/auth-strategy/organizeos*` and `routes/auth.organizeos.tsx`;
   `routes/internal.*` (provision, collections sync, publish status, and the
@@ -878,9 +902,10 @@ Preview, and the xml and text routes have no links and do not mount it. The
 fixture `fixtures/react-router-vercel` carries the change in its two html
 routes with the placeholder resolved; it does not commit `app/__organizeos__/`
 (prebuild writes it), so its html routes neither typecheck nor build until
-prebuild has written it, and CI neither typechecks nor builds fixtures. Keep it
-on upstream merges (`prebuild.test.ts`, "every html route imports the page's
-share-code carrier from the copy of the build and renders it").
+prebuild has written it, and CI's typecheck leaves this fixture out (CI builds
+no fixture, §7). Keep it on upstream merges (`prebuild.test.ts`, "every html
+route imports the page's share-code carrier from the copy of the build and
+renders it").
 
 **XML pages answer sandboxed.** `xml.tsx` adds `Content-Security-Policy:
 sandbox` and `X-Content-Type-Options: nosniff` to an XML page's response, in
@@ -2023,12 +2048,13 @@ slice"`, so it covers the element and is cropped on its narrower axis.
   a `url()` fallback) is the default. The SVG carries no designer markup, no
   script and no event attribute, so nothing here falls under §10.
 - **One generator, two copies.** The fork cannot import from the OrganizeOS
-  repository, so `src/field/generate.ts` is a verbatim copy of the homepage's
+  repository, so `src/field/generate.ts` is a copy of the homepage's
   generator (`client/lib/marketing/convergence-field.ts`: `convergenceField`,
-  `zoneDistance`, `LEVELS`, the types) plus the arm path, its centring offset,
-  the arm transform and the fade level math from
-  `client/components/marketing/convergence-field.tsx`, with a header naming
-  the source commit. `src/field/__fixtures__/convergence-field.fixture.json`
+  `zoneDistance`, `LEVELS`, the types), verbatim but for line breaks (this
+  repository's `oxfmt` wraps at 80 columns, OrganizeOS's Prettier at 100),
+  plus the arm path, its centring offset, the arm transform and the fade level
+  math from `client/components/marketing/convergence-field.tsx`, with a header
+  naming the source commit. `src/field/__fixtures__/convergence-field.fixture.json`
   is a byte-for-byte copy of OrganizeOS's
   `client/tests/fixtures/marketing/convergence-field.fixture.json` (the
   homepage generator's output on fixed cases: the homepage's two uses, each
