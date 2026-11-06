@@ -8,25 +8,20 @@ import {
 } from "react";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 import { useStore } from "@nanostores/react";
-import { type Instances, coreMetas } from "@webstudio-is/sdk";
-import { coreTemplates } from "@webstudio-is/sdk/core-templates";
+import { type Instances, toRuntimeAsset } from "@webstudio-is/sdk";
+import { createAssetUrlsByPath } from "@webstudio-is/project-build/runtime";
 import type { Components } from "@webstudio-is/react-sdk";
 import { wsImageLoader, wsVideoLoader } from "@webstudio-is/image";
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
-import * as baseComponents from "@webstudio-is/sdk-components-react/components";
-import * as baseComponentMetas from "@webstudio-is/sdk-components-react/metas";
-import { hooks as baseComponentHooks } from "@webstudio-is/sdk-components-react/hooks";
-import * as baseComponentTemplates from "@webstudio-is/sdk-components-react/templates";
-import * as radixComponents from "@webstudio-is/sdk-components-react-radix";
-import * as radixComponentMetas from "@webstudio-is/sdk-components-react-radix/metas";
-import * as radixTemplates from "@webstudio-is/sdk-components-react-radix/templates";
-import { hooks as radixComponentHooks } from "@webstudio-is/sdk-components-react-radix/hooks";
+import { canvasComponentLibraries } from "@webstudio-is/sdk-components-registry/canvas";
 import * as organizeosComponents from "@organizeos/site-components";
 import * as organizeosComponentMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
-import { hooks as organizeosComponentHooks } from "@organizeos/site-components/hooks";
 import { ErrorMessage } from "~/shared/error";
-import { withOrgScriptPolicy } from "./organizeos-org-script";
+import {
+  withOrgScriptPolicy,
+  withoutBuiltWithWebstudio,
+} from "./organizeos-org-script";
 import { $publisher, publish } from "~/shared/pubsub";
 import {
   registerContainers,
@@ -47,14 +42,14 @@ import {
 import {
   registerComponentLibrary,
   $registeredComponents,
-  subscribeComponentHooks,
+  subscribeResourceRequestPlan,
   $isPreviewMode,
   $isDesignMode,
   $isContentMode,
   subscribeModifierKeys,
   assetBaseUrl,
 } from "~/shared/nano-states";
-import { $assets } from "~/shared/sync/data-stores";
+import { $assetFolders, $assets } from "~/shared/sync/data-stores";
 import { $pages, $instances, $breakpoints } from "~/shared/sync/data-stores";
 import { useDragAndDrop } from "./shared/use-drag-drop";
 import {
@@ -119,6 +114,8 @@ const useElementsTree = (components: Components, instances: Instances) => {
   const page = useStore($selectedPage);
   const isPreviewMode = useStore($isPreviewMode);
   const breakpointsMap = useStore($breakpoints);
+  const assets = useStore($assets);
+  const assetFolders = useStore($assetFolders);
   const rootInstanceId = page?.rootInstanceId ?? "";
 
   if (typeof window === "undefined") {
@@ -135,6 +132,15 @@ const useElementsTree = (components: Components, instances: Instances) => {
     () => [...breakpointsMap.values()].sort(compareMedia),
     [breakpointsMap]
   );
+  const assetUrlsByPath = useMemo(
+    () =>
+      createAssetUrlsByPath({
+        assets: assets.values(),
+        assetFolders,
+        getUrl: (asset) => toRuntimeAsset(asset, "https://webstudio.local").url,
+      }),
+    [assetFolders, assets]
+  );
 
   return useMemo(() => {
     return (
@@ -143,6 +149,7 @@ const useElementsTree = (components: Components, instances: Instances) => {
           renderer: isPreviewMode ? "preview" : "canvas",
           isSafeMode,
           assetBaseUrl,
+          assetUrlsByPath,
           imageLoader: wsImageLoader,
           videoLoader: wsVideoLoader,
           resources: {},
@@ -169,6 +176,7 @@ const useElementsTree = (components: Components, instances: Instances) => {
     isPreviewMode,
     breakpoints,
     isSafeMode,
+    assetUrlsByPath,
   ]);
 };
 
@@ -256,53 +264,31 @@ const ContentEditMode = (): ReactNode => {
   return;
 };
 
-/**
- * OrganizeOS fork: upstream ships a "Built with Webstudio" badge template that
- * puts an upstream ad on the customer's published site. Drop it from the
- * palette here rather than editing @webstudio-is/sdk, which this fork keeps
- * byte-identical to upstream (docs/ORGANIZEOS-FORK.md §1).
- */
-const { builtWithWebstudio: _builtWithWebstudio, ...organizeosCoreTemplates } =
-  coreTemplates;
-
 export const Canvas = () => {
   useCanvasStore();
   const isDesignMode = useStore($isDesignMode);
   const isContentMode = useStore($isContentMode);
 
   useMount(() => {
-    registerComponentLibrary({
-      components: {},
-      metas: coreMetas,
-      templates: organizeosCoreTemplates,
-    });
-    // OrganizeOS fork: org script is paused (organizeos-org-script.tsx). The
-    // policy hides HTML Embed, Content Embed and Markdown Embed and swaps in
-    // the canvas's stand-ins.
-    registerComponentLibrary(
-      withOrgScriptPolicy({
-        components: baseComponents,
-        metas: baseComponentMetas,
-        hooks: baseComponentHooks,
-        templates: baseComponentTemplates,
-      })
-    );
-    registerComponentLibrary({
-      namespace: "@webstudio-is/sdk-components-react-radix",
-      components: radixComponents,
-      metas: radixComponentMetas,
-      hooks: radixComponentHooks,
-      templates: radixTemplates,
-    });
-    // OrganizeOS fork: the OrganizeOS blocks (packages/sdk-components-organizeos).
-    // Their metas are hidden, so upstream's grouping in the Components panel
-    // skips them, and the panel's OrganizeOS section lists them. Every build
-    // that uses a block records this namespace, so it can never change.
+    for (const library of canvasComponentLibraries) {
+      // OrganizeOS fork: org script is paused (organizeos-org-script.tsx,
+      // docs/ORGANIZEOS-FORK.md section 10): the policy hides HTML Embed,
+      // Content Embed, Markdown Embed and JSON-LD and swaps in the canvas's
+      // stand-ins. And no "Built with Webstudio" badge, an upstream ad on the
+      // customer's published site (section 1).
+      registerComponentLibrary(
+        withOrgScriptPolicy(withoutBuiltWithWebstudio(library))
+      );
+    }
+    // OrganizeOS fork: the OrganizeOS blocks (packages/sdk-components-organizeos,
+    // section 9). Their metas are hidden, so upstream's grouping in the
+    // Components panel skips them, and the panel's OrganizeOS section lists
+    // them. Every build that uses a block records this namespace, so it can
+    // never change.
     registerComponentLibrary({
       namespace: "@organizeos/site-components",
       components: organizeosComponents,
       metas: organizeosComponentMetas,
-      hooks: organizeosComponentHooks,
       templates: organizeosTemplates,
     });
   });
@@ -315,7 +301,9 @@ export const Canvas = () => {
 
   useEffect(subscribeStyles, []);
 
-  useEffect(subscribeComponentHooks, []);
+  // The canvas runs in a separate frame and needs its own resource documents
+  // from the cache synchronized by the Builder.
+  useEffect(() => subscribeResourceRequestPlan(() => {}), []);
 
   useEffect(subscribeCommands, []);
 
@@ -342,7 +330,7 @@ export const Canvas = () => {
 
   useEffect(() => startPointerTracking(), []);
 
-  useHashLinkSync();
+  useHashLinkSync(rootInstanceId);
 
   useEffect(subscribeInterceptedEvents, []);
 
@@ -365,7 +353,10 @@ export const Canvas = () => {
     <>
       <GlobalStyles />
       {/* catch all errors in rendered components */}
-      <ErrorBoundary FallbackComponent={FallbackComponent}>
+      <ErrorBoundary
+        key={selectedPage?.id}
+        FallbackComponent={FallbackComponent}
+      >
         {elements}
       </ErrorBoundary>
       {

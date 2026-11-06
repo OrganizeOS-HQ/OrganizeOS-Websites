@@ -10,6 +10,10 @@
 # and the CLI run this fork's copies. Any difference splits what the builder
 # shows from what a site runs.
 #
+# The same holds for what those packages pull in. content-engine, expression,
+# query-builder, css-engine, fonts and icons reach a site as their transitive
+# dependencies, and the CLI bundles content-engine/runtime into every site.
+#
 # scripts/upstream-base.txt holds the upstream commit this fork is based on. It
 # is bumped with every upstream merge, in the same change as
 # PUBLISHED_RUNTIME_VERSION. The check needs that commit in history, so CI
@@ -29,6 +33,12 @@ packages=(
   packages/sdk-components-react-remix
   packages/image
   packages/wsauth
+  packages/content-engine
+  packages/expression
+  packages/query-builder
+  packages/css-engine
+  packages/fonts
+  packages/icons
 )
 
 base_file="scripts/upstream-base.txt"

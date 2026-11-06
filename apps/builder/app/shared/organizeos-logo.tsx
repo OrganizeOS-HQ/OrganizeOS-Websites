@@ -12,28 +12,16 @@ const MARK_PATHS = [
 ];
 
 /**
- * The brand's own pair for a mark on a fixed background, as in the OrganizeOS
- * repo's client/components/branding/brand-logo.tsx: ink on light, cream on
- * dark. Teal (#1597b0) is OrganizeOS's colour for the browser-tab favicon
- * only, which public/favicon.ico carries.
+ * The mark where upstream rendered the Webstudio logo (the login, loading and
+ * error screens), drawn like OrganizeOS's BrandMark: inline, in currentColor.
+ * It takes the brand's own pair, as in the OrganizeOS repo's
+ * client/components/branding/brand-logo.tsx: ink on light, cream on dark,
+ * following the document's color-scheme, which the design system's colors.css
+ * sets on :root from the builder's colour scheme. Teal (#1597b0) is
+ * OrganizeOS's colour for the browser-tab favicon only, which
+ * public/favicon.ico carries. Drop-in for WebstudioIcon's size prop.
  */
-const ON_LIGHT = "#151617";
-const ON_DARK = "#fef9f1";
-
-/**
- * The mark where upstream rendered the Webstudio logo, drawn like OrganizeOS's
- * BrandMark: inline, in currentColor, set to ink by default (the login and
- * error pages, on the light dashboard background) or to cream with
- * on="dark" (the topbar menu button and the loading screen, both on
- * backgroundTopbar). Drop-in for WebstudioIcon's size prop.
- */
-export const OrganizeosLogo = ({
-  size = 22,
-  on = "light",
-}: {
-  size?: number;
-  on?: "light" | "dark";
-}) => {
+export const OrganizeosLogo = ({ size = 22 }: { size?: number }) => {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -46,7 +34,7 @@ export const OrganizeosLogo = ({
       style={{
         display: "block",
         flexShrink: 0,
-        color: on === "dark" ? ON_DARK : ON_LIGHT,
+        color: "light-dark(#151617, #fef9f1)",
       }}
     >
       {MARK_PATHS.map((d) => (

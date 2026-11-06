@@ -4,6 +4,9 @@ import {
 } from "@webstudio-is/trpc-interface/index.server";
 import { patchLoadedBuild } from "@webstudio-is/project/index.server";
 import type { Database } from "@webstudio-is/postgrest/index.server";
+import type { AssetObjectReader } from "@webstudio-is/asset-uploader/server";
+import { loadAssetFoldersByProject } from "@webstudio-is/asset-uploader/server";
+import { createAssetClient } from "~/shared/asset-client";
 import {
   assertProjectPermit,
   authorizePatchEntries,
@@ -27,6 +30,7 @@ const baseBuildPatchColumns = [
 ] as const satisfies BuildColumn[];
 
 const contentModeBuildColumns = [
+  "pages",
   "instances",
   "props",
   "styleSources",
@@ -36,11 +40,12 @@ const contentModeBuildColumns = [
 ] as const satisfies BuildColumn[];
 
 const namespaceBuildColumns = {
-  pages: ["pages"],
+  pages: ["pages", "instances", "props"],
+  projectSettings: ["projectSettings"],
   breakpoints: ["breakpoints"],
-  instances: ["instances"],
-  props: ["props"],
-  assets: [],
+  instances: ["pages", "instances", "props"],
+  props: ["props", "instances"],
+  assets: ["props", "instances"],
   styleSourceSelections: ["styleSourceSelections"],
   styleSources: ["styleSources"],
   styles: ["styles"],
@@ -229,15 +234,19 @@ const rejectedResult = ({
 });
 
 const applyAuthorizedEntries = async ({
+  context,
   authorized,
   build,
   patch,
   version,
+  assetStore,
 }: {
+  context: AppContext;
   authorized: AuthorizedPatchEntry[];
   build?: BuildRow;
   patch: NormalizedPatchRequest;
   version: number;
+  assetStore: AssetObjectReader;
 }) => {
   if (authorized.length === 0) {
     return {
@@ -264,12 +273,12 @@ const applyAuthorizedEntries = async ({
         projectId: patch.projectId,
         clientVersion: version,
         transactions: authorized.map(({ entry }) => entry.transaction),
+        assetStore,
       },
       applyContext
     );
 
     if (batchResult.status === "ok") {
-      currentBuild = batchResult.build;
       return {
         status: "ok" as const,
         version: batchResult.version,
@@ -284,8 +293,28 @@ const applyAuthorizedEntries = async ({
 
   const entries: PatchEntryResult[] = [];
   let currentVersion = version;
+  let entryFailed = false;
 
   for (const { entry, context: entryContext } of authorized) {
+    // OrganizeOS fork: the save check ran with every earlier entry applied;
+    // once one fails here, each later entry is checked again against the
+    // build as saved (organizeos-code-check.server.ts)
+    if (entryFailed) {
+      const checked = await findRefusedPatchEntries(
+        context,
+        patch.buildId,
+        currentVersion,
+        [entry]
+      );
+      if (checked.status === "version_mismatched") {
+        return checked;
+      }
+      const reason = checked.refused.get(entry);
+      if (reason !== undefined) {
+        entries.push(failedResult(entry, reason));
+        continue;
+      }
+    }
     const entryResult = await patchLoadedBuild(
       {
         build: currentBuild,
@@ -293,6 +322,7 @@ const applyAuthorizedEntries = async ({
         projectId: patch.projectId,
         clientVersion: currentVersion,
         transactions: [entry.transaction],
+        assetStore,
       },
       entryContext
     );
@@ -307,6 +337,7 @@ const applyAuthorizedEntries = async ({
       return entryResult;
     }
     entries.push(failedResult(entry, entryResult.errors));
+    entryFailed = true;
   }
 
   return {
@@ -325,7 +356,8 @@ export const applyPatchRequest = async (
   const { authorized: authorizedEntries, rejected } =
     await authorizePatchEntries(context, patch, async () => {
       const build = await loadBuildForContentMode(context, patch.buildId);
-      return createContentModeCapabilities({
+      const capabilities = createContentModeCapabilities({
+        pages: build.pages,
         instances: build.instances,
         props: build.props,
         styleSources: build.styleSources,
@@ -333,30 +365,58 @@ export const applyPatchRequest = async (
         styles: build.styles,
         breakpoints: build.breakpoints,
       });
+      if (
+        patch.entries.some(({ transaction }) =>
+          transaction.payload.some(
+            ({ namespace }) => namespace === "assetFolders"
+          )
+        )
+      ) {
+        const folders = await loadAssetFoldersByProject(
+          patch.projectId,
+          context,
+          {
+            skipPermissionsCheck: true,
+          }
+        );
+        capabilities.assetFolders = new Map(
+          folders.map((folder) => [folder.id, folder])
+        );
+      }
+      return capabilities;
     });
   // OrganizeOS fork: an entry that writes a value failing input validation is
-  // refused, and the others apply (organizeos-code-check.server.ts)
-  const refusedByCheck = await findRefusedPatchEntries(
+  // refused, and the others apply; the check reads the build at the client's
+  // version (organizeos-code-check.server.ts)
+  const checked = await findRefusedPatchEntries(
     context,
     patch.buildId,
+    patch.clientVersion,
     authorizedEntries.map(({ entry }) => entry)
   );
+  if (checked.status === "version_mismatched") {
+    return checked;
+  }
+  const refusedByCheck = checked.refused;
   const authorized = authorizedEntries.filter(
     ({ entry }) => refusedByCheck.has(entry) === false
   );
+  const build =
+    authorized.length === 0
+      ? undefined
+      : await loadBuildForPatch({
+          authorized,
+          context,
+          state,
+          buildId: patch.buildId,
+        });
   const applied = await applyAuthorizedEntries({
+    context,
     authorized,
-    build:
-      authorized.length === 0
-        ? undefined
-        : await loadBuildForPatch({
-            authorized,
-            context,
-            state,
-            buildId: patch.buildId,
-          }),
+    build,
     patch,
     version: authorized.length === 0 ? state.version : patch.clientVersion,
+    assetStore: createAssetClient(),
   });
 
   if (applied.status === "version_mismatched") {

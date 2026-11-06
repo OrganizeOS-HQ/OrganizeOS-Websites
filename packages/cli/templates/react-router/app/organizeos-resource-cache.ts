@@ -34,6 +34,10 @@
  * deadline: 4 seconds when a stale entry could answer its failure, 10
  * otherwise. Past it the request is aborted and fails like a network error, so
  * a hung platform holds the renders that wait on it for that long at most.
+ * That request is shared by every caller waiting on its key, so it answers to
+ * its deadline alone: a caller's own signal (a loader's request.signal, when
+ * the visitor leaves) ends that caller's wait with the signal's reason, and the
+ * others still get the answer.
  *
  * Every route of a site uses one instance, siteResourceCache, so a server
  * instance holds one cache, whichever pages it serves. Each route passes the
@@ -322,18 +326,20 @@ export const createResourceCache = (
       requestedAt + STALE_REQUEST_TIMEOUT_SECONDS * 1000 < stale.staleUntil
         ? STALE_REQUEST_TIMEOUT_SECONDS
         : REQUEST_TIMEOUT_SECONDS;
+    // Only the deadline: every caller waiting on this key shares the
+    // request, so no one caller's signal may abort it (each caller races its
+    // own signal against the shared promise instead, below).
     const deadline = AbortSignal.timeout(timeoutSeconds * 1000);
-    const signal =
-      init?.signal == null
-        ? deadline
-        : AbortSignal.any([init.signal, deadline]);
     let response: Response;
     let body: string;
     try {
       // The deadline covers the body too: a response can arrive and its body
       // never end.
-      ({ response, body } = await settleBy(signal, async () => {
-        const answer = await underlyingFetch(url, { ...init, signal });
+      ({ response, body } = await settleBy(deadline, async () => {
+        const answer = await underlyingFetch(url, {
+          ...init,
+          signal: deadline,
+        });
         return { response: answer, body: await answer.text() };
       }));
     } catch (error) {
@@ -423,6 +429,11 @@ export const createResourceCache = (
     if (headers.has("cache-control")) {
       return underlyingFetch(input, init);
     }
+    // As fetch does: an aborted signal rejects with its reason, at once.
+    const callerSignal = init?.signal ?? undefined;
+    if (callerSignal?.aborted) {
+      throw callerSignal.reason;
+    }
 
     const key = JSON.stringify([
       "GET",
@@ -458,7 +469,13 @@ export const createResourceCache = (
       });
       inFlight.set(key, pending);
     }
-    return toResponse(await pending);
+    // The caller's signal ends this caller's wait, never the shared request.
+    const shared = pending;
+    return toResponse(
+      await (callerSignal === undefined
+        ? shared
+        : settleBy(callerSignal, () => shared))
+    );
   };
 };
 

@@ -1,0 +1,1550 @@
+import { useState } from "react";
+import { act } from "react-dom/test-utils";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { TooltipProvider } from "@webstudio-is/design-system";
+import type { Asset } from "@webstudio-is/sdk";
+import { createDefaultPages } from "@webstudio-is/project-build";
+import {
+  createDefaultCollectionConfig,
+  parseCollectionConfig,
+} from "@webstudio-is/content-engine";
+import {
+  $assetFolders,
+  $assets,
+  $breakpoints,
+  $dataSources,
+  $instances,
+  $pages,
+  $project,
+  $projectSettings,
+  $props,
+  $resources,
+  $styleSourceSelections,
+  $styleSources,
+  $styles,
+} from "~/shared/sync/data-stores";
+import {
+  $authPermit,
+  $builderMode,
+  $selectedPageId,
+} from "~/shared/nano-states";
+import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
+import { AssetManager } from "./asset-manager";
+import { FolderThumbnail } from "./asset-folder-thumbnail";
+import type { AssetManagerThumbnailInteractions } from "./asset-manager-thumbnail";
+import type { ContentCollection } from "../assets/content-collections";
+import { $assetManagerClipboard } from "./asset-manager-clipboard";
+import {
+  createAssetFolderFixture,
+  createAssetFoldersFixture,
+} from "@webstudio-is/sdk/testing";
+import { createAssetManagerTestRenderer } from "./test-utils";
+
+const renderer = createAssetManagerTestRenderer();
+registerContainers();
+
+beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  );
+  Element.prototype.scrollIntoView = vi.fn();
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    callback(0);
+    return 0;
+  });
+  vi.stubGlobal(
+    "DOMRect",
+    class {
+      static fromRect(rect: Partial<DOMRect> = {}) {
+        const x = rect.x ?? 0;
+        const y = rect.y ?? 0;
+        const width = rect.width ?? 0;
+        const height = rect.height ?? 0;
+        return {
+          x,
+          y,
+          width,
+          height,
+          top: y,
+          right: x + width,
+          bottom: y + height,
+          left: x,
+          toJSON: () => ({}),
+        };
+      }
+    }
+  );
+  $assets.set(new Map());
+  $assetManagerClipboard.set(undefined);
+  $authPermit.set("build");
+  serverSyncStore.transactionManager.currentStack = [];
+  serverSyncStore.transactionManager.undoneStack = [];
+  serverSyncStore.popAll();
+  const pages = createDefaultPages({ rootInstanceId: "body" });
+  $pages.set(pages);
+  $selectedPageId.set(pages.homePageId);
+  $builderMode.set("design");
+  $instances.set(
+    new Map([
+      [
+        "body",
+        {
+          type: "instance" as const,
+          id: "body",
+          component: "Body",
+          children: [],
+        },
+      ],
+    ])
+  );
+  $props.set(new Map());
+  $breakpoints.set(new Map());
+  $styleSourceSelections.set(new Map());
+  $styleSources.set(new Map());
+  $styles.set(new Map());
+  $dataSources.set(new Map());
+  $resources.set(new Map());
+  $projectSettings.set({ meta: {}, compiler: {} });
+  $project.set({ id: "project" } as never);
+  $assetFolders.set(
+    createAssetFoldersFixture(
+      createAssetFolderFixture({ id: "alpha", name: "Alpha" }),
+      createAssetFolderFixture({ id: "bravo", name: "Bravo" }),
+      createAssetFolderFixture({ id: "charlie", name: "Charlie" })
+    )
+  );
+});
+
+afterEach(() => {
+  renderer.cleanup();
+  $assetFolders.set(new Map());
+  $assets.set(new Map());
+  $assetManagerClipboard.set(undefined);
+  $project.set(undefined);
+  vi.unstubAllGlobals();
+});
+
+const renderManager = (
+  canManageFolders = true,
+  props: { collections?: ReadonlyMap<string, ContentCollection> } = {}
+) =>
+  renderer.render(
+    <TooltipProvider>
+      <AssetManager canManageFolders={canManageFolders} {...props} />
+    </TooltipProvider>
+  );
+
+const getOptions = (container: HTMLElement) =>
+  Array.from(container.querySelectorAll<HTMLElement>('[role="option"]')).map(
+    (option) => ({
+      option,
+      button: option.querySelector<HTMLButtonElement>("button")!,
+    })
+  );
+
+const pointerDown = (
+  element: HTMLElement,
+  modifiers: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } = {}
+) => {
+  act(() => {
+    element.dispatchEvent(
+      new MouseEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        ...modifiers,
+      })
+    );
+    element.focus();
+  });
+};
+
+const keyDown = (
+  element: HTMLElement,
+  key: string,
+  modifiers: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } = {}
+) => {
+  act(() => {
+    element.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key,
+        bubbles: true,
+        cancelable: true,
+        ...modifiers,
+      })
+    );
+  });
+};
+
+const openContextMenu = (element: HTMLElement) => {
+  act(() => {
+    element.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        button: 2,
+        cancelable: true,
+      })
+    );
+  });
+};
+
+const dismissContextMenu = () => {
+  act(() => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      })
+    );
+  });
+};
+
+const selectContextMenuItem = (
+  element: HTMLElement,
+  label: "Copy" | "Cut" | "Duplicate" | "Delete"
+) => {
+  openContextMenu(element);
+  const item = Array.from(
+    document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+  ).find((candidate) => candidate.textContent?.startsWith(label));
+  expect(item).toBeDefined();
+  act(() => item?.click());
+};
+
+const createAsset = (id: string): Asset => ({
+  id,
+  projectId: "project",
+  name: `${id}.png`,
+  format: "png",
+  size: 1,
+  type: "image",
+  meta: { width: 1, height: 1 },
+  createdAt: "2026-01-01T00:00:00.000Z",
+});
+
+const createLoadingCollection = (folderId: string): ContentCollection => {
+  const configAsset: Asset = {
+    id: `${folderId}-config`,
+    projectId: "project",
+    name: "collection.json",
+    filename: "collection",
+    folderId,
+    format: "json",
+    size: 1,
+    type: "file",
+    meta: {},
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+  return {
+    status: "loading",
+    folderId,
+    configAsset,
+    siblingAssets: [configAsset],
+  };
+};
+
+const createReadyCollection = (
+  folderId: string
+): Extract<ContentCollection, { status: "ready" }> => {
+  const configAsset = createLoadingCollection(folderId).configAsset;
+  const templateAsset: Asset = {
+    id: `${folderId}-template`,
+    projectId: "project",
+    name: "template.mdx",
+    filename: "template",
+    folderId,
+    format: "mdx",
+    size: 1,
+    type: "file",
+    meta: {},
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+  return {
+    status: "ready",
+    folderId,
+    configAsset,
+    templateAsset,
+    config: parseCollectionConfig(createDefaultCollectionConfig()),
+    templateProperties: { draft: true },
+  };
+};
+
+const openMdxMultiselectAction = (label: "Move" | "Delete") => {
+  const entry: Asset = {
+    ...createAsset("entry"),
+    name: "entry.mdx",
+    filename: "entry",
+    folderId: "alpha",
+    type: "file",
+    format: "mdx",
+    meta: {},
+  };
+  const companion: Asset = {
+    ...createAsset("companion"),
+    folderId: "alpha",
+  };
+  $authPermit.set("edit");
+  $assets.set(
+    new Map<string, Asset>([
+      [entry.id, entry],
+      [companion.id, companion],
+    ])
+  );
+  const container = renderManager();
+  const folderButton = container.querySelector<HTMLButtonElement>(
+    '[aria-label="Folder Alpha"]'
+  )!;
+  act(() => {
+    folderButton.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+  });
+  const options = getOptions(container);
+  const entryOption = options.find(({ button }) =>
+    button.textContent?.includes("entry.mdx")
+  )!;
+  const companionOption = options.find(({ button }) =>
+    button.textContent?.includes("companion.png")
+  )!;
+  act(() => entryOption.button.focus());
+  pointerDown(companionOption.button, { ctrlKey: true });
+  openContextMenu(entryOption.button);
+  const action = Array.from(
+    document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+  ).find((item) => item.textContent?.startsWith(label));
+  expect(action).toBeDefined();
+  return {
+    action: action!,
+    reserveEntry: () => {
+      const configAsset = createLoadingCollection("alpha").configAsset;
+      act(() => {
+        $assets.set(
+          new Map<string, Asset>([
+            [entry.id, entry],
+            [companion.id, companion],
+            [configAsset.id, configAsset],
+          ])
+        );
+      });
+    },
+  };
+};
+
+const setNestedCollectionFolders = () => {
+  $assetFolders.set(
+    createAssetFoldersFixture(
+      createAssetFolderFixture({ id: "alpha", name: "Alpha" }),
+      createAssetFolderFixture({
+        id: "bravo",
+        name: "Bravo",
+        parentId: "alpha",
+      }),
+      createAssetFolderFixture({ id: "charlie", name: "Charlie" })
+    )
+  );
+  return new Map([["bravo", createLoadingCollection("bravo")]]);
+};
+
+describe("Asset Manager multiselect interactions", () => {
+  test("shows collection configuration and template files", () => {
+    const configAsset = createLoadingCollection("alpha").configAsset;
+    const templateAsset: Asset = {
+      id: "alpha-template",
+      projectId: "project",
+      name: "template.mdx",
+      filename: "template",
+      folderId: "alpha",
+      format: "mdx",
+      size: 1,
+      type: "file",
+      meta: {},
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    act(() => {
+      $assets.set(
+        new Map([
+          [configAsset.id, configAsset],
+          [templateAsset.id, templateAsset],
+        ])
+      );
+    });
+    const collection: ContentCollection = {
+      status: "loading",
+      folderId: "alpha",
+      configAsset,
+      siblingAssets: [configAsset, templateAsset],
+    };
+    const container = renderManager(true, {
+      collections: new Map([["alpha", collection]]),
+    });
+    const alphaFolder = getOptions(container).find(({ button }) =>
+      button.textContent?.includes("Alpha")
+    )?.button;
+
+    act(() => {
+      alphaFolder?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+
+    expect(container.textContent).toContain("collection.json");
+    expect(container.textContent).toContain("template.mdx");
+  });
+
+  test("keeps the selected asset in the path while focusing the copy action", () => {
+    const asset = createAsset("asset");
+    act(() => $assets.set(new Map([[asset.id, asset]])));
+    const container = renderManager();
+    const assetButton = getOptions(container).at(-1)!.button;
+    const path = container.querySelector<HTMLElement>(
+      '[aria-label="Asset path"]'
+    )!;
+
+    act(() => assetButton.focus());
+    expect(path.textContent).toContain("Rootasset.png");
+
+    act(() =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Copy path"]')
+        ?.focus()
+    );
+    expect(path.textContent).toContain("Rootasset.png");
+  });
+
+  test("marquee-selects every thumbnail intersecting the pointer rectangle", () => {
+    const container = renderManager();
+    const options = getOptions(container);
+    const listbox = container.querySelector<HTMLElement>('[role="listbox"]')!;
+    const viewport = listbox.closest<HTMLElement>(
+      "[data-asset-manager-scroll-area]"
+    )!;
+    viewport.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        right: 300,
+        bottom: 300,
+        width: 300,
+        height: 300,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    options.forEach(({ button }, index) => {
+      const left = 20 + index * 60;
+      button.getBoundingClientRect = () =>
+        ({
+          left,
+          top: 20,
+          right: left + 50,
+          bottom: 70,
+          width: 50,
+          height: 50,
+          x: left,
+          y: 20,
+          toJSON: () => ({}),
+        }) as DOMRect;
+    });
+
+    act(() => {
+      viewport.dispatchEvent(
+        new MouseEvent("pointerdown", {
+          bubbles: true,
+          button: 0,
+          clientX: 10,
+          clientY: 10,
+        })
+      );
+      document.dispatchEvent(
+        new MouseEvent("pointermove", {
+          bubbles: true,
+          clientX: 125,
+          clientY: 80,
+        })
+      );
+    });
+
+    expect(container.querySelector("[data-asset-manager-marquee]")).not.toBe(
+      null
+    );
+    expect(
+      options.map(({ option }) => option.getAttribute("aria-selected"))
+    ).toEqual(["true", "true", "false"]);
+
+    act(() => {
+      document.dispatchEvent(
+        new MouseEvent("pointerup", {
+          bubbles: true,
+          clientX: 125,
+          clientY: 80,
+        })
+      );
+    });
+    expect(container.querySelector("[data-asset-manager-marquee]")).toBe(null);
+    expect(document.activeElement).toBe(options[0]!.button);
+  });
+
+  test("keeps single selection focus-based until Shift + Click", () => {
+    const container = renderManager();
+    const options = getOptions(container);
+    act(() => options[0]?.button.focus());
+    expect(
+      options.every(
+        ({ option }) => option.hasAttribute("aria-selected") === false
+      )
+    ).toBe(true);
+
+    pointerDown(options[2]!.button, { shiftKey: true });
+    expect(
+      options.map(({ option }) => option.getAttribute("aria-selected"))
+    ).toEqual(["true", "true", "true"]);
+
+    pointerDown(options[1]!.button);
+    act(() => options[1]?.button.click());
+    expect(
+      options.every(
+        ({ option }) => option.hasAttribute("aria-selected") === false
+      )
+    ).toBe(true);
+    expect(document.activeElement).toBe(options[1]!.button);
+  });
+
+  test("exits multiselect when clicking outside thumbnails", () => {
+    const container = renderManager();
+    const options = getOptions(container);
+    act(() => options[0]?.button.focus());
+    pointerDown(options[2]!.button, { shiftKey: true });
+    expect(
+      options.map(({ option }) => option.getAttribute("aria-selected"))
+    ).toEqual(["true", "true", "true"]);
+
+    pointerDown(container.querySelector<HTMLInputElement>("input")!);
+    expect(
+      options.every(
+        ({ option }) => option.hasAttribute("aria-selected") === false
+      )
+    ).toBe(true);
+  });
+
+  test("keeps multiselect during pointer down so selected items can be dragged", () => {
+    const container = renderManager();
+    const options = getOptions(container);
+    act(() => options[0]?.button.focus());
+    pointerDown(options[2]!.button, { metaKey: true });
+
+    act(() => {
+      options[2]?.button.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, button: 0 })
+      );
+    });
+    expect(
+      options.map(({ option }) => option.getAttribute("aria-selected"))
+    ).toEqual(["true", "false", "true"]);
+
+    act(() => options[2]?.button.click());
+    expect(
+      options.every(
+        ({ option }) => option.hasAttribute("aria-selected") === false
+      )
+    ).toBe(true);
+  });
+
+  test.each([{ metaKey: true }, { ctrlKey: true }])(
+    "initializes a non-contiguous selection with Cmd/Ctrl + Click",
+    (modifier) => {
+      const container = renderManager();
+      const options = getOptions(container);
+      act(() => options[0]?.button.focus());
+
+      pointerDown(options[2]!.button, modifier);
+      expect(
+        options.map(({ option }) => option.getAttribute("aria-selected"))
+      ).toEqual(["true", "false", "true"]);
+    }
+  );
+
+  test.each([{ shiftKey: true }, { metaKey: true }, { ctrlKey: true }])(
+    "initializes selection with a modifier + Arrow",
+    (modifier) => {
+      const container = renderManager();
+      const options = getOptions(container);
+      act(() => options[0]?.button.focus());
+      act(() => {
+        options[0]?.button.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "ArrowRight",
+            bubbles: true,
+            ...modifier,
+          })
+        );
+      });
+
+      expect(
+        options
+          .slice(0, 2)
+          .map(({ option }) => option.getAttribute("aria-selected"))
+      ).toEqual(["true", "true"]);
+      expect(document.activeElement).toBe(options[1]!.button);
+
+      act(() => {
+        options[1]?.button.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+        );
+      });
+      expect(
+        options.every(
+          ({ option }) => option.hasAttribute("aria-selected") === false
+        )
+      ).toBe(true);
+    }
+  );
+
+  test("preserves the range anchor while Shift + Arrow extends and contracts", () => {
+    const container = renderManager();
+    const options = getOptions(container);
+    act(() => options[0]?.button.focus());
+
+    keyDown(options[0]!.button, "ArrowRight", { shiftKey: true });
+    keyDown(options[1]!.button, "ArrowRight", { shiftKey: true });
+    expect(
+      options.map(({ option }) => option.getAttribute("aria-selected"))
+    ).toEqual(["true", "true", "true"]);
+
+    keyDown(options[2]!.button, "ArrowLeft", { shiftKey: true });
+    expect(
+      options.map(({ option }) => option.getAttribute("aria-selected"))
+    ).toEqual(["true", "true", "false"]);
+    expect(document.activeElement).toBe(options[1]!.button);
+  });
+
+  test("toggles individual items without changing the original anchor", () => {
+    const container = renderManager();
+    const options = getOptions(container);
+    act(() => options[0]?.button.focus());
+
+    pointerDown(options[2]!.button, { metaKey: true });
+    pointerDown(options[0]!.button, { metaKey: true });
+    expect(
+      options.map(({ option }) => option.getAttribute("aria-selected"))
+    ).toEqual(["false", "false", "true"]);
+
+    pointerDown(options[1]!.button, { ctrlKey: true });
+    expect(
+      options.map(({ option }) => option.getAttribute("aria-selected"))
+    ).toEqual(["false", "true", "true"]);
+  });
+
+  test("selects mixed items and applies a bulk action to the complete selection", () => {
+    const asset = createAsset("asset");
+    act(() => $assets.set(new Map([[asset.id, asset]])));
+    const container = renderManager();
+    const options = getOptions(container);
+    act(() => options[0]?.button.focus());
+    pointerDown(options[3]!.button, { ctrlKey: true });
+
+    expect(
+      container
+        .querySelector('[role="listbox"]')
+        ?.getAttribute("aria-multiselectable")
+    ).toBe("true");
+    expect(
+      options.map(({ option }) => option.getAttribute("aria-selected"))
+    ).toEqual(["true", "false", "false", "true"]);
+    expect(container.querySelector('[role="status"]')?.textContent).toBe(
+      "2 items selected."
+    );
+
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>(
+          '[aria-label="Actions for asset.png"]'
+        )
+        ?.dispatchEvent(
+          new MouseEvent("pointerdown", { bubbles: true, button: 0 })
+        );
+    });
+    const copyItem = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).find((item) => item.textContent?.startsWith("Copy"));
+    act(() => copyItem?.click());
+
+    expect($assetManagerClipboard.get()).toEqual({
+      operation: "copy",
+      items: [
+        { type: "folder", id: "charlie" },
+        { type: "asset", id: "asset" },
+      ],
+      projectId: "project",
+    });
+    expect(container.querySelector('[role="status"]')?.textContent).toBe(
+      "2 items copied."
+    );
+  });
+
+  test("clears forced selection and restores focus when results disappear", () => {
+    const container = renderManager();
+    let options = getOptions(container);
+    act(() => options[0]?.button.focus());
+    pointerDown(options[2]!.button, { metaKey: true });
+
+    act(() => {
+      $assetFolders.set(
+        createAssetFoldersFixture(
+          createAssetFolderFixture({ id: "bravo", name: "Bravo" })
+        )
+      );
+    });
+    options = getOptions(container);
+    expect(options).toHaveLength(1);
+    expect(options[0]?.option.hasAttribute("aria-selected")).toBe(false);
+    expect(document.activeElement).toBe(options[0]!.button);
+  });
+
+  test("preserves bulk actions while interacting with a portaled menu", () => {
+    const container = renderManager();
+    const options = getOptions(container);
+    act(() => options[0]?.button.focus());
+    pointerDown(options[2]!.button, { metaKey: true });
+
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Actions for Alpha"]')
+        ?.dispatchEvent(
+          new MouseEvent("pointerdown", { bubbles: true, button: 0 })
+        );
+    });
+    const deleteItem = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).find((item) => item.textContent?.startsWith("Delete"));
+    expect(deleteItem).toBeDefined();
+    act(() => {
+      deleteItem?.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, button: 0 })
+      );
+      deleteItem?.click();
+    });
+    expect(document.body.textContent).toContain("Delete selected items");
+  });
+
+  test.each(["Copy", "Cut"] as const)(
+    "%s from the context menu targets the complete multiselection",
+    (action) => {
+      const asset = createAsset("asset");
+      act(() => $assets.set(new Map([[asset.id, asset]])));
+      const container = renderManager();
+      const options = getOptions(container);
+      openContextMenu(options[0]!.button);
+      dismissContextMenu();
+      act(() => options[0]?.button.focus());
+      pointerDown(options.at(-1)!.button, { ctrlKey: true });
+
+      selectContextMenuItem(options[0]!.button, action);
+
+      const selectedFolderId = options[0]!.button
+        .getAttribute("aria-label")
+        ?.replace("Folder ", "")
+        .toLowerCase();
+      expect($assetManagerClipboard.get()).toEqual({
+        operation: action.toLowerCase(),
+        items: [
+          { type: "folder", id: selectedFolderId },
+          { type: "asset", id: "asset" },
+        ],
+        projectId: "project",
+      });
+    }
+  );
+
+  test("Duplicate from the context menu targets the complete multiselection", () => {
+    const asset = createAsset("asset");
+    act(() => $assets.set(new Map([[asset.id, asset]])));
+    const container = renderManager();
+    const options = getOptions(container);
+    openContextMenu(options[0]!.button);
+    dismissContextMenu();
+    act(() => options[0]?.button.focus());
+    pointerDown(options.at(-1)!.button, { ctrlKey: true });
+
+    selectContextMenuItem(options[0]!.button, "Duplicate");
+
+    expect($assetFolders.get()).toHaveLength(4);
+    expect($assets.get()).toHaveLength(2);
+  });
+
+  test("Delete from the context menu targets the complete multiselection", () => {
+    const asset = createAsset("asset");
+    act(() => $assets.set(new Map([[asset.id, asset]])));
+    const container = renderManager();
+    const options = getOptions(container);
+    openContextMenu(options[0]!.button);
+    dismissContextMenu();
+    act(() => options[0]?.button.focus());
+    pointerDown(options.at(-1)!.button, { ctrlKey: true });
+
+    selectContextMenuItem(options[0]!.button, "Delete");
+
+    expect(document.body.textContent).toContain("Delete 2 selected items?");
+  });
+
+  test("Move from the context menu targets the complete multiselection", () => {
+    const asset = createAsset("asset");
+    act(() => $assets.set(new Map([[asset.id, asset]])));
+    const container = renderManager();
+    const options = getOptions(container);
+    act(() => options[0]?.button.focus());
+    pointerDown(options.at(-1)!.button, { ctrlKey: true });
+
+    openContextMenu(options[0]!.button);
+    const moveItem = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).find((item) => item.textContent === "Move");
+    expect(moveItem).toBeDefined();
+    act(() => moveItem?.click());
+
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("Move items");
+    expect(dialog.querySelectorAll("label")).toHaveLength(1);
+    expect(dialog.querySelector("label")?.textContent).toBe("Folder");
+  });
+
+  test("thumbnail context requests replace the panel actions", () => {
+    const upload = vi.fn();
+    const container = renderer.render(
+      <TooltipProvider>
+        <AssetManager canManageFolders panelActions={{ upload }} />
+      </TooltipProvider>
+    );
+    const options = getOptions(container);
+    act(() => options[0]?.button.focus());
+    pointerDown(options[2]!.button, { ctrlKey: true });
+
+    act(() => {
+      options[0]!.option.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          button: 2,
+          cancelable: true,
+        })
+      );
+    });
+
+    const labels = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).map((item) => item.textContent);
+    expect(labels.some((label) => label?.startsWith("Copy"))).toBe(true);
+    expect(labels).not.toContain("Upload asset");
+  });
+});
+
+describe("Asset Manager collection folder permissions", () => {
+  test("blocks a stale Move callback after a selected asset becomes reserved", () => {
+    const { action, reserveEntry } = openMdxMultiselectAction("Move");
+
+    reserveEntry();
+    act(() => action.click());
+
+    expect(document.body.textContent).not.toContain("Move items");
+  });
+
+  test.each([
+    {
+      name: "the selected asset becomes reserved",
+      updateProtection: (reserveEntry: () => void) => reserveEntry(),
+    },
+    {
+      name: "authorization changes to view-only",
+      updateProtection: () => act(() => $authPermit.set("view")),
+    },
+  ])("closes an open Move dialog when $name", ({ updateProtection }) => {
+    const { action, reserveEntry } = openMdxMultiselectAction("Move");
+    act(() => action.click());
+    expect(document.body.textContent).toContain("Move items");
+
+    updateProtection(reserveEntry);
+
+    expect(document.body.textContent).not.toContain("Move items");
+  });
+
+  test("closes an open Delete dialog when authorization changes to view-only", () => {
+    const { action } = openMdxMultiselectAction("Delete");
+    act(() => action.click());
+    expect(document.body.textContent).toContain("Delete selected items");
+
+    act(() => $authPermit.set("view"));
+
+    expect(document.body.textContent).not.toContain("Delete selected items");
+  });
+
+  test("does not reopen collection settings after configuration access is restored", () => {
+    const collection = createReadyCollection("alpha");
+    const container = renderManager(true, {
+      collections: new Map([[collection.folderId, collection]]),
+    });
+    const folderButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Folder Alpha"]'
+    )!;
+    openContextMenu(folderButton);
+    const settings = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).find((item) => item.textContent === "Collection settings");
+    expect(settings).toBeDefined();
+    act(() => settings?.click());
+    expect(document.body.textContent).toContain("Collection settings");
+
+    act(() => $authPermit.set("edit"));
+    expect(document.body.textContent).not.toContain("Collection settings");
+
+    act(() => $authPermit.set("build"));
+    expect(document.body.textContent).not.toContain("Collection settings");
+  });
+
+  test("does not reopen folder settings after management access is restored", async () => {
+    const folder = createAssetFolderFixture({ id: "managed", name: "Managed" });
+    const interactions: AssetManagerThumbnailInteractions = {
+      onSelectionChange: vi.fn(),
+      onItemPointerDown: vi.fn(),
+      onItemClick: vi.fn(),
+      onModifiedArrow: vi.fn(),
+      onContextMenuSelection: vi.fn(),
+      onContextMenuActions: vi.fn(),
+      getDragItems: (item) => [item],
+    };
+    let setCanManage: (canManage: boolean) => void = () => undefined;
+    const Thumbnail = () => {
+      const [canManage, updateCanManage] = useState(true);
+      setCanManage = updateCanManage;
+      return (
+        <TooltipProvider>
+          <FolderThumbnail
+            folder={folder}
+            selected={false}
+            interactions={interactions}
+            onOpen={vi.fn()}
+            canManage={canManage}
+            canMoveItems={() => false}
+            onMoveItems={vi.fn()}
+          />
+        </TooltipProvider>
+      );
+    };
+    const container = renderer.render(<Thumbnail />);
+    const actions = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Actions for Managed"]'
+    )!;
+    act(() => {
+      actions.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, button: 0 })
+      );
+    });
+    const settings = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).find((item) => item.textContent === "Settings");
+    expect(settings).toBeDefined();
+    act(() => settings?.click());
+    expect(document.body.textContent).toContain("Folder settings");
+
+    await act(async () => setCanManage(false));
+    expect(document.body.textContent).not.toContain("Folder settings");
+
+    await act(async () => setCanManage(true));
+    expect(document.body.textContent).not.toContain("Folder settings");
+  });
+
+  test("closes collection settings when the folder is no longer a ready collection", () => {
+    const collection = createReadyCollection("alpha");
+    let setCollectionReady: (ready: boolean) => void = () => undefined;
+    const Manager = () => {
+      const [ready, setReady] = useState(true);
+      setCollectionReady = setReady;
+      return (
+        <TooltipProvider>
+          <AssetManager
+            canManageFolders
+            collections={
+              ready ? new Map([[collection.folderId, collection]]) : new Map()
+            }
+          />
+        </TooltipProvider>
+      );
+    };
+    const container = renderer.render(<Manager />);
+    const folderButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Folder Alpha"]'
+    )!;
+    openContextMenu(folderButton);
+    const settings = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).find((item) => item.textContent === "Collection settings");
+    expect(settings).toBeDefined();
+    act(() => settings?.click());
+    expect(document.body.textContent).toContain("Collection settings");
+
+    act(() => setCollectionReady(false));
+    expect(document.body.textContent).not.toContain("Collection settings");
+
+    act(() => setCollectionReady(true));
+    expect(document.body.textContent).not.toContain("Collection settings");
+  });
+
+  test.each(["Copy", "Duplicate", "Delete"] as const)(
+    "blocks a stale %s callback after a folder becomes a collection ancestor",
+    (action) => {
+      $assetFolders.set(
+        createAssetFoldersFixture(
+          createAssetFolderFixture({ id: "alpha", name: "Alpha" }),
+          createAssetFolderFixture({
+            id: "bravo",
+            name: "Bravo",
+            parentId: "alpha",
+          }),
+          createAssetFolderFixture({ id: "charlie", name: "Charlie" })
+        )
+      );
+      $authPermit.set("edit");
+      const container = renderManager();
+      const folderButton = container.querySelector<HTMLButtonElement>(
+        '[aria-label="Folder Alpha"]'
+      )!;
+      openContextMenu(folderButton);
+      const staleAction = Array.from(
+        document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+      ).find((item) => item.textContent?.startsWith(action));
+      expect(staleAction).toBeDefined();
+
+      const collection = createLoadingCollection("bravo");
+      act(() => {
+        $assets.set(
+          new Map([[collection.configAsset.id, collection.configAsset]])
+        );
+      });
+      act(() => staleAction?.click());
+
+      if (action === "Copy") {
+        expect($assetManagerClipboard.get()).toBeUndefined();
+      }
+      if (action === "Duplicate") {
+        expect($assetFolders.get()).toHaveLength(3);
+      }
+      if (action === "Delete") {
+        expect(document.body.textContent).not.toContain("Folder settings");
+        expect(document.body.textContent).not.toContain("Delete folder");
+      }
+    }
+  );
+
+  test.each(["edit", "build", "admin", "own"] as const)(
+    "removes relocate and destructive actions when a selection contains a reserved file (%s)",
+    (permit) => {
+      const collection = createLoadingCollection("alpha");
+      const entry: Asset = {
+        ...createAsset("entry"),
+        name: "entry.mdx",
+        filename: "entry",
+        folderId: "alpha",
+        type: "file",
+        format: "mdx",
+        meta: {},
+      };
+      act(() => {
+        $authPermit.set(permit);
+        $assets.set(
+          new Map([
+            [collection.configAsset.id, collection.configAsset],
+            [entry.id, entry],
+          ])
+        );
+      });
+      const container = renderManager(true, {
+        collections: new Map([["alpha", collection]]),
+      });
+      const folderButton = container.querySelector<HTMLButtonElement>(
+        '[aria-label="Folder Alpha"]'
+      )!;
+      act(() => {
+        folderButton.dispatchEvent(
+          new MouseEvent("dblclick", { bubbles: true })
+        );
+      });
+      const options = getOptions(container);
+      const config = options.find(({ button }) =>
+        button.textContent?.includes("collection.json")
+      )!;
+      const entryOption = options.find(({ button }) =>
+        button.textContent?.includes("entry.mdx")
+      )!;
+      act(() => config.button.focus());
+      pointerDown(entryOption.button, { ctrlKey: true });
+      openContextMenu(config.button);
+
+      const labels = Array.from(
+        document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+      ).map((item) => item.textContent);
+      expect(labels.some((label) => label?.startsWith("Cut"))).toBe(false);
+      expect(labels).not.toContain("Move");
+      expect(labels.some((label) => label?.startsWith("Copy"))).toBe(false);
+      expect(labels.some((label) => label?.startsWith("Delete"))).toBe(false);
+
+      dismissContextMenu();
+      keyDown(config.button, "x", { ctrlKey: true });
+      expect($assetManagerClipboard.get()).toBeUndefined();
+    }
+  );
+
+  test("detects collection folders and protects reserved files without caller configuration", () => {
+    const configAsset = createLoadingCollection("alpha").configAsset;
+    const templateAsset: Asset = {
+      id: "alpha-template",
+      projectId: "project",
+      name: "template.mdx",
+      filename: "template",
+      folderId: "alpha",
+      format: "mdx",
+      size: 1,
+      type: "file",
+      meta: {},
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    act(() => {
+      $authPermit.set("edit");
+      $assets.set(
+        new Map([
+          [configAsset.id, configAsset],
+          [templateAsset.id, templateAsset],
+        ])
+      );
+    });
+    const container = renderManager();
+    const folderButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Folder Alpha"]'
+    )!;
+    expect(
+      folderButton.querySelector("[data-collection-folder-icon]")
+    ).not.toBeNull();
+
+    act(() => {
+      folderButton.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+    const configButton = getOptions(container).find(({ button }) =>
+      button.textContent?.includes("collection.json")
+    )!.button;
+    openContextMenu(configButton);
+    const labels = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).map((item) => item.textContent);
+    expect(labels).not.toContain("Settings");
+    const disabledItems = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[role="menuitem"][aria-disabled="true"]'
+      )
+    );
+    expect(
+      disabledItems.some((item) => item.textContent?.startsWith("Cut"))
+    ).toBe(true);
+    expect(disabledItems.some((item) => item.textContent === "Move")).toBe(
+      true
+    );
+    expect(
+      disabledItems.some((item) => item.textContent?.startsWith("Delete"))
+    ).toBe(true);
+    expect(labels).not.toContain("Open on canvas");
+  });
+
+  test("hides generic panel actions in a detected collection folder", () => {
+    const convertCollection = vi.fn();
+    const configAsset = createLoadingCollection("alpha").configAsset;
+    act(() => $assets.set(new Map([[configAsset.id, configAsset]])));
+    const container = renderer.render(
+      <TooltipProvider>
+        <AssetManager
+          canManageFolders
+          panelActions={{
+            upload: vi.fn(),
+            createFile: vi.fn(),
+            createFolder: vi.fn(),
+            createEntry: vi.fn(),
+            convertCollection,
+          }}
+        />
+      </TooltipProvider>
+    );
+    const folderButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Folder Alpha"]'
+    )!;
+    act(() => {
+      folderButton.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+
+    openContextMenu(
+      container.querySelector<HTMLElement>("[data-asset-manager-scroll-area]")!
+    );
+
+    const labels = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).map((item) => item.textContent);
+    expect(labels).toContain("Create folder");
+    expect(labels).toContain("New entry");
+    expect(labels).not.toContain("Upload asset");
+    expect(labels).not.toContain("Create text file");
+    const convert = Array.from(
+      document.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).find((item) => item.textContent === "Convert to regular folder");
+    expect(convert).toBeDefined();
+    act(() => convert?.click());
+    expect(convertCollection).toHaveBeenCalledOnce();
+  });
+
+  test("offers conversion from the parent folder before collection settings are loaded", async () => {
+    const collection = createLoadingCollection("alpha");
+    act(() => {
+      $authPermit.set("own");
+      $assets.set(
+        new Map([[collection.configAsset.id, collection.configAsset]])
+      );
+    });
+    const container = renderManager(true);
+    const folderButton = container.querySelector<HTMLElement>(
+      '[aria-label="Folder Alpha"]'
+    )!;
+    openContextMenu(folderButton);
+    const convert = Array.from(
+      document.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).find((item) => item.textContent === "Convert to regular folder");
+    expect(convert).toBeDefined();
+    await act(async () => convert?.click());
+    await vi.waitFor(() =>
+      expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+    );
+  });
+
+  test("hides copy, duplicate, and delete for a collection ancestor from edit users", () => {
+    let collections: ReadonlyMap<string, ContentCollection> = new Map();
+    act(() => {
+      $authPermit.set("edit");
+      collections = setNestedCollectionFolders();
+    });
+    const container = renderManager(true, { collections });
+    const folderButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Folder Alpha"]'
+    )!;
+
+    openContextMenu(folderButton);
+
+    const labels = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).map((item) => item.textContent);
+    expect(labels).toContain("Settings");
+    expect(labels.some((label) => label?.startsWith("Cut"))).toBe(true);
+    expect(labels).toContain("Move");
+    expect(labels.some((label) => label?.startsWith("Copy"))).toBe(false);
+    expect(labels.some((label) => label?.startsWith("Duplicate"))).toBe(false);
+    expect(labels.some((label) => label?.startsWith("Delete"))).toBe(false);
+  });
+
+  test("keeps collection ancestor rename settings but hides folder deletion", () => {
+    let collections: ReadonlyMap<string, ContentCollection> = new Map();
+    act(() => {
+      $authPermit.set("edit");
+      collections = setNestedCollectionFolders();
+    });
+    const container = renderManager(true, { collections });
+    const folderButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Folder Alpha"]'
+    )!;
+    openContextMenu(folderButton);
+    const settings = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).find((item) => item.textContent === "Settings");
+
+    act(() => settings?.click());
+
+    expect(document.body.textContent).toContain("Folder settings");
+    expect(
+      document.querySelector<HTMLInputElement>("#asset-folder-name-alpha")
+    ).not.toBeNull();
+    expect(
+      Array.from(document.body.querySelectorAll("button")).some(
+        (button) => button.textContent === "Delete"
+      )
+    ).toBe(false);
+  });
+
+  test("removes unsafe actions from a multiselection containing a collection ancestor", () => {
+    let collections: ReadonlyMap<string, ContentCollection> = new Map();
+    act(() => {
+      $authPermit.set("edit");
+      collections = setNestedCollectionFolders();
+    });
+    const container = renderManager(true, { collections });
+    const options = getOptions(container);
+    const alpha = options.find(
+      ({ button }) => button.getAttribute("aria-label") === "Folder Alpha"
+    )!;
+    const charlie = options.find(
+      ({ button }) => button.getAttribute("aria-label") === "Folder Charlie"
+    )!;
+    act(() => alpha.button.focus());
+    pointerDown(charlie.button, { ctrlKey: true });
+
+    openContextMenu(alpha.button);
+
+    const labels = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).map((item) => item.textContent);
+    expect(labels.some((label) => label?.startsWith("Cut"))).toBe(true);
+    expect(labels).toContain("Move");
+    expect(labels.some((label) => label?.startsWith("Copy"))).toBe(false);
+    expect(labels.some((label) => label?.startsWith("Duplicate"))).toBe(false);
+    expect(labels.some((label) => label?.startsWith("Delete"))).toBe(false);
+  });
+
+  test("blocks unsafe collection ancestor shortcuts but preserves cut", () => {
+    let collections: ReadonlyMap<string, ContentCollection> = new Map();
+    act(() => {
+      $authPermit.set("edit");
+      collections = setNestedCollectionFolders();
+    });
+    const container = renderManager(true, { collections });
+    const folderButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Folder Alpha"]'
+    )!;
+    act(() => folderButton.focus());
+
+    keyDown(folderButton, "c", { metaKey: true });
+    expect($assetManagerClipboard.get()).toBeUndefined();
+
+    keyDown(folderButton, "d", { ctrlKey: true });
+    expect($assetFolders.get()).toHaveLength(3);
+
+    keyDown(folderButton, "Delete");
+    expect(document.body.textContent).not.toContain("Delete selected items");
+
+    keyDown(folderButton, "x", { ctrlKey: true });
+    expect($assetManagerClipboard.get()).toMatchObject({
+      operation: "cut",
+      items: [{ type: "folder", id: "alpha" }],
+    });
+  });
+
+  test("blocks a stale copied collection ancestor from being pasted", () => {
+    let collections: ReadonlyMap<string, ContentCollection> = new Map();
+    act(() => {
+      $authPermit.set("edit");
+      collections = setNestedCollectionFolders();
+      $assetManagerClipboard.set({
+        operation: "copy",
+        items: [{ type: "folder", id: "alpha" }],
+        projectId: "project",
+      });
+    });
+    const container = renderManager(true, { collections });
+    const folderButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Folder Charlie"]'
+    )!;
+    act(() => folderButton.focus());
+
+    openContextMenu(folderButton);
+    expect(
+      Array.from(
+        document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+      ).some((item) => item.textContent?.startsWith("Paste"))
+    ).toBe(false);
+    dismissContextMenu();
+
+    keyDown(folderButton, "v", { metaKey: true });
+
+    expect($assetFolders.get()).toHaveLength(3);
+  });
+
+  test("keeps collection folder copy, duplicate, and delete available to builders", () => {
+    let collections: ReadonlyMap<string, ContentCollection> = new Map();
+    act(() => {
+      collections = setNestedCollectionFolders();
+    });
+    const container = renderManager(true, { collections });
+    const folderButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Folder Alpha"]'
+    )!;
+
+    openContextMenu(folderButton);
+
+    const labels = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    ).map((item) => item.textContent);
+    expect(labels.some((label) => label?.startsWith("Copy"))).toBe(true);
+    expect(labels.some((label) => label?.startsWith("Duplicate"))).toBe(true);
+    expect(labels.some((label) => label?.startsWith("Delete"))).toBe(true);
+  });
+});
+
+describe("Asset Manager shortcuts", () => {
+  test("prevents handled shortcuts from reaching global builder commands", () => {
+    const container = renderManager();
+    const button = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Folder Alpha"]'
+    )!;
+    const globalHandler = vi.fn();
+    document.addEventListener("keydown", globalHandler);
+    act(() => button.focus());
+    const event = new KeyboardEvent("keydown", {
+      key: "c",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+
+    act(() => button.dispatchEvent(event));
+    document.removeEventListener("keydown", globalHandler);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(globalHandler).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    {
+      label: "Folder Alpha",
+      item: { type: "folder" as const, id: "alpha" },
+    },
+    {
+      label: "asset.png",
+      item: { type: "asset" as const, id: "asset" },
+    },
+  ])("copies and cuts the focused $item.type", ({ label, item }) => {
+    const asset = createAsset("asset");
+    act(() => $assets.set(new Map([[asset.id, asset]])));
+    const container = renderManager();
+    const button =
+      item.type === "folder"
+        ? container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!
+        : getOptions(container).at(-1)!.button;
+    act(() => button.focus());
+
+    keyDown(button, "c", { metaKey: true });
+    expect($assetManagerClipboard.get()).toEqual({
+      operation: "copy",
+      items: [item],
+      projectId: "project",
+    });
+
+    keyDown(button, "x", { ctrlKey: true });
+    expect($assetManagerClipboard.get()).toEqual({
+      operation: "cut",
+      items: [item],
+      projectId: "project",
+    });
+  });
+
+  test("selects all rendered assets and folders with Command or Control + A", () => {
+    const asset = createAsset("asset");
+    act(() => $assets.set(new Map([[asset.id, asset]])));
+    const container = renderManager();
+    const options = getOptions(container);
+    const folderButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Folder Alpha"]'
+    )!;
+    const folderOption = folderButton.closest<HTMLElement>('[role="option"]')!;
+
+    keyDown(options[0]!.button, "a", { metaKey: true });
+    expect(
+      [folderOption, ...options.map(({ option }) => option)].map((item) =>
+        item.getAttribute("aria-selected")
+      )
+    ).toEqual(["true", "true", "true", "true", "true"]);
+
+    keyDown(options[0]!.button, "a", { ctrlKey: true });
+    expect(document.body.textContent).toContain("4 items selected.");
+  });
+
+  test("applies copy and duplicate shortcuts to the complete multiselection", () => {
+    const asset = createAsset("asset");
+    act(() => $assets.set(new Map([[asset.id, asset]])));
+    const container = renderManager();
+    const folderButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Folder Alpha"]'
+    )!;
+    const assetButton = getOptions(container).at(-1)!.button;
+    act(() => folderButton.focus());
+    pointerDown(assetButton, { ctrlKey: true });
+
+    keyDown(assetButton, "c", { metaKey: true });
+    expect($assetManagerClipboard.get()?.items).toEqual([
+      { type: "folder", id: "alpha" },
+      { type: "asset", id: "asset" },
+    ]);
+
+    keyDown(assetButton, "d", { ctrlKey: true });
+    expect($assetFolders.get()).toHaveLength(4);
+    expect($assets.get()).toHaveLength(2);
+    expect(container.querySelector('[role="status"]')?.textContent).toBe(
+      "2 items duplicated."
+    );
+  });
+
+  test("pastes into the open folder with Cmd/Ctrl + V", () => {
+    const asset = createAsset("asset");
+    act(() => {
+      $assets.set(new Map([[asset.id, asset]]));
+      $assetManagerClipboard.set({
+        operation: "copy",
+        items: [{ type: "asset", id: asset.id }],
+        projectId: "project",
+      });
+    });
+    const container = renderManager();
+    const button = getOptions(container).at(-1)!.button;
+    act(() => button.focus());
+
+    keyDown(button, "v", { metaKey: true });
+
+    expect($assets.get()).toHaveLength(2);
+    expect(container.querySelector('[role="status"]')?.textContent).toBe(
+      "1 item pasted into Root."
+    );
+  });
+
+  test.each(["Backspace", "Delete"])(
+    "%s opens confirmation for the focused item",
+    (key) => {
+      const asset = createAsset("asset");
+      act(() => $assets.set(new Map([[asset.id, asset]])));
+      const container = renderManager();
+      const button = getOptions(container).at(-1)!.button;
+      act(() => button.focus());
+
+      keyDown(button, key);
+
+      expect(document.body.textContent).toContain("Delete 1 selected item?");
+      expect(document.activeElement?.textContent).toBe("Delete");
+      expect($assets.get()).toHaveLength(1);
+    }
+  );
+
+  test("does not expose the delete shortcut in view mode", () => {
+    const asset = createAsset("asset");
+    act(() => {
+      $assets.set(new Map([[asset.id, asset]]));
+      $authPermit.set("view");
+    });
+    const container = renderManager(false);
+    const button = getOptions(container).at(-1)!.button;
+    act(() => button.focus());
+
+    keyDown(button, "Delete");
+
+    expect(document.body.textContent).not.toContain("Delete selected items");
+    expect($assets.get()).toHaveLength(1);
+  });
+
+  test("leaves native editing shortcuts available in the search field", () => {
+    const container = renderManager();
+    const search = container.querySelector<HTMLInputElement>("input")!;
+    act(() => search.focus());
+
+    keyDown(search, "c", { metaKey: true });
+    keyDown(search, "x", { ctrlKey: true });
+    keyDown(search, "Backspace");
+
+    expect($assetManagerClipboard.get()).toBeUndefined();
+    expect(document.body.textContent).not.toContain("Delete selected items");
+  });
+});

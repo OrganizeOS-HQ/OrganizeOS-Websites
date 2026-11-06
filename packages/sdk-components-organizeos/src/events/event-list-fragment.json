@@ -81,7 +81,8 @@
       "children": [
         {
           "type": "expression",
-          "value": "$ws$dataSource$1.title"
+          "value": "$ws$dataSource$1.title",
+          "mode": "read"
         }
       ],
       "label": "Title",
@@ -101,7 +102,8 @@
       "children": [
         {
           "type": "expression",
-          "value": "$ws$dataSource$1.location_name"
+          "value": "$ws$dataSource$1.location_name",
+          "mode": "read"
         }
       ],
       "label": "Place",
@@ -163,35 +165,40 @@
       "instanceId": "3",
       "name": "src",
       "type": "expression",
-      "value": "$ws$dataSource$1.cover_image_url"
+      "value": "$ws$dataSource$1.cover_image_url",
+      "mode": "read"
     },
     {
       "id": "3:alt",
       "instanceId": "3",
       "name": "alt",
       "type": "expression",
-      "value": "$ws$dataSource$1.title"
+      "value": "$ws$dataSource$1.title",
+      "mode": "read"
     },
     {
       "id": "3:data-ws-show",
       "instanceId": "3",
       "name": "data-ws-show",
       "type": "expression",
-      "value": "($ws$dataSource$1.cover_image_url ?? \"\") !== \"\""
+      "value": "($ws$dataSource$1.cover_image_url ?? \"\") !== \"\"",
+      "mode": "read"
     },
     {
       "id": "5:datetime",
       "instanceId": "5",
       "name": "datetime",
       "type": "expression",
-      "value": "$ws$dataSource$1.start_time"
+      "value": "$ws$dataSource$1.start_time",
+      "mode": "read"
     },
     {
       "id": "5:timeZone",
       "instanceId": "5",
       "name": "timeZone",
       "type": "expression",
-      "value": "$ws$dataSource$1.timezone"
+      "value": "$ws$dataSource$1.timezone",
+      "mode": "read"
     },
     {
       "id": "5:dateStyle",
@@ -226,14 +233,16 @@
       "instanceId": "6",
       "name": "data-ws-show",
       "type": "expression",
-      "value": "($ws$dataSource$1.location_name ?? \"\") !== \"\""
+      "value": "($ws$dataSource$1.location_name ?? \"\") !== \"\"",
+      "mode": "read"
     },
     {
       "id": "7:href",
       "instanceId": "7",
       "name": "href",
       "type": "expression",
-      "value": "\"/events/\" + $ws$dataSource$1.slug"
+      "value": "\"/events/\" + $ws$dataSource$1.slug",
+      "mode": "read"
     },
     {
       "id": "7:reloadDocument",

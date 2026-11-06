@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import type { Page, Pages } from "@webstudio-is/sdk";
-import { serializePages } from "@webstudio-is/project-build/index.server";
+import { serializePages } from "@webstudio-is/project-build/persistence";
 
 // OrganizeOS fork: the builder's sitemap reads each page's
 // excludePageFromSearch as upstream does since webstudio-is/webstudio#6614,

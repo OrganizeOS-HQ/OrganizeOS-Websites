@@ -1,0 +1,326 @@
+import type { StyleProperty, StyleValue } from "@webstudio-is/css-engine";
+import { parseCssValue } from "@webstudio-is/css-data";
+import type {
+  Instance,
+  Styles,
+  StyleDecl,
+  StyleSource,
+  StyleSources,
+  StyleSourceSelection,
+  StyleSourceSelections,
+} from "@webstudio-is/sdk";
+
+export const getUniqueNameWithSuffix = (
+  name: string,
+  existingNames: Iterable<string>
+) => {
+  const prefix = `${name}-`;
+  let maxCounter = 0;
+  for (const existingName of existingNames) {
+    if (existingName === name) {
+      continue;
+    }
+    if (existingName.startsWith(prefix) === false) {
+      continue;
+    }
+    const suffix = existingName.slice(prefix.length);
+    const counter = Number(suffix);
+    if (
+      Number.isInteger(counter) &&
+      counter > 0 &&
+      String(counter) === suffix
+    ) {
+      maxCounter = Math.max(maxCounter, counter);
+    }
+  }
+  return `${name}-${maxCounter + 1}`;
+};
+
+export const traverseStyleValue = (
+  value: StyleValue,
+  callback: (value: StyleValue) => void
+) => {
+  callback(value);
+  switch (value.type) {
+    case "var":
+      if (value.fallback) {
+        traverseStyleValue(value.fallback, callback);
+      }
+      return;
+    case "function":
+      traverseStyleValue(value.args, callback);
+      return;
+    case "tuple":
+    case "layers":
+      for (const item of value.value) {
+        traverseStyleValue(item, callback);
+      }
+      return;
+    case "shadow":
+      traverseStyleValue(value.offsetX, callback);
+      traverseStyleValue(value.offsetY, callback);
+      if (value.blur) {
+        traverseStyleValue(value.blur, callback);
+      }
+      if (value.spread) {
+        traverseStyleValue(value.spread, callback);
+      }
+      if (value.color) {
+        traverseStyleValue(value.color, callback);
+      }
+      return;
+    case "color":
+      if (typeof value.alpha === "object") {
+        traverseStyleValue(value.alpha, callback);
+      }
+      return;
+    case "fontFamily":
+    case "image":
+    case "unit":
+    case "keyword":
+    case "unparsed":
+    case "invalid":
+    case "unset":
+    case "rgb":
+    case "guaranteedInvalid":
+      return;
+  }
+  value satisfies never;
+};
+
+export const collectFontFamiliesFromStyleValue = (value: StyleValue) => {
+  const fontFamilies = new Set<string>();
+  traverseStyleValue(value, (item) => {
+    if (item.type === "fontFamily") {
+      for (const fontFamily of item.value) {
+        fontFamilies.add(fontFamily);
+      }
+    }
+  });
+  return fontFamilies;
+};
+
+export const collectFontFamiliesFromStyleDecls = <
+  Declaration extends Pick<StyleDecl, "value"> &
+    Partial<Pick<StyleDecl, "property">>,
+>(
+  styles: Iterable<Declaration>,
+  onFamily?: (
+    family: string,
+    styleDecl: Declaration,
+    fromVariable: boolean
+  ) => void
+) => {
+  const fontFamilies = new Set<string>();
+  const customProperties = new Map<string, StyleValue[]>();
+  const declarations = Array.from(styles);
+  for (const styleDecl of declarations) {
+    if (styleDecl.property?.startsWith("--")) {
+      const values = customProperties.get(styleDecl.property) ?? [];
+      values.push(styleDecl.value);
+      customProperties.set(styleDecl.property, values);
+    }
+  }
+
+  for (const styleDecl of declarations) {
+    const families = new Map<string, boolean>();
+    const addFamily = (family: string, fromVariable: boolean) => {
+      families.set(family, fromVariable || families.get(family) === true);
+    };
+    if (styleDecl.property === "fontFamily") {
+      const visitedVariables = new Set<string>();
+      const collectFromVariable = (
+        value: StyleValue,
+        fromVariable: boolean
+      ) => {
+        traverseStyleValue(value, (item) => {
+          if (item.type === "fontFamily") {
+            for (const family of item.value) {
+              addFamily(family, fromVariable);
+            }
+          }
+          if (item.type === "unparsed") {
+            const parsed = parseCssValue("font-family", item.value);
+            if (parsed.type !== "unparsed") {
+              collectFromVariable(parsed, fromVariable);
+            }
+          }
+          if (item.type === "var") {
+            const name = `--${item.value}`;
+            if (visitedVariables.has(name)) {
+              return;
+            }
+            visitedVariables.add(name);
+            for (const definition of customProperties.get(name) ?? []) {
+              collectFromVariable(definition, true);
+            }
+          }
+        });
+      };
+      collectFromVariable(styleDecl.value, false);
+    } else {
+      for (const family of collectFontFamiliesFromStyleValue(styleDecl.value)) {
+        addFamily(family, false);
+      }
+    }
+    for (const [family, fromVariable] of families) {
+      fontFamilies.add(family);
+      onFamily?.(family, styleDecl, fromVariable);
+    }
+  }
+  return fontFamilies;
+};
+
+const gridPlacementProperties: ReadonlySet<StyleProperty> = new Set([
+  "gridColumnStart",
+  "gridColumnEnd",
+  "gridRowStart",
+  "gridRowEnd",
+]);
+
+export const isAutoGridPlacement = ({
+  styles,
+  styleSources,
+  styleSourceSelections,
+  instanceId,
+}: {
+  styles: Styles;
+  styleSources: StyleSources;
+  styleSourceSelections: StyleSourceSelections;
+  instanceId: Instance["id"];
+}): boolean => {
+  const selection = styleSourceSelections.get(instanceId);
+  if (selection === undefined) {
+    return true;
+  }
+  const localIds = new Set<StyleSource["id"]>();
+  for (const id of selection.values) {
+    if (styleSources.get(id)?.type === "local") {
+      localIds.add(id);
+    }
+  }
+  if (localIds.size === 0) {
+    return true;
+  }
+  for (const styleDecl of styles.values()) {
+    if (localIds.has(styleDecl.styleSourceId) === false) {
+      continue;
+    }
+    if (gridPlacementProperties.has(styleDecl.property) === false) {
+      continue;
+    }
+    if (
+      styleDecl.value.type === "keyword" &&
+      styleDecl.value.value === "auto"
+    ) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+};
+
+export const resetGridChildPlacement = ({
+  styles,
+  styleSources,
+  styleSourceSelections,
+  instanceId,
+}: {
+  styles: Styles;
+  styleSources: StyleSources;
+  styleSourceSelections: StyleSourceSelections;
+  instanceId: Instance["id"];
+}) => {
+  const selection = styleSourceSelections.get(instanceId);
+  if (selection === undefined) {
+    return;
+  }
+  const localIds = new Set<StyleSource["id"]>();
+  for (const id of selection.values) {
+    if (styleSources.get(id)?.type === "local") {
+      localIds.add(id);
+    }
+  }
+  for (const [key, styleDecl] of styles) {
+    if (localIds.has(styleDecl.styleSourceId) === false) {
+      continue;
+    }
+    if (gridPlacementProperties.has(styleDecl.property)) {
+      styles.delete(key);
+    }
+  }
+};
+
+export const serializeStyleDeclarations = ({
+  styles,
+  styleSources,
+  styleSourceSelections,
+  instanceIds,
+  breakpoint,
+  state,
+  property,
+  propertyFilter,
+  includeTokens,
+}: {
+  styles: Iterable<StyleDecl>;
+  styleSources: Iterable<StyleSource>;
+  styleSourceSelections: Iterable<StyleSourceSelection>;
+  instanceIds?: Set<Instance["id"]>;
+  breakpoint?: string;
+  state?: string;
+  property?: string;
+  propertyFilter?: string;
+  includeTokens?: boolean;
+}) => {
+  const sourceById = new Map(
+    Array.from(styleSources, (styleSource) => [styleSource.id, styleSource])
+  );
+  const selectionsBySource = new Map<StyleSource["id"], Instance["id"][]>();
+  for (const selection of styleSourceSelections) {
+    for (const styleSourceId of selection.values) {
+      const list = selectionsBySource.get(styleSourceId) ?? [];
+      list.push(selection.instanceId);
+      selectionsBySource.set(styleSourceId, list);
+    }
+  }
+
+  const declarations = [];
+  for (const styleDecl of styles) {
+    if (breakpoint !== undefined && styleDecl.breakpointId !== breakpoint) {
+      continue;
+    }
+    if (state !== undefined && styleDecl.state !== state) {
+      continue;
+    }
+    if (property !== undefined && styleDecl.property !== property) {
+      continue;
+    }
+    if (
+      propertyFilter !== undefined &&
+      styleDecl.property.includes(propertyFilter) === false
+    ) {
+      continue;
+    }
+    const source = sourceById.get(styleDecl.styleSourceId);
+    if (source?.type === "token" && includeTokens !== true) {
+      continue;
+    }
+    const selectedInstanceIds =
+      selectionsBySource.get(styleDecl.styleSourceId) ?? [];
+    for (const instanceId of selectedInstanceIds) {
+      if (instanceIds !== undefined && instanceIds.has(instanceId) === false) {
+        continue;
+      }
+      declarations.push({
+        instanceId,
+        styleSourceId: styleDecl.styleSourceId,
+        property: styleDecl.property,
+        value: styleDecl.value,
+        breakpoint: styleDecl.breakpointId,
+        state: styleDecl.state,
+        source: source?.type ?? "local",
+      });
+    }
+  }
+  return declarations;
+};

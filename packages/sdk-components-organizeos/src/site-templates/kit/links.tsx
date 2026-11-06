@@ -1,9 +1,5 @@
-import {
-  $,
-  PageValue,
-  css,
-  type TemplateStyleDecl,
-} from "@webstudio-is/template";
+import { PageValue, css, type TemplateStyleDecl } from "@webstudio-is/template";
+import { $ } from "../../shared/proxy";
 import { type PlatformPath, isPlatformPath } from "../platform-paths";
 import type { PageContext } from "../types";
 import {

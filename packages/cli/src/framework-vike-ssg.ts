@@ -1,80 +1,121 @@
-import { join } from "node:path";
-import { readFile, rm } from "node:fs/promises";
-import { isPathnamePattern, type WsComponentMeta } from "@webstudio-is/sdk";
-import * as baseComponentMetas from "@webstudio-is/sdk-components-react/metas";
-import * as radixComponentMetas from "@webstudio-is/sdk-components-react-radix/metas";
-import type { Framework } from "./framework";
+import { join, relative } from "node:path";
+import { readFile, readdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { isPathnamePattern, matchPathnameParams } from "@webstudio-is/sdk";
+import {
+  baseComponentImportSource,
+  createFrameworkComponentRegistry,
+} from "@webstudio-is/sdk-components-registry/framework";
+import {
+  cleanupFrameworkTemplates,
+  getFrameworkTemplatesDirectory,
+  type Framework,
+  type FrameworkOptions,
+} from "./framework";
 
 const generateVikeRoute = (pagePath: string) => {
   if (pagePath === "/") {
     return "index";
   }
-  return pagePath;
+  let route = pagePath;
+  const matches = [...matchPathnameParams(pagePath)].reverse();
+  for (const match of matches) {
+    const name = match.groups?.name;
+    if (name === undefined || match.index === undefined) {
+      continue;
+    }
+    route = `${route.slice(0, match.index)}@${name}${route.slice(match.index + match[0].length)}`;
+  }
+  return route;
 };
 
-export const createFramework = async (): Promise<Framework> => {
-  const routeTemplatesDir = join("app", "route-templates");
+const generateVikeTextRoute = (pagePath: string) =>
+  `text-${createHash("sha256").update(pagePath).digest("hex")}`;
 
-  const htmlPageTemplate = await readFile(
-    join(routeTemplatesDir, "html", "+Page.tsx"),
-    "utf8"
+const readTemplates = async (directory: string) => {
+  const entries = await readdir(directory, {
+    recursive: true,
+    withFileTypes: true,
+  });
+  return Object.fromEntries(
+    await Promise.all(
+      entries
+        .filter((entry) => entry.isFile())
+        .map(async (entry) => {
+          const file = join(entry.parentPath, entry.name);
+          // Raw code placeholders use .template to stay out of typechecking.
+          return [
+            relative(directory, file).replace(/\.template$/, ""),
+            await readFile(file, "utf8"),
+          ] as const;
+        })
+    )
   );
-  const htmlHeadTemplate = await readFile(
-    join(routeTemplatesDir, "html", "+Head.tsx"),
-    "utf8"
-  );
-  const htmlDataTemplate = await readFile(
-    join(routeTemplatesDir, "html", "+data.ts"),
-    "utf8"
-  );
+};
+
+export const createFramework = async (
+  options: FrameworkOptions = {}
+): Promise<Framework> => {
+  const templatesDirectory = getFrameworkTemplatesDirectory(options);
+  const [sharedTemplates, htmlTemplates, textTemplates, dynamicTemplates] =
+    await Promise.all(
+      ["shared", "html", "text", "dynamic"].map((directory) =>
+        readTemplates(join(templatesDirectory, directory))
+      )
+    );
+
+  const getRouteTemplates = (
+    type: "html" | "text",
+    pagePath: string,
+    prerenderPaths: readonly string[] = []
+  ) => {
+    const route =
+      type === "html"
+        ? generateVikeRoute(pagePath)
+        : generateVikeTextRoute(pagePath);
+    const templates = {
+      ...sharedTemplates,
+      ...(type === "html" ? htmlTemplates : textTemplates),
+      ...(isPathnamePattern(pagePath) ? dynamicTemplates : {}),
+    };
+    return Object.entries(templates).map(([file, template]) => ({
+      file: join("pages", route, file),
+      template: template
+        .replaceAll("__PAGE_PATH__", () => JSON.stringify(pagePath))
+        .replaceAll("__PRERENDER_PATHS__", () =>
+          JSON.stringify(prerenderPaths)
+        ),
+    }));
+  };
 
   // cleanup route templates after reading to not bloat generated code
-  await rm(routeTemplatesDir, { recursive: true, force: true });
+  await cleanupFrameworkTemplates(options);
 
-  const base = "@webstudio-is/sdk-components-react/components";
-  const reactRadix = "@webstudio-is/sdk-components-react-radix";
-  const components: Record<string, string> = {};
-  const metas: Record<string, WsComponentMeta> = {};
-  for (const [name, meta] of Object.entries(baseComponentMetas)) {
-    components[name] = `${base}:${name}`;
-    metas[name] = meta;
-  }
-  for (const [name, meta] of Object.entries(radixComponentMetas)) {
-    components[`${reactRadix}:${name}`] = `${reactRadix}:${name}`;
-    metas[`${reactRadix}:${name}`] = meta;
-  }
+  const { components, metas, buildHooks } = createFrameworkComponentRegistry();
 
   return {
     metas,
     components,
+    componentBuildHooks: buildHooks,
     tags: {
-      textarea: `${base}:Textarea`,
-      input: `${base}:Input`,
-      select: `${base}:Select`,
-      a: `${base}:Link`,
+      textarea: `${baseComponentImportSource}:Textarea`,
+      input: `${baseComponentImportSource}:Input`,
+      select: `${baseComponentImportSource}:Select`,
+      a: `${baseComponentImportSource}:Link`,
     },
-    html: ({ pagePath }: { pagePath: string }) => {
-      // ignore dynamic pages in static export
-      if (isPathnamePattern(pagePath)) {
+    html: ({ pagePath, prerenderPaths = [] }) => {
+      if (pagePath === "/*") {
         return [];
       }
-      return [
-        {
-          file: join("pages", generateVikeRoute(pagePath), "+Page.tsx"),
-          template: htmlPageTemplate,
-        },
-        {
-          file: join("pages", generateVikeRoute(pagePath), "+Head.tsx"),
-          template: htmlHeadTemplate,
-        },
-        {
-          file: join("pages", generateVikeRoute(pagePath), "+data.ts"),
-          template: htmlDataTemplate,
-        },
-      ];
+      const dynamic = isPathnamePattern(pagePath);
+      if (dynamic && prerenderPaths.length === 0) {
+        return [];
+      }
+      return getRouteTemplates("html", pagePath, prerenderPaths);
     },
     xml: () => [],
-    text: () => [],
+    text: ({ pagePath }) =>
+      isPathnamePattern(pagePath) ? [] : getRouteTemplates("text", pagePath),
     defaultSitemap: () => [],
   };
 };

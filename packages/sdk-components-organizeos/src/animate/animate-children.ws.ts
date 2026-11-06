@@ -1,5 +1,6 @@
 import { AnimationGroupIcon } from "@webstudio-is/icons/svg";
 import type { WsComponentMeta } from "@webstudio-is/sdk";
+import { canPlayOnCanvasProperty } from "./flag";
 
 export const meta: WsComponentMeta = {
   category: "hidden",
@@ -9,6 +10,14 @@ export const meta: WsComponentMeta = {
   contentModel: {
     category: "instance",
     children: ["instance"],
+  },
+  // the canvas play flag: plays on the canvas while it, or an instance
+  // inside it, is selected (spec 4.5, 14.9)
+  selectionReveal: {
+    type: "fixed",
+    ancestor: "self",
+    prop: canPlayOnCanvasProperty,
+    value: true,
   },
   // a wrapper that keeps the layout of what it wraps (spec decision 7)
   presetStyle: {

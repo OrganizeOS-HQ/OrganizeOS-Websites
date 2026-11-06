@@ -1,9 +1,9 @@
-import { z } from "zod";
 import { useId, useState, useEffect } from "react";
 import { useStore } from "@nanostores/react";
 import {
   Grid,
   InputField,
+  InfoTooltip,
   Label,
   theme,
   Text,
@@ -11,24 +11,20 @@ import {
   Button,
   css,
   Flex,
-  Tooltip,
-  InputErrorsTooltip,
-  ProBadge,
-  TextArea,
   IconButton,
+  cssVar,
 } from "@webstudio-is/design-system";
-import { CopyIcon, InfoCircleIcon } from "@webstudio-is/icons";
-import { Image, wsImageLoader } from "@webstudio-is/image";
+import { CopyIcon } from "@webstudio-is/icons";
+import { getImageAttributes, wsImageLoader } from "@webstudio-is/image";
 import type { ProjectMeta } from "@webstudio-is/sdk";
 import { ImageControl } from "./image-control";
 import { $assets, $project } from "~/shared/sync/data-stores";
-import { $permissions } from "~/shared/nano-states";
-import { $pages } from "~/shared/sync/data-stores";
-import { serverSyncStore } from "~/shared/sync/sync-stores";
+import { $projectSettings } from "~/shared/sync/data-stores";
 import { sectionSpacing } from "./utils";
 import { CodeEditor } from "~/shared/code-editor";
 import { CopyToClipboard } from "~/shared/copy-to-clipboard";
-import { planBadgeLabel, platformName } from "~/shared/branding";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
+import { platformName } from "~/shared/branding";
 import { orgScriptMayRun } from "@organizeos/site-components/org-script";
 
 const imgStyle = css({
@@ -38,76 +34,41 @@ const imgStyle = css({
   borderRadius: theme.borderRadius[4],
   borderWidth: 1,
   borderStyle: "solid",
-  borderColor: theme.colors.borderMain,
+  borderColor: cssVar("--border-default"),
 });
 
 const defaultMetaSettings: ProjectMeta = {
   siteName: "",
-  contactEmail: "",
   faviconAssetId: "",
   code: "",
-};
-
-const emailAddress = z.string().email();
-
-const validateContactEmail = (
-  contactEmail: string,
-  maxContactEmailsPerProject: number
-) => {
-  contactEmail = contactEmail.trim();
-  if (contactEmail.length === 0) {
-    return;
-  }
-  const emails = contactEmail.split(/\s*,\s*/);
-  if (emails.length > maxContactEmailsPerProject) {
-    if (maxContactEmailsPerProject === 0) {
-      return `Customizing the contact email is not included in your plan.`;
-    }
-    return `Only ${maxContactEmailsPerProject} emails are allowed.`;
-  }
-  if (
-    emails.every((email) => emailAddress.safeParse(email).success) === false
-  ) {
-    return "Contact email is invalid.";
-  }
 };
 
 const saveSetting = <Name extends keyof ProjectMeta>(
   name: keyof ProjectMeta,
   value: ProjectMeta[Name]
 ) => {
-  serverSyncStore.createTransaction([$pages], (pages) => {
-    if (pages === undefined) {
-      return;
-    }
-    if (pages.meta === undefined) {
-      pages.meta = {};
-    }
-    pages.meta[name] = value;
+  executeRuntimeMutation({
+    id: "projectSettings.update",
+    input: { meta: { [name]: value } },
   });
 };
 
 export const SectionGeneral = ({ projectId }: { projectId?: string }) => {
-  const { maxContactEmailsPerProject } = useStore($permissions);
-  const allowContactEmail = maxContactEmailsPerProject > 0;
-  const pages = useStore($pages);
+  const projectSettings = useStore($projectSettings);
   const project = useStore($project);
   const assets = useStore($assets);
-  const [meta, setMeta] = useState(() => pages?.meta ?? defaultMetaSettings);
-  const siteNameId = useId();
-  const contactEmailId = useId();
-
-  // Update meta when pages data loads (important for dashboard mode)
-  useEffect(() => {
-    if (pages?.meta) {
-      setMeta(pages.meta);
-    }
-  }, [pages?.meta]);
-
-  const contactEmailError = validateContactEmail(
-    meta.contactEmail ?? "",
-    maxContactEmailsPerProject
+  const [meta, setMeta] = useState(
+    () => projectSettings?.meta ?? defaultMetaSettings
   );
+  const siteNameId = useId();
+
+  // Update meta when project settings load (important for dashboard mode)
+  useEffect(() => {
+    if (projectSettings?.meta) {
+      setMeta(projectSettings.meta);
+    }
+  }, [projectSettings?.meta]);
+
   const asset = assets.get(meta.faviconAssetId ?? "");
   const favIconUrl = asset ? `${asset.name}` : undefined;
 
@@ -144,16 +105,14 @@ export const SectionGeneral = ({ projectId }: { projectId?: string }) => {
       <Grid gap={1} css={sectionSpacing}>
         <Flex gap={1} align="center">
           <Label htmlFor={siteNameId}>Site name</Label>
-          <Tooltip
-            variant="wrapped"
+          <InfoTooltip
+            label="About site name"
             content="Used in search results and social previews."
-          >
-            <InfoCircleIcon tabIndex={0} />
-          </Tooltip>
+          />
         </Flex>
         <InputField
           id={siteNameId}
-          placeholder="Current Site Name"
+          placeholder="Current site name"
           autoFocus={true}
           value={meta.siteName ?? ""}
           onChange={(event) => {
@@ -162,51 +121,17 @@ export const SectionGeneral = ({ projectId }: { projectId?: string }) => {
         />
       </Grid>
 
-      <Grid gap={1} css={sectionSpacing}>
-        <Flex gap={1} align="center">
-          <Label htmlFor={contactEmailId}>Contact email</Label>
-          <Tooltip
-            variant="wrapped"
-            content="Used as the email recipient when submitting a webhook form without an action."
-          >
-            <InfoCircleIcon tabIndex={0} />
-          </Tooltip>
-          {allowContactEmail === false && <ProBadge>{planBadgeLabel}</ProBadge>}
-        </Flex>
-        <InputErrorsTooltip
-          errors={contactEmailError ? [contactEmailError] : undefined}
-        >
-          <TextArea
-            id={contactEmailId}
-            color={contactEmailError ? "error" : undefined}
-            placeholder="john@company.com, jane@company.com"
-            autoGrow={true}
-            rows={1}
-            value={meta.contactEmail ?? ""}
-            onChange={(value) => {
-              setMeta({ ...meta, contactEmail: value });
-              if (
-                validateContactEmail(value, maxContactEmailsPerProject) ===
-                undefined
-              ) {
-                saveSetting("contactEmail", value);
-              }
-            }}
-          />
-        </InputErrorsTooltip>
-      </Grid>
-
-      <Separator />
-
       <Grid gap={2} css={sectionSpacing} justify={"start"}>
         <Label>Favicon</Label>
         <Grid flow="column" gap={3}>
-          <Image
-            width={72}
-            height={72}
+          <img
             className={imgStyle()}
-            src={favIconUrl}
-            loader={wsImageLoader}
+            {...getImageAttributes({
+              width: 72,
+              height: 72,
+              src: favIconUrl,
+              loader: wsImageLoader,
+            })}
           />
 
           <Grid gap={2}>
@@ -214,7 +139,9 @@ export const SectionGeneral = ({ projectId }: { projectId?: string }) => {
               Upload a square image to display in browser tabs.
             </Text>
             <ImageControl onAssetIdChange={handleSave("faviconAssetId")}>
-              <Button css={{ justifySelf: "start" }}>Upload</Button>
+              <Button color="primary" css={{ justifySelf: "start" }}>
+                Upload
+              </Button>
             </ImageControl>
           </Grid>
         </Grid>

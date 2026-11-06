@@ -1,14 +1,70 @@
 import type { SignatureV4 } from "@smithy/signature-v4";
-import { getS3ObjectUrl } from "./object-url";
+import {
+  type AssetObjectStore,
+  type AssetReadRange,
+  validateAssetReadRange,
+} from "../../client";
+import { createS3ObjectUrl } from "./object-url";
+import { createS3FetchHeaders, signS3Request } from "./request-headers";
+
+export const readFromS3 = async ({
+  signer,
+  name,
+  range,
+  endpoint,
+  bucket,
+}: {
+  signer: SignatureV4;
+  name: string;
+  range?: AssetReadRange;
+  endpoint: string;
+  bucket: string;
+}): ReturnType<AssetObjectStore["readFile"]> => {
+  if (range !== undefined) {
+    validateAssetReadRange(range);
+  }
+  const url = createS3ObjectUrl({ endpoint, bucket, key: name });
+  const headers = {
+    "x-amz-content-sha256": "UNSIGNED-PAYLOAD",
+    ...(range === undefined
+      ? {}
+      : { Range: `bytes=${range.offset}-${range.offset + range.length - 1}` }),
+  };
+  const request = await signS3Request({
+    signer,
+    url,
+    method: "GET",
+    headers,
+  });
+  const response = await fetch(url, {
+    method: request.method,
+    headers: createS3FetchHeaders(request.headers),
+  });
+  if (response.ok === false || response.body === null) {
+    throw new Error("Cannot read asset file");
+  }
+  if (range !== undefined && response.status !== 206) {
+    throw new Error("Asset storage did not honor the requested range");
+  }
+  const contentLengthHeader = response.headers.get("content-length");
+  const contentLength = Number(contentLengthHeader);
+  return {
+    data: response.body as unknown as AsyncIterable<Uint8Array>,
+    ...(contentLengthHeader !== null && Number.isFinite(contentLength)
+      ? { contentLength }
+      : {}),
+  };
+};
 
 /**
- * Fetches an uploaded file with a signed GET, so the bucket can stay private.
+ * Fetches an uploaded file with a signed GET, so the bucket can stay private,
+ * and returns storage's answer for the /cgi routes to stream back.
  *
  * Resolves to undefined when storage has no such object and throws on any
  * other storage error, so a caller never forwards the provider's error body.
  * A 206 or 416 answer to `range` is returned as is.
  */
-export const readFromS3 = async ({
+export const readResponseFromS3 = async ({
   signer,
   name,
   endpoint,
@@ -21,22 +77,14 @@ export const readFromS3 = async ({
   bucket: string;
   range?: string;
 }): Promise<Response | undefined> => {
-  const url = getS3ObjectUrl({ endpoint, bucket, name });
-
-  const s3Request = await signer.sign({
+  const url = createS3ObjectUrl({ endpoint, bucket, key: name });
+  const request = await signS3Request({
+    signer,
+    url,
     method: "GET",
-    protocol: url.protocol,
-    hostname: url.hostname,
-    path: url.pathname,
-    headers: {
-      // signed like the AWS SDKs do; fetch derives the same value from the URL
-      host: url.host,
-      ...(range === undefined ? {} : { range }),
-    },
+    headers: range === undefined ? {} : { range },
   });
-
-  const headers = new Headers(s3Request.headers);
-  headers.delete("host");
+  const headers = createS3FetchHeaders(request.headers);
   // left unsigned: proxies in front of storage may rewrite it
   headers.set("accept-encoding", "identity");
 

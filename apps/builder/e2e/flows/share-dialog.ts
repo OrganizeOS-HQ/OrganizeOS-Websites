@@ -1,4 +1,4 @@
-import type { Locator, Page } from "playwright";
+import type { Locator, Page } from "@playwright/test";
 
 type ShareRole = "Viewer" | "Editor" | "Builder" | "Admin";
 
@@ -31,15 +31,25 @@ const waitForShareLinksIdle = async ({ page }: { page: Page }) => {
   );
 };
 
-const waitForShareLinkMutation = async ({ page }: { page: Page }) => {
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[role="region"][aria-label="Share links"]')
-        ?.getAttribute("aria-busy") === "true",
-    undefined,
-    { timeout: 2_000 }
-  );
+const saveShareLinkOptions = async ({
+  page,
+  closeOptions,
+}: {
+  page: Page;
+  closeOptions: () => Promise<void>;
+}) => {
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.url().includes("/trpc/authorizationToken.update") &&
+        response.request().method() === "POST",
+      { timeout: 10_000 }
+    ),
+    closeOptions(),
+  ]);
+  if (!response.ok()) {
+    throw new Error(`Share-link update failed: ${response.status()}`);
+  }
   await waitForShareLinksIdle({ page });
 };
 
@@ -107,29 +117,45 @@ export const createShareLink = async ({
 
   const customLink = getShareLinkGroup({ page, name: "Custom link" });
   await customLink.waitFor({ state: "visible", timeout: 10_000 });
-  await customLink
-    .getByRole("button", { name: "Menu Button for options" })
-    .click();
+  await customLink.getByRole("button", { name: "Options menu" }).click();
   const customLinkOptions = getShareLinkOptions({
     page,
     name: "Custom link",
   });
-  await customLinkOptions.getByLabel("Name").fill(name);
-  await page.keyboard.press("Enter");
-  await waitForShareLinkMutation({ page });
+  const nameInput = customLinkOptions.getByLabel("Name");
+  await nameInput.fill(name);
+  await saveShareLinkOptions({
+    page,
+    closeOptions: () =>
+      customLink.getByRole("button", { name: "Options menu" }).click(),
+  });
 
   const renamedLink = getShareLinkGroup({ page, name });
-  await renamedLink.waitFor({ state: "visible", timeout: 10_000 });
-  await renamedLink
-    .getByRole("button", { name: "Menu Button for options" })
-    .click();
+  try {
+    await renamedLink.waitFor({ state: "visible", timeout: 10_000 });
+  } catch (error) {
+    const shareLinkLabels = await page
+      .locator('[role="group"][aria-label^="Share link "]')
+      .evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute("aria-label"))
+      );
+    const isBusy = await getShareLinksRegion(page).getAttribute("aria-busy");
+    throw new Error(
+      `Expected renamed share link "${name}" to be visible. aria-busy=${isBusy}; links=${shareLinkLabels.join(", ")}`,
+      { cause: error }
+    );
+  }
+  await renamedLink.getByRole("button", { name: "Options menu" }).click();
   const renamedLinkOptions = getShareLinkOptions({ page, name });
   const roleChanged = await selectRole({ options: renamedLinkOptions, role });
-  await renamedLink
-    .getByRole("button", { name: "Menu Button for options" })
-    .click();
   if (roleChanged) {
-    await waitForShareLinkMutation({ page });
+    await saveShareLinkOptions({
+      page,
+      closeOptions: () =>
+        renamedLink.getByRole("button", { name: "Options menu" }).click(),
+    });
+  } else {
+    await renamedLink.getByRole("button", { name: "Options menu" }).click();
   }
   await waitForShareLinksReady({ page });
 };
@@ -159,12 +185,17 @@ export const updateShareLinkRole = async ({
   role: ShareRole;
 }) => {
   const group = getShareLinkGroup({ page, name });
-  await group.getByRole("button", { name: "Menu Button for options" }).click();
+  await group.getByRole("button", { name: "Options menu" }).click();
   const options = getShareLinkOptions({ page, name });
   const roleChanged = await selectRole({ options, role });
-  await group.getByRole("button", { name: "Menu Button for options" }).click();
   if (roleChanged) {
-    await waitForShareLinkMutation({ page });
+    await saveShareLinkOptions({
+      page,
+      closeOptions: () =>
+        group.getByRole("button", { name: "Options menu" }).click(),
+    });
+  } else {
+    await group.getByRole("button", { name: "Options menu" }).click();
   }
   await waitForShareLinksReady({ page });
 };

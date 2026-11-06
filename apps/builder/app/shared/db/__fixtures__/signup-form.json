@@ -1,0 +1,314 @@
+{
+  "projectId": "0f1e2d3c-4b5a-4697-8877-665544332211",
+  "apiBaseUrl": "https://app.organizeos.org/api/public/v1",
+  "readToken": "osk_signup_fixture",
+  "bodyId": "10311dfc-be99-5a4e-8a2a-20c9de69aac6",
+  "pageId": "23f26c09-5b28-5b11-b735-00f16989d9c3",
+  "instances": [
+    {
+      "type": "instance",
+      "id": "10311dfc-be99-5a4e-8a2a-20c9de69aac6",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "id",
+          "value": "f04d2493-6548-50ab-9010-33f12754541c"
+        }
+      ],
+      "tag": "body"
+    },
+    {
+      "type": "instance",
+      "id": "f04d2493-6548-50ab-9010-33f12754541c",
+      "component": "ResourceForm",
+      "children": [
+        {
+          "type": "id",
+          "value": "25307391-30c2-59ed-a15a-f4e7202ccaba"
+        },
+        {
+          "type": "id",
+          "value": "28795f54-6f32-51cb-9661-cf45a0523f99"
+        },
+        {
+          "type": "id",
+          "value": "11e81b3a-4dfc-54b2-9a66-0f5bf9d2a5e3"
+        }
+      ]
+    },
+    {
+      "type": "instance",
+      "id": "25307391-30c2-59ed-a15a-f4e7202ccaba",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "id",
+          "value": "2ba2f911-913e-5206-9175-2dbe106b4eb0"
+        },
+        {
+          "type": "id",
+          "value": "c4f16868-f6d7-53d7-b510-23b66cab4ef0"
+        },
+        {
+          "type": "id",
+          "value": "ee3f333c-cba6-5f76-a610-762af6d8def0"
+        },
+        {
+          "type": "id",
+          "value": "06e8f334-6f63-5d55-b04e-40389d7cd5c5"
+        },
+        {
+          "type": "id",
+          "value": "26f94c56-371d-5197-a0f8-b840c7242b42"
+        },
+        {
+          "type": "id",
+          "value": "2ba5854f-76b7-5cbe-a0ae-9392418be0c6"
+        },
+        {
+          "type": "id",
+          "value": "38780207-d41a-5660-a34b-f6ab81608edf"
+        }
+      ],
+      "label": "Form Content",
+      "tag": "div"
+    },
+    {
+      "type": "instance",
+      "id": "2ba2f911-913e-5206-9175-2dbe106b4eb0",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "text",
+          "value": "Email",
+          "placeholder": true
+        }
+      ],
+      "tag": "label"
+    },
+    {
+      "type": "instance",
+      "id": "c4f16868-f6d7-53d7-b510-23b66cab4ef0",
+      "component": "ws:element",
+      "children": [],
+      "tag": "input"
+    },
+    {
+      "type": "instance",
+      "id": "ee3f333c-cba6-5f76-a610-762af6d8def0",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "text",
+          "value": "First name",
+          "placeholder": true
+        }
+      ],
+      "tag": "label"
+    },
+    {
+      "type": "instance",
+      "id": "06e8f334-6f63-5d55-b04e-40389d7cd5c5",
+      "component": "ws:element",
+      "children": [],
+      "tag": "input"
+    },
+    {
+      "type": "instance",
+      "id": "26f94c56-371d-5197-a0f8-b840c7242b42",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "text",
+          "value": "Last name",
+          "placeholder": true
+        }
+      ],
+      "tag": "label"
+    },
+    {
+      "type": "instance",
+      "id": "2ba5854f-76b7-5cbe-a0ae-9392418be0c6",
+      "component": "ws:element",
+      "children": [],
+      "tag": "input"
+    },
+    {
+      "type": "instance",
+      "id": "38780207-d41a-5660-a34b-f6ab81608edf",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "text",
+          "value": "Sign up",
+          "placeholder": true
+        }
+      ],
+      "tag": "button"
+    },
+    {
+      "type": "instance",
+      "id": "28795f54-6f32-51cb-9661-cf45a0523f99",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "text",
+          "value": "Thanks for signing up!",
+          "placeholder": true
+        }
+      ],
+      "label": "Success",
+      "tag": "div"
+    },
+    {
+      "type": "instance",
+      "id": "11e81b3a-4dfc-54b2-9a66-0f5bf9d2a5e3",
+      "component": "ws:element",
+      "children": [
+        {
+          "type": "text",
+          "value": "Something went wrong. Please try again.",
+          "placeholder": true
+        }
+      ],
+      "label": "Error",
+      "tag": "div"
+    }
+  ],
+  "props": [
+    {
+      "id": "f04d2493-6548-50ab-9010-33f12754541c:action",
+      "instanceId": "f04d2493-6548-50ab-9010-33f12754541c",
+      "name": "action",
+      "type": "json",
+      "value": [
+        {
+          "dataSourceId": "12d51c0a-3711-5154-ab28-3e18b1d387da"
+        }
+      ]
+    },
+    {
+      "id": "f04d2493-6548-50ab-9010-33f12754541c:formData",
+      "instanceId": "f04d2493-6548-50ab-9010-33f12754541c",
+      "name": "formData",
+      "type": "parameter",
+      "value": "a92ab264-e22f-545f-a3b0-832dec002e66"
+    },
+    {
+      "id": "f04d2493-6548-50ab-9010-33f12754541c:onStateChange",
+      "instanceId": "f04d2493-6548-50ab-9010-33f12754541c",
+      "name": "onStateChange",
+      "type": "action",
+      "value": [
+        {
+          "type": "execute",
+          "args": ["state"],
+          "code": "$ws$dataSource$eb5374d2__DASH__50af__DASH__5d94__DASH__a6f7__DASH__3a3e9df77098 = state"
+        }
+      ]
+    },
+    {
+      "id": "25307391-30c2-59ed-a15a-f4e7202ccaba:data-ws-show",
+      "instanceId": "25307391-30c2-59ed-a15a-f4e7202ccaba",
+      "name": "data-ws-show",
+      "type": "expression",
+      "value": "$ws$dataSource$eb5374d2__DASH__50af__DASH__5d94__DASH__a6f7__DASH__3a3e9df77098 === 'initial' || $ws$dataSource$eb5374d2__DASH__50af__DASH__5d94__DASH__a6f7__DASH__3a3e9df77098 === 'error'",
+      "mode": "read"
+    },
+    {
+      "id": "c4f16868-f6d7-53d7-b510-23b66cab4ef0:name",
+      "instanceId": "c4f16868-f6d7-53d7-b510-23b66cab4ef0",
+      "name": "name",
+      "type": "string",
+      "value": "email"
+    },
+    {
+      "id": "c4f16868-f6d7-53d7-b510-23b66cab4ef0:type",
+      "instanceId": "c4f16868-f6d7-53d7-b510-23b66cab4ef0",
+      "name": "type",
+      "type": "string",
+      "value": "email"
+    },
+    {
+      "id": "c4f16868-f6d7-53d7-b510-23b66cab4ef0:required",
+      "instanceId": "c4f16868-f6d7-53d7-b510-23b66cab4ef0",
+      "name": "required",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "id": "06e8f334-6f63-5d55-b04e-40389d7cd5c5:name",
+      "instanceId": "06e8f334-6f63-5d55-b04e-40389d7cd5c5",
+      "name": "name",
+      "type": "string",
+      "value": "first_name"
+    },
+    {
+      "id": "2ba5854f-76b7-5cbe-a0ae-9392418be0c6:name",
+      "instanceId": "2ba5854f-76b7-5cbe-a0ae-9392418be0c6",
+      "name": "name",
+      "type": "string",
+      "value": "last_name"
+    },
+    {
+      "id": "28795f54-6f32-51cb-9661-cf45a0523f99:data-ws-show",
+      "instanceId": "28795f54-6f32-51cb-9661-cf45a0523f99",
+      "name": "data-ws-show",
+      "type": "expression",
+      "value": "$ws$dataSource$eb5374d2__DASH__50af__DASH__5d94__DASH__a6f7__DASH__3a3e9df77098 === 'success'",
+      "mode": "read"
+    },
+    {
+      "id": "11e81b3a-4dfc-54b2-9a66-0f5bf9d2a5e3:data-ws-show",
+      "instanceId": "11e81b3a-4dfc-54b2-9a66-0f5bf9d2a5e3",
+      "name": "data-ws-show",
+      "type": "expression",
+      "value": "$ws$dataSource$eb5374d2__DASH__50af__DASH__5d94__DASH__a6f7__DASH__3a3e9df77098 === 'error'",
+      "mode": "read"
+    }
+  ],
+  "dataSources": [
+    {
+      "type": "parameter",
+      "scopeInstanceId": "f04d2493-6548-50ab-9010-33f12754541c",
+      "id": "a92ab264-e22f-545f-a3b0-832dec002e66",
+      "name": "formData"
+    },
+    {
+      "type": "resource",
+      "scopeInstanceId": "f04d2493-6548-50ab-9010-33f12754541c",
+      "id": "12d51c0a-3711-5154-ab28-3e18b1d387da",
+      "name": "Newsletter signup",
+      "resourceId": "resource:12d51c0a-3711-5154-ab28-3e18b1d387da"
+    },
+    {
+      "type": "variable",
+      "scopeInstanceId": "f04d2493-6548-50ab-9010-33f12754541c",
+      "id": "eb5374d2-50af-5d94-a6f7-3a3e9df77098",
+      "name": "formState",
+      "value": {
+        "type": "string",
+        "value": "initial"
+      }
+    }
+  ],
+  "resources": [
+    {
+      "id": "resource:12d51c0a-3711-5154-ab28-3e18b1d387da",
+      "name": "Newsletter signup",
+      "url": "\"https://app.organizeos.org/api/public/v1/signups\"",
+      "method": "post",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "\"application/json\""
+        },
+        {
+          "name": "Authorization",
+          "value": "\"Bearer osk_signup_fixture\""
+        }
+      ],
+      "body": "$ws$dataSource$a92ab264__DASH__e22f__DASH__545f__DASH__a3b0__DASH__832dec002e66"
+    }
+  ]
+}

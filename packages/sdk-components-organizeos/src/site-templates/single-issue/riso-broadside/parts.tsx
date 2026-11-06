@@ -1,4 +1,5 @@
-import { $, type TemplateStyleDecl } from "@webstudio-is/template";
+import { type TemplateStyleDecl } from "@webstudio-is/template";
+import { $ } from "../../../shared/proxy";
 import { type SiteLink, footer, linkProps, nav, sample } from "../../kit";
 import type { PageContext } from "../../types";
 import { LOOK, invertedButtonStyles } from "./styles";

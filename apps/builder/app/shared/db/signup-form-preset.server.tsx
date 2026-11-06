@@ -1,6 +1,5 @@
 import {
   getPagePath,
-  replaceFormActionsWithResources,
   type DataSource,
   type Instance,
   type Pages,
@@ -8,19 +7,20 @@ import {
   type Resource,
   type WebstudioData,
 } from "@webstudio-is/sdk";
-import {
-  parsePages,
-  serializePages,
-} from "@webstudio-is/project-build/index.server";
+import { formDataParameterName } from "@webstudio-is/sdk/runtime";
+import { parsePages, serializePages } from "@webstudio-is/project-build/server";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import {
-  $,
   ws,
   ActionValue,
   expression,
+  FormActionsValue,
+  Parameter,
   PlaceholderValue,
   renderData,
+  ResourceValue,
   Variable,
+  type RenderTemplateOptions,
 } from "@webstudio-is/template";
 import { SIGNUP_PAGE_PATH, uuidV5 } from "../organizeos-preset-ids";
 import {
@@ -33,17 +33,22 @@ import {
  *
  * Builds a Webstudio form whose submit posts to the OrganizeOS /v1/signups
  * write endpoint. The mechanics:
- *  - The Form has a string `action` prop. replaceFormActionsWithResources turns
- *    it into a server-side ACTION resource (a prop of type 'resource' + a
- *    resource keyed by the form instance id). On submit the runtime posts the
- *    form to the page's server action, which overlays the FormData onto the
- *    resource body and runs it SERVER-SIDE, so the Authorization token never
- *    reaches the browser.
+ *  - The form is Webstudio's managed Form, persisted as `ResourceForm` (owner
+ *    decision D15 of the 0.309.0 merge). Its `action` names one Resource,
+ *    scoped to the form, whose body is the form's `formData` parameter. On
+ *    submit the runtime posts the form to the page's server action, which runs
+ *    that Resource SERVER-SIDE, so the Authorization token never reaches the
+ *    browser.
  *  - We inject the org read token into that resource's Authorization header
  *    as a literal expression (evaluated server-side only; see below).
  *  - Input `name` attributes become the JSON body keys, so they MUST match the
  *    /v1/signups schema (email, first_name, last_name).
  *  - A `formState` variable drives initial/success/error visibility.
+ *  - The form is written as `ResourceForm` itself, never as `Form` with
+ *    pages' `formComponentIdentityVersion`: that marker is a historical input
+ *    upstream no longer writes, and on pages it would make 0.309.0 read every
+ *    other stored `Form` of the build (an org's own Webhook Form) as a
+ *    ResourceForm, which its Resource-typed action is not.
  *
  * This module ASSEMBLES the form data (pure, testable), and
  * seedSignupFormPage merges it into the org's dev build as a "Newsletter" page
@@ -63,46 +68,112 @@ export const SIGNUP_FORM_FIELD_NAMES = [
   "last_name",
 ] as const;
 
+/** The name of the form's action Resource, as the builder lists it. */
+export const SIGNUP_RESOURCE_NAME = "Newsletter signup";
+
+/**
+ * The form's ids are `{projectId}:{family}:{n}`, n below SIGNUP_ID_SPACE.
+ *
+ * Its elements and its `formState` variable keep the ids the Form before it
+ * (provisioned before 0.309.0) held under the `signup` family, by role, so
+ * every org's styles, props and children on them carry over to the
+ * ResourceForm. The index of each is its place in that Form's render order:
+ * the Form, then `formState` (its first prop's variable), then its subtree.
+ * Only the records the Form never had, the `formData` parameter, the action
+ * Resource and its data source, take the `signup-form` family.
+ *
+ * A re-seed removes every record under either family that the current form
+ * does not carry (the Form's Resource-typed action and its Resource, its
+ * `state` prop), so nothing of an earlier form is left.
+ */
+const SIGNUP_ID_FAMILY = "signup-form";
+const LEGACY_SIGNUP_ID_FAMILY = "signup";
+const SIGNUP_ID_SPACE = 64;
+
+const SIGNUP_ELEMENT_INDEX = {
+  form: 0,
+  content: 2,
+  emailLabel: 3,
+  emailInput: 4,
+  firstNameLabel: 5,
+  firstNameInput: 6,
+  lastNameLabel: 7,
+  lastNameInput: 8,
+  button: 9,
+  success: 10,
+  error: 11,
+} as const;
+const SIGNUP_FORM_STATE_INDEX = 1;
+
+type SignupElementIds = Record<keyof typeof SIGNUP_ELEMENT_INDEX, string>;
+
+// A server module renders the template without the component libraries:
+// this marker stands for the managed Form, and renderData persists it under
+// its registered id.
+const ResourceForm = (_props: Record<string, unknown>) => null;
+const renderOptions: RenderTemplateOptions = {
+  componentIds: new Map([[ResourceForm, "ResourceForm"]]),
+};
+
 /** The signup form subtree wrapped in a page body. */
-const signupFormTemplate = (actionUrl: string, bodyId: string) => {
+const signupFormTemplate = (bodyId: string, ids: SignupElementIds) => {
   const formState = new Variable("formState", "initial");
+  const formData = new Parameter(formDataParameterName);
+  // url and Authorization are literals, set once the template is rendered.
+  const signup = new ResourceValue(SIGNUP_RESOURCE_NAME, {
+    method: "post",
+    url: expression`""`,
+    headers: [{ name: "Content-Type", value: expression`"application/json"` }],
+    body: expression`${formData}`,
+  });
   return (
     <ws.element ws:tag="body" ws:id={bodyId}>
-      <$.Form
-        action={actionUrl}
-        method="post"
-        state={expression`${formState}`}
+      <ResourceForm
+        ws:id={ids.form}
+        action={new FormActionsValue([signup])}
+        formData={formData}
         onStateChange={
           new ActionValue(["state"], expression`${formState} = state`)
         }
       >
         <ws.element
+          ws:id={ids.content}
           ws:tag="div"
           ws:label="Form Content"
           ws:show={expression`${formState} === 'initial' || ${formState} === 'error'`}
         >
-          <ws.element ws:tag="label">
+          <ws.element ws:id={ids.emailLabel} ws:tag="label">
             {new PlaceholderValue("Email")}
           </ws.element>
           <ws.element
+            ws:id={ids.emailInput}
             ws:tag="input"
             name="email"
             type="email"
             required={true}
           />
-          <ws.element ws:tag="label">
+          <ws.element ws:id={ids.firstNameLabel} ws:tag="label">
             {new PlaceholderValue("First name")}
           </ws.element>
-          <ws.element ws:tag="input" name="first_name" />
-          <ws.element ws:tag="label">
+          <ws.element
+            ws:id={ids.firstNameInput}
+            ws:tag="input"
+            name="first_name"
+          />
+          <ws.element ws:id={ids.lastNameLabel} ws:tag="label">
             {new PlaceholderValue("Last name")}
           </ws.element>
-          <ws.element ws:tag="input" name="last_name" />
-          <ws.element ws:tag="button">
+          <ws.element
+            ws:id={ids.lastNameInput}
+            ws:tag="input"
+            name="last_name"
+          />
+          <ws.element ws:id={ids.button} ws:tag="button">
             {new PlaceholderValue("Sign up")}
           </ws.element>
         </ws.element>
         <ws.element
+          ws:id={ids.success}
           ws:tag="div"
           ws:label="Success"
           ws:show={expression`${formState} === 'success'`}
@@ -110,13 +181,14 @@ const signupFormTemplate = (actionUrl: string, bodyId: string) => {
           {new PlaceholderValue("Thanks for signing up!")}
         </ws.element>
         <ws.element
+          ws:id={ids.error}
           ws:tag="div"
           ws:label="Error"
           ws:show={expression`${formState} === 'error'`}
         >
           {new PlaceholderValue("Something went wrong. Please try again.")}
         </ws.element>
-      </$.Form>
+      </ResourceForm>
     </ws.element>
   );
 };
@@ -131,9 +203,9 @@ export type SignupFormData = {
 };
 
 /**
- * Assemble the signup form: render the template with deterministic ids, convert
- * the form action into a server-side action resource, inject the org token
- * header as a literal. Pure: no I/O (async only because the id derivation is).
+ * Assemble the signup form: render the template with deterministic ids, point
+ * its action resource at /v1/signups and inject the org token header as a
+ * literal. Pure: no I/O (async only because the id derivation is).
  * Deterministic per projectId, so re-seeding converges instead of duplicating.
  */
 export const buildSignupFormData = async ({
@@ -150,38 +222,62 @@ export const buildSignupFormData = async ({
     uuidV5(`${projectId}:signup:body`),
     uuidV5(`${projectId}:signup:page`),
   ]);
-  const template = () => signupFormTemplate(`${base}/signups`, bodyId);
+  const legacyIds = await Promise.all(
+    Array.from({ length: SIGNUP_ELEMENT_INDEX.error + 1 }, (_, index) =>
+      uuidV5(`${projectId}:${LEGACY_SIGNUP_ID_FAMILY}:${index}`)
+    )
+  );
+  const elementIds = Object.fromEntries(
+    Object.entries(SIGNUP_ELEMENT_INDEX).map(([role, index]) => [
+      role,
+      legacyIds[index],
+    ])
+  ) as SignupElementIds;
+  const template = () => signupFormTemplate(bodyId, elementIds);
 
-  // renderData takes a synchronous id generator, and uuidV5 is async. So count
-  // the ids one render asks for, derive them, and render again handing them
-  // out in order: both renders walk the same template the same way, so the nth
-  // id is uuidV5("{projectId}:signup:{n}"), exactly as before.
+  // Every element carries its id; renderData asks its generator only for the
+  // variables, the parameter and the Resource. It is synchronous and uuidV5
+  // is async, so render once with the place of each request as its id, derive
+  // the ids, and render again handing them out in order: both renders walk
+  // the same template the same way. `formState` takes the id the earlier Form
+  // gave it; the nth other request takes uuidV5("{projectId}:signup-form:{n}").
   let count = 0;
-  renderData(template(), () => String(count++));
+  const draft = renderData(
+    template(),
+    () => String(count++),
+    [],
+    renderOptions
+  );
+  if (count > SIGNUP_ID_SPACE) {
+    throw new Error(
+      `The signup form derives ${count} ids, more than its ${SIGNUP_ID_SPACE}`
+    );
+  }
+  const formStatePlace = [...draft.dataSources.values()].find(
+    (dataSource) =>
+      dataSource.type === "variable" && dataSource.name === "formState"
+  )?.id;
   const ids = await Promise.all(
     Array.from({ length: count }, (_, index) =>
-      uuidV5(`${projectId}:signup:${index}`)
+      String(index) === formStatePlace
+        ? legacyIds[SIGNUP_FORM_STATE_INDEX]
+        : uuidV5(`${projectId}:${SIGNUP_ID_FAMILY}:${index}`)
     )
   );
   let counter = 0;
-  const data = renderData(template(), () => ids[counter++]);
+  const data = renderData(template(), () => ids[counter++], [], renderOptions);
 
-  // Turn the form's string action into a server-side action resource.
-  replaceFormActionsWithResources({
-    props: data.props,
-    instances: data.instances,
-    resources: data.resources,
-  });
-
-  // Inject the org read token into the action resource's Authorization header
-  // as a LITERAL expression. Variables are instance-scoped and page codegen
-  // drops out-of-scope ones (the publish spike produced "Bearer " + undefined
-  // via the variable route); resource headers are evaluated only server-side,
-  // so the literal is equivalent security-wise, and the deterministic ids mean
-  // a re-seed rewrites it on token rotation.
+  // Point the action resource at /v1/signups and inject the org read token
+  // into its Authorization header, both as LITERAL expressions. Variables are
+  // instance-scoped and page codegen drops out-of-scope ones (the publish
+  // spike produced "Bearer " + undefined via the variable route); resource
+  // headers are evaluated only server-side, so the literal is equivalent
+  // security-wise, and the deterministic ids mean a re-seed rewrites it on
+  // token rotation.
   const authHeaderValue = JSON.stringify(`Bearer ${readToken}`);
   for (const resource of data.resources.values()) {
-    if (resource.name === "action") {
+    if (resource.name === SIGNUP_RESOURCE_NAME) {
+      resource.url = JSON.stringify(`${base}/signups`);
       resource.headers.push({ name: "Authorization", value: authHeaderValue });
     }
   }
@@ -197,6 +293,139 @@ export type BuildContent = {
   pages: Pages;
 };
 
+/** Every id the preset may have derived for a project, in either family. */
+const getSignupIds = async (projectId: string) =>
+  new Set(
+    await Promise.all(
+      [SIGNUP_ID_FAMILY, LEGACY_SIGNUP_ID_FAMILY].flatMap((family) =>
+        Array.from({ length: SIGNUP_ID_SPACE }, (_, index) =>
+          uuidV5(`${projectId}:${family}:${index}`)
+        )
+      )
+    )
+  );
+
+/**
+ * Whether a record's id is one the preset derives: a derived id itself (an
+ * instance, a data source, a Resource an earlier preset keyed by its Form's
+ * id), `resource:{id}` (renderData's Resource ids) or `{id}:{name}` (its prop
+ * ids). A derived id is a UUID, so it holds no colon.
+ */
+const isSignupRecordId = (id: string, signupIds: Set<string>) => {
+  const bare = id.startsWith("resource:") ? id.slice("resource:".length) : id;
+  const separator = bare.indexOf(":");
+  return signupIds.has(separator === -1 ? bare : bare.slice(0, separator));
+};
+
+/**
+ * An element's children after a re-seed: the template's, with every child an
+ * org added (an instance that is not one of the preset's) kept, placed after
+ * the template child it followed: an element, by its id, or a text, by its
+ * place among the element's texts (a link or an icon after "Sign up" stays
+ * after it). The template's own children and text keep the template's order,
+ * as every re-seed has.
+ */
+const keepAddedChildren = (
+  existing: Instance["children"],
+  incoming: Instance["children"],
+  isPresetInstance: (id: string) => boolean
+): Instance["children"] => {
+  // The key of a template child an org child can follow, or undefined for an
+  // org child.
+  const anchorKeys = (children: Instance["children"]) => {
+    let texts = 0;
+    return children.map((child) => {
+      if (child.type !== "id") {
+        return `text:${texts++}`;
+      }
+      return isPresetInstance(child.value) ? `id:${child.value}` : undefined;
+    });
+  };
+  const addedAfter = new Map<string | undefined, Instance["children"]>();
+  let anchor: string | undefined;
+  anchorKeys(existing).forEach((key, index) => {
+    if (key !== undefined) {
+      anchor = key;
+      return;
+    }
+    addedAfter.set(anchor, [
+      ...(addedAfter.get(anchor) ?? []),
+      existing[index],
+    ]);
+  });
+  if (addedAfter.size === 0) {
+    return incoming;
+  }
+  const children = [...(addedAfter.get(undefined) ?? [])];
+  const placed = new Set<string | undefined>([undefined]);
+  anchorKeys(incoming).forEach((key, index) => {
+    children.push(incoming[index]);
+    if (addedAfter.has(key)) {
+      children.push(...addedAfter.get(key)!);
+      placed.add(key);
+    }
+  });
+  // after a child the template no longer has: at the end
+  for (const [after, added] of addedAfter) {
+    if (placed.has(after) === false) {
+      children.push(...added);
+    }
+  }
+  return children;
+};
+
+/**
+ * The preset elements an org has wrapped: each a direct child of one of its
+ * own instances (the builder's "Wrap in" keeps the wrapped element's id and
+ * gives the wrapper a new one) that a page still reaches. The template leaves
+ * them where the org put them instead of adding them to its own parent too,
+ * which would give one instance two parents and render it twice.
+ */
+const findWrappedPresetInstances = (
+  instances: Instance[],
+  rootInstanceIds: Iterable<string>,
+  isPresetInstance: (id: string) => boolean
+) => {
+  const byId = new Map(instances.map((instance) => [instance.id, instance]));
+  const reached = new Set<string>();
+  const wrapped = new Set<string>();
+  const queue = [...rootInstanceIds];
+  while (queue.length > 0) {
+    const id = queue.pop()!;
+    if (reached.has(id)) {
+      continue;
+    }
+    reached.add(id);
+    const isOrgInstance = isPresetInstance(id) === false;
+    for (const child of byId.get(id)?.children ?? []) {
+      if (child.type !== "id") {
+        continue;
+      }
+      if (isOrgInstance && isPresetInstance(child.value)) {
+        wrapped.add(child.value);
+      }
+      queue.push(child.value);
+    }
+  }
+  return wrapped;
+};
+
+/**
+ * The records of `existing`, without those under a preset id that `incoming`
+ * does not carry: what is left of a form an earlier preset rendered.
+ */
+const withoutStaleSignupRecords = <Item extends { id: string }>(
+  existing: Item[],
+  incoming: Iterable<Item>,
+  signupIds: Set<string>
+) => {
+  const incomingIds = new Set(Array.from(incoming, (item) => item.id));
+  return existing.filter(
+    (item) =>
+      isSignupRecordId(item.id, signupIds) === false || incomingIds.has(item.id)
+  );
+};
+
 /**
  * Merge the signup form into a build's content and add a "Newsletter" page at
  * SIGNUP_PAGE_PATH. Pure: mutates only the returned values (pages is mutated
@@ -206,7 +435,14 @@ export type BuildContent = {
  * starter form ships unstyled; the org styles it in the builder.
  * Deterministic ids make this idempotent: a re-seed replaces in place, in
  * order, and moves a page seeded at an older path (`/signup`) to the current
- * one under the same id.
+ * one under the same id. An element keeps every child an org added to it
+ * (keepAddedChildren), and its styles and props, which are keyed to its id;
+ * an element the org wrapped stays in its wrapper
+ * (findWrappedPresetInstances).
+ * The re-seed also drops every record under a preset id that the current
+ * form does not have, so the Form an org was provisioned with before 0.309.0
+ * becomes the ResourceForm under the same element ids, and its
+ * Resource-typed action and the Resource keyed by its id are gone.
  *
  * When another page already answers at SIGNUP_PAGE_PATH, nothing is moved
  * there: a page seeded earlier keeps its path and gets its content re-synced
@@ -236,12 +472,64 @@ export const mergeSignupFormIntoBuild = async (
     return build;
   }
 
-  const instances = upsertById(build.instances, [...data.instances.values()]);
-  const props = upsertById(build.props, [...data.props.values()]);
-  const dataSources = upsertById(build.dataSources, [
-    ...data.dataSources.values(),
-  ]);
-  const resources = upsertById(build.resources, [...data.resources.values()]);
+  const signupIds = await getSignupIds(projectId);
+  const merge = <Item extends { id: string }>(
+    existing: Item[],
+    incoming: Map<string, Item>
+  ) =>
+    upsertById(
+      withoutStaleSignupRecords(existing, incoming.values(), signupIds),
+      [...incoming.values()]
+    );
+  const existingInstances = new Map(
+    build.instances.map((instance) => [instance.id, instance])
+  );
+  const isPresetInstance = (id: string) =>
+    data.instances.has(id) || isSignupRecordId(id, signupIds);
+  const incomingInstances = new Map(
+    Array.from(data.instances, ([id, instance]) => {
+      const existing = existingInstances.get(id);
+      return [
+        id,
+        existing === undefined
+          ? instance
+          : {
+              ...instance,
+              children: keepAddedChildren(
+                existing.children,
+                instance.children,
+                isPresetInstance
+              ),
+            },
+      ];
+    })
+  );
+  const merged = merge(build.instances, incomingInstances);
+  const wrapped = findWrappedPresetInstances(
+    merged,
+    [
+      bodyId,
+      ...Array.from(pages.pages.values(), (page) => page.rootInstanceId),
+    ],
+    isPresetInstance
+  );
+  const instances =
+    wrapped.size === 0
+      ? merged
+      : merged.map((instance) =>
+          incomingInstances.has(instance.id)
+            ? {
+                ...instance,
+                children: instance.children.filter(
+                  (child) =>
+                    child.type !== "id" || wrapped.has(child.value) === false
+                ),
+              }
+            : instance
+        );
+  const props = merge(build.props, data.props);
+  const dataSources = merge(build.dataSources, data.dataSources);
+  const resources = merge(build.resources, data.resources);
 
   pages.pages.set(
     pageId,

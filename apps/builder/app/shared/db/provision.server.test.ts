@@ -56,9 +56,9 @@ describe("provision id derivation", () => {
 
 // A brand-new project gets its first build through project-build's RPC; the
 // build itself is not under test here.
-vi.mock("@webstudio-is/project-build/index.server", async (importOriginal) => ({
+vi.mock("@webstudio-is/project-build/server", async (importOriginal) => ({
   ...(await importOriginal<
-    typeof import("@webstudio-is/project-build/index.server")
+    typeof import("@webstudio-is/project-build/server")
   >()),
   createBuild: vi.fn(async () => ({ id: "build-1" })),
 }));

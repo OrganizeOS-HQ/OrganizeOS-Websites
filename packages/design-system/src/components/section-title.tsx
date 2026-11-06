@@ -20,18 +20,22 @@ import { ArrowFocus } from "./primitives/arrow-focus";
 import { Label, isLabelButton } from "./label";
 import { focusRingStyle } from "./focus-ring";
 import { Flex } from "./flex";
+import { cssVar, declareCssVar } from "../css-var";
+import { styleSourceColor } from "./style-source-color";
 
-const buttonContentColor = "--ws-section-title-button-content-color";
-const labelTextColor = "--ws-section-title-label-content-color";
-const chevronOpacity = "--ws-section-title-chevron-display";
+const buttonContentColor = declareCssVar(
+  "--section-title-button-content-color"
+);
+const labelTextColor = declareCssVar("--section-title-label-content-color");
+const chevronOpacity = declareCssVar("--section-title-chevron-display");
 
 const StyledButton = styled(Button, {});
 
 const containerStyle = css({
   position: "relative",
   height: theme.spacing[14],
-  [buttonContentColor]: theme.colors.foregroundIconMain,
-  [labelTextColor]: theme.colors.foregroundMain,
+  [buttonContentColor]: cssVar("--foreground-primary"),
+  [labelTextColor]: cssVar("--foreground-primary"),
   "&:hover": {
     [chevronOpacity]: 1,
   },
@@ -60,7 +64,7 @@ const titleButtonStyle = css(titleButtonLayoutStyle, {
 
 const suffixSlotStyle = css({
   position: "absolute",
-  right: theme.spacing[4],
+  right: theme.spacing[5],
   top: theme.spacing[4],
 });
 
@@ -70,10 +74,10 @@ const invisibleSuffixStyle = css({
 
 const chevronStyle = css({
   width: theme.spacing[7],
-  opacity: `var(${chevronOpacity}, 0)`,
+  opacity: cssVar(chevronOpacity, "0"),
   translate: "-100%",
   transition: "transform 150ms, opacity 200ms",
-  color: theme.colors.backgroundIconSubtle,
+  color: cssVar("--foreground-secondary"),
   variants: {
     openState: {
       open: {
@@ -92,11 +96,11 @@ const dotStyle = css({
   marginRight: -2,
   variants: {
     color: {
-      local: { backgroundColor: theme.colors.foregroundLocalFlexUi },
+      local: { backgroundColor: styleSourceColor.local.foreground },
       overwritten: {
-        backgroundColor: theme.colors.foregroundOverwrittenFlexUi,
+        backgroundColor: styleSourceColor.overwritten.foreground,
       },
-      remote: { backgroundColor: theme.colors.foregroundRemoteFlexUi },
+      remote: { backgroundColor: styleSourceColor.remote.foreground },
     },
   },
 });
@@ -117,6 +121,7 @@ export const SectionTitle = forwardRef(
       css,
       children,
       suffix,
+      suffixPlaceholder,
       inactive = false,
       collapsible = true,
       ...props
@@ -129,6 +134,8 @@ export const SectionTitle = forwardRef(
       css?: CSS;
       /** Primarily for <SectionTitleButton> */
       suffix?: ReactNode;
+      /** Inert sizing copy when the suffix contains stateful components */
+      suffixPlaceholder?: ReactNode;
     },
     ref: Ref<HTMLButtonElement>
   ) => {
@@ -177,7 +184,9 @@ export const SectionTitle = forwardRef(
 
                   {suffix && (
                     /* In case of text overflow we need to place here the same suffix*/
-                    <div className={invisibleSuffixStyle()}>{suffix}</div>
+                    <div className={invisibleSuffixStyle()}>
+                      {suffixPlaceholder ?? suffix}
+                    </div>
                   )}
                 </div>
               </div>
@@ -221,7 +230,7 @@ export const SectionTitleLabel = forwardRef(
         css={{
           color:
             openState === "closed" && inactive === false
-              ? `var(${labelTextColor})`
+              ? cssVar(labelTextColor)
               : undefined,
           ...commonCss,
           ...css,
@@ -250,7 +259,10 @@ export const SectionTitleButton = forwardRef(
       tabIndex={-1}
       color="ghost"
       {...props}
-      css={{ color: `var(${buttonContentColor})`, ...css }}
+      css={{
+        color: cssVar(buttonContentColor, cssVar("--foreground-primary")),
+        ...css,
+      }}
       ref={ref}
     />
   )

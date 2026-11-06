@@ -1,13 +1,14 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
 import {
+  PanelContent,
   theme,
   Flex,
   Text,
   FloatingPanel,
   IconButton,
   Label,
-  CssValueListItem,
-  CssValueListArrowFocus,
+  InteractiveListItem,
+  InteractiveListArrowFocus,
   SmallIconButton,
   useSortable,
   Button,
@@ -153,7 +154,7 @@ const TrackItem = ({
       placement="bottom-within"
       title={`Edit ${trackType}`}
       content={
-        <Flex direction="column" gap="2" css={{ padding: theme.panel.padding }}>
+        <PanelContent as={Flex} direction="column" gap="2">
           {isMinmax ? (
             <Grid columns={2} gap="2">
               <Flex direction="column" gap="1">
@@ -228,12 +229,12 @@ const TrackItem = ({
             />
             <Label htmlFor={`minmax-${id}`}>Use min/max</Label>
           </Flex>
-        </Flex>
+        </PanelContent>
       }
       open={isEditing}
       onOpenChange={onEditingChange}
     >
-      <CssValueListItem
+      <InteractiveListItem
         id={id}
         draggable={!isAuto}
         active={dragItemId === id}
@@ -406,16 +407,12 @@ const TrackEditor = ({
         </Flex>
       }
     >
-      <CssValueListArrowFocus dragItemId={dragItemId}>
+      <InteractiveListArrowFocus dragItemId={dragItemId}>
         <Flex direction="column" ref={sortableRefCallback}>
           {tracks.length === 0 && (
-            <Text
-              color="subtle"
-              align="center"
-              css={{ padding: theme.panel.padding }}
-            >
+            <PanelContent as={Text} color="subtle" align="center">
               No {trackType}
-            </Text>
+            </PanelContent>
           )}
           {tracks.map((track, index) => {
             const id = String(index);
@@ -448,7 +445,7 @@ const TrackEditor = ({
           })}
           {placementIndicator}
         </Flex>
-      </CssValueListArrowFocus>
+      </InteractiveListArrowFocus>
     </CollapsibleSectionRoot>
   );
 };
@@ -490,7 +487,7 @@ export const GridSettings = ({ open, onOpenChange }: GridSettingsProps) => {
   const isRowsEditable = isEditableGridMode(rowsMode);
 
   const editGridButton = (
-    <Button disabled={readonly} color="neutral" css={{ width: "100%" }}>
+    <Button disabled={readonly} css={{ width: "100%" }}>
       Configure grid
     </Button>
   );

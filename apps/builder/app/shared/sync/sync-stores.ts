@@ -1,8 +1,8 @@
-import { Store } from "immerhin";
+import { Store, type Change } from "immerhin";
 import { enableMapSet, setAutoFreeze } from "immer";
 import { useEffect } from "react";
 import { batched } from "nanostores";
-import { nanoid } from "nanoid";
+import { createId } from "@webstudio-is/sdk";
 import { $project } from "./data-stores";
 import {
   $selectedPageHash,
@@ -40,7 +40,10 @@ import {
   $hoveredInstanceOutline,
   $organizeosSite,
 } from "~/shared/nano-states";
-import { $marketplaceProduct } from "~/shared/sync/data-stores";
+import {
+  $marketplaceProduct,
+  $projectSettings,
+} from "~/shared/sync/data-stores";
 import { $ephemeralStyles } from "~/canvas/stores";
 import {
   ImmerhinSyncObject,
@@ -64,20 +67,28 @@ import {
   $styleSources,
   $styleSourceSelections,
   $assets,
+  $assetFolders,
   $resources,
 } from "~/shared/sync/data-stores";
 import { $pointerPosition } from "../awareness";
 import { $temporaryInstances } from "../nano-states";
 import {
   $allSelectedInstanceSelectors,
+  $instanceSelectionUpdate,
   $selectedInstanceSelector,
   selectInstance,
   selectInstances,
-} from "../nano-states/instances";
+} from "../nano-states/instance-selection";
 import { $selectedPageId } from "../nano-states/pages";
+import { areSelectorListsEqual } from "../instance-utils/selection";
 import { $systemDataByPage } from "../system";
-import { $resourcesCache } from "../resources";
-import type { InstanceSelector } from "../instance-utils/tree";
+import { $resourcesCache, $resourcesState } from "../resources";
+import {
+  areInstanceSelectorsEqual,
+  type InstanceSelector,
+} from "@webstudio-is/project-build/runtime";
+import { $externalContentRoots } from "../external-content-mutations";
+import { $externalContentHistory } from "../external-content-history";
 
 enableMapSet();
 // safari structuredClone fix
@@ -85,6 +96,17 @@ setAutoFreeze(false);
 
 export const clientSyncStore = new Store();
 export const serverSyncStore = new Store();
+export const externalContentSyncStore = new Store();
+const serverSyncRevertListeners = new Set<
+  (changes: readonly Change[]) => void
+>();
+
+export const subscribeServerSyncReverts = (
+  listener: (changes: readonly Change[]) => void
+) => {
+  serverSyncRevertListeners.add(listener);
+  return () => serverSyncRevertListeners.delete(listener);
+};
 
 const serverSyncStores = {
   pages: $pages,
@@ -97,6 +119,8 @@ const serverSyncStores = {
   dataSources: $dataSources,
   resources: $resources,
   assets: $assets,
+  assetFolders: $assetFolders,
+  projectSettings: $projectSettings,
   marketplaceProduct: $marketplaceProduct,
 } as const;
 
@@ -119,6 +143,10 @@ export const registerContainers = () => {
       name,
       serverSyncStores[name]
     );
+    externalContentSyncStore.register<ServerSyncStoreValue>(
+      name,
+      serverSyncStores[name]
+    );
   }
 };
 
@@ -128,44 +156,68 @@ type SelectedPageAndInstance = {
   allSelectedInstanceSelectors: InstanceSelector[];
 };
 
+const isInstanceSelector = (value: unknown): value is InstanceSelector =>
+  Array.isArray(value) && value.every((id) => typeof id === "string");
+
+const isInstanceSelectorList = (value: unknown): value is InstanceSelector[] =>
+  Array.isArray(value) && value.every(isInstanceSelector);
+
+const areSelectedPageAndInstanceEqual = (
+  left: SelectedPageAndInstance,
+  right: SelectedPageAndInstance
+) =>
+  left.selectedPageId === right.selectedPageId &&
+  (left.selectedInstanceSelector === undefined
+    ? right.selectedInstanceSelector === undefined
+    : right.selectedInstanceSelector !== undefined &&
+      areInstanceSelectorsEqual(
+        left.selectedInstanceSelector,
+        right.selectedInstanceSelector
+      )) &&
+  areSelectorListsEqual(
+    left.allSelectedInstanceSelectors,
+    right.allSelectedInstanceSelectors
+  );
+
 const $selectedPageAndInstance = batched(
-  [$selectedPageId, $selectedInstanceSelector, $allSelectedInstanceSelectors],
+  [
+    $selectedPageId,
+    $selectedInstanceSelector,
+    $allSelectedInstanceSelectors,
+    $instanceSelectionUpdate,
+  ],
   (
     selectedPageId,
     selectedInstanceSelector,
-    allSelectedInstanceSelectors
-  ): SelectedPageAndInstance => ({
-    selectedPageId,
-    selectedInstanceSelector,
     allSelectedInstanceSelectors,
+    selectionUpdate
+  ) => ({
+    state: {
+      selectedPageId,
+      selectedInstanceSelector,
+      allSelectedInstanceSelectors,
+    } satisfies SelectedPageAndInstance,
+    selectionUpdate,
   })
 );
 
 class SelectedPageAndInstanceSyncObject {
   name = "selectedPageAndInstance";
-  operation: "local" | "state" | "add" = "local";
-  ignoreNextBatchedChange = false;
+  private operation: "local" | "state" | "add" = "local";
+  private stateToIgnore: SelectedPageAndInstance | undefined;
+  private lastSelectionRevision = $instanceSelectionUpdate.get().revision;
+  private lastSelectedPageId = $selectedPageId.get();
 
   getState() {
-    return $selectedPageAndInstance.get();
+    return $selectedPageAndInstance.get().state;
   }
 
   setState(state: unknown) {
-    this.operation = "state";
-    this.ignoreNextBatchedChange = this.setSelectedPageAndInstance(state);
-    this.operation = "local";
+    this.applyRemoteState(state, "state");
   }
 
   applyTransaction(transaction: Transaction) {
-    this.operation = "add";
-    try {
-      this.ignoreNextBatchedChange = this.setSelectedPageAndInstance(
-        structuredClone(transaction.payload)
-      );
-    } catch (error) {
-      console.error(error);
-    }
-    this.operation = "local";
+    this.applyRemoteState(transaction.payload, "add");
   }
 
   revertTransaction(_transaction: RevertedTransaction) {
@@ -176,22 +228,64 @@ class SelectedPageAndInstanceSyncObject {
     sendTransaction: (transaction: Transaction) => void,
     signal: AbortSignal
   ) {
-    const unsubscribe = $selectedPageAndInstance.listen((payload) => {
-      if (this.ignoreNextBatchedChange) {
-        this.ignoreNextBatchedChange = false;
-        return;
+    this.lastSelectionRevision = $instanceSelectionUpdate.get().revision;
+    this.lastSelectedPageId = $selectedPageId.get();
+    const unsubscribe = $selectedPageAndInstance.listen(
+      ({ state, selectionUpdate }) => {
+        const isDerivedPruning =
+          selectionUpdate.revision !== this.lastSelectionRevision &&
+          selectionUpdate.origin === "instance-pruning";
+        const didSelectedPageChange =
+          state.selectedPageId !== this.lastSelectedPageId;
+        this.lastSelectionRevision = selectionUpdate.revision;
+        this.lastSelectedPageId = state.selectedPageId;
+        if (this.stateToIgnore !== undefined) {
+          const shouldIgnore = areSelectedPageAndInstanceEqual(
+            state,
+            this.stateToIgnore
+          );
+          this.stateToIgnore = undefined;
+          if (shouldIgnore) {
+            return;
+          }
+        }
+        if (
+          this.operation !== "local" ||
+          (isDerivedPruning && didSelectedPageChange === false)
+        ) {
+          return;
+        }
+        sendTransaction({
+          id: createId("nano"),
+          object: this.name,
+          payload: state,
+        });
       }
-      if (this.operation !== "local") {
-        return;
-      }
-      sendTransaction({ id: nanoid(), object: this.name, payload });
-    });
+    );
     signal.addEventListener("abort", unsubscribe);
   }
 
-  private setSelectedPageAndInstance(state: unknown) {
+  private applyRemoteState(state: unknown, operation: "state" | "add") {
+    this.operation = operation;
+    try {
+      const appliedState = this.setSelectedPageAndInstance(
+        operation === "add" ? structuredClone(state) : state
+      );
+      if (appliedState !== undefined) {
+        this.stateToIgnore = appliedState;
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      this.operation = "local";
+    }
+  }
+
+  private setSelectedPageAndInstance(
+    state: unknown
+  ): SelectedPageAndInstance | undefined {
     if (typeof state !== "object" || state === null) {
-      return false;
+      return;
     }
     const {
       selectedPageId,
@@ -199,34 +293,31 @@ class SelectedPageAndInstanceSyncObject {
       allSelectedInstanceSelectors,
     } = state as Partial<SelectedPageAndInstance>;
     if (selectedPageId !== undefined && typeof selectedPageId !== "string") {
-      return false;
+      return;
     }
     if (
       selectedInstanceSelector !== undefined &&
-      (Array.isArray(selectedInstanceSelector) === false ||
-        selectedInstanceSelector.every((id) => typeof id === "string") ===
-          false)
+      isInstanceSelector(selectedInstanceSelector) === false
     ) {
-      return false;
+      return;
     }
     if (
       allSelectedInstanceSelectors !== undefined &&
-      (Array.isArray(allSelectedInstanceSelectors) === false ||
-        allSelectedInstanceSelectors.every(
-          (selector) =>
-            Array.isArray(selector) &&
-            selector.every((id) => typeof id === "string")
-        ) === false)
+      isInstanceSelectorList(allSelectedInstanceSelectors) === false
     ) {
-      return false;
+      return;
     }
     $selectedPageId.set(selectedPageId);
     if (allSelectedInstanceSelectors !== undefined) {
       selectInstances(allSelectedInstanceSelectors);
-      return true;
+    } else {
+      selectInstance(selectedInstanceSelector);
     }
-    selectInstance(selectedInstanceSelector);
-    return true;
+    return {
+      selectedPageId: $selectedPageId.get(),
+      selectedInstanceSelector: $selectedInstanceSelector.get(),
+      allSelectedInstanceSelectors: $allSelectedInstanceSelectors.get(),
+    };
   }
 }
 
@@ -236,7 +327,14 @@ export const __testing__ = {
 
 export const createObjectPool = () => {
   return new SyncObjectPool([
-    new ImmerhinSyncObject("server", serverSyncStore),
+    new ImmerhinSyncObject("server", serverSyncStore, {
+      onRevert: (changes) => {
+        for (const listener of serverSyncRevertListeners) {
+          listener(changes);
+        }
+      },
+    }),
+    new ImmerhinSyncObject("externalContent", externalContentSyncStore),
     new ImmerhinSyncObject("client", clientSyncStore),
     new SelectedPageAndInstanceSyncObject(),
     new NanostoresSyncObject("pointerPosition", $pointerPosition),
@@ -245,6 +343,7 @@ export const createObjectPool = () => {
     new NanostoresSyncObject("project", $project),
     new NanostoresSyncObject("dataSourceVariables", $dataSourceVariables),
     new NanostoresSyncObject("resourcesCache", $resourcesCache),
+    new NanostoresSyncObject("resourcesState", $resourcesState),
     new NanostoresSyncObject("selectedPageHash", $selectedPageHash),
     new NanostoresSyncObject("selectedInstanceSizes", $selectedInstanceSizes),
     new NanostoresSyncObject(
@@ -310,6 +409,8 @@ export const createObjectPool = () => {
     new NanostoresSyncObject("registeredTemplates", $registeredTemplates),
     new NanostoresSyncObject("canvasScrollbarWidth", $canvasScrollbarSize),
     new NanostoresSyncObject("systemDataByPage", $systemDataByPage),
+    new NanostoresSyncObject("externalContentRoots", $externalContentRoots),
+    new NanostoresSyncObject("externalContentHistory", $externalContentHistory),
     // OrganizeOS fork: a block dropped on the canvas inserts there, and the
     // insert reads whether the org may use the blocks.
     new NanostoresSyncObject("organizeosSite", $organizeosSite),

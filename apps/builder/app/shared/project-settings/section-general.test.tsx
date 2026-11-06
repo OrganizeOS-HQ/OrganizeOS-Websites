@@ -3,8 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { TooltipProvider } from "@webstudio-is/design-system";
-import { createDefaultPages } from "@webstudio-is/project-build";
-import { $pages } from "~/shared/sync/data-stores";
+import { $projectSettings } from "~/shared/sync/data-stores";
 import { SectionGeneral } from "./section-general";
 
 (
@@ -13,11 +12,11 @@ import { SectionGeneral } from "./section-general";
 
 let root: Root | undefined;
 let container: HTMLElement | undefined;
+let previousSettings: ReturnType<typeof $projectSettings.get>;
 
+// 0.309.0 keeps the project's meta in its settings, not in the pages
 const renderSection = (code: string | undefined) => {
-  const pages = createDefaultPages({ rootInstanceId: "root" });
-  pages.meta = { siteName: "Site", code };
-  $pages.set(pages);
+  $projectSettings.set({ meta: { siteName: "Site", code }, compiler: {} });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -34,7 +33,8 @@ const getEditors = (host: HTMLElement) =>
   Array.from(host.querySelectorAll<HTMLElement>(".cm-content"));
 
 beforeEach(() => {
-  $pages.set(undefined);
+  previousSettings = $projectSettings.get();
+  $projectSettings.set(undefined);
 });
 
 afterEach(() => {
@@ -44,6 +44,7 @@ afterEach(() => {
   container?.remove();
   root = undefined;
   container = undefined;
+  $projectSettings.set(previousSettings);
 });
 
 describe("SectionGeneral, Custom code", () => {

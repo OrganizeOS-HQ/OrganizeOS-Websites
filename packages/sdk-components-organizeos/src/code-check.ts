@@ -2,6 +2,8 @@ import { parseExpressionAt, type Node } from "acorn";
 import {
   allowedArrayMethods,
   allowedStringMethods,
+} from "@webstudio-is/expression";
+import {
   decodeDataVariableId,
   SYSTEM_VARIABLE_ID,
   tags,
@@ -566,6 +568,16 @@ export const checkProp = (
   return pass;
 };
 
+/** The expression fields of an email resource's settings, with their names. */
+export const emailExpressionFields = [
+  ["subject", "email subject"],
+  ["body", "email body"],
+  ["senderExpression", "email sender"],
+  ["recipientsExpression", "email recipients"],
+] as const satisfies ReadonlyArray<
+  readonly [keyof NonNullable<Resource["email"]>, string]
+>;
+
 /** The first field of a resource that fails the check. */
 export const checkResource = (
   resource: Resource
@@ -600,7 +612,21 @@ export const checkResource = (
   }
   // the generator skips an empty body
   if (resource.body !== undefined && resource.body.length > 0) {
-    return fail("body", checkValueExpression(resource.body));
+    const body = fail("body", checkValueExpression(resource.body));
+    if (body) {
+      return body;
+    }
+  }
+  // an email resource's own expressions, each written into the published
+  // server code when set (email-resource-generator.ts in @webstudio-is/sdk)
+  for (const [key, field] of emailExpressionFields) {
+    const expression = resource.email?.[key];
+    if (expression !== undefined) {
+      const failure = fail(field, checkValueExpression(expression));
+      if (failure) {
+        return failure;
+      }
+    }
   }
 };
 

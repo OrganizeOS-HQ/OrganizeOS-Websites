@@ -7,7 +7,13 @@ export type SelectorValidationResult =
   | { success: true; type: "pseudo-class" | "pseudo-element" | "attribute" };
 
 /**
- * Validates a CSS pseudo-class, pseudo-element, or attribute selector
+ * Validates an open CSS state suffix scoped to the current element.
+ *
+ * Builder states are not a closed component-state enum. Valid pseudo-classes,
+ * pseudo-elements, and attribute selectors may be compounded. Descendant and
+ * child selectors may follow that state because the CSS engine anchors the
+ * complete suffix to the generated instance selector. Selector lists,
+ * unanchored selectors, and sibling combinators are rejected.
  * @param selector - The selector to validate (e.g., ":hover", "::before", "[data-state=open]")
  * @returns SelectorValidationResult with success status and type or error message
  */
@@ -28,25 +34,59 @@ export const validateSelector = (
   }
 
   try {
-    // Parse as a rule to validate syntax
-    // We wrap it in a dummy selector because css-tree requires a full rule
-    const ast = csstree.parse(`dummy${selector} {}`);
+    const ast = csstree.parse(selector, { context: "selectorList" });
+    if (ast.type !== "SelectorList" || ast.children.size !== 1) {
+      return {
+        success: false,
+        error: "Selector must be one state scoped to the current element",
+      };
+    }
+    const parsedSelector = ast.children.first;
+    const selectorNodes =
+      parsedSelector?.type === "Selector"
+        ? parsedSelector.children.toArray()
+        : [];
+    const firstCombinatorIndex = selectorNodes.findIndex(
+      (node) => node.type === "Combinator"
+    );
+    const stateNodes = selectorNodes.slice(
+      0,
+      firstCombinatorIndex === -1 ? undefined : firstCombinatorIndex
+    );
+    if (
+      parsedSelector?.type !== "Selector" ||
+      stateNodes.length === 0 ||
+      stateNodes.some(
+        (node) =>
+          node.type !== "PseudoClassSelector" &&
+          node.type !== "PseudoElementSelector" &&
+          node.type !== "AttributeSelector"
+      ) ||
+      selectorNodes.some(
+        (node) =>
+          node.type === "Combinator" && node.name !== " " && node.name !== ">"
+      ) ||
+      (firstCombinatorIndex !== -1 &&
+        stateNodes.some((node) => node.type === "PseudoElementSelector"))
+    ) {
+      return {
+        success: false,
+        error:
+          "Selector must be an element-scoped state, optionally followed by a descendant or child selector",
+      };
+    }
 
-    let foundPseudoClass = false;
-    let foundPseudoElement = false;
+    const pseudoClassNames: string[] = [];
+    const pseudoElementNames: string[] = [];
     let foundAttribute = false;
-    let pseudoClassName: string | undefined;
-    let pseudoElementName: string | undefined;
 
     // Walk the AST to find pseudo-class, pseudo-element, or attribute selectors
     csstree.walk(ast, (node) => {
       if (node.type === "PseudoClassSelector") {
-        foundPseudoClass = true;
-        pseudoClassName = node.name;
+        pseudoClassNames.push(node.name);
       }
       if (node.type === "PseudoElementSelector") {
-        foundPseudoElement = true;
-        pseudoElementName = node.name;
+        pseudoElementNames.push(node.name);
       }
       if (node.type === "AttributeSelector") {
         foundAttribute = true;
@@ -54,54 +94,40 @@ export const validateSelector = (
     });
 
     // Determine the type based on what we found
-    if (foundPseudoElement) {
+    const isKnownSelector = (name: string, known: readonly string[]) =>
+      known.includes(name) || known.includes(`${name}()`);
+    if (
+      pseudoElementNames.some(
+        (name) => isKnownSelector(name, pseudoElements) === false
+      )
+    ) {
+      return { success: false, error: "Invalid pseudo-element" };
+    }
+    const invalidPseudoClass = pseudoClassNames.find(
+      (name) =>
+        isKnownSelector(name, pseudoClasses) === false &&
+        isKnownSelector(name, pseudoElements) === false
+    );
+    if (invalidPseudoClass !== undefined) {
+      return { success: false, error: "Invalid pseudo-class" };
+    }
+
+    if (pseudoElementNames.length > 0) {
       // Validate that the pseudo-element actually exists
       // Some pseudo-elements are functional (e.g., ::part(), ::slotted())
       // The list includes both "part" and "part()" variants
-      if (pseudoElementName) {
-        const withParens = `${pseudoElementName}()`;
-        if (
-          (pseudoElements as readonly string[]).includes(pseudoElementName) ||
-          (pseudoElements as readonly string[]).includes(withParens)
-        ) {
-          return { success: true, type: "pseudo-element" };
-        }
-      }
-      // Invalid pseudo-element name
-      return {
-        success: false,
-        error: "Invalid pseudo-element",
-      };
+      return { success: true, type: "pseudo-element" };
     }
 
-    if (foundPseudoClass) {
+    if (pseudoClassNames.length > 0) {
       // Check if it's actually a legacy pseudo-element (single colon)
       // Legacy syntax: :before, :after, :first-line, :first-letter
       if (
-        pseudoClassName &&
-        (pseudoElements as readonly string[]).includes(pseudoClassName)
+        pseudoClassNames.every((name) => isKnownSelector(name, pseudoElements))
       ) {
         return { success: true, type: "pseudo-element" };
       }
-
-      // Validate that the pseudo-class actually exists
-      // Some pseudo-classes are functional (e.g., :has(), :not())
-      // The list includes both "has" and "has()" variants
-      if (pseudoClassName) {
-        const withParens = `${pseudoClassName}()`;
-        if (
-          (pseudoClasses as readonly string[]).includes(pseudoClassName) ||
-          (pseudoClasses as readonly string[]).includes(withParens)
-        ) {
-          return { success: true, type: "pseudo-class" };
-        }
-      }
-
-      // Invalid pseudo-class name
-      return {
-        success: false,
-        error: "Invalid pseudo-class",
-      };
+      return { success: true, type: "pseudo-class" };
     }
 
     if (foundAttribute) {

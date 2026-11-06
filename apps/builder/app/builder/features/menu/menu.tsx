@@ -31,7 +31,8 @@ import { organizeosHomeUrl } from "~/shared/organizeos-site";
 import { emitCommand } from "~/builder/shared/commands";
 import { MenuButton } from "./menu-button";
 import { $openProjectSettings } from "~/shared/nano-states/project-settings";
-import { getSetting, setSetting } from "~/builder/shared/client-settings";
+import { $settings, setSetting } from "~/builder/shared/client-settings";
+import { ColorSchemeMenu } from "~/shared/color-scheme-menu";
 import {
   platformName,
   sourceCodeLabel,
@@ -39,7 +40,7 @@ import {
 } from "~/shared/branding";
 
 const ViewMenuItem = () => {
-  const navigatorLayout = getSetting("navigatorLayout");
+  const { navigatorLayout } = useStore($settings);
   const isUiHidden = useStore($isUiHidden);
 
   return (
@@ -65,6 +66,8 @@ const ViewMenuItem = () => {
         >
           Undock navigator
         </DropdownMenuCheckboxItem>
+        <DropdownMenuSeparator />
+        <ColorSchemeMenu withIndicator />
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   );
@@ -95,7 +98,7 @@ export const Menu = ({ defaultOpen }: { defaultOpen?: boolean } = {}) => {
   return (
     <DropdownMenu modal={false} defaultOpen={defaultOpen}>
       <MenuButton />
-      <DropdownMenuContent sideOffset={4} collisionPadding={4} width="regular">
+      <DropdownMenuContent collisionPadding={4} width="regular">
         {/* OrganizeOS site: back to the org's workspace home in OrganizeOS,
             not the fork dashboard (SSO skips it). */}
         {organizeosSite === undefined ? (

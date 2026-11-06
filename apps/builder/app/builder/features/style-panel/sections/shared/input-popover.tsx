@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  cssVar,
   keyframes,
   styled,
   Popover,
@@ -53,6 +54,7 @@ const Input = ({
       intermediateValue={intermediateValue}
       getOptions={() => $availableUnitVariables.get()}
       fieldSizing="content"
+      autoFocus
       onChange={(styleValue) => {
         setIntermediateValue(styleValue);
         const activeProperties = getActiveProperties();
@@ -128,9 +130,9 @@ const PopoverContentStyled = styled(PopoverContent, {
   gap: theme.spacing[5],
   minWidth: 0,
   minHeight: 0,
-  border: `1px solid ${theme.colors.borderMain}`,
+  border: `1px solid ${cssVar("--border-default")}`,
   borderRadius: theme.borderRadius[7],
-  background: theme.colors.backgroundPanel,
+  background: cssVar("--background-primary"),
   padding: theme.spacing[5],
   boxShadow: theme.shadows.menuDropShadow,
   animationDuration: "200ms",

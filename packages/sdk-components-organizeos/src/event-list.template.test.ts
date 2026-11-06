@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import { renderTemplate } from "@webstudio-is/template";
+import { localStylesFirst } from "./shared/style-order";
 import { describeEventsBlock } from "./events/events-block-tests";
 import beforeDatedCards from "./events/event-list-fragment.json";
 import { meta } from "./event-list.template";
@@ -52,7 +53,13 @@ test("the Event List's description says what it lists", () => {
 //   template crops covers to a ratio of its own;
 // - the "No upcoming events" and "Events unavailable" lines wear "OS Event
 //   Note", which declares nothing, so a template frames them. Their ids
-//   ("empty", "unavailable"), which the insert binds by, are unchanged.
+//   ("empty", "unavailable"), which the insert binds by, are unchanged;
+// - 0.309.0's renderer marks each expression prop and child `mode: "read"`;
+// - 0.309.0's renderer lists a selection's tokens before its local styles,
+//   and the insert puts the local styles first again (localStylesFirst), so
+//   the order is the one the fixture holds.
 test("the Event List is the fragment it was, but for the changes above", () => {
-  expect(renderTemplate(meta.template)).toEqual(beforeDatedCards);
+  expect(localStylesFirst(renderTemplate(meta.template))).toEqual(
+    beforeDatedCards
+  );
 });

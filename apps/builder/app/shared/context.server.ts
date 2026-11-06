@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { type AppContext } from "@webstudio-is/trpc-interface/index.server";
 import env from "~/env/env.server";
 import { createOrganizeosPublisher } from "~/services/organizeos-publisher.server";
@@ -18,12 +19,23 @@ import {
 import { readLoginSessionBloomFilter } from "~/services/session.server";
 import type { BloomFilter } from "~/services/bloom-filter.server";
 import { isBuilder, isCanvas } from "./router-utils";
-import { parseBuilderUrl } from "@webstudio-is/http-client";
+import { parseBuilderUrl } from "@webstudio-is/protocol";
 import {
   apiClient,
   apiClientHeader,
+  apiClientContractVersionHeader,
   apiClientVersionHeader,
 } from "@webstudio-is/trpc-interface/api-compatibility";
+
+export class InvalidAuthTokenError extends TRPCError {
+  constructor() {
+    super({
+      code: "UNAUTHORIZED",
+      message: "The authorization token is invalid or no longer available",
+      cause: { webstudioCode: "INVALID_AUTH_TOKEN" },
+    });
+  }
+}
 
 export const extractAuthFromRequest = async (request: Request) => {
   if (isCanvas(request)) {
@@ -36,14 +48,20 @@ export const extractAuthFromRequest = async (request: Request) => {
     request.headers.get("x-auth-token") ??
     undefined;
 
-  // OrganizeOS: both readers check the session's OrganizeOS binding.
-  const sessionData = isBuilder(request)
-    ? await readBuilderSession(request)
-    : await readDashboardSession(request);
-
   const isServiceCall = isServiceAuthorization(
     request.headers.get("Authorization")
   );
+
+  // Explicit credentials always win. In particular, an invalid supplied token
+  // must fail during context creation instead of falling back to a potentially
+  // more privileged browser session.
+  // OrganizeOS: both readers check the session's OrganizeOS binding.
+  const sessionData =
+    authToken === undefined && isServiceCall === false
+      ? isBuilder(request)
+        ? await readBuilderSession(request)
+        : await readDashboardSession(request)
+      : undefined;
 
   return {
     authToken,
@@ -69,17 +87,19 @@ const createTokenAuthorizationContext = async (
     .from("AuthorizationToken")
     .select("project:Project(id, userId)")
     .eq("token", authToken)
-    .single();
+    .maybeSingle();
 
   if (projectOwnerIdByToken.error) {
-    throw new Error(`Project owner can't be found for token ${authToken}`);
+    throw new Error("Failed to verify authorization token");
+  }
+
+  if (projectOwnerIdByToken.data === null) {
+    throw new InvalidAuthTokenError();
   }
 
   const ownerId = projectOwnerIdByToken.data.project?.userId ?? null;
   if (ownerId === null) {
-    throw new Error(
-      `Project ${projectOwnerIdByToken.data.project?.id} has null userId`
-    );
+    throw new InvalidAuthTokenError();
   }
 
   return {
@@ -213,12 +233,15 @@ const createApiClientContext = (request: Request): AppContext["apiClient"] => {
     return {
       type: "unknown",
       version: undefined,
+      contractVersion: undefined,
     };
   }
 
   return {
     type: client.data,
     version: request.headers.get(apiClientVersionHeader) ?? undefined,
+    contractVersion:
+      request.headers.get(apiClientContractVersionHeader) ?? undefined,
   };
 };
 

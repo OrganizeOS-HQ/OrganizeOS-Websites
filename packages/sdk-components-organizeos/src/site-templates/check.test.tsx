@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import {
-  $,
   PageValue,
   PlaceholderValue,
   ResourceValue,
@@ -10,7 +9,7 @@ import {
   ws,
 } from "@webstudio-is/template";
 import { cardToken } from "../events/event-card.template";
-import { organizeos } from "../shared/proxy";
+import { $, organizeos } from "../shared/proxy";
 import {
   type CanonicalValues,
   BLANK_CANONICAL_VALUES,

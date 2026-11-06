@@ -1,13 +1,13 @@
 import {
   ws,
-  $,
   css,
   expression,
   token,
+  Token,
   Parameter,
   PlaceholderValue,
 } from "@webstudio-is/template";
-import { organizeos } from "../shared/proxy";
+import { $, organizeos } from "../shared/proxy";
 
 // Template-only JSX: the pieces of the Event List and Event Card templates.
 // Nothing here is a component, and `components.ts` never reaches this file, so
@@ -139,8 +139,11 @@ export const eventCoverToken = token(
 // one it shows when the read failed. It declares nothing: the lines keep the
 // browser's paragraph and the site's text colour, inherited (no colour of
 // their own, so a dark palette reads), as they did before they wore it. A
-// token, so a template frames the note in its own look.
-export const eventNoteToken = token("OS Event Note", []);
+// token, so a template frames the note in its own look. Built with `new
+// Token`: 0.309.0's token() refuses an empty list, and token(name) alone is a
+// reference to a token the project must already have, which makes inserting
+// the block into any other project fail.
+export const eventNoteToken = new Token("OS Event Note", []);
 
 // The dated card's row of the date column and the details: a wrapping flex
 // row with the card's gaps. A token, so a template changes the gaps or stacks

@@ -9,6 +9,9 @@ import {
   type WebstudioFragment,
   encodeDataSourceVariable,
 } from "@webstudio-is/sdk";
+// the narrow export: the site-templates barrel would bring the template
+// catalog into the canvas, which imports this module (use-drag-drop.ts)
+import { localStylesFirst } from "@organizeos/site-components/style-order";
 import { builderApi } from "~/shared/builder-api";
 import { platformName } from "~/shared/branding";
 import {
@@ -25,9 +28,9 @@ import { $project, $resources } from "~/shared/sync/data-stores";
 import {
   type Insertable,
   getComponentTemplateData,
-  insertWebstudioFragmentAt,
 } from "~/shared/instance-utils/insert";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
+import { insertCompletedFragment } from "./staged-data";
 
 /**
  * Inserting an OrganizeOS block (spec section 4.3). A template cannot know a
@@ -264,6 +267,11 @@ export type OrganizeosBlockCompletion =
  * `component` is the template's key, which names the block's table entry; a
  * key with no entry is returned as it is.
  *
+ * The fragment returned lists each selection's local styles ahead of its
+ * tokens (localStylesFirst), the order the blocks were drawn with: 0.309.0's
+ * renderer lists the tokens first, and a site template's block token must
+ * still restyle a block (ruling canvas OQ1).
+ *
  * A block a site template placed lives in a fragment of the whole page, where
  * every `ws:id` below its root is `${instanceIdPrefix}${wsId}` (place-block.ts).
  * With `instanceIdPrefix`, a bind resolves to that id, and a block whose root
@@ -272,7 +280,7 @@ export type OrganizeosBlockCompletion =
  */
 export const completeOrganizeosFragment = ({
   component,
-  fragment,
+  fragment: template,
   presetIds,
   resources,
   instanceIdPrefix,
@@ -283,6 +291,7 @@ export const completeOrganizeosFragment = ({
   resources: Resources;
   instanceIdPrefix?: string;
 }): OrganizeosBlockCompletion => {
+  const fragment = localStylesFirst(template);
   const entry = organizeosBlockData.get(component);
   const rootChild = fragment.children.find((child) => child.type === "id");
   const root = fragment.instances.find(
@@ -370,8 +379,10 @@ export const completeOrganizeosFragment = ({
 /**
  * What a completion adds, written into the insert's own transaction once the
  * block's instances have their ids there (`newInstanceIds` maps each fragment
- * id to its new one): the catalog Resource when the project still lacks it
- * (one that appeared meanwhile is kept, never replaced), a resource DataSource
+ * id to its new one): the catalog Resource, under its fixed id in
+ * provisioning's exact shape, when the project still lacks it (one that
+ * appeared meanwhile is kept, never replaced or rewritten: the catalog's
+ * change guard refuses a write that alters one), a resource DataSource
  * with a fresh id scoped to the block's root that references it, and each
  * bound prop set to an expression over that DataSource's variable, by id, so
  * no variable that shares its name captures it at insert (copies are another
@@ -428,6 +439,30 @@ export const completeOrganizeosInsertMutable = (
 };
 
 /**
+ * Whether the insert mapped every id the completion writes by: the block's
+ * root and each bound instance. A miss would leave the block, or one of its
+ * props, unbound while the insert reports success.
+ */
+const isCompletionMapped = (
+  completion: Extract<OrganizeosBlockCompletion, { status: "ready" }>,
+  newInstanceIds: Map<Instance["id"], Instance["id"]>
+) => {
+  if (completion.binding === undefined) {
+    return true;
+  }
+  const rootChild = completion.fragment.children.find(
+    (child) => child.type === "id"
+  );
+  return (
+    rootChild !== undefined &&
+    newInstanceIds.has(rootChild.value) &&
+    completion.binding.binds.every((bind) =>
+      newInstanceIds.has(bind.instanceId)
+    )
+  );
+};
+
+/**
  * Whether the org behind this project may use the blocks: it is not on the
  * deny list (`ORGANIZEOS_BLOCKS_DENY_ORG_IDS`, resolved by the builder's
  * loader into `$organizeosSite`).
@@ -438,13 +473,18 @@ export const isOrganizeosBlocksEnabled = () =>
 /**
  * Insert a block at the selection, or at `insertable` (a drop), the way the
  * Components panel inserts a template, after completing it, in one
- * transaction. Refuses with a toast, writing nothing, when the org is not on
- * the blocks' deny list or the project's data is not connected.
+ * transaction (staged-data.ts). Refuses with a toast, writing nothing, when
+ * the org is not on the blocks' deny list, the project's data is not
+ * connected, the insert cannot be bound by its ids, or the runtime layer
+ * refuses the commit. Anything but an OrganizeOS block is refused, silently.
  */
 export const insertOrganizeosBlock = async (
   component: string,
   insertable?: Insertable
 ): Promise<boolean> => {
+  if (isOrganizeosBlock(component) === false) {
+    return false;
+  }
   const project = $project.get();
   if (project === undefined) {
     return false;
@@ -480,12 +520,24 @@ export const insertOrganizeosBlock = async (
     return false;
   }
 
-  // Through the same transaction as any insert, so it syncs and undoes as
-  // one step, and writes nothing when the block has no place to go. "ours":
-  // a token the project already has (the designer may have restyled "OS
-  // Input") is reused as it stands, never added again as "OS Input-1".
-  return insertWebstudioFragmentAt(completion.fragment, insertable, "ours", {
-    onInsert: (data, newInstanceIds) => {
+  // The insert and its completion in one transaction, so it syncs and undoes
+  // as one step, and writes nothing when the block has no place to go. The
+  // binding is written after the insert, by the mapped ids: the insert gives
+  // a fragment's resource binding a new resourceId, which would leave a
+  // catalog binding pointing at no Resource. "ours": a token the project
+  // already has (the designer may have restyled "OS Input") is reused as it
+  // stands, never added again as "OS Input-1".
+  return insertCompletedFragment({
+    fragment: completion.fragment,
+    insertable,
+    conflictResolution: "ours",
+    // the runtime's registry has no OrganizeOS metas (ruling data OQ1)
+    allowContentModelWarnings: true,
+    complete: (data, newInstanceIds) => {
+      // refused, writing nothing, rather than inserted unbound
+      if (isCompletionMapped(completion, newInstanceIds) === false) {
+        throw Error(`Cannot add ${label}.`);
+      }
       completeOrganizeosInsertMutable(data, completion, newInstanceIds);
     },
   });

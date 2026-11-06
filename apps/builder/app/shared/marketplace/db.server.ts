@@ -1,12 +1,10 @@
 import { marketplaceProduct } from "@webstudio-is/project-build";
 import type { MarketplaceOverviewItem } from "./types";
-import {
-  loadApprovedProdBuildByProjectId,
-  parseConfig,
-} from "@webstudio-is/project-build/index.server";
+import { loadApprovedProdBuildByProjectId } from "@webstudio-is/project-build/server";
+import { parseConfig } from "@webstudio-is/project-build/persistence";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import type { Project } from "@webstudio-is/project";
-import { loadAssetsByProject } from "@webstudio-is/asset-uploader/index.server";
+import { loadAssetsByProject } from "@webstudio-is/asset-uploader/server";
 import { serializePages } from "@webstudio-is/project-migrations/pages";
 
 export const getBuildProdData = async (
@@ -47,7 +45,7 @@ export const getItems = async (
     );
 
     if (parsedProduct.success === false) {
-      console.error(parsedProduct.error.formErrors.fieldErrors);
+      console.error(parsedProduct.error.flatten().fieldErrors);
       continue;
     }
 

@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import {
+  blockComponent,
   blockTemplateComponent,
+  type DataSource,
   type Instance,
   type PageTemplate,
+  type Prop,
+  type Resource,
+  type StyleDecl,
+  type StyleSource,
+  type StyleSourceSelection,
 } from "@webstudio-is/sdk";
 import type { Project } from "@webstudio-is/project";
 import {
@@ -34,7 +41,7 @@ import {
   $styleSources,
   $styleSourceSelections,
 } from "~/shared/sync/data-stores";
-import { registerContainers } from "~/shared/sync/sync-stores";
+import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
 import {
   getDeletablePageActionTarget,
   getPageActionTarget,
@@ -68,6 +75,9 @@ const resetPageActionStores = () => {
 };
 
 const resetDataStores = () => {
+  serverSyncStore.transactionManager.currentStack = [];
+  serverSyncStore.transactionManager.undoneStack = [];
+  serverSyncStore.popAll();
   $assets.set(new Map());
   $breakpoints.set(new Map());
   $dataSources.set(new Map());
@@ -357,10 +367,11 @@ describe("cut", () => {
     ]);
 
     emitCommand("cut");
-    await Promise.resolve();
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
 
     expect(JSON.parse(writeText.mock.calls[0]?.[0] ?? "")).toMatchObject({
       "@webstudio/instances/v0.1": {
+        sourceOrigin: window.location.origin,
         rootInstanceIds: ["box1", "box2"],
       },
     });
@@ -815,6 +826,188 @@ describe("duplicateInstance", () => {
     ]);
   });
 
+  test("duplicates multiple selected siblings with related props, styles, and data", () => {
+    resetDataStores();
+    const instances = new Map<Instance["id"], Instance>([
+      [
+        "body",
+        {
+          type: "instance",
+          id: "body",
+          component: "Body",
+          children: [
+            { type: "id", value: "card-a" },
+            { type: "id", value: "card-b" },
+          ],
+        },
+      ],
+      [
+        "card-a",
+        {
+          type: "instance",
+          id: "card-a",
+          component: "Box",
+          children: [{ type: "id", value: "card-a-text" }],
+        },
+      ],
+      [
+        "card-a-text",
+        {
+          type: "instance",
+          id: "card-a-text",
+          component: "Text",
+          children: [{ type: "text", value: "Card A" }],
+        },
+      ],
+      [
+        "card-b",
+        {
+          type: "instance",
+          id: "card-b",
+          component: "Box",
+          children: [],
+        },
+      ],
+    ]);
+    const prop = {
+      id: "card-a-prop",
+      instanceId: "card-a",
+      name: "data-state",
+      type: "string",
+      value: "featured",
+    } satisfies Prop;
+    const styleSource = {
+      type: "local",
+      id: "card-a-style-source",
+    } satisfies StyleSource;
+    const styleSourceSelection = {
+      instanceId: "card-a",
+      values: ["card-a-style-source"],
+    } satisfies StyleSourceSelection;
+    const styleDecl = {
+      breakpointId: "base",
+      styleSourceId: "card-a-style-source",
+      property: "color",
+      value: { type: "keyword", value: "red" },
+    } satisfies StyleDecl;
+    const resource = {
+      id: "card-resource",
+      name: "cardResource",
+      url: "https://example.com/cards.json",
+      method: "get",
+      headers: [],
+      searchParams: [],
+    } satisfies Resource;
+    const dataSource = {
+      id: "card-data-source",
+      scopeInstanceId: "card-a",
+      name: "cardData",
+      type: "resource",
+      resourceId: resource.id,
+    } satisfies DataSource;
+    const pages = createDefaultPages({
+      homePageId: "page-id",
+      rootInstanceId: "body",
+    });
+    $pages.set(pages);
+    $selectedPageId.set(pages.homePageId);
+    $project.set({ id: "project-id" } as Project);
+    $instances.set(instances);
+    $props.set(new Map([[prop.id, prop]]));
+    $styleSources.set(new Map([[styleSource.id, styleSource]]));
+    $styleSourceSelections.set(
+      new Map([[styleSourceSelection.instanceId, styleSourceSelection]])
+    );
+    $styles.set(new Map([["card-a-style-source:base:color:", styleDecl]]));
+    $resources.set(new Map([[resource.id, resource]]));
+    $dataSources.set(new Map([[dataSource.id, dataSource]]));
+    selectInstances([
+      ["card-a", "body"],
+      ["card-b", "body"],
+    ]);
+    serverSyncStore.popAll();
+
+    emitCommand("duplicateInstance");
+
+    const bodyChildren = $instances.get().get("body")?.children;
+    const duplicateIds = [bodyChildren?.[1]?.value, bodyChildren?.[3]?.value];
+    expect(bodyChildren).toEqual([
+      { type: "id", value: "card-a" },
+      { type: "id", value: expect.any(String) },
+      { type: "id", value: "card-b" },
+      { type: "id", value: expect.any(String) },
+    ]);
+    expect(duplicateIds[0]).not.toBe("card-a");
+    expect(duplicateIds[1]).not.toBe("card-b");
+    expect(
+      Array.from($props.get().values()).filter(
+        (prop) => prop.name === "data-state"
+      )
+    ).toHaveLength(2);
+    expect(
+      Array.from($styleSourceSelections.get().values()).filter(
+        (selection) => selection.values.length > 0
+      )
+    ).toHaveLength(2);
+    expect(
+      Array.from($dataSources.get().values()).filter(
+        (dataSource) => dataSource.name === "cardData"
+      )
+    ).toHaveLength(2);
+    expect(
+      Array.from($resources.get().values()).filter(
+        (resource) => resource.name === "cardResource"
+      )
+    ).toHaveLength(2);
+    expect($allSelectedInstanceSelectors.get()).toEqual([
+      [duplicateIds[0], "body"],
+      [duplicateIds[1], "body"],
+    ]);
+
+    const namespaces = serverSyncStore
+      .popAll()
+      .flatMap((item) => item.changes)
+      .map((change) => change.namespace);
+    expect(new Set(namespaces)).toEqual(
+      new Set([
+        "instances",
+        "props",
+        "styleSourceSelections",
+        "styleSources",
+        "styles",
+        "dataSources",
+        "resources",
+      ])
+    );
+
+    serverSyncStore.undo();
+    serverSyncStore.undo();
+    expect($instances.get()).toEqual(instances);
+    expect($props.get()).toEqual(new Map([[prop.id, prop]]));
+    expect($styleSources.get()).toEqual(
+      new Map([[styleSource.id, styleSource]])
+    );
+    expect($styleSourceSelections.get()).toEqual(
+      new Map([[styleSourceSelection.instanceId, styleSourceSelection]])
+    );
+    expect($dataSources.get()).toEqual(new Map([[dataSource.id, dataSource]]));
+    expect($resources.get()).toEqual(new Map([[resource.id, resource]]));
+
+    serverSyncStore.redo();
+    serverSyncStore.redo();
+    expect($instances.get().get("body")?.children).toEqual(bodyChildren);
+    expect(
+      Array.from($dataSources.get().values()).filter(
+        (dataSource) => dataSource.name === "cardData"
+      )
+    ).toHaveLength(2);
+    expect(
+      Array.from($resources.get().values()).filter(
+        (resource) => resource.name === "cardResource"
+      )
+    ).toHaveLength(2);
+  });
+
   test("duplicates multiple selected sibling instances through keyboard shortcut", () => {
     resetDataStores();
     const unsubscribe = subscribeCommands();
@@ -1070,6 +1263,12 @@ describe("deleteInstanceBuilder", () => {
         },
       ],
     ]);
+    $pages.set(
+      createDefaultPages({
+        homePageId: "page-id",
+        rootInstanceId: "body",
+      })
+    );
     $instances.set(instances);
     selectInstances([
       ["box1", "body"],
@@ -1082,6 +1281,163 @@ describe("deleteInstanceBuilder", () => {
     expect($instances.get().has("box1")).toBe(false);
     expect($instances.get().has("box2")).toBe(false);
     expect($allSelectedInstanceSelectors.get()).toEqual([]);
+  });
+
+  test("deletes multiple selected siblings with related props, styles, and data", () => {
+    resetDataStores();
+    const instances = new Map<Instance["id"], Instance>([
+      [
+        "body",
+        {
+          type: "instance",
+          id: "body",
+          component: "Body",
+          children: [
+            { type: "id", value: "card-a" },
+            { type: "id", value: "card-b" },
+          ],
+        },
+      ],
+      [
+        "card-a",
+        {
+          type: "instance",
+          id: "card-a",
+          component: "Box",
+          children: [{ type: "id", value: "card-a-text" }],
+        },
+      ],
+      [
+        "card-a-text",
+        {
+          type: "instance",
+          id: "card-a-text",
+          component: "Text",
+          children: [{ type: "text", value: "Card A" }],
+        },
+      ],
+      [
+        "card-b",
+        {
+          type: "instance",
+          id: "card-b",
+          component: "Box",
+          children: [],
+        },
+      ],
+    ]);
+    const prop = {
+      id: "card-a-prop",
+      instanceId: "card-a",
+      name: "data-state",
+      type: "string",
+      value: "featured",
+    } satisfies Prop;
+    const styleSource = {
+      type: "local",
+      id: "card-a-style-source",
+    } satisfies StyleSource;
+    const styleSourceSelection = {
+      instanceId: "card-a",
+      values: ["card-a-style-source"],
+    } satisfies StyleSourceSelection;
+    const styleDecl = {
+      breakpointId: "base",
+      styleSourceId: "card-a-style-source",
+      property: "color",
+      value: { type: "keyword", value: "red" },
+    } satisfies StyleDecl;
+    const resource = {
+      id: "card-resource",
+      name: "cardResource",
+      url: "https://example.com/cards.json",
+      method: "get",
+      headers: [],
+      searchParams: [],
+    } satisfies Resource;
+    const dataSource = {
+      id: "card-data-source",
+      scopeInstanceId: "card-a",
+      name: "cardData",
+      type: "resource",
+      resourceId: resource.id,
+    } satisfies DataSource;
+    const pages = createDefaultPages({
+      homePageId: "page-id",
+      rootInstanceId: "body",
+    });
+    $pages.set(pages);
+    $selectedPageId.set(pages.homePageId);
+    $project.set({ id: "project-id" } as Project);
+    $instances.set(instances);
+    $props.set(new Map([[prop.id, prop]]));
+    $styleSources.set(new Map([[styleSource.id, styleSource]]));
+    $styleSourceSelections.set(
+      new Map([[styleSourceSelection.instanceId, styleSourceSelection]])
+    );
+    $styles.set(new Map([["card-a-style-source:base:color:", styleDecl]]));
+    $resources.set(new Map([[resource.id, resource]]));
+    $dataSources.set(new Map([[dataSource.id, dataSource]]));
+    selectInstances([
+      ["card-a", "body"],
+      ["card-b", "body"],
+    ]);
+    serverSyncStore.popAll();
+
+    emitCommand("deleteInstanceBuilder");
+
+    expect($instances.get().get("body")?.children).toEqual([]);
+    expect($instances.get().has("card-a")).toBe(false);
+    expect($instances.get().has("card-a-text")).toBe(false);
+    expect($instances.get().has("card-b")).toBe(false);
+    expect($props.get()).toEqual(new Map());
+    expect($styleSources.get()).toEqual(new Map());
+    expect($styleSourceSelections.get()).toEqual(new Map());
+    expect($styles.get()).toEqual(new Map());
+    expect($dataSources.get()).toEqual(new Map());
+    expect($resources.get()).toEqual(new Map());
+    expect($allSelectedInstanceSelectors.get()).toEqual([]);
+
+    const namespaces = serverSyncStore
+      .popAll()
+      .flatMap((item) => item.changes)
+      .map((change) => change.namespace);
+    expect(new Set(namespaces)).toEqual(
+      new Set([
+        "instances",
+        "props",
+        "styleSourceSelections",
+        "styleSources",
+        "styles",
+        "dataSources",
+        "resources",
+      ])
+    );
+
+    serverSyncStore.undo();
+    serverSyncStore.undo();
+    expect($instances.get()).toEqual(instances);
+    expect($props.get()).toEqual(new Map([[prop.id, prop]]));
+    expect($styleSources.get()).toEqual(
+      new Map([[styleSource.id, styleSource]])
+    );
+    expect($styleSourceSelections.get()).toEqual(
+      new Map([[styleSourceSelection.instanceId, styleSourceSelection]])
+    );
+    expect($styles.get()).toEqual(
+      new Map([["card-a-style-source:base:color:", styleDecl]])
+    );
+    expect($dataSources.get()).toEqual(new Map([[dataSource.id, dataSource]]));
+    expect($resources.get()).toEqual(new Map([[resource.id, resource]]));
+
+    serverSyncStore.redo();
+    expect($instances.get().get("body")?.children).toEqual([]);
+    expect($props.get()).toEqual(new Map());
+    expect($styleSources.get()).toEqual(new Map());
+    expect($styleSourceSelections.get()).toEqual(new Map());
+    expect($styles.get()).toEqual(new Map());
+    expect($dataSources.get()).toEqual(new Map());
+    expect($resources.get()).toEqual(new Map());
   });
 
   test("deletes only detachable roots when multi-selection includes non-detachable roots", () => {
@@ -1118,6 +1474,12 @@ describe("deleteInstanceBuilder", () => {
         },
       ],
     ]);
+    $pages.set(
+      createDefaultPages({
+        homePageId: "page-id",
+        rootInstanceId: "body",
+      })
+    );
     $instances.set(instances);
     selectInstances([
       ["template", "body"],
@@ -1252,6 +1614,65 @@ describe("move instance commands", () => {
       { type: "id", value: "heading" },
       { type: "id", value: "box" },
       { type: "id", value: "paragraph" },
+    ]);
+  });
+
+  test("moves direct Content Block children in content mode", () => {
+    setupMoveInstanceProject();
+    $instances.set(
+      new Map($instances.get()).set("body", {
+        ...$instances.get().get("body")!,
+        component: blockComponent,
+      })
+    );
+    $builderMode.set("content");
+    selectInstance(["heading", "body"]);
+
+    emitCommand("moveInstanceUp");
+
+    expect($instances.get().get("body")?.children).toEqual([
+      { type: "id", value: "heading" },
+      { type: "id", value: "box" },
+      { type: "id", value: "paragraph" },
+    ]);
+  });
+
+  test("does not move Content Block children outside it in content mode", () => {
+    setupMoveInstanceProject();
+    $instances.set(
+      new Map($instances.get()).set("body", {
+        ...$instances.get().get("body")!,
+        component: blockComponent,
+      })
+    );
+    $builderMode.set("content");
+    selectInstance(["box", "body"]);
+
+    emitCommand("moveInstanceUp");
+
+    expect($instances.get().get("body")?.children).toEqual([
+      { type: "id", value: "box" },
+      { type: "id", value: "heading" },
+      { type: "id", value: "paragraph" },
+    ]);
+  });
+
+  test("moves Content Block descendants into siblings in content mode", () => {
+    setupMoveInstanceProject();
+    $instances.set(
+      new Map($instances.get()).set("body", {
+        ...$instances.get().get("body")!,
+        component: blockComponent,
+      })
+    );
+    $builderMode.set("content");
+    selectInstance(["heading", "body"]);
+
+    emitCommand("moveInstanceIntoPreviousSibling");
+
+    expect($instances.get().get("box")?.children).toEqual([
+      { type: "id", value: "nested" },
+      { type: "id", value: "heading" },
     ]);
   });
 

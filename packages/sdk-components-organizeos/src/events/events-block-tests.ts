@@ -184,8 +184,10 @@ export const describeEventsBlock = ({
 
       const title = byLabel("Title");
       expect(title.tag).toBe("h3");
+      // 0.309.0's renderer marks an expression child "read" (a Content
+      // Block document binding is the only reader of the mode)
       expect(title.children).toEqual([
-        { type: "expression", value: `${variable}.title` },
+        { type: "expression", value: `${variable}.title`, mode: "read" },
       ]);
 
       const starts = byLabel("Starts");
@@ -200,7 +202,11 @@ export const describeEventsBlock = ({
       const place = byLabel("Place");
       expect(place.tag).toBe("p");
       expect(place.children).toEqual([
-        { type: "expression", value: `${variable}.location_name` },
+        {
+          type: "expression",
+          value: `${variable}.location_name`,
+          mode: "read",
+        },
       ]);
 
       const link = byLabel("Event link");
@@ -286,6 +292,19 @@ export const describeEventsBlock = ({
           name
         ).toBe(true);
       }
+    });
+
+    // 0.309.0's token(name) with no styles is a reference to a token the
+    // project must already have: inserting the block into a project without
+    // it throws "Design token ... was not found". The note is a token the
+    // block creates, with nothing declared.
+    test("the note token is created, not referenced", () => {
+      expect(fragment.referenceTokenIds).toBeUndefined();
+      expect(fragment.styleSources).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: "token", name: "OS Event Note" }),
+        ])
+      );
     });
 
     // "AM" alone on a line reads badly, and so does a month split from its

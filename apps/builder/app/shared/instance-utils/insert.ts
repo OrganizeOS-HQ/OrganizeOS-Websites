@@ -2,166 +2,176 @@
 // should be placed. Put insert target resolution and insertion commands here,
 // while fragment cloning stays in fragment.ts and existing-instance moves stay
 // in mutation.ts.
-import { nanoid } from "nanoid";
 import { toast } from "@webstudio-is/design-system";
+import invariant from "tiny-invariant";
 import {
-  type Instance,
-  type WebstudioData,
+  type Prop,
   type WebstudioFragment,
-  ROOT_INSTANCE_ID,
-  collectionComponent,
   elementComponent,
-  tags,
 } from "@webstudio-is/sdk";
-import type { ConflictResolution } from "../token-conflict-dialog";
+import {
+  builderRuntimeContext,
+  BuilderRuntimeError,
+  createComponentTemplateFragment,
+  getFragmentContentModelWarnings,
+  type FragmentContentModelWarning,
+  type ConflictResolution,
+  resolveComponentInsertTarget,
+  resolveFragmentInsertTarget,
+  type InstanceSelector,
+  type InsertTarget,
+} from "@webstudio-is/project-build/runtime";
 import {
   $registeredComponentMetas,
   $registeredTemplates,
-  $selectedInstancePath,
   $selectedInstanceSelector,
   $selectedPage,
-  getInstancePath,
   selectInstance,
 } from "../nano-states";
 import { $instances, $project, $props } from "../sync/data-stores";
-import { findClosestInstanceMatchingFragment } from "../matcher";
-import {
-  findClosestNonTextualContainer,
-  isTreeSatisfyingContentModel,
-} from "../content-model";
-import { findAvailableVariables } from "../data-variables";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
-import { getSlotFragmentDropTargetMutable } from "./slot";
-import {
-  type DroppableTarget,
-  type InstanceSelector,
-  wrapEditableChildrenAroundDropTargetMutable,
-} from "./tree";
-import { updateWebstudioData } from "./data";
-import { insertWebstudioFragmentCopy } from "./fragment";
+import { executeRuntimeMutation, executeRuntimeMutationSequence } from "./data";
 
-const getExistingInsertTargetPath = (insertable: Insertable) => {
-  const instancePath = getInstancePath(
-    insertable.parentSelector,
-    $instances.get()
-  );
-  if (instancePath === undefined) {
-    toast.error("Cannot insert: the target no longer exists.");
-    return;
-  }
-  return instancePath;
+const getRootInstanceId = () => $selectedPage.get()?.rootInstanceId;
+
+const onMissingTarget = () => {
+  toast.error("Cannot insert: the target no longer exists.");
 };
 
-export const insertInstanceChildrenMutable = (
-  data: Omit<WebstudioData, "pages">,
-  children: Instance["children"],
-  insertTarget: Insertable
-) => {
-  const dropTarget: DroppableTarget = {
-    parentSelector: insertTarget.parentSelector,
-    position: insertTarget.position === "after" ? "end" : insertTarget.position,
+const onRootTarget = () => {
+  toast.error(`Cannot insert into Global root`);
+};
+
+const onNoInsertMatch = (fragment: Pick<WebstudioFragment, "instances">) => {
+  return (message: string) => {
+    const component = fragment.instances[0].component;
+    const label = getInstanceLabel({ component });
+    toast.warn(message || `"${label}" has no place here`);
   };
-  const metas = $registeredComponentMetas.get();
-  let normalizedDropTarget =
-    getSlotFragmentDropTargetMutable(data.instances, dropTarget) ?? dropTarget;
-  normalizedDropTarget =
-    wrapEditableChildrenAroundDropTargetMutable(
-      data.instances,
-      data.props,
-      metas,
-      normalizedDropTarget
-    ) ?? normalizedDropTarget;
-  const [parentInstanceId] = normalizedDropTarget.parentSelector;
-  const parentInstance = data.instances.get(parentInstanceId);
-  if (parentInstance === undefined) {
+};
+
+const onNoComponentInsertMatch = (component: string) => {
+  return (message: string) => {
+    const label = getInstanceLabel({ component });
+    toast.warn(message || `"${label}" has no place here`);
+  };
+};
+
+const getFragmentInsertTarget = (
+  fragment: WebstudioFragment,
+  from?: Insertable,
+  options?: { allowContentModelWarnings?: boolean }
+) => {
+  const rootInstanceId = getRootInstanceId();
+  if (rootInstanceId === undefined) {
     return;
   }
-  if (normalizedDropTarget.position === "end") {
-    parentInstance.children.push(...children);
-  } else {
-    parentInstance.children.splice(
-      normalizedDropTarget.position,
-      0,
-      ...children
-    );
-  }
+  const instances = $instances.get();
+  return resolveFragmentInsertTarget({
+    fragment,
+    instances,
+    props: $props.get(),
+    metas: $registeredComponentMetas.get(),
+    rootInstanceId,
+    selectedInstanceSelector: $selectedInstanceSelector.get(),
+    from,
+    onRootTarget,
+    onMissingTarget,
+    onNoMatch: onNoInsertMatch(fragment),
+    allowFragmentContentModelWarnings: options?.allowContentModelWarnings,
+  });
 };
 
 export const insertWebstudioElementAt = (insertable?: Insertable) => {
-  const instances = $instances.get();
-  const props = $props.get();
-  const metas = $registeredComponentMetas.get();
-  // find closest container and try to match new element with it
-  if (insertable === undefined) {
-    const instancePath = $selectedInstancePath.get();
-    if (instancePath === undefined) {
+  const target = getComponentInsertTarget(elementComponent, insertable);
+  if (target === undefined) {
+    return false;
+  }
+  const result = executeRuntimeMutation({
+    id: "instances.insertComponent",
+    input: {
+      parentInstanceId: target.parentInstanceId,
+      component: elementComponent,
+      tag: target.tag,
+      insertIndex: target.insertIndex,
+    },
+  });
+  const newInstanceId = result?.result.rootInstanceIds[0];
+  if (newInstanceId === undefined) {
+    return false;
+  }
+  const parentSelector =
+    result?.result.parentInstanceId === undefined ||
+    result.result.parentInstanceId === target.parentInstanceId
+      ? target.parentSelector
+      : [result.result.parentInstanceId, ...target.parentSelector];
+  selectInstance([newInstanceId, ...parentSelector]);
+  return true;
+};
+
+const getComponentInsertTarget = (component: string, from?: Insertable) => {
+  const rootInstanceId = getRootInstanceId();
+  if (rootInstanceId === undefined) {
+    return;
+  }
+  return resolveComponentInsertTarget({
+    component,
+    templates: $registeredTemplates.get(),
+    context: builderRuntimeContext,
+    instances: $instances.get(),
+    props: $props.get(),
+    metas: $registeredComponentMetas.get(),
+    rootInstanceId,
+    selectedInstanceSelector: $selectedInstanceSelector.get(),
+    from,
+    onRootTarget,
+    onMissingTarget,
+    onNoMatch: onNoComponentInsertMatch(component),
+  });
+};
+
+export const insertWebstudioComponentAt = (
+  component: string,
+  insertable?: Insertable
+) => {
+  const target = getComponentInsertTarget(component, insertable);
+  if (target === undefined) {
+    return false;
+  }
+  let result: ReturnType<
+    typeof executeRuntimeMutation<"instances.insertComponent">
+  >;
+  try {
+    result = executeRuntimeMutation({
+      id: "instances.insertComponent",
+      input: {
+        parentInstanceId: target.parentInstanceId,
+        component,
+        tag: target.tag,
+        insertIndex: target.insertIndex,
+      },
+    });
+  } catch (error) {
+    if (error instanceof BuilderRuntimeError) {
+      toast.error(error.message);
       return false;
     }
-    const [{ instanceSelector }] = instancePath;
-    const containerSelector = findClosestNonTextualContainer({
-      instances,
-      props,
-      metas,
-      instanceSelector,
-    });
-    const insertableIndex = instanceSelector.length - containerSelector.length;
-    if (insertableIndex === 0) {
-      insertable = {
-        parentSelector: containerSelector,
-        position: "end",
-      };
-    } else {
-      const containerInstance = instances.get(containerSelector[0]);
-      if (containerInstance === undefined) {
-        return false;
-      }
-      const lastChildInstanceId = instanceSelector[insertableIndex - 1];
-      const lastChildPosition = containerInstance.children.findIndex(
-        (child) => child.type === "id" && child.value === lastChildInstanceId
-      );
-      insertable = {
-        parentSelector: containerSelector,
-        position: lastChildPosition + 1,
-      };
-    }
+    throw error;
   }
-  if (getExistingInsertTargetPath(insertable) === undefined) {
-    return false;
+  const newInstanceId = result?.result.rootInstanceIds[0];
+  if (result !== undefined && newInstanceId !== undefined) {
+    const parentSelector =
+      result.result.parentInstanceId === target.parentInstanceId
+        ? target.parentSelector
+        : [result.result.parentInstanceId, ...target.parentSelector];
+    selectInstance([newInstanceId, ...parentSelector]);
   }
-  // create element and find matching tag
-  const element: Instance = {
-    type: "instance",
-    id: nanoid(),
-    component: elementComponent,
-    children: [],
-  };
-  const newInstances = new Map(instances);
-  newInstances.set(element.id, element);
-  let matchingTag: undefined | string;
-  for (const tag of tags) {
-    element.tag = tag;
-    const isSatisfying = isTreeSatisfyingContentModel({
-      instances: newInstances,
-      props,
-      metas,
-      instanceSelector: [element.id, ...insertable.parentSelector],
-    });
-    if (isSatisfying) {
-      matchingTag = tag;
-      break;
-    }
+  if (result?.result.didMergeBreakpointsDueToLimit === true) {
+    toast.info(
+      "Some breakpoints were merged because the project reached the breakpoint limit."
+    );
   }
-  if (matchingTag === undefined) {
-    return false;
-  }
-  // insert element
-  updateWebstudioData((data) => {
-    data.instances.set(element.id, element);
-    const children: Instance["children"] = [{ type: "id", value: element.id }];
-    insertInstanceChildrenMutable(data, children, insertable);
-  });
-  selectInstance([element.id, ...insertable.parentSelector]);
-  return true;
+  return result !== undefined;
 };
 
 export const insertWebstudioFragmentAt = (
@@ -169,13 +179,11 @@ export const insertWebstudioFragmentAt = (
   insertable?: Insertable,
   conflictResolution?: ConflictResolution,
   options?: {
+    contentMode?: boolean;
+    replaceInstanceSelector?: InstanceSelector;
     onBreakpointLimitMerge?: () => void;
-    // OrganizeOS fork: completes the insert in its own transaction, with the
-    // ids the fragment's instances were given.
-    onInsert?: (
-      data: WebstudioData,
-      newInstanceIds: Map<Instance["id"], Instance["id"]>
-    ) => void;
+    allowContentModelWarnings?: boolean;
+    onContentModelWarnings?: (warnings: FragmentContentModelWarning[]) => void;
   }
 ): boolean => {
   const hasChildren = fragment.children.length > 0;
@@ -185,188 +193,150 @@ export const insertWebstudioFragmentAt = (
   }
   // Tokens-only fragment: insert tokens/breakpoints/styles without instances
   if (!hasChildren && hasTokens) {
-    const project = $project.get();
-    if (project === undefined) {
+    const projectId = $project.get()?.id;
+    if (projectId === undefined) {
       return false;
     }
-    updateWebstudioData((data) => {
-      insertWebstudioFragmentCopy({
-        data,
+    const result = executeRuntimeMutation({
+      id: "instances.insertFragment",
+      input: {
         fragment,
-        availableVariables: [],
-        projectId: project.id,
-        conflictResolution,
-        onBreakpointLimitMerge: options?.onBreakpointLimitMerge,
-      });
+        conflictResolution: conflictResolution ?? "theirs",
+        contentMode: options?.contentMode,
+      },
     });
-    return true;
-  }
-  const project = $project.get();
-  insertable = findClosestInsertable(fragment, insertable) ?? insertable;
-  if (project === undefined || insertable === undefined) {
-    return false;
-  }
-  const initialInstancePath = getExistingInsertTargetPath(insertable);
-  if (initialInstancePath === undefined) {
-    return false;
-  }
-  let newInstanceSelector: undefined | InstanceSelector;
-  updateWebstudioData((data) => {
-    const instancePath =
-      getInstancePath(insertable.parentSelector, data.instances) ??
-      initialInstancePath;
-    const { newInstanceIds } = insertWebstudioFragmentCopy({
-      data,
-      fragment,
-      availableVariables: findAvailableVariables({
-        ...data,
-        startingInstanceId: instancePath[0].instance.id,
-      }),
-      projectId: project.id,
-      conflictResolution,
-      onBreakpointLimitMerge: options?.onBreakpointLimitMerge,
-    });
-    const children: Instance["children"] = fragment.children.map((child) => {
-      if (child.type === "id") {
-        return {
-          type: "id",
-          value: newInstanceIds.get(child.value) ?? child.value,
-        };
-      }
-      return child;
-    });
-    let parentSelector;
-    let position: number | "end";
-    if (insertable.position === "after") {
-      if (instancePath.length === 1) {
-        parentSelector = insertable.parentSelector;
-        position = "end";
-      } else {
-        parentSelector = instancePath[1].instanceSelector;
-        const [{ instance }, { instance: parentInstance }] = instancePath;
-        const index = parentInstance.children.findIndex(
-          (child) => child.type === "id" && child.value === instance.id
-        );
-        position = 1 + index;
-      }
-    } else {
-      parentSelector = insertable.parentSelector;
-      position = insertable.position;
+    if (result?.result.didMergeBreakpointsDueToLimit === true) {
+      options?.onBreakpointLimitMerge?.();
     }
-    insertInstanceChildrenMutable(data, children, {
-      parentSelector,
-      position,
-    });
-    options?.onInsert?.(data, newInstanceIds);
-    newInstanceSelector = [children[0].value, ...parentSelector];
-  });
-  if (newInstanceSelector) {
-    selectInstance(newInstanceSelector);
+    return result !== undefined;
   }
-  return true;
+  const target = getFragmentInsertTarget(fragment, insertable, options);
+  if ($project.get() === undefined || target === undefined) {
+    return false;
+  }
+  const insertOperation = {
+    id: "instances.insertFragment",
+    input: {
+      parentInstanceId: target.parentInstanceId,
+      fragment,
+      conflictResolution: conflictResolution ?? "theirs",
+      contentMode: options?.contentMode,
+      insertIndex: target.insertIndex,
+    },
+    context: {
+      allowLegacyContentModelWarnings: options?.allowContentModelWarnings,
+    },
+  } as const;
+  const insertionResult =
+    options?.replaceInstanceSelector === undefined
+      ? executeRuntimeMutation(insertOperation)?.result
+      : executeRuntimeMutationSequence([
+          insertOperation,
+          {
+            id: "instances.deleteBySelector",
+            input: { instanceSelector: options.replaceInstanceSelector },
+          },
+        ] as const)?.[0];
+  const newInstanceId = insertionResult?.rootInstanceIds[0];
+  if (insertionResult !== undefined && newInstanceId !== undefined) {
+    const resultParentInstanceId =
+      "parentInstanceId" in insertionResult
+        ? insertionResult.parentInstanceId
+        : undefined;
+    const nextParentSelector =
+      resultParentInstanceId === undefined ||
+      resultParentInstanceId === target.parentInstanceId
+        ? target.parentSelector
+        : [resultParentInstanceId, ...target.parentSelector];
+    selectInstance([newInstanceId, ...nextParentSelector]);
+  }
+  if (insertionResult?.didMergeBreakpointsDueToLimit === true) {
+    options?.onBreakpointLimitMerge?.();
+  }
+  if (
+    insertionResult !== undefined &&
+    options?.allowContentModelWarnings === true
+  ) {
+    const warnings = getFragmentContentModelWarnings({
+      fragment,
+      metas: $registeredComponentMetas.get(),
+    });
+    if (warnings.length > 0) {
+      options.onContentModelWarnings?.(warnings);
+    }
+  }
+  return insertionResult !== undefined;
 };
 
 export const getComponentTemplateData = (
   componentOrTemplate: string
 ): WebstudioFragment => {
-  const templates = $registeredTemplates.get();
-  const templateMeta = templates.get(componentOrTemplate);
-  if (templateMeta) {
-    return templateMeta.template;
-  }
-  const newInstance: Instance = {
-    id: nanoid(),
-    type: "instance",
+  return createComponentTemplateFragment({
     component: componentOrTemplate,
-    children: [],
-  };
-  return {
-    children: [{ type: "id", value: newInstance.id }],
-    instances: [newInstance],
-    props: [],
-    dataSources: [],
-    styleSourceSelections: [],
-    styleSources: [],
-    styles: [],
-    breakpoints: [],
-    assets: [],
-    resources: [],
-  };
+    templates: $registeredTemplates.get(),
+    createId: builderRuntimeContext.createId,
+  });
 };
 
-export type Insertable = {
-  parentSelector: InstanceSelector;
-  position: number | "end" | "after";
+export const getImageAssetFragment = (assetId: string): WebstudioFragment => {
+  const fragment = getComponentTemplateData("Image");
+  const imageInstance = fragment.instances.find(
+    (instance) => instance.component === "Image"
+  );
+  invariant(imageInstance, "Expected the Image template to contain an Image");
+  const sourceIndex = fragment.props.findIndex(
+    (prop) => prop.instanceId === imageInstance.id && prop.name === "src"
+  );
+  const source: Prop = {
+    ...(sourceIndex === -1
+      ? { id: builderRuntimeContext.createId() }
+      : fragment.props[sourceIndex]),
+    instanceId: imageInstance.id,
+    name: "src",
+    type: "asset",
+    value: assetId,
+  };
+  const props = [...fragment.props];
+  if (sourceIndex === -1) {
+    props.push(source);
+  } else {
+    props[sourceIndex] = source;
+  }
+  return { ...fragment, props };
 };
+
+export const insertImageAssetAt = (assetId: string, insertable?: Insertable) =>
+  insertWebstudioFragmentAt(getImageAssetFragment(assetId), insertable);
+
+export type Insertable = InsertTarget;
 
 export const findClosestInsertable = (
   fragment: WebstudioFragment,
-  from?: Insertable
+  from?: Insertable,
+  options?: { allowContentModelWarnings?: boolean }
 ): undefined | Insertable => {
-  const selectedPage = $selectedPage.get();
-  if (selectedPage === undefined) {
+  const rootInstanceId = getRootInstanceId();
+  if (rootInstanceId === undefined) {
     return;
   }
-  // paste to the page root if nothing is selected
-  const instanceSelector = from?.parentSelector ??
-    $selectedInstanceSelector.get() ?? [selectedPage.rootInstanceId];
-  if (instanceSelector[0] === ROOT_INSTANCE_ID) {
-    toast.error(`Cannot insert into Global root`);
-    return;
-  }
-  const metas = $registeredComponentMetas.get();
-  const instances = $instances.get();
-  const props = $props.get();
-  const containerSelector = findClosestNonTextualContainer({
-    metas,
-    props,
-    instances,
-    instanceSelector,
-  });
-  const closestContainerIndex =
-    instanceSelector.length - containerSelector.length;
-  if (closestContainerIndex === -1) {
-    return;
-  }
-  let insertableIndex = findClosestInstanceMatchingFragment({
-    metas,
-    instances,
-    props,
-    instanceSelector: instanceSelector.slice(closestContainerIndex),
+  const target = resolveFragmentInsertTarget({
     fragment,
-    onError: (message) => {
-      const component = fragment.instances[0].component;
-      const label = getInstanceLabel({ component });
-      toast.warn(message || `"${label}" has no place here`);
-    },
+    instances: $instances.get(),
+    props: $props.get(),
+    metas: $registeredComponentMetas.get(),
+    rootInstanceId,
+    selectedInstanceSelector: $selectedInstanceSelector.get(),
+    from,
+    onRootTarget,
+    onMissingTarget,
+    onNoMatch: onNoInsertMatch(fragment),
+    allowFragmentContentModelWarnings: options?.allowContentModelWarnings,
   });
-  if (insertableIndex === -1) {
+  if (target === undefined) {
     return;
   }
-
-  // adjust with container lookup
-  insertableIndex = insertableIndex + closestContainerIndex;
-  const parentSelector = instanceSelector.slice(insertableIndex);
-  if (insertableIndex === 0) {
-    return from ?? { parentSelector, position: "end" };
-  }
-  const instance = instances.get(instanceSelector[insertableIndex]);
-  if (instance === undefined) {
-    return;
-  }
-  // skip collection item when inserting something and go straight into collection instance
-  if (instance?.component === collectionComponent && insertableIndex === 1) {
-    return {
-      parentSelector,
-      position: "end",
-    };
-  }
-  const lastChildInstanceId = instanceSelector[insertableIndex - 1];
-  const lastChildPosition = instance.children.findIndex(
-    (child) => child.type === "id" && child.value === lastChildInstanceId
-  );
   return {
-    parentSelector,
-    position: lastChildPosition + 1,
+    parentSelector: target.parentSelector,
+    position: target.insertIndex ?? "end",
   };
 };

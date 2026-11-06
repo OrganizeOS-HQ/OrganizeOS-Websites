@@ -8,6 +8,7 @@ import {
 } from "@webstudio-is/icons";
 import {
   Box,
+  Chip,
   DropdownMenuItemRightSlot,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -17,9 +18,9 @@ import {
   MenuCheckedIcon,
   menuItemCss,
   theme,
-  ToolbarButton,
-  ToolbarToggleGroup,
-  ToolbarToggleItem,
+  IconToggleButton,
+  SplitButton,
+  SplitButtonMenuButton,
   Tooltip,
   Text,
   DropdownMenu,
@@ -34,6 +35,7 @@ import {
   setBuilderMode,
 } from "~/shared/nano-states";
 import { emitCommand } from "~/builder/shared/commands";
+import { planBadgeLabel } from "~/shared/branding";
 
 export const BuilderModeDropDown = () => {
   const builderMode = useStore($builderMode);
@@ -70,7 +72,7 @@ export const BuilderModeDropDown = () => {
   };
 
   return (
-    <Flex align="center">
+    <SplitButton>
       <Tooltip
         content={
           <Flex gap="1">
@@ -79,36 +81,25 @@ export const BuilderModeDropDown = () => {
           </Flex>
         }
       >
-        <ToolbarToggleGroup
-          type="single"
-          value={builderMode}
-          onValueChange={() => {
+        <IconToggleButton
+          aria-label="Toggle preview"
+          pressed={builderMode === "preview"}
+          onPressedChange={() => {
             emitCommand("togglePreviewMode");
           }}
         >
-          <ToolbarToggleItem variant="preview" value="preview">
-            <PlayIcon />
-          </ToolbarToggleItem>
-        </ToolbarToggleGroup>
+          <PlayIcon />
+        </IconToggleButton>
       </Tooltip>
       <DropdownMenu>
         <Tooltip content={"Choose mode"}>
           <DropdownMenuTrigger asChild>
-            <ToolbarButton
-              tabIndex={0}
-              aria-label="Choose mode"
-              variant="chevron"
-            >
+            <SplitButtonMenuButton type="button" aria-label="Choose mode">
               <ChevronDownIcon />
-            </ToolbarButton>
+            </SplitButtonMenuButton>
           </DropdownMenuTrigger>
         </Tooltip>
-        <DropdownMenuContent
-          sideOffset={4}
-          collisionPadding={16}
-          side="bottom"
-          loop
-        >
+        <DropdownMenuContent collisionPadding={16} side="bottom" loop>
           <DropdownMenuRadioGroup
             value={builderMode}
             onValueChange={(value) => {
@@ -118,11 +109,12 @@ export const BuilderModeDropDown = () => {
             }}
           >
             {Object.entries(menuItems)
-              .filter(([_, { enabled }]) => enabled)
-              .map(([mode, { icon, title, shortcut }]) => (
+              .filter(([mode, { enabled }]) => mode === "content" || enabled)
+              .map(([mode, { icon, title, shortcut, enabled }]) => (
                 <DropdownMenuRadioItem
                   key={mode}
                   value={mode}
+                  disabled={!enabled}
                   onFocus={handleFocus(mode as keyof typeof menuItems)}
                   onBlur={handleBlur}
                   icon={<MenuCheckedIcon />}
@@ -132,7 +124,12 @@ export const BuilderModeDropDown = () => {
                     <Box>{title}</Box>
                   </Flex>
                   <DropdownMenuItemRightSlot>
-                    <Kbd value={shortcut} />
+                    {/* OrganizeOS fork: the plan badge names no Webstudio tier */}
+                    {enabled ? (
+                      <Kbd value={shortcut} />
+                    ) : (
+                      <Chip>{planBadgeLabel}</Chip>
+                    )}
                   </DropdownMenuItemRightSlot>
                   &nbsp;
                 </DropdownMenuRadioItem>
@@ -149,6 +146,6 @@ export const BuilderModeDropDown = () => {
           </div>
         </DropdownMenuContent>
       </DropdownMenu>
-    </Flex>
+    </SplitButton>
   );
 };

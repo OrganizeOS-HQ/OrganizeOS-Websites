@@ -27,7 +27,8 @@ a zone touching the edge without the clamp, which pins the generator's
 all-solid output there.
 
 Never edit the file by hand or reformat it: it is a byte-for-byte copy, so
-`.prettierrc.yaml` here keeps Prettier off it, and tests read it with
+the repository's `.oxfmtrc.json` lists it in `ignorePatterns`, which keeps
+the formatter and the pre-commit hook off it, and tests read it with
 `readFileSync` (never a JSON import, which would make the typecheck infer a
 huge literal type).
 

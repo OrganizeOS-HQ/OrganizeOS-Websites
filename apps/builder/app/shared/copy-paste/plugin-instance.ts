@@ -1,69 +1,85 @@
 import {
+  breakpointPasteLimitWarning,
   extractWebstudioFragment,
-  insertWebstudioFragmentCopy,
-} from "../instance-utils/fragment";
-import { findClosestInsertable } from "../instance-utils/insert";
-import { detectFragmentTokenConflicts } from "../instance-utils/fragment";
+  findChildReferenceIndex,
+  findSafeFragmentPasteTarget,
+  getCommonAncestorSelector,
+  getInstancePath,
+  getPasteRootInstanceIds,
+  getFragmentContentModelWarnings,
+  mergeWebstudioFragments,
+  type InstanceSelector,
+  sortInstancePathsForChildMutation,
+} from "@webstudio-is/project-build/runtime";
 import {
-  updateInstanceData,
-  updateWebstudioData,
+  instanceTransferDataVersion,
+  instancesTransferDataVersion,
+  parseInstanceTransferData,
+  type InstanceTransferData,
+  type InstancesTransferData,
+} from "@webstudio-is/project-build/transfer";
+import { findClosestInsertable } from "../instance-utils/insert";
+import {
+  executeRuntimeMutationAsync,
   getWebstudioData,
 } from "../instance-utils/data";
-import {
-  insertInstanceChildrenMutable,
-  type Insertable,
-} from "../instance-utils/insert";
+import { type Insertable } from "../instance-utils/insert";
 import { shallowEqual } from "shallow-equal";
-import { z } from "zod";
 import { toast } from "@webstudio-is/design-system";
 import {
+  blockComponent,
+  contentBlockSourceProp,
+  getContentBlockSource,
+  isMdxFileAsset,
   type Instance,
-  type Instances,
   type WebstudioFragment,
-  webstudioFragment,
-  findTreeInstanceIdsExcludingSlotDescendants,
   isComponentDetachable,
-  portalComponent,
 } from "@webstudio-is/sdk";
-import { $instances, $project } from "~/shared/sync/data-stores";
-import type { InstanceSelector } from "../instance-utils/tree";
 import {
-  deleteInstanceMutable,
-  sortInstancePathsForChildMutation,
-} from "../instance-utils/mutation";
+  $assetFolders,
+  $instances,
+  $project,
+  readBuilderStateStores,
+} from "~/shared/sync/data-stores";
+import { deleteInstanceBySelector } from "../instance-utils/mutation";
 import {
   $allSelectedInstanceSelectors,
   clearInstanceSelection,
-  getInstancePath,
   $selectedInstancePath,
   $selectedInstanceSelector,
+  $registeredComponentMetas,
+  $variableValuesByInstanceSelector,
   selectInstances,
 } from "~/shared/nano-states";
-import { findAvailableVariables } from "../data-variables";
 import { builderApi } from "../builder-api";
-import type { Plugin } from "./copy-paste";
-import { breakpointPasteLimitWarning } from "../breakpoints";
+import { pasteHandled, pasteIgnored, type Plugin } from "./copy-paste";
+import { resolveFragmentTokenConflicts } from "../resolve-token-conflicts";
+import { reportFragmentContentModelWarnings } from "./fragment-utils";
+import { transferFragmentAssets } from "./asset-transfer-utils";
+import {
+  isRepeatedContentBlockOccurrence,
+  parseContentBlockRenderScope,
+  resolveContentBlockOccurrenceAssetId,
+} from "../content-block-source-utils";
+import { rewriteTransferredDocumentAssetReferences } from "./mdx-asset-transfer";
+import {
+  createClipboardAssetPaths,
+  hasDynamicContentBlockSource,
+  prepareConnectedContentBlockFragment,
+  resolveRepeatedContentBlockSourcesForCopy,
+} from "./content-block-fragment";
+import {
+  $externalContentRoots,
+  getExternalContentSourceSelector,
+} from "../external-content-mutations";
 
-const version = "@webstudio/instance/v0.1";
-const multiRootVersion = "@webstudio/instances/v0.1";
+const invalidPasteDataMessage =
+  "Could not paste Webstudio instance data. The clipboard data appears to be incomplete or invalid.";
 
-const instanceData = webstudioFragment.extend({
-  instanceSelector: z.array(z.string()),
-});
-
-type InstanceData = z.infer<typeof instanceData>;
-
-const multiRootInstanceData = z.object({
-  rootInstanceIds: z.array(z.string()),
-  fragment: webstudioFragment,
-});
-
-type MultiRootInstanceData = z.infer<typeof multiRootInstanceData>;
-
-const getTreeData = (
+const getTreeData = async (
   instanceSelector: InstanceSelector,
   { showToast = true }: { showToast?: boolean } = {}
-) => {
+): Promise<InstanceTransferData | undefined> => {
   const instances = $instances.get();
   const [targetInstanceId] = instanceSelector;
   const instance = instances.get(targetInstanceId);
@@ -81,160 +97,132 @@ const getTreeData = (
     return;
   }
 
-  return {
+  const data = getWebstudioData();
+  const project = $project.get();
+  const sourceInstanceSelector =
+    instance?.component === blockComponent
+      ? getExternalContentSourceSelector({
+          selector: instanceSelector,
+          roots: $externalContentRoots.get(),
+        })?.sourceSelector
+      : undefined;
+  const copyInstanceSelector = sourceInstanceSelector ?? instanceSelector;
+  let fragment = extractWebstudioFragment(data, copyInstanceSelector[0]);
+  let renderScopes: ReadonlySet<string> | undefined;
+  const isRepeatedOccurrence = isRepeatedContentBlockOccurrence({
     instanceSelector,
-    ...extractWebstudioFragment(getWebstudioData(), targetInstanceId),
+    instances,
+  });
+  if (isRepeatedOccurrence) {
+    const resolved = resolveRepeatedContentBlockSourcesForCopy({
+      fragment,
+      selectedInstanceSelector: copyInstanceSelector,
+      occurrences: Array.from($externalContentRoots.get().values()).flatMap(
+        (root) => {
+          const sourceInstanceSelector = parseContentBlockRenderScope(
+            root.sourceRenderScope ?? root.renderScope ?? ""
+          );
+          const sourceBlockInstanceId =
+            root.sourceBlockInstanceId ?? root.blockInstanceId;
+          return root.identity === undefined ||
+            sourceInstanceSelector === undefined
+            ? []
+            : [
+                {
+                  sourceBlockInstanceId,
+                  sourceRenderScope:
+                    root.sourceRenderScope ?? root.renderScope ?? "",
+                  sourceInstanceSelector,
+                  assetId: root.identity.assetId,
+                },
+              ];
+        }
+      ),
+    });
+    fragment = resolved.fragment;
+    renderScopes = resolved.renderScopes;
+  }
+  if (instance?.component === blockComponent) {
+    const source = getContentBlockSource({
+      blockInstanceId: copyInstanceSelector[0],
+      props: data.props.values(),
+    });
+    const resolvedAssetId =
+      source?.type === "expression"
+        ? await resolveContentBlockOccurrenceAssetId({
+            source,
+            instanceSelector,
+            variableValuesByRenderScope:
+              $variableValuesByInstanceSelector.get(),
+          })
+        : undefined;
+    const resolvedAsset =
+      resolvedAssetId === undefined
+        ? undefined
+        : data.assets.get(resolvedAssetId);
+    if (resolvedAsset !== undefined && isMdxFileAsset(resolvedAsset)) {
+      fragment = {
+        ...fragment,
+        props: fragment.props.map((prop) =>
+          prop.instanceId === copyInstanceSelector[0] &&
+          prop.name === contentBlockSourceProp
+            ? { ...prop, type: "asset" as const, value: resolvedAsset.id }
+            : prop
+        ),
+      };
+    }
+  }
+  fragment = prepareConnectedContentBlockFragment({
+    fragment,
+    projectId: project?.id,
+    assets: data.assets,
+    renderScopes,
+  });
+  const hasDynamicContentSource = hasDynamicContentBlockSource(fragment);
+  if (
+    showToast &&
+    instance?.component !== blockComponent &&
+    hasDynamicContentSource
+  ) {
+    toast.warn(
+      "Dynamic MDX sources are copied from the Collection items currently rendered on the canvas."
+    );
+  }
+  return {
+    sourceOrigin: window.location.origin,
+    assetPaths: createClipboardAssetPaths(fragment.assets, $assetFolders.get()),
+    instanceSelector: copyInstanceSelector,
+    ...fragment,
   };
 };
 
-const stringify = (data: InstanceData) => {
-  return JSON.stringify({ [version]: data });
+const stringify = (data: InstanceTransferData) => {
+  return JSON.stringify({ [instanceTransferDataVersion]: data });
 };
 
-const stringifyMultiRoot = (data: MultiRootInstanceData) => {
-  return JSON.stringify({ [multiRootVersion]: data });
+const stringifyMultiRoot = (data: InstancesTransferData) => {
+  return JSON.stringify({ [instancesTransferDataVersion]: data });
 };
 
-const stringifyMultiRootSelection = (selectedData: InstanceData[]) => {
+const stringifyMultiRootSelection = (selectedData: InstanceTransferData[]) => {
+  const firstData = selectedData[0];
+  if (firstData === undefined) {
+    return;
+  }
   const rootInstanceIds = selectedData.map((data) => data.instanceSelector[0]);
   return stringifyMultiRoot({
+    sourceOrigin: firstData.sourceOrigin,
+    assetPaths: Object.assign(
+      {},
+      ...selectedData.map(({ assetPaths }) => assetPaths ?? {})
+    ),
     rootInstanceIds,
     fragment: mergeWebstudioFragments(rootInstanceIds, selectedData),
   });
 };
 
-const clipboard = z.object({ [version]: instanceData });
-const multiRootClipboard = z.object({
-  [multiRootVersion]: multiRootInstanceData,
-});
-
-const parse = (clipboardData: string): InstanceData | undefined => {
-  try {
-    const data = clipboard.parse(JSON.parse(clipboardData));
-    return data[version];
-  } catch {
-    return;
-  }
-};
-
-const parseMultiRoot = (
-  clipboardData: string
-): MultiRootInstanceData | undefined => {
-  try {
-    const data = multiRootClipboard.parse(JSON.parse(clipboardData));
-    return data[multiRootVersion];
-  } catch {
-    return;
-  }
-};
-
-const getPasteRootInstanceIds = ({
-  rootInstanceIds,
-  fragment,
-}: MultiRootInstanceData) => {
-  const instanceIds = new Set(
-    fragment.instances.map((instance) => instance.id)
-  );
-  const fragmentRootIds = new Set<Instance["id"]>();
-  for (const child of fragment.children) {
-    if (child.type === "id") {
-      fragmentRootIds.add(child.value);
-    }
-  }
-  const seen = new Set<Instance["id"]>();
-  return rootInstanceIds.filter((instanceId) => {
-    if (
-      instanceIds.has(instanceId) === false ||
-      fragmentRootIds.has(instanceId) === false ||
-      seen.has(instanceId)
-    ) {
-      return false;
-    }
-    seen.add(instanceId);
-    return true;
-  });
-};
-
-const mergeById = <Item extends { id: string }>(items: Item[]) =>
-  Array.from(new Map(items.map((item) => [item.id, item])).values());
-
-const mergeUniqueByJson = <Item>(items: Item[]) =>
-  Array.from(
-    new Map(items.map((item) => [JSON.stringify(item), item])).values()
-  );
-
-const mergeWebstudioFragments = (
-  rootInstanceIds: Instance["id"][],
-  fragments: WebstudioFragment[]
-): WebstudioFragment => ({
-  children: rootInstanceIds.map((instanceId) => ({
-    type: "id" as const,
-    value: instanceId,
-  })),
-  instances: mergeById(fragments.flatMap((fragment) => fragment.instances)),
-  styleSourceSelections: mergeUniqueByJson(
-    fragments.flatMap((fragment) => fragment.styleSourceSelections)
-  ),
-  styleSources: mergeById(
-    fragments.flatMap((fragment) => fragment.styleSources)
-  ),
-  breakpoints: mergeById(fragments.flatMap((fragment) => fragment.breakpoints)),
-  styles: mergeUniqueByJson(fragments.flatMap((fragment) => fragment.styles)),
-  dataSources: mergeById(fragments.flatMap((fragment) => fragment.dataSources)),
-  resources: mergeById(fragments.flatMap((fragment) => fragment.resources)),
-  props: mergeById(fragments.flatMap((fragment) => fragment.props)),
-  assets: mergeById(fragments.flatMap((fragment) => fragment.assets)),
-});
-
 const reportSkippedSelectedInstances = (operation: "copied" | "cut") => {
   builderApi.toast.info(`Some selected instances could not be ${operation}.`);
-};
-
-const getPortalFragmentSelector = (
-  instances: Instances,
-  instanceSelector: InstanceSelector
-) => {
-  const instance = instances.get(instanceSelector[0]);
-  if (
-    instance?.component !== portalComponent ||
-    instance.children.length === 0 ||
-    instance.children[0].type !== "id"
-  ) {
-    return;
-  }
-  // first portal child is always fragment
-  return [instance.children[0].value, ...instanceSelector];
-};
-
-const getIdChildIndex = (
-  children: Instance["children"],
-  instanceId: Instance["id"]
-) =>
-  children.findIndex(
-    (child) => child.type === "id" && child.value === instanceId
-  );
-
-const getCommonAncestorSelector = (
-  instanceSelectors: InstanceSelector[]
-): undefined | InstanceSelector => {
-  const [firstSelector] = instanceSelectors;
-  if (firstSelector === undefined) {
-    return;
-  }
-  const ancestorSelector: InstanceSelector = [];
-  for (let index = 1; index <= firstSelector.length; index += 1) {
-    const ancestorId = firstSelector[firstSelector.length - index];
-    if (
-      instanceSelectors.every(
-        (selector) => selector[selector.length - index] === ancestorId
-      )
-    ) {
-      ancestorSelector.unshift(ancestorId);
-      continue;
-    }
-    break;
-  }
-  return ancestorSelector.length > 0 ? ancestorSelector : undefined;
 };
 
 const findMultiSelectionInsertable = (
@@ -264,7 +252,7 @@ const findMultiSelectionInsertable = (
       return;
     }
     const selectedSiblingIndexes = selectedPaths.map((path) =>
-      getIdChildIndex(parentInstance.children, path[0].instance.id)
+      findChildReferenceIndex(parentInstance.children, path[0].instance.id)
     );
     if (selectedSiblingIndexes.includes(-1)) {
       return;
@@ -292,79 +280,46 @@ const findSelectionPasteTarget = (fragment: WebstudioFragment) =>
   findMultiSelectionInsertable(fragment) ??
   findPasteTargetForFragment(fragment);
 
-const getCopiedRootInstanceIds = (fragment: WebstudioFragment) => {
-  const newInstances: Instances = new Map(
-    fragment.instances.map((instance) => [instance.id, instance])
-  );
-  const copiedRootInstanceIds = new Set<Instance["id"]>();
-  for (const child of fragment.children) {
-    if (child.type !== "id") {
-      continue;
-    }
-    for (const instanceId of findTreeInstanceIdsExcludingSlotDescendants(
-      newInstances,
-      child.value
-    )) {
-      copiedRootInstanceIds.add(instanceId);
-    }
-  }
-  return copiedRootInstanceIds;
-};
-
 const findPasteTargetForFragment = (
   fragment: WebstudioFragment,
   insertable?: Insertable
 ): undefined | Insertable => {
   const instances = $instances.get();
 
-  insertable = findClosestInsertable(fragment, insertable);
+  insertable = findClosestInsertable(fragment, insertable, {
+    allowContentModelWarnings: true,
+  });
   if (insertable === undefined) {
     return;
   }
-
-  if (fragment.instances.length === 0) {
-    return;
-  }
-
-  const copiedRootInstanceIds = getCopiedRootInstanceIds(fragment);
-  const preservedChildIds = new Set<Instance["id"]>();
-  for (const instance of fragment.instances) {
-    for (const child of instance.children) {
-      if (
-        child.type === "id" &&
-        copiedRootInstanceIds.has(child.value) === false
-      ) {
-        preservedChildIds.add(child.value);
-      }
-    }
-  }
-
-  // portal descendants ids are preserved
-  // so need to prevent pasting portal inside its copies
-  // to avoid circular tree
-  const dropTargetSelector =
-    // consider portal fragment when check for cycles to avoid cases
-    // like pasting portal directly into portal
-    getPortalFragmentSelector(instances, insertable.parentSelector) ??
-    insertable.parentSelector;
-  for (const instanceId of dropTargetSelector) {
-    if (preservedChildIds.has(instanceId)) {
-      return;
-    }
-  }
-
-  return insertable;
+  return findSafeFragmentPasteTarget({
+    fragment,
+    instances,
+    insertTarget: insertable,
+  });
 };
 
-const findPasteTarget = (data: InstanceData): undefined | Insertable => {
+const findPasteTarget = (
+  data: WebstudioFragment & { instanceSelector: string[] }
+): undefined | Insertable => {
   const instances = $instances.get();
 
   const instanceSelector = $selectedInstanceSelector.get();
+  const selectedSourceSelector =
+    instanceSelector === undefined
+      ? undefined
+      : getExternalContentSourceSelector({
+          selector: instanceSelector,
+          roots: $externalContentRoots.get(),
+        })?.sourceSelector;
 
   // paste after selected instance
   if (
     instanceSelector &&
-    shallowEqual(instanceSelector, data.instanceSelector)
+    shallowEqual(
+      selectedSourceSelector ?? instanceSelector,
+      data.instanceSelector
+    )
   ) {
     // body is not allowed to copy
     // so clipboard always have at least two level instance selector
@@ -385,145 +340,196 @@ const findPasteTarget = (data: InstanceData): undefined | Insertable => {
   return findSelectionPasteTarget(data);
 };
 
-const resolveFragmentTokenConflicts = async (fragment: WebstudioFragment) => {
-  const conflicts = detectFragmentTokenConflicts({ fragment });
-  return conflicts.length > 0
-    ? await builderApi.showTokenConflictDialog(conflicts)
-    : "theirs";
+const insertPastedFragment = async ({
+  fragment,
+  pasteTarget,
+  selectRootInstances,
+  sourceOrigin,
+  assetPaths,
+  projectId,
+}: {
+  fragment: WebstudioFragment;
+  pasteTarget: Insertable;
+  selectRootInstances: (rootInstanceIds: Instance["id"][]) => void;
+  sourceOrigin: string | undefined;
+  assetPaths?: Readonly<Record<string, string>>;
+  projectId: string;
+}) => {
+  try {
+    const contentModelWarnings = getFragmentContentModelWarnings({
+      fragment,
+      metas: $registeredComponentMetas.get(),
+    });
+    const conflictResolution = await resolveFragmentTokenConflicts(fragment);
+    if (conflictResolution === "cancel") {
+      return pasteHandled;
+    }
+    const transferred = await transferFragmentAssets({
+      sourceOrigin,
+      projectId,
+      fragments: [fragment],
+      importAssets: builderApi.importAssets,
+    });
+    if (transferred.success === false) {
+      return transferred;
+    }
+    if ($project.get()?.id !== projectId) {
+      return {
+        success: false,
+        error: "Project changed while pasting.",
+      } as const;
+    }
+    if (sourceOrigin !== undefined) {
+      try {
+        const { skippedInvalidAssetIds } =
+          await rewriteTransferredDocumentAssetReferences({
+            sourceOrigin,
+            projectId,
+            sourceAssets: fragment.assets,
+            sourceAssetPaths: assetPaths,
+            importedAssets: transferred.assets,
+          });
+        if (skippedInvalidAssetIds.length > 0) {
+          toast.warn(
+            "Some invalid content files were copied unchanged. Open them to review their diagnostics."
+          );
+        }
+      } catch {
+        return {
+          success: false,
+          error:
+            "Could not update Asset references in the copied content files.",
+        } as const;
+      }
+    }
+    if ($project.get()?.id !== projectId) {
+      return {
+        success: false,
+        error: "Project changed while pasting.",
+      } as const;
+    }
+    const transferredFragment = transferred.fragments.get(fragment);
+    if (transferredFragment === undefined) {
+      return pasteHandled;
+    }
+    const result = await executeRuntimeMutationAsync({
+      id: "instances.insertFragment",
+      input: {
+        parentInstanceId: pasteTarget.parentSelector[0],
+        fragment: transferredFragment,
+        conflictResolution,
+        insertIndex:
+          typeof pasteTarget.position === "number"
+            ? pasteTarget.position
+            : undefined,
+      },
+      context: { allowLegacyContentModelWarnings: true },
+    });
+    const rootInstanceIds = result?.result.rootInstanceIds;
+    if (rootInstanceIds === undefined || rootInstanceIds.length === 0) {
+      return pasteHandled;
+    }
+    if (result?.result.didMergeBreakpointsDueToLimit === true) {
+      toast.warn(breakpointPasteLimitWarning);
+    }
+    reportFragmentContentModelWarnings(contentModelWarnings);
+    selectRootInstances(rootInstanceIds);
+    return pasteHandled;
+  } catch {
+    return pasteHandled;
+  }
 };
 
 const handlePasteInstance = async (clipboardData: string) => {
-  const project = $project.get();
-  const multiRootFragment = parseMultiRoot(clipboardData);
-  if (multiRootFragment !== undefined) {
-    if (project === undefined) {
-      return false;
-    }
-    const pasteRootInstanceIds = getPasteRootInstanceIds(multiRootFragment);
+  const transferData = parseInstanceTransferData(clipboardData);
+  if (transferData.owned === false) {
+    return pasteIgnored;
+  }
+  if (transferData.valid === false) {
+    return {
+      success: false,
+      error:
+        "error" in transferData ? transferData.error : invalidPasteDataMessage,
+    } as const;
+  }
+  const projectId = $project.get()?.id;
+  if (projectId === undefined) {
+    return pasteHandled;
+  }
+  if (transferData.type === "multi-root") {
+    const pasteRootInstanceIds = getPasteRootInstanceIds(transferData.data);
     if (pasteRootInstanceIds.length === 0) {
-      return false;
+      return pasteHandled;
     }
-    const pasteTarget = findSelectionPasteTarget(multiRootFragment.fragment);
+    const fragment: WebstudioFragment = {
+      ...transferData.data.fragment,
+      children: pasteRootInstanceIds.map((instanceId) => ({
+        type: "id",
+        value: instanceId,
+      })),
+    };
+    const pasteTarget = findSelectionPasteTarget(fragment);
     if (pasteTarget === undefined) {
-      return false;
+      return pasteHandled;
     }
-
-    try {
-      const conflictResolution = await resolveFragmentTokenConflicts(
-        multiRootFragment.fragment
-      );
-      let didInsert = false;
-      updateWebstudioData((data) => {
-        const { newInstanceIds } = insertWebstudioFragmentCopy({
-          data,
-          fragment: multiRootFragment.fragment,
-          availableVariables: findAvailableVariables({
-            ...data,
-            startingInstanceId: pasteTarget.parentSelector[0],
-          }),
-          projectId: project.id,
-          conflictResolution,
-          onBreakpointLimitMerge: () => {
-            toast.warn(breakpointPasteLimitWarning);
-          },
-        });
-        const children: Instance["children"] = [];
-        const newSelectedSelectors: InstanceSelector[] = [];
-        for (const rootInstanceId of pasteRootInstanceIds) {
-          const newRootInstanceId = newInstanceIds.get(rootInstanceId);
-          if (newRootInstanceId === undefined) {
-            continue;
-          }
-          children.push({ type: "id", value: newRootInstanceId });
-          newSelectedSelectors.push([
+    return insertPastedFragment({
+      fragment,
+      pasteTarget,
+      sourceOrigin: transferData.data.sourceOrigin ?? window.location.origin,
+      assetPaths: transferData.data.assetPaths,
+      projectId,
+      selectRootInstances: (rootInstanceIds) => {
+        selectInstances(
+          rootInstanceIds.map((newRootInstanceId) => [
             newRootInstanceId,
             ...pasteTarget.parentSelector,
-          ]);
-        }
-        if (children.length === 0) {
-          return;
-        }
-        insertInstanceChildrenMutable(data, children, pasteTarget);
-        selectInstances(newSelectedSelectors);
-        didInsert = true;
-      });
-      if (didInsert === false) {
-        return false;
-      }
-    } catch (error) {
-      // User cancelled
-      return false;
-    }
-
-    return true;
+          ])
+        );
+      },
+    });
   }
-  const fragment = parse(clipboardData);
-  if (fragment === undefined || project === undefined) {
-    return false;
-  }
+  const fragment = transferData.data;
 
   const pasteTarget = findPasteTarget(fragment);
   if (pasteTarget === undefined) {
-    return false;
+    return pasteHandled;
   }
-
-  try {
-    const conflictResolution = await resolveFragmentTokenConflicts(fragment);
-    let didInsert = false;
-    updateWebstudioData((data) => {
-      const { newInstanceIds } = insertWebstudioFragmentCopy({
-        data,
-        fragment,
-        availableVariables: findAvailableVariables({
-          ...data,
-          startingInstanceId: pasteTarget.parentSelector[0],
-        }),
-        projectId: project.id,
-        conflictResolution,
-        onBreakpointLimitMerge: () => {
-          toast.warn(breakpointPasteLimitWarning);
-        },
-      });
-      const newRootInstanceId = newInstanceIds.get(fragment.instances[0].id);
+  return insertPastedFragment({
+    fragment,
+    pasteTarget,
+    sourceOrigin: transferData.data.sourceOrigin ?? window.location.origin,
+    assetPaths: transferData.data.assetPaths,
+    projectId,
+    selectRootInstances: (rootInstanceIds) => {
+      const newRootInstanceId = rootInstanceIds[0];
       if (newRootInstanceId === undefined) {
         return;
       }
-      const children: Instance["children"] = [
-        { type: "id", value: newRootInstanceId },
-      ];
-      insertInstanceChildrenMutable(data, children, pasteTarget);
       selectInstances([[newRootInstanceId, ...pasteTarget.parentSelector]]);
-      didInsert = true;
-    });
-    if (didInsert === false) {
-      return false;
-    }
-  } catch (error) {
-    // User cancelled
-    return false;
-  }
-
-  return true;
+    },
+  });
 };
 
-const handleCopyInstance = () => {
+const handleCopyInstanceAsync = async () => {
   const selectedInstanceSelectors = $allSelectedInstanceSelectors.get();
   if (selectedInstanceSelectors.length === 0) {
     return;
   }
   if (selectedInstanceSelectors.length === 1) {
-    const data = getTreeData(selectedInstanceSelectors[0]);
+    const data = await getTreeData(selectedInstanceSelectors[0]);
     if (data === undefined) {
       return;
     }
     return stringify(data);
   }
 
-  const selectedData = selectedInstanceSelectors
-    .map((instanceSelector) =>
-      getTreeData(instanceSelector, { showToast: false })
+  const selectedData = (
+    await Promise.all(
+      selectedInstanceSelectors.map((instanceSelector) =>
+        getTreeData(instanceSelector, { showToast: false })
+      )
     )
-    .filter((data): data is InstanceData => data !== undefined);
+  ).filter((data): data is InstanceTransferData => data !== undefined);
   if (selectedData.length === 0) {
     return;
   }
@@ -533,30 +539,52 @@ const handleCopyInstance = () => {
   return stringifyMultiRootSelection(selectedData);
 };
 
-const handleCutInstance = () => {
+const handleCutInstanceAsync = async (
+  writeClipboard: (data: string) => Promise<boolean>
+) => {
+  // Sync stores are immutable. Validate after the final await so no queued
+  // edit can run between this check and deletion.
+  const sourceData = readBuilderStateStores();
+  const projectId = $project.get()?.id;
+  const canDeleteCopiedContent = () => {
+    if (
+      projectId !== $project.get()?.id ||
+      shallowEqual(sourceData, readBuilderStateStores()) === false
+    ) {
+      builderApi.toast.info(
+        "The project changed while copying. Nothing was removed. Try cutting again."
+      );
+      return false;
+    }
+    return true;
+  };
   const selectedInstanceSelectors = $allSelectedInstanceSelectors.get();
   if (selectedInstanceSelectors.length > 1) {
     const instances = $instances.get();
-    const selectedPaths = selectedInstanceSelectors
-      .map((instanceSelector) => {
-        const data = getTreeData(instanceSelector, { showToast: false });
-        const instancePath =
-          data === undefined
-            ? undefined
-            : getInstancePath(data.instanceSelector, instances);
-        if (data === undefined || instancePath === undefined) {
-          return;
-        }
-        return { data, instancePath };
-      })
-      .filter(
-        (
-          item
-        ): item is {
-          data: InstanceData;
-          instancePath: NonNullable<ReturnType<typeof getInstancePath>>;
-        } => item !== undefined
-      );
+    const selectedPaths = (
+      await Promise.all(
+        selectedInstanceSelectors.map(async (instanceSelector) => {
+          const data = await getTreeData(instanceSelector, {
+            showToast: false,
+          });
+          const instancePath =
+            data === undefined
+              ? undefined
+              : getInstancePath(data.instanceSelector, instances);
+          if (data === undefined || instancePath === undefined) {
+            return;
+          }
+          return { data, instancePath };
+        })
+      )
+    ).filter(
+      (
+        item
+      ): item is {
+        data: InstanceTransferData;
+        instancePath: NonNullable<ReturnType<typeof getInstancePath>>;
+      } => item !== undefined
+    );
     if (selectedPaths.length === 0) {
       return;
     }
@@ -565,14 +593,19 @@ const handleCutInstance = () => {
       reportSkippedSelectedInstances("cut");
     }
     const clipboardData = stringifyMultiRootSelection(selectedPathData);
-    updateInstanceData((data) => {
-      for (const { instancePath } of sortInstancePathsForChildMutation(
-        selectedPaths
-      )) {
-        deleteInstanceMutable(data, instancePath);
-      }
-      clearInstanceSelection();
-    });
+    if (
+      clipboardData === undefined ||
+      (await writeClipboard(clipboardData)) === false ||
+      canDeleteCopiedContent() === false
+    ) {
+      return;
+    }
+    for (const { instancePath } of sortInstancePathsForChildMutation(
+      selectedPaths
+    )) {
+      deleteInstanceBySelector(instancePath[0].instanceSelector);
+    }
+    clearInstanceSelection();
     return clipboardData;
   }
 
@@ -584,29 +617,48 @@ const handleCutInstance = () => {
   if (instancePath.length === 1) {
     return;
   }
-  const data = getTreeData(instancePath[0].instanceSelector);
+  const data = await getTreeData(instancePath[0].instanceSelector);
   if (data === undefined) {
     return;
   }
-  updateInstanceData((data) => {
-    deleteInstanceMutable(data, instancePath);
-  });
-  if (data === undefined) {
+  const clipboardData = stringify(data);
+  if (
+    (await writeClipboard(clipboardData)) === false ||
+    canDeleteCopiedContent() === false
+  ) {
     return;
   }
-  return stringify(data);
+  deleteInstanceBySelector(instancePath[0].instanceSelector);
+  return clipboardData;
 };
 
-export const instanceText: Plugin = {
+const handleCopyInstance = () =>
+  $allSelectedInstanceSelectors.get().length === 0
+    ? undefined
+    : handleCopyInstanceAsync();
+
+const handleCutInstance = (
+  writeClipboard: (data: string) => Promise<boolean>
+) => {
+  if (
+    $allSelectedInstanceSelectors.get().length === 0 &&
+    $selectedInstancePath.get() === undefined
+  ) {
+    return;
+  }
+  return handleCutInstanceAsync(writeClipboard);
+};
+
+export const instanceText = {
   name: "instance-text",
   mimeType: "text/plain",
   onCopy: handleCopyInstance,
   onCut: handleCutInstance,
   onPaste: handlePasteInstance,
-};
+} satisfies Plugin;
 
-export const instanceJson: Plugin = {
+export const instanceJson = {
   name: "instance-json",
   mimeType: "application/json",
   onPaste: handlePasteInstance,
-};
+} satisfies Plugin;

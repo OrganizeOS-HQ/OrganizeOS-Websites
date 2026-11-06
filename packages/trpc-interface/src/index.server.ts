@@ -11,10 +11,17 @@ export {
 
 export {
   AuthorizationError,
+  PlanRequiredError,
   createErrorResponse,
 } from "./context/errors.server";
 export * as authorizeProject from "./authorize/project.server";
-export type { AuthPermit } from "./authorize/project.server";
+export {
+  ownerPermit,
+  projectPermits,
+  type AuthPermit,
+  type OwnerPermit,
+  type ProjectPermit,
+} from "./authorize/project-permits";
 
 export {
   router,

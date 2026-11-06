@@ -1,22 +1,49 @@
 /* eslint-disable */
-/* This is a auto generated file for building the project */
+      /* This is a auto generated file for building the project */ 
 
-import type { PageMeta } from "@webstudio-is/sdk";
-import type { System, ResourceRequest } from "@webstudio-is/sdk";
-export const getResources = (_props: { system: System }) => {
-  const list_1: ResourceRequest = {
-    name: "list",
-    url: "https://gist.githubusercontent.com/TrySound/56507c301ec85669db5f1541406a9259/raw/a49548730ab592c86b9e7781f5b29beec4765494/collection.json",
-    searchParams: [],
-    method: "get",
-    headers: [],
-  };
-  const _data = new Map<string, ResourceRequest>([["list_1", list_1]]);
-  const _action = new Map<string, ResourceRequest>([]);
-  return { data: _data, action: _action };
+
+      import type { PageMeta } from "@webstudio-is/sdk";
+      import { toWebstudioParams } from "@webstudio-is/react-sdk";
+      import type { System, ResourceRequest } from "@webstudio-is/sdk";
+import type { ResourceRequestGraph } from "@webstudio-is/sdk/runtime";
+export const getResources = (_props: { system: System; resources?: Record<string, any> }) => {
+  const list_1 = (documents: ReadonlyMap<string, unknown>): ResourceRequest => {
+    return {
+      name: "list",
+      url: "https://gist.githubusercontent.com/TrySound/56507c301ec85669db5f1541406a9259/raw/a49548730ab592c86b9e7781f5b29beec4765494/collection.json",
+      searchParams: [
+      ],
+      method: "get",
+      headers: [
+      ],
+    }
+  }
+  const _data: ResourceRequestGraph = {
+    resources: [
+      { id: "1vX6SQdaCjJN6MvJlG_cQ", outputName: "list_1", dependencies: [], createRequest: list_1, control: undefined, bodyFormat: undefined },
+    ],
+    rootIds: [
+      "1vX6SQdaCjJN6MvJlG_cQ",
+    ],
+  }
+  const _contentData = new Map<string, ResourceRequest>()
+  const _action = new Map<string, { id: string; outputName: string }>([
+  ])
+  return { data: _data, action: _action, contentData: _contentData }
+}
+
+
+      import type { ManagedFormResourceGraph } from "@webstudio-is/sdk/runtime";
+import { createFormEmailDataProxy } from "@webstudio-is/sdk";
+import { createJsonStringifyProxy } from "@webstudio-is/sdk/to-string";
+export const getManagedFormResourceGraph = (formId: string, _managedFormProps: { system: System; formData: unknown; browserInfo: unknown }): ManagedFormResourceGraph | undefined => {
+  switch (formId) {
+    default: return undefined;
+  }
 };
 
-export const getPageMeta = ({
+
+      export const getPageMeta = ({
   system,
   resources,
 }: {
@@ -33,13 +60,19 @@ export const getPageMeta = ({
     status: undefined,
     redirect: undefined,
     content: undefined,
-    custom: [],
+    custom: [
+    ],
   };
 };
 
-type Params = Record<string, string | undefined>;
-export const getRemixParams = ({ ...params }: Params): Params => {
-  return params;
-};
 
-export const contactEmail = "hello@webstudio.is";
+      export const getRemixParams = (params: Record<string, string | undefined>) => toWebstudioParams("/resources", params);
+
+      export const getManagedFormSubmissions = () =>
+        new Map<string, { action: unknown; resourceIds: (string | null)[] }>(
+          []
+        );
+
+      /** @deprecated Generated only for saved Webhook Forms. */
+      export const contactEmail = "hello@webstudio.is";
+    

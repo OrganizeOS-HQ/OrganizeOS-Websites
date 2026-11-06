@@ -9,12 +9,14 @@ import {
   Flex,
   Grid,
   rawTheme,
+  cssVar,
 } from "@webstudio-is/design-system";
 import type { AuthPermit } from "@webstudio-is/trpc-interface/index.server";
 import type { Role } from "@webstudio-is/project";
 import { initializeClientSync, getSyncClient } from "~/shared/sync/sync-client";
 import { usePreventUnload } from "~/shared/sync/project-queue";
 import { usePublish, $publisher } from "~/shared/pubsub";
+import { subscribePreviewFormRequests } from "~/shared/preview-form-parent";
 import { Inspector } from "./inspector";
 import { Topbar } from "./shared/topbar";
 import { Footer } from "./features/footer";
@@ -61,8 +63,7 @@ import { CloneProjectDialog } from "~/shared/clone-project";
 import type { TokenPermissions } from "@webstudio-is/authorization-token";
 import { useToastErrors } from "~/shared/error/toast-error";
 import { initBuilderApi } from "~/shared/builder-api";
-import { updateWebstudioData } from "~/shared/instance-utils/data";
-import { migrateWebstudioDataMutable } from "@webstudio-is/project-migrations";
+import { migrateLoadedWebstudioData } from "~/shared/instance-utils/data";
 import { Loading, LoadingBackground } from "./shared/loading";
 import { mergeRefs } from "@react-aria/utils";
 import { CommandPanel } from "./features/command-panel";
@@ -72,6 +73,9 @@ import { DeleteUnusedCssVariablesDialog } from "~/builder/shared/css-variable-ut
 import { DeleteUnusedAssetsDialog } from "~/builder/shared/asset-manager/delete-unused-assets";
 import { KeyboardShortcutsDialog } from "./features/keyboard-shortcuts-dialog";
 import { TokenConflictDialog } from "~/shared/token-conflict-dialog";
+import { RootStyleConflictDialog } from "~/shared/root-style-conflict-dialog";
+import { DesignTokenImportDialog } from "~/shared/design-token-import-dialog";
+import { TemplateNameConfirmationDialog } from "./features/template-name-confirmation-dialog";
 // OrganizeOS fork: the site-template chooser (organizeos-panel/site-templates/template-chooser.tsx)
 import { TemplateChooser } from "./features/organizeos-panel/site-templates/template-chooser";
 import type { User } from "~/shared/db/user.server";
@@ -123,7 +127,7 @@ const SidePanel = ({
         fg: 0,
         // Left sidebar tabs won't be able to pop out to the right if we set overflowX to auto.
         //overflowY: "auto",
-        backgroundColor: theme.colors.backgroundPanel,
+        backgroundColor: cssVar("--background-primary"),
         height: "100%",
         ...css,
       }}
@@ -302,9 +306,7 @@ export const Builder = (props: BuilderProps) => {
       authToken,
       signal: controller.signal,
       onReady() {
-        updateWebstudioData((data) => {
-          migrateWebstudioDataMutable(data);
-        });
+        migrateLoadedWebstudioData();
 
         // render canvas only after all data is loaded
         // so builder is started listening for connect event
@@ -334,12 +336,14 @@ export const Builder = (props: BuilderProps) => {
     $pages.set(undefined);
   });
 
-  useSyncPageUrl();
+  const dataLoadingState = useStore($dataLoadingState);
+  useSyncPageUrl({ isDataLoaded: dataLoadingState === "loaded" });
 
   const [publish, publishRef] = usePublish();
   useEffect(() => {
     $publisher.set({ publish });
   }, [publish]);
+  useEffect(() => subscribePreviewFormRequests(publish), [publish]);
 
   const project = useStore($project);
 
@@ -369,7 +373,6 @@ export const Builder = (props: BuilderProps) => {
   );
 
   const { navigatorLayout } = useStore($settings);
-  const dataLoadingState = useStore($dataLoadingState);
   const [loadingState, setLoadingState] = useState(() => $loadingState.get());
 
   useEffect(() => {
@@ -482,15 +485,12 @@ export const Builder = (props: BuilderProps) => {
                 left: 0,
                 bottom: 0,
                 width: 1,
-                background: theme.colors.borderMain,
+                background: cssVar("--border-default"),
               },
             }}
           >
             <Inspector navigatorLayout={navigatorLayout} />
           </SidePanel>
-          <Main css={{ pointerEvents: "none" }}>
-            <CanvasToolsContainer />
-          </Main>
           {project ? (
             <Topbar
               project={project}
@@ -534,7 +534,10 @@ export const Builder = (props: BuilderProps) => {
         <DeleteUnusedCssVariablesDialog />
         <DeleteUnusedAssetsDialog />
         <KeyboardShortcutsDialog />
+        <DesignTokenImportDialog />
         <TokenConflictDialog />
+        <RootStyleConflictDialog />
+        <TemplateNameConfirmationDialog />
         {/* OrganizeOS fork: the site-template chooser, at first entry to an untouched project */}
         <TemplateChooser />
         <Toaster />

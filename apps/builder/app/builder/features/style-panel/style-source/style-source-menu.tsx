@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import {
   Box,
   Combobox,
+  cssVar,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -10,7 +11,6 @@ import {
   DropdownMenuTrigger,
   Flex,
   InputErrorsTooltip,
-  rawTheme,
   styled,
   Text,
   theme,
@@ -22,6 +22,9 @@ import {
   validateSelector,
 } from "@webstudio-is/css-data";
 import {
+  menuTriggerGradientVar,
+  menuTriggerVisibilityOverrideVar,
+  menuTriggerVisibilityVar,
   menuCssVars,
   type ItemSource,
   type ItemSelector,
@@ -45,11 +48,10 @@ type IntermediateItem = {
   states: string[];
 };
 
-const menuTriggerVisibilityVar = "--ws-style-source-menu-trigger-visibility";
-const menuTriggerVisibilityOverrideVar =
-  "--ws-style-source-menu-trigger-visibility-override";
-const visibility = `var(${menuTriggerVisibilityOverrideVar}, var(${menuTriggerVisibilityVar}))`;
-const menuTriggerGradientVar = "--ws-style-source-menu-trigger-gradient";
+const visibility = cssVar(
+  menuTriggerVisibilityOverrideVar,
+  cssVar(menuTriggerVisibilityVar)
+);
 
 const MenuTrigger = styled("button", {
   display: "inline-flex",
@@ -64,7 +66,7 @@ const MenuTrigger = styled("button", {
   padding: 0,
   borderTopRightRadius: theme.borderRadius[4],
   borderBottomRightRadius: theme.borderRadius[4],
-  color: theme.colors.foregroundContrastMain,
+  color: "inherit",
   visibility,
   "&:hover, &[data-state=open]": {
     ...menuCssVars({ show: true }),
@@ -77,7 +79,7 @@ const MenuTrigger = styled("button", {
       width: "100%",
       height: "100%",
       visibility,
-      backgroundColor: theme.colors.backgroundButtonHover,
+      backgroundColor: cssVar("--overlay-interaction-hover"),
       borderTopRightRadius: theme.borderRadius[4],
       borderBottomRightRadius: theme.borderRadius[4],
       pointerEvents: "none",
@@ -92,7 +94,7 @@ const MenuTriggerGradient = styled(Box, {
   width: theme.sizes.controlHeight,
   height: "100%",
   visibility,
-  background: `var(${menuTriggerGradientVar})`,
+  background: cssVar(menuTriggerGradientVar),
   borderTopRightRadius: theme.borderRadius[4],
   borderBottomRightRadius: theme.borderRadius[4],
   pointerEvents: "none",
@@ -296,7 +298,7 @@ export const StyleSourceMenu = (props: StyleSourceMenuProps) => {
   return (
     <DropdownMenu modal open={props.open} onOpenChange={props.onOpenChange}>
       <DropdownMenuTrigger asChild>
-        <MenuTrigger aria-label="Menu Button">
+        <MenuTrigger aria-label={`Style source menu ${props.item.label}`}>
           <MenuTriggerGradient />
           <ChevronDownIcon style={{ position: "relative" }} />
         </MenuTrigger>
@@ -312,7 +314,7 @@ export const StyleSourceMenu = (props: StyleSourceMenuProps) => {
               {props.item.label}
             </Text>
             {props.hasStyles && (
-              <DotIcon size="12" color={rawTheme.colors.foregroundPrimary} />
+              <DotIcon size="12" color={cssVar("--foreground-accent")} />
             )}
           </Flex>
         </DropdownMenuLabel>
@@ -441,8 +443,8 @@ export const StyleSourceMenu = (props: StyleSourceMenuProps) => {
                               <CheckMarkIcon
                                 color={
                                   props.item.states.includes(selector)
-                                    ? rawTheme.colors.foregroundPrimary
-                                    : rawTheme.colors.foregroundIconMain
+                                    ? cssVar("--foreground-accent")
+                                    : cssVar("--foreground-primary")
                                 }
                                 size={12}
                               />
@@ -465,7 +467,7 @@ export const StyleSourceMenu = (props: StyleSourceMenuProps) => {
                             {props.item.states.includes(selector) && (
                               <DotIcon
                                 size="12"
-                                color={rawTheme.colors.foregroundPrimary}
+                                color={cssVar("--foreground-accent")}
                               />
                             )}
                           </Flex>

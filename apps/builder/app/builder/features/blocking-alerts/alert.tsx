@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   css,
+  cssVar,
   Flex,
   Popover,
   PopoverContent,
@@ -15,20 +16,19 @@ const containerStyle = css({
   left: 0,
   width: "100vw",
   height: "100vh",
-  background: "rgba(0, 0, 0, 0.9)",
+  background: `oklch(from ${cssVar("--overlay-scrim")} l c h / 90%)`,
 });
 
 const contentStyle = css({
   width: theme.spacing[33],
-  color: theme.colors.foregroundDestructive,
+  color: cssVar("--foreground-negative"),
 });
 
-/**
- * A blocking alert. OrganizeOS fork: the dismiss button is gone along with the
- * upstream unsupported-browser notice that was its only caller. Every alert
- * that survives states something the user can act on, so dismissing one would
- * only hide a condition that is still true.
- */
+const scrimForeground = `light-dark(
+  ${cssVar("--foreground-on-inverse")},
+  ${cssVar("--foreground-primary")}
+)`;
+
 export const Alert = ({ message }: { message: string | ReactNode }) => {
   return (
     <Popover open>
@@ -41,7 +41,7 @@ export const Alert = ({ message }: { message: string | ReactNode }) => {
             className={contentStyle()}
           >
             <AlertIcon size={22} />
-            <Text color="contrast" align="center">
+            <Text align="center" css={{ color: scrimForeground }}>
               {message}
             </Text>
           </Flex>

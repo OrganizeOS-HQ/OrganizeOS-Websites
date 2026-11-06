@@ -239,23 +239,23 @@ describe("upstream's presets (fixtures of its editor's files)", () => {
     }).plays;
     const byName = (name: string) =>
       plays[viewAnimations.findIndex((animation) => animation.name === name)];
-    expect(byName("New Animation").keyframes).toEqual([{ offset: 0 }]);
-    expect(byName("Fade In").keyframes).toEqual([{ offset: 0, opacity: "0" }]);
-    expect(byName("Fly In").keyframes).toEqual([
+    expect(byName("New animation").keyframes).toEqual([{ offset: 0 }]);
+    expect(byName("Fade in").keyframes).toEqual([{ offset: 0, opacity: "0" }]);
+    expect(byName("Fly in").keyframes).toEqual([
       { offset: 0, translate: "0 100px" },
     ]);
-    expect(byName("Fly Out").keyframes).toEqual([
+    expect(byName("Fly out").keyframes).toEqual([
       { offset: 1, translate: "0 -100px" },
     ]);
-    expect(byName("Wipe In").keyframes).toEqual([
+    expect(byName("Wipe in").keyframes).toEqual([
       { offset: 0, clipPath: "inset(0 100% 0 0)" },
       { offset: 1, clipPath: "inset(0 0 0 0)" },
     ]);
-    expect(byName("Wipe Out").keyframes).toEqual([
+    expect(byName("Wipe out").keyframes).toEqual([
       { offset: 0, clipPath: "inset(0 0 0 0)" },
       { offset: 1, clipPath: "inset(0 0 0 100%)" },
     ]);
-    expect(byName("Wipe In").options.fill).toBe("backwards");
+    expect(byName("Wipe in").options.fill).toBe("backwards");
   });
 
   test("scroll presets: start is the offset, end is measured back from 100%", () => {

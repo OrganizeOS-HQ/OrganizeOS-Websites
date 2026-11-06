@@ -1,4 +1,4 @@
-import type { AssetClient } from "@webstudio-is/asset-uploader/index.server";
+import type { AssetObjectStore } from "@webstudio-is/asset-uploader/server";
 import { getMimeTypeByFilename, isAllowedExtension } from "@webstudio-is/sdk";
 
 /**
@@ -56,12 +56,12 @@ export const serveStoredAsset = async ({
   request,
   headers: routeHeaders,
 }: {
-  client: AssetClient;
+  client: Pick<AssetObjectStore, "readFileResponse">;
   name: string;
   request: Request;
   headers?: HeadersInit;
 }): Promise<Response | undefined> => {
-  if (client.readFile === undefined) {
+  if (client.readFileResponse === undefined) {
     return;
   }
   if (isUploadedFileName(name) === false) {
@@ -70,7 +70,7 @@ export const serveStoredAsset = async ({
 
   let stored: Response | undefined;
   try {
-    stored = await client.readFile(name, {
+    stored = await client.readFileResponse(name, {
       range: request.headers.get("range") ?? undefined,
     });
   } catch (error) {

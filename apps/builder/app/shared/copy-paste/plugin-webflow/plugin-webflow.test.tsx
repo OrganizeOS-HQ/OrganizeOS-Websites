@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import { test, expect, describe, beforeEach } from "vitest";
-import { nanoid } from "nanoid";
+import { createId } from "@webstudio-is/sdk";
 import {
   type NestingRule,
   createRegularStyleSheet,
@@ -10,14 +10,40 @@ import {
   type WebstudioFragment,
   type Instance,
 } from "@webstudio-is/sdk";
-import { $, renderData } from "@webstudio-is/template";
+import {
+  createTemplateComponentFixture,
+  renderData,
+} from "@webstudio-is/template";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
-import { __testing__ } from "./plugin-webflow";
+import { __testing__, webflow } from "./plugin-webflow";
 import { $registeredComponentMetas } from "../../nano-states";
 import { $breakpoints } from "~/shared/sync/data-stores";
 import { $project, $styleSources, $styles } from "~/shared/sync/data-stores";
 import invariant from "tiny-invariant";
-import { wfData } from "./schema";
+import { wfData } from "@webstudio-is/project-build/transfer";
+import { pasteIgnored } from "../copy-paste";
+
+const Blockquote = createTemplateComponentFixture("Blockquote");
+const Bold = createTemplateComponentFixture("Bold");
+const Box = createTemplateComponentFixture("Box");
+const Button = createTemplateComponentFixture("Button");
+const Checkbox = createTemplateComponentFixture("Checkbox");
+const CodeText = createTemplateComponentFixture("CodeText");
+const Heading = createTemplateComponentFixture("Heading");
+const HtmlEmbed = createTemplateComponentFixture("HtmlEmbed");
+const Image = createTemplateComponentFixture("Image");
+const Input = createTemplateComponentFixture("Input");
+const Italic = createTemplateComponentFixture("Italic");
+const Label = createTemplateComponentFixture("Label");
+const Link = createTemplateComponentFixture("Link");
+const List = createTemplateComponentFixture("List");
+const ListItem = createTemplateComponentFixture("ListItem");
+const Paragraph = createTemplateComponentFixture("Paragraph");
+const RadioButton = createTemplateComponentFixture("RadioButton");
+const Subscript = createTemplateComponentFixture("Subscript");
+const Superscript = createTemplateComponentFixture("Superscript");
+const Text = createTemplateComponentFixture("Text");
+const Textarea = createTemplateComponentFixture("Textarea");
 
 const { toWebstudioFragment } = __testing__;
 
@@ -108,11 +134,26 @@ beforeEach(() => {
   $breakpoints.set(
     new Map(
       initialBreakpoints.map((breakpoint) => {
-        const id = nanoid();
+        const id = createId("nano");
         return [id, { ...breakpoint, id }];
       })
     )
   );
+});
+
+test("ignores non-Webflow paste data", async () => {
+  await expect(webflow.onPaste?.(`{"type":"other"}`)).resolves.toEqual(
+    pasteIgnored
+  );
+});
+
+test("reports malformed Webflow-owned paste data", async () => {
+  await expect(
+    webflow.onPaste?.(JSON.stringify({ type: "@webflow/XscpData" }))
+  ).resolves.toMatchObject({
+    success: false,
+    error: expect.any(String),
+  });
 });
 
 test("Heading", async () => {
@@ -138,7 +179,7 @@ test("Heading", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Heading ws:tag="h1">Turtle in the sea</$.Heading>);
+  equalFragment(fragment, <Heading ws:tag="h1">Turtle in the sea</Heading>);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       h1 {
@@ -152,6 +193,60 @@ test("Heading", async () => {
       }
     }"
   `);
+});
+
+test("uses supplied id generator for instances, props, and breakpoints", async () => {
+  let nextId = 0;
+  const createId = () => `runtime-id-${++nextId}`;
+
+  const fragment = await toWebstudioFragment(
+    {
+      type: "@webflow/XscpData",
+      payload: {
+        nodes: [
+          {
+            _id: "root",
+            type: "Block",
+            tag: "div",
+            children: [],
+            classes: ["class"],
+            data: {
+              attr: { id: "from-webflow" },
+              xattr: [{ name: "data-kind", value: "hero" }],
+            },
+          },
+        ],
+        styles: [
+          {
+            _id: "class",
+            fake: false,
+            type: "class",
+            name: "Card",
+            namespace: "",
+            comb: "",
+            styleLess: "color: red;",
+            variants: {
+              medium: {
+                styleLess: "color: blue;",
+              },
+            },
+          },
+        ],
+        assets: [],
+      },
+    },
+    createId
+  );
+
+  expect(fragment.children).toEqual([{ type: "id", value: "runtime-id-1" }]);
+  expect(fragment.props.map((prop) => prop.id)).toEqual([
+    "runtime-id-2",
+    "runtime-id-3",
+  ]);
+  expect(fragment.breakpoints.map((breakpoint) => breakpoint.id)).toEqual([
+    "runtime-id-4",
+    "runtime-id-5",
+  ]);
 });
 
 test("Link Block, Button, Text Link", async () => {
@@ -178,10 +273,7 @@ test("Link Block, Button, Text Link", async () => {
     },
   });
 
-  equalFragment(
-    fragment,
-    <$.Link href="https://webstudio.is" target="_blank" />
-  );
+  equalFragment(fragment, <Link href="https://webstudio.is" target="_blank" />);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       a {
@@ -242,11 +334,11 @@ test("List and ListItem", async () => {
 
   equalFragment(
     fragment,
-    <$.List>
-      <$.ListItem />
-      <$.ListItem />
-      <$.ListItem />
-    </$.List>
+    <List>
+      <ListItem />
+      <ListItem />
+      <ListItem />
+    </List>
   );
 
   expect(toCss(fragment)).toMatchInlineSnapshot(`
@@ -283,7 +375,7 @@ test("Paragraph", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Paragraph>Text in a paragraph</$.Paragraph>);
+  equalFragment(fragment, <Paragraph>Text in a paragraph</Paragraph>);
 
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
@@ -323,7 +415,7 @@ test("Text", async () => {
 
   equalFragment(
     fragment,
-    <$.Text ws:tag="div">This is some text inside of a div block.</$.Text>
+    <Text ws:tag="div">This is some text inside of a div block.</Text>
   );
 
   expect(toCss(fragment)).toMatchInlineSnapshot(`""`);
@@ -352,7 +444,7 @@ test("Blockquote", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Blockquote>Block Quote</$.Blockquote>);
+  equalFragment(fragment, <Blockquote>Block Quote</Blockquote>);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       blockquote {
@@ -395,7 +487,7 @@ test("Strong", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Bold>Bold Text</$.Bold>);
+  equalFragment(fragment, <Bold>Bold Text</Bold>);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       strong {
@@ -427,7 +519,7 @@ test("Emphasized", async () => {
       assets: [],
     },
   });
-  equalFragment(fragment, <$.Italic>Emphasis</$.Italic>);
+  equalFragment(fragment, <Italic>Emphasis</Italic>);
   expect(toCss(fragment)).toMatchInlineSnapshot(`""`);
 });
 
@@ -454,7 +546,7 @@ test("Superscript", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Superscript>Superscript</$.Superscript>);
+  equalFragment(fragment, <Superscript>Superscript</Superscript>);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       sup {
@@ -491,7 +583,7 @@ test("Subscript", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Subscript>Subscript</$.Subscript>);
+  equalFragment(fragment, <Subscript>Subscript</Subscript>);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       sub {
@@ -523,7 +615,7 @@ test("Section", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Box ws:tag="section" />);
+  equalFragment(fragment, <Box ws:tag="section" />);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       section {
@@ -551,7 +643,7 @@ test("Figure", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Box ws:tag="figure" />);
+  equalFragment(fragment, <Box ws:tag="figure" />);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       figure {
@@ -582,7 +674,7 @@ test("BlockContainer", async () => {
       assets: [],
     },
   });
-  equalFragment(fragment, <$.Box />);
+  equalFragment(fragment, <Box />);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       w-layout-blockcontainer {
@@ -653,7 +745,7 @@ test("Block", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Box ws:tag="div" />);
+  equalFragment(fragment, <Box ws:tag="div" />);
   expect(toCss(fragment)).toMatchInlineSnapshot(`""`);
 });
 
@@ -674,7 +766,7 @@ test("V Flex", async () => {
       assets: [],
     },
   });
-  equalFragment(fragment, <$.Box />);
+  equalFragment(fragment, <Box />);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       w-layout-vflex {
@@ -703,7 +795,7 @@ test("H Flex", async () => {
       assets: [],
     },
   });
-  equalFragment(fragment, <$.Box />);
+  equalFragment(fragment, <Box />);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       w-layout-hflex {
@@ -764,10 +856,10 @@ test("QuickStack with instance styles", async () => {
   });
   equalFragment(
     fragment,
-    <$.Box>
-      <$.Box />
-      <$.Box />
-    </$.Box>
+    <Box>
+      <Box />
+      <Box />
+    </Box>
   );
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
@@ -814,7 +906,7 @@ test("Grid", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Box />);
+  equalFragment(fragment, <Box />);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       w-layout-grid {
@@ -866,10 +958,10 @@ test("Columns", async () => {
 
   equalFragment(
     fragment,
-    <$.Box>
-      <$.Box />
-      <$.Box />
-    </$.Box>
+    <Box>
+      <Box />
+      <Box />
+    </Box>
   );
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
@@ -947,7 +1039,7 @@ test("Image", async () => {
 
   equalFragment(
     fragment,
-    <$.Image
+    <Image
       alt="Test"
       loading="eager"
       width="200"
@@ -984,7 +1076,7 @@ test("HtmlEmbed", async () => {
       assets: [],
     },
   });
-  equalFragment(fragment, <$.HtmlEmbed code="some html" clientOnly={true} />);
+  equalFragment(fragment, <HtmlEmbed code="some html" clientOnly={true} />);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       w-embed {
@@ -1033,7 +1125,7 @@ test("CodeBlock", async () => {
     },
   });
 
-  equalFragment(fragment, <$.CodeText lang="javascript" code="test" />);
+  equalFragment(fragment, <CodeText lang="javascript">test</CodeText>);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       w-code-block {
@@ -1400,51 +1492,51 @@ test("RichText", async () => {
 
   equalFragment(
     fragment,
-    <$.Box>
-      <$.Heading ws:tag="h1">Heading 1</$.Heading>
-      <$.Heading ws:tag="h2">Heading 2</$.Heading>
-      <$.Heading ws:tag="h3">Heading 3</$.Heading>
-      <$.Heading ws:tag="h4">Heading 4</$.Heading>
-      <$.Heading ws:tag="h5">Heading 5</$.Heading>
-      <$.Heading ws:tag="h6">Heading 6</$.Heading>
-      <$.Paragraph>
+    <Box>
+      <Heading ws:tag="h1">Heading 1</Heading>
+      <Heading ws:tag="h2">Heading 2</Heading>
+      <Heading ws:tag="h3">Heading 3</Heading>
+      <Heading ws:tag="h4">Heading 4</Heading>
+      <Heading ws:tag="h5">Heading 5</Heading>
+      <Heading ws:tag="h6">Heading 6</Heading>
+      <Paragraph>
         Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
         tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
         veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea
         commodo consequat. Duis aute irure dolor in reprehenderit in voluptate
         velit esse cillum dolore eu fugiat nulla pariatur.
-      </$.Paragraph>
-      <$.Blockquote>Block quote</$.Blockquote>
-      <$.Paragraph>Ordered list</$.Paragraph>
-      <$.List ordered={true}>
-        <$.ListItem>Item 1</$.ListItem>
-        <$.ListItem>Item 2</$.ListItem>
-        <$.ListItem>Item 3</$.ListItem>
-      </$.List>
-      <$.Paragraph>Unordered list</$.Paragraph>
-      <$.List>
-        <$.ListItem>Item A</$.ListItem>
-        <$.ListItem>Item B</$.ListItem>
-        <$.ListItem>Item C</$.ListItem>
-      </$.List>
-      <$.Paragraph>
-        <$.Link href="https://university.webflow.com/lesson/add-and-nest-text-links-in-webflow">
+      </Paragraph>
+      <Blockquote>Block quote</Blockquote>
+      <Paragraph>Ordered list</Paragraph>
+      <List ordered={true}>
+        <ListItem>Item 1</ListItem>
+        <ListItem>Item 2</ListItem>
+        <ListItem>Item 3</ListItem>
+      </List>
+      <Paragraph>Unordered list</Paragraph>
+      <List>
+        <ListItem>Item A</ListItem>
+        <ListItem>Item B</ListItem>
+        <ListItem>Item C</ListItem>
+      </List>
+      <Paragraph>
+        <Link href="https://university.webflow.com/lesson/add-and-nest-text-links-in-webflow">
           Text link
-        </$.Link>
-      </$.Paragraph>
-      <$.Paragraph>
-        <$.Bold>Bold text</$.Bold>
-      </$.Paragraph>
-      <$.Paragraph>
-        <$.Italic>Emphasis</$.Italic>
-      </$.Paragraph>
-      <$.Paragraph>
-        <$.Superscript>Superscript</$.Superscript>
-      </$.Paragraph>
-      <$.Paragraph>
-        <$.Subscript>Subscript</$.Subscript>
-      </$.Paragraph>
-    </$.Box>
+        </Link>
+      </Paragraph>
+      <Paragraph>
+        <Bold>Bold text</Bold>
+      </Paragraph>
+      <Paragraph>
+        <Italic>Emphasis</Italic>
+      </Paragraph>
+      <Paragraph>
+        <Superscript>Superscript</Superscript>
+      </Paragraph>
+      <Paragraph>
+        <Subscript>Subscript</Subscript>
+      </Paragraph>
+    </Box>
   );
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
@@ -1549,7 +1641,7 @@ test("RichText", async () => {
   `);
 });
 
-test("Form", async () => {
+test("ResourceForm", async () => {
   const fragment = await toWebstudioFragment({
     type: "@webflow/XscpData",
     payload: {
@@ -1637,9 +1729,9 @@ test("Form", async () => {
 
   equalFragment(
     fragment,
-    <$.Box>
-      <$.Box>
-        <$.Input
+    <Box>
+      <Box>
+        <Input
           id="name"
           name="name"
           maxLength={256}
@@ -1649,8 +1741,8 @@ test("Form", async () => {
           required={false}
           autoFocus={false}
         />
-      </$.Box>
-    </$.Box>
+      </Box>
+    </Box>
   );
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
@@ -1741,7 +1833,7 @@ test("FormButton", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Button>Submit</$.Button>);
+  equalFragment(fragment, <Button>Submit</Button>);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       input {
@@ -1819,7 +1911,7 @@ test("FormTextInput", async () => {
 
   equalFragment(
     fragment,
-    <$.Input
+    <Input
       id="email"
       name="email"
       maxLength={256}
@@ -1918,7 +2010,7 @@ test("FormBlockLabel", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Label htmlFor="email">Email Address</$.Label>);
+  equalFragment(fragment, <Label {...{ for: "email" }}>Email Address</Label>);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       label {
@@ -1960,7 +2052,7 @@ test("FormTextarea", async () => {
 
   equalFragment(
     fragment,
-    <$.Textarea
+    <Textarea
       id="field"
       name="field"
       maxLength={5000}
@@ -2052,7 +2144,7 @@ test("FormBlockLabel", async () => {
     },
   });
 
-  equalFragment(fragment, <$.Label htmlFor="email">Email Address</$.Label>);
+  equalFragment(fragment, <Label {...{ for: "email" }}>Email Address</Label>);
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
       label {
@@ -2115,17 +2207,17 @@ test("FormCheckboxWrapper, FormCheckboxInput, FormInlineLabel", async () => {
 
   equalFragment(
     fragment,
-    <$.Label ws:label="Checkbox Field">
-      <$.Checkbox
+    <Label ws:label="Checkbox Field">
+      <Checkbox
         id="checkbox"
         name="checkbox"
         required={false}
         defaultChecked={false}
       />
-      <$.Text ws:tag="span" ws:label="Label">
+      <Text ws:tag="span" ws:label="Label">
         Checkbox
-      </$.Text>
-    </$.Label>
+      </Text>
+    </Label>
   );
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
@@ -2245,12 +2337,12 @@ test("FormRadioWrapper, FormRadioInput, FormInlineLabel", async () => {
 
   equalFragment(
     fragment,
-    <$.Label ws:label="Radio Field">
-      <$.RadioButton id="radio" name="radio" required={false} value="Radio" />
-      <$.Text ws:tag="span" ws:label="Label">
+    <Label ws:label="Radio Field">
+      <RadioButton id="radio" name="radio" required={false} value="Radio" />
+      <Text ws:tag="span" ws:label="Label">
         Radio
-      </$.Text>
-    </$.Label>
+      </Text>
+    </Label>
   );
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
@@ -2367,7 +2459,7 @@ test("FormSelect", async () => {
 
   equalFragment(
     fragment,
-    <$.Input id="field-3" name="field-3" required={false} multiple={false} />
+    <Input id="field-3" name="field-3" required={false} multiple={false} />
   );
   expect(toCss(fragment)).toMatchInlineSnapshot(`
     "@media all {
@@ -2428,11 +2520,11 @@ test("Multiline text", async () => {
 
   equalFragment(
     fragment,
-    <$.Box ws:tag="div">
+    <Box ws:tag="div">
       {"a"}
       {"\n"}
       {"b"}
-    </$.Box>
+    </Box>
   );
 
   expect(toCss(fragment)).toMatchInlineSnapshot(`""`);
@@ -2464,7 +2556,7 @@ describe("Custom attributes", () => {
         assets: [],
       },
     });
-    equalFragment(fragment, <$.Heading ws:tag="h1" at="b" />);
+    equalFragment(fragment, <Heading ws:tag="h1" at="b" />);
     expect(toCss(fragment)).toMatchInlineSnapshot(`
       "@media all {
         h1 {
@@ -2503,7 +2595,7 @@ test("Set show false when visibility's only condition is false", async () => {
       assets: [],
     },
   });
-  equalFragment(fragment, <$.Box data-ws-show={false} ws:tag="div" />);
+  equalFragment(fragment, <Box data-ws-show={false} ws:tag="div" />);
   expect(toCss(fragment)).toMatchInlineSnapshot(`""`);
 });
 

@@ -5,7 +5,11 @@ import { enableMapSet } from "immer";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { createDefaultPages } from "@webstudio-is/project-build";
-import { $, renderData, ws } from "@webstudio-is/template";
+import {
+  createTemplateComponentFixture,
+  renderData,
+  ws,
+} from "@webstudio-is/template";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import { coreMetas, type Breakpoint } from "@webstudio-is/sdk";
@@ -72,7 +76,11 @@ registerComponentLibrary({
 });
 
 const [reveal] = motionPresets;
-const AnimateChildren = $[animateChildrenComponent];
+const Body = createTemplateComponentFixture("Body");
+const Box = createTemplateComponentFixture("Box");
+const AnimateChildren = createTemplateComponentFixture(
+  animateChildrenComponent
+);
 
 const site: OrganizeosSite = {
   organizationId: "org-1",
@@ -95,15 +103,15 @@ const project = ({
   breakpoints?: Breakpoint[];
 } = {}) => {
   const data = renderData(
-    <$.Body ws:id="body">
-      <$.Box ws:id="section">
-        <$.Box ws:id="card"></$.Box>
-      </$.Box>
+    <Body ws:id="body">
+      <Box ws:id="section">
+        <Box ws:id="card"></Box>
+      </Box>
       <AnimateChildren ws:id="wrapper">
-        <$.Box ws:id="child"></$.Box>
+        <Box ws:id="child"></Box>
       </AnimateChildren>
       <ws.element ws:tag="div" ws:id="plain"></ws.element>
-    </$.Body>
+    </Body>
   );
   $instances.set(data.instances);
   $props.set(new Map());
@@ -290,7 +298,7 @@ describe("the Inspector's Motion tab", () => {
     expect(host.querySelector("[data-motion-presets]")).toBeNull();
   });
 
-  test("a preset on a plain element selects the new wrapper, and the tab then shows Stagger and upstream's Run on canvas switch", () => {
+  test("a preset on a plain element selects the new wrapper, and the tab then shows Stagger and upstream's Run on canvas switch", async () => {
     selectInstance(["section", "body"]);
     $activeInspectorPanel.set("motion");
     const host = render();
@@ -303,7 +311,11 @@ describe("the Inspector's Motion tab", () => {
     const button = host.querySelector<HTMLButtonElement>(
       `[data-motion-preset="${reveal.id}"]`
     );
-    act(() => button?.click());
+    // the wrap commits a few microtasks after the click
+    await act(async () => {
+      button?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
     const [wrapperId] = $selectedInstanceSelector.get() ?? [];
     expect($instances.get().get(wrapperId)?.component).toBe(

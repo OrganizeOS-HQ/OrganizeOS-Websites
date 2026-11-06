@@ -1,8 +1,9 @@
+import { draftPersistence } from "./draft-persistence";
 import { useEffect } from "react";
 import { atom } from "nanostores";
-import type { Change } from "immerhin";
 import type { Project } from "@webstudio-is/project";
 import type { Build } from "@webstudio-is/project-build";
+import type { BuilderPatchChange } from "@webstudio-is/project-build/contracts";
 import type { AuthPermit } from "@webstudio-is/trpc-interface/index.server";
 import { toast } from "@webstudio-is/design-system";
 import {
@@ -10,6 +11,7 @@ import {
   $syncStatus,
   createBackoff,
   createTransactionCompletionStore,
+  stripRevisePatchesFromTransaction,
   type SyncStatus,
 } from "@webstudio-is/sync-client";
 import { publicStaticEnv } from "~/env/env.static";
@@ -186,6 +188,7 @@ const pollQueue = async (signal: AbortSignal) => {
         }
 
         // stop synchronization and wait til user reload
+        draftPersistence.invalidate(command.projectId);
         $syncStatus.set({ status: "fatal", error });
 
         if (shouldReload === false) {
@@ -207,6 +210,12 @@ const pollQueue = async (signal: AbortSignal) => {
     }
 
     const { projectId, transactions } = command;
+    const completeTransactions = (success: boolean) => {
+      for (const transaction of transactions) {
+        draftPersistence.complete(projectId, transaction.id, success);
+        transactionCompletion.completeTransaction(transaction.id, success);
+      }
+    };
     const details = detailsMap.get(projectId);
 
     if (details === undefined) {
@@ -219,6 +228,7 @@ const pollQueue = async (signal: AbortSignal) => {
       });
 
       $syncStatus.set({ status: "fatal", error });
+      completeTransactions(false);
 
       return;
     }
@@ -230,14 +240,9 @@ const pollQueue = async (signal: AbortSignal) => {
     for await (const _ of retry()) {
       // in case of any error continue retrying
       try {
-        // revise patches are not used on the server and reduce possible patch size
-        const optimizedTransactions = transactions.map((transaction) => ({
-          ...transaction,
-          payload: transaction.payload.map((change) => ({
-            namespace: change.namespace,
-            patches: change.patches,
-          })),
-        }));
+        const optimizedTransactions = transactions.map(
+          stripRevisePatchesFromTransaction
+        );
         const patchClient =
           details.authToken === undefined
             ? nativeClient
@@ -260,9 +265,7 @@ const pollQueue = async (signal: AbortSignal) => {
             details.version = result.version ?? details.version + 1;
             $committedVersion.set(details.version);
 
-            for (const transaction of transactions) {
-              transactionCompletion.completeTransaction(transaction.id, true);
-            }
+            completeTransactions(true);
 
             // stop retrying and wait next transactions
             continue polling;
@@ -290,6 +293,23 @@ const pollQueue = async (signal: AbortSignal) => {
             }
 
             $syncStatus.set({ status: "fatal", error });
+            if (result.status === "partial") {
+              for (const transaction of transactions) {
+                const matchingEntries = result.entries.filter(
+                  ({ transactionId }) => transactionId === transaction.id
+                );
+                const success =
+                  matchingEntries.length > 0 &&
+                  matchingEntries.every(({ status }) => status === "accepted");
+                draftPersistence.complete(projectId, transaction.id, success);
+                transactionCompletion.completeTransaction(
+                  transaction.id,
+                  success
+                );
+              }
+            } else {
+              completeTransactions(false);
+            }
 
             if (shouldReload === false) {
               toast.error(
@@ -309,6 +329,7 @@ const pollQueue = async (signal: AbortSignal) => {
             // Api error we don't know how to handle, as retries will not help probably
             // We should show error and break synchronization
             $syncStatus.set({ status: "fatal", error });
+            completeTransactions(false);
 
             toast.error(error, {
               id: "fatal-error",
@@ -344,8 +365,9 @@ export class ServerSyncStorage implements SyncStorage {
     this.initialState = initialState;
   }
 
-  sendTransaction(transaction: Transaction<Change[]>) {
+  sendTransaction(transaction: Transaction<BuilderPatchChange[]>) {
     if (transaction.object === "server") {
+      draftPersistence.begin(this.projectId, transaction.id);
       $lastTransactionId.set(transaction.id);
       $syncStatus.set({ status: "syncing" });
       commandQueue.enqueue({

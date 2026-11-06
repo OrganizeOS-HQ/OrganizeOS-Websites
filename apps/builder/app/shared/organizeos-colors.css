@@ -1,0 +1,11 @@
+/*
+ * OrganizeOS fork (owner decision D3): the builder's accent is OrganizeOS
+ * teal. Upstream's recipe derives every accent colour from this one theme
+ * parameter (packages/design-system/src/colors/colors.css), in both colour
+ * schemes. Loaded after @webstudio-is/design-system/global.css by
+ * routes/_ui.tsx, so it wins at the same specificity. docs/ORGANIZEOS-FORK.md
+ * section 7.
+ */
+:root {
+  --theme-color-accent: #23a997;
+}

@@ -1,4 +1,10 @@
-import { useEffect, useMemo, type RefObject } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  type RefObject,
+} from "react";
 import { matchSorter } from "match-sorter";
 import type { SyntaxNode } from "@lezer/common";
 import { Facet, RangeSetBuilder } from "@codemirror/state";
@@ -9,6 +15,7 @@ import {
   WidgetType,
   ViewPlugin,
   keymap,
+  lineNumbers,
   EditorView,
   tooltips,
 } from "@codemirror/view";
@@ -26,20 +33,23 @@ import {
   pickedCompletion,
 } from "@codemirror/autocomplete";
 import { javascript } from "@codemirror/lang-javascript";
-import { textVariants, css, rawTheme } from "@webstudio-is/design-system";
+import { css, cssVar } from "@webstudio-is/design-system";
 import {
-  decodeDataVariableId,
   lintExpression,
   allowedStringMethods,
   allowedArrayMethods,
   getExpressionValueKind,
-} from "@webstudio-is/sdk";
+} from "@webstudio-is/expression";
+import { decodeDataVariableId } from "@webstudio-is/sdk";
 import {
   EditorContent,
   EditorDialog,
   EditorDialogButton,
   EditorDialogControl,
   type EditorApi,
+  foldGutterExtension,
+  getCodeEditorCssVars,
+  linterTooltipTheme,
   normalizeEditorValue,
 } from "~/shared/code-editor-base";
 import {
@@ -47,7 +57,7 @@ import {
   encodeDataVariableName,
   restoreExpressionVariables,
   unsetExpressionVariables,
-} from "~/shared/data-variables";
+} from "@webstudio-is/project-build/runtime";
 import { withCodeCheckDiagnostic } from "./organizeos-code-check";
 
 export type { EditorApi };
@@ -97,10 +107,16 @@ export const formatValuePreview = (value: unknown) => {
 
 type Scope = Record<string, unknown>;
 
+/** Allows an editor owner to supply examples without changing actual values. */
+export const ExpressionCompletionScopeContext = createContext<
+  ((scope: Scope) => Scope | undefined) | undefined
+>(undefined);
+
 type Aliases = Map<string, string>;
 
 const VariablesData = Facet.define<{
   scope: Scope;
+  completionScope: Scope;
   aliases: Aliases;
 }>();
 
@@ -376,12 +392,12 @@ export const getCompletionReplacement = ({
 // object (for example `globalThis`). Will enter properties
 // of the object when completing properties on a directly-named path.
 const scopeCompletionSource: CompletionSource = (context) => {
-  const [{ scope }] = context.state.facet(VariablesData);
+  const [{ completionScope }] = context.state.facet(VariablesData);
   const path = completionPath(context);
   if (path === undefined) {
     return null;
   }
-  const target = getCompletionTarget({ ...path, scope });
+  const target = getCompletionTarget({ ...path, scope: completionScope });
   if (target === undefined) {
     return null;
   }
@@ -464,7 +480,9 @@ class VariableWidget extends WidgetType {
   }
   toDOM(): HTMLElement {
     const span = document.createElement("span");
-    span.style.backgroundColor = "rgba(24, 119, 232, 0.2)";
+    span.style.backgroundColor = `color-mix(in oklab, ${cssVar(
+      "--foreground-accent"
+    )} 20%, transparent)`;
     span.textContent = this.text;
     return span;
   }
@@ -520,30 +538,28 @@ const emptyScope: Scope = {};
 const emptyAliases: Aliases = new Map();
 
 const wrapperStyle = css({
-  // 1 line is 16px
-  // set and max 20 lines
-  "--ws-code-editor-max-height": "320px",
+  variants: {
+    size: {
+      default: {
+        // 1 line is 16px; show at most 20 lines.
+        ...getCodeEditorCssVars({ minHeight: "auto", maxHeight: "320px" }),
+      },
+      full: {
+        ...getCodeEditorCssVars({ minHeight: "100%", maxHeight: "100%" }),
+        height: "100%",
+        minHeight: 0,
+        overflow: "hidden",
+        "& > div, & .cm-editor, & .cm-scroller": { height: "100%" },
+      },
+    },
+  },
+  defaultVariants: { size: "default" },
 });
 
-const linterTooltipTheme = EditorView.theme({
-  ".cm-tooltip:has(.cm-tooltip-lint)": {
-    backgroundColor: "transparent",
-    borderWidth: 0,
-    paddingTop: rawTheme.spacing[5],
-    paddingBottom: rawTheme.spacing[5],
-    pointerEvents: "none",
-  },
-  ".cm-tooltip-lint": {
-    backgroundColor: rawTheme.colors.backgroundTooltipMain,
-    color: rawTheme.colors.foregroundContrastMain,
-    borderRadius: rawTheme.borderRadius[7],
-    padding: rawTheme.spacing[5],
-  },
-  ".cm-tooltip-lint .cm-diagnostic": {
-    borderWidth: 0,
-    padding: 0,
-    margin: 0,
-    ...textVariants.regular,
+const fullSizeEditorTheme = EditorView.theme({
+  ".cm-scroller": {
+    minHeight: 0,
+    overflow: "auto",
   },
 });
 
@@ -562,16 +578,21 @@ const expressionLinter = linter((view) => {
 });
 
 export const ExpressionEditor = ({
+  "aria-label": ariaLabel,
   editorApiRef,
   scope = emptyScope,
   aliases = emptyAliases,
   color,
+  size,
+  chromeless = false,
   autoFocus = false,
   readOnly = false,
+  showLineNumbers = false,
   value,
   onChange,
   onChangeComplete,
 }: {
+  "aria-label"?: string;
   editorApiRef?: RefObject<undefined | EditorApi>;
   /**
    * object with variables and their data to autocomplete
@@ -582,12 +603,20 @@ export const ExpressionEditor = ({
    */
   aliases?: Aliases;
   color?: "error";
+  size?: "default" | "full";
+  chromeless?: boolean;
   autoFocus?: boolean;
   readOnly?: boolean;
+  showLineNumbers?: boolean;
   value?: string;
   onChange: (value: string) => void;
   onChangeComplete: (value: string) => void;
 }) => {
+  const resolveCompletionScope = useContext(ExpressionCompletionScopeContext);
+  const completionScope = useMemo(
+    () => resolveCompletionScope?.(scope),
+    [resolveCompletionScope, scope]
+  );
   const normalizedValue = normalizeEditorValue(value);
   const { nameById, idByName } = useMemo(() => {
     const nameById = new Map();
@@ -617,6 +646,19 @@ export const ExpressionEditor = ({
     }
     return newScope;
   }, [scope, aliases]);
+  const completionScopeWithUnsetVariables = useMemo(() => {
+    if (completionScope === undefined) {
+      return scopeWithUnsetVariables;
+    }
+    const newScope: Scope = {};
+    for (const [identifier, value] of Object.entries(completionScope)) {
+      const name = aliases.get(identifier);
+      if (name) {
+        newScope[encodeDataVariableName(name)] = value;
+      }
+    }
+    return newScope;
+  }, [completionScope, scopeWithUnsetVariables, aliases]);
   const aliasesWithUnsetVariables = useMemo(() => {
     const newAliases: typeof aliases = new Map();
     for (const [_identifier, name] of aliases) {
@@ -632,6 +674,7 @@ export const ExpressionEditor = ({
       javascript({}),
       VariablesData.of({
         scope: scopeWithUnsetVariables,
+        completionScope: completionScopeWithUnsetVariables,
         aliases: aliasesWithUnsetVariables,
       }),
       // render autocomplete in body
@@ -645,8 +688,24 @@ export const ExpressionEditor = ({
       keymap.of([...closeBracketsKeymap, ...completionKeymap]),
       expressionLinter,
       linterTooltipTheme,
+      ...(showLineNumbers ? [lineNumbers()] : []),
+      ...(size === "full" ? [fullSizeEditorTheme] : []),
     ],
-    [scopeWithUnsetVariables, aliasesWithUnsetVariables]
+    [
+      scopeWithUnsetVariables,
+      completionScopeWithUnsetVariables,
+      aliasesWithUnsetVariables,
+      size,
+      showLineNumbers,
+    ]
+  );
+  const dialogExtensions = useMemo(
+    () => [
+      ...extensions,
+      ...(showLineNumbers ? [] : [lineNumbers()]),
+      foldGutterExtension,
+    ],
+    [extensions, showLineNumbers]
   );
 
   // prevent clicking on autocomplete options propagating to body
@@ -667,36 +726,61 @@ export const ExpressionEditor = ({
     };
   }, []);
 
+  const handleChange = (newValue: string) => {
+    const expressionWithRestoredVariables = restoreExpressionVariables({
+      expression: newValue,
+      maskedIdByName: idByName,
+    });
+    onChange(expressionWithRestoredVariables);
+  };
+  const handleChangeComplete = (newValue: string) => {
+    const expressionWithRestoredVariables = restoreExpressionVariables({
+      expression: newValue,
+      maskedIdByName: idByName,
+    });
+    onChangeComplete(expressionWithRestoredVariables);
+  };
   const content = (
     <EditorContent
+      aria-label={ariaLabel}
       editorApiRef={editorApiRef}
       extensions={extensions}
       invalid={color === "error"}
+      chromeless={chromeless}
       readOnly={readOnly}
       autoFocus={autoFocus}
       value={expressionWithUnsetVariables}
-      onChange={(newValue: string) => {
-        const expressionWithRestoredVariables = restoreExpressionVariables({
-          expression: newValue,
-          maskedIdByName: idByName,
-        });
-        onChange(expressionWithRestoredVariables);
-      }}
-      onChangeComplete={(newValue: string) => {
-        const expressionWithRestoredVariables = restoreExpressionVariables({
-          expression: newValue,
-          maskedIdByName: idByName,
-        });
-        onChangeComplete(expressionWithRestoredVariables);
-      }}
+      onChange={handleChange}
+      onChangeComplete={handleChangeComplete}
     />
   );
 
+  if (chromeless) {
+    return <div className={wrapperStyle({ size })}>{content}</div>;
+  }
+
   return (
-    <div className={wrapperStyle.toString()}>
+    <div className={wrapperStyle({ size })}>
       <EditorDialogControl>
         {content}
-        <EditorDialog title="Expression Editor" content={content}>
+        <EditorDialog
+          title="Expression editor"
+          contentPadding={false}
+          content={
+            <EditorContent
+              aria-label={ariaLabel}
+              editorApiRef={editorApiRef}
+              extensions={dialogExtensions}
+              invalid={color === "error"}
+              chromeless
+              readOnly={readOnly}
+              autoFocus={autoFocus}
+              value={expressionWithUnsetVariables}
+              onChange={handleChange}
+              onChangeComplete={handleChangeComplete}
+            />
+          }
+        >
           <EditorDialogButton />
         </EditorDialog>
       </EditorDialogControl>

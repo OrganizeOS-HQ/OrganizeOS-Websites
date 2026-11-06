@@ -12,12 +12,22 @@ import {
 } from "react-router";
 import {
   isLocalResource,
-  loadResource,
   loadResources,
-  formIdFieldName,
-  formBotFieldName,
+  getSystemSearch,
   cachedFetch,
 } from "@webstudio-is/sdk/runtime";
+import {
+  handleManagedFormSubmission,
+  handleDeprecatedWebhookFormSubmission,
+  getManagedFormFailure,
+  readFormDataWithLimit,
+  type ManagedFormResponse,
+} from "@webstudio-is/sdk/form/server";
+import {
+  managedFormRequestParamName,
+  formIdFieldName,
+  managedFormIdFieldName,
+} from "@webstudio-is/sdk/form";
 import { authenticateRequest } from "@webstudio-is/wsauth";
 import {
   ReactSdkContext,
@@ -36,6 +46,8 @@ import {
 } from "../__generated__/_index";
 import {
   getResources,
+  getManagedFormSubmissions,
+  getManagedFormResourceGraph,
   getPageMeta,
   getRemixParams,
   contactEmail,
@@ -43,8 +55,14 @@ import {
 import * as constants from "../constants.mjs";
 import css from "../__generated__/index.css?url";
 import { sitemap } from "../__generated__/$resources.sitemap.xml";
-import { assets } from "../__generated__/$resources.assets";
 import { authRoutes } from "../__generated__/$resources.wsauth.server";
+import { createGeneratedAssetResourceFetch } from "../__generated__/$resources.asset-query-runtime";
+import {
+  createManagedFormEmailSender,
+  createManagedFormResourceFetch,
+  validateManagedFormEmail,
+} from "../__generated__/$resources.managed-form-fetch.server";
+import { assetUrlsByPath } from "../__generated__/$resources.assets";
 import { siteResourceCache } from "../organizeos-resource-cache";
 // OrganizeOS fork: the page's share-code carrier (PageWithSourceOffer).
 import { PageShareCodeCarrier } from "../__organizeos__/page.js";
@@ -63,7 +81,8 @@ import { Children, cloneElement, isValidElement, type ReactNode } from "react";
  * built from when it knows it (the publish workflow's GITHUB_SHA), the
  * repository itself otherwise.
  */
-const organizeosSourceUrl = "https://github.com/OrganizeOS-HQ/websites-builder";
+const organizeosSourceUrl =
+  "https://github.com/OrganizeOS-HQ/OrganizeOS-Websites";
 
 /**
  * The visible half of the source offer. Its styles are inline and minimal, so
@@ -131,22 +150,57 @@ const PageWithSourceOffer = ({ system }: ComponentProps<typeof Page>) => {
   );
 };
 
+/**
+ * A realm the browser can show to the site's own visitors.
+ *
+ * wsauth is kept byte-identical to upstream (ORGANIZEOS-FORK.md §1), and its
+ * 401 sends `Basic realm="Webstudio"`. The browser prints a realm verbatim in
+ * its password prompt, so that is the one upstream string that reaches past an
+ * admin to the org's AUDIENCE -- a visitor to acme.organizeos.org being asked
+ * to sign in to a product they have never heard of. Naming the site itself
+ * beats naming any platform here: it tells the visitor what they are
+ * authenticating to.
+ *
+ * A realm is a quoted-string (RFC 7235), so anything that could terminate or
+ * escape the quoting is dropped rather than encoded, and an empty or missing
+ * site name falls back to a neutral word.
+ */
+const authRealm = () => {
+  const cleaned = (siteName ?? "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f"\\]/g, "")
+    .trim();
+  return cleaned === "" ? "Protected" : cleaned;
+};
+
+/** Re-issue a wsauth 401 with our realm, leaving status, body and cache alone. */
+const withSiteRealm = (response: Response) => {
+  const headers = new Headers(response.headers);
+  headers.set("WWW-Authenticate", `Basic realm="${authRealm()}"`);
+  return new Response(response.body, { status: response.status, headers });
+};
+
 const authenticateProductionRequest = (request: Request) => {
-  const host =
-    request.headers.get("x-forwarded-host") ||
-    request.headers.get("host") ||
-    "";
-
-  const requestHost = host.split(":")[0];
-  if (
-    projectDomain !== undefined &&
-    (requestHost === projectDomain ||
-      requestHost.startsWith(`${projectDomain}.`))
-  ) {
-    return;
+  // OrganizeOS fork: upstream skipped page authentication whenever the request
+  // host was projectDomain or a subdomain of it, because projectDomain was the
+  // Webstudio staging label and staging carries its own separate credentials.
+  // Here Project.domain IS the org's platform subdomain, so "acme" matched
+  // "acme.organizeos.org" -- the site's PRIMARY PUBLIC HOST -- and every
+  // password-protected page was readable by anyone there, while the same page
+  // stayed protected on a custom domain. There is no staging host in this fork,
+  // so the skip has nothing left to protect and is gone.
+  //
+  // This is safe for unprotected sites: authenticateRequest returns early when
+  // no auth route matches the pathname, so only pages the org explicitly
+  // protected are ever challenged.
+  try {
+    return authenticateRequest(request, authRoutes);
+  } catch (thrown) {
+    if (thrown instanceof Response && thrown.status === 401) {
+      throw withSiteRealm(thrown);
+    }
+    throw thrown;
   }
-
-  return authenticateRequest(request, authRoutes);
 };
 
 const customFetch: typeof fetch = (input, init) => {
@@ -179,12 +233,6 @@ const customFetch: typeof fetch = (input, init) => {
     return Promise.resolve(response);
   }
 
-  if (isLocalResource(input, "assets")) {
-    const response = new Response(JSON.stringify(assets));
-    response.headers.set("content-type", "application/json; charset=utf-8");
-    return Promise.resolve(response);
-  }
-
   // OrganizeOS fork: through the site's in-memory resource cache
   // (organizeos-resource-cache.ts), one per server instance for every route,
   // which keeps each response only as long as its own Cache-Control allows.
@@ -196,7 +244,9 @@ const customFetch: typeof fetch = (input, init) => {
 };
 
 export const loader = async (arg: LoaderFunctionArgs) => {
-  const authRoute = authenticateProductionRequest(arg.request);
+  // Throws 401 when the org configured page-level basic auth; the return
+  // value is unused since responses are always no-store.
+  authenticateProductionRequest(arg.request);
 
   const url = new URL(arg.request.url);
   const host =
@@ -209,14 +259,30 @@ export const loader = async (arg: LoaderFunctionArgs) => {
   const params = getRemixParams(arg.params);
   const system = {
     params,
-    search: Object.fromEntries(url.searchParams),
+    ...getSystemSearch(url.searchParams),
     origin: url.origin,
     pathname: url.pathname,
   };
 
+  const generatedFetch = await createGeneratedAssetResourceFetch({
+    request: arg.request,
+    context: arg.context,
+    fallback: customFetch,
+  });
   const resources = await loadResources(
-    customFetch,
-    getResources({ system }).data
+    generatedFetch,
+    getResources({ system }).data,
+    url,
+    { signal: arg.request.signal }
+  );
+  Object.assign(
+    resources,
+    await loadResources(
+      generatedFetch,
+      getResources({ system, resources }).contentData ?? new Map(),
+      url,
+      { signal: arg.request.signal }
+    )
   );
   const pageMeta = getPageMeta({ system, resources });
 
@@ -249,7 +315,13 @@ export const loader = async (arg: LoaderFunctionArgs) => {
       status: pageMeta.status,
       headers: {
         "Cache-Control":
-          authRoute === undefined ? "public, max-age=600" : "private, no-store",
+          // OrganizeOS: always no-store. Pages carry live data via server-side
+          // Resources, and the upstream edge honors this header, so max-age=600
+          // would serve ten-minute-stale HTML to the platform reverse proxy.
+          // The single caching layer is the resource cache in
+          // organizeos-resource-cache.ts, which keeps each resource only as
+          // long as its own Cache-Control allows.
+          "no-store",
       },
     }
   );
@@ -343,82 +415,90 @@ const getRequestHost = (request: Request): string =>
 export const action = async ({
   request,
   context,
+  params,
 }: ActionFunctionArgs): Promise<
-  { success: true } | { success: false; errors: string[] }
+  { success: true } | { success: false; errors: string[] } | ManagedFormResponse
 > => {
   authenticateProductionRequest(request);
 
+  let isManagedFormRequest = false;
   try {
     const url = new URL(request.url);
-    url.host = getRequestHost(request);
-
-    const formData = await request.formData();
+    isManagedFormRequest =
+      url.searchParams.get(managedFormRequestParamName) === "1";
+    url.searchParams.delete(managedFormRequestParamName);
+    if (!isManagedFormRequest) {
+      url.host = getRequestHost(request);
+    }
+    const formData = await readFormDataWithLimit(request);
 
     const system = {
-      params: {},
-      search: {},
+      params: getRemixParams(params ?? {}),
+      ...getSystemSearch(url.searchParams),
       origin: url.origin,
       pathname: url.pathname,
     };
 
-    const resourceName = formData.get(formIdFieldName);
-    let resource =
-      typeof resourceName === "string"
-        ? getResources({ system }).action.get(resourceName)
-        : undefined;
-
-    const formBotValue = formData.get(formBotFieldName);
-
-    if (formBotValue == null || typeof formBotValue !== "string") {
-      throw new Error("Form bot field not found");
+    const managedFormIds = formData.getAll(managedFormIdFieldName);
+    if (!isManagedFormRequest && managedFormIds.length > 0) {
+      throw new Error("Invalid Form submission");
     }
-
-    // Skip timestamp validation for Brave browser
-    // Brave Shields blocks matchMedia fingerprinting detection used in bot protection
-    // See: https://github.com/brave/brave-browser/issues/46541
-    if (formBotValue !== "brave") {
-      const submitTime = parseInt(formBotValue, 16);
-      // Assumes that the difference between the server time and the form submission time,
-      // including any client-server time drift, is within a 5-minute range.
-      // Note: submitTime might be NaN because formBotValue can be any string used for logging purposes.
-      // Example: `formBotValue: jsdom`, or `formBotValue: headless-env`
-      if (
-        Number.isNaN(submitTime) ||
-        Math.abs(Date.now() - submitTime) > 1000 * 60 * 5
-      ) {
-        throw new Error(`Form bot value invalid ${formBotValue}`);
+    const protectedFetch = createManagedFormResourceFetch({
+      request,
+      context,
+      projectDomain,
+    });
+    if (isManagedFormRequest) {
+      // Reject deprecated Webhook Form IDs on the new Form submission path.
+      if (managedFormIds.length !== 1 || formData.has(formIdFieldName)) {
+        throw new Error("Invalid Form submission");
       }
-    }
-
-    formData.delete(formIdFieldName);
-    formData.delete(formBotFieldName);
-
-    if (resource) {
-      resource.body = Object.fromEntries(formData);
-    } else {
-      if (contactEmail === undefined) {
-        throw new Error("Contact email not found");
-      }
-
-      resource = context.getDefaultActionResource?.({
-        url,
-        projectId,
-        contactEmail,
+      return await handleManagedFormSubmission({
+        request,
         formData,
+        url,
+        system,
+        configuration: (formId) => getManagedFormSubmissions().get(formId),
+        getGraph: getManagedFormResourceGraph,
+        createEmailSender: (formData) =>
+          createManagedFormEmailSender({ context, formData, projectId }),
+        validateEmail: validateManagedFormEmail,
+        resourceFetch: protectedFetch,
+        validateDestination: protectedFetch.validateDestination,
+        trustedIp:
+          typeof context === "object" &&
+          context !== null &&
+          "cloudflare" in context
+            ? (request.headers.get("cf-connecting-ip") ?? undefined)
+            : undefined,
       });
     }
 
-    if (resource === undefined) {
-      throw Error("Resource not found");
-    }
-    const { ok, statusText } = await loadResource(fetch, resource);
-    if (ok) {
-      return { success: true };
-    }
-    return { success: false, errors: [statusText] };
+    // Compatibility path for saved, deprecated Webhook Forms.
+    return await handleDeprecatedWebhookFormSubmission({
+      request,
+      formData,
+      url,
+      resources: getResources({ system }),
+      contactEmail,
+      resourceFetch: protectedFetch,
+      dependencyFetch: await createGeneratedAssetResourceFetch({
+        request,
+        context,
+        fallback: customFetch,
+      }),
+      createEmailSender: (data) =>
+        createManagedFormEmailSender({ context, formData: data, projectId }),
+      validateEmail: validateManagedFormEmail,
+    });
   } catch (error) {
     console.error(error);
 
+    if (isManagedFormRequest) {
+      return getManagedFormFailure(
+        error instanceof Error ? error.message : "Unknown error"
+      );
+    }
     return {
       success: false,
       errors: [error instanceof Error ? error.message : "Unknown error"],
@@ -444,6 +524,7 @@ const Outlet = () => {
   const sdkContext = useMemo(
     () => ({
       ...constants,
+      assetUrlsByPath,
       resources,
       breakpoints,
       onError: console.error,

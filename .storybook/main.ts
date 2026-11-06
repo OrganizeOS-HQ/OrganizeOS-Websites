@@ -1,51 +1,10 @@
 import * as path from "node:path";
 import { defaultClientConditions } from "vite";
 import type { StorybookConfig } from "@storybook/react-vite";
-
-const visualTestingStories: StorybookConfig["stories"] = [
-  {
-    directory: "../apps/builder",
-    titlePrefix: "Builder",
-    files: "**/*.stories.tsx",
-  },
-  {
-    directory: "../packages/design-system/src/components",
-    titlePrefix: "Design system",
-    files: "**/*.stories.tsx",
-  },
-];
+import storySources from "./story-sources.json" with { type: "json" };
 
 export default {
-  stories: process.env.VISUAL_TESTING
-    ? visualTestingStories
-    : [
-        ...visualTestingStories,
-        {
-          directory: "../packages/css-engine/src",
-          titlePrefix: "CSS engine",
-          files: "**/*.stories.tsx",
-        },
-        {
-          directory: "../packages/image/src",
-          titlePrefix: "Image",
-          files: "**/*.stories.tsx",
-        },
-        {
-          directory: "../packages/icons",
-          titlePrefix: "Icons",
-          files: "**/*.stories.tsx",
-        },
-        {
-          directory: "../packages/sdk-components-react",
-          titlePrefix: "SDK components React",
-          files: "**/*.stories.tsx",
-        },
-        {
-          directory: "../packages/sdk-components-react-radix",
-          titlePrefix: "SDK components React Radix",
-          files: "**/*.stories.tsx",
-        },
-      ],
+  stories: storySources,
   framework: {
     name: "@storybook/react-vite",
     options: {},
@@ -54,6 +13,7 @@ export default {
     "@storybook/addon-controls",
     "@storybook/addon-actions",
     "@storybook/addon-backgrounds",
+    "@storybook/addon-toolbars",
   ],
   async viteFinal(config) {
     return {
@@ -71,6 +31,8 @@ export default {
       },
       resolve: {
         ...config.resolve,
+        // OrganizeOS fork: never "webstudio-private", the proprietary animation
+        // package's private sources (docs/ORGANIZEOS-FORK.md section 2).
         conditions: ["webstudio", ...defaultClientConditions],
 
         alias: [

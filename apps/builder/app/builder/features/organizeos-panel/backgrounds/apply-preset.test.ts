@@ -2,6 +2,7 @@ import { enableMapSet } from "immer";
 import { beforeEach, describe, expect, test } from "vitest";
 import type { CssProperty, StyleValue } from "@webstudio-is/css-engine";
 import { camelCaseProperty } from "@webstudio-is/css-data";
+import { createDefaultPages } from "@webstudio-is/project-build";
 import {
   getStyleDeclKey,
   type Breakpoint,
@@ -19,6 +20,7 @@ import {
 import {
   $breakpoints,
   $instances,
+  $pages,
   $styleSourceSelections,
   $styleSources,
   $styles,
@@ -94,7 +96,10 @@ const setup = ({
       ["box", { type: "instance", id: "box", component: "Box", children: [] }],
     ])
   );
-  $selectedPageId.set("");
+  // the runtime layer writes to a page's data
+  const pages = createDefaultPages({ rootInstanceId: "body" });
+  $pages.set(pages);
+  $selectedPageId.set(pages.homePageId);
   selectInstance(["box", "body"]);
   $breakpoints.set(
     new Map([
@@ -332,6 +337,64 @@ describe("applyPreset", () => {
       )
     );
     expect($styles.get().get(getStyleDeclKey(color))).toEqual(color);
+  });
+
+  // The runtime writes a batch's sets before its deletes, so a preset that
+  // cleared every background property would clear what it had just written.
+  test("a section holding a background image takes the preset's background image", () => {
+    const local: StyleSource = { type: "local", id: "local" };
+    setup({
+      styleSources: [local],
+      selection: ["local"],
+      selected: "local",
+      styles: [
+        decl(
+          "local",
+          "background-image",
+          layers({ type: "unparsed", value: "linear-gradient(red, blue)" })
+        ),
+      ],
+    });
+    const styles = buildPreset("wash-light");
+    applyPreset(styles);
+    const image = styles.find(
+      ({ property }) => property === "background-image"
+    );
+    expect(image).toBeDefined();
+    expect(
+      $styles.get().get(
+        getStyleDeclKey({
+          styleSourceId: "local",
+          breakpointId: "base",
+          property: camelCaseProperty("background-image"),
+        })
+      )?.value
+    ).toEqual(image?.value);
+  });
+
+  // createBatchUpdate drops an invalid value, so nothing would set it
+  test("a property the preset gives an invalid value is cleared, not kept from before", () => {
+    const local: StyleSource = { type: "local", id: "local" };
+    setup({
+      styleSources: [local],
+      selection: ["local"],
+      selected: "local",
+      styles: [decl("local", "background-color", keyword("red"))],
+    });
+    applyPreset([
+      ...buildPreset("tint-light").filter(
+        ({ property }) => property !== "background-color"
+      ),
+      {
+        property: "background-color",
+        value: { type: "invalid", value: "not a color" },
+      },
+    ]);
+    expect(
+      declsOf("local").some(
+        (item) => item.property === camelCaseProperty("background-color")
+      )
+    ).toBe(false);
   });
 
   // A light preset makes the section no band: the ring and accent text
