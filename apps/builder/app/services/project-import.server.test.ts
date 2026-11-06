@@ -478,6 +478,75 @@ describe("build import helpers", () => {
     expect(calls).toEqual(["files-select", "build-update"]);
   });
 
+  test.each([
+    [
+      "an expression",
+      {
+        props: [
+          [
+            "prop-1",
+            {
+              id: "prop-1",
+              instanceId: "root",
+              name: "title",
+              type: "expression",
+              value: `"a".constructor`,
+            },
+          ],
+        ],
+      },
+    ],
+    [
+      "an instance tag",
+      {
+        instances: [
+          [
+            "root",
+            {
+              type: "instance",
+              id: "root",
+              component: "Body",
+              tag: "script",
+              children: [],
+            },
+          ],
+        ],
+      },
+    ],
+  ])(
+    "refuses a project with %s that fails the save check, writing nothing",
+    async (_name, buildOverrides) => {
+      const calls: string[] = [];
+      const data = createData();
+      const imported = {
+        ...data,
+        build: { ...data.build, ...buildOverrides },
+      } as PublishedProjectBundle;
+
+      await expect(
+        importPublishedProjectBundle(
+          {
+            ctx: {
+              postgrest: {
+                client: createPostgrestClient(calls, {
+                  existingFileNames: ["image.png"],
+                }),
+              },
+            } as never,
+            data: imported,
+            projectId: "target-project",
+          },
+          { hasProjectPermit, loadDevBuildByProjectId }
+        )
+      ).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: "This project has a value that cannot be saved",
+      });
+
+      expect(calls).toEqual([]);
+    }
+  );
+
   test("rejects an invalid imported collection before changing the project", async () => {
     const calls: string[] = [];
     const configSource = createDefaultCollectionConfig();

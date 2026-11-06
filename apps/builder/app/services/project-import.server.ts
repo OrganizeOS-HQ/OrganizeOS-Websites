@@ -1,3 +1,8 @@
+import { TRPCError } from "@trpc/server";
+import {
+  findCodeCheckFailure,
+  pagesToCheck,
+} from "@organizeos/site-components/org-script";
 import {
   AuthorizationError,
   authorizeProject,
@@ -87,6 +92,42 @@ export const assertProjectBuildPermit = async ({
   }
 };
 
+/** The pages and instances an import writes, migrated as they are saved. */
+const migrateImportedBuild = (data: ProjectBundle) => {
+  const hasModernFormMarker = hasHistoricalFormComponentIdentityVersion(
+    data.build.pages
+  );
+  const pages = migratePages(data.build.pages);
+  const instances = toMap(
+    data.build.instances.map(([id, instance]) => [id, { ...instance }])
+  );
+  migrateResourceFormInstancesMutable(instances.values(), hasModernFormMarker);
+  return { pages, instances };
+};
+
+/**
+ * OrganizeOS fork: a project import passes the save check
+ * (code-check.ts in @organizeos/site-components) over the values it writes,
+ * the same check the CLI runs before publishing; an import holding a value
+ * that fails is refused before anything is written.
+ */
+const assertImportedBuildPassesCodeCheck = (data: ProjectBundle) => {
+  const { pages, instances } = migrateImportedBuild(data);
+  const failure = findCodeCheckFailure({
+    pages: pagesToCheck(pages),
+    instances: [...instances.values()],
+    props: data.build.props.map(([, prop]) => prop),
+    resources: (data.build.resources ?? []).map(([, resource]) => resource),
+    dataSources: data.build.dataSources.map(([, dataSource]) => dataSource),
+  });
+  if (failure !== undefined) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "This project has a value that cannot be saved",
+    });
+  }
+};
+
 const createBuildImportUpdate = ({
   data,
   lastTransactionId,
@@ -98,14 +139,7 @@ const createBuildImportUpdate = ({
   updatedAt: string;
   version: number;
 }) => {
-  const hasModernFormMarker = hasHistoricalFormComponentIdentityVersion(
-    data.build.pages
-  );
-  const pages = migratePages(data.build.pages);
-  const instances = toMap(
-    data.build.instances.map(([id, instance]) => [id, { ...instance }])
-  );
-  migrateResourceFormInstancesMutable(instances.values(), hasModernFormMarker);
+  const { pages, instances } = migrateImportedBuild(data);
   const projectSettings =
     data.build.projectSettings ?? createProjectSettingsFromPages(pages);
   return {
@@ -381,6 +415,8 @@ export const importPublishedProjectBundle = async (
     hasProjectPermit: dependencies.hasProjectPermit,
     projectId,
   });
+
+  assertImportedBuildPassesCodeCheck(data);
 
   const build = await dependencies.loadDevBuildByProjectId(ctx, projectId);
   const nextVersion = build.version + 1;
