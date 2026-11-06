@@ -23,6 +23,10 @@ import {
 } from "./patch-service.server";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import type { NormalizedPatchRequest } from "./patch-normalize.server";
+import {
+  createDefaultPages,
+  serializePages,
+} from "@webstudio-is/project-build";
 
 const buildRow = {
   projectId: "project-1",
@@ -34,6 +38,12 @@ const buildRow = {
   styleSourceSelections: JSON.stringify([]),
   styles: JSON.stringify([]),
   breakpoints: JSON.stringify([]),
+  // OrganizeOS fork: read by input validation (organizeos-code-check.server.ts)
+  pages: serializePages(
+    createDefaultPages({ homePageId: "home", rootInstanceId: "root" })
+  ),
+  resources: JSON.stringify([]),
+  dataSources: JSON.stringify([]),
 };
 
 const createContext = () => {
@@ -421,6 +431,101 @@ describe("applyPatchRequest", () => {
     await expect(applyPatchRequest(createContext(), patch)).rejects.toThrow(
       "PostgREST unavailable"
     );
+  });
+});
+
+// OrganizeOS fork: input validation for expressions and generated names
+describe("applyPatchRequest with a value that fails input validation", () => {
+  beforeEach(() => {
+    patchLoadedBuild.mockReset();
+    authorizePatchEntries.mockReset();
+  });
+
+  const propWrite = (id: string, seq: number, value: string) => ({
+    seq,
+    transaction: {
+      id,
+      payload: [
+        {
+          namespace: "props",
+          patches: [
+            {
+              op: "add",
+              path: [id],
+              value: {
+                id,
+                instanceId: "root",
+                name: "title",
+                type: "expression",
+                value,
+              },
+            },
+          ],
+        },
+      ],
+    } as never,
+    writer: { type: "token" as const, authToken: "token" },
+  });
+
+  test("fails the entry that writes it, with the reason, and applies the others", async () => {
+    const refused = propWrite("tx-1", 1, "a()");
+    const accepted = propWrite("tx-2", 2, `"a"`);
+    authorizePatchEntries.mockResolvedValue({
+      authorized: [
+        { entry: refused, context: { writer: 1 } },
+        { entry: accepted, context: { writer: 1 } },
+      ],
+      rejected: [],
+    });
+    patchLoadedBuild.mockImplementation(async ({ build }) => ({
+      status: "ok",
+      version: 4,
+      build: { ...build, version: 4 },
+    }));
+
+    const result = await applyPatchRequest(createContext(), {
+      ...patch,
+      entries: [refused, accepted],
+    });
+
+    expect(patchLoadedBuild).toHaveBeenCalledTimes(1);
+    expect(patchLoadedBuild).toHaveBeenCalledWith(
+      expect.objectContaining({ transactions: [accepted.transaction] }),
+      { writer: 1 }
+    );
+    expect(result).toEqual({
+      status: "partial",
+      version: 4,
+      entries: [
+        {
+          seq: 1,
+          transactionId: "tx-1",
+          status: "failed",
+          errors: "This function is not allowed",
+        },
+        { seq: 2, transactionId: "tx-2", status: "accepted" },
+      ],
+    });
+  });
+
+  test("persists nothing when every entry is refused", async () => {
+    const refused = propWrite("tx-1", 1, "a()");
+    authorizePatchEntries.mockResolvedValue({
+      authorized: [{ entry: refused, context: { writer: 1 } }],
+      rejected: [],
+    });
+
+    const result = await applyPatchRequest(createContext(), {
+      ...patch,
+      entries: [refused],
+    });
+
+    expect(patchLoadedBuild).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      status: "partial",
+      version: 3,
+      entries: [{ seq: 1, status: "failed" }],
+    });
   });
 });
 

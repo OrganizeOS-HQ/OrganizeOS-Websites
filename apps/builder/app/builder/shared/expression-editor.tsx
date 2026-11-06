@@ -48,6 +48,7 @@ import {
   restoreExpressionVariables,
   unsetExpressionVariables,
 } from "~/shared/data-variables";
+import { withCodeCheckDiagnostic } from "./organizeos-code-check";
 
 export type { EditorApi };
 
@@ -548,11 +549,16 @@ const linterTooltipTheme = EditorView.theme({
 
 const expressionLinter = linter((view) => {
   const [{ scope }] = view.state.facet(VariablesData);
-  return lintExpression({
-    expression: view.state.doc.toString(),
-    availableVariables: new Set(Object.keys(scope)),
-    variableValues: scope,
-  });
+  const expression = view.state.doc.toString();
+  // OrganizeOS fork: input validation (organizeos-code-check.ts)
+  return withCodeCheckDiagnostic(
+    expression,
+    lintExpression({
+      expression,
+      availableVariables: new Set(Object.keys(scope)),
+      variableValues: scope,
+    })
+  );
 });
 
 export const ExpressionEditor = ({

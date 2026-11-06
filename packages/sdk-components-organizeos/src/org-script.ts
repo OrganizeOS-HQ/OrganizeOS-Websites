@@ -33,13 +33,12 @@ export const orgScriptMayRun = (): boolean => false;
 /**
  * Which of OrganizeOS's launch requirements the CLI built from this commit
  * meets. The publish workflow reads it beside orgScriptMayRun() and sends it
- * as guardLevel (docs/ORGANIZEOS-FORK.md section 5). Level 1 has one
- * requirement not yet in this repository; the level stays 0 until it lands.
- * packages/cli/src/organizeos-guard-level.test.ts fails if it is raised while
- * a requirement is missing; raising it is a reviewed change that edits that
- * test.
+ * as guardLevel (docs/ORGANIZEOS-FORK.md section 5). Every level-1
+ * requirement is met. packages/cli/src/organizeos-guard-level.test.ts fails
+ * if a requirement stops holding or loses its tests; changing the level is a
+ * reviewed change that edits that test.
  */
-export const ORGANIZEOS_GUARD_LEVEL: number = 0;
+export const ORGANIZEOS_GUARD_LEVEL: number = 1;
 
 /**
  * The SVGs that upstream's own templates put in an HTML Embed (Accordion,
@@ -823,3 +822,7 @@ const literalNodeValue = (node: Expression): unknown => {
       throw notALiteral();
   }
 };
+
+// Input validation for expressions and generated names, read by the builder
+// and the CLI through this entry (code-check.ts).
+export * from "./code-check";

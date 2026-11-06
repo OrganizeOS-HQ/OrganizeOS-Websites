@@ -36,6 +36,7 @@ import {
   propNameMayRun,
   withoutPausedProps,
 } from "@organizeos/site-components/org-script";
+import { instanceTagMayRender } from "~/canvas/organizeos-org-script";
 import {
   idAttribute,
   componentAttribute,
@@ -357,8 +358,12 @@ const useInstanceProps = (instanceSelector: InstanceSelector) => {
         // OrganizeOS fork: org script is paused. A tag the builder does not
         // offer (script, or JSX syntax), or an SVG animate or set, never
         // reaches the component that makes an element from it
-        // (docs/ORGANIZEOS-FORK.md section 10).
-        if (tag !== undefined && elementTagMayRender(tag)) {
+        // (docs/ORGANIZEOS-FORK.md section 10). A tag the builder does not
+        // offer never does, whatever the switch (input validation).
+        if (
+          tag !== undefined &&
+          instanceTagMayRender(instance?.component ?? "", tag)
+        ) {
           instancePropsObject[tagProperty] = tag;
         }
         const meta = metas.get(instance?.component ?? "");
@@ -555,8 +560,9 @@ export const WebstudioComponentCanvas = forwardRef<
     // OrganizeOS fork: org script is paused. React hoists a `script` that has
     // `async` and `src` into <head> and runs it, and an SVG animate or set can
     // set a link's href to a javascript: URL (docs/ORGANIZEOS-FORK.md
-    // section 10).
-    if (elementTagMayRender(Component) === false) {
+    // section 10). A tag the builder does not offer never renders, whatever
+    // the switch (input validation).
+    if (instanceTagMayRender(elementComponent, Component) === false) {
       Component = "div";
     }
     // replace to enable uncontrolled state
@@ -771,8 +777,9 @@ export const WebstudioComponentPreview = forwardRef<
 
   if (instance.component === elementComponent) {
     Component = instance.tag ?? "div";
-    // OrganizeOS fork: org script is paused (see WebstudioComponentCanvas)
-    if (elementTagMayRender(Component) === false) {
+    // OrganizeOS fork: org script is paused, and a tag the builder does not
+    // offer never renders (see WebstudioComponentCanvas)
+    if (instanceTagMayRender(elementComponent, Component) === false) {
       Component = "div";
     }
     // replace to enable uncontrolled state
