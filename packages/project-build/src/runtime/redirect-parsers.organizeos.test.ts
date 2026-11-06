@@ -11,8 +11,8 @@ test("an import skips a target that may not run while org script is paused", () 
     { old: "/d", new: "https://example.org/", status: 301 },
   ]);
   expect(result.skipped.map((line) => line.reason)).toEqual([
-    "address not allowed",
-    "address not allowed",
-    "address not allowed",
+    "This address is not allowed.",
+    "This address is not allowed.",
+    "This address is not allowed.",
   ]);
 });

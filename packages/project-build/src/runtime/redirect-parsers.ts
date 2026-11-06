@@ -4,8 +4,6 @@ import {
   validateRedirectSource,
   validateRedirectTarget,
 } from "./project-settings";
-// OrganizeOS fork: the pause (docs/ORGANIZEOS-FORK.md section 10)
-import { urlMayRun } from "@organizeos/site-components/org-script";
 
 export type ParsedRedirect = {
   old: string;
@@ -317,18 +315,6 @@ const normalizeRecord = (
         line: lineNumber,
         content: originalContent,
         reason: targetErrors.join(", "),
-      },
-    };
-  }
-
-  // OrganizeOS fork: a target that may not run while org script is paused
-  // (docs/ORGANIZEOS-FORK.md section 10)
-  if (urlMayRun(normalizedTo) === false) {
-    return {
-      skipped: {
-        line: lineNumber,
-        content: originalContent,
-        reason: "address not allowed",
       },
     };
   }

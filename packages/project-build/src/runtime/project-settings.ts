@@ -60,6 +60,7 @@ export {
   validateProjectAuthRoute,
   validateProjectAuthRouteSyntax,
 } from "../contracts/project-settings";
+import { urlMayRun } from "@organizeos/site-components/org-script";
 
 const getRequiredBreakpoints = (state: Pick<BuilderState, "breakpoints">) => {
   if (state.breakpoints === undefined) {
@@ -446,6 +447,13 @@ export const validateRedirectSource = ({
   return { errors: [], warnings };
 };
 
+/**
+ * OrganizeOS fork: a redirect target passes the rule for addresses that may
+ * run while org script is paused (`urlMayRun`), in the builder's form, an
+ * import and the redirect operations alike.
+ */
+export const redirectTargetNotAllowedMessage = "This address is not allowed.";
+
 export const validateRedirectTarget = ({
   target,
   source,
@@ -456,6 +464,11 @@ export const validateRedirectTarget = ({
   const targetValidationResult = projectNewRedirectPath.safeParse(target);
   if (targetValidationResult.success === false) {
     return targetValidationResult.error.format()._errors;
+  }
+
+  // OrganizeOS fork (docs/ORGANIZEOS-FORK.md section 10)
+  if (urlMayRun(target) === false) {
+    return [redirectTargetNotAllowedMessage];
   }
 
   if (hasInvalidLocalTargetParams(target, source)) {
@@ -474,6 +487,13 @@ const parseRedirect = (input: PageRedirect) => {
   const result = pageRedirect.safeParse(input);
   if (result.success === false) {
     return throwBuilderRuntimeError("BAD_REQUEST", result.error.message);
+  }
+  // OrganizeOS fork (docs/ORGANIZEOS-FORK.md section 10)
+  if (urlMayRun(result.data.new) === false) {
+    return throwBuilderRuntimeError(
+      "BAD_REQUEST",
+      redirectTargetNotAllowedMessage
+    );
   }
   if (hasNamedSplat(result.data.old)) {
     return throwBuilderRuntimeError(

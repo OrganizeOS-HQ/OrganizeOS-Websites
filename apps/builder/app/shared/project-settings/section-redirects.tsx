@@ -58,18 +58,10 @@ const statusCodeDescriptions: Record<string, string> = {
   "302": "Moved temporarily. SEO ranking stays with original URL.",
 };
 
-const validateToPath = (toPath: string, fromPath?: string): string[] => {
-  const errors = validateRedirectTarget({ target: toPath, source: fromPath });
-  if (errors.length > 0) {
-    return errors;
-  }
-  // OrganizeOS fork: a target that may not run while org script is paused
-  // (docs/ORGANIZEOS-FORK.md section 10)
-  if (urlMayRun(toPath) === false) {
-    return ["This address is not allowed."];
-  }
-  return [];
-};
+// OrganizeOS fork: validateRedirectTarget refuses a target that may not run
+// while org script is paused (docs/ORGANIZEOS-FORK.md section 10)
+const validateToPath = (toPath: string, fromPath?: string): string[] =>
+  validateRedirectTarget({ target: toPath, source: fromPath });
 
 const deleteRedirect = (
   redirects: Array<PageRedirect>,
