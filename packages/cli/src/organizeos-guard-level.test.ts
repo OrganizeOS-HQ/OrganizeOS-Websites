@@ -625,6 +625,12 @@ describe("the covering-test lookup", () => {
 });
 
 describe("ORGANIZEOS_GUARD_LEVEL", () => {
+  // The level stays 0 while level-1 work is not yet in this repository; the
+  // change that lands it removes this pin and raises the level.
+  test("stays 0 while level-1 work is not yet in this repository", () => {
+    expect(ORGANIZEOS_GUARD_LEVEL).toBe(0);
+  });
+
   test("is an integer from 0 to 32767, and at most 1", () => {
     expect(Number.isInteger(ORGANIZEOS_GUARD_LEVEL)).toBe(true);
     expect(ORGANIZEOS_GUARD_LEVEL).toBeGreaterThanOrEqual(0);
