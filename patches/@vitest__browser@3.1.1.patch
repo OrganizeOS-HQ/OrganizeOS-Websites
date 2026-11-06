@@ -1,0 +1,46 @@
+diff --git a/dist/webdriver-2iYWIzBv.js b/dist/webdriver-2iYWIzBv.js
+index 3ff05c2a373b472244a6dde812cad138b54d7b24..c23bc075fac79ccd45bf461e04b041aa3774beac 100644
+--- a/dist/webdriver-2iYWIzBv.js
++++ b/dist/webdriver-2iYWIzBv.js
+@@ -90,9 +90,15 @@ class PlaywrightBrowserProvider {
+ 			const ids = sessionIds.get(sessionId) || [];
+ 			ids.push(moduleUrl.href);
+ 			sessionIds.set(sessionId, ids);
+-			idPreficates.set(moduleUrl.href, predicate);
++			idPreficates.set(predicateKey(sessionId, moduleUrl.href), predicate);
+ 			return predicate;
+ 		}
++		// OrganizeOS fork: Vitest 3.2.0's fix, backported. Keyed by module URL
++		// alone, two sessions that mock the same module overwrite each other's
++		// predicate, and cleanup leaves the first session's route on its page.
++		function predicateKey(sessionId, url) {
++			return `${sessionId}:${url}`;
++		}
+ 		return {
+ 			register: async (sessionId, module) => {
+ 				const page = this.getPage(sessionId);
+@@ -146,18 +152,20 @@ class PlaywrightBrowserProvider {
+ 			},
+ 			delete: async (sessionId, id) => {
+ 				const page = this.getPage(sessionId);
+-				const predicate = idPreficates.get(id);
++				const key = predicateKey(sessionId, id);
++				const predicate = idPreficates.get(key);
+ 				if (predicate) {
+-					await page.unroute(predicate).finally(() => idPreficates.delete(id));
++					await page.unroute(predicate).finally(() => idPreficates.delete(key));
+ 				}
+ 			},
+ 			clear: async (sessionId) => {
+ 				const page = this.getPage(sessionId);
+ 				const ids = sessionIds.get(sessionId) || [];
+ 				const promises = ids.map((id) => {
+-					const predicate = idPreficates.get(id);
++					const key = predicateKey(sessionId, id);
++					const predicate = idPreficates.get(key);
+ 					if (predicate) {
+-						return page.unroute(predicate).finally(() => idPreficates.delete(id));
++						return page.unroute(predicate).finally(() => idPreficates.delete(key));
+ 					}
+ 					return null;
+ 				});
