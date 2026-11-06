@@ -1,28 +1,20 @@
 import {
   unwrapInstance,
-  deleteInstanceMutable,
   deleteSelectedInstance,
   reparentInstance,
-  sortInstancePathsForChildMutation,
 } from "~/shared/instance-utils/mutation";
-import { toggleInstanceShow } from "~/shared/instance-utils/mutation";
 import {
-  extractWebstudioFragment,
-  insertWebstudioFragmentCopy,
-} from "~/shared/instance-utils/fragment";
+  canMoveInstanceInContentMode,
+  sortInstancePathsForChildMutation,
+} from "@webstudio-is/project-build/runtime";
+import { toggleInstanceShow } from "~/shared/instance-utils/mutation";
 import { insertWebstudioFragmentAt } from "~/shared/instance-utils/insert";
 import { toast } from "@webstudio-is/design-system";
 import {
   ROOT_INSTANCE_ID,
   isComponentDetachable,
-  type Instance,
   type WebstudioFragment,
 } from "@webstudio-is/sdk";
-import type { Project } from "@webstudio-is/project";
-import {
-  isAutoGridPlacement,
-  resetGridChildPlacement,
-} from "~/builder/features/style-panel/sections/layout/shared/grid-utils";
 import {
   duplicateFolder,
   duplicatePage,
@@ -40,7 +32,14 @@ import {
   $templateIdToDelete,
   toggleBuilderMode,
 } from "~/shared/nano-states";
-import { $instances, $project } from "~/shared/sync/data-stores";
+import { $instances } from "~/shared/sync/data-stores";
+import {
+  externalContentInstanceNameMessage,
+  getExternalContentRoots,
+  findExternalContentRootEntryBySelector,
+  isExternalContentInstance,
+} from "~/shared/external-content-mutations";
+import { traverseExternalContentHistory } from "~/shared/external-content-roots";
 
 // Declare command for type safety
 declare module "~/shared/pubsub" {
@@ -53,11 +52,8 @@ import {
   $breakpointsMenuView,
   selectBreakpointByOrder,
 } from "~/shared/breakpoints";
-import {
-  updateInstanceData,
-  updateWebstudioData,
-} from "~/shared/instance-utils/data";
-import { canDeleteInstanceInContentMode } from "~/shared/instance-utils/data";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
+import { canDeleteInstanceInContentMode } from "@webstudio-is/project-build/runtime";
 import { serverSyncStore } from "~/shared/sync/sync-stores";
 import { $publisher } from "~/shared/pubsub";
 import {
@@ -71,19 +67,22 @@ import {
   $allSelectedInstanceSelectors,
   $selectedInstancePath,
   clearInstanceSelection,
-  getInstancePath,
   selectInstance,
   selectInstances,
   selectPage,
-  type InstancePath,
 } from "~/shared/nano-states";
+import {
+  getInstancePath,
+  type InstancePath,
+} from "@webstudio-is/project-build/runtime";
 import { openCommandPanel } from "../features/command-panel";
 import { showWrapComponentsList } from "../features/command-panel/groups/wrap-group";
 import { showConvertComponentsList } from "../features/command-panel/groups/convert-group";
+import { showDuplicateTokensView } from "../features/command-panel/groups/duplicate-tokens-group";
 import { builderApi } from "~/shared/builder-api";
+import { readClipboardText } from "~/shared/clipboard";
 import { getSetting, setSetting } from "./client-settings";
-import { findAvailableVariables } from "~/shared/data-variables";
-import { generateFragmentFromHtml } from "~/shared/html";
+import { generateFragmentFromHtml } from "@webstudio-is/project-build/runtime";
 import { generateFragmentFromTailwind } from "~/shared/tailwind/tailwind";
 import { denormalizeSrcProps } from "~/shared/copy-paste/asset-upload";
 import { isSyncIdle } from "~/shared/sync/project-queue";
@@ -104,12 +103,10 @@ import {
   getDeletablePageActionTarget,
   getPageActionTarget,
 } from "~/shared/page-action-target";
-import {
-  getDirectSharedSlotChildBoundary,
-  normalizeLegacySlotInstancePathMutable,
-} from "~/shared/instance-utils/slot";
-import type { InstanceSelector } from "~/shared/instance-utils/tree";
-import { areInstanceSelectorsEqual } from "~/shared/instance-utils/tree";
+import { getDirectSharedSlotChildBoundary } from "~/shared/instance-utils/slot";
+import type { InstanceSelector } from "@webstudio-is/project-build/runtime";
+import { areInstanceSelectorsEqual } from "@webstudio-is/project-build/runtime";
+import { findChildReferenceIndex } from "@webstudio-is/project-build/runtime";
 
 const makeBreakpointCommand = <CommandName extends string>(
   name: CommandName,
@@ -180,6 +177,35 @@ const guardDesignOrContentModeCommand = ({
 
 const hasMultiInstanceSelection = () =>
   $allSelectedInstanceSelectors.get().length > 1;
+
+const traverseSelectedContentHistory = (direction: "undo" | "redo") => {
+  const selector = $selectedInstancePath.get()?.[0]?.instanceSelector;
+  if (selector === undefined) {
+    return false;
+  }
+  const roots = getExternalContentRoots();
+  const root = findExternalContentRootEntryBySelector(roots, selector)?.[1];
+  if (
+    root?.projectId === undefined ||
+    root.assetId === undefined ||
+    ($isContentMode.get() === false &&
+      isExternalContentInstance(roots, selector[0]) === false &&
+      root.contentInstanceId !== selector[0])
+  ) {
+    return false;
+  }
+  void traverseExternalContentHistory({
+    projectId: root.projectId,
+    direction,
+  }).catch((error) => {
+    toast.error(
+      error instanceof Error
+        ? error.message
+        : "Unable to restore the article edit."
+    );
+  });
+  return true;
+};
 
 const copyPageActionTarget = () => {
   if ($isDesignMode.get() === false) {
@@ -259,10 +285,42 @@ const requestSelectedPageItemDelete = () => {
 
 type InstanceMoveDirection = "up" | "down" | "intoPreviousSibling" | "out";
 
-const getIdChildIndex = (children: Instance["children"], instanceId: string) =>
-  children.findIndex(
-    (child) => child.type === "id" && child.value === instanceId
-  );
+export const instanceMoveCommandMetas = [
+  {
+    name: "moveInstanceUp",
+    label: "Move up",
+    description: "Move selected instance above the previous sibling",
+    direction: "up",
+    shortcut: "arrowup",
+  },
+  {
+    name: "moveInstanceDown",
+    label: "Move down",
+    description: "Move selected instance below the next sibling",
+    direction: "down",
+    shortcut: "arrowdown",
+  },
+  {
+    name: "moveInstanceOut",
+    label: "Move out",
+    description: "Move selected instance out of its parent",
+    direction: "out",
+    shortcut: "arrowleft",
+  },
+  {
+    name: "moveInstanceIntoPreviousSibling",
+    label: "Move in",
+    description: "Move selected instance into the previous sibling",
+    direction: "intoPreviousSibling",
+    shortcut: "arrowright",
+  },
+] as const satisfies readonly {
+  name: string;
+  label: string;
+  description: string;
+  direction: InstanceMoveDirection;
+  shortcut: string;
+}[];
 
 type SelectedInstancePath = {
   index: number;
@@ -366,6 +424,40 @@ const reportSkippedSelectedInstances = (
   builderApi.toast.info(`Some selected instances could not be ${operation}.`);
 };
 
+const duplicateInstanceAfterItself = ({
+  instancePath,
+}: {
+  instancePath: InstancePath;
+}): InstanceSelector | undefined => {
+  const [selectedItem, parentItem] = instancePath;
+  if (parentItem === undefined) {
+    return;
+  }
+  const result = executeRuntimeMutation({
+    id: "instances.duplicateAfterItself",
+    input: {
+      sourceInstanceId: selectedItem.instance.id,
+      parentInstanceId: parentItem.instance.id,
+    },
+  });
+  const newRootInstanceId = result?.result.instanceId;
+  if (newRootInstanceId === undefined) {
+    return;
+  }
+  const newParentInstanceId = result?.result.parentInstanceId;
+  if (
+    newParentInstanceId === undefined ||
+    newParentInstanceId === parentItem.instance.id
+  ) {
+    return [newRootInstanceId, ...parentItem.instanceSelector];
+  }
+  return [
+    newRootInstanceId,
+    newParentInstanceId,
+    ...parentItem.instanceSelector,
+  ];
+};
+
 const deleteSelectedInstances = () => {
   if ($isPreviewMode.get()) {
     return false;
@@ -389,18 +481,19 @@ const deleteSelectedInstances = () => {
     reportSkippedSelectedInstances("deleted");
   }
 
-  updateInstanceData((data) => {
-    for (const { instancePath } of sortInstancePathsForChildMutation(
-      actionableInstancePaths
-    )) {
-      deleteInstanceMutable(data, instancePath);
-    }
-    clearInstanceSelection();
+  executeRuntimeMutation({
+    id: "instances.delete",
+    input: {
+      instanceIds: sortInstancePathsForChildMutation(
+        actionableInstancePaths
+      ).map(({ instancePath }) => instancePath[0].instance.id),
+    },
   });
+  clearInstanceSelection();
   return true;
 };
 
-const duplicateSelectedInstances = (project: Project) => {
+const duplicateSelectedInstances = () => {
   const selectedInstancePaths = getAllSelectedInstancePaths();
   if (selectedInstancePaths.length < 2) {
     return false;
@@ -417,70 +510,14 @@ const duplicateSelectedInstances = (project: Project) => {
   }
   const newInstanceSelectors = new Map<number, InstanceSelector>();
 
-  updateWebstudioData((data) => {
-    for (const { index, instancePath } of sortInstancePathsForChildMutation(
-      actionableInstancePaths
-    )) {
-      const normalizedInstancePath = normalizeLegacySlotInstancePathMutable(
-        data.instances,
-        instancePath
-      );
-      const [selectedItem, parentItem] = normalizedInstancePath;
-      if (parentItem === undefined) {
-        continue;
-      }
-      const fragment = extractWebstudioFragment(data, selectedItem.instance.id);
-      const { newInstanceIds } = insertWebstudioFragmentCopy({
-        data,
-        fragment,
-        availableVariables: findAvailableVariables({
-          ...data,
-          startingInstanceId: parentItem.instanceSelector[0],
-        }),
-        projectId: project.id,
-      });
-      const newRootInstanceId = newInstanceIds.get(selectedItem.instance.id);
-      if (newRootInstanceId === undefined) {
-        continue;
-      }
-
-      if (
-        isAutoGridPlacement({
-          styles: data.styles,
-          styleSources: data.styleSources,
-          styleSourceSelections: data.styleSourceSelections,
-          instanceId: selectedItem.instance.id,
-        })
-      ) {
-        resetGridChildPlacement({
-          styles: data.styles,
-          styleSources: data.styleSources,
-          styleSourceSelections: data.styleSourceSelections,
-          instanceId: newRootInstanceId,
-        });
-      }
-
-      const parentInstance = data.instances.get(parentItem.instance.id);
-      if (parentInstance === undefined) {
-        continue;
-      }
-      const indexWithinChildren = getIdChildIndex(
-        parentInstance.children,
-        selectedItem.instance.id
-      );
-      if (indexWithinChildren === -1) {
-        continue;
-      }
-      parentInstance.children.splice(indexWithinChildren + 1, 0, {
-        type: "id",
-        value: newRootInstanceId,
-      });
-      newInstanceSelectors.set(index, [
-        newRootInstanceId,
-        ...parentItem.instanceSelector,
-      ]);
+  for (const { index, instancePath } of sortInstancePathsForChildMutation(
+    actionableInstancePaths
+  )) {
+    const newInstanceSelector = duplicateInstanceAfterItself({ instancePath });
+    if (newInstanceSelector !== undefined) {
+      newInstanceSelectors.set(index, newInstanceSelector);
     }
-  });
+  }
 
   const sortedNewInstanceSelectors = [...newInstanceSelectors]
     .sort(([leftIndex], [rightIndex]) => leftIndex - rightIndex)
@@ -507,7 +544,7 @@ const getOutdentMoveTarget = (
     if (slotParentItem === undefined) {
       return;
     }
-    const slotPosition = getIdChildIndex(
+    const slotPosition = findChildReferenceIndex(
       slotParentItem.instance.children,
       directSlotBoundary.slotId
     );
@@ -522,7 +559,7 @@ const getOutdentMoveTarget = (
   }
 
   const parent = parentItem.instance;
-  const parentIndex = getIdChildIndex(
+  const parentIndex = findChildReferenceIndex(
     grandparentItem.instance.children,
     parent.id
   );
@@ -549,7 +586,7 @@ const getInstanceMoveTarget = (direction: InstanceMoveDirection) => {
   }
 
   const parent = parentItem.instance;
-  const selectedIndex = getIdChildIndex(
+  const selectedIndex = findChildReferenceIndex(
     parent.children,
     selectedItem.instance.id
   );
@@ -598,10 +635,12 @@ const getInstanceMoveTarget = (direction: InstanceMoveDirection) => {
 };
 
 const moveSelectedInstance = (direction: InstanceMoveDirection) => {
+  const isContentMode = $isContentMode.get();
   if (
-    guardDesignModeCommand({
+    guardDesignOrContentModeCommand({
+      isContentMode,
       isDesignMode: $isDesignMode.get(),
-      message: "Moving is only allowed in design mode.",
+      message: "Moving is only allowed in design or content mode.",
     }) === false
   ) {
     return;
@@ -614,6 +653,17 @@ const moveSelectedInstance = (direction: InstanceMoveDirection) => {
   const target = getInstanceMoveTarget(direction);
   if (target === undefined) {
     return;
+  }
+  if (isContentMode) {
+    if (
+      canMoveInstanceInContentMode({
+        instanceSelector: selectedItem.instanceSelector,
+        parentSelector: target.parentSelector,
+        instances: $instances.get(),
+      }) === false
+    ) {
+      return;
+    }
   }
   reparentInstance(selectedItem.instanceSelector, target);
 };
@@ -915,42 +965,15 @@ export const { emitCommand, subscribeCommands } = createCommandsEmitter({
         }
       },
     },
-    {
-      name: "moveInstanceUp",
-      label: "Move up",
-      description: "Move selected instance above the previous sibling",
-      category: "Navigator",
-      defaultHotkeys: ["meta+arrowup", "ctrl+arrowup"],
-      disableOnInputLikeControls: true,
-      handler: () => moveSelectedInstance("up"),
-    },
-    {
-      name: "moveInstanceDown",
-      label: "Move down",
-      description: "Move selected instance below the next sibling",
-      category: "Navigator",
-      defaultHotkeys: ["meta+arrowdown", "ctrl+arrowdown"],
-      disableOnInputLikeControls: true,
-      handler: () => moveSelectedInstance("down"),
-    },
-    {
-      name: "moveInstanceOut",
-      label: "Move out",
-      description: "Move selected instance out of its parent",
-      category: "Navigator",
-      defaultHotkeys: ["meta+arrowleft", "ctrl+arrowleft"],
-      disableOnInputLikeControls: true,
-      handler: () => moveSelectedInstance("out"),
-    },
-    {
-      name: "moveInstanceIntoPreviousSibling",
-      label: "Move in",
-      description: "Move selected instance into the previous sibling",
-      category: "Navigator",
-      defaultHotkeys: ["meta+arrowright", "ctrl+arrowright"],
-      disableOnInputLikeControls: true,
-      handler: () => moveSelectedInstance("intoPreviousSibling"),
-    },
+    ...instanceMoveCommandMetas.map(
+      ({ direction, shortcut, ...commandMeta }) => ({
+        ...commandMeta,
+        category: "Navigator" as const,
+        defaultHotkeys: [`meta+${shortcut}`, `ctrl+${shortcut}`],
+        disableOnInputLikeControls: true,
+        handler: () => moveSelectedInstance(direction),
+      })
+    ),
     {
       name: "selectPreviousSibling",
       hidden: true,
@@ -1000,10 +1023,6 @@ export const { emitCommand, subscribeCommands } = createCommandsEmitter({
       category: "Navigator",
       defaultHotkeys: ["meta+d", "ctrl+d"],
       handler: () => {
-        const project = $project.get();
-        if (project === undefined) {
-          return;
-        }
         if (
           guardDesignModeCommand({
             isDesignMode: $isDesignMode.get(),
@@ -1012,7 +1031,7 @@ export const { emitCommand, subscribeCommands } = createCommandsEmitter({
         ) {
           return;
         }
-        if (duplicateSelectedInstances(project)) {
+        if (duplicateSelectedInstances()) {
           return;
         }
         if (duplicatePageActionTarget()) {
@@ -1024,71 +1043,10 @@ export const { emitCommand, subscribeCommands } = createCommandsEmitter({
           return;
         }
 
-        updateWebstudioData((data) => {
-          const normalizedInstancePath = normalizeLegacySlotInstancePathMutable(
-            data.instances,
-            instancePath
-          );
-          const [selectedItem, parentItem] = normalizedInstancePath;
-          if (parentItem === undefined) {
-            return;
-          }
-          const fragment = extractWebstudioFragment(
-            data,
-            selectedItem.instance.id
-          );
-          const { newInstanceIds } = insertWebstudioFragmentCopy({
-            data,
-            fragment,
-            availableVariables: findAvailableVariables({
-              ...data,
-              startingInstanceId: parentItem.instanceSelector[0],
-            }),
-            projectId: project.id,
-          });
-          const newRootInstanceId = newInstanceIds.get(
-            selectedItem.instance.id
-          );
-          if (newRootInstanceId === undefined) {
-            return;
-          }
-
-          // When the original child is auto-placed in a grid, ensure the
-          // duplicate is also auto-placed to prevent overlapping items.
-          // Manually positioned children keep their exact grid position.
-          if (
-            isAutoGridPlacement({
-              styles: data.styles,
-              styleSources: data.styleSources,
-              styleSourceSelections: data.styleSourceSelections,
-              instanceId: selectedItem.instance.id,
-            })
-          ) {
-            resetGridChildPlacement({
-              styles: data.styles,
-              styleSources: data.styleSources,
-              styleSourceSelections: data.styleSourceSelections,
-              instanceId: newRootInstanceId,
-            });
-          }
-
-          const parentInstance = data.instances.get(parentItem.instance.id);
-          if (parentInstance === undefined) {
-            return;
-          }
-          // put after current instance
-          const indexWithinChildren = parentInstance.children.findIndex(
-            (child) =>
-              child.type === "id" && child.value === selectedItem.instance.id
-          );
-          const position = indexWithinChildren + 1;
-          parentInstance.children.splice(position, 0, {
-            type: "id",
-            value: newRootInstanceId,
-          });
-          // select new instance
-          selectInstance([newRootInstanceId, ...parentItem.instanceSelector]);
+        const newInstanceSelector = duplicateInstanceAfterItself({
+          instancePath,
         });
+        selectInstance(newInstanceSelector);
       },
     },
     {
@@ -1113,6 +1071,15 @@ export const { emitCommand, subscribeCommands } = createCommandsEmitter({
           return;
         }
         const [selectedItem] = instancePath;
+        if (
+          isExternalContentInstance(
+            getExternalContentRoots(),
+            selectedItem.instance.id
+          )
+        ) {
+          toast.info(externalContentInstanceNameMessage);
+          return;
+        }
         $editingItemSelector.set(selectedItem.instanceSelector);
       },
     },
@@ -1192,13 +1159,16 @@ export const { emitCommand, subscribeCommands } = createCommandsEmitter({
         ) {
           return;
         }
-        const html = await navigator.clipboard.readText();
+        const html = await readClipboardText();
+        if (html === undefined) {
+          return;
+        }
         const parseResult = generateFragmentFromHtml(html);
         const { skippedSelectors } = parseResult;
         let fragment: WebstudioFragment = parseResult;
         fragment = await denormalizeSrcProps(fragment);
         fragment = await generateFragmentFromTailwind(fragment);
-        const result = insertWebstudioFragmentAt(fragment);
+        const result = await insertWebstudioFragmentAt(fragment);
         if (skippedSelectors.length > 0) {
           builderApi.toast.info(
             `Skipped nested selectors (no matching elements): ${skippedSelectors.join(", ")}`
@@ -1218,7 +1188,9 @@ export const { emitCommand, subscribeCommands } = createCommandsEmitter({
       defaultHotkeys: ["meta+z", "ctrl+z"],
       disableOnInputLikeControls: true,
       handler: () => {
-        serverSyncStore.undo();
+        if (traverseSelectedContentHistory("undo") === false) {
+          serverSyncStore.undo();
+        }
       },
     },
     {
@@ -1229,7 +1201,9 @@ export const { emitCommand, subscribeCommands } = createCommandsEmitter({
       defaultHotkeys: ["meta+shift+z", "ctrl+shift+z"],
       disableOnInputLikeControls: true,
       handler: () => {
-        serverSyncStore.redo();
+        if (traverseSelectedContentHistory("redo") === false) {
+          serverSyncStore.redo();
+        }
       },
     },
 
@@ -1277,12 +1251,7 @@ export const { emitCommand, subscribeCommands } = createCommandsEmitter({
       label: "Find duplicate tokens",
       description: "Find tokens with identical styles or names",
       handler: () => {
-        // Import needed to avoid circular dependency
-        import(
-          "~/builder/features/command-panel/groups/duplicate-tokens-group"
-        ).then(({ showDuplicateTokensView }) => {
-          showDuplicateTokensView();
-        });
+        showDuplicateTokensView();
       },
     },
 

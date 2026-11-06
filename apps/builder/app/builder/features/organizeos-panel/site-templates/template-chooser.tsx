@@ -4,6 +4,7 @@ import { useStore } from "@nanostores/react";
 import type { AuthPermit } from "@webstudio-is/trpc-interface/index.server";
 import {
   theme,
+  cssVar,
   Button,
   Dialog,
   DialogContent,
@@ -30,7 +31,6 @@ import {
 import { platformName } from "~/shared/branding";
 import { builderApi } from "~/shared/builder-api";
 import { useMount } from "~/shared/hook-utils/use-mount";
-import { updateWebstudioData } from "~/shared/instance-utils/data";
 import {
   $assets,
   $instances,
@@ -40,6 +40,7 @@ import {
 } from "~/shared/sync/data-stores";
 import { $dataLoadingState } from "~/builder/shared/nano-states";
 import { isOrganizeosBlocksEnabled } from "../insert-organizeos-block";
+import { updateWebstudioDataStaged } from "../staged-data";
 import {
   type ApplyResult,
   applySiteTemplate,
@@ -126,9 +127,9 @@ const categoryLabels: Record<TemplateCategory, string> = {
   foundation: "Foundation",
 };
 
-/** What a refused apply says, by its reason. */
+/** What a refused apply says, by its reason; the runtime's says its own. */
 const refusalMessages: Record<
-  Extract<ApplyResult, { status: "refused" }>["reason"],
+  Exclude<Extract<ApplyResult, { status: "refused" }>["reason"], "runtime">,
   string
 > = {
   touched: "This site already has content.",
@@ -139,8 +140,13 @@ const refusalMessages: Record<
 
 /** Write the blank-start variables, which ends the offer. */
 const startBlank = () => {
-  updateWebstudioData((data) => {
+  void updateWebstudioDataStaged((data) => {
     startBlankMutable(data);
+  }).catch((error: unknown) => {
+    console.error(error);
+    builderApi.toast.error(
+      error instanceof Error ? error.message : "Cannot start blank."
+    );
   });
 };
 
@@ -158,7 +164,11 @@ const chooseTemplate = async (template: SiteTemplate) => {
     return;
   }
   if (result.status === "refused") {
-    builderApi.toast.error(refusalMessages[result.reason]);
+    builderApi.toast.error(
+      result.reason === "runtime"
+        ? result.message
+        : refusalMessages[result.reason]
+    );
     return;
   }
   const homePageId = $pages.get()?.homePageId;
@@ -191,17 +201,17 @@ const CardButton = styled("button", {
   gap: theme.spacing[3],
   padding: theme.spacing[3],
   borderRadius: theme.borderRadius[4],
-  border: `1px solid ${theme.colors.borderMain}`,
+  border: `1px solid ${cssVar("--border-default")}`,
   cursor: "pointer",
-  "&:hover": { borderColor: theme.colors.borderFocus },
+  "&:hover": { borderColor: cssVar("--border-focus") },
   "&:focus-visible": {
-    outline: `1px solid ${theme.colors.borderFocus}`,
+    outline: `1px solid ${cssVar("--border-focus")}`,
     outlineOffset: 1,
   },
   "&:disabled": {
     cursor: "default",
     opacity: 0.5,
-    borderColor: theme.colors.borderMain,
+    borderColor: cssVar("--border-default"),
   },
 });
 
@@ -211,7 +221,7 @@ const Thumbnail = styled("img", {
   aspectRatio: "16 / 10",
   objectFit: "cover",
   borderRadius: theme.borderRadius[2],
-  background: theme.colors.backgroundNeutralMain,
+  background: cssVar("--background-secondary"),
 });
 
 const TemplateCard = ({

@@ -1,5 +1,5 @@
 import { useMemo, useRef } from "react";
-import type { HtmlTags } from "html-tags";
+import type { HtmlTags } from "@webstudio-is/html-data";
 import { computed, type ReadableAtom } from "nanostores";
 import { useStore } from "@nanostores/react";
 import { propertiesData } from "@webstudio-is/css-data";
@@ -30,18 +30,20 @@ import {
   $selectedOrLastStyleSourceSelector,
 } from "~/shared/nano-states";
 import { $breakpoints } from "~/shared/sync/data-stores";
-import { $styles, $styleSourceSelections } from "~/shared/sync/data-stores";
+import {
+  $props,
+  $styles,
+  $styleSourceSelections,
+} from "~/shared/sync/data-stores";
 import {
   getComputedStyleDecl,
   getPresetStyleDeclKey,
   type ComputedStyleDecl,
   type StyleObjectModel,
 } from "~/shared/style-object-model";
-import {
-  $selectedInstancePathWithRoot,
-  type InstancePath,
-} from "~/shared/nano-states";
-import type { InstanceSelector } from "~/shared/instance-utils/tree";
+import { $selectedInstancePathWithRoot } from "~/shared/nano-states";
+import type { InstancePath } from "@webstudio-is/project-build/runtime";
+import type { InstanceSelector } from "@webstudio-is/project-build/runtime";
 
 const propertyNameCollator = new Intl.Collator();
 
@@ -64,8 +66,13 @@ const $presetStyles = computed($registeredComponentMetas, (metas) => {
 });
 
 export const $instanceTags = computed(
-  [$registeredComponentMetas, $propsIndex, $selectedInstancePathWithRoot],
-  (metas, propsIndex, instancePath) => {
+  [
+    $registeredComponentMetas,
+    $propsIndex,
+    $props,
+    $selectedInstancePathWithRoot,
+  ],
+  (metas, propsIndex, props, instancePath) => {
     const instanceTags = new Map<Instance["id"], HtmlTags>();
     if (instancePath === undefined) {
       return instanceTags;
@@ -74,6 +81,7 @@ export const $instanceTags = computed(
       const tag = getHtmlTagFromInstance({
         instance,
         metas,
+        props,
         htmlTagsByInstanceId: propsIndex.htmlTagsByInstanceId,
       });
       if (tag !== undefined) {

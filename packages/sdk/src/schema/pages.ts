@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { validateBasicAuth } from "@webstudio-is/wsauth";
+import { customResponseHeaders } from "./response-headers";
 
 export type System = {
   params: Record<string, string | undefined>;
-  search: Record<string, string | undefined>;
+  search: Record<string, string | string[] | undefined>;
   pathname: string;
   origin: string;
 };
@@ -197,6 +198,7 @@ export const pagePath = defaultPagePath.refine(
 export const page = z.object({
   ...commonPageFields,
   path: z.union([homePagePath, pagePath]),
+  isDraft: z.boolean().optional(),
 });
 
 export const pageTemplate = z.object({
@@ -214,9 +216,16 @@ export const projectMeta = z.object({
   // All fields are optional to ensure consistency and allow for the addition of new fields without requiring migration
   siteName: z.string().optional(),
   contactEmail: z.string().optional(),
+  emailSender: z.string().optional(),
   faviconAssetId: z.string().optional(),
   code: z.string().optional(),
+  agentInstructions: z.string().optional(),
   auth: z.string().optional(),
+  customHeaders: customResponseHeaders
+    .optional()
+    .describe(
+      "Response header rules. Optional route patterns use Authentication syntax; '/*' applies site-wide. Missing CSP, X-Frame-Options, and Referrer-Policy receive dispatcher defaults. X-Powered-By, X-Content-Type-Options, and Strict-Transport-Security are managed by Webstudio Cloud."
+    ),
 });
 export type ProjectMeta = z.infer<typeof projectMeta>;
 
@@ -249,6 +258,26 @@ export type CompilerSettings = z.infer<typeof compilerSettings>;
 
 export type Page = z.infer<typeof page>;
 
+export const isPageDraft = (page: Pick<Page, "isDraft">) =>
+  page.isDraft === true;
+
+export const getPageDraftabilityError = ({
+  pageId,
+  pagePath,
+  homePageId,
+}: {
+  pageId: Page["id"];
+  pagePath: Page["path"];
+  homePageId: Page["id"];
+}) => {
+  if (pageId === homePageId) {
+    return "Home page can't be draft";
+  }
+  if (pagePath === "/*") {
+    return "Catch-all 404 page can't be draft";
+  }
+};
+
 export const pages = z
   .object({
     meta: projectMeta.optional(),
@@ -265,6 +294,17 @@ export const pages = z
   .superRefine((pages, context) => {
     const homePage = pages.pages.get(pages.homePageId);
     const rootFolder = pages.folders.get(pages.rootFolderId);
+    const folderIndexPageIds = new Set<Page["id"]>();
+    for (const [folderId, folder] of pages.folders) {
+      if (folderId === pages.rootFolderId) {
+        continue;
+      }
+      for (const childId of folder.children) {
+        if (pages.pages.has(childId)) {
+          folderIndexPageIds.add(childId);
+        }
+      }
+    }
     if (homePage === undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -294,11 +334,27 @@ export const pages = z
           message: "Page id must match its record key",
         });
       }
-      if (pageId !== pages.homePageId && page.path === "") {
+      if (
+        pageId !== pages.homePageId &&
+        page.path === "" &&
+        folderIndexPageIds.has(pageId) === false
+      ) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["pages", pageId, "path"],
           message: "Page path can't be empty",
+        });
+      }
+      const draftabilityError = getPageDraftabilityError({
+        pageId,
+        pagePath: page.path,
+        homePageId: pages.homePageId,
+      });
+      if (isPageDraft(page) && draftabilityError !== undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["pages", pageId, "isDraft"],
+          message: draftabilityError,
         });
       }
     }

@@ -12,10 +12,13 @@ import {
   type ResourceRequest,
   coreMetas,
   encodeDataVariableId,
-  lintExpression,
-  transpileExpression,
 } from "@webstudio-is/sdk";
-import { registerContainers } from "~/shared/sync/sync-stores";
+import { lintExpression, transpileExpression } from "@webstudio-is/expression";
+import {
+  findAvailableVariables,
+  isTreeSatisfyingContentModel,
+} from "@webstudio-is/project-build/runtime";
+import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
 import {
   $assets,
   $breakpoints,
@@ -30,14 +33,14 @@ import {
   $styles,
 } from "~/shared/sync/data-stores";
 import { $selectedPageId } from "~/shared/nano-states/pages";
+import { $authPermit, $builderMode } from "~/shared/nano-states/misc";
+import { getWebstudioData } from "~/shared/instance-utils/data";
 import {
   $registeredComponentMetas,
   $selectedInstanceSelector,
   selectInstance,
 } from "~/shared/nano-states";
 import { getResourceKey } from "~/shared/resources";
-import { isTreeSatisfyingContentModel } from "~/shared/content-model";
-import { findAvailableVariables } from "~/shared/data-variables";
 import { buildCollectionResourcePresets } from "~/shared/db/resource-presets.server";
 import { loadCollectionError } from "./collection-schema";
 import {
@@ -171,8 +174,12 @@ const setProject = () => {
   const pages = createDefaultPages({ rootInstanceId: "homeBody" });
   $pages.set(pages);
   $selectedPageId.set(pages.homePageId);
+  $builderMode.set("design");
+  $authPermit.set("build");
   selectInstance(undefined);
   $project.set({ id: projectId } as Project);
+  serverSyncStore.transactionManager.currentStack = [];
+  serverSyncStore.transactionManager.undoneStack = [];
 };
 
 beforeEach(() => {
@@ -495,6 +502,26 @@ describe("insertCollectionList: placement and errors", () => {
       "box",
       root.id,
     ]);
+  });
+
+  test("one Add list is one undo step", async () => {
+    const before = getWebstudioData();
+    const stores = {
+      instances: $instances.get(),
+      resources: $resources.get(),
+      dataSources: $dataSources.get(),
+    };
+
+    const { root, resource } = await insertList();
+
+    expect($resources.get().has(resource.id)).toBe(true);
+    expect(childrenOf("homeBody").map(({ id }) => id)).toContain(root.id);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(1);
+    serverSyncStore.undo();
+    expect($instances.get()).toEqual(stores.instances);
+    expect($resources.get()).toEqual(stores.resources);
+    expect($dataSources.get()).toEqual(stores.dataSources);
+    expect(getWebstudioData()).toEqual(before);
   });
 
   test("a failed schema read is 'Could not load the collection', and writes nothing", async () => {

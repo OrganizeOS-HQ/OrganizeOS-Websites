@@ -6,8 +6,8 @@ import {
   Button,
   Flex,
   Text,
+  cssVar,
   rawTheme,
-  theme,
   toast,
 } from "@webstudio-is/design-system";
 import {
@@ -113,7 +113,10 @@ export const toggleCmsOverlay = () => {
   }
 };
 
-/** The builder UI has one, light, colour mode. */
+/**
+ * The CMS frame stays light, whatever the builder's colour scheme, until the
+ * native CMS replaces it (owner decision D2).
+ */
 export const getBuilderColorMode = (): "light" | "dark" => "light";
 
 /** The frame's address, from the loader's org, never from the page URL. */
@@ -361,7 +364,7 @@ export const CmsOverlay = () => {
         left: railRight,
         right: 0,
         zIndex: CMS_OVERLAY_Z_INDEX,
-        background: theme.colors.backgroundPanel,
+        background: cssVar("--background-primary"),
         // Hidden, never unmounted: display none keeps the document alive.
         display: isShown ? "block" : "none",
       }}
@@ -390,7 +393,7 @@ export const CmsOverlay = () => {
           width: railRight,
           top: railBottom,
           bottom: 0,
-          background: theme.colors.backgroundPanel,
+          background: cssVar("--background-primary"),
         }}
       />
     </div>,
@@ -409,7 +412,7 @@ export const CmsRailButton = () => {
     <SidebarButton
       label="CMS"
       data-cms-rail-button
-      data-state={isOpen ? "active" : "inactive"}
+      // IconButton shows the active state for aria-pressed
       aria-pressed={isOpen}
       onClick={toggleCmsOverlay}
     >

@@ -6,7 +6,8 @@ import {
   rootComponent,
 } from "@webstudio-is/sdk";
 import { $instances } from "../sync/data-stores";
-import type { InstanceSelector } from "../instance-utils/tree";
+import type { InstanceSelector } from "@webstudio-is/project-build/runtime";
+import { getInstancePath } from "@webstudio-is/project-build/runtime";
 import { $selectedPage } from "./pages";
 import { $selectedInstanceSelector } from "./instance-selection";
 export {
@@ -50,6 +51,7 @@ export const $textEditingInstanceSelector = atom<
 export const $textEditorContextMenu = atom<
   | {
       cursorRect: DOMRect;
+      replaceAnchor: boolean;
     }
   | undefined
 >(undefined);
@@ -61,7 +63,10 @@ type ContextMenuCommand =
     }
   | { type: "selectNext" }
   | { type: "selectPrevious" }
-  | { type: "enter" };
+  | { type: "enter" }
+  | { type: "close" }
+  | { type: "templateInsertionStarted" }
+  | { type: "templateInsertionCancelled" };
 
 export const $textEditorContextMenuCommand = atom<
   undefined | ContextMenuCommand
@@ -134,38 +139,6 @@ export const $selectedInstanceKey = computed(
   $selectedInstanceSelector,
   (instanceSelector) => getInstanceKey(instanceSelector)
 );
-
-export type InstancePath = Array<{
-  instance: Instance;
-  instanceSelector: string[];
-}>;
-
-export const getInstancePath = (
-  instanceSelector: string[],
-  instances: Instances,
-  virtualInstances?: Instances,
-  temporaryInstances?: Instances
-): undefined | InstancePath => {
-  const instancePath: InstancePath = [];
-  for (let index = 0; index < instanceSelector.length; index += 1) {
-    const instanceId = instanceSelector[index];
-    const instance =
-      instances.get(instanceId) ??
-      virtualInstances?.get(instanceId) ??
-      temporaryInstances?.get(instanceId);
-    if (instance === undefined) {
-      continue;
-    }
-    instancePath.push({
-      instance,
-      instanceSelector: instanceSelector.slice(index),
-    });
-  }
-  if (instancePath.length === 0) {
-    return;
-  }
-  return instancePath;
-};
 
 export const $selectedInstancePath = computed(
   [

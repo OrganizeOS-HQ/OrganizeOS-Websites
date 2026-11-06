@@ -14,7 +14,7 @@ import {
   getRepeatedStyleItem,
   setRepeatedStyleItem,
 } from "../../shared/repeated-style";
-import { formatAssetName } from "~/builder/shared/assets/asset-utils";
+import { formatAssetName } from "@webstudio-is/project-build/runtime";
 import { AssetUpload } from "~/builder/shared/assets";
 
 const isValidURL = (value: string) => {
@@ -125,7 +125,6 @@ export const ImageControl = ({
         }
       >
         <Button
-          color="neutral"
           disabled={disabled}
           css={{ maxWidth: "100%", justifySelf: "right" }}
         >
@@ -135,3 +134,5 @@ export const ImageControl = ({
     </Flex>
   );
 };
+
+undefined;

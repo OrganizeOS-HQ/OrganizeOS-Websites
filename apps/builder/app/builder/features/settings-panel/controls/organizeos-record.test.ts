@@ -1,13 +1,19 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
+import { page } from "@vitest/browser/context";
 import { enableMapSet } from "immer";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
-import { coreMetas, type Instance, type Resource } from "@webstudio-is/sdk";
+import {
+  coreMetas,
+  encodeDataSourceVariable,
+  type Instance,
+  type Resource,
+} from "@webstudio-is/sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
 // The body of GET /v1/forms, the platform's contract fixture.
@@ -15,6 +21,7 @@ import formsBody from "../../../../../../../packages/sdk-components-organizeos/s
 // The body of GET /v1/events, the platform's contract fixture.
 import eventsBody from "../../../../../../../packages/sdk-components-organizeos/src/__fixtures__/events.json";
 import {
+  $computedResourceRequests,
   $organizeosSite,
   $registeredComponentMetas,
   $selectedInstanceKey,
@@ -22,6 +29,8 @@ import {
   getInstanceKey,
   registerComponentLibrary,
   selectInstance,
+  subscribeResourceRequestPlan,
+  $variableValuesByInstanceSelector,
 } from "~/shared/nano-states";
 import { $selectedPageId } from "~/shared/nano-states/pages";
 import { registerContainers } from "~/shared/sync/sync-stores";
@@ -49,6 +58,7 @@ import {
   getOrganizeosPresetIds,
   insertOrganizeosBlock,
 } from "~/builder/features/organizeos-panel/insert-organizeos-block";
+import { BindableExpressionControl } from "~/builder/shared/bindable-expression";
 import { renderControl } from "./combined";
 import { TextControl } from "./text";
 import {
@@ -67,6 +77,9 @@ vi.mock("~/shared/resources", async (importOriginal) => ({
   invalidateResource: vi.fn(),
 }));
 
+// The picker's binding wiring, read from what it passes upstream's control
+vi.mock("~/builder/shared/bindable-expression", { spy: true });
+
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -83,6 +96,29 @@ registerComponentLibrary({
   metas: organizeosMetas,
   templates: organizeosTemplates,
 });
+
+// The builder computes the requests, and the variables that read their
+// results, only while the request plan is subscribed (builder.tsx's
+// subscribeResources), and asynchronously.
+let unsubscribePlan: undefined | (() => void);
+const subscribePlan = () => {
+  beforeEach(() => {
+    unsubscribePlan = subscribeResourceRequestPlan(() => {});
+  });
+  afterEach(() => {
+    unsubscribePlan?.();
+    unsubscribePlan = undefined;
+  });
+};
+
+// Lets the plan and the prop and variable values, promise chains over
+// memory, settle.
+const settle = () =>
+  act(async () => {
+    for (let turn = 0; turn < 5; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  });
 
 const signupForm = "@organizeos/site-components:SignupForm";
 const rsvpForm = "@organizeos/site-components:RsvpForm";
@@ -650,6 +686,8 @@ describe("getOrganizeosRecordPicker", () => {
 });
 
 describe("an inserted Signup Form", () => {
+  subscribePlan();
+
   test("lists the org's forms once the builder's loader has them", async () => {
     const projectId = "project-1";
     const { forms } = await getOrganizeosPresetIds(projectId);
@@ -715,7 +753,16 @@ describe("an inserted Signup Form", () => {
     expect($selectedInstanceKey.get()).toBe(
       getInstanceKey([roots[0].id, "bodyId"])
     );
+    const request = await computeResourceRequest(
+      $resources.get().get(forms.resourceId) as Resource,
+      new Map()
+    );
+    // the builder requests what the test answers below
+    await vi.waitFor(() =>
+      expect($computedResourceRequests.get()).toContainEqual(request)
+    );
     // until the loader has the forms: None alone
+    await settle();
     expect($selectedInstanceDataProp.get()).toBeUndefined();
     expect(
       getOrganizeosRecordOptions(
@@ -725,10 +772,6 @@ describe("an inserted Signup Form", () => {
       )
     ).toEqual({ options: [none], selected: none, hasData: false });
 
-    const request = computeResourceRequest(
-      $resources.get().get(forms.resourceId) as Resource,
-      new Map()
-    );
     $resourcesCache.set(
       new Map([
         [
@@ -738,7 +781,9 @@ describe("an inserted Signup Form", () => {
       ])
     );
 
-    expect($selectedInstanceDataProp.get()).toEqual(formsBody);
+    await vi.waitFor(() =>
+      expect($selectedInstanceDataProp.get()).toEqual(formsBody)
+    );
     expect(
       getOrganizeosRecordOptions(
         signupForm,
@@ -754,6 +799,8 @@ describe("an inserted Signup Form", () => {
 });
 
 describe("an inserted RSVP Form", () => {
+  subscribePlan();
+
   test("lists the org's events once the builder's loader has them", async () => {
     const projectId = "project-2";
     const { events } = await getOrganizeosPresetIds(projectId);
@@ -816,7 +863,16 @@ describe("an inserted RSVP Form", () => {
     expect($selectedInstanceKey.get()).toBe(
       getInstanceKey([roots[0].id, "bodyId"])
     );
+    const request = await computeResourceRequest(
+      $resources.get().get(events.resourceId) as Resource,
+      new Map()
+    );
+    // the builder requests what the test answers below
+    await vi.waitFor(() =>
+      expect($computedResourceRequests.get()).toContainEqual(request)
+    );
     // until the loader has the events: nothing to pick
+    await settle();
     expect($selectedInstanceDataProp.get()).toBeUndefined();
     expect(
       getOrganizeosRecordOptions(
@@ -827,10 +883,6 @@ describe("an inserted RSVP Form", () => {
       )
     ).toEqual({ options: [], selected: undefined, hasData: false });
 
-    const request = computeResourceRequest(
-      $resources.get().get(events.resourceId) as Resource,
-      new Map()
-    );
     $resourcesCache.set(
       new Map([
         [
@@ -840,7 +892,9 @@ describe("an inserted RSVP Form", () => {
       ])
     );
 
-    expect($selectedInstanceDataProp.get()).toEqual(eventsBody);
+    await vi.waitFor(() =>
+      expect($selectedInstanceDataProp.get()).toEqual(eventsBody)
+    );
     expect(
       getOrganizeosRecordOptions(
         rsvpForm,
@@ -901,13 +955,18 @@ const insertBlock = async (component: string, projectId: string) => {
   expect(await insertOrganizeosBlock(component)).toBe(true);
   const resourceId =
     component === signupForm ? forms.resourceId : events.resourceId;
+  const request = await computeResourceRequest(
+    $resources.get().get(resourceId) as Resource,
+    new Map()
+  );
+  // the builder requests what the tests answer
+  await vi.waitFor(() =>
+    expect($computedResourceRequests.get()).toContainEqual(request)
+  );
   return {
-    request: computeResourceRequest(
-      $resources.get().get(resourceId) as Resource,
-      new Map()
-    ),
+    request,
     // the other catalog Resource, which this block does not read
-    otherRequest: computeResourceRequest(
+    otherRequest: await computeResourceRequest(
       provisioned.resources.find(
         (resource) =>
           resource.id ===
@@ -918,7 +977,7 @@ const insertBlock = async (component: string, projectId: string) => {
   };
 };
 
-const answer = (...results: Array<[{ url: string }, unknown]>) => {
+const answer = async (...results: Array<[{ url: string }, unknown]>) => {
   act(() => {
     $resourcesCache.set(
       new Map(
@@ -929,6 +988,7 @@ const answer = (...results: Array<[{ url: string }, unknown]>) => {
       )
     );
   });
+  await settle();
 };
 
 // the resources loader's result for a platform error (a 503 body) and for a
@@ -947,6 +1007,8 @@ const unreachable = {
 };
 
 describe("the record picker's load line", () => {
+  subscribePlan();
+
   let root: undefined | Root;
   let container: undefined | HTMLElement;
 
@@ -992,18 +1054,23 @@ describe("the record picker's load line", () => {
     const { request, otherRequest } = await insertBlock(signupForm, "p-load");
     const host = renderPicker();
     // no answer yet: loading
+    await settle();
     expect($selectedInstanceFailedLoads.get()).toEqual([]);
     expect(line(host)).toBeUndefined();
     expect(host.textContent).not.toMatch(/load/i);
 
     // a Resource the block does not read failed: still loading, for this one
-    answer([otherRequest, failedRead]);
+    await answer([otherRequest, failedRead]);
     expect(line(host)).toBeUndefined();
 
-    answer([
+    await answer([
       request,
       { ok: true, status: 200, statusText: "", data: formsBody },
     ]);
+    // the forms are there: the values were computed
+    await vi.waitFor(() =>
+      expect($selectedInstanceDataProp.get()).toEqual(formsBody)
+    );
     expect($selectedInstanceFailedLoads.get()).toEqual([]);
     expect(line(host)).toBeUndefined();
     expect(host.textContent).not.toMatch(/load/i);
@@ -1012,9 +1079,13 @@ describe("the record picker's load line", () => {
   test("a failed load of the forms shows the short line, and Reload loads that request again", async () => {
     const { request } = await insertBlock(signupForm, "p-fail");
     const host = renderPicker();
-    answer([request, failedRead]);
-    expect($selectedInstanceFailedLoads.get()).toEqual([failedRead]);
-    expect(line(host)).toBe("Forms didn't load. Reload.");
+    await answer([request, failedRead]);
+    await vi.waitFor(() =>
+      expect($selectedInstanceFailedLoads.get()).toEqual([failedRead])
+    );
+    await vi.waitFor(() =>
+      expect(line(host)).toBe("Forms didn't load. Reload.")
+    );
 
     const reload = Array.from(host.querySelectorAll("button")).find(
       (button) => button.textContent === "Reload"
@@ -1026,18 +1097,23 @@ describe("the record picker's load line", () => {
     expect(invalidateResource).toHaveBeenCalledWith(request);
 
     // the load answers this time
-    answer([
+    await answer([
       request,
       { ok: true, status: 200, statusText: "", data: formsBody },
     ]);
+    await vi.waitFor(() =>
+      expect($selectedInstanceDataProp.get()).toEqual(formsBody)
+    );
     expect(line(host)).toBeUndefined();
   });
 
   test("Reload hides the line at once, until the loader answers; a new failure brings it back", async () => {
     const { request } = await insertBlock(signupForm, "p-retry");
     const host = renderPicker();
-    answer([request, failedRead]);
-    expect(line(host)).toBe("Forms didn't load. Reload.");
+    await answer([request, failedRead]);
+    await vi.waitFor(() =>
+      expect(line(host)).toBe("Forms didn't load. Reload.")
+    );
 
     const reload = Array.from(host.querySelectorAll("button")).find(
       (button) => button.textContent === "Reload"
@@ -1049,23 +1125,219 @@ describe("the record picker's load line", () => {
     // the loader answers a second or more later: no line meanwhile
     expect(line(host)).toBeUndefined();
     // a change elsewhere recomputes the same failure: still none
+    const values = $variableValuesByInstanceSelector.get();
     act(() => {
       $props.set(new Map($props.get()));
     });
+    // the variables were computed again
+    await vi.waitFor(() =>
+      expect($variableValuesByInstanceSelector.get()).not.toBe(values)
+    );
+    await settle();
     expect($selectedInstanceFailedLoads.get()).toEqual([failedRead]);
     expect(line(host)).toBeUndefined();
 
     // the retry failed too: a new result, so the line is back
-    answer([request, { ...failedRead }]);
-    expect(line(host)).toBe("Forms didn't load. Reload.");
+    const retried = { ...failedRead };
+    await answer([request, retried]);
+    await vi.waitFor(() =>
+      expect($selectedInstanceFailedLoads.get()[0]).toBe(retried)
+    );
+    await vi.waitFor(() =>
+      expect(line(host)).toBe("Forms didn't load. Reload.")
+    );
   });
 
   test("an RSVP Form whose events fetch threw shows the events line, though its data reads as loading", async () => {
     const { request } = await insertBlock(rsvpForm, "p-rsvp");
     const host = renderPicker();
-    answer([request, unreachable]);
+    await answer([request, unreachable]);
+    await vi.waitFor(() =>
+      expect(line(host)).toBe("Events didn't load. Reload.")
+    );
     // `data` is undefined, as it is while the events load
     expect($selectedInstanceDataProp.get()).toBeUndefined();
-    expect(line(host)).toBe("Events didn't load. Reload.");
+  });
+});
+
+// The picker's binding is upstream's (useBindableControl and
+// BindableExpressionControl): unbound, the select writes the record; bound,
+// the select shows the bound record and is read-only, and the binding popover
+// binds and clears it.
+describe("the record picker's binding", () => {
+  subscribePlan();
+
+  let root: undefined | Root;
+  let container: undefined | HTMLElement;
+
+  afterEach(() => {
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+    root = undefined;
+    container = undefined;
+    vi.mocked(BindableExpressionControl).mockClear();
+  });
+
+  // an inserted Signup Form whose forms have loaded
+  const insertLoaded = async (projectId: string) => {
+    const { request } = await insertBlock(signupForm, projectId);
+    await answer([
+      request,
+      { ok: true, status: 200, statusText: "", data: formsBody },
+    ]);
+    await vi.waitFor(() =>
+      expect($selectedInstanceDataProp.get()).toEqual(formsBody)
+    );
+  };
+
+  const renderPicker = ({
+    prop,
+    computedValue,
+  }: Pick<
+    Parameters<typeof OrganizeosRecordControl>[0],
+    "prop" | "computedValue"
+  >) => {
+    const [instanceId] = $selectedInstanceSelector.get() ?? [];
+    const onChange = vi.fn();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        createElement(
+          TooltipProvider,
+          null,
+          createElement(OrganizeosRecordControl, {
+            instanceId,
+            meta: { type: "string", control: "text", required: false },
+            prop,
+            propName: "record",
+            computedValue,
+            onChange,
+          })
+        )
+      );
+    });
+    return { host: container, onChange, instanceId };
+  };
+
+  const trigger = (host: HTMLElement) =>
+    host.querySelector<HTMLButtonElement>('[role="combobox"]');
+
+  const bindingVariant = (host: HTMLElement) =>
+    host.querySelector("[data-variant]")?.getAttribute("data-variant");
+
+  const readOnlyNote =
+    "The value is controlled by an expression and cannot be changed.";
+
+  // what the label (the Signup Form's meta names `record` "Form") shows when
+  // it is clicked, as upstream's label test opens it
+  const labelContent = async (host: HTMLElement) => {
+    const label = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.textContent === "Form"
+    );
+    expect(label).toBeDefined();
+    act(() => label?.click());
+    // the content is open: its title names the property
+    await vi.waitFor(() =>
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
+        "Form"
+      )
+    );
+    return document.querySelector('[role="tooltip"]')?.textContent ?? "";
+  };
+
+  // what the picker passes upstream's control last
+  const controlProps = () => {
+    const call = vi.mocked(BindableExpressionControl).mock.lastCall;
+    expect(call).toBeDefined();
+    return call![0] as Parameters<typeof BindableExpressionControl>[0];
+  };
+
+  test("unbound, it shows the record, and choosing a form writes its id", async () => {
+    await insertLoaded("p-unbound");
+    const { host, onChange } = renderPicker({
+      prop: undefined,
+      computedValue: newsletter.id,
+    });
+    expect(trigger(host)?.disabled).toBe(false);
+    expect(trigger(host)?.textContent).toBe("Newsletter (Newsletter)");
+    expect(bindingVariant(host)).toBe("default");
+    expect(controlProps()).toMatchObject({
+      bound: false,
+      bindingState: { overwritable: true, variant: "default" },
+    });
+
+    await act(async () => page.getByRole("combobox").click());
+    await act(async () =>
+      page
+        .getByRole("option", { name: "Get in touch (Contact)", exact: true })
+        .click()
+    );
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith({
+      type: "string",
+      value: contactForm.id,
+    });
+    // the label opens, and says nothing of an expression
+    expect(await labelContent(host)).not.toContain(readOnlyNote);
+  });
+
+  test("bound, it shows the bound record and is read-only", async () => {
+    await insertLoaded("p-bound");
+    const { host, instanceId } = renderPicker({
+      prop: {
+        id: "record-prop",
+        instanceId: "",
+        name: "record",
+        type: "expression",
+        value: encodeDataSourceVariable("v"),
+      },
+      computedValue: newsletter.id,
+    });
+    expect(instanceId).not.toBe("");
+    expect(trigger(host)?.disabled).toBe(true);
+    expect(trigger(host)?.textContent).toBe("Newsletter (Newsletter)");
+    expect(bindingVariant(host)).toBe("bound");
+    expect(controlProps()).toMatchObject({
+      bound: true,
+      expression: encodeDataSourceVariable("v"),
+      bindingState: { overwritable: false, variant: "bound" },
+    });
+    // the label is read-only too
+    expect(await labelContent(host)).toContain(readOnlyNote);
+  });
+
+  test("the binding popover binds an expression, and clearing it writes the evaluated record", async () => {
+    await insertLoaded("p-bind");
+    const { onChange } = renderPicker({
+      prop: undefined,
+      computedValue: newsletter.id,
+    });
+    const props = controlProps();
+    // unbound, the popover starts from the current value
+    expect(props.expression).toBe(JSON.stringify(newsletter.id));
+
+    props.onChangeExpression("x");
+    expect(onChange).toHaveBeenLastCalledWith({
+      type: "expression",
+      value: "x",
+    });
+    props.onRemove?.(contactForm.id);
+    expect(onChange).toHaveBeenLastCalledWith({
+      type: "string",
+      value: contactForm.id,
+    });
+    // the block reads anything but a string as no record
+    props.onRemove?.({});
+    expect(onChange).toHaveBeenLastCalledWith({ type: "string", value: "" });
+    // checked as the text control checks it, not against the options: a bound
+    // id may name a record that has not loaded yet
+    expect(props.validate?.("not-loaded-yet")).toBeUndefined();
+    expect(props.validate?.({})).toBe(
+      "Record expects a primitive value (string, number, boolean, null, or undefined), not an object, array, or function"
+    );
   });
 });

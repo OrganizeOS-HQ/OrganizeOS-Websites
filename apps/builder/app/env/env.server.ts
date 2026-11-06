@@ -6,6 +6,8 @@ const environment = z.object({
   DEV_LOGIN: z.string().optional(),
   GH_CLIENT_ID: z.string().optional(),
   GH_CLIENT_SECRET: z.string().optional(),
+  GITHUB_ISSUE_REPORT_APP_ID: z.string().optional(),
+  GITHUB_ISSUE_REPORT_PRIVATE_KEY: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
 
@@ -21,6 +23,7 @@ const environment = z.object({
   // Trpc on SaaS
   TRPC_SERVER_URL: z.string().url().optional(),
   TRPC_SERVER_API_TOKEN: z.string().optional(),
+  EMAIL_SERVICE_URL: z.string().url().optional(),
 
   // OrganizeOS internal provisioning routes (server-to-server only). A
   // dedicated token, distinct from TRPC_SERVER_API_TOKEN, so it cannot reach
@@ -150,6 +153,8 @@ const rawEnv = {
   DEV_LOGIN: process.env.DEV_LOGIN,
   GH_CLIENT_ID: process.env.GH_CLIENT_ID,
   GH_CLIENT_SECRET: process.env.GH_CLIENT_SECRET,
+  GITHUB_ISSUE_REPORT_APP_ID: process.env.GITHUB_ISSUE_REPORT_APP_ID,
+  GITHUB_ISSUE_REPORT_PRIVATE_KEY: process.env.GITHUB_ISSUE_REPORT_PRIVATE_KEY,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   AUTH_SECRET: process.env.AUTH_SECRET,
@@ -157,6 +162,7 @@ const rawEnv = {
   DEPLOYMENT_URL: process.env.DEPLOYMENT_URL,
   TRPC_SERVER_URL: process.env.TRPC_SERVER_URL,
   TRPC_SERVER_API_TOKEN: process.env.TRPC_SERVER_API_TOKEN,
+  EMAIL_SERVICE_URL: process.env.EMAIL_SERVICE_URL,
   ORGANIZEOS_PROVISION_TOKEN: process.env.ORGANIZEOS_PROVISION_TOKEN,
   ORGANIZEOS_AGENT_TOKEN: process.env.ORGANIZEOS_AGENT_TOKEN,
   ORGANIZEOS_SSO_PUBLIC_KEY: process.env.ORGANIZEOS_SSO_PUBLIC_KEY,

@@ -10,11 +10,11 @@
  * session of every co-admin who opens the page. This module closes that where
  * the code would run, and leaves upstream's many insert and paste paths alone:
  *
- * - HTML Embed, Content Embed and Markdown Embed leave the Components panel and
- *   the command palette;
+ * - HTML Embed, Content Embed, Markdown Embed and JSON-LD leave the Components
+ *   panel and the command palette;
  * - an HTML Embed on the canvas shows a notice instead of its code, unless the
  *   code is one of the SVG icons upstream's own templates insert;
- * - a Markdown Embed always shows the notice (it keeps `javascript:` links).
+ * - a Markdown Embed always shows the notice, as publish leaves it out.
  *
  * Nothing is deleted: the embeds stay in the build and show as paused. Publish
  * leaves them out (packages/cli/src/organizeos-org-script.ts).
@@ -24,7 +24,6 @@ import {
   type ComponentPropsWithoutRef,
   type ExoticComponent,
 } from "react";
-import type { Hook } from "@webstudio-is/react-sdk";
 import type { WsComponentMeta } from "@webstudio-is/sdk";
 import type { TemplateMeta } from "@webstudio-is/template";
 import {
@@ -69,10 +68,13 @@ export const PausedHtmlEmbed = forwardRef<
   if (htmlEmbedCodeMayRun(props.code)) {
     return <HtmlEmbed {...props} ref={ref} />;
   }
+  // $ws$executeScripts is the canvas's, given to every HTML Embed
+  // (webstudio-component.tsx): only upstream's embed reads it
   const {
     code: _code,
     clientOnly: _clientOnly,
     executeScriptOnCanvas: _executeScriptOnCanvas,
+    $ws$executeScripts: _executeScripts,
     children: _children,
     ...rest
   } = props;
@@ -87,9 +89,10 @@ export const PausedHtmlEmbed = forwardRef<
 PausedHtmlEmbed.displayName = "PausedHtmlEmbed";
 
 /**
- * The canvas's Markdown Embed. Its renderer keeps `javascript:` links
- * (`allowDangerousProtocol`), and no template icon is Markdown, so unlike the
- * HTML Embed it has no exception.
+ * The canvas's Markdown Embed. Publish leaves it out while org script is
+ * paused, and no template icon is Markdown, so unlike the HTML Embed it has no
+ * exception. (Until 0.309.0 its renderer kept `javascript:` links; it now
+ * sanitizes them.)
  */
 export const PausedMarkdownEmbed = forwardRef<
   HTMLDivElement,
@@ -114,17 +117,26 @@ type Library = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   components: Record<string, ExoticComponent<any>>;
   metas: Record<string, WsComponentMeta>;
-  hooks?: Hook[];
+  // the registry's ids for the component objects upstream's templates name
+  componentIds?: ReadonlyMap<object, string>;
   templates: Record<string, TemplateMeta>;
 };
 
 /**
- * Upstream's base library as the canvas registers it, with org script paused:
- * while the switch is off, HTML Embed and Markdown Embed are hidden from the
- * Components panel and the command palette (`category: "hidden"`; the
- * Navigator, their icons and their labels are unchanged), the Content Embed
- * and Markdown Embed templates are left out, and the canvas renders the paused
- * stand-ins. Everything else passes through by reference, and the input comes
+ * The components publish leaves out while org script is paused, which the
+ * Components panel and the command palette do not offer. JSON-LD renders as
+ * inert text on the canvas, so it keeps its component.
+ */
+const pausedMetas = ["HtmlEmbed", "MarkdownEmbed", "JsonLd"];
+
+/**
+ * A library of the registry as the canvas registers it, with org script
+ * paused: while the switch is off, HTML Embed, Markdown Embed and JSON-LD are
+ * hidden from the Components panel and the command palette (`category:
+ * "hidden"`; the Navigator, their icons and their labels are unchanged), the
+ * Content Embed and Markdown Embed templates are left out, and the canvas
+ * renders the paused stand-ins. Everything else, the registry's
+ * `componentIds` among it, passes through by reference, and the input comes
  * back untouched when the switch is on.
  */
 export const withOrgScriptPolicy = <Registered extends Library>(
@@ -142,7 +154,7 @@ export const withOrgScriptPolicy = <Registered extends Library>(
     components.MarkdownEmbed = PausedMarkdownEmbed;
   }
   const metas: Library["metas"] = { ...library.metas };
-  for (const name of ["HtmlEmbed", "MarkdownEmbed"]) {
+  for (const name of pausedMetas) {
     if (name in metas) {
       metas[name] = { ...metas[name], category: "hidden" };
     }
@@ -151,6 +163,25 @@ export const withOrgScriptPolicy = <Registered extends Library>(
   delete templates.ContentEmbed;
   delete templates.MarkdownEmbed;
   return { ...library, components, metas, templates };
+};
+
+/**
+ * A library without upstream's "Built with Webstudio" badge template, which
+ * puts an upstream ad on the customer's published site. Left out here, where
+ * the canvas registers the library, rather than in the registry or
+ * @webstudio-is/sdk, which this fork keeps as upstream's
+ * (docs/ORGANIZEOS-FORK.md section 1). Only the core library has it.
+ */
+export const withoutBuiltWithWebstudio = <
+  Registered extends Pick<Library, "templates">,
+>(
+  library: Registered
+): Registered => {
+  if ("builtWithWebstudio" in library.templates === false) {
+    return library;
+  }
+  const { builtWithWebstudio: _badge, ...templates } = library.templates;
+  return { ...library, templates };
 };
 
 /**

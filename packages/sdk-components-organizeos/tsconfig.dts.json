@@ -3,11 +3,11 @@
   "include": [
     "src/components.ts",
     "src/metas.ts",
-    "src/hooks.ts",
     "src/org-script.ts",
     "src/page.ts"
   ],
   "compilerOptions": {
-    "declarationDir": "lib/types"
+    "declarationDir": "lib/types",
+    "rootDir": "./src"
   }
 }

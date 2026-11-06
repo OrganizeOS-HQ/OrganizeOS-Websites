@@ -1,11 +1,12 @@
-import { nanoid } from "nanoid";
+import { TRPCError } from "@trpc/server";
+import { createId } from "@webstudio-is/sdk";
 import {
   authorizeProject,
   type AppContext,
   AuthorizationError,
   getPlanFeaturesByOwnerId,
 } from "@webstudio-is/trpc-interface/index.server";
-import { createBuild } from "@webstudio-is/project-build/index.server";
+import { createBuild } from "@webstudio-is/project-build/server";
 import { projectTitle } from "../shared/project-schema";
 import type { MarketplaceApprovalStatus } from "../shared/marketplace-schema";
 import { generateDomain, validateProjectDomain } from "./project-domain";
@@ -41,6 +42,16 @@ export const findProjectIdsByUserId = async (
   return result.data;
 };
 
+export class ProjectNotFoundError extends TRPCError {
+  constructor() {
+    super({
+      code: "NOT_FOUND",
+      message: "This project is unavailable or no longer exists.",
+      cause: { webstudioCode: "NOT_FOUND" },
+    });
+  }
+}
+
 export type Project = Awaited<ReturnType<typeof loadById>>;
 
 export const loadById = async (projectId: string, context: AppContext) => {
@@ -66,10 +77,13 @@ export const loadById = async (projectId: string, context: AppContext) => {
     )
     .eq("id", projectId)
     .eq("isDeleted", false)
-    .single();
+    .maybeSingle();
 
   if (data.error) {
     throw data.error;
+  }
+  if (data.data === null) {
+    throw new ProjectNotFoundError();
   }
   const { latestStaticBuild, ...project } = data.data;
 
@@ -99,7 +113,7 @@ export const create = async (
     throw new Error("The user must be authenticated to create a project");
   }
 
-  const projectId = crypto.randomUUID();
+  const projectId = createId();
 
   // When creating inside a workspace, the project is owned by the workspace
   // owner — not the creating user. This ensures the workspace owner retains
@@ -225,7 +239,7 @@ export const softDeleteProject = async (
     .update({
       isDeleted: true,
       // Free the subdomain — each project needs a unique value
-      domain: nanoid(),
+      domain: createId("nano"),
     })
     .eq("id", projectId);
 

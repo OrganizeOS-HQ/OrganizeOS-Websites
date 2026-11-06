@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { validateHtml } from "./code";
+// OrganizeOS fork: the HTML Embed control checks code with upstream's
+// validateHtmlEmbedCode, which reads it with parse5 (docs/ORGANIZEOS-FORK.md
+// section 10)
+import { validateHtmlEmbedCode as validateHtml } from "@webstudio-is/project-build/runtime";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -40,11 +43,6 @@ describe("the HTML Embed code check", () => {
         `<div data-tip="a &gt; b" data-html="&lt;b&gt;x&lt;/b&gt;"></div>`
       )
     ).toBeUndefined();
-  });
-
-  test("reads the code as an element's content, as upstream's check did", () => {
-    // a table row outside a table is dropped, as in a div
-    expect(validateHtml(`<tr><td>x</td></tr><br>`)?.expected).toBe("x<br>");
   });
 
   test("accepts a tracking snippet whose noscript holds markup", () => {

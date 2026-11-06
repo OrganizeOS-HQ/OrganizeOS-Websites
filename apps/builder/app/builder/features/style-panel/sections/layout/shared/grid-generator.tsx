@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { useStore } from "@nanostores/react";
-import { nanoid } from "nanoid";
 import {
+  PanelContent,
   Box,
   Button,
+  cssVar,
   Flex,
   Grid,
   theme,
@@ -14,7 +15,6 @@ import {
   Separator,
 } from "@webstudio-is/design-system";
 import { toValue } from "@webstudio-is/css-engine";
-import { getStyleDeclKey, type StyleDecl } from "@webstudio-is/sdk";
 import {
   parseGridTemplateTrackList,
   parseGridAreas,
@@ -30,7 +30,7 @@ import { $gridCellData } from "~/shared/nano-states";
 import { $selectedInstanceSelector } from "~/shared/nano-states";
 import { $breakpoints } from "~/shared/sync/data-stores";
 import { $instances } from "~/shared/sync/data-stores";
-import { updateWebstudioData } from "~/shared/instance-utils/data";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import { DEFAULT_GRID_TRACK_COUNT } from "./constants";
 
 /**
@@ -65,17 +65,17 @@ const selectorCellStyle = css({
   width: 16,
   height: 16,
   borderRadius: theme.borderRadius[3],
-  backgroundColor: theme.colors.backgroundControls,
-  border: `1px solid ${theme.colors.borderMain}`,
+  backgroundColor: cssVar("--background-secondary"),
+  border: `1px solid ${cssVar("--border-default")}`,
   transition: "all 0.1s ease",
   "&:hover": {
-    borderColor: theme.colors.borderFocus,
+    borderColor: cssVar("--border-focus"),
   },
   variants: {
     highlighted: {
       true: {
-        backgroundColor: theme.colors.backgroundHover,
-        borderColor: theme.colors.borderFocus,
+        backgroundColor: cssVar("--overlay-interaction-hover"),
+        borderColor: cssVar("--border-focus"),
       },
     },
   },
@@ -216,10 +216,10 @@ const presetButtonStyle = css({
   padding: theme.spacing[3],
   boxSizing: "border-box",
   "&:hover": {
-    backgroundColor: theme.colors.backgroundHover,
+    backgroundColor: cssVar("--overlay-interaction-hover"),
   },
   "&:focus-visible": {
-    outline: `2px solid ${theme.colors.borderFocus}`,
+    outline: `2px solid ${cssVar("--border-focus")}`,
   },
 });
 
@@ -227,7 +227,7 @@ const presetPreviewStyle = css({
   width: "100%",
   aspectRatio: "3 / 2",
   borderRadius: theme.borderRadius[2],
-  border: `1px solid ${theme.colors.borderMain}`,
+  border: `1px solid ${cssVar("--border-default")}`,
   overflow: "hidden",
 });
 
@@ -266,9 +266,9 @@ const GridPresetsPicker = ({ onSelect }: GridPresetsPickerProps) => {
                 <Box
                   key={i}
                   css={{
-                    backgroundColor: theme.colors.backgroundControls,
+                    backgroundColor: cssVar("--background-secondary"),
                     borderRadius: theme.borderRadius[1],
-                    border: `1px solid ${theme.colors.borderMain}`,
+                    border: `1px solid ${cssVar("--border-default")}`,
                   }}
                 />
               ))}
@@ -286,70 +286,17 @@ const GridPresetsPicker = ({ onSelect }: GridPresetsPickerProps) => {
 type FillGridInput = {
   totalCells: number;
   existingChildCount: number;
-  generateId: () => string;
 };
 
-type FillGridItem = {
-  instanceId: string;
-  styleSourceId: string;
-};
-
-const computeFillGridData = ({
+const computeFillGridItemsCount = ({
   totalCells,
   existingChildCount,
-  generateId,
-}: FillGridInput): FillGridItem[] => {
+}: FillGridInput) => {
   const cellsToAdd = totalCells - existingChildCount;
   if (cellsToAdd <= 0) {
-    return [];
+    return 0;
   }
-  return Array.from({ length: cellsToAdd }, () => ({
-    instanceId: generateId(),
-    styleSourceId: generateId(),
-  }));
-};
-
-const applyFillGridItems = (
-  data: Parameters<Parameters<typeof updateWebstudioData>[0]>[0],
-  items: FillGridItem[],
-  breakpointId: string,
-  parentInstanceId: string
-) => {
-  const parentInstance = data.instances.get(parentInstanceId);
-  if (parentInstance === undefined) {
-    return;
-  }
-  for (const { instanceId, styleSourceId } of items) {
-    data.instances.set(instanceId, {
-      type: "instance",
-      id: instanceId,
-      component: "Box",
-      children: [],
-    });
-    data.styleSources.set(styleSourceId, {
-      type: "local",
-      id: styleSourceId,
-    });
-    data.styleSourceSelections.set(instanceId, {
-      instanceId,
-      values: [styleSourceId],
-    });
-    const displayStyleDecl: StyleDecl = {
-      breakpointId,
-      styleSourceId,
-      property: "display",
-      value: { type: "keyword", value: "flex" },
-    };
-    data.styles.set(getStyleDeclKey(displayStyleDecl), displayStyleDecl);
-    const directionStyleDecl: StyleDecl = {
-      breakpointId,
-      styleSourceId,
-      property: "flexDirection",
-      value: { type: "keyword", value: "column" },
-    };
-    data.styles.set(getStyleDeclKey(directionStyleDecl), directionStyleDecl);
-    parentInstance.children.push({ type: "id", value: instanceId });
-  }
+  return cellsToAdd;
 };
 
 const gridGeneratorButtonStyle = css({
@@ -358,15 +305,15 @@ const gridGeneratorButtonStyle = css({
   display: "grid",
   width: "100%",
   height: 60,
-  outline: `1px solid ${theme.colors.borderMain}`,
+  outline: `1px solid ${cssVar("--border-default")}`,
   borderRadius: theme.borderRadius[3],
   overflow: "hidden",
   cursor: "pointer",
   "&:focus-within, &[data-state=open]": {
-    outline: `1px solid ${theme.colors.borderLocalFlexUi}`,
+    outline: `1px solid ${cssVar("--border-focus")}`,
   },
   "&:hover": {
-    backgroundColor: theme.colors.backgroundHover,
+    backgroundColor: cssVar("--overlay-interaction-hover"),
   },
 });
 
@@ -466,16 +413,20 @@ export const GridGenerator = ({ open, onOpenChange }: GridGeneratorProps) => {
     if (baseBreakpoint === undefined) {
       return;
     }
-    const items = computeFillGridData({
+    const itemsCount = computeFillGridItemsCount({
       totalCells: columnCount * rowCount,
       existingChildCount,
-      generateId: nanoid,
     });
-    if (items.length === 0) {
+    if (itemsCount === 0) {
       return;
     }
-    updateWebstudioData((data) => {
-      applyFillGridItems(data, items, baseBreakpoint.id, instanceSelector[0]);
+    executeRuntimeMutation({
+      id: "instances.fillGrid",
+      input: {
+        parentInstanceId: instanceSelector[0],
+        totalCells: columnCount * rowCount,
+        breakpointId: baseBreakpoint.id,
+      },
     });
   };
 
@@ -522,11 +473,11 @@ export const GridGenerator = ({ open, onOpenChange }: GridGeneratorProps) => {
               height: "100%",
               borderRight:
                 col < displayColumnCount - 1 && !mergedRight
-                  ? `1px solid ${theme.colors.borderMain}`
+                  ? `1px solid ${cssVar("--border-default")}`
                   : undefined,
               borderBottom:
                 row < displayRowCount - 1 && !mergedBottom
-                  ? `1px solid ${theme.colors.borderMain}`
+                  ? `1px solid ${cssVar("--border-default")}`
                   : undefined,
             }}
           />
@@ -541,35 +492,23 @@ export const GridGenerator = ({ open, onOpenChange }: GridGeneratorProps) => {
       placement="left-start"
       content={
         <Flex direction="column">
-          <Flex
-            direction="column"
-            gap="3"
-            css={{ padding: theme.panel.padding }}
-          >
+          <PanelContent as={Flex} direction="column" gap="3">
             <GridGeneratorSelector
               onSelect={handleSelectorSelect}
               initialColumns={columnCount}
               initialRows={rowCount}
             />
-          </Flex>
+          </PanelContent>
           <Separator />
-          <Flex
-            direction="column"
-            gap="3"
-            css={{ padding: theme.panel.padding }}
-          >
+          <PanelContent as={Flex} direction="column" gap="3">
             <GridPresetsPicker onSelect={handlePresetSelect} />
-          </Flex>
+          </PanelContent>
           <Separator />
-          <Flex css={{ padding: theme.panel.padding }}>
-            <Button
-              color="neutral"
-              css={{ width: "100%" }}
-              onClick={handleFillGrid}
-            >
+          <PanelContent as={Flex}>
+            <Button css={{ width: "100%" }} onClick={handleFillGrid}>
               Fill grid
             </Button>
-          </Flex>
+          </PanelContent>
         </Flex>
       }
       open={open}
@@ -610,6 +549,7 @@ export const GridGenerator = ({ open, onOpenChange }: GridGeneratorProps) => {
 
 export const __testing__ = {
   gridPresets,
-  computeFillGridData,
-  applyFillGridItems,
+  computeFillGridItemsCount,
 };
+
+undefined;

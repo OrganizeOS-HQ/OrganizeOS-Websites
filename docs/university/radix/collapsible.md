@@ -1,0 +1,62 @@
+---
+description: >-
+  An interactive component which expands/collapses a panel.
+---
+
+# Collapsible
+
+## Features
+
+* Full keyboard navigation.
+* Adheres to the [Disclosure WAI-ARIA design pattern](https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/).
+
+## How to use the Radix UI Collapsible
+
+The Collapsible Component is in the "Components Panel" under the "Radix" section. Click on it or drag it onto the canvas. The Collapsible will populate a template that's easy to adjust for your needs.
+
+<figure>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../.gitbook/assets/radix-collapsible-dark.png">
+    <img src="../../.gitbook/assets/radix-collapsible-light.png" alt="Components panel Radix group with the Collapsible card highlighted" width="240">
+  </picture>
+  <figcaption><p>Radix UI Collapsible component within Webstudio</p></figcaption>
+</figure>
+
+The Collapsible component consists of three main parts:
+
+1. **Collapsible**: The root component that controls the collapsible behavior.
+2. **Collapsible Trigger**: The button that toggles the collapsible.
+3. **Collapsible Content**: The component that contains the collapsible content.
+
+## Customizing the Collapsible
+
+To customize the Collapsible component:
+
+1. **Collapsible Trigger**: Modify the trigger element to change what users click to expand/collapse the content. This can be text, an icon, or any combination of elements.
+2. **Collapsible Content**: Edit the content section to add whatever elements you want to show/hide when the collapsible is toggled.
+3. **Styling**: Any of the three components can be styled to match your design requirements.
+
+## Keep closed content in the HTML
+
+Select **Collapsible Content** and enable **Force Mount** to keep its content in the HTML while the Collapsible is closed. New Collapsible components enable this setting by default. Disable it to remove closed content from the HTML.
+
+When **Force Mount** is enabled, add a closed-state CSS rule such as `height: 0` for `[data-state="closed"]`. Animation-only examples can leave the content visible because they assume Radix unmounts closed content.
+
+Radix temporarily sets inline `transition-duration: 0s` and `animation-name: none` while it measures content height. This can suppress the first open animation, so test both the first open and later open/close cycles.
+
+## Using Collapsible for UI Patterns
+
+The Collapsible component is useful for various UI patterns:
+
+* FAQ sections
+* "Show more" content sections
+* Settings or preferences panels
+* Mobile navigation menus
+* Detail views that can be expanded/collapsed
+
+## Related
+
+- [Accordion](./accordion.md) – Multiple collapsible sections in a group
+- [Tabs](./tabs.md) – Organize content into switchable panels
+- [Dialog](./dialog.md) – Modal window for focused content
+- [Sheet](./sheet.md) – Sliding panel from screen edge

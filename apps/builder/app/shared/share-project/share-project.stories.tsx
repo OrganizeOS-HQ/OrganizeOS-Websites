@@ -7,41 +7,44 @@ import {
   StorySection,
 } from "@webstudio-is/design-system";
 import { useEffect, useState } from "react";
-import { nanoid } from "nanoid";
+import { createId } from "@webstudio-is/sdk";
 import {
   type LinkOptions,
   ShareProject as ShareProjectComponent,
 } from "./share-project";
 
 export default {
-  title: "Share Project",
+  title: "Share project",
   component: ShareProjectComponent,
 };
 
 const initialLinks: Array<LinkOptions> = [
   {
-    token: nanoid(),
+    token: createId("nano"),
     name: "View Only",
     relation: "viewers",
     canClone: false,
     canCopy: false,
     canPublish: false,
+    canUseApi: false,
   },
   {
-    token: nanoid(),
+    token: createId("nano"),
     name: "View and Edit",
     relation: "editors",
     canClone: false,
     canCopy: false,
     canPublish: false,
+    canUseApi: false,
   },
   {
-    token: nanoid(),
+    token: createId("nano"),
     name: "Build",
     relation: "builders",
     canClone: false,
     canCopy: false,
     canPublish: false,
+    canUseApi: false,
   },
 ];
 
@@ -67,12 +70,13 @@ const useShareProject = (
     setLinks([
       ...currentLinks,
       {
-        token: nanoid(),
+        token: createId("nano"),
         name: "Custom Link",
         relation: "viewers",
         canClone: false,
         canCopy: false,
         canPublish: false,
+        canUseApi: false,
       },
     ]);
   };
@@ -107,7 +111,7 @@ const ShareProjectPopover = ({
   return (
     <Popover modal open>
       <PopoverTrigger asChild>
-        <Button>{label}</Button>
+        <Button color="primary">{label}</Button>
       </PopoverTrigger>
       <PopoverContent>
         <ShareProjectComponent
@@ -123,7 +127,7 @@ const ShareProjectPopover = ({
 };
 
 export const ShareProject = () => (
-  <StorySection title="Share Project">
+  <StorySection title="Share project">
     <Flex gap="9" css={{ padding: 100 }}>
       <ShareProjectPopover label="Empty" />
       <ShareProjectPopover label="With Links" linkOptions={initialLinks} />

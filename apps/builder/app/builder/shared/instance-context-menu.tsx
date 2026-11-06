@@ -7,26 +7,38 @@ import {
   ContextMenuItem,
   ContextMenuItemRightSlot,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
   theme,
   Kbd,
   Box,
+  toast,
 } from "@webstudio-is/design-system";
 import { showAttribute } from "@webstudio-is/react-sdk";
-import { emitCommand } from "./commands";
+import { emitCommand, instanceMoveCommandMetas } from "./commands";
 import {
+  $canOpenPageTemplates,
   $allSelectedInstanceSelectors,
   $selectedInstancePath,
   $selectedPage,
   $isContentMode,
   $isDesignMode,
   $propValuesByInstanceSelector,
-  getInstancePath,
   getInstanceKey,
-  type InstancePath,
 } from "~/shared/nano-states";
-import { canDeleteInstanceInContentMode } from "~/shared/instance-utils/data";
-import { $instances } from "~/shared/sync/data-stores";
+import {
+  getInstancePath,
+  canMoveInstanceInContentMode,
+  type InstancePath,
+} from "@webstudio-is/project-build/runtime";
+import { canDeleteInstanceInContentMode } from "@webstudio-is/project-build/runtime";
+import {
+  getInstanceLink,
+  getDeepLinkedInstanceSelection,
+} from "~/shared/instance-utils/link";
+import { $instances, $pages, $project } from "~/shared/sync/data-stores";
 import {
   isComponentDetachable,
   ROOT_INSTANCE_ID,
@@ -83,11 +95,22 @@ const getMenuPermissions = ({
   });
 
   if (isContentMode) {
+    const instanceSelector = instancePath?.[0]?.instanceSelector;
+    const parentSelector = instancePath?.[1]?.instanceSelector;
     return {
       canCopy: hasActionableSelection,
       canPaste: hasActionableSelection,
       canCut: false,
       canDuplicate: false,
+      canMove:
+        canUseSingleSelectionActions &&
+        instanceSelector !== undefined &&
+        parentSelector !== undefined &&
+        canMoveInstanceInContentMode({
+          instanceSelector,
+          parentSelector,
+          instances,
+        }),
       canHide: false,
       canRename: false,
       canWrap: false,
@@ -108,6 +131,8 @@ const getMenuPermissions = ({
     canPaste: canMutateDesign && !isRoot,
     canCut: canMutateDesign && hasActionableSelection,
     canDuplicate: canMutateDesign && hasActionableSelection,
+    canMove:
+      canMutateDesign && hasActionableSelection && canUseSingleSelectionActions,
     canHide: canMutateDesign && !isRoot && canUseSingleSelectionActions,
     canRename: canMutateDesign && !isRoot && canUseSingleSelectionActions,
     canWrap: canMutateDesign && !isRootOrBody && canUseSingleSelectionActions,
@@ -122,6 +147,9 @@ const getMenuPermissions = ({
 
 export const MenuItems = () => {
   const instancePath = useStore($selectedInstancePath);
+  const pages = useStore($pages);
+  const project = useStore($project);
+  const canOpenPageTemplates = useStore($canOpenPageTemplates);
   const selectedInstanceSelectors = useStore($allSelectedInstanceSelectors);
   const instances = useStore($instances);
   const propValues = useStore($propValuesByInstanceSelector);
@@ -130,10 +158,19 @@ export const MenuItems = () => {
 
   const instanceSelector = instancePath?.[0]?.instanceSelector;
 
+  const instanceSelection =
+    pages &&
+    getDeepLinkedInstanceSelection({
+      instanceSelector,
+      canOpenPageTemplates,
+      pages,
+      instances,
+    });
+
   const show = instanceSelector
     ? Boolean(
         propValues.get(getInstanceKey(instanceSelector))?.get(showAttribute) ??
-          true
+        true
       )
     : true;
 
@@ -165,6 +202,23 @@ export const MenuItems = () => {
             color={shortcutColor(permissions.canCopy)}
           />
         </ContextMenuItemRightSlot>
+      </ContextMenuItem>
+      <ContextMenuItem
+        disabled={instanceSelection === undefined || project === undefined}
+        onSelect={async () => {
+          const link = getInstanceLink(instanceSelector);
+          if (link === undefined) {
+            return;
+          }
+          try {
+            await navigator.clipboard.writeText(link);
+            toast.success("Link copied");
+          } catch {
+            toast.error("Could not copy link");
+          }
+        }}
+      >
+        Copy link to instance
       </ContextMenuItem>
       <ContextMenuItem
         disabled={!permissions.canPaste}
@@ -208,6 +262,30 @@ export const MenuItems = () => {
           />
         </ContextMenuItemRightSlot>
       </ContextMenuItem>
+      <ContextMenuSub>
+        <ContextMenuSubTrigger disabled={!permissions.canMove}>
+          Move
+        </ContextMenuSubTrigger>
+        <ContextMenuSubContent>
+          {instanceMoveCommandMetas.map(({ name, label, shortcut }) => (
+            <ContextMenuItem
+              key={name}
+              disabled={!permissions.canMove}
+              onSelect={() => {
+                emitCommand(name);
+              }}
+            >
+              {label}
+              <ContextMenuItemRightSlot>
+                <Kbd
+                  value={["meta", shortcut]}
+                  color={shortcutColor(permissions.canMove)}
+                />
+              </ContextMenuItemRightSlot>
+            </ContextMenuItem>
+          ))}
+        </ContextMenuSubContent>
+      </ContextMenuSub>
       <ContextMenuSeparator />
       <ContextMenuItem
         disabled={!permissions.canHide}

@@ -1,0 +1,54 @@
+---
+description: >-
+  A vertically stacked set of interactive headings that each reveal an
+  associated section of content.
+---
+
+# Accordion
+
+## Features
+
+* Full keyboard navigation.
+* Supports horizontal/vertical orientation.
+* Supports Right to Left direction.
+* Can expand one or multiple items.
+* Can be controlled or uncontrolled.
+
+## How to use the Radix UI Accordion
+
+The Accordion Component is in the "Components Panel" under the "Radix" section. Click on it or drag it onto the canvas. The Accordion will populate a template that's easy to adjust for your needs.
+
+<figure><img src="../../.gitbook/assets/radix-components.png" alt="Components panel with the Radix component group expanded" width="308"><figcaption><p>Radix UI components within Webstudio</p></figcaption></figure>
+
+You can edit, delete or add more Accordions with ease by copying/pasting any of the "item" components within the Accordion.
+
+<figure><img src="../../.gitbook/assets/radix-accordion.png" alt="Navigator showing the nested parts of a Radix Accordion"><figcaption></figcaption></figure>
+
+## Changing an Accordion's content
+
+To change the content of an Accordion that isn't currently displayed in the canvas, click on the "item content" instance that you want to change and it will be displayed.
+
+<figure><img src="../../.gitbook/assets/radix-accordion-content.png" alt="Accordion Content selected on the canvas and in the Navigator"><figcaption></figcaption></figure>
+
+## Animating Accordion content
+
+The Accordion template keeps its content mounted with **Force Mount** and uses a closed-state `height: 0` rule. If you add a custom animation, keep an explicit collapsed style for `[data-state="closed"]`; animation-only examples can leave every panel visible when content stays mounted.
+
+Radix temporarily sets inline `transition-duration: 0s` and `animation-name: none` while it measures content height. This can suppress the first open animation. Test both the first open and later open/close cycles when changing the animation.
+
+## Using Collections within Accordions
+
+To create an accordion with a [Collection](../core-components/collection.md) that iterates over data and outputs an accordion item for each entry, ensure each item has a unique value set, like this:
+
+<figure><img src="../../.gitbook/assets/accordion-collection.png" alt="accordion collection unique item"><figcaption></figcaption></figure>
+
+## Related Videos
+
+{% embed url="https://www.youtube.com/watch?v=PhCRSML1-G8" %}
+
+## Related
+
+- [Collapsible](./collapsible.md) – Single expandable/collapsible panel
+- [Tabs](./tabs.md) – Organize content into switchable panels
+- [Dialog](./dialog.md) – Modal window for focused content
+- [Collection](../core-components/collection.md) – Generate accordion items dynamically from data

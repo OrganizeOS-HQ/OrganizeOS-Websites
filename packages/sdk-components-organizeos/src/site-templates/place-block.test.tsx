@@ -159,6 +159,7 @@ describe("prefixWsIds", () => {
       {
         type: "expression",
         value: `${encodeDataSourceVariable(item.id)}.title`,
+        mode: "read",
       },
     ]);
   });

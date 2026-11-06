@@ -1,4 +1,5 @@
 import type { AUTH_PROVIDERS } from "~/shared/session";
+import { getAssetUploadApiUrl } from "@webstudio-is/sdk/runtime";
 import { getAuthorizationServerOrigin } from "./origins";
 import type { BuilderMode } from "../nano-states/misc";
 
@@ -13,21 +14,26 @@ const searchParams = (params: Record<string, string | undefined | null>) => {
   return asString === "" ? "" : `?${asString}`;
 };
 
+export type BuilderLinkParams = {
+  pageId?: string;
+  instanceSelector?: readonly string[];
+  authToken?: string;
+  pageHash?: string;
+  mode?: BuilderMode;
+  safemode?: boolean;
+};
+
 export const builderPath = ({
   pageId,
+  instanceSelector,
   authToken,
   pageHash,
   mode,
   safemode = false,
-}: {
-  pageId?: string;
-  authToken?: string;
-  pageHash?: string;
-  mode?: "preview" | "content";
-  safemode?: boolean;
-} = {}) => {
+}: BuilderLinkParams = {}) => {
   return `/${searchParams({
     pageId,
+    instance: instanceSelector?.join(","),
     authToken,
     pageHash,
     mode,
@@ -35,38 +41,27 @@ export const builderPath = ({
   })}`;
 };
 
-export const builderUrl = (props: {
+export const builderUrl = ({
+  projectId,
+  origin,
+  ...link
+}: BuilderLinkParams & {
   projectId: string;
-  pageId?: string;
   origin: string;
-  authToken?: string;
-  mode?: BuilderMode;
-  safemode?: boolean;
 }) => {
-  const authServerOrigin = getAuthorizationServerOrigin(props.origin);
+  const authServerOrigin = getAuthorizationServerOrigin(origin);
 
-  const url = new URL(
-    builderPath({
-      pageId: props.pageId,
-      authToken: props.authToken,
-      safemode: props.safemode,
-    }),
-    authServerOrigin
-  );
+  const url = new URL(builderPath(link), authServerOrigin);
 
   const fragments = url.host.split(".");
   if (fragments.length <= 3) {
-    fragments.splice(0, 0, "p-" + props.projectId);
+    fragments.splice(0, 0, "p-" + projectId);
   } else {
     // staging | development branches
-    fragments[0] = "p-" + props.projectId + "-dot-" + fragments[0];
+    fragments[0] = "p-" + projectId + "-dot-" + fragments[0];
   }
 
   url.host = fragments.join(".");
-
-  if (props.mode !== undefined) {
-    url.searchParams.set("mode", props.mode);
-  }
 
   return url.href;
 };
@@ -129,10 +124,6 @@ export const authPath = ({
   provider: "google" | "github" | "dev";
 }) => `/auth/${provider}`;
 
-export const restAssetsPath = () => {
-  return `/rest/assets`;
-};
-
 export const restAssetsUploadPath = ({
   name,
   width,
@@ -150,18 +141,52 @@ export const restAssetsUploadPath = ({
     urlSearchParams.set("height", String(height));
   }
 
-  if (urlSearchParams.size > 0) {
-    return `/rest/assets/${name}?${urlSearchParams.toString()}`;
+  const query = urlSearchParams.toString();
+  if (query !== "") {
+    return `${getAssetUploadApiUrl(name)}?${query}`;
   }
 
-  return `/rest/assets/${name}`;
+  return getAssetUploadApiUrl(name);
 };
 
 export const getCanvasUrl = () => {
   return `/canvas`;
 };
 
-export const restResourcesLoader = () => `/rest/resources-loader`;
+export const restResourcesLoader = ({
+  diagnostics = false,
+  inspect,
+}: {
+  diagnostics?: boolean;
+  inspect?: string;
+} = {}) => {
+  const params = new URLSearchParams();
+  if (diagnostics) {
+    params.set("diagnostics", "true");
+  }
+  if (inspect !== undefined) {
+    params.set("inspect", inspect);
+  }
+  const query = params.toString();
+  return `/rest/resources-loader${query === "" ? "" : `?${query}`}`;
+};
 
 export const marketplacePath = (method: string) =>
   `/builder/marketplace/${method}`;
+
+// Editor navigation does not change the Builder data loaded by the route.
+export const areBuilderDataUrlsEqual = (currentUrl: URL, nextUrl: URL) => {
+  const current = new URL(currentUrl);
+  const next = new URL(nextUrl);
+  for (const param of [
+    "pageId",
+    "instance",
+    "instanceId",
+    "mode",
+    "pageHash",
+  ]) {
+    current.searchParams.delete(param);
+    next.searchParams.delete(param);
+  }
+  return current.href === next.href;
+};

@@ -1,3 +1,4 @@
+import { draftPersistence } from "./draft-persistence";
 import type { Project } from "@webstudio-is/project";
 import type { AuthPermit } from "@webstudio-is/trpc-interface/index.server";
 import type { SyncEmitter } from "@webstudio-is/sync-client";
@@ -17,6 +18,7 @@ import {
   $project,
   $pages,
   $assets,
+  $assetFolders,
   $instances,
   $props,
   $dataSources,
@@ -26,9 +28,14 @@ import {
   $styleSourceSelections,
   $styles,
   $marketplaceProduct,
+  $projectSettings,
   $publisherHost,
   resetDataStores,
 } from "./data-stores";
+import {
+  getExternalContentRoots,
+  publishExternalContentTemplateMutation,
+} from "../external-content-mutations";
 
 let client: SyncClient | undefined;
 let currentProjectId: string | undefined;
@@ -69,6 +76,7 @@ const applyBuilderData = (data: LoadedBuilderData) => {
   applyBuilderMetadata(data);
   $pages.set(data.pages);
   $assets.set(data.assets);
+  $assetFolders.set(data.assetFolders);
   $instances.set(data.instances);
   $props.set(data.props);
   $dataSources.set(data.dataSources);
@@ -78,6 +86,12 @@ const applyBuilderData = (data: LoadedBuilderData) => {
   $styleSourceSelections.set(data.styleSourceSelections);
   $styles.set(data.styles);
   $marketplaceProduct.set(data.marketplaceProduct);
+  $projectSettings.set(data.projectSettings);
+  publishExternalContentTemplateMutation(
+    Array.from(getExternalContentRoots())
+      .filter(([, root]) => root.projectId === data.project.id)
+      .map(([key]) => key)
+  );
 };
 
 const applyBuilderMetadata = (data: LoadedBuilderData) => {
@@ -159,6 +173,7 @@ export const initializeClientSync = ({
   };
 
   const connectClient = (initialData?: LoadedBuilderData) => {
+    draftPersistence.reset(projectId);
     registerContainers();
     const object = createObjectPool();
     const nextModeClient: SyncModeClient =
@@ -231,6 +246,7 @@ export const initializeClientSync = ({
  * Call this when closing the builder or switching between projects.
  */
 export const destroyClientSync = () => {
+  draftPersistence.reset();
   initializationVersion += 1;
   modeClient?.destroy();
   modeClient = undefined;
@@ -242,6 +258,7 @@ export const destroyClientSync = () => {
 export const getSyncClient = () => client;
 
 export const __testing__ = {
+  applyBuilderData,
   getServerSyncState,
   resolveMultiplayerRelayUrl,
 };

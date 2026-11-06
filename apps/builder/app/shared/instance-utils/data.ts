@@ -1,31 +1,116 @@
 // Data utilities own access to Webstudio's instance-related stores and
 // transaction boundaries. Put generic store reads/writes and content-mode data
 // guards here, not tree-shape mutations.
-import { current, isDraft } from "immer";
 import { toast } from "@webstudio-is/design-system";
 import {
-  type Instances,
   type WebstudioData,
-  blockTemplateComponent,
   isPageTemplate,
+  blockTemplateComponent,
+  contentBlockMdxTemplateDescriptors,
+  elementComponent,
+  findTreeInstanceIds,
+  getContentBlockTemplateName,
 } from "@webstudio-is/sdk";
-import { breakCyclesMutable, findCycles } from "@webstudio-is/project-build";
-import { findBlockSelector } from "../nano-states";
-import { $canOpenPageTemplates, $selectedPage } from "../nano-states";
-import { serverSyncStore } from "../sync/sync-stores";
 import {
-  $assets,
-  $breakpoints,
-  $dataSources,
-  $instances,
-  $pages,
-  $props,
-  $resources,
-  $styles,
-  $styleSourceSelections,
-  $styleSources,
-} from "../sync/data-stores";
-import type { InstanceSelector } from "./tree";
+  BuilderRuntimeError,
+  blockTemplateNameConfirmationInput,
+  builderRuntimeContext,
+  executeBuilderRuntimeOperation,
+  createRuntimeMutationAccumulator,
+  findBlockTemplates,
+  type BuilderRuntimeContext,
+  type BuilderRuntimeMutation,
+  type BuilderRuntimeOperationInput,
+  type BuilderRuntimeMutationOperationId,
+  type BuilderRuntimeOperationResult,
+} from "@webstudio-is/project-build/runtime";
+import { applyBuilderPatchTransactions } from "@webstudio-is/project-build/state";
+import { atom } from "nanostores";
+import { $canOpenPageTemplates, $selectedPage } from "../nano-states";
+import {
+  createSyncChangesFromBuilderPatchPayload,
+  createTransactionFromBuilderPatchPayload,
+} from "../sync/builder-patch";
+import { $project, readBuilderStateStores } from "../sync/data-stores";
+import { externalContentSyncStore } from "../sync/sync-stores";
+import {
+  getAffectedExternalContentRootKeys,
+  getExternalContentRoots,
+  publishExternalContentMutation,
+} from "../external-content-mutations";
+import {
+  createExternalContentPersistencePlan,
+  getExternalContentOwnership,
+  getExternalContentOwnershipFromState,
+} from "../external-content-persistence";
+
+type RuntimeMutationResult<Id extends BuilderRuntimeMutationOperationId> =
+  Extract<BuilderRuntimeOperationResult<Id>, BuilderRuntimeMutation>;
+
+export type RuntimeMutationOperation = {
+  [Id in BuilderRuntimeMutationOperationId]: {
+    id: Id;
+    input: BuilderRuntimeOperationInput<Id>;
+    context?: RuntimeMutationContext;
+  };
+}[BuilderRuntimeMutationOperationId];
+
+type RuntimeMutationSequenceResults<
+  Operations extends readonly RuntimeMutationOperation[],
+> = {
+  [Index in keyof Operations]: Operations[Index] extends {
+    id: infer Id extends BuilderRuntimeMutationOperationId;
+  }
+    ? RuntimeMutationResult<Id>["result"]
+    : never;
+};
+
+type TemplateNameConfirmation = ReturnType<
+  typeof blockTemplateNameConfirmationInput.parse
+>;
+type PendingTemplateNameConfirmation =
+  | {
+      operation: RuntimeMutationOperation;
+      confirmation: TemplateNameConfirmation;
+      asynchronous?: boolean;
+    }
+  | {
+      operations: readonly RuntimeMutationOperation[];
+      operationIndex: number;
+      confirmation: TemplateNameConfirmation;
+    };
+
+export const $pendingTemplateNameConfirmation = atom<
+  PendingTemplateNameConfirmation | undefined
+>(undefined);
+
+const getTemplateNameConfirmation = (error: unknown) => {
+  if (error instanceof BuilderRuntimeError === false) {
+    return;
+  }
+  const issue = error.issues?.find(
+    ({ code }) => code === "template_name_change_requires_confirmation"
+  );
+  const parsed = blockTemplateNameConfirmationInput.safeParse(issue?.example);
+  return parsed.success ? parsed.data : undefined;
+};
+
+const addTemplateNameConfirmation = (
+  operation: RuntimeMutationOperation,
+  confirmation: TemplateNameConfirmation
+) =>
+  ({
+    ...operation,
+    input: { ...operation.input, templateNameConfirmation: confirmation },
+  }) as RuntimeMutationOperation;
+
+export const getDuplicateTemplateNameMessage = (error: unknown) => {
+  if (error instanceof BuilderRuntimeError === false) {
+    return;
+  }
+  return error.issues?.find(({ code }) => code === "duplicate_template_name")
+    ?.message;
+};
 
 export type WebstudioInstanceData = Pick<
   WebstudioData,
@@ -38,159 +123,430 @@ export type WebstudioInstanceData = Pick<
   | "resources"
 >;
 
-/**
- * structuredClone can be invoked on draft and throw error
- * extract current snapshot before cloning
- */
-export const unwrap = <Value>(value: Value) =>
-  isDraft(value) ? current(value) : value;
-
-export const canDeleteInstanceInContentMode = ({
-  instanceSelector,
-  instances,
-}: {
-  instanceSelector: InstanceSelector;
-  instances: Instances;
-}) => {
-  const blockSelector = findBlockSelector(instanceSelector, instances);
-  if (blockSelector === undefined) {
-    return false;
-  }
-
-  const isDirectBlockChild =
-    instanceSelector.length - blockSelector.length === 1;
-  if (isDirectBlockChild === false) {
-    return false;
-  }
-
+const canCommitWebstudioData = () => {
+  const selectedPage = $selectedPage.get();
   return (
-    instances.get(instanceSelector[0])?.component !== blockTemplateComponent
+    isPageTemplate(selectedPage) === false ||
+    $canOpenPageTemplates.get() === true
   );
 };
 
-export const updateWebstudioData = (
-  mutate: (data: WebstudioData) => void,
-  { validateInstances = true }: { validateInstances?: boolean } = {}
-) => {
-  const selectedPage = $selectedPage.get();
-  if (isPageTemplate(selectedPage) && $canOpenPageTemplates.get() === false) {
-    return;
+export const migrateLoadedWebstudioData = () => {
+  const result = executeRuntimeMutation({
+    id: "system.migrateLoadedData",
+    input: {},
+  });
+  if (result?.result.didBreakCycles === true) {
+    toast.info("Detected and fixed cycles in the instance tree.");
   }
-  serverSyncStore.createTransaction(
-    [
-      $pages,
-      $instances,
-      $props,
-      $breakpoints,
-      $styleSourceSelections,
-      $styleSources,
-      $styles,
-      $dataSources,
-      $resources,
-      $assets,
-    ],
-    (
-      pages,
-      instances,
-      props,
-      breakpoints,
-      styleSourceSelections,
-      styleSources,
-      styles,
-      dataSources,
-      resources,
-      assets
-    ) => {
-      // @todo normalize pages
-      if (pages === undefined) {
+};
+
+const getRuntimeMutationContext = () => ({
+  createId: builderRuntimeContext.createId,
+  projectId: $project.get()?.id,
+});
+
+type RuntimeMutationContext = Pick<
+  BuilderRuntimeContext,
+  "allowLegacyContentModelWarnings"
+>;
+
+const requireSynchronousResult = <Result>(
+  id: BuilderRuntimeMutationOperationId,
+  result: Result | Promise<Result>
+): Result => {
+  if (result instanceof Promise) {
+    throw Error(`Builder runtime operation "${id}" must be synchronous.`);
+  }
+  return result;
+};
+
+const createRuntimeMutationArgs = <
+  Id extends BuilderRuntimeMutationOperationId,
+>({
+  id,
+  input,
+  context,
+}: {
+  id: Id;
+  input: BuilderRuntimeOperationInput<Id>;
+  context?: RuntimeMutationContext;
+}) => ({
+  id,
+  state: getWebstudioData(),
+  input,
+  context: { ...getRuntimeMutationContext(), ...context },
+});
+
+const commitRuntimeMutation = <Mutation extends BuilderRuntimeMutation>(
+  result: Mutation
+): Mutation => {
+  const data = getWebstudioData();
+  const roots = getExternalContentRoots();
+  const payload = result.payload;
+  const affectedRootKeys = new Set(
+    getAffectedExternalContentRootKeys({ state: data, roots, payload })
+  );
+  if (affectedRootKeys.size === 0) {
+    createTransactionFromBuilderPatchPayload({ data, payload });
+    return result;
+  }
+  const beforeOwnership = getExternalContentOwnership(roots);
+  const afterData = applyBuilderPatchTransactions(data, [
+    { id: "external-content-persistence-plan", payload },
+  ]).state as ReturnType<typeof getWebstudioData>;
+  for (const key of affectedRootKeys) {
+    const root = roots.get(key);
+    if (root === undefined) {
+      continue;
+    }
+    const templates =
+      findBlockTemplates({
+        anchor: [root.sourceBlockInstanceId ?? root.blockInstanceId],
+        instances: afterData.instances,
+      }) ?? [];
+    const templateInstanceIds = new Set<string>();
+    const matchTemplate = (instanceId: string, templateId: string) => {
+      const instance = afterData.instances.get(instanceId);
+      const template = afterData.instances.get(templateId);
+      if (
+        instance === undefined ||
+        template === undefined ||
+        instance.component !== template.component ||
+        instance.tag !== template.tag ||
+        templateInstanceIds.has(instanceId)
+      ) {
         return;
       }
-      mutate({
-        pages,
-        instances,
-        props,
-        dataSources,
-        resources,
-        breakpoints,
-        styleSourceSelections,
-        styleSources,
-        styles,
-        assets,
+      templateInstanceIds.add(instanceId);
+      instance.children.forEach((child, index) => {
+        const templateChild = template.children[index];
+        if (child.type === "id" && templateChild?.type === "id") {
+          matchTemplate(child.value, templateChild.value);
+        }
       });
-
-      if (validateInstances === false) {
-        return;
+    };
+    const content = afterData.instances.get(
+      root.contentInstanceId ?? root.blockInstanceId
+    );
+    for (const child of content?.children ?? []) {
+      if (
+        child.type !== "id" ||
+        afterData.instances.get(child.value)?.component ===
+          blockTemplateComponent
+      ) {
+        continue;
       }
-
-      const cycles = findCycles(instances.values());
-
-      // Detect and fix cycles in the instance tree, then report
-      if (cycles.length > 0) {
-        toast.info("Detected and fixed cycles in the instance tree.");
-
-        breakCyclesMutable(
-          instances.values(),
-          (node) => node.component === "Slot"
+      for (const id of findTreeInstanceIds(afterData.instances, child.value)) {
+        const instance = afterData.instances.get(id);
+        if (instance !== undefined) {
+          const matching = templates.filter(
+            ([template]) =>
+              getContentBlockTemplateName(template) ===
+              getContentBlockTemplateName(instance)
+          );
+          if (matching.length === 1) {
+            matchTemplate(id, matching[0][0].id);
+          }
+        }
+        if (
+          instance === undefined ||
+          (root.instanceIds.has(id) &&
+            data.instances.get(id)?.component === instance.component) ||
+          instance.component === elementComponent ||
+          contentBlockMdxTemplateDescriptors.some(
+            (descriptor) =>
+              descriptor.kind === "component" &&
+              descriptor.component === instance.component
+          ) ||
+          templateInstanceIds.has(id)
+        ) {
+          continue;
+        }
+        const error = new BuilderRuntimeError(
+          "BAD_REQUEST",
+          "This component is not in this Content Block’s Templates and cannot be added to MDX content. Add it to Templates first, or keep it outside MDX content."
         );
+        toast.error(error.message);
+        throw error;
       }
     }
-  );
+  }
+  const afterOwnership = getExternalContentOwnershipFromState({
+    state: afterData,
+    roots,
+    rootKeys: affectedRootKeys,
+  });
+  const plan = createExternalContentPersistencePlan({
+    beforeData: data,
+    afterData,
+    beforeOwnership,
+    afterOwnership,
+    externalBlockInstanceIds: new Set(
+      Array.from(
+        roots.values(),
+        ({ blockInstanceId, contentInstanceId }) =>
+          contentInstanceId ?? blockInstanceId
+      )
+    ),
+    payload,
+  });
+  if (plan.preliminaryExternalPayload.length > 0) {
+    externalContentSyncStore.createTransactionFromChanges(
+      createSyncChangesFromBuilderPatchPayload({
+        data,
+        payload: plan.preliminaryExternalPayload,
+      })
+    );
+  }
+  if (plan.projectPayload.length > 0) {
+    createTransactionFromBuilderPatchPayload({
+      data: getWebstudioData(),
+      payload: plan.projectPayload,
+    });
+  }
+  if (plan.externalPayload.length > 0) {
+    externalContentSyncStore.createTransactionFromChanges(
+      createSyncChangesFromBuilderPatchPayload({
+        data: getWebstudioData(),
+        payload: plan.externalPayload,
+      })
+    );
+  }
+  publishExternalContentMutation(Array.from(affectedRootKeys));
+  return result;
 };
 
-export const updateInstanceData = (
-  mutate: (data: WebstudioInstanceData) => void
-) => {
-  const selectedPage = $selectedPage.get();
-  if (isPageTemplate(selectedPage) && $canOpenPageTemplates.get() === false) {
+export const executeRuntimeMutation = <
+  Id extends BuilderRuntimeMutationOperationId,
+>({
+  id,
+  input,
+  context,
+}: {
+  id: Id;
+  input: BuilderRuntimeOperationInput<Id>;
+  context?: RuntimeMutationContext;
+}): RuntimeMutationResult<Id> | undefined => {
+  if (canCommitWebstudioData() === false) {
     return;
   }
-  serverSyncStore.createTransaction(
-    [
-      $instances,
-      $props,
-      $styleSourceSelections,
-      $styleSources,
-      $styles,
-      $dataSources,
-      $resources,
-    ],
-    (
-      instances,
-      props,
-      styleSourceSelections,
-      styleSources,
-      styles,
-      dataSources,
-      resources
-    ) => {
-      mutate({
-        instances,
-        props,
-        styleSourceSelections,
-        styleSources,
-        styles,
-        dataSources,
-        resources,
-      });
+  try {
+    return commitRuntimeMutation(
+      requireSynchronousResult(
+        id,
+        executeBuilderRuntimeOperation<RuntimeMutationResult<Id>>(
+          createRuntimeMutationArgs({ id, input, context })
+        )
+      )
+    );
+  } catch (error) {
+    const confirmation = getTemplateNameConfirmation(error);
+    if (confirmation === undefined) {
+      throw error;
     }
-  );
+    $pendingTemplateNameConfirmation.set({
+      operation: { id, input } as RuntimeMutationOperation,
+      confirmation,
+    });
+    return;
+  }
 };
 
-export const getWebstudioData = (): WebstudioData => {
-  const pages = $pages.get();
+export const abortPendingTemplateNameConfirmation = () => {
+  $pendingTemplateNameConfirmation.set(undefined);
+};
+
+export const confirmPendingTemplateNameChange = () => {
+  const pending = $pendingTemplateNameConfirmation.get();
+  if (pending === undefined) {
+    return;
+  }
+  $pendingTemplateNameConfirmation.set(undefined);
+  try {
+    if ("operations" in pending) {
+      executeRuntimeMutationSequence(
+        pending.operations.map((operation, index) =>
+          index === pending.operationIndex
+            ? addTemplateNameConfirmation(operation, pending.confirmation)
+            : operation
+        )
+      );
+      return;
+    }
+    const operation = addTemplateNameConfirmation(
+      pending.operation,
+      pending.confirmation
+    );
+    if (pending.asynchronous) {
+      void executeRuntimeMutationAsync(operation).catch((error) => {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "The template change could not be applied."
+        );
+      });
+    } else {
+      executeRuntimeMutation(operation);
+    }
+  } catch (error) {
+    toast.error(
+      error instanceof Error
+        ? error.message
+        : "The template change could not be applied."
+    );
+  }
+};
+
+export const executeRuntimeMutationSequence = <
+  const Operations extends readonly RuntimeMutationOperation[],
+>(
+  operations: Operations
+): RuntimeMutationSequenceResults<Operations> | undefined => {
+  if (canCommitWebstudioData() === false) {
+    return;
+  }
+  const accumulator = createRuntimeMutationAccumulator(getWebstudioData());
+  const results: Record<string, unknown>[] = [];
+  for (const [operationIndex, { id, input, context }] of operations.entries()) {
+    try {
+      results.push(
+        accumulator.stage(
+          requireSynchronousResult(
+            id,
+            executeBuilderRuntimeOperation<BuilderRuntimeMutation>({
+              id,
+              state: accumulator.state,
+              input,
+              context: { ...getRuntimeMutationContext(), ...context },
+            })
+          )
+        )
+      );
+    } catch (error) {
+      const confirmation = getTemplateNameConfirmation(error);
+      if (confirmation === undefined) {
+        throw error;
+      }
+      $pendingTemplateNameConfirmation.set({
+        operations,
+        operationIndex,
+        confirmation,
+      });
+      return;
+    }
+  }
+  commitRuntimeMutation(accumulator.complete({ results }));
+  return results as RuntimeMutationSequenceResults<Operations>;
+};
+
+// OrganizeOS fork (fork doc section 9): stages runtime mutations, and writes
+// of the caller's own, that depend on each other's results, then commits them
+// once: one transaction, one undo step. The OrganizeOS inserts (insert a
+// fragment, then bind its instances to a catalog Resource) and the Motion
+// tab's wrap (wrap, then write the wrapper's props) use it. `execute` runs a
+// mutation operation on the staged state and stages it; `stage` stages a
+// mutation the caller built. Nothing is committed when `stage` throws. A
+// synchronous stage is committed before the call returns, so no write can
+// land between staging and the commit; an asynchronous one commits against
+// the state taken at the call. A refusal of the commit itself (a component
+// placed in MDX content) is toasted by commitRuntimeMutation before it
+// throws: the OrganizeOS inserts rely on that and do not toast it again.
+export type RuntimeMutationAccumulator = Pick<
+  ReturnType<typeof createRuntimeMutationAccumulator>,
+  "state" | "stage"
+> & {
+  execute: <Id extends BuilderRuntimeMutationOperationId>(operation: {
+    id: Id;
+    input: BuilderRuntimeOperationInput<Id>;
+    context?: RuntimeMutationContext;
+  }) => RuntimeMutationResult<Id>["result"];
+};
+
+export const executeStagedRuntimeMutation = async <T>(
+  stage: (accumulator: RuntimeMutationAccumulator) => Promise<T> | T
+): Promise<T> => {
+  if (canCommitWebstudioData() === false) {
+    throw Error(
+      "Page templates can be edited only in design mode, with build access."
+    );
+  }
+  const accumulator = createRuntimeMutationAccumulator(getWebstudioData());
+  const execute = <Id extends BuilderRuntimeMutationOperationId>({
+    id,
+    input,
+    context,
+  }: {
+    id: Id;
+    input: BuilderRuntimeOperationInput<Id>;
+    context?: RuntimeMutationContext;
+  }) =>
+    accumulator.stage(
+      requireSynchronousResult(
+        id,
+        executeBuilderRuntimeOperation<RuntimeMutationResult<Id>>({
+          id,
+          state: accumulator.state,
+          input,
+          context: { ...getRuntimeMutationContext(), ...context },
+        })
+      )
+    ) as RuntimeMutationResult<Id>["result"];
+  const staged = stage({
+    get state() {
+      return accumulator.state;
+    },
+    stage: accumulator.stage,
+    execute,
+  });
+  const result = staged instanceof Promise ? await staged : staged;
+  commitRuntimeMutation(accumulator.complete({}));
+  return result;
+};
+
+export const executeRuntimeMutationAsync = async <
+  Id extends BuilderRuntimeMutationOperationId,
+>({
+  id,
+  input,
+  context,
+}: {
+  id: Id;
+  input: BuilderRuntimeOperationInput<Id>;
+  context?: RuntimeMutationContext;
+}): Promise<RuntimeMutationResult<Id> | undefined> => {
+  if (canCommitWebstudioData() === false) {
+    return;
+  }
+  try {
+    const result = await executeBuilderRuntimeOperation<
+      RuntimeMutationResult<Id>
+    >(createRuntimeMutationArgs({ id, input, context }));
+    return commitRuntimeMutation(result);
+  } catch (error) {
+    const confirmation = getTemplateNameConfirmation(error);
+    if (confirmation === undefined) {
+      throw error;
+    }
+    $pendingTemplateNameConfirmation.set({
+      operation: { id, input } as RuntimeMutationOperation,
+      confirmation,
+      asynchronous: true,
+    });
+    return;
+  }
+};
+
+export const getWebstudioData = () => {
+  const data = readBuilderStateStores();
+  const { pages } = data;
   if (pages === undefined) {
     throw Error(`Cannot get webstudio data with empty pages`);
   }
+  const projectSettings = data.projectSettings ?? { meta: {}, compiler: {} };
   return {
+    ...data,
     pages,
-    instances: $instances.get(),
-    props: $props.get(),
-    dataSources: $dataSources.get(),
-    resources: $resources.get(),
-    breakpoints: $breakpoints.get(),
-    styleSourceSelections: $styleSourceSelections.get(),
-    styleSources: $styleSources.get(),
-    styles: $styles.get(),
-    assets: $assets.get(),
+    projectSettings,
   };
 };

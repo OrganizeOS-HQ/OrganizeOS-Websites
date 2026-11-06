@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import {
-  Box,
   Flex,
   Link,
   List,
@@ -8,12 +7,13 @@ import {
   Text,
   TooltipProvider,
   Toaster,
-  css,
-  globalCss,
   theme,
   Separator,
   Grid,
   IconButton,
+  cssVar,
+  InsetList,
+  InsetListItem,
 } from "@webstudio-is/design-system";
 import { BodyIcon } from "@webstudio-is/icons";
 import {
@@ -47,12 +47,6 @@ import {
   $shouldRevalidateProjects,
 } from "~/shared/notifications/subscription";
 import { requestNotificationPermission } from "~/shared/notifications/browser-notification";
-
-const globalStyles = globalCss({
-  body: {
-    margin: 0,
-  },
-});
 
 const CloneProject = ({
   projectToClone,
@@ -93,24 +87,6 @@ const CloneProject = ({
   }
 };
 
-const sidebarLinkStyle = css({
-  all: "unset",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  gap: theme.spacing[5],
-  height: theme.spacing[13],
-  paddingInline: theme.panel.paddingInline,
-  outline: "none",
-  "&:focus-visible, &:hover": {
-    background: theme.colors.backgroundHover,
-  },
-  "&[aria-current=page]": {
-    background: theme.colors.backgroundItemCurrent,
-    color: theme.colors.foregroundMain,
-  },
-});
-
 const NavigationItems = ({
   items,
 }: {
@@ -127,7 +103,7 @@ const NavigationItems = ({
 
   return (
     <List asChild>
-      <Box>
+      <InsetList>
         {items.map((item, index) => {
           const to =
             workspaceId && item.target === undefined
@@ -136,21 +112,18 @@ const NavigationItems = ({
 
           return (
             <ListItem asChild index={index} key={index}>
-              <NavLink
-                to={to}
-                end
-                target={item.target}
-                className={sidebarLinkStyle()}
-              >
-                {item.prefix}
-                <Text variant="labels" color="main">
-                  {item.children}
-                </Text>
-              </NavLink>
+              <InsetListItem asChild>
+                <NavLink to={to} end target={item.target}>
+                  {item.prefix}
+                  <Text variant="labels" color="main">
+                    {item.children}
+                  </Text>
+                </NavLink>
+              </InsetListItem>
             </ListItem>
           );
         })}
-      </Box>
+      </InsetList>
     </List>
   );
 };
@@ -188,7 +161,6 @@ export const DashboardSetup = ({ data }: { data: DashboardData }) => {
     startSubscription();
     return stopSubscription;
   }, []);
-  globalStyles();
   return null;
 };
 
@@ -255,12 +227,17 @@ export const Dashboard = () => {
 
   return (
     <TooltipProvider>
-      <Flex css={{ height: "100vh" }}>
+      <Flex
+        css={{
+          height: "100vh",
+          background: cssVar("--background-primary"),
+        }}
+      >
         <Grid
           as="aside"
           css={{
             width: theme.sizes.sidebarWidth,
-            borderRight: `1px solid ${theme.colors.borderMain}`,
+            borderRight: `1px solid ${cssVar("--border-default")}`,
             position: "sticky",
             top: 0,
             gridTemplateRows: `auto auto auto 1fr`,
@@ -325,7 +302,7 @@ export const Dashboard = () => {
               href={sourceCodeUrl}
               target="_blank"
               rel="noreferrer"
-              color="moreSubtle"
+              color="subtle"
               variant="label"
               underline="hover"
             >

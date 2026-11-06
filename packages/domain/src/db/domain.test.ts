@@ -106,9 +106,11 @@ describe("create — domain limit guard (msw)", () => {
       createContext()
     );
 
+    // OrganizeOS fork: the message names no Webstudio tier
     expect(result).toEqual({
       success: false,
-      error: expect.stringContaining("maximum number of allowed domains"),
+      error:
+        "You have reached the number of domains your plan includes. Your organization's plan is managed in OrganizeOS.",
     });
   });
 

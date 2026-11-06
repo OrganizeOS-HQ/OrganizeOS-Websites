@@ -1,5 +1,6 @@
 import { useStore } from "@nanostores/react";
 import {
+  PanelContent,
   theme,
   Flex,
   Label,
@@ -7,11 +8,11 @@ import {
   PopoverContent,
   PopoverTrigger,
   InputField,
-  ToolbarButton,
+  Button,
   Text,
 } from "@webstudio-is/design-system";
 import { WidthInput } from "./width-input";
-import { minCanvasWidth } from "~/shared/breakpoints";
+import { minCanvasWidth } from "~/shared/breakpoints-utils";
 import { $canvasWidth, $scale } from "~/builder/shared/nano-states";
 import { $selectedBreakpoint } from "~/shared/nano-states";
 import { ChevronDownIcon } from "@webstudio-is/icons";
@@ -29,28 +30,28 @@ export const CanvasSettingsPopover = () => {
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverTrigger aria-label="Canvas Settings" asChild>
-        <ToolbarButton>
+      <PopoverTrigger aria-label="Canvas settings" asChild>
+        <Button type="button" color="ghost">
           <Text
             css={{
               display: "flex",
               gap: "1ch",
               fontVariantNumeric: "tabular-nums",
             }}
-            color={isOpen ? "contrast" : "moreSubtle"}
+            color={isOpen ? "main" : "subtle"}
           >
             {Math.round(canvasWidth)}px
             {roundedScale !== 100 && <span>{`${roundedScale}%`}</span>}
             <ChevronDownIcon />
           </Text>
-        </ToolbarButton>
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         collisionPadding={4}
         align="start"
         css={{ width: theme.spacing[30] }}
       >
-        <Flex css={{ padding: theme.panel.padding }} gap="3">
+        <PanelContent as={Flex} gap="3">
           <WidthInput min={minCanvasWidth} />
           <Flex align="center" gap="2">
             <Label>Scale</Label>
@@ -60,7 +61,7 @@ export const CanvasSettingsPopover = () => {
               readOnly
             />
           </Flex>
-        </Flex>
+        </PanelContent>
       </PopoverContent>
     </Popover>
   );

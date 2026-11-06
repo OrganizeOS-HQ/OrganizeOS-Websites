@@ -1,106 +1,57 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Button,
-  Combobox,
   Flex,
   Grid,
-  InputErrorsTooltip,
-  InputField,
-  List,
-  ListItem,
-  ProBadge,
-  rawTheme,
-  ScrollArea,
-  SearchField,
-  SmallIconButton,
+  ProChip,
   Text,
-  theme,
   Tooltip,
+  cssVar,
 } from "@webstudio-is/design-system";
-import { InfoCircleIcon, TrashIcon } from "@webstudio-is/icons";
+import { InfoCircleIcon } from "@webstudio-is/icons";
 import { useStore } from "@nanostores/react";
 import {
   createBasicAuthRoute,
-  parseWsAuth,
   serializeWsAuth,
-  validateBasicAuth,
   type WsAuthRoute,
 } from "@webstudio-is/wsauth";
+import { validateBasicAuthCredentials } from "@webstudio-is/project-build/runtime";
 import { $permissions } from "~/shared/nano-states";
-import { $pages } from "~/shared/sync/data-stores";
-import { serverSyncStore } from "~/shared/sync/sync-stores";
+import { $pages, $projectSettings } from "~/shared/sync/data-stores";
 import { getExistingRoutePaths, sectionSpacing } from "./utils";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
+import {
+  parseProjectAuthRoutes,
+  validateProjectAuthRoute,
+} from "@webstudio-is/project-build/contracts";
+import {
+  ProjectSettingsDeleteRuleButton,
+  ProjectSettingsRuleList,
+} from "./rule-list";
 import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
 
-const parseAuthRoutes = (auth: string | undefined) => {
-  return parseWsAuth(auth ?? "");
-};
-
-const validateRouteSyntax = (route: string) => {
-  const result = parseWsAuth(
-    JSON.stringify({
-      version: 1,
-      routes: {
-        [route]: {
-          method: "basic",
-          login: "login",
-          password: "password",
-        },
-      },
-    })
-  );
-  return result.errors.find((error) =>
-    error.path.startsWith(`routes.${JSON.stringify(route)}`)
-  )?.message;
-};
-
 const saveAuthRoutes = (authRoutes: WsAuthRoute[]) => {
-  serverSyncStore.createTransaction([$pages], (pages) => {
-    if (pages === undefined) {
-      return;
-    }
-    if (pages.meta === undefined) {
-      pages.meta = {};
-    }
-    pages.meta.auth =
-      authRoutes.length === 0 ? undefined : serializeWsAuth(authRoutes);
+  executeRuntimeMutation({
+    id: "projectSettings.update",
+    input: {
+      meta: {
+        auth: authRoutes.length === 0 ? null : serializeWsAuth(authRoutes),
+      },
+    },
   });
-};
-
-const validateRoute = (route: string, authRoutes: WsAuthRoute[]) => {
-  const errors: string[] = [];
-  if (route === "") {
-    errors.push("Route is required");
-    return errors;
-  }
-  const routeError = validateRouteSyntax(route);
-  if (routeError !== undefined) {
-    errors.push(routeError);
-  }
-  if (authRoutes.some((authRoute) => authRoute.route === route)) {
-    errors.push("This route already requires authentication");
-  }
-  return errors;
 };
 
 export const SectionAuth = () => {
   const { allowAuth } = useStore($permissions);
   const pages = useStore($pages);
-  const routeRef = useRef<HTMLInputElement>(null);
+  const projectSettings = useStore($projectSettings);
   const [authRoutes, setAuthRoutes] = useState(() => {
-    return parseAuthRoutes($pages.get()?.meta?.auth).routes;
+    return parseProjectAuthRoutes($projectSettings.get()?.meta.auth).routes;
   });
-  const [route, setRoute] = useState("");
-  const [login, setLogin] = useState("");
-  const [password, setPassword] = useState("");
-  const [routeErrors, setRouteErrors] = useState<string[]>([]);
-  const [loginErrors, setLoginErrors] = useState<string[]>([]);
-  const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
 
-  const authContent = pages?.meta?.auth;
+  const authContent = projectSettings?.meta.auth;
   const parseResult = useMemo(() => {
-    return parseAuthRoutes(authContent);
+    return parseProjectAuthRoutes(authContent);
   }, [authContent]);
   const parseErrors = parseResult.errors;
 
@@ -110,60 +61,21 @@ export const SectionAuth = () => {
 
   const existingPaths = getExistingRoutePaths(pages);
   const routeSuggestions = ["/", ...Array.from(existingPaths).sort()];
-  const filteredAuthRoutes = searchQuery
-    ? authRoutes.filter((authRoute) => {
-        const query = searchQuery.toLowerCase();
-        return (
-          authRoute.route.toLowerCase().includes(query) ||
-          authRoute.auth.login.toLowerCase().includes(query)
-        );
-      })
-    : authRoutes;
-
-  const handleRouteChange = (value: string) => {
-    setRoute(value);
-    setRouteErrors(validateRoute(value.trim(), authRoutes));
-  };
-
   const handleSave = (nextAuthRoutes: WsAuthRoute[]) => {
     setAuthRoutes(nextAuthRoutes);
     saveAuthRoutes(nextAuthRoutes);
   };
 
-  const handleAddAuthRoute = () => {
-    const nextRoute = route.trim();
-    const nextRouteErrors = validateRoute(nextRoute, authRoutes);
-    const basicAuthValidation = validateBasicAuth({
-      login,
-      password,
-    });
-    const nextLoginErrors = basicAuthValidation.errors?.login ?? [];
-    const nextPasswordErrors = basicAuthValidation.errors?.password ?? [];
-
-    setRouteErrors(nextRouteErrors);
-    setLoginErrors(nextLoginErrors);
-    setPasswordErrors(nextPasswordErrors);
-
-    if (
-      nextRouteErrors.length > 0 ||
-      nextLoginErrors.length > 0 ||
-      nextPasswordErrors.length > 0
-    ) {
-      return;
-    }
-
+  const handleAddAuthRoute = (values: Record<string, string>) => {
     handleSave([
       createBasicAuthRoute({
-        route: nextRoute,
-        login,
-        password,
+        route: values.route.trim(),
+        login: values.login,
+        password: values.password,
       }),
       ...authRoutes,
     ]);
-    setRoute("");
-    setLogin("");
-    setPassword("");
-    routeRef.current?.focus();
+    return true;
   };
 
   const handleDeleteAuthRoute = (index: number) => {
@@ -173,9 +85,6 @@ export const SectionAuth = () => {
   };
 
   const handleReset = () => {
-    setRouteErrors([]);
-    setLoginErrors([]);
-    setPasswordErrors([]);
     handleSave([]);
   };
 
@@ -183,7 +92,7 @@ export const SectionAuth = () => {
     <Grid gap={3} css={sectionSpacing}>
       <Flex align="center" gap={1}>
         <Text variant="titles">Authentication</Text>
-        {allowAuth === false && <ProBadge>{planBadgeLabel}</ProBadge>}
+        {allowAuth === false && <ProChip>{planBadgeLabel}</ProChip>}
         <Tooltip
           content={
             <>
@@ -210,7 +119,7 @@ export const SectionAuth = () => {
           variant="wrapped"
         >
           <InfoCircleIcon
-            color={rawTheme.colors.foregroundSubtle}
+            color={cssVar("--foreground-secondary")}
             tabIndex={-1}
           />
         </Tooltip>
@@ -233,155 +142,53 @@ export const SectionAuth = () => {
         </Grid>
       )}
 
-      <Flex gap="2" justify="between">
-        <SearchField
-          placeholder="Search"
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-          onAbort={() => setSearchQuery("")}
-          disabled={authRoutes.length === 0}
-        />
-        <Button
-          color="ghost"
-          prefix={<TrashIcon />}
-          disabled={authRoutes.length === 0}
-          onClick={handleReset}
-        >
-          Delete all
-        </Button>
-      </Flex>
-
-      <Flex gap="2" align="center">
-        <InputErrorsTooltip
-          errors={routeErrors.length > 0 ? routeErrors : undefined}
-          side="top"
-        >
-          <Combobox<string>
-            inputRef={routeRef}
-            autoFocus
-            placeholder="/private or /docs/*"
-            value={route}
-            color={routeErrors.length === 0 ? undefined : "error"}
-            getItems={() => routeSuggestions}
-            itemToString={(item) => item ?? ""}
-            onItemSelect={(value) => handleRouteChange(value ?? "")}
-            onChange={(value) => {
-              if (value !== undefined) {
-                handleRouteChange(value);
-              }
-            }}
-          />
-        </InputErrorsTooltip>
-
-        <InputErrorsTooltip
-          errors={loginErrors.length > 0 ? loginErrors : undefined}
-          side="top"
-        >
-          <InputField
-            placeholder="Login"
-            value={login}
-            color={loginErrors.length === 0 ? undefined : "error"}
-            onChange={(event) => {
-              setLogin(event.target.value);
-              setLoginErrors([]);
-            }}
-          />
-        </InputErrorsTooltip>
-
-        <InputErrorsTooltip
-          errors={passwordErrors.length > 0 ? passwordErrors : undefined}
-          side="top"
-        >
-          <InputField
-            placeholder="Password"
-            type="password"
-            value={password}
-            color={passwordErrors.length === 0 ? undefined : "error"}
-            onChange={(event) => {
-              setPassword(event.target.value);
-              setPasswordErrors([]);
-            }}
-          />
-        </InputErrorsTooltip>
-
-        <Button
-          disabled={
-            routeErrors.length > 0 ||
-            loginErrors.length > 0 ||
-            passwordErrors.length > 0
-          }
-          onClick={handleAddAuthRoute}
-          css={{ flexShrink: 0 }}
-        >
-          Add
-        </Button>
-      </Flex>
-
-      {authRoutes.length > 0 ? (
-        <ScrollArea>
-          <Grid>
-            <List asChild>
-              <Flex direction="column" gap="1" align="stretch">
-                {filteredAuthRoutes.map((authRoute) => {
-                  const index = authRoutes.indexOf(authRoute);
-                  return (
-                    <ListItem asChild key={authRoute.route}>
-                      <Grid
-                        align="center"
-                        gap="2"
-                        css={{
-                          p: theme.spacing[3],
-                          overflow: "hidden",
-                          gridTemplateColumns: "1fr 1fr",
-                          position: "relative",
-                          "& > button": {
-                            opacity: 0,
-                            position: "absolute",
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                            height: "auto",
-                            borderRadius: 0,
-                            background: theme.colors.backgroundPanel,
-                          },
-                          "&:hover > button, &:focus-within > button": {
-                            opacity: 1,
-                          },
-                        }}
-                      >
-                        <Tooltip content={authRoute.route}>
-                          <Text
-                            truncate
-                            css={{
-                              wordBreak: "break-all",
-                            }}
-                          >
-                            {authRoute.route}
-                          </Text>
-                        </Tooltip>
-                        <Tooltip content={authRoute.auth.login}>
-                          <Text truncate>{authRoute.auth.login}</Text>
-                        </Tooltip>
-                        <SmallIconButton
-                          variant="destructive"
-                          icon={<TrashIcon />}
-                          aria-label={`Delete authentication for ${authRoute.route}`}
-                          onClick={() => handleDeleteAuthRoute(index)}
-                        />
-                      </Grid>
-                    </ListItem>
-                  );
-                })}
-              </Flex>
-            </List>
-          </Grid>
-        </ScrollArea>
-      ) : null}
+      <ProjectSettingsRuleList
+        fields={[
+          {
+            name: "route",
+            placeholder: "/private or /docs/*",
+            suggestions: routeSuggestions,
+            validateOnChange: (value) =>
+              validateProjectAuthRoute(value.trim(), authRoutes),
+          },
+          { name: "login", placeholder: "Login" },
+          { name: "password", placeholder: "Password", type: "password" },
+        ]}
+        validate={(values) => ({
+          route: validateProjectAuthRoute(
+            values.route?.trim() ?? "",
+            authRoutes
+          ),
+          ...validateBasicAuthCredentials({
+            login: values.login ?? "",
+            password: values.password ?? "",
+          }),
+        })}
+        onSubmit={handleAddAuthRoute}
+        columns="1fr 1fr"
+        columnLabels={["Path", "Login"]}
+        label="Authentication rules"
+        rules={authRoutes.map((authRoute, index) => ({
+          key: authRoute.route,
+          values: [
+            <Tooltip content={authRoute.route} key="route">
+              <Text truncate css={{ wordBreak: "break-all" }}>
+                {authRoute.route}
+              </Text>
+            </Tooltip>,
+            <Tooltip content={authRoute.auth.login} key="login">
+              <Text truncate>{authRoute.auth.login}</Text>
+            </Tooltip>,
+          ],
+          actions: (
+            <ProjectSettingsDeleteRuleButton
+              label={`Delete authentication for ${authRoute.route}`}
+              description={`authentication for ${authRoute.route}`}
+              onDelete={() => handleDeleteAuthRoute(index)}
+            />
+          ),
+        }))}
+      />
     </Grid>
   );
-};
-
-export const __testing__ = {
-  parseAuthRoutes,
-  validateRoute,
 };

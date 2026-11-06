@@ -14,9 +14,10 @@
  * (`__fixtures__/README.md`).
  */
 
-// The generator below is the homepage's text, kept verbatim (formatted by this
-// repository's Prettier) so the two compare line by line; it uses function
-// declarations and one-line ifs, which this repository's lint otherwise bans.
+// The generator below is the homepage's text, kept verbatim but for line
+// breaks: this repository's formatter (oxfmt, `.oxfmtrc.json`) wraps at 80
+// columns, OrganizeOS's Prettier at 100. It uses function declarations and
+// one-line ifs, which this repository's lint otherwise bans.
 /* eslint-disable curly, func-style */
 
 export interface FieldPoint {

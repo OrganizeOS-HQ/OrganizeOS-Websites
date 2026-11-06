@@ -6,6 +6,7 @@ import {
 } from "@webstudio-is/sdk";
 import { camelCaseProperty, parseMediaQuery } from "@webstudio-is/css-data";
 import { AssetValue, renderTemplate } from "@webstudio-is/template";
+import { localStylesFirst } from "../shared/style-order";
 import { createBlockPlacer, type BlockPlacement } from "./place-block";
 import type {
   BlockStyle,
@@ -213,7 +214,12 @@ export const renderSiteTemplate = (
     try {
       const body = page.body(context);
       options.inspectBody?.(page, body, placements);
-      fragment = mergeBlockTokens(renderTemplate(body), template.blockTokens);
+      // local styles before tokens, so a template's block token restyles a
+      // block (shared/style-order.ts)
+      fragment = mergeBlockTokens(
+        localStylesFirst(renderTemplate(body)),
+        template.blockTokens
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`Page "${page.key}": ${message}`, { cause: error });

@@ -159,6 +159,8 @@ describe("createPreviewAssertion", () => {
     // the stored headers and the method are kept
     expect(new Headers(init?.headers).get("authorization")).toBe("Bearer t");
     expect(init?.method).toBe("get");
+    // a redirect must not carry the assertion to another origin
+    expect(init?.redirect).toBe("manual");
     expect(deps.canViewProject).toHaveBeenCalledWith(
       builderRequest,
       "builder-user-1",

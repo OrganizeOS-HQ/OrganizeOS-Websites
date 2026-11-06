@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 3,
+  "kind": "high-impact-minimal-context-agent-evaluation-result",
+  "fixtureId": "markdown-references-discovery-v1",
+  "outcome": "passed",
+  "cli": "source",
+  "provider": "openai",
+  "model": "gpt-5.4-mini",
+  "reasoningEffort": "medium",
+  "commandSha256": "95e4a1a263be4bd7d2884264d9aa62f2a377e6082f1a0ca3635717a0dd179eab",
+  "exitCode": 0,
+  "metrics": {
+    "durationMs": 157344,
+    "tokens": {
+      "input": 479244,
+      "cachedInput": 439296,
+      "uncachedInput": 39948,
+      "cacheWriteInput": 0,
+      "output": 8042,
+      "reasoningOutput": 4539,
+      "total": 487286,
+      "cachedInputRate": 0.9166
+    },
+    "mcpCatalog": {
+      "responses": 1,
+      "totalResponseBytes": 61453,
+      "maxResponseBytes": 61453,
+      "latestToolCount": 196,
+      "latestResponseBytes": 61453,
+      "latestInputSchemaBytes": 35007,
+      "latestDescriptionBytes": 6407
+    },
+    "toolCalls": {
+      "total": 20,
+      "succeeded": 20,
+      "failed": 0,
+      "failuresByTool": {},
+      "failuresByCode": {},
+      "issuesByCode": {},
+      "issuesByPath": {},
+      "durationsByTool": {
+        "create-asset-folder": {
+          "count": 1,
+          "totalMs": 38,
+          "p95Ms": 38,
+          "maxMs": 38
+        },
+        "create-assets-resource": {
+          "count": 2,
+          "totalMs": 78,
+          "p95Ms": 59,
+          "maxMs": 59
+        },
+        "create-page": {
+          "count": 2,
+          "totalMs": 36,
+          "p95Ms": 26,
+          "maxMs": 26
+        },
+        "insert-collection": {
+          "count": 1,
+          "totalMs": 21,
+          "p95Ms": 21,
+          "maxMs": 21
+        },
+        "insert-fragment": {
+          "count": 3,
+          "totalMs": 96,
+          "p95Ms": 61,
+          "maxMs": 61
+        },
+        "meta.get-more-tools": {
+          "count": 1,
+          "totalMs": 3,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        "meta.guide": {
+          "count": 1,
+          "totalMs": 3,
+          "p95Ms": 3,
+          "maxMs": 3
+        },
+        "preview-asset-query": {
+          "count": 1,
+          "totalMs": 13,
+          "p95Ms": 13,
+          "maxMs": 13
+        },
+        "update-page": {
+          "count": 2,
+          "totalMs": 27,
+          "p95Ms": 14,
+          "maxMs": 14
+        },
+        "upload-assets": {
+          "count": 1,
+          "totalMs": 27,
+          "p95Ms": 27,
+          "maxMs": 27
+        },
+        "validate-asset-query": {
+          "count": 2,
+          "totalMs": 42,
+          "p95Ms": 26,
+          "maxMs": 26
+        },
+        "verify-page-responsive": {
+          "count": 3,
+          "totalMs": 14763,
+          "p95Ms": 11091,
+          "maxMs": 11091
+        }
+      },
+      "responseBytesByTool": {
+        "create-asset-folder": {
+          "count": 1,
+          "totalBytes": 942,
+          "p95Bytes": 942,
+          "maxBytes": 942
+        },
+        "create-assets-resource": {
+          "count": 2,
+          "totalBytes": 4742,
+          "p95Bytes": 2371,
+          "maxBytes": 2371
+        },
+        "create-page": {
+          "count": 2,
+          "totalBytes": 4104,
+          "p95Bytes": 2054,
+          "maxBytes": 2054
+        },
+        "insert-collection": {
+          "count": 1,
+          "totalBytes": 3001,
+          "p95Bytes": 3001,
+          "maxBytes": 3001
+        },
+        "insert-fragment": {
+          "count": 3,
+          "totalBytes": 7623,
+          "p95Bytes": 2587,
+          "maxBytes": 2587
+        },
+        "meta.get-more-tools": {
+          "count": 1,
+          "totalBytes": 21813,
+          "p95Bytes": 21813,
+          "maxBytes": 21813
+        },
+        "meta.guide": {
+          "count": 1,
+          "totalBytes": 15856,
+          "p95Bytes": 15856,
+          "maxBytes": 15856
+        },
+        "preview-asset-query": {
+          "count": 1,
+          "totalBytes": 2619,
+          "p95Bytes": 2619,
+          "maxBytes": 2619
+        },
+        "update-page": {
+          "count": 2,
+          "totalBytes": 3968,
+          "p95Bytes": 1985,
+          "maxBytes": 1985
+        },
+        "upload-assets": {
+          "count": 1,
+          "totalBytes": 4360,
+          "p95Bytes": 4360,
+          "maxBytes": 4360
+        },
+        "validate-asset-query": {
+          "count": 2,
+          "totalBytes": 2984,
+          "p95Bytes": 1492,
+          "maxBytes": 1492
+        },
+        "verify-page-responsive": {
+          "count": 3,
+          "totalBytes": 40381,
+          "p95Bytes": 14437,
+          "maxBytes": 14437
+        }
+      },
+      "retries": 0,
+      "focusedReads": 0,
+      "broadReads": 0,
+      "dryRuns": 0,
+      "plannedMutations": 0,
+      "committedMutations": 12,
+      "verifications": 3,
+      "totalDurationMs": 15147,
+      "p50DurationMs": 21,
+      "p95DurationMs": 2231,
+      "totalResponseBytes": 112393,
+      "p50ResponseBytes": 2485,
+      "p95ResponseBytes": 15856,
+      "maxResponseBytes": 21813,
+      "timeToFirstMutationMs": 33283,
+      "timeToFirstVerificationMs": 102917
+    }
+  },
+  "callSequence": [
+    "meta.guide",
+    "create-asset-folder",
+    "upload-assets",
+    "create-page",
+    "create-page",
+    "validate-asset-query",
+    "validate-asset-query",
+    "preview-asset-query",
+    "meta.get-more-tools",
+    "create-assets-resource",
+    "create-assets-resource",
+    "insert-fragment",
+    "insert-collection",
+    "update-page",
+    "verify-page-responsive",
+    "update-page",
+    "insert-fragment",
+    "insert-fragment",
+    "verify-page-responsive",
+    "verify-page-responsive"
+  ],
+  "checks": {
+    "guidance": "passed",
+    "privacy": "passed",
+    "expressions": "passed",
+    "boundedReads": "passed",
+    "referenceDocumentationDiscovery": "passed",
+    "retryFreeExecution": "passed",
+    "markdownUploads": "passed",
+    "documentGraphSources": "passed",
+    "blogAssetFolder": "passed",
+    "blogRoutes": "passed",
+    "scopedBlogResources": "passed",
+    "queryVerification": "passed",
+    "listingQuery": "passed",
+    "detailQuery": "passed",
+    "documentGraphQueries": "passed",
+    "optimalBlogDatabase": "passed",
+    "editableBlogBindings": "passed",
+    "bindingVerification": "passed",
+    "detailPageSettings": "passed",
+    "blogRouteEvidence": "passed",
+    "usageCaptured": "passed"
+  }
+}

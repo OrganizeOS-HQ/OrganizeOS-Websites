@@ -2,22 +2,17 @@ import { useId } from "react";
 import { useStore } from "@nanostores/react";
 import { matchSorter } from "match-sorter";
 import { Box, Combobox, Text, theme } from "@webstudio-is/design-system";
-import {
-  BindingControl,
-  BindingPopover,
-  validatePrimitiveValue,
-} from "~/builder/shared/binding-popover";
+import { validatePrimitiveValue } from "@webstudio-is/project-build/runtime";
 import { useDraftValue } from "~/builder/shared/use-draft-value";
+import { BindableExpressionControl } from "~/builder/shared/bindable-expression";
 import { $props } from "~/shared/sync/data-stores";
 import {
   type ControlProps,
   ResponsiveLayout,
-  updateExpressionValue,
-  $selectedInstanceScope,
-  useBindingState,
   humanizeAttribute,
 } from "../shared";
 import { PropertyLabel } from "../property-label";
+import { useBindableControl } from "./use-bindable-control";
 
 type TimeZoneItem = {
   value: string;
@@ -197,24 +192,20 @@ export const TimeZoneControl = ({
   const savedValue = String(
     computedValue ?? meta.defaultValue ?? defaultTimeZone
   );
+  const binding = useBindableControl({
+    boundExpression: prop?.type === "expression" ? prop : undefined,
+    fallbackExpression: JSON.stringify(computedValue),
+  });
   const localValue = useDraftValue(savedValue, (value) => {
-    if (prop?.type === "expression") {
-      updateExpressionValue(prop.value, value);
-    } else {
-      onChange({ type: "string", value });
+    if (binding.bindingState.overwritable === false) {
+      return;
     }
+    onChange({ type: "string", value });
   });
   const timeZoneItems = getTimeZoneItems(meta.options);
   const selectedItem = getTimeZoneItem(savedValue);
   const currentItem = getTimeZoneItem(localValue.value);
   const label = humanizeAttribute(meta.label || propName);
-  const { scope, aliases } = useStore($selectedInstanceScope);
-  const expression =
-    prop?.type === "expression" ? prop.value : JSON.stringify(computedValue);
-  const { overwritable, variant } = useBindingState(
-    prop?.type === "expression" ? prop.value : undefined
-  );
-
   const datetime = getStringProp(
     props,
     instanceId,
@@ -247,57 +238,55 @@ export const TimeZoneControl = ({
   return (
     <ResponsiveLayout
       label={
-        <PropertyLabel name={propName} readOnly={overwritable === false} />
+        <PropertyLabel
+          name={propName}
+          readOnly={binding.bindingState.overwritable === false}
+        />
       }
     >
-      <BindingControl>
-        <Combobox<TimeZoneItem>
-          name={id}
-          disabled={overwritable === false}
-          getItems={() => timeZoneItems}
-          itemToString={itemToString}
-          value={currentItem}
-          selectedItem={selectedItem}
-          match={matchOrSuggestTimeZone}
-          onChange={(value) => {
-            if (value !== undefined) {
-              localValue.set(value.trim());
-            }
-          }}
-          onItemSelect={(item) => {
-            localValue.set(item.value.trim());
-            localValue.flush();
-          }}
-          getDescription={(item) => {
-            const preview = getTimeZonePreview({
-              item,
-              date,
-              locale,
-              dateStyle,
-              timeStyle,
-              format,
-            });
-            return (
-              <Box css={{ width: theme.spacing[28] }}>
-                <Text>{preview ?? "Select or type an IANA timezone."}</Text>
-              </Box>
-            );
-          }}
-        />
-        <BindingPopover
-          scope={scope}
-          aliases={aliases}
-          validate={(value) => validatePrimitiveValue(value, label)}
-          variant={variant}
-          value={expression}
-          onChange={(newExpression) =>
-            onChange({ type: "expression", value: newExpression })
-          }
-          onRemove={(evaluatedValue) =>
-            onChange({ type: "string", value: String(evaluatedValue) })
-          }
-        />
-      </BindingControl>
+      <BindableExpressionControl
+        {...binding}
+        value={localValue.value}
+        validate={(value) => validatePrimitiveValue(value, label)}
+        onChangeValue={(value) => onChange({ type: "string", value })}
+        onChangeExpression={(value) => onChange({ type: "expression", value })}
+        onRemove={(value) => onChange({ type: "string", value: String(value) })}
+        renderControl={({ readOnly }) => (
+          <Combobox<TimeZoneItem>
+            name={id}
+            disabled={readOnly}
+            getItems={() => timeZoneItems}
+            itemToString={itemToString}
+            value={currentItem}
+            selectedItem={selectedItem}
+            match={matchOrSuggestTimeZone}
+            onChange={(value) => {
+              if (value !== undefined) {
+                localValue.set(value.trim());
+              }
+            }}
+            onItemSelect={(item) => {
+              localValue.set(item.value.trim());
+              localValue.flush();
+            }}
+            getDescription={(item) => {
+              const preview = getTimeZonePreview({
+                item,
+                date,
+                locale,
+                dateStyle,
+                timeStyle,
+                format,
+              });
+              return (
+                <Box css={{ width: theme.spacing[28] }}>
+                  <Text>{preview ?? "Select or type an IANA timezone."}</Text>
+                </Box>
+              );
+            }}
+          />
+        )}
+      />
     </ResponsiveLayout>
   );
 };

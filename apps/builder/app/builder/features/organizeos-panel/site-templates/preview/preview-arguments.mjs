@@ -1,10 +1,13 @@
 // OrganizeOS fork: the preview tool's command line and its thumbnail
 // (scripts/preview-site-template.mjs, which imports this module). Plain
 // JavaScript, as stub-api.mjs is, so the script runs it with node alone;
-// preview-arguments.test.ts holds it.
+// preview-arguments.node.test.ts holds it.
 
 import { basename, resolve } from "node:path";
 import { parseArgs } from "node:util";
+
+// the chooser's picture of a template, in a module of its own (thumbnail.mjs)
+export { THUMBNAIL } from "./thumbnail.mjs";
 
 export const usage =
   "Usage: corepack pnpm preview:template <template-id> [--palette <file>] [--no-events] [--thumbnail]";
@@ -14,23 +17,6 @@ export const usage =
  * hyphens, so each names one folder under previews/.
  */
 const namePattern = /^[a-z0-9-]+$/;
-
-/**
- * The chooser's picture of a template, which --thumbnail writes into the
- * template's images/ folder: the top of Home at 1440 CSS pixels wide,
- * cropped to the chooser's 16:10 frame, at 1600 by 1000 pixels (the
- * 1440-wide layout drawn at 10/9 device pixels a CSS pixel), a JPEG under
- * 400 KB at the highest quality of `qualities` that fits.
- */
-export const THUMBNAIL = {
-  file: "thumbnail.jpg",
-  viewport: { width: 1440, height: 900 },
-  deviceScaleFactor: 10 / 9,
-  width: 1600,
-  height: 1000,
-  maxBytes: 400_000,
-  qualities: [90, 85, 80, 75, 70, 65, 60, 55, 50],
-};
 
 /**
  * @typedef {{

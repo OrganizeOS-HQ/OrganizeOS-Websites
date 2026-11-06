@@ -1,12 +1,26 @@
-import { nanoid } from "nanoid";
-import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
-import type { PropMeta, Instance, Prop } from "@webstudio-is/sdk";
-import { descendantComponent } from "@webstudio-is/sdk";
+import type {
+  PropMeta,
+  Instance,
+  Prop,
+  Props,
+  WsComponentMeta,
+} from "@webstudio-is/sdk";
 import {
+  blockComponent,
+  contentBlockSourceProp,
+  descendantComponent,
+} from "@webstudio-is/sdk";
+import {
+  canHaveTextContent,
+  createStartingPropValueFromMeta,
+  getDefaultPropMetaForType,
   getContentModeCapabilities,
+  isRichText,
+  isRichTextTree,
+  showAttributeMeta,
   type ContentModeCapabilities,
-} from "@webstudio-is/project/content-mode-permissions";
+} from "@webstudio-is/project-build/runtime";
 import {
   reactPropsToStandardAttributes,
   showAttribute,
@@ -20,14 +34,13 @@ import {
 import { $instances } from "~/shared/sync/data-stores";
 import { $props } from "~/shared/sync/data-stores";
 import { $styleSources } from "~/shared/sync/data-stores";
-import { isRichText, isRichTextTree } from "~/shared/content-model";
 import { $selectedInstancePath } from "~/shared/nano-states";
 import {
   $selectedInstanceInitialPropNames,
   $selectedInstancePropsMetas,
-  showAttributeMeta,
   type PropValue,
 } from "../shared";
+import { getEditableTextTarget } from "@webstudio-is/project-build/runtime";
 
 type PropOrName = { prop?: Prop; propName: string };
 
@@ -40,26 +53,49 @@ export type PropAndMeta = {
 };
 
 const isPropVisibleInContentMode = ({
+  component,
   propName,
   props,
   propsMetas,
   selectedInstanceSelector,
   capabilities,
 }: {
+  component: Instance["component"];
   propName: string;
   props: Prop[];
   propsMetas: Map<string, PropMeta>;
   selectedInstanceSelector: undefined | Instance["id"][];
   capabilities: ContentModeCapabilities;
 }) => {
-  if (
-    selectedInstanceSelector === undefined ||
-    capabilities.editableInstanceIds.has(selectedInstanceSelector[0]) === false
-  ) {
+  if (selectedInstanceSelector === undefined) {
     return false;
+  }
+  if (component === blockComponent && propName === contentBlockSourceProp) {
+    return props.some(
+      (prop) =>
+        prop.name === contentBlockSourceProp &&
+        (prop.type === "asset" || prop.type === "expression")
+    );
+  }
+  const instanceId = selectedInstanceSelector[0];
+  if (capabilities.editableInstanceIds.has(instanceId) === false) {
+    if (propName === textContentAttribute) {
+      return (
+        capabilities.frontmatterBoundTextInstanceIds?.has(instanceId) === true
+      );
+    }
+    return props.some(
+      (prop) =>
+        prop.name === propName &&
+        capabilities.frontmatterBoundPropIds?.has(prop.id) === true
+    );
   }
   if (propName === textContentAttribute) {
     return true;
+  }
+  const propMeta = propsMetas.get(propName);
+  if (propMeta?.contentMode === false) {
+    return false;
   }
   if (
     props.some(
@@ -69,114 +105,19 @@ const isPropVisibleInContentMode = ({
   ) {
     return true;
   }
-  const propMeta = propsMetas.get(propName);
-  if (propMeta?.type === "string" && propMeta.control === "file") {
-    return true;
-  }
   return propMeta?.contentMode === true;
-};
-
-// The value we set prop to when it's added
-//
-// If undefined is returned,
-// we will not add a prop in storage until we get an onChange from control.
-//
-// User may have this experience:
-//   - they added a prop but didn't touch the control
-//   - they closed props panel
-//   - when they open props panel again, the prop is not there
-//
-// We want to avoid this if possible, but for some types like "asset" we can't
-const getStartingValue = (
-  meta: PropMeta,
-  defaultBooleanValue: boolean
-): PropValue | undefined => {
-  if (meta.type === "string" && meta.control !== "file") {
-    return {
-      type: "string",
-      value: meta.defaultValue ?? "",
-    };
-  }
-
-  if (meta.type === "number") {
-    return {
-      type: "number",
-      value: meta.defaultValue ?? 0,
-    };
-  }
-
-  if (meta.type === "boolean") {
-    return {
-      type: "boolean",
-      value: meta.defaultValue ?? defaultBooleanValue,
-    };
-  }
-
-  if (meta.type === "string[]") {
-    return {
-      type: "string[]",
-      value: meta.defaultValue ?? [],
-    };
-  }
-
-  if (meta.type === "action") {
-    return {
-      type: "action",
-      value: [],
-    };
-  }
-};
-
-const getDefaultMetaForType = (type: Prop["type"]): PropMeta => {
-  switch (type) {
-    case "action":
-      return { type: "action", control: "action", required: false };
-    case "string":
-      return { type: "string", control: "text", required: false };
-    case "number":
-      return { type: "number", control: "number", required: false };
-    case "boolean":
-      return { type: "boolean", control: "boolean", required: false };
-    case "asset":
-      return { type: "string", control: "file", required: false };
-    case "page":
-      return { type: "string", control: "url", required: false };
-    case "string[]":
-      throw new Error(
-        "A prop with type string[] must have a meta, we can't provide a default one because we need a list of options"
-      );
-
-    case "animationAction":
-      return {
-        type: "animationAction",
-        control: "animationAction",
-        required: false,
-      };
-    case "json":
-      throw new Error(
-        "A prop with type json must have a meta, we can't provide a default one because we need a list of options"
-      );
-    case "expression":
-      throw new Error(
-        "A prop with type expression must have a meta, we can't provide a default one because we need a list of options"
-      );
-    case "parameter":
-      throw new Error(
-        "A prop with type parameter must have a meta, we can't provide a default one because we need a list of options"
-      );
-    case "resource":
-      throw new Error(
-        "A prop with type resource must have a meta, we can't provide a default one because we need a list of options"
-      );
-    default:
-      throw new Error(`Unsupported data type: ${type satisfies never}`);
-  }
 };
 
 type UsePropsLogicInput = {
   instance: Instance;
   props: Prop[];
-  updateProp: (update: Prop) => void;
+  updateProp: (
+    update: PropValue & {
+      instanceId: Instance["id"];
+      name: Prop["name"];
+      required?: boolean;
+    }
+  ) => void;
 };
 
 const getAndDelete = <Value>(map: Map<string, Value>, key: string) => {
@@ -185,42 +126,49 @@ const getAndDelete = <Value>(map: Map<string, Value>, key: string) => {
   return value;
 };
 
-export const __testing__ = {
-  isPropVisibleInContentMode,
-  getStartingValue,
-  getDefaultMetaForType,
-  getAndDelete,
+const canShowTextContent = ({
+  instance,
+  instanceSelector,
+  instances,
+  props,
+  metas,
+  isContentMode,
+}: {
+  instance: Instance;
+  instanceSelector: Instance["id"][] | undefined;
+  instances: Map<Instance["id"], Instance>;
+  props: Props;
+  metas: Map<string, WsComponentMeta>;
+  isContentMode: boolean;
+}) => {
+  const target = getEditableTextTarget(instance);
+  if (
+    instanceSelector === undefined ||
+    (instance.children.length > 0 && target === undefined)
+  ) {
+    return false;
+  }
+  const input = {
+    instanceId: instanceSelector[0],
+    instances,
+    props,
+    metas,
+  };
+  if (
+    (isContentMode
+      ? isRichTextTree(input)
+      : isRichText({ ...input, instanceSelector })) === true
+  ) {
+    return true;
+  }
+  return canHaveTextContent(input);
 };
 
-const $canHaveTextContent = computed(
-  [
-    $instances,
-    $props,
-    $registeredComponentMetas,
-    $selectedInstancePath,
-    $isContentMode,
-  ],
-  (instances, props, metas, instancePath, isContentMode) => {
-    if (instancePath === undefined) {
-      return false;
-    }
-    const [{ instanceSelector }] = instancePath;
-    if (isContentMode) {
-      return isRichTextTree({
-        instanceId: instanceSelector[0],
-        instances,
-        props,
-        metas,
-      });
-    }
-    return isRichText({
-      instances,
-      props,
-      metas,
-      instanceSelector,
-    });
-  }
-);
+export const __testing__ = {
+  isPropVisibleInContentMode,
+  getAndDelete,
+  canShowTextContent,
+};
 
 /** usePropsLogic expects that key={instanceId} is used on the ancestor component */
 export const usePropsLogic = ({
@@ -243,7 +191,6 @@ export const usePropsLogic = ({
         styleSources,
       })
     : undefined;
-
   /**
    * In content edit mode we show only props marked with contentMode: true
    * In the future I hope the only thing we will show will be Components
@@ -256,6 +203,7 @@ export const usePropsLogic = ({
       return false;
     }
     return isPropVisibleInContentMode({
+      component: instance.component,
       propName,
       props,
       propsMetas,
@@ -283,19 +231,17 @@ export const usePropsLogic = ({
     });
   }
 
-  const canHaveTextContent = useStore($canHaveTextContent);
   const getTextContentTarget = () => {
-    const canEditChildren = (target: Instance) => {
-      const hasNoChildren = target.children.length === 0;
-      const hasOnlyTextChild =
-        target.children.length === 1 && target.children[0].type === "text";
-      const hasOnlyExpressionChild =
-        target.children.length === 1 &&
-        target.children[0].type === "expression";
-      return hasNoChildren || hasOnlyTextChild || hasOnlyExpressionChild;
-    };
-
-    if (canHaveTextContent && canEditChildren(instance)) {
+    if (
+      canShowTextContent({
+        instance,
+        instanceSelector: selectedInstancePath?.[0].instanceSelector,
+        instances,
+        props: allProps,
+        metas,
+        isContentMode,
+      })
+    ) {
       return {
         instanceId: instance.id,
         instanceSelector: selectedInstancePath?.[0].instanceSelector,
@@ -308,7 +254,8 @@ export const usePropsLogic = ({
         const childInstance = instances.get(child.value);
         if (
           childInstance?.component === "Text" &&
-          canEditChildren(childInstance)
+          (childInstance.children.length === 0 ||
+            getEditableTextTarget(childInstance) !== undefined)
         ) {
           return {
             instanceId: childInstance.id,
@@ -332,7 +279,7 @@ export const usePropsLogic = ({
       propName: textContentAttribute,
       instanceId: textContentTarget.instanceId,
       instanceSelector: textContentTarget.instanceSelector,
-      meta: {
+      meta: metas.get(instance.component)?.textContent ?? {
         required: false,
         control: "textContent",
         type: "string",
@@ -367,14 +314,6 @@ export const usePropsLogic = ({
     //   - where 0 is a fallback when no default is available
     //   - they think that width is set to 0, but it's actually not set at all
     //
-    if (prop === undefined && propMeta.defaultValue !== undefined) {
-      // initial properties are not defined but suggested to default so default boolean is false
-      const value = getStartingValue(propMeta, false);
-      if (value) {
-        prop = { id: nanoid(), instanceId: instance.id, name, ...value };
-      }
-    }
-
     initialProps.push({
       prop,
       propName: name,
@@ -396,7 +335,7 @@ export const usePropsLogic = ({
       propMeta = propsMetas.get(name);
     }
     prop = { ...prop, name };
-    propMeta ??= getDefaultMetaForType(
+    propMeta ??= getDefaultPropMetaForType(
       prop.type === "asset" ? "asset" : "string"
     );
 
@@ -410,11 +349,10 @@ export const usePropsLogic = ({
   const handleAdd = (propName: string) => {
     // In case of custom property/attribute we get a string.
     const propMeta =
-      propsMetas.get(propName) ?? getDefaultMetaForType("string");
-    const value = getStartingValue(propMeta, true);
+      propsMetas.get(propName) ?? getDefaultPropMetaForType("string");
+    const value = createStartingPropValueFromMeta(propMeta, true);
     if (value) {
       updateProp({
-        id: nanoid(),
         instanceId: instance.id,
         name: propName,
         ...value,
@@ -423,21 +361,23 @@ export const usePropsLogic = ({
   };
 
   const handleChange = ({ prop, propName }: PropOrName, value: PropValue) => {
-    updateProp(
-      prop === undefined
-        ? { id: nanoid(), instanceId: instance.id, name: propName, ...value }
-        : { ...prop, ...value }
-    );
+    updateProp({
+      instanceId: instance.id,
+      name: propName,
+      required: prop?.required,
+      ...value,
+    });
   };
 
   const handleChangeByPropName = (propName: string, value: PropValue) => {
     const prop = props.find((prop) => prop.name === propName);
 
-    updateProp(
-      prop === undefined
-        ? { id: nanoid(), instanceId: instance.id, name: propName, ...value }
-        : { ...prop, ...value }
-    );
+    updateProp({
+      instanceId: instance.id,
+      name: propName,
+      required: prop?.required,
+      ...value,
+    });
   };
 
   return {

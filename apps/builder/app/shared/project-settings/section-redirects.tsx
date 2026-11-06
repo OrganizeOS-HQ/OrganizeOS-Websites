@@ -1,5 +1,6 @@
 import { useStore } from "@nanostores/react";
 import {
+  PanelContent,
   Box,
   Button,
   Combobox,
@@ -11,10 +12,10 @@ import {
   Flex,
   Grid,
   InputErrorsTooltip,
+  InfoTooltip,
   Link,
   List,
   ListItem,
-  rawTheme,
   ScrollArea,
   SearchField,
   Select,
@@ -22,16 +23,15 @@ import {
   Text,
   theme,
   Tooltip,
+  cssVar,
 } from "@webstudio-is/design-system";
 import {
   AlertIcon,
   ArrowRightIcon,
-  InfoCircleIcon,
   TrashIcon,
   UploadIcon,
 } from "@webstudio-is/icons";
 import { ImportRedirectsDialog } from "./import-redirects-dialog";
-import { redirectSourcePath, projectNewRedirectPath } from "@webstudio-is/sdk";
 // OrganizeOS fork: the pause (docs/ORGANIZEOS-FORK.md section 10)
 import { urlMayRun } from "@organizeos/site-components/org-script";
 import type { PageRedirect } from "@webstudio-is/sdk";
@@ -39,22 +39,17 @@ import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { $pages } from "~/shared/sync/data-stores";
 import { $publishedOrigin } from "~/shared/nano-states";
-import { serverSyncStore } from "~/shared/sync/sync-stores";
-import {
-  doesRedirectSourceOverridePagePath,
-  getExistingRoutePaths,
-  sectionSpacing,
-} from "./utils";
+import { getExistingRoutePaths, sectionSpacing } from "./utils";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import {
   LOOP_ERROR,
   wouldCreateLoop,
-} from "~/shared/redirects/redirect-loop-detection";
+} from "@webstudio-is/project-build/runtime";
 import {
-  hasInvalidLocalTargetParams,
-  hasNamedSplat,
-  normalizeRedirectSource,
-  stripRedirectSourceFragment,
-} from "~/shared/redirects/redirect-source";
+  validateRedirectSource,
+  validateRedirectTarget,
+} from "@webstudio-is/project-build/runtime";
+import { ProjectSettingsDataRow } from "./data-row";
 
 const statusCodeOptions = ["301", "302"] as const;
 
@@ -63,87 +58,10 @@ const statusCodeDescriptions: Record<string, string> = {
   "302": "Moved temporarily. SEO ranking stays with original URL.",
 };
 
-type ValidationResult = {
-  errors: string[];
-  warnings: string[];
-};
-
-const validateFromPath = (
-  fromPath: string,
-  redirects: Array<PageRedirect>,
-  existingPaths: Set<string>
-): ValidationResult => {
-  const fromPathValidationResult = redirectSourcePath.safeParse(fromPath);
-
-  if (fromPathValidationResult.success) {
-    if (hasNamedSplat(fromPath)) {
-      return {
-        errors: ["Named splats are not supported; use * instead"],
-        warnings: [],
-      };
-    }
-
-    const sourceWithoutFragment = stripRedirectSourceFragment(fromPath);
-    const sourcePath = normalizeRedirectSource(fromPath);
-    const warnings =
-      sourceWithoutFragment === fromPath
-        ? []
-        : ["Source fragments are ignored because browsers do not send them"];
-
-    // Check for duplicate redirect first (error takes precedence)
-    if (
-      redirects.some(
-        (redirect) => normalizeRedirectSource(redirect.old) === sourcePath
-      )
-    ) {
-      return {
-        errors: ["This path is already being redirected"],
-        warnings,
-      };
-    }
-
-    // Show warning if redirecting from an existing page path.
-    // The redirect will take precedence over the page when published.
-    if (
-      Array.from(existingPaths).some((pagePath) =>
-        doesRedirectSourceOverridePagePath(sourcePath, pagePath)
-      )
-    ) {
-      return {
-        errors: [],
-        warnings: [...warnings, "This redirect will override an existing page"],
-      };
-    }
-    return { errors: [], warnings };
-  }
-
-  return {
-    errors: fromPathValidationResult.error.format()?._errors,
-    warnings: [],
-  };
-};
-
-const unsupportedTargetParamMessage =
-  "Target route params must match params from the source path";
-
-const validateToPath = (toPath: string, fromPath?: string): string[] => {
-  const toPathValidationResult = projectNewRedirectPath.safeParse(toPath);
-  if (toPathValidationResult.success === false) {
-    return toPathValidationResult.error.format()._errors;
-  }
-
-  // OrganizeOS fork: a target that may not run while org script is paused
-  // (docs/ORGANIZEOS-FORK.md section 10)
-  if (urlMayRun(toPath) === false) {
-    return ["This address is not allowed."];
-  }
-
-  if (hasInvalidLocalTargetParams(toPath, fromPath)) {
-    return [unsupportedTargetParamMessage];
-  }
-
-  return [];
-};
+// OrganizeOS fork: validateRedirectTarget refuses a target that may not run
+// while org script is paused (docs/ORGANIZEOS-FORK.md section 10)
+const validateToPath = (toPath: string, fromPath?: string): string[] =>
+  validateRedirectTarget({ target: toPath, source: fromPath });
 
 const deleteRedirect = (
   redirects: Array<PageRedirect>,
@@ -155,7 +73,6 @@ const deleteRedirect = (
 // Exported for testing
 export const __testing__ = {
   deleteRedirect,
-  validateFromPath,
   validateToPath,
 };
 
@@ -196,11 +113,11 @@ export const SectionRedirects = () => {
 
   const handleFromPathChange = (value: string) => {
     setFromPath(value);
-    const { errors, warnings } = validateFromPath(
-      value,
+    const { errors, warnings } = validateRedirectSource({
+      source: value,
       redirects,
-      existingPaths
-    );
+      existingPaths,
+    });
     setFromPathErrors(errors);
     setFromPathWarnings(warnings);
     if (toPath !== "") {
@@ -215,20 +132,21 @@ export const SectionRedirects = () => {
 
   const handleSave = (redirects: Array<PageRedirect>) => {
     setRedirects(redirects);
-    serverSyncStore.createTransaction([$pages], (pages) => {
-      if (pages === undefined) {
-        return;
-      }
-      pages.redirects = redirects;
+    executeRuntimeMutation({
+      id: "redirects.setAll",
+      input: {
+        redirects,
+      },
     });
   };
 
   const handleAddRedirect = () => {
-    const { errors: fromPathValidationErrors, warnings } = validateFromPath(
-      fromPath,
-      redirects,
-      existingPaths
-    );
+    const { errors: fromPathValidationErrors, warnings } =
+      validateRedirectSource({
+        source: fromPath,
+        redirects,
+        existingPaths,
+      });
     const toPathValidationErrors = validateToPath(toPath, fromPath);
     const hasLoop = wouldCreateLoop(fromPath, toPath, redirects);
 
@@ -297,8 +215,8 @@ export const SectionRedirects = () => {
       <Grid gap={3} css={sectionSpacing}>
         <Flex gap={1} align="center">
           <Text variant="titles">Redirects</Text>
-          <Tooltip
-            variant="wrapped"
+          <InfoTooltip
+            label="About redirects"
             content={
               <Flex direction="column" gap="2">
                 <Text>
@@ -314,12 +232,7 @@ export const SectionRedirects = () => {
                 </Flex>
               </Flex>
             }
-          >
-            <InfoCircleIcon
-              color={rawTheme.colors.foregroundSubtle}
-              tabIndex={0}
-            />
-          </Tooltip>
+          />
         </Flex>
 
         <Flex gap="2" justify="between">
@@ -355,13 +268,13 @@ export const SectionRedirects = () => {
         >
           <DialogContent>
             <DialogTitle>Delete all redirects</DialogTitle>
-            <Flex css={{ padding: theme.panel.padding }}>
+            <PanelContent as={Flex}>
               <Text>
                 Are you sure you want to delete all {redirects.length} redirect
                 {redirects.length !== 1 ? "s" : ""}? This action cannot be
                 undone.
               </Text>
-            </Flex>
+            </PanelContent>
             <DialogActions>
               <Button color="destructive" onClick={handleDeleteAll}>
                 Delete all
@@ -433,6 +346,7 @@ export const SectionRedirects = () => {
           </InputErrorsTooltip>
 
           <Button
+            color="primary"
             disabled={isValidRedirects === false || fromPath === toPath}
             onClick={handleAddRedirect}
             css={{ flexShrink: 0 }}
@@ -443,7 +357,7 @@ export const SectionRedirects = () => {
         {fromPathWarnings.length > 0 && (
           <Flex gap="1" align="center">
             <AlertIcon
-              color={rawTheme.colors.backgroundAlertMain}
+              color={cssVar("--foreground-warning")}
               style={{ flexShrink: 0 }}
             />
             <Text color="subtle">{fromPathWarnings.join(". ")}</Text>
@@ -458,27 +372,11 @@ export const SectionRedirects = () => {
                 {filteredRedirects.map((redirect) => {
                   return (
                     <ListItem asChild key={redirect.old}>
-                      <Grid
+                      <ProjectSettingsDataRow
                         align="center"
                         gap="2"
                         css={{
-                          p: theme.spacing[3],
-                          overflow: "hidden",
                           gridTemplateColumns: `1fr auto auto 1fr`,
-                          position: "relative",
-                          "& > button": {
-                            opacity: 0,
-                            position: "absolute",
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                            height: "auto",
-                            borderRadius: 0,
-                            background: theme.colors.backgroundPanel,
-                          },
-                          "&:hover > button, &:focus-within > button": {
-                            opacity: 1,
-                          },
                         }}
                       >
                         <Tooltip content={redirect.old}>
@@ -533,7 +431,7 @@ export const SectionRedirects = () => {
                           aria-label={`Delete redirect from ${redirect.old}`}
                           onClick={() => handleDeleteRedirect(redirect)}
                         />
-                      </Grid>
+                      </ProjectSettingsDataRow>
                     </ListItem>
                   );
                 })}

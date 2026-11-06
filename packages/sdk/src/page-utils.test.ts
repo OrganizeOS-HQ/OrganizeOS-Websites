@@ -1,8 +1,9 @@
 import { describe, expect, test } from "vitest";
-import type { Pages } from "./schema/pages";
+import type { Page, Pages } from "./schema/pages";
 import {
   findPageByIdOrPath,
   findParentFolderByChildId,
+  getPublishablePages,
   getPagePath,
   getStaticSiteMapXml,
   isPage,
@@ -201,6 +202,28 @@ describe("findParentFolderByChildId", () => {
 });
 
 describe("getStaticSiteMapXml", () => {
+  test("does not execute page settings while checking sitemap eligibility", () => {
+    const marker = "__webstudioSitemapTestMarker";
+    const globals = globalThis as Record<string, unknown>;
+    const pagesWithExpression: Pages = {
+      ...pages,
+      pages: new Map(pages.pages).set("home", {
+        ...pages.pages.get("home")!,
+        meta: { excludePageFromSearch: `(globalThis.${marker} = true)` },
+      }),
+    };
+
+    try {
+      expect(globals[marker]).toBeUndefined();
+      expect(getStaticSiteMapXml(pagesWithExpression, "2026-04-30")).toEqual(
+        getStaticSiteMapXml(pages, "2026-04-30")
+      );
+      expect(globals[marker]).toBeUndefined();
+    } finally {
+      delete globals[marker];
+    }
+  });
+
   test("includes html pages and excludes xml and text pages", () => {
     const pagesWithDocumentTypes: Pages = {
       ...pages,
@@ -234,5 +257,28 @@ describe("getStaticSiteMapXml", () => {
         lastModified: "2026-04-30",
       },
     ]);
+  });
+
+  test("excludes draft pages", () => {
+    const pagesWithDraft: Pages = {
+      ...pages,
+      pages: new Map<string, Page>(pages.pages)
+        .set("home", { ...pages.pages.get("home")!, isDraft: false })
+        .set("page-1", {
+          ...pages.pages.get("page-1")!,
+          isDraft: true,
+        }),
+    };
+
+    expect(getPublishablePages(pagesWithDraft).map((page) => page.id)).toEqual([
+      "home",
+    ]);
+    expect(getStaticSiteMapXml(pagesWithDraft, "2026-04-30")).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "/folder-1/folder-1-1/folder-1-1-1/page-1",
+        }),
+      ])
+    );
   });
 });

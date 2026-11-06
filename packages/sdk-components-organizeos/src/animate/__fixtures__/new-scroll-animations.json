@@ -1,6 +1,6 @@
 [
   {
-    "name": "New Animation",
+    "name": "New animation",
     "description": "Create a new animation.",
     "timing": {
       "rangeStart": [
@@ -30,7 +30,7 @@
     ]
   },
   {
-    "name": "Fade In",
+    "name": "Fade in",
     "description": "Fade in the element as it scrolls into view.",
     "timing": {
       "rangeStart": [
@@ -66,7 +66,7 @@
     ]
   },
   {
-    "name": "Fade Out",
+    "name": "Fade out",
     "description": "Fade out the element as it scrolls out of view.",
     "timing": {
       "rangeStart": [

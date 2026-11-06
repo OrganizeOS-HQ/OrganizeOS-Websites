@@ -1,6 +1,9 @@
 import { describe, test, expect } from "vitest";
+import { fontMeta } from "@webstudio-is/fonts";
+import { asset, assetType } from "./schema/assets";
 import {
   ALLOWED_FILE_TYPES,
+  InvalidAssetFileNameError,
   getMimeTypeByExtension,
   getMimeTypeByFilename,
   isAllowedExtension,
@@ -16,25 +19,177 @@ import {
   decodePathFragment,
   getAssetUrl,
   toRuntimeAsset,
+  toAssetReferenceRuntimeData,
   acceptToMimePatterns,
   acceptToMimeCategories,
   getAssetMime,
   doesAssetMatchMimePatterns,
+  getAssetTextEditorLanguage,
+  formatAssetName,
+  getFileExtension,
+  getFileNameParts,
+  getAssetContentHash,
+  isTextFileAsset,
+  parseAssetName,
 } from "./assets";
 
+test("hashes asset content with SHA-256", async () => {
+  await expect(
+    getAssetContentHash(new TextEncoder().encode("hello"))
+  ).resolves.toBe(
+    "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+  );
+});
+
+test("rejects a font format stored as a generic file", () => {
+  expect(
+    asset.safeParse({
+      id: "font-1",
+      projectId: "project-1",
+      size: 100,
+      name: "font.woff2",
+      description: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      format: "woff2",
+      meta: {},
+      type: "file",
+    }).success
+  ).toBe(false);
+});
+
+describe("getFileExtension", () => {
+  test.each([
+    ["file.md", "md"],
+    ["FILE.MD", "MD"],
+    ["archive.tar.gz", "gz"],
+    ["/folder.with-dot/file.md", "md"],
+    [".md", undefined],
+    ["file.", undefined],
+    ["file", undefined],
+  ])("extracts the extension from %s", (fileName, expected) => {
+    expect(getFileExtension(fileName)).toBe(expected);
+  });
+});
+
+describe("getFileNameParts", () => {
+  test.each([
+    ["file.md", { basename: "file", extension: "md" }],
+    ["archive.tar.GZ", { basename: "archive.tar", extension: "GZ" }],
+    [".env", { basename: ".env", extension: "" }],
+    ["README", { basename: "README", extension: "" }],
+  ])("splits %s", (fileName, expected) => {
+    expect(getFileNameParts(fileName)).toEqual(expected);
+  });
+});
+
+describe("parseAssetName", () => {
+  test("parses a storage name with an extension", () => {
+    expect(parseAssetName("hello_hash.ext")).toEqual({
+      basename: "hello",
+      hash: "hash",
+      ext: "ext",
+    });
+  });
+
+  test("parses a name without a storage id", () => {
+    expect(parseAssetName("hello.ext")).toEqual({
+      basename: "hello",
+      hash: "",
+      ext: "ext",
+    });
+  });
+
+  test("supports legacy storage ids", () => {
+    expect(parseAssetName("hello_hash1.ext_hash2")).toEqual({
+      basename: "hello",
+      hash: "hash1",
+      ext: "ext_hash2",
+    });
+  });
+
+  test("keeps underscores inside a Nano ID out of the display name", () => {
+    expect(parseAssetName("test_nCEugJxJwUd_MJcgPodZr.md")).toEqual({
+      basename: "test",
+      hash: "nCEugJxJwUd_MJcgPodZr",
+      ext: "md",
+    });
+  });
+
+  test("parses a storage name without an extension", () => {
+    expect(parseAssetName("hello_hash1_hash2")).toEqual({
+      basename: "hello_hash1",
+      hash: "hash2",
+      ext: "",
+    });
+  });
+});
+
+describe("formatAssetName", () => {
+  test("uses a persisted display basename", () => {
+    expect(
+      formatAssetName({
+        name: "uploaded_abc123.jpg",
+        filename: "myimage",
+      })
+    ).toBe("myimage.jpg");
+  });
+
+  test("derives the display basename for a legacy asset", () => {
+    expect(formatAssetName({ name: "uploaded_abc123.jpg" })).toBe(
+      "uploaded.jpg"
+    );
+  });
+
+  test("does not append a dot without an extension", () => {
+    expect(
+      formatAssetName({
+        name: "uploaded_abc123",
+        filename: "document",
+      })
+    ).toBe("document");
+  });
+});
+
 describe("allowed-file-types", () => {
+  describe("text editor support", () => {
+    test.each([
+      ["txt", "plain"],
+      ["csv", "plain"],
+      ["md", "markdown"],
+      ["mdx", "markdown"],
+      ["js", "javascript"],
+      ["mjs", "javascript"],
+      ["css", "css"],
+      ["json", "json"],
+      ["html", "html"],
+      ["xml", "xml"],
+      ["svg", "xml"],
+    ])("maps %s files to the %s editor", (format, language) => {
+      expect(getAssetTextEditorLanguage({ format })).toBe(language);
+      expect(isTextFileAsset({ format })).toBe(true);
+    });
+
+    test("marks binary and unknown formats as non-editable", () => {
+      expect(getAssetTextEditorLanguage({ format: "pdf" })).toBeUndefined();
+      expect(getAssetTextEditorLanguage({ format: "unknown" })).toBeUndefined();
+      expect(isTextFileAsset({ format: "pdf" })).toBe(false);
+    });
+  });
+
   describe("getMimeTypeByExtension", () => {
     test("returns correct MIME type for valid extension", () => {
       expect(getMimeTypeByExtension("jpg")).toBe("image/jpeg");
       expect(getMimeTypeByExtension("png")).toBe("image/png");
       expect(getMimeTypeByExtension("pdf")).toBe("application/pdf");
       expect(getMimeTypeByExtension("mp4")).toBe("video/mp4");
+      expect(getMimeTypeByExtension("mdx")).toBe("text/mdx");
     });
 
     test("is case-insensitive", () => {
       expect(getMimeTypeByExtension("JPG")).toBe("image/jpeg");
       expect(getMimeTypeByExtension("PNG")).toBe("image/png");
       expect(getMimeTypeByExtension("PDF")).toBe("application/pdf");
+      expect(getMimeTypeByExtension("MDX")).toBe("text/mdx");
     });
 
     test("returns undefined for invalid extension", () => {
@@ -48,6 +203,7 @@ describe("allowed-file-types", () => {
       expect(getMimeTypeByFilename("image.jpg")).toBe("image/jpeg");
       expect(getMimeTypeByFilename("document.pdf")).toBe("application/pdf");
       expect(getMimeTypeByFilename("video.mp4")).toBe("video/mp4");
+      expect(getMimeTypeByFilename("module.mjs")).toBe("text/javascript");
     });
 
     test("handles files with multiple dots", () => {
@@ -131,6 +287,10 @@ describe("allowed-file-types", () => {
         extension: "pdf",
         mimeType: "application/pdf",
       });
+      expect(validateFileName("module.mjs")).toEqual({
+        extension: "mjs",
+        mimeType: "text/javascript",
+      });
     });
 
     test("is case-insensitive", () => {
@@ -149,7 +309,7 @@ describe("allowed-file-types", () => {
 
     test("throws error for files without extension", () => {
       expect(() => validateFileName("filename")).toThrow(
-        'File type "filename" is not allowed'
+        "File must have an extension"
       );
       // Empty string results in no extension either
       expect(() => validateFileName("file.")).toThrow(
@@ -158,6 +318,9 @@ describe("allowed-file-types", () => {
     });
 
     test("throws error for disallowed extensions", () => {
+      expect(() => validateFileName("malware.exe")).toThrow(
+        InvalidAssetFileNameError
+      );
       expect(() => validateFileName("malware.exe")).toThrow(
         'File type "exe" is not allowed'
       );
@@ -328,6 +491,20 @@ describe("allowed-file-types", () => {
   });
 
   describe("detectAssetType", () => {
+    test("detects only canonical asset types", () => {
+      expect(assetType.options).toEqual(["font", "image", "video", "file"]);
+      for (const filename of [
+        "image.png",
+        "font.woff2",
+        "video.mp4",
+        "document.pdf",
+      ]) {
+        expect(assetType.safeParse(detectAssetType(filename)).success).toBe(
+          true
+        );
+      }
+    });
+
     test("detects image files", () => {
       expect(detectAssetType("photo.jpg")).toBe("image");
       expect(detectAssetType("image.png")).toBe("image");
@@ -468,6 +645,23 @@ describe("allowed-file-types", () => {
       expect(url.pathname).toBe("/cgi/image/photo.jpg");
       expect(url.search).toBe("?format=raw");
     });
+
+    test.each(["bmp", "ico", "avif"])(
+      "serves %s images directly without resizing",
+      (format) => {
+        const url = getAssetUrl(
+          {
+            ...mockImageAsset,
+            name: `photo.${format}`,
+          },
+          "https://example.com"
+        );
+
+        expect(url.href).toBe(
+          `https://example.com/cgi/asset/photo.${format}?format=raw`
+        );
+      }
+    );
 
     test("generates correct URL for video assets", () => {
       const url = getAssetUrl(mockVideoAsset, "https://example.com");
@@ -879,10 +1073,10 @@ describe("allowed-file-types", () => {
       format: "woff2" as const,
       description: null,
       createdAt: "2024-01-01",
-      meta: {
+      meta: fontMeta.parse({
         family: "Inter",
         variationAxes: {},
-      },
+      }),
     };
 
     const mockGenericAsset = {
@@ -906,6 +1100,29 @@ describe("allowed-file-types", () => {
       });
     });
 
+    test("converts image asset metadata for structured references", () => {
+      expect(
+        toAssetReferenceRuntimeData(mockImageAsset, "https://example.com")
+      ).toEqual({
+        id: "image-1",
+        url: "/cgi/image/photo.jpg?format=raw",
+        name: "photo.jpg",
+        description: "A photo",
+        mimeType: "image/jpeg",
+        projectId: "project-1",
+        size: 1024,
+        type: "image",
+        format: "jpg",
+        createdAt: "2024-01-01",
+        meta: {
+          width: 1920,
+          height: 1080,
+        },
+        width: 1920,
+        height: 1080,
+      });
+    });
+
     test("converts static font asset with metadata", () => {
       const result = toRuntimeAsset(mockFontAsset, "https://example.com");
       expect(result).toEqual({
@@ -916,7 +1133,7 @@ describe("allowed-file-types", () => {
       });
     });
 
-    test("converts variable font asset without style/weight", () => {
+    test("defaults variable font style and omits weight", () => {
       const result = toRuntimeAsset(
         mockVariableFontAsset,
         "https://example.com"
@@ -924,6 +1141,7 @@ describe("allowed-file-types", () => {
       expect(result).toEqual({
         url: "/cgi/asset/variable-font.woff2?format=raw",
         family: "Inter",
+        style: "normal",
       });
     });
 

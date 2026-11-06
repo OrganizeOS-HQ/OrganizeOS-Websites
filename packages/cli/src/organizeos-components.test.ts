@@ -14,6 +14,8 @@ import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import * as organizeosComponentMetas from "@organizeos/site-components/metas";
+import { createFrameworkComponentRegistry } from "@webstudio-is/sdk-components-registry/framework";
+import * as reactRouterComponents from "@webstudio-is/sdk-components-react-router";
 import { createFramework } from "./framework-react-router";
 import {
   ORGANIZEOS_NAMESPACE,
@@ -129,6 +131,41 @@ describe("the react-router framework", () => {
       );
       expect(framework.metas[component]).toBe(meta);
     }
+  });
+
+  // Upstream builds the maps through the component registry
+  // (createFrameworkComponentRegistry); the fork's loop only adds to them.
+  test("organizeos components and metas join the registry's maps", async () => {
+    await cp(
+      join(cliDir, "templates", "react-router", "app", "route-templates"),
+      join("app", "route-templates"),
+      { recursive: true }
+    );
+    const framework = await createFramework();
+    const registry = createFrameworkComponentRegistry({
+      routerComponents: reactRouterComponents,
+      routerComponentPackage: "@webstudio-is/sdk-components-react-router",
+    });
+    const organizeos = Object.keys(organizeosComponentMetas).map(
+      (name) => `${ORGANIZEOS_NAMESPACE}:${name}`
+    );
+
+    // every entry the registry makes is there, unchanged
+    expect(Object.keys(registry.components).length).toBeGreaterThan(0);
+    for (const [name, component] of Object.entries(registry.components)) {
+      expect(framework.components[name], name).toBe(component);
+      expect(framework.metas[name], name).toBe(registry.metas[name]);
+    }
+    // the build hooks are the registry's
+    expect(framework.componentBuildHooks).toEqual(registry.buildHooks);
+    // and the OrganizeOS blocks join them, none in place of a registry entry
+    expect(organizeos.some((name) => name in registry.components)).toBe(false);
+    expect(Object.keys(framework.components).sort()).toEqual(
+      [...Object.keys(registry.components), ...organizeos].sort()
+    );
+    expect(Object.keys(framework.metas).sort()).toEqual(
+      [...Object.keys(registry.metas), ...organizeos].sort()
+    );
   });
 
   test("every component it maps is exported by the build the copy is made of", async () => {

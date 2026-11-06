@@ -68,11 +68,6 @@ vi.mock("nanoid", async (importOriginal) => {
 enableMapSet();
 registerContainers();
 
-// The jsdom environment the apply path needs replaces the global Uint8Array
-// with jsdom's, which getAssetData's readers (image-meta, fontkit) then check
-// Node's Buffers against. Node's own, as vitest's node environment has it.
-globalThis.Uint8Array = Object.getPrototypeOf(Buffer.prototype).constructor;
-
 const projectId = "preview-project";
 const readToken = "osk_preview";
 /** Every date the bundle holds, fixed for the same reason as the ids. */

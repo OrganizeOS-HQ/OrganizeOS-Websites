@@ -1,4 +1,4 @@
-import htmlTags, { voidHtmlTags, type HtmlTags } from "html-tags";
+import { htmlTags, voidHtmlTags, type HtmlTags } from "@webstudio-is/html-data";
 import { inflatedAttribute, idAttribute } from "@webstudio-is/react-sdk";
 import { compareMedia, type StyleValue } from "@webstudio-is/css-engine";
 import { parseGridTemplateTrackList } from "@webstudio-is/css-data";
@@ -359,8 +359,6 @@ const applyInflation = () => {
     el.removeAttribute(inflatedAttribute);
     el.removeAttribute(gridInflatedAttribute);
     if (el instanceof HTMLElement) {
-      el.style.removeProperty("--ws-inflate-h");
-      el.style.removeProperty("--ws-inflate-w");
       if (wasInflated || wasGridInflated) {
         el.style.removeProperty("grid-template-columns");
         el.style.removeProperty("grid-template-rows");

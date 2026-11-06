@@ -1,8 +1,18 @@
 import { expect, test } from "vitest";
-import { $, ws, css, renderData, createProxy } from "@webstudio-is/template";
+import {
+  createTemplateComponentFixture,
+  ws,
+  css,
+  renderData,
+} from "@webstudio-is/template";
 import { generateCss, type CssConfig } from "./css";
 import type { Breakpoint } from "./schema/breakpoints";
+import type { Asset } from "./schema/assets";
 import { rootComponent } from "./core-metas";
+
+const Body = createTemplateComponentFixture("Body");
+const Box = createTemplateComponentFixture("Box");
+const ListItem = createTemplateComponentFixture("ListItem");
 
 const toMap = <T extends { id: string }>(list: T[]) =>
   new Map(list.map((item) => [item.id, item] as const));
@@ -19,9 +29,48 @@ const generateAllCss = (config: Omit<CssConfig, "atomic">) => {
   return { cssText, atomicCssText, classes, atomicClasses };
 };
 
+test("generates distinct upright and italic variable font faces", () => {
+  const variableFontAsset = (style: "normal" | "italic"): Asset => ({
+    id: style,
+    projectId: "project",
+    name: `family-${style}.woff2`,
+    type: "font",
+    size: 1,
+    format: "woff2",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    description: null,
+    meta: {
+      family: "Family",
+      style,
+      variationAxes: {
+        wght: { name: "Weight", min: 100, default: 400, max: 900 },
+      },
+    },
+  });
+  const assets = toMap([
+    variableFontAsset("normal"),
+    variableFontAsset("italic"),
+  ]);
+  const { cssText } = generateCss({
+    ...renderData(<Body />),
+    assets,
+    atomic: false,
+    componentMetas: new Map(),
+    assetBaseUrl: "/assets/",
+  });
+
+  expect(cssText).toBe(`@font-face {
+  font-family: Family; font-style: normal; font-weight: 100 900; font-display: swap; src: url("/assets/family-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: Family; font-style: italic; font-weight: 100 900; font-display: swap; src: url("/assets/family-italic.woff2") format("woff2");
+}
+`);
+});
+
 test("generate css for one instance with two tokens", () => {
   const { cssText, atomicCssText, atomicClasses } = generateAllCss({
-    ...renderData(<$.Box ws:id="box"></$.Box>),
+    ...renderData(<Box ws:id="box"></Box>),
     breakpoints: toMap<Breakpoint>([{ id: "base", label: "" }]),
     styleSourceSelections: new Map([
       ["box", { instanceId: "box", values: ["token", "local"] }],
@@ -78,7 +127,7 @@ Map {
 test("generate descendant selector", () => {
   const { cssText, atomicCssText, atomicClasses } = generateAllCss({
     ...renderData(
-      <$.Body
+      <Body
         ws:id="body"
         ws:style={css`
           color: blue;
@@ -97,7 +146,7 @@ test("generate descendant selector", () => {
             }
           `}
         />
-      </$.Body>
+      </Body>
     ),
     componentMetas: new Map(),
     assetBaseUrl: "",
@@ -151,9 +200,9 @@ Map {
 test("generate component presets with multiple tags", () => {
   const { cssText, atomicCssText, classes, atomicClasses } = generateAllCss({
     ...renderData(
-      <$.ListItem tag="div">
-        <$.ListItem tag="a"></$.ListItem>
-      </$.ListItem>
+      <ListItem tag="div">
+        <ListItem tag="a"></ListItem>
+      </ListItem>
     ),
     assets: new Map(),
     breakpoints: new Map(),
@@ -199,15 +248,19 @@ test("generate component presets with multiple tags", () => {
 });
 
 test("deduplicate component presets for similarly named components", () => {
-  const radix = createProxy("@webstudio/radix:");
-  const aria = createProxy("@webstudio/aria:");
+  const RadixListItem = createTemplateComponentFixture(
+    "@webstudio/radix:ListItem"
+  );
+  const AriaListItem = createTemplateComponentFixture(
+    "@webstudio/aria:ListItem"
+  );
   const { cssText, atomicCssText, classes, atomicClasses } = generateAllCss({
     ...renderData(
-      <$.ListItem>
-        <radix.ListItem>
-          <aria.ListItem></aria.ListItem>
-        </radix.ListItem>
-      </$.ListItem>
+      <ListItem>
+        <RadixListItem>
+          <AriaListItem></AriaListItem>
+        </RadixListItem>
+      </ListItem>
     ),
     assets: new Map(),
     breakpoints: new Map(),
@@ -275,19 +328,19 @@ test("deduplicate component presets for similarly named components", () => {
 test("expose preset classes to instances", () => {
   const { atomicCssText, classes, atomicClasses } = generateAllCss({
     ...renderData(
-      <$.Body
+      <Body
         ws:id="body"
         ws:style={css`
           color: blue;
         `}
       >
-        <$.Box
+        <Box
           ws:id="box"
           ws:style={css`
             color: red;
           `}
-        ></$.Box>
-      </$.Body>
+        ></Box>
+      </Body>
     ),
     componentMetas: new Map([
       [
@@ -360,20 +413,20 @@ Map {
 test("generate classes with instance and meta label", () => {
   const { cssText, classes } = generateAllCss({
     ...renderData(
-      <$.Body
+      <Body
         ws:id="body"
         ws:style={css`
           color: blue;
         `}
       >
-        <$.Box
+        <Box
           ws:id="box"
           ws:label="box%instance#label"
           ws:style={css`
             color: red;
           `}
-        ></$.Box>
-      </$.Body>
+        ></Box>
+      </Body>
     ),
     componentMetas: new Map([
       [
@@ -436,9 +489,9 @@ Map {
 test("generate :root preset and user styles", () => {
   const { cssText, atomicCssText, classes, atomicClasses } = generateAllCss({
     ...renderData(
-      <$.Body ws:id="body">
-        <$.Box ws:id="box"></$.Box>
-      </$.Body>
+      <Body ws:id="body">
+        <Box ws:id="box"></Box>
+      </Body>
     ),
     breakpoints: toMap([{ id: "base", label: "" }]),
     styleSourceSelections: new Map([
@@ -512,14 +565,14 @@ test("generate :root preset and user styles", () => {
 test("generate presets only for used tags", () => {
   const { cssText, classes } = generateCss({
     ...renderData(
-      <$.Body ws:id="body">
+      <Body ws:id="body">
         {/* first tag in preset */}
-        <$.Box></$.Box>
+        <Box></Box>
         {/* legacy tag property */}
-        <$.Box tag="span"></$.Box>
+        <Box tag="span"></Box>
         {/* modern ws:tag property */}
-        <$.Box ws:tag="article"></$.Box>
-      </$.Body>
+        <Box ws:tag="article"></Box>
+      </Body>
     ),
     atomic: false,
     breakpoints: toMap([{ id: "base", label: "" }]),

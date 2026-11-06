@@ -6,11 +6,13 @@ import {
   type Instance,
   type Page,
   type Pages,
+  type Resource,
 } from "@webstudio-is/sdk";
 import {
   getRestrictedFeatures,
   type RestrictedFeaturesPermissions,
 } from "./restricted-features";
+import type { ProjectSettings } from "@webstudio-is/project-build";
 
 const createPage = (page: Partial<Page> & Pick<Page, "id">): Page => ({
   name: page.id,
@@ -64,22 +66,145 @@ const defaultPermissions: RestrictedFeaturesPermissions = {
 
 const getFeatures = ({
   pages,
+  projectSettings,
   permissions,
+  dataSources = new Map<string, DataSource>(),
+  resources = new Map<string, Resource>(),
+  instances = new Map<string, Instance>(),
 }: {
   pages: Pages | undefined;
+  projectSettings?: ProjectSettings;
   permissions: Partial<RestrictedFeaturesPermissions>;
+  dataSources?: Map<string, DataSource>;
+  resources?: Map<string, Resource>;
+  instances?: Map<string, Instance>;
 }) =>
   getRestrictedFeatures({
     pages,
-    dataSources: new Map<string, DataSource>(),
-    instances: new Map<string, Instance>(),
+    projectSettings,
+    dataSources,
+    resources,
+    instances,
     permissions: { ...defaultPermissions, ...permissions },
   });
 
+const getPageRestrictedFeatures = (isDraft: boolean) => {
+  const page = createPage({
+    id: isDraft ? "draft" : "published",
+    path: isDraft ? "/draft/:slug" : "/published/:slug",
+    isDraft,
+    meta: {
+      auth: { method: "basic", login: "admin", password: "secret" },
+      redirect: `"/redirect"`,
+    },
+  });
+  return getFeatures({
+    pages: createPages({ pages: [homePage, page] }),
+    permissions: { allowAuth: false, allowDynamicData: false },
+    instances: new Map([
+      [
+        page.rootInstanceId,
+        {
+          type: "instance",
+          id: page.rootInstanceId,
+          component: "ws:element",
+          children: [],
+        },
+      ],
+    ]),
+    dataSources: new Map([
+      [
+        "resource-variable",
+        {
+          type: "resource",
+          id: "resource-variable",
+          resourceId: "resource",
+          scopeInstanceId: page.rootInstanceId,
+          name: "resourceVariable",
+        },
+      ],
+    ]),
+  });
+};
+
 describe("getRestrictedFeatures", () => {
+  test("restricts customized headers on the free plan", () => {
+    const features = getFeatures({
+      pages: createPages(),
+      projectSettings: {
+        compiler: {},
+        meta: { customHeaders: [{ name: "X-Frame-Options", value: "DENY" }] },
+      },
+      permissions: { allowDynamicData: false },
+    });
+
+    expect([...features.keys()]).toEqual(["Custom headers"]);
+  });
+
+  test("restricts path-specific header rules on the free plan", () => {
+    const features = getFeatures({
+      pages: createPages(),
+      projectSettings: {
+        compiler: {},
+        meta: {
+          customHeaders: [
+            {
+              route: "/private/*",
+              name: "Referrer-Policy",
+              value: "no-referrer",
+            },
+          ],
+        },
+      },
+      permissions: { allowDynamicData: false },
+    });
+    expect(features.has("Custom headers")).toBe(true);
+  });
+
+  test("allows custom headers on the Pro plan", () => {
+    const features = getFeatures({
+      pages: createPages(),
+      projectSettings: {
+        compiler: {},
+        meta: {
+          customHeaders: [
+            {
+              name: "Content-Security-Policy",
+              value: "frame-ancestors https://example.com",
+            },
+            { name: "X-Frame-Options", value: "DENY" },
+          ],
+        },
+      },
+      permissions: { allowDynamicData: true },
+    });
+
+    expect(features.has("Custom headers")).toBe(false);
+  });
+
+  test.each([
+    undefined,
+    [],
+    [{ name: "Content-Security-Policy", value: "frame-ancestors 'self'" }],
+    [{ name: "x-frame-options", value: "SAMEORIGIN" }],
+  ])(
+    "does not warn about missing or default custom headers (%j)",
+    (customHeaders) => {
+      const features = getFeatures({
+        pages: createPages(),
+        projectSettings: { compiler: {}, meta: { customHeaders } },
+        permissions: { allowDynamicData: false },
+      });
+
+      expect(features.has("Custom headers")).toBe(false);
+    }
+  );
+
   test("restricts project authentication when auth is not allowed", () => {
     const features = getFeatures({
-      pages: createPages({
+      pages: createPages(),
+      projectSettings: {
+        compiler: {},
         meta: {
           auth: JSON.stringify({
             version: 1,
@@ -92,7 +217,7 @@ describe("getRestrictedFeatures", () => {
             },
           }),
         },
-      }),
+      },
       permissions: { allowAuth: false },
     });
 
@@ -156,5 +281,78 @@ describe("getRestrictedFeatures", () => {
 
     expect(features.has("Project auth")).toBe(false);
     expect(features.has("Page auth")).toBe(false);
+  });
+
+  test("ignores restricted features used only by draft pages", () => {
+    expect(getPageRestrictedFeatures(true).size).toBe(0);
+  });
+
+  test("restricts dynamic features used by publishable pages", () => {
+    expect([...getPageRestrictedFeatures(false).keys()]).toEqual([
+      "Page auth",
+      "Dynamic path",
+      "Redirect",
+      "Resource variable",
+    ]);
+  });
+
+  test("identifies an Assets resource as a restricted custom-domain feature", () => {
+    const resources = new Map<string, Resource>([
+      [
+        "assets-resource",
+        {
+          id: "assets-resource",
+          name: "Assets",
+          control: "system",
+          method: "post",
+          url: '"/$resources/assets"',
+          searchParams: [],
+          headers: [],
+          body: "({ query: {} })",
+        },
+      ],
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "assets-variable",
+        {
+          type: "resource",
+          id: "assets-variable",
+          resourceId: "assets-resource",
+          scopeInstanceId: homePage.rootInstanceId,
+          name: "assets",
+        },
+      ],
+    ]);
+    const instances = new Map<string, Instance>([
+      [
+        homePage.rootInstanceId,
+        {
+          type: "instance",
+          id: homePage.rootInstanceId,
+          component: "ws:element",
+          children: [],
+        },
+      ],
+    ]);
+    const features = getFeatures({
+      pages: createPages(),
+      permissions: { allowDynamicData: false },
+      dataSources,
+      resources,
+      instances,
+    });
+
+    expect([...features.keys()]).toEqual(["Assets resource"]);
+
+    expect(
+      getFeatures({
+        pages: createPages(),
+        permissions: { allowDynamicData: true },
+        dataSources,
+        resources,
+        instances,
+      }).size
+    ).toBe(0);
   });
 });

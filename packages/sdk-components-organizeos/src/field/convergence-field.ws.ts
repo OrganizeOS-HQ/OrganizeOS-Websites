@@ -1,6 +1,7 @@
 import { RepeatGridIcon } from "@webstudio-is/icons/svg";
 import type { WsComponentMeta } from "@webstudio-is/sdk";
 import { div } from "@webstudio-is/sdk/normalize.css";
+import { canPlayOnCanvasProperty } from "../animate/flag";
 import { fieldDefaults, motions, shapeNames } from "./shape";
 
 export const meta: WsComponentMeta = {
@@ -12,6 +13,14 @@ export const meta: WsComponentMeta = {
   contentModel: {
     category: "instance",
     children: ["instance"],
+  },
+  // the canvas play flag: plays on the canvas while it, or an instance
+  // inside it, is selected (field spec 10.4)
+  selectionReveal: {
+    type: "fixed",
+    ancestor: "self",
+    prop: canPlayOnCanvasProperty,
+    value: true,
   },
   // the field's containing block and its own stacking context, so the field
   // (z-index -1) sits behind the children and above the element's background

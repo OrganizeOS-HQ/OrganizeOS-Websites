@@ -1,13 +1,12 @@
 {
-  "bundleVersion": "bundle-a6dad953",
+  "bundleVersion": "bundle-1sh9iaz",
   "build": {
-    "id": "8f0fdff2-e76b-4f86-9203-ea7df5f1143c",
+    "id": "823cc69d-b2ed-418b-823c-2efc717319cd",
     "projectId": "8a7358b1-7de3-459d-b7b1-56dddfb6ce1e",
     "version": 7,
-    "createdAt": "2026-01-04T10:46:48.415+00:00",
-    "updatedAt": "2026-01-04T10:46:48.415+00:00",
+    "createdAt": "2024-09-03T04:31:42.776+00:00",
+    "updatedAt": "2026-01-04T10:46:33.246+00:00",
     "pages": {
-      "meta": {},
       "homePageId": "Y60VJnVZMU_ifI0GnAR1N",
       "rootFolderId": "root",
       "pages": [
@@ -145,11 +144,9 @@
       ]
     ],
     "resources": [],
-    "deployment": {
-      "destination": "saas",
-      "domains": ["fixture-client-do-not-touch-wsmel"],
-      "assetsDomain": "fixture-client-do-not-touch-wsmel",
-      "excludeWstdDomainFromSearch": false
+    "projectSettings": {
+      "meta": {},
+      "compiler": {}
     }
   },
   "page": {
@@ -198,9 +195,7 @@
     }
   ],
   "assets": [],
-  "user": {
-    "email": "hello@webstudio.is"
-  },
+  "assetFolders": [],
   "projectDomain": "fixture-client-do-not-touch-wsmel",
   "projectTitle": "FIXTURE-CLIENT-DO-NOT-TOUCH",
   "origin": "https://main.development.webstudio.is"

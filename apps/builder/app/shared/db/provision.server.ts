@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
-import { createBuild } from "@webstudio-is/project-build/index.server";
+import { createBuild } from "@webstudio-is/project-build/server";
 import { resolveOrCreateUserByEmail } from "./user.server";
 import { seedProjectResourcePresets } from "./resource-presets.server";
 import { seedSignupFormPage } from "./signup-form-preset.server";

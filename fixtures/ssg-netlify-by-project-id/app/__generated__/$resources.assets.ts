@@ -1,1 +1,4 @@
-export const assets = {};
+
+    export const assets = {};
+    export const assetUrlsByPath = {};
+    

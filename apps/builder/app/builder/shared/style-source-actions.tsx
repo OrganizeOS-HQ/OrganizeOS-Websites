@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { atom, computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import {
+  PanelContent,
   Dialog,
   DialogActions,
   DialogContent,
@@ -13,25 +14,25 @@ import {
   theme,
   InputField,
   toast,
+  cssVar,
 } from "@webstudio-is/design-system";
-import type { Instance, StyleSource } from "@webstudio-is/sdk";
+import type { StyleSource } from "@webstudio-is/sdk";
+import type { RenameStyleSourceError } from "@webstudio-is/project-build/runtime";
 import {
   $selectedStyleSources,
   $selectedStyleState,
 } from "~/shared/nano-states";
-import { $styleSources } from "~/shared/sync/data-stores";
-import { $styleSourceSelections, $styles } from "~/shared/sync/data-stores";
 import {
-  deleteStyleSourceMutable,
+  $styleSourceSelections,
+  $styleSources,
+} from "~/shared/sync/data-stores";
+import {
   findUnusedTokens,
-  deleteStyleSourcesMutable,
-  validateAndRenameStyleSource,
-  renameStyleSourceMutable,
-  toggleStyleSourceLockMutable,
-  type RenameStyleSourceError,
-} from "~/shared/style-source-utils";
-import { serverSyncStore } from "~/shared/sync/sync-stores";
+  getStyleSourceUsages,
+  validateStyleSourceName,
+} from "@webstudio-is/project-build/runtime";
 import { $selectedInstance } from "~/shared/nano-states";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 
 const $isDeleteUnusedTokensDialogOpen = atom(false);
 
@@ -41,23 +42,13 @@ export const openDeleteUnusedTokensDialog = () => {
 
 export const $styleSourceUsages = computed(
   $styleSourceSelections,
-  (styleSourceSelections) => {
-    const styleSourceUsages = new Map<StyleSource["id"], Set<Instance["id"]>>();
-    for (const { instanceId, values } of styleSourceSelections.values()) {
-      for (const styleSourceId of values) {
-        let usages = styleSourceUsages.get(styleSourceId);
-        if (usages === undefined) {
-          usages = new Set();
-          styleSourceUsages.set(styleSourceId, usages);
-        }
-        usages.add(instanceId);
-      }
-    }
-    return styleSourceUsages;
-  }
+  (styleSourceSelections) =>
+    getStyleSourceUsages(styleSourceSelections.values())
 );
 
-const deselectMatchingStyleSource = (styleSourceId: StyleSource["id"]) => {
+export const deselectMatchingStyleSource = (
+  styleSourceId: StyleSource["id"]
+) => {
   const instanceId = $selectedInstance.get()?.id;
   if (instanceId === undefined) {
     return;
@@ -71,17 +62,10 @@ const deselectMatchingStyleSource = (styleSourceId: StyleSource["id"]) => {
 };
 
 export const deleteStyleSource = (styleSourceId: StyleSource["id"]) => {
-  serverSyncStore.createTransaction(
-    [$styleSources, $styleSourceSelections, $styles],
-    (styleSources, styleSourceSelections, styles) => {
-      deleteStyleSourceMutable({
-        styleSourceId,
-        styleSources,
-        styleSourceSelections,
-        styles,
-      });
-    }
-  );
+  executeRuntimeMutation({
+    id: "styleSources.delete",
+    input: { styleSourceIds: [styleSourceId] },
+  });
   // reset selected style source if necessary
   deselectMatchingStyleSource(styleSourceId);
 };
@@ -95,17 +79,10 @@ export const deleteUnusedTokens = () => {
     return 0;
   }
 
-  serverSyncStore.createTransaction(
-    [$styleSources, $styleSourceSelections, $styles],
-    (styleSources, styleSourceSelections, styles) => {
-      deleteStyleSourcesMutable({
-        styleSourceIds: unusedTokenIds,
-        styleSources,
-        styleSourceSelections,
-        styles,
-      });
-    }
-  );
+  executeRuntimeMutation({
+    id: "styleSources.delete",
+    input: { styleSourceIds: unusedTokenIds },
+  });
 
   return unusedTokenIds.length;
 };
@@ -115,7 +92,7 @@ export const renameStyleSource = (
   name: string
 ): RenameStyleSourceError | undefined => {
   const styleSources = $styleSources.get();
-  const validationError = validateAndRenameStyleSource({
+  const validationError = validateStyleSourceName({
     id,
     name,
     styleSources,
@@ -123,8 +100,12 @@ export const renameStyleSource = (
   if (validationError) {
     return validationError;
   }
-  serverSyncStore.createTransaction([$styleSources], (styleSources) => {
-    renameStyleSourceMutable({ id, name, styleSources });
+  executeRuntimeMutation({
+    id: "styleSources.rename",
+    input: {
+      styleSourceId: id,
+      name,
+    },
   });
 };
 
@@ -132,8 +113,12 @@ export const setStyleSourceLocked = (
   id: StyleSource["id"],
   locked: boolean
 ) => {
-  serverSyncStore.createTransaction([$styleSources], (styleSources) => {
-    toggleStyleSourceLockMutable({ id, locked, styleSources });
+  executeRuntimeMutation({
+    id: "styleSources.setLock",
+    input: {
+      styleSourceId: id,
+      locked,
+    },
   });
 };
 
@@ -164,9 +149,9 @@ export const DeleteStyleSourceDialog = ({
         }}
       >
         <DialogTitle>Delete confirmation</DialogTitle>
-        <Flex gap="3" direction="column" css={{ padding: theme.panel.padding }}>
+        <PanelContent as={Flex} gap="3" direction="column">
           <Text>{`Delete "${styleSource?.name}" token from the project including all of its styles?`}</Text>
-        </Flex>
+        </PanelContent>
         <DialogActions>
           <Button
             autoFocus
@@ -242,7 +227,7 @@ export const RenameStyleSourceDialog = ({
         }}
       >
         <DialogTitle>Rename token</DialogTitle>
-        <Flex gap="3" direction="column" css={{ padding: theme.panel.padding }}>
+        <PanelContent as={Flex} gap="3" direction="column">
           <Flex direction="column" gap="1">
             <InputField
               value={name}
@@ -258,7 +243,7 @@ export const RenameStyleSourceDialog = ({
               </Text>
             )}
           </Flex>
-        </Flex>
+        </PanelContent>
         <DialogActions>
           <Button color="primary" onClick={handleConfirm}>
             Rename
@@ -306,7 +291,7 @@ export const DeleteUnusedTokensDialog = () => {
         }}
       >
         <DialogTitle>Delete unused tokens</DialogTitle>
-        <Flex gap="3" direction="column" css={{ padding: theme.panel.padding }}>
+        <PanelContent as={Flex} gap="3" direction="column">
           {unusedTokens.length === 0 ? (
             <Text>There are no unused tokens to delete.</Text>
           ) : (
@@ -321,7 +306,7 @@ export const DeleteUnusedTokensDialog = () => {
                 css={{
                   maxHeight: 200,
                   overflowY: "auto",
-                  backgroundColor: theme.colors.backgroundPanel,
+                  backgroundColor: cssVar("--background-primary"),
                   borderRadius: theme.borderRadius[4],
                   wordBreak: "break-word",
                 }}
@@ -330,7 +315,7 @@ export const DeleteUnusedTokensDialog = () => {
               </Text>
             </>
           )}
-        </Flex>
+        </PanelContent>
         <DialogActions>
           {unusedTokens.length > 0 && (
             <Button

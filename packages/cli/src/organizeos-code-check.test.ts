@@ -142,6 +142,31 @@ describe("assertBuildCodeValid", () => {
     ).toThrow('The resource "News" header name of resource "r"');
   });
 
+  test.each([
+    ["subject", "subject"],
+    ["body", "body"],
+    ["senderExpression", "sender"],
+    ["recipientsExpression", "recipients"],
+  ] as const)("names an email resource's %s", (key, field) => {
+    expect(
+      check(
+        bundleOf({
+          resources: [
+            {
+              id: "r",
+              name: "Contact",
+              control: "email",
+              method: "post",
+              url: `""`,
+              headers: [],
+              email: { [key]: `"a".constructor.constructor("return 1")()` },
+            },
+          ],
+        })
+      )
+    ).toThrow(`The resource "Contact" email ${field} of resource "r"`);
+  });
+
   test("runs with the switch on, after a drop that keeps everything", () => {
     expect(orgScriptMayRun()).toBe(true);
     const bundle = dropOrgScript(

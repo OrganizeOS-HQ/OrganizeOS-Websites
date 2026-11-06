@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import type { Asset, Prop } from "@webstudio-is/sdk";
 import {
   createTestServer,
   db,
@@ -7,7 +8,11 @@ import {
   testContext,
 } from "@webstudio-is/postgrest/testing";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
-import type { Patch } from "immer";
+import { defaultPlanFeatures } from "@webstudio-is/plans";
+import {
+  parseInstanceData,
+  parsePages,
+} from "@webstudio-is/project-build/persistence";
 import {
   patchBuild,
   patchLoadedBuild,
@@ -24,6 +29,7 @@ const createContext = (): AppContext =>
   ({
     ...testContext,
     authorization: { type: "user", userId: "user-1" },
+    planFeatures: { ...defaultPlanFeatures, maxContactEmailsPerProject: 5 },
     getOwnerPlanFeatures: async () => ({}),
   }) as unknown as AppContext;
 
@@ -77,6 +83,7 @@ const buildRow = {
   ]),
   deployment: null,
   marketplaceProduct: JSON.stringify({}),
+  projectSettings: JSON.stringify({ meta: {}, compiler: {} }),
 };
 
 const transaction = (
@@ -94,7 +101,769 @@ const transaction = (
   ...overrides,
 });
 
+test("a pages-only save persists marked modern Form as ResourceForm with pages", async () => {
+  const markedPages = {
+    ...JSON.parse(buildRow.pages),
+    formComponentIdentityVersion: 1,
+  };
+  const build = {
+    ...buildRow,
+    pages: JSON.stringify(markedPages),
+    instances: JSON.stringify([
+      {
+        id: "body-1",
+        type: "instance",
+        component: "Body",
+        children: [{ type: "id", value: "form-1" }],
+      },
+      {
+        id: "form-1",
+        type: "instance",
+        component: "Form",
+        children: [{ type: "text", value: "Keep me" }],
+      },
+    ]),
+  };
+  const result = await createBuildPatchUpdate({
+    loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
+    build,
+    clientVersion: 3,
+    transactions: [
+      transaction({
+        payload: [
+          {
+            namespace: "pages",
+            patches: [
+              { op: "add", path: ["meta", "siteName"], value: "Updated" },
+            ],
+          },
+        ],
+      }),
+    ],
+  });
+  expect(result.status).toBe("ok");
+  if (result.status !== "ok" || result.update === undefined) {
+    return;
+  }
+  expect(result.update.pages).toBeDefined();
+  expect(result.update.instances).toBeDefined();
+  expect(JSON.parse(result.update.pages ?? "{}")).not.toHaveProperty(
+    "formComponentIdentityVersion"
+  );
+  const reloadedPages = parsePages(result.update.pages ?? "{}");
+  const reloadedInstances = parseInstanceData(result.update.instances ?? "[]");
+  expect(reloadedPages.meta?.siteName).toBe("Updated");
+  expect(reloadedInstances.get("form-1")).toEqual({
+    id: "form-1",
+    type: "instance",
+    component: "ResourceForm",
+    children: [{ type: "text", value: "Keep me" }],
+  });
+});
+
+test("marked modern Form patches persist as ResourceForm without changing WebhookForm", async () => {
+  const result = await createBuildPatchUpdate({
+    loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
+    build: {
+      ...buildRow,
+      pages: JSON.stringify({
+        ...JSON.parse(buildRow.pages),
+        formComponentIdentityVersion: 1,
+      }),
+      instances: JSON.stringify([
+        { id: "body-1", type: "instance", component: "Body", children: [] },
+        {
+          id: "webhook-1",
+          type: "instance",
+          component: "WebhookForm",
+          children: [],
+        },
+      ]),
+    },
+    clientVersion: 3,
+    transactions: [
+      transaction({
+        payload: [
+          {
+            namespace: "instances",
+            patches: [
+              {
+                op: "add",
+                path: ["form-1"],
+                value: {
+                  id: "form-1",
+                  type: "instance",
+                  component: "Form",
+                  children: [],
+                },
+              },
+              {
+                op: "replace",
+                path: ["webhook-1", "component"],
+                value: "Form",
+              },
+            ],
+          },
+        ],
+      }),
+    ],
+  });
+
+  expect(result.status).toBe("ok");
+  if (result.status !== "ok" || result.update === undefined) {
+    return;
+  }
+  expect(result.update.pages).toBeDefined();
+  expect(JSON.parse(result.update.pages ?? "{}")).not.toHaveProperty(
+    "formComponentIdentityVersion"
+  );
+  const reloadedInstances = parseInstanceData(result.update.instances ?? "[]");
+  expect(reloadedInstances.get("form-1")?.component).toBe("ResourceForm");
+  expect(reloadedInstances.get("webhook-1")?.component).toBe("WebhookForm");
+});
+
+test("historical Form instances retain WebhookForm identity after a stale patch", async () => {
+  const result = await createBuildPatchUpdate({
+    loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
+    build: {
+      ...buildRow,
+      instances: JSON.stringify([
+        { id: "body-1", type: "instance", component: "Body", children: [] },
+        { id: "form-1", type: "instance", component: "Form", children: [] },
+      ]),
+    },
+    clientVersion: 3,
+    transactions: [
+      transaction({
+        payload: [
+          {
+            namespace: "instances",
+            patches: [
+              { op: "replace", path: ["form-1", "component"], value: "Form" },
+            ],
+          },
+        ],
+      }),
+    ],
+  });
+
+  expect(result.status).toBe("ok");
+  if (result.status !== "ok" || result.update === undefined) {
+    return;
+  }
+  const reloadedInstances = parseInstanceData(result.update.instances ?? "[]");
+  expect(reloadedInstances.get("form-1")?.component).toBe("WebhookForm");
+});
+
+test("a Form patch from the previous Builder persists as ResourceForm after marker removal", async () => {
+  const result = await createBuildPatchUpdate({
+    loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
+    build: buildRow,
+    clientVersion: 3,
+    transactions: [
+      transaction({
+        payload: [
+          {
+            namespace: "instances",
+            patches: [
+              {
+                op: "add",
+                path: ["form-1"],
+                value: {
+                  id: "form-1",
+                  type: "instance",
+                  component: "Form",
+                  children: [],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    ],
+  });
+
+  expect(result.status).toBe("ok");
+  if (result.status !== "ok" || result.update === undefined) {
+    return;
+  }
+  const reloadedInstances = parseInstanceData(result.update.instances ?? "[]");
+  expect(reloadedInstances.get("form-1")?.component).toBe("ResourceForm");
+});
+
 describe("patchBuild", () => {
+  test.each([true, false])(
+    "asset-only saves validate changed file types, not unchanged legacy references: %s",
+    async (changesFile) => {
+      const source: Prop = {
+        id: "src",
+        instanceId: "body-1",
+        name: "src",
+        type: "asset",
+        value: "asset",
+      };
+      const build = {
+        ...buildRow,
+        instances: JSON.stringify([
+          { id: "body-1", type: "instance", component: "Image", children: [] },
+        ]),
+        props: JSON.stringify([source]),
+      };
+      const patches: BuildPatchTransaction["payload"][number]["patches"] = [
+        {
+          op: "replace",
+          path: ["asset", changesFile ? "name" : "description"],
+          value: changesFile ? "new.png" : "Description",
+        },
+      ];
+      const loadedPatches: unknown[] = [];
+      const result = await createBuildPatchUpdate({
+        build,
+        clientVersion: 3,
+        transactions: [
+          transaction({ payload: [{ namespace: "assets", patches }] }),
+        ],
+        loadAssets: async (ids, incoming) => {
+          expect(ids).toEqual(["asset"]);
+          loadedPatches.push(incoming);
+          const base = {
+            id: "asset",
+            projectId: "project-1",
+            size: 10,
+            createdAt: "",
+          };
+          return {
+            changedAssetIds: new Set(changesFile ? ["asset"] : []),
+            assets: [
+              changesFile
+                ? {
+                    ...base,
+                    type: "image",
+                    name: "new.png",
+                    format: "png",
+                    meta: { width: 120, height: 80 },
+                  }
+                : {
+                    ...base,
+                    type: "file",
+                    name: "old.txt",
+                    format: "txt",
+                    meta: {} as Record<string, never>,
+                  },
+            ],
+          };
+        },
+      });
+      expect(result.status).toBe("ok");
+      expect(loadedPatches).toEqual([patches]);
+      if (result.status === "ok") {
+        expect(result.update?.props).toBeUndefined();
+        expect(result.assetPatches).toEqual([patches]);
+      }
+    }
+  );
+
+  test.each(["restore", "replace", "asset-only"] as const)(
+    "rejects a %s that claims a text file is an image before any writes",
+    async (kind) => {
+      const source: Prop = {
+        id: "src",
+        instanceId: "body-1",
+        name: "src",
+        type: "asset",
+        value: "asset",
+      };
+      const image: Asset = {
+        id: "asset",
+        projectId: "project-1",
+        type: "image",
+        name: "old.png",
+        format: "png",
+        size: 10,
+        createdAt: buildRow.createdAt,
+        meta: { width: 120, height: 80 },
+      };
+      const file = {
+        name: "actual.txt",
+        format: "txt",
+        size: 10,
+        createdAt: buildRow.createdAt,
+        updatedAt: buildRow.updatedAt,
+        description: null,
+        meta: "{}",
+        status: "UPLOADED",
+      };
+      let didWrite = false;
+      server.use(
+        db.get("Asset", () =>
+          json(
+            kind === "restore"
+              ? []
+              : [
+                  {
+                    assetId: image.id,
+                    projectId: image.projectId,
+                    filename: null,
+                    description: null,
+                    file: {
+                      ...file,
+                      name: image.name,
+                      format: image.format,
+                      meta: JSON.stringify(image.meta),
+                    },
+                  },
+                ]
+          )
+        ),
+        db.get("File", () => json([file])),
+        db.patch("Build", () => {
+          didWrite = true;
+          return empty({ headers: { "Content-Range": "*/1" } });
+        }),
+        db.patch("Asset", () => {
+          didWrite = true;
+          return empty();
+        }),
+        db.post("Asset", () => {
+          didWrite = true;
+          return empty();
+        }),
+        db.post("AssetFolder", () => {
+          didWrite = true;
+          return empty();
+        })
+      );
+      const payload: BuildPatchTransaction["payload"] = [
+        {
+          namespace: "assets",
+          patches: [
+            {
+              op: kind === "restore" ? "add" : "replace",
+              path: [image.id],
+              value: { ...image, name: file.name },
+            },
+          ],
+        },
+        {
+          namespace: "assetFolders",
+          patches: [
+            {
+              op: "add",
+              path: ["folder"],
+              value: {
+                id: "folder",
+                projectId: "project-1",
+                name: "Folder",
+                createdAt: buildRow.createdAt,
+              },
+            },
+          ],
+        },
+      ];
+      if (kind !== "asset-only") {
+        payload.push({
+          namespace: "props",
+          patches: [{ op: "add", path: [source.id], value: source }],
+        });
+      }
+      const result = await patchLoadedBuild(
+        {
+          build: {
+            ...buildRow,
+            instances: JSON.stringify([
+              {
+                id: "body-1",
+                type: "instance",
+                component: "Image",
+                children: [],
+              },
+            ]),
+            props: JSON.stringify(kind === "asset-only" ? [source] : []),
+          },
+          buildId: buildRow.id,
+          projectId: buildRow.projectId,
+          clientVersion: 3,
+          transactions: [transaction({ payload })],
+          assetStore: {
+            readFile: async () => {
+              throw new Error("Unexpected file download");
+            },
+          },
+        },
+        createContext()
+      );
+      expect(result).toEqual({
+        status: "error",
+        errors: "This asset type is not allowed for this property.",
+      });
+      expect(didWrite).toBe(false);
+    }
+  );
+
+  test.each(["src", "width", "height", "alt"])(
+    "rejects incompatible Image %s assets before any database write",
+    async (name) => {
+      let didWrite = false;
+      let assetQuery: URL | undefined;
+      server.use(
+        db.get("Asset", ({ request }) => {
+          assetQuery = new URL(request.url);
+          return json([
+            {
+              assetId: "text-asset",
+              projectId: "project-1",
+              filename: null,
+              description: null,
+              file: {
+                name: "file.txt",
+                format: "txt",
+                size: 10,
+                createdAt: buildRow.createdAt,
+                updatedAt: buildRow.updatedAt,
+                description: null,
+                meta: "{}",
+              },
+            },
+          ]);
+        }),
+        db.patch("Build", () => {
+          didWrite = true;
+          return empty({ headers: { "Content-Range": "*/1" } });
+        })
+      );
+      const result = await patchLoadedBuild(
+        {
+          build: {
+            ...buildRow,
+            instances: JSON.stringify([
+              {
+                id: "body-1",
+                type: "instance",
+                component: "Image",
+                children: [],
+              },
+            ]),
+          },
+          buildId: buildRow.id,
+          projectId: buildRow.projectId,
+          clientVersion: 3,
+          transactions: [
+            transaction({
+              payload: [
+                {
+                  namespace: "props",
+                  patches: [
+                    {
+                      op: "add",
+                      path: [name],
+                      value: {
+                        id: name,
+                        instanceId: "body-1",
+                        name,
+                        type: "asset",
+                        value: "text-asset",
+                      },
+                    },
+                  ],
+                },
+              ],
+            }),
+          ],
+        },
+        createContext()
+      );
+      expect(result).toEqual({
+        status: "error",
+        errors: "This asset type is not allowed for this property.",
+      });
+      expect(didWrite).toBe(false);
+      expect(assetQuery?.searchParams.get("projectId")).toBe("eq.project-1");
+      expect(assetQuery?.searchParams.get("id")).toBe("in.(text-asset)");
+    }
+  );
+
+  test.each([
+    "record",
+    "field",
+    "map",
+    "component",
+    "repaired",
+    "unrelated",
+    "retry",
+  ] as const)(
+    "validates final asset references for %s patches",
+    async (kind) => {
+      const source: Prop = {
+        id: "src",
+        instanceId: "body-1",
+        name: "src",
+        type: "asset",
+        value: "text-asset",
+      };
+      const build = {
+        ...buildRow,
+        instances: JSON.stringify([
+          {
+            id: "body-1",
+            type: "instance",
+            component: kind === "component" ? "Box" : "Image",
+            children: [],
+          },
+        ]),
+        props: JSON.stringify([...JSON.parse(buildRow.props), source]),
+      };
+      const before = structuredClone(build);
+      const payload: BuildPatchTransaction["payload"] =
+        kind === "component"
+          ? [
+              {
+                namespace: "instances",
+                patches: [
+                  {
+                    op: "replace",
+                    path: ["body-1", "component"],
+                    value: "Image",
+                  },
+                ],
+              },
+            ]
+          : kind === "unrelated"
+            ? transaction().payload
+            : [
+                {
+                  namespace: "props",
+                  patches:
+                    kind === "map"
+                      ? [
+                          {
+                            op: "replace",
+                            path: [],
+                            value: new Map([[source.id, source]]),
+                          },
+                        ]
+                      : kind === "record"
+                        ? [{ op: "replace", path: [source.id], value: source }]
+                        : [
+                            {
+                              op: "replace",
+                              path: [source.id, "value"],
+                              value: source.value,
+                            },
+                          ],
+                },
+              ];
+      if (kind === "repaired") {
+        payload.push({
+          namespace: "props",
+          patches: [
+            {
+              op: "replace",
+              path: [source.id],
+              value: { ...source, type: "string", value: "/image.png" },
+            },
+          ],
+        });
+      }
+      const loaded: string[][] = [];
+      const result = await createBuildPatchUpdate({
+        build,
+        clientVersion: kind === "retry" ? 2 : 3,
+        transactions: [
+          transaction({
+            id: kind === "retry" ? build.lastTransactionId : "new",
+            payload,
+          }),
+        ],
+        loadAssets: async (ids) => {
+          loaded.push(ids);
+          return {
+            changedAssetIds: new Set(),
+            assets: [
+              {
+                id: source.value,
+                projectId: "project-1",
+                name: "file.txt",
+                type: "file",
+                format: "txt",
+                size: 10,
+                createdAt: "",
+                meta: {},
+              } satisfies Asset,
+            ],
+          };
+        },
+      });
+      const allowed = ["repaired", "unrelated", "retry"].includes(kind);
+      expect(result.status).toBe(allowed ? "ok" : "error");
+      expect(loaded).toEqual(allowed ? [] : [[source.value]]);
+      if (result.status === "ok" && kind === "repaired") {
+        expect(JSON.parse(result.update!.props!)).toContainEqual({
+          ...source,
+          type: "string",
+          value: "/image.png",
+        });
+      }
+      expect(build).toEqual(before);
+    }
+  );
+
+  test.each(["image", "missing"])(
+    "persists %s asset sources and linked metadata",
+    async (kind) => {
+      const savedProps: Prop[] = ["src", "width", "height", "alt"].map(
+        (name) => ({
+          id: name,
+          instanceId: "body-1",
+          name,
+          type: "asset",
+          value: "asset",
+        })
+      );
+      const requests: string[][] = [];
+      const result = await createBuildPatchUpdate({
+        build: {
+          ...buildRow,
+          instances: JSON.stringify([
+            {
+              id: "body-1",
+              type: "instance",
+              component: "Image",
+              children: [],
+            },
+          ]),
+        },
+        clientVersion: 3,
+        transactions: [
+          transaction({
+            payload: [
+              {
+                namespace: "props",
+                patches: savedProps.map((prop) => ({
+                  op: "add",
+                  path: [prop.id],
+                  value: prop,
+                })),
+              },
+            ],
+          }),
+        ],
+        loadAssets: async (ids) => {
+          requests.push(ids);
+          return {
+            changedAssetIds: new Set(),
+            assets:
+              kind === "missing"
+                ? []
+                : [
+                    {
+                      id: "asset",
+                      projectId: "project-1",
+                      type: "image",
+                      name: "image.png",
+                      format: "png",
+                      meta: { width: 120, height: 80 },
+                      size: 10,
+                      createdAt: "",
+                    },
+                  ],
+          };
+        },
+      });
+      expect(result.status).toBe("ok");
+      expect(requests).toEqual([["asset"]]);
+      if (result.status === "ok") {
+        expect(JSON.parse(result.update!.props!)).toEqual([
+          ...JSON.parse(buildRow.props),
+          ...savedProps,
+        ]);
+      }
+    }
+  );
+
+  test("rejects an over-limit Contact email raw patch before persistence", async () => {
+    let didUpdateBuild = false;
+    server.use(
+      db.get("Project", () => json({ userId: "owner-1" })),
+      db.patch("Build", () => {
+        didUpdateBuild = true;
+        return empty({ headers: { "Content-Range": "*/1" } });
+      })
+    );
+    const result = await patchLoadedBuild(
+      {
+        build: buildRow,
+        buildId: "build-1",
+        projectId: "project-1",
+        clientVersion: 3,
+        transactions: [
+          transaction({
+            payload: [
+              {
+                namespace: "projectSettings",
+                patches: [
+                  {
+                    op: "add",
+                    path: ["meta", "contactEmail"],
+                    value: "team@example.com",
+                  },
+                ],
+              },
+            ],
+          }),
+        ],
+      },
+      {
+        ...createContext(),
+        getOwnerPlanFeatures: async () => defaultPlanFeatures,
+      } as AppContext
+    );
+    expect(result).toMatchObject({
+      status: "error",
+      // OrganizeOS fork: the message names no Webstudio tier
+      errors:
+        "Custom recipients are not included in your plan. Your organization's plan is managed in OrganizeOS.",
+    });
+    expect(didUpdateBuild).toBe(false);
+  });
+
+  test("allows unrelated settings edits after a plan downgrade", async () => {
+    const existingBuild = {
+      ...buildRow,
+      projectSettings: JSON.stringify({
+        meta: { contactEmail: "legacy@example.com" },
+        compiler: {},
+      }),
+    };
+    server.use(
+      db.patch("Build", () => empty({ headers: { "Content-Range": "*/1" } }))
+    );
+    const result = await patchLoadedBuild(
+      {
+        build: existingBuild,
+        buildId: "build-1",
+        projectId: "project-1",
+        clientVersion: 3,
+        transactions: [
+          transaction({
+            payload: [
+              {
+                namespace: "projectSettings",
+                patches: [
+                  { op: "add", path: ["meta", "siteName"], value: "Site" },
+                ],
+              },
+            ],
+          }),
+        ],
+      },
+      {
+        ...createContext(),
+        getOwnerPlanFeatures: async () => defaultPlanFeatures,
+      } as AppContext
+    );
+    expect(result.status).toBe("ok");
+  });
+
   test("patches an already loaded build and returns the updated build row", async () => {
     let didLoadBuild = false;
     server.use(
@@ -131,6 +900,157 @@ describe("patchBuild", () => {
       ]);
     }
     expect(didLoadBuild).toBe(false);
+  });
+
+  test("persists asset-folder namespace changes before accepting the build transaction", async () => {
+    let insertedFolders: unknown;
+    server.use(
+      db.get("AssetFolder", () => json([])),
+      db.post("AssetFolder", async ({ request }) => {
+        insertedFolders = await request.json();
+        return json(insertedFolders as never);
+      }),
+      db.patch("Build", () => empty({ headers: { "Content-Range": "*/1" } }))
+    );
+
+    const result = await patchLoadedBuild(
+      {
+        build: buildRow,
+        buildId: "build-1",
+        projectId: "project-1",
+        clientVersion: 3,
+        transactions: [
+          transaction({
+            payload: [
+              {
+                namespace: "assetFolders",
+                patches: [
+                  {
+                    op: "add",
+                    path: ["folder-1"],
+                    value: {
+                      id: "folder-1",
+                      projectId: "project-1",
+                      name: "Images",
+                      createdAt: "2026-01-01T00:00:00.000Z",
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+        ],
+      },
+      createContext()
+    );
+
+    expect(result.status).toBe("ok");
+    expect(insertedFolders).toEqual([
+      {
+        id: "folder-1",
+        projectId: "project-1",
+        name: "Images",
+        parentId: null,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+  });
+
+  test("deletes folder assets before deleting the folder", async () => {
+    const calls: string[] = [];
+    const assetRow = {
+      assetId: "asset-1",
+      projectId: "project-1",
+      filename: null,
+      description: null,
+      folderId: "folder-1",
+      file: {
+        name: "asset.pdf",
+        format: "pdf",
+        description: null,
+        size: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        meta: "{}",
+        status: "UPLOADED",
+      },
+    };
+    server.use(
+      ownershipHandler,
+      db.get("AssetFolder", () =>
+        json([
+          {
+            id: "folder-1",
+            projectId: "project-1",
+            name: "Folder",
+            parentId: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ])
+      ),
+      db.get("Asset", ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.has("name")) {
+          return json([]);
+        }
+        if (url.searchParams.has("id")) {
+          return json([
+            {
+              id: "asset-1",
+              projectId: "project-1",
+              name: "asset.pdf",
+              file: assetRow.file,
+            },
+          ]);
+        }
+        return json([assetRow]);
+      }),
+      db.patch("Project", () => empty({ status: 204 })),
+      db.delete("Asset", () => {
+        calls.push("asset-delete");
+        return empty({ status: 204 });
+      }),
+      db.patch("File", () => empty({ status: 204 })),
+      db.delete("AssetFolder", () => {
+        calls.push("folder-delete");
+        return json([{ id: "folder-1" }]);
+      }),
+      db.patch("Build", () => {
+        calls.push("build-update");
+        return empty({ headers: { "Content-Range": "*/1" } });
+      })
+    );
+
+    const result = await patchLoadedBuild(
+      {
+        build: buildRow,
+        buildId: "build-1",
+        projectId: "project-1",
+        clientVersion: 3,
+        assetStore: {
+          readFile: async () => {
+            throw new Error("Unexpected asset content read");
+          },
+        },
+        transactions: [
+          transaction({
+            payload: [
+              {
+                namespace: "assetFolders",
+                patches: [{ op: "remove", path: ["folder-1"] }],
+              },
+              {
+                namespace: "assets",
+                patches: [{ op: "remove", path: ["asset-1"] }],
+              },
+            ],
+          }),
+        ],
+      },
+      createContext()
+    );
+
+    expect(result.status).toBe("ok");
+    expect(calls).toEqual(["asset-delete", "folder-delete", "build-update"]);
   });
 
   test("applies transactions, validates data, and updates build with optimistic version guard", async () => {
@@ -249,8 +1169,108 @@ describe("patchBuild", () => {
     ).toBe("/company");
   });
 
+  test("persists folder index paths for page updates and duplicates", async () => {
+    const buildWithFolder = {
+      ...buildRow,
+      pages: JSON.stringify({
+        meta: {},
+        homePage: {
+          id: "page-1",
+          name: "Home",
+          path: "",
+          title: "Home",
+          meta: {},
+          rootInstanceId: "body-1",
+        },
+        pages: [
+          {
+            id: "page-2",
+            name: "Landing",
+            path: "/landing",
+            title: "Landing",
+            meta: {},
+            rootInstanceId: "body-2",
+          },
+        ],
+        folders: [
+          {
+            id: "root",
+            name: "Root",
+            slug: "",
+            children: ["page-1", "folder-1"],
+          },
+          {
+            id: "folder-1",
+            name: "Folder",
+            slug: "folder",
+            children: ["page-2"],
+          },
+        ],
+      }),
+    };
+
+    const updated = await createBuildPatchUpdate({
+      loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
+      build: buildWithFolder,
+      clientVersion: 3,
+      transactions: [
+        transaction({
+          payload: [
+            {
+              namespace: "pages",
+              patches: [
+                {
+                  op: "replace",
+                  path: ["pages", "page-2", "path"],
+                  value: "",
+                },
+              ],
+            },
+          ],
+        }),
+      ],
+    });
+    expect(updated.status).toBe("ok");
+
+    const duplicated = await createBuildPatchUpdate({
+      loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
+      build: buildWithFolder,
+      clientVersion: 3,
+      transactions: [
+        transaction({
+          payload: [
+            {
+              namespace: "pages",
+              patches: [
+                {
+                  op: "add",
+                  path: ["pages", "page-copy"],
+                  value: {
+                    id: "page-copy",
+                    name: "Copy",
+                    path: "",
+                    title: "Copy",
+                    meta: {},
+                    rootInstanceId: "body-copy",
+                  },
+                },
+                {
+                  op: "add",
+                  path: ["folders", "folder-1", "children", 1],
+                  value: "page-copy",
+                },
+              ],
+            },
+          ],
+        }),
+      ],
+    });
+    expect(duplicated.status).toBe("ok");
+  });
+
   test("applies data source variable additions", async () => {
     const result = await createBuildPatchUpdate({
+      loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
       build: buildRow,
       clientVersion: 3,
       transactions: [
@@ -298,6 +1318,81 @@ describe("patchBuild", () => {
     }
   });
 
+  test("persists project settings without modifying pages storage", async () => {
+    const result = await createBuildPatchUpdate({
+      loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
+      build: buildRow,
+      clientVersion: 3,
+      transactions: [
+        transaction({
+          payload: [
+            {
+              namespace: "projectSettings",
+              patches: [
+                {
+                  op: "add",
+                  path: ["meta", "agentInstructions"],
+                  value: "Use existing components.",
+                },
+              ],
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.update).toBeDefined();
+      if (result.update === undefined) {
+        throw new Error("Expected project settings update");
+      }
+      expect(result.update.pages).toBeUndefined();
+      expect(
+        JSON.parse(result.update.projectSettings as string).meta
+      ).toMatchObject({
+        agentInstructions: "Use existing components.",
+      });
+    }
+  });
+
+  test("persists an explicitly cleared marketplace product", async () => {
+    const result = await createBuildPatchUpdate({
+      loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
+      build: {
+        ...buildRow,
+        marketplaceProduct: JSON.stringify({
+          category: "sectionTemplates",
+          name: "Example section",
+          thumbnailAssetId: "thumbnail",
+          author: "Webstudio",
+          email: "hello@example.com",
+          website: "",
+          issues: "",
+          description: "Example marketplace product",
+        }),
+      },
+      clientVersion: 3,
+      transactions: [
+        transaction({
+          payload: [
+            {
+              namespace: "marketplaceProduct",
+              patches: [{ op: "replace", path: [], value: undefined }],
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(JSON.parse(result.update?.marketplaceProduct ?? "null")).toEqual(
+        {}
+      );
+    }
+  });
+
   test("validates only touched props while preserving untouched props", async () => {
     const buildWithInvalidUntouchedProp = {
       ...buildRow,
@@ -320,6 +1415,7 @@ describe("patchBuild", () => {
     };
 
     const result = await createBuildPatchUpdate({
+      loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
       build: buildWithInvalidUntouchedProp,
       clientVersion: 3,
       transactions: [transaction()],
@@ -349,6 +1445,7 @@ describe("patchBuild", () => {
   test("rejects invalid touched props", async () => {
     await expect(
       createBuildPatchUpdate({
+        loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
         build: buildRow,
         clientVersion: 3,
         transactions: [
@@ -374,6 +1471,7 @@ describe("patchBuild", () => {
   test("rejects touched props set to undefined", async () => {
     await expect(
       createBuildPatchUpdate({
+        loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
         build: buildRow,
         clientVersion: 3,
         transactions: [
@@ -399,6 +1497,7 @@ describe("patchBuild", () => {
   test("validates all props when patch replaces the props map", async () => {
     await expect(
       createBuildPatchUpdate({
+        loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
         build: buildRow,
         clientVersion: 3,
         transactions: [
@@ -447,6 +1546,7 @@ describe("patchBuild", () => {
 
     await expect(
       createBuildPatchUpdate({
+        loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
         build: buildWithStyle,
         clientVersion: 3,
         transactions: [
@@ -488,6 +1588,7 @@ describe("patchBuild", () => {
     };
 
     const result = await createBuildPatchUpdate({
+      loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
       build: buildWithInvalidUntouchedInstance,
       clientVersion: 3,
       transactions: [
@@ -497,7 +1598,7 @@ describe("patchBuild", () => {
               namespace: "instances",
               patches: [
                 {
-                  op: "replace",
+                  op: "add",
                   path: ["body-1", "label"],
                   value: "Body label",
                 },
@@ -530,6 +1631,7 @@ describe("patchBuild", () => {
   test("rejects invalid touched instances", async () => {
     await expect(
       createBuildPatchUpdate({
+        loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
         build: buildRow,
         clientVersion: 3,
         transactions: [
@@ -591,6 +1693,12 @@ describe("patchBuild", () => {
     );
 
     expect(result).toEqual(singlePlayerVersionMismatchResult);
+    // OrganizeOS fork: the message names no Webstudio tier
+    expect(result).toEqual({
+      status: "version_mismatched",
+      errors:
+        "You are currently in single-player mode. The project has been edited in a different tab, browser, or by another user. Please reload the page to get the latest version.",
+    });
   });
 
   test("returns version_mismatched when optimistic update affects no rows", async () => {
@@ -649,8 +1757,9 @@ describe("patchBuild", () => {
   });
 
   test("core patch helper is decoupled from asset app logic", async () => {
-    const assetPatch: Patch = { op: "add", path: ["asset-1"], value: {} };
+    const assetPatch = { op: "add" as const, path: ["asset-1"], value: {} };
     const result = await createBuildPatchUpdate({
+      loadAssets: async () => ({ assets: [], changedAssetIds: new Set() }),
       build: buildRow,
       clientVersion: 3,
       transactions: [

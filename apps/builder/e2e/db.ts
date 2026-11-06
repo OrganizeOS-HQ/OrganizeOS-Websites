@@ -5,16 +5,15 @@ import {
   createClient,
   type Database,
 } from "@webstudio-is/postgrest/index.server";
+import env from "../app/env/env.server";
 
 const execFileAsync = promisify(execFile);
 
-const postgrestUrl = process.env.POSTGREST_URL ?? "http://127.0.0.1:55433";
-const postgrestApiKey = process.env.POSTGREST_API_KEY ?? "";
-const composeFile = fileURLToPath(
-  new URL("../docker-compose.e2e.yaml", import.meta.url)
+const backendScript = fileURLToPath(
+  new URL("../backend/run.sh", import.meta.url)
 );
 
-const postgrest = createClient(postgrestUrl, postgrestApiKey);
+const postgrest = createClient(env.POSTGREST_URL, env.POSTGREST_API_KEY);
 
 const throwIfError = <Data>({
   error,
@@ -51,22 +50,17 @@ export const resetDatabase = async () => {
   `;
 
   await execFileAsync(
-    "docker",
+    "bash",
     [
-      "compose",
-      "-f",
-      composeFile,
+      backendScript,
+      process.env.E2E_BACKEND_MODE ?? "test",
       "exec",
       "-T",
       "db",
-      "psql",
-      "-U",
-      "user",
-      "-d",
-      "webstudio",
-      "-v",
-      "ON_ERROR_STOP=1",
+      "sh",
       "-c",
+      'PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "$1"',
+      "sh",
       sql,
     ],
     { maxBuffer: 1024 * 1024 }
@@ -81,6 +75,15 @@ export const updateBuild = async (
 ) => {
   return throwIfError(
     await postgrest.from("Build").update(row).eq("id", id).select().single()
+  );
+};
+
+export const updateProject = async (
+  id: string,
+  row: Tables["Project"]["Update"]
+) => {
+  return throwIfError(
+    await postgrest.from("Project").update(row).eq("id", id).select().single()
   );
 };
 

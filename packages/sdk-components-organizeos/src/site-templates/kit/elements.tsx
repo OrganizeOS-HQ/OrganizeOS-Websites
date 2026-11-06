@@ -13,7 +13,10 @@ import { sample } from "./sample";
 export const keyed = (elements: JSX.Element[]): JSX.Element[] =>
   elements.map((element, index) => cloneElement(element, { key: index }));
 
-/** Sample text in a tag, unstyled beyond the given styles. */
+/**
+ * Sample text in a tag, unstyled beyond the given styles. No styles give no
+ * local style source (0.309.0's renderer refuses an empty `ws:style`).
+ */
 export const text = (
   tag: string,
   styles: TemplateStyleDecl[],
@@ -23,7 +26,7 @@ export const text = (
   <ws.element
     ws:tag={tag}
     {...(label === undefined ? {} : { "ws:label": label })}
-    ws:style={styles}
+    {...(styles.length === 0 ? {} : { "ws:style": styles })}
   >
     {sample(value)}
   </ws.element>

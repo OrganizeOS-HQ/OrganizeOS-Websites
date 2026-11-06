@@ -1,0 +1,394 @@
+import { describe, expect, test, vi } from "vitest";
+import type { AssetFileDocument } from "./schema";
+import { contentEngineLimits } from "./limits";
+import { discoverMarkdownAssetReferenceRanges } from "./markdown-assets";
+import {
+  hydrateAssetResourceResult,
+  type AssetResourceContentReader,
+} from "./hydration";
+
+const encoder = new TextEncoder();
+const createDocument = (
+  id: string,
+  text: string,
+  overrides: Partial<AssetFileDocument> = {}
+): AssetFileDocument => ({
+  _id: id,
+  _type: "asset.file",
+  name: `${id}.md`,
+  path: `blog/${id}.md`,
+  key: id,
+  extension: "md",
+  mimeType: "text/markdown",
+  size: encoder.encode(text).byteLength,
+  revision: `revision-${id}`,
+  contentRef: `stored-${id}`,
+  properties: {},
+  ...overrides,
+});
+const identity = (document: AssetFileDocument) => ({
+  _id: document._id,
+  revision: document.revision,
+  contentRef: document.contentRef,
+});
+const createReader = (files: Record<string, string | Uint8Array>) =>
+  vi.fn<AssetResourceContentReader>(async (contentRef, range) => {
+    const source = files[contentRef];
+    if (source === undefined) {
+      throw new Error("missing fixture");
+    }
+    const bytes = typeof source === "string" ? encoder.encode(source) : source;
+    const selected =
+      range === undefined
+        ? bytes
+        : bytes.subarray(range.offset, range.offset + range.length);
+    return {
+      data: {
+        async *[Symbol.asyncIterator]() {
+          yield selected;
+        },
+      },
+      contentLength: selected.byteLength,
+    };
+  });
+
+describe("selected asset content hydration", () => {
+  test("does not inspect identities or read files in none mode", async () => {
+    const read = createReader({});
+    await expect(
+      hydrateAssetResourceResult({
+        result: { projected: true },
+        documents: [],
+        options: { mode: "none" },
+        read,
+      })
+    ).resolves.toEqual({
+      content: {},
+      hydratedFileCount: 0,
+      hydratedBytes: 0,
+    });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  test("hydrates no files when a detail query has no match", async () => {
+    const read = createReader({});
+    await expect(
+      hydrateAssetResourceResult({
+        result: null,
+        documents: [],
+        options: { mode: "full" },
+        read,
+      })
+    ).resolves.toEqual({
+      content: {},
+      hydratedFileCount: 0,
+      hydratedBytes: 0,
+    });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  test("hydrates complete text for selected IDs only and deduplicates IDs", async () => {
+    const first = createDocument("first", "# First");
+    const second = createDocument("second", "# Second");
+    const read = createReader({
+      [first.contentRef]: "# First",
+      [second.contentRef]: "# Second",
+    });
+    const result = await hydrateAssetResourceResult({
+      result: [identity(first), identity(first)],
+      documents: [first, second],
+      options: { mode: "full" },
+      read,
+    });
+
+    expect(result.content[first._id]?.text).toBe("# First");
+    expect(result.hydratedFileCount).toBe(1);
+    expect(read).toHaveBeenCalledOnce();
+    expect(read).toHaveBeenCalledWith(first.contentRef, {
+      offset: 0,
+      length: first.size,
+    });
+  });
+
+  test("hydrates a bounded byte range with range metadata", async () => {
+    const document = createDocument("range", "0123456789");
+    const read = createReader({ [document.contentRef]: "0123456789" });
+    const result = await hydrateAssetResourceResult({
+      result: identity(document),
+      documents: [document],
+      options: { mode: "range", offset: 3, length: 4 },
+      read,
+    });
+
+    expect(result.content[document._id]).toMatchObject({
+      text: "3456",
+      range: { offset: 3, length: 4, total: 10 },
+    });
+    expect(read).toHaveBeenCalledWith(document.contentRef, {
+      offset: 3,
+      length: 4,
+    });
+  });
+
+  test("decodes Markdown body without YAML frontmatter", async () => {
+    const source = "---\ntitle: Hello\n---\n# Body\n";
+    const document = createDocument("markdown", source);
+    const read = createReader({ [document.contentRef]: source });
+    const result = await hydrateAssetResourceResult({
+      result: identity(document),
+      documents: [document],
+      options: { mode: "markdown-body-ref" },
+      read,
+    });
+    expect(result.content[document._id]?.text).toBe("# Body\n");
+  });
+
+  test("resolves relative images per article path when articles share stored bytes", async () => {
+    const body = "![Cover](./cover.svg)\n";
+    const documents = ["first", "second"].map((id) =>
+      createDocument(id, body, {
+        path: `${id}/post.md`,
+        contentRef: "shared-content",
+      })
+    );
+    const assetPaths = {
+      "first-cover": "first/cover.svg",
+      "second-cover": "second/cover.svg",
+    };
+    const assetUrls = {
+      "first-cover": "/assets/first.svg",
+      "second-cover": "/assets/second.svg",
+    };
+    // A mixed full/body query can include a reference map keyed by shared bytes.
+    const references = discoverMarkdownAssetReferenceRanges({
+      markdown: body,
+      sourcePath: documents[0].path,
+      assetIdsByPath: new Map(
+        Object.entries(assetPaths).map(([id, path]) => [path, id])
+      ),
+    });
+    const result = await hydrateAssetResourceResult({
+      result: documents.map(identity),
+      documents,
+      options: { mode: "markdown-body-ref" },
+      read: createReader({ "shared-content": body }),
+      assetReferences: { "shared-content": references },
+      assetPaths,
+      assetUrls,
+    });
+
+    expect(result.content.first.text).toBe("![Cover](/assets/first.svg)\n");
+    expect(result.content.second.text).toBe("![Cover](/assets/second.svg)\n");
+  });
+
+  test("requires selected projections to retain stable content identity", async () => {
+    const document = createDocument("post", "Post");
+    const read = createReader({ [document.contentRef]: "Post" });
+    await expect(
+      hydrateAssetResourceResult({
+        result: { _id: document._id },
+        documents: [document],
+        options: { mode: "full" },
+        read,
+      })
+    ).rejects.toMatchObject({ code: "CONTENT_IDENTITY_REQUIRED" });
+    await expect(
+      hydrateAssetResourceResult({
+        result: { ...identity(document), revision: "stale" },
+        documents: [document],
+        options: { mode: "full" },
+        read,
+      })
+    ).rejects.toMatchObject({ code: "CONTENT_IDENTITY_REQUIRED" });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  test("enforces file-count, per-file, and total-byte limits before reads", async () => {
+    const read = createReader({});
+    const many = Array.from(
+      { length: contentEngineLimits.hydratedFileCount + 1 },
+      (_, index) => createDocument(`post-${index}`, "x")
+    );
+    await expect(
+      hydrateAssetResourceResult({
+        result: many.map(identity),
+        documents: many,
+        options: { mode: "full" },
+        read,
+      })
+    ).rejects.toMatchObject({ code: "CONTENT_LIMIT_EXCEEDED" });
+
+    const tooLarge = createDocument("large", "", {
+      size: contentEngineLimits.hydratedFileBytes + 1,
+    });
+    await expect(
+      hydrateAssetResourceResult({
+        result: identity(tooLarge),
+        documents: [tooLarge],
+        options: { mode: "full" },
+        read,
+      })
+    ).rejects.toMatchObject({ code: "CONTENT_LIMIT_EXCEEDED" });
+
+    const total = Array.from({ length: 3 }, (_, index) =>
+      createDocument(`large-${index}`, "", {
+        size: contentEngineLimits.hydratedFileBytes,
+      })
+    );
+    await expect(
+      hydrateAssetResourceResult({
+        result: total.map(identity),
+        documents: total,
+        options: { mode: "full" },
+        read,
+      })
+    ).rejects.toMatchObject({ code: "CONTENT_LIMIT_EXCEEDED" });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  test("rejects binary and invalid UTF-8 while treating frontmatter as data", async () => {
+    const binary = createDocument("binary", "png", {
+      name: "binary.png",
+      extension: "png",
+      mimeType: "image/png",
+    });
+    const invalid = createDocument("invalid", "xx", { size: 2 });
+    const protectedDocument = createDocument("private", "secret", {
+      properties: { private: true },
+    });
+    const read = createReader({
+      [binary.contentRef]: "png",
+      [invalid.contentRef]: new Uint8Array([0xc3, 0x28]),
+      [protectedDocument.contentRef]: "secret",
+    });
+    await expect(
+      hydrateAssetResourceResult({
+        result: identity(binary),
+        documents: [binary],
+        options: { mode: "full" },
+        read,
+      })
+    ).rejects.toMatchObject({ code: "CONTENT_NOT_TEXT" });
+    await expect(
+      hydrateAssetResourceResult({
+        result: identity(invalid),
+        documents: [invalid],
+        options: { mode: "full" },
+        read,
+      })
+    ).rejects.toMatchObject({ code: "CONTENT_DECODING_FAILED" });
+    await expect(
+      hydrateAssetResourceResult({
+        result: identity(protectedDocument),
+        documents: [protectedDocument],
+        options: { mode: "full" },
+        read,
+      })
+    ).resolves.toMatchObject({
+      content: { private: { text: "secret" } },
+    });
+  });
+
+  test("reports every selected file hydration failure", async () => {
+    const first = createDocument("first-invalid", "xx", { size: 2 });
+    const second = createDocument("second-invalid", "xx", { size: 2 });
+    const read = createReader({
+      [first.contentRef]: new Uint8Array([0xc3, 0x28]),
+      [second.contentRef]: new Uint8Array([0xc3, 0x28]),
+    });
+
+    await expect(
+      hydrateAssetResourceResult({
+        result: [identity(first), identity(second)],
+        documents: [first, second],
+        options: { mode: "full" },
+        read,
+      })
+    ).rejects.toMatchObject({
+      code: "CONTENT_DECODING_FAILED",
+      details: {
+        diagnostics: [
+          {
+            code: "CONTENT_DECODING_FAILED",
+            assetId: "first-invalid",
+            path: "blog/first-invalid.md",
+          },
+          {
+            code: "CONTENT_DECODING_FAILED",
+            assetId: "second-invalid",
+            path: "blog/second-invalid.md",
+          },
+        ],
+      },
+    });
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  test("hydrates SVG assets as supported UTF-8 text", async () => {
+    const source = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+    const document = createDocument("vector", source, {
+      name: "vector.svg",
+      extension: "svg",
+      mimeType: "image/svg+xml",
+    });
+    const read = createReader({ [document.contentRef]: source });
+
+    await expect(
+      hydrateAssetResourceResult({
+        result: identity(document),
+        documents: [document],
+        options: { mode: "full" },
+        read,
+      })
+    ).resolves.toMatchObject({
+      content: { vector: { text: source } },
+    });
+  });
+
+  test("waits for every started content read before propagating a failure", async () => {
+    const failed = createDocument("failed", "x");
+    const slow = createDocument("slow", "y");
+    let release: (() => void) | undefined;
+    let slowReadCompleted = false;
+    const read: AssetResourceContentReader = async (contentRef) => {
+      if (contentRef === failed.contentRef) {
+        throw new Error("read failed");
+      }
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      slowReadCompleted = true;
+      return {
+        data: {
+          async *[Symbol.asyncIterator]() {
+            yield encoder.encode("y");
+          },
+        },
+      };
+    };
+    const pending = hydrateAssetResourceResult({
+      result: [identity(failed), identity(slow)],
+      documents: [failed, slow],
+      options: { mode: "full" },
+      read,
+    });
+
+    await expect.poll(() => release).toBeTypeOf("function");
+    release?.();
+
+    await expect(pending).rejects.toMatchObject({
+      code: "INVALID_REQUEST",
+      message: "read failed",
+      details: {
+        diagnostics: [
+          {
+            code: "CONTENT_READ_FAILED",
+            assetId: "failed",
+            path: "blog/failed.md",
+          },
+        ],
+      },
+    });
+    expect(slowReadCompleted).toBe(true);
+  });
+});

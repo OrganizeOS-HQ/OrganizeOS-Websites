@@ -1,3 +1,4 @@
+import { encodeDataSourceVariable } from "@webstudio-is/sdk";
 import {
   insertAsset,
   insertAuthorizationToken,
@@ -16,6 +17,8 @@ export type SeededContentModeProject = {
   linkInstanceId: string;
   imageInstanceId: string;
   videoInstanceId: string;
+  inlineImageHeadingText: string;
+  assetTemplateImageAssetId: string;
   assetTemplateImageName: string;
   assetTemplateName: string;
   assetTemplateImageAlt: string;
@@ -37,9 +40,19 @@ export type SeededContentModeProject = {
   isolatedLocalTemplateName: string;
   isolatedLocalTemplateText: string;
   isolatedLocalTemplateFontSize: string;
-  tokenTemplateName: string;
-  tokenTemplateText: string;
+  tokenTemplateLabel: string;
+  tokenTemplateVisibleText: string;
   tokenTemplateFontSize: string;
+  dataResourceTemplateLabel: string;
+  dataResourceStaticTextLabel: string;
+  dataResourceStaticVariableName: string;
+  dataResourceStaticVariableVisibleValue: string;
+  dataResourceHttpVariableName: string;
+  dataResourceGraphqlVariableName: string;
+  dataResourceSystemVariableName: string;
+  dataResourceHttpResourceLabel: string;
+  dataResourceGraphqlResourceLabel: string;
+  dataResourceSystemResourceLabel: string;
   deletableTemplateName: string;
   deletableTemplateText: string;
   nestedTemplateName: string;
@@ -72,9 +85,19 @@ const styledHeadingTemplateFontSize = "32px";
 const isolatedLocalTemplateName = "Isolated Local Style Template";
 const isolatedLocalTemplateText = "Isolated local heading";
 const isolatedLocalTemplateFontSize = "34px";
-const tokenTemplateName = "Token Template";
-const tokenTemplateText = "Token styled heading";
+const tokenTemplateLabel = "Token Template";
+const tokenTemplateVisibleText = "Token styled heading";
 const tokenTemplateFontSize = "36px";
+const dataResourceTemplateLabel = "Data Resource Template";
+const dataResourceStaticTextLabel = "Data resource static value:";
+const dataResourceStaticVariableName = "staticLabel";
+const dataResourceStaticVariableVisibleValue = "Static variable copied";
+const dataResourceHttpVariableName = "posts";
+const dataResourceGraphqlVariableName = "postGraphql";
+const dataResourceSystemVariableName = "currentDate";
+const dataResourceHttpResourceLabel = "Posts Resource";
+const dataResourceGraphqlResourceLabel = "Post GraphQL Resource";
+const dataResourceSystemResourceLabel = "Current Date Resource";
 const deletableTemplateName = "Deletable Template";
 const deletableTemplateText = "Content block child to delete";
 const nestedTemplateName = "Nested Template";
@@ -82,6 +105,7 @@ const nestedTemplateText = "Nested content descendant";
 const pageTemplateName = "Content Page Template";
 const pageTemplateText = "Content page template heading";
 const pageTemplateFontSize = "38px";
+const inlineImageHeadingText = "Heading with protected image";
 
 const getBaseBreakpointId = (breakpoints: string) => {
   const parsedBreakpoints = JSON.parse(breakpoints) as Array<{
@@ -121,6 +145,8 @@ const createContentModeBuildData = ({
   const rootInstanceId = "body";
   const contentBlockId = "content-block";
   const contentBlockTemplateId = "content-block-template";
+  const inlineImageHeadingId = "inline-image-heading";
+  const inlineImageId = "inline-image";
   const assetTemplateId = "asset-template";
   const assetTemplateImageInstanceId = "asset-template-image";
   const assetTemplateVideoInstanceId = "asset-template-video";
@@ -135,6 +161,9 @@ const createContentModeBuildData = ({
   const shareLinkEditableInstanceId = "share-link-editable-content";
   const collaborationTemplateId = "collaboration-template";
   const styledHeadingTemplateId = "styled-heading-template";
+  const styledHeadingTemplateHeadingId = "styled-heading-template-heading";
+  const styledHeadingTemplateSvgId = "styled-heading-template-svg";
+  const styledHeadingTemplatePathId = "styled-heading-template-path";
   const styledHeadingTemplateLocalStyleSourceId =
     "styled-heading-template-local-style-source";
   const isolatedLocalTemplateId = "isolated-local-template";
@@ -142,6 +171,20 @@ const createContentModeBuildData = ({
     "isolated-local-template-style-source";
   const tokenTemplateId = "token-template";
   const tokenTemplateStyleSourceId = "content-mode-token-style-source";
+  const dataResourceTemplateId = "data-resource-template";
+  const dataResourceStaticTextId = "data-resource-static-text";
+  const dataResourceHttpFormId = "data-resource-http-form";
+  const dataResourceHttpFormTextId = "data-resource-http-form-text";
+  const dataResourceGraphqlFormId = "data-resource-graphql-form";
+  const dataResourceGraphqlFormTextId = "data-resource-graphql-form-text";
+  const dataResourceSystemTextId = "data-resource-system-text";
+  const dataResourceStaticVariableId = "data-resource-static-variable";
+  const dataResourceHttpDataSourceId = "data-resource-http-data-source";
+  const dataResourceGraphqlDataSourceId = "data-resource-graphql-data-source";
+  const dataResourceSystemDataSourceId = "data-resource-system-data-source";
+  const dataResourceHttpResourceId = "data-resource-http-resource";
+  const dataResourceGraphqlResourceId = "data-resource-graphql-resource";
+  const dataResourceSystemResourceId = "data-resource-system-resource";
   const deletableTemplateId = "deletable-template";
   const nestedTemplateId = "nested-template";
   const nestedTemplateTextId = "nested-template-text";
@@ -165,6 +208,7 @@ const createContentModeBuildData = ({
       component: "ws:block",
       children: [
         { type: "id", value: listItemInstanceId },
+        { type: "id", value: inlineImageHeadingId },
         { type: "id", value: linkInstanceId },
         { type: "id", value: imageInstanceId },
         { type: "id", value: videoInstanceId },
@@ -181,6 +225,7 @@ const createContentModeBuildData = ({
         { type: "id", value: styledHeadingTemplateId },
         { type: "id", value: isolatedLocalTemplateId },
         { type: "id", value: tokenTemplateId },
+        { type: "id", value: dataResourceTemplateId },
         { type: "id", value: imageReplacementTemplateId },
         { type: "id", value: contentPropsTemplateId },
         { type: "id", value: editableTextTemplateId },
@@ -256,6 +301,25 @@ const createContentModeBuildData = ({
     },
     {
       type: "instance",
+      id: inlineImageHeadingId,
+      component: "ws:element",
+      tag: "h2",
+      label: "Heading with protected image",
+      children: [
+        { type: "text", value: inlineImageHeadingText },
+        { type: "id", value: inlineImageId },
+      ],
+    },
+    {
+      type: "instance",
+      id: inlineImageId,
+      component: "ws:element",
+      tag: "img",
+      label: "Protected heading image",
+      children: [],
+    },
+    {
+      type: "instance",
       id: linkInstanceId,
       component: "Link",
       label: "Link",
@@ -321,9 +385,33 @@ const createContentModeBuildData = ({
       type: "instance",
       id: styledHeadingTemplateId,
       component: "ws:element",
-      tag: "h2",
+      tag: "section",
       label: styledHeadingTemplateName,
+      children: [
+        { type: "id", value: styledHeadingTemplateHeadingId },
+        { type: "id", value: styledHeadingTemplateSvgId },
+      ],
+    },
+    {
+      type: "instance",
+      id: styledHeadingTemplateHeadingId,
+      component: "ws:element",
+      tag: "h2",
       children: [{ type: "text", value: styledHeadingTemplateText }],
+    },
+    {
+      type: "instance",
+      id: styledHeadingTemplateSvgId,
+      component: "ws:element",
+      tag: "svg",
+      children: [{ type: "id", value: styledHeadingTemplatePathId }],
+    },
+    {
+      type: "instance",
+      id: styledHeadingTemplatePathId,
+      component: "ws:element",
+      tag: "path",
+      children: [],
     },
     {
       type: "instance",
@@ -338,8 +426,83 @@ const createContentModeBuildData = ({
       id: tokenTemplateId,
       component: "ws:element",
       tag: "h2",
-      label: tokenTemplateName,
-      children: [{ type: "text", value: tokenTemplateText }],
+      label: tokenTemplateLabel,
+      children: [{ type: "text", value: tokenTemplateVisibleText }],
+    },
+    {
+      type: "instance",
+      id: dataResourceTemplateId,
+      component: "ws:element",
+      tag: "section",
+      label: dataResourceTemplateLabel,
+      children: [
+        { type: "id", value: dataResourceStaticTextId },
+        { type: "id", value: dataResourceHttpFormId },
+        { type: "id", value: dataResourceGraphqlFormId },
+        { type: "id", value: dataResourceSystemTextId },
+      ],
+    },
+    {
+      type: "instance",
+      id: dataResourceStaticTextId,
+      component: "ws:element",
+      tag: "p",
+      label: "Static Variable Text",
+      children: [
+        { type: "text", value: `${dataResourceStaticTextLabel} ` },
+        {
+          type: "expression",
+          value: encodeDataSourceVariable(dataResourceStaticVariableId),
+        },
+      ],
+    },
+    {
+      type: "instance",
+      id: dataResourceHttpFormId,
+      component: "WebhookForm",
+      label: "HTTP Resource Form",
+      children: [{ type: "id", value: dataResourceHttpFormTextId }],
+    },
+    {
+      type: "instance",
+      id: dataResourceHttpFormTextId,
+      component: "ws:element",
+      tag: "p",
+      label: "HTTP Resource Variable Text",
+      children: [{ type: "text", value: "HTTP resource variable configured" }],
+    },
+    {
+      type: "instance",
+      id: dataResourceGraphqlFormId,
+      component: "WebhookForm",
+      label: "GraphQL Resource Form",
+      children: [{ type: "id", value: dataResourceGraphqlFormTextId }],
+    },
+    {
+      type: "instance",
+      id: dataResourceGraphqlFormTextId,
+      component: "ws:element",
+      tag: "p",
+      label: "GraphQL Resource Variable Text",
+      children: [
+        { type: "text", value: "GraphQL resource variable configured" },
+      ],
+    },
+    {
+      type: "instance",
+      id: dataResourceSystemTextId,
+      component: "ws:element",
+      tag: "p",
+      label: "System Resource Variable Text",
+      children: [
+        { type: "text", value: "System resource variable configured" },
+        {
+          type: "expression",
+          value: `${encodeDataSourceVariable(
+            dataResourceSystemDataSourceId
+          )}.data.year`,
+        },
+      ],
     },
     {
       type: "instance",
@@ -370,7 +533,10 @@ const createContentModeBuildData = ({
       id: pageTemplateRootId,
       component: "ws:element",
       tag: "body",
-      children: [{ type: "id", value: pageTemplateHeadingId }],
+      children: [
+        { type: "id", value: pageTemplateHeadingId },
+        { type: "id", value: dataResourceTemplateId },
+      ],
     },
     {
       type: "instance",
@@ -383,6 +549,63 @@ const createContentModeBuildData = ({
   ];
 
   const props = [
+    {
+      id: "styled-heading-template-svg-width",
+      instanceId: styledHeadingTemplateSvgId,
+      name: "width",
+      type: "number",
+      value: 24,
+    },
+    {
+      id: "styled-heading-template-svg-height",
+      instanceId: styledHeadingTemplateSvgId,
+      name: "height",
+      type: "number",
+      value: 24,
+    },
+    {
+      id: "styled-heading-template-svg-viewbox",
+      instanceId: styledHeadingTemplateSvgId,
+      name: "viewBox",
+      type: "string",
+      value: "0 0 24 24",
+    },
+    {
+      id: "styled-heading-template-path-d",
+      instanceId: styledHeadingTemplatePathId,
+      name: "d",
+      type: "string",
+      value: "M12 2 2 22h20L12 2Z",
+    },
+    {
+      id: "styled-heading-template-path-fill",
+      instanceId: styledHeadingTemplatePathId,
+      name: "fill",
+      type: "string",
+      value: "#123456",
+    },
+    {
+      id: "inline-image-src-prop",
+      instanceId: inlineImageId,
+      name: "src",
+      type: "string",
+      value:
+        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Ccircle cx='8' cy='8' r='8' fill='%23000'/%3E%3C/svg%3E",
+    },
+    {
+      id: "inline-image-alt-prop",
+      instanceId: inlineImageId,
+      name: "alt",
+      type: "string",
+      value: "Protected icon",
+    },
+    {
+      id: "inline-image-width-prop",
+      instanceId: inlineImageId,
+      name: "width",
+      type: "number",
+      value: 16,
+    },
     {
       id: "link-href-prop",
       instanceId: linkInstanceId,
@@ -439,6 +662,20 @@ const createContentModeBuildData = ({
       name: "height",
       type: "number",
       value: 80,
+    },
+    {
+      id: "data-resource-http-form-action-prop",
+      instanceId: dataResourceHttpFormId,
+      name: "action",
+      type: "resource",
+      value: dataResourceHttpResourceId,
+    },
+    {
+      id: "data-resource-graphql-form-action-prop",
+      instanceId: dataResourceGraphqlFormId,
+      name: "action",
+      type: "resource",
+      value: dataResourceGraphqlResourceId,
     },
     {
       id: "asset-template-image-src-prop",
@@ -565,6 +802,7 @@ const createContentModeBuildData = ({
 
   const nextPages = JSON.parse(pages) as {
     homePageId: string;
+    formComponentIdentityVersion?: number;
     pages: Array<{ id: string; rootInstanceId: string }>;
     pageTemplates?: Array<{
       id: string;
@@ -581,6 +819,9 @@ const createContentModeBuildData = ({
     throw new Error("Expected existing build to have a home page");
   }
   homePage.rootInstanceId = rootInstanceId;
+  // Tests insert canonical managed Forms later. The seeded resource examples
+  // remain WebhookForms because their action props use the legacy format.
+  nextPages.formComponentIdentityVersion = 1;
   nextPages.pageTemplates = [
     ...(nextPages.pageTemplates ?? []),
     {
@@ -622,7 +863,7 @@ const createContentModeBuildData = ({
     ]),
     styleSourceSelections: JSON.stringify([
       {
-        instanceId: styledHeadingTemplateId,
+        instanceId: styledHeadingTemplateHeadingId,
         values: [styledHeadingTemplateLocalStyleSourceId],
       },
       {
@@ -681,16 +922,75 @@ const createContentModeBuildData = ({
       },
     ]),
     breakpoints,
-    dataSources: JSON.stringify([]),
-    resources: JSON.stringify([]),
+    dataSources: JSON.stringify([
+      {
+        type: "variable",
+        id: dataResourceStaticVariableId,
+        scopeInstanceId: dataResourceStaticTextId,
+        name: dataResourceStaticVariableName,
+        value: {
+          type: "string",
+          value: dataResourceStaticVariableVisibleValue,
+        },
+      },
+      {
+        type: "resource",
+        id: dataResourceHttpDataSourceId,
+        scopeInstanceId: dataResourceHttpFormId,
+        name: dataResourceHttpVariableName,
+        resourceId: dataResourceHttpResourceId,
+      },
+      {
+        type: "resource",
+        id: dataResourceGraphqlDataSourceId,
+        scopeInstanceId: dataResourceGraphqlFormId,
+        name: dataResourceGraphqlVariableName,
+        resourceId: dataResourceGraphqlResourceId,
+      },
+      {
+        type: "resource",
+        id: dataResourceSystemDataSourceId,
+        scopeInstanceId: dataResourceSystemTextId,
+        name: dataResourceSystemVariableName,
+        resourceId: dataResourceSystemResourceId,
+      },
+    ]),
+    resources: JSON.stringify([
+      {
+        id: dataResourceHttpResourceId,
+        name: dataResourceHttpResourceLabel,
+        method: "get",
+        url: '"/$resources/current-date"',
+        searchParams: [{ name: "tag", value: '"design-system"' }],
+        headers: [],
+      },
+      {
+        id: dataResourceGraphqlResourceId,
+        name: dataResourceGraphqlResourceLabel,
+        control: "graphql",
+        method: "post",
+        url: '"/$resources/current-date"',
+        headers: [{ name: "Content-Type", value: '"application/json"' }],
+        body: '{ query: "query Posts { posts { title } }" }',
+      },
+      {
+        id: dataResourceSystemResourceId,
+        name: dataResourceSystemResourceLabel,
+        control: "system",
+        method: "get",
+        url: '"/$resources/current-date"',
+        headers: [],
+      },
+    ]),
     marketplaceProduct: JSON.stringify({}),
   };
 };
 
 export const prepareExistingContentModeProject = async ({
   projectId,
-  editorToken = "e2e-editor-token",
-  builderToken = "e2e-builder-token",
+  editorToken: editorTokenLabel = "e2e-editor-token",
+  editorCanUseApi = false,
+  builderToken: builderTokenLabel = "e2e-builder-token",
   listItemInstanceId = "list-item",
   linkInstanceId = "content-link",
   imageInstanceId = "content-image",
@@ -699,6 +999,7 @@ export const prepareExistingContentModeProject = async ({
 }: {
   projectId: string;
   editorToken?: string;
+  editorCanUseApi?: boolean;
   builderToken?: string;
   listItemInstanceId?: string;
   linkInstanceId?: string;
@@ -707,10 +1008,13 @@ export const prepareExistingContentModeProject = async ({
   assetNamePrefix?: string;
 }): Promise<SeededContentModeProject> => {
   const build = await loadDevBuild({ projectId });
-  const seededAssetTemplateImageName = `${assetNamePrefix}${assetTemplateImageName}`;
-  const seededAssetTemplateVideoName = `${assetNamePrefix}${assetTemplateVideoName}`;
-  const seededAssetTemplateImageAssetId = `${assetNamePrefix}${assetTemplateImageAssetId}`;
-  const seededAssetTemplateVideoAssetId = `${assetNamePrefix}${assetTemplateVideoAssetId}`;
+  const fixturePrefix = `${projectId}-${assetNamePrefix}`;
+  const editorToken = `${projectId}-${editorTokenLabel}`;
+  const builderToken = `${projectId}-${builderTokenLabel}`;
+  const seededAssetTemplateImageName = `${fixturePrefix}${assetTemplateImageName}`;
+  const seededAssetTemplateVideoName = `${fixturePrefix}${assetTemplateVideoName}`;
+  const seededAssetTemplateImageAssetId = `${fixturePrefix}${assetTemplateImageAssetId}`;
+  const seededAssetTemplateVideoAssetId = `${fixturePrefix}${assetTemplateVideoAssetId}`;
 
   await Promise.all([
     insertFile({
@@ -765,6 +1069,7 @@ export const prepareExistingContentModeProject = async ({
       projectId,
       name: "E2E editor token",
       relation: "editors",
+      canUseApi: editorCanUseApi,
     }),
     insertAuthorizationToken({
       token: builderToken,
@@ -784,6 +1089,8 @@ export const prepareExistingContentModeProject = async ({
     linkInstanceId,
     imageInstanceId,
     videoInstanceId,
+    inlineImageHeadingText,
+    assetTemplateImageAssetId: seededAssetTemplateImageAssetId,
     assetTemplateImageName: seededAssetTemplateImageName,
     assetTemplateName,
     assetTemplateImageAlt,
@@ -805,9 +1112,19 @@ export const prepareExistingContentModeProject = async ({
     isolatedLocalTemplateName,
     isolatedLocalTemplateText,
     isolatedLocalTemplateFontSize,
-    tokenTemplateName,
-    tokenTemplateText,
+    tokenTemplateLabel,
+    tokenTemplateVisibleText,
     tokenTemplateFontSize,
+    dataResourceTemplateLabel,
+    dataResourceStaticTextLabel,
+    dataResourceStaticVariableName,
+    dataResourceStaticVariableVisibleValue,
+    dataResourceHttpVariableName,
+    dataResourceGraphqlVariableName,
+    dataResourceSystemVariableName,
+    dataResourceHttpResourceLabel,
+    dataResourceGraphqlResourceLabel,
+    dataResourceSystemResourceLabel,
     deletableTemplateName,
     deletableTemplateText,
     nestedTemplateName,

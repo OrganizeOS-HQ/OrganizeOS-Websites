@@ -59,7 +59,7 @@ const fraction = (value: number) => {
  */
 const restLeft = (element: HTMLElement, root: HTMLElement): number => {
   let left = 0;
-  for (let node = element; ; ) {
+  for (let node = element; ;) {
     left += node.offsetLeft;
     const parent = node.offsetParent;
     if (parent === root) {

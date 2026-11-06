@@ -1,7 +1,7 @@
 import { Fragment, useState, useMemo } from "react";
-import { nanoid } from "nanoid";
-import type { Breakpoint } from "@webstudio-is/sdk";
+import { createId, type Breakpoint } from "@webstudio-is/sdk";
 import {
+  PanelContent,
   theme,
   Flex,
   PanelTitle,
@@ -26,12 +26,12 @@ import {
   groupBreakpoints,
   hasReachedBreakpointLimit,
   isBaseBreakpoint,
-} from "~/shared/breakpoints";
-import { serverSyncStore } from "~/shared/sync/sync-stores";
+} from "@webstudio-is/project-build/runtime";
 import { ConditionInput } from "./condition-input";
 import { CssValueInput } from "~/builder/features/style-panel/shared/css-value-input";
 import { useDraftValue } from "~/builder/shared/use-draft-value";
 import { buildBreakpointFromEditorState } from "./breakpoint-editor-utils";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 
 type BreakpointEditorItemProps = {
   breakpoint: Breakpoint;
@@ -112,6 +112,7 @@ const BreakpointEditorItem = ({
           autoFocus={autoFocus}
         />
         <IconButton
+          aria-label={`Delete breakpoint ${localValue.value.label}`}
           data-breakpoint-delete
           disabled={hasName === false}
           css={{ visibility: "hidden" }}
@@ -139,7 +140,7 @@ const BreakpointEditorItem = ({
             css={{ width: theme.spacing[28] }}
             options={["maxWidth", "minWidth"]}
             getLabel={(option) =>
-              option === "maxWidth" ? "Max Width" : "Min Width"
+              option === "maxWidth" ? "Max width" : "Min width"
             }
             value={type}
             onChange={(value) => {
@@ -150,6 +151,7 @@ const BreakpointEditorItem = ({
           />
           <Box css={{ flexShrink: 1 }}>
             <CssValueInput
+              aria-label="Breakpoint width"
               styleSource="local"
               property="width"
               value={{
@@ -245,9 +247,34 @@ export const BreakpointsEditor = ({
   );
 
   const handleChangeComplete = (breakpoint: Breakpoint) => {
-    serverSyncStore.createTransaction([$breakpoints], (breakpoints) => {
-      breakpoints.set(breakpoint.id, breakpoint);
+    if (breakpoints.has(breakpoint.id)) {
+      executeRuntimeMutation({
+        id: "breakpoints.update",
+        input: {
+          breakpointId: breakpoint.id,
+          values: {
+            label: breakpoint.label,
+            condition: breakpoint.condition ?? null,
+            minWidth: breakpoint.minWidth ?? null,
+            maxWidth: breakpoint.maxWidth ?? null,
+          },
+        },
+      });
+      return;
+    }
+
+    executeRuntimeMutation({
+      id: "breakpoints.create",
+      input: {
+        label: breakpoint.label,
+        condition: breakpoint.condition,
+        minWidth: breakpoint.minWidth,
+        maxWidth: breakpoint.maxWidth,
+      },
     });
+    setAddedBreakpoints((breakpoints) =>
+      breakpoints.filter((item) => item.id !== breakpoint.id)
+    );
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -266,13 +293,14 @@ export const BreakpointsEditor = ({
             css={{ paddingInline: theme.panel.paddingInline }}
             suffix={
               <IconButton
+                aria-label="Add breakpoint"
                 onClick={() => {
                   if (hasReachedBreakpointLimit(allBreakpoints.length)) {
                     toast.warn(breakpointLimitWarning);
                     return;
                   }
                   const newBreakpoint: Breakpoint = {
-                    id: nanoid(),
+                    id: createId("nano"),
                     label: "",
                     minWidth: 0,
                   };
@@ -291,14 +319,14 @@ export const BreakpointsEditor = ({
               {allBreakpoints.map((breakpoint, index, all) => {
                 return (
                   <Fragment key={breakpoint.id}>
-                    <Box css={{ p: theme.panel.padding }}>
+                    <PanelContent as={Box}>
                       <BreakpointEditorItem
                         breakpoint={breakpoint}
                         onChangeComplete={handleChangeComplete}
                         onDelete={onDelete}
                         autoFocus={index === 0}
                       />
-                    </Box>
+                    </PanelContent>
                     {index < all.length - 1 && <PopoverSeparator />}
                   </Fragment>
                 );

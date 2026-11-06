@@ -20,7 +20,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const actionOn = (code: string, args: string[] = []) => {
+const actionOn = async (code: string, args: string[] = []) => {
   $instances.set(
     new Map([
       ["box", { id: "box", type: "instance", component: "Box", children: [] }],
@@ -53,11 +53,19 @@ const actionOn = (code: string, args: string[] = []) => {
     type: "action",
     value: [{ type: "execute", args, code }],
   };
+  // since 0.309.0 prop values are computed asynchronously
+  $propValuesByInstanceSelector.set(new Map());
   $props.set(new Map([[action.id, action]]));
-  return $propValuesByInstanceSelector
-    .get()
-    .get(getInstanceKey(["box"]))
-    ?.get("onChange") as () => unknown;
+  return await vi.waitFor(() => {
+    const value = $propValuesByInstanceSelector
+      .get()
+      .get(getInstanceKey(["box"]))
+      ?.get("onChange");
+    if (typeof value !== "function") {
+      throw new Error("prop values are not computed yet");
+    }
+    return value as () => unknown;
+  });
 };
 
 test.each([
@@ -71,10 +79,10 @@ test.each([
   ["a second statement", "$ws$dataSource$var = 1; $ws$dataSource$var = 2", []],
 ])(
   "an action with %s does nothing and is never compiled",
-  (_kind, code, args) => {
+  async (_kind, code, args) => {
     const compile = vi.spyOn(globalThis, "Function");
     const warn = vi.spyOn(console, "error").mockImplementation(() => {});
-    const action = actionOn(code, args);
+    const action = await actionOn(code, args);
     expect(typeof action).toBe("function");
     expect(action()).toBeUndefined();
     expect(compile).not.toHaveBeenCalled();
@@ -83,8 +91,8 @@ test.each([
   }
 );
 
-test("an action that passes is compiled as before", () => {
+test("an action that passes is compiled as before", async () => {
   const compile = vi.spyOn(globalThis, "Function");
-  actionOn("$ws$dataSource$var = $ws$dataSource$var + 1")();
+  (await actionOn("$ws$dataSource$var = $ws$dataSource$var + 1"))();
   expect(compile).toHaveBeenCalled();
 });

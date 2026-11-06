@@ -1,4 +1,5 @@
-import { $, css, ws } from "@webstudio-is/template";
+import { css, ws } from "@webstudio-is/template";
+import { $ } from "../../../shared/proxy";
 import {
   BREAKPOINT,
   CONTAINER,

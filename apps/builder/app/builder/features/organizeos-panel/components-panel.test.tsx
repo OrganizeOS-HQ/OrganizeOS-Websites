@@ -5,12 +5,7 @@ import { enableMapSet } from "immer";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { createDefaultPages } from "@webstudio-is/project-build";
-import { coreMetas } from "@webstudio-is/sdk";
-import { coreTemplates } from "@webstudio-is/sdk/core-templates";
-import * as baseMetas from "@webstudio-is/sdk-components-react/metas";
-import * as baseTemplates from "@webstudio-is/sdk-components-react/templates";
-import * as radixMetas from "@webstudio-is/sdk-components-react-radix/metas";
-import * as radixTemplates from "@webstudio-is/sdk-components-react-radix/templates";
+import { canvasComponentLibraries } from "@webstudio-is/sdk-components-registry/canvas";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
 import {
@@ -23,27 +18,18 @@ import { $selectedPageId } from "~/shared/nano-states/pages";
 import { $pages } from "~/shared/sync/data-stores";
 import { registerContainers } from "~/shared/sync/sync-stores";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
-import { insertWebstudioFragmentAt } from "~/shared/instance-utils/insert";
+import { insertWebstudioComponentAt } from "~/shared/instance-utils/insert";
+import {
+  withOrgScriptPolicy,
+  withoutBuiltWithWebstudio,
+} from "~/canvas/organizeos-org-script";
 import { ComponentsPanel } from "~/builder/features/components";
 import { insertOrganizeosBlock } from "./insert-organizeos-block";
 
-vi.mock("./insert-organizeos-block", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("./insert-organizeos-block")>();
-  return {
-    ...actual,
-    insertOrganizeosBlock: vi.fn(actual.insertOrganizeosBlock),
-  };
-});
-
-vi.mock("~/shared/instance-utils/insert", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("~/shared/instance-utils/insert")>();
-  return {
-    ...actual,
-    insertWebstudioFragmentAt: vi.fn(actual.insertWebstudioFragmentAt),
-  };
-});
+// Spied, not replaced: a factory that imports the original module waits on
+// itself in the browser runner (both modules are in import cycles).
+vi.mock("./insert-organizeos-block", { spy: true });
+vi.mock("~/shared/instance-utils/insert", { spy: true });
 
 enableMapSet();
 registerContainers();
@@ -52,8 +38,8 @@ registerContainers();
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-// Radix's ScrollArea observes its viewport, and jsdom 20 has no
-// ResizeObserver (the stand-in of use-marquee.test.tsx).
+// Radix's ScrollArea observes its viewport (the stand-in of
+// use-marquee.test.tsx).
 class FakeResizeObserver {
   observe() {}
   unobserve() {}
@@ -70,28 +56,14 @@ const site: OrganizeosSite = {
   blocksEnabled: true,
 };
 
-// The libraries the canvas registers (canvas.tsx), the badge left out as
-// there.
-const { builtWithWebstudio: _builtWithWebstudio, ...registeredCoreTemplates } =
-  coreTemplates;
+// The libraries the canvas registers (canvas.tsx), as it registers them.
 $registeredComponentMetas.set(new Map());
 $registeredTemplates.set(new Map());
-registerComponentLibrary({
-  components: {},
-  metas: coreMetas,
-  templates: registeredCoreTemplates,
-});
-registerComponentLibrary({
-  components: {},
-  metas: baseMetas,
-  templates: baseTemplates,
-});
-registerComponentLibrary({
-  namespace: "@webstudio-is/sdk-components-react-radix",
-  components: {},
-  metas: radixMetas,
-  templates: radixTemplates,
-});
+for (const library of canvasComponentLibraries) {
+  registerComponentLibrary(
+    withOrgScriptPolicy(withoutBuiltWithWebstudio(library))
+  );
+}
 registerComponentLibrary({
   namespace,
   components: {},
@@ -163,7 +135,9 @@ const pressEnter = (input: HTMLInputElement) => {
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   vi.mocked(insertOrganizeosBlock).mockClear();
-  vi.mocked(insertWebstudioFragmentAt).mockClear();
+  // a template insert is upstream's, and not what is tested here
+  vi.mocked(insertWebstudioComponentAt).mockReset();
+  vi.mocked(insertWebstudioComponentAt).mockImplementation(() => true);
   publish.mockClear();
   onClose.mockClear();
   $organizeosSite.set(site);
@@ -209,7 +183,7 @@ describe("the Components panel's OrganizeOS section", () => {
     );
   });
 
-  test("a click on Signup Form calls insertOrganizeosBlock, not insertWebstudioFragmentAt", () => {
+  test("a click on Signup Form calls insertOrganizeosBlock, not insertWebstudioComponentAt", () => {
     const host = render();
     act(() => {
       card(host, `${namespace}:SignupForm`).click();
@@ -218,24 +192,22 @@ describe("the Components panel's OrganizeOS section", () => {
     expect(insertOrganizeosBlock).toHaveBeenCalledWith(
       `${namespace}:SignupForm`
     );
-    expect(insertWebstudioFragmentAt).not.toHaveBeenCalled();
+    expect(insertWebstudioComponentAt).not.toHaveBeenCalled();
+    // closed at once: the block's insert is not awaited
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  // Upstream's General lists Element (inserted by insertWebstudioElementAt)
-  // and Link, a template; Box is hidden. Link is the General card that
-  // inserts through insertWebstudioFragmentAt.
-  test("a click on Link still inserts through insertWebstudioFragmentAt", () => {
+  // Upstream's General lists Link, a template, which upstream inserts
+  // through insertWebstudioComponentAt.
+  test("a click on Link still inserts through insertWebstudioComponentAt", async () => {
     const host = render();
     act(() => {
       card(host, "link").click();
     });
-    expect(insertWebstudioFragmentAt).toHaveBeenCalledTimes(1);
-    expect(
-      vi.mocked(insertWebstudioFragmentAt).mock.calls[0][0].instances[0]
-    ).toMatchObject({ component: "ws:element", tag: "a" });
+    expect(insertWebstudioComponentAt).toHaveBeenCalledTimes(1);
+    expect(insertWebstudioComponentAt).toHaveBeenCalledWith("link");
     expect(insertOrganizeosBlock).not.toHaveBeenCalled();
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   test("Enter after typing event list inserts the Event List through insertOrganizeosBlock", () => {
@@ -245,7 +217,7 @@ describe("the Components panel's OrganizeOS section", () => {
     expect(insertOrganizeosBlock).toHaveBeenCalledWith(
       `${namespace}:EventList`
     );
-    expect(insertWebstudioFragmentAt).not.toHaveBeenCalled();
+    expect(insertWebstudioComponentAt).not.toHaveBeenCalled();
   });
 
   test("rsvp, which upstream does not match, shows one Found list holding the RSVP Form, and Enter inserts it through insertOrganizeosBlock", () => {
@@ -259,7 +231,7 @@ describe("the Components panel's OrganizeOS section", () => {
     ).toEqual([`${namespace}:RsvpForm`]);
     pressEnter(input);
     expect(insertOrganizeosBlock).toHaveBeenCalledWith(`${namespace}:RsvpForm`);
-    expect(insertWebstudioFragmentAt).not.toHaveBeenCalled();
+    expect(insertWebstudioComponentAt).not.toHaveBeenCalled();
   });
 
   test("one Manage link, to the org's Website area", () => {
@@ -315,11 +287,12 @@ describe("the Components panel's OrganizeOS section", () => {
     const eventCard = card(host, `${namespace}:EventCard`);
     const clientX = 10;
     const clientY = 10;
-    // jsdom 20 has no PointerEvent: useDrag reads button, the coordinates and
-    // pointerId (undefined on both)
+    // the mouse's pointer (id 1), whose capture react-aria releases on press
+    const pointer = { pointerId: 1, pointerType: "mouse", isPrimary: true };
     act(() => {
       eventCard.dispatchEvent(
-        new MouseEvent("pointerdown", {
+        new PointerEvent("pointerdown", {
+          ...pointer,
           bubbles: true,
           button: 0,
           clientX,
@@ -329,7 +302,8 @@ describe("the Components panel's OrganizeOS section", () => {
     });
     act(() => {
       window.dispatchEvent(
-        new MouseEvent("pointermove", {
+        new PointerEvent("pointermove", {
+          ...pointer,
           bubbles: true,
           clientX: clientX + 4,
           clientY,

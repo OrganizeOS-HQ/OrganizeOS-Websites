@@ -160,9 +160,8 @@ describe("organizeosSsoLogin", () => {
   });
 
   test("does not resolve a user when the jti was already used (replay)", async () => {
-    const { resolveOrCreateUserByEmail } = await import(
-      "~/shared/db/user.server"
-    );
+    const { resolveOrCreateUserByEmail } =
+      await import("~/shared/db/user.server");
     const context = {
       postgrest: {
         client: {
@@ -177,9 +176,8 @@ describe("organizeosSsoLogin", () => {
   });
 
   test("refreshes the org's plan from the signed entitlements", async () => {
-    const { syncOrgOwnerPlan } = await import(
-      "~/shared/db/organizeos-plan.server"
-    );
+    const { syncOrgOwnerPlan } =
+      await import("~/shared/db/organizeos-plan.server");
     const context = {
       postgrest: {
         client: { from: () => ({ insert: async () => ({ error: null }) }) },
@@ -200,9 +198,8 @@ describe("organizeosSsoLogin", () => {
   });
 
   test("leaves the provisioned plan alone when the token carries no entitlements", async () => {
-    const { syncOrgOwnerPlan } = await import(
-      "~/shared/db/organizeos-plan.server"
-    );
+    const { syncOrgOwnerPlan } =
+      await import("~/shared/db/organizeos-plan.server");
     const context = {
       postgrest: {
         client: { from: () => ({ insert: async () => ({ error: null }) }) },
@@ -219,9 +216,8 @@ describe("organizeosSsoLogin", () => {
   });
 
   test("still logs the admin in when the entitlement refresh fails", async () => {
-    const { syncOrgOwnerPlan } = await import(
-      "~/shared/db/organizeos-plan.server"
-    );
+    const { syncOrgOwnerPlan } =
+      await import("~/shared/db/organizeos-plan.server");
     vi.mocked(syncOrgOwnerPlan).mockRejectedValueOnce(
       new Error("postgrest down")
     );
@@ -250,9 +246,8 @@ describe("organizeosSsoLogin workspace seat", () => {
   };
 
   test("seats the verified admin in the org's workspace", async () => {
-    const { grantOrgWorkspaceMembership } = await import(
-      "~/shared/db/provision.server"
-    );
+    const { grantOrgWorkspaceMembership } =
+      await import("~/shared/db/provision.server");
 
     await organizeosSsoLogin(
       context as never,
@@ -267,9 +262,8 @@ describe("organizeosSsoLogin workspace seat", () => {
   });
 
   test("still logs the admin in when the seat cannot be written", async () => {
-    const { grantOrgWorkspaceMembership } = await import(
-      "~/shared/db/provision.server"
-    );
+    const { grantOrgWorkspaceMembership } =
+      await import("~/shared/db/provision.server");
     vi.mocked(grantOrgWorkspaceMembership).mockRejectedValueOnce(
       new Error("postgrest down")
     );
@@ -285,9 +279,8 @@ describe("organizeosSsoLogin workspace seat", () => {
   });
 
   test("never seats anyone for a token that fails verification", async () => {
-    const { grantOrgWorkspaceMembership } = await import(
-      "~/shared/db/provision.server"
-    );
+    const { grantOrgWorkspaceMembership } =
+      await import("~/shared/db/provision.server");
     await expect(
       organizeosSsoLogin(context as never, "not-a-jwt", publicKeyPem)
     ).rejects.toThrow();
@@ -303,9 +296,8 @@ describe("organizeosSsoLogin site refresh", () => {
   };
 
   test("mirrors the signed subdomain into the org project's domain", async () => {
-    const { syncOrgProjectDomain } = await import(
-      "~/shared/db/organizeos-site.server"
-    );
+    const { syncOrgProjectDomain } =
+      await import("~/shared/db/organizeos-site.server");
 
     await organizeosSsoLogin(
       context as never,
@@ -321,9 +313,8 @@ describe("organizeosSsoLogin site refresh", () => {
   });
 
   test("leaves the domain alone when the token carries no subdomain", async () => {
-    const { syncOrgProjectDomain } = await import(
-      "~/shared/db/organizeos-site.server"
-    );
+    const { syncOrgProjectDomain } =
+      await import("~/shared/db/organizeos-site.server");
 
     await organizeosSsoLogin(
       context as never,
@@ -335,9 +326,8 @@ describe("organizeosSsoLogin site refresh", () => {
   });
 
   test("still logs the admin in when the domain sync fails", async () => {
-    const { syncOrgProjectDomain } = await import(
-      "~/shared/db/organizeos-site.server"
-    );
+    const { syncOrgProjectDomain } =
+      await import("~/shared/db/organizeos-site.server");
     vi.mocked(syncOrgProjectDomain).mockRejectedValueOnce(
       new Error("postgrest down")
     );

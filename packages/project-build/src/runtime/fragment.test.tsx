@@ -1,0 +1,1439 @@
+import {
+  findSafeFragmentPasteTarget,
+  getCommonAncestorSelector,
+  getPasteRootInstanceIds,
+  copyWebstudioFragmentMutable,
+  detectFragmentRootStyleConflicts,
+  extractWebstudioFragment,
+  insertWebstudioFragmentCopy,
+  mapFragmentChildrenToCopiedChildren,
+  mergeWebstudioFragments,
+} from "./fragment";
+import { describe, expect, test } from "vitest";
+import {
+  createRegularStyleSheet,
+  type StyleProperty,
+} from "@webstudio-is/css-engine";
+import { createDefaultPages } from "@webstudio-is/project-build";
+import {
+  encodeDataVariableId,
+  getStyleDeclKey,
+  portalComponent,
+  ROOT_INSTANCE_ID,
+  webstudioFragment,
+  type WebstudioData,
+} from "@webstudio-is/sdk";
+import {
+  createTemplateComponentFixture,
+  ws,
+  css,
+  renderData,
+  type TemplateStyleDecl,
+  expression,
+  Variable,
+  ResourceValue,
+  ActionValue,
+  renderTemplate,
+  Parameter,
+  token,
+} from "@webstudio-is/template";
+import { findAvailableVariables } from "./data";
+
+const Body = createTemplateComponentFixture("Body");
+const Box = createTemplateComponentFixture("Box");
+const CodeText = createTemplateComponentFixture("CodeText");
+const Fragment = createTemplateComponentFixture("Fragment");
+const HtmlEmbed = createTemplateComponentFixture("HtmlEmbed");
+const Paragraph = createTemplateComponentFixture("Paragraph");
+const Slot = createTemplateComponentFixture("Slot");
+const Text = createTemplateComponentFixture("Text");
+const ResourceForm = createTemplateComponentFixture("ResourceForm");
+
+test("rejects an ambiguous historical Form before mutating fragment data", () => {
+  const data = renderData(<Body ws:id="bodyId" />);
+  const fragment = renderTemplate(<Box ws:id="boxId" />);
+  fragment.instances[0].component = "Form";
+  const before = structuredClone(data);
+
+  expect(() =>
+    insertWebstudioFragmentCopy({
+      data,
+      fragment,
+      availableVariables: [],
+      projectId: "project",
+    })
+  ).toThrow(/Copy it again/);
+  expect(data).toEqual(before);
+});
+
+test("copying Email Resources restores parent bindings by name in the target scope", () => {
+  const parentVariable = new Variable("Owner", "Source owner");
+  const emailVariable = new ResourceValue("Email", {
+    method: "post",
+    url: expression`""`,
+    headers: [],
+  });
+  const source = renderData(
+    <Body ws:id="bodyId" vars={expression`${parentVariable}`}>
+      <ResourceForm ws:id="formId" vars={expression`${emailVariable}`} />
+    </Body>
+  );
+  const originalResource = Array.from(source.resources.values())[0];
+  originalResource.control = "email";
+  originalResource.email = {
+    senderExpression: encodeDataVariableId("0"),
+    recipientsExpression: encodeDataVariableId("0"),
+    subject: encodeDataVariableId("0"),
+    body: encodeDataVariableId("0"),
+  };
+  const fragment = extractWebstudioFragment(source, "formId");
+  expect(fragment.resources[0].email).toEqual({
+    senderExpression: "Owner",
+    recipientsExpression: "Owner",
+    subject: "Owner",
+    body: "Owner",
+  });
+
+  const target = createStub(<Body ws:id="targetBody" />);
+  const targetVariable = {
+    id: "targetOwner",
+    type: "variable" as const,
+    name: "Owner",
+    scopeInstanceId: "targetBody",
+    value: { type: "string" as const, value: "Target owner" },
+  };
+  target.dataSources.set(targetVariable.id, targetVariable);
+  insertWebstudioFragmentCopy({
+    data: target,
+    fragment,
+    availableVariables: [targetVariable],
+    projectId: "",
+  });
+  expect(Array.from(target.resources.values())[0].email).toEqual({
+    senderExpression: encodeDataVariableId("targetOwner"),
+    recipientsExpression: encodeDataVariableId("targetOwner"),
+    subject: encodeDataVariableId("targetOwner"),
+    body: encodeDataVariableId("targetOwner"),
+  });
+});
+
+test("copying a Form remaps its local Resource actions", () => {
+  const data = createStub(
+    <Body ws:id="bodyId">
+      <ResourceForm ws:id="formId" />
+    </Body>
+  );
+  data.dataSources.set("localResourceVariable", {
+    type: "resource",
+    id: "localResourceVariable",
+    name: "Submission",
+    scopeInstanceId: "formId",
+    resourceId: "localResource",
+  });
+  data.dataSources.set("formDataVariable", {
+    type: "parameter",
+    id: "formDataVariable",
+    name: "formData",
+    scopeInstanceId: "formId",
+  });
+  data.resources.set("localResource", {
+    id: "localResource",
+    name: "Submission",
+    method: "post",
+    url: '"https://example.com"',
+    headers: [],
+    body: encodeDataVariableId("formDataVariable"),
+    control: "email",
+    email: {
+      senderExpression: encodeDataVariableId("formDataVariable"),
+      recipientsExpression: encodeDataVariableId("formDataVariable"),
+      subject: `\`Submission \${${encodeDataVariableId("formDataVariable")}.name}\``,
+      body: encodeDataVariableId("formDataVariable"),
+    },
+  });
+  data.props.set("formData", {
+    id: "formData",
+    instanceId: "formId",
+    name: "formData",
+    type: "parameter",
+    value: "formDataVariable",
+  });
+  data.props.set("formSubmission", {
+    id: "formSubmission",
+    instanceId: "formId",
+    name: "action",
+    type: "json",
+    value: [{ dataSourceId: "localResourceVariable" }],
+  });
+
+  const fragment = webstudioFragment.parse(
+    JSON.parse(JSON.stringify(extractWebstudioFragment(data, "formId")))
+  );
+  insertWebstudioFragmentCopy({
+    data,
+    fragment,
+    availableVariables: [],
+    projectId: "",
+  });
+  const copiedForm = Array.from(data.instances.values()).find(
+    ({ id, component }) => id !== "formId" && component === "ResourceForm"
+  );
+  const copiedSubmission = Array.from(data.props.values()).find(
+    ({ instanceId, name }) => instanceId === copiedForm?.id && name === "action"
+  );
+  expect(copiedSubmission?.type).toBe("json");
+  if (copiedSubmission?.type === "json") {
+    const destinationId = (
+      copiedSubmission.value as { dataSourceId: string }[]
+    )[0].dataSourceId;
+    expect(destinationId).not.toBe("localResourceVariable");
+    expect(copiedSubmission.value).toEqual([{ dataSourceId: destinationId }]);
+    expect(data.dataSources.get(destinationId)).toMatchObject({
+      scopeInstanceId: copiedForm?.id,
+      resourceId: expect.not.stringMatching(/^localResource$/),
+    });
+    const copiedParameter = Array.from(data.dataSources.values()).find(
+      ({ scopeInstanceId, name }) =>
+        scopeInstanceId === copiedForm?.id && name === "formData"
+    );
+    expect(copiedParameter?.id).not.toBe("formDataVariable");
+    const copiedResource = data.resources.get(
+      (data.dataSources.get(destinationId) as { resourceId: string }).resourceId
+    );
+    expect(copiedResource?.body).toBe(
+      encodeDataVariableId(copiedParameter?.id ?? "")
+    );
+    expect(copiedResource?.email).toEqual({
+      senderExpression: encodeDataVariableId(copiedParameter?.id ?? ""),
+      recipientsExpression: encodeDataVariableId(copiedParameter?.id ?? ""),
+      subject: `\`Submission \${${encodeDataVariableId(copiedParameter?.id ?? "")}.name}\``,
+      body: encodeDataVariableId(copiedParameter?.id ?? ""),
+    });
+    expect(copiedResource?.email?.senderExpression).not.toBe(
+      encodeDataVariableId("formDataVariable")
+    );
+    expect(copiedResource?.email?.recipientsExpression).not.toBe(
+      encodeDataVariableId("formDataVariable")
+    );
+  }
+});
+
+const stripIndent = (value: string) => {
+  const lines = value.replace(/^\n|\n\s*$/g, "").split("\n");
+  const indent = Math.min(
+    ...lines
+      .filter((line) => line.trim() !== "")
+      .map((line) => line.match(/^\s*/)?.[0].length ?? 0)
+  );
+  return lines.map((line) => line.slice(indent)).join("\n");
+};
+
+const camelCaseProperty = (property: string): StyleProperty =>
+  property.replace(/-([a-z])/g, (_match, char: string) =>
+    char.toUpperCase()
+  ) as StyleProperty;
+
+const createStub = (element: JSX.Element) => {
+  const project = {
+    pages: createDefaultPages({ rootInstanceId: "" }),
+    ...renderData(element),
+  };
+  // global root instance is never stored in data
+  project.instances.delete(ROOT_INSTANCE_ID);
+  return project;
+};
+
+const toCss = (data: WebstudioData) => {
+  const sheet = createRegularStyleSheet();
+  sheet.addMediaRule("base");
+  for (const { instanceId, values } of data.styleSourceSelections.values()) {
+    for (const styleSourceId of values) {
+      const styleSource = data.styleSources.get(styleSourceId);
+      let name;
+      if (styleSource?.type === "local") {
+        name = `${instanceId}:local`;
+      }
+      if (styleSource?.type === "token") {
+        name = `${instanceId}:token(${styleSource.name})`;
+      }
+      if (name) {
+        const rule = sheet.addNestingRule(name);
+        for (const styleDecl of data.styles.values()) {
+          if (styleDecl.styleSourceId === styleSourceId) {
+            rule.setDeclaration({
+              breakpoint: styleDecl.breakpointId,
+              selector: styleDecl.state ?? "",
+              property: styleDecl.property,
+              value: styleDecl.value,
+            });
+          }
+        }
+      }
+    }
+  }
+  return sheet.cssText;
+};
+
+test("copies a fragment for a target instance and maps root children", () => {
+  const data = renderData(<Body ws:id="bodyId"></Body>);
+  const fragment = renderTemplate(
+    <Box ws:id="boxId">
+      <Paragraph ws:id="paragraphId">Hello</Paragraph>
+    </Box>
+  );
+  const ids = ["boxCopyId", "paragraphCopyId"];
+
+  const { newInstanceIds } = copyWebstudioFragmentMutable({
+    data,
+    fragment,
+    targetInstanceId: "bodyId",
+    projectId: "",
+    createId: () => ids.shift() ?? "missing",
+  });
+
+  expect(
+    mapFragmentChildrenToCopiedChildren({
+      children: fragment.children,
+      newInstanceIds,
+    })
+  ).toEqual([{ type: "id", value: "boxCopyId" }]);
+  expect(data.instances.get("boxCopyId")).toEqual(
+    expect.objectContaining({
+      id: "boxCopyId",
+      children: [{ type: "id", value: "paragraphCopyId" }],
+    })
+  );
+  expect(data.instances.get("paragraphCopyId")).toEqual(
+    expect.objectContaining({
+      id: "paragraphCopyId",
+      children: [{ type: "text", value: "Hello" }],
+    })
+  );
+});
+
+test("merges multiple copied fragments and preserves requested roots", () => {
+  const first = renderTemplate(
+    <Box ws:id="box">
+      <Text ws:id="text">Hello</Text>
+    </Box>
+  );
+  const second = renderTemplate(<Paragraph ws:id="paragraph">World</Paragraph>);
+
+  const fragment = mergeWebstudioFragments(
+    ["box", "paragraph"],
+    [first, second]
+  );
+
+  expect(fragment.children).toEqual([
+    { type: "id", value: "box" },
+    { type: "id", value: "paragraph" },
+  ]);
+  expect(fragment.instances.map((instance) => instance.id)).toEqual([
+    "box",
+    "text",
+    "paragraph",
+  ]);
+});
+
+test("filters multi-root paste ids to unique ids present in fragment roots", () => {
+  const fragment = renderTemplate(
+    <>
+      <Box ws:id="box"></Box>
+      <Paragraph ws:id="paragraph"></Paragraph>
+    </>
+  );
+
+  expect(
+    getPasteRootInstanceIds({
+      rootInstanceIds: ["missing", "box", "box", "paragraph"],
+      fragment,
+    })
+  ).toEqual(["box", "paragraph"]);
+});
+
+test("finds common ancestor selector from selected instance selectors", () => {
+  expect(
+    getCommonAncestorSelector([
+      ["child-a", "section", "body"],
+      ["child-b", "section", "body"],
+    ])
+  ).toEqual(["section", "body"]);
+  expect(
+    getCommonAncestorSelector([
+      ["child-a", "section", "body"],
+      ["aside-child", "aside", "body"],
+    ])
+  ).toEqual(["body"]);
+  expect(getCommonAncestorSelector([])).toBeUndefined();
+});
+
+test("prevents pasting a portal fragment into one of its preserved children", () => {
+  const fragment = {
+    children: [{ type: "id" as const, value: "portal" }],
+    instances: [
+      {
+        type: "instance" as const,
+        id: "portal",
+        component: portalComponent,
+        children: [{ type: "id" as const, value: "fragment" }],
+      },
+      {
+        type: "instance" as const,
+        id: "fragment",
+        component: "Fragment",
+        children: [],
+      },
+    ],
+    props: [],
+    dataSources: [],
+    styleSourceSelections: [],
+    styleSources: [],
+    styles: [],
+    assets: [],
+    breakpoints: [],
+    resources: [],
+  };
+  const instances = new Map([
+    [
+      "body",
+      {
+        type: "instance" as const,
+        id: "body",
+        component: "Body",
+        children: [{ type: "id" as const, value: "targetPortal" }],
+      },
+    ],
+    [
+      "targetPortal",
+      {
+        type: "instance" as const,
+        id: "targetPortal",
+        component: portalComponent,
+        children: [{ type: "id" as const, value: "fragment" }],
+      },
+    ],
+    [
+      "fragment",
+      {
+        type: "instance" as const,
+        id: "fragment",
+        component: "Fragment",
+        children: [],
+      },
+    ],
+  ]);
+
+  expect(
+    findSafeFragmentPasteTarget({
+      fragment,
+      instances,
+      insertTarget: {
+        parentSelector: ["targetPortal", "body"],
+        position: "end",
+      },
+    })
+  ).toBeUndefined();
+  expect(
+    findSafeFragmentPasteTarget({
+      fragment,
+      instances,
+      insertTarget: { parentSelector: ["body"], position: "end" },
+    })
+  ).toEqual({ parentSelector: ["body"], position: "end" });
+});
+
+test("includes assets referenced by copied variable values", () => {
+  const data = createStub(<Box ws:id="boxId" />);
+  data.assets.set("post", {
+    id: "post",
+    projectId: "source-project",
+    type: "file",
+    format: "mdx",
+    name: "post.mdx",
+    size: 1,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    meta: {},
+  });
+  data.dataSources.set("items", {
+    id: "items",
+    scopeInstanceId: "boxId",
+    type: "variable",
+    name: "items",
+    value: { type: "json", value: [{ source: "post" }] },
+  });
+
+  expect(extractWebstudioFragment(data, "boxId").assets).toEqual([
+    data.assets.get("post"),
+  ]);
+});
+
+const insertStyles = ({
+  data,
+  breakpointId,
+  styleSourceId,
+  style,
+}: {
+  data: WebstudioData;
+  breakpointId: string;
+  styleSourceId: string;
+  style: TemplateStyleDecl[];
+}) => {
+  for (const { state, property, value } of style) {
+    const newStyleDecl = {
+      breakpointId,
+      styleSourceId,
+      state,
+      property: camelCaseProperty(property),
+      value,
+    };
+    data.styles.set(getStyleDeclKey(newStyleDecl), newStyleDecl);
+  }
+};
+
+test("extract the instance by id and all its descendants including slot instances", () => {
+  const data = renderData(
+    <Body ws:id="bodyId">
+      <Box ws:id="boxId">
+        <Slot>
+          <Fragment></Fragment>
+        </Slot>
+      </Box>
+      <Text ws:id="textId"></Text>
+    </Body>
+  );
+  const { instances } = extractWebstudioFragment(data, "boxId");
+  expect(instances).toEqual([
+    expect.objectContaining({ component: "Box" }),
+    expect.objectContaining({ component: "Slot" }),
+    expect.objectContaining({ component: "Fragment" }),
+  ]);
+});
+
+test("insert instances with slots", () => {
+  const data = renderData(<Body ws:id="bodyId"></Body>);
+  const fragment = renderTemplate(
+    <Slot ws:id="slotId">
+      <Fragment ws:id="fragmentId">
+        <Box ws:id="boxId"></Box>
+      </Fragment>
+    </Slot>
+  );
+  expect(data.instances.size).toEqual(1);
+  insertWebstudioFragmentCopy({
+    data,
+    fragment,
+    availableVariables: [],
+    projectId: "",
+  });
+  expect(data.instances.size).toEqual(4);
+  insertWebstudioFragmentCopy({
+    data,
+    fragment,
+    availableVariables: [],
+    projectId: "",
+  });
+  expect(data.instances.size).toEqual(5);
+  expect(Array.from(data.instances.values())).toEqual([
+    expect.objectContaining({ component: "Body" }),
+    // id of slot instances are preserved
+    expect.objectContaining({ component: "Fragment", id: "fragmentId" }),
+    expect.objectContaining({ component: "Box", id: "boxId" }),
+    expect.objectContaining({ component: "Slot" }),
+    expect.objectContaining({ component: "Slot" }),
+  ]);
+});
+
+test("remap token selections in inserted slot content", () => {
+  const data = renderData(<Body ws:id="bodyId"></Body>);
+  const fragment = renderTemplate(
+    <Slot ws:id="slotId">
+      <Fragment ws:id="fragmentId">
+        <HtmlEmbed
+          ws:id="iconId"
+          ws:tokens={[
+            token(
+              "Accordion Icon",
+              css`
+                color: red;
+              `
+            ),
+          ]}
+        />
+      </Fragment>
+    </Slot>
+  );
+
+  insertWebstudioFragmentCopy({
+    data,
+    fragment,
+    availableVariables: [],
+    projectId: "",
+  });
+
+  const [insertedTokenId] =
+    data.styleSourceSelections.get("iconId")?.values ?? [];
+  expect(data.styleSources.get(insertedTokenId)).toMatchObject({
+    type: "token",
+    name: "Accordion Icon",
+  });
+});
+
+test("preserves legacy HtmlEmbed code when copying internal fragments", () => {
+  const data = renderData(<Body ws:id="bodyId"></Body>);
+  const fragment = renderTemplate(<HtmlEmbed code="<div><span></div>" />);
+
+  insertWebstudioFragmentCopy({
+    data,
+    fragment,
+    availableVariables: [],
+    projectId: "",
+  });
+
+  expect(Array.from(data.props.values())).toContainEqual(
+    expect.objectContaining({
+      name: "code",
+      type: "string",
+      value: "<div><span></div>",
+    })
+  );
+});
+
+test("moves legacy Code Text properties into copied text content", () => {
+  const data = renderData(<Body ws:id="bodyId" />);
+  const fragment = renderTemplate(<CodeText code="const answer = 42;" />);
+
+  insertWebstudioFragmentCopy({
+    data,
+    fragment,
+    availableVariables: [],
+    projectId: "",
+  });
+
+  const codeText = Array.from(data.instances.values()).find(
+    (instance) => instance.component === "CodeText"
+  );
+  expect(codeText?.children).toEqual([
+    { type: "text", value: "const answer = 42;" },
+  ]);
+  expect(
+    Array.from(data.props.values()).find(
+      (prop) => prop.instanceId === codeText?.id && prop.name === "code"
+    )
+  ).toBeUndefined();
+});
+
+test("insert instances with multiple roots", () => {
+  const data = renderData(<Body ws:id="bodyId"></Body>);
+  const fragment = renderTemplate(
+    <>
+      <Box>
+        <Text></Text>
+      </Box>
+      <Box>
+        <Text></Text>
+      </Box>
+    </>
+  );
+  expect(data.instances.size).toEqual(1);
+  insertWebstudioFragmentCopy({
+    data,
+    fragment,
+    availableVariables: [],
+    projectId: "",
+  });
+  expect(data.instances.size).toEqual(5);
+});
+
+test("should add :root local styles", () => {
+  const oldProject = createStub(
+    <ws.root
+      ws:id={ROOT_INSTANCE_ID}
+      ws:style={css`
+        color: red;
+      `}
+    >
+      <Body></Body>
+    </ws.root>
+  );
+  const newProject = createStub(<Body></Body>);
+  const fragment = extractWebstudioFragment(oldProject, ROOT_INSTANCE_ID);
+  insertWebstudioFragmentCopy({
+    data: newProject,
+    fragment,
+    availableVariables: [],
+    projectId: "",
+  });
+  expect(toCss(newProject)).toEqual(
+    stripIndent(`
+      @media all {
+        :root:local {
+          color: red
+        }
+      }
+    `).trim()
+  );
+});
+
+test("should merge :root local styles", () => {
+  const oldProject = createStub(
+    <ws.root
+      ws:id={ROOT_INSTANCE_ID}
+      ws:style={css`
+        color: red;
+      `}
+    >
+      <Body></Body>
+    </ws.root>
+  );
+  const newProject = createStub(
+    <ws.root
+      ws:id={ROOT_INSTANCE_ID}
+      ws:style={css`
+        font-size: medium;
+      `}
+    >
+      <Body></Body>
+    </ws.root>
+  );
+  const fragment = extractWebstudioFragment(oldProject, ROOT_INSTANCE_ID);
+  insertWebstudioFragmentCopy({
+    data: newProject,
+    fragment,
+    availableVariables: [],
+    projectId: "",
+  });
+  expect(toCss(newProject)).toEqual(
+    stripIndent(`
+      @media all {
+        :root:local {
+          font-size: medium;
+          color: red
+        }
+      }
+    `).trim()
+  );
+});
+
+test("does not conflict when a breakpoint id is remapped during insertion", () => {
+  const source = createStub(
+    <ws.root
+      ws:id={ROOT_INSTANCE_ID}
+      ws:style={css`
+        color: red;
+      `}
+    >
+      <Body></Body>
+    </ws.root>
+  );
+  const target = createStub(
+    <ws.root
+      ws:id={ROOT_INSTANCE_ID}
+      ws:style={css`
+        color: blue;
+      `}
+    >
+      <Body></Body>
+    </ws.root>
+  );
+  const sourceBreakpoint = source.breakpoints.values().next().value;
+  const targetBreakpoint = target.breakpoints.values().next().value;
+  const sourceStyle = source.styles.values().next().value;
+  if (
+    sourceBreakpoint === undefined ||
+    targetBreakpoint === undefined ||
+    sourceStyle === undefined
+  ) {
+    throw new Error("Expected root style fixtures");
+  }
+  source.breakpoints.clear();
+  source.breakpoints.set(targetBreakpoint.id, {
+    ...sourceBreakpoint,
+    id: targetBreakpoint.id,
+    minWidth: 640,
+  });
+  source.styles.clear();
+  const remappedSourceStyle = {
+    ...sourceStyle,
+    breakpointId: targetBreakpoint.id,
+  };
+  source.styles.set(getStyleDeclKey(remappedSourceStyle), remappedSourceStyle);
+
+  expect(
+    detectFragmentRootStyleConflicts({
+      fragment: extractWebstudioFragment(source, ROOT_INSTANCE_ID),
+      targetData: target,
+    })
+  ).toEqual([]);
+});
+
+test("should copy local styles of duplicated instance", () => {
+  const project = createStub(
+    <Body>
+      <Box
+        ws:id="boxId"
+        ws:style={css`
+          color: red;
+        `}
+      ></Box>
+    </Body>
+  );
+  const fragment = extractWebstudioFragment(project, "boxId");
+  insertWebstudioFragmentCopy({
+    data: project,
+    fragment,
+    availableVariables: [],
+    projectId: "",
+  });
+  const newInstanceId = Array.from(project.instances.keys()).at(-1);
+  expect(toCss(project)).toEqual(
+    stripIndent(`
+      @media all {
+        boxId:local {
+          color: red
+        }
+        ${newInstanceId}:local {
+          color: red
+        }
+      }
+    `).trim()
+  );
+  // modify original style
+  insertStyles({
+    data: project,
+    breakpointId: "base",
+    styleSourceId: project.styleSourceSelections.get("boxId")?.values[0] ?? "",
+    style: css`
+      font-size: medium;
+    `,
+  });
+  expect(toCss(project)).toEqual(
+    stripIndent(`
+      @media all {
+        boxId:local {
+          color: red;
+          font-size: medium
+        }
+        ${newInstanceId}:local {
+          color: red
+        }
+      }
+    `).trim()
+  );
+});
+
+describe("props", () => {
+  test("extract all props bound to fragment instances", () => {
+    const data = renderData(
+      <Body ws:id="bodyId" data-body="">
+        <Box ws:id="boxId" data-box="">
+          <Text ws:id="textId" data-text=""></Text>
+        </Box>
+      </Body>
+    );
+    const { props } = extractWebstudioFragment(data, "boxId");
+    expect(props).toEqual([
+      expect.objectContaining({ name: "data-box" }),
+      expect.objectContaining({ name: "data-text" }),
+    ]);
+  });
+
+  test("insert props with new ids", () => {
+    const data = renderData(<Body ws:id="bodyId"></Body>);
+    const fragment = renderTemplate(
+      <Box ws:id="boxId" data-box="">
+        <Text ws:id="textId" data-text=""></Text>
+      </Box>
+    );
+    insertWebstudioFragmentCopy({
+      data,
+      fragment,
+      availableVariables: [],
+      projectId: "",
+    });
+    expect(Array.from(data.props.values())).toEqual([
+      expect.objectContaining({
+        id: expect.toSatisfy((value) => value !== fragment.props[0].id),
+        name: "data-box",
+      }),
+      expect.objectContaining({
+        id: expect.toSatisfy((value) => value !== fragment.props[1].id),
+        name: "data-text",
+      }),
+    ]);
+  });
+
+  test("preserve ids when insert props from slots", () => {
+    const data = renderData(<Body ws:id="bodyId"></Body>);
+    const fragment = renderTemplate(
+      <Slot>
+        <Fragment>
+          <Box ws:id="boxId" data-box="">
+            <Text ws:id="textId" data-text=""></Text>
+          </Box>
+        </Fragment>
+      </Slot>
+    );
+    insertWebstudioFragmentCopy({
+      data,
+      fragment,
+      availableVariables: [],
+      projectId: "",
+    });
+    expect(Array.from(data.props.values())).toEqual([
+      expect.objectContaining({
+        id: fragment.props[0].id,
+        name: "data-box",
+      }),
+      expect.objectContaining({
+        id: fragment.props[1].id,
+        name: "data-text",
+      }),
+    ]);
+  });
+});
+
+describe("variables", () => {
+  test("extract variable", () => {
+    const boxVariable = new Variable("Box Variable", "");
+    const data = renderData(
+      <Body ws:id="bodyId">
+        <Box ws:id="boxId" vars={expression`${boxVariable}`}></Box>
+      </Body>
+    );
+    const fragment = extractWebstudioFragment(data, "boxId");
+    expect(fragment.dataSources).toEqual([
+      expect.objectContaining({ id: "0", type: "variable" }),
+    ]);
+    expect(fragment.props).toEqual([
+      expect.objectContaining({
+        instanceId: "boxId",
+        value: "$ws$dataSource$0",
+      }),
+    ]);
+  });
+
+  test("unset variable outside of scope", () => {
+    const bodyVariable = new Variable("Body Variable", "");
+    const data = renderData(
+      <Body ws:id="bodyId" vars={expression`${bodyVariable}`}>
+        <Box
+          ws:id="boxId"
+          vars={expression`${bodyVariable}`}
+          action={
+            new ActionValue(["state"], expression`${bodyVariable} = state`)
+          }
+        >
+          {expression`${bodyVariable}`}
+        </Box>
+      </Body>
+    );
+    const fragment = extractWebstudioFragment(data, "boxId");
+    expect(fragment.dataSources).toEqual([]);
+    expect(fragment.props).toEqual([
+      expect.objectContaining({
+        instanceId: "boxId",
+        value: "Body$32$Variable",
+      }),
+      expect.objectContaining({
+        instanceId: "boxId",
+        value: [
+          {
+            type: "execute",
+            args: ["state"],
+            code: "Body$32$Variable = state",
+          },
+        ],
+      }),
+    ]);
+    expect(fragment.instances).toEqual([
+      expect.objectContaining({
+        id: "boxId",
+        children: [
+          {
+            type: "expression",
+            value: "Body$32$Variable",
+            mode: "read",
+          },
+        ],
+      }),
+    ]);
+  });
+
+  test("insert variables with new ids", () => {
+    const boxParameter = new Parameter("My Parameter");
+    const data = renderData(<Body ws:id="bodyId"></Body>);
+    const fragment = renderTemplate(
+      <Box
+        ws:id="boxId"
+        vars={expression`${boxParameter}`}
+        action={new ActionValue([], expression`${boxParameter}`)}
+        parameter={boxParameter}
+      >
+        {expression`${boxParameter}`}
+      </Box>
+    );
+    insertWebstudioFragmentCopy({
+      data,
+      fragment,
+      availableVariables: [],
+      projectId: "",
+    });
+    const [newDataSourceId] = data.dataSources.keys();
+    expect(Array.from(data.dataSources.values())).toEqual([
+      expect.objectContaining({
+        id: expect.toSatisfy((value) => value !== fragment.dataSources[0].id),
+        name: "My Parameter",
+      }),
+    ]);
+    expect(Array.from(data.props.values())).toEqual([
+      expect.objectContaining({
+        name: "vars",
+        value: encodeDataVariableId(newDataSourceId),
+      }),
+      expect.objectContaining({
+        name: "action",
+        value: [
+          {
+            type: "execute",
+            args: [],
+            code: encodeDataVariableId(newDataSourceId),
+          },
+        ],
+      }),
+      expect.objectContaining({
+        name: "parameter",
+        value: newDataSourceId,
+      }),
+    ]);
+  });
+
+  test("preserve ids when insert variables from portals", () => {
+    const boxParameter = new Parameter("My Parameter");
+    const data = renderData(<Body ws:id="bodyId"></Body>);
+    const fragment = renderTemplate(
+      <Slot>
+        <Fragment>
+          <Box
+            ws:id="boxId"
+            vars={expression`${boxParameter}`}
+            action={new ActionValue([], expression`${boxParameter}`)}
+            parameter={boxParameter}
+          >
+            {expression`${boxParameter}`}
+          </Box>
+        </Fragment>
+      </Slot>
+    );
+    insertWebstudioFragmentCopy({
+      data,
+      fragment,
+      availableVariables: [],
+      projectId: "",
+    });
+    expect(Array.from(data.dataSources.values())).toEqual([
+      expect.objectContaining({
+        id: fragment.dataSources[0].id,
+        name: "My Parameter",
+      }),
+    ]);
+    expect(Array.from(data.props.values())).toEqual([
+      expect.objectContaining({
+        name: "vars",
+        value: encodeDataVariableId(fragment.dataSources[0].id),
+      }),
+      expect.objectContaining({
+        name: "action",
+        value: [
+          {
+            type: "execute",
+            args: [],
+            code: encodeDataVariableId(fragment.dataSources[0].id),
+          },
+        ],
+      }),
+      expect.objectContaining({
+        name: "parameter",
+        value: fragment.dataSources[0].id,
+      }),
+    ]);
+  });
+
+  test("restore unset variables when insert fragment", () => {
+    const bodyVariable = new Variable("Body Variable", "");
+    const data = renderData(
+      <Body ws:id="bodyId" vars={expression`${bodyVariable}`}>
+        <Box
+          ws:id="boxId"
+          vars={expression`${bodyVariable} + unknownVariable`}
+          action={
+            new ActionValue(["state"], expression`${bodyVariable} = state`)
+          }
+        >
+          {expression`${bodyVariable}`}
+        </Box>
+      </Body>
+    );
+    const fragment = extractWebstudioFragment(data, "boxId");
+    insertWebstudioFragmentCopy({
+      data,
+      fragment,
+      availableVariables: findAvailableVariables({
+        ...data,
+        startingInstanceId: "bodyId",
+      }),
+      projectId: "",
+    });
+    const newInstanceId = Array.from(data.instances.keys()).at(-1) ?? "";
+    expect(newInstanceId).not.toEqual("boxId");
+    expect(data.instances.get(newInstanceId)?.children).toEqual([
+      { type: "expression", value: "$ws$dataSource$0", mode: "read" },
+    ]);
+    expect(
+      Array.from(data.props.values()).filter(
+        (item) => item.instanceId === newInstanceId
+      )
+    ).toEqual([
+      expect.objectContaining({
+        value: "$ws$dataSource$0 + unknownVariable",
+      }),
+      expect.objectContaining({
+        value: [expect.objectContaining({ code: "$ws$dataSource$0 = state" })],
+      }),
+    ]);
+  });
+});
+
+describe("resources", () => {
+  test("extract resource variable with dependant variables", () => {
+    const boxVariable = new Variable("Box Variable", "");
+    const resourceVariable = new ResourceValue("Box Resource", {
+      url: expression`${boxVariable}`,
+      method: "get",
+      searchParams: [{ name: "filter", value: expression`${boxVariable}` }],
+      headers: [{ name: "auth", value: expression`${boxVariable}` }],
+      body: expression`${boxVariable}`,
+    });
+    const data = renderData(
+      <Body ws:id="bodyId">
+        <Box ws:id="boxId" vars={expression`${resourceVariable}`}></Box>
+      </Body>
+    );
+    const fragment = extractWebstudioFragment(data, "boxId");
+    expect(fragment.dataSources).toEqual([
+      expect.objectContaining({ id: "1", type: "variable" }),
+      expect.objectContaining({ id: "0", type: "resource" }),
+    ]);
+    expect(fragment.resources).toEqual([
+      expect.objectContaining({
+        url: "$ws$dataSource$1",
+        searchParams: [{ name: "filter", value: "$ws$dataSource$1" }],
+        headers: [{ name: "auth", value: "$ws$dataSource$1" }],
+        body: "$ws$dataSource$1",
+      }),
+    ]);
+  });
+
+  test("extract resource variable and unset variables outside of scope", () => {
+    const bodyVariable = new Variable("Body Variable", "");
+    const resourceVariable = new ResourceValue("Box Resource", {
+      url: expression`${bodyVariable}`,
+      method: "get",
+      searchParams: [{ name: "filter", value: expression`${bodyVariable}` }],
+      headers: [{ name: "auth", value: expression`${bodyVariable}` }],
+      body: expression`${bodyVariable}`,
+    });
+    const data = renderData(
+      <Body ws:id="bodyId" vars={expression`${bodyVariable}`}>
+        <Box ws:id="boxId" vars={expression`${resourceVariable}`}></Box>
+      </Body>
+    );
+    const fragment = extractWebstudioFragment(data, "boxId");
+    expect(fragment.dataSources).toEqual([
+      expect.objectContaining({ id: "1", type: "resource" }),
+    ]);
+    expect(fragment.resources).toEqual([
+      expect.objectContaining({
+        url: "Body$32$Variable",
+        searchParams: [{ name: "filter", value: "Body$32$Variable" }],
+        headers: [{ name: "auth", value: "Body$32$Variable" }],
+        body: "Body$32$Variable",
+      }),
+    ]);
+  });
+
+  test("restore unset variables in resource variable", () => {
+    const bodyVariable = new Variable("Body Variable", "");
+    const resourceVariable = new ResourceValue("Box Resource", {
+      url: expression`${bodyVariable}`,
+      method: "get",
+      searchParams: [{ name: "filter", value: expression`${bodyVariable}` }],
+      headers: [{ name: "auth", value: expression`${bodyVariable}` }],
+      body: expression`${bodyVariable}`,
+    });
+    const data = renderData(
+      <Body ws:id="bodyId" vars={expression`${bodyVariable}`}>
+        <Box ws:id="boxId" vars={expression`${resourceVariable}`}></Box>
+      </Body>
+    );
+    const fragment = extractWebstudioFragment(data, "boxId");
+    insertWebstudioFragmentCopy({
+      data,
+      fragment,
+      availableVariables: findAvailableVariables({
+        ...data,
+        startingInstanceId: "bodyId",
+      }),
+      projectId: "",
+    });
+    const newInstanceId = Array.from(data.instances.keys()).at(-1);
+    expect(newInstanceId).not.toEqual("boxId");
+    expect(Array.from(data.resources.values())).toEqual([
+      expect.objectContaining({
+        url: "$ws$dataSource$0",
+        searchParams: [{ name: "filter", value: "$ws$dataSource$0" }],
+        headers: [{ name: "auth", value: "$ws$dataSource$0" }],
+        body: "$ws$dataSource$0",
+      }),
+      expect.objectContaining({
+        url: "$ws$dataSource$0",
+        searchParams: [{ name: "filter", value: "$ws$dataSource$0" }],
+        headers: [{ name: "auth", value: "$ws$dataSource$0" }],
+        body: "$ws$dataSource$0",
+      }),
+    ]);
+  });
+
+  test("extract resource prop with dependant variables", () => {
+    const boxVariable = new Variable("Box Variable", "");
+    const resourceProp = new ResourceValue("Box Resource", {
+      url: expression`${boxVariable}`,
+      method: "get",
+      searchParams: [{ name: "filter", value: expression`${boxVariable}` }],
+      headers: [{ name: "auth", value: expression`${boxVariable}` }],
+      body: expression`${boxVariable}`,
+    });
+    const data = renderData(
+      <Body ws:id="bodyId">
+        <Box ws:id="boxId" resource={resourceProp}></Box>
+      </Body>
+    );
+    const fragment = extractWebstudioFragment(data, "boxId");
+    expect(fragment.dataSources).toEqual([
+      expect.objectContaining({ id: "1", type: "variable" }),
+    ]);
+    expect(fragment.resources).toEqual([
+      expect.objectContaining({
+        url: "$ws$dataSource$1",
+        searchParams: [{ name: "filter", value: "$ws$dataSource$1" }],
+        headers: [{ name: "auth", value: "$ws$dataSource$1" }],
+        body: "$ws$dataSource$1",
+      }),
+    ]);
+  });
+
+  test("extract resource prop and unset variables outside of scope", () => {
+    const bodyVariable = new Variable("Body Variable", "");
+    const resourceProp = new ResourceValue("Box Resource", {
+      url: expression`${bodyVariable}`,
+      method: "get",
+      searchParams: [{ name: "filter", value: expression`${bodyVariable}` }],
+      headers: [{ name: "auth", value: expression`${bodyVariable}` }],
+      body: expression`${bodyVariable}`,
+    });
+    const data = renderData(
+      <Body ws:id="bodyId" vars={expression`${bodyVariable}`}>
+        <Box ws:id="boxId" resource={resourceProp}></Box>
+      </Body>
+    );
+    const fragment = extractWebstudioFragment(data, "boxId");
+    expect(fragment.dataSources).toEqual([]);
+    expect(fragment.resources).toEqual([
+      expect.objectContaining({
+        url: "Body$32$Variable",
+        searchParams: [{ name: "filter", value: "Body$32$Variable" }],
+        headers: [{ name: "auth", value: "Body$32$Variable" }],
+        body: "Body$32$Variable",
+      }),
+    ]);
+  });
+
+  test("restore unset variables in resource prop", () => {
+    const bodyVariable = new Variable("Body Variable", "");
+    const resourceProp = new ResourceValue("Box Resource", {
+      url: expression`${bodyVariable}`,
+      method: "get",
+      searchParams: [{ name: "filter", value: expression`${bodyVariable}` }],
+      headers: [{ name: "auth", value: expression`${bodyVariable}` }],
+      body: expression`${bodyVariable}`,
+    });
+    const data = renderData(
+      <Body ws:id="bodyId" vars={expression`${bodyVariable}`}>
+        <Box ws:id="boxId" resource={resourceProp}></Box>
+      </Body>
+    );
+    const fragment = extractWebstudioFragment(data, "boxId");
+    insertWebstudioFragmentCopy({
+      data,
+      fragment,
+      availableVariables: findAvailableVariables({
+        ...data,
+        startingInstanceId: "bodyId",
+      }),
+      projectId: "",
+    });
+    const newInstanceId = Array.from(data.instances.keys()).at(-1);
+    expect(newInstanceId).not.toEqual("boxId");
+    expect(Array.from(data.resources.values())).toEqual([
+      expect.objectContaining({
+        url: "$ws$dataSource$0",
+        searchParams: [{ name: "filter", value: "$ws$dataSource$0" }],
+        headers: [{ name: "auth", value: "$ws$dataSource$0" }],
+        body: "$ws$dataSource$0",
+      }),
+      expect.objectContaining({
+        url: "$ws$dataSource$0",
+        searchParams: [{ name: "filter", value: "$ws$dataSource$0" }],
+        headers: [{ name: "auth", value: "$ws$dataSource$0" }],
+        body: "$ws$dataSource$0",
+      }),
+    ]);
+  });
+
+  test("insert resources with new ids", () => {
+    const boxVariable = new Variable("Box Variable", "");
+    const resourceProp = new ResourceValue("Box Resource", {
+      url: expression`${boxVariable}`,
+      method: "get",
+      searchParams: [{ name: "filter", value: expression`${boxVariable}` }],
+      headers: [{ name: "auth", value: expression`${boxVariable}` }],
+      body: expression`${boxVariable}`,
+    });
+    const resourceVariable = new ResourceValue("Box Resource", {
+      url: expression`${boxVariable}`,
+      method: "get",
+      searchParams: [{ name: "filter", value: expression`${boxVariable}` }],
+      headers: [{ name: "auth", value: expression`${boxVariable}` }],
+      body: expression`${boxVariable}`,
+    });
+    const data = renderData(<Body ws:id="bodyId"></Body>);
+    const fragment = renderTemplate(
+      <Box
+        ws:id="boxId"
+        action={resourceProp}
+        vars={expression`${resourceVariable}`}
+      ></Box>
+    );
+    insertWebstudioFragmentCopy({
+      data,
+      fragment,
+      availableVariables: [],
+      projectId: "",
+    });
+    const [newPropResourceId, newVariableResourceId] = data.resources.keys();
+    const [newBoxVariableId] = data.dataSources.keys();
+    const newVariableIdentifier = encodeDataVariableId(newBoxVariableId);
+    expect(Array.from(data.dataSources.values())).toEqual([
+      expect.objectContaining({
+        name: "Box Variable",
+      }),
+      expect.objectContaining({
+        name: "Box Resource",
+        resourceId: newVariableResourceId,
+      }),
+    ]);
+    expect(Array.from(data.resources.values())).toEqual([
+      expect.objectContaining({
+        id: expect.toSatisfy((value) => value !== fragment.resources[0].id),
+        url: newVariableIdentifier,
+        searchParams: [{ name: "filter", value: newVariableIdentifier }],
+        headers: [{ name: "auth", value: newVariableIdentifier }],
+        body: newVariableIdentifier,
+      }),
+      expect.objectContaining({
+        id: expect.toSatisfy((value) => value !== fragment.resources[1].id),
+        url: newVariableIdentifier,
+        searchParams: [{ name: "filter", value: newVariableIdentifier }],
+        headers: [{ name: "auth", value: newVariableIdentifier }],
+        body: newVariableIdentifier,
+      }),
+    ]);
+    expect(Array.from(data.props.values())).toEqual([
+      expect.objectContaining({
+        name: "action",
+        value: newPropResourceId,
+      }),
+      expect.objectContaining({ name: "vars" }),
+    ]);
+  });
+
+  test("preserve ids when insert resource from slot", () => {
+    const boxVariable = new Variable("Box Variable", "");
+    const resourceProp = new ResourceValue("Box Resource", {
+      url: expression`${boxVariable}`,
+      method: "get",
+      searchParams: [{ name: "filter", value: expression`${boxVariable}` }],
+      headers: [{ name: "auth", value: expression`${boxVariable}` }],
+      body: expression`${boxVariable}`,
+    });
+    const resourceVariable = new ResourceValue("Box Resource", {
+      url: expression`${boxVariable}`,
+      method: "get",
+      searchParams: [{ name: "filter", value: expression`${boxVariable}` }],
+      headers: [{ name: "auth", value: expression`${boxVariable}` }],
+      body: expression`${boxVariable}`,
+    });
+    const data = renderData(<Body ws:id="bodyId"></Body>);
+    const fragment = renderTemplate(
+      <Slot ws:id="slotId">
+        <Fragment ws:id="fragmentId">
+          <Box
+            ws:id="boxId"
+            action={resourceProp}
+            vars={expression`${resourceVariable}`}
+          ></Box>
+        </Fragment>
+      </Slot>
+    );
+    insertWebstudioFragmentCopy({
+      data,
+      fragment,
+      availableVariables: [],
+      projectId: "",
+    });
+    expect(Array.from(data.dataSources.values())).toEqual([
+      expect.objectContaining({
+        name: "Box Variable",
+      }),
+      expect.objectContaining({
+        name: "Box Resource",
+        resourceId: fragment.resources[1].id,
+      }),
+    ]);
+    const oldVariableIdentifier = encodeDataVariableId(
+      fragment.dataSources[0].id
+    );
+    expect(Array.from(data.resources.values())).toEqual([
+      expect.objectContaining({
+        id: fragment.resources[0].id,
+        url: oldVariableIdentifier,
+        searchParams: [{ name: "filter", value: oldVariableIdentifier }],
+        headers: [{ name: "auth", value: oldVariableIdentifier }],
+        body: oldVariableIdentifier,
+      }),
+      expect.objectContaining({
+        id: fragment.resources[1].id,
+        url: oldVariableIdentifier,
+        searchParams: [{ name: "filter", value: oldVariableIdentifier }],
+        headers: [{ name: "auth", value: oldVariableIdentifier }],
+        body: oldVariableIdentifier,
+      }),
+    ]);
+    expect(Array.from(data.props.values())).toEqual([
+      expect.objectContaining({
+        name: "action",
+        value: fragment.resources[0].id,
+      }),
+      expect.objectContaining({ name: "vars" }),
+    ]);
+  });
+});

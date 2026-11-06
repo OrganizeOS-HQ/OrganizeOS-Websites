@@ -8,11 +8,12 @@
   "scripts": {
     "build": "rm -rf lib && esbuild src/index.ts src/schema.ts --outdir=lib --bundle --format=esm --packages=external",
     "dts": "tsc --project tsconfig.dts.json",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "zod": "^3.24.2"
+    "@remix-run/router": "1.23.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@webstudio-is/tsconfig": "workspace:*",
@@ -31,7 +32,7 @@
     }
   },
   "files": [
-    "lib/*",
+    "lib/**/*",
     "README.md",
     "!*.{test,stories}.*"
   ],

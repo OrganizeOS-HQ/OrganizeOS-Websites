@@ -55,7 +55,7 @@ vi.mock("@webstudio-is/trpc-interface/index.server", () => {
   };
 });
 
-vi.mock("@webstudio-is/project/content-mode-permissions", () => ({
+vi.mock("@webstudio-is/project-build/runtime", () => ({
   applyContentModeTransaction,
   getContentModeCapabilities,
 }));
@@ -78,6 +78,7 @@ import {
 import type { NormalizedPatchRequest } from "./patch-normalize.server";
 
 const buildRow = {
+  pages: JSON.stringify({}),
   instances: JSON.stringify([
     { id: "body-1", type: "instance", component: "Body", children: [] },
   ]),
