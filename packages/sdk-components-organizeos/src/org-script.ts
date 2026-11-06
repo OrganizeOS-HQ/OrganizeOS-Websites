@@ -823,3 +823,7 @@ const literalNodeValue = (node: Expression): unknown => {
       throw notALiteral();
   }
 };
+
+// Input validation for expressions and generated names, read by the builder
+// and the CLI through this entry (code-check.ts).
+export * from "./code-check";
