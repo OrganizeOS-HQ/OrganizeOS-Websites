@@ -141,6 +141,7 @@ jobs:
           cache: pnpm
 
       - name: Install
+        id: install
         run: pnpm install --frozen-lockfile
 
       - name: Build the OrganizeOS site components
@@ -174,7 +175,8 @@ jobs:
         run: pnpm run "$SCRIPT"
 
       - name: Test the visual-regression scripts
-        if: matrix.leg == 'packages'
+        # Runs when the package tests fail too, so one run reports both.
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.leg == 'packages' }}
         run: pnpm visual-regression:test
 
       - name: Test the builder project
