@@ -8,7 +8,7 @@ import {
   publishedProjectBundle,
   type PublishedProjectBundle,
 } from "@webstudio-is/protocol";
-import type { Instance, Prop } from "@webstudio-is/sdk";
+import type { Instance, Prop, Resource } from "@webstudio-is/sdk";
 import {
   ORGANIZEOS_GUARD_LEVEL,
   orgScriptMayRun,
@@ -72,10 +72,12 @@ const bundleOf = ({
   instances,
   props,
   redirect,
+  resources = [],
 }: {
   instances: Array<[string, Instance]>;
   props: Array<[string, Prop]>;
   redirect?: string;
+  resources?: Array<[string, Resource]>;
 }): PublishedProjectBundle => {
   const home = {
     id: "home",
@@ -111,7 +113,7 @@ const bundleOf = ({
       props,
       instances,
       dataSources: [],
-      resources: [],
+      resources,
       styleSources: [],
       styleSourceSelections: [],
       styles: [],
@@ -217,6 +219,26 @@ const inputValidationHolds = () => {
         instances: [instance("root", "Body")],
         props: [],
         redirect: "a()",
+      })
+    ) &&
+    prebuildRefuses(
+      bundleOf({
+        instances: [instance("root", "Body")],
+        props: [],
+        resources: [
+          [
+            "contact",
+            {
+              id: "contact",
+              name: "Contact",
+              control: "email",
+              method: "post",
+              url: `""`,
+              headers: [],
+              email: { subject: '"a".constructor' },
+            },
+          ],
+        ],
       })
     ) &&
     prebuildRefuses(withTag("div")) === false
@@ -354,6 +376,10 @@ const levelOne: Requirement[] = [
           "drops srcdoc and event handler attributes",
         ],
       },
+      {
+        file: "packages/project-build/src/runtime/project-settings.organizeos.test.ts",
+        path: ["the redirect operations refuse the target %s"],
+      },
     ],
   },
   {
@@ -395,6 +421,17 @@ const levelOne: Requirement[] = [
         path: ["the fork's own values pass", "the %s site template"],
       },
       {
+        file: codeCheckTests,
+        path: [
+          "findCodeCheckFailure",
+          "reads every field of the Resource schema that holds an expression",
+        ],
+      },
+      {
+        file: "packages/cli/src/organizeos-code-check.test.ts",
+        path: ["assertBuildCodeValid", "names an email resource's %s"],
+      },
+      {
         file: "packages/cli/src/organizeos-code-check.test.ts",
         path: [
           "assertBuildCodeValid",
@@ -431,6 +468,27 @@ const levelOne: Requirement[] = [
         path: [
           "applyPatchRequest with a value that fails input validation",
           "fails the entry that writes it, with the reason, and applies the others",
+        ],
+      },
+      {
+        file: "apps/builder/app/services/api-router.server.test.ts",
+        path: [
+          "api router permits",
+          "a build patch with a value that fails input validation is not saved",
+        ],
+      },
+      {
+        file: "apps/builder/app/services/api-router.server.test.ts",
+        path: [
+          "api router permits",
+          "a runtime operation that writes a value failing input validation is not saved",
+        ],
+      },
+      {
+        file: "apps/builder/app/services/build-router.server.test.ts",
+        path: [
+          "build router restore points",
+          "a restore point with a value that fails input validation is not restored",
         ],
       },
     ],
