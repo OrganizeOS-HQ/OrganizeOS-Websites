@@ -743,7 +743,6 @@ collection }` invalidates, through `invalidateResource`, every current
   collection's item page, its list block and the sitemap, made from the data
   tab. Every part is upstream instances, Resources and page meta that
   published sites already render: no runtime package changes.
-
   - **The menu** (`collection-row-menu.tsx`). A collection's row (a catalog
     Resource whose id is its collection's derived id) has a "..." menu in place
     of its button: Create item page (Open item page once the collection has
@@ -774,7 +773,6 @@ collection }` invalidates, through `invalidateResource`, every current
   - **Create item page** (`collection-pages.ts`, `createCollectionItemPage`)
     writes, in one `updateWebstudioData` transaction, so one undo removes it
     all:
-
     - the page "{Collection} template" at `/{slug}/:slug`, registered in the
       root folder, then selected;
     - its Resource "Current {singular}", with a `nanoid` id, `method: "get"`,
@@ -901,7 +899,6 @@ collection }` invalidates, through `invalidateResource`, every current
   block's binding, and the props that read it: an instance (`root`, or the
   `ws:id` the template gives it), a prop name, and the expression, given the
   binding's variable. A template key with no entry is inserted untouched.
-
   - The Signup Form's entry is the Forms Resource under "OrganizeOS Forms", and
     the root's `data` = `<v>.data`.
   - The Event List's entry is Upcoming Events under "OrganizeOS Upcoming
@@ -939,7 +936,6 @@ collection }` invalidates, through `invalidateResource`, every current
     `Object.entries(<expr> ?? {})`, and `??` binds tighter than `?:`, so
     without them the `?? {}` guards only the `[]` branch and a 200 with no list
     throws on the published page.
-
   1. Refuse, with a toast and no write, when the org is denied the blocks.
   2. Find the Events Resource by its deterministic id, never by name. If it is
      missing or has no non-blank `Authorization` header, refuse with a toast
@@ -1663,10 +1659,9 @@ code in the page's address only, never in a cookie or storage.
   published link may route by its own `to`, not the DOM `href`, and would drop
   the code, even on a link an earlier Ctrl-click, middle-click or context
   menu, or the first click of a double-click, has already given its `r`.
-  OrganizeOS plan `docs/superpowers/plans/2026-11-05-share-code-new-tab-gestures.md`
-  brings the platform's carrier to the same rule; until it lands, the
-  platform's carrier acts on a click only and leaves a link that already has
-  `r` to its default. Any
+  The platform's carrier follows the same rule, with the same middle-click and
+  context menu (OrganizeOS-HQ/OrganizeOS#2234, plan
+  `docs/superpowers/plans/2026-11-05-share-code-new-tab-gestures.md`). Any
   other click (a modifier key or another button, `target="_blank"`,
   `download`) follows the `href`. A middle-click and a context menu only add
   the code to the `href`, as a modified click does, and are never cancelled,
@@ -2607,7 +2602,6 @@ as paused, so reversal is the switch.
   `tags`, the Tag control's list, as `elementTagMayRun` holds, and is not
   `animate` or `set`, `pausedSvgTags`) to every tag that can reach an element,
   whichever component holds it:
-
   - a `ws:element` whose `instance.tag` fails it renders as a `div`;
   - `instance.tag` is not passed on as `data-ws-tag` unless it passes;
   - a `data-ws-tag` or `tag` prop whose evaluated value fails it (an expression
@@ -2696,7 +2690,6 @@ as paused, so reversal is the switch.
   before props are normalized, pages are walked, resources are collected and CSS
   is generated, so every later step sees a build without any of it, on every
   page and in every framework. It never changes its input, and drops:
-
   1. every instance whose component is `HtmlEmbed`, unless its `code` prop is a
      static string identical to a template icon. An embed whose `code` is an
      expression, a Resource or missing is dropped too (upstream's published
