@@ -35,6 +35,9 @@ jobs:
           # Full history: check:runtime-upstream diffs against the upstream base
           # commit (scripts/upstream-base.txt), which a shallow clone lacks.
           fetch-depth: 0
+          # Nothing here pushes: keep the token out of .git/config, where
+          # install scripts and tests could read it.
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v6
 
@@ -132,6 +135,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v6
 
