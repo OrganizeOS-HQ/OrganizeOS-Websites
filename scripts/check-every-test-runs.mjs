@@ -5,6 +5,11 @@
 // the same directory and with the same project the leg runs), so a file no
 // include glob matches, or a builder project with no leg, fails the check. It
 // lists files only: nothing is run and no browser starts.
+//
+// A leg counts only if the tests job runs it, so the check also holds the job
+// to its shape: the matrix legs, the steps that run them (each as a whole
+// block: name, condition, limit, env and command), no job-level key that can
+// skip or excuse a leg, and no continue-on-error anywhere in the job.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -45,23 +50,153 @@ const e2eSpecCount = trackedFiles.filter((file) =>
   e2eSpecPattern.test(file)
 ).length;
 
-const workflow = readFileSync(join(root, workflowPath), "utf8");
-const matrixValues = (key) =>
-  [
-    ...workflow.matchAll(
-      new RegExp(`^\\s+${key}:\\s*"?([\\w:.-]+)"?\\s*$`, "gm")
-    ),
-  ].map((match) => match[1]);
-const workflowScripts = new Set(matrixValues("script"));
-const workflowProjects = new Set(matrixValues("project"));
-// The matrix values above count only if the tests job runs them.
-const runSteps = [
-  'run: pnpm run "$SCRIPT"',
-  'run: pnpm --filter @webstudio-is/builder exec vitest run --project "$PROJECT"',
+// The tests job, read as text. Comment lines and blank lines carry no
+// meaning, so they are skipped; every other line must be one this check
+// expects, in the shape below.
+const workflowLines = readFileSync(join(root, workflowPath), "utf8")
+  .split("\n")
+  .map((line) => line.trimEnd());
+const meaningful = (line) => line !== "" && /^\s*#/.test(line) === false;
+const indentOf = (line) => line.length - line.trimStart().length;
+/** The meaningful lines below a key line, up to the next line indented as
+ * far as the key or less. */
+const blockBelow = (lines, keyIndex) => {
+  const keyIndent = indentOf(lines[keyIndex]);
+  const block = [];
+  for (const line of lines.slice(keyIndex + 1).filter(meaningful)) {
+    if (indentOf(line) <= keyIndent) {
+      break;
+    }
+    block.push(line);
+  }
+  return block;
+};
+
+const testsJobIndex = workflowLines.indexOf("  tests:");
+const testsJob =
+  testsJobIndex === -1 ? [] : blockBelow(workflowLines, testsJobIndex);
+if (testsJobIndex === -1) {
+  failures.push(`${workflowPath} has no \`tests\` job`);
+}
+
+// No key that can skip a leg or let it fail green.
+for (const line of testsJob) {
+  if (line.includes("continue-on-error")) {
+    failures.push(
+      `${workflowPath}'s tests job has continue-on-error (\`${line.trim()}\`): a leg must fail the run`
+    );
+  }
+}
+const allowedJobKeys = [
+  "name",
+  "timeout-minutes",
+  "runs-on",
+  "strategy",
+  "steps",
 ];
-for (const step of runSteps) {
-  if (workflow.split("\n").some((line) => line.trim() === step) === false) {
-    failures.push(`${workflowPath} has no step \`${step}\``);
+for (const line of testsJob.filter((line) => indentOf(line) === 4)) {
+  const key = line.trim().split(":")[0];
+  if (allowedJobKeys.includes(key) === false) {
+    failures.push(
+      key === "if"
+        ? `${workflowPath}'s tests job has a job-level \`if:\` (\`${line.trim()}\`): every leg runs on every event`
+        : `${workflowPath}'s tests job sets \`${key}\`, which this check does not read (it reads ${allowedJobKeys.join(", ")})`
+    );
+  }
+}
+
+/** The legs: the matrix's include entries, each a map of its keys. */
+const matrixEntries = [];
+const matrixIndex = testsJob.indexOf("      matrix:");
+const matrix = matrixIndex === -1 ? [] : blockBelow(testsJob, matrixIndex);
+if (matrixIndex === -1) {
+  failures.push(`${workflowPath}'s tests job has no matrix`);
+}
+const unquote = (raw) => raw.replace(/^"(.*)"$/, "$1");
+for (const line of matrix) {
+  const entryStart = /^ {10}- ([\w-]+): ?(.*)$/.exec(line);
+  const entryKey = /^ {12}([\w-]+): ?(.*)$/.exec(line);
+  if (line === "        include:") {
+    continue;
+  }
+  if (entryStart !== null) {
+    matrixEntries.push(new Map([[entryStart[1], unquote(entryStart[2])]]));
+  } else if (entryKey !== null && matrixEntries.length > 0) {
+    matrixEntries.at(-1).set(entryKey[1], unquote(entryKey[2]));
+  } else {
+    failures.push(
+      `${workflowPath}'s tests matrix has \`${line.trim()}\`, which this check does not read: list the legs under include, one key per line`
+    );
+  }
+}
+const workflowScripts = new Set(
+  matrixEntries.flatMap((entry) => entry.get("script") ?? [])
+);
+const workflowProjects = new Set(
+  matrixEntries.flatMap((entry) => entry.get("project") ?? [])
+);
+if (
+  matrixEntries.some(
+    (entry) =>
+      entry.get("leg") === "packages" && entry.get("script") === "test:packages"
+  ) === false
+) {
+  failures.push(
+    `${workflowPath} has no leg \`packages\` that runs \`test:packages\` (the visual-regression step runs in that leg)`
+  );
+}
+
+// The steps that run the legs, each exactly as below, comment lines aside.
+const expectedSteps = [
+  [
+    "      - name: Install",
+    "        id: install",
+    "        run: pnpm install --frozen-lockfile",
+  ],
+  [
+    "      - name: Test",
+    "        if: matrix.script",
+    "        env:",
+    "          SCRIPT: ${{ matrix.script }}",
+    '        run: pnpm run "$SCRIPT"',
+  ],
+  [
+    "      - name: Test the visual-regression scripts",
+    "        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.leg == 'packages' }}",
+    "        run: pnpm visual-regression:test",
+  ],
+  [
+    "      - name: Test the builder project",
+    "        if: matrix.project",
+    "        timeout-minutes: 10",
+    "        env:",
+    "          PROJECT: ${{ matrix.project }}",
+    "          DEBUG: vitest:browser:pool",
+    '        run: pnpm --filter @webstudio-is/builder exec vitest run --project "$PROJECT"',
+  ],
+];
+const stepsIndex = testsJob.indexOf("    steps:");
+const stepBlocks = [];
+for (const line of stepsIndex === -1 ? [] : blockBelow(testsJob, stepsIndex)) {
+  if (line.startsWith("      - ")) {
+    stepBlocks.push([line]);
+  } else {
+    stepBlocks.at(-1)?.push(line);
+  }
+}
+for (const expected of expectedSteps) {
+  const named = stepBlocks.filter((block) => block[0] === expected[0]);
+  const name = expected[0].replace("      - name: ", "");
+  if (named.length !== 1) {
+    failures.push(
+      `${workflowPath}'s tests job has ${named.length} steps named "${name}"; it must have one`
+    );
+    continue;
+  }
+  if (named[0].join("\n") !== expected.join("\n")) {
+    failures.push(
+      `${workflowPath}'s step "${name}" differs from what this check expects (a changed condition, env or command can drop legs; if the change is meant, update the check):\n--- expected\n${expected.join("\n")}\n--- found\n${named[0].join("\n")}`
+    );
   }
 }
 
@@ -160,9 +295,6 @@ if (
   failures.push(
     `package.json script "visual-regression:test" is not \`${visualRegressionScript}\``
   );
-}
-if (/^\s+run: pnpm visual-regression:test\s*$/m.test(workflow) === false) {
-  failures.push(`${workflowPath} does not run \`pnpm visual-regression:test\``);
 }
 addToLeg(
   "packages",
