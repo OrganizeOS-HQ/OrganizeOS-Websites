@@ -55,21 +55,22 @@ test("useInstanceProps skips a data-ws-tag or tag prop that the canvas may not r
 
 test("useInstanceProps passes the instance's own tag on only when the canvas may render it", () => {
   expect(webstudioComponent).toMatch(
-    /tag !== undefined && elementTagMayRender\(tag\)/
+    /tag !== undefined &&\s*instanceTagMayRender\(instance\?\.component \?\? "", tag\)/
   );
 });
 
 // The canvas makes no element whose tag the builder does not offer, nor an SVG
 // animate or set (a SMIL animate can set a link's href to a javascript: URL):
 // both renderers fall back to a div for a ws:element with such a tag, with the
-// rule that also holds the tag props (elementTagMayRender, not
-// elementTagMayRun, which lets animate and set through)
+// rule that also holds the tag props (elementTagMayRender, through
+// instanceTagMayRender, not elementTagMayRun, which lets animate and set
+// through)
 test("both renderers fall back to a div for a ws:element whose tag the canvas may not render", () => {
   const preview = webstudioComponent.indexOf(
     "export const WebstudioComponentPreview"
   );
   const fallback =
-    /if \(elementTagMayRender\(Component\) === false\) \{\s*Component = "div";\s*\}/g;
+    /if \(instanceTagMayRender\(elementComponent, Component\) === false\) \{\s*Component = "div";\s*\}/g;
   expect(webstudioComponent.slice(0, preview).match(fallback)).toHaveLength(1);
   expect(webstudioComponent.slice(preview).match(fallback)).toHaveLength(1);
   expect(webstudioComponent).not.toMatch(/elementTagMayRun\(/);

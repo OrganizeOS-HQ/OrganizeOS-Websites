@@ -33,7 +33,8 @@ export type CodeCheck = { ok: true } | { ok: false; reason: string };
 const pass: CodeCheck = { ok: true };
 const refuse = (reason: string): CodeCheck => ({ ok: false, reason });
 
-const reasons = {
+/** The fixed reasons a value is refused for, in a few words. */
+export const codeCheckReasons = {
   empty: "Expression is empty",
   syntax: "Not a valid expression",
   single: "Only one expression is allowed",
@@ -48,6 +49,8 @@ const reasons = {
   searchParam: "Not a valid parameter name",
   tag: "Not an allowed tag",
 } as const;
+
+const reasons = codeCheckReasons;
 
 /** Names that reach an object's prototype chain or its constructor. */
 export const forbiddenMemberNames: ReadonlySet<string> = new Set([

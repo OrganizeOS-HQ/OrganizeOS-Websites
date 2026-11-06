@@ -28,6 +28,10 @@ import {
 } from "@webstudio-is/sdk/runtime";
 import { setUnion } from "./shim";
 import { isPresetId } from "./organizeos-preset-ids";
+import {
+  checkValueExpression,
+  codeCheckReasons,
+} from "@organizeos/site-components/org-script";
 
 const allowedJsChars = /[A-Za-z_]/;
 const compiledExpressionCacheLimit = 10_000;
@@ -39,10 +43,26 @@ type CompiledExpression = (variables: {
 
 const compiledExpressionCache = new Map<string, CompiledExpression>();
 
+// OrganizeOS fork: an expression that fails input validation is never
+// compiled; it reads as unset (code-check.ts in @organizeos/site-components).
+// It is logged as upstream logs one that cannot compile, with the reason
+// only; one that does not parse still fails in transpileExpression.
+const skippedExpression: CompiledExpression = () => undefined;
+
 const getCompiledExpression = (expression: string) => {
   const cached = compiledExpressionCache.get(expression);
   if (cached) {
     return cached;
+  }
+  const check = checkValueExpression(expression);
+  if (
+    check.ok === false &&
+    check.reason !== codeCheckReasons.syntax &&
+    check.reason !== codeCheckReasons.empty
+  ) {
+    console.error(`Expression skipped: ${check.reason}`);
+    compiledExpressionCache.set(expression, skippedExpression);
+    return skippedExpression;
   }
 
   const usedVariables = new Map<string, DataSource["name"]>();
