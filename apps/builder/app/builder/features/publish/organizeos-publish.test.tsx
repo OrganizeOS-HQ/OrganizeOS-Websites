@@ -703,3 +703,72 @@ describe("the OrganizeOS Publish dialog", () => {
     expect(document.body.textContent).toBe(before);
   });
 });
+
+// OrganizeOS fork: input validation (organizeos-publish-code-check.ts)
+describe("the Publish dialog with a value that fails input validation", () => {
+  const publishCalls = () =>
+    routeFetch.mock.calls.filter(([url]) =>
+      String(url).includes("/trpc/domain.publish")
+    );
+
+  const clickPublish = async () => {
+    const host = await render();
+    const publish = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.textContent === "Publish"
+    );
+    await act(async () => {
+      publish?.click();
+      await Promise.resolve();
+    });
+    await settle();
+    return host;
+  };
+
+  beforeEach(() => {
+    $instances.set(
+      new Map([
+        [
+          "box",
+          {
+            type: "instance",
+            id: "box",
+            component: "Box",
+            label: "Hero",
+            children: [],
+          },
+        ],
+      ])
+    );
+    setProject(null);
+  });
+
+  test("does not dispatch, and names the place", async () => {
+    $props.set(
+      new Map([
+        [
+          "p",
+          {
+            id: "p",
+            instanceId: "box",
+            name: "title",
+            type: "expression",
+            value: "a()",
+          },
+        ],
+      ])
+    );
+    const host = await clickPublish();
+    expect(publishCalls()).toEqual([]);
+    expect(host.textContent).toContain(
+      `Can't publish: the property "title" of "Hero".`
+    );
+  });
+
+  test("a clean build dispatches as before", async () => {
+    await clickPublish();
+    await vi.waitFor(() => {
+      expect(publishCalls()).toHaveLength(1);
+    });
+    await settle();
+  });
+});
