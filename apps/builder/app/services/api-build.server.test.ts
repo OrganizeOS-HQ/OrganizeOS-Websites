@@ -89,8 +89,8 @@ test("separates validated restore points from raw build patches", () => {
 const server = createTestServer();
 
 // OrganizeOS fork: every build write reads the columns the save check covers
-// (organizeos-code-check.server.ts); by default they hold a build with no
-// values to check
+// (organizeos-code-check.server.ts), with the build's version; by default
+// they hold a build with no values to check
 const savedBuildColumns = (
   columns: Record<string, string> = {
     pages: serializePages(createDefaultPages({ rootInstanceId: "root" })),
@@ -98,12 +98,14 @@ const savedBuildColumns = (
     props: "[]",
     resources: "[]",
     dataSources: "[]",
-  }
+  },
+  version = 1,
+  lastTransactionId: string | null = null
 ) =>
   db.get("Build", ({ request }) =>
     new URL(request.url).searchParams.get("select") ===
-    "pages,instances,props,resources,dataSources"
-      ? json(columns)
+    "version,lastTransactionId,pages,instances,props,resources,dataSources"
+      ? json({ version, lastTransactionId, ...columns })
       : undefined
   );
 
@@ -323,6 +325,52 @@ describe("api build patch commits", () => {
       reason: "clientVersionUnsupported",
       target: "cli",
       action: { type: "updateCli" },
+    });
+    expect(patchBuild).not.toHaveBeenCalled();
+  });
+
+  test("checks the build at the client's version, answering a conflict otherwise", async () => {
+    server.use(savedBuildColumns(undefined, 2));
+    const patchBuild = vi.spyOn(projectApi, "patchBuild");
+
+    await expect(
+      commitBuildTransactions({
+        ctx: createContext(true),
+        projectId: "project",
+        buildId: "build",
+        clientVersion: 1,
+        transactions: [transaction],
+      })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(patchBuild).not.toHaveBeenCalled();
+  });
+
+  test("refuses a transaction whose patch does not apply to the build", async () => {
+    const patchBuild = vi.spyOn(projectApi, "patchBuild");
+
+    await expect(
+      commitBuildTransactions({
+        ctx: createContext(true),
+        projectId: "project",
+        buildId: "build",
+        clientVersion: 1,
+        transactions: [
+          {
+            id: "unapplied",
+            payload: [
+              {
+                namespace: "props",
+                patches: [
+                  { op: "replace", path: ["missing", "value"], value: `"a"` },
+                ],
+              },
+            ],
+          },
+        ],
+      })
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "This change has a value that cannot be saved",
     });
     expect(patchBuild).not.toHaveBeenCalled();
   });

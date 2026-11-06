@@ -17,7 +17,7 @@ import { assertApiProjectPermit } from "./api-permits.server";
 import { assertCliApiContractVersion } from "./api-compatibility.server";
 import { throwApiError } from "./api-errors.server";
 import { createAssetClient } from "~/shared/asset-client";
-import { transactionsPassCodeCheck } from "~/shared/sync/patch/organizeos-code-check.server";
+import { checkBuildTransactions } from "~/shared/sync/patch/organizeos-code-check.server";
 
 export const loadBuildByProjectVersion = async (
   ctx: AppContext,
@@ -160,9 +160,18 @@ export const commitBuildTransactions = async ({
   transactions: z.infer<typeof buildPatchTransaction>[];
 }) => {
   assertCliApiContractVersion(ctx);
-  // OrganizeOS fork: every build write passes the save check
-  // (organizeos-code-check.server.ts)
-  if ((await transactionsPassCodeCheck(ctx, buildId, transactions)) === false) {
+  // OrganizeOS fork: the transactions pass the save check, run on the build
+  // at the client's version (organizeos-code-check.server.ts)
+  const checked = await checkBuildTransactions(
+    ctx,
+    buildId,
+    clientVersion,
+    transactions
+  );
+  if (checked.status === "version_mismatched") {
+    throwApiError("CONFLICT", checked.errors);
+  }
+  if (checked.status === "refused") {
     throwApiError(
       "BAD_REQUEST",
       "This change has a value that cannot be saved"

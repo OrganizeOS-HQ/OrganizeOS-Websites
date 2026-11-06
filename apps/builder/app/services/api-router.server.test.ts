@@ -60,21 +60,23 @@ import { assertContentOrBuildTransactions } from "./api-content-permissions.serv
 const { assertApiPublishDomains } = __testing__;
 
 // OrganizeOS fork: every build write reads the columns the save check covers
-// (organizeos-code-check.server.ts); by default they hold a build with no
-// values to check
+// (organizeos-code-check.server.ts), with the build's version; by default
+// they hold the instances of createEditableContentBuild and no values to check
 const savedBuildColumns = (
   columns: Record<string, string> = {
     pages: serializePages(createDefaultPages({ rootInstanceId: "root" })),
-    instances: "[]",
+    instances: JSON.stringify(createEditableContentBuild().instances),
     props: "[]",
     resources: "[]",
     dataSources: "[]",
-  }
+  },
+  version = 3,
+  lastTransactionId: string | null = null
 ) =>
   postgrestDb.get("Build", ({ request }) =>
     new URL(request.url).searchParams.get("select") ===
-    "pages,instances,props,resources,dataSources"
-      ? json(columns)
+    "version,lastTransactionId,pages,instances,props,resources,dataSources"
+      ? json({ version, lastTransactionId, ...columns })
       : undefined
   );
 
@@ -1719,6 +1721,8 @@ describe("api router permits", () => {
 
   test("preserves stale Editor retries without bypassing current or future patch validation", async () => {
     const build = createEditableContentBuild();
+    // the build saved the retried transaction at version 3
+    server.use(savedBuildColumns(undefined, 3, "saved"));
     vi.spyOn(authDb, "getTokenInfo").mockResolvedValue(
       createToken({ relation: "editors" })
     );
@@ -1991,6 +1995,15 @@ describe("api router permits", () => {
     );
     vi.spyOn(authorizeProject, "hasProjectPermit").mockResolvedValue(true);
     vi.spyOn(projectBuild, "loadDevBuildByProjectId").mockResolvedValue(build);
+    server.use(
+      savedBuildColumns({
+        pages: serializePages(build.pages),
+        instances: JSON.stringify(build.instances),
+        props: "[]",
+        resources: "[]",
+        dataSources: "[]",
+      })
+    );
     vi.spyOn(assetUploader, "loadAssetDataByProject").mockResolvedValue({
       assets: [],
       assetFolders: [],

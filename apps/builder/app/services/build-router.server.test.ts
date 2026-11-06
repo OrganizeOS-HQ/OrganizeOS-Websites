@@ -496,6 +496,8 @@ test.each([true, false])(
 // (organizeos-code-check.server.ts)
 describe("build router restore points", () => {
   const savedColumns = {
+    version: 1,
+    lastTransactionId: null,
     pages: serializePages(createDefaultPages({ rootInstanceId: "root" })),
     instances: JSON.stringify([
       { type: "instance", id: "root", component: "Body", children: [] },

@@ -234,12 +234,14 @@ const rejectedResult = ({
 });
 
 const applyAuthorizedEntries = async ({
+  context,
   authorized,
   build,
   patch,
   version,
   assetStore,
 }: {
+  context: AppContext;
   authorized: AuthorizedPatchEntry[];
   build?: BuildRow;
   patch: NormalizedPatchRequest;
@@ -291,8 +293,28 @@ const applyAuthorizedEntries = async ({
 
   const entries: PatchEntryResult[] = [];
   let currentVersion = version;
+  let entryFailed = false;
 
   for (const { entry, context: entryContext } of authorized) {
+    // OrganizeOS fork: the save check ran with every earlier entry applied;
+    // once one fails here, each later entry is checked again against the
+    // build as saved (organizeos-code-check.server.ts)
+    if (entryFailed) {
+      const checked = await findRefusedPatchEntries(
+        context,
+        patch.buildId,
+        currentVersion,
+        [entry]
+      );
+      if (checked.status === "version_mismatched") {
+        return checked;
+      }
+      const reason = checked.refused.get(entry);
+      if (reason !== undefined) {
+        entries.push(failedResult(entry, reason));
+        continue;
+      }
+    }
     const entryResult = await patchLoadedBuild(
       {
         build: currentBuild,
@@ -315,6 +337,7 @@ const applyAuthorizedEntries = async ({
       return entryResult;
     }
     entries.push(failedResult(entry, entryResult.errors));
+    entryFailed = true;
   }
 
   return {
@@ -363,12 +386,18 @@ export const applyPatchRequest = async (
       return capabilities;
     });
   // OrganizeOS fork: an entry that writes a value failing input validation is
-  // refused, and the others apply (organizeos-code-check.server.ts)
-  const refusedByCheck = await findRefusedPatchEntries(
+  // refused, and the others apply; the check reads the build at the client's
+  // version (organizeos-code-check.server.ts)
+  const checked = await findRefusedPatchEntries(
     context,
     patch.buildId,
+    patch.clientVersion,
     authorizedEntries.map(({ entry }) => entry)
   );
+  if (checked.status === "version_mismatched") {
+    return checked;
+  }
+  const refusedByCheck = checked.refused;
   const authorized = authorizedEntries.filter(
     ({ entry }) => refusedByCheck.has(entry) === false
   );
@@ -382,6 +411,7 @@ export const applyPatchRequest = async (
           buildId: patch.buildId,
         });
   const applied = await applyAuthorizedEntries({
+    context,
     authorized,
     build,
     patch,

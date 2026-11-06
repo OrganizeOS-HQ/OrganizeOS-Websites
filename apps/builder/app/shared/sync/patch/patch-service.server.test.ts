@@ -822,6 +822,72 @@ describe("applyPatchRequest with a value that fails input validation", () => {
     });
   });
 
+  test("answers a version conflict when the build moved past the client's version", async () => {
+    const write = propWrite("tx-1", 1, `"a"`);
+    authorizePatchEntries.mockResolvedValue({
+      authorized: [{ entry: write, context: { writer: 1 } }],
+      rejected: [],
+    });
+
+    // the saved build is at version 3
+    const result = await applyPatchRequest(createContext(), {
+      ...patch,
+      clientVersion: 2,
+      entries: [write],
+    });
+
+    expect(patchLoadedBuild).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      status: "version_mismatched",
+      errors: expect.stringContaining("reload"),
+    });
+  });
+
+  test("checks the entries after one the server fails against the build as saved", async () => {
+    const add = propWrite("tx-1", 1, `"a"`);
+    const edit = {
+      seq: 2,
+      transaction: {
+        id: "tx-2",
+        payload: [
+          {
+            namespace: "props",
+            patches: [{ op: "replace", path: ["tx-1", "value"], value: `"b"` }],
+          },
+        ],
+      } as never,
+      writer: { type: "token" as const, authToken: "token" },
+    };
+    authorizePatchEntries.mockResolvedValue({
+      authorized: [
+        { entry: add, context: { writer: 1 } },
+        { entry: edit, context: { writer: 2 } },
+      ],
+      rejected: [],
+    });
+    patchLoadedBuild.mockResolvedValue({ status: "error", errors: "Failed" });
+
+    const result = await applyPatchRequest(createContext(), {
+      ...patch,
+      entries: [add, edit],
+    });
+
+    expect(patchLoadedBuild).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      status: "partial",
+      version: 3,
+      entries: [
+        { seq: 1, transactionId: "tx-1", status: "failed", errors: "Failed" },
+        {
+          seq: 2,
+          transactionId: "tx-2",
+          status: "failed",
+          errors: "This change cannot be applied",
+        },
+      ],
+    });
+  });
+
   test("persists nothing when every entry is refused", async () => {
     const refused = propWrite("tx-1", 1, "a()");
     authorizePatchEntries.mockResolvedValue({

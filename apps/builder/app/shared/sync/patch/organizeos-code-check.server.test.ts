@@ -5,7 +5,11 @@ import {
   serializePages,
 } from "@webstudio-is/project-build/persistence";
 import type { Prop } from "@webstudio-is/sdk";
-import { findRefusedEntries } from "./organizeos-code-check.server";
+import {
+  findRefusedEntries,
+  findRefusedPatchEntries,
+} from "./organizeos-code-check.server";
+import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import type { PatchEntry } from "./patch-normalize.server";
 
 const expressionProp = (id: string, value: string): Prop => ({
@@ -186,6 +190,99 @@ describe("findRefusedEntries", () => {
     const saved = build([expressionProp("p", "a()")]);
     const remove = entry("props", [{ op: "remove", path: ["p"] }]);
     expect(findRefusedEntries(saved, [remove]).size).toBe(0);
+  });
+  test("refuses an entry whose patch does not apply, and applies the others", () => {
+    const unapplied = entry("props", [
+      { op: "replace", path: ["missing", "value"], value: `"a"` },
+    ]);
+    const next = entry("props", [
+      { op: "add", path: ["p"], value: expressionProp("p", `"a"`) },
+    ]);
+    expect(findRefusedEntries(build(), [unapplied, next])).toEqual(
+      new Map([[unapplied, "This change cannot be applied"]])
+    );
+  });
+});
+
+describe("findRefusedPatchEntries", () => {
+  const contextWith = (version: number, selected: string[] = []) =>
+    ({
+      postgrest: {
+        client: {
+          from: () => ({
+            select: (columns: string) => {
+              selected.push(columns);
+              return {
+                eq: () => ({
+                  single: async () => ({
+                    data: {
+                      version,
+                      lastTransactionId: "tx-saved",
+                      ...build(),
+                    },
+                    error: null,
+                  }),
+                }),
+              };
+            },
+          }),
+        },
+      },
+    }) as unknown as AppContext;
+  const write = () =>
+    entry("props", [
+      { op: "add", path: ["p"], value: expressionProp("p", "a()") },
+    ]);
+
+  test("checks the build at the version the client writes", async () => {
+    const selected: string[] = [];
+    const refused = write();
+    const result = await findRefusedPatchEntries(
+      contextWith(3, selected),
+      "build",
+      3,
+      [refused]
+    );
+    expect(selected[0]?.split(", ")).toContain("version");
+    expect(result).toEqual({
+      status: "checked",
+      refused: new Map([[refused, "This function is not allowed"]]),
+    });
+  });
+
+  test("answers a version conflict when the build moved past the client's version", async () => {
+    expect(
+      await findRefusedPatchEntries(contextWith(4), "build", 3, [write()])
+    ).toMatchObject({ status: "version_mismatched" });
+  });
+
+  test("answers a version conflict for a client ahead of the build", async () => {
+    expect(
+      await findRefusedPatchEntries(contextWith(3), "build", 4, [write()])
+    ).toMatchObject({ status: "version_mismatched" });
+  });
+
+  test("passes the retry of a request already saved, which writes nothing", async () => {
+    const retry = write();
+    retry.transaction.id = "tx-saved";
+    expect(
+      await findRefusedPatchEntries(contextWith(4), "build", 3, [retry])
+    ).toEqual({ status: "checked", refused: new Map() });
+    // a client ahead of the build is not a retry
+    expect(
+      await findRefusedPatchEntries(contextWith(3), "build", 4, [retry])
+    ).toMatchObject({ status: "version_mismatched" });
+  });
+
+  test("reads nothing when no entry writes a checked value", async () => {
+    const selected: string[] = [];
+    const style = entry("styles", [{ op: "add", path: ["s"], value: {} }]);
+    expect(
+      await findRefusedPatchEntries(contextWith(4, selected), "build", 3, [
+        style,
+      ])
+    ).toEqual({ status: "checked", refused: new Map() });
+    expect(selected).toEqual([]);
   });
 });
 

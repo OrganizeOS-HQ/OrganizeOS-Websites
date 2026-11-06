@@ -9,8 +9,11 @@
  * pages, instances, props, resources and data sources, and the records it
  * touches are checked before and after. An entry is refused only when a record
  * fails after it in a way it did not before, so an entry that leaves a saved
- * failing value alone applies (prebuild and the canvas cover saved data).
- * Nothing here writes to the database.
+ * failing value alone applies (prebuild and the canvas cover saved data). An
+ * entry whose patch does not apply to the build is refused. The build is
+ * checked at the version the client writes, which the write itself matches,
+ * so the check sees the data the write changes. Nothing here writes to the
+ * database.
  */
 import { applyPatches, enableMapSet, enablePatches, type Patch } from "immer";
 import type {
@@ -30,6 +33,7 @@ import {
   pagesToCheck,
 } from "@organizeos/site-components/org-script";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
+import { singlePlayerVersionMismatchResult } from "@webstudio-is/project/build-patch-core.server";
 import type { PatchEntry } from "./patch-normalize.server";
 
 enableMapSet();
@@ -43,7 +47,11 @@ const checkedNamespaces = new Set([
   "dataSources",
 ]);
 
-const columns = "pages, instances, props, resources, dataSources";
+const columns =
+  "version, lastTransactionId, pages, instances, props, resources, dataSources";
+
+/** The reason an entry whose patch does not apply is refused for. */
+export const unappliedPatchReason = "This change cannot be applied";
 
 type CheckedData = {
   pages: Pages;
@@ -58,7 +66,9 @@ type Namespace = keyof CheckedData;
 type Change = { namespace: string; patches: Patch[] };
 
 /** What the check reads of an entry: its transaction's changes. */
-type CheckedEntry = { transaction: Pick<PatchEntry["transaction"], "payload"> };
+type CheckedEntry = {
+  transaction: Pick<PatchEntry["transaction"], "id" | "payload">;
+};
 
 const changesOf = (entry: CheckedEntry) =>
   (entry.transaction.payload as Change[]).filter(
@@ -181,7 +191,7 @@ export const findRefusedEntries = <Entry extends CheckedEntry>(
         };
       }
     } catch {
-      // a patch that does not apply fails where upstream applies it
+      refused.set(entry, unappliedPatchReason);
       continue;
     }
     // a namespace replaced whole touches every record before and after
@@ -206,14 +216,25 @@ export const findRefusedEntries = <Entry extends CheckedEntry>(
   return refused;
 };
 
-/** Loads what findRefusedEntries reads, only when an entry writes it. */
+type CheckResult<Entry> =
+  | typeof singlePlayerVersionMismatchResult
+  | { status: "checked"; refused: Map<Entry, string> };
+
+/**
+ * Loads what findRefusedEntries reads, only when an entry writes it. A build
+ * whose version is not the client's answers the version conflict a stale
+ * client gets from the write, so the client reloads, except for the retry of
+ * a request already saved (a client behind the build whose last transaction
+ * is the build's last): that write changes nothing, as in patchLoadedBuild.
+ */
 export const findRefusedPatchEntries = async <Entry extends CheckedEntry>(
   context: AppContext,
   buildId: string,
+  clientVersion: number,
   entries: Entry[]
-): Promise<Map<Entry, string>> => {
+): Promise<CheckResult<Entry>> => {
   if (writesCheckedValues(entries) === false) {
-    return new Map();
+    return { status: "checked", refused: new Map() };
   }
   const build = await context.postgrest.client
     .from("Build")
@@ -223,27 +244,44 @@ export const findRefusedPatchEntries = async <Entry extends CheckedEntry>(
   if (build.error) {
     throw build.error;
   }
-  return findRefusedEntries(
-    build.data as unknown as Parameters<typeof findRefusedEntries>[0],
-    entries
-  );
+  const data = build.data as unknown as {
+    version: number;
+    lastTransactionId: string | null;
+  } & Parameters<typeof findRefusedEntries>[0];
+  if (data.version !== clientVersion) {
+    const lastTransactionId = entries.at(-1)?.transaction.id;
+    const savedRetry =
+      clientVersion < data.version &&
+      lastTransactionId !== undefined &&
+      lastTransactionId === data.lastTransactionId;
+    return savedRetry
+      ? { status: "checked", refused: new Map() }
+      : singlePlayerVersionMismatchResult;
+  }
+  return { status: "checked", refused: findRefusedEntries(data, entries) };
 };
 
 /**
- * Whether a set of transactions written together, in order, passes the save
- * check: every build write that is not a patch request (the API's build
- * patch, the runtime operations and restoring a restore point) commits only
- * when no transaction is refused.
+ * Checks a set of transactions written together, in order: every build write
+ * that is not a patch request (the API's build patch, the runtime operations
+ * and restoring a restore point) commits only when the check passes.
  */
-export const transactionsPassCodeCheck = async (
+export const checkBuildTransactions = async (
   context: AppContext,
   buildId: string,
+  clientVersion: number,
   transactions: Array<CheckedEntry["transaction"]>
-) =>
-  (
-    await findRefusedPatchEntries(
-      context,
-      buildId,
-      transactions.map((transaction) => ({ transaction }))
-    )
-  ).size === 0;
+): Promise<
+  typeof singlePlayerVersionMismatchResult | { status: "passed" | "refused" }
+> => {
+  const result = await findRefusedPatchEntries(
+    context,
+    buildId,
+    clientVersion,
+    transactions.map((transaction) => ({ transaction }))
+  );
+  if (result.status === "version_mismatched") {
+    return result;
+  }
+  return { status: result.refused.size === 0 ? "passed" : "refused" };
+};
