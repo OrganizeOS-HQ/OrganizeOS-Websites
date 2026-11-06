@@ -51,7 +51,32 @@ const click = (element: Element, init?: MouseEventInit) => {
   return { prevented };
 };
 
+// A middle-click opens its tab through `auxclick` (button 1), and a right
+// click or a long press opens the link's menu through `contextmenu`. Each
+// returns whether the event's default was prevented once every handler had
+// run; jsdom does nothing by default for either.
+const gesture =
+  (type: "auxclick" | "contextmenu", button: number) =>
+  (element: Element, init?: MouseEventInit) => ({
+    prevented: !fireEvent(
+      element,
+      new MouseEvent(type, { bubbles: true, cancelable: true, button, ...init })
+    ),
+  });
+const middleClick = gesture("auxclick", 1);
+const contextMenu = gesture("contextmenu", 2);
+const gestures = [
+  ["a middle-click", middleClick],
+  ["a context menu", contextMenu],
+] as const;
+
 const link = (name: string) => screen.getByRole("link", { name });
+
+/** The r values an anchor's href carries. */
+const shareCodes = (anchor: Element) =>
+  new URL(anchor.getAttribute("href") ?? "", window.location.href).searchParams
+    .getAll("r")
+    .sort();
 
 // What a client-side router's link does on a click, as react-router's Link
 // does: route by its own `to`, unless the click is modified or another handler
@@ -290,7 +315,30 @@ test("rewrites the href but lets the browser handle a modified, new-tab or downl
   expect(navigateTo).not.toHaveBeenCalled();
 });
 
-test("does nothing on an auxclick, which a middle-click opens its tab through", () => {
+test("carries the code on a middle-click's auxclick and keeps its default, so the new tab opens with it", () => {
+  render(
+    <Sdk>
+      <ShareCodeCarrier>
+        <a href="/donate">Give</a>
+        <a href="/join/volunteers?ref=footer#form">
+          <span>Join</span>
+        </a>
+      </ShareCodeCarrier>
+    </Sdk>
+  );
+  expect(middleClick(link("Give"))).toEqual({ prevented: false });
+  expect(link("Give").getAttribute("href")).toBe(at(`/donate?r=${code}`));
+  // with a modifier key, on an element inside the link
+  expect(middleClick(screen.getByText("Join"), { shiftKey: true })).toEqual({
+    prevented: false,
+  });
+  expect(link("Join").getAttribute("href")).toBe(
+    at(`/join/volunteers?ref=footer&r=${code}#form`)
+  );
+  expect(navigateTo).not.toHaveBeenCalled();
+});
+
+test("leaves an auxclick with another button alone", () => {
   render(
     <Sdk>
       <ShareCodeCarrier>
@@ -298,12 +346,220 @@ test("does nothing on an auxclick, which a middle-click opens its tab through", 
       </ShareCodeCarrier>
     </Sdk>
   );
-  const notCancelled = fireEvent(
-    link("Give"),
-    new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 1 })
+  // the secondary button opens the link's menu through contextmenu, and the
+  // fourth and fifth are back and forward
+  for (const button of [2, 3, 4]) {
+    expect(middleClick(link("Give"), { button }), `button ${button}`).toEqual({
+      prevented: false,
+    });
+    expect(link("Give").getAttribute("href"), `button ${button}`).toBe(
+      "/donate"
+    );
+  }
+  expect(navigateTo).not.toHaveBeenCalled();
+});
+
+test("carries the code on a context menu, a right click or a long press, and keeps its default, so Open in new tab and Copy link address carry it alike", () => {
+  render(
+    <Sdk>
+      <ShareCodeCarrier>
+        <a href="/donate">Give</a>
+        <a href="/events/weekly-phone-bank">
+          <span>Event</span>
+        </a>
+      </ShareCodeCarrier>
+    </Sdk>
   );
-  expect(notCancelled).toBe(true);
+  expect(contextMenu(link("Give"))).toEqual({ prevented: false });
+  expect(link("Give").getAttribute("href")).toBe(at(`/donate?r=${code}`));
+  // a long press, or the keyboard's menu key, raises it with the primary
+  // button; here on an element inside the link
+  expect(contextMenu(screen.getByText("Event"), { button: 0 })).toEqual({
+    prevented: false,
+  });
+  expect(link("Event").getAttribute("href")).toBe(
+    at(`/events/weekly-phone-bank?r=${code}`)
+  );
+  expect(navigateTo).not.toHaveBeenCalled();
+});
+
+test("a context menu, then a plain click: one r, by document, and the router stays out", () => {
+  render(
+    <Sdk>
+      <ShareCodeCarrier>
+        <RouterLink to="/donate">Give</RouterLink>
+      </ShareCodeCarrier>
+    </Sdk>
+  );
+  expect(contextMenu(link("Give"))).toEqual({ prevented: false });
+  expect(shareCodes(link("Give"))).toEqual([code]);
+  // the menu dismissed, the link is clicked
+  expect(click(link("Give"))).toEqual({ prevented: true });
+  expect(route).not.toHaveBeenCalled();
+  expect(vi.mocked(navigateTo).mock.calls).toEqual([[at(`/donate?r=${code}`)]]);
+});
+
+test("a middle-click, a context menu and a Ctrl-click on one link: one r", () => {
+  render(
+    <Sdk>
+      <ShareCodeCarrier>
+        <a href="/join">Join</a>
+      </ShareCodeCarrier>
+    </Sdk>
+  );
+  expect(middleClick(link("Join"))).toEqual({ prevented: false });
+  expect(shareCodes(link("Join"))).toEqual([code]);
+  expect(contextMenu(link("Join"))).toEqual({ prevented: false });
+  expect(shareCodes(link("Join"))).toEqual([code]);
+  expect(click(link("Join"), { ctrlKey: true })).toEqual({ prevented: false });
+  expect(link("Join").getAttribute("href")).toBe(at(`/join?r=${code}`));
+  expect(navigateTo).not.toHaveBeenCalled();
+});
+
+test("keeps the r a link already carries on a middle-click and a context menu", () => {
+  render(
+    <Sdk>
+      <ShareCodeCarrier>
+        <a href="/donate?r=Other23456">Give</a>
+        <a href="/join?r=">Join</a>
+      </ShareCodeCarrier>
+    </Sdk>
+  );
+  for (const [name, gestured] of gestures) {
+    expect(gestured(link("Give")), name).toEqual({ prevented: false });
+    expect(gestured(link("Join")), name).toEqual({ prevented: false });
+  }
+  expect(link("Give").getAttribute("href")).toBe("/donate?r=Other23456");
+  expect(link("Join").getAttribute("href")).toBe("/join?r=");
+  expect(navigateTo).not.toHaveBeenCalled();
+});
+
+test("leaves a middle-click and a context menu another handler already cancelled", () => {
+  const cancel = (event: Event) => event.preventDefault();
+  // the document's capture listeners run before the carrier's
+  document.addEventListener("auxclick", cancel, true);
+  document.addEventListener("contextmenu", cancel, true);
+  try {
+    render(
+      <Sdk>
+        <ShareCodeCarrier>
+          <a href="/donate">Give</a>
+        </ShareCodeCarrier>
+      </Sdk>
+    );
+    for (const [name, gestured] of gestures) {
+      expect(gestured(link("Give")), name).toEqual({ prevented: true });
+    }
+  } finally {
+    document.removeEventListener("auxclick", cancel, true);
+    document.removeEventListener("contextmenu", cancel, true);
+  }
   expect(link("Give").getAttribute("href")).toBe("/donate");
+  expect(navigateTo).not.toHaveBeenCalled();
+});
+
+test("leaves a link outside it, to the site's own pages, to another origin and to a donor page alone on every gesture", () => {
+  const hrefs = [
+    "/about",
+    "/events",
+    "https://elsewhere.example/donate/x",
+    "https://events.organizeos.org/acme/x",
+    "/unsubscribe",
+  ];
+  render(
+    <Sdk>
+      <a href="/donate">Beside</a>
+      <ShareCodeCarrier>
+        {hrefs.map((href) => (
+          <a key={href} href={href}>
+            {href}
+          </a>
+        ))}
+      </ShareCodeCarrier>
+    </Sdk>
+  );
+  for (const [name, gestured] of gestures) {
+    expect(gestured(link("Beside")), name).toEqual({ prevented: false });
+    for (const href of hrefs) {
+      expect(gestured(link(href)), `${name}, ${href}`).toEqual({
+        prevented: false,
+      });
+    }
+  }
+  expect(link("Beside").getAttribute("href")).toBe("/donate");
+  for (const href of hrefs) {
+    expect(link(href).getAttribute("href"), href).toBe(href);
+  }
+  expect(navigateTo).not.toHaveBeenCalled();
+});
+
+test("does nothing on either gesture without a well-formed code on the page", () => {
+  render(
+    <Sdk>
+      <ShareCodeCarrier>
+        <a href="/donate">Give</a>
+      </ShareCodeCarrier>
+    </Sdk>
+  );
+  for (const search of ["?r=bad", `?ref=${code}`, ""]) {
+    window.history.replaceState(null, "", `/${search}`);
+    for (const [name, gestured] of gestures) {
+      expect(gestured(link("Give")), `${name}, ${search}`).toEqual({
+        prevented: false,
+      });
+    }
+    expect(link("Give").getAttribute("href"), search).toBe("/donate");
+  }
+  expect(navigateTo).not.toHaveBeenCalled();
+});
+
+test("lets a middle-click and a context menu reach the page's own handlers, and carries them in the capture phase even when the link's own listener stops them", () => {
+  const onAuxClick = vi.fn();
+  const onContextMenu = vi.fn();
+  const onDocument = vi.fn();
+  document.addEventListener("auxclick", onDocument);
+  document.addEventListener("contextmenu", onDocument);
+  try {
+    render(
+      <Sdk>
+        <ShareCodeCarrier>
+          <a
+            href="/donate"
+            onAuxClick={onAuxClick}
+            onContextMenu={onContextMenu}
+          >
+            Give
+          </a>
+          <a href="/join">Join</a>
+          <a href="/shop">Shop</a>
+        </ShareCodeCarrier>
+      </Sdk>
+    );
+    expect(middleClick(link("Give"))).toEqual({ prevented: false });
+    expect(link("Give").getAttribute("href")).toBe(at(`/donate?r=${code}`));
+    expect(contextMenu(link("Give"))).toEqual({ prevented: false });
+    expect(onAuxClick).toHaveBeenCalledTimes(1);
+    expect(onContextMenu).toHaveBeenCalledTimes(1);
+    expect(onDocument).toHaveBeenCalledTimes(2);
+
+    // the link's own listener stops them; the carrier has already run
+    for (const name of ["Join", "Shop"]) {
+      link(name).addEventListener("auxclick", (event) =>
+        event.stopPropagation()
+      );
+      link(name).addEventListener("contextmenu", (event) =>
+        event.stopPropagation()
+      );
+    }
+    expect(middleClick(link("Join"))).toEqual({ prevented: false });
+    expect(contextMenu(link("Shop"))).toEqual({ prevented: false });
+    expect(link("Join").getAttribute("href")).toBe(at(`/join?r=${code}`));
+    expect(link("Shop").getAttribute("href")).toBe(at(`/shop?r=${code}`));
+    expect(onDocument).toHaveBeenCalledTimes(2);
+  } finally {
+    document.removeEventListener("auxclick", onDocument);
+    document.removeEventListener("contextmenu", onDocument);
+  }
   expect(navigateTo).not.toHaveBeenCalled();
 });
 
@@ -348,6 +604,24 @@ test("reads the code when the link is clicked, not when it renders", () => {
   window.history.replaceState(null, "", "/");
   expect(click(link("Give"))).toEqual({ prevented: false });
   expect(link("Give").getAttribute("href")).toBe("/donate");
+  expect(navigateTo).not.toHaveBeenCalled();
+
+  expect(contextMenu(link("Give"))).toEqual({ prevented: false });
+  expect(link("Give").getAttribute("href")).toBe("/donate");
+  cleanup();
+
+  // a context menu reads it at the gesture too: rendered without a code, the
+  // address gains one before the menu opens
+  render(
+    <Sdk>
+      <ShareCodeCarrier>
+        <a href="/donate">Give</a>
+      </ShareCodeCarrier>
+    </Sdk>
+  );
+  window.history.replaceState(null, "", `/?r=${code}`);
+  expect(contextMenu(link("Give"))).toEqual({ prevented: false });
+  expect(link("Give").getAttribute("href")).toBe(at(`/donate?r=${code}`));
   expect(navigateTo).not.toHaveBeenCalled();
 });
 
@@ -426,6 +700,24 @@ test("a carrier inside another navigates once", () => {
   expect(navigateTo).toHaveBeenCalledTimes(1);
 });
 
+test("a carrier inside another gives a middle-click and a context menu one r", () => {
+  render(
+    <Sdk>
+      <ShareCodeCarrier>
+        <ShareCodeCarrier>
+          <a href="/donate">Give</a>
+          <a href="/join">Join</a>
+        </ShareCodeCarrier>
+      </ShareCodeCarrier>
+    </Sdk>
+  );
+  expect(middleClick(link("Give"))).toEqual({ prevented: false });
+  expect(contextMenu(link("Join"))).toEqual({ prevented: false });
+  expect(link("Give").getAttribute("href")).toBe(at(`/donate?r=${code}`));
+  expect(link("Join").getAttribute("href")).toBe(at(`/join?r=${code}`));
+  expect(navigateTo).not.toHaveBeenCalled();
+});
+
 test.each(["canvas", "preview"] as const)(
   "attaches nothing on the %s, even with a code in the address",
   (renderer) => {
@@ -438,6 +730,9 @@ test.each(["canvas", "preview"] as const)(
     );
     expect(window.location.search).toBe(`?r=${code}`);
     expect(click(link("Give"))).toEqual({ prevented: false });
+    for (const [name, gestured] of gestures) {
+      expect(gestured(link("Give")), name).toEqual({ prevented: false });
+    }
     expect(link("Give").getAttribute("href")).toBe("/donate");
     expect(navigateTo).not.toHaveBeenCalled();
   }
@@ -451,11 +746,15 @@ test("writes no cookie and no storage", () => {
       <ShareCodeCarrier>
         <a href="/donate">Give</a>
         <a href="/join">Join</a>
+        <a href="/shop">Shop</a>
+        <a href="/cart">Cart</a>
       </ShareCodeCarrier>
     </Sdk>
   );
   click(link("Give"));
   click(link("Join"), { metaKey: true });
+  middleClick(link("Shop"));
+  contextMenu(link("Cart"));
   expect(navigateTo).toHaveBeenCalledTimes(1);
   expect(cookie).not.toHaveBeenCalled();
   expect(setItem).not.toHaveBeenCalled();
@@ -480,6 +779,9 @@ test("stops listening when it unmounts", () => {
   root?.append(anchor);
   document.body.append(root as HTMLDivElement);
   expect(click(anchor)).toEqual({ prevented: false });
+  for (const [name, gestured] of gestures) {
+    expect(gestured(anchor), name).toEqual({ prevented: false });
+  }
   expect(anchor.getAttribute("href")).toBe("/donate");
   expect(navigateTo).not.toHaveBeenCalled();
   root?.remove();

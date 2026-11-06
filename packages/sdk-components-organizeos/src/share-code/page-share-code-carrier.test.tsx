@@ -62,6 +62,25 @@ const click = (element: Element, init?: MouseEventInit) => {
   return { prevented };
 };
 
+// A middle-click opens its tab through `auxclick` (button 1), and a right
+// click or a long press opens the link's menu through `contextmenu`. Each
+// returns whether the event's default was prevented once every handler had
+// run; jsdom does nothing by default for either.
+const gesture =
+  (type: "auxclick" | "contextmenu", button: number) =>
+  (element: Element, init?: MouseEventInit) => ({
+    prevented: !fireEvent(
+      element,
+      new MouseEvent(type, { bubbles: true, cancelable: true, button, ...init })
+    ),
+  });
+const middleClick = gesture("auxclick", 1);
+const contextMenu = gesture("contextmenu", 2);
+const gestures = [
+  ["a middle-click", middleClick],
+  ["a context menu", contextMenu],
+] as const;
+
 const link = (name: string) => screen.getByRole("link", { name });
 
 /** The r values an anchor's href carries. */
@@ -96,24 +115,24 @@ const RouterLink = ({ to, children }: { to: string; children: ReactNode }) => (
 );
 
 /**
- * What the click looked like on its way down, between the document and the
- * page's elements: a capture listener on <body> runs after the document's
- * capture listeners and before those of any element inside <body>, a block's
- * root among them.
+ * What the click (or another event) looked like on its way down, between the
+ * document and the page's elements: a capture listener on <body> runs after
+ * the document's capture listeners and before those of any element inside
+ * <body>, a block's root among them.
  */
-const watchBody = () => {
+const watchBody = (type: "click" | "auxclick" | "contextmenu" = "click") => {
   const seen: Array<{ prevented: boolean; codes: string[] }> = [];
-  const onClick = (event: Event) => {
+  const onEvent = (event: Event) => {
     const anchor = (event.target as Element).closest("a");
     seen.push({
       prevented: event.defaultPrevented,
       codes: anchor === null ? [] : shareCodes(anchor),
     });
   };
-  document.body.addEventListener("click", onClick, true);
+  document.body.addEventListener(type, onEvent, true);
   return {
     seen,
-    stop: () => document.body.removeEventListener("click", onClick, true),
+    stop: () => document.body.removeEventListener(type, onEvent, true),
   };
 };
 
@@ -183,6 +202,38 @@ test("carries the code on a same-origin link to a platform page anywhere on the 
   expect(navigateTo).toHaveBeenCalledTimes(4);
 });
 
+test("carries the code on a middle-click and a context menu on any same-origin link to a platform page, outside any block", () => {
+  render(
+    <Sdk>
+      <header>
+        <a href="/donate">Donate</a>
+      </header>
+      <main>
+        <RouterLink to="/join">Join</RouterLink>
+      </main>
+      <PageShareCodeCarrier />
+    </Sdk>
+  );
+  // a link React does not render at all, outside the app's container
+  const outside = document.createElement("a");
+  outside.href = "/shop/union-t-shirt?size=m";
+  outside.textContent = "Shop";
+  document.body.append(outside);
+
+  expect(middleClick(link("Donate"))).toEqual({ prevented: false });
+  expect(link("Donate").getAttribute("href")).toBe(at(`/donate?r=${code}`));
+  // a designer's link that routes through the site's router on a click
+  expect(contextMenu(link("Join"))).toEqual({ prevented: false });
+  expect(link("Join").getAttribute("href")).toBe(at(`/join?r=${code}`));
+  // a long press raises contextmenu with the primary button
+  expect(contextMenu(outside, { button: 0 })).toEqual({ prevented: false });
+  expect(outside.getAttribute("href")).toBe(
+    at(`/shop/union-t-shirt?size=m&r=${code}`)
+  );
+  expect(route).not.toHaveBeenCalled();
+  expect(navigateTo).not.toHaveBeenCalled();
+});
+
 test("leaves the site's own pages, other origins and donor pages alone", () => {
   const hrefs = [
     "/",
@@ -208,6 +259,11 @@ test("leaves the site's own pages, other origins and donor pages alone", () => {
   );
   for (const href of hrefs) {
     expect(click(link(href)), href).toEqual({ prevented: false });
+    for (const [name, gestured] of gestures) {
+      expect(gestured(link(href)), `${name}, ${href}`).toEqual({
+        prevented: false,
+      });
+    }
     expect(link(href).getAttribute("href"), href).toBe(href);
   }
   // the site's router still routes between the site's own pages
@@ -389,6 +445,69 @@ test.each([
   }
 );
 
+test.each([
+  ["mounted before the block", "before"],
+  ["mounted after the block", "after"],
+] as const)(
+  "with a block's carrier on the page, a middle-click or a context menu gets one r and no navigation (page carrier %s)",
+  (_name, position) => {
+    const block = (
+      <ShareCodeCarrier>
+        <a href="/donate">Give</a>
+        <RouterLink to="/join">Join</RouterLink>
+      </ShareCodeCarrier>
+    );
+    render(
+      <Sdk>
+        {position === "before" && <PageShareCodeCarrier />}
+        {block}
+        {position === "after" && <PageShareCodeCarrier />}
+      </Sdk>
+    );
+    const auxclicks = watchBody("auxclick");
+    const menus = watchBody("contextmenu");
+
+    expect(middleClick(link("Give"))).toEqual({ prevented: false });
+    expect(contextMenu(link("Join"))).toEqual({ prevented: false });
+    // again, the other way round: each link has its r and gets no second one
+    expect(contextMenu(link("Give"))).toEqual({ prevented: false });
+    expect(middleClick(link("Join"))).toEqual({ prevented: false });
+    auxclicks.stop();
+    menus.stop();
+
+    expect(navigateTo).not.toHaveBeenCalled();
+    expect(route).not.toHaveBeenCalled();
+    expect(link("Give").getAttribute("href")).toBe(at(`/donate?r=${code}`));
+    expect(link("Join").getAttribute("href")).toBe(at(`/join?r=${code}`));
+    // the page's carrier had added the code before the block's carrier saw
+    // the gesture, so the block's found its r and kept it
+    expect(auxclicks.seen).toEqual([
+      { prevented: false, codes: [code] },
+      { prevented: false, codes: [code] },
+    ]);
+    expect(menus.seen).toEqual([
+      { prevented: false, codes: [code] },
+      { prevented: false, codes: [code] },
+    ]);
+
+    // Control: the block's carrier is live. Alone on the page, the same block
+    // adds the code itself, after the gesture passed <body> without one.
+    cleanup();
+    render(<Sdk>{block}</Sdk>);
+    const aloneAuxclicks = watchBody("auxclick");
+    const aloneMenus = watchBody("contextmenu");
+    expect(middleClick(link("Give"))).toEqual({ prevented: false });
+    expect(contextMenu(link("Join"))).toEqual({ prevented: false });
+    aloneAuxclicks.stop();
+    aloneMenus.stop();
+    expect(link("Give").getAttribute("href")).toBe(at(`/donate?r=${code}`));
+    expect(link("Join").getAttribute("href")).toBe(at(`/join?r=${code}`));
+    expect(aloneAuxclicks.seen).toEqual([{ prevented: false, codes: [] }]);
+    expect(aloneMenus.seen).toEqual([{ prevented: false, codes: [] }]);
+    expect(navigateTo).not.toHaveBeenCalled();
+  }
+);
+
 test("leaves a click another handler already cancelled", () => {
   // a window capture listener runs before the document's
   const cancel = (event: Event) => event.preventDefault();
@@ -448,6 +567,9 @@ test.each(["canvas", "preview"] as const)(
     );
     expect(window.location.search).toBe(`?r=${code}`);
     expect(click(link("Give"))).toEqual({ prevented: false });
+    for (const [name, gestured] of gestures) {
+      expect(gestured(link("Give")), name).toEqual({ prevented: false });
+    }
     expect(link("Give").getAttribute("href")).toBe("/donate");
     expect(navigateTo).not.toHaveBeenCalled();
   }
@@ -460,11 +582,15 @@ test("writes no cookie and no storage", () => {
     <Sdk>
       <a href="/donate">Give</a>
       <a href="/join">Join</a>
+      <a href="/shop">Shop</a>
+      <a href="/cart">Cart</a>
       <PageShareCodeCarrier />
     </Sdk>
   );
   click(link("Give"));
   click(link("Join"), { metaKey: true });
+  middleClick(link("Shop"));
+  contextMenu(link("Cart"));
   expect(navigateTo).toHaveBeenCalledTimes(1);
   expect(cookie).not.toHaveBeenCalled();
   expect(setItem).not.toHaveBeenCalled();
@@ -490,6 +616,9 @@ test("stops listening when it unmounts", () => {
     </Sdk>
   );
   expect(click(link("Join"))).toEqual({ prevented: false });
+  for (const [name, gestured] of gestures) {
+    expect(gestured(link("Join")), name).toEqual({ prevented: false });
+  }
   expect(link("Join").getAttribute("href")).toBe("/join");
   expect(navigateTo).toHaveBeenCalledTimes(1);
 });
@@ -513,18 +642,24 @@ test("remounted by a change of key, it leaves exactly one listener on the docume
     rerender(<Page url={url} />);
   }
 
-  // the carrier's listeners: click, in the capture phase
-  const carriers = (spy: typeof add | typeof remove) =>
+  // the carrier's listeners, in the capture phase: for each of click, auxclick
+  // and contextmenu, five added, four removed and one live, the last one
+  // added (15, 12 and 3 in all)
+  const carriers = (spy: typeof add | typeof remove, type: string) =>
     spy.mock.calls
-      .filter(([type, , options]) => type === "click" && options === true)
+      .filter(([called, , options]) => called === type && options === true)
       .map(([, listener]) => listener);
-  const added = carriers(add);
-  const removed = carriers(remove);
-  expect(added).toHaveLength(5);
-  expect(removed).toHaveLength(4);
-  const live = added.filter((listener) => removed.includes(listener) === false);
-  expect(live).toHaveLength(1);
-  expect(live[0]).toBe(added.at(-1));
+  for (const type of ["click", "auxclick", "contextmenu"]) {
+    const added = carriers(add, type);
+    const removed = carriers(remove, type);
+    expect(added, type).toHaveLength(5);
+    expect(removed, type).toHaveLength(4);
+    const live = added.filter(
+      (listener) => removed.includes(listener) === false
+    );
+    expect(live, type).toHaveLength(1);
+    expect(live[0], type).toBe(added.at(-1));
+  }
 
   // and it carries a click once
   expect(click(link("Give"))).toEqual({ prevented: true });
