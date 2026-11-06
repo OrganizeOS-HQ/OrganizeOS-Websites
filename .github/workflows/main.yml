@@ -179,6 +179,12 @@ jobs:
 
       - name: Test the builder project
         if: matrix.project
+        # A browser run can stall silently with files collected and never
+        # started. The step limit fails a stall well inside the job's, and the
+        # pool's debug log names the files of every browser session it opens,
+        # so the log says which files were in flight. No retry.
+        timeout-minutes: 10
         env:
           PROJECT: ${{ matrix.project }}
+          DEBUG: vitest:browser:pool
         run: pnpm --filter @webstudio-is/builder exec vitest run --project "$PROJECT"
