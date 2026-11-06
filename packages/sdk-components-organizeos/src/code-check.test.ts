@@ -594,6 +594,20 @@ describe("findCodeCheckFailure", () => {
         "includeAttachments",
       ].sort()
     );
+    const itemLists = {
+      headers: resourceSchema.shape.headers.element.shape,
+      searchParams: resourceSchema.shape.searchParams.unwrap().element.shape,
+    };
+    for (const [list, item] of Object.entries(itemLists)) {
+      expect(Object.keys(item).sort(), list).toEqual(
+        [
+          // read by checkResource: a generated name and an expression
+          "name",
+          "value",
+          // not expressions: none
+        ].sort()
+      );
+    }
   });
 
   test("skips an empty resource body, which is not generated", () => {
