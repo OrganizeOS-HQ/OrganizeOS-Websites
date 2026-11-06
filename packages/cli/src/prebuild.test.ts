@@ -30,7 +30,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { log } from "@clack/prompts";
 import { parse as parseModule } from "acorn";
 import { simple as walkSimple } from "acorn-walk";
-import { templateIconCodes } from "@organizeos/site-components/org-script";
+import {
+  orgScriptMayRun,
+  templateIconCodes,
+} from "@organizeos/site-components/org-script";
 import * as organizeosPage from "@organizeos/site-components/page";
 import { bundleVersion } from "@webstudio-is/protocol";
 import { isProtectedResourceReentry } from "@webstudio-is/sdk/protected-resource-fetch";
@@ -1152,7 +1155,12 @@ describe("prebuild", () => {
       const imports = Object.values(result.metafile.outputs).flatMap((output) =>
         output.imports.map(({ path }) => path)
       );
-      expect(imports.includes("@webstudio-is/sdk")).toBe(hasErrors);
+      // OrganizeOS fork: while org script is paused an action reads no
+      // member, so publishing leaves this one out and the error message
+      // keeps its text (docs/ORGANIZEOS-FORK.md section 10)
+      expect(imports.includes("@webstudio-is/sdk")).toBe(
+        hasErrors && orgScriptMayRun()
+      );
     }
   );
 
@@ -5903,7 +5911,8 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         "@webstudio-is/sdk-components-react-router": {
           Body: (props: Record<string, unknown>) =>
             React.createElement("body", props),
-          Form: ({ children }: { children?: React.ReactNode }) =>
+          // the stored Form publishes as a Webhook Form
+          WebhookForm: ({ children }: { children?: React.ReactNode }) =>
             React.createElement("form", null, children),
         },
       });
@@ -5997,6 +6006,72 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       expect(page).toMatch(/onClick=\{\(\) => \{\s*local = global\b/);
       expect(page).toMatch(/let \[global, set\$global\] = useVariableState/);
       expect(compiled).not.toContain("$ws$dataSource$");
+    });
+
+    // A Resource Form's own form data and browser info stay while org
+    // script is paused, and the page names them as themselves
+    test("keeps a Resource Form's own form data and browser info, declared on the page, and no parameter of those names elsewhere", async () => {
+      const parameter = (
+        id: string,
+        name: string,
+        scopeInstanceId: string
+      ): [string, Record<string, unknown>] => [
+        id,
+        { type: "parameter", id, name, scopeInstanceId },
+      ];
+      const parameterProp = (
+        instanceId: string,
+        name: string,
+        value: string
+      ): [string, Record<string, unknown>] => [
+        `${instanceId}-${name}`,
+        {
+          id: `${instanceId}-${name}`,
+          instanceId,
+          name,
+          type: "parameter",
+          value,
+        },
+      ];
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "form" },
+                  { type: "id", value: "box" },
+                ],
+              },
+            ],
+            ["form", { id: "form", component: "ResourceForm", children: [] }],
+            ["box", { id: "box", component: "Box", children: [] }],
+          ],
+          dataSources: [
+            parameter("form-data", "formData", "form"),
+            parameter("browser-info", "browserInfo", "form"),
+            parameter("box-data", "formData", "box"),
+          ],
+          props: [
+            parameterProp("form", "formData", "form-data"),
+            parameterProp("form", "browserInfo", "browser-info"),
+            parameterProp("box", "title", "box-data"),
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).toMatch(/const formData: any = undefined\n/);
+      expect(page).toMatch(/const browserInfo: any = undefined\n/);
+      expect(page).toMatch(/formData=\{formData\}/);
+      expect(page).toMatch(/browserInfo=\{browserInfo\}/);
+      // the Box's is left out, with its prop
+      expect(page).not.toMatch(/title=/);
+      expect(page.match(/formData: any/g)).toHaveLength(1);
     });
 
     // The element types of a compiled page module: an import, a tag, or
@@ -6719,6 +6794,150 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       }
       expect(info).toHaveBeenCalledWith(
         "Org script is paused until OrganizeOS sites move to their own domain: left out 3 variables with a conflicting id."
+      );
+    });
+
+    // An XML page does not publish a Resource Form, so its own form data
+    // goes there, and nothing on the page names it
+    test("leaves out the form data of a Resource Form on an XML page, so the page names nothing undeclared", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      await writeSiteData(
+        createSiteData({
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: "Home",
+              path: "",
+              rootInstanceId: "root",
+              meta: { documentType: "xml" },
+            },
+          ],
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "item" }],
+              },
+            ],
+            [
+              "item",
+              {
+                id: "item",
+                component: "XmlNode",
+                tag: "item",
+                children: [
+                  { type: "id", value: "form" },
+                  { type: "id", value: "title" },
+                ],
+              },
+            ],
+            ["form", { id: "form", component: "ResourceForm", children: [] }],
+            [
+              "title",
+              { id: "title", component: "XmlNode", tag: "title", children: [] },
+            ],
+          ],
+          dataSources: [
+            [
+              "form-data",
+              {
+                type: "parameter",
+                id: "form-data",
+                name: "formData",
+                scopeInstanceId: "form",
+              },
+            ],
+          ],
+          props: [
+            [
+              "title-lang",
+              {
+                id: "title-lang",
+                instanceId: "title",
+                name: "lang",
+                type: "parameter",
+                value: "form-data",
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+      const { code: compiled } = await transformWithEsbuild(
+        page,
+        "module.tsx",
+        { loader: "tsx", format: "esm", jsx: "automatic" }
+      );
+
+      expect(page).toContain('data-ws-tag="title"');
+      expect(page).not.toMatch(/lang=/);
+      expect(compiled).not.toMatch(/formData/);
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+      );
+    });
+
+    // No data source may take the name String
+    test("leaves out a variable named String, so a bound text value renders", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "image" }],
+              },
+            ],
+            ["image", { id: "image", component: "Image", children: [] }],
+          ],
+          dataSources: [
+            variable("string-name", "String"),
+            [
+              "label",
+              {
+                type: "variable",
+                id: "label",
+                name: "label",
+                scopeInstanceId: "root",
+                value: { type: "string", value: "A label" },
+              },
+            ],
+          ],
+          props: [
+            [
+              "image-alt",
+              {
+                id: "image-alt",
+                instanceId: "image",
+                name: "alt",
+                type: "expression",
+                value: `${encodeDataSourceVariable("label")} + ${encodeDataSourceVariable("string-name")}`,
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).toMatch(/String\(/);
+      expect(page).not.toMatch(/let \[String\b/);
+      const html = await renderPage(page, {
+        "@webstudio-is/sdk-components-react/components": {
+          Image: (props: Record<string, unknown>) =>
+            React.createElement("img", props),
+        },
+      });
+      expect(html).toContain('alt="A labelundefined"');
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
       );
     });
 
@@ -9666,11 +9885,14 @@ export const createManagedFormResourceFetch = ({ request }) => createProtectedRe
           ],
         ],
       });
+      // OrganizeOS fork: a data source and its Resource have their own ids,
+      // as the builder writes them; one with a Resource's id is left out
+      // while org script is paused (docs/ORGANIZEOS-FORK.md section 10)
       siteData.build.dataSources = [
         [
-          "author",
+          "author-source",
           {
-            id: "author",
+            id: "author-source",
             name: "Author",
             type: "resource",
             resourceId: "author",
@@ -9697,7 +9919,7 @@ export const createManagedFormResourceFetch = ({ request }) => createProtectedRe
             name: "Submit",
             method: "post",
             url: `"https://receiver.example/submit/" + ${encodeDataSourceVariable(
-              "author"
+              "author-source"
             )}.data.id`,
             headers: [{ name: "Cache-Control", value: '"public, max-age=60"' }],
           },

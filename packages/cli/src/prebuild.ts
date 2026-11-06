@@ -1213,8 +1213,8 @@ export const createManagedFormResourceFetch = ({ request, context, projectDomain
   } else {
     framework = await createRemixFramework(frameworkOptions);
   }
-  // OrganizeOS fork: the framework imports every component the build kept
-  // (organizeos-org-script.ts).
+  // OrganizeOS fork: the framework imports every component the drop above may
+  // keep (organizeos-org-script.ts).
   assertFrameworkImports(frameworkComponents, framework.components);
 
   const assetBaseUrl = await readAssetBaseUrl(join(cwd(), "app/constants.mjs"));

@@ -40,6 +40,7 @@ import {
   projectRedirectMayShip,
   propMayShip,
   templateRootIdsOf,
+  unlistedDataSourceIds,
   xmlComponents,
 } from "@organizeos/site-components/org-script";
 import { platformName } from "~/shared/branding";
@@ -236,10 +237,12 @@ export const findPausedScript = ({
   // A data source that publishing leaves out for its id is listed where a
   // page declares it: on the instance it is scoped to, or as a global one
   const collidingIds = collidingDataSourceIds(names);
+  // a Content Block's own document goes unlisted, as publishing counts it not
+  const unlistedIds = unlistedDataSourceIds(names);
   const collidingByScope = new Map<string, string[]>();
   for (const id of collidingIds) {
     const dataSource = dataSources.get(id);
-    if (dataSource !== undefined) {
+    if (dataSource !== undefined && unlistedIds.has(id) === false) {
       // publishing reads one with no scope as held by an instance whose id
       // is empty
       const scope = dataSource.scopeInstanceId ?? "";

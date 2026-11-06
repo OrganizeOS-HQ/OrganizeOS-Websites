@@ -21,6 +21,8 @@ import {
   actionContextOf,
   actionMayRun,
   checksInstanceTag,
+  collidingDataSourceIds,
+  unlistedDataSourceIds,
   checksTagProp,
   componentMayShip,
   elementTagMayRender,
@@ -384,13 +386,73 @@ describe("the libraries, as the canvas registers them", () => {
         );
       }
     );
-    // the Form, Signup Form, RSVP Form and Rotating Tabs write some each
-    expect(actions.length).toBeGreaterThanOrEqual(4);
+    // the Form, Webhook Form, Signup Form, RSVP Form and Rotating Tabs write
+    // some each
+    expect(actions.length).toBeGreaterThanOrEqual(5);
+    // but upstream's Form reads members of its result, which no action may
+    // while org script is paused: it is left out and listed
     expect(
       actions
         .filter(({ prop, context }) => actionMayRun(prop, context) === false)
         .map(({ template }) => template)
-    ).toEqual([]);
+    ).toEqual(["form onResultChange"]);
+  });
+
+  // A Resource Form's own form data and browser info stay while org script
+  // is paused, so the Form template's data sources do
+  test("every data source a template inserts is one the page module names as itself, but a Content Block's document", () => {
+    const found = registeredTemplates().flatMap(
+      ([key, { template: fragment }]) => {
+        const colliding = collidingDataSourceIds({
+          instances: new Map(
+            fragment.instances.map((instance) => [instance.id, instance])
+          ),
+          dataSources: new Map(
+            fragment.dataSources.map((dataSource) => [
+              dataSource.id,
+              dataSource,
+            ])
+          ),
+          props: new Map(fragment.props.map((prop) => [prop.id, prop])),
+          resources: new Map(
+            fragment.resources.map((resource) => [resource.id, resource])
+          ),
+          // under the template's top instances, as a page holds them
+          pages: fragment.children.flatMap((child) =>
+            child.type === "id" ? [{ rootInstanceId: child.value }] : []
+          ),
+        });
+        const unlisted = unlistedDataSourceIds({
+          instances: new Map(
+            fragment.instances.map((instance) => [instance.id, instance])
+          ),
+          dataSources: new Map(
+            fragment.dataSources.map((dataSource) => [
+              dataSource.id,
+              dataSource,
+            ])
+          ),
+          props: new Map(fragment.props.map((prop) => [prop.id, prop])),
+        });
+        return fragment.dataSources
+          .filter((dataSource) => colliding.has(dataSource.id))
+          .map(
+            (dataSource) =>
+              `${key} ${dataSource.name}${unlisted.has(dataSource.id) ? " (unlisted)" : ""}`
+          );
+      }
+    );
+    // but a Content Block's own document, which publishing leaves out
+    // while org script is paused, and neither counts nor lists
+    expect(found).toEqual(["ws:block document (unlisted)"]);
+    // the Form template's are among them, with its errors' Collection item
+    const form = registeredTemplates().find(([key]) => key === "form");
+    expect(
+      form?.[1].template.dataSources
+        .filter((dataSource) => dataSource.type === "parameter")
+        .map((dataSource) => dataSource.name)
+        .sort()
+    ).toEqual(["browserInfo", "collectionItem", "formData"]);
   });
 
   // Publishing leaves out an instance of a component the page does not

@@ -3240,16 +3240,25 @@ exposure needs no publish. Spec (OrganizeOS repo):
   its component may pass a host object. See "Actions" below.
 - **An instance of a component the published page does not import**, and one
   stored with the global root's id (`:root`), with what is inside it. Only the
-  core components the generator writes itself and those of upstream's base
-  library, Radix and the OrganizeOS blocks ship.
+  core components the generator writes itself (a Content Block's body among
+  them) and those of upstream's base library, Radix and the OrganizeOS blocks
+  ship. A form stored under an earlier name (`Form`, `NativeForm`) is read as
+  the Resource Form or Webhook Form it publishes as.
 - **A data source the page module cannot name as itself**: an id the builder
   never gives, one that is a component's or a Resource's, a name no data
-  source may take (`reservedNames`), a parameter that is neither a page's own,
-  on a root other than the global root's id, nor a Collection's item or key
-  named only inside the Collection, and anything else a Collection binds as
-  its item or key, or that a Collection with two props of one binding name
-  binds. A parameter prop or an action that names one goes too, and so does a
-  Collection's item or key that is not a parameter.
+  source may take (`reservedNames`, `String` among them), a parameter that is
+  neither a page's own, on a root other than the global root's id, a
+  Collection's item or key named only inside the Collection, nor a Resource
+  Form's own form data or browser info (as upstream's
+  `getManagedFormParameterBinding` binds them) on a form that a page other
+  than an XML page reaches, named only on the form or inside it, and anything
+  else a Collection binds as its item or key, or that a Collection with two
+  props of one binding name binds. A parameter prop or an action that names
+  one goes too, and so does a Collection's item or key that is not a
+  parameter. A Content Block's own document (a parameter held on the block
+  that only the block's own `document` prop names) goes as well, but is
+  neither counted nor listed (`unlistedDataSourceIds`), as its author cannot
+  change it.
 - **XML Node and XML Time on an HTML page**: a custom element that keeps every
   attribute.
 - **Custom code** (Project settings > General), which 0.309.0 keeps in the
@@ -3413,7 +3422,8 @@ as paused, so reversal is the switch.
   "Frame document (srcdoc)", "Event handler attribute (onclick)", "Action
   (onClick)", "Collection item or key (item)", "XML element"), each data
   source the page module cannot name as itself ("Variable (name)", on the
-  instance it is scoped to, or alone for a global one), each page redirect to
+  instance it is scoped to, or alone for a global one, but not a Content
+  Block's own document), each page redirect to
   an unsafe address ("Redirect on {page}", which opens that page's settings), each
   project redirect to one ("Redirect from {old} (Project settings)", which opens
   Redirects) and "Custom code (Project settings)", once, when the project's
@@ -3463,8 +3473,10 @@ as paused, so reversal is the switch.
   entry per id of the build's pages, page templates, instances, props, data
   sources and Resources, the last, as the builder reads a build, and leaves out
   the others and any entry stored under another id than its own, counted as
-  duplicate entries, so the rules read every entry that publishes. Then it
-  drops:
+  duplicate entries, so the rules read every entry that publishes, and reads
+  a form stored under an earlier name as the Resource Form or Webhook Form
+  prebuild publishes it as (`migrateResourceFormInstancesMutable`, which
+  prebuild runs after the drop). Then it drops:
 
   1. every instance whose component is `HtmlEmbed`, unless its `code` prop is a
      static string identical to a template icon. An embed whose `code` is an
@@ -3515,12 +3527,17 @@ as paused, so reversal is the switch.
      action `actionMayRun` refuses and a Collection's item or key that is not
      a parameter. The instance stays, without the prop. An instance of a
      component the framework does not import (`componentMayShip`, given the
-     framework's own map) and one stored with the global root's id
+     components of the framework the build's template picks,
+     `frameworkComponentsOf`, read from upstream's registry because 0.309.0
+     makes the framework after the drop; prebuild then refuses the build if
+     the framework does not import one of them, `assertFrameworkImports`) and
+     one stored with the global root's id
      (`instanceIdMayRun`) go with everything inside them, counted as unknown
      components and as elements with a reserved id, and a data source
      `collidingDataSourceIds` lists goes, with every parameter prop that names
-     it, counted as a variable with a conflicting id where a page declares it;
-     an action is judged without it;
+     it, counted as a variable with a conflicting id where a page declares it
+     (but for a Content Block's own document, `unlistedDataSourceIds`); an
+     action is judged without it;
   8. an XML Node or XML Time that an HTML or text page publishes, with
      everything inside it (one a Slot also shows on an XML page goes from
      both);
@@ -3661,7 +3678,8 @@ published site only when `actionMayRun` (`org-script.ts`) passes it, given the
 build's instances, page roots and data sources. A component may call an action
 without a click, so the rule does not rest on one. It lists args only on a prop
 through which its component passes plain data (a form's `onStateChange` on
-Webhook Form, Signup Form and RSVP Form, and Rotation Control's `onValueChange`,
+Resource Form, Webhook Form, Signup Form and RSVP Form, a Resource Form's
+`onProgressChange` and `onResultChange`, and Rotation Control's `onValueChange`,
 `plainDataActionProps`), names only variables and Resources in scope (the
 holder's own, an ancestor's on every path from a page root, or a global one),
 assigns only a variable, and assigns plain values: it reads no member, calls
@@ -3680,21 +3698,24 @@ and the templates' (a variable set to the component's argument) pass, also once
 an org names the variable as the argument; an action that lists args elsewhere,
 such as an `onClick` that sets a variable to its event, or that reads a member,
 such as upstream's `x = event.target.value`, is left out and listed while the
-switch is off. An instance a page reaches is judged by the pages, and one only a
-page template reaches by the template, so a template's action works while the
-template is edited, and the canvas, publishing and the Publish dialog read the
-same context (`actionContextOf`). The canvas gives an action input validation
-refuses a handler that does nothing (§7), and then one `actionMayRun` refuses no
-function (one marked guard in `getAction`, `shared/nano-states/props.ts`, after
-input validation's, and one marked line in its `setVariable` that stores only
-plain data, `isPlainData`), so the element renders without the handler;
-publishing drops it whatever its name, on any instance and page, an XML page's
-included (`propMayShip`, given the same context), the log line counts it as an
-unsafe action, and the Publish dialog lists it as "Action (onClick)", and, for
-one input validation refuses, does not dispatch (§7); it lists an unknown
-component, an element with a reserved id and a variable with a conflicting id
-too. Query 8 below lists the action props it may leave out. Tests:
-`org-script.test.ts`, `canvas/organizeos-org-script.props.test.tsx`,
+switch is off. So is the result action of upstream's Form template, which reads
+members of its argument: that form submits, and its state and progress actions
+run, but its error message keeps its text while the switch is off. An instance a
+page reaches is judged by the pages, and one only a page template reaches by the
+template, so a template's action works while the template is edited, and the
+canvas, publishing and the Publish dialog read the same context
+(`actionContextOf`). The canvas gives an action input validation refuses a
+handler that does nothing (§7), and then one `actionMayRun` refuses no function
+(one marked guard in `getAction`, `shared/nano-states/props.ts`, after input
+validation's, and one marked line in its `setVariable` that stores only plain
+data, `isPlainData`), so the element renders without the handler; publishing
+drops it whatever its name, on any instance and page, an XML page's included
+(`propMayShip`, given the same context), the log line counts it as an unsafe
+action, and the Publish dialog lists it as "Action (onClick)", and, for one
+input validation refuses, does not dispatch (§7); it lists an unknown component,
+an element with a reserved id and a variable with a conflicting id too. Query 8
+below lists the action props it may leave out. Tests: `org-script.test.ts`,
+`canvas/organizeos-org-script.props.test.tsx`,
 `organizeos-org-script.unsafe-values.test.ts`, a `prebuild.test.ts` case, the
 Publish dialog's `organizeos-publish-paused-script*.test.ts*` and
 `shared/db/signup-form-preset.server.test.tsx` (the provisioned form's action).

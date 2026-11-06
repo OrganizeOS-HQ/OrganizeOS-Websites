@@ -6,9 +6,11 @@ import {
   type Expression,
 } from "acorn";
 import {
+  blockBodyComponent,
   blockComponent,
   blockTemplateComponent,
   collectionComponent,
+  contentBlockDocumentProp,
   decodeDataSourceVariable,
   descendantComponent,
   elementComponent,
@@ -22,6 +24,10 @@ import {
   type Prop,
   type Resource,
 } from "@webstudio-is/sdk";
+import {
+  browserInfoParameterName,
+  formDataParameterName,
+} from "@webstudio-is/sdk/runtime";
 import { lintExpression, transpileExpression } from "@webstudio-is/expression";
 import { checkAction } from "./code-check";
 
@@ -249,13 +255,14 @@ export const withoutBlockedTagProps = <Props extends Record<string, unknown>>(
 
 /**
  * The core components the generator writes itself rather than import: an
- * element, a Collection, a Content Block, its templates container and a
- * descendant's style rule.
+ * element, a Collection, a Content Block, its body, its templates container
+ * and a descendant's style rule.
  */
 export const generatedComponents: ReadonlySet<Instance["component"]> = new Set([
   elementComponent,
   collectionComponent,
   blockComponent,
+  blockBodyComponent,
   blockTemplateComponent,
   descendantComponent,
 ]);
@@ -663,15 +670,23 @@ const actionArgMayRun = (arg: string) =>
 
 /**
  * The props through which a component passes its action plain data, by
- * component: a form's state (Webhook Form, stored as `Form`, Signup Form and
- * RSVP Form), and Rotation Control's tab, each a string. While org script is
- * paused, only an action on one of these may name its args.
+ * component: a form's state (Resource Form, Webhook Form, Signup Form and
+ * RSVP Form) and Rotation Control's tab, each a string, and a Resource Form's
+ * progress and result, each an object of strings, numbers, booleans, null
+ * and arrays. A build stores a Resource Form or a Webhook Form under these
+ * names, or as `Form` or `NativeForm`, which publishing reads as one of them
+ * first. While org script is paused, only an action on one of these may name
+ * its args.
  */
 export const plainDataActionProps: ReadonlyMap<
   Instance["component"],
   ReadonlySet<Prop["name"]>
 > = new Map([
-  ["Form", new Set(["onStateChange"])],
+  [
+    "ResourceForm",
+    new Set(["onStateChange", "onProgressChange", "onResultChange"]),
+  ],
+  ["WebhookForm", new Set(["onStateChange"])],
   ["@organizeos/site-components:SignupForm", new Set(["onStateChange"])],
   ["@organizeos/site-components:RsvpForm", new Set(["onStateChange"])],
   ["@organizeos/site-components:RotationControl", new Set(["onValueChange"])],
@@ -736,14 +751,16 @@ export const templateRootIdsOf = (
   );
 
 /** What the rule for a data source reads of a page or a page template */
-export type PageNames = Pick<Page, "rootInstanceId" | "systemDataSourceId">;
+export type PageNames = Pick<Page, "rootInstanceId" | "systemDataSourceId"> & {
+  documentType?: Page["meta"]["documentType"];
+};
 
 const noPages: readonly PageNames[] = [];
 const pagesAndTemplatesByPages = new WeakMap<Pages, readonly PageNames[]>();
 
 /**
- * The root and the own data source of each page and each page template, the
- * same list for the same pages
+ * The root, the own data source and the document type of each page and each
+ * page template, the same list for the same pages
  */
 export const pagesAndTemplatesOf = (
   pages: undefined | Pages
@@ -756,9 +773,10 @@ export const pagesAndTemplatesOf = (
     found = [
       ...getAllPages(pages),
       ...(pages.pageTemplates?.values() ?? []),
-    ].map(({ rootInstanceId, systemDataSourceId }) => ({
+    ].map(({ rootInstanceId, systemDataSourceId, meta }) => ({
       rootInstanceId,
       systemDataSourceId,
+      documentType: (meta as Partial<Page["meta"]> | undefined)?.documentType,
     }));
     pagesAndTemplatesByPages.set(pages, found);
   }
@@ -798,6 +816,7 @@ const reservedNames: ReadonlySet<string> = new Set([
   "Map",
   "Number",
   "Object",
+  "String",
 ]);
 
 /** The props through which a Collection binds its item and its key */
@@ -831,7 +850,12 @@ export type BuildNames = {
  * - one whose name is one no data source may take (`reservedNames`);
  * - a parameter, unless it is a page's or a page template's own, held on its
  *   root, which is not the global root's id and which no other page or
- *   template and no instance holds, or a Collection's item or key;
+ *   template and no instance holds, a Collection's item or key, or a Resource
+ *   Form's own form data or browser info, which upstream's managed form
+ *   binds as its submission's (`getManagedFormParameterBinding`), on a form
+ *   that may ship and that a page other than an XML page or a page template
+ *   reaches, which a parameter prop names only on the form or inside it, on
+ *   every path to it;
  * - a page's own that is not such a parameter;
  * - one a Collection binds as its item or key, unless it is a parameter of
  *   that Collection, which nothing else binds and which a parameter prop
@@ -840,7 +864,8 @@ export type BuildNames = {
  *   ship (`instanceIdMayRun`).
  *
  * While org script is paused publishing leaves them out, the Publish dialog
- * lists them, and an action may not name them (`actionContextOf`).
+ * lists them but those `unlistedDataSourceIds` names, and an action may not
+ * name them (`actionContextOf`).
  */
 export const collidingDataSourceIds = ({
   instances,
@@ -854,7 +879,7 @@ export const collidingDataSourceIds = ({
   const childIds = new Set<Instance["id"]>();
   for (const [id, instance] of instances) {
     taken.add(instance.component);
-    if (instance.component === "Form") {
+    if (instance.component === "WebhookForm" || instance.component === "Form") {
       taken.add(id);
     }
     for (const child of instance.children) {
@@ -943,6 +968,39 @@ export const collidingDataSourceIds = ({
       (onEveryPath === undefined || onEveryPath.has(collectionId))
     );
   };
+  // the roots of what publishes a Resource Form: an XML page publishes none
+  const formRootIds = new Set(
+    pages
+      .filter((page) => page.documentType !== "xml")
+      .map((page) => page.rootInstanceId)
+  );
+  const formShips = (formId: Instance["id"]) => {
+    const { onEveryPath, cyclic } = onEveryPathFrom(
+      formId,
+      instances,
+      formRootIds
+    );
+    return cyclic === false && onEveryPath !== undefined;
+  };
+  // a Resource Form's own form data or browser info, as upstream's
+  // getManagedFormParameterBinding binds them, on a form that ships, named
+  // only on the form or inside it
+  const isFormParameter = (dataSource: DataSource) => {
+    const formId = dataSource.scopeInstanceId;
+    return (
+      dataSource.type === "parameter" &&
+      ownersById.has(dataSource.id) === false &&
+      (dataSource.name === formDataParameterName ||
+        dataSource.name === browserInfoParameterName) &&
+      formId !== undefined &&
+      instanceIdMayRun(formId, false) &&
+      instances.get(formId)?.component === "ResourceForm" &&
+      formShips(formId) &&
+      (namedOn.get(dataSource.id) ?? []).every(
+        (holderId) => holderId === formId || isInside(holderId, formId)
+      )
+    );
+  };
   const isBinding = (dataSource: DataSource, [binding, ...rest]: Prop[]) =>
     rest.length === 0 &&
     bindingProps.get(bindingKey(binding)) === 1 &&
@@ -967,7 +1025,8 @@ export const collidingDataSourceIds = ({
           ? isBinding(dataSource, binds) === false
           : (dataSource.type === "parameter" ||
               ownersById.has(dataSource.id)) &&
-            isPageOwn(dataSource) === false)
+            isPageOwn(dataSource) === false &&
+            isFormParameter(dataSource) === false)
       ) {
         colliding.add(key);
       }
@@ -976,6 +1035,45 @@ export const collidingDataSourceIds = ({
     }
   }
   return colliding;
+};
+
+/**
+ * The data sources publishing leaves out while org script is paused without
+ * counting or listing them, as their author cannot change them: a Content
+ * Block's own document, a parameter held on the block that the block's own
+ * `document` parameter prop names, and no other parameter prop does.
+ */
+export const unlistedDataSourceIds = ({
+  instances,
+  dataSources,
+  props,
+}: Pick<BuildNames, "instances" | "dataSources" | "props">): ReadonlySet<
+  DataSource["id"]
+> => {
+  const namedBy = new Map<DataSource["id"], Prop[]>();
+  for (const prop of props.values()) {
+    if (prop.type === "parameter") {
+      namedBy.set(prop.value, [...(namedBy.get(prop.value) ?? []), prop]);
+    }
+  }
+  const unlisted = new Set<DataSource["id"]>();
+  for (const [key, dataSource] of dataSources) {
+    const blockId = dataSource.scopeInstanceId;
+    const [prop, ...rest] = namedBy.get(dataSource.id) ?? [];
+    if (
+      key === dataSource.id &&
+      dataSource.type === "parameter" &&
+      blockId !== undefined &&
+      instances.get(blockId)?.component === blockComponent &&
+      prop !== undefined &&
+      rest.length === 0 &&
+      prop.instanceId === blockId &&
+      prop.name === contentBlockDocumentProp
+    ) {
+      unlisted.add(key);
+    }
+  }
+  return unlisted;
 };
 
 const shippableByDataSources = new WeakMap<

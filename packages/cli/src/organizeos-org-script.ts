@@ -12,7 +12,9 @@
  *
  * - every entry of the build's pages, page templates, instances, props, data
  *   sources and Resources whose id a later entry holds too, or that is stored
- *   under another id than its own, so the rules below read what publishes;
+ *   under another id than its own, so the rules below read what publishes
+ *   (and they read a Form stored under an earlier name as the Resource Form
+ *   or Webhook Form it publishes as);
  * - every HTML Embed, unless its code is a static string identical to one of
  *   the SVG icons upstream's own templates insert;
  * - every Markdown Embed (its renderer keeps `javascript:` links);
@@ -67,6 +69,8 @@ import {
   type Page,
   type Prop,
 } from "@webstudio-is/sdk";
+import { migrateResourceFormInstancesMutable } from "@webstudio-is/project-migrations";
+import { hasHistoricalFormComponentIdentityVersion } from "@webstudio-is/project-migrations/pages";
 import { createFrameworkComponentRegistry } from "@webstudio-is/sdk-components-registry/framework";
 import * as organizeosComponentMetas from "@organizeos/site-components/metas";
 import {
@@ -88,10 +92,17 @@ import {
   pausedSvgTags,
   projectRedirectMayShip,
   propMayShip,
+  unlistedDataSourceIds,
   xmlComponents,
   type PageNames,
 } from "@organizeos/site-components/org-script";
-import { ORGANIZEOS_NAMESPACE } from "./organizeos-components";
+
+/**
+ * The OrganizeOS blocks' namespace (`ORGANIZEOS_NAMESPACE`, in
+ * organizeos-components.ts, which reads files: the builder's tests load this
+ * module in a browser)
+ */
+const organizeosNamespace = "@organizeos/site-components";
 
 /** The components upstream's registry gives every framework */
 const registryComponents = Object.keys(
@@ -106,7 +117,7 @@ const registryComponents = Object.keys(
 export const publishedComponents: ReadonlySet<Instance["component"]> = new Set([
   ...registryComponents,
   ...Object.keys(organizeosComponentMetas).map(
-    (name) => `${ORGANIZEOS_NAMESPACE}:${name}`
+    (name) => `${organizeosNamespace}:${name}`
   ),
 ]);
 
@@ -166,7 +177,8 @@ export type DroppedOrgScript = {
   eventAttributes: number;
   /** Actions `actionMayRun` refuses, on instances that stay */
   unsafeActions: number;
-  /** Data sources `collidingDataSourceIds` lists, that a page declares */
+  /** Data sources `collidingDataSourceIds` lists, that a page declares, but
+   * those `unlistedDataSourceIds` names */
   conflictingDataSources: number;
   /** Page and project redirects to an unsafe address */
   redirects: number;
@@ -533,6 +545,29 @@ const withOneEntryPerId = <Build extends PublishedProjectBundle["build"]>(
 };
 
 /**
+ * The build with each Form stored under an earlier name read as the component
+ * prebuild publishes it as, a Resource Form or a Webhook Form
+ * (`migrateResourceFormInstancesMutable`, which prebuild runs after
+ * `dropOrgScript`), so every rule reads that component. The same build when
+ * none is.
+ */
+const withFormComponents = <Build extends PublishedProjectBundle["build"]>(
+  input: Build
+): Build => {
+  const hasMarker = hasHistoricalFormComponentIdentityVersion(input.pages);
+  let changed = false;
+  const instances = input.instances.map(([id, instance]) => {
+    const read = { ...instance };
+    if (migrateResourceFormInstancesMutable([read], hasMarker).size === 0) {
+      return [id, instance] as [Instance["id"], Instance];
+    }
+    changed = true;
+    return [id, read] as [Instance["id"], Instance];
+  });
+  return changed ? { ...input, instances } : input;
+};
+
+/**
  * The project bundle without the org script described above. It never changes
  * its input, and returns it as it is when the switch is on.
  *
@@ -569,8 +604,9 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     return bundle;
   }
   // Every rule reads one entry per id, the last, as the builder does, and so
-  // does everything after it
-  const { build, duplicates } = withOneEntryPerId(bundle.build);
+  // does everything after it, and a stored Form as the component it publishes
+  const { build: entries, duplicates } = withOneEntryPerId(bundle.build);
+  const build = withFormComponents(entries);
   // Upstream keeps the project's settings in their own column, and prebuild
   // reads them before the pages' meta (`projectSettings?.meta ?? pages.meta`),
   // so the custom code goes from both.
@@ -594,8 +630,11 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
   const dataSources = new Map(build.dataSources);
   // the page templates, in either shape
   const templates = Object.values(
-    (build.pages as { pageTemplates?: Record<string, PageNames> })
-      .pageTemplates ?? {}
+    (
+      build.pages as {
+        pageTemplates?: Record<string, PageNames & { meta?: Page["meta"] }>;
+      }
+    ).pageTemplates ?? {}
   );
   const names = {
     instances,
@@ -603,13 +642,16 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     props: new Map(build.props),
     resources: new Map(build.resources ?? []),
     pages: [...allPages, ...templates].map(
-      ({ rootInstanceId, systemDataSourceId }) => ({
+      ({ rootInstanceId, systemDataSourceId, meta }) => ({
         rootInstanceId,
         systemDataSourceId,
+        documentType: meta?.documentType,
       })
     ),
   };
   const collidingIds = collidingDataSourceIds(names);
+  // what goes uncounted (a Content Block's own document)
+  const unlistedIds = unlistedDataSourceIds(names);
   // what an action's rule reads, as the canvas and the Publish dialog read it
   const actionContext = actionContextOf({
     ...names,
@@ -891,6 +933,7 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     const scope = dataSource.scopeInstanceId ?? "";
     if (
       collidingIds.has(id) &&
+      unlistedIds.has(id) === false &&
       (scope === ROOT_INSTANCE_ID ||
         (publishedIds.has(scope) && gone(scope) === false))
     ) {

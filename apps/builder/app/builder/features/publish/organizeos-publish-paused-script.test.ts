@@ -11,6 +11,9 @@ import {
   type Prop,
 } from "@webstudio-is/sdk";
 import { MenuIcon } from "@webstudio-is/icons/svg";
+import { renderTemplate, type TemplateMeta } from "@webstudio-is/template";
+import { canvasComponentLibraries } from "@webstudio-is/sdk-components-registry/canvas";
+import { componentMetas } from "@webstudio-is/sdk-components-registry/metas";
 import {
   findMdxBlocks,
   findPausedScript,
@@ -333,7 +336,7 @@ describe("findPausedScript", () => {
           "kept-nav"
         ),
       },
-      { id: "form", component: "Form", children: ids("donate") },
+      { id: "form", component: "WebhookForm", children: ids("donate") },
       { id: "donate", component: "Link" },
       { id: "script-box", component: "Box", tag: "script" },
       // a tag the builder offers on the instance and on the prop
@@ -398,7 +401,7 @@ describe("findPausedScript", () => {
   test("lists nothing for a tag the builder does not offer when the switch is on", () => {
     const instances = createInstances([
       { id: "home-root", component: "Body", children: ids("form") },
-      { id: "form", component: "Form" },
+      { id: "form", component: "WebhookForm" },
     ]);
     const props = toProps([stringProp("form", "tag", "signup")]);
 
@@ -1012,7 +1015,7 @@ describe("findPausedScript", () => {
       },
       { id: "form-a", component: "@organizeos/site-components:SignupForm" },
       { id: "proto", component: "ws:element", tag: "button" },
-      { id: "form", component: "Form" },
+      { id: "form", component: "WebhookForm" },
     ]);
     const action = (
       instanceId: string,
@@ -1520,6 +1523,200 @@ describe("findPausedScript", () => {
         navigate: { pageId: "home", instanceSelector: ["home-root"] },
       },
       { label: "Action (item) on Home", navigate: onHome("other") },
+    ]);
+  });
+
+  // A Resource Form's own form data and browser info stay while org script
+  // is paused
+  test("lists no Resource Form's own form data or browser info, and a parameter of either name elsewhere", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("form", "box") },
+      { id: "form", component: "ResourceForm" },
+      { id: "box", component: "Box" },
+    ]);
+    const parameter = (
+      id: string,
+      name: string,
+      scopeInstanceId: string
+    ): [string, DataSource] => [
+      id,
+      { type: "parameter", id, name, scopeInstanceId },
+    ];
+    const parameterProp = (
+      instanceId: string,
+      name: string,
+      value: string
+    ): Prop => ({
+      id: `${instanceId}-${name}`,
+      instanceId,
+      name,
+      type: "parameter",
+      value,
+    });
+
+    expect(
+      find({
+        instances,
+        dataSources: new Map([
+          parameter("form-data", "formData", "form"),
+          parameter("browser-info", "browserInfo", "form"),
+          parameter("box-data", "browserInfo", "box"),
+        ]),
+        props: toProps([
+          parameterProp("form", "formData", "form-data"),
+          parameterProp("form", "browserInfo", "browser-info"),
+          parameterProp("box", "title", "box-data"),
+        ]),
+      })
+    ).toEqual([
+      { label: "Variable (browserInfo) on Home", navigate: onHome("box") },
+    ]);
+  });
+
+  // An XML page does not publish a Resource Form, so its own form data goes
+  // there, and is listed where the form is
+  test("lists the form data of a Resource Form only an XML page holds", () => {
+    const pages = createPages({ xmlAbout: true });
+    const instances = createInstances([
+      { id: "home-root", component: "Body" },
+      { id: "about-root", component: "Body", children: ids("item") },
+      { id: "item", component: "XmlNode", children: ids("form", "title") },
+      { id: "form", component: "ResourceForm" },
+      { id: "title", component: "XmlNode" },
+    ]);
+    expect(
+      find({
+        pages,
+        instances,
+        dataSources: new Map([
+          [
+            "form-data",
+            {
+              type: "parameter",
+              id: "form-data",
+              name: "formData",
+              scopeInstanceId: "form",
+            },
+          ],
+        ]),
+        props: toProps([
+          {
+            id: "form-formData",
+            instanceId: "form",
+            name: "formData",
+            type: "parameter",
+            value: "form-data",
+          },
+          {
+            id: "title-lang",
+            instanceId: "title",
+            name: "lang",
+            type: "parameter",
+            value: "form-data",
+          },
+        ]),
+      })
+    ).toEqual([
+      {
+        label: "Variable (formData) on About",
+        navigate: {
+          pageId: "about",
+          instanceSelector: ["form", "item", "about-root"],
+        },
+      },
+    ]);
+  });
+
+  // A Content Block's own document goes while org script is paused, and is
+  // listed only when something else names it
+  test("lists nothing for the Content Block the core template inserts, and its document where another prop names it", () => {
+    const [core] = canvasComponentLibraries;
+    const fragment = renderTemplate(
+      (core.templates as Record<string, TemplateMeta>)[blockComponent].template,
+      undefined,
+      [],
+      { componentIds: core.componentIds, componentMetas }
+    );
+    const block = fragment.instances.find(
+      (instance) => instance.component === blockComponent
+    );
+    const document = fragment.dataSources.find(
+      (dataSource) => dataSource.scopeInstanceId === block?.id
+    );
+    expect(document?.type).toBe("parameter");
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: [...fragment.children, ...ids("box")],
+      },
+      ...fragment.instances,
+      { id: "box", component: "Box" },
+    ]);
+    const dataSources = new Map(
+      fragment.dataSources.map((dataSource) => [dataSource.id, dataSource])
+    );
+    const props = fragment.props;
+
+    expect(find({ instances, dataSources, props: toProps(props) })).toEqual([]);
+    expect(
+      find({
+        instances,
+        dataSources,
+        props: toProps([
+          ...props,
+          {
+            id: "box-title",
+            instanceId: "box",
+            name: "title",
+            type: "parameter",
+            value: document?.id ?? "",
+          },
+        ]),
+      })
+    ).toEqual([
+      {
+        label: `Variable (${document?.name}) on Home`,
+        navigate: {
+          pageId: "home",
+          instanceSelector: [block?.id, "home-root"],
+        },
+      },
+    ]);
+  });
+
+  // A Content Block's body ships, and no data source may take the name String
+  test("lists a variable named String, and no Content Block body", () => {
+    expect(
+      find({
+        instances: createInstances([
+          { id: "home-root", component: "Body", children: ids("block") },
+          { id: "block", component: blockComponent, children: ids("body") },
+          {
+            id: "body",
+            component: "ws:content-block-body",
+            children: ids("text"),
+          },
+          { id: "text", component: "Paragraph" },
+        ]),
+        dataSources: new Map([
+          [
+            "named",
+            {
+              type: "variable",
+              id: "named",
+              name: "String",
+              scopeInstanceId: "home-root",
+              value: { type: "string", value: "" },
+            },
+          ],
+        ]),
+      })
+    ).toEqual([
+      {
+        label: "Variable (String) on Home",
+        navigate: { pageId: "home", instanceSelector: ["home-root"] },
+      },
     ]);
   });
 

@@ -11,7 +11,9 @@ import {
 } from "@webstudio-is/protocol";
 import {
   coreMetas,
+  encodeDataSourceVariable,
   ROOT_INSTANCE_ID,
+  type DataSource,
   type Instance,
   type Page,
   type Prop,
@@ -31,10 +33,17 @@ import {
   xmlComponents,
 } from "@organizeos/site-components/org-script";
 import { migratePages } from "@webstudio-is/project-migrations/pages";
-import { dropOrgScript, publishedComponents } from "./organizeos-org-script";
+import {
+  assertFrameworkImports,
+  dropOrgScript,
+  frameworkComponentsOf,
+  publishedComponents,
+} from "./organizeos-org-script";
 import { assertBuildCodeValid } from "./organizeos-code-check";
 import { ORGANIZEOS_NAMESPACE } from "./organizeos-components";
 import { createFramework as createReactRouterFramework } from "./framework-react-router";
+import { createFramework as createRemixFramework } from "./framework-remix";
+import { createFramework as createVikeSsgFramework } from "./framework-vike-ssg";
 
 // Publishing leaves unsafe values out while org script is paused: addresses
 // that can run script, srcdoc, event handler attributes, XML elements on HTML
@@ -1928,6 +1937,250 @@ describe("dropOrgScript leaves unsafe values out", () => {
   });
 });
 
+// A build can store a form under an earlier name, which prebuild publishes
+// as a Resource Form or a Webhook Form: the drop reads it as that component,
+// so the form stays and its actions are judged as that component's.
+describe("dropOrgScript reads a stored form as the component it publishes as", () => {
+  const formBundle = (component: string, marker?: number) => {
+    const action = (name: string, variable: string) =>
+      prop("form", name, "action", [
+        {
+          type: "execute",
+          args: ["value"],
+          code: `${encodeDataSourceVariable(variable)} = value`,
+        },
+      ]);
+    const variable = (id: string): [string, DataSource] => [
+      id,
+      {
+        type: "variable",
+        id,
+        name: id,
+        scopeInstanceId: "root",
+        value: { type: "string", value: "" },
+      },
+    ];
+    const bundle = createBundle({
+      pages: [{ id: "home", path: "", rootInstanceId: "root" }],
+      instances: [
+        instance({ id: "root", component: "Body", children: ids("form") }),
+        instance({ id: "form", component }),
+      ],
+      props: [
+        action("onStateChange", "formState"),
+        action("onProgressChange", "formProgress"),
+      ],
+      dataSources: [variable("formState"), variable("formProgress")],
+    });
+    if (marker !== undefined) {
+      Object.assign(bundle.build.pages, {
+        formComponentIdentityVersion: marker,
+      });
+    }
+    return bundle;
+  };
+
+  test.each([
+    ["Form", undefined, "WebhookForm"],
+    ["Form", 1, "ResourceForm"],
+    ["NativeForm", undefined, "ResourceForm"],
+    ["WebhookForm", undefined, "WebhookForm"],
+    ["ResourceForm", undefined, "ResourceForm"],
+  ])("%s, with the marker %s, as a %s", (component, marker, publishedAs) => {
+    const bundle = formBundle(component, marker);
+    const copy = structuredClone(bundle);
+    const { result, log } = logOf(bundle);
+
+    expect(instanceIds(result)).toEqual(["root", "form"]);
+    // a Resource Form passes its progress as plain data, a Webhook Form has
+    // none
+    expect(propIds(result)).toEqual(
+      publishedAs === "ResourceForm"
+        ? ["form:onStateChange", "form:onProgressChange"]
+        : ["form:onStateChange"]
+    );
+    if (publishedAs === "ResourceForm") {
+      expect(log).not.toHaveBeenCalled();
+    } else {
+      expect(log).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action."
+      );
+    }
+    expect(bundle).toEqual(copy);
+  });
+});
+
+// A Resource Form's own form data and browser info stay while org script
+// is paused, and a parameter of either name anywhere else goes
+test("dropOrgScript keeps a Resource Form's own form data and browser info", () => {
+  const parameter = (
+    id: string,
+    name: string,
+    scopeInstanceId: string
+  ): [string, DataSource] => [
+    id,
+    { type: "parameter", id, name, scopeInstanceId },
+  ];
+  const bundle = createBundle({
+    pages: [{ id: "home", path: "", rootInstanceId: "root" }],
+    instances: [
+      instance({ id: "root", component: "Body", children: ids("form", "box") }),
+      instance({ id: "form", component: "ResourceForm" }),
+      instance({ id: "box", component: "Box" }),
+    ],
+    props: [
+      prop("form", "formData", "parameter", "form-data"),
+      prop("form", "browserInfo", "parameter", "browser-info"),
+      prop("box", "title", "parameter", "box-data"),
+    ],
+    dataSources: [
+      parameter("form-data", "formData", "form"),
+      parameter("browser-info", "browserInfo", "form"),
+      parameter("box-data", "formData", "box"),
+    ],
+  });
+  const { result, log } = logOf(bundle);
+
+  expect(result.build.dataSources.map(([id]) => id)).toEqual([
+    "form-data",
+    "browser-info",
+  ]);
+  expect(propIds(result)).toEqual(["form:formData", "form:browserInfo"]);
+  expect(log).toHaveBeenCalledWith(
+    "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+  );
+});
+
+// On an XML page a Resource Form does not publish, so its own form data
+// and browser info go there, with what names them, counted
+test("dropOrgScript leaves out the form data of a Resource Form only an XML page holds", () => {
+  const bundle = createBundle({
+    pages: [
+      {
+        id: "home",
+        path: "",
+        rootInstanceId: "root",
+        meta: { documentType: "xml" } as Page["meta"],
+      },
+    ],
+    instances: [
+      instance({ id: "root", component: "Body", children: ids("item") }),
+      instance({
+        id: "item",
+        component: "XmlNode",
+        tag: "item",
+        children: ids("form", "title"),
+      }),
+      instance({ id: "form", component: "ResourceForm" }),
+      instance({ id: "title", component: "XmlNode", tag: "title" }),
+    ],
+    props: [
+      prop("form", "formData", "parameter", "form-data"),
+      prop("title", "lang", "parameter", "form-data"),
+    ],
+    dataSources: [
+      [
+        "form-data",
+        {
+          type: "parameter",
+          id: "form-data",
+          name: "formData",
+          scopeInstanceId: "form",
+        },
+      ],
+    ],
+  });
+  const { result, log } = logOf(bundle);
+
+  expect(result.build.dataSources).toEqual([]);
+  expect(propIds(result)).toEqual([]);
+  expect(log).toHaveBeenCalledWith(
+    "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+  );
+});
+
+// A Content Block's own document goes while org script is paused, counted
+// only when something else names it
+test("dropOrgScript leaves out a Content Block's own document uncounted, and counts it when another prop names it", () => {
+  const blockBundle = (props: Array<[string, Prop]>) =>
+    createBundle({
+      pages: [{ id: "home", path: "", rootInstanceId: "root" }],
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("block", "box"),
+        }),
+        instance({ id: "block", component: "ws:block", children: ids("text") }),
+        instance({ id: "text", component: "Paragraph" }),
+        instance({ id: "box", component: "Box" }),
+      ],
+      props,
+      dataSources: [
+        [
+          "doc",
+          {
+            type: "parameter",
+            id: "doc",
+            name: "document",
+            scopeInstanceId: "block",
+          },
+        ],
+      ],
+    });
+  const own = prop("block", "document", "parameter", "doc");
+
+  const quiet = logOf(blockBundle([own]));
+  expect(quiet.result.build.dataSources).toEqual([]);
+  expect(propIds(quiet.result)).toEqual([]);
+  expect(quiet.log).not.toHaveBeenCalled();
+
+  const named = logOf(
+    blockBundle([own, prop("box", "title", "parameter", "doc")])
+  );
+  expect(named.result.build.dataSources).toEqual([]);
+  expect(propIds(named.result)).toEqual([]);
+  expect(named.log).toHaveBeenCalledWith(
+    "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+  );
+});
+
+// A Content Block's body ships, and no data source may take the name String
+test("dropOrgScript keeps a Content Block's body, and leaves out a variable named String", () => {
+  const bundle = createBundle({
+    pages: [{ id: "home", path: "", rootInstanceId: "root" }],
+    instances: [
+      instance({ id: "root", component: "Body", children: ids("block") }),
+      instance({ id: "block", component: "ws:block", children: ids("body") }),
+      instance({
+        id: "body",
+        component: "ws:content-block-body",
+        children: ids("text"),
+      }),
+      instance({ id: "text", component: "Paragraph" }),
+    ],
+    dataSources: [
+      [
+        "named",
+        {
+          type: "variable",
+          id: "named",
+          name: "String",
+          scopeInstanceId: "root",
+          value: { type: "string", value: "" },
+        },
+      ],
+    ],
+  });
+  const { result, log } = logOf(bundle);
+
+  expect(instanceIds(result)).toEqual(["root", "block", "body", "text"]);
+  expect(result.build.dataSources).toEqual([]);
+  expect(log).toHaveBeenCalledWith(
+    "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+  );
+});
+
 // The metas the CLI registers (framework-react-router.ts and prebuild's core
 // metas). An upstream merge or a new OrganizeOS block that changes what they
 // declare fails here, and gets a decision.
@@ -2006,6 +2259,50 @@ describe("what the registered components declare", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  // Prebuild drops what the framework does not import before it makes the
+  // framework, so it reads the same list of components for each template,
+  // and refuses the build when the framework does not import one of them
+  test.each([
+    [["defaults"], createRemixFramework],
+    [["react-router"], createReactRouterFramework],
+    [["react-router", "react-router-vercel"], createReactRouterFramework],
+    [["react-router-cloudflare"], createRemixFramework],
+    [["ssg"], createVikeSsgFramework],
+    [["ssg", "ssg-netlify"], createVikeSsgFramework],
+  ] as const)(
+    "frameworkComponentsOf(%j) are the components of the framework prebuild makes",
+    async (template, createFramework) => {
+      const dir = await mkdtemp(join(tmpdir(), "organizeos-framework-"));
+      try {
+        for (const name of ["html", "xml", "text", "default-sitemap"]) {
+          await writeFile(join(dir, `${name}.tsx`), "");
+        }
+        for (const name of ["shared", "html", "text", "dynamic"]) {
+          await mkdir(join(dir, name));
+        }
+        const framework = await createFramework({
+          preserveTemplates: true,
+          templatesDirectory: dir,
+        });
+        const components = frameworkComponentsOf(template);
+        expect([...components].sort()).toEqual(
+          Object.keys(framework.components).sort()
+        );
+        expect(() =>
+          assertFrameworkImports(components, framework.components)
+        ).not.toThrow();
+        expect(() =>
+          assertFrameworkImports(
+            new Set([...components, `${ORGANIZEOS_NAMESPACE}:Missing`]),
+            framework.components
+          )
+        ).toThrow();
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    }
+  );
 
   // A component of plainDataActionProps passes its action plain data, so its
   // action may name its args. One that is renamed or no longer registered gets

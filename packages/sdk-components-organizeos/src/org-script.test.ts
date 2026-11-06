@@ -9,16 +9,20 @@ import {
   SpinnerIcon,
 } from "@webstudio-is/icons/svg";
 import {
+  blockBodyComponent,
   blockComponent,
   blockTemplateComponent,
   collectionComponent,
+  coreMetas,
   descendantComponent,
   elementComponent,
   encodeDataSourceVariable,
   ROOT_INSTANCE_ID,
+  rootComponent,
   tags,
   type DataSource,
   type Instance,
+  type Instances,
   type Page,
   type Pages,
   type Prop,
@@ -55,6 +59,8 @@ import {
   actionMayRun,
   collidingDataSourceIds,
   componentMayShip,
+  generatedComponents,
+  unlistedDataSourceIds,
   instanceIdMayRun,
   isPlainData,
   holdsAngleBrackets,
@@ -844,7 +850,11 @@ describe("actionMayRun", () => {
   // plain data
   test("names its args only on the props through which a component passes plain data", () => {
     const holders = new Map([
-      ["webhook", node("Form")],
+      ["resource", node("ResourceForm")],
+      ["webhook", node("WebhookForm")],
+      // a name a build stores a form under, which publishing reads as one
+      // of the two above first
+      ["stored", node("Form")],
       ["signup", node(signupForm)],
       ["rsvp", node("@organizeos/site-components:RsvpForm")],
       ["rotation", node("@organizeos/site-components:RotationControl")],
@@ -867,6 +877,9 @@ describe("actionMayRun", () => {
         tree
       );
     for (const [holder, name] of [
+      ["resource", "onStateChange"],
+      ["resource", "onProgressChange"],
+      ["resource", "onResultChange"],
       ["webhook", "onStateChange"],
       ["signup", "onStateChange"],
       ["rsvp", "onStateChange"],
@@ -878,6 +891,11 @@ describe("actionMayRun", () => {
     }
     // the same prop name on another component
     expect(named("button", "onStateChange", `${variable} = arg`)).toBe(false);
+    expect(named("stored", "onStateChange", `${variable} = arg`)).toBe(false);
+    expect(named("webhook", "onProgressChange", `${variable} = arg`)).toBe(
+      false
+    );
+    expect(named("resource", "onSubmit", `${variable} = arg`)).toBe(false);
     expect(named("button", "onClick", `${variable} = arg`)).toBe(false);
     expect(named("button", "onClick", `${variable} = arg ? 1 : 0`)).toBe(false);
     // there an action lists no args, even ones its code does not name
@@ -1387,10 +1405,11 @@ describe("actionMayRun", () => {
   test("names no data source whose id or name the page module uses for something else", () => {
     const build = {
       instances: new Map([
-        ["body", node("Body", "box", "list", "form-1")],
+        ["body", node("Body", "box", "list", "form-1", "form-2")],
         ["box", node("Box")],
         ["list", node(collectionComponent)],
         ["form-1", node("Form")],
+        ["form-2", node("WebhookForm")],
       ]),
       pageRootIds: new Set(["body"]),
       pages: [{ rootInstanceId: "body" }],
@@ -1427,6 +1446,7 @@ describe("actionMayRun", () => {
       ["prop-resource", "v"],
       ["bound-resource", "v"],
       ["form-1", "v"],
+      ["form-2", "v"],
       ["@webstudio-is/sdk-components-react/components:Input", "v"],
       [":system", "v"],
       ["a b", "v"],
@@ -1441,6 +1461,7 @@ describe("actionMayRun", () => {
       ["v10", "Array"],
       ["v11", "Number"],
       ["v12", "Map"],
+      ["v13", "String"],
       ["v15", "Obj ect"],
     ]) {
       const dataSources = new Map([
@@ -1521,6 +1542,153 @@ describe("actionMayRun", () => {
         dataSources: new Map([variableOf("Body"), variableOf("v1")]),
       }),
     ]).toEqual(["Body"]);
+  });
+
+  // A Resource Form's own form data and browser info stay while org script
+  // is paused, as upstream binds them
+  test("names a Resource Form's own form data and browser info as themselves, as upstream binds them", async () => {
+    // upstream's binding of a managed form's parameters, from its source:
+    // its package does not export it
+    const { getManagedFormParameterBinding } = (await import(
+      /* @vite-ignore */ new URL(
+        "../../sdk/src/managed-form-graph.ts",
+        import.meta.url
+      ).href
+    )) as {
+      getManagedFormParameterBinding: (input: {
+        source: DataSource;
+        formId: string;
+        instances: Instances;
+        systemDataSourceId?: string;
+      }) => string;
+    };
+    const formInstances = new Map([
+      ["body", node("Body", "form", "webhook", "box", ROOT_INSTANCE_ID)],
+      ["form", node("ResourceForm")],
+      ["webhook", node("WebhookForm")],
+      ["box", node("Box")],
+      [ROOT_INSTANCE_ID, node("ResourceForm")],
+    ]);
+    const parameterOf = (
+      id: string,
+      name: string,
+      scopeInstanceId?: string
+    ): Extract<DataSource, { type: "parameter" }> => ({
+      type: "parameter",
+      id,
+      name,
+      scopeInstanceId,
+    });
+    const cases: Array<[Extract<DataSource, { type: "parameter" }>, boolean]> =
+      [
+        [parameterOf("form-data", "formData", "form"), true],
+        [parameterOf("browser-info", "browserInfo", "form"), true],
+        // another name, form, scope or owner
+        [parameterOf("other", "formData1", "form"), false],
+        [parameterOf("upper", "FormData", "form"), false],
+        [parameterOf("webhook-data", "formData", "webhook"), false],
+        [parameterOf("box-data", "formData", "box"), false],
+        [parameterOf("no-scope", "formData"), false],
+        [parameterOf("global-data", "formData", ROOT_INSTANCE_ID), false],
+        [parameterOf("page-own", "formData", "form"), false],
+      ];
+    for (const [dataSource, named] of cases) {
+      const colliding = collidingDataSourceIds({
+        instances: formInstances,
+        dataSources: new Map([[dataSource.id, dataSource]]),
+        props: new Map([
+          [
+            "prop",
+            {
+              id: "prop",
+              instanceId: dataSource.scopeInstanceId ?? "",
+              name: dataSource.name,
+              type: "parameter",
+              value: dataSource.id,
+            },
+          ],
+        ]),
+        resources: new Map(),
+        pages: [{ rootInstanceId: "body", systemDataSourceId: "page-own" }],
+      });
+      expect(colliding.has(dataSource.id), dataSource.id).toBe(!named);
+      // upstream binds the same ones as the submission's
+      let binding: undefined | string;
+      try {
+        binding = getManagedFormParameterBinding({
+          source: dataSource,
+          formId: dataSource.scopeInstanceId ?? "",
+          instances: formInstances as Instances,
+          systemDataSourceId: "page-own",
+        });
+      } catch {
+        binding = undefined;
+      }
+      expect(
+        (binding === "formData" || binding === "browserInfo") &&
+          dataSource.scopeInstanceId !== ROOT_INSTANCE_ID,
+        dataSource.id
+      ).toBe(named);
+    }
+  });
+
+  // A Resource Form's own form data and browser info stay only where the
+  // form publishes, and only while nothing outside the form names them
+  test("names a Resource Form's own form data and browser info only on a form that publishes, named on the form or inside it", () => {
+    const formInstances = new Map([
+      ["body", node("Body", "form", "shared")],
+      ["form", node("ResourceForm", "inner")],
+      ["inner", node("Box")],
+      ["xml-body", node("Body", "xml-item", "shared")],
+      ["xml-item", node("XmlNode", "xml-form", "xml-title")],
+      ["xml-form", node("ResourceForm")],
+      ["xml-title", node("XmlNode")],
+      ["shared", node("Fragment", "shared-form")],
+      ["shared-form", node("ResourceForm")],
+    ]);
+    const pages = [
+      { rootInstanceId: "body" },
+      { rootInstanceId: "xml-body", documentType: "xml" as const },
+    ];
+    const named = (formId: string, holders: string[]) => {
+      const dataSource: DataSource = {
+        type: "parameter",
+        id: "form-data",
+        name: "formData",
+        scopeInstanceId: formId,
+      };
+      const colliding = collidingDataSourceIds({
+        instances: formInstances,
+        dataSources: new Map([[dataSource.id, dataSource]]),
+        props: new Map(
+          holders.map((holder): [string, Prop] => [
+            holder,
+            {
+              id: holder,
+              instanceId: holder,
+              name: holder === formId ? "formData" : "title",
+              type: "parameter",
+              value: dataSource.id,
+            },
+          ])
+        ),
+        resources: new Map(),
+        pages,
+      });
+      return colliding.has(dataSource.id) === false;
+    };
+    // on an HTML page, named on the form or inside it
+    expect(named("form", ["form"])).toBe(true);
+    expect(named("form", ["form", "inner"])).toBe(true);
+    // on an XML page only
+    expect(named("xml-form", ["xml-form"])).toBe(false);
+    expect(named("xml-form", ["xml-form", "xml-title"])).toBe(false);
+    // on an HTML page and an XML page
+    expect(named("shared-form", ["shared-form"])).toBe(true);
+    // named outside the form
+    expect(named("form", ["form", "xml-title"])).toBe(false);
+    expect(named("shared-form", ["shared-form", "xml-title"])).toBe(false);
+    expect(named("form", ["body"])).toBe(false);
   });
 
   // A parameter is declared as itself only as a page's own, held on its root,
@@ -2162,6 +2330,70 @@ describe("holdsAngleBrackets", () => {
   });
 });
 
+describe("unlistedDataSourceIds", () => {
+  const node = (
+    component: string,
+    ...children: string[]
+  ): Pick<Instance, "component" | "children"> => ({
+    component,
+    children: children.map((value) => ({ type: "id", value })),
+  });
+  const instances = new Map([
+    ["body", node("Body", "block", "box")],
+    ["block", node(blockComponent)],
+    ["box", node("Box")],
+  ]);
+  const document = (scopeInstanceId: string): [string, DataSource] => [
+    "doc",
+    { type: "parameter", id: "doc", name: "document", scopeInstanceId },
+  ];
+  const parameterProp = (instanceId: string, name: string): [string, Prop] => [
+    `${instanceId}:${name}`,
+    {
+      id: `${instanceId}:${name}`,
+      instanceId,
+      name,
+      type: "parameter",
+      value: "doc",
+    },
+  ];
+  const unlisted = (
+    dataSource: [string, DataSource],
+    props: Array<[string, Prop]>
+  ) => [
+    ...unlistedDataSourceIds({
+      instances,
+      dataSources: new Map([dataSource]),
+      props: new Map(props),
+    }),
+  ];
+
+  test("is a Content Block's own document, which the block's own document prop names", () => {
+    expect(
+      unlisted(document("block"), [parameterProp("block", "document")])
+    ).toEqual(["doc"]);
+  });
+
+  test("is not one that another prop names too, one held elsewhere, or one the block names otherwise", () => {
+    expect(
+      unlisted(document("block"), [
+        parameterProp("block", "document"),
+        parameterProp("box", "title"),
+      ])
+    ).toEqual([]);
+    expect(
+      unlisted(document("block"), [parameterProp("box", "document")])
+    ).toEqual([]);
+    expect(
+      unlisted(document("block"), [parameterProp("block", "title")])
+    ).toEqual([]);
+    expect(unlisted(document("block"), [])).toEqual([]);
+    expect(
+      unlisted(document("box"), [parameterProp("box", "document")])
+    ).toEqual([]);
+  });
+});
+
 describe("componentMayShip", () => {
   const components = new Set(["Box", "@organizeos/site-components:SignupForm"]);
 
@@ -2172,11 +2404,22 @@ describe("componentMayShip", () => {
       elementComponent,
       collectionComponent,
       blockComponent,
+      blockBodyComponent,
       blockTemplateComponent,
       descendantComponent,
     ]) {
       expect(componentMayShip(component, components), component).toBe(true);
     }
+  });
+
+  // Every core component but the global root is one the generator writes
+  // itself: one an upstream merge adds gets a decision here
+  test("names every core component but the global root as one the generator writes", () => {
+    expect([...generatedComponents].sort()).toEqual(
+      Object.keys(coreMetas)
+        .filter((component) => component !== rootComponent)
+        .sort()
+    );
   });
 
   test("is false for any other, the builder's global root included", () => {

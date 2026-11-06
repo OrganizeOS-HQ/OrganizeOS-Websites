@@ -1573,6 +1573,47 @@ describe("the canvas computes an action", () => {
     expect($dataSourceVariables.get().get("clicked")).toBe("success");
   });
 
+  // 0.309.0's forms pass their action plain data: a Resource Form its
+  // state, progress and result, and a Webhook Form its state
+  test("gives a Resource Form's and a Webhook Form's actions a working handler", async () => {
+    const setClicked = (instanceId: string, name: string) =>
+      action(
+        instanceId,
+        [{ args: ["value"], code: "$ws$dataSource$clicked = value" }],
+        name
+      );
+    await settled(() =>
+      prepare({
+        instances: [
+          instance({ id: "body", children: ids("resource", "webhook") }),
+          instance({ id: "resource", component: "ResourceForm" }),
+          instance({ id: "webhook", component: "WebhookForm" }),
+        ],
+        props: [
+          setClicked("resource", "onStateChange"),
+          setClicked("resource", "onProgressChange"),
+          setClicked("resource", "onResultChange"),
+          setClicked("webhook", "onStateChange"),
+          // a Webhook Form has no progress to pass
+          setClicked("webhook", "onProgressChange"),
+        ],
+      })
+    );
+
+    for (const [instanceId, name, value] of [
+      ["resource", "onStateChange", "success"],
+      ["resource", "onProgressChange", { status: "pending", files: [] }],
+      ["resource", "onResultChange", { success: true, errors: [] }],
+      ["webhook", "onStateChange", "error"],
+    ] as const) {
+      const handler = propOf(instanceId, name);
+      expect(typeof handler, `${instanceId} ${name}`).toBe("function");
+      (handler as (value: unknown) => void)(value);
+      expect($dataSourceVariables.get().get("clicked")).toEqual(value);
+    }
+    expect(propOf("webhook", "onProgressChange")).toBeUndefined();
+  });
+
   // A page's own data source is a parameter, so a variable with its id is
   // one the page module cannot name as itself
   test("gives no handler to an action that names a variable with a page's own id", async () => {
