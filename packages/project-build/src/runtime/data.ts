@@ -372,10 +372,15 @@ const setUnion = <Item>(current: Set<Item>, other: Set<Item>) => {
 };
 
 // OrganizeOS fork: an expression that fails input validation is never
-// compiled; it reads as unset (code-check.ts in @organizeos/site-components).
-// It is logged as upstream logs one that cannot compile, with the reason
-// only; one that does not parse still fails in transpileExpression.
-const skippedExpression: CompiledExpression = () => undefined;
+// compiled (code-check.ts in @organizeos/site-components). It fails as one
+// that cannot compile does: it reads as unset, and a caller that asks for
+// errors (throwOnError) gets the reason. One that does not parse still fails
+// in transpileExpression.
+const skipExpression =
+  (reason: string): CompiledExpression =>
+  () => {
+    throw new Error(`Expression skipped: ${reason}`);
+  };
 
 const getCompiledExpression = (expression: string) => {
   const cached = compiledExpressionCache.get(expression);
@@ -388,9 +393,9 @@ const getCompiledExpression = (expression: string) => {
     check.reason !== codeCheckReasons.syntax &&
     check.reason !== codeCheckReasons.empty
   ) {
-    console.error(`Expression skipped: ${check.reason}`);
-    compiledExpressionCache.set(expression, skippedExpression);
-    return skippedExpression;
+    const skipped = skipExpression(check.reason);
+    compiledExpressionCache.set(expression, skipped);
+    return skipped;
   }
 
   const usedVariables = new Map<string, DataSource["name"]>();
