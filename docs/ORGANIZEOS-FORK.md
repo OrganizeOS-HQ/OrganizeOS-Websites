@@ -1663,10 +1663,9 @@ code in the page's address only, never in a cookie or storage.
   published link may route by its own `to`, not the DOM `href`, and would drop
   the code, even on a link an earlier Ctrl-click, middle-click or context
   menu, or the first click of a double-click, has already given its `r`.
-  OrganizeOS plan `docs/superpowers/plans/2026-11-05-share-code-new-tab-gestures.md`
-  brings the platform's carrier to the same rule; until it lands, the
-  platform's carrier acts on a click only and leaves a link that already has
-  `r` to its default. Any
+  The platform's carrier follows the same rule, with the same middle-click and
+  context menu (OrganizeOS-HQ/OrganizeOS#2234, plan
+  `docs/superpowers/plans/2026-11-05-share-code-new-tab-gestures.md`). Any
   other click (a modifier key or another button, `target="_blank"`,
   `download`) follows the `href`. A middle-click and a context menu only add
   the code to the `href`, as a modified click does, and are never cancelled,
