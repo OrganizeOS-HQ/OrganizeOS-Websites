@@ -1,5 +1,6 @@
 import { useStore } from "@nanostores/react";
 import {
+  PanelContent,
   Button,
   DialogClose,
   DialogTitle,
@@ -7,95 +8,44 @@ import {
   Grid,
   InputErrorsTooltip,
   InputField,
+  InfoTooltip,
   Label,
   DialogTitleActions,
   ScrollArea,
   TitleSuffixSpacer,
   Tooltip,
-  rawTheme,
   theme,
 } from "@webstudio-is/design-system";
-import { InfoCircleIcon, TrashIcon } from "@webstudio-is/icons";
+import { TrashIcon } from "@webstudio-is/icons";
+import { type Folder, getFolderById } from "@webstudio-is/sdk";
 import {
-  type Folder,
-  folder,
-  type Pages,
-  ROOT_FOLDER_ID,
-  findParentFolderByChildId,
-  getFolderById,
-} from "@webstudio-is/sdk";
-import { nanoid } from "nanoid";
+  folderSettingsDefaultValues,
+  getFolderSettingsValues,
+  getNewFolderSettingsValues,
+  nameToSlug,
+  validateFolderSettings,
+  type FolderSettingsFieldErrors,
+  type FolderSettingsValues,
+} from "@webstudio-is/project-build/runtime";
 import { useState, type FocusEventHandler } from "react";
-import slugify from "slugify";
-import { z } from "zod";
 import { useIds } from "~/shared/form-utils";
 import { $pages } from "~/shared/sync/data-stores";
 import { $isDesignMode } from "~/shared/nano-states";
-import { serverSyncStore } from "~/shared/sync/sync-stores";
 import { Form } from "./form";
-import { isSlugAvailable, registerFolderChildMutable } from "./page-utils";
 import { useDraftValue } from "~/builder/shared/use-draft-value";
 import { copyFolder } from "~/shared/copy-paste/copy-paste";
 import { PageItemActionsDropdown } from "./page-item-actions";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 
-const folderValues = folder.pick({ name: true, slug: true }).extend({
-  parentFolderId: z.string(),
-});
-
-type Values = z.infer<typeof folderValues>;
+type Values = FolderSettingsValues;
 
 type FieldName = keyof Values;
 
-type Errors = {
-  [fieldName in FieldName]?: string[];
-};
-
-const fieldDefaultValues = {
-  name: "Untitled",
-  slug: "untitled",
-  parentFolderId: ROOT_FOLDER_ID,
-} satisfies Values;
+type Errors = FolderSettingsFieldErrors;
 
 const emptyUnsavedValues: Partial<Values> = {};
 
-const fieldNames = Object.keys(fieldDefaultValues) as Array<FieldName>;
-
-const validateValues = (
-  pages: undefined | Pages,
-  values: Values,
-  folderId?: Folder["id"]
-): Errors => {
-  const parsedResult = folderValues.safeParse(values);
-  const errors: Errors = {};
-  if (parsedResult.success === false) {
-    return parsedResult.error.formErrors.fieldErrors;
-  }
-  if (pages !== undefined && values.slug !== undefined) {
-    if (
-      isSlugAvailable(
-        values.slug,
-        pages.folders,
-        values.parentFolderId,
-        folderId
-      ) === false
-    ) {
-      errors.slug = errors.slug ?? [];
-      errors.slug.push(`Slug "${values.slug}" is already in use`);
-    }
-  }
-  return errors;
-};
-
-const toFormValues = (folderId: Folder["id"], pages: Pages): Values => {
-  const { folders } = pages;
-  const folder = folders.get(folderId);
-  const parentFolder = findParentFolderByChildId(folderId, folders);
-  return {
-    name: folder?.name ?? "",
-    slug: folder?.slug ?? "",
-    parentFolderId: parentFolder?.id ?? pages.rootFolderId,
-  };
-};
+const fieldNames = Object.keys(folderSettingsDefaultValues) as Array<FieldName>;
 
 const autoSelectHandler: FocusEventHandler<HTMLInputElement> = (event) =>
   event.target.select();
@@ -131,7 +81,7 @@ const FormFields = ({
   return (
     <Grid css={{ height: "100%" }}>
       <ScrollArea>
-        <Grid gap={3} css={{ padding: theme.panel.padding }}>
+        <PanelContent as={Grid} gap={3}>
           <Grid gap={1}>
             <Label htmlFor={fieldIds.name}>Folder name</Label>
             <InputErrorsTooltip errors={errors.name}>
@@ -155,15 +105,10 @@ const FormFields = ({
           <Grid gap={1}>
             <Flex align="center" css={{ gap: theme.spacing[3] }}>
               <Label htmlFor={fieldIds.slug}>Slug</Label>
-              <Tooltip
-                content={"Slug will be used as part of the path to the page"}
-                variant="wrapped"
-              >
-                <InfoCircleIcon
-                  color={rawTheme.colors.foregroundSubtle}
-                  tabIndex={0}
-                />
-              </Tooltip>
+              <InfoTooltip
+                label="About folder slug"
+                content="Slug will be used as part of the path to the page"
+              />
             </Flex>
             <InputErrorsTooltip errors={errors.slug}>
               <InputField
@@ -183,18 +128,10 @@ const FormFields = ({
               />
             </InputErrorsTooltip>
           </Grid>
-        </Grid>
+        </PanelContent>
       </ScrollArea>
     </Grid>
   );
-};
-
-const nameToSlug = (name: string) => {
-  if (name === "") {
-    return "";
-  }
-
-  return slugify(name, { lower: true, strict: true });
 };
 
 export const newFolderId = "new-folder";
@@ -211,19 +148,18 @@ export const NewFolderSettings = ({
   const pages = useStore($pages);
   const isDesignMode = useStore($isDesignMode);
 
-  const [values, setValues] = useState<Values>({
-    ...fieldDefaultValues,
-    parentFolderId: pages?.rootFolderId ?? fieldDefaultValues.parentFolderId,
-    slug: nameToSlug(fieldDefaultValues.name),
-  });
+  const [values, setValues] = useState<Values>(() =>
+    getNewFolderSettingsValues(pages)
+  );
 
-  const errors = validateValues(pages, values);
+  const errors = validateFolderSettings({ pages, values });
 
   const handleSubmit = () => {
     if (Object.keys(errors).length === 0) {
-      const folderId = nanoid();
-      createFolder(folderId, values);
-      onSuccess(folderId);
+      const folderId = createFolder(values);
+      if (folderId !== undefined) {
+        onSuccess(folderId);
+      }
     }
   };
 
@@ -253,6 +189,7 @@ export const NewFolderSettings = ({
             )}
             <TitleSuffixSpacer />
             <Button
+              color="primary"
               state={isSubmitting ? "pending" : "auto"}
               onClick={handleSubmit}
               tabIndex={2}
@@ -290,42 +227,25 @@ export const NewFolderSettings = ({
   );
 };
 
-const createFolder = (folderId: Folder["id"], values: Values) => {
-  serverSyncStore.createTransaction([$pages], (pages) => {
-    if (pages === undefined) {
-      return;
-    }
-    pages.folders.set(folderId, {
-      id: folderId,
+const createFolder = (values: Values) => {
+  const result = executeRuntimeMutation({
+    id: "folders.create",
+    input: {
       name: values.name,
       slug: values.slug,
-      children: [],
-    } satisfies Folder);
-    const parentFolder =
-      getFolderById(pages, values.parentFolderId) ??
-      getFolderById(pages, pages.rootFolderId);
-    parentFolder?.children.push(folderId);
+      parentFolderId: values.parentFolderId,
+    },
   });
+  return result?.result.folderId as string | undefined;
 };
 
 const updateFolder = (folderId: Folder["id"], values: Partial<Values>) => {
-  serverSyncStore.createTransaction([$pages], (pages) => {
-    if (pages === undefined) {
-      return;
-    }
-    const folder = getFolderById(pages, folderId);
-    if (folder === undefined || folderId === pages.rootFolderId) {
-      return;
-    }
-    if (values.name !== undefined) {
-      folder.name = values.name;
-    }
-    if (values.slug !== undefined) {
-      folder.slug = values.slug;
-    }
-    if (values.parentFolderId !== undefined) {
-      registerFolderChildMutable(pages, folderId, values.parentFolderId);
-    }
+  executeRuntimeMutation({
+    id: "folders.update",
+    input: {
+      folderId,
+      values,
+    },
   });
 };
 
@@ -370,11 +290,13 @@ export const FolderSettings = ({
   };
 
   const values: Values = {
-    ...(pages ? toFormValues(folderId, pages) : fieldDefaultValues),
+    ...(pages
+      ? getFolderSettingsValues({ folderId, pages })
+      : folderSettingsDefaultValues),
     ...unsavedValues,
   };
 
-  errors = validateValues(pages, values, folderId);
+  errors = validateFolderSettings({ pages, values, folderId });
 
   if (folder === undefined) {
     return null;

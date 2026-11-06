@@ -9,8 +9,11 @@
  * pages, instances, props, resources and data sources, and the records it
  * touches are checked before and after. An entry is refused only when a record
  * fails after it in a way it did not before, so an entry that leaves a saved
- * failing value alone applies (prebuild and the canvas cover saved data).
- * Nothing here writes to the database.
+ * failing value alone applies (prebuild and the canvas cover saved data). An
+ * entry whose patch does not apply to the build is refused. The build is
+ * checked at the version the client writes, which the write itself matches,
+ * so the check sees the data the write changes. Nothing here writes to the
+ * database.
  */
 import { applyPatches, enableMapSet, enablePatches, type Patch } from "immer";
 import type {
@@ -21,7 +24,7 @@ import type {
   Resource,
 } from "@webstudio-is/sdk";
 import { SYSTEM_VARIABLE_ID } from "@webstudio-is/sdk";
-import { parseData, parsePages } from "@webstudio-is/project-build";
+import { parseData, parsePages } from "@webstudio-is/project-build/persistence";
 import {
   checkInstance,
   checkPage,
@@ -30,6 +33,7 @@ import {
   pagesToCheck,
 } from "@organizeos/site-components/org-script";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
+import { singlePlayerVersionMismatchResult } from "@webstudio-is/project/build-patch-core.server";
 import type { PatchEntry } from "./patch-normalize.server";
 
 enableMapSet();
@@ -43,7 +47,11 @@ const checkedNamespaces = new Set([
   "dataSources",
 ]);
 
-const columns = "pages, instances, props, resources, dataSources";
+const columns =
+  "version, lastTransactionId, pages, instances, props, resources, dataSources";
+
+/** The reason an entry whose patch does not apply is refused for. */
+export const unappliedPatchReason = "This change cannot be applied";
 
 type CheckedData = {
   pages: Pages;
@@ -57,14 +65,19 @@ type Namespace = keyof CheckedData;
 
 type Change = { namespace: string; patches: Patch[] };
 
-const changesOf = (entry: PatchEntry) =>
+/** What the check reads of an entry: its transaction's changes. */
+type CheckedEntry = {
+  transaction: Pick<PatchEntry["transaction"], "id" | "payload">;
+};
+
+const changesOf = (entry: CheckedEntry) =>
   (entry.transaction.payload as Change[]).filter(
     (change) =>
       checkedNamespaces.has(change.namespace) && change.patches.length > 0
   );
 
 /** Whether any entry writes to a namespace whose values are checked. */
-export const writesCheckedValues = (entries: PatchEntry[]) =>
+export const writesCheckedValues = (entries: CheckedEntry[]) =>
   entries.some((entry) => changesOf(entry).length > 0);
 
 /** The failures of the records touched, each as a stable key. */
@@ -113,17 +126,37 @@ const failuresOf = (
   return failures;
 };
 
+/**
+ * A record namespace as a map by id: a namespace replaced whole may hold a
+ * map, an array of records or an array of [id, record] entries.
+ */
+const recordsOf = (value: unknown): Map<string, unknown> => {
+  if (value instanceof Map) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return new Map(
+      value.map((item) =>
+        Array.isArray(item)
+          ? [String(item[0]), item[1]]
+          : [String((item as { id: unknown }).id), item]
+      )
+    );
+  }
+  throw new Error("Not a record namespace");
+};
+
 const reasonOf = (key: string) => key.slice(key.lastIndexOf(":") + 1);
 
 /**
  * The entries to refuse, each with the reason, applying the others in order.
  * `build` holds the columns as the database stores them.
  */
-export const findRefusedEntries = (
+export const findRefusedEntries = <Entry extends CheckedEntry>(
   build: Record<"pages" | Exclude<Namespace, "pages">, string | null>,
-  entries: PatchEntry[]
-): Map<PatchEntry, string> => {
-  const refused = new Map<PatchEntry, string>();
+  entries: Entry[]
+): Map<Entry, string> => {
+  const refused = new Map<Entry, string>();
   let data: CheckedData = {
     pages: parsePages(build.pages ?? ""),
     instances: parseData<Instance>(build.instances ?? "[]"),
@@ -137,24 +170,38 @@ export const findRefusedEntries = (
       continue;
     }
     const touched = new Map<Namespace, Set<string>>();
+    const replacedWhole = new Set<Namespace>();
     let next: CheckedData = data;
     try {
-      for (const { namespace, patches } of changes) {
-        const keys = touched.get(namespace as Namespace) ?? new Set<string>();
-        for (const patch of patches) {
+      for (const change of changes) {
+        const namespace = change.namespace as Namespace;
+        const keys = touched.get(namespace) ?? new Set<string>();
+        for (const patch of change.patches) {
           if (patch.path.length > 0) {
             keys.add(String(patch.path[0]));
+          } else {
+            replacedWhole.add(namespace);
           }
         }
-        touched.set(namespace as Namespace, keys);
+        touched.set(namespace, keys);
+        const patched = applyPatches(next[namespace], change.patches);
         next = {
           ...next,
-          [namespace]: applyPatches(next[namespace as Namespace], patches),
+          [namespace]: namespace === "pages" ? patched : recordsOf(patched),
         };
       }
     } catch {
-      // a patch that does not apply fails where upstream applies it
+      refused.set(entry, unappliedPatchReason);
       continue;
+    }
+    // a namespace replaced whole touches every record before and after
+    for (const namespace of replacedWhole) {
+      if (namespace !== "pages") {
+        touched.set(
+          namespace,
+          new Set([...data[namespace].keys(), ...next[namespace].keys()])
+        );
+      }
     }
     const before = failuresOf(data, touched);
     const added = [...failuresOf(next, touched)].find(
@@ -169,14 +216,25 @@ export const findRefusedEntries = (
   return refused;
 };
 
-/** Loads what findRefusedEntries reads, only when an entry writes it. */
-export const findRefusedPatchEntries = async (
+type CheckResult<Entry> =
+  | typeof singlePlayerVersionMismatchResult
+  | { status: "checked"; refused: Map<Entry, string> };
+
+/**
+ * Loads what findRefusedEntries reads, only when an entry writes it. A build
+ * whose version is not the client's answers the version conflict a stale
+ * client gets from the write, so the client reloads, except for the retry of
+ * a request already saved (a client behind the build whose last transaction
+ * is the build's last): that write changes nothing, as in patchLoadedBuild.
+ */
+export const findRefusedPatchEntries = async <Entry extends CheckedEntry>(
   context: AppContext,
   buildId: string,
-  entries: PatchEntry[]
-): Promise<Map<PatchEntry, string>> => {
+  clientVersion: number,
+  entries: Entry[]
+): Promise<CheckResult<Entry>> => {
   if (writesCheckedValues(entries) === false) {
-    return new Map();
+    return { status: "checked", refused: new Map() };
   }
   const build = await context.postgrest.client
     .from("Build")
@@ -186,8 +244,44 @@ export const findRefusedPatchEntries = async (
   if (build.error) {
     throw build.error;
   }
-  return findRefusedEntries(
-    build.data as unknown as Parameters<typeof findRefusedEntries>[0],
-    entries
+  const data = build.data as unknown as {
+    version: number;
+    lastTransactionId: string | null;
+  } & Parameters<typeof findRefusedEntries>[0];
+  if (data.version !== clientVersion) {
+    const lastTransactionId = entries.at(-1)?.transaction.id;
+    const savedRetry =
+      clientVersion < data.version &&
+      lastTransactionId !== undefined &&
+      lastTransactionId === data.lastTransactionId;
+    return savedRetry
+      ? { status: "checked", refused: new Map() }
+      : singlePlayerVersionMismatchResult;
+  }
+  return { status: "checked", refused: findRefusedEntries(data, entries) };
+};
+
+/**
+ * Checks a set of transactions written together, in order: every build write
+ * that is not a patch request (the API's build patch, the runtime operations
+ * and restoring a restore point) commits only when the check passes.
+ */
+export const checkBuildTransactions = async (
+  context: AppContext,
+  buildId: string,
+  clientVersion: number,
+  transactions: Array<CheckedEntry["transaction"]>
+): Promise<
+  typeof singlePlayerVersionMismatchResult | { status: "passed" | "refused" }
+> => {
+  const result = await findRefusedPatchEntries(
+    context,
+    buildId,
+    clientVersion,
+    transactions.map((transaction) => ({ transaction }))
   );
+  if (result.status === "version_mismatched") {
+    return result;
+  }
+  return { status: result.refused.size === 0 ? "passed" : "refused" };
 };

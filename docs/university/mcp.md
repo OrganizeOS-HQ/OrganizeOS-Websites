@@ -1,0 +1,2326 @@
+---
+description: >-
+  Connect AI agents and automation to a Webstudio Project through MCP or direct
+  CLI tool calls.
+icon: robot
+---
+
+<!-- Generated from the local Webstudio CLI with `webstudio man mcp --verbose`. Do not edit directly. -->
+
+# Webstudio MCP
+
+**Webstudio MCP v0.0.0-webstudio-version**
+
+## Introduction
+
+All you need to do is install the Codex desktop app or Claude Desktop and tell
+it:
+
+> Install Webstudio CLI and use MCP.
+
+---
+
+{% hint style="info" %}
+This reference is generated from the Webstudio CLI source in the same Builder
+revision. GitBook publishes it when that revision is successfully released.
+Examples use an installed `webstudio` command. See [CLI](cli.md) for Node.js and
+`npx` setup.
+{% endhint %}
+
+`webstudio mcp` starts a stdio MCP server for real MCP clients. Shell users can call MCP tools with the shortcut form `webstudio <tool> '<json>'`, for example `webstudio meta.index` or `webstudio insert-fragment '<json>' --dry-run`. `webstudio mcp single-op-call` is the explicit equivalent and prints the structured JSON result. `webstudio mcp run` runs multiple MCP tool calls from inline JSON or a normal JSON file in one shared CLI session. Do not manually type or pipe raw JSON-RPC frames into `webstudio mcp` from an interactive shell or PTY.
+
+## Startup
+
+If you are already working with a shell-capable agent, it can use the local CLI
+directly. Native MCP client registration is optional. Give the editable Builder
+share link only when the trusted agent asks for it. Treat the share link as a
+credential: do not include it in committed files, screenshots, logs, or issue
+reports.
+
+1. Configure a project with `webstudio init --link <api-share-link> --json`.
+2. Check capabilities with `webstudio permissions --json`.
+3. Use shortcut calls such as `webstudio meta.index` and `webstudio insert-fragment '<json>' --dry-run` for individual MCP tool calls. Use the explicit equivalent `webstudio mcp single-op-call <tool> '<json>'` when you need to force the MCP path, or `webstudio mcp run '[{"tool":"components.find","input":{"brief":"button"}}]'` for bounded multi-call workflows. Use `webstudio mcp run .temp/mcp-calls.json` for large batches.
+4. Start discovery with `meta.index`, then call focused tools with concrete JSON, for example `webstudio mcp single-op-call meta.guide '{"brief":"Create a design system page using every component"}'`.
+
+Do not run `webstudio sync`, install an MCP server, change client configuration,
+or restart the app for this local CLI workflow.
+
+When the user explicitly wants persistent native MCP integration, run
+`webstudio connect claude`, `webstudio connect codex`, `webstudio connect
+cursor`, or `webstudio connect vscode`. This optional command changes client
+configuration, so follow its client-specific reload or restart instruction.
+Use `--print` to inspect the generated setup without changing configuration or
+requiring project access. For Codex, `connect` registers and verifies the server
+through the Codex CLI. Before changing client configuration, `connect` verifies
+that the saved project endpoint is reachable and its credential is accepted.
+
+Start MCP from the linked Webstudio project root. The lifecycle status line prints that absolute root; create local scripts, screenshots, and temporary artifacts under that root, for example `<project root>/.temp/script.mjs`. If the shell starts in a parent workspace, `cd` into the project root first or use absolute paths.
+
+When developing inside the Webstudio monorepo, start the local CLI exactly as `node packages/cli/local.js mcp` from the repo root. Do not use `pnpm exec webstudio`, `pnpm --filter webstudio exec webstudio`, or a global `webstudio`: they can resolve an older binary.
+
+While the server is running, stdout is reserved for MCP JSON-RPC messages. Do not print human text from the server process. The server advertises MCP `logging` capability and emits sparse `notifications/message` logs for ready state and tool lifecycle checkpoints such as `tool preview.start started`, `tool preview.start still running after 10000ms`, and `tool preview.start succeeded in 1234ms`; stderr also mirrors these sparse lifecycle fallback lines prefixed with `[webstudio mcp]`.
+
+## One-Shot Tool Calls
+
+### Server-side Form simulation
+
+`forms.simulate-submission` evaluates a saved Form using synthetic string fields
+and the same trusted Builder server Form handler used by Builder Preview. Supply
+the saved Form instance ID and page path. The server uses this project's
+publisher origin. It can trigger the Form's configured HTTP and Email Resources, so verify
+every destination and recipient first. For dynamic checkbox or multiple-select fields,
+pass `arrayNames` to preserve an empty or single-value array when the saved
+field props do not identify the control. The result reports destination IDs,
+statuses, and errors without Resource bodies. Managed Email errors include a
+code when available. It reports the final outcome, not live Form progress.
+This server simulation does not exercise client validation, browser event
+handlers, navigation, file bytes, or actual browser information. The Builder
+server loads the saved draft and holds the Email service credentials; the CLI
+does not receive those credentials.
+
+```json
+{
+  "path": "/contact",
+  "formId": "saved-form-instance-id",
+  "values": [{ "name": "email", "value": "synthetic@example.com" }]
+}
+```
+
+Use the shortcut `webstudio <tool> '<json>'` when you are operating from a shell and need one MCP tool result. The explicit form `webstudio mcp single-op-call <tool> '<json>'` is equivalent and avoids writing temporary Node.js stdio client scripts.
+
+Examples:
+
+```sh
+webstudio mcp single-op-call meta.index
+webstudio mcp single-op-call meta.guide '{"brief":"Create a design system page using every component"}'
+webstudio mcp single-op-call meta.get-more-tools '{"tools":["insert-fragment"]}'
+webstudio mcp single-op-call components.list '{"source":"all"}'
+webstudio mcp single-op-call components.coverage-plan
+webstudio mcp single-op-call components.search '{"brief":"radix select"}'
+webstudio mcp single-op-call components.get '{"component":"@webstudio-is/sdk-components-react-radix:Select"}'
+webstudio mcp single-op-call templates.list
+webstudio mcp single-op-call templates.get '{"component":"@webstudio-is/sdk-components-react-radix:Select"}'
+webstudio mcp single-op-call insert-fragment --input-file .temp/insert-fragment.json
+```
+
+Shortcut equivalents:
+
+```sh
+webstudio meta.index
+webstudio meta.guide '{"brief":"Create a design system page using every component"}'
+webstudio meta.get-more-tools '{"tools":["insert-fragment"]}'
+webstudio components.list '{"source":"all"}'
+webstudio components.coverage-plan
+webstudio components.search '{"brief":"radix select"}'
+webstudio components.get '{"component":"@webstudio-is/sdk-components-react-radix:Select"}'
+webstudio templates.list
+webstudio templates.get '{"component":"@webstudio-is/sdk-components-react-radix:Select"}'
+webstudio insert-fragment --input-file .temp/insert-fragment.json
+```
+
+### Tool name convention
+
+MCP tool names are opaque strings, not JavaScript property access. A dot separates a namespace from its tool name, and every segment uses lowercase kebab-case. For example, `components.coverage-insert-next` is the `coverage-insert-next` tool in the `components` namespace. Pass the complete name as one CLI argument: `webstudio components.coverage-insert-next`. Batch `mcp run` calls also accept the underscore form advertised by MCP protocol discovery, such as `components_coverage_insert_next`. Unknown names return near matches and direct you to `meta.index`.
+
+### Readable fragment inputs
+
+Prefer `--input-file` for JSX so JSON and shell quoting do not obscure the fragment. For example, save this as `.temp/insert-fragment.json`:
+
+```json
+{
+  "parentInstanceId": "root-id",
+  "fragment": "<section ws:style={css`padding: 32px; display: grid; gap: 16px;`}><h2>Northstar Product OS</h2><p>Reusable patterns for teams.</p></section>"
+}
+```
+
+Then run `webstudio insert-fragment --input-file .temp/insert-fragment.json`. Single quotes inside the JSX keep the JSON valid and readable without backslash-escaped attributes.
+
+Write and review larger fragments as JSX before placing them in the `fragment` field. Common patterns:
+
+```tsx
+<section style={{ padding: 32, borderRadius: 16 }}>
+  <h2>Operations Console</h2>
+  <p>
+    React-style object styles become editable Webstudio styles.
+  </p>
+</section>
+
+<section ws:tokens={[token("accent", css`color: #0f766e;`)]}>
+  <button
+    onClick={new ActionValue(["event"], expression`console.log(event)`)}
+  >
+    Track launch
+  </button>
+</section>
+
+<section ws:tokens={[token("accent")]}>Reuse an existing accent token</section>
+
+<section>
+  <Switch>
+    <SwitchThumb />
+  </Switch>
+</section>
+```
+
+Use the two-argument `token` form with a `css` template to define styles in the
+fragment. Use `token("name")` to attach an existing project token; an unknown
+name is an error.
+
+Rules:
+
+- Inside the Webstudio monorepo, replace `webstudio` in the examples above with `node packages/cli/local.js`, for example `node packages/cli/local.js meta.index`.
+- For a simple authored/styled section, run `meta.index`, then `meta.get-more-tools '{"tools":["insert-fragment"]}'`, then `insert-fragment`. Do not grep source files, dump full MCP resources, or write parser scripts first.
+- In `insert-fragment` JSX, use ``ws:style={css`...`}`` for Webstudio-native CSS, or use React-style object syntax such as `style={{ padding: 24 }}` when that is simpler. Both forms create editable Webstudio style data.
+- `css` templates accept declarations and `@media` rules. Do not put selectors or unsupported at-rules such as `@keyframes` inside them. Use direct animation component identifiers such as `<AnimateChildren>`; `animation` is accepted only as legacy input and is not a callable CSS keyframes helper.
+- Do not access host globals or dynamic code APIs in JSX fragments, including `process`, `globalThis`, `eval`, `Function`, or `constructor`.
+- Use Webstudio prop names such as `class` and `for`; do not use React aliases `className` or `htmlFor`.
+- Use Webstudio actions for event/action props, for example `onClick={new ActionValue(["event"], expression\`console.log(event)\`)}`. Do not pass JavaScript functions such as `onClick={() => ...}`.
+- Plain prop values must be JSON-compatible: `null`, strings, booleans, finite numbers, arrays, and plain objects. Do not pass `undefined`, `Symbol`, `BigInt`, `NaN`, `Infinity`, `Date`, `Map`, `Set`, class instances, or circular objects; omit the prop, use plain data, or use `expression`/`ActionValue` when the value is dynamic.
+- Template-backed components used in JSX must include required child/part components explicitly under the same parent structure as the template, for example `<Switch><SwitchThumb /></Switch>`. Use `insert-component` when you want one automatic registered component template.
+- The positional input is JSON and defaults to `{}`.
+- Use `--input-file` for large mutation payloads.
+- Use `--dry-run` with local-capable mutation tools when you need a patch plan without committing. The computed transaction is returned in `meta.session.transaction`, and `meta.session.version` is its base build version. Copying a `.webstudio` folder is not an isolated project clone; `.webstudio/config.json` still points to the same remote project, so non-dry-run mutations can commit to that project.
+- The command prints JSON to stdout for both success and failure. Success uses the same `structuredContent` shape MCP tools return: `{ "ok": true, "data": ..., "meta": ... }`. Failure prints `{ "ok": false, "error": { "code": "...", "message": "..." }, "meta": ... }` and exits nonzero.
+- The command writes sparse progress to stderr, including start, success/failure, elapsed time, and committed status when the tool returns session metadata.
+- Invalid argument types fail loudly with path-specific messages, for example `meta.guide input.brief must be a string when provided`.
+- Run one-shot shortcut or `mcp single-op-call` commands sequentially against the same linked `.webstudio` folder. If you receive `PROJECT_SESSION_BUSY`, another CLI/MCP process is updating the local session; wait a moment and retry sequentially.
+- To work with another previously linked project without changing the directory's default link, start MCP or a shell call with `--project <projectId>`, for example `webstudio mcp --project <projectId>` or `webstudio mcp single-op-call list-pages --project <projectId>`. Selected projects use isolated local session and checkpoint files.
+- If you are a delegated agent and your parent cannot see live stderr/stdout, do not run a long sequence of shortcut or `mcp single-op-call` commands silently and do not wrap many calls in a shell loop. Treat each parent-visible checkpoint as the unit of work. If the parent asks for status within 30 seconds, run exactly one `webstudio <tool>` or `webstudio mcp single-op-call` command, report that command/result, then wait before the next MCP command. For all-component design-system pages, checkpoint after discovery, checkpoint after page creation, call `components.coverage-insert-next` once before checkpointing again, then finish with the `presentation-pass` workflow phase. Coverage alone is not completion; organize examples into styled sections/cards.
+
+## MDX-backed Content Blocks
+
+Use a connected `.mdx` Asset when editors should change a Content Block body visually while the document remains stored as a file.
+
+Choose this format before building a blog: each reachable connected MDX article is downloaded and compiled when publishing, so publishing can take longer as the blog grows. If editors only need to edit Markdown source in Assets, use `.md` with Markdown Embed instead. Content mode editors can edit those files in the Markdown file editor, but cannot edit the article body visually on the canvas. `.md` does not need per-article MDX compilation; the current publish sync still transfers Asset files for either format, and static generation may read Markdown bodies.
+
+### Connect a collection to its entry page
+
+When MDX files belong to a content collection, connect the collection to its dynamic entry page explicitly. Read the page ID after finding or creating the page, verify that its path has exactly one URL parameter, and store the ID at `x-webstudio.entryPageId` in `collection.json`. Do not assume Webstudio infers the page from its path, Assets query, or Content Block source. Preserve the rest of `collection.json`, and verify **Open on canvas** from both an entry asset menu and **Entry settings** before handoff. If no compatible page exists, leave the field unset and report that entry navigation still needs configuration.
+
+```json
+{
+  "x-webstudio": {
+    "template": "template.mdx",
+    "entries": ["*.mdx"],
+    "entryPageId": "<dynamic-entry-page-id>"
+  }
+}
+```
+
+1. Create the `.mdx` file under `.webstudio/assets`, then upload it and keep the returned Asset ID.
+2. Inspect the Content Block and verify that it has exactly one direct Templates container. Every custom template referenced from MDX needs a unique top-level instance name. A missing or second Templates container blocks connected MDX materialization and publication.
+3. Connect the Asset with `connect-content-block-source`. Use a stable page-based `renderScope` for a direct occurrence.
+4. If the result returns `requiresConfirmation:true`, tell the user that connecting will replace the existing Body content. Repeat the same call with `confirmReplacement:true` only after approval.
+5. Edit the complete source with `edit-content-block-source`, or replace the complete frontmatter map with `update-content-block-frontmatter`.
+6. Inspect every returned diagnostic. Invalid MDX is preserved, not silently repaired.
+
+```sh
+webstudio upload-asset '{"asset":{"name":"article.mdx","type":"file","format":"mdx","meta":{}},"assetsDir":".webstudio/assets"}'
+webstudio connect-content-block-source '{"blockInstanceId":"<contentBlockInstanceId>","renderScope":"page:/articles/example","source":{"type":"asset","assetId":"<mdxAssetId>"}}'
+webstudio inspect-content-block-source '{"blockInstanceId":"<contentBlockInstanceId>","renderScope":"page:/articles/example"}'
+webstudio edit-content-block-source --input-file .temp/edit-content-block-source.json
+webstudio reload-content-block-source '{"blockInstanceId":"<contentBlockInstanceId>","renderScope":"page:/articles/example"}'
+webstudio migrate-content-block-template-references '{"assetIds":["<mdxAssetId>"],"migration":{"type":"rename","from":"Old template name","to":"New template name"}}'
+```
+
+Prefer Markdown for standard document content. Markdown nodes automatically use a unique matching semantic template when one exists and keep their normal semantic fallback otherwise. Use lowercase JSX such as `<section>` or `<svg>` for a standard HTML or SVG element with authored properties Markdown cannot express.
+
+Reference a uniquely named top-level custom template with capitalized JSX such as `<PromotionCard tone="featured">Content</PromotionCard>`. The template's stable **Name** must be a valid JSX component identifier and is independent from its display label. A template name wins over a built-in MDX adapter. Other registered components are unavailable until added to this Content Block's Templates. Attributes accept quoted static values and bare booleans. Expressions such as `{false}` are unsupported, as are imports, spreads, functions, and executable JavaScript. Legacy `ws.element` and `ws:name` forms are read for compatibility but are not emitted or recommended. Component namespaces such as `$.*`, `radix.*`, and `animation.*` are unsupported; use the direct component identifier.
+
+When explicit JSX children match the designed template structure, their text and supported props overlay the cloned descendants so template styles stay intact. A mismatched child structure replaces the root defaults, and each authored child still resolves through a matching template when possible. An explicit empty pair such as `<PromotionCard></PromotionCard>` clears the defaults. A self-closing reference such as `<PromotionCard />` keeps them. Editing inherited default content writes it back as explicit JSX children. Template resolution is live: adding a missing semantic or named template later also updates existing MDX without rewriting it. Preserve unresolved template names and report their diagnostics.
+
+When a template is renamed or deleted, use `migrate-content-block-template-references` to update the affected MDX files. Its first call returns a plan with changed-file, update, omission, and diagnostic counts. Report the plan and repeat the exact request with its `confirmationToken` only after approval. Renames and removals update named JSX and legacy `ws:name` references, including names such as `Image` and `CodeText` when they identify templates. Rename targets must be valid PascalCase JSX identifiers. Removing a paired reference unwraps and preserves its explicit authored children; removing a self-closing reference removes that node because it has no authored children. Invalid files remain unchanged and are reported in diagnostics.
+
+Use the dedicated connect, switch, inspect, edit, update-frontmatter, reload, and disconnect operations instead of creating or deleting the Content Block's `src` with generic prop tools. An expression-bound source inside a Collection also needs the occurrence's scoped values and a distinct stable `renderScope`. For example, use `source:{"type":"expression","value":"post.assetId"}` with `variables:{"post":{"assetId":"<mdxAssetId>"}}`.
+
+`renderScope` is any non-empty stable identity for one rendered occurrence, such as `page:/articles/example`. It does not load that page, its route parameters, or its resource results. To connect a result-one Assets resource, run `preview-asset-query` with concrete values, keep the saved source expression such as `post.data.id`, and supply the previewed item for this occurrence with `variables:{"post":{"data":{"id":"<mdxAssetId>"}}}`. The operation validates that concrete Asset while persisting the dynamic expression.
+
+A source edit replaces the complete MDX document. A frontmatter update replaces the complete frontmatter property map. Inspect the current source first and preserve everything the user did not ask to change. Store frontmatter images as exact `$ref` objects. Bind editable Image sources to their resolved `.src` with explicit `binding.mode:"readwrite"`; omitting the mode leaves the image visible but not replaceable in Content mode. Bind alt properties to their Asset `.description` with `mode:"read"`. Use `update-content-block-frontmatter` for MCP frontmatter edits. MDX-rendered elements are not persistent instance targets for generic `bind-props` or `update-text` calls. Preserve existing `mode:"readwrite"` bindings when encountered; they are valid only for exact direct paths into the connected document's frontmatter. Direct bindings through a loaded Markdown or MDX `$ref` ending in `#frontmatter` save to the referenced file, with its write permissions enforced. Shared-record edits affect every document using that record. Computed expressions and JSON/body references remain read-only. Image replacement is supported: a direct Image source binding with `mode:"readwrite"` lets the picker replace the frontmatter `$ref`, while shared Asset metadata is edited in Asset settings.
+
+For an editable MDX article, use the resource to select the Content Block's source Asset (`post.data.id`), then bind article fields inside the block to its document parameter (`document.frontmatter.title`), not query-result properties. Inspect the actual document variable name first. Create writable bindings explicitly: `update-text` uses `expressionBindingMode:"readwrite"`; `bind-props` uses `binding.mode:"readwrite"`. These generic tools target persistent designed instances, such as a header outside the MDX body, not MDX-generated instances. The MDX body is editable through its source mapping; merely placing static or query-bound content inside the block does not make it editable. Use exact direct paths; property access is already safe. Direct bindings through a loaded Markdown or MDX `$ref` ending in `#frontmatter` save to the referenced file, with its write permissions enforced. Shared-record edits affect every document using that record. Computed expressions and JSON/body references remain read-only. Image replacement is supported: a direct Image source binding with `mode:"readwrite"` lets the picker replace the frontmatter `$ref`, while shared Asset metadata is edited in Asset settings. Follow the complete article editability checklist below before handoff.
+
+### Content Block completion checklist
+
+For every Content Block creation, migration, or repair—with or without MDX—treat Content-mode editability as a delivery requirement for all content the user expects editors to change. Before implementation, inventory each value, its intended UI control, and its write destination. Choose controls by meaning: date/calendar controls for dates, image pickers for image replacement, and direct text or number controls for reading time. Keep fixed punctuation and units outside a directly bound value element; never mix literal and expression children there. Preserve the existing stored type and wording: if `readTime` already stores `4 min read`, bind that whole string directly instead of assuming it stores only a number. Distinguish protected layout/templates from editable content explicitly. Test each field through Content mode, check the saved project data or source file, reload, restore test values, and record passed/failed/not tested. Testing one heading, inspecting bindings, or successfully writing through MCP does not cover the remaining fields. Report missing controls and unsupported writes as unfinished requirements, not successful delivery.
+
+### Complete article editability is required
+
+When the user asks for the whole article to be editable in Content mode, this includes every article-owned value: title, excerpt, author details and links, dates, reading time, categories, hero and inline image sources, alternative text, captions, body text, links, and custom-component content and media. Exclude only designer-owned layout, styling, templates, and shared navigation/footer unless the user asks otherwise. A correct preview, a successful MCP write, or an editable body does not prove this requirement is met.
+
+Before handoff:
+
+1. Inventory every article field, its UI control, binding, and source file/field. Header fields outside **MDX content** are still part of the article and must be editable through the Content Block's document bindings.
+2. In Content mode, edit every inventoried field through the UI, including choosing a different hero image and editing link destinations and custom-component props. Do not substitute a raw MDX/YAML edit or an MCP write for this check.
+3. Read the saved source after each edit. Confirm the intended MDX body/frontmatter or referenced author file changed, unrelated content stayed intact, and the edit survives reload. Restore test values and verify restoration.
+4. Mark each field passed, failed, or not tested. Do not claim the article is fully editable while any required field is failed or untested.
+
+**Image replacement is not shared metadata editing.** For frontmatter such as `featureImage: { $ref: "./images/hero.png" }`, bind the Image source directly to `document.frontmatter.featureImage.src` with `binding.mode:"readwrite"` using `bind-props`. In Content mode, **Choose source** replaces the article’s `featureImage.$ref`; it does not overwrite the shared Asset’s resolved `.src`. The resolved URL field stays read-only. Verify the picker, saved reference, and reload—do not infer support from the displayed image alone. Bind alternative text to `.description` to use the shared Asset description; edit it through **Choose source → asset actions → Settings → Description**, which affects every use of that Asset. Do not treat a missing write mode as a platform limitation, and do not defer image replacement over a separate shared-description question.
+
+Keep intended editable values separate from display formatting. For reading time, use three inline sibling text elements: static `— `, one value element bound directly to `document.frontmatter.readingTime` with `expressionBindingMode:"readwrite"`, and static ` min read`. The value element must contain only that binding, not mixed literal and expression children. Preserve whitespace and the stored field type. Do not concatenate labels or units, use template literals, or add fallbacks/formatting calls to an editable binding. Prefer component formatting controls with a directly bound value. Explain unsupported cases and ask before making an intended editable field read-only; do not trade away editability just to match the display.
+
+If an edit in a long-lived MCP session reports a revision conflict after another client saved the Asset, call `reload-content-block-source`, inspect the latest source, reapply the requested change, and retry. One-shot CLI calls refresh before each operation and normally cannot reproduce a stale session. Never overwrite the newer revision blindly. Use `disconnect-content-block-source` to remove the connection while leaving the Asset unchanged.
+
+## Reporting CLI/MCP Issues
+
+If a CLI/MCP tool gives a confusing error, crashes, hangs, produces invalid output, requires an undocumented workaround, or makes you inspect source code to understand normal usage, ask the user to report it in the Webstudio Discord `#help` channel: https://wstd.us/community.
+
+Give the user a complete copy-paste report. Include only non-secret values: never include auth tokens, private URLs, cookies, API keys, passwords, or proprietary project data. Redact them as `<redacted>`.
+
+Copy-paste template:
+
+````md
+Webstudio CLI/MCP issue report
+
+What I was trying to do:
+<short user goal, for example "Create a resource from an external API and render it in a collection">
+
+What I expected:
+<what should have happened>
+
+What happened instead:
+<exact error, confusing behavior, hang, missing docs, or workaround required>
+
+Command/tool used:
+
+```sh
+<exact command or MCP tool call, with tokens/secrets redacted>
+```
+
+Structured output / error:
+
+```json
+<stdout JSON or MCP structuredContent, if available, with secrets redacted>
+```
+
+Stderr / lifecycle logs:
+
+```txt
+<stderr lines, timings, checkpoint messages, or stack trace, with secrets redacted>
+```
+
+Environment:
+
+- CLI command path: <webstudio / node packages/cli/local.js / other>
+- Webstudio CLI version: <from command output if known>
+- OS: <macOS / Windows / Linux / unknown>
+- Node version: <node -v if known>
+- Project/session state: <linked project, local .webstudio session, preview, MCP server, or unknown>
+
+Workaround tried:
+<what the agent/user tried next, and whether it worked>
+
+Why this should be improved:
+<one sentence: better error message, docs, schema, tool behavior, etc.>
+````
+
+## Shared-Session Shell Runs
+
+Use `webstudio mcp run '[{"tool":"components.find","input":{"brief":"button"}}]'` when you are operating from a shell and need several MCP tool calls to share one CLI session without hand-writing JSON-RPC. For large batches, pass a normal JSON file path such as `.temp/mcp-calls.json`. Do not use shell process substitution like `<(...)`; use inline JSON or a real file.
+
+Use `mcp run` for long-lived tools such as `preview.start`. A one-shot `mcp single-op-call preview.start` cannot keep ownership of a preview server for a later screenshot or stop call. Put `preview.start`, `screenshot`, and `preview.stop` in one shared `mcp run` process, or use a real long-running MCP client.
+
+Input shape:
+
+```json
+{
+  "calls": [
+    { "tool": "meta.index" },
+    { "tool": "components.find", "input": { "brief": "radix select" } }
+  ]
+}
+```
+
+Rules:
+
+- The command prints JSON to stdout for both success and failure. It stops at the first failed call and prints partial results in `{ "ok": false, "error": ..., "data": { "completedCalls": ..., "results": [...] }, "meta": ... }`, then exits nonzero.
+- If a call returns `checkpoint.required`, read-only discovery and inspection remain available, but mutations and state-changing session tools return `CHECKPOINT_REQUIRED`. Stop and report the checkpoint to the parent/user. Only after the parent/user continues, call `checkpoint.ack {"reported":true,"continueAfterReport":true,"summary":"<what you reported>"}` before continuing mutations.
+- For `mcp single-op-call`, checkpoint requirements persist across later one-shot CLI processes until you call `checkpoint.ack {"reported":true,"continueAfterReport":true,"summary":"<what you reported>"}`.
+- Use this instead of manually sending JSON-RPC frames to `webstudio mcp` from a shell.
+
+### Cross-project batches
+
+Add `projects` to the same `mcp run` manifest to run focused reads, audits, or dry runs across independently linked project roots:
+
+```json
+{
+  "concurrency": 2,
+  "calls": [
+    { "tool": "status" },
+    { "tool": "audit", "input": {} },
+    {
+      "tool": "update-project-settings",
+      "input": { "meta": { "siteName": "Reviewed" } },
+      "dryRun": true
+    }
+  ],
+  "projects": [
+    { "id": "site-a", "root": "../site-a" },
+    { "id": "site-b", "root": "../site-b" }
+  ]
+}
+```
+
+Project roots and an optional `progressFile` are resolved relative to the manifest file. Each project may provide its own `calls` instead of using the top-level calls. Each root must already be linked with its own `.webstudio/config.json`; the runner creates an independently authenticated ProjectSession and uses root-scoped session, audit, preview-data, and checkpoint paths without changing the process working directory.
+
+Concurrency defaults to 2, is capped at 16, and can be set in the manifest or overridden with `--concurrency`. A failure is reported for that project while other projects continue. Progress is saved after every successful call; rerunning with the default `--resume` skips completed projects and starts failed projects after their last confirmed successful call. Reads and dry runs may be retried. A committed mutation interrupted after dispatch is marked `AMBIGUOUS_MUTATION_RESULT` and is never replayed automatically; inspect that project before deciding how to continue. Use `--no-resume` only to intentionally start the complete manifest over.
+
+Committed mutation tools are rejected in a projects batch unless the command includes `--approve-mutations`. Review the complete manifest before granting approval. `--dry-run` applies to every call and does not require mutation approval. The final stdout object is compact: project counts, one status/error record per project, elapsed time, and the progress-file path rather than every tool result.
+
+## Discovery
+
+Use MCP itself after startup, or call the same tools with `webstudio mcp single-op-call`:
+
+- `tools/list`: machine-readable available tools
+- `resources/list`: available overview and full JSON resources
+- `meta.index`: concise capability catalog
+- `meta.guide`: workflow for a user goal; call with a string brief such as `{"brief":"Create a pricing page"}`
+- `meta.get-more-tools`: detailed params, examples, namespaces, and local/server behavior; prefer exact names such as `{"tools":["insert-fragment"]}` when you know them
+- `components.list`: compact registry metadata for visible components and templates; use a focused get tool for complete details
+- `components.summary`: component counts by default; use `{"detail":"components","limit":20}` for paginated entries
+- `components.coverage-plan`: compact paged plan for design-system coverage tasks that need every component; default returns counts plus the first root page, use `{"detail":"roots"}`, `{"detail":"parts"}`, or `{"detail":"full"}` for more
+- `components.coverage-status`: page-specific covered/missing component report with `missingRoots` and `missingParts`
+- `components.search`: focused component/template search by id, namespace, label, category, or content model
+- `components.find`: compatibility alias for focused component search
+- `components.get`: full metadata for one component id
+- `templates.list`: compact metadata for template-backed insertions only
+- `templates.get`: full registry item and payload metadata for one template
+- `search-project`: find a known value or id with `webstudio search-project '{"query":"pricing"}'` or MCP `search-project {"query":"pricing"}`; use focused list/get tools when the target structure is unknown
+
+`meta.guide` returns structured `routing` with the selected workflow and any broad context bundle it recommends. Authentication and design context bundles appear only when their specialized workflow is selected. Set `authoredFragment` when using an authored fragment and `reuseDesignSystem` when its recommendations should retain design-system discovery tools.
+
+Set `taskScope` and `workflow` explicitly; `meta.guide` does not infer them or the authored-fragment flags from the brief. Specialized workflows are `markdown-blog`, `json-ld`, `collection`, `expression`, `authenticated-page`, `font-assets`, `design-input`, `content-block-source`, and `craft`; otherwise use `general`. Use `content-block-source` to connect or edit a Markdown/MDX-backed Content Block, including writable bindings for its designed header. For work that must not change project or local state, pass `{"brief":"Inventory custom code","taskScope":"read-only-audit","workflow":"general"}`. The resulting `read-only-discovery` workflow excludes mutation and side-effecting session tools and uses focused search, list, get, inspect, and snapshot tools.
+
+`search-project` follows normal ProjectSession synchronization, then searches in the CLI process. Namespace filters limit values matched; related namespaces may still supply route and reference context, and synchronization is unchanged. Only paged matches enter model context. Recognized credential fields and asset binary or document bodies are excluded.
+
+Component and template registry items use a shadcn-compatible top-level shape plus Webstudio-specific superset metadata in `meta`. Use `meta.runtime` for component ids, props, states, content model, and source identity; `meta.authoring` for composition and accessibility guidance; and `meta.builder` for template insertion details and expected project-data namespaces. These items are for Builder/MCP discovery and are not a published shadcn install registry yet.
+
+Prefer the focused `components.*` tools over dumping `webstudio://project/components`. Do not write local scripts to parse full MCP discovery JSON for common component lookup.
+For “use every component” or design-system pages, start with compact `components.coverage-plan`, checkpoint, then page through roots/parts instead of dumping the full catalog.
+
+## Consumer Capabilities
+
+MCP lets agents work on one configured Webstudio project at a time. In consumer
+terms, agents can:
+
+- Check which project they are connected to.
+- Check what the share link is allowed to do.
+- Inspect project metadata and the latest editable build.
+- Read selected project data for audits and repair.
+- Search all Builder namespaces for a known value or id without putting complete namespace data in model context.
+- Apply precise project changes against a known version.
+- List, inspect, create, update, delete, duplicate, copy, and reorder pages.
+- Set the home page.
+- Preserve old page paths for redirects or history.
+- Read and update page titles, descriptions, metadata, auth settings, and SEO fields.
+- List, create, update, duplicate, move, and delete page folders.
+- List, create, update, delete, duplicate, reorder, and reuse page templates.
+- Create pages from reusable templates.
+- Read and update project site settings.
+- Read and update marketplace product metadata.
+- List, create, update, delete, and replace redirects.
+- List, create, update, and delete responsive breakpoints.
+- List and inspect page elements.
+- Insert registered components.
+- Insert styled JSX fragments.
+- Move, reparent, clone, duplicate, wrap, unwrap, convert, rename, retag, and delete elements.
+- Fill grid cells.
+- List and update text children.
+- Update plain text and expression text.
+- Update structured rich text.
+- Add, update, delete, and bind element props.
+- Bind props to expressions, resources, actions, and runtime system values.
+- Read, add, update, delete, and replace local styles.
+- Update selected style-source styles.
+- List, create, update, attach, detach, extract, duplicate, rename, lock, unlock, reorder, clear, and delete design tokens and style sources.
+- List, define, rename, delete, and rewrite CSS variables.
+- List, create, update, and delete static data variables.
+- Create string, number, boolean, and JSON variables. Arrays use JSON.
+- Delete unused data variables.
+- List, create, update, upsert, bind, and delete resources.
+- Create HTTP resources.
+- Create GraphQL resources.
+- Create system resources.
+- Use built-in system resources for sitemap, current date, and assets.
+- List and inspect complete asset metadata; upload, download, update, move, duplicate, find usage for, replace, and delete assets.
+- List, create, rename, move, recursively duplicate, and recursively delete nested asset folders.
+- Publish to staging or production.
+- Publish to selected domains.
+- List publish builds.
+- Check publish job status after publishing.
+- Unpublish staging or production deployments. Unpublish completes without a publish job.
+- List, create, update, delete, and verify custom domains.
+- Start and stop preview.
+- Capture screenshots of generated pages.
+- Compare screenshots against baselines.
+- Install OCR support for richer visual checks.
+
+Useful resources:
+
+- `webstudio://project/status`: compact current ProjectSession status
+- `webstudio://project/tools-overview`: small operation overview by capability area
+- `webstudio://project/components-overview`: small component overview with ids, labels, namespaces, and categories
+- `webstudio://project/tools`: full operation catalog; read only when focused metadata is insufficient
+- `webstudio://project/components`: full component catalog with props, states, and content model composition constraints; read only when `components.summary`, `components.find`, and `components.get` are insufficient
+- `webstudio://project/guide`: concise discovery guide
+- `webstudio://project/expressions`: expression syntax, scope, supported methods, bindings, Collection iteration context, and verification
+- `webstudio://project/accessibility-review`: evidence-based LLM accessibility-review workflow using project checks, preview, and screenshots
+
+## MCP SDK Client Imports
+
+When writing a local Node.js MCP client script, use the official MCP SDK package and these exact ESM imports:
+
+Inside the Webstudio monorepo this package is available at the repo root. In another project, install it first with `pnpm add -D @modelcontextprotocol/sdk`.
+
+```js
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { LoggingMessageNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
+```
+
+Minimal stdio client for the local Webstudio CLI:
+
+```js
+const client = new Client({ name: "webstudio-agent", version: "1.0.0" });
+
+client.setNotificationHandler(
+  LoggingMessageNotificationSchema,
+  (notification) => {
+    console.error(`[mcp] ${notification.params.data}`);
+  }
+);
+
+const transport = new StdioClientTransport({
+  command: "node",
+  args: ["packages/cli/local.js", "mcp"],
+  cwd: process.cwd(),
+  stderr: "inherit",
+});
+
+await client.connect(transport);
+
+const index = await client.callTool({
+  name: "meta.index",
+  arguments: {},
+});
+console.log(JSON.stringify(index.structuredContent, null, 2));
+
+await client.close();
+```
+
+Use `node packages/cli/local.js mcp` from the Webstudio monorepo root for local development, or `webstudio mcp` from a linked project where the CLI is installed. Keep stdout for JSON-RPC/structured results and surface MCP logging notifications or stderr lifecycle lines as progress.
+
+## Core Rules
+
+- stdout is reserved for MCP JSON-RPC while the server is running.
+- Operate on the configured project only.
+- Read ids before writing.
+- Prefer semantic tools over `apply-patch`.
+- Editor links with API access can edit Content Block text and props, insert or move eligible content, delete eligible instances, create pages from templates, change allowed page settings, upload assets, and create asset folders through semantic tools. The server checks each change against Content-mode rules. Raw `apply-patch` remains limited to text and editable props; other asset, folder, and design changes require Builder access.
+- Use `status` and `refresh` when cached namespaces may be stale. Pass `status {"verbose":true}` only when debugging full namespace arrays, freshness, compatibility, or diagnostic details.
+- Read `meta.session.commitStatus` before interpreting durability. Read-only results report `not-applicable` and retain `committed:false` for compatibility; dry-run plans report `planned`; failed mutations report `failed`; no-op mutations report `unchanged`; durable mutations report `committed` with `meta.session.committed:true`.
+- Never run visual verification automatically. Ask first unless the user explicitly requested screenshots, visual verification, or a rendered audit; if they do not opt in, use focused non-visual assertions.
+
+### Converting a composite component to HTML
+
+`convert-instance` changes one instance and validates its entire descendant tree after that change. For a Tabs tree, changing `Tabs` to a `div` first fails because `TabsList`, `TabsTrigger`, and `TabsContent` still require their composite parents. Convert from the leaves upward instead: `TabsTrigger` to `ws:element` with tag `button`, `TabsContent` to `ws:element` with tag `div`, `TabsList` to `ws:element` with tag `div`, then `Tabs` to `ws:element` with tag `div`. Pass the complete, current `instanceSelector` for each call, starting with the target. Read the actual tree first; convert every remaining required part before its parent. Each step is a separate mutation, so this recipe is not atomic.
+
+Conversion retains instance ids, children (including editable copy), styles, and most props; it removes a legacy `tag` prop and normalizes React prop aliases when converting to `ws:element`. Review component-specific props and behavior afterward: replacing Tabs with HTML does not recreate tab selection, keyboard behavior, or accessibility semantics. If a project requires the whole tree to change in one commit, use `snapshot` to read the current build version and exact records, then a single versioned `apply-patch` transaction for the existing instance component/tag fields. Preserve all existing ids and child references, include any needed prop changes in that same transaction, and verify the final tree.
+
+For composite media such as Vimeo, inspect the player subtree and surrounding content first. A native `video` cannot retain provider-only parts such as `VimeoPlayButton`, `VimeoSpinner`, or `VimeoPreviewImage`. Use `delete-instance` with `instanceIds` containing the exact obsolete part ids (deleting a part also cleans its descendants and owned data), then `convert-instance` on the player root with `component: "ws:element"`, `tag: "video"`, and its current `instanceSelector`. Keep surrounding wrappers, captions, and other content outside the deletion set; move any content that must survive out of an obsolete part before deleting it. The player keeps its id and styles. Remove the provider-specific props with `delete-props`, using `{"deletions":[{"instanceId":"<player-id>","name":"url"}]}` for the old Vimeo URL prop and adding one entry for each other obsolete prop found during inspection. Then use `update-props` to set the native video source and playback props, and `update-styles` for any styling changes. A native video source must be a playable media URL or asset, not a Vimeo watch-page URL. These are separate semantic mutations; no raw instance patch is needed for this sequence.
+
+## Vision Verification Loop
+
+Vision-capable AI can use MCP to see what it is building:
+
+1. Ask the user whether they want visual verification unless they explicitly requested it. Stop before calling preview, capture, comparison, OCR, or rendered-audit tools until the user opts in.
+2. Make focused page/content/style changes with semantic MCP tools.
+3. Call preview.start once to keep the iterative generated site running. In shell-driven workflows, run preview.start, screenshot, and preview.stop inside one `webstudio mcp run` call so they share the same preview owner.
+4. Read `preview.status.stale` before relying on generated output. When present, `renderedProjectVersion` identifies the last project version materialized into the preview; a stale preview refreshes automatically on the next managed screenshot or `preview.start` call.
+5. `preview.start` and `webstudio preview` install generated app dependencies under `.webstudio/preview` and reuse them across regenerations.
+6. Session previews download missing project assets into `.webstudio/assets`. If `PREVIEW_ASSET_DOWNLOAD_FAILED` occurs, restore network and project asset access, then retry `preview.start`.
+7. When launcher metadata is available, dependency installation reuses a supported npm or pnpm launcher. Without launcher metadata, it defaults to npm.
+8. When npm is selected, dependency installation honors `npm_config_cache`. If it is unset, preview uses the writable `.webstudio/preview/.npm-cache` directory instead of the user's default npm cache.
+9. For npm cache permission errors, unset `npm_config_cache` to use the preview-local cache, then retry. No cache deletion is required.
+10. Do not add generated-preview dependencies to the repository root `package.json` or `pnpm-lock.yaml`.
+11. If dependency installation fails, the error includes the selected package-manager path and sanitized diagnostics. Check that path and the network configuration, then reinstall or update the Webstudio CLI if the problem persists.
+12. After MCP mutations, path-based screenshots regenerate the current session in place, wait for its exact project version, and normally reload the route. The server and browser remain alive. From one-shot shell calls or another process, pass `baseUrl` with `path` to capture an already-running generated site without starting it. Use preview.stop only in the same long-running MCP server or `webstudio mcp run` process that started preview; a separate one-shot `single-op-call` process does not own another process's preview controller.
+13. For multi-page work, capture each changed page by path through the same preview server, for example screenshot({ path: "/" }), screenshot({ path: "/pricing" }), and screenshot({ path: "/about" }). The screenshot tool navigates directly to the requested route; no browser click navigation is required.
+14. For responsive work, call list-breakpoints first, then capture screenshots at viewport widths based on the Builder breakpoints plus a narrow mobile and desktop width.
+15. Call screenshot with { path: "/" } or the changed page path and viewport such as { width: 375, height: 812 } and { width: 1440, height: 900 }. For an existing preview in another process, call screenshot with { baseUrl: "http://127.0.0.1:5177", path: "/" }. Use waitForSelector when the page has a reliable ready marker, waitUntil:"networkidle" for network-heavy pages, and waitForTimeout only for final visual settling.
+16. The MCP runner selects an available loopback port and returns the preview URL. Do not pass `host` or `port` to MCP preview or screenshot tools. To capture a generated site already running in another process, pass its `baseUrl` with `path`.
+17. Automatic browser discovery checks system installations, configured browser paths, and Chromium installations in the Playwright browser cache.
+18. The screenshot timeout bounds browser capture after the preview is ready. A timeout returns `SCREENSHOT_TIMEOUT`, resets the reusable browser session, and releases the shared preview lifecycle for cleanup.
+19. When a baseline PNG exists, call screenshot.diff with baselinePath, currentPath, and outputDir for each page/viewport pair. Add expectedText when a specific visible phrase must be present; its assertions report pass/fail plus found and missing text. Add expectedVisual to set pass/fail limits for mismatch percentage, the number of changed regions, or an overall dominant color/brightness direction.
+20. Read screenshot.diff textAnalysis: it reports OCR status plus text that appeared, disappeared, moved, changed content, or changed font/style geometry. If OCR is unavailable, expectedText assertions fail and textAnalysis reports why; ask the user for permission to install Tesseract, then call vision.install-ocr with { "confirm": true }, or rely on visual inspection.
+21. Inspect every viewport PNG and any diff artifacts with vision, then compare layout, OCR text evidence, color, spacing, imagery, and responsive framing against the user intent.
+22. If the screenshot does not match, apply another focused mutation and repeat screenshot verification.
+
+Generated app setup:
+
+- `preview.start` and `webstudio preview` install generated app dependencies under `.webstudio/preview` and reuse them across regenerations.
+- Session previews download missing project assets into `.webstudio/assets`. If `PREVIEW_ASSET_DOWNLOAD_FAILED` occurs, restore network and project asset access, then retry `preview.start`.
+- When launcher metadata is available, dependency installation reuses a supported npm or pnpm launcher. Without launcher metadata, it defaults to npm.
+- When npm is selected, dependency installation honors `npm_config_cache`. If it is unset, preview uses the writable `.webstudio/preview/.npm-cache` directory instead of the user's default npm cache.
+- For npm cache permission errors, unset `npm_config_cache` to use the preview-local cache, then retry. No cache deletion is required.
+- Do not add generated-preview dependencies to the repository root `package.json` or `pnpm-lock.yaml`.
+- If dependency installation fails, the error includes the selected package-manager path and sanitized diagnostics. Check that path and the network configuration, then reinstall or update the Webstudio CLI if the problem persists.
+
+## MCP argument examples
+
+Examples below show meaningful argument combinations. Tool schemas are the
+source of truth. For tools with no required arguments, pass `{}`.
+
+### meta.guide
+
+```json
+{
+  "brief": "Create a pricing page and style the hero",
+  "taskScope": "visual-change",
+  "workflow": "general"
+}
+```
+
+```json
+{
+  "brief": "Inventory custom code without changing the project",
+  "taskScope": "read-only-audit",
+  "workflow": "general"
+}
+```
+
+```json
+{
+  "brief": "Recreate a supplied design as a responsive page",
+  "taskScope": "visual-change",
+  "workflow": "design-input"
+}
+```
+
+### verify-font-assets
+
+```json
+{
+  "assetIds": [
+    "asset-regular",
+    "asset-bold"
+  ]
+}
+```
+
+### workflow.next
+
+```json
+{
+  "goal": "design-system-page"
+}
+```
+
+```json
+{
+  "goal": "design-system-page",
+  "phase": "dry-run-section"
+}
+```
+
+### meta.get-more-tools
+
+```json
+{
+  "tools": [
+    "insert-fragment"
+  ]
+}
+```
+
+```json
+{
+  "tools": [
+    "insert-component"
+  ]
+}
+```
+
+```json
+{
+  "brief": "update-styles"
+}
+```
+
+### components.list
+
+```json
+{
+  "source": "all",
+  "documentType": "html"
+}
+```
+
+### components.coverage-plan
+
+```json
+{
+  "documentType": "html"
+}
+```
+
+```json
+{
+  "documentType": "xml",
+  "detail": "roots"
+}
+```
+
+```json
+{
+  "detail": "full"
+}
+```
+
+```json
+{
+  "detail": "roots",
+  "offset": 0,
+  "limit": 20
+}
+```
+
+```json
+{
+  "detail": "parts",
+  "namespace": "@webstudio-is/sdk-components-react-radix"
+}
+```
+
+### components.coverage-status
+
+```json
+{
+  "pagePath": "/design-system"
+}
+```
+
+### components.coverage-insert-next
+
+```json
+{
+  "pagePath": "/design-system",
+  "parentInstanceId": "root-instance-id"
+}
+```
+
+### components.find
+
+```json
+{
+  "brief": "radix tabs dialog select"
+}
+```
+
+### components.search
+
+```json
+{
+  "brief": "radix tabs dialog select"
+}
+```
+
+### components.get
+
+```json
+{
+  "component": "@webstudio-is/sdk-components-react-radix:Select"
+}
+```
+
+### templates.list
+
+```json
+{
+  "documentType": "html"
+}
+```
+
+### templates.get
+
+```json
+{
+  "component": "@webstudio-is/sdk-components-react-radix:Select"
+}
+```
+
+### refresh
+
+```json
+{
+  "namespaces": [
+    "pages",
+    "instances",
+    "styles"
+  ]
+}
+```
+
+### import
+
+```json
+{
+  "to": "https://p-destination-project-id.wstd.dev/?authToken=destination-token"
+}
+```
+
+### download-asset
+
+```json
+{
+  "assetId": "asset-id"
+}
+```
+
+### upload-asset
+
+```json
+{
+  "asset": {
+    "name": "Rajdhani-SemiBold.woff2",
+    "type": "font",
+    "format": "woff2",
+    "meta": {
+      "family": "Rajdhani",
+      "style": "normal",
+      "weight": 600
+    }
+  },
+  "assetsDir": ".webstudio/assets"
+}
+```
+
+```json
+{
+  "asset": {
+    "name": "hero.png",
+    "type": "image",
+    "format": "png",
+    "folderId": "folder-id",
+    "meta": {
+      "width": 1200,
+      "height": 630
+    }
+  },
+  "assetsDir": ".webstudio/assets"
+}
+```
+
+```json
+{
+  "asset": {
+    "name": "hero.png",
+    "type": "image",
+    "format": "png",
+    "meta": {
+      "width": 1200,
+      "height": 630
+    },
+    "force": true
+  },
+  "assetsDir": ".webstudio/assets"
+}
+```
+
+### upload-assets
+
+```json
+{
+  "assets": [
+    {
+      "name": "hero.png",
+      "type": "image",
+      "format": "png",
+      "folderId": "folder-id",
+      "meta": {
+        "width": 1200,
+        "height": 630
+      }
+    }
+  ],
+  "assetsDir": ".webstudio/assets"
+}
+```
+
+### create-asset-folder
+
+```json
+{
+  "name": "Marketing"
+}
+```
+
+```json
+{
+  "name": "Photos",
+  "parentId": "marketing-folder-id"
+}
+```
+
+### update-asset-folder
+
+```json
+{
+  "folderId": "folder-id",
+  "values": {
+    "name": "Brand"
+  }
+}
+```
+
+```json
+{
+  "folderId": "folder-id",
+  "values": {
+    "parentId": null
+  }
+}
+```
+
+### duplicate-asset-folder
+
+```json
+{
+  "folderId": "folder-id"
+}
+```
+
+```json
+{
+  "folderId": "folder-id",
+  "parentId": "target-folder-id"
+}
+```
+
+### delete-asset-folder
+
+```json
+{
+  "folderId": "folder-id"
+}
+```
+
+### get-asset
+
+```json
+{
+  "assetId": "asset-id"
+}
+```
+
+### duplicate-asset
+
+```json
+{
+  "assetId": "asset-id"
+}
+```
+
+```json
+{
+  "assetId": "asset-id",
+  "folderId": "target-folder-id"
+}
+```
+
+### preview.start
+
+```json
+{
+  "source": "session"
+}
+```
+
+### preview.submit-form
+
+```json
+{
+  "path": "/contact",
+  "selector": "form",
+  "values": [
+    {
+      "name": "email",
+      "value": "me@example.com"
+    }
+  ]
+}
+```
+
+### status
+
+```json
+{
+  "verbose": true
+}
+```
+
+### list-pages
+
+```json
+{
+  "limit": 20
+}
+```
+
+### get-page-by-path
+
+```json
+{
+  "path": "/pricing"
+}
+```
+
+### list-instances
+
+```json
+{
+  "pagePath": "/",
+  "maxDepth": 3
+}
+```
+
+### inspect-instance
+
+```json
+{
+  "instanceId": "instance-id",
+  "include": [
+    "props",
+    "styles",
+    "children"
+  ]
+}
+```
+
+### search-project
+
+```json
+{
+  "query": "pricing"
+}
+```
+
+```json
+{
+  "query": "api.example.com",
+  "namespaces": [
+    "resources"
+  ]
+}
+```
+
+### audit
+
+```json
+{
+  "scopes": [
+    "accessibility",
+    "seo"
+  ]
+}
+```
+
+```json
+{
+  "pagePath": "/pricing",
+  "severities": [
+    "error",
+    "warning"
+  ]
+}
+```
+
+```json
+{
+  "scopes": [
+    "accessibility"
+  ],
+  "verbose": true
+}
+```
+
+### report-issue
+
+```json
+{
+  "trigger": "user-requested",
+  "category": "schema-or-docs-mismatch",
+  "deduplicationKey": "update-props-input-contract",
+  "title": "fix: Clarify the update-props input contract",
+  "agent": {
+    "client": "Codex",
+    "provider": "OpenAI",
+    "model": "gpt-5.6-sol",
+    "reasoningEffort": "medium"
+  },
+  "report": {
+    "userStory": "As a Webstudio user, I want routine MCP edits to complete without corrective retries.",
+    "summary": "A documented operation required a corrected retry.",
+    "attemptedWorkflow": [
+      "Inspect the target component.",
+      "Attempt the update with the advertised tool."
+    ],
+    "expectedBehavior": "The documented input should be accepted.",
+    "actualResult": "The initial call returned BAD_REQUEST.",
+    "recoveryAttempts": [
+      "Inspect the schema and retry with corrected input nesting."
+    ],
+    "userImpact": "The edit required extra tool calls.",
+    "technicalContext": "The update-props input shape was ambiguous.",
+    "acceptanceCriteria": [
+      "The exposed schema matches runtime validation.",
+      "A regression test covers the workflow."
+    ]
+  }
+}
+```
+
+### insert-component
+
+```json
+{
+  "parentInstanceId": "parent-id",
+  "component": "@webstudio-is/sdk-components-react-radix:Switch"
+}
+```
+
+### extract-slot
+
+```json
+{
+  "instanceSelector": [
+    "header-section-id",
+    "body-id"
+  ],
+  "label": "Site header"
+}
+```
+
+```json
+{
+  "instanceSelector": [
+    "header-section-id",
+    "page-wrapper-id",
+    "body-id"
+  ],
+  "label": "Site header"
+}
+```
+
+### insert-collection
+
+```json
+{
+  "parentInstanceId": "parent-id",
+  "data": {
+    "type": "expression",
+    "value": "Posts.data.items"
+  },
+  "itemFragment": "<article><h2>{expression`collectionItem.title ?? 'Untitled'`}</h2></article>"
+}
+```
+
+```json
+{
+  "parentInstanceId": "parent-id",
+  "data": {
+    "type": "json",
+    "value": [
+      {
+        "name": "Starter"
+      },
+      {
+        "name": "Pro"
+      }
+    ]
+  },
+  "itemFragment": "<div>{expression`collectionItem.name`}</div>"
+}
+```
+
+### insert-fragment
+
+```json
+{
+  "parentInstanceId": "parent-id",
+  "fragment": "<section ws:style={css`padding: 32px; display: grid; gap: 16px;`}><h2>Northstar Product OS</h2><p>Reusable patterns for teams.</p></section>"
+}
+```
+
+```json
+{
+  "parentInstanceId": "parent-id",
+  "fragment": "<section style={{ padding: 32, borderRadius: 16 }}><h2>Operations Console</h2><p>Semantic section with React-style object styles converted into editable Webstudio styles.</p></section>"
+}
+```
+
+```json
+{
+  "parentInstanceId": "parent-id",
+  "fragment": "<section ws:tokens={[token('accent', css`color: #0f766e;`)]} ws:style={css`display: grid; gap: 12px;`}><h2>Token Example</h2><button onClick={new ActionValue(['event'], expression`console.log(event)`)}>Track launch</button></section>"
+}
+```
+
+```json
+{
+  "parentInstanceId": "parent-id",
+  "fragment": "<section ws:tokens={[token('accent')]}><h2>Reuse an existing accent token</h2></section>"
+}
+```
+
+```json
+{
+  "parentInstanceId": "parent-id",
+  "fragment": "<section><Switch><SwitchThumb /></Switch></section>"
+}
+```
+
+### insert-fragment-verified
+
+```json
+{
+  "parentInstanceId": "parent-id",
+  "pagePath": "/pricing",
+  "fragment": "<section><h2>Pricing</h2></section>"
+}
+```
+
+### update-text
+
+```json
+{
+  "instanceId": "instance-id",
+  "childIndex": 0,
+  "text": "Launch faster",
+  "mode": "text"
+}
+```
+
+```json
+{
+  "instanceId": "instance-id",
+  "childIndex": 0,
+  "text": "user.name",
+  "mode": "expression"
+}
+```
+
+### replace-text
+
+```json
+{
+  "find": "Start free",
+  "replace": "Get started",
+  "match": "exact",
+  "pagePath": "/pricing",
+  "limit": 20
+}
+```
+
+### replace-prop-text
+
+```json
+{
+  "find": "old.example.com",
+  "replace": "www.example.com",
+  "match": "substring",
+  "names": [
+    "href",
+    "code"
+  ],
+  "limit": 20
+}
+```
+
+### update-page
+
+```json
+{
+  "pageId": "page-id",
+  "values": {
+    "title": "\"Pricing\"",
+    "meta": {
+      "description": "\"Pricing plans\""
+    }
+  }
+}
+```
+
+### update-props
+
+```json
+{
+  "updates": [
+    {
+      "instanceId": "button-id",
+      "name": "aria-label",
+      "type": "string",
+      "value": "Open menu"
+    },
+    {
+      "instanceId": "textarea-id",
+      "name": "placeholder",
+      "type": "string",
+      "value": "Describe your project"
+    }
+  ]
+}
+```
+
+### bind-props
+
+```json
+{
+  "bindings": [
+    {
+      "instanceId": "link-id",
+      "name": "href",
+      "binding": {
+        "type": "expression",
+        "value": "currentPost.url"
+      }
+    }
+  ]
+}
+```
+
+### list-css-variables
+
+```json
+{
+  "withUsage": true
+}
+```
+
+### define-css-variable
+
+```json
+{
+  "vars": {
+    "--color-primary": "#2d3748",
+    "--color-accent": "#e53e3e",
+    "--space-card": "1.5rem"
+  },
+  "overwrite": true
+}
+```
+
+### delete-css-variable
+
+```json
+{
+  "names": [
+    "--color-primary",
+    "--color-accent",
+    "--space-card"
+  ],
+  "force": true
+}
+```
+
+### create-variable
+
+```json
+{
+  "scopeInstanceId": "body-id",
+  "name": "title",
+  "value": {
+    "type": "string",
+    "value": "Hello"
+  }
+}
+```
+
+```json
+{
+  "scopeInstanceId": "body-id",
+  "name": "count",
+  "value": {
+    "type": "number",
+    "value": 3
+  }
+}
+```
+
+```json
+{
+  "scopeInstanceId": "body-id",
+  "name": "featured",
+  "value": {
+    "type": "boolean",
+    "value": true
+  }
+}
+```
+
+```json
+{
+  "scopeInstanceId": "body-id",
+  "name": "tags",
+  "value": {
+    "type": "json",
+    "value": [
+      "news",
+      "product"
+    ]
+  }
+}
+```
+
+```json
+{
+  "scopeInstanceId": "body-id",
+  "name": "filters",
+  "value": {
+    "type": "json",
+    "value": {
+      "tag": "news",
+      "page": 1
+    }
+  }
+}
+```
+
+### update-variable
+
+```json
+{
+  "dataSourceId": "variable-id",
+  "values": {
+    "value": {
+      "type": "json",
+      "value": [
+        "news",
+        "product"
+      ]
+    }
+  }
+}
+```
+
+### create-resource
+
+```json
+{
+  "resource": {
+    "name": "Posts",
+    "method": "get",
+    "url": "https://api.example.com/posts",
+    "headers": []
+  }
+}
+```
+
+```json
+{
+  "resource": {
+    "name": "Filtered Posts",
+    "method": "get",
+    "url": "https://api.example.com/posts",
+    "searchParams": [
+      {
+        "name": "tag",
+        "value": "filters.tag"
+      },
+      {
+        "name": "source",
+        "value": {
+          "type": "literal",
+          "value": "website"
+        }
+      },
+      {
+        "name": "page",
+        "value": "(filters.page ?? 1).toString()"
+      }
+    ],
+    "headers": [
+      {
+        "name": "Authorization",
+        "value": "\"Bearer \" + auth.token"
+      }
+    ]
+  },
+  "scopeInstanceId": "body-id",
+  "dataSourceName": "posts"
+}
+```
+
+```json
+{
+  "resource": {
+    "name": "Post GraphQL",
+    "control": "graphql",
+    "method": "post",
+    "url": "https://api.example.com/graphql",
+    "headers": [
+      {
+        "name": "Content-Type",
+        "value": {
+          "type": "literal",
+          "value": "application/json"
+        }
+      }
+    ],
+    "body": "{ query: \"query Post($slug: String!) { post(slug: $slug) { title } }\", variables: { slug: system.params.slug } }"
+  },
+  "scopeInstanceId": "body-id",
+  "dataSourceName": "post",
+  "exposeAsDataSource": true
+}
+```
+
+```json
+{
+  "resource": {
+    "name": "Current Date",
+    "control": "system",
+    "method": "get",
+    "url": "/$resources/current-date",
+    "headers": []
+  },
+  "scopeInstanceId": "body-id",
+  "dataSourceName": "currentDate"
+}
+```
+
+### update-resource
+
+```json
+{
+  "resourceId": "resource-id",
+  "values": {
+    "url": "https://api.example.com/posts"
+  }
+}
+```
+
+```json
+{
+  "resourceId": "resource-id",
+  "values": {
+    "method": "post"
+  },
+  "exposeAsDataSource": false
+}
+```
+
+### get-assets-resource
+
+```json
+{
+  "resourceId": "resource-id"
+}
+```
+
+### create-assets-resource
+
+```json
+{
+  "name": "All assets",
+  "scopeInstanceId": "body-id",
+  "dataSourceName": "assets"
+}
+```
+
+```json
+{
+  "name": "Published posts",
+  "scopeInstanceId": "body-id",
+  "dataSourceName": "posts",
+  "query": {
+    "result": "many",
+    "where": {
+      "all": [
+        {
+          "field": [
+            "extension"
+          ],
+          "operator": "eq",
+          "value": {
+            "type": "literal",
+            "value": "md"
+          }
+        },
+        {
+          "field": [
+            "folderId"
+          ],
+          "operator": "eq",
+          "value": {
+            "type": "literal",
+            "value": "folder-id"
+          }
+        },
+        {
+          "field": [
+            "properties",
+            "draft"
+          ],
+          "operator": "ne",
+          "value": {
+            "type": "literal",
+            "value": true
+          }
+        }
+      ]
+    },
+    "sort": [
+      {
+        "field": [
+          "properties",
+          "publishedAt"
+        ],
+        "direction": "desc"
+      },
+      {
+        "field": [
+          "id"
+        ],
+        "direction": "asc"
+      }
+    ],
+    "limit": {
+      "type": "literal",
+      "value": 20
+    },
+    "offset": {
+      "type": "literal",
+      "value": 0
+    },
+    "output": {
+      "mode": "fields",
+      "includeMetadata": false,
+      "fields": [
+        [
+          "properties",
+          "title"
+        ],
+        [
+          "properties",
+          "slug"
+        ],
+        [
+          "properties",
+          "publishedAt"
+        ],
+        [
+          "properties",
+          "excerpt"
+        ]
+      ]
+    },
+    "content": {
+      "mode": "none"
+    }
+  }
+}
+```
+
+```json
+{
+  "name": "Post by slug",
+  "scopeInstanceId": "body-id",
+  "dataSourceName": "post",
+  "query": {
+    "result": "one",
+    "where": {
+      "all": [
+        {
+          "field": [
+            "extension"
+          ],
+          "operator": "eq",
+          "value": {
+            "type": "literal",
+            "value": "md"
+          }
+        },
+        {
+          "field": [
+            "folderId"
+          ],
+          "operator": "eq",
+          "value": {
+            "type": "literal",
+            "value": "folder-id"
+          }
+        },
+        {
+          "field": [
+            "properties",
+            "slug"
+          ],
+          "operator": "eq",
+          "value": "system.params.slug"
+        },
+        {
+          "field": [
+            "properties",
+            "draft"
+          ],
+          "operator": "ne",
+          "value": {
+            "type": "literal",
+            "value": true
+          }
+        }
+      ]
+    },
+    "output": {
+      "mode": "fields",
+      "includeMetadata": false,
+      "fields": [
+        [
+          "properties",
+          "title"
+        ],
+        [
+          "properties",
+          "publishedAt"
+        ],
+        [
+          "properties",
+          "excerpt"
+        ],
+        [
+          "properties",
+          "featureImage"
+        ]
+      ]
+    },
+    "content": {
+      "mode": "markdown-body-ref"
+    }
+  }
+}
+```
+
+### update-assets-resource
+
+```json
+{
+  "resourceId": "resource-id",
+  "values": {
+    "query": {
+      "limit": "50"
+    }
+  }
+}
+```
+
+```json
+{
+  "resourceId": "resource-id",
+  "values": {
+    "query": null
+  }
+}
+```
+
+### validate-asset-query
+
+```json
+{
+  "query": {
+    "where": {
+      "all": [
+        {
+          "field": [
+            "properties",
+            "slug"
+          ],
+          "operator": "eq",
+          "value": "hello-world"
+        }
+      ]
+    },
+    "limit": 1
+  }
+}
+```
+
+### preview-asset-query
+
+```json
+{
+  "query": {
+    "result": "one",
+    "where": {
+      "all": [
+        {
+          "field": [
+            "extension"
+          ],
+          "operator": "eq",
+          "value": "md"
+        },
+        {
+          "field": [
+            "properties",
+            "slug"
+          ],
+          "operator": "eq",
+          "value": "hello-world"
+        }
+      ]
+    },
+    "output": {
+      "mode": "fields",
+      "includeMetadata": false,
+      "fields": [
+        [
+          "properties",
+          "title"
+        ]
+      ]
+    },
+    "content": {
+      "mode": "markdown-body-ref",
+      "maxBytes": 1048576
+    }
+  }
+}
+```
+
+### update-asset
+
+```json
+{
+  "assetId": "font-asset-id",
+  "values": {
+    "meta": {
+      "family": "Rajdhani",
+      "style": "normal",
+      "weight": 600
+    }
+  }
+}
+```
+
+```json
+{
+  "assetId": "asset-id",
+  "values": {
+    "description": "Team collaborating around a whiteboard"
+  }
+}
+```
+
+```json
+{
+  "assetId": "asset-id",
+  "values": {
+    "filename": "hero",
+    "folderId": "folder-id"
+  }
+}
+```
+
+```json
+{
+  "assetId": "asset-id",
+  "values": {
+    "folderId": null
+  }
+}
+```
+
+### list-assets
+
+```json
+{
+  "verbose": true
+}
+```
+
+### replace-asset
+
+```json
+{
+  "fromAssetId": "old-asset-id",
+  "toAssetId": "new-asset-id"
+}
+```
+
+### delete-asset
+
+```json
+{
+  "assetIds": [
+    "asset-id"
+  ]
+}
+```
+
+```json
+{
+  "assetIdPrefixes": [
+    "generated-prefix"
+  ]
+}
+```
+
+### set-image-descriptions
+
+```json
+{
+  "updates": [
+    {
+      "assetId": "hero-asset-id",
+      "description": "Team collaborating around a whiteboard"
+    },
+    {
+      "assetId": "background-texture-id",
+      "decorative": true
+    }
+  ]
+}
+```
+
+### replace-resource-text
+
+```json
+{
+  "find": "api.old.example.com",
+  "replace": "api.example.com",
+  "fields": [
+    "url"
+  ],
+  "limit": 20
+}
+```
+
+### update-styles
+
+```json
+{
+  "updates": [
+    {
+      "instanceId": "instance-id",
+      "property": "color",
+      "value": {
+        "type": "keyword",
+        "value": "red"
+      }
+    }
+  ]
+}
+```
+
+### delete-styles
+
+```json
+{
+  "deletions": [
+    {
+      "instanceId": "instance-id",
+      "property": "box-shadow"
+    }
+  ]
+}
+```
+
+### apply-patch
+
+```json
+{
+  "baseVersion": 12,
+  "transactions": [
+    {
+      "id": "patch-transaction-label",
+      "payload": [
+        {
+          "namespace": "pages",
+          "patches": [
+            {
+              "op": "replace",
+              "path": [
+                "meta",
+                "siteName"
+              ],
+              "value": "Site name"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+### publish
+
+```json
+{
+  "target": "production"
+}
+```
+
+### create-domain
+
+```json
+{
+  "domain": "www.example.com"
+}
+```
+
+### screenshot
+
+```json
+{
+  "path": "/",
+  "output": "screenshots/home.png",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "waitUntil": "load",
+  "waitForTimeout": 250
+}
+```
+
+```json
+{
+  "path": "/pricing",
+  "output": "screenshots/pricing.png",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "waitUntil": "load",
+  "waitForTimeout": 250
+}
+```
+
+```json
+{
+  "url": "https://example.com",
+  "output": "current.png",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "browser": "auto"
+}
+```
+
+### screenshot.responsive
+
+```json
+{
+  "path": "/pricing",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "source": "session"
+}
+```
+
+### verify-page-responsive
+
+```json
+{
+  "path": "/pricing",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "source": "session"
+}
+```
+
+### screenshot.diff
+
+```json
+{
+  "baselinePath": "baseline.png",
+  "currentPath": "current.png",
+  "outputDir": "visual-diff",
+  "threshold": 0.1,
+  "ignoreTopNormalizedY": 0,
+  "expectedText": [
+    "Pricing",
+    "Start free"
+  ],
+  "expectedVisual": {
+    "maxMismatchPercentage": 2,
+    "maxChangedRegions": 3,
+    "dominantColorChange": {
+      "channel": "luminance",
+      "direction": "increase",
+      "minMagnitude": 10
+    }
+  }
+}
+```
+
+### vision.install-ocr
+
+```json
+{
+  "confirm": true
+}
+```
+
+## Content Engine reference
+
+Assets resources query Markdown, MDX, and JSON files stored in the Assets panel. The Builder and Webstudio MCP use the same structured query contract.
+
+### MCP workflow
+
+Use these tools in order when creating or changing an Assets resource:
+
+1. Call `get-asset-field-catalog` to inspect standard fields and the fields currently observed in Markdown or MDX frontmatter and JSON files.
+2. Call `validate-asset-query` to check the query structure, field paths, operators, and bounded operation counts.
+3. Call `preview-asset-query` with concrete values and inspect its results and diagnostics.
+4. Save the query with `create-assets-resource` or `update-assets-resource`.
+5. Inspect saved queries with `list-assets-resources` or `get-assets-resource`. Use `delete-resource` to remove an obsolete resource.
+
+Omit `query` when creating a resource to use the default many-result query for asset URLs and image dimensions. Set `values.query` to `null` when updating a resource to restore that default.
+
+### Fields
+
+Every asset has the standard fields below. Markdown or MDX frontmatter and JSON root fields appear under `properties`, for example `properties.slug` or `properties.author.name`. The field catalog reports their observed types, occurrence counts, optionality, and mixed-type state. A JSON content file must contain an object at its root.
+
+| Field | Observed type |
+| --- | --- |
+| `id` | `string` |
+| `url` | `string` |
+| `width` | `number` |
+| `height` | `number` |
+| `name` | `string` |
+| `description` | `string` |
+| `path` | `string` |
+| `key` | `string` |
+| `folderId` | `string` |
+| `extension` | `string` |
+| `mimeType` | `string` |
+| `size` | `number` |
+| `createdAt` | `string` |
+| `revision` | `string` |
+| `excerpt` | `string` |
+
+### Filters
+
+Put conditions under `where.all` when every condition must match, or under `where.any` when at least one condition must match. Groups can be nested. A field path is an array such as `["properties", "slug"]`.
+
+| Operator | Builder label | Compatible observed types |
+| --- | --- | --- |
+| `eq` | equals | `null`, `boolean`, `number`, `string`, `object`, `array` |
+| `ne` | does not equal | `null`, `boolean`, `number`, `string`, `object`, `array` |
+| `contains` | contains | `string`, `array` |
+| `startsWith` | starts with | `string` |
+| `endsWith` | ends with | `string` |
+| `gt` | greater than | `number`, `string` |
+| `gte` | greater than or equal | `number`, `string` |
+| `lt` | less than | `number`, `string` |
+| `lte` | less than or equal | `number`, `string` |
+| `in` | is one of | `null`, `boolean`, `number`, `string`, `object`, `array` |
+| `exists` | exists | `null`, `boolean`, `number`, `string`, `object`, `array` |
+| `isEmpty` | is empty | `string`, `object`, `array` |
+
+The field catalog determines which operators fit a schemaless `properties` field. `exists` and `isEmpty` take a boolean. `in` takes an array. Other operators take one JSON value.
+When filtering `path`, enter the visible folder and file names, such as `Tutorial posts/article.mdx`; Webstudio handles canonical URL encoding. Existing encoded path filters remain supported.
+
+### Saved values and preview values
+
+Queries saved with `create-assets-resource` or `update-assets-resource` accept expressions for filter values, limits, and offsets. Wrap fixed values as literals. Pass a JavaScript expression string only when the value must be resolved at runtime:
+
+```json
+{
+  "where": {
+    "all": [
+      { "field": ["extension"], "operator": "eq", "value": { "type": "literal", "value": "md" } },
+      { "field": ["properties", "slug"], "operator": "eq", "value": "system.params.slug" }
+    ]
+  },
+  "limit": { "type": "literal", "value": 1 },
+  "offset": { "type": "literal", "value": 0 }
+}
+```
+
+`validate-asset-query` and `preview-asset-query` execute a concrete query. Pass resolved JSON values such as `"hello-world"` and `1`, not expression wrappers or expression code.
+
+### Sorting and pagination
+
+Each sort has a field path and an `asc` or `desc` direction. Add `id` as the final sort when equal values must keep a stable order. `limit` defaults to 20 and `offset` defaults to 0. Static filters, limits, and offsets should use literal values. Use expressions only for runtime values such as `system.params.slug`.
+
+### Result modes
+
+| Value | Behavior |
+| --- | --- |
+| `many` | Returns every matching item up to the limit. Use it for listings. |
+| `one` | Returns one item or `null`. It fails when more than one document matches. |
+| `first` | Returns the first sorted item or `null`. The query must include an explicit sort. |
+| `last` | Returns the last sorted item or `null`. The query must include an explicit sort. |
+
+Every returned item includes `id`. In `preview-asset-query`, a many result has `data.items`, `data.totalCount`, and `data.hasMore`; a single result has `data.item` and `data.totalCount`. A saved Assets resource exposes a many result as an ID-keyed map at `<dataSource>.data`, with `totalCount` and `hasMore` at `<dataSource>.meta`. It exposes a single result as the item or `null` directly at `<dataSource>.data`, with `totalCount` at `<dataSource>.meta`.
+
+### Output modes
+
+| Value | Behavior |
+| --- | --- |
+| `all` | Returns every indexed property and the excerpt. Use selected fields when the page needs only part of a document. |
+| `base` | Returns no `properties` or excerpt. Set `includeMetadata` to include the standard file metadata. |
+| `fields` | Returns the paths in `fields`. Set `includeMetadata` separately when the page also needs standard file metadata. |
+
+Choose `fields` and disable `includeMetadata` when the page needs only selected values. Fields used only for static filtering or sorting do not need to be returned. When enabled, `includeMetadata` adds `name`, `description`, `path`, `key`, `folderId`, `extension`, `mimeType`, `size`, `createdAt`, `revision`. Every result includes `id`.
+
+### Asset reference metadata
+
+A plain local asset path in Markdown or MDX frontmatter, or in JSON properties, keeps the backward-compatible URL string result. Wrap the path in an exact `$ref` object only when consumers need structured Asset Manager metadata:
+
+```yaml
+featureImage:
+  $ref: ./assets/hero.png
+```
+
+The reference declares only the relationship. The query decides which metadata enters its result and published database. A complete `properties.featureImage` selection returns the Asset Manager asset metadata together with its resolved `src`. This includes fields such as `id`, `name`, `description`, `mimeType`, `width`, and `height`; new asset metadata becomes available to references without changing the document. Select only the nested fields the page uses:
+
+```json
+{
+  "output": {
+    "mode": "fields",
+    "includeMetadata": false,
+    "fields": [
+      ["properties", "title"],
+      ["properties", "featureImage", "src"],
+      ["properties", "featureImage", "description"]
+    ]
+  }
+}
+```
+
+The selected value becomes an object. Bind an Image source to `post.properties.featureImage.src` and its alternative text to `post.properties.featureImage.description ?? post.properties.title`. A missing description therefore falls back to the article title without duplicating text in frontmatter.
+
+External URLs remain ordinary strings. Existing local path strings also keep their URL string shape, so adopting structured references does not change existing queries or bindings.
+
+### Content modes
+
+| Value | Behavior |
+| --- | --- |
+| `none` | Returns no file content. Use this for listings and any query that only needs fields or metadata. |
+| `full` | Embeds the complete UTF-8 file content in the content database. `maxBytes` defaults to 1 MiB and cannot be set higher. The query fails if a selected file is larger. |
+| `range` | Embeds a byte range selected by `offset` and `length` in the content database. `length` cannot exceed 256 KiB. |
+| `markdown-body-ref` | Stores a reference to a Markdown or MDX body. Webstudio filters and paginates first, then reads only the selected bodies from Assets. `maxBytes` defaults to 1 MiB and cannot be set higher. The query fails if a selected source file is larger. |
+
+Returned content has `encoding` and `text`. A range also reports its `offset`, returned `length`, and total file size. Use `markdown-body-ref` for Markdown or MDX article pages. It keeps article bodies out of the published content database and resolves relative links when the selected body is loaded.
+
+### Preview diagnostics
+
+`preview-asset-query` returns renderable results in `data` and non-bindable statistics in `__diagnostics__`. The diagnostic `scope` is always `query-preview`. Read the two capacity scopes separately:
+
+- `query` measures the temporary database for the query being previewed.
+- `database` measures the merged database for all reachable Assets resources in the project.
+
+Only `database.usedBytes` counts toward `database.maxBytes`. Do not add the query and database sizes together.
+
+| Diagnostic | Meaning |
+| --- | --- |
+| `usedBytes` | Bytes included after applying the database limit. |
+| `maxBytes` | Maximum bytes allowed for the scope. |
+| `unboundedBytes` | Bytes the scope would use without the database limit. |
+| `includedDocumentCount` | Documents included in the compiled database. |
+| `omittedDocumentCount` | Documents omitted from the compiled database. |
+| `omissionReason` | Why documents were omitted: `size` or `unavailable`. |
+| `truncated` | Whether the compiled database omitted content. |
+| `queryIssues` | Structured nonfatal query warnings with a stable code and exact query path. |
+| `queryWarnings` | Deprecated plain-text query warnings retained for compatibility. |
+| `issues` | All content errors and warnings found in files matched by the current query. Each diagnostic identifies its phase, code, message, asset, path, and source location when available. |
+| `issueCount` | Total errors and warnings in `issues`. |
+| `issuesTruncated` | Always `false`; retained for response compatibility. |
+| `artifacts` | Optional query and merged compiled artifacts used by detailed Builder diagnostics. |
+| `unresolved` | Optional query result before document references are resolved. It helps inspect the authored `$ref` values behind resolved output. |
+
+If the merged database approaches its limit, remove duplicate reachable resources first. Then remove unused output fields or narrow the candidate documents. Prefer `markdown-body-ref` over embedded `full` content for Markdown or MDX articles.
+
+### Document references
+
+A document reference is an exact object with one string field:
+
+```json
+{ "$ref": "<relative-path>[#<fragment>]" }
+```
+
+Markdown and MDX references can appear in YAML frontmatter. JSON references can appear anywhere in the document. Any format can reference Markdown, MDX, or JSON. References do not run inside a Markdown or MDX body.
+
+| Reference | Inserted value |
+| --- | --- |
+| `../authors/ada.json` | The complete JSON value. |
+| `../authors/ada.json#/profile/name` | The value at JSON Pointer `/profile/name`. |
+| `../authors/ada.md` | The complete Markdown source, including frontmatter. |
+| `../authors/ada.md#frontmatter` | The Markdown frontmatter object. |
+| `../authors/ada.md#body` | The Markdown body without frontmatter. |
+
+Resolve paths relative to the file containing the reference. JSON Pointer uses `~1` for `/` and `~0` for `~` in property names. URI-encode filename characters that have URL syntax, such as `%23` for `#`. Missing files, invalid fragments, and reference cycles fail instead of returning partial data.
+
+### Query limits
+
+| Limit | Value |
+| --- | --- |
+| Query request | 512 KiB |
+| Filter conditions | 32 |
+| Filter nesting depth | 8 |
+| Sort fields | 8 |
+| Selected output fields | 256 |
+| Field path depth | 9 |
+| Default result count | 20 |
+| Maximum result count | 1000 |
+| Candidate documents | 1000 |
+| Documents in a reference graph | 2000 |
+| Serialized query result | 16 MiB |
+| Published content database | 500 KiB |
+
+### Content limits
+
+| Limit | Value |
+| --- | --- |
+| Markdown/MDX frontmatter | 64 KiB |
+| Frontmatter nesting depth | 8 |
+| Frontmatter fields | 256 |
+| Frontmatter string | 16 KiB |
+| JSON file | 1 MiB |
+| JSON nesting depth | 8 |
+| JSON fields | 256 |
+| JSON string | 16 KiB |
+| Indexed properties per document | 64 KiB |
+| Generated excerpt | 2 KiB |
+| MDX nesting depth | 100 |
+| MDX nodes | 20000 |
+| MDX properties | 4000 |
+| Loaded file | 1 MiB |
+| Loaded content per query | 2 MiB |
+| Loaded files per query | 20 |
+| Loaded range | 256 KiB |
+| Concurrent content reads | 8 |
+
+
+## Screenshot Verification
+
+After the user explicitly requests or approves visual verification, call preview.start once inside a long-running MCP server, then use screenshot({ path, viewport }) for fast repeated checks across multiple pages. Iterative mode is the default: after MCP mutations, path screenshots regenerate changed files and reload the requested route while keeping the server and browser alive. Use mode: "production" only for release-like verification. From one-shot shell calls or another process, use screenshot({ baseUrl, path, viewport }) to capture an already-running preview/site without generating, building, starting, or restarting preview. Use path values such as "/", "/pricing", or "/about" to capture specific generated routes. For responsive work, read list-breakpoints and capture one familiar device viewport inside each Builder breakpoint range before using vision. Screenshot waits for load by default, then fonts and two layout frames; pass waitForSelector for app readiness, waitUntil:"networkidle" for network-heavy pages, and waitForTimeout for final settling. When a baseline exists, use screenshot.diff for changed regions, OCR textAnalysis, and diff artifacts on each baseline/current screenshot pair. Outside MCP, use `webstudio screenshot --path /pricing --output pricing.png` for one temporary generated preview capture, or keep `webstudio preview` running and pass its absolute URL to `webstudio screenshot` for repeated captures.
+
+## Related
+
+- [CLI](cli.md) – Install and use the Webstudio command-line interface
+- [Content Engine](foundations/content-engine.md) – Build a file-based site with Markdown and Assets queries
+- [Content Engine reference](foundations/content-engine-reference.md) – Check query fields, modes, diagnostics, references, and limits
+- [Share links](foundations/share-links.md) – Grant the access used to link a Project
+- [Publishing and custom domains](foundations/publishing-and-custom-domains.md) – Publish the completed Project

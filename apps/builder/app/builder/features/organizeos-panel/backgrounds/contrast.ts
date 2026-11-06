@@ -12,7 +12,7 @@ import {
   getComputedStyleDecl,
   type StyleObjectModel,
 } from "~/shared/style-object-model";
-import type { InstanceSelector } from "~/shared/instance-utils/tree";
+import type { InstanceSelector } from "@webstudio-is/project-build/runtime";
 import { parseAnyGradient } from "~/builder/features/style-panel/sections/backgrounds/gradient-utils";
 import {
   composite,

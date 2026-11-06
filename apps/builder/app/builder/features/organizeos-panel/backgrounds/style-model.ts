@@ -1,4 +1,4 @@
-import type { HtmlTags } from "html-tags";
+import type { HtmlTags } from "@webstudio-is/html-data";
 import type { CssProperty, StyleValue } from "@webstudio-is/css-engine";
 import { camelCaseProperty, html } from "@webstudio-is/css-data";
 import {
@@ -11,6 +11,7 @@ import {
 import { $propsIndex, $registeredComponentMetas } from "~/shared/nano-states";
 import {
   $instances,
+  $props,
   $styleSourceSelections,
   $styles,
 } from "~/shared/sync/data-stores";
@@ -19,7 +20,7 @@ import {
   getPresetStyleDeclKey,
   type StyleObjectModel,
 } from "~/shared/style-object-model";
-import type { InstanceSelector } from "~/shared/instance-utils/tree";
+import type { InstanceSelector } from "@webstudio-is/project-build/runtime";
 import { $matchingBreakpoints } from "~/builder/features/style-panel/shared/model";
 import { toRgba } from "./color";
 import type { PaletteColor } from "./presets";
@@ -45,6 +46,8 @@ export const buildSectionStyleModel = (
 ): StyleObjectModel => {
   const metas = $registeredComponentMetas.get();
   const instances = $instances.get();
+  // a component's rendered tag can read a prop (a List's `ordered`)
+  const props = $props.get();
   const { htmlTagsByInstanceId } = $propsIndex.get();
 
   const presetStyles = new Map<string, StyleValue>();
@@ -72,6 +75,7 @@ export const buildSectionStyleModel = (
     const tag = getHtmlTagFromInstance({
       instance,
       metas,
+      props,
       htmlTagsByInstanceId,
     });
     if (tag !== undefined) {

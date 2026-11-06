@@ -16,9 +16,9 @@ import {
   type WebstudioData,
   encodeDataVariableId,
   getPagePath,
-  lintExpression,
-  transpileExpression,
 } from "@webstudio-is/sdk";
+import { lintExpression, transpileExpression } from "@webstudio-is/expression";
+import { findAvailableVariables } from "@webstudio-is/project-build/runtime";
 import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
 import {
   $assets,
@@ -34,15 +34,13 @@ import {
   $styles,
 } from "~/shared/sync/data-stores";
 import { $selectedPageId } from "~/shared/nano-states/pages";
+import { $authPermit, $builderMode } from "~/shared/nano-states/misc";
 import { selectInstance } from "~/shared/nano-states";
 import { getResourceKey } from "~/shared/resources";
 import { isPresetId } from "~/shared/organizeos-preset-ids";
-import {
-  getWebstudioData,
-  updateWebstudioData,
-} from "~/shared/instance-utils/data";
+import { getWebstudioData } from "~/shared/instance-utils/data";
 import { buildCollectionResourcePresets } from "~/shared/db/resource-presets.server";
-import { findAvailableVariables } from "~/shared/data-variables";
+import { updateWebstudioDataStaged } from "./staged-data";
 import { loadCollectionError } from "./collection-schema";
 import {
   SITEMAP_MARKER,
@@ -55,8 +53,41 @@ import {
   removeCollectionFromSitemap,
 } from "./collection-pages";
 
-const { loaderFetch } = vi.hoisted(() => ({ loaderFetch: vi.fn() }));
+const { loaderFetch, toastError } = vi.hoisted(() => ({
+  loaderFetch: vi.fn(),
+  toastError: vi.fn(),
+}));
 vi.mock("~/shared/fetch.client", () => ({ fetch: loaderFetch }));
+vi.mock("~/shared/builder-api", () => ({
+  builderApi: { toast: { error: toastError } },
+}));
+
+// What the runtime layer says when it refuses a commit.
+const noBuildAccess =
+  "Page templates can be edited only in design mode, with build access.";
+
+// A page template, selected without build access: the one place the runtime
+// layer refuses a commit.
+const selectPageTemplateWithoutBuildAccess = () => {
+  const pages = $pages.get() as Pages;
+  $pages.set({
+    ...pages,
+    pageTemplates: new Map([
+      [
+        "template",
+        {
+          id: "template",
+          name: "Template",
+          title: "Template",
+          rootInstanceId: "homeBody",
+          meta: {},
+        },
+      ],
+    ]),
+  });
+  $selectedPageId.set("template");
+  $authPermit.set("view");
+};
 
 enableMapSet();
 registerContainers();
@@ -177,12 +208,17 @@ const setProject = (
   $dataSources.set(new Map());
   $pages.set(pages);
   $selectedPageId.set(pages.homePageId);
+  $builderMode.set("design");
+  $authPermit.set("build");
   selectInstance(undefined);
   $project.set({ id: projectId } as Project);
+  serverSyncStore.transactionManager.currentStack = [];
+  serverSyncStore.transactionManager.undoneStack = [];
 };
 
 beforeEach(() => {
   loaderFetch.mockClear();
+  toastError.mockClear();
   items = { blog: [{ slug: "first-post" }], faq: [] };
   schemaFails = false;
   setProject();
@@ -440,8 +476,27 @@ describe("createCollectionItemPage", () => {
     const before = getWebstudioData();
     await createBlogPage();
     expect(getWebstudioData()).not.toEqual(before);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(1);
     serverSyncStore.undo();
     expect(getWebstudioData()).toEqual(before);
+  });
+
+  test("without build access, returns the runtime's refusal and writes nothing", async () => {
+    selectPageTemplateWithoutBuildAccess();
+    const before = getWebstudioData();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    // the row menu toasts this error
+    expect(await createCollectionItemPage("blog")).toEqual({
+      error: noBuildAccess,
+    });
+    consoleError.mockRestore();
+
+    expect(getWebstudioData()).toEqual(before);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(0);
+    expect($selectedPageId.get()).toBe("template");
   });
 
   test("never creates a second page: the existing item page is opened", async () => {
@@ -783,13 +838,12 @@ describe("the sitemap page", () => {
   test("a collection is listed once, whatever adds it again", async () => {
     await createBlogPage();
     const catalogBlog = { apiBase, authorization: auth };
-    let result: undefined | string;
-    updateWebstudioData((data) => {
-      result = addCollectionToSitemapMutable(data, {
+    const result = await updateWebstudioDataStaged((data) =>
+      addCollectionToSitemapMutable(data, {
         schema: { slug: "blog", name: "Blog posts" },
         catalog: catalogBlog,
-      });
-    });
+      })
+    );
     expect(result).toEqual("listed");
     expect(listSitemapCollections()).toEqual(["blog"]);
   });
@@ -870,7 +924,7 @@ describe("the sitemap page", () => {
       (binding) => resourceOf(before.data, binding)?.name === "Blog posts slugs"
     )!;
     const blogCollection = before.parts[1].collection;
-    expect(removeCollectionFromSitemap("blog")).toBe(true);
+    expect(await removeCollectionFromSitemap("blog")).toBe(true);
     const after = getSitemap();
     expect(listSitemapCollections()).toEqual(["faq"]);
     expect(after.parts.map((part) => part.collection.label)).toEqual([
@@ -886,13 +940,34 @@ describe("the sitemap page", () => {
       )
     ).toBe(false);
     // nothing else to remove
-    expect(removeCollectionFromSitemap("blog")).toBe(false);
+    expect(await removeCollectionFromSitemap("blog")).toBe(false);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("Remove from sitemap without build access toasts the runtime's refusal, removing nothing", async () => {
+    await createBlogPage();
+    selectPageTemplateWithoutBuildAccess();
+    const before = getWebstudioData();
+    const depth = serverSyncStore.transactionManager.currentStack.length;
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    expect(await removeCollectionFromSitemap("blog")).toBe(false);
+    consoleError.mockRestore();
+
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith(noBuildAccess);
+    expect(listSitemapCollections()).toEqual(["blog"]);
+    expect(getWebstudioData()).toEqual(before);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(depth);
   });
 
   test("the item page and the sitemap are one undo step", async () => {
     const before = getWebstudioData();
     await createBlogPage();
     expect(findSitemapPage()).toBeDefined();
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(1);
     serverSyncStore.undo();
     expect(getWebstudioData()).toEqual(before);
     expect(findSitemapPage()).toBeUndefined();

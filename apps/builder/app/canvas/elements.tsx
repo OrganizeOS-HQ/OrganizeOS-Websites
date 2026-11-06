@@ -1,15 +1,28 @@
 import {
   Fragment,
+  useMemo,
   type ForwardRefExoticComponent,
   type JSX,
   type RefAttributes,
   type RefObject,
 } from "react";
+import { useStore } from "@nanostores/react";
+import { formatManagedFormErrors } from "@webstudio-is/sdk";
 import type { Instance, Instances } from "@webstudio-is/sdk";
 import type { Components } from "@webstudio-is/react-sdk";
 // OrganizeOS fork: org script is paused (docs/ORGANIZEOS-FORK.md section 10)
 import { instanceIdMayRun } from "@organizeos/site-components/org-script";
-import type { InstanceSelector } from "~/shared/instance-utils/tree";
+import { renderText as renderTextValue } from "@webstudio-is/react-sdk/runtime";
+import {
+  computeExpression,
+  type InstanceSelector,
+} from "@webstudio-is/project-build/runtime";
+import {
+  $unscopedVariableValues,
+  $variableValuesByInstanceSelector,
+} from "~/shared/nano-states";
+import { getInstanceVariableValues } from "~/shared/instance-utils/variable-values";
+import { useAsyncValue } from "~/shared/use-async-value";
 
 export type WebstudioComponentProps = {
   instance: Instance;
@@ -60,6 +73,51 @@ const renderText = (text: string): Array<JSX.Element> => {
   ));
 };
 
+const AsyncTextExpression = ({
+  managedFormErrors = false,
+  expression,
+  instanceSelector,
+}: {
+  expression: string;
+  managedFormErrors?: boolean;
+  instanceSelector: InstanceSelector;
+}) => {
+  const variableValuesByInstanceSelector = useStore(
+    $variableValuesByInstanceSelector
+  );
+  const unscopedVariableValues = useStore($unscopedVariableValues);
+  const variableValues = useMemo(
+    () =>
+      getInstanceVariableValues(
+        variableValuesByInstanceSelector,
+        instanceSelector,
+        unscopedVariableValues
+      ) ?? new Map(),
+    [variableValuesByInstanceSelector, instanceSelector, unscopedVariableValues]
+  );
+  const value = useAsyncValue(
+    () => computeExpression(expression, variableValues),
+    [expression, variableValues],
+    undefined
+  );
+  return renderText(
+    managedFormErrors
+      ? formatManagedFormErrors(value)
+      : String(renderTextValue(value))
+  );
+};
+
+export const createManagedFormErrorElements = (
+  expression: string,
+  instanceSelector: InstanceSelector
+) => (
+  <AsyncTextExpression
+    expression={expression}
+    instanceSelector={instanceSelector}
+    managedFormErrors
+  />
+);
+
 export const createInstanceChildrenElements = ({
   instances,
   instanceSelector,
@@ -80,7 +138,13 @@ export const createInstanceChildrenElements = ({
       return renderText(child.value);
     }
     if (child.type === "expression") {
-      return;
+      return (
+        <AsyncTextExpression
+          key={child.value}
+          expression={child.value}
+          instanceSelector={instanceSelector}
+        />
+      );
     }
     if (child.type === "id") {
       return createInstanceElement({

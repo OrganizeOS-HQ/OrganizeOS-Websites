@@ -11,14 +11,19 @@ import { createPages } from "../../../../../packages/project-build/src/template"
 import { findCanonicalFontFamilies } from "./organizeos-canonical-fonts.server";
 import { loadProductionCanvasData } from "./canvas.server";
 
-const { loadBuildById, loadAssetsByProject, loadById } = vi.hoisted(() => ({
+const { loadBuildById, loadAssetDataByProject, loadById } = vi.hoisted(() => ({
   loadBuildById: vi.fn(),
-  loadAssetsByProject: vi.fn(),
+  loadAssetDataByProject: vi.fn(),
   loadById: vi.fn(),
 }));
-vi.mock("@webstudio-is/project-build/index.server", () => ({ loadBuildById }));
-vi.mock("@webstudio-is/asset-uploader/index.server", () => ({
-  loadAssetsByProject,
+vi.mock("@webstudio-is/project-build/server", () => ({
+  loadBuildById,
+  loadDevBuildByProjectId: vi.fn(),
+}));
+vi.mock("@webstudio-is/asset-uploader/server", () => ({
+  loadAssetDataByProject,
+  preparePublishedAssetData: vi.fn(),
+  validatePublishedAssetCollections: vi.fn(),
 }));
 vi.mock("@webstudio-is/project/index.server", () => ({ loadById }));
 vi.mock("./user.server", () => ({ getUserById: vi.fn() }));
@@ -100,6 +105,7 @@ describe("a publish's font assets", () => {
     createdAt: "2026-10-31T00:00:00.000Z",
     meta: {
       family,
+      style: "normal",
       variationAxes: {
         wght: { name: "Weight", min: 200, default: 400, max: 900 },
       },
@@ -142,11 +148,14 @@ describe("a publish's font assets", () => {
       deployment: { domains: ["site"] },
       marketplaceProduct: undefined,
     });
-    loadAssetsByProject.mockResolvedValue([
-      fontAsset("source-sans-3", "Source Sans 3"),
-      fontAsset("newsreader", "Newsreader"),
-      fontAsset("public-sans", "Public Sans"),
-    ]);
+    loadAssetDataByProject.mockResolvedValue({
+      assets: [
+        fontAsset("source-sans-3", "Source Sans 3"),
+        fontAsset("newsreader", "Newsreader"),
+        fontAsset("public-sans", "Public Sans"),
+      ],
+      assetFolders: [],
+    });
   });
 
   // OrganizeOS fork change in canvas.server.ts: the canonical font

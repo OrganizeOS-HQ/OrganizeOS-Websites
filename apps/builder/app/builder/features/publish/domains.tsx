@@ -1,5 +1,6 @@
 import {
   Button,
+  cssVar,
   theme,
   Text,
   Tooltip,
@@ -19,6 +20,8 @@ import {
   CheckCircleIcon,
   CopyIcon,
   HelpIcon,
+  InfoCircleIcon,
+  SpinnerIcon,
 } from "@webstudio-is/icons";
 import { CollapsibleDomainSection } from "./collapsible-domain-section";
 import {
@@ -89,7 +92,20 @@ export const getPublishStatusAndText = ({
     </>
   );
 
-  return { statusText, status };
+  const color =
+    status === "PUBLISHED"
+      ? cssVar("--foreground-positive")
+      : status === "FAILED"
+        ? cssVar("--foreground-negative")
+        : cssVar("--foreground-warning");
+  const Icon =
+    status === "PUBLISHED"
+      ? CheckCircleIcon
+      : status === "FAILED"
+        ? AlertIcon
+        : SpinnerIcon;
+
+  return { statusText, status, color, Icon };
 };
 
 const getStatusText = (props: {
@@ -98,7 +114,8 @@ const getStatusText = (props: {
 }) => {
   const status = getStatus(props.projectDomain);
 
-  let isVerifiedActive = false;
+  let color = cssVar("--foreground-negative");
+  let Icon = AlertIcon;
   let text: ReactNode = "Something went wrong";
 
   switch (status) {
@@ -113,7 +130,8 @@ const getStatusText = (props: {
       text = "Status: Waiting for CNAME propagation";
       break;
     case "VERIFIED_ACTIVE":
-      isVerifiedActive = true;
+      color = cssVar("--foreground-secondary");
+      Icon = InfoCircleIcon;
       text = "Status: Active, not published";
 
       if (props.projectDomain.latestBuildVirtual !== null) {
@@ -122,7 +140,8 @@ const getStatusText = (props: {
         );
 
         text = publishText.statusText;
-        isVerifiedActive = publishText.status !== "FAILED";
+        color = publishText.color;
+        Icon = publishText.Icon;
       }
       break;
     case "VERIFIED_ERROR":
@@ -137,15 +156,14 @@ const getStatusText = (props: {
   }
 
   return {
-    isVerifiedActive,
+    color: props.isLoading ? cssVar("--foreground-secondary") : color,
+    Icon,
     text: props.isLoading ? "Loading status..." : text,
   };
 };
 
 const StatusIcon = (props: { projectDomain: Domain; isLoading: boolean }) => {
-  const { isVerifiedActive, text } = getStatusText(props);
-
-  const Icon = isVerifiedActive ? CheckCircleIcon : AlertIcon;
+  const { color, Icon, text } = getStatusText(props);
 
   return (
     <Tooltip content={text}>
@@ -156,11 +174,7 @@ const StatusIcon = (props: { projectDomain: Domain; isLoading: boolean }) => {
           cursor: "pointer",
           width: theme.sizes.controlHeight,
           height: theme.sizes.controlHeight,
-          color: props.isLoading
-            ? theme.colors.foregroundDisabled
-            : isVerifiedActive
-              ? theme.colors.foregroundSuccessText
-              : theme.colors.foregroundDestructive,
+          color,
         }}
       >
         <Icon />
@@ -174,11 +188,13 @@ const DomainItem = ({
   projectDomain,
   project,
   refresh,
+  validatedDomains,
 }: {
   initiallyOpen: boolean;
   projectDomain: Domain;
   project: Project;
   refresh: () => Promise<void>;
+  validatedDomains?: readonly string[];
 }) => {
   const timeSinceLastUpdateMs =
     Date.now() - new Date(projectDomain.updatedAt).getTime();
@@ -303,7 +319,7 @@ const DomainItem = ({
 
   const domainStatus = getStatus(projectDomain);
 
-  const { isVerifiedActive, text } = getStatusText({
+  const { color, text } = getStatusText({
     projectDomain,
     isLoading: false,
   });
@@ -340,6 +356,7 @@ const DomainItem = ({
             projectDomain.latestBuildVirtual.buildId ===
               project.latestBuildVirtual?.buildId
           }
+          validatedDomains={validatedDomains}
           domain={projectDomain.domain}
           disabled={domainStatus !== "VERIFIED_ACTIVE"}
           isCustomDomain
@@ -356,7 +373,11 @@ const DomainItem = ({
 
           <CopyToClipboard
             text={pageUrl.toString()}
-            copyText={`Copy link: ${pageUrl.toString()}`}
+            copyText={
+              <Text css={{ overflowWrap: "anywhere" }}>
+                Copy link: {pageUrl.toString()}
+              </Text>
+            }
           >
             <IconButton type="button" tabIndex={-1}>
               <CopyIcon />
@@ -368,9 +389,9 @@ const DomainItem = ({
       {status === "UNVERIFIED" && (
         <>
           <Button
+            // oxlint-disable-next-line react-hooks/rules-of-hooks -- our useEffectEvent is a stable callback
             formAction={handleVerify}
             state={isCheckStateInProgress ? "pending" : undefined}
-            color="neutral"
             css={{ width: "100%", flexShrink: 0, mt: theme.spacing[3] }}
           >
             Check status
@@ -384,9 +405,9 @@ const DomainItem = ({
             <Text color="destructive">{updateStatusError}</Text>
           )}
           <Button
+            // oxlint-disable-next-line react-hooks/rules-of-hooks -- our useEffectEvent is a stable callback
             formAction={handleUpdateStatus}
             state={isCheckStateInProgress ? "pending" : undefined}
-            color="neutral"
             css={{ width: "100%", flexShrink: 0, mt: theme.spacing[3] }}
           >
             Check status
@@ -438,7 +459,9 @@ const DomainItem = ({
 
           {status !== "UNVERIFIED" && (
             <>
-              <Text color={isVerifiedActive ? "success" : "destructive"}>
+              <Text
+                css={{ color, overflowWrap: "anywhere", userSelect: "text" }}
+              >
                 {text}
               </Text>
             </>
@@ -514,7 +537,7 @@ const DomainItem = ({
           }}
         >
           <Separator css={{ alignSelf: "unset" }} />
-          <Text color="main">OR</Text>
+          <Text color="main">or</Text>
           <Separator css={{ alignSelf: "unset" }} />
         </Grid>
 
@@ -526,12 +549,15 @@ const DomainItem = ({
             // until they fix that, we'll just refresh the status here on every onClose event
             if (status === "UNVERIFIED") {
               startTransition(async () => {
+                // oxlint-disable-next-line react-hooks/rules-of-hooks -- our useEffectEvent is a stable callback
                 await handleVerify();
+                // oxlint-disable-next-line react-hooks/rules-of-hooks -- our useEffectEvent is a stable callback
                 await handleUpdateStatus();
               });
               return;
             }
             startTransition(async () => {
+              // oxlint-disable-next-line react-hooks/rules-of-hooks -- our useEffectEvent is a stable callback
               await handleUpdateStatus();
             });
           }}
@@ -546,6 +572,7 @@ type DomainsProps = {
   domains: Domain[];
   refresh: () => Promise<void>;
   project: Project;
+  validatedDomains?: readonly string[];
 };
 
 export const Domains = ({
@@ -553,6 +580,7 @@ export const Domains = ({
   domains,
   refresh,
   project,
+  validatedDomains,
 }: DomainsProps) => {
   return (
     <>
@@ -563,8 +591,14 @@ export const Domains = ({
           initiallyOpen={newDomains.has(projectDomain.domain)}
           refresh={refresh}
           project={project}
+          validatedDomains={validatedDomains}
         />
       ))}
     </>
   );
 };
+
+undefined;
+undefined;
+
+export const __testing__ = { StatusIcon };

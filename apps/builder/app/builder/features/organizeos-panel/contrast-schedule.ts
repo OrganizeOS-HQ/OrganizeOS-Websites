@@ -11,7 +11,7 @@ import {
   $styleSourceSelections,
   $styles,
 } from "~/shared/sync/data-stores";
-import type { InstanceSelector } from "~/shared/instance-utils/tree";
+import type { InstanceSelector } from "@webstudio-is/project-build/runtime";
 import { $matchingBreakpoints } from "~/builder/features/style-panel/shared/model";
 import {
   checkSectionContrast,

@@ -4,7 +4,6 @@ import {
   $workspaceRole,
   $workspaces,
 } from "~/dashboard/workspace/workspace-stores";
-import { nanoid } from "nanoid";
 import type { AuthPermit } from "@webstudio-is/trpc-interface/index.server";
 import {
   defaultPlanFeatures,
@@ -14,19 +13,21 @@ import {
 import type { Role } from "@webstudio-is/project";
 import type { User } from "~/shared/db/user.server";
 import { toast, type Placement } from "@webstudio-is/design-system";
-import type {
-  Instance,
-  Prop,
-  Props,
-  StyleDecl,
-  StyleSource,
+import {
+  createId,
+  getHtmlTagsFromProps,
+  type AssetType,
+  type Instance,
+  type Prop,
+  type Props,
+  type StyleDecl,
+  type StyleSource,
 } from "@webstudio-is/sdk";
 import type { CssProperty, UnitValue } from "@webstudio-is/css-engine";
 import type { TokenPermissions } from "@webstudio-is/authorization-token";
 import type { OrganizeosSite } from "../organizeos-site";
-import type { AssetType } from "@webstudio-is/asset-uploader";
 import type { DragStartPayload } from "~/canvas/shared/use-drag-drop";
-import { type InstanceSelector } from "../instance-utils/tree";
+import { type InstanceSelector } from "@webstudio-is/project-build/runtime";
 import type { ChildrenOrientation } from "@webstudio-is/design-system";
 import { $selectedInstance, $selectedInstanceSelector } from "./instances";
 import { getPermissions } from "../permissions";
@@ -48,7 +49,6 @@ export const $memoryProps = atom<Map<string, Props>>(new Map());
 
 export const $propsIndex = computed($props, (props) => {
   const propsByInstanceId = new Map<Instance["id"], Prop[]>();
-  const htmlTagsByInstanceId = new Map<Instance["id"], string>();
   for (const prop of props.values()) {
     const { instanceId } = prop;
     let instanceProps = propsByInstanceId.get(instanceId);
@@ -57,13 +57,10 @@ export const $propsIndex = computed($props, (props) => {
       propsByInstanceId.set(instanceId, instanceProps);
     }
     instanceProps.push(prop);
-    if (prop.type === "string" && prop.name === "tag") {
-      htmlTagsByInstanceId.set(instanceId, prop.value);
-    }
   }
   return {
     propsByInstanceId,
-    htmlTagsByInstanceId,
+    htmlTagsByInstanceId: getHtmlTagsFromProps(props),
   };
 });
 
@@ -127,12 +124,16 @@ export type UploadingFileData = Simplify<
   {
     // common props
     assetId: string;
+    fingerprintId: string;
+    uploadName: string;
     type: AssetType;
     objectURL: string;
+    folderId?: string;
   } & (
     | {
         source: "file";
         file: File;
+        contentHash?: string;
       }
     | {
         source: "url";
@@ -230,7 +231,7 @@ export const $selectedInstanceStyleSources = computed(
       // always put local style source last
       selectedInstanceStyleSources.push({
         type: "local",
-        id: nanoid(),
+        id: createId("nano"),
       });
     }
     return selectedInstanceStyleSources;
@@ -444,8 +445,12 @@ export const setBuilderMode = (mode: BuilderMode | null) => {
   if (mode === "design" && !$isDesignModeAllowed.get()) {
     toast.info("Design mode is not available for content edit links.");
 
-    $builderMode.set("content");
-    lastEditableBuilderMode = "content";
+    if ($isContentModeAllowed.get()) {
+      $builderMode.set("content");
+      lastEditableBuilderMode = "content";
+    } else {
+      $builderMode.set("preview");
+    }
     return;
   }
 

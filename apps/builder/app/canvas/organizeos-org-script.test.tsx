@@ -4,31 +4,33 @@ import { act } from "react-dom/test-utils";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   blockComponent,
-  coreMetas,
   tags,
   type Instance,
   type WsComponentMeta,
 } from "@webstudio-is/sdk";
-import { coreTemplates } from "@webstudio-is/sdk/core-templates";
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import {
   HtmlEmbed,
   MarkdownEmbed,
 } from "@webstudio-is/sdk-components-react/components";
-import * as baseComponents from "@webstudio-is/sdk-components-react/components";
-import * as baseComponentMetas from "@webstudio-is/sdk-components-react/metas";
-import * as baseComponentTemplates from "@webstudio-is/sdk-components-react/templates";
-import * as radixTemplates from "@webstudio-is/sdk-components-react-radix/templates";
+import { canvasComponentLibraries } from "@webstudio-is/sdk-components-registry/canvas";
+import * as organizeosComponents from "@organizeos/site-components";
+import * as organizeosComponentMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
 import {
   actionContextOf,
   actionMayRun,
+  checksInstanceTag,
+  checksTagProp,
   componentMayShip,
+  elementTagMayRender,
+  propMayShip,
+  propNameMayRun,
   templateIconCodes,
 } from "@organizeos/site-components/org-script";
 import { MenuIcon } from "@webstudio-is/icons/svg";
+import type { TemplateMeta } from "@webstudio-is/template";
 import { publishedComponents } from "~/builder/features/publish/organizeos-publish-paused-script";
-import { renderTemplate, type TemplateMeta } from "@webstudio-is/template";
 import {
   $registeredComponents,
   $registeredComponentMetas,
@@ -45,6 +47,7 @@ import {
   PausedMarkdownEmbed,
   instanceTagMayRender,
   withOrgScriptPolicy,
+  withoutBuiltWithWebstudio,
 } from "./organizeos-org-script";
 
 (
@@ -62,10 +65,38 @@ afterEach(() => {
   root = undefined;
   container = undefined;
   delete (window as { x?: number }).x;
+  delete (window as { upstreamX?: number }).upstreamX;
 });
+
+/** The canvas's registration (canvas.tsx), into the registry stores. */
+const registerAsCanvas = () => {
+  for (const library of canvasComponentLibraries) {
+    registerComponentLibrary(
+      withOrgScriptPolicy(withoutBuiltWithWebstudio(library))
+    );
+  }
+  registerComponentLibrary({
+    namespace: "@organizeos/site-components",
+    components: organizeosComponents,
+    metas: organizeosComponentMetas,
+    templates: organizeosTemplates,
+  });
+};
+
+const resetRegistry = () => {
+  $registeredComponents.set(new Map());
+  $registeredComponentMetas.set(new Map());
+  $registeredTemplates.set(new Map());
+};
 
 const scriptAndHandler =
   '<script>window.x=1</script><img src=x onerror="window.x=1">';
+
+// The control renders upstream's embed, whose handler fires later, perhaps in
+// the next test: it sets a global of its own, so it never reads as the pause
+// letting window.x through.
+const upstreamScriptAndHandler =
+  '<script>window.upstreamX=1</script><img src=x onerror="window.upstreamX=1">';
 
 type Mode = {
   name: string;
@@ -116,46 +147,70 @@ const render = (mode: Mode, ui: ReactNode) => {
   return container;
 };
 
-describe("withOrgScriptPolicy", () => {
-  const library = {
-    components: baseComponents,
-    metas: baseComponentMetas,
-    hooks: [],
-    templates: baseComponentTemplates,
-  };
+// The registry's base library (canvasComponentLibraries: core, base, Radix)
+const [core, library, radix] = canvasComponentLibraries;
 
+/**
+ * The props React holds for a host element: what a component passed to it,
+ * including a name React leaves off the DOM. It reads React DOM's own key on
+ * the node; a test that uses it checks a prop it knows is there first.
+ */
+const hostProps = (element: Element): Record<string, unknown> => {
+  const key = Object.keys(element).find((name) =>
+    name.startsWith("__reactProps$")
+  );
+  expect(key, "React DOM's props key on the element").toBeDefined();
+  return (element as unknown as Record<string, Record<string, unknown>>)[
+    key as string
+  ];
+};
+
+describe("withOrgScriptPolicy", () => {
   // T4
   test("hides HTML Embed from the Components panel and the command palette", () => {
     const result = withOrgScriptPolicy(library);
     // The panel and the palette list a meta by its category, and skip hidden
-    expect(baseComponentMetas.HtmlEmbed.category).toBe("general");
+    expect(library.metas.HtmlEmbed.category).toBe("general");
     expect(result.metas.HtmlEmbed.category).toBe("hidden");
     // Nothing else about the meta changes: the Navigator, its icon and its label
     expect(result.metas.HtmlEmbed).toEqual({
-      ...baseComponentMetas.HtmlEmbed,
+      ...library.metas.HtmlEmbed,
       category: "hidden",
     });
     // The input is not changed
-    expect(baseComponentMetas.HtmlEmbed.category).toBe("general");
+    expect(library.metas.HtmlEmbed.category).toBe("general");
   });
 
   test("hides Markdown Embed", () => {
     const result = withOrgScriptPolicy(library);
     expect(result.metas.MarkdownEmbed.category).toBe("hidden");
     expect(result.metas.MarkdownEmbed).toEqual({
-      ...baseComponentMetas.MarkdownEmbed,
+      ...library.metas.MarkdownEmbed,
       category: "hidden",
     });
   });
 
+  // JSON-LD is left out at publish while org script is paused (the CLI's
+  // dropOrgScript), so the panel does not offer it either. On the canvas it
+  // renders as inert text, so its component stays.
+  test("hides JSON-LD, and keeps its component", () => {
+    const result = withOrgScriptPolicy(library);
+    expect(library.metas.JsonLd.category).toBe("general");
+    expect(result.metas.JsonLd).toEqual({
+      ...library.metas.JsonLd,
+      category: "hidden",
+    });
+    expect(result.components.JsonLd).toBe(library.components.JsonLd);
+  });
+
   test("leaves Content Embed and Markdown Embed templates out", () => {
     const result = withOrgScriptPolicy(library);
-    expect(baseComponentTemplates).toHaveProperty("ContentEmbed");
-    expect(baseComponentTemplates).toHaveProperty("MarkdownEmbed");
+    expect(library.templates).toHaveProperty("ContentEmbed");
+    expect(library.templates).toHaveProperty("MarkdownEmbed");
     expect(result.templates).not.toHaveProperty("ContentEmbed");
     expect(result.templates).not.toHaveProperty("MarkdownEmbed");
     expect(Object.keys(result.templates).sort()).toEqual(
-      Object.keys(baseComponentTemplates)
+      Object.keys(library.templates)
         .filter((name) => name !== "ContentEmbed" && name !== "MarkdownEmbed")
         .sort()
     );
@@ -163,14 +218,14 @@ describe("withOrgScriptPolicy", () => {
 
   test("registers the paused stand-ins for HTML Embed and Markdown Embed", () => {
     const result = withOrgScriptPolicy(library);
-    expect(baseComponents.HtmlEmbed).not.toBe(PausedHtmlEmbed);
+    expect(library.components.HtmlEmbed).not.toBe(PausedHtmlEmbed);
     expect(result.components.HtmlEmbed).toBe(PausedHtmlEmbed);
     expect(result.components.MarkdownEmbed).toBe(PausedMarkdownEmbed);
   });
 
-  test("passes every other entry through by reference", () => {
+  test("passes every other entry through by reference, the registry's component ids too", () => {
     const result = withOrgScriptPolicy(library);
-    for (const [name, component] of Object.entries(baseComponents)) {
+    for (const [name, component] of Object.entries(library.components)) {
       if (name === "HtmlEmbed" || name === "MarkdownEmbed") {
         continue;
       }
@@ -178,13 +233,13 @@ describe("withOrgScriptPolicy", () => {
         component
       );
     }
-    for (const [name, meta] of Object.entries(baseComponentMetas)) {
-      if (name === "HtmlEmbed" || name === "MarkdownEmbed") {
+    for (const [name, meta] of Object.entries(library.metas)) {
+      if (["HtmlEmbed", "MarkdownEmbed", "JsonLd"].includes(name)) {
         continue;
       }
       expect(result.metas[name as keyof typeof result.metas]).toBe(meta);
     }
-    for (const [name, template] of Object.entries(baseComponentTemplates)) {
+    for (const [name, template] of Object.entries(library.templates)) {
       if (name === "ContentEmbed" || name === "MarkdownEmbed") {
         continue;
       }
@@ -192,7 +247,11 @@ describe("withOrgScriptPolicy", () => {
         template
       );
     }
-    expect(result.hooks).toBe(library.hooks);
+    // upstream's templates name the original HtmlEmbed object, which the
+    // registry's ids resolve after the swap
+    expect(result.componentIds).toBe(library.componentIds);
+    expect("namespace" in result).toBe(false);
+    expect(withOrgScriptPolicy(radix).namespace).toBe(radix.namespace);
   });
 
   test("returns its input when the switch is on", () => {
@@ -201,58 +260,67 @@ describe("withOrgScriptPolicy", () => {
 
   test("leaves a library without these components alone", () => {
     const other = {
-      components: { Box: baseComponents.Box },
+      components: { Box: library.components.Box },
       metas: {} as Record<string, WsComponentMeta>,
       templates: {} as Record<string, TemplateMeta>,
     };
     const result = withOrgScriptPolicy(other);
-    expect(result.components).toEqual({ Box: baseComponents.Box });
+    expect(result.components).toEqual({ Box: library.components.Box });
     expect(result.metas).toEqual({});
     expect(result.templates).toEqual({});
   });
 });
 
-describe("the base library, as the canvas registers it", () => {
-  // The canvas registers core without the "Built with Webstudio" badge, then
-  // the base library through the policy, then Radix and the OrganizeOS blocks.
-  const { builtWithWebstudio: _builtWithWebstudio, ...coreWithoutBadge } =
-    coreTemplates;
-  const base = withOrgScriptPolicy({
-    components: baseComponents,
-    metas: baseComponentMetas,
-    templates: baseComponentTemplates,
+describe("withoutBuiltWithWebstudio", () => {
+  test("leaves upstream's badge out of the core templates, and nothing else", () => {
+    expect(core.templates).toHaveProperty("builtWithWebstudio");
+    const result = withoutBuiltWithWebstudio(core);
+    expect(result.templates).not.toHaveProperty("builtWithWebstudio");
+    expect(Object.keys(result.templates).sort()).toEqual(
+      Object.keys(core.templates)
+        .filter((name) => name !== "builtWithWebstudio")
+        .sort()
+    );
+    expect(result.metas).toBe(core.metas);
+    expect(result.componentIds).toBe(core.componentIds);
+    // the input is not changed
+    expect(core.templates).toHaveProperty("builtWithWebstudio");
   });
-  const libraries: Array<[string, Record<string, TemplateMeta>]> = [
-    ["core", coreWithoutBadge],
-    ["base", base.templates],
-    ["radix", radixTemplates],
-    ["organizeos", organizeosTemplates],
-  ];
+
+  test("returns a library without the badge as it is", () => {
+    expect(withoutBuiltWithWebstudio(library)).toBe(library);
+    expect(withoutBuiltWithWebstudio(radix)).toBe(radix);
+  });
+});
+
+describe("the libraries, as the canvas registers them", () => {
+  afterEach(resetRegistry);
+
+  /** Every registered template's fragment (the registry renders each). */
+  const registeredTemplates = () => {
+    registerAsCanvas();
+    return Array.from($registeredTemplates.get());
+  };
 
   const getEmbeds = (component: string) => {
     const found: Array<{
-      library: string;
       template: string;
       instance: Instance;
       code: unknown;
     }> = [];
-    for (const [library, templates] of libraries) {
-      for (const [name, meta] of Object.entries(templates)) {
-        const fragment = renderTemplate(meta.template);
-        for (const instance of fragment.instances) {
-          if (instance.component !== component) {
-            continue;
-          }
-          const code = fragment.props.find(
-            (prop) => prop.instanceId === instance.id && prop.name === "code"
-          );
-          found.push({
-            library,
-            template: name,
-            instance,
-            code: code && "value" in code ? code.value : undefined,
-          });
+    for (const [name, { template: fragment }] of registeredTemplates()) {
+      for (const instance of fragment.instances) {
+        if (instance.component !== component) {
+          continue;
         }
+        const code = fragment.props.find(
+          (prop) => prop.instanceId === instance.id && prop.name === "code"
+        );
+        found.push({
+          template: name,
+          instance,
+          code: code && "value" in code ? code.value : undefined,
+        });
       }
     }
     return found;
@@ -271,13 +339,9 @@ describe("the base library, as the canvas registers it", () => {
     );
     // The Content Block's templates container is empty; it is paused, and
     // dropped at publish, until it is given code the switch allows.
-    expect(
-      paused.map(({ library, template, code }) => ({
-        library,
-        template,
-        code,
-      }))
-    ).toEqual([{ library: "core", template: blockComponent, code: undefined }]);
+    expect(paused.map(({ template, code }) => ({ template, code }))).toEqual([
+      { template: blockComponent, code: undefined },
+    ]);
   });
 
   test("no template inserts a Markdown Embed", () => {
@@ -288,9 +352,8 @@ describe("the base library, as the canvas registers it", () => {
   // refuses no handler, and publishing drops it, so a template's own action
   // has to pass
   test("every action a template inserts may run", () => {
-    const actions = libraries.flatMap(([library, templates]) =>
-      Object.entries(templates).flatMap(([name, meta]) => {
-        const fragment = renderTemplate(meta.template);
+    const actions = registeredTemplates().flatMap(
+      ([key, { template: fragment }]) => {
         // as each is scoped, under the template's top instances as a page
         // holds them
         const context = actionContextOf({
@@ -316,12 +379,12 @@ describe("the base library, as the canvas registers it", () => {
         });
         return fragment.props.flatMap((prop) =>
           prop.type === "action"
-            ? [{ template: `${library} ${name}`, prop, context }]
+            ? [{ template: `${key} ${prop.name}`, prop, context }]
             : []
         );
-      })
+      }
     );
-    // the Webhook Form, Signup Form, RSVP Form and Rotating Tabs write one each
+    // the Form, Signup Form, RSVP Form and Rotating Tabs write some each
     expect(actions.length).toBeGreaterThanOrEqual(4);
     expect(
       actions
@@ -334,67 +397,125 @@ describe("the base library, as the canvas registers it", () => {
   // import, and the Publish dialog lists it, so a template inserts none
   test("every component a template inserts is one a published page imports", () => {
     expect(
-      libraries.flatMap(([library, templates]) =>
-        Object.entries(templates).flatMap(([name, meta]) =>
-          renderTemplate(meta.template)
-            .instances.filter(
-              (instance) =>
-                componentMayShip(instance.component, publishedComponents) ===
-                false
-            )
-            .map((instance) => `${library} ${name}: ${instance.component}`)
-        )
+      registeredTemplates().flatMap(([key, { template: fragment }]) =>
+        fragment.instances
+          .filter(
+            (instance) =>
+              componentMayShip(instance.component, publishedComponents) ===
+              false
+          )
+          .map((instance) => `${key}: ${instance.component}`)
       )
     ).toEqual([]);
+  });
+
+  // What a template inserts is checked by the rules the canvas and publish
+  // apply, so no template brings in what the pause would drop or stub.
+  test("every registry library's templates render with no paused tag or prop", () => {
+    const templates = registeredTemplates();
+    const keys = templates.map(([key]) => key);
+    // one of each library, so the check is not empty
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        "ws:block",
+        "YouTube",
+        "@webstudio-is/sdk-components-react-radix:Sheet",
+        "@organizeos/site-components:SignupForm",
+      ])
+    );
+    expect(keys).not.toContain("builtWithWebstudio");
+    expect(keys).not.toContain("ContentEmbed");
+    expect(keys).not.toContain("MarkdownEmbed");
+    const found: string[] = [];
+    for (const [key, { template: fragment }] of templates) {
+      for (const instance of fragment.instances) {
+        if (
+          checksInstanceTag(instance.component) &&
+          instance.tag !== undefined &&
+          elementTagMayRender(instance.tag) === false
+        ) {
+          found.push(`${key}: ${instance.component} tag ${instance.tag}`);
+        }
+      }
+      for (const prop of fragment.props) {
+        const instance = fragment.instances.find(
+          (item) => item.id === prop.instanceId
+        );
+        if (instance === undefined) {
+          continue;
+        }
+        if (propNameMayRun(prop.name) === false) {
+          found.push(`${key}: ${instance.component} ${prop.name}`);
+        }
+        // an action is judged in its template's context, above
+        if (prop.type !== "action" && propMayShip(instance, prop) === false) {
+          found.push(`${key}: ${instance.component} ${prop.name} ships not`);
+        }
+        if (
+          checksTagProp(instance.component, prop.name) &&
+          (prop.type !== "string" || elementTagMayRender(prop.value) === false)
+        ) {
+          found.push(`${key}: ${instance.component} ${prop.name} tag`);
+        }
+      }
+    }
+    expect(found).toEqual([]);
+  });
+
+  test("registers the paused stand-ins and hides the embeds", () => {
+    registerAsCanvas();
+    expect($registeredComponents.get().get("HtmlEmbed")).toBe(PausedHtmlEmbed);
+    expect($registeredComponents.get().get("MarkdownEmbed")).toBe(
+      PausedMarkdownEmbed
+    );
+    for (const name of ["HtmlEmbed", "MarkdownEmbed", "JsonLd"]) {
+      expect($registeredComponentMetas.get().get(name)?.category, name).toBe(
+        "hidden"
+      );
+    }
   });
 });
 
 describe("the command palette", () => {
-  const { builtWithWebstudio: _builtWithWebstudio, ...coreWithoutBadge } =
-    coreTemplates;
-
-  const paletteComponents = (
-    library: Parameters<typeof withOrgScriptPolicy>[0]
-  ) => {
-    registerComponentLibrary({
-      components: {},
-      metas: coreMetas,
-      templates: coreWithoutBadge,
-    });
-    registerComponentLibrary(library);
+  const paletteComponents = (register: () => void) => {
+    register();
     openCommandPanel();
     return $componentOptions.get().map((option) => option.component);
   };
 
-  const library = {
-    components: baseComponents,
-    metas: baseComponentMetas,
-    hooks: [],
-    templates: baseComponentTemplates,
-  };
-
   afterEach(() => {
     closeCommandPanel();
-    $registeredComponents.set(new Map());
-    $registeredComponentMetas.set(new Map());
-    $registeredTemplates.set(new Map());
+    resetRegistry();
   });
 
   // T4, as the panel and the palette read it. The Components panel reads the
   // same two registries and the same category.
-  test("lists HTML Embed, Content Embed and Markdown Embed as upstream registers them", () => {
-    expect(paletteComponents(library)).toEqual(
-      expect.arrayContaining(["HtmlEmbed", "ContentEmbed", "MarkdownEmbed"])
+  test("lists HTML Embed, Content Embed, Markdown Embed and JSON-LD as upstream registers them", () => {
+    const names = paletteComponents(() => {
+      for (const library of canvasComponentLibraries) {
+        registerComponentLibrary(library);
+      }
+    });
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "HtmlEmbed",
+        "ContentEmbed",
+        "MarkdownEmbed",
+        "JsonLd",
+        "builtWithWebstudio",
+      ])
     );
   });
 
   test("lists none of them once the pause is applied, and still lists the rest", () => {
-    const names = paletteComponents(withOrgScriptPolicy(library));
+    const names = paletteComponents(registerAsCanvas);
     expect(names).not.toContain("HtmlEmbed");
     expect(names).not.toContain("ContentEmbed");
     expect(names).not.toContain("MarkdownEmbed");
+    expect(names).not.toContain("JsonLd");
+    expect(names).not.toContain("builtWithWebstudio");
     expect(names).toEqual(
-      expect.arrayContaining(["Vimeo", "YouTube", "Form", "ws:element"])
+      expect.arrayContaining(["Vimeo", "YouTube", "form", "ws:element"])
     );
   });
 });
@@ -408,7 +529,7 @@ describe("PausedHtmlEmbed", () => {
     test("upstream's HTML Embed puts the script and the handler into the DOM", () => {
       const host = render(
         mode,
-        <HtmlEmbed {...props} code={scriptAndHandler} />
+        <HtmlEmbed {...props} code={upstreamScriptAndHandler} />
       );
       expect(host.querySelector("script")).not.toBeNull();
       expect(host.querySelector("img")).not.toBeNull();
@@ -498,6 +619,37 @@ describe("PausedHtmlEmbed", () => {
     expect(notice.hasAttribute("executescriptoncanvas")).toBe(false);
   });
 
+  // The canvas gives every HTML Embed $ws$executeScripts after its props
+  // (webstudio-component.tsx), which upstream's embed reads. The notice must
+  // not pass it to its div. React leaves a $-named attribute off the DOM (and
+  // warns once per name), so neither the DOM nor the console shows it: the
+  // test reads the props React holds for the div instead.
+  test("passes no $ws$executeScripts to the notice's element", () => {
+    const host = render(
+      modes[1],
+      <PausedHtmlEmbed
+        data-ws-id="embed-3"
+        code={scriptAndHandler}
+        $ws$executeScripts
+      />
+    );
+    const notice = host.firstElementChild as HTMLDivElement;
+    expect(notice.textContent).toContain("HTML Embed is paused");
+    const props = hostProps(notice);
+    // the control: these are the props the embed passed on
+    expect(props["data-ws-id"]).toBe("embed-3");
+    expect(Object.keys(props)).not.toContain("$ws$executeScripts");
+  });
+
+  test("still renders an icon given $ws$executeScripts", () => {
+    const host = render(
+      modes[1],
+      <PausedHtmlEmbed code={MenuIcon} $ws$executeScripts />
+    );
+    expect(host.querySelector("svg")).not.toBeNull();
+    expect(host.textContent).not.toContain("paused");
+  });
+
   test("tells the admin what is going on", () => {
     const host = render(modes[0], <PausedHtmlEmbed code={scriptAndHandler} />);
     expect(host.textContent).toBe(
@@ -510,22 +662,29 @@ describe("PausedMarkdownEmbed", () => {
   const markdown = "[x](javascript:void0)\n\n<script>window.x=1</script>";
 
   describe.each(modes)("in $name", (mode) => {
-    test("upstream's Markdown Embed keeps the javascript: link", () => {
+    // The control. 0.309.0's Markdown Embed sanitizes its HTML (no script,
+    // no javascript: address; before, it kept both), and it still puts the
+    // markdown into the DOM, which the stand-in does not.
+    test("upstream's Markdown Embed puts the markdown into the DOM, sanitized", () => {
       const host = render(mode, <MarkdownEmbed code={markdown} />);
-      expect(host.querySelector("a")?.getAttribute("href")).toBe(
-        "javascript:void0"
-      );
+      expect(host.querySelector("a")?.textContent).toBe("x");
+      expect(host.querySelector("a")?.hasAttribute("href")).toBe(false);
+      expect(host.querySelector("script")).toBeNull();
     });
 
-    test("shows the notice and puts no code into the DOM", () => {
+    // Only what tells the stand-in from upstream's sanitizing embed: the
+    // notice shows, and none of the markdown renders (upstream renders the
+    // link, without its address). That no script or javascript: address
+    // reaches the DOM no longer tells them apart, since upstream's embed
+    // drops both too.
+    test("shows the notice, and none of the markdown", () => {
       const host = render(mode, <PausedMarkdownEmbed code={markdown} />);
       expect(host.textContent).toContain("Markdown Embed is paused");
       expect(host.querySelector("a")).toBeNull();
-      expect(host.querySelector("script")).toBeNull();
-      expect(host.innerHTML).not.toContain("javascript:");
-      expect(host.innerHTML).not.toContain("window.x");
     });
 
+    // upstream's embed throws on code that is not a string, so without the
+    // stand-in this fails on the render, before these assertions
     test("shows the notice for code that is not a string", () => {
       const host = render(
         mode,

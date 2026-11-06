@@ -27,11 +27,6 @@
       "types": "./lib/types/metas.d.ts",
       "import": "./lib/metas.js"
     },
-    "./hooks": {
-      "webstudio": "./src/hooks.ts",
-      "types": "./lib/types/hooks.d.ts",
-      "import": "./lib/hooks.js"
-    },
     "./templates": {
       "webstudio": "./src/templates.ts",
       "types": "./lib/types/templates.d.ts",
@@ -47,6 +42,11 @@
       "types": "./lib/types/site-templates/index.d.ts",
       "import": "./lib/site-templates/index.js"
     },
+    "./style-order": {
+      "webstudio": "./src/shared/style-order.ts",
+      "types": "./lib/types/shared/style-order.d.ts",
+      "import": "./lib/shared/style-order.js"
+    },
     "./org-script": {
       "webstudio": "./src/org-script.ts",
       "types": "./lib/types/org-script.d.ts",
@@ -59,10 +59,10 @@
     }
   },
   "scripts": {
-    "build": "vite build --config vite.build.config.ts",
+    "build": "vite build --config ../../vite.sdk-components.config.ts",
     "dts": "tsc --project tsconfig.dts.json",
     "test": "vitest run",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
     "@webstudio-is/react-sdk": "workspace:*",
@@ -71,6 +71,7 @@
     "react-dom": "18.3.0-canary-14898b6a9-20240318"
   },
   "dependencies": {
+    "@webstudio-is/expression": "workspace:*",
     "@webstudio-is/icons": "workspace:*",
     "acorn": "^8.14.1"
   },

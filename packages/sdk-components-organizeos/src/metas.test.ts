@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { descendantComponent, wsComponentMeta } from "@webstudio-is/sdk";
+import { animationCanPlayOnCanvasProperty } from "@webstudio-is/sdk/runtime";
 import * as components from "./components";
-import { hooks, hooksCanvasPlay } from "./hooks";
 import * as metas from "./metas";
 import * as templates from "./templates";
 
@@ -235,7 +235,7 @@ test("states and prop controls", () => {
   });
 });
 
-test("templates and hooks", () => {
+test("templates", () => {
   expect(Object.keys(templates)).toEqual([
     "SignupForm",
     "EventList",
@@ -264,9 +264,32 @@ test("templates and hooks", () => {
   expect(templates.RsvpForm.label).toBe(metas.RsvpForm.label);
   expect(templates.ConvergenceField.label).toBe(metas.ConvergenceField.label);
   expect(templates.RichText.label).toBe(metas.RichText.label);
-  // one hook: the canvas play flag for Animate Children and Convergence
-  // Field, nearest wins (hooks.test.ts)
-  expect(hooks).toEqual([hooksCanvasPlay]);
+});
+
+// The canvas play flag (spec 4.5, 14.9; field spec 10.4): an Animate Children
+// or a Convergence Field plays on the canvas while it, or an instance inside
+// it, is selected. Upstream's selection overrides set it from the meta, which
+// replaced component hooks in 0.309.0; the builder's
+// canvas/organizeos-play-flag.test.ts covers the selections.
+test.each(["AnimateChildren", "ConvergenceField"] as const)(
+  "%s plays on the canvas while selected",
+  (name) => {
+    expect(metas[name].selectionReveal).toEqual({
+      type: "fixed",
+      ancestor: "self",
+      prop: animationCanPlayOnCanvasProperty,
+      value: true,
+    });
+    expect(() => wsComponentMeta.parse(metas[name])).not.toThrow();
+  }
+);
+
+test("no other block sets a selection override", () => {
+  expect(
+    Object.entries(metas).flatMap(([name, meta]) =>
+      meta.selectionReveal === undefined ? [] : [name]
+    )
+  ).toEqual(["AnimateChildren", "ConvergenceField"]);
 });
 
 // The builder's panels show options, not explanations: a template's

@@ -1,14 +1,45 @@
 import { z } from "zod";
+import { expressionBinding } from "./expression";
+
+export const textChildValue = z.string();
 
 export const textChild = z.object({
   type: z.literal("text"),
-  value: z.string(),
+  value: textChildValue,
   placeholder: z.boolean().optional(),
 });
 
 export type TextChild = z.infer<typeof textChild>;
 
 const instanceId = z.string();
+export const instanceComponent = z.string().min(1);
+export const instanceTag = z
+  .string()
+  .min(1, "Tag cannot be empty")
+  .describe(
+    "Optional HTML tag override for component rendering. Omit for component defaults; never pass an empty string."
+  );
+export const instanceAttributes = z.object({
+  component: instanceComponent,
+  tag: instanceTag.optional(),
+  // Stable authoring identifier for contexts such as Content Block templates.
+  // It is independent from the user-facing instance label.
+  name: z.string().min(1).optional(),
+  // The component or tag provides the default instance name. Renaming stores
+  // the user-defined name in label without changing the component identity.
+  label: z.string().optional(),
+});
+
+export const instanceCreateInput = instanceAttributes.partial({
+  component: true,
+});
+
+export const instanceFilterInput = instanceAttributes
+  .pick({
+    component: true,
+    tag: true,
+  })
+  .partial();
 
 export const idChild = z.object({
   type: z.literal("id"),
@@ -16,10 +47,7 @@ export const idChild = z.object({
 });
 export type IdChild = z.infer<typeof idChild>;
 
-export const expressionChild = z.object({
-  type: z.literal("expression"),
-  value: z.string(),
-});
+export const expressionChild = expressionBinding;
 export type ExpressionChild = z.infer<typeof expressionChild>;
 
 export const instanceChild = z.union([idChild, textChild, expressionChild]);
@@ -27,9 +55,10 @@ export const instanceChild = z.union([idChild, textChild, expressionChild]);
 export const instance = z.object({
   type: z.literal("instance"),
   id: instanceId,
-  component: z.string(),
-  tag: z.string().optional(),
-  label: z.string().optional(),
+  component: instanceAttributes.shape.component,
+  tag: instanceAttributes.shape.tag,
+  name: instanceAttributes.shape.name,
+  label: instanceAttributes.shape.label,
   children: z.array(instanceChild),
 });
 

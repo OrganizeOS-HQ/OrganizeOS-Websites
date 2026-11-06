@@ -5,13 +5,26 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TooltipProvider, toast } from "@webstudio-is/design-system";
 import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
+import { defaultPlanFeatures } from "@webstudio-is/plans";
 import {
+  ROOT_INSTANCE_ID,
+  blockComponent,
+  type DataSource,
+  type Instance,
+  type Resource,
+} from "@webstudio-is/sdk";
+import {
+  $assets,
   $dataSources,
   $instances,
   $pages,
   $project,
+  $projectSettings,
   $props,
+  $resources,
 } from "~/shared/sync/data-stores";
+import { $planFeatures } from "~/shared/nano-states";
+import { getResourcePresetIds } from "~/shared/organizeos-preset-ids";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
 import { OrganizeosPublishContent } from "./organizeos-publish";
 import type { LatestBuildLike } from "./organizeos-publish-status";
@@ -141,6 +154,12 @@ beforeEach(() => {
   );
   $props.set(new Map());
   $dataSources.set(new Map());
+  // 0.309.0 keeps the project's settings in their own store, and the plan
+  // banner reads them and the Resources (getRestrictedFeatures)
+  $projectSettings.set({ meta: {}, compiler: {} });
+  $resources.set(new Map());
+  $assets.set(new Map());
+  $planFeatures.set(defaultPlanFeatures);
   routeFetch.mockReset();
   routeAnswers({ ...addresses, status: "not_launched" });
 });
@@ -432,12 +451,11 @@ describe("the OrganizeOS Publish dialog", () => {
 
   test("the plan banner ends with its Open in OrganizeOS link alone, to the Website area", async () => {
     setProject(null);
-    const pages = $pages.get();
-    if (pages === undefined) {
-      throw new Error("no pages");
-    }
     // the default plan includes no custom contact email
-    $pages.set({ ...pages, meta: { contactEmail: "team@acme.org" } });
+    $projectSettings.set({
+      meta: { contactEmail: "team@acme.org" },
+      compiler: {},
+    });
     const host = await render();
     const list = Array.from(host.querySelectorAll("ul")).find((item) =>
       item.textContent?.includes("Custom contact email")
@@ -450,6 +468,211 @@ describe("the OrganizeOS Publish dialog", () => {
       "https://app.organizeos.org/acme/website"
     );
     expect(host.textContent).not.toContain("plan is managed in");
+  });
+
+  // The catalog's bindings, each a binding of a catalog Resource (a v5
+  // resourceId), as every writer makes them: a block's binding as provisioning
+  // writes it, a :root binding of the catalog, and a page's own binding
+  const catalogBindings = async () => {
+    const events = await getResourcePresetIds("project-1", "events");
+    const forms = await getResourcePresetIds("project-1", "forms");
+    const dataSources: DataSource[] = [
+      {
+        id: "page-events",
+        type: "resource",
+        name: "Events here",
+        scopeInstanceId: "body",
+        resourceId: events.resourceId,
+      },
+      {
+        id: events.bindingId,
+        type: "resource",
+        name: "OrganizeOS Events",
+        scopeInstanceId: "body",
+        resourceId: events.resourceId,
+      },
+      {
+        id: forms.bindingId,
+        type: "resource",
+        name: "OrganizeOS Forms",
+        scopeInstanceId: ROOT_INSTANCE_ID,
+        resourceId: forms.resourceId,
+      },
+    ];
+    const resources: Resource[] = [events.resourceId, forms.resourceId].map(
+      (id) => ({
+        id,
+        name: "Catalog",
+        method: "get",
+        url: '"https://app.organizeos.org/api/v1/events"',
+        headers: [],
+      })
+    );
+    return { dataSources, resources };
+  };
+
+  const setData = (dataSources: DataSource[], resources: Resource[]) => {
+    $instances.set(
+      new Map([
+        [
+          "body",
+          { type: "instance", id: "body", component: "Body", children: [] },
+        ],
+      ])
+    );
+    $dataSources.set(new Map(dataSources.map((item) => [item.id, item])));
+    $resources.set(new Map(resources.map((item) => [item.id, item])));
+  };
+
+  test("a project with catalog data sources and allowDynamicData: false renders the dialog, with no plan banner for them", async () => {
+    // Every org project binds the catalog's Resources, which the platform
+    // provides: they are not a plan feature (controller ruling)
+    const { dataSources, resources } = await catalogBindings();
+    setData(dataSources, resources);
+    expect($planFeatures.get().allowDynamicData).toBe(false);
+    setProject(null);
+    const host = await render();
+    const publish = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.textContent === "Publish"
+    );
+    expect(publish).toBeDefined();
+    expect(host.textContent).not.toContain("This site uses features");
+    expect(host.querySelectorAll("li")).toHaveLength(0);
+  });
+
+  // Only the Resource says what the catalog is (controller ruling): an own
+  // Resource is a plan feature, through any binding id
+  test.each([
+    ["its own binding", async () => "own-binding"],
+    [
+      "a binding with a catalog-looking id",
+      async () => (await getResourcePresetIds("project-1", "stats")).bindingId,
+    ],
+  ])(
+    "an org's own Resource is still a plan feature beside the catalog's, through %s",
+    async (_name, bindingId) => {
+      const { dataSources, resources } = await catalogBindings();
+      setData(
+        [
+          ...dataSources,
+          {
+            id: await bindingId(),
+            type: "resource",
+            name: "Our API",
+            scopeInstanceId: ROOT_INSTANCE_ID,
+            resourceId: "own-resource",
+          },
+        ],
+        [
+          ...resources,
+          {
+            id: "own-resource",
+            name: "Our API",
+            method: "get",
+            url: '"https://api.acme.org/items"',
+            headers: [],
+          },
+        ]
+      );
+      setProject(null);
+      const host = await render();
+      expect(textOf(host, /^This site uses features/)).toBe(
+        "This site uses features your plan does not include:"
+      );
+      expect(
+        Array.from(host.querySelectorAll("li"), (item) => item.textContent)
+      ).toEqual(["Resource variable"]);
+    }
+  );
+
+  test("an MDX-bound Content Block shows that publishing fails while it uses MDX, and Publish stays enabled", async () => {
+    const instances: Instance[] = [
+      {
+        type: "instance",
+        id: "body",
+        component: "Body",
+        children: [{ type: "id", value: "block" }],
+      },
+      {
+        type: "instance",
+        id: "block",
+        component: blockComponent,
+        children: [],
+      },
+      // on no page: publishing reads the whole build, so it counts too
+      {
+        type: "instance",
+        id: "orphan",
+        component: blockComponent,
+        children: [],
+      },
+    ];
+    $instances.set(new Map(instances.map((item) => [item.id, item])));
+    $props.set(
+      new Map(
+        ["block", "orphan"].map((instanceId) => [
+          `${instanceId}-src`,
+          {
+            id: `${instanceId}-src`,
+            instanceId,
+            name: "src",
+            type: "asset",
+            value: "doc",
+          },
+        ])
+      )
+    );
+    $assets.set(
+      new Map([
+        [
+          "doc",
+          {
+            id: "doc",
+            projectId: "project-1",
+            name: "doc_abc.mdx",
+            type: "file",
+            format: "mdx",
+            size: 10,
+            meta: {},
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      ])
+    );
+    setProject(null);
+    const host = await render();
+    const list = Array.from(host.querySelectorAll("ul")).find((item) =>
+      item.textContent?.includes("Content Block")
+    );
+    // the heading and the list: nothing else
+    expect(list?.previousElementSibling?.textContent).toBe(
+      "Publishing fails while these use MDX:"
+    );
+    expect(list?.nextElementSibling).toBeNull();
+    const items = Array.from(list?.querySelectorAll("li") ?? []);
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Content Block on Home",
+      "Content Block",
+    ]);
+    // the block on a page is a button to it; the orphan has nowhere to go
+    expect(items[0].querySelector("button")).not.toBeNull();
+    expect(items[1].querySelector("button")).toBeNull();
+    const publish = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.textContent === "Publish"
+    );
+    expect(publish?.disabled).toBe(false);
+  });
+
+  test("lists the custom code saved in project settings as paused", async () => {
+    $projectSettings.set({
+      meta: { code: "<script>1</script>" },
+      compiler: {},
+    });
+    setProject(null);
+    const host = await render();
+    expect(
+      Array.from(host.querySelectorAll("li"), (item) => item.textContent)
+    ).toEqual(["Custom code (Project settings)"]);
   });
 
   test("the Publish button has no tooltip", async () => {
@@ -478,5 +701,74 @@ describe("the OrganizeOS Publish dialog", () => {
     });
     // hovering it shows nothing new
     expect(document.body.textContent).toBe(before);
+  });
+});
+
+// OrganizeOS fork: input validation (organizeos-publish-code-check.ts)
+describe("the Publish dialog with a value that fails input validation", () => {
+  const publishCalls = () =>
+    routeFetch.mock.calls.filter(([url]) =>
+      String(url).includes("/trpc/domain.publish")
+    );
+
+  const clickPublish = async () => {
+    const host = await render();
+    const publish = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.textContent === "Publish"
+    );
+    await act(async () => {
+      publish?.click();
+      await Promise.resolve();
+    });
+    await settle();
+    return host;
+  };
+
+  beforeEach(() => {
+    $instances.set(
+      new Map([
+        [
+          "box",
+          {
+            type: "instance",
+            id: "box",
+            component: "Box",
+            label: "Hero",
+            children: [],
+          },
+        ],
+      ])
+    );
+    setProject(null);
+  });
+
+  test("does not dispatch, and names the place", async () => {
+    $props.set(
+      new Map([
+        [
+          "p",
+          {
+            id: "p",
+            instanceId: "box",
+            name: "title",
+            type: "expression",
+            value: "a()",
+          },
+        ],
+      ])
+    );
+    const host = await clickPublish();
+    expect(publishCalls()).toEqual([]);
+    expect(host.textContent).toContain(
+      `Can't publish: the property "title" of "Hero".`
+    );
+  });
+
+  test("a clean build dispatches as before", async () => {
+    await clickPublish();
+    await vi.waitFor(() => {
+      expect(publishCalls()).toHaveLength(1);
+    });
+    await settle();
   });
 });

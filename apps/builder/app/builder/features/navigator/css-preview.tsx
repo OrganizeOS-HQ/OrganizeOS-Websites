@@ -1,6 +1,7 @@
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import {
+  PanelContent,
   ScrollArea,
   css,
   textVariants,
@@ -91,15 +92,15 @@ export const CssPreview = () => {
     return null;
   }
   return (
-    <CollapsibleSection label="CSS preview" fullWidth>
-      <ScrollArea css={{ padding: theme.panel.padding }}>
+    <CollapsibleSection label="CSS preview" fullWidth showSeparator={false}>
+      <PanelContent as={ScrollArea}>
         <pre tabIndex={0} className={preStyle()}>
           <div
             style={{ whiteSpace: "break-spaces" }}
             dangerouslySetInnerHTML={{ __html: code }}
           ></div>
         </pre>
-      </ScrollArea>
+      </PanelContent>
     </CollapsibleSection>
   );
 };

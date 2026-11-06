@@ -1,6 +1,6 @@
 import { renderToString } from "react-dom/server";
 import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
-import { isLocalResource, loadResources } from "@webstudio-is/sdk/runtime";
+import { isLocalResource, loadResources, getSystemSearch } from "@webstudio-is/sdk/runtime";
 import { authenticateRequest } from "@webstudio-is/wsauth";
 import {
   ReactSdkContext,
@@ -10,8 +10,8 @@ import { Page, breakpoints, projectDomain } from "__CLIENT__";
 import { getPageMeta, getRemixParams, getResources } from "__SERVER__";
 import { assetBaseUrl, imageLoader } from "__CONSTANTS__";
 import { sitemap } from "__SITEMAP__";
-import { assets } from "__ASSETS__";
 import { authRoutes } from "__AUTH__";
+import { createGeneratedAssetResourceFetch } from "__ASSET_QUERY_RUNTIME__";
 
 const authenticateProductionRequest = (request: Request) => {
   const host =
@@ -61,12 +61,6 @@ const customFetch: typeof fetch = (input, init) => {
     return Promise.resolve(response);
   }
 
-  if (isLocalResource(input, "assets")) {
-    const response = new Response(JSON.stringify(assets));
-    response.headers.set("content-type", "application/json; charset=utf-8");
-    return Promise.resolve(response);
-  }
-
   return fetch(input, init);
 };
 
@@ -85,14 +79,30 @@ export const loader = async (arg: LoaderFunctionArgs) => {
 
   const system = {
     params,
-    search: Object.fromEntries(url.searchParams),
+    ...getSystemSearch(url.searchParams),
     origin: url.origin,
     pathname: url.pathname,
   };
 
+  const generatedFetch = await createGeneratedAssetResourceFetch({
+    request: arg.request,
+    context: arg.context,
+    fallback: customFetch,
+  });
   const resources = await loadResources(
-    customFetch,
-    getResources({ system }).data
+    generatedFetch,
+    getResources({ system }).data,
+    url,
+    { signal: arg.request.signal }
+  );
+  Object.assign(
+    resources,
+    await loadResources(
+      generatedFetch,
+      getResources({ system, resources }).contentData ?? new Map(),
+      url,
+      { signal: arg.request.signal }
+    )
   );
   const pageMeta = getPageMeta({ system, resources });
 

@@ -1,0 +1,1222 @@
+import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
+import { release } from "node:os";
+import { join } from "node:path";
+import { cwd } from "node:process";
+import { parseContentDatabaseMaxBytes } from "@webstudio-is/content-engine";
+import { compileContentSource } from "@webstudio-is/content-engine/compiler";
+import {
+  hasHistoricalFormComponentIdentityVersion,
+  migratePages,
+  serializePages,
+} from "@webstudio-is/project-migrations/pages";
+import { migrateResourceFormInstancesMutable } from "@webstudio-is/project-migrations";
+import * as httpClient from "@webstudio-is/http-client";
+import { createHttpAssetContentRepository } from "@webstudio-is/content-engine/asset-content-repository";
+import { createAssetContentSession } from "@webstudio-is/content-engine/asset-content-session";
+import { componentMetas } from "@webstudio-is/sdk-components-registry/metas";
+import {
+  bundleVersion,
+  issueReportBrowserAttempt,
+  issueReportBrowserSignal,
+  issueReportEntityId,
+  issueReportErrorType,
+  issueReportRequestId,
+  issueReportRecentTargetSchema,
+  getPublicBuildIncludes,
+  publicApiEntityIdFields,
+  publicApiContractVersion,
+  publicApiOperationRequiresServerSupport,
+  publicApiOperations,
+  type IssueReportRuntime,
+  type IssueReportRecentFailure,
+  type IssueReportRecentTarget,
+  type PublicApiCommand,
+  type PublishedProjectBundle,
+} from "@webstudio-is/protocol";
+import packageJson from "../package.json";
+import {
+  createReachableAssetContentCompilationPlan,
+  getHomePage,
+} from "@webstudio-is/sdk";
+import {
+  ProjectSessionBusyError,
+  createProjectSession,
+  createDefaultProjectSessionCompatibility,
+  serializeRestorePointTransaction,
+  type ProjectSessionCompatibility,
+  type ProjectSessionPersistedSnapshot,
+  type ProjectSessionPermissions,
+  type ProjectSessionRemoteSnapshot,
+  type ProjectSessionRestorePointSummary,
+  type ProjectSessionSnapshot,
+  type ProjectSessionStorage,
+  type ProjectSessionTransport,
+} from "@webstudio-is/project-build/project-session";
+import {
+  builderNamespaces,
+  webstudioDataNamespaces,
+  type BuilderNamespace,
+} from "@webstudio-is/project-build/contracts";
+import {
+  createBuilderStateFromBuildData,
+  createBuilderStateFromSerializedSnapshot,
+  createSerializedBuilderBuildDataFromState,
+  createSerializedBuilderStateSnapshotFromState,
+  getMissingBuilderStateNamespaces,
+  type BuilderBuildDataSnapshot,
+  type SerializedBuilderStateSnapshot,
+} from "@webstudio-is/project-build/state";
+import { removeLegacyProjectSettingsFromPages } from "@webstudio-is/project-build";
+import {
+  createContentBlockApplication,
+  getValidationIssues,
+} from "@webstudio-is/project-build/runtime";
+import type { BuilderStateFreshness } from "@webstudio-is/project-build/state";
+import { getLocalProjectStateDirectory, LOCAL_DATA_FILE } from "./config";
+import type { ApiConnection } from "./api-connection";
+import { getStableErrorCode } from "./error-codes";
+import { loadJSONFile, withFileLock, writeFileAtomic } from "./fs-utils";
+import { isPlainRecord } from "./type-utils";
+import { createFileSystemContentSource } from "./filesystem-content-source";
+import { downloadAssetFiles, LOCAL_ASSETS_DIR } from "./asset-files";
+
+export type CliServerApiContract = {
+  clientVersion: string;
+  serverVersion?: string;
+  supportedOperationIds: ReadonlySet<string>;
+  missingServerOperationIds: readonly string[];
+  negotiated: boolean;
+};
+
+export const getCliServerApiContract = async (
+  connection: ApiConnection,
+  getProjectPermissions = httpClient.getProjectPermissions
+): Promise<CliServerApiContract> => {
+  const permissions = (await getProjectPermissions(connection)) as unknown;
+  const apiContract = isPlainRecord(permissions)
+    ? permissions.apiContract
+    : undefined;
+  const serverVersion =
+    isPlainRecord(apiContract) && typeof apiContract.version === "string"
+      ? apiContract.version
+      : undefined;
+  const operationIds =
+    isPlainRecord(apiContract) && Array.isArray(apiContract.operationIds)
+      ? apiContract.operationIds.filter(
+          (operationId): operationId is string =>
+            typeof operationId === "string"
+        )
+      : [];
+  const supportedOperationIds = new Set(operationIds);
+  const missingServerOperationIds = publicApiOperations.flatMap((operation) =>
+    publicApiOperationRequiresServerSupport(operation) &&
+    supportedOperationIds.has(operation.id) === false
+      ? [operation.id]
+      : []
+  );
+  return {
+    clientVersion: publicApiContractVersion,
+    serverVersion,
+    supportedOperationIds,
+    missingServerOperationIds,
+    negotiated: serverVersion !== undefined,
+  };
+};
+
+export const getSupportedPublicApiOperations = (
+  contract: CliServerApiContract
+) =>
+  publicApiOperations.filter((operation) => {
+    if (contract.negotiated === false) {
+      return publicApiOperationRequiresServerSupport(operation) === false;
+    }
+    return (
+      publicApiOperationRequiresServerSupport(operation) === false ||
+      contract.supportedOperationIds.has(operation.id)
+    );
+  });
+
+export const assertCliServerOperationSupported = (
+  operationId: string,
+  contract: CliServerApiContract
+) => {
+  if (contract.supportedOperationIds.has(operationId)) {
+    return;
+  }
+  const serverVersion = contract.serverVersion ?? "unavailable (legacy server)";
+  throw Object.assign(
+    new Error(
+      `The configured Webstudio API does not advertise server operation "${operationId}". CLI contract: ${contract.clientVersion}. Server contract: ${serverVersion}. Run this command with the latest CLI once; if it still appears, retry after the Webstudio API deployment is updated.`
+    ),
+    { code: "API_CONTRACT_MISMATCH" }
+  );
+};
+
+export const requiresCliEditingContract = (
+  operation: Pick<
+    (typeof publicApiOperations)[number],
+    "method" | "writeNamespaces"
+  >,
+  dryRun = false
+) =>
+  dryRun === false &&
+  operation.method === "mutation" &&
+  operation.writeNamespaces.length > 0;
+
+export const assertCliEditingContractVersion = (
+  contract: CliServerApiContract
+) => {
+  if (
+    contract.negotiated === false ||
+    contract.serverVersion === contract.clientVersion
+  ) {
+    return;
+  }
+
+  throw Object.assign(
+    new Error(
+      `The Webstudio CLI and API use different editing contracts. Expected ${contract.serverVersion}, received ${contract.clientVersion}. Restart the MCP server with the latest CLI; if it is already current, retry after the Webstudio API deployment is updated.`
+    ),
+    { code: "API_CONTRACT_MISMATCH" }
+  );
+};
+
+type PublicBuildSnapshot = Omit<
+  BuilderBuildDataSnapshot,
+  "dataSources" | "pages"
+> & {
+  projectId: string;
+  buildId: string;
+  version: number;
+  homePageId?: string;
+  rootFolderId?: string;
+  /** Keep while unversioned saved projects are supported; tracks the Form identity migration. */
+  formComponentIdentityVersion?: number;
+  pages?: unknown;
+  pageTemplates?: unknown;
+  folders?: unknown;
+  meta?: unknown;
+  compiler?: unknown;
+  redirects?: unknown;
+  projectSettings?: BuilderBuildDataSnapshot["projectSettings"];
+  dataSources?: BuilderBuildDataSnapshot["dataSources"];
+  variables?: BuilderBuildDataSnapshot["dataSources"];
+};
+
+type PersistedCliProjectSessionSnapshot = Omit<
+  ProjectSessionPersistedSnapshot,
+  "state"
+> & {
+  state: SerializedBuilderStateSnapshot;
+};
+
+export const getCliProjectSessionFile = (
+  projectRoot = cwd(),
+  projectId?: string
+) =>
+  join(
+    getLocalProjectStateDirectory(projectRoot, projectId),
+    "project-session.json"
+  );
+
+export const getCliProjectRestorePointsFile = (
+  projectRoot = cwd(),
+  projectId?: string
+) =>
+  join(
+    getLocalProjectStateDirectory(projectRoot, projectId),
+    "restore-points.json"
+  );
+const compatibilityVersion = "cli-project-session-v1";
+const issueReportPathRoots = new Set([
+  ...builderNamespaces,
+  ...publicApiOperations.flatMap((operation) => operation.inputFields),
+  "input",
+]);
+
+const createCliProjectSessionCompatibility = (
+  connection: ApiConnection
+): ProjectSessionCompatibility => ({
+  ...createDefaultProjectSessionCompatibility(compatibilityVersion),
+  apiCompatibilityVersion: connection.headers?.["x-webstudio-client-version"],
+});
+
+const isUnsupportedProjectSettingsIncludeError = (
+  error: unknown,
+  includes: readonly string[]
+) => {
+  return getIssueReportErrorRecords(error).some((record) => {
+    const data = isPlainRecord(record.data) ? record.data : record;
+    return (
+      Array.isArray(data.issues) &&
+      data.issues.some((issue) => {
+        if (
+          !isPlainRecord(issue) ||
+          (issue.code !== "invalid_enum_value" &&
+            issue.code !== "invalid_value") ||
+          !Array.isArray(issue.path) ||
+          issue.path.length !== 2 ||
+          issue.path[0] !== "include"
+        ) {
+          return false;
+        }
+        const index = issue.path[1];
+        return (
+          (typeof index === "number" || typeof index === "string") &&
+          Number.isInteger(Number(index)) &&
+          includes[Number(index)] === "projectSettings"
+        );
+      })
+    );
+  });
+};
+
+const getLegacyPublicApiInclude = (namespaces: readonly BuilderNamespace[]) =>
+  getPublicBuildIncludes([
+    ...namespaces.filter((namespace) => namespace !== "projectSettings"),
+    "pages",
+  ]);
+
+const toPages = (snapshot: PublicBuildSnapshot) => {
+  if (snapshot.pages === undefined) {
+    return undefined;
+  }
+  return migratePages({
+    homePageId: snapshot.homePageId,
+    rootFolderId: snapshot.rootFolderId,
+    pages: snapshot.pages,
+    pageTemplates: snapshot.pageTemplates,
+    folders: snapshot.folders,
+    meta: snapshot.meta,
+    compiler: snapshot.compiler,
+    redirects: snapshot.redirects,
+  });
+};
+
+const toRemoteSnapshot = (
+  snapshot: PublicBuildSnapshot
+): ProjectSessionRemoteSnapshot => {
+  if (
+    snapshot.pages === undefined &&
+    snapshot.instances?.some((instance) => instance.component === "Form")
+  ) {
+    throw new Error("A snapshot with instances must include pages.");
+  }
+  const instances = snapshot.instances?.map((instance) => ({ ...instance }));
+  if (instances !== undefined) {
+    migrateResourceFormInstancesMutable(
+      instances,
+      hasHistoricalFormComponentIdentityVersion(snapshot)
+    );
+  }
+  return {
+    projectId: snapshot.projectId,
+    buildId: snapshot.buildId,
+    version: snapshot.version,
+    state: createBuilderStateFromBuildData({
+      ...snapshot,
+      instances,
+      pages: toPages(snapshot),
+      dataSources: snapshot.dataSources ?? snapshot.variables ?? [],
+    }),
+  };
+};
+
+const publicOperationById = new Map(
+  publicApiOperations.map((operation) => [operation.id, operation])
+);
+
+export const createIssueReportRuntime = (
+  recentFailure?: IssueReportRecentFailure,
+  diagnostics?: Pick<
+    IssueReportRuntime,
+    "projectId" | "recentTargets" | "session" | "preview"
+  >
+): IssueReportRuntime => ({
+  cliVersion: packageJson.version,
+  nodeVersion: process.versions.node,
+  os: process.platform,
+  osVersion: release().split(".")[0] ?? "unknown",
+  architecture: process.arch,
+  executionMode: "mcp",
+  apiContractVersion: publicApiContractVersion,
+  bundleVersion,
+  recentFailure,
+  ...diagnostics,
+});
+
+const getIssueReportErrorRecords = (error: unknown) => {
+  const records: Record<string, unknown>[] = [];
+  const seen = new Set<unknown>();
+  let current = error;
+  while (isPlainRecord(current) && !seen.has(current) && records.length < 10) {
+    records.push(current);
+    seen.add(current);
+    const data = isPlainRecord(current.data) ? current.data : undefined;
+    current = current.cause ?? data?.cause;
+  }
+  return records;
+};
+
+const getIssueReportEntityIds = (input: unknown) => {
+  const ids: NonNullable<IssueReportRecentFailure["entityIds"]> = [];
+  const seen = new Set<string>();
+  if (!isPlainRecord(input)) {
+    return ids;
+  }
+  // Only inspect operation fields, never arbitrary authored values or content.
+  const updates = Array.isArray(input.updates)
+    ? input.updates.slice(0, 100)
+    : [];
+  for (const entry of [input, ...updates]) {
+    if (!isPlainRecord(entry)) {
+      continue;
+    }
+    for (const [field, candidate] of Object.entries(entry).slice(0, 100)) {
+      if (publicApiEntityIdFields.has(field) === false) {
+        continue;
+      }
+      const parsed = issueReportEntityId.safeParse({ field, id: candidate });
+      if (parsed.success) {
+        const { id } = parsed.data;
+        const key = `${field}:${id}`;
+        if (!seen.has(key)) {
+          ids.push(parsed.data);
+          seen.add(key);
+        }
+      }
+      if (ids.length === 20) {
+        return ids;
+      }
+    }
+  }
+  return ids;
+};
+
+export const createIssueReportTarget = (
+  tool: string,
+  input: unknown,
+  pageId?: string
+): IssueReportRecentTarget | undefined => {
+  const entityIds = getIssueReportEntityIds(input);
+  if (
+    pageId !== undefined &&
+    !entityIds.some(({ field }) => field === "pageId")
+  ) {
+    const parsed = issueReportEntityId.safeParse({
+      field: "pageId",
+      id: pageId,
+    });
+    if (parsed.success) {
+      entityIds.unshift(parsed.data);
+    }
+  }
+  const target = issueReportRecentTargetSchema.safeParse({
+    tool,
+    entityIds: entityIds.slice(0, 20),
+  });
+  return target.success ? target.data : undefined;
+};
+
+export const createIssueReportTargetTracker = (now = Date.now) => {
+  let recent: { target: IssueReportRecentTarget; at: number }[] = [];
+  const snapshot = () => {
+    const valid = recent.filter(({ at }) => {
+      const age = now() - at;
+      return age >= 0 && age <= 10 * 60_000;
+    });
+    return valid.length === 0 ? undefined : valid;
+  };
+  return {
+    record(tool: string, input: unknown, pageId?: string) {
+      const target = createIssueReportTarget(tool, input, pageId);
+      if (target === undefined) {
+        return false;
+      }
+      recent = [
+        { target, at: now() },
+        ...(snapshot() ?? []).filter(({ target: old }) => old.tool !== tool),
+      ].slice(0, 3);
+      return true;
+    },
+    getAll: () => snapshot()?.map(({ target }) => target),
+    restore(target: IssueReportRecentTarget, at: number) {
+      const age = now() - at;
+      if (age >= 0 && age <= 10 * 60_000) {
+        recent.push({ target, at });
+        recent.sort((left, right) => right.at - left.at);
+        recent = recent.slice(0, 3);
+      }
+    },
+    snapshot,
+    clear() {
+      recent = [];
+    },
+  };
+};
+
+export const createIssueReportFailure = (
+  canonicalTool: string,
+  error: unknown,
+  elapsedMs?: number,
+  input?: unknown
+): IssueReportRecentFailure => {
+  const errorCode = getStableErrorCode(error);
+  const records = getIssueReportErrorRecords(error);
+  const errorType = records
+    .map((record) =>
+      issueReportErrorType.safeParse(
+        record instanceof Error ? record.constructor.name : undefined
+      )
+    )
+    .find((result) => result.success && result.data !== "TRPCClientError");
+  const record = records.find(
+    (candidate) =>
+      candidate.attempts !== undefined || candidate.processExit !== undefined
+  );
+  const responseRecord = records.find(
+    (candidate) =>
+      isPlainRecord(candidate.meta) &&
+      (candidate.meta.response !== undefined ||
+        candidate.meta.responseJSON !== undefined)
+  );
+  const meta = isPlainRecord(responseRecord?.meta)
+    ? responseRecord.meta
+    : undefined;
+  const response = isPlainRecord(meta?.response) ? meta.response : undefined;
+  const contentType =
+    response?.headers instanceof Headers
+      ? response.headers.get("content-type")
+      : undefined;
+  const responseJson = meta?.responseJSON;
+  const envelope = Array.isArray(responseJson) ? responseJson[0] : responseJson;
+  const responseFormat =
+    typeof contentType === "string" && contentType.includes("json")
+      ? "json"
+      : typeof contentType === "string" && contentType.includes("html")
+        ? "html"
+        : "other";
+  const responseEnvelope =
+    responseJson === undefined
+      ? "missing"
+      : isPlainRecord(envelope) && "result" in envelope
+        ? "result"
+        : isPlainRecord(envelope) && "error" in envelope
+          ? "error"
+          : "other";
+  const httpStatus = httpClient.getErrorStatus(error) ?? response?.status;
+  const requestId = issueReportRequestId.safeParse(
+    records.find((record) => record.requestId !== undefined)?.requestId ??
+      (response?.headers instanceof Headers
+        ? (response.headers.get("x-request-id") ??
+          response.headers.get("cf-ray"))
+        : undefined)
+  );
+  const isResponseTransformFailure = records.some((candidate) => {
+    if (
+      candidate.name !== "TRPCClientError" ||
+      !isPlainRecord(candidate.meta)
+    ) {
+      return false;
+    }
+    const json = candidate.meta.responseJSON;
+    const envelopes = Array.isArray(json) ? json : [json];
+    return (
+      json !== undefined &&
+      envelopes.some(
+        (envelope) =>
+          !isPlainRecord(envelope) ||
+          ("error" in envelope
+            ? !isPlainRecord(envelope.error) ||
+              typeof envelope.error.code !== "number"
+            : !isPlainRecord(envelope.result))
+      )
+    );
+  });
+  const processExit = isPlainRecord(record?.processExit)
+    ? record.processExit
+    : undefined;
+  const exitSignal = issueReportBrowserSignal.safeParse(processExit?.signal);
+  const exitCode =
+    typeof processExit?.code === "number" &&
+    Number.isInteger(processExit.code) &&
+    processExit.code >= 0 &&
+    processExit.code <= 255
+      ? processExit.code
+      : undefined;
+  const browserAttempts = Array.isArray(record?.attempts)
+    ? record.attempts
+        .flatMap((attempt) => {
+          if (!isPlainRecord(attempt)) {
+            return [];
+          }
+          const parsed = issueReportBrowserAttempt.safeParse({
+            browser: attempt.browser,
+            source: attempt.source,
+          });
+          return parsed.success ? [parsed.data] : [];
+        })
+        .slice(0, 10)
+    : [];
+  const issues =
+    errorCode === undefined
+      ? undefined
+      : getValidationIssues(error)
+          ?.slice(0, 30)
+          .map((issue) => ({
+            // Keep only a known namespace/input field and array index. Leaf
+            // keys may contain project data, while this prefix is enough to
+            // locate the failing input shape (for example `updates[0]`).
+            path: issueReportPathRoots.has(issue.path[0] ?? "")
+              ? [
+                  issue.path[0],
+                  ...(/^\d+$/.test(issue.path[1] ?? "") ? [issue.path[1]] : []),
+                ]
+              : [],
+            code: issue.code,
+            constraint: issue.constraint,
+          }));
+  const entityIds = getIssueReportEntityIds(input);
+  const previewProcess =
+    errorCode === "PREVIEW_DEPENDENCY_INSTALL_FAILED"
+      ? records
+          .slice(1)
+          .find(
+            (candidate) =>
+              candidate.code !== undefined || candidate.killed === true
+          )
+      : undefined;
+  const processErrorCode = getStableErrorCode(previewProcess);
+  const previewExitCode =
+    typeof previewProcess?.code === "number" &&
+    Number.isInteger(previewProcess.code) &&
+    previewProcess.code >= 0 &&
+    previewProcess.code <= 255
+      ? previewProcess.code
+      : undefined;
+  const previewTerminated = previewProcess?.killed === true;
+  return {
+    tool: canonicalTool,
+    code: isResponseTransformFailure
+      ? "API_RESPONSE_TRANSFORM_FAILED"
+      : (errorCode ?? "MCP_TOOL_FAILED"),
+    ...(errorType?.success ? { errorType: errorType.data } : {}),
+    ...(requestId.success ? { requestId: requestId.data } : {}),
+    ...(typeof httpStatus === "number" &&
+    Number.isInteger(httpStatus) &&
+    httpStatus >= 100 &&
+    httpStatus <= 599
+      ? { httpStatus }
+      : {}),
+    ...(elapsedMs === undefined ? {} : { elapsedMs }),
+    ...(entityIds.length === 0 ? {} : { entityIds }),
+    ...(issues === undefined || issues.length === 0 ? {} : { issues }),
+    ...(processErrorCode === undefined &&
+    previewExitCode === undefined &&
+    previewTerminated === false
+      ? {}
+      : {
+          previewInstall: {
+            ...(processErrorCode === undefined ? {} : { processErrorCode }),
+            ...(previewExitCode === undefined
+              ? {}
+              : { exitCode: previewExitCode }),
+            ...(previewTerminated ? { terminated: true } : {}),
+          },
+        }),
+    ...(response === undefined
+      ? {}
+      : {
+          response: {
+            format: responseFormat,
+            envelope: responseEnvelope,
+            ...(Array.isArray(responseJson)
+              ? { batchSize: Math.min(responseJson.length, 1_000) }
+              : {}),
+          },
+        }),
+    ...(browserAttempts.length === 0 &&
+    !exitSignal.success &&
+    exitCode === undefined
+      ? {}
+      : {
+          browser: {
+            ...(exitSignal.success ? { exitSignal: exitSignal.data } : {}),
+            ...(exitCode === undefined ? {} : { exitCode }),
+            ...(browserAttempts.length === 0
+              ? {}
+              : { attempts: browserAttempts }),
+          },
+        }),
+  };
+};
+
+export const createIssueReportFailureTracker = (now = Date.now) => {
+  let recent: { failure: IssueReportRecentFailure; at: number } | undefined;
+  const getRecent = () => {
+    if (recent === undefined) {
+      return;
+    }
+    const age = now() - recent.at;
+    return age >= 0 && age <= 10 * 60_000 ? recent : undefined;
+  };
+  return {
+    record(tool: string, error: unknown, elapsedMs?: number, input?: unknown) {
+      recent = {
+        failure: createIssueReportFailure(tool, error, elapsedMs, input),
+        at: now(),
+      };
+    },
+    get() {
+      return getRecent()?.failure;
+    },
+    restore(failure: IssueReportRecentFailure, at: number) {
+      const age = now() - at;
+      if (age >= 0 && age <= 10 * 60_000) {
+        recent = { failure, at };
+      }
+    },
+    snapshot() {
+      return getRecent();
+    },
+    succeed(tool: string) {
+      if (tool === "report-issue") {
+        recent = undefined;
+      }
+    },
+  };
+};
+
+export const addIssueReportRuntime = (
+  command: PublicApiCommand,
+  input: unknown,
+  getRuntime: () => IssueReportRuntime = createIssueReportRuntime
+) => {
+  if (command !== "report-issue" || isPlainRecord(input) === false) {
+    return input;
+  }
+  return { ...input, runtime: getRuntime() };
+};
+
+const executePublicServerOperation = async ({
+  connection,
+  operationId,
+  input,
+  issueReportRuntime,
+}: {
+  connection: ApiConnection;
+  operationId: string;
+  input: unknown;
+  issueReportRuntime?: () => IssueReportRuntime;
+}) => {
+  const operation = publicOperationById.get(operationId);
+  if (operation === undefined) {
+    throw new Error(`Unknown public API operation "${operationId}".`);
+  }
+  const client = httpClient[operation.client as keyof typeof httpClient] as
+    | ((input: Record<string, unknown>) => Promise<unknown>)
+    | undefined;
+  if (typeof client !== "function") {
+    throw new Error(
+      `Public API operation "${operationId}" has no http-client function.`
+    );
+  }
+  return await client({
+    ...connection,
+    ...(addIssueReportRuntime(
+      operation.command,
+      input,
+      issueReportRuntime ??
+        (() =>
+          createIssueReportRuntime(undefined, {
+            projectId: connection.projectId,
+          }))
+    ) as Record<string, unknown>),
+    projectId: connection.projectId,
+  });
+};
+
+const withMappedRemoteError = async <Result>(task: () => Promise<Result>) => {
+  try {
+    return await task();
+  } catch (error) {
+    const code = getStableErrorCode(error);
+    if (code === undefined) {
+      throw error;
+    }
+    const mapped = new Error(
+      error instanceof Error ? error.message : String(error),
+      { cause: error }
+    ) as Error & { code: string };
+    mapped.name = code;
+    mapped.code = code;
+    throw mapped;
+  }
+};
+
+const parsePersistedSnapshot = (
+  value: PersistedCliProjectSessionSnapshot
+): ProjectSessionPersistedSnapshot => {
+  const instances = value.state.instances?.map(
+    ([id, instance]) => [id, { ...instance }] as const
+  );
+  if (
+    value.state.pages === undefined &&
+    instances?.some(([, instance]) => instance.component === "Form")
+  ) {
+    throw new Error(
+      "A persisted snapshot with Form instances must include pages."
+    );
+  }
+  if (instances !== undefined) {
+    migrateResourceFormInstancesMutable(
+      instances.map(([, instance]) => instance),
+      hasHistoricalFormComponentIdentityVersion(value.state.pages)
+    );
+  }
+  return {
+    ...value,
+    state: createBuilderStateFromSerializedSnapshot({
+      ...value.state,
+      instances,
+    }),
+  };
+};
+
+const serializePersistedSnapshot = (
+  snapshot: ProjectSessionPersistedSnapshot
+): PersistedCliProjectSessionSnapshot => ({
+  ...snapshot,
+  state: createSerializedBuilderStateSnapshotFromState(snapshot.state),
+});
+
+export const createCliProjectSessionStorage = (
+  path = getCliProjectSessionFile()
+): ProjectSessionStorage => ({
+  async load() {
+    const value = await loadJSONFile<PersistedCliProjectSessionSnapshot>(path);
+    return value === null ? undefined : parsePersistedSnapshot(value);
+  },
+  async save(snapshot, options) {
+    const current = await this.load();
+    if (
+      options.expectedRevision !== undefined &&
+      current?.revision !== options.expectedRevision
+    ) {
+      throw new ProjectSessionBusyError();
+    }
+    const revision = randomUUID();
+    await writeFileAtomic(
+      path,
+      `${JSON.stringify(
+        serializePersistedSnapshot({ ...snapshot, revision }),
+        undefined,
+        2
+      )}\n`
+    );
+    return { revision };
+  },
+  async clear() {
+    await rm(path, { force: true });
+  },
+});
+
+type PersistedCliProjectRestorePoint = Pick<
+  ProjectSessionRestorePointSummary,
+  "id" | "name" | "createdAt"
+> & {
+  snapshot: PersistedCliProjectSessionSnapshot;
+};
+
+type PersistedCliProjectRestorePoints = {
+  version: 1;
+  points: PersistedCliProjectRestorePoint[];
+};
+
+const maxCliProjectRestorePoints = 20;
+
+export const createCliProjectRestorePointStorage = (
+  path = getCliProjectRestorePointsFile(),
+  maxPoints = maxCliProjectRestorePoints
+) => {
+  if (Number.isInteger(maxPoints) === false || maxPoints < 1) {
+    throw new Error("Restore point retention must be a positive integer");
+  }
+  const load = async (): Promise<PersistedCliProjectRestorePoints> =>
+    (await loadJSONFile<PersistedCliProjectRestorePoints>(path)) ?? {
+      version: 1,
+      points: [],
+    };
+  const getSummary = ({
+    id,
+    name,
+    createdAt,
+    snapshot,
+  }: PersistedCliProjectRestorePoint): ProjectSessionRestorePointSummary => ({
+    id,
+    name,
+    createdAt,
+    projectId: snapshot.projectId,
+    buildId: snapshot.buildId,
+    version: snapshot.version,
+  });
+  const save = async (points: PersistedCliProjectRestorePoint[]) => {
+    await writeFileAtomic(
+      path,
+      `${JSON.stringify({ version: 1, points }, undefined, 2)}\n`
+    );
+  };
+  return {
+    async create(name: string, snapshot: ProjectSessionSnapshot) {
+      return await withFileLock(path, async () => {
+        const persisted = await load();
+        const point: PersistedCliProjectRestorePoint = {
+          id: randomUUID(),
+          name,
+          createdAt: new Date().toISOString(),
+          snapshot: serializePersistedSnapshot(snapshot),
+        };
+        await save([...persisted.points, point].slice(-maxPoints));
+        return getSummary(point);
+      });
+    },
+    async list() {
+      return (await load()).points.map(getSummary);
+    },
+    async get(id: string) {
+      const point = (await load()).points.find(
+        (candidate) => candidate.id === id
+      );
+      if (point === undefined) {
+        return;
+      }
+      return parsePersistedSnapshot(point.snapshot);
+    },
+    async delete(id: string) {
+      return await withFileLock(path, async () => {
+        const persisted = await load();
+        const points = persisted.points.filter((point) => point.id !== id);
+        if (points.length === persisted.points.length) {
+          return false;
+        }
+        await save(points);
+        return true;
+      });
+    },
+  };
+};
+
+export const createCliProjectSessionTransport = ({
+  connection,
+  executeServerOperation,
+  getBuildSnapshot = httpClient.getBuildSnapshot,
+  getPermissions,
+  issueReportRuntime,
+}: {
+  connection: ApiConnection;
+  executeServerOperation?: ProjectSessionTransport["executeServerOperation"];
+  getBuildSnapshot?: typeof httpClient.getBuildSnapshot;
+  getPermissions?: ProjectSessionTransport["getPermissions"];
+  issueReportRuntime?: () => IssueReportRuntime;
+}): ProjectSessionTransport => ({
+  async getCompatibility() {
+    return createCliProjectSessionCompatibility(connection);
+  },
+  async fetchNamespaces({ namespaces }) {
+    const fetchSnapshot = (include: string[]) =>
+      withMappedRemoteError(() =>
+        getBuildSnapshot({
+          ...connection,
+          include,
+        })
+      ) as Promise<PublicBuildSnapshot>;
+    // Older servers need pages to disambiguate historical Form instances.
+    const readNamespaces = namespaces.includes("instances")
+      ? [...namespaces, "pages" as const]
+      : namespaces;
+    const includes = getPublicBuildIncludes(readNamespaces);
+    let snapshot: PublicBuildSnapshot;
+    try {
+      snapshot = await fetchSnapshot(includes);
+    } catch (error) {
+      if (
+        namespaces.includes("projectSettings") === false ||
+        isUnsupportedProjectSettingsIncludeError(error, includes) === false
+      ) {
+        throw error;
+      }
+      snapshot = await fetchSnapshot(getLegacyPublicApiInclude(readNamespaces));
+    }
+    return toRemoteSnapshot(snapshot);
+  },
+  async commitPatch({ baseVersion, transactions }) {
+    return (await withMappedRemoteError(() =>
+      httpClient.applyBuildPatch({
+        ...connection,
+        baseVersion,
+        transactions,
+      })
+    )) as { version: number };
+  },
+  async commitRestorePoint({ baseVersion, transactions }) {
+    return (await withMappedRemoteError(() =>
+      httpClient.applyRestorePointPatch({
+        ...connection,
+        baseVersion,
+        transactions: transactions.map(serializeRestorePointTransaction),
+      })
+    )) as { version: number };
+  },
+  getPermissions:
+    getPermissions ??
+    (async () => {
+      const permissions =
+        await withMappedRemoteError<ProjectSessionPermissions>(
+          () =>
+            httpClient.getProjectPermissions(
+              connection
+            ) as Promise<ProjectSessionPermissions>
+        );
+      return {
+        canView: permissions.canView,
+        canEdit: permissions.canEdit,
+        canBuild: permissions.canBuild,
+        canAdmin: permissions.canAdmin,
+        canUseApi: permissions.canUseApi,
+      };
+    }),
+  executeServerOperation:
+    executeServerOperation ??
+    (async <Result>({
+      operationId,
+      input,
+    }: {
+      operationId: string;
+      input: unknown;
+    }) =>
+      (await withMappedRemoteError(() =>
+        executePublicServerOperation({
+          connection,
+          operationId,
+          input,
+          issueReportRuntime,
+        })
+      )) as Result),
+});
+
+export const createCliAssetContentRepository = ({
+  connection,
+}: {
+  connection: ApiConnection;
+}) =>
+  createHttpAssetContentRepository({
+    projectId: connection.projectId,
+    ...httpClient.createProjectAssetContentTransport({
+      ...connection,
+      authToken: () => connection.authToken,
+    }),
+  });
+
+export const createCliProjectSession = ({
+  connection,
+  storage,
+  projectRoot,
+  sessionProjectId,
+  executeServerOperation,
+  getPermissions,
+  issueReportRuntime,
+  assetContentRepository = createCliAssetContentRepository({ connection }),
+}: {
+  connection: ApiConnection;
+  storage?: ProjectSessionStorage;
+  projectRoot?: string;
+  sessionProjectId?: string;
+  executeServerOperation?: ProjectSessionTransport["executeServerOperation"];
+  getPermissions?: ProjectSessionTransport["getPermissions"];
+  issueReportRuntime?: () => IssueReportRuntime;
+  assetContentRepository?: ReturnType<typeof createCliAssetContentRepository>;
+}) => {
+  let projectSession: ReturnType<typeof createProjectSession>;
+  const contentSession = createAssetContentSession({
+    repository: assetContentRepository,
+    authorize: async ({ operation }) => {
+      const permissions = await projectSession.getPermissions();
+      return (
+        permissions.canUseApi &&
+        permissions.canView &&
+        (operation === "read" || permissions.canEdit)
+      );
+    },
+  });
+  projectSession = createProjectSession({
+    projectId: connection.projectId,
+    transport: createCliProjectSessionTransport({
+      connection,
+      executeServerOperation,
+      getPermissions,
+      issueReportRuntime,
+    }),
+    storage:
+      storage ??
+      createCliProjectSessionStorage(
+        getCliProjectSessionFile(projectRoot, sessionProjectId)
+      ),
+    compatibilityVersion,
+    runtimeContext: {
+      createId: randomUUID,
+      projectId: connection.projectId,
+      contentBlockApplication: createContentBlockApplication({
+        projectId: connection.projectId,
+        session: contentSession,
+        metas: componentMetas,
+      }),
+    },
+  });
+  return projectSession;
+};
+
+export type CliProjectSession = ReturnType<typeof createCliProjectSession>;
+
+export type CliProjectSessionSnapshot = {
+  projectId: string;
+  buildId: string;
+  version: number;
+  freshness: BuilderStateFreshness;
+};
+
+export const loadCliProjectSessionAssetIndex = async (
+  snapshot: ProjectSessionSnapshot,
+  connection: ApiConnection,
+  assetsDirectory = LOCAL_ASSETS_DIR
+) => {
+  if (connection.projectId !== snapshot.projectId) {
+    throw new Error("CLI connection does not match the project session");
+  }
+  const plan = createReachableAssetContentCompilationPlan({
+    props: snapshot.state.props?.values() ?? [],
+    dataSources: snapshot.state.dataSources?.values() ?? [],
+    resources: snapshot.state.resources?.values() ?? [],
+  });
+  if (plan === undefined) {
+    return;
+  }
+  const assets = Array.from(snapshot.state.assets?.values() ?? []);
+  try {
+    await downloadAssetFiles({
+      assets,
+      assetsDirectory,
+      origin: connection.origin,
+    });
+  } catch (error) {
+    throw Object.assign(
+      new Error(
+        "Could not download assets required for preview. Restore network and project asset access, then retry preview.start.",
+        { cause: error }
+      ),
+      { code: "PREVIEW_ASSET_DOWNLOAD_FAILED" }
+    );
+  }
+  const { artifact } = await compileContentSource({
+    source: createFileSystemContentSource({
+      projectId: snapshot.projectId,
+      assets,
+      folders: snapshot.state.assetFolders ?? new Map(),
+      assetsDirectory,
+    }),
+    projectId: snapshot.projectId,
+    plan,
+    maxBytes: parseContentDatabaseMaxBytes(
+      process.env.CONTENT_DATABASE_MAX_BYTES
+    ),
+  });
+  return artifact;
+};
+
+export const createLocalProjectBundleFromSessionSnapshot = (
+  snapshot: ProjectSessionSnapshot,
+  options: {
+    origin?: string;
+    assetIndex?: PublishedProjectBundle["assetIndex"];
+  } = {}
+): PublishedProjectBundle => {
+  const missing = getMissingBuilderStateNamespaces(
+    snapshot.state,
+    webstudioDataNamespaces
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `Project session is missing preview data: ${missing.join(", ")}`
+    );
+  }
+  const pages = snapshot.state.pages;
+  if (pages === undefined) {
+    throw new Error("Project session pages namespace is missing.");
+  }
+  const projectSettings = snapshot.state.projectSettings;
+  const persistedPages = removeLegacyProjectSettingsFromPages(
+    structuredClone(pages)
+  );
+  const serializedPages = serializePages(persistedPages);
+  const { pages: _pages, ...serializedBuildState } =
+    createSerializedBuilderBuildDataFromState(snapshot.state);
+  const homePage = getHomePage(persistedPages);
+  return {
+    bundleVersion,
+    origin: options.origin,
+    projectDomain: "local-preview",
+    projectTitle:
+      projectSettings?.meta.siteName ??
+      persistedPages.meta?.siteName ??
+      "Webstudio Preview",
+    page: homePage,
+    pages: Array.from(persistedPages.pages.values()),
+    assets: Array.from(snapshot.state.assets?.values() ?? []),
+    assetFolders: Array.from(snapshot.state.assetFolders?.values() ?? []),
+    assetIndex: options.assetIndex,
+    build: {
+      id: snapshot.buildId,
+      projectId: snapshot.projectId,
+      version: snapshot.version,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...serializedBuildState,
+      pages: serializedPages,
+    },
+  };
+};
+
+export const writeCliProjectSessionDataFile = async (
+  snapshot: ProjectSessionSnapshot,
+  path = join(cwd(), LOCAL_DATA_FILE),
+  options: {
+    origin?: string;
+    assetIndex?: PublishedProjectBundle["assetIndex"];
+  } = {}
+) => {
+  const data = createLocalProjectBundleFromSessionSnapshot(snapshot, options);
+  await writeFileAtomic(path, `${JSON.stringify(data, undefined, 2)}\n`);
+};
+
+export const writeCliProjectSessionPreviewDataFile = async ({
+  session,
+  connection,
+  path,
+  assetsDirectory = LOCAL_ASSETS_DIR,
+}: {
+  session: Pick<CliProjectSession, "ensureNamespaces">;
+  connection: ApiConnection;
+  path?: string;
+  assetsDirectory?: string;
+}) => {
+  const snapshot = await session.ensureNamespaces(builderNamespaces);
+  const assetIndex = await loadCliProjectSessionAssetIndex(
+    snapshot,
+    connection,
+    assetsDirectory
+  );
+  await writeCliProjectSessionDataFile(snapshot, path, {
+    origin: connection.origin,
+    assetIndex,
+  });
+};

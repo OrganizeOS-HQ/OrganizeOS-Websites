@@ -13,10 +13,8 @@ import {
   descendantComponent,
   elementComponent,
   getAllPages,
-  lintExpression,
   ROOT_INSTANCE_ID,
   tags,
-  transpileExpression,
   type DataSource,
   type Instance,
   type Page,
@@ -24,6 +22,7 @@ import {
   type Prop,
   type Resource,
 } from "@webstudio-is/sdk";
+import { lintExpression, transpileExpression } from "@webstudio-is/expression";
 import { checkAction } from "./code-check";
 
 /**

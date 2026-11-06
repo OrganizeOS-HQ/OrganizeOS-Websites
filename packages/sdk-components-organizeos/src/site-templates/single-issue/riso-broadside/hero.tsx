@@ -1,4 +1,5 @@
-import { $, css, ws, type TemplateStyleDecl } from "@webstudio-is/template";
+import { css, ws, type TemplateStyleDecl } from "@webstudio-is/template";
+import { $ } from "../../../shared/proxy";
 import { BREAKPOINT, SPACE, keyed, section, text } from "../../kit";
 import type { PageContext } from "../../types";
 import { invertedButton } from "./parts";

@@ -11,11 +11,11 @@
  * - Local source can only be disabled, nothing else should be possible
  */
 
-import { nanoid } from "nanoid";
 import { useFocusWithin } from "@react-aria/interactions";
 import { useStore } from "@nanostores/react";
 import {
   Box,
+  cssVar,
   ComboboxListbox,
   ComboboxListboxItem,
   ComboboxRoot,
@@ -72,17 +72,17 @@ const TextFieldContainer = styled("div", {
   display: "flex",
   flexWrap: "wrap",
   alignItems: "center",
-  backgroundColor: theme.colors.backgroundControls,
+  backgroundColor: cssVar("--background-secondary"),
   gap: theme.spacing[2],
   padding: theme.spacing[2],
   borderRadius: theme.borderRadius[4],
   minWidth: 0,
   border: `1px solid transparent`,
   "&:hover": {
-    borderColor: theme.colors.borderMain,
+    borderColor: cssVar("--border-default"),
   },
   "&:focus-within": {
-    borderColor: theme.colors.borderFocus,
+    borderColor: cssVar("--border-focus"),
   },
 });
 
@@ -253,7 +253,7 @@ const TextFieldBase: ForwardRefRenderFunction<
         onClick={onClick}
         inputRef={mergeRefs(internalInputRef, inputRef)}
         spellCheck={false}
-        aria-label="New Style Source Input"
+        aria-label="New style source input"
       />
       {value.map((item) => (
         <StyleSourceControlWithMenu
@@ -314,7 +314,7 @@ type StyleSourceInputProps<Item extends IntermediateItem> = {
   onDuplicateItem?: (id: Item["id"]) => void;
   onToggleLockItem?: (id: Item["id"], locked: boolean) => void;
   onConvertToToken?: (id: Item["id"]) => void;
-  onCreateItem?: (id: Item["id"], label: string) => void;
+  onCreateItem?: (label: string) => void;
   onChangeItem?: (item: Item) => void;
   onSelectItem?: (item: ItemSelector) => void;
   onEditItem?: (id?: Item["id"]) => void;
@@ -402,7 +402,7 @@ export const StyleSourceInput = (
     onItemSelect(item) {
       setLabel("");
       if (item.id === newItemId) {
-        props.onCreateItem?.(nanoid(), item.label);
+        props.onCreateItem?.(item.label);
       } else {
         props.onSelectAutocompleteItem?.(item);
       }

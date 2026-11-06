@@ -5,6 +5,7 @@
 
 import { atom } from "nanostores";
 import type {
+  AssetFolders,
   Assets,
   Breakpoints,
   DataSources,
@@ -17,7 +18,10 @@ import type {
   StyleSourceSelections,
 } from "@webstudio-is/sdk";
 import type { Project } from "@webstudio-is/project";
-import type { MarketplaceProduct } from "@webstudio-is/project-build";
+import type {
+  MarketplaceProduct,
+  ProjectSettings,
+} from "@webstudio-is/project-build";
 import { publisherHost } from "~/shared/branding";
 
 export const $project = atom<Project | undefined>();
@@ -25,6 +29,7 @@ export const $project = atom<Project | undefined>();
 export const $pages = atom<undefined | Pages>(undefined);
 
 export const $assets = atom<Assets>(new Map());
+export const $assetFolders = atom<AssetFolders>(new Map());
 
 export const $instances = atom<Instances>(new Map());
 
@@ -59,7 +64,25 @@ export const $styles = atom<Styles>(new Map());
 
 export const $marketplaceProduct = atom<undefined | MarketplaceProduct>();
 
+export const $projectSettings = atom<undefined | ProjectSettings>();
+
 export const $publisherHost = atom<string>(publisherHost);
+
+export const readBuilderStateStores = () => ({
+  pages: $pages.get(),
+  assets: $assets.get(),
+  assetFolders: $assetFolders.get(),
+  instances: $instances.get(),
+  props: $props.get(),
+  dataSources: $dataSources.get(),
+  resources: $resources.get(),
+  breakpoints: $breakpoints.get(),
+  styleSources: $styleSources.get(),
+  styleSourceSelections: $styleSourceSelections.get(),
+  styles: $styles.get(),
+  marketplaceProduct: $marketplaceProduct.get(),
+  projectSettings: $projectSettings.get(),
+});
 
 /**
  * Get initial values for all data stores.
@@ -69,6 +92,7 @@ const getInitialDataStoreValues = () => ({
   project: undefined,
   pages: undefined,
   assets: new Map(),
+  assetFolders: new Map(),
   instances: new Map(),
   props: new Map(),
   dataSources: new Map(),
@@ -78,6 +102,7 @@ const getInitialDataStoreValues = () => ({
   styleSourceSelections: new Map(),
   styles: new Map(),
   marketplaceProduct: undefined,
+  projectSettings: undefined,
   publisherHost,
 });
 
@@ -90,6 +115,7 @@ export const resetDataStores = () => {
   $project.set(initial.project);
   $pages.set(initial.pages);
   $assets.set(initial.assets);
+  $assetFolders.set(initial.assetFolders);
   $instances.set(initial.instances);
   $props.set(initial.props);
   $dataSources.set(initial.dataSources);
@@ -99,5 +125,6 @@ export const resetDataStores = () => {
   $styleSourceSelections.set(initial.styleSourceSelections);
   $styles.set(initial.styles);
   $marketplaceProduct.set(initial.marketplaceProduct);
+  $projectSettings.set(initial.projectSettings);
   $publisherHost.set(initial.publisherHost);
 };

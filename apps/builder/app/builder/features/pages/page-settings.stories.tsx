@@ -2,6 +2,7 @@ import { $pages } from "~/shared/sync/data-stores";
 import { PageSettings as PageSettingsComponent } from "./page-settings/page-settings";
 import {
   Grid,
+  cssVar,
   theme,
   Dialog,
   DialogContent,
@@ -13,12 +14,6 @@ import { createDefaultPages } from "@webstudio-is/project-build";
 export default {
   title: "Pages/Page Settings",
   component: PageSettingsComponent,
-  parameters: {
-    lostpixel: {
-      // this is to fix cutting off the after scroll area in the screenshot
-      waitBeforeScreenshot: 3000,
-    },
-  },
 };
 
 $assets.set(
@@ -82,6 +77,7 @@ $project.set({
     name: "very-very-very-long-long-image-name.jpg",
     filename: null,
     description: null,
+    folderId: null,
   },
   latestBuildVirtual: null,
   domainsVirtual: [],
@@ -96,9 +92,9 @@ export const PageSettings = () => {
             css={{
               width: theme.spacing[35],
               margin: "auto",
-              border: `1px solid ${theme.colors.borderMain}`,
+              border: `1px solid ${cssVar("--border-default")}`,
               boxShadow: theme.shadows.menuDropShadow,
-              background: theme.colors.backgroundPanel,
+              background: cssVar("--background-primary"),
               borderRadius: theme.borderRadius[4],
             }}
           >

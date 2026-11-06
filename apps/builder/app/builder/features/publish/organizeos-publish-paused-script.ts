@@ -1,8 +1,12 @@
 import {
+  blockComponent,
   blockTemplateComponent,
   collectionComponent,
   getAllPages,
+  getStaticContentBlockSourceAssetId,
+  parseContentBlockSourceProp,
   ROOT_INSTANCE_ID,
+  type Assets,
   type DataSources,
   type Instance,
   type Instances,
@@ -14,6 +18,7 @@ import {
 import * as baseComponentMetas from "@webstudio-is/sdk-components-react/metas";
 import * as radixComponentMetas from "@webstudio-is/sdk-components-react-radix/metas";
 import * as organizeosComponentMetas from "@organizeos/site-components/metas";
+import type { ProjectSettings } from "@webstudio-is/project-build";
 import {
   actionContextOf,
   checksInstanceTag,
@@ -38,15 +43,16 @@ import {
   xmlComponents,
 } from "@organizeos/site-components/org-script";
 import { platformName } from "~/shared/branding";
-import { findPageAndSelectorByInstanceId } from "~/shared/instance-utils/lookup";
+import { findPageAndSelectorByInstanceId } from "@webstudio-is/project-build/runtime";
 
 /**
  * What the Publish dialog lists as paused (docs/ORGANIZEOS-FORK.md section 10).
  * It mirrors what publishing drops (packages/cli/src/organizeos-org-script.ts)
  * for the things a designer put there on purpose: HTML Embeds that are not a
- * template icon, Markdown Embeds, the SVG elements that can set a link to a
- * javascript: URL, props that write raw markup into an element, and the site's
- * custom code. Elements with a tag the builder does not offer are listed too:
+ * template icon, Markdown Embeds, JSON-LD (owner decision D13), the SVG elements
+ * that can set a link to a javascript: URL, props that write raw markup into an
+ * element, and the site's custom code, from the project's settings and from the
+ * pages' meta alike. Elements with a tag the builder does not offer are listed too:
  * publishing drops each of them with everything inside it, the props panel can
  * add a `tag` or `data-ws-tag` prop to any component, and the canvas only skips
  * that prop, so the element looks fine there. So are the unsafe values
@@ -187,6 +193,7 @@ const hasBlockedTag = (instance: Instance, props: Prop[]) =>
 
 export const findPausedScript = ({
   pages,
+  projectSettings,
   instances,
   props,
   dataSources,
@@ -195,6 +202,8 @@ export const findPausedScript = ({
   mayRun = orgScriptMayRun(),
 }: {
   pages: undefined | Pages;
+  /** Where 0.309.0 keeps the custom code; a loaded build has no pages meta */
+  projectSettings?: ProjectSettings;
   instances: Instances;
   props: Props;
   /** The build's, which an action's rule reads */
@@ -279,6 +288,9 @@ export const findPausedScript = ({
     if (instance.component === "MarkdownEmbed") {
       return "Markdown Embed";
     }
+    if (instance.component === "JsonLd") {
+      return "JSON-LD";
+    }
     if (hasBlockedTag(instance, instanceProps)) {
       return "Element with an unsupported tag";
     }
@@ -330,7 +342,7 @@ export const findPausedScript = ({
     }
   }
   const gone = (id: Instance["id"]) => removed.has(id) || emptiedRoots.has(id);
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     for (const id of removed) {
       if (
@@ -351,14 +363,11 @@ export const findPausedScript = ({
       instances,
       page.rootInstanceId
     )) {
-      if (seen.has(instanceId)) {
+      const instance = instances.get(instanceId);
+      if (seen.has(instanceId) || instance === undefined) {
         continue;
       }
       seen.add(instanceId);
-      const instance = instances.get(instanceId);
-      if (instance === undefined) {
-        continue;
-      }
       const label = labels.get(instanceId);
       const listed = label === undefined ? [] : [label];
       // an instance that publishing removes takes its props and its data
@@ -417,11 +426,105 @@ export const findPausedScript = ({
     }
   }
 
-  if ((pages.meta?.code ?? "").trim() !== "") {
+  if (
+    (pages.meta?.code ?? "").trim() !== "" ||
+    (projectSettings?.meta.code ?? "").trim() !== ""
+  ) {
     items.push({
       label: "Custom code (Project settings)",
       view: "projectSettings",
     });
+  }
+  return items;
+};
+
+const markdownFormats = new Set(["md", "mdx"]);
+
+/** The project's Markdown and MDX files: by format, or by the name's extension. */
+const findMarkdownAssetIds = (assets: Assets) => {
+  const ids = new Set<string>();
+  for (const asset of assets.values()) {
+    const extension = asset.name.match(/\.([^.]+)$/)?.[1] ?? "";
+    if (
+      markdownFormats.has(asset.format.toLowerCase()) ||
+      markdownFormats.has(extension.toLowerCase())
+    ) {
+      ids.add(asset.id);
+    }
+  }
+  return ids;
+};
+
+/**
+ * The Content Blocks that make publishing refuse the build while org script is
+ * paused (owner decision D7): `refuseMdxWhilePaused` in
+ * packages/cli/src/organizeos-org-script.ts, by the same rule. A block's `src`
+ * counts when it names a Markdown or MDX asset, and any other source (an
+ * expression that could select one) counts when the project holds one. Every
+ * block counts, on a draft page or on none, as publishing reads the whole
+ * build. Publishing also reads its content index, which the builder does not
+ * load, so this list can miss a block that publishing refuses; never the other
+ * way round.
+ */
+export const findMdxBlocks = ({
+  pages,
+  instances,
+  props,
+  assets,
+  mayRun = orgScriptMayRun(),
+}: {
+  pages: undefined | Pages;
+  instances: Instances;
+  props: Props;
+  assets: Assets;
+  mayRun?: boolean;
+}): PausedScriptItem[] => {
+  if (mayRun || pages === undefined) {
+    return [];
+  }
+  const markdownIds = findMarkdownAssetIds(assets);
+  if (markdownIds.size === 0) {
+    return [];
+  }
+  const boundIds = new Set<Instance["id"]>();
+  for (const prop of props.values()) {
+    if (instances.get(prop.instanceId)?.component !== blockComponent) {
+      continue;
+    }
+    const source = parseContentBlockSourceProp(prop);
+    if (source === undefined) {
+      continue;
+    }
+    const assetId = getStaticContentBlockSourceAssetId(source);
+    if (assetId === undefined || assetId === "" || markdownIds.has(assetId)) {
+      boundIds.add(prop.instanceId);
+    }
+  }
+  const owners = [
+    ...getAllPages(pages),
+    ...(pages.pageTemplates?.values() ?? []),
+  ];
+  const items: PausedScriptItem[] = [];
+  for (const instance of instances.values()) {
+    if (boundIds.has(instance.id) === false) {
+      continue;
+    }
+    const { instanceSelector } = findPageAndSelectorByInstanceId(
+      pages,
+      instances,
+      instance.id
+    );
+    const owner = owners.find(
+      (page) => page.rootInstanceId === instanceSelector.at(-1)
+    );
+    items.push(
+      owner === undefined
+        ? { label: "Content Block" }
+        : {
+            label: `Content Block on ${owner.name}`,
+            navigate: { pageId: owner.id, instanceSelector },
+          }
+    );
   }
   return items;
 };

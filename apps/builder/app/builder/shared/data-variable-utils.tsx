@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { atom } from "nanostores";
 import { useStore } from "@nanostores/react";
-import { toast } from "@webstudio-is/design-system";
+import { PanelContent, toast } from "@webstudio-is/design-system";
 import {
   Dialog,
   DialogActions,
@@ -13,9 +13,9 @@ import {
   Button,
   theme,
   InputField,
+  cssVar,
 } from "@webstudio-is/design-system";
 import type { DataSource, Instance } from "@webstudio-is/sdk";
-import { ROOT_INSTANCE_ID } from "@webstudio-is/sdk";
 import { $pages } from "~/shared/sync/data-stores";
 import {
   $instances,
@@ -23,8 +23,12 @@ import {
   $dataSources,
   $resources,
 } from "~/shared/sync/data-stores";
-import { serverSyncStore } from "~/shared/sync/sync-stores";
-import { findVariableUsagesByInstance } from "~/shared/data-variables";
+import {
+  findUnusedDataVariableIds,
+  validateDataVariableNameWithSources,
+} from "@webstudio-is/project-build/runtime";
+import { type DataVariableNameError } from "@webstudio-is/project-build/runtime";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 
 const $isDeleteUnusedDataVariablesDialogOpen = atom(false);
 
@@ -32,21 +36,7 @@ export const openDeleteUnusedDataVariablesDialog = () => {
   $isDeleteUnusedDataVariablesDialogOpen.set(true);
 };
 
-export type DataVariableError = {
-  type: "required" | "duplicate";
-  message: string;
-};
-
-const getUsedVariablesInInstances = () => {
-  return findVariableUsagesByInstance({
-    startingInstanceId: ROOT_INSTANCE_ID,
-    pages: $pages.get(),
-    instances: $instances.get(),
-    props: $props.get(),
-    dataSources: $dataSources.get(),
-    resources: $resources.get(),
-  });
-};
+export type DataVariableError = DataVariableNameError;
 
 type DeleteDataVariableDialogProps = {
   variable?: { id: DataSource["id"]; name: string; usages: number };
@@ -75,14 +65,14 @@ export const DeleteDataVariableDialog = ({
         }}
       >
         <DialogTitle>Delete confirmation</DialogTitle>
-        <Flex gap="3" direction="column" css={{ padding: theme.panel.padding }}>
+        <PanelContent as={Flex} gap="3" direction="column">
           <Text>
             {variable &&
               (variable.usages > 0
                 ? `Delete "${variable.name}" variable from the project? It is used in ${variable.usages} ${variable.usages === 1 ? "expression" : "expressions"}.`
                 : `Delete "${variable.name}" variable from the project?`)}
           </Text>
-        </Flex>
+        </PanelContent>
         <DialogActions>
           <Button
             autoFocus
@@ -104,38 +94,20 @@ export const DeleteDataVariableDialog = ({
 };
 
 export const deleteUnusedDataVariables = () => {
-  const dataSources = $dataSources.get();
-  const usedVariablesInInstances = getUsedVariablesInInstances();
-  const unusedVariableIds: DataSource["id"][] = [];
+  const result = executeRuntimeMutation({
+    id: "variables.deleteUnused",
+    input: {},
+  });
+  return result?.result.deletedCount ?? 0;
+};
 
-  for (const dataSource of dataSources.values()) {
-    if (dataSource.type === "variable") {
-      const usages = usedVariablesInInstances.get(dataSource.id);
-      if (usages === undefined || usages.size === 0) {
-        unusedVariableIds.push(dataSource.id);
-      }
-    }
-  }
-
-  if (unusedVariableIds.length === 0) {
-    return 0;
-  }
-
-  serverSyncStore.createTransaction(
-    [$dataSources, $resources],
-    (dataSources, resources) => {
-      for (const variableId of unusedVariableIds) {
-        const dataSource = dataSources.get(variableId);
-        // Cleanup resource when variable is deleted
-        if (dataSource?.type === "resource") {
-          resources.delete(dataSource.resourceId);
-        }
-        dataSources.delete(variableId);
-      }
-    }
-  );
-
-  return unusedVariableIds.length;
+export const deleteDataVariable = (variableId: DataSource["id"]) => {
+  executeRuntimeMutation({
+    id: "variables.delete",
+    input: {
+      dataSourceId: variableId,
+    },
+  });
 };
 
 export const validateDataVariableName = (
@@ -143,34 +115,16 @@ export const validateDataVariableName = (
   variableId?: DataSource["id"],
   scopeInstanceId?: Instance["id"]
 ): DataVariableError | undefined => {
-  if (name.trim().length === 0) {
-    return {
-      type: "required",
-      message: "Variable name is required",
-    };
-  }
-
   const dataSources = $dataSources.get();
   const currentVariable = variableId ? dataSources.get(variableId) : undefined;
   const actualScopeInstanceId =
-    scopeInstanceId ??
-    (currentVariable?.type === "variable"
-      ? currentVariable.scopeInstanceId
-      : undefined);
-
-  for (const dataSource of dataSources.values()) {
-    if (
-      dataSource.type === "variable" &&
-      dataSource.scopeInstanceId === actualScopeInstanceId &&
-      dataSource.name === name &&
-      dataSource.id !== variableId
-    ) {
-      return {
-        type: "duplicate",
-        message: "Name is already used by another variable on this instance",
-      };
-    }
-  }
+    scopeInstanceId ?? currentVariable?.scopeInstanceId;
+  return validateDataVariableNameWithSources({
+    dataSources: dataSources.values(),
+    name,
+    variableId,
+    scopeInstanceId: actualScopeInstanceId,
+  });
 };
 
 export const renameDataVariable = (
@@ -182,11 +136,14 @@ export const renameDataVariable = (
     return validationError;
   }
 
-  serverSyncStore.createTransaction([$dataSources], (dataSources) => {
-    const dataSource = dataSources.get(id);
-    if (dataSource?.type === "variable") {
-      dataSource.name = name;
-    }
+  executeRuntimeMutation({
+    id: "variables.update",
+    input: {
+      dataSourceId: id,
+      values: {
+        name,
+      },
+    },
   });
 };
 
@@ -241,7 +198,7 @@ export const RenameDataVariableDialog = ({
         }}
       >
         <DialogTitle>Rename variable</DialogTitle>
-        <Flex gap="3" direction="column" css={{ padding: theme.panel.padding }}>
+        <PanelContent as={Flex} gap="3" direction="column">
           <Flex direction="column" gap="1">
             <InputField
               value={name}
@@ -257,7 +214,7 @@ export const RenameDataVariableDialog = ({
               </Text>
             )}
           </Flex>
-        </Flex>
+        </PanelContent>
         <DialogActions>
           <Button color="primary" onClick={handleConfirm}>
             Rename
@@ -281,13 +238,16 @@ export const DeleteUnusedDataVariablesDialog = () => {
 
   const unusedVariables: Array<{ id: string; name: string }> = [];
   if (open) {
-    const usedVariablesInInstances = getUsedVariablesInInstances();
-    for (const dataSource of dataSources.values()) {
-      if (dataSource.type === "variable") {
-        const usages = usedVariablesInInstances.get(dataSource.id);
-        if (usages === undefined || usages.size === 0) {
-          unusedVariables.push({ id: dataSource.id, name: dataSource.name });
-        }
+    for (const dataSourceId of findUnusedDataVariableIds({
+      pages: $pages.get(),
+      instances: $instances.get(),
+      props: $props.get(),
+      dataSources,
+      resources: $resources.get(),
+    })) {
+      const dataSource = dataSources.get(dataSourceId);
+      if (dataSource?.type === "variable") {
+        unusedVariables.push({ id: dataSource.id, name: dataSource.name });
       }
     }
   }
@@ -306,14 +266,14 @@ export const DeleteUnusedDataVariablesDialog = () => {
           event.stopPropagation();
         }}
       >
-        <DialogTitle>Delete unused data variables</DialogTitle>
-        <Flex gap="3" direction="column" css={{ padding: theme.panel.padding }}>
+        <DialogTitle>Delete unused variables</DialogTitle>
+        <PanelContent as={Flex} gap="3" direction="column">
           {unusedVariables.length === 0 ? (
-            <Text>There are no unused data variables to delete.</Text>
+            <Text>There are no unused variables to delete.</Text>
           ) : (
             <>
               <Text>
-                Delete {unusedVariables.length} unused data{" "}
+                Delete {unusedVariables.length} unused{" "}
                 {unusedVariables.length === 1 ? "variable" : "variables"} from
                 the project?
               </Text>
@@ -322,7 +282,7 @@ export const DeleteUnusedDataVariablesDialog = () => {
                 css={{
                   maxHeight: 200,
                   overflowY: "auto",
-                  backgroundColor: theme.colors.backgroundPanel,
+                  backgroundColor: cssVar("--background-primary"),
                   borderRadius: theme.borderRadius[4],
                   wordBreak: "break-word",
                 }}
@@ -331,7 +291,7 @@ export const DeleteUnusedDataVariablesDialog = () => {
               </Text>
             </>
           )}
-        </Flex>
+        </PanelContent>
         <DialogActions>
           {unusedVariables.length > 0 && (
             <Button
@@ -341,10 +301,10 @@ export const DeleteUnusedDataVariablesDialog = () => {
                 const deletedCount = deleteUnusedDataVariables();
                 handleClose();
                 if (deletedCount === 0) {
-                  toast.info("No unused data variables to delete");
+                  toast.info("No unused variables to delete");
                 } else {
                   toast.success(
-                    `Deleted ${deletedCount} unused data ${deletedCount === 1 ? "variable" : "variables"}`
+                    `Deleted ${deletedCount} unused ${deletedCount === 1 ? "variable" : "variables"}`
                   );
                 }
               }}

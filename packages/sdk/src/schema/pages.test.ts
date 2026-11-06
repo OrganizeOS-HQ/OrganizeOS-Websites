@@ -5,8 +5,10 @@ import {
   pageAuth,
   pagePath,
   pages,
+  projectMeta,
   projectNewRedirectPath,
 } from "./pages";
+import type { Page } from "./pages";
 
 const validPages = {
   homePageId: "home",
@@ -71,7 +73,7 @@ test("validates home page path is empty", () => {
   expect(
     pages.safeParse({
       ...validPages,
-      pages: new Map(validPages.pages).set("home", {
+      pages: new Map<string, Page>(validPages.pages).set("home", {
         ...validPages.pages.get("home")!,
         path: "/home",
       }),
@@ -80,6 +82,49 @@ test("validates home page path is empty", () => {
     expect.objectContaining({
       path: ["pages", "home", "path"],
       message: "Home page path must be empty",
+    }),
+  ]);
+});
+
+test("validates home page is not draft", () => {
+  expect(
+    pages.safeParse({
+      ...validPages,
+      pages: new Map<string, Page>(validPages.pages).set("home", {
+        ...validPages.pages.get("home")!,
+        isDraft: true,
+      }),
+    }).error?.issues
+  ).toEqual([
+    expect.objectContaining({
+      path: ["pages", "home", "isDraft"],
+      message: "Home page can't be draft",
+    }),
+  ]);
+});
+
+test("validates catch-all 404 page is not draft", () => {
+  expect(
+    pages.safeParse({
+      ...validPages,
+      pages: new Map<string, Page>(validPages.pages).set("not-found", {
+        id: "not-found",
+        name: "404",
+        path: "/*",
+        title: `"Page not found"`,
+        meta: { status: "404" },
+        rootInstanceId: "notFoundRoot",
+        isDraft: true,
+      }),
+      folders: new Map(validPages.folders).set("root", {
+        ...validPages.folders.get("root")!,
+        children: ["home", "not-found"],
+      }),
+    }).error?.issues
+  ).toEqual([
+    expect.objectContaining({
+      path: ["pages", "not-found", "isDraft"],
+      message: "Catch-all 404 page can't be draft",
     }),
   ]);
 });
@@ -109,6 +154,40 @@ test("validates non-home page path is not empty", () => {
   ]);
 });
 
+test("allows an empty local path for a folder index page", () => {
+  expect(
+    pages.safeParse({
+      ...validPages,
+      pages: new Map(validPages.pages).set("folder-index", {
+        id: "folder-index",
+        name: "Folder index",
+        path: "",
+        title: `"Folder index"`,
+        meta: {},
+        rootInstanceId: "folderIndexRoot",
+      }),
+      folders: new Map([
+        [
+          "root",
+          {
+            ...validPages.folders.get("root")!,
+            children: ["home", "folder"],
+          },
+        ],
+        [
+          "folder",
+          {
+            id: "folder",
+            name: "Folder",
+            slug: "folder",
+            children: ["folder-index"],
+          },
+        ],
+      ]),
+    }).success
+  ).toBe(true);
+});
+
 test("supports text document type", () => {
   expect(documentTypes).toContain("text");
   expect(
@@ -128,6 +207,17 @@ test("supports text document type", () => {
       }),
     }).success
   ).toBe(true);
+});
+
+test("supports project agent instructions", () => {
+  expect(
+    projectMeta.parse({
+      agentInstructions:
+        "Use the existing design tokens and keep copy concise.",
+    })
+  ).toEqual({
+    agentInstructions: "Use the existing design tokens and keep copy concise.",
+  });
 });
 
 test("validates page id matches its record key", () => {

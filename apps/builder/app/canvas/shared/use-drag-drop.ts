@@ -1,5 +1,9 @@
-import { insertWebstudioElementAt } from "~/shared/instance-utils/insert";
-import { insertWebstudioFragmentAt } from "~/shared/instance-utils/insert";
+import {
+  getComponentTemplateData,
+  getImageAssetFragment,
+  insertImageAssetAt,
+  insertWebstudioComponentAt,
+} from "~/shared/instance-utils/insert";
 import { reparentInstance } from "~/shared/instance-utils/mutation";
 import { useLayoutEffect, useRef } from "react";
 import { elementComponent, type Instance } from "@webstudio-is/sdk";
@@ -18,7 +22,6 @@ import {
 } from "~/shared/nano-states";
 import { $instances, $props } from "~/shared/sync/data-stores";
 import { publish, useSubscribe } from "~/shared/pubsub";
-import { getComponentTemplateData } from "~/shared/instance-utils/insert";
 import {
   getElementByInstanceSelector,
   getInstanceIdFromElement,
@@ -27,13 +30,10 @@ import {
 import {
   type InstanceSelector,
   areInstanceSelectorsEqual,
-} from "~/shared/instance-utils/tree";
-import { findClosestInstanceMatchingFragment } from "~/shared/matcher";
-import {
-  findClosestContainer,
+  findClosestDroppableInstanceSelector,
   findClosestRichText,
-  isTreeSatisfyingContentModel,
-} from "~/shared/content-model";
+} from "@webstudio-is/project-build/runtime";
+// OrganizeOS fork: a dropped OrganizeOS block (fork doc section 7)
 import {
   insertOrganizeosBlock,
   isOrganizeosBlock,
@@ -53,6 +53,7 @@ type Origin = "canvas" | "panel";
 
 export type DragStartPayload =
   | { origin: Origin; type: "insert"; dragComponent: Instance["component"] }
+  | { origin: Origin; type: "insertImageAsset"; assetId: string }
   | {
       origin: Origin;
       type: "reparent";
@@ -65,7 +66,33 @@ export type DragEndPayload = {
 
 export type DragMovePayload = { canvasCoordinates: Point };
 
-const findClosestDroppableInstanceSelector = (
+const getRuntimeDragPayload = (dragPayload: DragStartPayload) => {
+  if (dragPayload.type === "reparent") {
+    return {
+      type: "reparent" as const,
+      instanceSelector: dragPayload.dragInstanceSelector,
+    };
+  }
+
+  if (dragPayload.type === "insertImageAsset") {
+    return {
+      type: "insert" as const,
+      component: "Image",
+      fragment: getImageAssetFragment(dragPayload.assetId),
+    };
+  }
+
+  return {
+    type: "insert" as const,
+    component: dragPayload.dragComponent,
+    fragment:
+      dragPayload.dragComponent === elementComponent
+        ? undefined
+        : getComponentTemplateData(dragPayload.dragComponent),
+  };
+};
+
+const findClosestCanvasDroppableInstanceSelector = (
   instanceSelector: InstanceSelector,
   dragPayload: DragStartPayload
 ) => {
@@ -74,52 +101,14 @@ const findClosestDroppableInstanceSelector = (
   const metas = $registeredComponentMetas.get();
   const { htmlTagsByInstanceId } = $propsIndex.get();
 
-  // prevent dropping anything into non containers like image
-  instanceSelector = findClosestContainer({
-    metas,
-    props,
-    instances,
+  return findClosestDroppableInstanceSelector({
     instanceSelector,
+    instances,
+    props,
+    metas,
     htmlTagsByInstanceId,
+    dragPayload: getRuntimeDragPayload(dragPayload),
   });
-  let droppableIndex = -1;
-  if (dragPayload?.type === "insert") {
-    // allow dropping element into any container
-    if (dragPayload.dragComponent === elementComponent) {
-      droppableIndex = 0;
-    } else {
-      const fragment = getComponentTemplateData(dragPayload.dragComponent);
-      if (fragment) {
-        droppableIndex = findClosestInstanceMatchingFragment({
-          instances,
-          props,
-          metas,
-          instanceSelector,
-          fragment,
-        });
-      }
-    }
-  }
-  if (dragPayload?.type === "reparent") {
-    const dropInstanceSelector = [
-      dragPayload.dragInstanceSelector[0],
-      ...instanceSelector,
-    ];
-    const matches = isTreeSatisfyingContentModel({
-      instances,
-      props,
-      metas,
-      instanceSelector: dropInstanceSelector,
-      htmlTagsByInstanceId,
-    });
-    droppableIndex = matches ? 0 : -1;
-  }
-
-  if (droppableIndex === -1) {
-    return;
-  }
-  const droppableInstanceSelector = instanceSelector.slice(droppableIndex);
-  return droppableInstanceSelector;
 };
 
 const initialState: {
@@ -128,6 +117,41 @@ const initialState: {
 } = {
   dropTarget: undefined,
   dragPayload: undefined,
+};
+
+export const commitCanvasDragDrop = ({
+  dropTarget,
+  dragPayload,
+}: {
+  dropTarget: ItemDropTarget | undefined;
+  dragPayload: DragStartPayload | undefined;
+}) => {
+  if (dropTarget === undefined || dragPayload === undefined) {
+    return false;
+  }
+
+  const insertable = {
+    parentSelector: dropTarget.itemSelector,
+    position: dropTarget.indexWithinChildren,
+  };
+  if (dragPayload.type === "insert") {
+    // OrganizeOS fork: a block dropped from the Components panel's OrganizeOS
+    // section is bound to the project's data as it is inserted, as a clicked
+    // one is.
+    if (isOrganizeosBlock(dragPayload.dragComponent)) {
+      void insertOrganizeosBlock(dragPayload.dragComponent, insertable);
+      return true;
+    }
+    return insertWebstudioComponentAt(dragPayload.dragComponent, insertable);
+  }
+  if (dragPayload.type === "insertImageAsset") {
+    return insertImageAssetAt(dragPayload.assetId, insertable);
+  }
+  if (dragPayload.type === "reparent") {
+    reparentInstance(dragPayload.dragInstanceSelector, insertable);
+    return true;
+  }
+  return false;
 };
 
 const sharedDropOptions = {
@@ -179,10 +203,11 @@ export const useDragAndDrop = () => {
         }
       }
 
-      const droppableInstanceSelector = findClosestDroppableInstanceSelector(
-        newDropInstanceSelector,
-        dragPayload
-      );
+      const droppableInstanceSelector =
+        findClosestCanvasDroppableInstanceSelector(
+          newDropInstanceSelector,
+          dragPayload
+        );
       if (droppableInstanceSelector === undefined) {
         return;
       }
@@ -327,29 +352,8 @@ export const useDragAndDrop = () => {
     autoScrollHandlers.setEnabled(false);
     const { dropTarget, dragPayload } = state.current;
 
-    if (dropTarget && dragPayload && isCanceled === false) {
-      const insertable = {
-        parentSelector: dropTarget.itemSelector,
-        position: dropTarget.indexWithinChildren,
-      };
-      if (dragPayload.type === "insert") {
-        if (dragPayload.dragComponent === elementComponent) {
-          insertWebstudioElementAt(insertable);
-        } else if (isOrganizeosBlock(dragPayload.dragComponent)) {
-          // OrganizeOS fork: a block dropped from the Components panel's
-          // OrganizeOS section is bound to the project's data as it is
-          // inserted, as a clicked one is.
-          void insertOrganizeosBlock(dragPayload.dragComponent, insertable);
-        } else {
-          const fragment = getComponentTemplateData(dragPayload.dragComponent);
-          if (fragment) {
-            insertWebstudioFragmentAt(fragment, insertable);
-          }
-        }
-      }
-      if (dragPayload.type === "reparent") {
-        reparentInstance(dragPayload.dragInstanceSelector, insertable);
-      }
+    if (isCanceled === false) {
+      commitCanvasDragDrop({ dropTarget, dragPayload });
     }
 
     state.current = { ...initialState };

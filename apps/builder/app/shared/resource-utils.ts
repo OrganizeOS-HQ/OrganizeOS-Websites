@@ -1,5 +1,5 @@
 import hash from "@emotion/hash";
-import type { ResourceRequest } from "@webstudio-is/sdk";
+import { type ResourceRequest } from "@webstudio-is/sdk";
 
 export const getResourceKey = (resource: ResourceRequest) => {
   try {
@@ -12,6 +12,7 @@ export const getResourceKey = (resource: ResourceRequest) => {
         resource.searchParams,
         resource.headers,
         resource.body,
+        resource.bodyFormat,
       ])
     );
   } catch {

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { enableMapSet } from "immer";
 import type { Project } from "@webstudio-is/project";
@@ -18,7 +17,6 @@ import {
 } from "@webstudio-is/sdk";
 import { showAttribute } from "@webstudio-is/react-sdk";
 import {
-  $,
   PageValue,
   ResourceValue,
   css,
@@ -26,6 +24,7 @@ import {
   ws,
 } from "@webstudio-is/template";
 import {
+  $,
   type BlockKey,
   type CanonicalValues,
   type FontEntry,
@@ -35,7 +34,7 @@ import {
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
 import { spikeTemplate as spike } from "../../../../../../../packages/sdk-components-organizeos/src/site-templates/__fixtures__/spike";
-import { registerContainers } from "~/shared/sync/sync-stores";
+import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
 import {
   $assets,
   $breakpoints,
@@ -50,6 +49,7 @@ import {
   $styles,
 } from "~/shared/sync/data-stores";
 import { $selectedPageId } from "~/shared/nano-states/pages";
+import { $authPermit, $builderMode } from "~/shared/nano-states/misc";
 import {
   $selectedInstanceSelector,
   selectInstance,
@@ -64,8 +64,9 @@ import {
   UPCOMING_EVENTS_BINDING_NAME,
 } from "~/shared/organizeos-preset-ids";
 import { getOrganizeosPresetIds } from "../insert-organizeos-block";
+import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
 import { createProvisionedProject } from "./provisioned-project";
-import { THUMBNAIL } from "./preview/preview-arguments.mjs";
+import { THUMBNAIL } from "./preview/thumbnail.mjs";
 import {
   applySiteTemplate,
   applySiteTemplateMutable,
@@ -76,7 +77,22 @@ import {
 } from "./apply-site-template";
 
 const { uploadAssets } = vi.hoisted(() => ({ uploadAssets: vi.fn() }));
-vi.mock("~/builder/shared/assets/upload-assets", () => ({ uploadAssets }));
+// every name the builder's modules import from it (builder-api.ts imports
+// importAssets), so the suite links
+vi.mock("~/builder/shared/assets/upload-assets", () => ({
+  uploadAssets,
+  importAssets: vi.fn(),
+  uploadSingleAsset: vi.fn(),
+  waitForAssetUpload: vi.fn(),
+}));
+
+// The db half of project-build builds a tRPC router as it loads, which a
+// browser refuses; provisioning's signup page (signup-form-preset.server.tsx,
+// through provisioned-project.ts) imports only its two page helpers.
+vi.mock(
+  "@webstudio-is/project-build/server",
+  () => import("../../../../../../../packages/project-build/src/db/pages")
+);
 
 enableMapSet();
 registerContainers();
@@ -520,9 +536,36 @@ describe("the canonical variables", () => {
   });
 });
 
+// The resource bindings an apply wrote: the provisioned sign-up page's
+// ResourceForm brings one of its own, which the apply leaves alone.
+const addedResourceBindings = (
+  data: WebstudioData,
+  provisioned: ReadonlyMap<string, unknown>
+) =>
+  [...data.dataSources.values()].flatMap((dataSource) =>
+    dataSource.type === "resource" && provisioned.has(dataSource.id) === false
+      ? [dataSource]
+      : []
+  );
+
+// ... and every binding provisioning wrote is still there as it was, the
+// sign-up form's among them.
+const expectProvisionedBindingsKept = (
+  data: WebstudioData,
+  provisioned: WebstudioData["dataSources"]
+) => {
+  expect(
+    [...provisioned.values()].filter(({ type }) => type === "resource")
+  ).not.toEqual([]);
+  for (const [id, dataSource] of provisioned) {
+    expect(data.dataSources.get(id), id).toEqual(dataSource);
+  }
+};
+
 describe("applySiteTemplateMutable", () => {
   test("applies a two-page template", async () => {
     const data = await createProvisionedProject(provisioning);
+    const provisionedDataSources = structuredClone(data.dataSources);
     const homePageId = data.pages.homePageId;
     const oldBodyId = data.pages.pages.get(homePageId)!.rootInstanceId;
     data.pages.pages.get(homePageId)!.meta.language = JSON.stringify("en");
@@ -612,9 +655,8 @@ describe("applySiteTemplateMutable", () => {
     const eventList = childrenOf(data, home.rootInstanceId).find(
       (instance) => instance.label === "Event List"
     )!;
-    const bindings = [...data.dataSources.values()].filter(
-      (dataSource) => dataSource.type === "resource"
-    );
+    const bindings = addedResourceBindings(data, provisionedDataSources);
+    expectProvisionedBindingsKept(data, provisionedDataSources);
     expect(bindings).toEqual([
       {
         type: "resource",
@@ -709,6 +751,7 @@ describe("applySiteTemplateMutable", () => {
 
   test("a broken data link leaves blocks unbound", async () => {
     const data = await createProvisionedProject(provisioning);
+    const provisionedDataSources = structuredClone(data.dataSources);
     data.resources.delete(presetIds.events.resourceId);
     const resources = new Map(data.resources);
 
@@ -718,11 +761,8 @@ describe("applySiteTemplateMutable", () => {
       status: "applied",
       unboundBlocks: ["Event List"],
     });
-    expect(
-      [...data.dataSources.values()].filter(
-        (dataSource) => dataSource.type === "resource"
-      )
-    ).toEqual([]);
+    expect(addedResourceBindings(data, provisionedDataSources)).toEqual([]);
+    expectProvisionedBindingsKept(data, provisionedDataSources);
     expect(data.resources).toEqual(resources);
     // left in place, shown empty
     const home = data.pages.pages.get(data.pages.homePageId)!;
@@ -898,11 +938,6 @@ describe("applySiteTemplateMutable", () => {
       };
     };
 
-    const resourceBindings = (data: WebstudioData) =>
-      [...data.dataSources.values()].flatMap((dataSource) =>
-        dataSource.type === "resource" ? [dataSource] : []
-      );
-
     const propValue = (
       data: WebstudioData,
       instanceId: Instance["id"],
@@ -915,12 +950,14 @@ describe("applySiteTemplateMutable", () => {
     test("binds each block to a binding of its own", async () => {
       const data = await createProvisionedProject(provisioning);
       const resourceIdsBefore = new Set(data.resources.keys());
+      const provisionedDataSources = structuredClone(data.dataSources);
 
       const result = applySiteTemplateMutable(data, renderSpike(), context);
 
       expect(result).toEqual({ status: "applied", unboundBlocks: [] });
       const { card, list, form } = findBlockRoots(data);
-      const bindings = resourceBindings(data);
+      const bindings = addedResourceBindings(data, provisionedDataSources);
+      expectProvisionedBindingsKept(data, provisionedDataSources);
       expect(bindings.map((binding) => binding.scopeInstanceId).sort()).toEqual(
         [card.id, list.id, form.id].sort()
       );
@@ -967,10 +1004,23 @@ describe("applySiteTemplateMutable", () => {
       ).toEqual(
         [presetIds.forms.resourceId, presetIds.upcomingEvents.resourceId].sort()
       );
+      // in provisioning's exact shape (D8): the catalog's change guard
+      // refuses any other
+      const { resources: provisioned } =
+        await buildOrgResourcePresets(provisioning);
+      for (const id of [
+        presetIds.forms.resourceId,
+        presetIds.upcomingEvents.resourceId,
+      ]) {
+        expect(data.resources.get(id), id).toStrictEqual(
+          provisioned.find((resource) => resource.id === id)
+        );
+      }
     });
 
     test("a block whose ids its placement prefix does not match is left unbound", async () => {
       const data = await createProvisionedProject(provisioning);
+      const provisionedDataSources = structuredClone(data.dataSources);
       const [home] = renderSpike();
       const root = home.fragment.children[0];
       expect(root?.type).toBe("id");
@@ -994,10 +1044,11 @@ describe("applySiteTemplateMutable", () => {
       });
       const { card, list, form } = findBlockRoots(data);
       expect(
-        resourceBindings(data)
+        addedResourceBindings(data, provisionedDataSources)
           .map((binding) => binding.scopeInstanceId)
           .sort()
       ).toEqual([card.id, form.id].sort());
+      expectProvisionedBindingsKept(data, provisionedDataSources);
       const collection = childrenOf(data, list.id).find(
         (child) => child.label === "Events"
       )!;
@@ -1069,7 +1120,11 @@ describe("applySiteTemplate", () => {
     $styles.set(data.styles);
     $assets.set(data.assets);
     $selectedPageId.set(data.pages.homePageId);
+    $builderMode.set("design");
+    $authPermit.set("build");
     $project.set({ id: projectId } as Project);
+    serverSyncStore.transactionManager.currentStack = [];
+    serverSyncStore.transactionManager.undoneStack = [];
   };
 
   const urlOf = (path: string) => new URL(path, location.origin).href;
@@ -1106,8 +1161,11 @@ describe("applySiteTemplate", () => {
     [urlOf(sourceSans.url), new Uint8Array([119, 79, 70, 50, 1])],
     [urlOf(sourceSansItalic.url), new Uint8Array([119, 79, 70, 50, 2])],
   ]);
-  const sha256 = (bytes: Uint8Array) =>
-    createHash("sha256").update(bytes).digest("hex");
+  const sha256 = async (bytes: BufferSource) =>
+    Array.from(
+      new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
+      (byte) => byte.toString(16).padStart(2, "0")
+    ).join("");
   const fetchFont = vi.fn(async (input: string | URL) => {
     const bytes = fontBytes.get(String(input));
     return bytes === undefined
@@ -1248,8 +1306,8 @@ describe("applySiteTemplate", () => {
     ]);
     // each file holds the bytes its URL served
     expect(await Promise.all(files.map(getSha256HashOfFile))).toEqual([
-      sha256(fontBytes.get(urlOf(sourceSans.url))!),
-      sha256(fontBytes.get(urlOf(sourceSansItalic.url))!),
+      await sha256(fontBytes.get(urlOf(sourceSans.url))!),
+      await sha256(fontBytes.get(urlOf(sourceSansItalic.url))!),
     ]);
     expect(aboutAtUpload).toBeDefined();
   });
@@ -1282,7 +1340,7 @@ describe("applySiteTemplate", () => {
   // awaits (another admin's apply of the template), does not refuse it.
   test("an asset of the template's own fonts does not refuse it", async () => {
     setStores(await createProvisionedProject(provisioning));
-    const fontId = sha256(fontBytes.get(urlOf(sourceSans.url))!);
+    const fontId = await sha256(fontBytes.get(urlOf(sourceSans.url))!);
     fetchFont.mockImplementationOnce(async (input: string | URL) => {
       $assets.set(
         new Map([
@@ -1435,6 +1493,101 @@ describe("applySiteTemplate", () => {
         (decl) => decl.property === "borderTopColor"
       )?.value
     ).toEqual({ type: "var", value: "accent-1" });
+  });
+
+  test("applying a template is one undo step", async () => {
+    setStores(await createProvisionedProject(provisioning));
+    const before = getWebstudioData();
+
+    expect(await applySiteTemplate(template)).toEqual({
+      status: "applied",
+      unboundBlocks: [],
+    });
+
+    expect(getWebstudioData().pages.pages.size).toBeGreaterThan(3);
+    // the upload is mocked: a real one writes its assets in a step of its own
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(1);
+    serverSyncStore.undo();
+    expect(getWebstudioData()).toEqual(before);
+  });
+
+  test("without build access, it is refused with the runtime's message, writing and uploading nothing", async () => {
+    const provisioned = await createProvisionedProject(provisioning);
+    setStores(provisioned);
+    // a page template, the one place the runtime layer refuses a commit
+    $pages.set({
+      ...provisioned.pages,
+      pageTemplates: new Map([
+        [
+          "template",
+          {
+            id: "template",
+            name: "Template",
+            title: "Template",
+            rootInstanceId: provisioned.pages.pages.get(
+              provisioned.pages.homePageId
+            )!.rootInstanceId,
+            meta: {},
+          },
+        ],
+      ]),
+    });
+    $selectedPageId.set("template");
+    $authPermit.set("view");
+    const before = getWebstudioData();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    // the chooser toasts the message
+    expect(await applySiteTemplate(withFonts)).toEqual({
+      status: "refused",
+      reason: "runtime",
+      message:
+        "Page templates can be edited only in design mode, with build access.",
+    });
+
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining(
+          "Page templates can be edited only in design mode"
+        ),
+      })
+    );
+    consoleError.mockRestore();
+    expect(uploadAssets).not.toHaveBeenCalled();
+    expect(getWebstudioData()).toEqual(before);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(0);
+  });
+
+  // the copy (insertWebstudioFragmentCopy) refuses inside the write: not a
+  // refusal of the apply's, but an error the chooser reports
+  test("an error inside the write rejects with it, writing and uploading nothing", async () => {
+    setStores(await createProvisionedProject(provisioning));
+    const before = getWebstudioData();
+    const withBareForm: SiteTemplate = {
+      ...template,
+      pages: [
+        template.pages[0],
+        {
+          ...template.pages[1],
+          // a bare Form, which the copy cannot tell apart from a legacy one
+          body: () => (
+            <ws.element ws:tag="body">
+              <$.Form />
+            </ws.element>
+          ),
+        },
+      ],
+    };
+
+    await expect(applySiteTemplate(withBareForm)).rejects.toThrow(
+      "This copied Form uses an older format"
+    );
+
+    expect(uploadAssets).not.toHaveBeenCalled();
+    expect(getWebstudioData()).toEqual(before);
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(0);
   });
 
   test("clears the selection, as Create item page does", async () => {

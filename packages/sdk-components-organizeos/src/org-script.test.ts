@@ -15,7 +15,6 @@ import {
   descendantComponent,
   elementComponent,
   encodeDataSourceVariable,
-  lintExpression,
   ROOT_INSTANCE_ID,
   tags,
   type DataSource,
@@ -24,6 +23,7 @@ import {
   type Pages,
   type Prop,
 } from "@webstudio-is/sdk";
+import { lintExpression } from "@webstudio-is/expression";
 import { tagProperty } from "@webstudio-is/sdk/runtime";
 import { renderTemplate } from "@webstudio-is/template";
 import {

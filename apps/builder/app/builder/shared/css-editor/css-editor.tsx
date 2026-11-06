@@ -11,6 +11,7 @@ import {
 } from "react";
 import { matchSorter } from "match-sorter";
 import {
+  PanelContent,
   Box,
   Flex,
   Label,
@@ -20,6 +21,7 @@ import {
   theme,
   toast,
   Tooltip,
+  cssVar,
 } from "@webstudio-is/design-system";
 import {
   camelCaseProperty,
@@ -49,6 +51,7 @@ import type {
   SetProperty,
 } from "../../features/style-panel/shared/use-style-data";
 import type { ComputedStyleDecl } from "~/shared/style-object-model";
+import { PropertyStatusIndicator } from "../../features/style-panel/property-status";
 
 // Used to indent the values when they are on the next line. This way its easier to see
 // where the property ends and value begins, especially in case of presets.
@@ -89,7 +92,7 @@ const AdvancedPropertyLabel = ({
         <PropertyInfo
           title={
             styleDecl.property.startsWith("--")
-              ? "CSS Variable"
+              ? "CSS variable"
               : styleDecl.property
           }
           description={description}
@@ -317,6 +320,7 @@ const AdvancedDeclarationLonghand = memo(
           onSetProperty={onSetProperty}
           inputRef={valueInputRef}
         />
+        <PropertyStatusIndicator property={styleDecl.property} />
       </Flex>
     );
   }
@@ -540,12 +544,12 @@ export const CssEditor = ({
   return (
     <Box css={{ isolation: "isolate" }}>
       {showSearch && (
-        <Box
+        <PanelContent
+          as={Box}
           css={{
-            padding: theme.panel.padding,
             position: "sticky",
             top: 0,
-            background: theme.colors.backgroundPanel,
+            background: cssVar("--background-primary"),
             zIndex: 1,
           }}
         >
@@ -554,7 +558,7 @@ export const CssEditor = ({
             onChange={handleSearch}
             onAbort={handleAbortSearch}
           />
-        </Box>
+        </PanelContent>
       )}
       <CssEditorContextMenu
         onPaste={handleInsertStyles}

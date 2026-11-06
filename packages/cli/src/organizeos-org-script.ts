@@ -16,6 +16,8 @@
  * - every HTML Embed, unless its code is a static string identical to one of
  *   the SVG icons upstream's own templates insert;
  * - every Markdown Embed (its renderer keeps `javascript:` links);
+ * - every JSON-LD element, which writes its code into a script element as raw
+ *   HTML (owner decision D13: it stays unavailable while this is paused);
  * - every element whose tag is not one the builder offers: `script` ships a
  *   <script>, and a tag that is JSX syntax is written into the page module as
  *   code. The tag counts wherever it is held, on a component that makes an
@@ -40,7 +42,12 @@
  *   is a custom element that keeps every attribute;
  * - every page or project redirect to an unsafe address, which a client-side
  *   navigation would follow with `window.location`;
- * - the site's custom code.
+ * - the site's custom code, from the project's settings and from the pages'
+ *   meta alike (prebuild reads the settings first).
+ *
+ * And it refuses a build that would materialize MDX (refuseMdxWhilePaused,
+ * owner decision D7): prebuild turns a Content Block's MDX into instances
+ * after this has run, so none of the above would reach them.
  *
  * Nothing is deleted from the build the org edits: the embeds and the code stay
  * saved and show as paused in the builder, and the next publish ships them
@@ -49,16 +56,18 @@
  */
 import type { PublishedProjectBundle } from "@webstudio-is/protocol";
 import {
+  blockComponent,
   blockTemplateComponent,
   collectionComponent,
+  getStaticContentBlockSourceAssetId,
+  parseContentBlockSourceProp,
   ROOT_INSTANCE_ID,
   SYSTEM_VARIABLE_ID,
   type Instance,
   type Page,
   type Prop,
 } from "@webstudio-is/sdk";
-import * as baseComponentMetas from "@webstudio-is/sdk-components-react/metas";
-import * as radixComponentMetas from "@webstudio-is/sdk-components-react-radix/metas";
+import { createFrameworkComponentRegistry } from "@webstudio-is/sdk-components-registry/framework";
 import * as organizeosComponentMetas from "@organizeos/site-components/metas";
 import {
   actionContextOf,
@@ -84,25 +93,59 @@ import {
 } from "@organizeos/site-components/org-script";
 import { ORGANIZEOS_NAMESPACE } from "./organizeos-components";
 
+/** The components upstream's registry gives every framework */
+const registryComponents = Object.keys(
+  createFrameworkComponentRegistry().components
+);
+
 /**
  * The components a page of the react-router framework imports, by the name a
- * build stores (framework-react-router.ts): upstream's base library, Radix's
- * and the OrganizeOS blocks. Prebuild passes the framework's own map; this is
- * what `dropOrgScript` reads without one.
+ * build stores (framework-react-router.ts): upstream's registry and the
+ * OrganizeOS blocks. This is what `dropOrgScript` reads without a set.
  */
 export const publishedComponents: ReadonlySet<Instance["component"]> = new Set([
-  ...Object.keys(baseComponentMetas),
-  ...Object.keys(radixComponentMetas).map(
-    (name) => `@webstudio-is/sdk-components-react-radix:${name}`
-  ),
+  ...registryComponents,
   ...Object.keys(organizeosComponentMetas).map(
     (name) => `${ORGANIZEOS_NAMESPACE}:${name}`
   ),
 ]);
 
+/**
+ * The components a page imports in the framework prebuild picks for
+ * `template`, as prebuild picks it: react-router imports `publishedComponents`,
+ * and the others upstream's registry only. Prebuild reads it before it makes
+ * the framework, and `assertFrameworkImports` checks it against the
+ * framework's own map once it has.
+ */
+export const frameworkComponentsOf = (
+  template: readonly string[]
+): ReadonlySet<Instance["component"]> =>
+  template.includes("ssg") === false && template.includes("react-router")
+    ? publishedComponents
+    : new Set(registryComponents);
+
+/**
+ * Refuses the build when `dropOrgScript` kept a component the framework does
+ * not import (see `frameworkComponentsOf`).
+ */
+export const assertFrameworkImports = (
+  components: ReadonlySet<Instance["component"]>,
+  frameworkComponents: Readonly<Record<string, string>>
+) => {
+  for (const component of components) {
+    if (Object.hasOwn(frameworkComponents, component) === false) {
+      throw new Error(
+        `The framework does not import the component "${component}".`
+      );
+    }
+  }
+};
+
 export type DroppedOrgScript = {
   htmlEmbeds: number;
   markdownEmbeds: number;
+  /** JSON-LD elements (D13) */
+  jsonLd: number;
   /** Elements whose tag the builder does not offer, `script` among them */
   elementsWithUnknownTag: number;
   /** Instances of a component the page does not import */
@@ -150,6 +193,9 @@ export const describeDroppedOrgScript = (dropped: DroppedOrgScript) => {
       : undefined,
     dropped.markdownEmbeds > 0
       ? plural(dropped.markdownEmbeds, "Markdown Embed", "Markdown Embeds")
+      : undefined,
+    dropped.jsonLd > 0
+      ? plural(dropped.jsonLd, "JSON-LD element", "JSON-LD elements")
       : undefined,
     dropped.elementsWithUnknownTag > 0
       ? plural(
@@ -248,6 +294,7 @@ type Kind =
   | "unknownComponent"
   | "htmlEmbed"
   | "markdownEmbed"
+  | "jsonLd"
   | "unknownTag"
   | "svgAnimation"
   | "xmlElement";
@@ -377,6 +424,13 @@ const classify = (
   if (instance.component === "MarkdownEmbed") {
     return "markdownEmbed";
   }
+  // D13: JSON-LD writes its code into a <script> with
+  // dangerouslySetInnerHTML, the third component in the runtime packages
+  // that does (organizeos-org-script.test.ts, "raw HTML in the runtime
+  // packages"), and it stays unavailable while org script is paused.
+  if (instance.component === "JsonLd") {
+    return "jsonLd";
+  }
   if (checksInstanceTag(instance.component) === false) {
     return;
   }
@@ -437,9 +491,9 @@ const lastItems = <Item extends { id: string }>(items: readonly Item[]) => {
  * The Publish dialog reads the builder's maps, which hold one entry per id
  * already.
  */
-const withOneEntryPerId = (
-  input: PublishedProjectBundle["build"]
-): { build: PublishedProjectBundle["build"]; duplicates: number } => {
+const withOneEntryPerId = <Build extends PublishedProjectBundle["build"]>(
+  input: Build
+): { build: Build; duplicates: number } => {
   const instances = lastEntries(input.instances);
   const props = lastEntries(input.props);
   const dataSources = lastEntries(input.dataSources);
@@ -474,7 +528,7 @@ const withOneEntryPerId = (
       ...(input.resources === undefined
         ? {}
         : { resources: resources.entries }),
-    },
+    } as Build,
   };
 };
 
@@ -499,8 +553,8 @@ const withOneEntryPerId = (
  * What is left out is counted only where a page publishes it. `components`
  * are the components the page imports, the framework's.
  */
-export const dropOrgScript = (
-  bundle: PublishedProjectBundle,
+export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
+  bundle: Bundle,
   {
     mayRun = orgScriptMayRun(),
     components = publishedComponents,
@@ -510,13 +564,17 @@ export const dropOrgScript = (
     components?: ReadonlySet<Instance["component"]>;
     log?: (message: string) => void;
   } = {}
-): PublishedProjectBundle => {
+): Bundle => {
   if (mayRun) {
     return bundle;
   }
   // Every rule reads one entry per id, the last, as the builder does, and so
   // does everything after it
   const { build, duplicates } = withOneEntryPerId(bundle.build);
+  // Upstream keeps the project's settings in their own column, and prebuild
+  // reads them before the pages' meta (`projectSettings?.meta ?? pages.meta`),
+  // so the custom code goes from both.
+  const settingsCode = build.projectSettings?.meta.code;
 
   const propsByInstance = new Map<Instance["id"], Prop[]>();
   for (const [, prop] of build.props) {
@@ -563,6 +621,7 @@ export const dropOrgScript = (
   const dropped: DroppedOrgScript = {
     htmlEmbeds: 0,
     markdownEmbeds: 0,
+    jsonLd: 0,
     elementsWithUnknownTag: 0,
     unknownComponents: 0,
     reservedIds: 0,
@@ -575,7 +634,9 @@ export const dropOrgScript = (
     unsafeActions: 0,
     conflictingDataSources: 0,
     redirects: 0,
-    customCode: (build.pages.meta?.code ?? "").trim() !== "",
+    customCode:
+      (build.pages.meta?.code ?? "").trim() !== "" ||
+      (settingsCode ?? "").trim() !== "",
     duplicateEntries: duplicates,
     collectionBindings: 0,
   };
@@ -614,6 +675,8 @@ export const dropOrgScript = (
         dropped.htmlEmbeds += 1;
       } else if (kind === "markdownEmbed") {
         dropped.markdownEmbeds += 1;
+      } else if (kind === "jsonLd") {
+        dropped.jsonLd += 1;
       } else if (kind === "unknownTag") {
         dropped.elementsWithUnknownTag += 1;
       } else if (kind === "xmlElement") {
@@ -641,7 +704,8 @@ export const dropOrgScript = (
     (page) => pageRedirectMayShip(page, false) === false
   ).length;
 
-  const hasCode = build.pages.meta?.code !== undefined;
+  const hasCode =
+    build.pages.meta?.code !== undefined || settingsCode !== undefined;
   const hasRawHtml = build.props.some(([, prop]) =>
     pausedPropNames.has(prop.name)
   );
@@ -687,7 +751,7 @@ export const dropOrgScript = (
     id !== undefined && (removed.has(id) || emptiedRoots.has(id));
   // ... except what an instance that stays still holds. Keeping one can keep
   // what is inside it, so repeat until nothing changes.
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     for (const id of removed) {
       if (found.has(id)) {
@@ -770,11 +834,20 @@ export const dropOrgScript = (
     SYSTEM_VARIABLE_ID,
     ...keptDataSources.map(([id]) => id),
   ]);
-  const result: PublishedProjectBundle = {
+  const { projectSettings } = build;
+  const result: Bundle = {
     ...bundle,
     build: {
       ...build,
       pages,
+      ...(projectSettings === undefined
+        ? {}
+        : {
+            projectSettings: {
+              ...projectSettings,
+              meta: withoutCode(projectSettings.meta),
+            },
+          }),
       instances: build.instances.flatMap(([id, instance]) => {
         if (emptiedRoots.has(id)) {
           return [
@@ -830,4 +903,98 @@ export const dropOrgScript = (
     log?.(message);
   }
   return result;
+};
+
+/** What publishing says when it refuses a build that would materialize MDX. */
+export const mdxRefusal =
+  "This site uses MDX content, which publishing does not support yet.";
+
+const markdownFormats = new Set(["md", "mdx"]);
+const markdownMimeTypes = new Set(["text/markdown", "text/mdx"]);
+
+/**
+ * The ids of the bundle's Markdown and MDX documents: a file asset whose
+ * format or name says md or mdx, and a document of the content index whose
+ * extension or type does.
+ */
+const findMarkdownAssetIds = (bundle: PublishedProjectBundle) => {
+  const ids = new Set<string>();
+  for (const asset of bundle.assets) {
+    const extension = asset.name.match(/\.([^.]+)$/)?.[1] ?? "";
+    if (
+      markdownFormats.has(asset.format.toLowerCase()) ||
+      markdownFormats.has(extension.toLowerCase())
+    ) {
+      ids.add(asset.id);
+    }
+  }
+  for (const document of bundle.assetIndex?.documents ?? []) {
+    const { _id, extension, mimeType } = document as {
+      _id?: unknown;
+      extension?: unknown;
+      mimeType?: unknown;
+    };
+    if (
+      typeof _id === "string" &&
+      ((typeof extension === "string" &&
+        markdownFormats.has(extension.toLowerCase())) ||
+        (typeof mimeType === "string" &&
+          markdownMimeTypes.has(mimeType.toLowerCase())))
+    ) {
+      ids.add(_id);
+    }
+  }
+  return ids;
+};
+
+/**
+ * Refuses, while the switch is off, a build that would materialize MDX
+ * (owner decision D7): one that holds an external-content root, a Content
+ * Block's `src`, bound to an .md or .mdx asset.
+ *
+ * Prebuild turns such a block's MDX into instances (materializePublishedMdx)
+ * after dropOrgScript has run, and none of the rules above reach them: an MDX
+ * `ws:tag` takes any string, which the generator writes into the page module,
+ * and an SVG animate or set keeps its values. Filtering that content is a
+ * follow-up; until then the build is refused with a plain error.
+ *
+ * It reads the bundle alone (its instances, props, assets and content index),
+ * so it runs before any asset body is read or downloaded. A block counts
+ * whichever page holds it, published or draft, and each of its `src` props
+ * counts, so it fails closed: a static source is bound when it names a
+ * Markdown or MDX asset; any other source, an expression that can select one,
+ * is bound when the bundle holds one.
+ */
+export const refuseMdxWhilePaused = (
+  bundle: PublishedProjectBundle,
+  { mayRun = orgScriptMayRun() }: { mayRun?: boolean } = {}
+) => {
+  if (mayRun) {
+    return;
+  }
+  const blockIds = new Set(
+    bundle.build.instances.flatMap(([id, instance]) =>
+      instance.component === blockComponent ? [id] : []
+    )
+  );
+  if (blockIds.size === 0) {
+    return;
+  }
+  const markdownIds = findMarkdownAssetIds(bundle);
+  if (markdownIds.size === 0) {
+    return;
+  }
+  for (const [, prop] of bundle.build.props) {
+    if (blockIds.has(prop.instanceId) === false) {
+      continue;
+    }
+    const source = parseContentBlockSourceProp(prop);
+    if (source === undefined) {
+      continue;
+    }
+    const assetId = getStaticContentBlockSourceAssetId(source);
+    if (assetId === undefined || assetId === "" || markdownIds.has(assetId)) {
+      throw new Error(mdxRefusal);
+    }
+  }
 };

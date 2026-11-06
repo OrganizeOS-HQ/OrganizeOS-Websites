@@ -18,11 +18,12 @@ import { $instances, $pages } from "~/shared/sync/data-stores";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { buildInstancePath } from "~/shared/instance-utils/lookup";
 import { $commandContent } from "~/builder/features/command-panel/command-state";
-import { findPageAndSelectorByInstanceId } from "~/shared/instance-utils/lookup";
+import { findPageAndSelectorByInstanceId } from "@webstudio-is/project-build/runtime";
 import { $activeInspectorPanel } from "~/builder/shared/nano-states";
 import { $selectedPageId, selectInstance } from "~/shared/nano-states";
 import { useAutoSelectFirstItem } from "./auto-select";
 import { InstancePathFooter } from "./instance-path-footer";
+import { getPageDisplayName } from "~/builder/features/pages/page-utils";
 
 export type InstanceOption = {
   label: string;
@@ -63,7 +64,7 @@ export const InstanceList = ({
       label: getInstanceLabel(instance),
       id: instance.id,
       path,
-      pageName: page?.name ?? "",
+      pageName: page === undefined ? "" : getPageDisplayName(page),
     });
   }
   const [search, setSearch] = useState("");

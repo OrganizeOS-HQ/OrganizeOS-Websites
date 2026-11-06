@@ -1,6 +1,4 @@
 import { useId } from "react";
-import * as bcp47 from "bcp-47";
-import { z } from "zod";
 import {
   Box,
   Checkbox,
@@ -12,51 +10,23 @@ import {
   TextArea,
   theme,
 } from "@webstudio-is/design-system";
-import { isLiteralExpression, pageTitle } from "@webstudio-is/sdk";
-import {
-  BindingControl,
-  BindingPopover,
-} from "~/builder/shared/binding-popover";
-import { computeExpression } from "~/shared/data-variables";
+import { isLiteralExpression } from "@webstudio-is/expression";
+import { computeExpression } from "@webstudio-is/project-build/runtime";
+import { useAsyncValue } from "~/shared/use-async-value";
+import { BindableExpressionControl } from "~/builder/shared/bindable-expression";
+import type {
+  PageSettingsErrors,
+  PageSettingsValues,
+} from "@webstudio-is/project-build/runtime";
 import { useStore } from "@nanostores/react";
-import { $assets, $pages } from "~/shared/sync/data-stores";
+import { $assets, $projectSettings } from "~/shared/sync/data-stores";
 import { $pageRootScope } from "../page-utils";
 import { SearchPreview } from "../search-preview";
-import { usePageUrl, type Errors, type OnChange, type Values } from "./shared";
+import { usePageSettingsText, usePageUrl, type OnChange } from "./shared";
 
-const emptyString = z.string().refine((string) => string === "");
-
-const language = z
-  .string()
-  .refine(
-    (value) => bcp47.parse(value).language !== null,
-    "The language is invalid"
-  );
-
-const searchValues = z.object({
-  title: pageTitle,
-  description: z.string().optional(),
-  excludePageFromSearch: z.boolean().optional(),
-  language: language.or(emptyString),
-});
-
-export const validateSearchSection = (
-  values: Values,
-  variableValues: Map<string, unknown>
-): Errors => {
-  const parsedResult = searchValues.safeParse({
-    title:
-      computeExpression(values.title, variableValues) ??
-      "exclude from validation",
-    description: computeExpression(values.description, variableValues),
-    excludePageFromSearch: computeExpression(
-      values.excludePageFromSearch,
-      variableValues
-    ),
-    language: computeExpression(values.language, variableValues),
-  });
-  return parsedResult.success ? {} : parsedResult.error.formErrors.fieldErrors;
-};
+// Search-engine previews represent an external light surface, not Builder UI.
+const searchPreviewBackground = "#ffffff";
+const searchPreviewBorder = "#e6e6e6";
 
 const LanguageField = ({
   errors,
@@ -76,30 +46,29 @@ const LanguageField = ({
   return (
     <Grid gap={1}>
       <Label htmlFor={id}>Language</Label>
-      <BindingControl>
-        {showBindingControls && (
-          <BindingPopover
-            scope={scope}
-            aliases={aliases}
-            variant={isLiteralExpression(value) ? "default" : "bound"}
-            value={value}
-            onChange={onChange}
-            onRemove={(evaluatedValue) =>
-              onChange(JSON.stringify(evaluatedValue ?? ""))
-            }
-          />
+      <BindableExpressionControl
+        expression={value}
+        value={usePageSettingsText(value, variableValues)}
+        bound={isLiteralExpression(value) === false}
+        showBinding={showBindingControls}
+        scope={scope}
+        aliases={aliases}
+        onChangeValue={(value) => onChange(JSON.stringify(value))}
+        onChangeExpression={onChange}
+        onRemove={(value) => onChange(JSON.stringify(value ?? ""))}
+        renderControl={({ value, readOnly, onChangeValue }) => (
+          <InputErrorsTooltip errors={errors}>
+            <InputField
+              color={errors && "error"}
+              id={id}
+              placeholder="en-US"
+              disabled={disabled || readOnly}
+              value={value}
+              onChange={(event) => onChangeValue(event.target.value)}
+            />
+          </InputErrorsTooltip>
         )}
-        <InputErrorsTooltip errors={errors}>
-          <InputField
-            color={errors && "error"}
-            id={id}
-            placeholder="en-US"
-            disabled={disabled || isLiteralExpression(value) === false}
-            value={String(computeExpression(value, variableValues))}
-            onChange={(event) => onChange(JSON.stringify(event.target.value))}
-          />
-        </InputErrorsTooltip>
-      </BindingControl>
+      />
     </Grid>
   );
 };
@@ -114,8 +83,8 @@ export const SearchSection = ({
   showBindingControls = true,
   onChange,
 }: {
-  values: Values;
-  errors: Errors;
+  values: PageSettingsValues;
+  errors: PageSettingsErrors;
   canEditTitle?: boolean;
   canEditDescription?: boolean;
   canEditExcludePageFromSearch?: boolean;
@@ -128,16 +97,18 @@ export const SearchSection = ({
   const excludePageFromSearchId = useId();
   const { variableValues, scope, aliases } = useStore($pageRootScope);
   const assets = useStore($assets);
-  const pages = useStore($pages);
+  const projectSettings = useStore($projectSettings);
   const pageUrl = usePageUrl(values);
-  const faviconAsset = assets.get(pages?.meta?.faviconAssetId ?? "");
+  const faviconAsset = assets.get(projectSettings?.meta.faviconAssetId ?? "");
   const faviconUrl = faviconAsset?.type === "image" ? faviconAsset.name : "";
-  const title = String(computeExpression(values.title, variableValues));
-  const description = String(
-    computeExpression(values.description, variableValues)
-  );
+  const title = usePageSettingsText(values.title, variableValues);
+  const description = usePageSettingsText(values.description, variableValues);
   const excludePageFromSearch = Boolean(
-    computeExpression(values.excludePageFromSearch, variableValues)
+    useAsyncValue(
+      () => computeExpression(values.excludePageFromSearch, variableValues),
+      [values.excludePageFromSearch, variableValues],
+      undefined
+    )
   );
   return (
     <Grid gap={2}>
@@ -150,9 +121,9 @@ export const SearchSection = ({
           <Box
             css={{
               padding: theme.spacing[5],
-              background: theme.colors.white,
+              background: searchPreviewBackground,
               borderRadius: theme.borderRadius[4],
-              border: `1px solid ${theme.colors.borderMain}`,
+              border: `1px solid ${searchPreviewBorder}`,
             }}
           >
             <Box
@@ -164,7 +135,7 @@ export const SearchSection = ({
               }}
             >
               <SearchPreview
-                siteName={pages?.meta?.siteName ?? ""}
+                siteName={projectSettings?.meta.siteName ?? ""}
                 faviconUrl={faviconUrl}
                 pageUrl={pageUrl}
                 titleLink={title}
@@ -177,150 +148,117 @@ export const SearchSection = ({
 
       <Grid gap={1}>
         <Label htmlFor={titleId}>Title</Label>
-        <BindingControl>
-          {showBindingControls && (
-            <BindingPopover
-              scope={scope}
-              aliases={aliases}
-              variant={isLiteralExpression(values.title) ? "default" : "bound"}
-              value={values.title}
-              onChange={(value) => {
-                onChange({
-                  field: "title",
-                  value,
-                });
-              }}
-              onRemove={(evaluatedValue) => {
-                onChange({
-                  field: "title",
-                  value: JSON.stringify(evaluatedValue ?? ""),
-                });
-              }}
-            />
+        <BindableExpressionControl
+          expression={values.title}
+          value={title}
+          bound={isLiteralExpression(values.title) === false}
+          showBinding={showBindingControls}
+          scope={scope}
+          aliases={aliases}
+          onChangeValue={(value) =>
+            onChange({ field: "title", value: JSON.stringify(value) })
+          }
+          onChangeExpression={(value) => onChange({ field: "title", value })}
+          onRemove={(value) =>
+            onChange({ field: "title", value: JSON.stringify(value ?? "") })
+          }
+          renderControl={({ value, readOnly, onChangeValue }) => (
+            <InputErrorsTooltip errors={errors.title}>
+              <InputField
+                color={errors.title && "error"}
+                id={titleId}
+                name="title"
+                placeholder="My awesome project - About"
+                disabled={canEditTitle === false || readOnly}
+                value={value}
+                onChange={(event) => onChangeValue(event.target.value)}
+              />
+            </InputErrorsTooltip>
           )}
-          <InputErrorsTooltip errors={errors.title}>
-            <InputField
-              color={errors.title && "error"}
-              id={titleId}
-              name="title"
-              placeholder="My awesome project - About"
-              disabled={
-                canEditTitle === false ||
-                isLiteralExpression(values.title) === false
-              }
-              value={title}
-              onChange={(event) => {
-                onChange({
-                  field: "title",
-                  value: JSON.stringify(event.target.value),
-                });
-              }}
-            />
-          </InputErrorsTooltip>
-        </BindingControl>
+        />
       </Grid>
 
       <Grid gap={1}>
         <Label htmlFor={descriptionId}>Description</Label>
-        <BindingControl>
-          {showBindingControls && (
-            <BindingPopover
-              scope={scope}
-              aliases={aliases}
-              variant={
-                isLiteralExpression(values.description) ? "default" : "bound"
-              }
-              value={values.description}
-              onChange={(value) => {
-                onChange({
-                  field: "description",
-                  value,
-                });
-              }}
-              onRemove={(evaluatedValue) => {
-                onChange({
-                  field: "description",
-                  value: JSON.stringify(evaluatedValue ?? ""),
-                });
-              }}
-            />
-          )}
-          <InputErrorsTooltip errors={errors.description}>
-            <TextArea
-              color={errors.description ? "error" : undefined}
-              id={descriptionId}
-              name="description"
-              disabled={
-                canEditDescription === false ||
-                isLiteralExpression(values.description) === false
-              }
-              value={description}
-              onChange={(value) => {
-                onChange({
-                  field: "description",
-                  value: JSON.stringify(value),
-                });
-              }}
-              autoGrow
-              maxRows={10}
-            />
-          </InputErrorsTooltip>
-        </BindingControl>
-        <BindingControl>
-          <Grid
-            flow={"column"}
-            gap={1}
-            justify={"start"}
-            align={"center"}
-            css={{ py: theme.spacing[2] }}
-          >
-            {showBindingControls && (
-              <BindingPopover
-                scope={scope}
-                aliases={aliases}
-                variant={
-                  isLiteralExpression(values.excludePageFromSearch)
-                    ? "default"
-                    : "bound"
-                }
-                value={values.excludePageFromSearch}
-                onChange={(value) => {
-                  onChange({
-                    field: "excludePageFromSearch",
-                    value,
-                  });
-                }}
-                onRemove={(evaluatedValue) => {
-                  onChange({
-                    field: "excludePageFromSearch",
-                    value: JSON.stringify(evaluatedValue ?? ""),
-                  });
-                }}
+        <BindableExpressionControl
+          expression={values.description}
+          value={description}
+          bound={isLiteralExpression(values.description) === false}
+          showBinding={showBindingControls}
+          scope={scope}
+          aliases={aliases}
+          onChangeValue={(value) =>
+            onChange({ field: "description", value: JSON.stringify(value) })
+          }
+          onChangeExpression={(value) =>
+            onChange({ field: "description", value })
+          }
+          onRemove={(value) =>
+            onChange({
+              field: "description",
+              value: JSON.stringify(value ?? ""),
+            })
+          }
+          renderControl={({ value, readOnly, onChangeValue }) => (
+            <InputErrorsTooltip errors={errors.description}>
+              <TextArea
+                color={errors.description ? "error" : undefined}
+                id={descriptionId}
+                name="description"
+                disabled={canEditDescription === false || readOnly}
+                value={value}
+                onChange={onChangeValue}
+                autoGrow
+                maxRows={10}
               />
-            )}
-            <Checkbox
-              id={excludePageFromSearchId}
-              disabled={
-                canEditExcludePageFromSearch === false ||
-                isLiteralExpression(values.excludePageFromSearch) === false
-              }
-              checked={excludePageFromSearch}
-              onCheckedChange={() => {
-                const newValue = !excludePageFromSearch;
-                onChange({
-                  field: "excludePageFromSearch",
-                  value: newValue.toString(),
-                });
-              }}
-            />
-
-            <InputErrorsTooltip errors={errors.excludePageFromSearch}>
-              <Label htmlFor={excludePageFromSearchId}>
-                Exclude this page from search results
-              </Label>
             </InputErrorsTooltip>
-          </Grid>
-        </BindingControl>
+          )}
+        />
+        <BindableExpressionControl
+          expression={values.excludePageFromSearch}
+          value={excludePageFromSearch}
+          bound={isLiteralExpression(values.excludePageFromSearch) === false}
+          showBinding={showBindingControls}
+          scope={scope}
+          aliases={aliases}
+          onChangeValue={(value) =>
+            onChange({
+              field: "excludePageFromSearch",
+              value: value.toString(),
+            })
+          }
+          onChangeExpression={(value) =>
+            onChange({ field: "excludePageFromSearch", value })
+          }
+          onRemove={(value) =>
+            onChange({
+              field: "excludePageFromSearch",
+              value: JSON.stringify(value ?? ""),
+            })
+          }
+          renderControl={({ value, readOnly, onChangeValue }) => (
+            <Grid
+              flow={"column"}
+              gap={1}
+              justify={"start"}
+              align={"center"}
+              css={{ py: theme.spacing[2] }}
+            >
+              <Checkbox
+                id={excludePageFromSearchId}
+                disabled={canEditExcludePageFromSearch === false || readOnly}
+                checked={value}
+                onCheckedChange={() => onChangeValue(!value)}
+              />
+
+              <InputErrorsTooltip errors={errors.excludePageFromSearch}>
+                <Label htmlFor={excludePageFromSearchId}>
+                  Exclude this page from search results
+                </Label>
+              </InputErrorsTooltip>
+            </Grid>
+          )}
+        />
       </Grid>
 
       <LanguageField

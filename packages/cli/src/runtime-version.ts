@@ -14,13 +14,14 @@
  * the CLI generates to the packages it imports from.
  *
  * It must be the upstream release matching the fork's upstream base: the first
- * release AFTER the base commit, at its latest patch (base 2026-06-24 -> the
- * 0.274 line -> 0.274.5). Bump it in the same change as any upstream merge,
- * together with the base commit in scripts/upstream-base.txt. A stale value
- * does not fail here; it fails on the next publish, in Vercel's build log,
- * after the site has already been built and uploaded.
+ * release AFTER the base commit, at its latest patch (base 7cab28b63 -> its
+ * child 7274aa8d6, the release commit, which changes no file -> 0.309.0). Bump
+ * it in the same change as any upstream merge, together with the base commit
+ * in scripts/upstream-base.txt. A stale value does not fail here; it fails on
+ * the next publish, in Vercel's build log, after the site has already been
+ * built and uploaded.
  */
-export const PUBLISHED_RUNTIME_VERSION = "0.274.5";
+export const PUBLISHED_RUNTIME_VERSION = "0.309.0";
 
 export const VERSION_PLACEHOLDER = "0.0.0-webstudio-version";
 

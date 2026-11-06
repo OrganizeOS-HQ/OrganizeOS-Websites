@@ -1,6 +1,15 @@
 import { Box, Flex, Grid } from "@webstudio-is/design-system";
-import { Image, wsImageLoader } from "@webstudio-is/image";
+import { getImageAttributes, wsImageLoader } from "@webstudio-is/image";
 import { formatUrl, truncateByWords, truncate } from "./social-utils";
+
+// Search previews reproduce Google's light result surface rather than Builder UI.
+const searchPreviewColors = {
+  faviconBackground: "#f1f3f4",
+  faviconBorder: "#ecedef",
+  foreground: "#202124",
+  foregroundSecondary: "#4d5156",
+  link: "#1a0dab",
+} as const;
 
 /**
  * Full description with links https://developers.google.com/search/docs/appearance/visual-elements-gallery
@@ -86,23 +95,25 @@ export const SearchPreview = (props: SearchPreviewProps) => {
             width: 28,
             height: 28,
             borderRadius: "50%",
-            backgroundColor: "#f1f3f4",
-            border: "1px solid #ecedef",
+            backgroundColor: searchPreviewColors.faviconBackground,
+            border: `1px solid ${searchPreviewColors.faviconBorder}`,
           }}
           justify={"center"}
           align={"center"}
         >
-          <Image
-            width={18}
-            height={18}
-            loader={wsImageLoader}
-            src={props.faviconUrl}
+          <img
+            {...getImageAttributes({
+              width: 18,
+              height: 18,
+              loader: wsImageLoader,
+              src: props.faviconUrl,
+            })}
           />
         </Flex>
         <Grid>
           <Flex
             css={{
-              color: "#202124",
+              color: searchPreviewColors.foreground,
               fontSize: "14px",
               lineHeight: "20px",
               whiteSpace: "nowrap",
@@ -114,7 +125,7 @@ export const SearchPreview = (props: SearchPreviewProps) => {
             css={{
               fontSize: "12px",
               lineHeight: "18px",
-              color: "#4d5156",
+              color: searchPreviewColors.foregroundSecondary,
               gap: 8,
             }}
             align={"center"}
@@ -129,7 +140,7 @@ export const SearchPreview = (props: SearchPreviewProps) => {
         css={{
           fontSize: "20px",
           fontWeight: 400,
-          color: "#1a0dab",
+          color: searchPreviewColors.link,
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
@@ -142,7 +153,7 @@ export const SearchPreview = (props: SearchPreviewProps) => {
         css={{
           lineHeight: 1.58,
           fontSize: 14,
-          color: "#4d5156",
+          color: searchPreviewColors.foregroundSecondary,
           "-webkit-line-clamp": 2,
           display: "-webkit-box",
           "-webkit-box-orient": "vertical",

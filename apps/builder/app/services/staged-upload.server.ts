@@ -129,7 +129,7 @@ const createStagedUploadServer = (
     path: stagedUploadPath,
     datastore: dependencies.datastore ?? createStagedUploadStore(),
     maxSize: maxProjectBundleSize,
-    relativeLocation: false,
+    relativeLocation: true,
     respectForwardedHeaders: true,
     allowedHeaders: [authTokenHeader, stagedUploadProjectIdHeader],
     async onIncomingRequest(request) {

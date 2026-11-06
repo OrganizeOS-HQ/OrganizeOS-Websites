@@ -9,6 +9,7 @@ import {
   $dataSources,
   $instances,
   $pages,
+  $projectSettings,
   $props,
   $resources,
 } from "~/shared/sync/data-stores";
@@ -36,13 +37,22 @@ let container: HTMLElement | undefined;
 const setBuild = ({
   code,
   customCode,
+  legacyCustomCode,
 }: {
   code: string;
+  /** where 0.309.0 saves it */
   customCode?: string;
+  /** the pages' meta, where builds saved it before 0.309.0 */
+  legacyCustomCode?: string;
 }) => {
   const pages = createDefaultPages({ rootInstanceId: "root" });
-  pages.meta = customCode === undefined ? undefined : { code: customCode };
+  pages.meta =
+    legacyCustomCode === undefined ? undefined : { code: legacyCustomCode };
   $pages.set(pages);
+  $projectSettings.set({
+    meta: customCode === undefined ? {} : { code: customCode },
+    compiler: {},
+  });
   const instances: Instance[] = [
     {
       type: "instance",
@@ -292,6 +302,14 @@ describe("PausedScriptBanner", () => {
     expect(
       Array.from(host.querySelectorAll("li"), (item) => item.textContent)
     ).toEqual(["Element with an unsupported tag on Home"]);
+  });
+
+  test("lists the custom code a build kept in its pages' meta", () => {
+    setBuild({ code: MenuIcon, legacyCustomCode: "<style>x{}</style>" });
+    const host = renderBanner();
+    expect(
+      Array.from(host.querySelectorAll("li"), (item) => item.textContent)
+    ).toEqual(["Custom code (Project settings)"]);
   });
 
   test("opens Project settings from the custom code item", () => {

@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { Page } from "@playwright/test";
 import { waitForCanvasFrame } from "./builder";
 
 export const waitForCanvasImage = async ({
@@ -13,6 +13,27 @@ export const waitForCanvasImage = async ({
     state: "visible",
     timeout: 10_000,
   });
+};
+
+export const waitForCanvasImageCount = async ({
+  page,
+  alt,
+  count,
+}: {
+  page: Page;
+  alt: string;
+  count: number;
+}) => {
+  const canvas = await waitForCanvasFrame({ page });
+  const images = canvas.getByRole("img", { name: alt });
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 10_000) {
+    if ((await images.count()) === count) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Expected ${count} images named ${JSON.stringify(alt)}.`);
 };
 
 export const waitForCanvasImageSourceName = async ({

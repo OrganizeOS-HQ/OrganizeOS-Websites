@@ -15,8 +15,10 @@ import {
   propertySyntaxes,
 } from "@webstudio-is/css-data";
 import {
+  PanelContent,
   Flex,
   Grid,
+  InfoTooltip,
   Label,
   Separator,
   Text,
@@ -26,11 +28,7 @@ import {
   Tooltip,
   toast,
 } from "@webstudio-is/design-system";
-import {
-  InfoCircleIcon,
-  ShadowInsetIcon,
-  ShadowNormalIcon,
-} from "@webstudio-is/icons";
+import { ShadowInsetIcon, ShadowNormalIcon } from "@webstudio-is/icons";
 import { humanizeString } from "~/shared/string-utils";
 import { PropertyInlineLabel } from "../property-label";
 import type { IntermediateStyleValue } from "./css-value-input";
@@ -215,10 +213,10 @@ export const ShadowContent = ({
 
   return (
     <Flex direction="column">
-      <Grid
+      <PanelContent
+        as={Grid}
         gap="2"
         css={{
-          padding: theme.panel.padding,
           gridTemplateColumns:
             property === "box-shadow" ? "1fr 1fr" : "1fr 1fr 1fr",
         }}
@@ -274,7 +272,7 @@ export const ShadowContent = ({
         <Flex direction="column" gap="1">
           <PropertyInlineLabel
             label="Blur"
-            title="Blur Radius"
+            title="Blur radius"
             description={shadowPropertySyntaxes[property].blur}
           />
           <CssValueInputContainer
@@ -299,7 +297,7 @@ export const ShadowContent = ({
           <Flex direction="column" gap="1">
             <PropertyInlineLabel
               label="Spread"
-              title="Spread Radius"
+              title="Spread radius"
               description={shadowPropertySyntaxes["box-shadow"].spread}
             />
             <CssValueInputContainer
@@ -322,13 +320,15 @@ export const ShadowContent = ({
             />
           </Flex>
         ) : null}
-      </Grid>
+      </PanelContent>
 
-      <Grid
+      <PanelContent
+        as={Grid}
         gap="2"
         css={{
-          padding: theme.panel.padding,
-          ...(property === "box-shadow" && { gridTemplateColumns: "3fr 1fr" }),
+          ...(property === "box-shadow" && {
+            gridTemplateColumns: "3fr 1fr",
+          }),
         }}
       >
         <Flex direction="column" gap="1">
@@ -399,15 +399,15 @@ export const ShadowContent = ({
             </ToggleGroup>
           </Flex>
         ) : null}
-      </Grid>
+      </PanelContent>
 
       {hideCodeEditor === false ? (
         <>
           <Separator css={{ gridColumn: "span 2" }} />
-          <Flex
+          <PanelContent
+            as={Flex}
             direction="column"
             css={{
-              padding: theme.panel.padding,
               gap: theme.spacing[3],
               minWidth: theme.spacing[30],
             }}
@@ -415,8 +415,8 @@ export const ShadowContent = ({
             <Label>
               <Flex align={"center"} gap={1}>
                 Code
-                <Tooltip
-                  variant="wrapped"
+                <InfoTooltip
+                  label="About shadow CSS code"
                   content={
                     <Text>
                       Paste a {property} CSS code without the property name, for
@@ -427,9 +427,7 @@ export const ShadowContent = ({
                       </Text>
                     </Text>
                   }
-                >
-                  <InfoCircleIcon />
-                </Tooltip>
+                />
               </Flex>
             </Label>
             <CssFragmentEditor
@@ -444,7 +442,7 @@ export const ShadowContent = ({
                 />
               }
             />
-          </Flex>
+          </PanelContent>
         </>
       ) : undefined}
     </Flex>

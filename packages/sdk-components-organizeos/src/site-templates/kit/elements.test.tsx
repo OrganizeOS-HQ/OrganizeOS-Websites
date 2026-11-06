@@ -41,6 +41,12 @@ describe("text", () => {
     expect(paragraph.tag).toBe("p");
     expect(paragraph.label).toBeUndefined();
     expect(propOf(fragment, paragraph, "ws:label")).toBeUndefined();
+    // no styles, no local style source (0.309.0 refuses an empty ws:style)
+    expect(
+      fragment.styleSourceSelections.some(
+        (selection) => selection.instanceId === paragraph.id
+      )
+    ).toBe(false);
   });
 });
 

@@ -1,8 +1,20 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { loadJSONFile } from "./fs-utils";
+import {
+  loadJSONFile,
+  withFileLock,
+  writeFileAtomic,
+  writeFileIfChanged,
+} from "./fs-utils";
 
 const originalCwd = process.cwd();
 let tempDir: string;
@@ -31,4 +43,36 @@ test("throws for malformed JSON file", async () => {
   await writeFile("data.json", "{", "utf8");
 
   await expect(loadJSONFile("data.json")).rejects.toThrow();
+});
+
+test("writes files atomically without leaving temporary files", async () => {
+  await writeFileAtomic("nested/data.txt", "hello");
+
+  await expect(readFile("nested/data.txt", "utf8")).resolves.toBe("hello");
+  await expect(readdir("nested")).resolves.toEqual(["data.txt"]);
+});
+
+test("writes a file only when its content changes", async () => {
+  await expect(writeFileIfChanged("data.txt", "first")).resolves.toBe(true);
+  const firstInode = (await stat("data.txt")).ino;
+
+  await expect(writeFileIfChanged("data.txt", "first")).resolves.toBe(false);
+  expect((await stat("data.txt")).ino).toBe(firstInode);
+  await expect(writeFileIfChanged("data.txt", "second")).resolves.toBe(true);
+
+  await expect(readFile("data.txt", "utf8")).resolves.toBe("second");
+  expect((await stat("data.txt")).ino).not.toBe(firstInode);
+});
+
+test("releases file locks when an operation fails", async () => {
+  await expect(
+    withFileLock("nested/data.json", async () => {
+      throw new Error("failed write");
+    })
+  ).rejects.toThrow("failed write");
+
+  await expect(
+    withFileLock("nested/data.json", async () => "next write")
+  ).resolves.toBe("next write");
+  await expect(readdir("nested")).resolves.toEqual([]);
 });

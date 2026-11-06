@@ -1,7 +1,18 @@
 import { z } from "zod";
 import { imageMeta as parseImageMeta } from "image-meta";
-import { type FontMeta, fontMeta } from "@webstudio-is/fonts";
-import { type ImageMeta, imageMeta, validateFileName } from "@webstudio-is/sdk";
+import {
+  FONT_FORMATS,
+  type FontFormat,
+  type FontMeta,
+  fontMeta,
+} from "@webstudio-is/fonts";
+import {
+  type AssetType,
+  type ImageMeta,
+  imageMeta,
+  mergeAssetMeta,
+  validateFileName,
+} from "@webstudio-is/sdk";
 import { getFontData } from "./font-data";
 
 export type AssetData = {
@@ -15,6 +26,39 @@ export const assetData: z.ZodType<AssetData> = z.object({
   format: z.string(),
   meta: z.union([imageMeta, fontMeta, z.object({})]),
 });
+
+export const assetDataOverride = z.object({
+  format: z.string().optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
+});
+export type AssetDataOverride = z.infer<typeof assetDataOverride>;
+
+export const applyAssetDataOverride = (
+  detected: AssetData,
+  override?: AssetDataOverride
+): AssetData => {
+  const type: AssetType =
+    "family" in detected.meta
+      ? "font"
+      : "width" in detected.meta && "height" in detected.meta
+        ? "image"
+        : "file";
+  const meta = mergeAssetMeta(type, detected.meta, override?.meta ?? {});
+  if (meta === undefined) {
+    throw new Error("Asset metadata override is invalid");
+  }
+  const format =
+    type === "font" ? detected.format : (override?.format ?? detected.format);
+  if (type !== "font" && FONT_FORMATS.has(format as FontFormat)) {
+    throw new Error("Font format requires valid font metadata");
+  }
+
+  return {
+    ...detected,
+    format,
+    meta,
+  };
+};
 
 type BaseAssetOptions = {
   size: number;
@@ -70,8 +114,19 @@ export const getAssetData = async (
     };
   }
 
-  // Validate file name and get extension
+  // The persisted asset type is derived from its detected format. Parse font
+  // extensions as fonts even when a caller labels the upload as a generic file,
+  // otherwise the upload could persist `{}` metadata that cannot be loaded as a
+  // font later.
   const { extension } = validateFileName(options.name);
+  if (FONT_FORMATS.has(extension as FontFormat)) {
+    const { format, ...meta } = getFontData(options.data, options.name);
+    return {
+      size: options.size,
+      format,
+      meta,
+    };
+  }
 
   return {
     size: options.size,

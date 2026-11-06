@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { z } from "zod";
 
 const loadEnv = async () => {
   vi.resetModules();
@@ -23,6 +26,44 @@ describe("ORGANIZEOS_SESSION_BINDING", () => {
   test("reads enforce from the process environment", async () => {
     vi.stubEnv("ORGANIZEOS_SESSION_BINDING", "enforce");
     expect((await loadEnv()).ORGANIZEOS_SESSION_BINDING).toBe("enforce");
+  });
+
+  // apps/builder moved to zod 4 with upstream 0.309.0, where a preprocess
+  // around a defaulted enum is a pipe: the default must still apply to an
+  // unset and to a blank value.
+  test("ORGANIZEOS_SESSION_BINDING defaults to observe under zod 4", async () => {
+    // zod 4 schemas carry their internals on `_zod`; zod 3's do not
+    expect(z.string()).toHaveProperty("_zod");
+    vi.stubEnv("ORGANIZEOS_SESSION_BINDING", undefined);
+    expect((await loadEnv()).ORGANIZEOS_SESSION_BINDING).toBe("observe");
+    vi.stubEnv("ORGANIZEOS_SESSION_BINDING", "");
+    expect((await loadEnv()).ORGANIZEOS_SESSION_BINDING).toBe("observe");
+  });
+});
+
+describe("EMAIL_SERVICE_URL", () => {
+  test("is in the schema and undefined when unset", async () => {
+    vi.stubEnv("EMAIL_SERVICE_URL", undefined);
+    expect((await loadEnv()).EMAIL_SERVICE_URL).toBeUndefined();
+    vi.stubEnv("EMAIL_SERVICE_URL", "https://email.example");
+    expect((await loadEnv()).EMAIL_SERVICE_URL).toBe("https://email.example");
+  });
+
+  // Set, the builder's Form preview would send TRPC_SERVER_API_TOKEN as a
+  // bearer to Webstudio's email service (routes/rest.preview-form.ts).
+  test("the committed .env sets neither it nor TRPC_SERVER_API_TOKEN", () => {
+    const dotenv = readFileSync(
+      fileURLToPath(new URL("../../.env", import.meta.url)),
+      "utf8"
+    );
+    const setKeys = dotenv
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && line.startsWith("#") === false)
+      .map((line) => line.split("=")[0].trim());
+    expect(setKeys.length).toBeGreaterThan(0);
+    expect(setKeys).not.toContain("EMAIL_SERVICE_URL");
+    expect(setKeys).not.toContain("TRPC_SERVER_API_TOKEN");
   });
 });
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import {
+  PanelContent,
   theme,
   Box,
   Card,
@@ -27,7 +28,7 @@ import {
   $selectedInstanceRenderState,
   $selectedStyleSource,
 } from "~/shared/nano-states";
-import { isStyleSourceLocked } from "~/shared/style-source-utils";
+import { isStyleSourceLocked } from "@webstudio-is/project-build/runtime";
 import { ReadonlyProvider } from "./shared/readonly";
 import { $selectedInstance } from "~/shared/nano-states";
 import { CollapsibleProvider } from "~/builder/shared/collapsible-section";
@@ -171,12 +172,12 @@ export const StylePanel = () => {
 
   return (
     <ReadonlyProvider value={readonly}>
-      <Box css={{ padding: theme.panel.padding }}>
+      <PanelContent as={Box}>
         <Text variant="titles" css={{ paddingBlock: theme.panel.paddingBlock }}>
           Style sources
         </Text>
         <StyleSourcesSection />
-      </Box>
+      </PanelContent>
       <Separator />
       <ScrollArea>
         <CollapsibleProvider

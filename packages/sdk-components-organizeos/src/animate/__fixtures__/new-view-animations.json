@@ -1,6 +1,6 @@
 [
   {
-    "name": "New Animation",
+    "name": "New animation",
     "description": "Create a new animation.",
     "timing": {
       "rangeStart": [
@@ -30,7 +30,7 @@
     ]
   },
   {
-    "name": "Fade In",
+    "name": "Fade in",
     "description": "Fade in the element as it scrolls into view.",
     "timing": {
       "rangeStart": [
@@ -66,7 +66,7 @@
     ]
   },
   {
-    "name": "Fade Out",
+    "name": "Fade out",
     "description": "Fade out the element as it scrolls out of view.",
     "timing": {
       "rangeStart": [
@@ -102,7 +102,7 @@
     ]
   },
   {
-    "name": "Fly In",
+    "name": "Fly in",
     "description": "A fly in animation moves an element as it scrolls into view.",
     "timing": {
       "rangeStart": [
@@ -148,7 +148,7 @@
     ]
   },
   {
-    "name": "Fly Out",
+    "name": "Fly out",
     "description": "A fly out animation moves an element as it scrolls out of view.",
     "timing": {
       "rangeStart": [
@@ -194,7 +194,7 @@
     ]
   },
   {
-    "name": "Wipe In",
+    "name": "Wipe in",
     "description": "A wipe in is an animation where one scene gradually replaces another as it scrolls into the view.",
     "timing": {
       "rangeStart": [
@@ -238,7 +238,7 @@
     ]
   },
   {
-    "name": "Wipe Out",
+    "name": "Wipe out",
     "description": "A wipe out is an animation where one scene gradually replaces another as it scrolls out of view.",
     "timing": {
       "rangeStart": [
@@ -282,7 +282,7 @@
     ]
   },
   {
-    "name": "Parallax In",
+    "name": "Parallax in",
     "description": "Parallax the element as it scrolls into the view.",
     "timing": {
       "rangeStart": [
@@ -328,7 +328,7 @@
     ]
   },
   {
-    "name": "Parallax Out",
+    "name": "Parallax out",
     "description": "Parallax the element as it scrolls out of view.",
     "timing": {
       "rangeStart": [

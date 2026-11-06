@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import {
+  cssVar,
+  declareCssVar,
   NestedInputButton,
   rawTheme,
-  theme,
 } from "@webstudio-is/design-system";
 import { MaximizeIcon } from "@webstudio-is/icons";
 import type {
@@ -18,7 +19,9 @@ import type {
 } from "./css-value-input";
 import { parseIntermediateOrInvalidValue } from "./parse-intermediate-or-invalid-value";
 
-export const cssButtonDisplay = "--ws-css-value-input-maximize-button-display";
+export const cssValueInputMaximizeButtonDisplay = declareCssVar(
+  "--css-value-input-maximize-button-display"
+);
 
 // Hand-picking values that are considered complex and should get a maximize button for the dialog.
 // Not showing the maximize everywhere because most values don't need that and it takes space.
@@ -89,7 +92,7 @@ export const ValueEditorDialog = ({
 
   return (
     <EditorDialog
-      title="CSS Value"
+      title="CSS value"
       placement="bottom-within"
       height={200}
       width={Number.parseFloat(rawTheme.sizes.sidebarWidth)}
@@ -107,8 +110,8 @@ export const ValueEditorDialog = ({
       <NestedInputButton
         tabIndex={-1}
         css={{
-          display: `var(${cssButtonDisplay}, none)`,
-          background: theme.colors.backgroundControls,
+          display: cssVar(cssValueInputMaximizeButtonDisplay, "none"),
+          background: cssVar("--background-secondary"),
           '&[data-state="open"]': {
             display: "block",
           },

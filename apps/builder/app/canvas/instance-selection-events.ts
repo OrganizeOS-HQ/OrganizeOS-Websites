@@ -18,11 +18,12 @@ import { $instances } from "~/shared/sync/data-stores";
 import { $ephemeralStyles } from "~/canvas/stores";
 import { emitCommand } from "./shared/commands";
 import { shallowEqual } from "shallow-equal";
-import { findClosestRichText } from "~/shared/content-model";
+import { findClosestTextEditorTarget } from "@webstudio-is/project-build/runtime";
 import {
   areInstanceSelectorsEqual,
   type InstanceSelector,
-} from "~/shared/instance-utils/tree";
+} from "@webstudio-is/project-build/runtime";
+import { isTextEditableInContentMode } from "./shared/content-mode";
 
 type SelectionAnchor = {
   current: undefined | InstanceSelector;
@@ -127,7 +128,7 @@ const handleEdit = (
 
   const instances = $instances.get();
 
-  let editableInstanceSelector = findClosestRichText({
+  let editableInstanceSelector = findClosestTextEditorTarget({
     instanceSelector,
     instances,
     props: $props.get(),
@@ -135,18 +136,15 @@ const handleEdit = (
     htmlTagsByInstanceId: $propsIndex.get().htmlTagsByInstanceId,
   });
 
-  // Do not allow edit bindable text instances with expression children in Content Mode
   if (editableInstanceSelector !== undefined && $isContentMode.get()) {
-    const instance = instances.get(editableInstanceSelector[0]);
-    if (instance === undefined) {
-      return false;
-    }
-
-    const hasExpressionChildren = instance.children.some(
-      (child) => child.type === "expression"
-    );
-
-    if (hasExpressionChildren) {
+    if (
+      isTextEditableInContentMode({
+        isContentMode: true,
+        instanceSelector: editableInstanceSelector,
+        instances,
+        props: $props.get(),
+      }) === false
+    ) {
       editableInstanceSelector = undefined;
     }
   }

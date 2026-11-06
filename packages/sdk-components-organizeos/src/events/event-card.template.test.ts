@@ -176,12 +176,12 @@ describe("the dated card", () => {
     const title = byLabel("Title");
     expect(title.tag).toBe("h3");
     expect(title.children).toEqual([
-      { type: "expression", value: `${variable}.title` },
+      { type: "expression", value: `${variable}.title`, mode: "read" },
     ]);
     const place = byLabel("Place");
     expect(place.tag).toBe("p");
     expect(place.children).toEqual([
-      { type: "expression", value: `${variable}.location_name` },
+      { type: "expression", value: `${variable}.location_name`, mode: "read" },
     ]);
     const show = expressionOf(propOf(place, showAttribute));
     expect(show).toBeDefined();

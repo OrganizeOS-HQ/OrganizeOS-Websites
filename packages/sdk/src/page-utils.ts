@@ -1,5 +1,6 @@
-import { executeExpression } from "./expression";
+import { parseJsonExpression } from "@webstudio-is/expression";
 import {
+  isPageDraft,
   type Folder,
   type Page,
   type PageTemplate,
@@ -47,6 +48,9 @@ export const getFolderById = (
 export const getAllPages = (pages: Pages): Page[] => {
   return Array.from(pages.pages.values());
 };
+
+export const getPublishablePages = (pages: Pages): Page[] =>
+  getAllPages(pages).filter((page) => isPageDraft(page) === false);
 
 export const getAllFolders = (pages: Pages): Folder[] => {
   return Array.from(pages.folders.values());
@@ -148,20 +152,20 @@ export const getPagePath = (id: Folder["id"] | Page["id"], pages: Pages) => {
   return paths.reverse().join("/").replace(/\/+/g, "/");
 };
 
+/** Checks page-level sitemap settings independently of its concrete path. */
+export const isPageEligibleForSitemap = (page: Page) =>
+  (page.meta.documentType ?? "html") === "html" &&
+  // A dynamic expression cannot be evaluated without its resource data, so it
+  // remains eligible just as it did for static sitemap generation.
+  parseJsonExpression(page.meta.excludePageFromSearch) !== true;
+
 export const getStaticSiteMapXml = (pages: Pages, updatedAt: string) => {
-  const allPages = getAllPages(pages);
-  return (
-    allPages
-      .filter((page) => (page.meta.documentType ?? "html") === "html")
-      // ignore pages with excludePageFromSearch bound to variables
-      // because there is no data from cms available at build time
-      .filter(
-        (page) => executeExpression(page.meta.excludePageFromSearch) !== true
-      )
-      .filter((page) => false === isPathnamePattern(page.path))
-      .map((page) => ({
-        path: getPagePath(page.id, pages),
-        lastModified: updatedAt.split("T")[0],
-      }))
-  );
+  const allPages = getPublishablePages(pages);
+  return allPages
+    .filter(isPageEligibleForSitemap)
+    .filter((page) => false === isPathnamePattern(page.path))
+    .map((page) => ({
+      path: getPagePath(page.id, pages),
+      lastModified: updatedAt.split("T")[0],
+    }));
 };

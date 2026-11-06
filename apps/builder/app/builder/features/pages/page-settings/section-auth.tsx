@@ -2,37 +2,26 @@ import { useId, useState } from "react";
 import {
   Checkbox,
   CheckboxAndLabel,
+  cssVar,
   Grid,
   InputErrorsTooltip,
   InputField,
   Label,
-  ProBadge,
+  ProChip,
   Text,
   Tooltip,
-  rawTheme,
 } from "@webstudio-is/design-system";
 import { InfoCircleIcon } from "@webstudio-is/icons";
-import { validateBasicAuth } from "@webstudio-is/wsauth";
-import type { Errors, OnChange, Values } from "./shared";
+import type {
+  PageSettingsErrors,
+  PageSettingsValues,
+} from "@webstudio-is/project-build/runtime";
+import type { OnChange } from "./shared";
 import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
 
-const emptyAuth: Values["auth"] = {
+const emptyAuth: PageSettingsValues["auth"] = {
   login: "",
   password: "",
-};
-
-export const validateAuthSection = (values: Values): Errors => {
-  const hasAuth = values.auth.login !== "" || values.auth.password !== "";
-  const authErrors = hasAuth
-    ? validateBasicAuth({
-        login: values.auth.login,
-        password: values.auth.password,
-      }).errors
-    : undefined;
-  if (authErrors === undefined) {
-    return {};
-  }
-  return { auth: authErrors };
 };
 
 export const AuthSection = ({
@@ -42,8 +31,8 @@ export const AuthSection = ({
   showUpgrade = false,
   showErrors = false,
 }: {
-  values: Values;
-  errors: Errors;
+  values: PageSettingsValues;
+  errors: PageSettingsErrors;
   onChange: OnChange;
   showUpgrade?: boolean;
   showErrors?: boolean;
@@ -78,7 +67,7 @@ export const AuthSection = ({
             }}
           />
           <Label htmlFor={enableId}>Require login and password</Label>
-          {showUpgrade && <ProBadge>{planBadgeLabel}</ProBadge>}
+          {showUpgrade && <ProChip>{planBadgeLabel}</ProChip>}
           <Tooltip
             content={
               <>
@@ -100,7 +89,7 @@ export const AuthSection = ({
             variant="wrapped"
           >
             <InfoCircleIcon
-              color={rawTheme.colors.foregroundSubtle}
+              color={cssVar("--foreground-secondary")}
               tabIndex={-1}
             />
           </Tooltip>

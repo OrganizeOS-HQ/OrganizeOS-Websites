@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useStore } from "@nanostores/react";
-import { Flex } from "@webstudio-is/design-system";
-import { $breakpoints, $styles } from "~/shared/sync/data-stores";
+import { Flex, rawTheme, theme } from "@webstudio-is/design-system";
+import { $breakpoints } from "~/shared/sync/data-stores";
 import {
   $selectedBreakpoint,
   $selectedBreakpointId,
@@ -11,10 +11,11 @@ import { BreakpointsSelector } from "./breakpoints-selector";
 import { BreakpointsMenu } from "./breakpoints-menu";
 import { BreakpointsEditor } from "./breakpoints-editor";
 import { ConfirmationDialog } from "./confirmation-dialog";
-import { $breakpointsMenuView, isBaseBreakpoint } from "~/shared/breakpoints";
+import { $breakpointsMenuView } from "~/shared/breakpoints";
+import { isBaseBreakpoint } from "@webstudio-is/project-build/runtime";
 import { setCanvasWidth } from "../../shared/calc-canvas-width";
-import { serverSyncStore } from "~/shared/sync/sync-stores";
 import type { Breakpoint } from "@webstudio-is/sdk";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 
 const hideOnMobile = {
   "@media (max-width: 800px)": {
@@ -34,18 +35,12 @@ export const BreakpointsContainer = () => {
     if (breakpointToDelete === undefined) {
       return;
     }
-    serverSyncStore.createTransaction(
-      [$breakpoints, $styles],
-      (breakpoints, styles) => {
-        const breakpointId = breakpointToDelete.id;
-        breakpoints.delete(breakpointId);
-        for (const [styleDeclKey, styleDecl] of styles) {
-          if (styleDecl.breakpointId === breakpointId) {
-            styles.delete(styleDeclKey);
-          }
-        }
-      }
-    );
+    executeRuntimeMutation({
+      id: "breakpoints.delete",
+      input: {
+        breakpointId: breakpointToDelete.id,
+      },
+    });
 
     if (
       breakpointToDelete.id === selectedBreakpoint?.id &&
@@ -62,31 +57,33 @@ export const BreakpointsContainer = () => {
   };
 
   return (
-    <Flex>
-      <Flex justify="end" css={hideOnMobile}>
-        <CanvasSettingsPopover />
+    <Flex align="center">
+      <Flex align="center" css={{ gap: theme.spacing[5] }}>
+        <Flex justify="end" css={hideOnMobile}>
+          <CanvasSettingsPopover />
+        </Flex>
+        <Flex align="center" justify="center" css={hideOnMobile}>
+          <BreakpointsSelector />
+        </Flex>
+        {selectedBreakpoint && (
+          <BreakpointsMenu
+            breakpoints={breakpoints}
+            selectedBreakpoint={selectedBreakpoint}
+            open={breakpointsMenuView === "initial"}
+            triggerOpen={breakpointsMenuView !== undefined}
+            onOpenChange={(open) => {
+              if (open) {
+                $breakpointsMenuView.set("initial");
+                return;
+              }
+              if ($breakpointsMenuView.get() === "initial") {
+                $breakpointsMenuView.set(undefined);
+              }
+            }}
+            onEditClick={() => $breakpointsMenuView.set("editor")}
+          />
+        )}
       </Flex>
-      <Flex align="center" justify="center" css={hideOnMobile}>
-        <BreakpointsSelector />
-      </Flex>
-      {selectedBreakpoint && (
-        <BreakpointsMenu
-          breakpoints={breakpoints}
-          selectedBreakpoint={selectedBreakpoint}
-          open={breakpointsMenuView === "initial"}
-          triggerOpen={breakpointsMenuView !== undefined}
-          onOpenChange={(open) => {
-            if (open) {
-              $breakpointsMenuView.set("initial");
-              return;
-            }
-            if ($breakpointsMenuView.get() === "initial") {
-              $breakpointsMenuView.set(undefined);
-            }
-          }}
-          onEditClick={() => $breakpointsMenuView.set("editor")}
-        />
-      )}
       <BreakpointsEditor
         open={breakpointsMenuView === "editor"}
         onOpenChange={(open) => {
@@ -97,7 +94,7 @@ export const BreakpointsContainer = () => {
           $breakpointsMenuView.set("confirmation");
         }}
       >
-        <div style={{ height: "100%", width: 0 }} />
+        <div style={{ height: rawTheme.sizes.controlHeight, width: 0 }} />
       </BreakpointsEditor>
       {breakpointToDelete && (
         <ConfirmationDialog

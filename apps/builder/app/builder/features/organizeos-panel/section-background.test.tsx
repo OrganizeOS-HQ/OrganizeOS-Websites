@@ -53,8 +53,9 @@ vi.mock("./backgrounds/apply-preset", async (importOriginal) => {
 });
 
 // The image picker's asset list, as one button that chooses the asset "photo".
-vi.mock("~/builder/shared/asset-manager", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("~/builder/shared/asset-manager")>()),
+// Every importer in this suite's graph takes only AssetManager. A factory that
+// imports the original deadlocks: the asset manager's graph imports it back.
+vi.mock("~/builder/shared/asset-manager", () => ({
   AssetManager: ({
     accept,
     onChange,
@@ -106,9 +107,10 @@ const project = ({
 };
 
 // The contrast report lands after a scheduled run (contrast-schedule.ts),
-// which jsdom, without requestIdleCallback, takes through setTimeout, and the
-// image picker opens a frame after its click (the design system's Dialog):
-// both helpers flush them after their change.
+// which takes setTimeout where there is no requestIdleCallback (the suite
+// removes Chromium's; background-presets-section.test.tsx covers both), and
+// the image picker opens a frame after its click (the design system's
+// Dialog): both helpers flush them after their change.
 const flushContrastRun = () => {
   act(() => {
     vi.advanceTimersByTime(150);
@@ -188,6 +190,7 @@ beforeEach(() => {
     toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame"],
   });
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  vi.stubGlobal("requestIdleCallback", undefined);
   registerTestMetas();
   selectInstance(undefined);
   $selectedStyleSources.set(new Map());

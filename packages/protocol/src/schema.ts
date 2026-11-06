@@ -1,5 +1,12 @@
-import { asset, page } from "@webstudio-is/sdk/schema";
-import { serializedBuild } from "@webstudio-is/project-build/schema";
+import { asset, assetFolder, page } from "@webstudio-is/sdk/schema";
+import { contentArtifactV1 } from "@webstudio-is/content-engine";
+import { builderNamespaces } from "@webstudio-is/project-build/contracts";
+import {
+  builderPatchSchema as internalBuilderPatchSchema,
+  builderPatchTransactionSchema as internalBuilderPatchTransactionSchema,
+  restorePointPatchTransactionSchema as internalRestorePointPatchTransactionSchema,
+} from "@webstudio-is/project-build/contracts";
+import { serializedBuild } from "@webstudio-is/project-build/contracts";
 import { wsAuthConfig } from "@webstudio-is/wsauth/schema";
 import { z } from "zod";
 import { createContractVersion } from "./contract-version";
@@ -9,9 +16,10 @@ import { createContractVersion } from "./contract-version";
 // are imported through schema-only entrypoints to avoid duplicating model
 // definitions or pulling non-schema runtime code into protocol consumers.
 
-export const maxProjectBundleSize = 20 * 1024 * 1024;
+export const maxProjectBundleSize = 32 * 1024 * 1024;
 export const stagedUploadPath = "/rest/staged-upload";
 export const stagedUploadProjectIdHeader = "x-webstudio-project-id";
+export const projectSessionRestorePointPath = "build.restorePoint";
 
 const assetFileName = z
   .string()
@@ -21,34 +29,38 @@ const assetFileName = z
 export const isAssetFileName = (value: string) =>
   assetFileName.safeParse(value).success;
 
-const missingImportedAssetFilesPrefix = "Imported asset files are missing: ";
-
-export const getMissingImportedAssetFilesMessage = (assetNames: string[]) =>
-  `${missingImportedAssetFilesPrefix}${JSON.stringify(assetNames)}`;
-
-export const parseMissingImportedAssetFilesMessage = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  const start = message.indexOf(missingImportedAssetFilesPrefix);
-  if (start === -1) {
-    return;
+export class MissingImportedAssetFilesError extends Error {
+  readonly webstudioCode = "MISSING_IMPORTED_ASSET_FILES";
+  readonly missingAssetNames: string[];
+  constructor(missingAssetNames: string[]) {
+    super(
+      `Imported asset files are missing: ${JSON.stringify(missingAssetNames)}`
+    );
+    this.missingAssetNames = missingAssetNames;
+    this.name = "MissingImportedAssetFilesError";
   }
-  const data = message.slice(start + missingImportedAssetFilesPrefix.length);
-  try {
-    const names = JSON.parse(data);
-    if (
-      Array.isArray(names) &&
-      names.every((name) => typeof name === "string")
-    ) {
-      return names;
+}
+
+export const getMissingImportedAssetFiles = (
+  error: unknown
+): string[] | undefined => {
+  const visited = new Set<unknown>();
+  const visit = (value: unknown): string[] | undefined => {
+    if (typeof value !== "object" || value === null || visited.has(value)) {
+      return;
     }
-  } catch {
-    // Support already-deployed API responses using the previous comma-separated
-    // format. New responses use JSON so valid filenames can contain commas.
-  }
-  return data
-    .split(",")
-    .map((name) => name.trim())
-    .filter((name) => name !== "");
+    visited.add(value);
+    const record = value as Record<string, unknown>;
+    if (
+      record.webstudioCode === "MISSING_IMPORTED_ASSET_FILES" &&
+      Array.isArray(record.missingAssetNames) &&
+      record.missingAssetNames.every((name) => typeof name === "string")
+    ) {
+      return record.missingAssetNames;
+    }
+    return visit(record.data) ?? visit(record.cause);
+  };
+  return visit(error);
 };
 
 export const projectBundle = z.object({
@@ -56,22 +68,40 @@ export const projectBundle = z.object({
   pages: z.array(page),
   build: serializedBuild,
   assets: z.array(asset),
+  assetFolders: z.array(assetFolder).optional(),
   origin: z.string().optional(),
 });
 export type ProjectBundle = z.infer<typeof projectBundle>;
 
 export const publishedProjectBundle = projectBundle.extend({
   bundleVersion: z.union([z.string(), z.number()]).optional(),
-  user: z.object({ email: z.string().nullable() }).optional(),
+  user: z
+    .object({
+      email: z.string().nullable(),
+      username: z.string().nullable().optional(),
+    })
+    .optional(),
   projectDomain: z.string(),
   projectTitle: z.string(),
+  assetIndex: contentArtifactV1.optional(),
 });
 export type PublishedProjectBundle = z.infer<typeof publishedProjectBundle>;
+
+// Input-only compatibility for bundles produced before Form identities were
+// canonicalized. Keep this out of publishedProjectBundle and bundleVersion.
+export const historicalPublishedProjectBundle = publishedProjectBundle.extend({
+  build: serializedBuild.extend({
+    pages: z.intersection(
+      serializedBuild.shape.pages,
+      z.object({ formComponentIdentityVersion: z.number().int().optional() })
+    ),
+  }),
+});
 
 export const importProjectBundleInput = z
   .object({
     projectId: z.string().min(1),
-    data: publishedProjectBundle.optional(),
+    data: historicalPublishedProjectBundle.optional(),
     uploadId: z.string().min(1).optional(),
     ignoreVersionCheck: z.boolean().optional(),
   })
@@ -94,6 +124,58 @@ export type ImportProjectBundleResult = z.infer<
 export const checkProjectBuildPermissionInput = z.object({
   projectId: z.string().min(1),
 });
+
+export const buildPatchNamespaces = builderNamespaces;
+type BuilderNamespace = (typeof builderNamespaces)[number];
+export type PublicBuildInclude =
+  | Exclude<BuilderNamespace, "dataSources">
+  | "folders"
+  | "variables"
+  | "designTokens";
+
+export const getPublicBuildIncludes = (
+  namespaces: readonly BuilderNamespace[]
+): PublicBuildInclude[] => [
+  ...new Set(
+    namespaces.flatMap((namespace): PublicBuildInclude[] => {
+      if (namespace === "pages") {
+        return ["pages", "folders"];
+      }
+      if (namespace === "dataSources") {
+        return ["variables"];
+      }
+      return [namespace];
+    })
+  ),
+];
+
+export const publicBuildIncludes = [
+  "designTokens",
+  ...getPublicBuildIncludes(builderNamespaces),
+] as const satisfies readonly [PublicBuildInclude, ...PublicBuildInclude[]];
+
+export type BuildPatchPath = Array<string | number>;
+export type BuildPatch =
+  | { op: "add"; path: BuildPatchPath; value: unknown }
+  | { op: "replace"; path: BuildPatchPath; value: unknown }
+  | { op: "remove"; path: BuildPatchPath };
+export type BuildPatchChange = {
+  namespace: (typeof buildPatchNamespaces)[number];
+  patches: BuildPatch[];
+};
+export type BuildPatchTransaction = {
+  id: string;
+  payload: BuildPatchChange[];
+};
+export const buildPatch: z.ZodType<BuildPatch, unknown> =
+  internalBuilderPatchSchema;
+export const buildPatchTransaction: z.ZodType<BuildPatchTransaction, unknown> =
+  internalBuilderPatchTransactionSchema;
+
+export const restorePointPatchTransaction: z.ZodType<
+  BuildPatchTransaction,
+  unknown
+> = internalRestorePointPatchTransactionSchema;
 
 export const bundleVersion = createContractVersion(publishedProjectBundle, [
   wsAuthConfig,

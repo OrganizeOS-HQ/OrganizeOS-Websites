@@ -11,9 +11,14 @@ import {
   isValidCustomPropertyValue,
 } from "./parse-css-value";
 import { expandShorthands } from "./shorthands";
+import { properties } from "./__generated__/properties";
 import { shorthandProperties } from "./__generated__/shorthand-properties";
 
 const shorthandSet = new Set<string>(shorthandProperties);
+const supportedPrefixedPropertySet = new Set([
+  ...Object.keys(properties).filter((property) => property.startsWith("-")),
+  ...shorthandProperties.filter((property) => property.startsWith("-")),
+]);
 
 // css-tree exposes `skip` as a Symbol on the walk function itself.
 // Returning it from an enter() callback prevents descent into child nodes.
@@ -27,18 +32,37 @@ export type ParsedStyleDecl = {
   value: StyleValue;
 };
 
-// @todo we don't parse correctly most of them if not all
-const prefixedProperties = [
-  "-webkit-box-orient",
-  "-webkit-line-clamp",
-  "-webkit-font-smoothing",
-  "-moz-osx-font-smoothing",
-  "-webkit-tap-highlight-color",
-  "-webkit-overflow-scrolling",
-  "-webkit-text-stroke",
-  "-webkit-text-stroke-color",
-  "-webkit-text-stroke-width",
-];
+export const hasUnsupportedCssTemplateRules = (source: string): boolean => {
+  try {
+    const ast = csstree.parse(source, { context: "declarationList" });
+    let unsupported = false;
+    let declarationDepth = 0;
+    csstree.walk(ast, {
+      enter(node) {
+        if (node.type === "Declaration") {
+          declarationDepth += 1;
+        }
+        if (
+          node.type === "Rule" ||
+          (node.type === "Raw" && declarationDepth === 0) ||
+          (node.type === "Atrule" && node.name.toLowerCase() !== "media")
+        ) {
+          unsupported = true;
+          return walkSkip;
+        }
+      },
+      leave(node) {
+        if (node.type === "Declaration") {
+          declarationDepth -= 1;
+        }
+      },
+    });
+    return unsupported;
+  } catch {
+    return false;
+  }
+};
+
 const prefixes = ["webkit", "moz", "ms", "o"];
 const prefixRegex = new RegExp(`^-(${prefixes.join("|")})-`);
 
@@ -50,7 +74,7 @@ const normalizeProperty = (property: string): CssProperty => {
   if (property === "font-smoothing") {
     return "-webkit-font-smoothing";
   }
-  if (prefixedProperties.includes(property)) {
+  if (supportedPrefixedPropertySet.has(property)) {
     return property as CssProperty;
   }
   // remove old or unexpected prefixes
@@ -595,6 +619,17 @@ const substituteVarsInShorthand = (
   const { resolved, dropped } = resolution;
   const { usedCssVarsSubstitution } = resolution;
 
+  // An unresolved var() can represent any transition part (or several parts).
+  // Keep the shorthand for the browser instead of guessing its longhands.
+  if (property === "transition" && dropped.length > 0) {
+    return {
+      result: new Map<CssProperty, StyleValue>([
+        [normalizeProperty(property), { type: "unparsed", value }],
+      ]),
+      droppedVars: [],
+    };
+  }
+
   if (resolved === value) {
     // No substitution happened.
     if (dropped.length === 0) {
@@ -765,7 +800,7 @@ export const parseCss = (
       }
 
       // All enclosing at-rules must be @media — reject @supports, @keyframes, etc.
-      if (atruleStack.some((atrule) => atrule.name !== "media")) {
+      if (atruleStack.some((atrule) => atrule.name.toLowerCase() !== "media")) {
         return;
       }
 

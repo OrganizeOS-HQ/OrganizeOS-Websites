@@ -3,9 +3,9 @@ import { atom } from "nanostores";
 import { useEffect, useRef, useState } from "react";
 import {
   Box,
+  cssVar,
   Flex,
   keyframes,
-  rawTheme,
   Text,
   theme,
   Tooltip,
@@ -14,7 +14,7 @@ import { OfflineIcon } from "@webstudio-is/icons";
 import { $hasUnsavedSyncChanges, $syncStatus } from "@webstudio-is/sync-client";
 
 const syncStatusDotSavedDuration = 2000;
-const syncStatusDotPendingColor = "#f4c430";
+const syncStatusDotPendingColor = cssVar("--foreground-warning");
 const $isOnline = atom(false);
 const syncStatusDotConfig = {
   idle: {
@@ -27,11 +27,11 @@ const syncStatusDotConfig = {
   },
   saved: {
     label: "Sync status: saved",
-    color: theme.colors.foregroundSuccess,
+    color: cssVar("--foreground-positive"),
   },
   error: {
     label: "Sync status: error",
-    color: theme.colors.foregroundDestructive,
+    color: cssVar("--foreground-negative"),
   },
 } satisfies Record<string, { label: string; color: string }>;
 
@@ -169,7 +169,7 @@ export const SyncStatus = () => {
         <Flex {...containerProps}>
           <OfflineIcon
             aria-label={`Sync status: failed`}
-            color={rawTheme.colors.foregroundDestructive}
+            color={cssVar("--foreground-negative")}
           />
         </Flex>
       </Tooltip>
@@ -182,7 +182,7 @@ export const SyncStatus = () => {
         <Tooltip variant="wrapped" content={<>{statusObject.error}</>}>
           <OfflineIcon
             aria-label={`Sync status: fatal`}
-            color={rawTheme.colors.foregroundDestructive}
+            color={cssVar("--foreground-negative")}
           />
         </Tooltip>
       </Flex>

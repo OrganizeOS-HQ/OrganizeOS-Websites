@@ -31,18 +31,20 @@ import {
   theme,
   textVariants,
   css,
+  cssVar,
+  declareCssVar,
   SmallIconButton,
   Grid,
   Flex,
   rawTheme,
-  globalCss,
   Kbd,
   Text,
   FloatingPanel,
+  PanelContent,
 } from "@webstudio-is/design-system";
 import { MaximizeIcon } from "@webstudio-is/icons";
 import { ChevronDownIcon, ChevronRightIcon } from "@webstudio-is/icons/svg";
-import { solarizedLight } from "./code-highlight";
+import { codeHighlightStyle } from "./code-highlight";
 
 // This undocumented flag is required to keep contenteditable fields editable after the first activation of EditorView.
 // To reproduce the issue, open any Binding dialog and then try to edit a Navigation Item in the Navigation menu.
@@ -52,9 +54,11 @@ EditorView.EDIT_CONTEXT = false;
 
 const ExternalChange = Annotation.define<boolean>();
 
-const minHeightVar = "--ws-code-editor-min-height";
-const maxHeightVar = "--ws-code-editor-max-height";
-const maximizeIconVisibilityVar = "--ws-code-editor-maximize-icon-visibility";
+const minHeightVar = declareCssVar("--code-editor-min-height");
+const maxHeightVar = declareCssVar("--code-editor-max-height");
+const maximizeIconVisibilityVar = declareCssVar(
+  "--code-editor-maximize-icon-visibility"
+);
 
 export const clampEditorSelection = (
   selection: EditorSelection,
@@ -84,12 +88,6 @@ export const getCodeEditorCssVars = ({
   [maxHeightVar]: maxHeight,
 });
 
-const globalStyles = globalCss({
-  "fieldset[disabled] .cm-editor": {
-    opacity: 0.3,
-  },
-});
-
 const editorContentStyle = css({
   ...textVariants.mono,
   // fit editor into parent if stretched
@@ -97,10 +95,10 @@ const editorContentStyle = css({
   position: "relative",
   minHeight: 0,
   boxSizing: "border-box",
-  color: theme.colors.foregroundMain,
+  color: cssVar("--foreground-primary"),
   borderRadius: theme.borderRadius[4],
   border: `1px solid transparent`,
-  background: theme.colors.backgroundControls,
+  background: cssVar("--background-secondary"),
   paddingTop: 4,
   paddingBottom: 2,
   paddingRight: theme.spacing[2],
@@ -108,17 +106,36 @@ const editorContentStyle = css({
   // required to support copying selected text
   userSelect: "text",
   "&:hover": {
-    borderColor: theme.colors.borderMain,
+    borderColor: cssVar("--border-default"),
   },
   "&:focus-within": {
-    borderColor: theme.colors.borderFocus,
+    borderColor: cssVar("--border-focus"),
   },
+  '&[data-chromeless="true"]': {
+    borderRadius: 0,
+  },
+  '&[data-chromeless="true"]:not([data-invalid="true"]):is(:hover, :focus-within)':
+    {
+      borderColor: "transparent",
+    },
   '&[data-invalid="true"]': {
-    borderColor: theme.colors.borderDestructiveMain,
-    outlineColor: theme.colors.borderDestructiveMain,
+    borderColor: cssVar("--border-negative"),
+    outlineColor: cssVar("--border-negative"),
   },
   "& .cm-focused": {
     outline: "none",
+  },
+  "& .cm-cursor, & .cm-dropCursor": {
+    borderLeftColor: "currentColor",
+  },
+  "& .cm-activeLine": {
+    backgroundColor: cssVar("--overlay-interaction-hover"),
+  },
+  "& .cm-selectionBackground, & .cm-content ::selection": {
+    backgroundColor: `${cssVar("--background-text-selection")} !important`,
+  },
+  "& .cm-content ::selection": {
+    color: `${cssVar("--foreground-on-text-selection")} !important`,
   },
   // fix scrolls appear on mount
   "& .cm-scroller": {
@@ -136,16 +153,19 @@ const editorContentStyle = css({
     width: "100%",
     // avoid modifying height in .cm-content
     // because it breaks scroll events and makes scrolling laggy
-    minHeight: `var(${minHeightVar}, auto)`,
-    maxHeight: `var(${maxHeightVar}, none)`,
+    minHeight: cssVar(minHeightVar, "auto"),
+    maxHeight: cssVar(maxHeightVar, "none"),
+  },
+  "fieldset[disabled] & .cm-editor": {
+    opacity: 0.3,
   },
   ".cm-lintRange-error": {
-    textDecoration: "underline wavy red",
-    backgroundColor: "rgba(255, 0, 0, 0.1)",
+    textDecoration: `underline wavy ${cssVar("--foreground-negative")}`,
+    backgroundColor: cssVar("--background-negative-subtle"),
   },
   ".cm-lintRange-warning": {
-    textDecoration: "underline wavy orange",
-    backgroundColor: "rgba(255, 0, 0, 0.1)",
+    textDecoration: `underline wavy ${cssVar("--foreground-warning")}`,
+    backgroundColor: cssVar("--background-warning-subtle"),
   },
   ".cm-gutters": {
     backgroundColor: "transparent",
@@ -159,7 +179,7 @@ const shortcutStyle = css({
   bottom: 0,
   width: "100%",
   paddingInline: theme.spacing[3],
-  background: "oklch(100% 0 0 / 50%)",
+  background: `oklch(from ${cssVar("--background-primary")} l c h / 50%)`,
   zIndex: 1,
   pointerEvents: "none",
 });
@@ -178,9 +198,11 @@ const autocompletionTooltipTheme = EditorView.theme({
     width: "max-content",
     boxSizing: "border-box",
     borderRadius: rawTheme.borderRadius[6],
-    backgroundColor: rawTheme.colors.backgroundMenu,
-    border: `1px solid ${rawTheme.colors.borderMain}`,
-    boxShadow: `${rawTheme.shadows.menuDropShadow}, inset 0 0 0 1px ${rawTheme.colors.borderMenuInner}`,
+    backgroundColor: cssVar("--background-primary"),
+    border: `1px solid ${cssVar("--border-default")}`,
+    boxShadow: `${rawTheme.shadows.menuDropShadow}, inset 0 0 0 1px ${cssVar(
+      "--border-default"
+    )}`,
     padding: rawTheme.spacing[3],
   },
   ".cm-tooltip.cm-tooltip-autocomplete ul li": {
@@ -189,14 +211,14 @@ const autocompletionTooltipTheme = EditorView.theme({
     position: "relative",
     display: "flex",
     alignItems: "center",
-    color: rawTheme.colors.foregroundMain,
+    color: cssVar("--foreground-primary"),
     padding: rawTheme.spacing[3],
     borderRadius: rawTheme.borderRadius[3],
   },
   ".cm-tooltip.cm-tooltip-autocomplete li[aria-selected], .cm-tooltip.cm-tooltip-autocomplete li:hover":
     {
-      color: rawTheme.colors.foregroundMain,
-      backgroundColor: rawTheme.colors.backgroundItemMenuItemHover,
+      color: cssVar("--foreground-primary"),
+      backgroundColor: cssVar("--overlay-interaction-hover"),
     },
   ".cm-tooltip.cm-tooltip-autocomplete .cm-completionLabel": {
     flexGrow: 1,
@@ -205,7 +227,7 @@ const autocompletionTooltipTheme = EditorView.theme({
     overflow: "hidden",
     textOverflow: "ellipsis",
     fontStyle: "normal",
-    color: rawTheme.colors.foregroundSubtle,
+    color: cssVar("--foreground-secondary"),
   },
 });
 
@@ -229,18 +251,71 @@ export const foldGutterExtension = foldGutter({
   },
 });
 
+export const linterTooltipTheme = EditorView.theme({
+  ".cm-tooltip:has(.cm-tooltip-lint)": {
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    paddingTop: rawTheme.spacing[5],
+    paddingBottom: rawTheme.spacing[5],
+    pointerEvents: "none",
+  },
+  ".cm-tooltip-lint": {
+    backgroundColor: cssVar("--background-inverse"),
+    color: cssVar("--foreground-on-inverse"),
+    borderRadius: rawTheme.borderRadius[7],
+    padding: rawTheme.spacing[5],
+  },
+  ".cm-tooltip-lint .cm-diagnostic": {
+    borderWidth: 0,
+    padding: 0,
+    margin: 0,
+    ...textVariants.regular,
+  },
+});
+
 export type EditorApi = {
   replaceSelection: (string: string) => void;
+  insertTemplate: (template: {
+    prefix: string;
+    suffix?: string;
+    placeholder: string;
+  }) => void;
   focus: () => void;
+};
+
+export const getTemplateInsertion = ({
+  from,
+  selectedText,
+  prefix,
+  suffix = "",
+  placeholder,
+}: {
+  from: number;
+  selectedText: string;
+  prefix: string;
+  suffix?: string;
+  placeholder: string;
+}) => {
+  const content = selectedText || placeholder;
+  const selectionFrom = from + prefix.length;
+  return {
+    text: `${prefix}${content}${suffix}`,
+    selection: EditorSelection.range(
+      selectionFrom,
+      selectionFrom + content.length
+    ),
+  };
 };
 
 type EditorContentProps = {
   editorApiRef?: RefObject<undefined | EditorApi>;
+  ariaLabel?: string;
   extensions?: Extension[];
   readOnly?: boolean;
   autoFocus?: boolean;
   invalid?: boolean;
   showShortcuts?: boolean;
+  chromeless?: boolean;
   value?: string;
   onChange: (value: string) => void;
   onChangeComplete: (value: string) => void;
@@ -248,17 +323,17 @@ type EditorContentProps = {
 
 export const EditorContent = ({
   editorApiRef,
+  ariaLabel,
   extensions = [],
   readOnly = false,
   autoFocus = false,
   invalid = false,
   showShortcuts = false,
+  chromeless = false,
   value,
   onChange,
   onChangeComplete,
 }: EditorContentProps) => {
-  globalStyles();
-
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<undefined | EditorView>(undefined);
 
@@ -332,7 +407,7 @@ export const EditorContent = ({
         history(),
         drawSelection(),
         dropCursor(),
-        syntaxHighlighting(solarizedLight, { fallback: true }),
+        syntaxHighlighting(codeHighlightStyle, { fallback: true }),
         keymap.of([
           ...keyBindings,
           {
@@ -351,6 +426,12 @@ export const EditorContent = ({
           },
         ]),
         EditorView.lineWrapping,
+        // Read-only editors must keep keyboard focus instead of leaving
+        // destructive Builder shortcuts active after clicking their content.
+        EditorView.contentAttributes.of({ tabindex: "0" }),
+        ...(ariaLabel === undefined
+          ? []
+          : [EditorView.contentAttributes.of({ "aria-label": ariaLabel })]),
         EditorView.editable.of(readOnly === false),
         EditorState.readOnly.of(readOnly === true),
         // https://github.com/uiwjs/react-codemirror/blob/5d7a37245ce70e61f215b77dc42a7eaf295c46e7/core/src/useCodeMirror.ts#L57-L70
@@ -378,7 +459,7 @@ export const EditorContent = ({
         }),
       ]),
     });
-  }, [readOnly, extensions]);
+  }, [ariaLabel, readOnly, extensions]);
 
   // update editor with react value
   // https://github.com/uiwjs/react-codemirror/blob/5d7a37245ce70e61f215b77dc42a7eaf295c46e7/core/src/useCodeMirror.ts#L158-L169
@@ -411,6 +492,25 @@ export const EditorContent = ({
       view.dispatch(view.state.replaceSelection(string));
       view.focus();
     },
+    insertTemplate({ prefix, suffix, placeholder }) {
+      const view = viewRef.current;
+      if (view === undefined) {
+        return;
+      }
+      const { from, to } = view.state.selection.main;
+      const insertion = getTemplateInsertion({
+        from,
+        selectedText: view.state.doc.sliceString(from, to),
+        prefix,
+        suffix,
+        placeholder,
+      });
+      view.dispatch({
+        changes: { from, to, insert: insertion.text },
+        selection: insertion.selection,
+      });
+      view.focus();
+    },
     focus() {
       viewRef.current?.focus();
     },
@@ -420,6 +520,7 @@ export const EditorContent = ({
     <div
       className={editorContentStyle()}
       data-invalid={invalid}
+      data-chromeless={chromeless ? "true" : undefined}
       ref={editorRef}
     >
       {showShortcuts && (
@@ -456,8 +557,8 @@ export const EditorDialogButton = forwardRef<
         position: "absolute",
         top: 4,
         right: 4,
-        visibility: `var(${maximizeIconVisibilityVar}, hidden)`,
-        background: "oklch(100% 0 0 / 50%)",
+        visibility: cssVar(maximizeIconVisibilityVar, "hidden"),
+        background: "transparent",
       }}
     />
   );
@@ -470,6 +571,7 @@ export const EditorDialog = ({
   placement = "center",
   width = 640,
   height = 480,
+  contentPadding = true,
   ...panelProps
 }: {
   title: ReactNode;
@@ -477,6 +579,7 @@ export const EditorDialog = ({
   children: ReactNode;
   width?: number;
   height?: number;
+  contentPadding?: boolean;
   placement?: ComponentProps<typeof FloatingPanel>["placement"];
   resize?: ComponentProps<typeof FloatingPanel>["resize"];
   open?: boolean;
@@ -491,17 +594,18 @@ export const EditorDialog = ({
       maximizable
       resize="both"
       content={
-        <Grid
+        <PanelContent
+          as={Grid}
           align="stretch"
           css={{
-            padding: theme.panel.padding,
+            padding: contentPadding ? undefined : 0,
             height: "100%",
             overflow: "hidden",
             boxSizing: "content-box",
           }}
         >
           {content}
-        </Grid>
+        </PanelContent>
       }
     >
       {children}

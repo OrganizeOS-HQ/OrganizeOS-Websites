@@ -1,29 +1,29 @@
-import { nanoid } from "nanoid";
 import {
+  createId,
   initialBreakpoints,
   type Pages,
   type WebstudioData,
 } from "@webstudio-is/sdk";
-import { css, renderData, ws } from "@webstudio-is/template";
+import { componentIds } from "@webstudio-is/sdk-components-registry/components";
+import { css, renderData } from "@webstudio-is/template";
 import { createRootFolder } from "./shared/pages-utils";
 
 export const createPages = (): WebstudioData => {
   const breakpoints = initialBreakpoints.map((breakpoint) => ({
     ...breakpoint,
-    id: nanoid(),
+    id: createId("nano"),
   }));
-  const homePageId = nanoid();
-  const homeBodyId = nanoid();
-  const notFoundPageId = nanoid();
-  const notFoundBodyId = nanoid();
+  const homePageId = createId("nano");
+  const homeBodyId = createId("nano");
+  const notFoundPageId = createId("nano");
+  const notFoundBodyId = createId("nano");
 
   const data = renderData(
     <>
       {/* home page body */}
-      <ws.element ws:tag="body" ws:id={homeBodyId}></ws.element>
+      <body ws:id={homeBodyId} />
       {/* not found page body */}
-      <ws.element
-        ws:tag="body"
+      <body
         ws:id={notFoundBodyId}
         ws:style={css`
           display: flex;
@@ -32,9 +32,8 @@ export const createPages = (): WebstudioData => {
           background-color: #fff;
         `}
       >
-        <ws.element ws:tag="div">
-          <ws.element
-            ws:tag="div"
+        <div>
+          <div
             ws:style={css`
               position: relative;
               text-align: center;
@@ -44,9 +43,8 @@ export const createPages = (): WebstudioData => {
               letter-spacing: -0.05em;
             `}
           >
-            <ws.element ws:tag="div">404</ws.element>
-            <ws.element
-              ws:tag="div"
+            <div>404</div>
+            <div
               ws:style={css`
                 position: absolute;
                 inset: 0 -0.125rem 0 0.125rem;
@@ -54,9 +52,8 @@ export const createPages = (): WebstudioData => {
               `}
             >
               404
-            </ws.element>
-            <ws.element
-              ws:tag="div"
+            </div>
+            <div
               ws:style={css`
                 position: absolute;
                 inset: 0 0.125rem 0 -0.125rem;
@@ -64,9 +61,8 @@ export const createPages = (): WebstudioData => {
               `}
             >
               404
-            </ws.element>
-            <ws.element
-              ws:tag="div"
+            </div>
+            <div
               ws:style={css`
                 position: absolute;
                 top: 50%;
@@ -75,10 +71,9 @@ export const createPages = (): WebstudioData => {
                 background-color: #fff;
                 height: 0.375rem;
               `}
-            ></ws.element>
-          </ws.element>
-          <ws.element
-            ws:tag="p"
+            />
+          </div>
+          <p
             ws:style={css`
               margin-top: 1.5rem;
               font-weight: 700;
@@ -88,12 +83,13 @@ export const createPages = (): WebstudioData => {
             `}
           >
             PAGE NOT FOUND
-          </ws.element>
-        </ws.element>
-      </ws.element>
+          </p>
+        </div>
+      </body>
     </>,
-    nanoid,
-    breakpoints
+    () => createId("nano"),
+    breakpoints,
+    { componentIds }
   );
 
   const pages: Pages = {

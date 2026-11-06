@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { getStyleDeclKey } from "@webstudio-is/sdk";
-import { $, PageValue, css, renderTemplate, ws } from "@webstudio-is/template";
+import { PageValue, css, renderTemplate, ws } from "@webstudio-is/template";
+import { $ } from "../shared/proxy";
 import { cardToken } from "../events/event-card.template";
 import { meta as eventListMeta } from "../event-list.template";
 import { BLANK_CANONICAL_VALUES } from "./canonical-variables";
@@ -11,6 +12,7 @@ import {
   type RenderedPage,
 } from "./render";
 import type { SiteTemplate, SiteTemplatePage } from "./types";
+import { fieldJournalTemplate } from "./nonprofit/field-journal";
 
 const EventList: BlockKey = "@organizeos/site-components:EventList";
 
@@ -498,6 +500,53 @@ describe("template block tokens", () => {
     expect(declared(tokenStyles(page, "OS Event Link"), "color")).toEqual([
       { type: "var", value: "accent-1" },
     ]);
+  });
+
+  // 0.309.0's renderer lists a selection's tokens before its local styles
+  // (upstream #6408), so a block's own declaration would beat the template's
+  // block token of the same property. The render keeps the fork's order:
+  // local styles first, then tokens, so the token wins, as it did. Field
+  // Journal's events title is the case that shows: the card title's own
+  // margin is 0, and the template's OS Event Title puts 4px over it.
+  test("a block token overrides the block's own declaration", () => {
+    const pages = renderSiteTemplate(fieldJournalTemplate, {
+      assetIds: new Map(
+        Object.keys(fieldJournalTemplate.images).map((file) => [file, file])
+      ),
+      generatePageId: pageIdCounter(),
+    });
+    const titles = pages.flatMap(({ fragment }) => {
+      const title = fragment.styleSources.find(
+        (source) => source.type === "token" && source.name === "OS Event Title"
+      );
+      return fragment.styleSourceSelections.flatMap((selection) =>
+        title !== undefined && selection.values.includes(title.id)
+          ? [{ fragment, selection, title }]
+          : []
+      );
+    });
+    expect(titles.length).toBeGreaterThan(0);
+    let overlapping = 0;
+    for (const { fragment, selection, title } of titles) {
+      const local = `${selection.instanceId}:ws:style`;
+      if (selection.values.includes(local) === false) {
+        continue;
+      }
+      expect(selection.values.indexOf(local)).toBeLessThan(
+        selection.values.indexOf(title.id)
+      );
+      const marginTop = (styleSourceId: string) =>
+        fragment.styles.some(
+          (style) =>
+            style.styleSourceId === styleSourceId &&
+            style.property === "marginTop"
+        );
+      if (marginTop(local) && marginTop(title.id)) {
+        overlapping += 1;
+      }
+    }
+    // the title's own margin and the token's 4px meet on some title
+    expect(overlapping).toBeGreaterThan(0);
   });
 
   test("a page that places none of the tokens named is unchanged", () => {

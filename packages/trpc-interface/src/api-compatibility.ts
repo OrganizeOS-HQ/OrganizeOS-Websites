@@ -4,6 +4,8 @@ export const apiCompatibilityErrorType = "webstudioApiCompatibilityError";
 
 export const apiClientHeader = "x-webstudio-client";
 export const apiClientVersionHeader = "x-webstudio-client-version";
+export const apiClientContractVersionHeader =
+  "x-webstudio-api-contract-version";
 
 export const apiCompatibilityTarget = z.enum(["browser", "cli"]);
 export type ApiCompatibilityTarget = z.infer<typeof apiCompatibilityTarget>;
@@ -22,7 +24,11 @@ const apiCompatibilityAction = z.discriminatedUnion("type", [
 
 export const apiCompatibilityPayload = z.object({
   type: z.literal(apiCompatibilityErrorType),
-  reason: z.enum(["apiRouteNotFound", "apiProcedureNotFound"]),
+  reason: z.enum([
+    "apiRouteNotFound",
+    "apiProcedureNotFound",
+    "clientVersionUnsupported",
+  ]),
   target: apiCompatibilityTarget,
   message: z.string(),
   action: apiCompatibilityAction,
