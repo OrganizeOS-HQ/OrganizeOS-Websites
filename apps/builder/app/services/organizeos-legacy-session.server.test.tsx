@@ -1,113 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { createRequestHandler, type ServerBuild } from "@remix-run/node";
-import { Outlet } from "@remix-run/react";
-import * as entry from "~/entry.server";
 import {
   expireLegacySessionCookies,
   legacySessionCookieNames,
   legacySessionDeletes,
 } from "./organizeos-legacy-session.server";
+import {
+  canvasHost,
+  carried,
+  chunkDeletes,
+  createHandler,
+} from "./organizeos-legacy-session.fixture";
 
 const flag = "ORGANIZEOS_EXPIRE_LEGACY_SESSION";
 
-// A server build with the builder's own entry: a root, a document route
-// standing in for the canvas (it sets a cookie of its own, as builder routes
-// do), and a resource route standing in for an asset.
-const routeEntry = (
-  id: string,
-  init: { parentId?: string; path?: string; hasLoader: boolean }
-) => ({
-  id,
-  parentId: init.parentId,
-  path: init.path,
-  index: undefined,
-  caseSensitive: undefined,
-  hasAction: false,
-  hasLoader: init.hasLoader,
-  hasClientAction: false,
-  hasClientLoader: false,
-  hasErrorBoundary: false,
-  module: `/${id}.js`,
-  imports: [],
-});
-
-const Root = () => (
-  <html>
-    <body>
-      <Outlet />
-    </body>
-  </html>
-);
-
-const build = {
-  mode: "production",
-  basename: undefined,
-  publicPath: "/build/",
-  assetsBuildDirectory: "build/client",
-  isSpaMode: false,
-  future: {},
-  entry: { module: entry },
-  routes: {
-    root: {
-      id: "root",
-      path: "",
-      module: { default: Root },
-    },
-    canvas: {
-      id: "canvas",
-      parentId: "root",
-      path: "canvas",
-      module: {
-        loader: () => ({}),
-        headers: () => ({ "Set-Cookie": "_csrf=1; Path=/; HttpOnly" }),
-        default: () => <p>canvas</p>,
-      },
-    },
-    asset: {
-      id: "asset",
-      parentId: "root",
-      path: "cgi/asset/*",
-      module: {
-        loader: () =>
-          new Response("asset", { headers: { "Content-Type": "image/png" } }),
-      },
-    },
-  },
-  assets: {
-    entry: { imports: [], module: "/entry.client.js" },
-    routes: {
-      root: routeEntry("root", { path: "", hasLoader: false }),
-      canvas: routeEntry("canvas", {
-        parentId: "root",
-        path: "canvas",
-        hasLoader: true,
-      }),
-      asset: routeEntry("asset", {
-        parentId: "root",
-        path: "cgi/asset/*",
-        hasLoader: true,
-      }),
-    },
-    url: "/manifest.js",
-    version: "1",
-  },
-} as unknown as ServerBuild;
-
-const handle = createRequestHandler(build, "production");
-
-const canvasHost = "https://p-0b7a5f2e-builder.builder.organizeos.org";
-
-const get = (url: string, cookie: string) =>
-  handle(new Request(url, { headers: { Cookie: cookie } }));
-
-const carried = "sb-abc-auth-token.0=x; sb-abc-auth-token.1=y; _ga=GA1.2.3";
-
-const chunkDeletes = [
-  "sb-abc-auth-token.0=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; SameSite=Lax; Secure; Domain=.organizeos.org",
-  "sb-abc-auth-token.0=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; SameSite=Lax; Secure",
-  "sb-abc-auth-token.1=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; SameSite=Lax; Secure; Domain=.organizeos.org",
-  "sb-abc-auth-token.1=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; SameSite=Lax; Secure",
-];
+const get = createHandler();
 
 describe("old session cookies, flag on", () => {
   beforeEach(() => {
@@ -168,6 +74,14 @@ describe("old session cookies, flag on", () => {
     expect(response.headers.getSetCookie()).toEqual([
       "_csrf=1; Path=/; HttpOnly",
     ]);
+  });
+
+  test("a document Remix renders again after an error carries each delete once", async () => {
+    const response = await get(`${canvasHost}/broken`, carried);
+
+    expect(response.status).toBe(500);
+    expect(await response.text()).toContain("error");
+    expect(response.headers.getSetCookie()).toEqual(chunkDeletes);
   });
 
   test("a second render with the same headers adds no second copy", () => {

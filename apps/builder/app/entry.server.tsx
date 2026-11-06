@@ -2,7 +2,8 @@
 // dist/config/defaults/entry.server.node.tsx), which the builder used while it
 // had no entry of its own, with one OrganizeOS change, marked below
 // (docs/ORGANIZEOS-FORK.md section 5, "Old session cookies"). The helpers are
-// arrow functions for this repository's lint (func-style), and the bot check
+// arrow functions for this repository's lint (func-style, along with const
+// for let and the unused loadContext as _loadContext), and the bot check
 // calls isbot 5, the builder's version, without the fallback for isbot 3.
 import { PassThrough } from "node:stream";
 

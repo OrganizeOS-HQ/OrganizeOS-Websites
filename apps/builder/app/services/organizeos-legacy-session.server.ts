@@ -56,6 +56,25 @@ export const legacySessionDeletes = (name: string): string[] => [
 ];
 
 /**
+ * The Set-Cookie values already on the headers, one per cookie. On Vercel the
+ * global Headers is Remix's polyfill (installGlobals), which has raw() and no
+ * getSetCookie(); Node's own Headers has getSetCookie() and no raw().
+ */
+const setCookieValues = (headers: Headers): string[] => {
+  const native = headers as Headers & { getSetCookie?: () => string[] };
+  if (typeof native.getSetCookie === "function") {
+    return native.getSetCookie();
+  }
+  const polyfill = headers as Headers & {
+    raw?: () => Record<string, string[]>;
+  };
+  if (typeof polyfill.raw === "function") {
+    return polyfill.raw()["set-cookie"] ?? [];
+  }
+  return [];
+};
+
+/**
  * Appends the deletes to a document response's headers. Call it last, once
  * the routes' own headers are in: these are raw appends, one Set-Cookie each.
  * Remix renders a document a second time with the same headers after an
@@ -71,7 +90,7 @@ export const expireLegacySessionCookies = (
   if (isUnderLegacyCookieDomain(request) === false) {
     return;
   }
-  const present = new Set(responseHeaders.getSetCookie());
+  const present = new Set(setCookieValues(responseHeaders));
   for (const name of legacySessionCookieNames(request)) {
     for (const cookie of legacySessionDeletes(name)) {
       if (present.has(cookie) === false) {
