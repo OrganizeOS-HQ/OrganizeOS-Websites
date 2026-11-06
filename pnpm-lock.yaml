@@ -2650,6 +2650,9 @@ importers:
 
   packages/sdk-components-organizeos:
     dependencies:
+      '@webstudio-is/expression':
+        specifier: workspace:*
+        version: link:../expression
       '@webstudio-is/icons':
         specifier: workspace:*
         version: link:../icons

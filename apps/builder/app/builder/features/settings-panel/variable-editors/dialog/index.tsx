@@ -43,13 +43,7 @@ export const VariableEditorDialog = ({
     isManagedFormParameter(variable, $instances.get());
   const [value, setValue] = useState<unknown>(() => {
     if (variable?.type === "variable") {
-      // OrganizeOS fork: every value the form edits as JSON starts as the
-      // builder's own JSON text, a string list too (docs/ORGANIZEOS-FORK.md section 10)
-      if (
-        variable.value.type !== "string" &&
-        variable.value.type !== "number" &&
-        variable.value.type !== "boolean"
-      ) {
+      if (variable.value.type === "json") {
         return formatValue(variable.value.value);
       }
       return variable.value.value;

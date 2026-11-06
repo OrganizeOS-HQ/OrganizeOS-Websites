@@ -71,6 +71,7 @@
     "react-dom": "18.3.0-canary-14898b6a9-20240318"
   },
   "dependencies": {
+    "@webstudio-is/expression": "workspace:*",
     "@webstudio-is/icons": "workspace:*",
     "acorn": "^8.14.1"
   },

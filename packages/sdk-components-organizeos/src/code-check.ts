@@ -2,6 +2,8 @@ import { parseExpressionAt, type Node } from "acorn";
 import {
   allowedArrayMethods,
   allowedStringMethods,
+} from "@webstudio-is/expression";
+import {
   decodeDataVariableId,
   SYSTEM_VARIABLE_ID,
   tags,

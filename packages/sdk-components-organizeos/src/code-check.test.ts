@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import {
   allowedArrayMethods,
   allowedStringMethods,
+} from "@webstudio-is/expression";
+import {
   tags,
   type Instance,
   type Page,
