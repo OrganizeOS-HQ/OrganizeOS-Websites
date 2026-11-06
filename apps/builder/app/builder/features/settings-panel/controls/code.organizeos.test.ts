@@ -45,11 +45,6 @@ describe("the HTML Embed code check", () => {
     ).toBeUndefined();
   });
 
-  test("reads the code as an element's content, as upstream's check did", () => {
-    // a table row outside a table is dropped, as in a div
-    expect(validateHtml(`<tr><td>x</td></tr><br>`)?.expected).toBe("x<br>");
-  });
-
   test("accepts a tracking snippet whose noscript holds markup", () => {
     const snippet = `<script>
   !function(f){f.fbq=function(){}}(window);

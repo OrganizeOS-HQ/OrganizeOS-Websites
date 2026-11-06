@@ -21,9 +21,12 @@ import {
 // OrganizeOS fork: while org script is paused, a value must read as data, and
 // a value must pass input validation whatever the switch (code-check.ts)
 // (docs/ORGANIZEOS-FORK.md section 10)
-export const validateJsonValue = (expression: string) => {
+export const validateJsonValue = (
+  expression: string,
+  mayRun: boolean = orgScriptMayRun()
+) => {
   if (
-    orgScriptMayRun() === false &&
+    mayRun === false &&
     expression.trim() !== "" &&
     readLiteralValue(expression) === undefined
   ) {

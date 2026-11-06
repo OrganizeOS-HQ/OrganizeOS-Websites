@@ -1,5 +1,6 @@
 import type { Diagnostic } from "@webstudio-is/expression";
 import type { Resource } from "@webstudio-is/sdk";
+import { normalizeResourceExpressionInput } from "@webstudio-is/project-build/runtime";
 import {
   checkResource,
   checkResourceName,
@@ -67,9 +68,38 @@ export const nameCheckError = (
 
 /**
  * OrganizeOS fork: whether a resource the variable dialog is about to save
- * fails input validation; a refused resource is not saved.
+ * fails input validation; a refused resource is not saved. A fixed value the
+ * editor writes as `{ type: "literal" }` is checked as the expression it is
+ * saved as.
  */
-export const resourceFailsCodeCheck = (
-  fields: Pick<Resource, "url" | "headers"> &
-    Partial<Pick<Resource, "searchParams" | "body">>
-) => checkResource(fields as Resource) !== undefined;
+type ResourceFieldValue = Parameters<
+  typeof normalizeResourceExpressionInput
+>[0];
+type ResourceFieldEntry = { name: string; value: ResourceFieldValue };
+
+export const resourceFailsCodeCheck = (fields: {
+  url: string;
+  headers: ResourceFieldEntry[];
+  searchParams?: ResourceFieldEntry[];
+  body?: ResourceFieldValue;
+}) => {
+  const normalizeEntries = (entries: ResourceFieldEntry[]) =>
+    entries.map((entry) => ({
+      name: entry.name,
+      value: normalizeResourceExpressionInput(entry.value),
+    }));
+  return (
+    checkResource({
+      url: fields.url,
+      headers: normalizeEntries(fields.headers),
+      searchParams:
+        fields.searchParams === undefined
+          ? undefined
+          : normalizeEntries(fields.searchParams),
+      body:
+        fields.body === undefined
+          ? undefined
+          : normalizeResourceExpressionInput(fields.body),
+    } as Resource) !== undefined
+  );
+};

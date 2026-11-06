@@ -4,7 +4,6 @@ import { act } from "react-dom/test-utils";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   blockComponent,
-  coreMetas,
   tags,
   type Instance,
   type WsComponentMeta,

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
+import { createDefaultPages } from "@webstudio-is/project-build";
 import {
-  createDefaultPages,
   serializeData,
   serializePages,
-} from "@webstudio-is/project-build";
+} from "@webstudio-is/project-build/persistence";
 import type { Prop } from "@webstudio-is/sdk";
 import { findRefusedEntries } from "./organizeos-code-check.server";
 import type { PatchEntry } from "./patch-normalize.server";

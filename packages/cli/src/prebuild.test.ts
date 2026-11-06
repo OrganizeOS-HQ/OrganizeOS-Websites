@@ -6710,7 +6710,9 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
           {
             id: "not-found",
             name: "Not found",
-            title: "Not found",
+            // OrganizeOS fork: a title is an expression; two bare words fail
+            // input validation (organizeos-code-check.ts)
+            title: `"Not found"`,
             path: "/*",
             rootInstanceId: "root",
             meta: { status: "404" },
@@ -6754,7 +6756,9 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
           {
             id: "not-found",
             name: "Not found",
-            title: "Not found",
+            // OrganizeOS fork: a title is an expression; two bare words fail
+            // input validation (organizeos-code-check.ts)
+            title: `"Not found"`,
             path: "/*",
             rootInstanceId: "root",
             meta: {},
@@ -11676,7 +11680,9 @@ export const createManagedFormResourceFetch = () => {
 
   test("keeps resources used by XML collection pages in the request graph", async () => {
     // OrganizeOS fork: the pause leaves out a ws:element whose tag the
-    // builder does not offer (urlset, url), on an XML page too (orgScript)
+    // builder does not offer (urlset, url), on an XML page too (orgScript),
+    // and input validation refuses one whatever the switch says, so the
+    // XML elements are XML Nodes, as the builder makes them
     publishAsIfOrgScriptMayRun();
     const siteData = createSiteData({
       pages: [
@@ -11718,8 +11724,7 @@ export const createManagedFormResourceFetch = () => {
           "urlset",
           {
             id: "urlset",
-            component: elementComponent,
-            tag: "urlset",
+            component: "XmlNode",
             children: [{ type: "id", value: "collection" }],
           },
         ],
@@ -11735,8 +11740,7 @@ export const createManagedFormResourceFetch = () => {
           "url",
           {
             id: "url",
-            component: elementComponent,
-            tag: "url",
+            component: "XmlNode",
             children: [],
           },
         ],
