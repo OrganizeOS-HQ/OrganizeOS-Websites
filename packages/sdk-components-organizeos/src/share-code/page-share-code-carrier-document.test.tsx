@@ -64,6 +64,7 @@ const Document = () => (
         <main>
           <RouterLink to="/donate">Give</RouterLink>
           <RouterLink to="/about">About</RouterLink>
+          <RouterLink to="/join">Join</RouterLink>
         </main>
         <PageShareCodeCarrier />
       </body>
@@ -119,6 +120,23 @@ test("hydrated with React on the document, it warns of nothing, and a plain clic
     fireEvent.click(about);
     expect(route).toHaveBeenCalledWith("/about");
     expect(about.getAttribute("href")).toBe("/about");
+    expect(navigateTo).toHaveBeenCalledTimes(1);
+
+    // a middle-click on a router link: one r, the default kept for the new
+    // tab, and nothing routes
+    const join = document.querySelector('a[href="/join"]') as Element;
+    const middleNotCancelled = fireEvent(
+      join,
+      new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 1 })
+    );
+    expect(middleNotCancelled).toBe(true);
+    const joined = new URL(
+      join.getAttribute("href") ?? "",
+      window.location.href
+    );
+    expect(joined.pathname).toBe("/join");
+    expect(joined.searchParams.getAll("r")).toEqual([code]);
+    expect(route).toHaveBeenCalledTimes(1);
     expect(navigateTo).toHaveBeenCalledTimes(1);
     expect(consoleError).not.toHaveBeenCalled();
   } finally {

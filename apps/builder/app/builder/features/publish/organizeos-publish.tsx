@@ -25,6 +25,7 @@ import {
   $pages,
   $project,
   $props,
+  $resources,
 } from "~/shared/sync/data-stores";
 import {
   $editingPageId,
@@ -42,6 +43,7 @@ import {
   findPausedScript,
   pausedScriptExplanation,
 } from "./organizeos-publish-paused-script";
+import { findPublishBlocker } from "./organizeos-publish-code-check";
 import {
   getOrganizeosPublishState,
   type OrganizeosPublishState,
@@ -408,8 +410,20 @@ export const OrganizeosPublishContent = ({
   }
 
   const handlePublish = async () => {
-    setIsSubmitting(true);
     setError(undefined);
+    // a value that fails input validation would stop the build; name it here
+    const blocker = findPublishBlocker({
+      pages: $pages.get(),
+      instances: $instances.get(),
+      props: $props.get(),
+      resources: $resources.get(),
+      dataSources: $dataSources.get(),
+    });
+    if (blocker !== undefined) {
+      setError(blocker);
+      return;
+    }
+    setIsSubmitting(true);
     try {
       const result = await nativeClient.domain.publish.mutate({
         projectId: project.id,
