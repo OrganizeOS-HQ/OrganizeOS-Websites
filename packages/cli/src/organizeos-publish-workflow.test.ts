@@ -207,7 +207,7 @@ const substitutions: Record<string, string> = {
   "secrets.VERCEL_SITES_PROJECT_ID": "prj_example",
   "steps.deploy.outputs.deployment_url": "https://site-abc.vercel.app",
   "steps.org-script.outputs.value": "false",
-  "steps.guard-level.outputs.value": "0",
+  "steps.guard-level.outputs.value": "1",
 };
 
 /** The step's env as the runner fills it, with some substitutions replaced. */
@@ -396,19 +396,19 @@ describe("the publish workflow's guard level", () => {
     }
   });
 
-  test("the step's command prints 0 from the built package, and fails without the export", () => {
+  test("the step's command prints 1 from the built package, and fails without the export", () => {
     const node = spawnSync(
       "node",
       ["--input-type=module", "-e", probeOf(guardScript) ?? ""],
       { cwd: cliDir, encoding: "utf8" }
     );
     expect(node.stderr).toBe("");
-    expect(node.stdout).toBe("0");
+    expect(node.stdout).toBe("1");
 
     const run = runStep(guardScript);
     expect(run.stderr).toBe("");
     expect(run.status).toBe(0);
-    expect(run.output).toBe("value=0\n");
+    expect(run.output).toBe("value=1\n");
 
     // a CLI built before the constant cannot report a level
     const missing = runStep(
@@ -536,7 +536,7 @@ describe("the publish workflow's inputs", () => {
 });
 
 describe("the publish callback", () => {
-  test("sends the five keys, the build id verbatim, orgScript false and guardLevel 0", () => {
+  test("sends the five keys, the build id verbatim, orgScript false and guardLevel 1", () => {
     const run = runWithAnswer(callbackStep);
 
     expect(run.status).toBe(0);
@@ -550,7 +550,7 @@ describe("the publish callback", () => {
       buildId: hostileBuildId,
       deploymentUrl: substitutions["steps.deploy.outputs.deployment_url"],
       orgScript: false,
-      guardLevel: 0,
+      guardLevel: 1,
     });
     expect(Object.keys(body)).toHaveLength(5);
     expectNoSecretIn(run);

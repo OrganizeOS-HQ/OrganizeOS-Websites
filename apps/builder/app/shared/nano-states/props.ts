@@ -40,6 +40,7 @@ import {
 } from "./components";
 import { getSelectionOverrides } from "./selection-reveal";
 import { computeExpression } from "@webstudio-is/project-build/runtime";
+import { checkAction } from "@organizeos/site-components/org-script";
 import { $currentSystem } from "../system";
 import {
   $resourcesCache,
@@ -159,10 +160,25 @@ const generateAction = (prop: Extract<Prop, { type: "action" }>) => {
   return generated;
 };
 
+// OrganizeOS fork: an action that fails input validation is never compiled;
+// it does nothing (code-check.ts in @organizeos/site-components).
+const skippedAction = () => {};
+const warnedActions = new WeakSet<Extract<Prop, { type: "action" }>["value"]>();
+
 const getAction = (
   prop: Extract<Prop, { type: "action" }>,
   values: Map<string, unknown>
 ) => {
+  const check = checkAction(prop.value, {
+    dataSourceIds: new Set([SYSTEM_VARIABLE_ID, ...$dataSources.get().keys()]),
+  });
+  if (check.ok === false) {
+    if (warnedActions.has(prop.value) === false) {
+      warnedActions.add(prop.value);
+      console.error(`Action skipped: ${check.reason}`);
+    }
+    return skippedAction;
+  }
   const generatedAction = generateAction(prop);
   try {
     const executeFn = new Function(

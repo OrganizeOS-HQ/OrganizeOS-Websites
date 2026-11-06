@@ -779,6 +779,59 @@ describe("project-queue", () => {
       vi.unstubAllGlobals();
     });
 
+    // OrganizeOS fork: patch save refuses an entry whose value fails input
+    // validation as "failed" in a partial result, and the builder answers it
+    // as below: the reason in a blocking prompt, sync paused until a reload.
+    // Pinned so a change to this handling is seen.
+    test("a partial result asks with the refused entries' reasons and pauses sync", async () => {
+      const confirm = vi.fn(() => false);
+      vi.stubGlobal("confirm", confirm);
+
+      mockBuildPatch.mockResolvedValue({
+        status: "partial",
+        version: 1,
+        entries: [
+          { seq: 0, transactionId: "tx-1", status: "failed", errors: "A" },
+          { seq: 1, transactionId: "tx-2", status: "accepted" },
+          { seq: 2, transactionId: "tx-3", status: "failed", errors: "B" },
+        ],
+      });
+
+      enqueueProjectDetails({
+        projectId: "p1",
+        buildId: "b1",
+        version: 1,
+        authPermit: "edit",
+        authToken: "tok",
+      });
+      commandQueue.enqueue({
+        type: "transactions",
+        projectId: "p1",
+        transactions: [makeTx("tx-1"), makeTx("tx-2"), makeTx("tx-3")],
+      });
+
+      await vi.advanceTimersByTimeAsync(NEW_ENTRIES_INTERVAL * 3);
+      await flush();
+
+      expect(confirm).toHaveBeenCalledWith("A\nB");
+      expect($syncStatus.get()).toEqual({ status: "fatal", error: "A\nB" });
+      expect(mockToastError).toHaveBeenCalledWith(
+        "Synchronization has been paused. Please reload to continue.",
+        expect.anything()
+      );
+      const calls = mockBuildPatch.mock.calls.length;
+      commandQueue.enqueue({
+        type: "transactions",
+        projectId: "p1",
+        transactions: [makeTx("tx-4")],
+      });
+      await vi.advanceTimersByTimeAsync(NEW_ENTRIES_INTERVAL * 3);
+      await flush();
+      expect(mockBuildPatch.mock.calls.length).toBe(calls);
+
+      vi.unstubAllGlobals();
+    });
+
     test("fatal after MAX_ALLOWED_API_ERRORS unknown API errors", async () => {
       mockBuildPatch.mockResolvedValue({
         status: "unknown_error",

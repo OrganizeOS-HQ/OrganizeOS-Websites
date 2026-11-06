@@ -14,6 +14,8 @@ import { FormResourcePreview } from "./form-resource-preview";
 import { VariableEditorLayout } from "./dialog/layout";
 import { useResourcePreviewController } from "./shared/use-resource-preview-controller";
 import type { VariableEditorProps } from "./shared/editor-types";
+// OrganizeOS fork: input validation (docs/ORGANIZEOS-FORK.md section 10)
+import { resourceFailsCodeCheck } from "~/builder/shared/organizeos-code-check";
 
 export const SystemResourceForm = forwardRef<
   undefined | PanelApi,
@@ -42,6 +44,10 @@ export const SystemResourceForm = forwardRef<
         control: "system",
         formData,
       });
+      // OrganizeOS fork: a value that fails input validation is not saved
+      if (resourceFailsCodeCheck(resourceFields)) {
+        return false;
+      }
       return executeRuntimeMutation({
         id: "resources.upsert",
         input: {

@@ -2240,6 +2240,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.10.0
         version: 1.10.0
+      '@organizeos/site-components':
+        specifier: workspace:*
+        version: link:../sdk-components-organizeos
       '@webstudio-is/authorization-token':
         specifier: workspace:*
         version: link:../authorization-token

@@ -58,6 +58,11 @@ import { createBuilderPatchPayloadFromImmerPatches } from "../state/patch";
 import type { BuilderState } from "../state/builder-state";
 import "../state/immer";
 import type { BuilderRuntimeContext } from "./context";
+// OrganizeOS fork: input validation (docs/ORGANIZEOS-FORK.md section 10)
+import {
+  checkValueExpression,
+  codeCheckReasons,
+} from "@organizeos/site-components/org-script";
 import {
   addZodValidationIssue,
   formatValidationIssueMessages,
@@ -366,10 +371,26 @@ const setUnion = <Item>(current: Set<Item>, other: Set<Item>) => {
   return result;
 };
 
+// OrganizeOS fork: an expression that fails input validation is never
+// compiled; it reads as unset (code-check.ts in @organizeos/site-components).
+// It is logged as upstream logs one that cannot compile, with the reason
+// only; one that does not parse still fails in transpileExpression.
+const skippedExpression: CompiledExpression = () => undefined;
+
 const getCompiledExpression = (expression: string) => {
   const cached = compiledExpressionCache.get(expression);
   if (cached) {
     return cached;
+  }
+  const check = checkValueExpression(expression);
+  if (
+    check.ok === false &&
+    check.reason !== codeCheckReasons.syntax &&
+    check.reason !== codeCheckReasons.empty
+  ) {
+    console.error(`Expression skipped: ${check.reason}`);
+    compiledExpressionCache.set(expression, skippedExpression);
+    return skippedExpression;
   }
 
   const usedVariables = new Map<string, DataSource["name"]>();

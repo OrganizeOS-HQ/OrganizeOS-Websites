@@ -4,6 +4,8 @@ import { act } from "react-dom/test-utils";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   blockComponent,
+  coreMetas,
+  tags,
   type Instance,
   type WsComponentMeta,
 } from "@webstudio-is/sdk";
@@ -40,6 +42,7 @@ import { $componentOptions } from "~/builder/features/command-panel/groups/compo
 import {
   PausedHtmlEmbed,
   PausedMarkdownEmbed,
+  instanceTagMayRender,
   withOrgScriptPolicy,
   withoutBuiltWithWebstudio,
 } from "./organizeos-org-script";
@@ -646,5 +649,39 @@ describe("PausedMarkdownEmbed", () => {
     expect(notice.textContent).toBe(
       "Markdown Embed is paused. Its content is kept, but it isn't published and isn't shown here: a link in it could run script that reads the OrganizeOS sign-in of people who visit."
     );
+  });
+});
+
+describe("instanceTagMayRender", () => {
+  test("a tag the builder does not offer never renders, whatever the switch", () => {
+    for (const mayRun of [false, true]) {
+      for (const component of ["ws:element", "Box", "Text", "Heading"]) {
+        for (const tag of ["script", 'div"', "Div", 1]) {
+          expect(
+            instanceTagMayRender(component, tag, mayRun),
+            `${component} ${tag} ${mayRun}`
+          ).toBe(false);
+        }
+        expect(instanceTagMayRender(component, "section", mayRun)).toBe(true);
+      }
+    }
+  });
+
+  test("animate and set render only while the switch is on", () => {
+    expect(instanceTagMayRender("ws:element", "animate", false)).toBe(false);
+    expect(instanceTagMayRender("ws:element", "animate", true)).toBe(true);
+  });
+
+  test("an XML Node's tag is left to the switch", () => {
+    expect(instanceTagMayRender("XmlNode", "urlset", true)).toBe(true);
+    expect(instanceTagMayRender("XmlNode", "urlset", false)).toBe(false);
+  });
+
+  test("every tag the builder offers but animate and set renders", () => {
+    for (const tag of tags) {
+      expect(instanceTagMayRender("ws:element", tag, false), tag).toBe(
+        tag !== "animate" && tag !== "set"
+      );
+    }
   });
 });

@@ -44,6 +44,7 @@ import {
 } from "./expression-editor";
 import { normalizeEditorValue } from "~/shared/code-editor-base";
 import { useAsyncValue } from "~/shared/use-async-value";
+import { withCodeCheckError } from "./organizeos-code-check";
 
 export const evaluateExpressionWithinScope = async (
   expression: string,
@@ -77,10 +78,14 @@ const BindingPanel = ({
   const scopeEntries = Object.entries(scope);
 
   const validate = (expression: string) => {
-    const errors = getExpressionErrorMessages({
+    // OrganizeOS fork: input validation (organizeos-code-check.ts)
+    const errors = withCodeCheckError(
       expression,
-      availableVariables: new Set(aliases.keys()),
-    });
+      getExpressionErrorMessages({
+        expression,
+        availableVariables: new Set(aliases.keys()),
+      })
+    );
     setErrorsCount(errors.length);
   };
 

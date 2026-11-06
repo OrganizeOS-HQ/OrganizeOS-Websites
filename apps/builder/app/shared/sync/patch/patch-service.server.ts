@@ -18,6 +18,7 @@ import type {
   NormalizedPatchRequest,
   PatchEntry,
 } from "./patch-normalize.server";
+import { findRefusedPatchEntries } from "./organizeos-code-check.server";
 
 type BuildRow = Database["public"]["Tables"]["Build"]["Row"];
 type BuildColumn = keyof BuildRow;
@@ -329,10 +330,8 @@ export const applyPatchRequest = async (
 ): Promise<PatchResult> => {
   const state = await loadBuildState(context, patch.buildId);
   assertBuildProject(state, patch);
-  const { authorized, rejected } = await authorizePatchEntries(
-    context,
-    patch,
-    async () => {
+  const { authorized: authorizedEntries, rejected } =
+    await authorizePatchEntries(context, patch, async () => {
       const build = await loadBuildForContentMode(context, patch.buildId);
       const capabilities = createContentModeCapabilities({
         pages: build.pages,
@@ -362,7 +361,16 @@ export const applyPatchRequest = async (
         );
       }
       return capabilities;
-    }
+    });
+  // OrganizeOS fork: an entry that writes a value failing input validation is
+  // refused, and the others apply (organizeos-code-check.server.ts)
+  const refusedByCheck = await findRefusedPatchEntries(
+    context,
+    patch.buildId,
+    authorizedEntries.map(({ entry }) => entry)
+  );
+  const authorized = authorizedEntries.filter(
+    ({ entry }) => refusedByCheck.has(entry) === false
   );
   const build =
     authorized.length === 0
@@ -388,6 +396,10 @@ export const applyPatchRequest = async (
   const entriesByTransactionId = new Map<string, PatchEntryResult[]>();
   for (const entryResult of [
     ...rejected.map(rejectedResult),
+    // OrganizeOS fork: refused by input validation (see above)
+    ...[...refusedByCheck].map(([entry, reason]) =>
+      failedResult(entry, reason)
+    ),
     ...applied.entries,
   ]) {
     const entries = entriesByTransactionId.get(entryResult.transactionId) ?? [];

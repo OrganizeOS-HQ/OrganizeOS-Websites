@@ -49,6 +49,8 @@ import {
 import { useResourceScope } from "../resource-scope";
 import { Row } from "../shared";
 import type { PanelApi } from "./shared/variable-panel-api";
+// OrganizeOS fork: input validation (docs/ORGANIZEOS-FORK.md section 10)
+import { resourceFailsCodeCheck } from "~/builder/shared/organizeos-code-check";
 
 const zGraphqlBody = z.object({
   query: z.string(),
@@ -113,6 +115,10 @@ export const GraphqlResourceForm = forwardRef<
         control: "graphql",
         formData,
       });
+      // OrganizeOS fork: a value that fails input validation is not saved
+      if (resourceFailsCodeCheck(resourceFields)) {
+        return false;
+      }
       return executeRuntimeMutation({
         id: "resources.upsert",
         input: {

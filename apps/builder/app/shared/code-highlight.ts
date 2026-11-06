@@ -79,6 +79,15 @@ export const codeHighlightStyle = HighlightStyle.define([
   },
 ]);
 
+// OrganizeOS fork: escapes the characters markup reads (docs/ORGANIZEOS-FORK.md section 10)
+const escapeHtml = (text: string) =>
+  text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
 export const highlightCss = (code: string) => {
   const styles = codeHighlightStyle.module?.getRules();
   // generated classes are scoped to parent
@@ -88,6 +97,9 @@ export const highlightCss = (code: string) => {
     parser.parse(code),
     codeHighlightStyle,
     (text, classes) => {
+      // OrganizeOS fork: a style's text is written as text, never as markup
+      // (docs/ORGANIZEOS-FORK.md section 10)
+      text = escapeHtml(text);
       if (classes) {
         highlightedCode += `<span class="${classes}">${text}</span>`;
       } else {

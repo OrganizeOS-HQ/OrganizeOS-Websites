@@ -158,6 +158,7 @@ import { createFramework as createReactRouterFramework } from "./framework-react
 import { createFramework as createVikeSsgFramework } from "./framework-vike-ssg";
 import { routeTemplatesDirectory } from "./framework";
 import { readSsgAssetResourceFetchTemplate } from "./ssg-asset-resource-fetch-template";
+import { assertBuildCodeValid } from "./organizeos-code-check";
 
 export const generatedFilesManifest = join(
   ".webstudio",
@@ -1017,6 +1018,9 @@ export const prebuild = async (options: {
   // the same plain refusal as a static one.
   refuseMdxWhilePaused(parsedSiteData.data);
   const pages = migratePages(siteData.build.pages);
+  // OrganizeOS fork: a value that fails input validation stops the build,
+  // named (organizeos-code-check.ts).
+  assertBuildCodeValid(siteData.build, pages);
   const migratedInstances = new Map(siteData.build.instances);
   // Saved Form identities may still need the deprecated Webhook Form migration.
   migrateResourceFormInstancesMutable(

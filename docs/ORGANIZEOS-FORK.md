@@ -87,6 +87,7 @@ OrganizeOS integration (all optional; each feature ships dark until its variable
 - `ORGANIZEOS_PROVISION_TOKEN` — shared secret for `POST /internal/provision` and `POST /internal/collections-sync` (server-to-server).
 - `ORGANIZEOS_SSO_PUBLIC_KEY` — ES256 public key (PEM) that verifies OrganizeOS SSO tokens; registers the `organizeos` dashboard strategy.
 - `ORGANIZEOS_SESSION_BINDING` — `observe` (default; unset or blank reads as `observe`) or `enforce`: whether a builder session whose OrganizeOS session has ended still reads as a session (§5, "Session binding"). Consulted only when `ORGANIZEOS_SSO_PUBLIC_KEY` is set. An env change reaches functions only on a new deployment, so redeploy after setting it.
+- `ORGANIZEOS_EXPIRE_LEGACY_SESSION` — `true` turns on the expiry of the platform's old domain-wide session cookie on every builder document (§5, "Old session cookies"); anything else, unset included, leaves it off. Read per request, never inlined at build; on Vercel an env change still needs a redeploy. Turn it on only once the platform's session is host-only on the app host in production, and off again before rolling that back.
 - `ORGANIZEOS_PUBLISH_REPO` + `ORGANIZEOS_PUBLISH_GITHUB_TOKEN` — Publish dispatches `publish-site.yml` in that repo instead of Webstudio's cloud publisher. The repo is `OrganizeOS-HQ/OrganizeOS-Websites` (its old name, `OrganizeOS-HQ/websites-builder`, still reaches it through GitHub's redirect). The token is a fine-grained personal access token whose resource owner is OrganizeOS-HQ, limited to this repository, with Repository › **Actions: Read and write** (GitHub adds Metadata: Read-only). Actions is added at Read-only by default: a token left there, or one owned by a personal account or still awaiting the organization's approval, can read the public repository but not start the workflow, so every Publish fails with the setup message while the builder's log shows the dispatch answered `403 Resource not accessible by personal access token`. An expired token fails Publish the same way, so renew it before it expires. An env change reaches functions only on a new deployment, so redeploy after replacing it.
 - `ORGANIZEOS_APP_URL` — the OrganizeOS app the builder hands users back to (login page, the builder menu's "Back to OrganizeOS", the org's Website area). Defaults to `https://app.organizeos.org`.
 - `ORGANIZEOS_BLOCKS_DENY_ORG_IDS` — the orgs denied the OrganizeOS blocks and the rest of the OrganizeOS builder UI (§9, In the builder): comma-separated organization ids, each trimmed and matched in any case. Every other org, new ones included, is offered them; unset, empty or only separators denies none. An entry that is not an organization id denies every org (a malformed value fails closed), and the builder loader logs that once per instance, without the value. Read by the builder loader, which resolves the project's org from its owner's service email (`org+<organizationId>@svc.organizeos.internal`) and hands the result to the builder as `organizeosSite.blocksEnabled`. Set it in Vercel before the deploy that should read it: an env change reaches functions only on a new deployment, and an unset value offers the blocks to every org. It replaced `ORGANIZEOS_BLOCKS_ORG_IDS`, the rollout allowlist, which the builder no longer reads: delete it from every deployment, and never reuse the name.
@@ -231,7 +232,7 @@ How an org admin's session is wired end to end, and which side owns each step. T
 4. **Publish** (`features/publish/organizeos-publish.tsx`). When the dialog opens, and again when a publish settles, it reads the site's addresses and launch state from `GET /rest/organizeos-site/{projectId}` (`routes/rest.organizeos-site.$projectId.ts`, read by `features/publish/organizeos-publish-addresses.ts`). The route answers a fetch only (a document or iframe load is refused), and only to a user signed in as a user (a share link's token is refused) who may view the project. It resolves the org from the project owner's service email, never from the request, requires it to be a UUID, and calls OrganizeOS's service-role `websites2_site_addresses(p_org)` with `POSTGREST_API_KEY` (`shared/db/organizeos-site-addresses.server.ts`). The answer is validated (at most one row; a main host that, ASCII-lower-cased, is dot-separated labels with no scheme, port, path or userinfo; a known status; an optional boolean `launchable`) and never stored; anything else is `{ ok: false }`, logged as one code with no data. `shared/__fixtures__/site-addresses.json` is a byte-for-byte copy of the platform's answer fixture; its README names the source commit and the `diff` to run. The dialog then shows, top to bottom: "Publishing to {host}" (the custom main, else `{subdomain}.{PUBLISHER_HOST}`), linked to the site only while it is live and truncated with its full text in a tooltip when it does not fit, with "Manage domains ↗" (`{ORGANIZEOS_APP_URL}/{subdomain}/settings/domain`) on the same row; on a site not launched, "Not live yet. Launch your website from OrganizeOS ↗", and on an offline one, "Your website is offline. Put it back from OrganizeOS ↗", both to the org's Website area; a separator and the status line; on a live site whose current version OrganizeOS will not serve (`launchable: false`), one warning line, "This version can't go live yet. Publish again after the next builder update."; then any error, the banners and one Publish button, with no tooltip. A failed read, or a project no org owns, shows none of the address, launch and warning lines. A banner names the features the plan does not cover and ends with an "Open in OrganizeOS ↗" link to the Website area. `domain.publish` creates the production build and the OrganizeOS publisher (`services/organizeos-publisher.server.ts`) dispatches `publish-site.yml` with the build and organization ids. A dispatch that never leaves the builder marks the build FAILED at once; a static-export build is refused (it must never be deployed as the live site). The dialog also lists what is paused, and prebuild leaves an org's own script, and the unsafe values of §10, out of the published site.
 5. **Execute** (`.github/workflows/publish-site.yml`). Syncs the build with the CLI, builds it, reads the org script switch from the CLI it built and fails unless it is off, reads the guard level from the same CLI and fails unless it is an integer from 0 to 32767, deploys to the `organizeos-sites` Vercel project, POSTs the deployment URL, with `orgScript` (§10, "Reporting to OrganizeOS") and `guardLevel` as the run's CLI read them, to OrganizeOS's publish callback (which flips the org's ledger pointer, making the site live through the reverse proxy), then reports `PUBLISHED` to the builder's `POST /internal/publish-status`; any failure, and a run cancelled before the pointer flip (by a newer publish for the org, which `cancel-in-progress` cancels, or by the job's timeout), reports `FAILED`. A run cancelled after the flip reports `PUBLISHED`, since the pointer moved, and never `FAILED`, which the builder would otherwise take over `PUBLISHED`; one cancelled during the flip request reports nothing, because whether the pointer moved is unknown, and the build reads pending until the dialog gives up. Without that report the builder's status would read "pending" forever: upstream's cloud publisher used to flip `Build.publishStatus` directly.
 
-   **The guard level** is `ORGANIZEOS_GUARD_LEVEL`, beside the switch in `@organizeos/site-components/org-script`: which of OrganizeOS's launch requirements the CLI built from this commit meets. The step "Read the guard level", after "Read the org script switch" and before "Deploy to Vercel", loads it from `packages/cli` as the CLI does, and the callback sends it as `guardLevel`, a JSON integer. OrganizeOS stores it with the deployment pointer and launches a Website only from a build whose level is high enough. Level 1 has one requirement not yet in this repository; the constant stays 0 until it lands. `packages/cli/src/organizeos-guard-level.test.ts` lists level 1's requirements, each with a check that runs and the tests that cover it, which must still exist, and fails if the constant is raised while one is missing; raising it is a reviewed change that edits that test.
+   **The guard level** is `ORGANIZEOS_GUARD_LEVEL`, beside the switch in `@organizeos/site-components/org-script`: which of OrganizeOS's launch requirements the CLI built from this commit meets. The step "Read the guard level", after "Read the org script switch" and before "Deploy to Vercel", loads it from `packages/cli` as the CLI does, and the callback sends it as `guardLevel`, a JSON integer. OrganizeOS stores it with the deployment pointer and launches a Website only from a build whose level is high enough. Every level-1 requirement is met, so the constant is 1; the last to land was input validation for expressions and generated names (§7). `packages/cli/src/organizeos-guard-level.test.ts` lists level 1's requirements, each with a check that runs on fixed samples and the tests that cover it, which must still exist and run, and fails if the level is 1 or more while one does not hold or has lost its tests; changing the level is a reviewed change that edits that test.
 
    **Inputs reach scripts through `env:`.** No `run:` script holds a `${{ }}` substitution: inputs, variables, secrets and step outputs reach each script through its step's `env:`, and the callback's and the two status reports' JSON bodies are built with `node` from there, so a dispatch input cannot break out of the shell or a body. A step output is written only after its value is checked: the switch's `false`, the level's integer, the deployment's `https://` host. The callback step checks `orgScript` and `guardLevel` again before it sends anything, and keeps its 2xx check. On success it logs only the answer's `live` and `launchable`, as `live=<value>` and `launchable=<value>`, each only when it is a boolean, never the answer itself; on failure it prints the answer. The Vercel CLI is installed in a step of its own, with no secret in its environment, at a pinned version and with `--ignore-scripts`, so no install script runs; bump the pin on purpose, to a release at least two weeks old. The deploy step passes the token only in its environment, as `VERCEL_TOKEN`, which the CLI reads, and never on a command line. The token is still in that step's environment while the pinned CLI deploys. `packages/cli/src/organizeos-publish-workflow.test.ts` runs the steps' scripts against a fake `curl`, `npm` and `vercel`.
 
@@ -245,6 +246,8 @@ How an org admin's session is wired end to end, and which side owns each step. T
 8. **Agent** (OrganizeOS → builder, `POST /internal/organizeos-agent`, `ORGANIZEOS_AGENT_TOKEN`). The OrganizeOS advisor's website tools read the org's draft through it (`routes/internal.organizeos-agent.tsx`, `shared/db/organizeos-agent.server.ts`). Its own secret, so a leaked provisioning token cannot reach content and this one cannot provision: unset or empty, the route answers 404 before any other check; a wrong token or any `Cookie` answers 401, and a method other than POST 405. The body is a strict schema, `{ organizationId, actorUserId, operation, args }`, each operation with its own strict `args`; the list is closed, and nothing in it publishes. The reads: `website_overview` (the pages, home first, with each page's static title or null, whether the draft has changes not yet published, and when it was last published), `website_read_page` (`{ pageId }`: the page root's direct children as sections, each with its plain text flattened from the instance tree and capped at 2,000 characters, and its type read from an `os-section:{type}` label, else `custom`) and `website_list_images` (the project's uploaded images, newest first, at most 100, by the name a person gave them, never the storage key). The fork trusts OrganizeOS for who may act, as it does for provisioning; `actorUserId` is never used for authorization. Ids come only from `organizationId`: the project is `deriveProjectId(organizationId)`, and an id in `args` is matched only inside that project's build, so one from anywhere else answers `not_found`. Answers: `200 {"ok":true,"result":...}` or `200 {"ok":false,"code":"not_found"}`; `400 {"ok":false,"code":"invalid_input"}` for a body that fails the schema; `500 {"ok":false,"code":"unavailable"}` for an unexpected error, logged with the operation name and the error's kind only. Spec: `docs/superpowers/specs/2026-10-27-builder-agent-tools-design.md` in the OrganizeOS repo, 4.5 and 11.
 
 **Session binding.** A builder session lives no longer than the OrganizeOS session that opened it. The SSO token's `sid` claim (the GoTrue session id; `readSid` in `organizeos-token.server.ts` accepts a UUID only) and `sub` (the OrganizeOS user id) are stored in the dashboard session as `organizeosSid` and `organizeosUserId`, and the WS OAuth hop copies them through the code token (`oauth.ws.authorize`), the access token (`oauth.ws.token`) and the `ws` strategy callback (`builder-auth.server.ts`) into the project-host session. Every session read goes through `readDashboardSession` or `readBuilderSession` (`services/auth-strategy/organizeos-session.server.ts`): `extractAuthFromRequest`, `findAuthenticatedUser` and `oauth.ws.authorize`, and a test fails if any other module calls `isAuthenticated(`. An upstream merge brings raw `isAuthenticated` calls back outside the conflict markers (0.309.0 did, in `shared/context.server.ts`), and that test is what finds them. The readers ask OrganizeOS `websites2_sso_session_live(p_session_id, p_user_id)` (service role only; false once the session is signed out, revoked, or idle for 12 hours), cached per sid and user for 60 s per instance (5 s for an RPC error). Outcomes: `pass` (SSO not configured), `live`, `missing` (no binding: a session from before this shipped, or a non-SSO login), `dead`, `error`. Under `observe` every outcome but `live` and `pass` is logged (`console.warn` with the builder user id and the first 12 hex of the sid's SHA-256, never an email; at most once a minute per user, sid and outcome on an instance) and allowed; under `enforce` `missing`, `dead` and `error` read as no session: loaders send the admin to the login page (which leads back to OrganizeOS), `oauth.ws.authorize` redirects there instead of minting a code (so the builder does not loop), and tRPC and patch calls are unauthorized. The cookie is not rewritten on the read path. The binding module has its own PostgREST client and must never call `createContext` or import `shared/context.server.ts`: `createContext` reads the session through these readers. Shipping it bumped the session cookie version to `4-organizeos` (fork-distinct, so upstream's next bump never reads our cookies), which signed every builder user out once. One read stays outside the binding: collaboration's `createWriterContext` (`shared/sync/patch/patch-auth.server.ts`) builds a user context from a signed 60-second access token without a binding check. It predates the 0.309.0 merge and is recorded, not changed. Spec: `docs/superpowers/specs/2026-10-21-builder-session-binding-design.md` in the OrganizeOS repo.
+
+**Old session cookies.** The platform's session used to be `sb-<ref>-auth-token` (and its `.0`, `.1`, ... chunks and `-code-verifier`) with `Domain=.organizeos.org`, so it reached `builder.organizeos.org` and every `p-{projectId}.builder.organizeos.org` canvas, where an org's script could read it. It is now `__Host-oos-auth`, host-only on `app.organizeos.org`, but an old copy can stay in a browser for up to 400 days. With `ORGANIZEOS_EXPIRE_LEGACY_SESSION=true`, every document response the builder serves on `organizeos.org` or a host under it expires each cookie the request carried whose name matches `^sb-[a-z0-9]+-auth-token(?:-code-verifier)?(?:\.(?:0|[1-9]\d*))?$`: two raw `Set-Cookie` appends per name, `<name>=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; SameSite=Lax; Secure; Domain=.organizeos.org` and the same without `Domain`, after the routes' own headers and before any page script runs. The builder sets no `sb-*` cookie of its own, so the pattern is not narrowed to a project ref. `__Host-oos-auth` and `oos-auth` are never set, read or deleted. Resource routes (assets, `rest.*`, tRPC) and static files are left alone: they never reach the document entry. The code is `services/organizeos-legacy-session.server.ts`, called from `entry.server.tsx` (Remix's default Node entry, which the builder used while it had none, with one marked call; its other differences are for this repository's lint and isbot 5 and change no behaviour). On Vercel the global `Headers` is Remix's polyfill (`@vercel/remix` calls `installGlobals()`), which has `raw()` and no `getSetCookie()`, so the module reads existing cookies through either. Tests in `services/organizeos-legacy-session.server.test.tsx` and `organizeos-legacy-session.polyfill.server.test.tsx` (under the polyfill globals) drive that entry through Remix's request handler, with the server build in `organizeos-legacy-session.fixture.tsx`, including a document Remix renders a second time after an error. Order (OrganizeOS plan `docs/superpowers/plans/2026-11-03-org-sites-d-session-cookie.md`, sections 8 and 10): the flag goes on only after the app host's switch to the host-only cookie is verified in production; before that the domain cookie is the live session and the delete would sign people out of the app. To roll the app back to the domain cookie, turn the flag off first.
 
 **Draft preview on the canvas.** The canvas shows a collection's drafts as well as its published items (OrganizeOS design `docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md`, 4.5). Every canvas Resource fetch runs on the builder's server, in `routes/rest.resources-loader.ts`, and one marked change there, inside upstream's `customFetch` and before `safeResourceFetch` (upstream's check of where a fetch may go), passes each outgoing fetch through `createPreviewAssertion` (`shared/organizeos-preview.server.ts`). It adds `X-OOS-Preview: v1.{payload}.{mac}` only when all of these hold, and otherwise the fetch goes out unchanged: `WEBSITES2_PREVIEW_SECRET` is set; the fetch URL, parsed with `new URL` (never a string prefix), has the origin of `ORGANIZEOS_APP_URL`, no userinfo, no encoded slash, backslash or dot, and a pathname under `/api/public/v1/collections/`; the request carries a builder session whose OrganizeOS binding is `live` (`readBuilderSession`, then `checkOrganizeosBinding`, both cached); that user, signed in as a user and not through a share link's token, has upstream's `view` permit or above on the project of the `p-{projectId}` host (`authorizeProject.hasProjectPermit`); and the project's owner is an org's service account, the organization id resolved as the builder loader resolves it and cached per project for 60 s in-process. The session, permit and org are resolved once per loader request, on its first qualifying fetch; each fetch gets its own assertion. `payload` is base64url (unpadded) of the UTF-8 JSON `{ org, sub, sid, iat, exp }` in that key order: the org id, `organizeosUserId`, `organizeosSid`, and Unix seconds with `exp = iat + 60`. `mac` is base64url (unpadded) of HMAC-SHA256, keyed by `WEBSITES2_PREVIEW_SECRET`, over the ASCII payload segment, and the segment sent is the one signed. The header replaces any stored `X-OOS-Preview` in any casing (`Headers.set`), never appends: a duplicated header arrives comma-joined and the platform refuses it. It is added after the client computed the Resource's cache key (`getResourceKey`), which is unchanged, and never enters build data. A fetch that carries it goes out with `redirect: "manual"`: a redirect is answered, never followed, so the header never reaches the host a redirect names (a collections read the app answers with a redirect reaches the canvas as that 3xx). The byte format is pinned by the platform's `client/tests/fixtures/site-components/preview-assertion.json`, copied to `apps/builder/app/shared/__fixtures__/` (its README names the source commit; `diff` it before a PR that touches the assertion). The platform verifies the MAC, the time window, the org against the read token's, the session's liveness and the user's `pages.view`, and on any failure serves published items as if the header were absent. A published site never carries the header: prebuild fails when any Resource's stored headers name it, in any casing (`packages/cli/src/organizeos-preview-header.ts`, one marked call in `prebuild.ts`). The builder's Form Preview (`routes/rest.preview-form.ts`, upstream's) carries no assertion. It also denies a form's fetch the publisher's registrable domain, so a Signup Form, the starter signup page's included, cannot submit to `app.organizeos.org` from the builder's Preview (owner decisions D11 and D15); it submits on the published site (§8).
 
@@ -402,6 +405,15 @@ can be merged with minimal conflict.
   `services/oauth-ws-authorize.server.test.ts` and `env/env.server.test.ts`,
   and cases in `services/token.server.test.ts` and
   `shared/context.server.test.ts`.
+- **The old session cookies' expiry (§5).**
+  `services/organizeos-legacy-session.server.ts`, called once from
+  `entry.server.tsx`, a copy of Remix's default Node entry, with
+  `ORGANIZEOS_EXPIRE_LEGACY_SESSION` read from `process.env` on each request
+  rather than through `env/env.server.ts`, so the module imports nothing of the
+  builder's and the flag cannot be cached at cold start; tests in
+  `services/organizeos-legacy-session.server.test.tsx` and
+  `services/organizeos-legacy-session.polyfill.server.test.tsx`, with
+  `services/organizeos-legacy-session.fixture.tsx`.
 - **The draft preview (§5).** `shared/organizeos-preview.server.ts`, called
   by one marked change in `routes/rest.resources-loader.ts`, with
   `WEBSITES2_PREVIEW_SECRET` in `env/env.server.ts`, the fixture copy in
@@ -694,8 +706,8 @@ can be merged with minimal conflict.
 - **The org script pause (§10).**
   `packages/sdk-components-organizeos/src/org-script.ts`, which the blocks
   package exports as `@organizeos/site-components/org-script`; `acorn`, a
-  dependency of the blocks package for the address rule, and so in
-  `pnpm-lock.yaml`; `canvas/organizeos-org-script.tsx`, through which the one
+  dependency of the blocks package for the address rule and
+  `readLiteralValue`, and so in `pnpm-lock.yaml`; `canvas/organizeos-org-script.tsx`, through which the one
   marked loop in `canvas/canvas.tsx` registers every library of upstream's
   registry; the marked changes in
   `canvas/features/webstudio-component/webstudio-component.tsx` (the
@@ -713,7 +725,25 @@ can be merged with minimal conflict.
   `canvas/organizeos-org-script.props.test.tsx`,
   `canvas/organizeos-org-script.test.tsx`,
   `packages/cli/src/organizeos-org-script.unsafe-values.test.ts` and
-  `packages/cli/src/organizeos-publish-workflow.test.ts`.
+  `packages/cli/src/organizeos-publish-workflow.test.ts`. The builder's panels
+  keep an org's content as data: `shared/code-highlight.ts` (the navigator's
+  CSS preview escapes a style's text, `code-highlight.organizeos.test.ts`);
+  `features/settings-panel/variable-editors/json-editor.tsx` (the variable
+  dialog reads a stored value with `readLiteralValue` and takes a value that
+  does not read as data as invalid, `validateJsonValue` exported for the test)
+  and `variable-editors/dialog/index.tsx` (every value it edits as JSON starts
+  from the builder's own JSON text), with
+  `settings-panel/variable-popover.organizeos.test.tsx`;
+  `shared/project-settings/section-redirects.tsx` (a redirect address that may
+  not run is not a link, and the form refuses it,
+  `section-redirects.organizeos.test.tsx`); and
+  `packages/project-build/src/runtime/redirect-parsers.ts` (an import skips
+  such a target, `redirect-parsers.organizeos.test.ts` beside it), for which
+  `packages/project-build/package.json` lists `@organizeos/site-components`.
+  The HTML Embed code check needs no change since 0.309.0: upstream's
+  `validateHtmlEmbedCode` (`packages/project-build/src/runtime/html-embed.ts`)
+  reads the code with parse5, and
+  `settings-panel/controls/code.organizeos.test.ts` holds it to that.
 - **The preview tool (§9, "Site templates").**
   `scripts/preview-site-template.mjs`, the root `package.json`'s
   `preview:template` script and its `playwright` devDependency, and so the root
@@ -741,6 +771,18 @@ package since webstudio-is/webstudio#6614 (`c94e5a9`), which 0.309.0 includes,
 so on this base `pagesForSitemap` changes nothing. The two marked changes stay
 until a follow-up after this merge removes them, with their tests in
 `org-script.test.ts`, `prebuild.test.ts` and `sitemap.xml.server.test.ts`.
+
+**Input validation for expressions and generated names.** One pure module, `packages/sdk-components-organizeos/src/code-check.ts` (exported through `@organizeos/site-components/org-script`, tests in `code-check.test.ts`), decides whether an expression, an action or a generated name may be compiled or published, whatever `orgScriptMayRun()` says. A value passes only if it is exactly one expression, with no comment and nothing after it, made of the syntax the builder's editors write: literals, templates, arrays and objects with plain keys, variables (`$ws$dataSource$…`, `$ws$system`, `undefined`, and a variable that is not set in this project), member access by a plain name or a literal key but never `constructor`, `prototype`, `__proto__` or the legacy accessor methods, unary, binary, logical and conditional operators, calls to the methods in upstream's `allowedStringMethods` and `allowedArrayMethods`, and, in an action, assignment to one of the build's variables; an action reads only its own arguments, `$ws$system` and the build's variables. Action argument names are plain identifiers that are not reserved words, resource header names HTTP token characters, search parameter names free of a quote, a backslash and a line terminator, and an instance's tag one of `tags` on every component but XML Node. The fields checked are the instance child expression and tag, prop expressions and actions, a resource's URL, search parameters, headers and body (an empty body is not generated), and each page's and page template's title and page settings (a custom metadata entry with no property is not generated). Where it runs:
+
+- **Prebuild** (`packages/cli/src/organizeos-code-check.ts`, one marked call in `prebuild.ts` after `migratePages`) throws on the first value that fails, naming the page or instance and the field, so the run fails before deploy and reports FAILED. Tests: `organizeos-code-check.test.ts` and `prebuild.test.ts` ("stops a build with a value that fails input validation").
+- **The canvas and the builder page.** `getCompiledExpression` (`packages/project-build/src/runtime/data.ts` since 0.309.0, one marked change) caches a function that reads as unset for an expression that fails, and `getAction` (`shared/nano-states/props.ts`, one marked change) returns a no-op for an action that fails; neither reaches `new Function`, and each logs the reason once with `console.error`, as upstream logs a value it cannot compile. A value that does not parse still fails in `transpileExpression`, as upstream's. `instanceTagMayRender` (`canvas/organizeos-org-script.tsx`) keeps a tag outside `tags` off the canvas whatever the switch, used by the three tag checks in `webstudio-component.tsx`. Tests: `packages/project-build/src/runtime/data.organizeos.test.ts`, `nano-states/props.organizeos.test.ts`, `organizeos-org-script.test.tsx` and `organizeos-org-script.wiring.node.test.ts`.
+- **The editors.** The expression editor's lint (`builder/shared/expression-editor.tsx`, one marked change) and the binding popover's save check (`builder/shared/binding-popover.tsx`, one marked change) add the check's reason as one more error when lint finds none (`builder/shared/organizeos-code-check.ts`); the variable dialog's JSON value (`settings-panel/variable-editors/json-editor.tsx`, in its marked `validateJsonValue`) is invalid when it fails; the resource fields (`settings-panel/variable-editors/shared/resource-fields.tsx`, marked changes) show a header or search parameter name's reason on the field, and the HTTP, GraphQL and system resource editors (`http-resource-editor.tsx`, `graphql-resource-editor.tsx` and `system-resource-editor.tsx` beside it, one marked check each) do not save a Resource that fails. The builder has no action editor; actions come from templates. Tests: `builder/shared/organizeos-code-check.test.ts`, `variable-popover.organizeos.test.tsx`.
+- **Patch save** (`shared/sync/patch/organizeos-code-check.server.ts`, one marked call in `patch-service.server.ts` before `applyAuthorizedEntries`) applies each entry's changes, in order, to a copy of the build and refuses, as `failed` with the reason, an entry after which a record it touches fails in a way it did not before; the other entries apply, and an entry that leaves a saved failing value alone applies. The builder answers a partial result with a reload prompt and paused sync (`project-queue.test.ts` pins it), so this is the backstop for a client that skips the editors. Tests: `organizeos-code-check.server.test.ts` (with the builder's own presets) and `patch-service.server.test.ts`.
+- **The Publish dialog** (`features/publish/organizeos-publish-code-check.ts`, called by `organizeos-publish.tsx`) runs the same check over the build it holds before it dispatches, and when a value fails it does not dispatch and shows one line naming the page or element and the field, since the FAILED report carries no reason. Tests: `organizeos-publish-code-check.test.tsx`.
+
+A build whose saved value fails cannot publish until the value is edited.
+
+**Unpublish refusals.** `domain.unpublish` (`packages/domain/src/trpc/domain.ts`, one marked change) returns the deployment service's failure before it calls `unpublishBuild`, where upstream unpublished the database whatever the service answered. The OrganizeOS publisher refuses every unpublish (the platform's "Switch back to Website Lite" is the way off), and `unpublishBuild` deletes a production Build whose last domain it removes, which the publish callback and a republish need. NOT_IMPLEMENTED and a success unpublish as upstream. Since 0.309.0 the code lives in `unpublishProjectDomains` (`packages/domain/src/project-domain-api.server.ts`), which also serves the API router's `publish.unpublish`; the marked check sits there, before `unpublishBuild`, and `domain.ts` is upstream's. Tests: `packages/domain/src/trpc/domain.test.ts`, and the marked case "keeps publish records when deployment unpublish fails" in `project-domain-api.server.test.ts`, where upstream expects the records cleared.
 
 ## 8. Published-site route template patches
 
@@ -883,15 +925,17 @@ and the published site's "Email delivery requires Webstudio Cloud"
 from the copy of the blocks' package (`app/__organizeos__/page.js`, the
 package's page entry, `src/page.ts`), appended after the source offer in
 `PageWithSourceOffer`, in one marked change. It is the blocks' carrier,
-`attachShareCodeCarrier`, on the document (§9, "Share codes"): a click on any
+`attachShareCodeCarrier`, on the document (§9, "Share codes"): a click, a
+middle-click or a context menu (a right click or a long press) on any
 same-origin link to a platform page, a designer's own included, carries the
 visit's `?r=` code there, and a plain click goes by document, which keeps the
-site's router out. It renders nothing, reads the code only at the click and
+site's router out. It renders nothing, reads the code only at the event and
 writes no cookie or storage, so the server's markup is the same whatever the
 address. With a block's carrier on the same page, the document's
-capture-phase listener runs before the block root's, so a click gets the code
-once and navigates at most once. The route imports it through the placeholder
-`__ORGANIZEOS_PAGE__`, which prebuild's marked hook resolves to the path from
+capture-phase listeners run before the block root's, so each of those gets
+the code once and a click navigates at most once. The route imports it
+through the placeholder `__ORGANIZEOS_PAGE__`, which prebuild's marked hook
+resolves to the path from
 the route to the copy (`../__organizeos__/page.js`), as upstream resolves
 `__CLIENT__`. `packages/cli/src/organizeos-placeholders.d.ts` declares it, so
 the template typechecks in the CLI, where no copy exists. The copy is part of
@@ -2277,8 +2321,10 @@ code in the page's address only, never in a cookie or storage.
   that answer before any rate limit, form or event read, or write, so a
   platform that does not take the code costs the credit, never the
   submission.
-- **Links.** `attachShareCodeCarrier` carries the code on a click on a link
-  to a platform page on the same host. It listens on each platform block's
+- **Links.** `attachShareCodeCarrier` carries the code on a click, a
+  middle-click (`auxclick`, button 1) or a context menu (`contextmenu`: a
+  right click, a long press or the keyboard's menu key) on a link to a
+  platform page on the same host. It listens on each platform block's
   root, through `useShareCodeCarrier` (the two forms' `<form>`, and the
   **Share Code Carrier**, the root of the Event List and the Event Card), and
   on the document of every published page, through `PageShareCodeCarrier`,
@@ -2287,25 +2333,32 @@ code in the page's address only, never in a cookie or storage.
   too. The list, `platformPathPatterns`, is the platform's own: donate,
   fundraise, petitions, join, shop, cart, checkout and an event's page; the
   donor self-service pages, whose links carry a token from email, are not on
-  it. The code is read at the click, and a click another handler cancelled is left
-  alone. The carrier adds the code to the link's `href` unless the link
-  already has an `r`, which it keeps. A plain click then has its default
+  it. The code is read at the event, and an event another handler cancelled
+  is left alone. The carrier adds the code to the link's `href` unless the
+  link already has an `r`, which it keeps. A plain click then has its default
   prevented and goes to that address by document (`navigateTo`), whether or
   not the `href` was rewritten, which keeps a client-side router out: a
   published link may route by its own `to`, not the DOM `href`, and would drop
-  the code, even on a link an earlier Ctrl-click or the first click of a
-  double-click has already given its `r`. Here the fork departs from the
-  platform's own carrier, which leaves a link that already has `r` to its
-  default. Any other click (a modifier key or another button,
-  `target="_blank"`, `download`) follows the `href`. Nothing stops the click's
-  propagation, and a carrier inside another acts once: both listen in the
-  capture phase, which reaches the document, then an outer root, before an
-  inner one, so the outer carrier cancels a plain click and sends it by
-  document before the inner one leaves it as cancelled, and gives any other
-  click its `r` before the inner one keeps it. A click therefore gets one `r`
-  and at most one navigation however many carriers the page has. `navigateTo`
-  does the same for an after-submit page that is a platform page. Nothing
-  happens on the canvas or in the Preview.
+  the code, even on a link an earlier Ctrl-click, middle-click or context
+  menu, or the first click of a double-click, has already given its `r`.
+  The platform's carrier follows the same rule, with the same middle-click and
+  context menu (OrganizeOS-HQ/OrganizeOS#2234, plan
+  `docs/superpowers/plans/2026-11-05-share-code-new-tab-gestures.md`). Any
+  other click (a modifier key or another button, `target="_blank"`,
+  `download`) follows the `href`. A middle-click and a context menu only add
+  the code to the `href`, as a modified click does, and are never cancelled,
+  so the browser opens the new tab or the menu with it. Every item of the
+  menu uses it, "Copy link address" included (owner decision, 2026-11-05: the
+  code is meant to be shared and is already in the page's address). Nothing
+  stops an event's propagation, and a carrier inside another acts once: both
+  listen in the capture phase, which reaches the document, then an outer
+  root, before an inner one, so the outer carrier cancels a plain click and
+  sends it by document before the inner one leaves it as cancelled, and gives
+  any other click, middle-click or context menu its `r` before the inner one
+  keeps it. A link therefore gets one `r`, and a click at most one
+  navigation, however many carriers the page has. `navigateTo` does the same
+  for an after-submit page that is a platform page. Nothing happens on the
+  canvas or in the Preview.
 - **Share Code Carrier** (`@organizeos/site-components:ShareCodeCarrier`): a
   hidden `div` that passes every prop through, takes any children and has no
   props of its own, the root for blocks that are templates over native
@@ -3024,10 +3077,12 @@ options, and the limits found since in review):
     beyond the pilot.
 - No self-serve "Reconnect data": once the builder is enabled, nothing re-seeds
   a project's catalog, so a refused insert needs support to re-provision.
-- **Share codes** are carried on a click, after hydration, by every
-  same-origin link to a platform page and by the forms: not by a
-  middle-click, a long press or a copied link address, and not between the
-  site's own pages. Without JavaScript, or before hydration, nothing is
+- **Share codes** are carried on a click, a middle-click or a context menu,
+  after hydration, by every same-origin link to a platform page, and by the
+  forms: not by a long press on iOS or iPadOS, whose Safari raises no
+  `contextmenu` (WebKit bug 213953), nor by dragging a link to a tab, and not
+  between the site's own pages. On iOS the page's own address still carries
+  the code. Without JavaScript, or before hydration, nothing is
   carried. A site published before the blocks carried the code sends none
   until it is republished, and one published before the page's carrier
   carries it from its blocks' links and forms only. A plain click on a
@@ -3205,8 +3260,10 @@ page's carrier cancels a plain click on a same-origin link to a platform page
 in the document's capture phase, and a block's carrier does the same within its
 block, both before any handler on the link itself (a React `onClick`, an inline
 `onclick`) runs, so once org script returns a designer's handler on such a link
-cannot cancel that click: the carrier has already sent it by document. Then
-this section moves to history.
+cannot cancel that click: the carrier has already sent it by document. The
+carriers never cancel a middle-click or a context menu, so a designer's
+handler for those still decides them; the carrier has only set the link's
+`href` first. Then this section moves to history.
 The package builds the `org-script` entry, as every export of its
 `package.json`, with upstream's `vite.sdk-components.config.ts`.
 
@@ -3308,6 +3365,12 @@ as paused, so reversal is the switch.
 - **Custom code field.** Read-only, with a sentence that says it is paused and
   kept (`section-general.tsx`, one marked branch). The saved code stays readable
   and copyable.
+- **Builder panels.** The builder's panels never put an org's HTML, styles or
+  values into the builder's own page as markup or code. The HTML Embed code
+  check reads the code with parse5. The navigator's CSS preview writes a style's
+  text as text. The variable dialog reads a stored value as data
+  (`readLiteralValue`). The Redirects list shows an address that may not run
+  as text, and its form and its import refuse one.
 - **Publish dialog.** A banner after the plan-features banner and the MDX banner
   (below), headed "Paused, not published", lists each HTML Embed that will be
   dropped, each Markdown Embed, each JSON-LD, each element publishing drops for
@@ -3765,19 +3828,18 @@ order by 1, 2;
 **Not covered by this pause.** Other ways an org's script can reach a page run
 on the same hosts as HTML Embed (`{sub}.organizeos.org` once published, and the
 builder canvas now). A follow-up design closes them before any Website goes live
-on `{sub}.organizeos.org`, which the owner has allowed before C2: expressions
-compile to code unchecked (`transpileExpression` and `generateExpression` only
-parse and rename identifiers, `lintExpression` runs in the builder UI only, and
-the sync server checks shape only); and uploaded HTML, SVG and XML assets
+on `{sub}.organizeos.org`, which the owner has allowed before C2: uploaded
+HTML, SVG and XML assets
 served from `/assets/` on the org host, which the OrganizeOS site proxy is to
 answer sandboxed (the platform's one builder design, section 8.5). The others
 are closed: `javascript:` URLs and `srcdoc`, which publishing leaves out and the
 canvas drops in design and preview mode (Unsafe values, above), and an SVG
 `animate` or `set` that sets a link's `href` to one, which neither publishing
 nor the canvas makes (Tags on the canvas, above); XML pages, which
-answer sandboxed (§8); and XML Node in an HTML page, which publishing leaves
-out. The lasting half of the tag rule above (refuse a tag
-outside `tags`, whatever the switch says) goes with the expression design.
+answer sandboxed (§8); XML Node in an HTML page, which publishing leaves
+out; and expressions, actions and generated names, which pass input validation
+before they are compiled or published, as does an instance's tag, whatever the
+switch says (§7).
 
 **Keeping it on upstream merges.** Five upstream files carry a change, and each
 has a test that fails if a merge takes it back: `canvas/canvas.tsx` registers
@@ -3790,8 +3852,9 @@ a component receives, its own and the ones a parent passes in, and falls back to
 a `div` for a `ws:element` with such a tag
 (`organizeos-org-script.props.test.tsx`, and
 `organizeos-org-script.wiring.node.test.ts` for the two tag skips in
-`useInstanceProps`, the two `div` fallbacks, which read `elementTagMayRender`,
-and the two renderer calls, which are `withoutPausedProps`);
+`useInstanceProps`, the two `div` fallbacks, which read `instanceTagMayRender`
+(`elementTagMayRender` and input validation's tag rule), and the two renderer
+calls, which are `withoutPausedProps`);
 `section-general.tsx` holds the read-only branch (`section-general.test.tsx`);
 the `prebuild.ts` hook runs `dropOrgScript` and `refuseMdxWhilePaused`
 (`prebuild.test.ts`, "leaves an org's own script out", "leaves unsafe values

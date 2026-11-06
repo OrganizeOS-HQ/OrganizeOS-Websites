@@ -382,7 +382,9 @@ test("rejects publishing when dev build has orphan resource references", async (
   expect(publish).not.toHaveBeenCalled();
 });
 
-test("clears publish records even when deployment unpublish fails", async () => {
+// OrganizeOS fork: a refused unpublish leaves the publish records alone
+// (docs/ORGANIZEOS-FORK.md section 7); upstream expects them cleared.
+test("keeps publish records when deployment unpublish fails", async () => {
   let deletedBuildId: string | undefined;
   server.use(
     ownershipHandler,
@@ -428,7 +430,7 @@ test("clears publish records even when deployment unpublish fails", async () => 
     )
   ).rejects.toThrow("Failed to unpublish example.wstd.io: Cloudflare failed");
 
-  expect(deletedBuildId).toBe("build-prod");
+  expect(deletedBuildId).toBeUndefined();
 });
 
 test("lists non-static project publishes", async () => {

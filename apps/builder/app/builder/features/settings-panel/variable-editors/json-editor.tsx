@@ -11,6 +11,32 @@ import { useValuePanelRef } from "./shared/variable-value-save";
 import type { PanelApi } from "./shared/variable-panel-api";
 import { ValuePreviewFrame } from "./shared/variable-value-preview";
 import { parseJsonExpression } from "@webstudio-is/expression";
+// OrganizeOS fork: the pause and input validation (docs/ORGANIZEOS-FORK.md section 10)
+import {
+  checkValueExpression,
+  orgScriptMayRun,
+  readLiteralValue,
+} from "@organizeos/site-components/org-script";
+
+// OrganizeOS fork: while org script is paused, a value must read as data, and
+// a value must pass input validation whatever the switch (code-check.ts)
+// (docs/ORGANIZEOS-FORK.md section 10)
+export const validateJsonValue = (expression: string) => {
+  if (
+    orgScriptMayRun() === false &&
+    expression.trim() !== "" &&
+    readLiteralValue(expression) === undefined
+  ) {
+    return "error";
+  }
+  if (
+    expression.trim() !== "" &&
+    checkValueExpression(expression).ok === false
+  ) {
+    return "error";
+  }
+  return validateDataVariableJsonValue(expression);
+};
 
 export const prepareJsonValue = (previous: unknown) => previous || "{}";
 
@@ -26,7 +52,8 @@ export const JsonForm = forwardRef<
   const [valueError, setValueError] = useState("");
   const valueRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    valueRef.current?.setCustomValidity(validateDataVariableJsonValue(value));
+    // OrganizeOS fork: the fork's check (docs/ORGANIZEOS-FORK.md section 10)
+    valueRef.current?.setCustomValidity(validateJsonValue(value));
     setValueError("");
   }, [value]);
   useValuePanelRef({ ref, variable, type: "json" });
@@ -59,7 +86,13 @@ export const JsonForm = forwardRef<
 JsonForm.displayName = "JsonForm";
 
 export const JsonVariablePreview = ({ value }: { value: unknown }) => {
-  return <ValuePreviewFrame value={parseJsonExpression(String(value))} />;
+  // OrganizeOS fork: while org script is paused, a stored value is read as
+  // data with readLiteralValue (docs/ORGANIZEOS-FORK.md section 10)
+  const parsed =
+    orgScriptMayRun() === false
+      ? readLiteralValue(String(value))?.value
+      : parseJsonExpression(String(value));
+  return <ValuePreviewFrame value={parsed} />;
 };
 
 export const JsonEditor = forwardRef<PanelApi | undefined, VariableEditorProps>(

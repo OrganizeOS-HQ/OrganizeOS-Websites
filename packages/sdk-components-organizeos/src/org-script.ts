@@ -1,4 +1,4 @@
-import { parseExpressionAt, tokenizer, type Expression } from "acorn";
+import { parse, parseExpressionAt, tokenizer, type Expression } from "acorn";
 import {
   collectionComponent,
   elementComponent,
@@ -33,13 +33,12 @@ export const orgScriptMayRun = (): boolean => false;
 /**
  * Which of OrganizeOS's launch requirements the CLI built from this commit
  * meets. The publish workflow reads it beside orgScriptMayRun() and sends it
- * as guardLevel (docs/ORGANIZEOS-FORK.md section 5). Level 1 has one
- * requirement not yet in this repository; the level stays 0 until it lands.
- * packages/cli/src/organizeos-guard-level.test.ts fails if it is raised while
- * a requirement is missing; raising it is a reviewed change that edits that
- * test.
+ * as guardLevel (docs/ORGANIZEOS-FORK.md section 5). Every level-1
+ * requirement is met. packages/cli/src/organizeos-guard-level.test.ts fails
+ * if a requirement stops holding or loses its tests; changing the level is a
+ * reviewed change that edits that test.
  */
-export const ORGANIZEOS_GUARD_LEVEL: number = 0;
+export const ORGANIZEOS_GUARD_LEVEL: number = 1;
 
 /**
  * The SVGs that upstream's own templates put in an HTML Embed (Accordion,
@@ -720,3 +719,110 @@ export const pagesForSitemap = (pages: Pages): Pages => ({
     ])
   ),
 });
+
+/**
+ * The value a variable's JSON text holds, read without running it. The text
+ * must be exactly one literal: a string, a number (a negative one too), a
+ * boolean, `null`, `undefined`, a template with no substitutions, or an array
+ * or object of them whose keys are plain names, strings or numbers. Anything
+ * else, or anything after the literal, gives no value. While org script is
+ * paused the builder's variable dialog reads values this way.
+ */
+export const readLiteralValue = (
+  text: string
+): { value: unknown } | undefined => {
+  try {
+    // read in parentheses, as upstream's dialog evaluates it, so an object
+    // literal and a parenthesized value read the same way
+    const program = parse(`(${text})`, {
+      ecmaVersion: "latest",
+      preserveParens: true,
+    });
+    const [statement] = program.body;
+    if (program.body.length !== 1 || statement.type !== "ExpressionStatement") {
+      return;
+    }
+    return { value: literalNodeValue(statement.expression) };
+  } catch {
+    return;
+  }
+};
+
+const notALiteral = () => new Error("not a literal");
+
+const literalNodeValue = (node: Expression): unknown => {
+  switch (node.type) {
+    case "ParenthesizedExpression":
+      return literalNodeValue(node.expression);
+    case "Literal":
+      if ("regex" in node || typeof node.value === "bigint") {
+        throw notALiteral();
+      }
+      return node.value;
+    case "Identifier":
+      if (node.name === "undefined") {
+        return undefined;
+      }
+      throw notALiteral();
+    case "UnaryExpression":
+      if (
+        node.operator === "-" &&
+        node.argument.type === "Literal" &&
+        typeof node.argument.value === "number"
+      ) {
+        return -node.argument.value;
+      }
+      throw notALiteral();
+    case "TemplateLiteral":
+      if (node.expressions.length === 0 && node.quasis.length === 1) {
+        return node.quasis[0].value.cooked;
+      }
+      throw notALiteral();
+    case "ArrayExpression":
+      return node.elements.map((element) => {
+        if (element === null || element.type === "SpreadElement") {
+          throw notALiteral();
+        }
+        return literalNodeValue(element);
+      });
+    case "ObjectExpression": {
+      const value: Record<string, unknown> = {};
+      for (const property of node.properties) {
+        if (
+          property.type !== "Property" ||
+          property.kind !== "init" ||
+          property.method ||
+          property.shorthand ||
+          property.computed
+        ) {
+          throw notALiteral();
+        }
+        const key =
+          property.key.type === "Identifier"
+            ? property.key.name
+            : property.key.type === "Literal" &&
+                (typeof property.key.value === "string" ||
+                  typeof property.key.value === "number")
+              ? String(property.key.value)
+              : undefined;
+        if (key === undefined) {
+          throw notALiteral();
+        }
+        // an own property, as JSON.parse makes, even for `__proto__`
+        Object.defineProperty(value, key, {
+          value: literalNodeValue(property.value as Expression),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
+      return value;
+    }
+    default:
+      throw notALiteral();
+  }
+};
+
+// Input validation for expressions and generated names, read by the builder
+// and the CLI through this entry (code-check.ts).
+export * from "./code-check";

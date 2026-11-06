@@ -14,6 +14,14 @@ import {
   orgScriptMayRun,
 } from "@organizeos/site-components/org-script";
 import { dropOrgScript } from "./organizeos-org-script";
+import {
+  checkAction,
+  checkElementTag,
+  checkResourceName,
+  checkValueExpression,
+} from "@organizeos/site-components/org-script";
+import { migratePages } from "@webstudio-is/project-migrations/pages";
+import { assertBuildCodeValid } from "./organizeos-code-check";
 
 // The publish workflow sends ORGANIZEOS_GUARD_LEVEL to OrganizeOS as
 // guardLevel, and OrganizeOS launches a Website only from a build whose level
@@ -21,9 +29,6 @@ import { dropOrgScript } from "./organizeos-org-script";
 // reports must be one its CLI meets. Each requirement of level 1 has a check
 // that runs here and the tests that cover it fully, which must still exist and
 // run: neither commented out nor skipped.
-// The level stays 0 while a requirement is not yet in this repository; the
-// change that lands the last one replaces its check, removes the pin below and
-// raises the level.
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -166,6 +171,61 @@ const xmlElementsAndHandlersLeftOut = () => {
   );
 };
 
+// Fixed samples: one refused value per kind, and values the editors write.
+const inputValidationHolds = () => {
+  const refusedExpressions = ["a()", "1; 2", "1 // a", '"a".constructor'];
+  const acceptedExpressions = [
+    '"a"',
+    "$ws$dataSource$a.slice(1) + `b ${$ws$system.params.c}`",
+  ];
+  const valuesHold =
+    refusedExpressions.every(
+      (expression) => checkValueExpression(expression).ok === false
+    ) &&
+    acceptedExpressions.every(
+      (expression) => checkValueExpression(expression).ok
+    ) &&
+    checkAction([{ args: [], code: "a = 1" }]).ok === false &&
+    checkAction([{ args: ["a)"], code: "$ws$dataSource$a = 1" }]).ok ===
+      false &&
+    checkAction([{ args: ["v"], code: "$ws$dataSource$a = v" }]).ok &&
+    checkResourceName("header", "a b").ok === false &&
+    checkResourceName("searchParam", 'a"').ok === false &&
+    checkElementTag("script").ok === false &&
+    checkElementTag("div").ok;
+  const prebuildRefuses = (bundle: PublishedProjectBundle) => {
+    try {
+      assertBuildCodeValid(bundle.build, migratePages(bundle.build.pages));
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  const withTag = (tag: string) =>
+    bundleOf({
+      instances: [
+        instance("root", "Body", { children: children("node") }),
+        instance("node", "ws:element", { tag }),
+      ],
+      props: [],
+    });
+  return (
+    valuesHold &&
+    prebuildRefuses(withTag("script")) &&
+    prebuildRefuses(
+      bundleOf({
+        instances: [instance("root", "Body")],
+        props: [],
+        redirect: "a()",
+      })
+    ) &&
+    prebuildRefuses(withTag("div")) === false
+  );
+};
+
+const codeCheckTests =
+  "packages/sdk-components-organizeos/src/code-check.test.ts";
+
 const unsafeValuesTests =
   "packages/cli/src/organizeos-org-script.unsafe-values.test.ts";
 const prebuildTests = "packages/cli/src/prebuild.test.ts";
@@ -297,9 +357,83 @@ const levelOne: Requirement[] = [
     ],
   },
   {
-    name: "one requirement not yet in this repository",
-    holds: () => false,
-    coveredBy: [],
+    name: "expressions, actions and generated names pass input validation before they are compiled or published",
+    holds: inputValidationHolds,
+    coveredBy: [
+      { file: codeCheckTests, path: ["checkValueExpression", "refuses %s"] },
+      {
+        file: codeCheckTests,
+        path: ["checkValueExpression", "refuses comments"],
+      },
+      {
+        file: codeCheckTests,
+        path: [
+          "checkValueExpression",
+          "refuses the property %s in both access forms and as a key",
+        ],
+      },
+      {
+        file: codeCheckTests,
+        path: [
+          "checkAction",
+          "refuses an assignment to anything but a variable",
+        ],
+      },
+      {
+        file: codeCheckTests,
+        path: ["checkResourceName", "a header name is token characters only"],
+      },
+      {
+        file: codeCheckTests,
+        path: [
+          "checkElementTag",
+          "accepts every tag the builder offers and nothing else",
+        ],
+      },
+      {
+        file: codeCheckTests,
+        path: ["the fork's own values pass", "the %s site template"],
+      },
+      {
+        file: "packages/cli/src/organizeos-code-check.test.ts",
+        path: [
+          "assertBuildCodeValid",
+          "runs with the switch on, after a drop that keeps everything",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          "prebuild",
+          "stops a build with a value that fails input validation",
+          "%s",
+        ],
+      },
+      {
+        file: "apps/builder/app/shared/data-variables.organizeos.test.ts",
+        path: [
+          "an expression that fails input validation reads as unset and is never compiled",
+        ],
+      },
+      {
+        file: "apps/builder/app/shared/nano-states/props.organizeos.test.ts",
+        path: ["an action with %s does nothing and is never compiled"],
+      },
+      {
+        file: "apps/builder/app/canvas/organizeos-org-script.test.tsx",
+        path: [
+          "instanceTagMayRender",
+          "a tag the builder does not offer never renders, whatever the switch",
+        ],
+      },
+      {
+        file: "apps/builder/app/shared/sync/patch/patch-service.server.test.ts",
+        path: [
+          "applyPatchRequest with a value that fails input validation",
+          "fails the entry that writes it, with the reason, and applies the others",
+        ],
+      },
+    ],
   },
 ];
 
@@ -525,9 +659,5 @@ describe("ORGANIZEOS_GUARD_LEVEL", () => {
         );
       }
     }
-  });
-
-  test("stays 0 while a level-1 requirement is not yet in this repository", () => {
-    expect(ORGANIZEOS_GUARD_LEVEL).toBe(0);
   });
 });

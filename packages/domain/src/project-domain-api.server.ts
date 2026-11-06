@@ -378,10 +378,14 @@ export const unpublishProjectDomains = async (
   for (const domain of domains) {
     const dbDomain = domain.replace(`.${env.PUBLISHER_HOST}`, "");
     const result = await deploymentTrpc.unpublish.mutate({ domain });
-    await unpublishBuild({ projectId, domain: dbDomain }, context);
+    // OrganizeOS fork: a refusal throws before the database is touched.
+    // The OrganizeOS publisher always refuses an unpublish, and
+    // unpublishBuild deletes a production Build whose last domain this
+    // is (docs/ORGANIZEOS-FORK.md section 7).
     if (result.success === false && result.error !== "NOT_IMPLEMENTED") {
       throw new Error(`Failed to unpublish ${domain}: ${result.error}`);
     }
+    await unpublishBuild({ projectId, domain: dbDomain }, context);
   }
 };
 

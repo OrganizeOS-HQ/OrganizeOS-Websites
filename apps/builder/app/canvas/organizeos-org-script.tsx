@@ -31,6 +31,9 @@ import {
   MarkdownEmbed,
 } from "@webstudio-is/sdk-components-react/components";
 import {
+  checkElementTag,
+  checksInstanceTag,
+  elementTagMayRender,
   htmlEmbedCodeMayRun,
   orgScriptMayRun,
 } from "@organizeos/site-components/org-script";
@@ -180,3 +183,17 @@ export const withoutBuiltWithWebstudio = <
   const { builtWithWebstudio: _badge, ...templates } = library.templates;
   return { ...library, templates };
 };
+
+/**
+ * Whether the canvas may make an element from an instance's tag. On every
+ * component `checksInstanceTag` names, only a tag the builder offers, whatever
+ * the switch says (input validation, code-check.ts); and, while the switch is
+ * off, only one `elementTagMayRender` accepts.
+ */
+export const instanceTagMayRender = (
+  component: string,
+  tag: unknown,
+  mayRun: boolean = orgScriptMayRun()
+): boolean =>
+  (checksInstanceTag(component) === false || checkElementTag(tag).ok) &&
+  elementTagMayRender(tag, mayRun);

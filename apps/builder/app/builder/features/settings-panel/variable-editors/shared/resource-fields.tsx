@@ -35,6 +35,8 @@ import {
   type ResourceBodyInputType,
 } from "@webstudio-is/project-build/runtime";
 import { parseCurl, type CurlRequest } from "./curl";
+// OrganizeOS fork: input validation (docs/ORGANIZEOS-FORK.md section 10)
+import { nameCheckError } from "~/builder/shared/organizeos-code-check";
 import {
   getRequestHeaderValueSuggestions,
   requestHeaderNames,
@@ -219,9 +221,11 @@ const ExpressionNameValuePair = ({
   onChange,
   onDelete,
   autoFocusName,
+  nameKind,
 }: {
   aliases: Map<string, string>;
   scope: Record<string, unknown>;
+  nameKind: "header" | "searchParam";
   nameFieldName: string;
   valueFieldName: string;
   valueValidatorName: string;
@@ -240,38 +244,44 @@ const ExpressionNameValuePair = ({
     undefined
   );
   const isValueString = typeof evaluatedValue === "string";
+  // OrganizeOS fork: input validation (code-check.ts)
+  const nameError = nameCheckError(nameKind, name);
   return (
     <Grid
       gap={2}
       align="center"
       css={{ gridTemplateColumns: `120px 1fr min-content` }}
     >
-      {nameSuggestions.length > 0 ? (
-        <Combobox<string>
-          modal={false}
-          autoFocus={autoFocusName}
-          placeholder="Name"
-          name={nameFieldName}
-          value={name}
-          getItems={() => [...nameSuggestions]}
-          itemToString={(item) => item ?? ""}
-          onItemSelect={(selected) => onChange(selected, value)}
-          onChange={(nextName) => {
-            if (nextName !== undefined) {
-              onChange(nextName, value);
-            }
-          }}
-        />
-      ) : (
-        <InputField
-          // autofocus only new fields
-          autoFocus={autoFocusName}
-          placeholder="Name"
-          name={nameFieldName}
-          value={name}
-          onChange={(event) => onChange(event.target.value, value)}
-        />
-      )}
+      {/* OrganizeOS fork: input validation (code-check.ts) */}
+      <InputErrorsTooltip errors={nameError ? [nameError] : undefined}>
+        {nameSuggestions.length > 0 ? (
+          <Combobox<string>
+            modal={false}
+            autoFocus={autoFocusName}
+            placeholder="Name"
+            name={nameFieldName}
+            value={name}
+            getItems={() => [...nameSuggestions]}
+            itemToString={(item) => item ?? ""}
+            onItemSelect={(selected) => onChange(selected, value)}
+            onChange={(nextName) => {
+              if (nextName !== undefined) {
+                onChange(nextName, value);
+              }
+            }}
+          />
+        ) : (
+          <InputField
+            // autofocus only new fields
+            autoFocus={autoFocusName}
+            placeholder="Name"
+            name={nameFieldName}
+            value={name}
+            color={nameError ? "error" : undefined}
+            onChange={(event) => onChange(event.target.value, value)}
+          />
+        )}
+      </InputErrorsTooltip>
       <input
         type="hidden"
         readOnly={true}
@@ -328,6 +338,7 @@ const ExpressionNameValuePair = ({
 const ExpressionPairs = ({
   scope,
   aliases,
+  nameKind,
   label,
   itemLabel,
   description,
@@ -353,6 +364,7 @@ const ExpressionPairs = ({
   shouldAutoFocusName: (item: ExpressionPair) => boolean;
   values: ExpressionPair[];
   onChange: (values: ExpressionPair[]) => void;
+  nameKind: "header" | "searchParam";
 }) => {
   return (
     <Grid gap={1}>
@@ -377,6 +389,7 @@ const ExpressionPairs = ({
             key={index}
             scope={scope}
             aliases={aliases}
+            nameKind={nameKind}
             nameFieldName={nameFieldName}
             valueFieldName={valueFieldName}
             valueValidatorName={valueValidatorName}
@@ -420,6 +433,7 @@ export const SearchParams = ({
     label="Search params"
     itemLabel="search param"
     description="Search params are name-value pairs added to the URL after ?. Use them to send filters, search terms, or other request options."
+    nameKind="searchParam"
     nameFieldName="search-param-name"
     valueFieldName="search-param-value"
     valueValidatorName="search-param-value-literal"
@@ -448,6 +462,7 @@ export const Headers = ({
       label="Headers"
       itemLabel="header"
       description="Headers are name-value pairs sent with the request. Use them to tell the server how to interpret the request or who is making it."
+      nameKind="header"
       nameFieldName="header-name"
       valueFieldName="header-value"
       valueValidatorName="header-value-validator"

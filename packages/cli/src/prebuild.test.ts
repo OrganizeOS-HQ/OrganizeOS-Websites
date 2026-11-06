@@ -1022,8 +1022,6 @@ describe("prebuild", () => {
   // OrganizeOS fork: the sitemap reads excludePageFromSearch without
   // evaluating it, as upstream does since webstudio-is/webstudio#6614.
   test("the sitemap reads each page's excludePageFromSearch without evaluating it", async () => {
-    const marker = "__organizeosPrebuildSitemapMarker";
-    const globals = globalThis as Record<string, unknown>;
     const page = (
       id: string,
       path: string,
@@ -1037,27 +1035,24 @@ describe("prebuild", () => {
       meta:
         excludePageFromSearch === undefined ? {} : { excludePageFromSearch },
     });
+    // A value that runs code never gets this far: input validation stops the
+    // build first (organizeos-code-check.ts). A bound value keeps the page.
     await writeSiteData(
       createSiteData({
         pages: [
           page("home", ""),
           page("hidden", "/hidden", "true"),
-          page("code", "/code", `(globalThis.${marker} = true)`),
+          page("bound", "/bound", `$ws$system.search.hide === "1"`),
         ],
       })
     );
-    try {
-      await prebuild({ assets: false, template: ["defaults"] });
-      expect(globals[marker]).toBeUndefined();
-      const sitemap = await readFile(
-        "app/__generated__/$resources.sitemap.xml.ts",
-        "utf8"
-      );
-      expect(sitemap).toContain('"path": "/code"');
-      expect(sitemap).not.toContain('"path": "/hidden"');
-    } finally {
-      delete globals[marker];
-    }
+    await prebuild({ assets: false, template: ["defaults"] });
+    const sitemap = await readFile(
+      "app/__generated__/$resources.sitemap.xml.ts",
+      "utf8"
+    );
+    expect(sitemap).toContain('"path": "/bound"');
+    expect(sitemap).not.toContain('"path": "/hidden"');
   });
 
   test.each([true, false])(
@@ -5154,6 +5149,148 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         template: ["react-router", "react-router-vercel"],
       })
     ).rejects.toThrow(/X-OOS-Preview.*"News"/);
+  });
+
+  // OrganizeOS fork: input validation for expressions and generated names
+  // (organizeos-code-check.ts)
+  describe("stops a build with a value that fails input validation", () => {
+    const page = (meta: Record<string, unknown>, title = `"Home"`) => ({
+      pages: [
+        {
+          id: "home",
+          name: "Home",
+          title,
+          path: "",
+          rootInstanceId: "root",
+          meta,
+        },
+      ],
+    });
+    const resource = (init: Record<string, unknown>) => ({
+      resources: [
+        [
+          "news",
+          {
+            id: "news",
+            name: "News",
+            method: "post",
+            url: `"https://example.org"`,
+            headers: [],
+            ...init,
+          },
+        ] as [string, Record<string, unknown>],
+      ],
+    });
+    const rootProp = (init: Record<string, unknown>) => ({
+      props: [
+        [
+          "prop",
+          { id: "prop", instanceId: "root", name: "title", ...init },
+        ] as [string, Record<string, unknown>],
+      ],
+    });
+    const action = (args: string[], code: string) =>
+      rootProp({
+        name: "onClick",
+        type: "action",
+        value: [{ type: "execute", args, code }],
+      });
+
+    test.each([
+      ["the title", page({}, "a()"), 'The title of page "/"'],
+      ["the description", page({ description: "a()" }), "The description"],
+      ["the status", page({ status: "a()" }), "The status"],
+      [
+        "custom metadata",
+        page({ custom: [{ property: "og:x", content: "a()" }] }),
+        'The custom metadata "og:x"',
+      ],
+      [
+        "a text expression",
+        {
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Box",
+                children: [{ type: "expression" as const, value: "a()" }],
+              },
+            ] as [
+              string,
+              {
+                id: string;
+                component: string;
+                children: Array<{ type: "expression"; value: string }>;
+              },
+            ],
+          ],
+        },
+        'The text expression of instance "root"',
+      ],
+      [
+        "a property expression",
+        rootProp({ type: "expression", value: "a()" }),
+        'The property "title" of instance "root"',
+      ],
+      [
+        "an action's code",
+        action([], "a = 1"),
+        'The property "onClick" of instance "root"',
+      ],
+      [
+        "an action's argument",
+        action(["a)"], "undefined"),
+        'The property "onClick" of instance "root"',
+      ],
+      ["a resource URL", resource({ url: "a()" }), 'The resource "News" URL'],
+      [
+        "a search parameter name",
+        resource({ searchParams: [{ name: 'a"', value: `"b"` }] }),
+        'The resource "News" search parameter name',
+      ],
+      [
+        "a search parameter value",
+        resource({ searchParams: [{ name: "q", value: "a()" }] }),
+        'The resource "News" search parameter "q"',
+      ],
+      [
+        "a header name",
+        resource({ headers: [{ name: "a b", value: `"b"` }] }),
+        'The resource "News" header name',
+      ],
+      [
+        "a header value",
+        resource({ headers: [{ name: "X-A", value: "a()" }] }),
+        'The resource "News" header "X-A"',
+      ],
+      ["a body", resource({ body: "a()" }), 'The resource "News" body'],
+    ])("%s", async (_field, overrides, message) => {
+      await writeSiteData(createSiteData(overrides));
+      await expect(
+        prebuild({
+          assets: false,
+          template: ["react-router", "react-router-vercel"],
+        })
+      ).rejects.toThrow(message);
+    });
+
+    test(
+      "a build whose values pass is built",
+      async () => {
+        await writeSiteData(
+          createSiteData({
+            ...page({ description: `"About"` }),
+            ...rootProp({ type: "expression", value: "`a ${1}`" }),
+          })
+        );
+        await prebuild({
+          assets: false,
+          template: ["react-router", "react-router-vercel"],
+        });
+      },
+      slowPrebuildTestTimeout
+    );
   });
 
   describe("leaves an org's own script out", () => {

@@ -32,6 +32,8 @@ import {
   UploadIcon,
 } from "@webstudio-is/icons";
 import { ImportRedirectsDialog } from "./import-redirects-dialog";
+// OrganizeOS fork: the pause (docs/ORGANIZEOS-FORK.md section 10)
+import { urlMayRun } from "@organizeos/site-components/org-script";
 import type { PageRedirect } from "@webstudio-is/sdk";
 import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -56,6 +58,19 @@ const statusCodeDescriptions: Record<string, string> = {
   "302": "Moved temporarily. SEO ranking stays with original URL.",
 };
 
+const validateToPath = (toPath: string, fromPath?: string): string[] => {
+  const errors = validateRedirectTarget({ target: toPath, source: fromPath });
+  if (errors.length > 0) {
+    return errors;
+  }
+  // OrganizeOS fork: a target that may not run while org script is paused
+  // (docs/ORGANIZEOS-FORK.md section 10)
+  if (urlMayRun(toPath) === false) {
+    return ["This address is not allowed."];
+  }
+  return [];
+};
+
 const deleteRedirect = (
   redirects: Array<PageRedirect>,
   redirectToDelete: PageRedirect
@@ -66,6 +81,7 @@ const deleteRedirect = (
 // Exported for testing
 export const __testing__ = {
   deleteRedirect,
+  validateToPath,
 };
 
 export const SectionRedirects = () => {
@@ -113,17 +129,13 @@ export const SectionRedirects = () => {
     setFromPathErrors(errors);
     setFromPathWarnings(warnings);
     if (toPath !== "") {
-      setToPathErrors(
-        validateRedirectTarget({ target: toPath, source: value })
-      );
+      setToPathErrors(validateToPath(toPath, value));
     }
   };
 
   const handleToPathChange = (value: string) => {
     setToPath(value);
-    setToPathErrors(
-      validateRedirectTarget({ target: value, source: fromPath })
-    );
+    setToPathErrors(validateToPath(value, fromPath));
   };
 
   const handleSave = (redirects: Array<PageRedirect>) => {
@@ -143,10 +155,7 @@ export const SectionRedirects = () => {
         redirects,
         existingPaths,
       });
-    const toPathValidationErrors = validateRedirectTarget({
-      target: toPath,
-      source: fromPath,
-    });
+    const toPathValidationErrors = validateToPath(toPath, fromPath);
     const hasLoop = wouldCreateLoop(fromPath, toPath, redirects);
 
     // Update error state so user sees what went wrong
@@ -381,10 +390,15 @@ export const SectionRedirects = () => {
                         <Tooltip content={redirect.old}>
                           <Link
                             underline="hover"
-                            href={new URL(
-                              redirect.old,
-                              publishedOrigin
-                            ).toString()}
+                            href={
+                              // OrganizeOS fork: no link to a path that may not run (docs/ORGANIZEOS-FORK.md section 10)
+                              urlMayRun(redirect.old)
+                                ? new URL(
+                                    redirect.old,
+                                    publishedOrigin
+                                  ).toString()
+                                : undefined
+                            }
                             css={{
                               wordBreak: "break-all",
                               overflow: "hidden",
@@ -400,10 +414,15 @@ export const SectionRedirects = () => {
                         <Tooltip content={redirect.new}>
                           <Link
                             underline="hover"
-                            href={new URL(
-                              redirect.new,
-                              publishedOrigin
-                            ).toString()}
+                            href={
+                              // OrganizeOS fork: no link to a target that may not run (docs/ORGANIZEOS-FORK.md section 10)
+                              urlMayRun(redirect.new)
+                                ? new URL(
+                                    redirect.new,
+                                    publishedOrigin
+                                  ).toString()
+                                : undefined
+                            }
                             css={{
                               wordBreak: "break-all",
                               overflow: "hidden",
