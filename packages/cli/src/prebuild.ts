@@ -310,8 +310,10 @@ export const prebuild = async (options: {
     );
   }
   // OrganizeOS fork: org script is paused, so the build that every step below
-  // reads has none: no HTML Embed, no custom code (organizeos-org-script.ts).
+  // reads has none: no HTML Embed, no custom code, no component the framework
+  // does not import (organizeos-org-script.ts).
   const siteData = dropOrgScript(parsedSiteData.data, {
+    components: new Set(Object.keys(framework.components)),
     log: (message) => log.info(message),
   });
   // OrganizeOS fork: no Resource carries the builder's draft-preview header

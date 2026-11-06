@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
 import {
+  actionContextOf,
+  actionMayRun,
+} from "@organizeos/site-components/org-script";
+import {
   buildSignupFormData,
   SIGNUP_FORM_FIELD_NAMES,
 } from "./signup-form-preset.server";
@@ -13,6 +17,33 @@ const args = {
 const build = () => buildSignupFormData(args);
 
 describe("buildSignupFormData", () => {
+  // While org script is paused the canvas gives an action actionMayRun
+  // refuses no handler and publishing drops it (docs/ORGANIZEOS-FORK.md
+  // section 10), so the form's own state action has to pass
+  test("writes a state action that may run while org script is paused, as it is scoped on the page", async () => {
+    const { data, bodyId } = await build();
+    const actions = [...data.props.values()].filter(
+      (prop) => prop.type === "action"
+    );
+    expect(actions.map((prop) => prop.name)).toEqual(["onStateChange"]);
+    for (const prop of actions) {
+      expect(
+        prop.type === "action" &&
+          actionMayRun(
+            prop,
+            actionContextOf({
+              instances: data.instances,
+              pageRootIds: new Set([bodyId]),
+              dataSources: data.dataSources,
+              props: data.props,
+              resources: data.resources,
+              pages: [{ rootInstanceId: bodyId }],
+            })
+          )
+      ).toBe(true);
+    }
+  });
+
   test("renders a Form instance wrapped in a body", async () => {
     const { data, bodyId } = await build();
     const instances = [...data.instances.values()];

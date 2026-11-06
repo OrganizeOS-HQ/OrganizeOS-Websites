@@ -78,8 +78,9 @@ const $restrictedFeatures = computed(
 
 // OrganizeOS fork: what publishing leaves out while org script is paused
 const $pausedScript = computed(
-  [$pages, $instances, $props],
-  (pages, instances, props) => findPausedScript({ pages, instances, props })
+  [$pages, $instances, $props, $dataSources, $resources],
+  (pages, instances, props, dataSources, resources) =>
+    findPausedScript({ pages, instances, props, dataSources, resources })
 );
 
 const refreshProject = async () => {

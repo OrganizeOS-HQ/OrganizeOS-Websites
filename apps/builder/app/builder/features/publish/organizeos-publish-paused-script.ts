@@ -1,25 +1,40 @@
 import {
   blockTemplateComponent,
+  collectionComponent,
   getAllPages,
+  ROOT_INSTANCE_ID,
+  type DataSources,
   type Instance,
   type Instances,
   type Pages,
   type Prop,
   type Props,
+  type Resources,
 } from "@webstudio-is/sdk";
+import * as baseComponentMetas from "@webstudio-is/sdk-components-react/metas";
+import * as radixComponentMetas from "@webstudio-is/sdk-components-react-radix/metas";
+import * as organizeosComponentMetas from "@organizeos/site-components/metas";
 import {
+  actionContextOf,
   checksInstanceTag,
   checksTagProp,
+  collectionBindingNames,
+  collidingDataSourceIds,
+  componentMayShip,
   elementTagMayRun,
   htmlEmbedCodeMayRun,
+  instanceIdMayRun,
   isEventAttributeName,
   isFrameDocumentName,
   orgScriptMayRun,
   pageRedirectMayShip,
+  pageRootIdsOf,
+  pagesAndTemplatesOf,
   pausedPropNames,
   pausedSvgTags,
   projectRedirectMayShip,
   propMayShip,
+  templateRootIdsOf,
   xmlComponents,
 } from "@organizeos/site-components/org-script";
 import { platformName } from "~/shared/branding";
@@ -36,9 +51,13 @@ import { findPageAndSelectorByInstanceId } from "~/shared/instance-utils/lookup"
  * add a `tag` or `data-ws-tag` prop to any component, and the canvas only skips
  * that prop, so the element looks fine there. So are the unsafe values
  * publishing leaves out (`propMayShip`): an address that may run script, a
- * `srcdoc`, an event handler attribute, an XML element on an HTML or text page
- * and a redirect to an unsafe address. A bound address the canvas shows with a
- * safe value is still listed when its fixed start decides nothing.
+ * `srcdoc`, an event handler attribute, an action whose args or code could run
+ * script, an XML element on an HTML or text page and a redirect to an unsafe
+ * address. A bound address the canvas shows with a safe value is still listed
+ * when its fixed start decides nothing. So are an instance of a component the
+ * page does not import, one stored with the global root's id and a data
+ * source the page module cannot name as itself. What is inside an instance
+ * publishing drops is listed only where publishing counts it.
  */
 export type PausedScriptItem = {
   label: string;
@@ -47,6 +66,22 @@ export type PausedScriptItem = {
   /** Open a view when clicked */
   view?: "projectSettings" | "projectRedirects" | "pageSettings";
 };
+
+/**
+ * The components a published page imports, by the name a build stores, as the
+ * CLI's react-router framework maps them (`publishedComponents` in
+ * packages/cli/src/organizeos-org-script.ts): upstream's base library, Radix's
+ * and the OrganizeOS blocks.
+ */
+export const publishedComponents: ReadonlySet<Instance["component"]> = new Set([
+  ...Object.keys(baseComponentMetas),
+  ...Object.keys(radixComponentMetas).map(
+    (name) => `@webstudio-is/sdk-components-react-radix:${name}`
+  ),
+  ...Object.keys(organizeosComponentMetas).map(
+    (name) => `@organizeos/site-components:${name}`
+  ),
+]);
 
 export const pausedScriptExplanation = `Scripts could read visitors' ${platformName} sign-in, so these stay off until that's fixed. Your work is kept.`;
 
@@ -106,7 +141,16 @@ const findStaticTags = (instance: Instance, props: Prop[]) => {
 };
 
 /** How the dialog names a prop that publishing leaves out for its value. */
-const unsafePropLabel = (name: string) => {
+const unsafePropLabel = (instance: Instance, { name, type }: Prop) => {
+  if (type === "action") {
+    return `Action (${name})`;
+  }
+  if (
+    instance.component === collectionComponent &&
+    collectionBindingNames.has(name)
+  ) {
+    return `Collection item or key (${name})`;
+  }
   if (isFrameDocumentName(name)) {
     return "Frame document (srcdoc)";
   }
@@ -145,17 +189,56 @@ export const findPausedScript = ({
   pages,
   instances,
   props,
+  dataSources,
+  resources,
+  components = publishedComponents,
   mayRun = orgScriptMayRun(),
 }: {
   pages: undefined | Pages;
   instances: Instances;
   props: Props;
+  /** The build's, which an action's rule reads */
+  dataSources: DataSources;
+  /** The build's, which the rule for a data source's id reads */
+  resources: Resources;
+  /** The components a published page imports */
+  components?: ReadonlySet<Instance["component"]>;
   mayRun?: boolean;
 }): PausedScriptItem[] => {
   if (mayRun || pages === undefined) {
     return [];
   }
 
+  // what an action's rule reads, as publishing and the canvas read it. The
+  // builder's maps hold one entry per id, the one publishing keeps.
+  const names = {
+    instances,
+    dataSources,
+    props,
+    resources,
+    pages: pagesAndTemplatesOf(pages),
+  };
+  const rootIds = pageRootIdsOf(pages);
+  const actionContext = actionContextOf({
+    ...names,
+    pageRootIds: rootIds,
+    templateRootIds: templateRootIdsOf(pages),
+  });
+  // A data source that publishing leaves out for its id is listed where a
+  // page declares it: on the instance it is scoped to, or as a global one
+  const collidingIds = collidingDataSourceIds(names);
+  const collidingByScope = new Map<string, string[]>();
+  for (const id of collidingIds) {
+    const dataSource = dataSources.get(id);
+    if (dataSource !== undefined) {
+      // publishing reads one with no scope as held by an instance whose id
+      // is empty
+      const scope = dataSource.scopeInstanceId ?? "";
+      const list = collidingByScope.get(scope) ?? [];
+      list.push(dataSource.name);
+      collidingByScope.set(scope, list);
+    }
+  }
   const propsByInstance = new Map<Instance["id"], Prop[]>();
   for (const prop of props.values()) {
     const list = propsByInstance.get(prop.instanceId) ?? [];
@@ -171,6 +254,94 @@ export const findPausedScript = ({
         ...findPublishedInstanceIds(instances, page.rootInstanceId),
       ])
   );
+
+  // How the dialog names an instance publishing leaves out with what is
+  // inside it (`classify` in packages/cli/src/organizeos-org-script.ts)
+  const labelOf = (instance: Instance) => {
+    const instanceProps = propsByInstance.get(instance.id) ?? [];
+    if (instanceIdMayRun(instance.id, false) === false) {
+      return "Element with a reserved id";
+    }
+    if (componentMayShip(instance.component, components) === false) {
+      return "Unknown component";
+    }
+    if (instance.component === "HtmlEmbed") {
+      // an expression is only known when the page renders: it is dropped
+      const codes = instanceProps.filter((prop) => prop.name === "code");
+      const isIcon =
+        codes.length > 0 &&
+        codes.every(
+          (code) =>
+            code.type === "string" && htmlEmbedCodeMayRun(code.value, false)
+        );
+      return isIcon ? undefined : "HTML Embed";
+    }
+    if (instance.component === "MarkdownEmbed") {
+      return "Markdown Embed";
+    }
+    if (hasBlockedTag(instance, instanceProps)) {
+      return "Element with an unsupported tag";
+    }
+    const paused = findStaticTags(instance, instanceProps).find((tag) =>
+      pausedSvgTags.has(tag)
+    );
+    if (paused !== undefined) {
+      return `SVG ${paused} element`;
+    }
+    if (
+      xmlComponents.has(instance.component) &&
+      publishedOnHtmlPages.has(instance.id)
+    ) {
+      return "XML element";
+    }
+  };
+
+  // What publishing removes, as `dropOrgScript` does: every instance it
+  // leaves out, on a page or not, with what is inside it (a page's root is
+  // emptied instead), but what an instance that stays still holds
+  const labels = new Map<Instance["id"], string>();
+  const found = new Set<Instance["id"]>();
+  const emptiedRoots = new Set<Instance["id"]>();
+  const parentIds = new Map<Instance["id"], Instance["id"][]>();
+  for (const instance of instances.values()) {
+    const label = labelOf(instance);
+    if (label !== undefined) {
+      labels.set(instance.id, label);
+      (rootIds.has(instance.id) ? emptiedRoots : found).add(instance.id);
+    }
+    for (const child of instance.children) {
+      if (child.type === "id") {
+        parentIds.set(child.value, [
+          ...(parentIds.get(child.value) ?? []),
+          instance.id,
+        ]);
+      }
+    }
+  }
+  const removed = new Set(found);
+  const pending = [...found, ...emptiedRoots];
+  while (pending.length > 0) {
+    for (const child of instances.get(pending.pop() as string)?.children ??
+      []) {
+      if (child.type === "id" && removed.has(child.value) === false) {
+        removed.add(child.value);
+        pending.push(child.value);
+      }
+    }
+  }
+  const gone = (id: Instance["id"]) => removed.has(id) || emptiedRoots.has(id);
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const id of removed) {
+      if (
+        found.has(id) === false &&
+        (parentIds.get(id) ?? []).some((parentId) => gone(parentId) === false)
+      ) {
+        removed.delete(id);
+        changed = true;
+      }
+    }
+  }
 
   const items: PausedScriptItem[] = [];
   const seen = new Set<Instance["id"]>();
@@ -188,47 +359,25 @@ export const findPausedScript = ({
       if (instance === undefined) {
         continue;
       }
-      const instanceProps = propsByInstance.get(instance.id) ?? [];
-      const labels: string[] = [];
-      if (instance.component === "HtmlEmbed") {
-        const code = instanceProps.find((prop) => prop.name === "code");
-        // an expression is only known when the page renders: it is dropped
-        if (
-          htmlEmbedCodeMayRun(
-            code?.type === "string" ? code.value : undefined
-          ) === false
-        ) {
-          labels.push("HTML Embed");
-        }
-      } else if (instance.component === "MarkdownEmbed") {
-        labels.push("Markdown Embed");
-      } else if (hasBlockedTag(instance, instanceProps)) {
-        // it goes with its props, so no raw HTML property is listed for it
-        labels.push("Element with an unsupported tag");
-      } else {
-        const paused = findStaticTags(instance, instanceProps).find((tag) =>
-          pausedSvgTags.has(tag)
-        );
-        if (paused !== undefined) {
-          labels.push(`SVG ${paused} element`);
-        } else if (
-          xmlComponents.has(instance.component) &&
-          publishedOnHtmlPages.has(instance.id)
-        ) {
-          labels.push("XML element");
-        }
-      }
-      // an instance that is dropped takes its props with it
-      if (labels.length === 0) {
-        for (const prop of instanceProps) {
+      const label = labels.get(instanceId);
+      const listed = label === undefined ? [] : [label];
+      // an instance that publishing removes takes its props and its data
+      // sources with it
+      if (label === undefined && gone(instanceId) === false) {
+        for (const prop of propsByInstance.get(instance.id) ?? []) {
           if (pausedPropNames.has(prop.name)) {
-            labels.push("Raw HTML property");
-          } else if (propMayShip(instance, prop, false) === false) {
-            labels.push(unsafePropLabel(prop.name));
+            listed.push("Raw HTML property");
+          } else if (
+            propMayShip(instance, prop, false, actionContext) === false
+          ) {
+            listed.push(unsafePropLabel(instance, prop));
           }
         }
+        for (const name of collidingByScope.get(instance.id) ?? []) {
+          listed.push(`Variable (${name})`);
+        }
       }
-      if (labels.length === 0) {
+      if (listed.length === 0) {
         continue;
       }
       const { pageId, instanceSelector } = findPageAndSelectorByInstanceId(
@@ -237,13 +386,17 @@ export const findPausedScript = ({
         instance.id
       );
       const owner = pages.pages.get(pageId);
-      for (const label of labels) {
+      for (const label of listed) {
         items.push({
           label: `${label} on ${owner?.name ?? page.name}`,
           navigate: { pageId, instanceSelector },
         });
       }
     }
+  }
+
+  for (const name of collidingByScope.get(ROOT_INSTANCE_ID) ?? []) {
+    items.push({ label: `Variable (${name})` });
   }
 
   for (const page of getAllPages(pages)) {

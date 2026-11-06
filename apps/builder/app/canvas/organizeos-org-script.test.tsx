@@ -20,8 +20,14 @@ import * as baseComponentMetas from "@webstudio-is/sdk-components-react/metas";
 import * as baseComponentTemplates from "@webstudio-is/sdk-components-react/templates";
 import * as radixTemplates from "@webstudio-is/sdk-components-react-radix/templates";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
-import { templateIconCodes } from "@organizeos/site-components/org-script";
+import {
+  actionContextOf,
+  actionMayRun,
+  componentMayShip,
+  templateIconCodes,
+} from "@organizeos/site-components/org-script";
 import { MenuIcon } from "@webstudio-is/icons/svg";
+import { publishedComponents } from "~/builder/features/publish/organizeos-publish-paused-script";
 import { renderTemplate, type TemplateMeta } from "@webstudio-is/template";
 import {
   $registeredComponents,
@@ -276,6 +282,70 @@ describe("the base library, as the canvas registers it", () => {
 
   test("no template inserts a Markdown Embed", () => {
     expect(getEmbeds("MarkdownEmbed")).toEqual([]);
+  });
+
+  // While org script is paused the canvas gives an action actionMayRun
+  // refuses no handler, and publishing drops it, so a template's own action
+  // has to pass
+  test("every action a template inserts may run", () => {
+    const actions = libraries.flatMap(([library, templates]) =>
+      Object.entries(templates).flatMap(([name, meta]) => {
+        const fragment = renderTemplate(meta.template);
+        // as each is scoped, under the template's top instances as a page
+        // holds them
+        const context = actionContextOf({
+          instances: new Map(
+            fragment.instances.map((instance) => [instance.id, instance])
+          ),
+          pageRootIds: new Set(
+            fragment.children.flatMap((child) =>
+              child.type === "id" ? [child.value] : []
+            )
+          ),
+          dataSources: new Map(
+            fragment.dataSources.map((dataSource) => [
+              dataSource.id,
+              dataSource,
+            ])
+          ),
+          props: new Map(fragment.props.map((prop) => [prop.id, prop])),
+          resources: new Map(
+            fragment.resources.map((resource) => [resource.id, resource])
+          ),
+          pages: [],
+        });
+        return fragment.props.flatMap((prop) =>
+          prop.type === "action"
+            ? [{ template: `${library} ${name}`, prop, context }]
+            : []
+        );
+      })
+    );
+    // the Webhook Form, Signup Form, RSVP Form and Rotating Tabs write one each
+    expect(actions.length).toBeGreaterThanOrEqual(4);
+    expect(
+      actions
+        .filter(({ prop, context }) => actionMayRun(prop, context) === false)
+        .map(({ template }) => template)
+    ).toEqual([]);
+  });
+
+  // Publishing leaves out an instance of a component the page does not
+  // import, and the Publish dialog lists it, so a template inserts none
+  test("every component a template inserts is one a published page imports", () => {
+    expect(
+      libraries.flatMap(([library, templates]) =>
+        Object.entries(templates).flatMap(([name, meta]) =>
+          renderTemplate(meta.template)
+            .instances.filter(
+              (instance) =>
+                componentMayShip(instance.component, publishedComponents) ===
+                false
+            )
+            .map((instance) => `${library} ${name}: ${instance.component}`)
+        )
+      )
+    ).toEqual([]);
   });
 });
 

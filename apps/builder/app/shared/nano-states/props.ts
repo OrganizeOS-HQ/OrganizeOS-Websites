@@ -21,6 +21,16 @@ import {
   textContentAttribute,
   getCollectionEntries,
 } from "@webstudio-is/react-sdk";
+// OrganizeOS fork: org script is paused (docs/ORGANIZEOS-FORK.md section 10)
+import {
+  actionContextOf,
+  actionMayRun,
+  isPlainData,
+  orgScriptMayRun,
+  pageRootIdsOf,
+  pagesAndTemplatesOf,
+  templateRootIdsOf,
+} from "@organizeos/site-components/org-script";
 import { mapGroupBy } from "~/shared/shim";
 import { $instances } from "../sync/data-stores";
 import { $dataSources, $props, $assets, $resources } from "../sync/data-stores";
@@ -119,6 +129,24 @@ const getAction = (
     }
     return skippedAction;
   }
+  // OrganizeOS fork: org script is paused; an action actionMayRun refuses gets no function (docs/ORGANIZEOS-FORK.md section 10)
+  if (
+    orgScriptMayRun() === false &&
+    actionMayRun(
+      prop,
+      actionContextOf({
+        instances: $instances.get(),
+        pageRootIds: pageRootIdsOf($pages.get()),
+        templateRootIds: templateRootIdsOf($pages.get()),
+        dataSources: $dataSources.get(),
+        props: $props.get(),
+        resources: $resources.get(),
+        pages: pagesAndTemplatesOf($pages.get()),
+      })
+    ) === false
+  ) {
+    return;
+  }
   const generatedAction = generateAction(prop);
   try {
     const executeFn = new Function(
@@ -131,6 +159,8 @@ const getAction = (
     };
     const setVariable = (id: string, value: unknown) => {
       const dataSourceVariables = new Map($dataSourceVariables.get());
+      // OrganizeOS fork: org script is paused; a variable holds only plain data (docs/ORGANIZEOS-FORK.md section 10)
+      value = orgScriptMayRun() || isPlainData(value) ? value : undefined;
       dataSourceVariables.set(id, value);
       $dataSourceVariables.set(dataSourceVariables);
     };

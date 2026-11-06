@@ -5,9 +5,15 @@ import type { ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { cleanStores } from "nanostores";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { setEnv } from "@webstudio-is/feature-flags";
-import { elementComponent, type Instance, type Prop } from "@webstudio-is/sdk";
+import {
+  elementComponent,
+  SYSTEM_VARIABLE_ID,
+  type Instance,
+  type Prop,
+} from "@webstudio-is/sdk";
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import * as baseComponents from "@webstudio-is/sdk-components-react/components";
 import * as baseComponentMetas from "@webstudio-is/sdk-components-react/metas";
@@ -16,7 +22,9 @@ import * as radixComponents from "@webstudio-is/sdk-components-react-radix";
 import * as radixComponentMetas from "@webstudio-is/sdk-components-react-radix/metas";
 import {
   $dataSourceVariables,
+  $propValuesByInstanceSelector,
   $registeredComponents,
+  getInstanceKey,
   registerComponentLibrary,
 } from "~/shared/nano-states";
 import {
@@ -24,6 +32,7 @@ import {
   $instances,
   $pages,
   $props,
+  $resources,
 } from "~/shared/sync/data-stores";
 import { $selectedPageId } from "~/shared/nano-states/pages";
 import { registerContainers } from "~/shared/sync/sync-stores";
@@ -33,6 +42,7 @@ import {
   WebstudioComponentPreview,
 } from "./features/webstudio-component";
 import { withOrgScriptPolicy } from "./organizeos-org-script";
+import { checkAction } from "@organizeos/site-components/org-script";
 
 // The canvas copies every prop of an instance onto its component, so a prop
 // named dangerouslySetInnerHTML would put raw markup into the builder's own
@@ -1090,6 +1100,788 @@ describe.each(renderers)(
       });
 
       expect($dataSourceVariables.get().get("clicked")).toBe("yes");
+    });
+  }
+);
+
+// The canvas writes an action's args into an arrow function's parameters and
+// its code into the body, and runs that as soon as it computes prop values, in
+// every mode and before any click. An action that input validation refuses is
+// never compiled and does nothing; while org script is paused, one that
+// actionMayRun refuses gets no function, so the element renders without the
+// handler (getAction in shared/nano-states/props.ts, docs/ORGANIZEOS-FORK.md
+// section 10).
+describe("the canvas computes an action", () => {
+  const pwned = () => (window as { pwned?: number }).pwned;
+
+  const action = (
+    instanceId: string,
+    value: Array<{ args: string[]; code: string }>,
+    name = "onClick"
+  ): [string, Prop] => {
+    const id = `${instanceId}:${name}`;
+    return [
+      id,
+      {
+        id,
+        instanceId,
+        name,
+        type: "action",
+        value: value.map((entry) => ({ type: "execute", ...entry })),
+      },
+    ];
+  };
+
+  // the refused actions on a button's onClick
+  const refused = [
+    "args",
+    "code",
+    "block",
+    "member",
+    "parameter",
+    "generic",
+    "stored",
+    "outside",
+    "empty",
+    "regex",
+    "shadow",
+    "length",
+    "resource",
+    "newline",
+    "newline-block",
+    "newline-cr",
+    "newline-ls",
+    "newline-comment",
+    "proto",
+    "conflict",
+    "taken",
+    "comment",
+  ];
+  // and on a Signup Form's onStateChange, which passes plain data
+  const refusedOnForm = [
+    "form-member",
+    "form-generic",
+    "form-regex",
+    "form-newline",
+    "form-a",
+    "form-named",
+  ];
+
+  const signupForm = "@organizeos/site-components:SignupForm";
+
+  const instances = [
+    instance({
+      id: "body",
+      children: ids(
+        ...refused,
+        ...refusedOnForm,
+        "kept",
+        "elsewhere",
+        "signup"
+      ),
+    }),
+    ...[...refused, "kept", "elsewhere"].map((id) =>
+      instance({ id, tag: "button" })
+    ),
+    ...[...refusedOnForm, "signup"].map((id) =>
+      instance({ id, component: signupForm })
+    ),
+  ];
+
+  const props = [
+    // args that close the parameter list and run a sequence
+    action("args", [{ args: [") => 0, globalThis.pwned = 1, (x"], code: "0" }]),
+    // a code that starts with a regular expression
+    action("code", [
+      {
+        args: [],
+        code: "/1}, globalThis.pwned = 2, () => { // 1 + $ws$dataSource$clicked",
+      },
+    ]),
+    // a code that starts with an object
+    action("block", [
+      { args: [], code: '{} / "/}, globalThis.pwned = 3, () => { // "' },
+    ]),
+    // a code that reaches the page through the event
+    action("member", [
+      {
+        args: ["event"],
+        code: 'event.target.innerHTML = "<img src=x onerror=window.pwned=4>"',
+      },
+    ]),
+    // a code that names a parameter
+    action("parameter", [{ args: [], code: `$ws$dataSource$param = "x"` }]),
+    // a < followed later by a >
+    action("generic", [
+      { args: ["a", "b", "c"], code: "$ws$dataSource$clicked = a < b > (c)" },
+    ]),
+    // an event set to a variable, where a button passes one
+    action("stored", [
+      { args: ["event"], code: "$ws$dataSource$clicked = event" },
+    ]),
+    // a variable another element holds
+    action("outside", [{ args: [], code: '$ws$dataSource$sibling = "x"' }]),
+    // a data source with an empty id
+    action("empty", [{ args: [], code: "$ws$dataSource$ = 1" }]),
+    // a regular expression after a `>`
+    action("regex", [{ args: [], code: "1 < 2 > /(globalThis.pwned = 5)/g" }]),
+    // an arg named like a variable
+    action("shadow", [
+      { args: ["event"], code: "$ws$dataSource$clicked = $ws$dataSource$e" },
+    ]),
+    // a member, with no args
+    action("length", [
+      {
+        args: [],
+        code: "$ws$dataSource$clicked = $ws$dataSource$clicked.length",
+      },
+    ]),
+    // an assignment to a Resource
+    action("resource", [{ args: [], code: "$ws$dataSource$res = 1" }]),
+    // a member, a < followed later by a > and a regular expression, where
+    // the args may be named
+    action(
+      "form-member",
+      [
+        {
+          args: ["state"],
+          code: '$ws$dataSource$clicked = state.constructor.constructor("window.pwned = 6")()',
+        },
+      ],
+      "onStateChange"
+    ),
+    action(
+      "form-generic",
+      [{ args: ["a", "b", "c"], code: "$ws$dataSource$clicked = a < b > (c)" }],
+      "onStateChange"
+    ),
+    action(
+      "form-regex",
+      [
+        {
+          args: ["state"],
+          code: "$ws$dataSource$clicked = $ws$dataSource$clicked < $ws$dataSource$clicked > /(globalThis.pwned = state)/i",
+        },
+      ],
+      "onStateChange"
+    ),
+    // a < followed later by a >, with no args and where the args may be named
+    action("newline", [
+      {
+        args: [],
+        code: '$ws$dataSource$clicked = "s" < 1 >\n ["constructor"] < 1 >\n ["constructor"]',
+      },
+    ]),
+    action("newline-block", [
+      {
+        args: [],
+        code: '$ws$dataSource$clicked = 1 < 2 >\n{} / "/}, globalThis.pwned = 7, () => { // "',
+      },
+    ]),
+    ...(
+      [
+        ["newline-cr", "\r"],
+        ["newline-ls", "\u2028"],
+        ["newline-comment", " /*\n*/ "],
+      ] as const
+    ).map(([id, between]) =>
+      action(id, [
+        {
+          args: [],
+          code: `$ws$dataSource$clicked = 1 < 2 >${between}{} / "/}, globalThis.pwned = 8, () => { // "`,
+        },
+      ])
+    ),
+    action(
+      "form-newline",
+      [
+        {
+          args: ["state"],
+          code: '$ws$dataSource$clicked = state < 1 >\n["constructor"]',
+        },
+      ],
+      "onStateChange"
+    ),
+    action(
+      "form-a",
+      [
+        {
+          args: ["a"],
+          code: '$ws$dataSource$clicked = a < 1 >\n["constructor"]',
+        },
+      ],
+      "onStateChange"
+    ),
+    // an object keyed __proto__
+    action("proto", [
+      { args: [], code: "$ws$dataSource$clicked = { __proto__: null }" },
+    ]),
+    // a comment
+    action("comment", [
+      { args: [], code: '$ws$dataSource$clicked = /* note */ "x"' },
+    ]),
+    // a variable whose id the page module uses for something else
+    action("conflict", [
+      { args: [], code: "$ws$dataSource$clicked = $ws$dataSource$set$x" },
+    ]),
+    action("taken", [
+      { args: [], code: "$ws$dataSource$clicked = $ws$dataSource$taken" },
+    ]),
+    // an arg a variable it reads could be named as
+    action(
+      "form-named",
+      [
+        {
+          args: ["clicked"],
+          code: "$ws$dataSource$clicked = $ws$dataSource$clicked || clicked",
+        },
+      ],
+      "onStateChange"
+    ),
+    // what a template writes
+    action("kept", [{ args: [], code: `$ws$dataSource$clicked = "yes"` }]),
+  ];
+
+  const propOf = (instanceId: string, name = "onClick") =>
+    $propValuesByInstanceSelector
+      .get()
+      .get(getInstanceKey([instanceId, "body"]))
+      ?.get(name);
+  const onClickOf = (instanceId: string) => propOf(instanceId);
+
+  beforeEach(() => {
+    (window as { pwned?: number }).pwned = undefined;
+    $dataSources.set(
+      new Map([
+        [
+          "clicked",
+          {
+            type: "variable",
+            id: "clicked",
+            name: "clicked",
+            scopeInstanceId: "body",
+            value: { type: "string", value: "no" },
+          },
+        ],
+        [
+          "param",
+          {
+            type: "parameter",
+            id: "param",
+            name: "name",
+            scopeInstanceId: "body",
+          },
+        ],
+        [
+          "sibling",
+          {
+            type: "variable",
+            id: "sibling",
+            name: "sibling",
+            scopeInstanceId: "elsewhere",
+            value: { type: "string", value: "" },
+          },
+        ],
+        [
+          "",
+          {
+            type: "variable",
+            id: "",
+            name: "empty",
+            scopeInstanceId: "body",
+            value: { type: "string", value: "" },
+          },
+        ],
+        // a variable named like an arg
+        [
+          "e",
+          {
+            type: "variable",
+            id: "e",
+            name: "event",
+            scopeInstanceId: "body",
+            value: { type: "string", value: "idle" },
+          },
+        ],
+        [
+          "res",
+          {
+            type: "resource",
+            id: "res",
+            name: "res",
+            scopeInstanceId: "body",
+            resourceId: "res-resource",
+          },
+        ],
+        // ids the page module uses for something else
+        [
+          "set$x",
+          {
+            type: "variable",
+            id: "set$x",
+            name: "x",
+            scopeInstanceId: "body",
+            value: { type: "string", value: "" },
+          },
+        ],
+        [
+          "taken",
+          {
+            type: "variable",
+            id: "taken",
+            name: "taken",
+            scopeInstanceId: "body",
+            value: { type: "string", value: "" },
+          },
+        ],
+      ])
+    );
+    $resources.set(
+      new Map([
+        [
+          "taken",
+          {
+            id: "taken",
+            name: "taken",
+            method: "get",
+            url: '"https://example.org"',
+            headers: [],
+          },
+        ],
+      ])
+    );
+    $dataSourceVariables.set(new Map());
+  });
+
+  afterEach(() => {
+    cleanStores($propValuesByInstanceSelector);
+  });
+
+  test("runs none of the refused actions, and gives them no handler that does anything", () => {
+    prepare({ instances, props });
+
+    const handlers = [
+      ...refused.map((id) => [id, onClickOf(id)]),
+      ...refusedOnForm.map((id) => [id, propOf(id, "onStateChange")]),
+    ];
+    const actions = new Map(props);
+    const dataSourceIds = new Set([
+      SYSTEM_VARIABLE_ID,
+      ...$dataSources.get().keys(),
+    ]);
+    for (const [id, handler] of handlers) {
+      const action = [...actions.values()].find(
+        (prop) => prop.instanceId === id && prop.type === "action"
+      );
+      // one that input validation passes gets no function
+      if (
+        action?.type === "action" &&
+        checkAction(action.value, { dataSourceIds }).ok
+      ) {
+        expect(handler, String(id)).toBeUndefined();
+      }
+      if (handler !== undefined) {
+        expect(typeof handler, String(id)).toBe("function");
+        (handler as (event: unknown) => void)({
+          view: window,
+          target: document.body,
+        });
+      }
+    }
+    expect(pwned()).toBeUndefined();
+    expect($dataSourceVariables.get().size).toBe(0);
+  });
+
+  test("gives an action that may run a working handler", () => {
+    prepare({ instances, props });
+
+    const onClick = onClickOf("kept");
+    expect(typeof onClick).toBe("function");
+    (onClick as (event: unknown) => void)({});
+    expect($dataSourceVariables.get().get("clicked")).toBe("yes");
+  });
+
+  // The templates' action sets a variable to its arg, and still does when an
+  // org has named the variable as the arg
+  test("gives the templates' action a working handler when the variable it sets is named as its arg", () => {
+    prepare({
+      instances,
+      props: [
+        action(
+          "signup",
+          [{ args: ["clicked"], code: "$ws$dataSource$clicked = clicked" }],
+          "onStateChange"
+        ),
+      ],
+    });
+
+    const onStateChange = propOf("signup", "onStateChange");
+    expect(typeof onStateChange).toBe("function");
+    (onStateChange as (state: string) => void)("success");
+    expect($dataSourceVariables.get().get("clicked")).toBe("success");
+  });
+
+  // A page's own data source is a parameter, so a variable with its id is
+  // one the page module cannot name as itself
+  test("gives no handler to an action that names a variable with a page's own id", () => {
+    const handler = (systemDataSourceId: undefined | string) => {
+      prepare({
+        instances,
+        props: [
+          action("kept", [
+            {
+              args: [],
+              code: "$ws$dataSource$clicked = $ws$dataSource$pagesystem",
+            },
+          ]),
+        ],
+      });
+      $pages.set(
+        createDefaultPages({
+          homePageId: "home",
+          rootInstanceId: "body",
+          systemDataSourceId,
+        })
+      );
+      return onClickOf("kept");
+    };
+    $dataSources.set(
+      new Map([
+        ...$dataSources.get(),
+        [
+          "pagesystem",
+          {
+            type: "variable",
+            id: "pagesystem",
+            name: "pagesystem",
+            scopeInstanceId: "body",
+            value: { type: "string", value: "" },
+          },
+        ],
+      ])
+    );
+    expect(handler("pagesystem")).toBeUndefined();
+    expect(typeof handler(undefined)).toBe("function");
+  });
+
+  // A Collection binds as its item only a parameter of its own: an action
+  // inside it that names a variable the Collection binds is refused, as
+  // publishing refuses it
+  test("gives no handler to an action that names a variable a Collection binds", () => {
+    const collection = (item: string) => {
+      prepare({
+        instances: [
+          instance({ id: "body", children: ids("list") }),
+          instance({
+            id: "list",
+            component: "ws:collection",
+            children: ids("card"),
+          }),
+          instance({ id: "card", tag: "button" }),
+        ],
+        props: [
+          [
+            "list:data",
+            {
+              id: "list:data",
+              instanceId: "list",
+              name: "data",
+              type: "json",
+              value: ["A", "B"],
+            },
+          ],
+          [
+            "list:item",
+            {
+              id: "list:item",
+              instanceId: "list",
+              name: "item",
+              type: "parameter",
+              value: item,
+            },
+          ],
+          action("card", [
+            {
+              args: [],
+              code: "$ws$dataSource$clicked = $ws$dataSource$sibling",
+            },
+          ]),
+        ],
+      });
+      return $propValuesByInstanceSelector
+        .get()
+        .get(getInstanceKey(["card", "list[0]", "list", "body"]))
+        ?.get("onClick");
+    };
+    const sibling = {
+      type: "variable" as const,
+      id: "sibling",
+      name: "sibling",
+      scopeInstanceId: "body",
+      value: { type: "string" as const, value: "" },
+    };
+    $dataSources.set(new Map([...$dataSources.get(), ["sibling", sibling]]));
+    expect(collection("sibling")).toBeUndefined();
+    // a parameter of the Collection's own as its item
+    $dataSources.set(
+      new Map([
+        ...$dataSources.get(),
+        [
+          "item",
+          {
+            type: "parameter",
+            id: "item",
+            name: "item",
+            scopeInstanceId: "list",
+          },
+        ],
+      ])
+    );
+    expect(typeof collection("item")).toBe("function");
+  });
+
+  // A page template is edited on the canvas as a page is, so its Rotating
+  // Tabs keep their action there
+  test("gives a page template's action its handler while the template is edited", () => {
+    prepare({
+      instances: [
+        instance({ id: "body" }),
+        instance({
+          id: "template-body",
+          component: "Body",
+          children: ids("rotation"),
+        }),
+        instance({
+          id: "rotation",
+          component: "@organizeos/site-components:RotationControl",
+        }),
+      ],
+      props: [
+        action(
+          "rotation",
+          [{ args: ["value"], code: "$ws$dataSource$tab = value" }],
+          "onValueChange"
+        ),
+      ],
+    });
+    const pages = $pages.get();
+    if (pages === undefined) {
+      throw Error("no pages");
+    }
+    $pages.set({
+      ...pages,
+      pageTemplates: new Map([
+        [
+          "template",
+          {
+            id: "template",
+            name: "Template",
+            title: `"Template"`,
+            rootInstanceId: "template-body",
+            meta: {},
+          },
+        ],
+      ]),
+    });
+    $selectedPageId.set("template");
+    $dataSources.set(
+      new Map([
+        [
+          "tab",
+          {
+            type: "variable",
+            id: "tab",
+            name: "tab",
+            scopeInstanceId: "template-body",
+            value: { type: "string", value: "0" },
+          },
+        ],
+      ])
+    );
+
+    const onValueChange = $propValuesByInstanceSelector
+      .get()
+      .get(getInstanceKey(["rotation", "template-body"]))
+      ?.get("onValueChange");
+    expect(typeof onValueChange).toBe("function");
+    (onValueChange as (value: string) => void)("1");
+    expect($dataSourceVariables.get().get("tab")).toBe("1");
+    $selectedPageId.set("home");
+  });
+
+  // Publishing reads the pages, so an instance a page reaches is judged by
+  // the pages, even while a page template that also holds it is edited
+  test("judges an action a page reaches by the pages, as publishing does", () => {
+    prepare({
+      instances: [
+        instance({ id: "body", children: ids("shared") }),
+        instance({
+          id: "template-body",
+          component: "Body",
+          children: ids("wrapper"),
+        }),
+        instance({ id: "wrapper", component: "Box", children: ids("shared") }),
+        instance({
+          id: "shared",
+          component: "@organizeos/site-components:RotationControl",
+        }),
+      ],
+      props: [
+        action(
+          "shared",
+          [{ args: ["value"], code: "$ws$dataSource$tab = value" }],
+          "onValueChange"
+        ),
+      ],
+    });
+    const pages = $pages.get();
+    if (pages === undefined) {
+      throw Error("no pages");
+    }
+    $pages.set({
+      ...pages,
+      pageTemplates: new Map([
+        [
+          "template",
+          {
+            id: "template",
+            name: "Template",
+            title: `"Template"`,
+            rootInstanceId: "template-body",
+            meta: {},
+          },
+        ],
+      ]),
+    });
+    $selectedPageId.set("template");
+    const onValueChange = () =>
+      $propValuesByInstanceSelector
+        .get()
+        .get(getInstanceKey(["shared", "wrapper", "template-body"]))
+        ?.get("onValueChange");
+    // a variable of the template's: not one the page declares
+    $dataSources.set(
+      new Map([
+        [
+          "tab",
+          {
+            type: "variable",
+            id: "tab",
+            name: "tab",
+            scopeInstanceId: "wrapper",
+            value: { type: "string", value: "0" },
+          },
+        ],
+      ])
+    );
+    expect(onValueChange()).toBeUndefined();
+    // the page's own
+    $dataSources.set(
+      new Map([
+        [
+          "tab",
+          {
+            type: "variable",
+            id: "tab",
+            name: "tab",
+            scopeInstanceId: "body",
+            value: { type: "string", value: "0" },
+          },
+        ],
+      ])
+    );
+    expect(typeof onValueChange()).toBe("function");
+    $selectedPageId.set("home");
+  });
+
+  // While org script is paused a variable holds only plain data, whatever an
+  // action that may run is called with
+  test("stores what is not plain data as undefined, and plain data as it is", () => {
+    prepare({
+      instances,
+      props: [
+        [
+          "signup:onStateChange",
+          {
+            id: "signup:onStateChange",
+            instanceId: "signup",
+            name: "onStateChange",
+            type: "action",
+            value: [
+              {
+                type: "execute",
+                args: ["state"],
+                code: "$ws$dataSource$clicked = state",
+              },
+            ],
+          },
+        ],
+      ],
+    });
+    const onStateChange = $propValuesByInstanceSelector
+      .get()
+      .get(getInstanceKey(["signup", "body"]))
+      ?.get("onStateChange") as (state: unknown) => void;
+    expect(typeof onStateChange).toBe("function");
+    const stored = (value: unknown) => {
+      onStateChange(value);
+      return $dataSourceVariables.get().get("clicked");
+    };
+
+    expect(stored(new Event("click"))).toBeUndefined();
+    expect(stored(window)).toBeUndefined();
+    expect(stored(document.body)).toBeUndefined();
+    expect(stored("success")).toBe("success");
+    expect(stored(3)).toBe(3);
+    expect(stored(Infinity)).toBe(Infinity);
+    expect(stored(-Infinity)).toBe(-Infinity);
+    expect(stored(NaN)).toBeNaN();
+    expect(stored({ a: [1, "b"], c: null })).toEqual({ a: [1, "b"], c: null });
+    expect(stored({ a: { view: window } })).toBeUndefined();
+  });
+
+  test.each(renderers)(
+    "the %s renders the elements without running them, before and after a click",
+    (renderer) => {
+      const dom = render({ renderer, instances, props });
+
+      expect(pwned()).toBeUndefined();
+      for (const id of [...refused, "kept"]) {
+        expect(dom.querySelector(`[data-ws-id="${id}"]`), id).not.toBeNull();
+      }
+
+      act(() => {
+        for (const id of refused) {
+          dom.querySelector<HTMLElement>(`[data-ws-id="${id}"]`)?.click();
+        }
+      });
+      expect(pwned()).toBeUndefined();
+      expect(dom.querySelector('[data-ws-id="member"]')?.innerHTML).toBe("");
+      expect($dataSourceVariables.get().has("param")).toBe(false);
+    }
+  );
+});
+
+// The builder's global root is not an instance it stores: publishing leaves a
+// stored one out, and the canvas does not render it
+describe.each(renderers)(
+  "the %s renders an instance stored with the global root's id",
+  (renderer) => {
+    test("not at all, nor anything inside it", () => {
+      const dom = render({
+        renderer,
+        instances: [
+          instance({ id: "body", children: ids(":root", "kept") }),
+          instance({ id: ":root", tag: "div", children: ids("inside") }),
+          instance({ id: "inside", tag: "div" }),
+          instance({ id: "kept", tag: "div" }),
+        ],
+        props: [],
+      });
+
+      expect(dom.querySelector('[data-ws-id=":root"]')).toBeNull();
+      expect(dom.querySelector('[data-ws-id="inside"]')).toBeNull();
+      expect(dom.querySelector('[data-ws-id="kept"]')).not.toBeNull();
     });
   }
 );

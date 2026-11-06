@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { MenuIcon } from "@webstudio-is/icons/svg";
 import type { Instance, Prop } from "@webstudio-is/sdk";
-import { $instances, $pages, $props } from "~/shared/sync/data-stores";
+import {
+  $dataSources,
+  $instances,
+  $pages,
+  $props,
+  $resources,
+} from "~/shared/sync/data-stores";
 import { $editingPageId, $selectedPageId } from "~/shared/nano-states";
 import { $openProjectSettings } from "~/shared/nano-states/project-settings";
 import { PausedScriptBanner } from "./organizeos-publish";
@@ -70,6 +76,8 @@ const renderBanner = () => {
 beforeEach(() => {
   $openProjectSettings.set(undefined);
   $selectedPageId.set(undefined);
+  $dataSources.set(new Map());
+  $resources.set(new Map());
 });
 
 afterEach(() => {
@@ -82,6 +90,154 @@ afterEach(() => {
 });
 
 describe("PausedScriptBanner", () => {
+  // What the dialog reads is the build's, its data sources included: a
+  // template's action, a variable set to the component's argument, is not
+  // listed, and an action that may not run is
+  test("lists an action that may not run, and not one a template writes", () => {
+    setBuild({ code: MenuIcon });
+    const action = (
+      instanceId: string,
+      name: string,
+      args: string[],
+      code: string
+    ): [string, Prop] => [
+      `${instanceId}-${name}`,
+      {
+        id: `${instanceId}-${name}`,
+        instanceId,
+        name,
+        type: "action",
+        value: [{ type: "execute", args, code }],
+      },
+    ];
+    $instances.set(
+      new Map([
+        ...$instances.get(),
+        [
+          "root",
+          {
+            type: "instance",
+            id: "root",
+            component: "Body",
+            children: [
+              { type: "id", value: "embed" },
+              { type: "id", value: "signup" },
+              { type: "id", value: "button" },
+            ],
+          },
+        ],
+        [
+          "signup",
+          {
+            type: "instance",
+            id: "signup",
+            component: "@organizeos/site-components:SignupForm",
+            children: [],
+          },
+        ],
+        [
+          "button",
+          {
+            type: "instance",
+            id: "button",
+            component: "ws:element",
+            tag: "button",
+            children: [],
+          },
+        ],
+      ])
+    );
+    $props.set(
+      new Map([
+        ...$props.get(),
+        action(
+          "signup",
+          "onStateChange",
+          ["state"],
+          "$ws$dataSource$formState = state"
+        ),
+        action(
+          "button",
+          "onClick",
+          ["event"],
+          "$ws$dataSource$formState = event"
+        ),
+      ])
+    );
+    $dataSources.set(
+      new Map([
+        [
+          "formState",
+          {
+            type: "variable",
+            id: "formState",
+            name: "formState",
+            scopeInstanceId: "signup",
+            value: { type: "string", value: "initial" },
+          },
+        ],
+        // a variable whose id is a Resource's
+        [
+          "taken",
+          {
+            type: "variable",
+            id: "taken",
+            name: "taken",
+            scopeInstanceId: "button",
+            value: { type: "string", value: "" },
+          },
+        ],
+      ])
+    );
+    $resources.set(
+      new Map([
+        [
+          "taken",
+          {
+            id: "taken",
+            name: "taken",
+            method: "get",
+            url: '"https://example.org"',
+            headers: [],
+          },
+        ],
+      ])
+    );
+    // and an instance of a component the page does not import
+    $instances.set(
+      new Map([
+        ...$instances.get(),
+        [
+          "root",
+          {
+            ...($instances.get().get("root") as Instance),
+            children: [
+              ...($instances.get().get("root") as Instance).children,
+              { type: "id", value: "unknown" },
+            ],
+          },
+        ],
+        [
+          "unknown",
+          {
+            type: "instance",
+            id: "unknown",
+            component: "x:script",
+            children: [],
+          },
+        ],
+      ])
+    );
+    const host = renderBanner();
+    expect(
+      Array.from(host.querySelectorAll("li"), (item) => item.textContent)
+    ).toEqual([
+      "Action (onClick) on Home",
+      "Variable (taken) on Home",
+      "Unknown component on Home",
+    ]);
+  });
+
   test("lists what is paused under its heading, and says why and that it is kept, in two lines", () => {
     setBuild({ code: "<script>1</script>", customCode: "<style>x{}</style>" });
     const host = renderBanner();

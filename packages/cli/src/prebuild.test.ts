@@ -16,6 +16,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { transformWithEsbuild } from "vite";
 import { bundleVersion } from "@webstudio-is/protocol";
 import { log } from "@clack/prompts";
+import { parse as parseModule } from "acorn";
+import { simple as walkSimple } from "acorn-walk";
 import { encodeDataSourceVariable } from "@webstudio-is/sdk";
 import { templateIconCodes } from "@organizeos/site-components/org-script";
 import * as organizeosPage from "@organizeos/site-components/page";
@@ -112,8 +114,12 @@ const createSiteData = (
           id: string;
           component: string;
           tag?: string;
-          // OrganizeOS fork: the Event List cases below hold expressions
-          children: Array<{ type: "id" | "expression"; value: string }>;
+          // OrganizeOS fork: the Event List cases below hold expressions, and
+          // the org script cases text
+          children: Array<{
+            type: "id" | "expression" | "text";
+            value: string;
+          }>;
         },
       ]
     >;
@@ -2454,16 +2460,6 @@ describe("prebuild", () => {
         rootProp({ type: "expression", value: "a()" }),
         'The property "title" of instance "root"',
       ],
-      [
-        "an action's code",
-        action([], "a = 1"),
-        'The property "onClick" of instance "root"',
-      ],
-      [
-        "an action's argument",
-        action(["a)"], "undefined"),
-        'The property "onClick" of instance "root"',
-      ],
       ["a resource URL", resource({ url: "a()" }), 'The resource "News" URL'],
       [
         "a search parameter name",
@@ -2495,6 +2491,46 @@ describe("prebuild", () => {
         })
       ).rejects.toThrow(message);
     });
+
+    // While org script is paused, publishing leaves out an action that input
+    // validation refuses before the check runs, and builds the rest
+    test.each([
+      ["an action's code", [], "a = 1"],
+      ["an action's argument", ["a)"], "undefined"],
+      ["an action that reads NaN", [], "$ws$dataSource$v = NaN"],
+      ["an action that reads Infinity", [], "$ws$dataSource$v = Infinity"],
+      ["an action's object key", [], "$ws$dataSource$v = { constructor: 1 }"],
+    ])(
+      "leaves out %s while org script is paused, and builds the rest",
+      async (_field, args, code) => {
+        const info = vi.spyOn(log, "info").mockImplementation(() => {});
+        await writeSiteData(
+          createSiteData({
+            ...action(args, code),
+            dataSources: [
+              [
+                "v",
+                {
+                  type: "variable",
+                  id: "v",
+                  name: "v",
+                  scopeInstanceId: "root",
+                  value: { type: "string", value: "" },
+                },
+              ],
+            ],
+          })
+        );
+        await prebuild({
+          assets: false,
+          template: ["react-router", "react-router-vercel"],
+        });
+        expect(info).toHaveBeenCalledWith(
+          "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action."
+        );
+      },
+      slowPrebuildTestTimeout
+    );
 
     test(
       "a build whose values pass is built",
@@ -2723,6 +2759,1606 @@ describe("prebuild", () => {
       expect(page).toContain("<svg");
       expect(page).toContain("<Link");
       expect(page).toContain("<animateTransform");
+    });
+
+    // The generator writes an action's args as an arrow function's
+    // parameters, and the page renders on the site's server and in every
+    // visitor's browser, so crafted args would run in both before any click
+    // (actionMayRun in @organizeos/site-components/org-script)
+    test("leaves out an action that could run script or reach the page, and keeps one a template writes", async () => {
+      const state = encodeDataSourceVariable("state");
+      const action = (
+        instanceId: string,
+        value: Array<{ args: string[]; code: string }>,
+        name = "onClick"
+      ): [string, Record<string, unknown>] => [
+        `${instanceId}-${name}`,
+        {
+          id: `${instanceId}-${name}`,
+          instanceId,
+          name,
+          type: "action",
+          value: value.map((entry) => ({ type: "execute", ...entry })),
+        },
+      ];
+      const boxes = [
+        "crafted",
+        "block",
+        "member",
+        "generic",
+        "parameter",
+        "stored",
+        "regex",
+        "shadow",
+        "length",
+        "resource",
+        "newline",
+        "newline-block",
+        "newline-cr",
+        "newline-ls",
+        "newline-comment",
+        "proto",
+        "comment",
+        "comment-line",
+        "kept",
+      ];
+      // a Webhook Form passes its action plain data: its state
+      const forms = [
+        "form-member",
+        "form-generic",
+        "form-regex",
+        "form-newline",
+        "form-a",
+        "form-kept",
+      ];
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [...boxes, ...forms].map((value) => ({
+                  type: "id" as const,
+                  value,
+                })),
+              },
+            ],
+            ...boxes.map(
+              (
+                id
+              ): [string, { id: string; component: string; children: [] }] => [
+                id,
+                { id, component: "Box", children: [] },
+              ]
+            ),
+            ...forms.map(
+              (
+                id
+              ): [string, { id: string; component: string; children: [] }] => [
+                id,
+                { id, component: "Form", children: [] },
+              ]
+            ),
+          ],
+          dataSources: [
+            [
+              "state",
+              {
+                type: "variable",
+                id: "state",
+                name: "formState",
+                scopeInstanceId: "root",
+                value: { type: "string", value: "idle" },
+              },
+            ],
+            // a parameter
+            [
+              "param",
+              {
+                type: "parameter",
+                id: "param",
+                name: "name",
+                scopeInstanceId: "parameter",
+              },
+            ],
+            // a variable named like an arg
+            [
+              "e",
+              {
+                type: "variable",
+                id: "e",
+                name: "event",
+                scopeInstanceId: "root",
+                value: { type: "string", value: "idle" },
+              },
+            ],
+            [
+              "res",
+              {
+                type: "resource",
+                id: "res",
+                name: "res",
+                scopeInstanceId: "root",
+                resourceId: "res-resource",
+              },
+            ],
+          ],
+          resources: [
+            [
+              "res-resource",
+              {
+                id: "res-resource",
+                name: "res",
+                method: "get",
+                url: `"https://example.org/data.json"`,
+                headers: [],
+              },
+            ],
+          ],
+          props: [
+            action("crafted", [
+              { args: [") => 0, globalThis.pwned = 1, (x"], code: "0" },
+            ]),
+            // a code that starts with an object
+            action("block", [
+              {
+                args: [],
+                code: '{} / "/}, globalThis.pwned = 1, () => { // "',
+              },
+            ]),
+            action("member", [
+              {
+                args: ["event"],
+                code: 'event.view.location.replace("javascript:0")',
+              },
+            ]),
+            // a < followed later by a >
+            action("generic", [
+              { args: ["a", "b", "c"], code: `${state} = a < b > (c)` },
+            ]),
+            action("parameter", [
+              { args: [], code: `${encodeDataSourceVariable("param")} = "x"` },
+            ]),
+            // an event set to a variable, where a Box passes one
+            action("stored", [{ args: ["event"], code: `${state} = event` }]),
+            // a regular expression after a `>`
+            action("regex", [
+              { args: [], code: "1 < 2 > /(globalThis.pwned = 1)/g" },
+            ]),
+            // an arg named like a variable
+            action("shadow", [
+              {
+                args: ["event"],
+                code: `${state} = ${encodeDataSourceVariable("e")}`,
+              },
+            ]),
+            // a member, with no args
+            action("length", [
+              { args: [], code: `${state} = ${state}.length` },
+            ]),
+            // an assignment to a Resource
+            action("resource", [
+              { args: [], code: `${encodeDataSourceVariable("res")} = 1` },
+            ]),
+            // a member and a call, a < followed later by a > and a regular
+            // expression, where the args may be named
+            action(
+              "form-member",
+              [
+                {
+                  args: ["state"],
+                  code: `${state} = state.constructor.constructor("globalThis.pwned = 1")()`,
+                },
+              ],
+              "onStateChange"
+            ),
+            action(
+              "form-generic",
+              [{ args: ["a", "b", "c"], code: `${state} = a < b > (c)` }],
+              "onStateChange"
+            ),
+            action(
+              "form-regex",
+              [
+                {
+                  args: ["state"],
+                  code: `${state} = ${state} < ${state} > /(globalThis.pwned = state)/i`,
+                },
+              ],
+              "onStateChange"
+            ),
+            // a < followed later by a >, with no args and where the args may
+            // be named
+            action("newline", [
+              {
+                args: [],
+                code: `${state} = "s" < 1 >\n ["constructor"] < 1 >\n ["constructor"]`,
+              },
+            ]),
+            action("newline-block", [
+              {
+                args: [],
+                code: `${state} = 1 < 2 >\n{} / "/}, globalThis.pwned = 1, () => { // "`,
+              },
+            ]),
+            ...(
+              [
+                ["newline-cr", "\r"],
+                ["newline-ls", "\u2028"],
+                ["newline-comment", " /*\n*/ "],
+              ] as const
+            ).map(([id, between]) =>
+              action(id, [
+                {
+                  args: [],
+                  code: `${state} = 1 < 2 >${between}{} / "/}, globalThis.pwned = 1, () => { // "`,
+                },
+              ])
+            ),
+            action(
+              "form-newline",
+              [
+                {
+                  args: ["state"],
+                  code: `${state} = state < 1 >\n["constructor"]`,
+                },
+              ],
+              "onStateChange"
+            ),
+            action(
+              "form-a",
+              [{ args: ["a"], code: `${state} = a < 1 >\n["constructor"]` }],
+              "onStateChange"
+            ),
+            // an object keyed __proto__
+            action("proto", [
+              { args: [], code: `${state} = { __proto__: null }` },
+            ]),
+            // a comment
+            action("comment", [{ args: [], code: `${state} = /* note */ 1` }]),
+            action("comment-line", [
+              { args: [], code: `${state} = // note\n 1` },
+            ]),
+            // what the templates write
+            action("kept", [{ args: [], code: `${state} = "clicked"` }]),
+            action(
+              "form-kept",
+              [{ args: ["state"], code: `${state} = state` }],
+              "onStateChange"
+            ),
+          ],
+        })
+      );
+
+      const { page } = await generated();
+      const { code: compiled } = await transformWithEsbuild(
+        page,
+        "module.tsx",
+        { loader: "tsx", format: "esm", jsx: "automatic" }
+      );
+
+      expect(page).not.toContain("pwned");
+      expect(page).not.toContain("location");
+      expect(page).not.toContain("constructor");
+      expect(compiled).not.toContain("constructor");
+      expect(page).not.toContain("__proto__");
+      expect(page).not.toContain("note");
+      expect(page).not.toMatch(/a < b > \(c\)/);
+      expect(page).not.toMatch(/ < [12] >/);
+      expect(page).not.toMatch(/\bname = "x"/);
+      expect(page).not.toMatch(/formState = event\b/);
+      expect(page).not.toMatch(/\.length/);
+      // no setter for a Resource
+      expect(page).not.toMatch(/set\$res\b/);
+      expect(page).not.toContain("$ws$dataSource$");
+      // the templates' actions are still written, as handlers, and they are
+      // the only ones
+      expect(page).toMatch(/onClick=\{\(\) => \{\s*formState = "clicked"/);
+      expect(page.match(/onClick=/g)).toHaveLength(1);
+      expect(page).toMatch(
+        /onStateChange=\{\(state: any\) => \{\s*formState = state\s/
+      );
+      expect(page.match(/onStateChange=/g)).toHaveLength(1);
+
+      (globalThis as { pwned?: number }).pwned = undefined;
+      const exports = await runModule(page, {
+        react: React,
+        "react/jsx-runtime": jsxRuntime,
+        "@webstudio-is/react-sdk/runtime": await import(
+          "@webstudio-is/react-sdk/runtime"
+        ),
+        "@webstudio-is/sdk-components-react/components": await import(
+          "@webstudio-is/sdk-components-react/components"
+        ),
+        "@webstudio-is/sdk-components-react-router": {
+          Body: (props: Record<string, unknown>) =>
+            React.createElement("body", props),
+          Form: ({ children }: { children?: React.ReactNode }) =>
+            React.createElement("form", null, children),
+        },
+      });
+      const Page = exports.Page as ComponentType<Record<string, unknown>>;
+      renderToStaticMarkup(
+        React.createElement(Page, {
+          system: { params: {}, search: {}, origin: "https://x" },
+        })
+      );
+      expect((globalThis as { pwned?: number }).pwned).toBeUndefined();
+    });
+
+    // The builder's global root is not an instance it stores: one stored with
+    // its id goes, and the global data sources stay with every page
+    test("keeps the global data sources when it leaves out an instance stored with the global root's id", async () => {
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "button" }],
+              },
+            ],
+            ["button", { id: "button", component: "Box", children: [] }],
+            [":root", { id: ":root", component: "HtmlEmbed", children: [] }],
+          ],
+          dataSources: [
+            [
+              "local",
+              {
+                type: "variable",
+                id: "local",
+                name: "local",
+                scopeInstanceId: "root",
+                value: { type: "string", value: "" },
+              },
+            ],
+            [
+              "global",
+              {
+                type: "variable",
+                id: "global",
+                name: "global",
+                scopeInstanceId: ":root",
+                value: { type: "string", value: "" },
+              },
+            ],
+          ],
+          props: [
+            [
+              ":root-code",
+              {
+                id: ":root-code",
+                instanceId: ":root",
+                name: "code",
+                type: "string",
+                value: "<b>1</b>",
+              },
+            ],
+            [
+              "button-onClick",
+              {
+                id: "button-onClick",
+                instanceId: "button",
+                name: "onClick",
+                type: "action",
+                value: [
+                  {
+                    type: "execute",
+                    args: [],
+                    code: `${encodeDataSourceVariable("local")} = ${encodeDataSourceVariable("global")}`,
+                  },
+                ],
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+      const { code: compiled } = await transformWithEsbuild(
+        page,
+        "module.tsx",
+        { loader: "tsx", format: "esm", jsx: "automatic" }
+      );
+
+      // the action is written, with the global variable declared
+      expect(page).toMatch(/onClick=\{\(\) => \{\s*local = global\b/);
+      expect(page).toMatch(/let \[global, set\$global\] = useVariableState/);
+      expect(compiled).not.toContain("$ws$dataSource$");
+    });
+
+    // The element types of a compiled page module: an import, a tag, or
+    // anything else
+    const elementTypesOf = (compiled: string) => {
+      const program = parseModule(compiled, {
+        ecmaVersion: "latest",
+        sourceType: "module",
+      });
+      const imported = new Set<string>();
+      const runtime = new Set<string>();
+      for (const node of program.body) {
+        if (node.type === "ImportDeclaration") {
+          for (const specifier of node.specifiers) {
+            imported.add(specifier.local.name);
+            if (node.source.value === "react/jsx-runtime") {
+              runtime.add(specifier.local.name);
+            }
+          }
+        }
+      }
+      const types: Array<{ kind: "import" | "tag" | "other"; name: string }> =
+        [];
+      walkSimple(program, {
+        CallExpression(node) {
+          if (
+            node.callee.type !== "Identifier" ||
+            runtime.has(node.callee.name) === false
+          ) {
+            return;
+          }
+          const [type] = node.arguments;
+          if (type?.type === "Literal" && typeof type.value === "string") {
+            types.push({ kind: "tag", name: type.value });
+          } else if (type?.type === "Identifier" && imported.has(type.name)) {
+            types.push({ kind: "import", name: type.name });
+          } else {
+            types.push({
+              kind: "other",
+              name:
+                type === undefined ? "" : compiled.slice(type.start, type.end),
+            });
+          }
+        },
+      });
+      return types;
+    };
+
+    const renderPage = async (
+      page: string,
+      components: Record<string, Record<string, unknown>>
+    ) => {
+      const exports = await runModule(page, {
+        react: React,
+        "react/jsx-runtime": jsxRuntime,
+        "@webstudio-is/react-sdk/runtime": await import(
+          "@webstudio-is/react-sdk/runtime"
+        ),
+        "@webstudio-is/sdk-components-react-router": {
+          Body: (props: Record<string, unknown>) =>
+            React.createElement("body", props),
+        },
+        ...components,
+      });
+      const Page = exports.Page as ComponentType<Record<string, unknown>>;
+      return renderToStaticMarkup(
+        React.createElement(Page, {
+          system: { params: {}, search: {}, origin: "https://x" },
+        })
+      );
+    };
+
+    const variable = (
+      id: string,
+      name: string,
+      scopeInstanceId = "root"
+    ): [string, Record<string, unknown>] => [
+      id,
+      {
+        type: "variable",
+        id,
+        name,
+        scopeInstanceId,
+        value: { type: "string", value: "script" },
+      },
+    ];
+
+    // A data source's id may not be one the page module uses for anything
+    // else
+    test("leaves out a data source whose id the page module uses for something else, and what names it reads nothing", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "button" },
+                  { type: "id", value: "label" },
+                  { type: "id", value: "source" },
+                ],
+              },
+            ],
+            [
+              "button",
+              {
+                id: "button",
+                component: "Box",
+                children: [{ type: "text", value: "globalThis.pwned = 1" }],
+              },
+            ],
+            ["source", { id: "source", component: "Box", children: [] }],
+            [
+              "label",
+              {
+                id: "label",
+                component: "Box",
+                children: [{ type: "text", value: "globalThis.pwned = 2" }],
+              },
+            ],
+          ],
+          dataSources: [variable("Box", "v"), variable("Body", "w")],
+          props: [
+            [
+              "button-onClick",
+              {
+                id: "button-onClick",
+                instanceId: "button",
+                name: "onClick",
+                type: "action",
+                value: [
+                  {
+                    type: "execute",
+                    args: [],
+                    code: `${encodeDataSourceVariable("Box")} = ${encodeDataSourceVariable("Box")}`,
+                  },
+                ],
+              },
+            ],
+            // a read of it, and a parameter prop that names it
+            [
+              "root-title",
+              {
+                id: "root-title",
+                instanceId: "root",
+                name: "title",
+                type: "expression",
+                value: encodeDataSourceVariable("Box"),
+              },
+            ],
+            [
+              "source-src",
+              {
+                id: "source-src",
+                instanceId: "source",
+                name: "src",
+                type: "string",
+                value: "https://evil.example/x.js",
+              },
+            ],
+            [
+              "label-data-x",
+              {
+                id: "label-data-x",
+                instanceId: "label",
+                name: "data-x",
+                type: "parameter",
+                value: "Body",
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+      const { code: compiled } = await transformWithEsbuild(
+        page,
+        "module.tsx",
+        { loader: "tsx", format: "esm", jsx: "automatic" }
+      );
+
+      expect(page).not.toMatch(/let \[(Box|Body)\b/);
+      expect(page).not.toContain("onClick=");
+      const types = elementTypesOf(compiled);
+      expect(
+        types.filter(({ kind }) => kind === "import").length
+      ).toBeGreaterThan(0);
+      expect(types.filter(({ kind }) => kind !== "import")).toEqual([]);
+      const html = await renderPage(page, {
+        "@webstudio-is/sdk-components-react/components": {
+          Box: (props: Record<string, unknown>) =>
+            React.createElement("div", props),
+        },
+      });
+      expect(html).not.toContain("<script");
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action and 2 variables with a conflicting id."
+      );
+    });
+
+    // Only a component the page imports, or one the generator writes itself,
+    // ships
+    test("leaves out an instance whose component the page does not import", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "script" },
+                  { type: "id", value: "named" },
+                  { type: "id", value: "box" },
+                ],
+              },
+            ],
+            [
+              "script",
+              {
+                id: "script",
+                component: "x:script",
+                children: [{ type: "text", value: "globalThis.pwned = 1" }],
+              },
+            ],
+            [
+              "named",
+              {
+                id: "named",
+                component: "x:Location",
+                children: [],
+              },
+            ],
+            ["box", { id: "box", component: "Box", children: [] }],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+      const { code: compiled } = await transformWithEsbuild(
+        page,
+        "module.tsx",
+        { loader: "tsx", format: "esm", jsx: "automatic" }
+      );
+
+      expect(page).not.toContain("pwned");
+      expect(page).not.toMatch(/<(script|Location)\b/);
+      expect(
+        elementTypesOf(compiled).filter(({ kind }) => kind !== "import")
+      ).toEqual([]);
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 2 unknown components."
+      );
+    });
+
+    // The framework decides which components a page imports: the remix
+    // template imports no OrganizeOS block
+    test("leaves out a component the framework the site is built with does not import", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "signup" },
+                  { type: "id", value: "box" },
+                ],
+              },
+            ],
+            [
+              "signup",
+              {
+                id: "signup",
+                component: "@organizeos/site-components:SignupForm",
+                children: [],
+              },
+            ],
+            ["box", { id: "box", component: "Box", children: [] }],
+          ],
+        })
+      );
+
+      await prebuild({ assets: false, template: ["defaults"] });
+      const page = await readFile(
+        join("app", "__generated__", "_index.tsx"),
+        "utf8"
+      );
+
+      expect(page).not.toContain("SignupForm");
+      expect(page).toMatch(/<Box\b/);
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unknown component."
+      );
+    });
+
+    // Inside a Collection an action names only what it may: never the
+    // Collection's item, its index or its key
+    test("an action inside a Collection names neither its item, its index nor its key", async () => {
+      const box = (
+        id: string
+      ): [string, { id: string; component: string; children: [] }] => [
+        id,
+        { id, component: "Box", children: [] },
+      ];
+      const onClick = (
+        instanceId: string,
+        code: string
+      ): [string, Record<string, unknown>] => [
+        `${instanceId}-onClick`,
+        {
+          id: `${instanceId}-onClick`,
+          instanceId,
+          name: "onClick",
+          type: "action",
+          value: [{ type: "execute", args: [], code }],
+        },
+      ];
+      const list = (
+        id: string,
+        item: string
+      ): Array<[string, Record<string, unknown>]> => [
+        [
+          `${id}-data`,
+          {
+            id: `${id}-data`,
+            instanceId: id,
+            name: "data",
+            type: "json",
+            value: ["a", "b"],
+          },
+        ],
+        [
+          `${id}-item`,
+          {
+            id: `${id}-item`,
+            instanceId: id,
+            name: "item",
+            type: "parameter",
+            value: item,
+          },
+        ],
+      ];
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "list" },
+                  { type: "id", value: "other" },
+                ],
+              },
+            ],
+            [
+              "list",
+              {
+                id: "list",
+                component: "ws:collection",
+                children: ["b1", "b2", "b3"].map((value) => ({
+                  type: "id" as const,
+                  value,
+                })),
+              },
+            ],
+            // a Collection whose item's id may not ship
+            [
+              "other",
+              {
+                id: "other",
+                component: "ws:collection",
+                children: [{ type: "id", value: "b4" }],
+              },
+            ],
+            box("b1"),
+            box("b2"),
+            box("b3"),
+            box("b4"),
+          ],
+          dataSources: [
+            [
+              "item",
+              {
+                type: "parameter",
+                id: "item",
+                name: "item",
+                scopeInstanceId: "list",
+              },
+            ],
+            [
+              "set$v1",
+              {
+                type: "parameter",
+                id: "set$v1",
+                name: "item",
+                scopeInstanceId: "other",
+              },
+            ],
+            variable("v1", "v1"),
+            variable("list-index", "idx"),
+            variable("k", "_key"),
+          ],
+          props: [
+            ...list("list", "item"),
+            ...list("other", "set$v1"),
+            onClick("b1", `${encodeDataSourceVariable("v1")} = 1`),
+            onClick(
+              "b2",
+              `${encodeDataSourceVariable("v1")} = ${encodeDataSourceVariable("list-index")}`
+            ),
+            onClick("b3", `${encodeDataSourceVariable("k")} = 1`),
+            onClick("b4", `${encodeDataSourceVariable("v1")} = 2`),
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      // the one action that names a variable is written, with its own setter
+      expect(page.match(/onClick=/g)).toHaveLength(1);
+      expect(page).toMatch(/onClick=\{\(\) => \{\s*v1 = 1\s*set\$v1\(v1\)/);
+      expect(page).toMatch(/let \[v1, set\$v1\] = useVariableState/);
+      // a Collection whose item may not ship is not written
+      expect(page.match(/\.map\(/g)).toHaveLength(1);
+      expect(page).not.toMatch(/\b_key = /);
+      expect(page).not.toMatch(/= index\b/);
+    });
+
+    // A parameter is declared as itself only as a page's own or as a
+    // Collection's item or key
+    test("leaves out a parameter no page declares, so a parameter prop that names it reads nothing", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      const link = (id: string): [string, Record<string, unknown>][] => [
+        [
+          `${id}-href`,
+          {
+            id: `${id}-href`,
+            instanceId: id,
+            name: "href",
+            type: "string",
+            value: "mailto:a@example.org",
+          },
+        ],
+        [
+          `${id}-ref`,
+          {
+            id: `${id}-ref`,
+            instanceId: id,
+            name: "ref",
+            type: "parameter",
+            value: "capture",
+          },
+        ],
+      ];
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "link" },
+                  { type: "id", value: "area" },
+                ],
+              },
+            ],
+            [
+              "link",
+              {
+                id: "link",
+                component: "Link",
+                children: [{ type: "text", value: "link" }],
+              },
+            ],
+            [
+              "area",
+              {
+                id: "area",
+                component: "ws:element",
+                tag: "area",
+                children: [],
+              },
+            ],
+          ],
+          dataSources: [
+            [
+              "capture",
+              {
+                type: "parameter",
+                id: "capture",
+                name: "capture",
+                scopeInstanceId: "root",
+              },
+            ],
+          ],
+          props: [...link("link"), ...link("area")],
+        })
+      );
+
+      const { page } = await generated();
+      const { code: compiled } = await transformWithEsbuild(
+        page,
+        "module.tsx",
+        { loader: "tsx", format: "esm", jsx: "automatic" }
+      );
+
+      expect(page).not.toMatch(/\sref=/);
+      expect(compiled).not.toMatch(/\bcapture\b/);
+      // the page renders, and no ref it is given calls anything
+      const capture = vi.fn();
+      (globalThis as { capture?: unknown }).capture = capture;
+      try {
+        const node = { tagName: "A" };
+        const Link = React.forwardRef(
+          (
+            props: Record<string, unknown>,
+            ref: React.ForwardedRef<unknown>
+          ) => {
+            if (typeof ref === "function") {
+              ref(node);
+            }
+            return React.createElement("a", props);
+          }
+        );
+        const html = await renderPage(page, {
+          "@webstudio-is/sdk-components-react-router": {
+            Body: (props: Record<string, unknown>) =>
+              React.createElement("body", props),
+            Link,
+          },
+        });
+        expect(html).toContain('href="mailto:a@example.org"');
+        expect(capture).not.toHaveBeenCalled();
+      } finally {
+        delete (globalThis as { capture?: unknown }).capture;
+      }
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+      );
+    });
+
+    // A page's own parameter is declared on that page alone, and a
+    // Collection binds one item
+    test("leaves out a page template's own parameter held on the global root's id, and both parameters of a Collection with two item props", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      const ref = (
+        instanceId: string,
+        value: string
+      ): [string, Record<string, unknown>] => [
+        `${instanceId}-ref`,
+        {
+          id: `${instanceId}-ref`,
+          instanceId,
+          name: "ref",
+          type: "parameter",
+          value,
+        },
+      ];
+      const siteData = createSiteData({
+        instances: [
+          [
+            "root",
+            {
+              id: "root",
+              component: "Body",
+              children: [
+                { type: "id", value: "link" },
+                { type: "id", value: "list" },
+              ],
+            },
+          ],
+          [
+            "link",
+            {
+              id: "link",
+              component: "Link",
+              children: [{ type: "text", value: "link" }],
+            },
+          ],
+          [
+            "list",
+            {
+              id: "list",
+              component: "ws:collection",
+              children: [{ type: "id", value: "card" }],
+            },
+          ],
+          [
+            "card",
+            {
+              id: "card",
+              component: "Link",
+              children: [{ type: "text", value: "card" }],
+            },
+          ],
+        ],
+        props: [
+          ref("link", "own"),
+          ref("card", "first"),
+          [
+            "list-data",
+            {
+              id: "list-data",
+              instanceId: "list",
+              name: "data",
+              type: "json",
+              value: ["a"],
+            },
+          ],
+          [
+            "list-item",
+            {
+              id: "list-item",
+              instanceId: "list",
+              name: "item",
+              type: "parameter",
+              value: "first",
+            },
+          ],
+          [
+            "list-item-2",
+            {
+              id: "list-item-2",
+              instanceId: "list",
+              name: "item",
+              type: "parameter",
+              value: "last",
+            },
+          ],
+        ],
+        dataSources: [
+          [
+            "own",
+            {
+              type: "parameter",
+              id: "own",
+              name: "capture",
+              scopeInstanceId: ":root",
+            },
+          ],
+          [
+            "first",
+            {
+              type: "parameter",
+              id: "first",
+              name: "capture",
+              scopeInstanceId: "list",
+            },
+          ],
+          [
+            "last",
+            {
+              type: "parameter",
+              id: "last",
+              name: "item",
+              scopeInstanceId: "list",
+            },
+          ],
+        ],
+      });
+      (
+        siteData.build.pages as unknown as { pageTemplates: unknown[] }
+      ).pageTemplates = [
+        {
+          id: "template",
+          name: "Template",
+          title: `"Template"`,
+          rootInstanceId: ":root",
+          systemDataSourceId: "own",
+          meta: {},
+        },
+      ];
+      await writeSiteData(siteData);
+
+      const { page } = await generated();
+      const { code: compiled } = await transformWithEsbuild(
+        page,
+        "module.tsx",
+        { loader: "tsx", format: "esm", jsx: "automatic" }
+      );
+
+      expect(page).not.toMatch(/\sref=/);
+      expect(compiled).not.toMatch(/\bcapture\b/);
+      const capture = vi.fn();
+      (globalThis as { capture?: unknown }).capture = capture;
+      try {
+        const Link = React.forwardRef(
+          (
+            props: Record<string, unknown>,
+            forwarded: React.ForwardedRef<unknown>
+          ) => {
+            if (typeof forwarded === "function") {
+              forwarded({ tagName: "A" });
+            }
+            return React.createElement("a", props);
+          }
+        );
+        await renderPage(page, {
+          "@webstudio-is/sdk-components-react-router": {
+            Body: (props: Record<string, unknown>) =>
+              React.createElement("body", props),
+            Link,
+          },
+        });
+        expect(capture).not.toHaveBeenCalled();
+      } finally {
+        delete (globalThis as { capture?: unknown }).capture;
+      }
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 3 variables with a conflicting id."
+      );
+    });
+
+    // No data source may be named as a global the page reads
+    test("leaves out a variable named as a global the page reads, so a Collection beside it renders", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "list" },
+                  { type: "id", value: "label" },
+                ],
+              },
+            ],
+            [
+              "list",
+              {
+                id: "list",
+                component: "ws:collection",
+                children: [{ type: "id", value: "card" }],
+              },
+            ],
+            ["card", { id: "card", component: "Box", children: [] }],
+            ["label", { id: "label", component: "Box", children: [] }],
+          ],
+          dataSources: [
+            variable("object-name", "Object"),
+            [
+              "item",
+              {
+                type: "parameter",
+                id: "item",
+                name: "item",
+                scopeInstanceId: "list",
+              },
+            ],
+          ],
+          props: [
+            [
+              "list-data",
+              {
+                id: "list-data",
+                instanceId: "list",
+                name: "data",
+                type: "json",
+                value: ["first", "second"],
+              },
+            ],
+            [
+              "list-item",
+              {
+                id: "list-item",
+                instanceId: "list",
+                name: "item",
+                type: "parameter",
+                value: "item",
+              },
+            ],
+            [
+              "card-title",
+              {
+                id: "card-title",
+                instanceId: "card",
+                name: "title",
+                type: "parameter",
+                value: "item",
+              },
+            ],
+            [
+              "label-title",
+              {
+                id: "label-title",
+                instanceId: "label",
+                name: "title",
+                type: "parameter",
+                value: "object-name",
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).not.toMatch(/let \[Object\b/);
+      const html = await renderPage(page, {
+        "@webstudio-is/sdk-components-react/components": {
+          Box: (props: Record<string, unknown>) =>
+            React.createElement("div", props),
+        },
+      });
+      expect(html).toContain('title="first"');
+      expect(html).toContain('title="second"');
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+      );
+    });
+
+    // A Collection binds as its item or key only a parameter of its own, and
+    // never an action
+    test("an action inside a Collection names no variable the Collection binds, and a Collection's item is no action", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "list" },
+                  { type: "id", value: "actions" },
+                ],
+              },
+            ],
+            [
+              "list",
+              {
+                id: "list",
+                component: "ws:collection",
+                children: [{ type: "id", value: "button" }],
+              },
+            ],
+            ["button", { id: "button", component: "Box", children: [] }],
+            [
+              "actions",
+              {
+                id: "actions",
+                component: "ws:collection",
+                children: [{ type: "id", value: "card" }],
+              },
+            ],
+            ["card", { id: "card", component: "Box", children: [] }],
+          ],
+          dataSources: [variable("v", "v"), variable("sink", "sink")],
+          props: [
+            [
+              "list-data",
+              {
+                id: "list-data",
+                instanceId: "list",
+                name: "data",
+                type: "json",
+                value: ["ITEM_A", "ITEM_B"],
+              },
+            ],
+            [
+              "list-item",
+              {
+                id: "list-item",
+                instanceId: "list",
+                name: "item",
+                type: "parameter",
+                value: "v",
+              },
+            ],
+            [
+              "button-onClick",
+              {
+                id: "button-onClick",
+                instanceId: "button",
+                name: "onClick",
+                type: "action",
+                value: [
+                  {
+                    type: "execute",
+                    args: [],
+                    code: `${encodeDataSourceVariable("sink")} = ${encodeDataSourceVariable("v")}`,
+                  },
+                ],
+              },
+            ],
+            [
+              "actions-data",
+              {
+                id: "actions-data",
+                instanceId: "actions",
+                name: "data",
+                type: "json",
+                value: ["a"],
+              },
+            ],
+            [
+              "actions-item",
+              {
+                id: "actions-item",
+                instanceId: "actions",
+                name: "item",
+                type: "action",
+                value: [],
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+      const { code: compiled } = await transformWithEsbuild(
+        page,
+        "module.tsx",
+        { loader: "tsx", format: "esm", jsx: "automatic" }
+      );
+
+      expect(compiled).toBeTruthy();
+      expect(page).not.toContain("onClick=");
+      expect(page).not.toMatch(/\.map\(\(\[_key, v\]/);
+      expect(page).not.toMatch(/\.map\(\(\[_key, \(/);
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 2 unsafe actions and 1 variable with a conflicting id."
+      );
+    });
+
+    // The only thing left out is a data source the page module uses for
+    // something else
+    test("leaves out a data source whose id the page module uses for something else when nothing else is left out", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "box" }],
+              },
+            ],
+            [
+              "box",
+              {
+                id: "box",
+                component: "Box",
+                children: [{ type: "text", value: "globalThis.pwned = 1" }],
+              },
+            ],
+          ],
+          dataSources: [variable("Box", "v")],
+          props: [
+            [
+              "box-x",
+              {
+                id: "box-x",
+                instanceId: "box",
+                name: "x",
+                type: "parameter",
+                value: "Box",
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).not.toMatch(/let \[Box\b/);
+      const html = await renderPage(page, {
+        "@webstudio-is/sdk-components-react/components": {
+          Box: (props: Record<string, unknown>) =>
+            React.createElement("div", props),
+        },
+      });
+      expect(html).not.toContain("<script");
+      expect(html).toContain("globalThis.pwned = 1</div>");
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+      );
+    });
+
+    // A build holds one entry per id, as the builder reads it: the last
+    test("publishes the last of two entries with one id, and only that one", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      const pages = [
+        {
+          id: "home",
+          name: "Home",
+          title: "Home",
+          path: "",
+          rootInstanceId: "root",
+          meta: {},
+        },
+        {
+          id: "about",
+          name: "About",
+          title: "About",
+          path: "/about",
+          rootInstanceId: "about-root",
+          meta: {},
+        },
+      ];
+      await writeSiteData(
+        createSiteData({
+          pages,
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "box" },
+                  { type: "id", value: "link" },
+                ],
+              },
+            ],
+            ["box", { id: "box", component: "Box", children: [] }],
+            [
+              "link",
+              {
+                id: "link",
+                component: "Link",
+                children: [{ type: "text", value: "link" }],
+              },
+            ],
+            [
+              "about-root",
+              {
+                id: "about-root",
+                component: "Body",
+                children: [{ type: "id", value: "about-box" }],
+              },
+            ],
+            ["about-box", { id: "about-box", component: "Box", children: [] }],
+          ],
+          props: [
+            // a refused action, then a plain one, with one id
+            [
+              "P",
+              {
+                id: "P",
+                instanceId: "box",
+                name: "onClick",
+                type: "action",
+                value: [
+                  {
+                    type: "execute",
+                    args: [") => 0, globalThis.pwned = 1, (x"],
+                    code: "0",
+                  },
+                ],
+              },
+            ],
+            [
+              "P",
+              {
+                id: "P",
+                instanceId: "about-box",
+                name: "onClick",
+                type: "action",
+                value: [
+                  {
+                    type: "execute",
+                    args: [],
+                    code: `${encodeDataSourceVariable("D")} = "clicked"`,
+                  },
+                ],
+              },
+            ],
+            [
+              "link-ref",
+              {
+                id: "link-ref",
+                instanceId: "link",
+                name: "ref",
+                type: "parameter",
+                value: "D",
+              },
+            ],
+          ],
+          // a parameter no page declares, then a variable, with one id
+          dataSources: [
+            [
+              "D",
+              {
+                type: "parameter",
+                id: "D",
+                name: "capture",
+                scopeInstanceId: "root",
+              },
+            ],
+            [
+              "D",
+              {
+                type: "variable",
+                id: "D",
+                name: "harmless",
+                scopeInstanceId: "about-root",
+                value: { type: "string", value: "idle" },
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page: home } = await generated();
+      const { page: about } = await generated("[about]._index");
+
+      expect(home).not.toContain("pwned");
+      expect(home).not.toContain("onClick=");
+      expect(home).not.toMatch(/\sref=/);
+      expect(home).not.toMatch(/\bcapture\b/);
+      expect(about).toMatch(
+        /onClick=\{\(\) => \{\s*harmless = "clicked"\s*set\$harmless\(harmless\)/
+      );
+      expect(about).toMatch(
+        /let \[harmless, set\$harmless\] = useVariableState<any>\("idle"\)/
+      );
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 2 duplicate entries."
+      );
+    });
+
+    // The templates' action sets a variable to its arg, and still does when
+    // an org has named the variable as the arg
+    test("writes the templates' action when the variable it sets is named as its arg", async () => {
+      await writeSiteData(
+        createSiteData({
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "form" }],
+              },
+            ],
+            ["form", { id: "form", component: "Form", children: [] }],
+          ],
+          dataSources: [variable("form-state", "state")],
+          props: [
+            [
+              "form-onStateChange",
+              {
+                id: "form-onStateChange",
+                instanceId: "form",
+                name: "onStateChange",
+                type: "action",
+                value: [
+                  {
+                    type: "execute",
+                    args: ["state"],
+                    code: `${encodeDataSourceVariable("form-state")} = state`,
+                  },
+                ],
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+      await transformWithEsbuild(page, "module.tsx", {
+        loader: "tsx",
+        format: "esm",
+        jsx: "automatic",
+      });
+
+      expect(page).toMatch(
+        /onStateChange=\{\(state: any\) => \{\s*state = state\s*set\$state\(state\)/
+      );
+      expect(page).toMatch(/let \[state, set\$state\] = useVariableState/);
     });
 
     // T12, for the props that choose or fill an element
