@@ -48,6 +48,7 @@ import {
   type EditorApi,
 } from "./expression-editor";
 import { normalizeEditorValue } from "~/shared/code-editor-base";
+import { withCodeCheckDiagnostic } from "./organizeos-code-check";
 
 /**
  * Check if a value is a primitive that can be safely stringified.
@@ -122,10 +123,14 @@ const BindingPanel = ({
   const scopeEntries = Object.entries(scope);
 
   const validate = (expression: string) => {
-    const diagnostics = lintExpression({
+    // OrganizeOS fork: input validation (organizeos-code-check.ts)
+    const diagnostics = withCodeCheckDiagnostic(
       expression,
-      availableVariables: new Set(aliases.keys()),
-    });
+      lintExpression({
+        expression,
+        availableVariables: new Set(aliases.keys()),
+      })
+    );
     // prevent saving expression only with syntax error
     const errors = diagnostics.filter((item) => item.severity === "error");
     setErrorsCount(errors.length);

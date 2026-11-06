@@ -123,3 +123,17 @@ test("a value that does not read as data is invalid while org script is paused",
   expect(validateJsonValue(`({ "a": [1, 2] })`)).toBe("");
   expect(validateJsonValue(`[1, "b"]`)).toBe("");
 });
+
+test("a value that fails input validation is invalid, whatever the switch", async () => {
+  const { orgScriptMayRun } = await import(
+    "@organizeos/site-components/org-script"
+  );
+  vi.mocked(orgScriptMayRun).mockReturnValue(true);
+  try {
+    expect(validateJsonValue(`"a".constructor`)).toBe("error");
+    expect(validateJsonValue(`{ "__proto__": 1 }`)).toBe("error");
+    expect(validateJsonValue(`[1, "b"]`)).toBe("");
+  } finally {
+    vi.mocked(orgScriptMayRun).mockRestore();
+  }
+});

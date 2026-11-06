@@ -54,6 +54,7 @@ import {
 } from "~/builder/shared/expression-editor";
 // OrganizeOS fork: the pause (docs/ORGANIZEOS-FORK.md section 10)
 import {
+  checkValueExpression,
   orgScriptMayRun,
   readLiteralValue,
 } from "@organizeos/site-components/org-script";
@@ -513,6 +514,13 @@ export const validateJsonValue = (expression: string) => {
     orgScriptMayRun() === false &&
     expression.trim() !== "" &&
     readLiteralValue(expression) === undefined
+  ) {
+    return "error";
+  }
+  // OrganizeOS fork: input validation, whatever the switch (code-check.ts)
+  if (
+    expression.trim() !== "" &&
+    checkValueExpression(expression).ok === false
   ) {
     return "error";
   }

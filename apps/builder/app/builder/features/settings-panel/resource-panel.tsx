@@ -73,6 +73,11 @@ import {
 import { updateWebstudioData } from "~/shared/instance-utils/data";
 import { rebindTreeVariablesMutable } from "~/shared/data-variables";
 import { parseCurl, type CurlRequest } from "./curl";
+// OrganizeOS fork: input validation (code-check.ts)
+import {
+  checkResource,
+  checkResourceName,
+} from "@organizeos/site-components/org-script";
 
 export const parseResource = ({
   id,
@@ -104,6 +109,17 @@ export const parseResource = ({
     // use undefined instead of empty string
     body: formData.get("body") || undefined,
   });
+};
+
+// OrganizeOS fork: the reason a header or search parameter name fails input
+// validation (code-check.ts); a new, empty row is left out when saved.
+// Exported for its test.
+export const nameCheckError = (
+  kind: "header" | "searchParam",
+  name: string
+) => {
+  const check = checkResourceName(kind, name);
+  return name.trim() === "" || check.ok ? undefined : check.reason;
 };
 
 const validateUrl = (value: string, scope: Record<string, unknown>) => {
@@ -256,6 +272,8 @@ const SearchParamPair = ({
   onChange: (name: string, value: string) => void;
   onDelete: () => void;
 }) => {
+  // OrganizeOS fork: input validation (code-check.ts)
+  const nameError = nameCheckError("searchParam", name);
   const evaluatedValue = evaluateExpressionWithinScope(value, scope);
   // expressions with variables or objects cannot be edited from input
   const isValueUnboundString =
@@ -266,14 +284,18 @@ const SearchParamPair = ({
       align="center"
       css={{ gridTemplateColumns: `120px 1fr min-content` }}
     >
-      <InputField
-        // autofocus only new fields
-        autoFocus={name === ""}
-        placeholder="Name"
-        name="search-param-name"
-        value={name}
-        onChange={(event) => onChange(event.target.value, value)}
-      />
+      {/* OrganizeOS fork: input validation (code-check.ts) */}
+      <InputErrorsTooltip errors={nameError ? [nameError] : undefined}>
+        <InputField
+          // autofocus only new fields
+          autoFocus={name === ""}
+          placeholder="Name"
+          name="search-param-name"
+          value={name}
+          color={nameError ? "error" : undefined}
+          onChange={(event) => onChange(event.target.value, value)}
+        />
+      </InputErrorsTooltip>
       <input type="hidden" name="search-param-value" value={value} />
       <BindingControl>
         <InputField
@@ -380,6 +402,8 @@ const HeaderPair = ({
   onChange: (name: string, value: string) => void;
   onDelete: () => void;
 }) => {
+  // OrganizeOS fork: input validation (code-check.ts)
+  const nameError = nameCheckError("header", name);
   const evaluatedValue = evaluateExpressionWithinScope(value, scope);
   // expressions with variables or objects cannot be edited from input
   const isValueUnboundString =
@@ -390,14 +414,18 @@ const HeaderPair = ({
       align="center"
       css={{ gridTemplateColumns: `120px 1fr min-content` }}
     >
-      <InputField
-        // autofocus only new fields
-        autoFocus={name === ""}
-        placeholder="Name"
-        name="header-name"
-        value={name}
-        onChange={(event) => onChange(event.target.value, value)}
-      />
+      {/* OrganizeOS fork: input validation (code-check.ts) */}
+      <InputErrorsTooltip errors={nameError ? [nameError] : undefined}>
+        <InputField
+          // autofocus only new fields
+          autoFocus={name === ""}
+          placeholder="Name"
+          name="header-name"
+          value={name}
+          color={nameError ? "error" : undefined}
+          onChange={(event) => onChange(event.target.value, value)}
+        />
+      </InputErrorsTooltip>
       <input hidden={true} readOnly={true} name="header-value" value={value} />
       <BindingControl>
         <InputField
@@ -870,6 +898,10 @@ export const ResourceForm = forwardRef<
         id: resource?.id ?? nanoid(),
         formData,
       });
+      // OrganizeOS fork: a value that fails input validation is not saved
+      if (checkResource(newResource) !== undefined) {
+        return;
+      }
       const newVariable: DataSource = {
         id: variable?.id ?? nanoid(),
         scopeInstanceId,
@@ -1029,6 +1061,10 @@ export const SystemResourceForm = forwardRef<
         control: "system",
         formData,
       });
+      // OrganizeOS fork: a value that fails input validation is not saved
+      if (checkResource(newResource) !== undefined) {
+        return;
+      }
       const newVariable: DataSource = {
         id: variable?.id ?? nanoid(),
         scopeInstanceId,
@@ -1137,6 +1173,10 @@ export const GraphqlResourceForm = forwardRef<
         control: "graphql",
         formData,
       });
+      // OrganizeOS fork: a value that fails input validation is not saved
+      if (checkResource(newResource) !== undefined) {
+        return;
+      }
       const newVariable: DataSource = {
         id: variable?.id ?? nanoid(),
         scopeInstanceId,
