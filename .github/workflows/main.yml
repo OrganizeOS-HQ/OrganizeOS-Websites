@@ -87,10 +87,13 @@ jobs:
 
       - name: Typecheck
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        # Exclude fixtures (generated example projects): their generated code
-        # still imports the removed proprietary animation package. The build
-        # excludes them the same way (pnpm -r --filter='!./fixtures/*').
-        run: pnpm -r --filter='!./fixtures/*' typecheck
+        # Every package and fixture but two fixtures the fork never
+        # regenerates (pnpm fixtures syncs from webstudio's infrastructure):
+        # webstudio-features' generated pages import the removed animation
+        # package, and react-router-vercel's html routes import
+        # app/__organizeos__/page.js, which prebuild writes and the fixture
+        # does not commit.
+        run: pnpm -r --filter='!./fixtures/webstudio-features' --filter='!./fixtures/react-router-vercel' typecheck
 
   tests:
     name: tests (${{ matrix.leg }})
