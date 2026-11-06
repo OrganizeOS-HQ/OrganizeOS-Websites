@@ -70,7 +70,7 @@ export const nameCheckError = (
  * OrganizeOS fork: whether a resource the variable dialog is about to save
  * fails input validation; a refused resource is not saved. A fixed value the
  * editor writes as `{ type: "literal" }` is checked as the expression it is
- * saved as.
+ * saved as. An email resource's settings are checked with it.
  */
 type ResourceFieldValue = Parameters<
   typeof normalizeResourceExpressionInput
@@ -82,6 +82,7 @@ export const resourceFailsCodeCheck = (fields: {
   headers: ResourceFieldEntry[];
   searchParams?: ResourceFieldEntry[];
   body?: ResourceFieldValue;
+  email?: Resource["email"];
 }) => {
   const normalizeEntries = (entries: ResourceFieldEntry[]) =>
     entries.map((entry) => ({
@@ -100,6 +101,7 @@ export const resourceFailsCodeCheck = (fields: {
         fields.body === undefined
           ? undefined
           : normalizeResourceExpressionInput(fields.body),
+      email: fields.email,
     } as Resource) !== undefined
   );
 };

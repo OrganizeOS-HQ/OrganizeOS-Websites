@@ -5265,6 +5265,42 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         'The resource "News" header "X-A"',
       ],
       ["a body", resource({ body: "a()" }), 'The resource "News" body'],
+      [
+        "an email subject",
+        resource({
+          control: "email",
+          email: { subject: `"a".constructor.constructor("return 1")()` },
+        }),
+        'The resource "News" email subject',
+      ],
+      [
+        "an email body",
+        resource({
+          control: "email",
+          email: { body: `"a".constructor.constructor("return 1")()` },
+        }),
+        'The resource "News" email body',
+      ],
+      [
+        "an email sender",
+        resource({
+          control: "email",
+          email: {
+            senderExpression: `"a".constructor.constructor("return 1")()`,
+          },
+        }),
+        'The resource "News" email sender',
+      ],
+      [
+        "an email recipients",
+        resource({
+          control: "email",
+          email: {
+            recipientsExpression: `"a".constructor.constructor("return 1")()`,
+          },
+        }),
+        'The resource "News" email recipients',
+      ],
     ])("%s", async (_field, overrides, message) => {
       await writeSiteData(createSiteData(overrides));
       await expect(

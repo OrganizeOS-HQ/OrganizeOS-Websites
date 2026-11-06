@@ -68,6 +68,11 @@ import { Row } from "../shared";
 import { useResourceScope } from "../resource-scope";
 import { buildEmailRequestPreviewFromEditor } from "./email-request-preview";
 import type { PanelApi } from "./shared/variable-panel-api";
+// OrganizeOS fork: input validation (docs/ORGANIZEOS-FORK.md section 10)
+import {
+  resourceFailsCodeCheck,
+  withCodeCheckError,
+} from "~/builder/shared/organizeos-code-check";
 
 const EmailExpressionField = ({
   label,
@@ -270,7 +275,9 @@ export const EmailResourceForm = forwardRef<
       getExpressionErrorMessages({
         expression,
         availableVariables: new Set(emailBindingAliases.keys()),
-      })[0]
+      })[0] ??
+      // OrganizeOS fork: input validation (docs/ORGANIZEOS-FORK.md section 10)
+      withCodeCheckError(expression, [])[0]
     );
   };
   const senderError =
@@ -348,14 +355,24 @@ export const EmailResourceForm = forwardRef<
       ) {
         return false;
       }
+      const parsedSettings = JSON.parse(
+        String(formData.get("email-settings") ?? "{}")
+      ) as EmailResourceSettings;
+      // OrganizeOS fork: a value that fails input validation is not saved
+      if (
+        resourceFailsCodeCheck({
+          url: String(formData.get("url") ?? `""`),
+          headers: [],
+          email: parsedSettings,
+        })
+      ) {
+        return false;
+      }
       const scopeInstanceId =
         variable?.scopeInstanceId ?? $selectedInstance.get()?.id;
       if (scopeInstanceId === undefined) {
         return;
       }
-      const parsedSettings = JSON.parse(
-        String(formData.get("email-settings") ?? "{}")
-      ) as EmailResourceSettings;
       const resourceFields = createResourceFieldsFromFormData({
         control: "email",
         formData,

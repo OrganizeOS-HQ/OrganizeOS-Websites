@@ -4,6 +4,8 @@ import {
   allowedStringMethods,
 } from "@webstudio-is/expression";
 import {
+  emailResourceSettings,
+  resource as resourceSchema,
   tags,
   type Instance,
   type Page,
@@ -21,6 +23,7 @@ import {
   checkElementTag,
   checkResourceName,
   checkValueExpression,
+  emailExpressionFields,
   findCodeCheckFailure,
   forbiddenMemberNames,
   pagesToCheck,
@@ -29,6 +32,8 @@ import {
 const accepted = (result: { ok: boolean }) => result.ok;
 
 const variable = "$ws$dataSource$abc";
+
+const refused = `"a".constructor.constructor("return 1")()`;
 
 describe("checkValueExpression", () => {
   test("accepts literals, templates, arrays and objects with plain keys", () => {
@@ -487,6 +492,34 @@ describe("findCodeCheckFailure", () => {
     ["header name", resource({ headers: [{ name: "a b", value: `"b"` }] })],
     ['header "X-A"', resource({ headers: [{ name: "X-A", value: "a()" }] })],
     ["body", resource({ method: "post", body: "a()" })],
+    [
+      "email subject",
+      resource({
+        control: "email",
+        method: "post",
+        email: { subject: refused },
+      }),
+    ],
+    [
+      "email body",
+      resource({ control: "email", method: "post", email: { body: refused } }),
+    ],
+    [
+      "email sender",
+      resource({
+        control: "email",
+        method: "post",
+        email: { senderExpression: refused },
+      }),
+    ],
+    [
+      "email recipients",
+      resource({
+        control: "email",
+        method: "post",
+        email: { recipientsExpression: refused },
+      }),
+    ],
   ])("names a resource's %s, by the instance that loads it", (field, value) => {
     expect(
       findCodeCheckFailure({
@@ -509,6 +542,58 @@ describe("findCodeCheckFailure", () => {
     expect(findCodeCheckFailure({ resources: [value] })).toMatchObject({
       place: { type: "resource", id: "resource" },
     });
+  });
+
+  test("an email resource whose fields all pass passes", () => {
+    expect(
+      findCodeCheckFailure({
+        resources: [
+          resource({
+            control: "email",
+            method: "post",
+            email: {
+              subject: `"New message"`,
+              body: `"Hello"`,
+              senderExpression: `"site@example.org"`,
+              recipientsExpression: variable,
+            },
+          }),
+        ],
+      })
+    ).toBeUndefined();
+  });
+
+  test("reads every field of the Resource schema that holds an expression", () => {
+    // a field added to the schema must be sorted into one of these lists
+    expect(Object.keys(resourceSchema.shape).sort()).toEqual(
+      [
+        // read by checkResource
+        "url",
+        "searchParams",
+        "headers",
+        "body",
+        "email",
+        // not expressions
+        "id",
+        "name",
+        "control",
+        "method",
+        "bodyFormat",
+      ].sort()
+    );
+    expect(Object.keys(emailResourceSettings.shape).sort()).toEqual(
+      [
+        ...emailExpressionFields.map(([key]) => key),
+        // not expressions
+        "recipientMode",
+        "recipients",
+        "visitorEmailField",
+        "sender",
+        "confirmationSubject",
+        "confirmationBody",
+        "includeAttachments",
+      ].sort()
+    );
   });
 
   test("skips an empty resource body, which is not generated", () => {
