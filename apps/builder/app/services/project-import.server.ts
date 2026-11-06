@@ -416,6 +416,8 @@ export const importPublishedProjectBundle = async (
     projectId,
   });
 
+  // OrganizeOS fork: the import passes the save check before it loads the
+  // build or asset files and before it writes anything
   assertImportedBuildPassesCodeCheck(data);
 
   const build = await dependencies.loadDevBuildByProjectId(ctx, projectId);
