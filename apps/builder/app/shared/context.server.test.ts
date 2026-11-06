@@ -379,5 +379,7 @@ describe("OrganizeOS publisher", () => {
       );
       expect(createOrganizeosPublisher).not.toHaveBeenCalled();
     }
-  });
+    // Four fresh imports of the context graph, one per pair of variables:
+    // about 2 s here, too close to the default 5 s on a busy machine.
+  }, 20_000);
 });
