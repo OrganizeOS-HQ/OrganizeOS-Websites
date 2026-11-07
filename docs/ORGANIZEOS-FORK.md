@@ -813,6 +813,13 @@ until a follow-up after this merge removes them, with their tests in
 
 A build whose saved value fails cannot publish until the value is edited.
 
+**Pasted JSX.** The builder server does not turn pasted JSX into project data.
+`createJsxFragment` (`services/build-router.server.ts`, one marked change)
+refuses after its access check with one message, `pastedJsxUnavailable` ("Pasting
+JSX is not available."), which the paste shows. Tests: "build router jsx
+fragment conversion" in `services/build-router.server.test.ts`, with a pin that
+no builder module outside tests imports a JSX converter.
+
 **Unpublish refusals.** `domain.unpublish` (`packages/domain/src/trpc/domain.ts`, one marked change) returns the deployment service's failure before it calls `unpublishBuild`, where upstream unpublished the database whatever the service answered. The OrganizeOS publisher refuses every unpublish (the platform's "Switch back to Website Lite" is the way off), and `unpublishBuild` deletes a production Build whose last domain it removes, which the publish callback and a republish need. NOT_IMPLEMENTED and a success unpublish as upstream. Since 0.309.0 the code lives in `unpublishProjectDomains` (`packages/domain/src/project-domain-api.server.ts`), which also serves the API router's `publish.unpublish`; the marked check sits there, before `unpublishBuild`, and `domain.ts` is upstream's. Tests: `packages/domain/src/trpc/domain.test.ts`, and the marked case "keeps publish records when deployment unpublish fails" in `project-domain-api.server.test.ts`, where upstream expects the records cleared.
 
 ## 8. Published-site route template patches

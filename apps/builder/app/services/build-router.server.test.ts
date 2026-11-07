@@ -2,10 +2,14 @@ import { DocumentGraphResolutionError } from "@webstudio-is/content-engine";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { bundleVersion } from "@webstudio-is/protocol";
 import { createPublishedProjectBundleFixture } from "@webstudio-is/protocol/fixtures";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   buildRouter,
   __testing__,
   loadBuilderDataByProjectId,
+  pastedJsxUnavailable,
 } from "./build-router.server";
 import { authorizeProject } from "@webstudio-is/trpc-interface/index.server";
 import { createDefaultPages } from "@webstudio-is/project-build";
@@ -290,37 +294,23 @@ describe("content database publish diagnostics", () => {
   });
 });
 
+// OrganizeOS fork: the builder server does not turn pasted JSX into project
+// data (docs/ORGANIZEOS-FORK.md, section 7).
 describe("build router jsx fragment conversion", () => {
-  test("converts Webstudio JSX through the shared runtime converter", async () => {
-    vi.spyOn(authorizeProject, "hasProjectPermit").mockResolvedValue(true);
-    const caller = buildRouter.createCaller({} as never);
+  test.each([
+    ["valid", `<Box><Heading>Title</Heading></Box>`],
+    ["invalid", `<Box {...{"ws:id": "0"}} />`],
+  ])(
+    "refuses %s pasted JSX on the builder server, with one message",
+    async (_kind, source) => {
+      vi.spyOn(authorizeProject, "hasProjectPermit").mockResolvedValue(true);
+      const caller = buildRouter.createCaller({} as never);
 
-    await expect(
-      caller.createJsxFragment({
-        projectId: "project-id",
-        source: `<Box><Heading>Title</Heading></Box>`,
-      })
-    ).resolves.toEqual(
-      expect.objectContaining({
-        instances: [
-          expect.objectContaining({ component: "Box" }),
-          expect.objectContaining({ component: "Heading" }),
-        ],
-      })
-    );
-  });
-
-  test("rejects invalid Webstudio JSX with runtime validation messages", async () => {
-    vi.spyOn(authorizeProject, "hasProjectPermit").mockResolvedValue(true);
-    const caller = buildRouter.createCaller({} as never);
-
-    await expect(
-      caller.createJsxFragment({
-        projectId: "project-id",
-        source: `<Box {...{"ws:id": "0"}} />`,
-      })
-    ).rejects.toThrow("Do not set ws:id in JSX fragments");
-  });
+      await expect(
+        caller.createJsxFragment({ projectId: "project-id", source })
+      ).rejects.toThrow(pastedJsxUnavailable);
+    }
+  );
 
   test("requires project access before converting JSX", async () => {
     vi.spyOn(authorizeProject, "hasProjectPermit").mockResolvedValue(false);
@@ -332,6 +322,20 @@ describe("build router jsx fragment conversion", () => {
         source: `<Box />`,
       })
     ).rejects.toThrow("You don't have access to this project");
+  });
+
+  test("no builder module outside tests turns JSX into project data", () => {
+    const appDir = fileURLToPath(new URL("../", import.meta.url));
+    const sources = readdirSync(appDir, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.(ts|tsx)$/.test(file))
+      .filter((file) => /\.(test|spec)\.(ts|tsx)$/.test(file) === false);
+    expect(sources.length).toBeGreaterThan(100);
+    const converters = sources.filter((file) =>
+      /parseWebstudioJsxFragment|evaluateWebstudioJsxFragment|evaluateJsx\b|project-build\/transfer\/server/.test(
+        readFileSync(join(appDir, file), "utf8")
+      )
+    );
+    expect(converters).toEqual([]);
   });
 });
 
