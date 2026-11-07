@@ -23,6 +23,12 @@ import { afterEach, describe, expect, test } from "vitest";
 // with node. The workflow is read as text, and its scripts run here as the runner
 // runs them, against a fake curl, npm and vercel: a change that moves a step,
 // loosens a check or feeds a value from elsewhere fails here.
+// The publish targets the builder sends (the targets input) are checked before
+// anything installs and again before the callback body is built, which must
+// equal the platform's fixture (__fixtures__/publish-callback-body.json).
+// The build's deployment.domains needs no test here: the builder writes it as
+// before ([Project.domain]), and the CLI reads it only in its Cloudflare
+// branch, which this workflow does not build.
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 const cliDir = join(root, "packages", "cli");
@@ -86,6 +92,7 @@ const envOf = (step: Step): Record<string, string> =>
 const probeOf = (script: string) =>
   script.match(/node --input-type=module -e '([^']*)'/)?.[1];
 
+const targetsStep = stepNamed("Read the targets");
 const switchStep = stepNamed("Read the org script switch");
 const guardStep = stepNamed("Read the guard level");
 const installVercelStep = stepNamed("Install the Vercel CLI");
@@ -94,6 +101,7 @@ const callbackStep = stepNamed("Flip the OrganizeOS pointer");
 const publishedStep = stepNamed("Report the build as published");
 const failedStep = stepNamed("Report the build as failed");
 
+const targetsScript = runScriptOf(targetsStep);
 const switchScript = runScriptOf(switchStep);
 const guardScript = runScriptOf(guardStep);
 
@@ -198,6 +206,7 @@ const secrets = {
 const substitutions: Record<string, string> = {
   "inputs.build_id": hostileBuildId,
   "inputs.organization_id": "a6b33e8c-3f0e-4c21-9d4e-6b0c1f2e3d4a",
+  "inputs.targets": "",
   "vars.BUILDER_ORIGIN": "https://builder.example",
   "secrets.WSTD_SERVICE_TOKEN": secrets.serviceToken,
   "secrets.PUBLISH_CALLBACK_URL": "https://app.example/publish-callback",
@@ -208,6 +217,8 @@ const substitutions: Record<string, string> = {
   "steps.deploy.outputs.deployment_url": "https://site-abc.vercel.app",
   "steps.org-script.outputs.value": "false",
   "steps.guard-level.outputs.value": "1",
+  // a builder that sends no targets
+  "steps.targets.outputs.value": "",
 };
 
 /** The step's env as the runner fills it, with some substitutions replaced. */
@@ -427,7 +438,7 @@ describe("the publish workflow's inputs", () => {
     const scripts = steps
       .filter((item) => /^ {8}run: \|$/m.test(item.text))
       .map(runScriptOf);
-    expect(scripts).toHaveLength(10);
+    expect(scripts).toHaveLength(11);
     for (const script of scripts) {
       expect(script).not.toContain("${{");
     }
@@ -446,10 +457,11 @@ describe("the publish workflow's inputs", () => {
     expect(workflow).not.toMatch(/^ {0,4}env:/m);
   });
 
-  test("feeds orgScript and guardLevel from their steps' outputs alone", () => {
+  test("feeds orgScript, guardLevel and targets from their steps' outputs alone", () => {
     const env = envOf(callbackStep);
     expect(env.ORG_SCRIPT).toBe("${{ steps.org-script.outputs.value }}");
     expect(env.GUARD_LEVEL).toBe("${{ steps.guard-level.outputs.value }}");
+    expect(env.TARGETS).toBe("${{ steps.targets.outputs.value }}");
     expect(Object.keys(env).sort()).toEqual([
       "BUILD_ID",
       "CALLBACK_TOKEN",
@@ -458,9 +470,14 @@ describe("the publish workflow's inputs", () => {
       "GUARD_LEVEL",
       "ORGANIZATION_ID",
       "ORG_SCRIPT",
+      "TARGETS",
     ]);
     // nothing else reads the outputs on the way
-    for (const id of ["steps.org-script", "steps.guard-level"]) {
+    for (const id of [
+      "steps.org-script",
+      "steps.guard-level",
+      "steps.targets",
+    ]) {
       expect(
         steps.filter((item) => item.text.includes(id)).map((item) => item.name)
       ).toEqual([callbackStep.name]);
@@ -535,6 +552,71 @@ describe("the publish workflow's inputs", () => {
   });
 });
 
+const callbackFixture = readFileSync(
+  join(cliDir, "src", "__fixtures__", "publish-callback-body.json"),
+  "utf8"
+);
+
+/** "Read the targets" run with the input as the runner fills it. */
+const readTargets = (input: string) =>
+  runStep(targetsScript, envFor(targetsStep, { "inputs.targets": input }));
+
+describe("the publish workflow's targets", () => {
+  test("declares the targets input, not required", () => {
+    expect(workflow).toMatch(
+      /^ {6}targets:\n {8}description: "JSON array of the publish targets: builtin or a host"\n {8}required: false$/m
+    );
+  });
+
+  test("reads the targets after setup-node and before anything installs, under an id, from the input alone", () => {
+    const index = steps.indexOf(targetsStep);
+    expect(steps[index - 1].text).toMatch(/^uses: actions\/setup-node@/);
+    expect(steps[index + 1].name).toBe("Install and build CLI");
+    expect(targetsStep.text).toMatch(/^ {8}id: targets$/m);
+    expect(envOf(targetsStep)).toEqual({ TARGETS: "${{ inputs.targets }}" });
+  });
+
+  test("fails the run, writing nothing, on anything but 1 to 20 distinct keys, each builtin or a host", () => {
+    for (const input of [
+      "[]",
+      '"builtin"',
+      "{}",
+      JSON.stringify(
+        Array.from({ length: 21 }, (_, index) => `d${index}.example.org`)
+      ),
+      '["builtin","builtin"]',
+      '["Example.org"]',
+      '["https://example.org"]',
+      '["example.org:443"]',
+      '["example.org/path"]',
+      '["Builtin"]',
+      '["localhost"]',
+      "[1]",
+      "[null]",
+      '["builtin"',
+      "not json",
+    ]) {
+      const run = readTargets(input);
+      expect(run.status, input).toBe(1);
+      expect(run.stdout, input).toContain(
+        "::error::The targets input is not a JSON array of 1 to 20 distinct keys, each builtin or a host."
+      );
+      expect(run.output, input).toBe("");
+    }
+  });
+
+  test("writes an empty output without the input, and the checked array with one", () => {
+    const absent = readTargets("");
+    expect(absent.status).toBe(0);
+    expect(absent.output).toBe("value=\n");
+
+    const given = readTargets('[ "builtin", "www.example.org" ]');
+    expect(given.status).toBe(0);
+    expect(given.output).toBe('value=["builtin","www.example.org"]\n');
+    expect(given.calls).toEqual([]);
+  });
+});
+
 describe("the publish callback", () => {
   test("sends the five keys, the build id verbatim, orgScript false and guardLevel 0", () => {
     const run = runWithAnswer(callbackStep);
@@ -554,6 +636,81 @@ describe("the publish callback", () => {
     });
     expect(Object.keys(body)).toHaveLength(5);
     expectNoSecretIn(run);
+  });
+
+  test("with targets, sends exactly the platform's fixture body: six keys in order, fed from env", () => {
+    const expected = JSON.parse(callbackFixture);
+    const read = readTargets(JSON.stringify(expected.targets));
+    const run = runWithAnswer(callbackStep, {
+      replaced: {
+        "inputs.organization_id": expected.organizationId,
+        "inputs.build_id": expected.buildId,
+        "steps.deploy.outputs.deployment_url": expected.deploymentUrl,
+        "steps.targets.outputs.value": read.output
+          .replace(/^value=/, "")
+          .trim(),
+      },
+    });
+
+    expect(run.status).toBe(0);
+    const [call] = run.calls;
+    expect(argAfter(call, "--data-binary")).toBe(JSON.stringify(expected));
+    expect(Object.keys(JSON.parse(argAfter(call, "--data-binary")))).toEqual([
+      "organizationId",
+      "buildId",
+      "deploymentUrl",
+      "orgScript",
+      "guardLevel",
+      "targets",
+    ]);
+    expectNoSecretIn(run);
+  });
+
+  test("sends nothing when the targets fail the check again", () => {
+    for (const value of [
+      "[]",
+      '["builtin","builtin"]',
+      '["https://example.org"]',
+      '["Builtin"]',
+      "not json",
+      '"builtin"',
+    ]) {
+      const run = runWithAnswer(callbackStep, {
+        replaced: { "steps.targets.outputs.value": value },
+      });
+      expect(run.status, value).not.toBe(0);
+      expect(run.stdout, value).toContain(
+        "::error::The targets did not pass the check, so nothing was sent."
+      );
+      expect(run.calls, value).toEqual([]);
+    }
+  });
+
+  test("logs live_targets as a count of the answer's live targets, and never a host", () => {
+    const run = runWithAnswer(callbackStep, {
+      replaced: {
+        "steps.targets.outputs.value": '["builtin","www.example.org"]',
+      },
+      answer: JSON.stringify({
+        ok: true,
+        live: true,
+        launchable: true,
+        targets: [
+          { host: "builtin-host.example", live: true, outcome: "live" },
+          { host: "www.example.org", live: false, outcome: "not_launchable" },
+        ],
+      }),
+    });
+    expect(run.status).toBe(0);
+    expect(run.stdout.split("\n").filter((line) => line.includes("="))).toEqual(
+      ["live=true", "launchable=true", "live_targets=1"]
+    );
+    expect(run.stdout).not.toContain("example");
+
+    for (const answer of ['{"ok":true}', '{"targets":"x"}', "not json"]) {
+      const quiet = runWithAnswer(callbackStep, { answer });
+      expect(quiet.stdout, answer).not.toContain("live_targets=");
+    }
   });
 
   test("sends nothing unless orgScript reads false and guardLevel is an integer from 0 to 32767", () => {

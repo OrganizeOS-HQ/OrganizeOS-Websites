@@ -2064,19 +2064,12 @@ export const PublishButton = ({ projectId }: PublishProps) => {
             />
           ) : (
             // OrganizeOS fork: upstream's title now lives inside Content, so
-            // the OrganizeOS branch carries its own.
+            // the OrganizeOS branch carries its own, with no settings gear:
+            // an org site's publish settings live in OrganizeOS.
             <>
               <PopoverTitle
                 suffix={
                   <PopoverTitleActions>
-                    <IconButton
-                      type="button"
-                      onClick={() => {
-                        $openProjectSettings.set("publish");
-                      }}
-                    >
-                      <GearIcon />
-                    </IconButton>
                     <PopoverClose />
                   </PopoverTitleActions>
                 }

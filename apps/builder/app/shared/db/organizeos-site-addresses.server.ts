@@ -1,10 +1,7 @@
 import { z } from "zod";
 import { createClient } from "@webstudio-is/postgrest/index.server";
 import env from "~/env/env.server";
-import {
-  ORG_SUBDOMAIN_PATTERN,
-  organizeosWebsiteAreaUrl,
-} from "./organizeos-site.server";
+import { ORG_SUBDOMAIN_PATTERN } from "./organizeos-site.server";
 
 /**
  * The site's addresses and launch state, as OrganizeOS knows them, for the
@@ -14,11 +11,18 @@ import {
  * an array of one row, or `[]` for an unknown org, with the org's `subdomain`,
  * its custom main host in the form it is served (`main_host`, or null), every
  * such host (`website_hosts`), the launch `status` (`not_launched`, `live` or
- * `offline`) and, once the platform sends it, `launchable`: whether the build
- * the org's pointer names can go live now. It is service-role only, called
- * with the builder's PostgREST key (`POSTGREST_API_KEY`) and only from the
- * server, for a signed-in user (`routes/rest.organizeos-site.$projectId.ts`).
- * The platform's copy of the answer is `shared/__fixtures__/site-addresses.json`.
+ * `offline`), `launchable` (whether the build the org's pointer names can go
+ * live now) and `targets`: every address the org can publish to, the built-in
+ * one first (key `builtin`, host null: the builder composes it), then each
+ * Website-use domain, the main first (key its stored host, host its served
+ * form), each with `main`, `published_at`, `unpublished_at` and `live`. The
+ * last two fields are optional, so either side can deploy first. It is
+ * service-role only, called with the builder's PostgREST key
+ * (`POSTGREST_API_KEY`) and only from the server, for a signed-in user
+ * (`routes/rest.organizeos-site.$projectId.ts`, and the publish route's check
+ * of the ticked addresses, `services/organizeos-publish-route.server.ts`).
+ * The platform's copies of the answer are
+ * `shared/__fixtures__/site-addresses.json` and `site-addresses-targets.json`.
  *
  * Every answer is validated, and anything else gives nothing: the dialog then
  * shows nothing extra. A failure logs one code and never the answer or the
@@ -36,13 +40,37 @@ const asciiLowerCase = (value: string) =>
   value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 
 /** Dot-separated labels of [a-z0-9-]: no scheme, port, path, userinfo or non-ASCII. */
-const HOST_PATTERN =
+export const HOST_PATTERN =
   /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
 
 const hostSchema = z
   .string()
   .transform(asciiLowerCase)
   .pipe(z.string().regex(HOST_PATTERN));
+
+/** The key of the org's built-in address, the one target with no stored host. */
+export const BUILTIN_TARGET_KEY = "builtin";
+
+/** At most this many targets in one read. */
+const MAX_TARGETS = 50;
+
+const timeSchema = z.string().datetime({ offset: true }).nullable();
+
+const targetFields = {
+  main: z.boolean(),
+  published_at: timeSchema,
+  unpublished_at: timeSchema,
+  live: z.boolean(),
+};
+
+const targetRowSchema = z.union([
+  z.object({
+    key: z.literal(BUILTIN_TARGET_KEY),
+    host: z.null(),
+    ...targetFields,
+  }),
+  z.object({ key: hostSchema, host: hostSchema, ...targetFields }),
+]);
 
 const siteStatusSchema = z.enum(["not_launched", "live", "offline"]);
 
@@ -55,6 +83,8 @@ const rowSchema = z.object({
   status: siteStatusSchema,
   // Optional both ways, so either side can deploy first
   launchable: z.boolean().nullish(),
+  // Optional both ways too: a platform without publish targets sends none
+  targets: z.array(targetRowSchema).max(MAX_TARGETS).nullish(),
 });
 
 export type SiteAddressesRow = z.infer<typeof rowSchema>;
@@ -118,6 +148,21 @@ export const fetchSiteAddresses = async (
   return parsed.data[0];
 };
 
+/** One address the Publish dialog lists. */
+export type SiteTarget = {
+  /**
+   * What a publish names it by: `builtin`, or the host it is served on, which
+   * OrganizeOS maps back to the domain in either form.
+   */
+  key: string;
+  /** For display: the served host, composed for the built-in address. */
+  host: string;
+  builtin: boolean;
+  main: boolean;
+  publishedAt: string | null;
+  live: boolean;
+};
+
 export type SiteAddresses = {
   /** Where the site is published: its custom main, else its platform address. */
   host: string;
@@ -125,10 +170,10 @@ export type SiteAddresses = {
   status: SiteStatus;
   /** The org's domain settings in OrganizeOS. */
   manageDomainsUrl: string;
-  /** The org's Website area in OrganizeOS, where it launches. */
-  websiteUrl: string;
   /** Present only when the platform sent a boolean. */
   launchable?: boolean;
+  /** Present only when the platform sent them. */
+  targets?: SiteTarget[];
 };
 
 export const composeSiteAddresses = ({
@@ -140,16 +185,28 @@ export const composeSiteAddresses = ({
   publisherHost: string;
   platformUrl: string;
 }): SiteAddresses => {
-  const host = row.main_host ?? `${row.subdomain}.${publisherHost}`;
+  const builtinHost = `${row.subdomain}.${publisherHost}`;
+  const host = row.main_host ?? builtinHost;
   const base = platformUrl.replace(/\/+$/, "");
   return {
     host,
     origin: `https://${host}`,
     status: row.status,
     manageDomainsUrl: `${base}/${row.subdomain}/settings/domain`,
-    websiteUrl: organizeosWebsiteAreaUrl(platformUrl, row.subdomain),
     ...(typeof row.launchable === "boolean"
       ? { launchable: row.launchable }
       : {}),
+    ...(row.targets == null
+      ? {}
+      : {
+          targets: row.targets.map((target) => ({
+            key: target.host ?? BUILTIN_TARGET_KEY,
+            host: target.host ?? builtinHost,
+            builtin: target.host === null,
+            main: target.main,
+            publishedAt: target.published_at,
+            live: target.live,
+          })),
+        }),
   };
 };

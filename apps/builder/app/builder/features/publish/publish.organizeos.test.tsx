@@ -103,8 +103,17 @@ beforeEach(() => {
       host: "acme.organizeos.org",
       origin: "https://acme.organizeos.org",
       manageDomainsUrl: "https://app.organizeos.org/acme/settings/domain",
-      websiteUrl: "https://app.organizeos.org/acme/website",
       status: "not_launched",
+      targets: [
+        {
+          key: "builtin",
+          host: "acme.organizeos.org",
+          builtin: true,
+          main: false,
+          publishedAt: null,
+          live: false,
+        },
+      ],
     });
   });
 });
@@ -123,7 +132,7 @@ afterEach(() => {
 });
 
 describe("the Publish button and its status refresh", () => {
-  test("the Publish dialog renders OrganizeosPublishContent with its own title for an OrganizeOS site, and does not poll the project", async () => {
+  test("the Publish dialog renders OrganizeosPublishContent with its own title, a close button and no gear for an OrganizeOS site, and does not poll the project", async () => {
     $project.set(createProject(null));
     $publishDialog.set("publish");
     await render();
@@ -138,7 +147,22 @@ describe("the Publish button and its status refresh", () => {
         element.closest("button") === null
     );
     expect(titles).toHaveLength(1);
-    expect(dialog?.textContent).toContain("Not published yet.");
+    // the title's only action is closing it: no settings gear. Every other
+    // button is a row's checkbox or Publish to selected
+    const otherButtons = Array.from(
+      dialog?.querySelectorAll("button") ?? []
+    ).filter(
+      (button) =>
+        button.getAttribute("role") !== "checkbox" &&
+        button.textContent?.startsWith("Publish to selected") !== true
+    );
+    expect(otherButtons).toHaveLength(1);
+    // the dialog's rows
+    expect(
+      dialog
+        ?.querySelector('button[role="checkbox"]')
+        ?.getAttribute("aria-label")
+    ).toBe("acme.organizeos.org");
     // the OrganizeOS dialog's own address read, and no status refresh of
     // upstream's
     expect(routeFetch.mock.calls.map(([url]) => String(url))).toContain(

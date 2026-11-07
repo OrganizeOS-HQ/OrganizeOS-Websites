@@ -24,6 +24,7 @@ const inspector = read("../../inspector.tsx");
 const builderNanoStates = read("../../shared/nano-states.ts");
 const builder = read("../../builder.tsx");
 const insertBlock = read("./insert-organizeos-block.ts");
+const contextServer = read("../../../shared/context.server.ts");
 
 describe("the Components panel's OrganizeOS section", () => {
   test("components.tsx imports both OrganizeOS modules", () => {
@@ -237,5 +238,18 @@ describe("the left sidebar", () => {
     expect(sidebarLeft).toMatch(
       /import\s*\{[^}]*\bResourceIcon\b[^}]*\}\s*from\s*"@webstudio-is\/icons"/
     );
+  });
+});
+
+describe("the OrganizeOS publisher in shared/context.server.ts", () => {
+  test("domain.publish's deployment client is the shared OrganizeOS publisher when one is configured, upstream's otherwise", () => {
+    expect(contextServer).toMatch(
+      /import\s*\{\s*getOrganizeosPublisher\s*\}\s*from\s*"~\/services\/organizeos-publisher\.server"/
+    );
+    expect(contextServer).toMatch(
+      /deploymentTrpc:\s*\(getOrganizeosPublisher\(\) as unknown as\s*\|\s*AppContext\["deployment"\]\["deploymentTrpc"\]\s*\|\s*undefined\) \?\? trpcSharedClient\.deployment,/
+    );
+    // built once, in the publisher module, never inline here
+    expect(contextServer).not.toContain("createOrganizeosPublisher");
   });
 });

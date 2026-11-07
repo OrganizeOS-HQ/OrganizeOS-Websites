@@ -46,7 +46,6 @@ import {
   unlistedDataSourceIds,
   xmlComponents,
 } from "@organizeos/site-components/org-script";
-import { platformName } from "~/shared/branding";
 import { findPageAndSelectorByInstanceId } from "@webstudio-is/project-build/runtime";
 
 /**
@@ -96,8 +95,6 @@ export const publishedComponents: ReadonlySet<Instance["component"]> = new Set([
     (name) => `@organizeos/site-components:${name}`
   ),
 ]);
-
-export const pausedScriptExplanation = `Scripts could read visitors' ${platformName} sign-in, so these stay off until that's fixed. Your work is kept.`;
 
 /**
  * The ids of what a page publishes, the page's root first. A Content Block's

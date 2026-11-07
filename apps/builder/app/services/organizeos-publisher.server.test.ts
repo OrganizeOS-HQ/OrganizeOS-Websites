@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import {
   createOrganizeosPublisher,
+  createOrganizeosPublisherClient,
   parseOrganizationIdFromServiceEmail,
   resolveOrganizationIdForBuild,
 } from "./organizeos-publisher.server";
@@ -119,6 +120,93 @@ describe("createOrganizeosPublisher", () => {
       ref: "main",
       inputs: { build_id: "build-1", organization_id: ORG_ID },
     });
+  });
+
+  test("without targets the dispatch body is byte for byte what it was", async () => {
+    const fetcher = vi.fn(async () => new Response(null, { status: 204 }));
+    const publisher = createOrganizeosPublisherClient({ ...deps, fetcher });
+
+    await publisher.publish.mutate({ buildId: "build-1", destination: "saas" });
+
+    const [, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.body).toBe(
+      `{"ref":"main","inputs":{"build_id":"build-1","organization_id":"${ORG_ID}"}}`
+    );
+  });
+
+  test("with targets the dispatch adds them as one JSON input", async () => {
+    const fetcher = vi.fn(async () => new Response(null, { status: 204 }));
+    const publisher = createOrganizeosPublisherClient({ ...deps, fetcher });
+
+    const result = await publisher.publish.mutate({
+      buildId: "build-1",
+      destination: "saas",
+      targets: ["builtin", "www.example.org"],
+      expectedOrganizationId: ORG_ID,
+    });
+
+    expect(result).toEqual({ success: true });
+    const [, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      ref: "main",
+      inputs: {
+        build_id: "build-1",
+        organization_id: ORG_ID,
+        targets: '["builtin","www.example.org"]',
+      },
+    });
+  });
+
+  test("a build whose project resolves to another org than the caller's is marked FAILED and never dispatched", async () => {
+    const statusUpdates: Array<StatusUpdate> = [];
+    const fetcher = vi.fn();
+    const publisher = createOrganizeosPublisherClient({
+      ...deps,
+      client: makeClient(HAPPY_ROWS, statusUpdates),
+      fetcher,
+    });
+
+    const result = await publisher.publish.mutate({
+      buildId: "build-1",
+      targets: ["builtin"],
+      expectedOrganizationId: "00000000-0000-4000-8000-000000000000",
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: "This project cannot be published.",
+      organizationMismatch: true,
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(statusUpdates.map((update) => update.values)).toEqual([
+      { publishStatus: "FAILED" },
+    ]);
+  });
+
+  test("a 422 for an input the workflow does not declare is a setup failure and marks the build FAILED", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const statusUpdates: Array<StatusUpdate> = [];
+    const publisher = createOrganizeosPublisherClient({
+      ...deps,
+      client: makeClient(HAPPY_ROWS, statusUpdates),
+      fetcher: vi.fn(
+        async () =>
+          new Response('{"message":"Unexpected inputs provided"}', {
+            status: 422,
+          })
+      ),
+    });
+
+    const result = await publisher.publish.mutate({
+      buildId: "build-1",
+      targets: ["builtin"],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.success === false && result.error).toMatch(/not set up/i);
+    expect(statusUpdates.map((update) => update.values)).toEqual([
+      { publishStatus: "FAILED" },
+    ]);
   });
 
   test("leaves the build pending while the executor runs", async () => {
@@ -275,5 +363,42 @@ describe("createOrganizeosPublisher", () => {
     )({ buildId: "build-1" });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe("getOrganizeosPublisher", () => {
+  const load = async (repo: string | undefined, token: string | undefined) => {
+    vi.resetModules();
+    vi.doMock("~/env/env.server", () => ({
+      default: {
+        POSTGREST_URL: "http://test-postgrest",
+        POSTGREST_API_KEY: "",
+        ORGANIZEOS_PUBLISH_REPO: repo,
+        ORGANIZEOS_PUBLISH_GITHUB_TOKEN: token,
+      },
+    }));
+    const module = await import("./organizeos-publisher.server");
+    vi.doUnmock("~/env/env.server");
+    return module.getOrganizeosPublisher;
+  };
+
+  test("is one instance, built when the repo and its token are both set", async () => {
+    const get = await load("OrganizeOS-HQ/OrganizeOS-Websites", "gh-token");
+    const publisher = get();
+    expect(publisher).toBeDefined();
+    expect(typeof publisher?.publish.mutate).toBe("function");
+    expect(get()).toBe(publisher);
+  });
+
+  test("is undefined without the repo or its token", async () => {
+    for (const [repo, token] of [
+      [undefined, undefined],
+      ["OrganizeOS-HQ/OrganizeOS-Websites", undefined],
+      [undefined, "gh-token"],
+      ["", "gh-token"],
+    ]) {
+      const get = await load(repo, token);
+      expect(get(), `${repo} ${token}`).toBeUndefined();
+    }
   });
 });

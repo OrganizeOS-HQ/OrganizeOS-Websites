@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { type AppContext } from "@webstudio-is/trpc-interface/index.server";
 import env from "~/env/env.server";
-import { createOrganizeosPublisher } from "~/services/organizeos-publisher.server";
+import { getOrganizeosPublisher } from "~/services/organizeos-publisher.server";
 import { trpcSharedClient } from "~/services/trpc.server";
 import { entryApi } from "./entri/entri-api.server";
 
@@ -172,27 +172,16 @@ const getRequestOrigin = (urlStr: string) => {
   return url.origin;
 };
 
-// OrganizeOS: when the publish-executor dispatch is configured, Publish
-// triggers our GitHub Actions workflow instead of webstudio's cloud publisher.
-const organizeosPublisher =
-  env.ORGANIZEOS_PUBLISH_REPO && env.ORGANIZEOS_PUBLISH_GITHUB_TOKEN
-    ? createOrganizeosPublisher({
-        // Narrow-cast: the publisher uses a minimal select/eq/single slice of
-        // the client, typed structurally on its side.
-        client: createClient(
-          env.POSTGREST_URL,
-          env.POSTGREST_API_KEY
-        ) as unknown as Parameters<
-          typeof createOrganizeosPublisher
-        >[0]["client"],
-        repo: env.ORGANIZEOS_PUBLISH_REPO,
-        githubToken: env.ORGANIZEOS_PUBLISH_GITHUB_TOKEN,
-      })
-    : undefined;
-
 const createDeploymentContext = (builderOrigin: string) => {
   const context: AppContext["deployment"] = {
-    deploymentTrpc: organizeosPublisher ?? trpcSharedClient.deployment,
+    // OrganizeOS fork: when the publish-executor dispatch is configured,
+    // Publish triggers our GitHub Actions workflow instead of webstudio's
+    // cloud publisher, through the one instance the Publish dialog's route
+    // shares (getOrganizeosPublisher).
+    deploymentTrpc:
+      (getOrganizeosPublisher() as unknown as
+        | AppContext["deployment"]["deploymentTrpc"]
+        | undefined) ?? trpcSharedClient.deployment,
     env: {
       BUILDER_ORIGIN: getRequestOrigin(builderOrigin),
       GITHUB_REF_NAME: staticEnv.GITHUB_REF_NAME ?? "undefined",
