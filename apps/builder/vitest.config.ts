@@ -1,7 +1,30 @@
 import { resolve } from "node:path";
+import type { Page } from "playwright";
 import { defineConfig } from "vitest/config";
+import type { BrowserCommand } from "vitest/node";
 
 const nodeTestGlob = "**/*.{server,node}.{test,spec}.{ts,tsx}";
+
+// OrganizeOS fork: keeps each browser page's request interception on from its
+// first test file to its last. Every vi.mock is a Playwright route, so a file
+// that mocks turns interception on and its cleanup turns it off; a request the
+// next file's iframe sends while it turns off can be left paused for good, and
+// the session stalls. One route that matches no request keeps it on.
+// vitest.browser-setup.ts calls this before each file.
+const pagesKeepingInterception = new WeakSet<Page>();
+const keepRequestInterception: BrowserCommand<[]> = async (context) => {
+  if (context.provider.name !== "playwright") {
+    return;
+  }
+  const { page } = context as unknown as { page: Page };
+  if (pagesKeepingInterception.has(page)) {
+    return;
+  }
+  pagesKeepingInterception.add(page);
+  await page.route("**/__vitest_keep_request_interception__", (route) =>
+    route.fallback()
+  );
+};
 
 const browserProject = (
   group: "core" | "app",
@@ -14,12 +37,14 @@ const browserProject = (
     name: `${group}-browser-${name}`,
     include,
     exclude: [nodeTestGlob, ...exclude],
+    setupFiles: ["./vitest.browser-setup.ts"],
     browser: {
       provider: "playwright" as const,
       enabled: true,
       headless: true,
       screenshotFailures: false,
       instances: [{ browser: "chromium" as const }],
+      commands: { keepRequestInterception },
     },
   },
 });
