@@ -1,4 +1,6 @@
 import type { TrpcInterfaceClient } from "@webstudio-is/trpc-interface/index.server";
+import { createClient } from "@webstudio-is/postgrest/index.server";
+import env from "~/env/env.server";
 import { platformName } from "~/shared/branding";
 import {
   markBuildPublishStatus,
@@ -21,6 +23,11 @@ import {
  * owner email -> organizationId, which also acts as a gate: a project NOT
  * owned by a service account (a human's own project) has no org and cannot
  * dispatch the executor.
+ *
+ * The Publish dialog's route (`services/organizeos-publish-route.server.ts`)
+ * passes the addresses the admin ticked as `targets`, which reach the workflow
+ * as one JSON input and the callback as its body's `targets`. Without them the
+ * dispatch is exactly what it was before (upstream's `domain.publish`).
  */
 
 const SERVICE_EMAIL_PATTERN = /^org\+(.+)@svc\.organizeos\.internal$/;
@@ -131,21 +138,45 @@ const markFailed = async (client: PostgrestLike, buildId: string) => {
   }
 };
 
+export type OrganizeosPublishInput = {
+  buildId: string;
+  destination?: "saas" | "static";
+  /** The publish targets, as keys: `builtin` or a served host. */
+  targets?: string[];
+  /**
+   * The org the caller resolved from the project; a build whose project
+   * resolves to another org is marked FAILED and never dispatched.
+   */
+  expectedOrganizationId?: string;
+};
+
+export type OrganizeosPublishResult =
+  | { success: true }
+  | { success: false; error: string; organizationMismatch?: true };
+
+export type OrganizeosPublisher = {
+  publish: {
+    mutate: (input: OrganizeosPublishInput) => Promise<OrganizeosPublishResult>;
+  };
+  unpublish: {
+    mutate: () => Promise<{ success: false; error: string }>;
+  };
+};
+
+const CANNOT_PUBLISH_MESSAGE = "This project cannot be published.";
+
 /**
- * A deploymentTrpc drop-in whose publish dispatches the executor workflow.
- * Errors return generic copy (surfaced in the builder UI).
+ * The publisher, typed for the fork's own callers. Errors return generic copy
+ * (surfaced in the builder UI).
  */
-export const createOrganizeosPublisher = (
+export const createOrganizeosPublisherClient = (
   deps: OrganizeosPublisherDeps
-): TrpcInterfaceClient["deployment"] => {
+): OrganizeosPublisher => {
   const fetcher = deps.fetcher ?? fetch;
 
-  const publisher = {
+  return {
     publish: {
-      mutate: async (input: {
-        buildId: string;
-        destination?: "saas" | "static";
-      }) => {
+      mutate: async (input) => {
         // The executor deploys the org's live site; a static export build
         // must never be dispatched as one. Export is hidden for org projects,
         // this is the server-side guarantee.
@@ -163,9 +194,17 @@ export const createOrganizeosPublisher = (
         );
         if (organizationId === null) {
           await markFailed(deps.client, input.buildId);
+          return { success: false as const, error: CANNOT_PUBLISH_MESSAGE };
+        }
+        if (
+          input.expectedOrganizationId !== undefined &&
+          input.expectedOrganizationId !== organizationId
+        ) {
+          await markFailed(deps.client, input.buildId);
           return {
             success: false as const,
-            error: "This project cannot be published.",
+            error: CANNOT_PUBLISH_MESSAGE,
+            organizationMismatch: true as const,
           };
         }
 
@@ -185,6 +224,10 @@ export const createOrganizeosPublisher = (
               inputs: {
                 build_id: input.buildId,
                 organization_id: organizationId,
+                // A workflow input is a string: the keys go as one JSON array
+                ...(input.targets === undefined
+                  ? {}
+                  : { targets: JSON.stringify(input.targets) }),
               },
             }),
           });
@@ -229,6 +272,44 @@ export const createOrganizeosPublisher = (
       },
     },
   };
+};
 
-  return publisher as unknown as TrpcInterfaceClient["deployment"];
+/**
+ * A deploymentTrpc drop-in whose publish dispatches the executor workflow:
+ * what `domain.publish` calls (`shared/context.server.ts`).
+ */
+export const createOrganizeosPublisher = (
+  deps: OrganizeosPublisherDeps
+): TrpcInterfaceClient["deployment"] =>
+  createOrganizeosPublisherClient(
+    deps
+  ) as unknown as TrpcInterfaceClient["deployment"];
+
+let configured: { publisher: OrganizeosPublisher | undefined } | undefined;
+
+/**
+ * The one publisher of this instance, shared by `domain.publish` and the
+ * Publish dialog's route, or undefined when `ORGANIZEOS_PUBLISH_REPO` or its
+ * token is unset (upstream's deployment client then serves `domain.publish`,
+ * and the route refuses to publish).
+ */
+export const getOrganizeosPublisher = (): OrganizeosPublisher | undefined => {
+  if (configured === undefined) {
+    configured = {
+      publisher:
+        env.ORGANIZEOS_PUBLISH_REPO && env.ORGANIZEOS_PUBLISH_GITHUB_TOKEN
+          ? createOrganizeosPublisherClient({
+              // Narrow-cast: the publisher uses a minimal select/eq/single
+              // slice of the client, typed structurally above.
+              client: createClient(
+                env.POSTGREST_URL,
+                env.POSTGREST_API_KEY
+              ) as unknown as OrganizeosPublisherDeps["client"],
+              repo: env.ORGANIZEOS_PUBLISH_REPO,
+              githubToken: env.ORGANIZEOS_PUBLISH_GITHUB_TOKEN,
+            })
+          : undefined,
+    };
+  }
+  return configured.publisher;
 };
