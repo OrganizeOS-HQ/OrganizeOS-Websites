@@ -320,7 +320,24 @@ can be merged with minimal conflict.
   logs the files of every browser session Vitest opens, so a run that stalls
   fails inside the job's limit and its log names the files in flight; nothing
   is retried. The visual-regression step runs when the package tests fail
-  too. `scripts/check-every-test-runs.mjs` fails when a tracked test file runs
+  too. `patches/@vitest__browser@3.1.1.patch` (marked, and registered in the
+  root `package.json`'s `pnpm.patchedDependencies`) backports Vitest 3.2.0's
+  per-session keying of the Playwright provider's mock routes. Keyed by module
+  URL alone, two browser sessions that mock the same module at once overwrite
+  each other's route, cleanup removes neither, and a later file in that
+  session that imports the module unmocked gets the stale mock: it fails with
+  "Mock ... wasn't registered", or, when a `vi.mock` factory's
+  `importOriginal` reaches it, with an unhandled "error when mocking a
+  module" and a stalled run. Drop the patch when the fork moves to Vitest 3.2
+  or later. `apps/builder/vitest.config.ts` (marked) registers a browser
+  command, `keepRequestInterception`, that `apps/builder/vitest.browser-setup.ts`
+  calls before each browser test file: it gives the session's page one
+  Playwright route that matches no request, so the page's request
+  interception stays on from its first file to its last. Without it, a file's
+  mocks turn interception on and their cleanup turns it off, and a request
+  the next file's iframe sends while it turns off never completes, which
+  stalls the session.
+  `scripts/check-every-test-runs.mjs` fails when a tracked test file runs
   in no leg; it exempts upstream's three builder e2e harness suites, since the
   fork does not run upstream's e2e suite (owner decision D14). Two of that
   suite's files follow the fork all the same:
