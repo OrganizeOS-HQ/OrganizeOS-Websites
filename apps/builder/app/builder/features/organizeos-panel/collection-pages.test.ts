@@ -15,6 +15,7 @@ import {
   type ResourceRequest,
   type WebstudioData,
   encodeDataVariableId,
+  getAllPages,
   getPagePath,
 } from "@webstudio-is/sdk";
 import { lintExpression, transpileExpression } from "@webstudio-is/expression";
@@ -40,6 +41,19 @@ import { getResourceKey } from "~/shared/resources";
 import { isPresetId } from "~/shared/organizeos-preset-ids";
 import { getWebstudioData } from "~/shared/instance-utils/data";
 import { buildCollectionResourcePresets } from "~/shared/db/resource-presets.server";
+import {
+  expressionMayRun,
+  findPausedExpressions,
+} from "@organizeos/site-components/org-script";
+import {
+  bundleVersion,
+  publishedProjectBundle,
+  type PublishedProjectBundle,
+} from "@webstudio-is/protocol";
+import { serializePages } from "@webstudio-is/project-migrations/pages";
+// What prebuild runs on the project bundle, read from the CLI as the Publish
+// dialog's blocks test reads it
+import { dropOrgScript } from "../../../../../../packages/cli/src/organizeos-org-script";
 import { updateWebstudioDataStaged } from "./staged-data";
 import { loadCollectionError } from "./collection-schema";
 import {
@@ -562,6 +576,37 @@ describe("findCollectionItemPage", () => {
   });
 });
 
+// The project bundle prebuild reads, as the server serializes a build and as
+// prebuild parses it (organizeos-publish-paused-script.blocks.test.tsx)
+const toBundle = (data: WebstudioData): PublishedProjectBundle => {
+  const allPages = getAllPages(data.pages);
+  return publishedProjectBundle.parse({
+    bundleVersion,
+    origin: "https://assets.example",
+    projectDomain: "example",
+    projectTitle: "Example",
+    page: allPages[0],
+    pages: allPages,
+    assets: [],
+    build: {
+      id: "build-1",
+      projectId: "project-1",
+      version: 1,
+      createdAt: "2026-11-05T00:00:00.000Z",
+      updatedAt: "2026-11-05T00:00:00.000Z",
+      pages: serializePages(data.pages),
+      breakpoints: [...data.breakpoints],
+      styles: [...data.styles],
+      styleSources: [...data.styleSources],
+      styleSourceSelections: [...data.styleSourceSelections],
+      props: [...data.props],
+      dataSources: [...data.dataSources],
+      resources: [...data.resources],
+      instances: [...data.instances],
+    },
+  });
+};
+
 describe("the item page's expressions", () => {
   const variable = encodeDataVariableId("item-binding");
   const expressions = getItemPageExpressions({ variable, fields: blogFields });
@@ -578,6 +623,8 @@ describe("the item page's expressions", () => {
       ).toEqual([]);
       // and names no variable it does not have
       expect(diagnostics).toEqual([]);
+      // and may run while org script is paused
+      expect(expressionMayRun(expression)).toBe(true);
     }
   );
 
@@ -629,7 +676,21 @@ describe("the item page's expressions", () => {
         lintExpression({ expression, availableVariables }),
         expression
       ).toEqual([]);
+      expect(expressionMayRun(expression), expression).toBe(true);
     }
+    // and each where publishing writes it, while org script is paused
+    expect(
+      findPausedExpressions({
+        pages: getAllPages(data.pages),
+        instances: data.instances,
+        props: data.props.values(),
+        dataSources: data.dataSources,
+        resources: data.resources,
+      })
+    ).toEqual([]);
+    // and publishing keeps the build as it is
+    const bundle = toBundle(data);
+    expect(dropOrgScript(bundle, { mayRun: false })).toBe(bundle);
   });
 
   // found, evaluated as the builder and a published page evaluate it

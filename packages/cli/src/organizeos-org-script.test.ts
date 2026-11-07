@@ -11,8 +11,9 @@ import {
   publishedProjectBundle,
   type PublishedProjectBundle,
 } from "@webstudio-is/protocol";
-import type { Instance, Prop } from "@webstudio-is/sdk";
+import { isMdxFileAsset, type Instance, type Prop } from "@webstudio-is/sdk";
 import { standardAttributesToReactProps } from "@webstudio-is/react-sdk";
+import { getJsxPropName } from "@webstudio-is/content-engine/jsx-attributes";
 import {
   pausedPropNames,
   templateIconCodes,
@@ -20,6 +21,7 @@ import {
 import {
   describeDroppedOrgScript,
   dropOrgScript,
+  findMarkdownAssetIds,
   refuseMdxWhilePaused,
 } from "./organizeos-org-script";
 
@@ -116,7 +118,8 @@ const createBundle = ({
     {
       id: "home",
       name: "Home",
-      title: "Home",
+      // a page title is an expression; the builder writes a string literal
+      title: '"Home"',
       path: "",
       rootInstanceId: "root",
       meta: {},
@@ -124,7 +127,7 @@ const createBundle = ({
     {
       id: "about",
       name: "About",
-      title: "About",
+      title: '"About"',
       path: "/about",
       rootInstanceId: "about-root",
       meta: xmlAbout ? { documentType: "xml" } : {},
@@ -1561,6 +1564,38 @@ describe("refuseMdxWhilePaused", () => {
     expect(() => refuseMdxWhilePaused(bundle)).not.toThrow();
   });
 
+  // Prebuild materializes a Content Block's MDX only from an asset
+  // isMdxFileAsset accepts, so the check reads every such asset as Markdown,
+  // whatever the case of its format or its name
+  test("reads as Markdown every asset prebuild would materialize", () => {
+    const candidates = ["file", "image", "font"].flatMap((type) =>
+      ["mdx", "MDX", "Mdx", "md", "png", "bin", ""].flatMap((format) =>
+        [
+          "article.mdx",
+          "article.MDX",
+          "article",
+          "article.png",
+          "",
+          "a.b.c",
+        ].map((name, index) => ({
+          ...asset(`${type}-${format}-${index}`, name, format),
+          type,
+        }))
+      )
+    );
+    const materialized = candidates.filter((candidate) =>
+      isMdxFileAsset(candidate)
+    );
+    expect(materialized.length).toBeGreaterThan(0);
+    const markdown = findMarkdownAssetIds({
+      assets: candidates as never,
+      assetIndex: undefined,
+    });
+    for (const candidate of materialized) {
+      expect(markdown.has(candidate.id), candidate.id).toBe(true);
+    }
+  });
+
   test("lets a build with MDX through once org script may run", () => {
     const bundle = withBlock(assetProp("block", "article"), [mdx]);
     expect(() => refuseMdxWhilePaused(bundle, { mayRun: true })).not.toThrow();
@@ -1582,7 +1617,11 @@ describe("describeDroppedOrgScript", () => {
     frameDocuments: 0,
     eventAttributes: 0,
     unsafeActions: 0,
+    elementReferences: 0,
     conflictingDataSources: 0,
+    expressions: 0,
+    resources: 0,
+    dataSources: 0,
     redirects: 0,
     customCode: false,
     duplicateEntries: 0,
@@ -1619,6 +1658,18 @@ describe("describeDroppedOrgScript", () => {
     );
     expect(describeDroppedOrgScript({ ...none, duplicateEntries: 2 })).toBe(
       "Org script is paused until OrganizeOS sites move to their own domain: left out 2 duplicate entries."
+    );
+    expect(describeDroppedOrgScript({ ...none, elementReferences: 2 })).toBe(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 element references."
+    );
+    expect(describeDroppedOrgScript({ ...none, expressions: 1 })).toBe(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 expression."
+    );
+    expect(describeDroppedOrgScript({ ...none, dataSources: 1 })).toBe(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 data source."
+    );
+    expect(describeDroppedOrgScript({ ...none, resources: 2 })).toBe(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 Resources."
     );
     expect(describeDroppedOrgScript({ ...none, customCode: true })).toBe(
       "Org script is paused until OrganizeOS sites move to their own domain: left out the site's custom code."
@@ -1933,4 +1984,27 @@ describe("raw HTML in the runtime packages", () => {
 
     expect(users).toEqual([]);
   });
+});
+
+// While org script is paused no prop named ref ships (isElementReference in
+// @organizeos/site-components/org-script), and no prop of another name ships
+// as an element reference
+test("publishes no prop but one named ref as an element reference", () => {
+  for (const name of [
+    ...Object.keys(standardAttributesToReactProps),
+    "class",
+    "Ref",
+    "REF",
+    "data-ref",
+  ]) {
+    for (const acceptsHtmlAttributes of [true, false]) {
+      expect(
+        getJsxPropName({ instancePropName: name, acceptsHtmlAttributes }),
+        name
+      ).not.toBe("ref");
+    }
+  }
+  expect(
+    getJsxPropName({ instancePropName: "ref", acceptsHtmlAttributes: true })
+  ).toBe("ref");
 });

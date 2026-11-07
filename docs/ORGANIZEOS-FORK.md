@@ -743,12 +743,34 @@ can be merged with minimal conflict.
   the global root's id; and the CLI's
   `packages/cli/src/organizeos-org-script.ts`, called from two short marked
   hooks in `prebuild.ts` (the drop, and the check that the framework imports
-  every component the drop may keep); one marked header in
-  `route-templates/xml.tsx` (§8); with
-  tests beside each, among them
+  every component the drop may keep); the CLI's check of each generated
+  module, `packages/cli/src/organizeos-generated-code.ts`, called from a third
+  short marked hook in `prebuild.ts`, with TypeScript 5.8.2 a dependency of
+  the CLI under its own name (`typescript-5`) and `@webstudio-is/template` a
+  dev dependency, and so in `pnpm-lock.yaml`; in
+  `packages/project-build/src/runtime/data.ts`, one marked guard in
+  `getCompiledExpression`, after the input validation check below, and one
+  marked check in `evaluateExpressionSync`, with their import, that give an
+  expression `expressionMayRun` refuses no value, kept in the compiled
+  expressions' cache under the same limit as any other, and an expression no
+  function; one marked mock and `beforeEach` in each of
+  `packages/project-build/src/runtime/data.test.tsx`, `block.test.ts` and
+  `content-block-application.test.ts` that run upstream's cases that compute a
+  bare name with org script allowed, as upstream runs them, and the rest
+  paused; in `prebuild.test.ts`, the upstream case that prerenders an Assets
+  query naming a route parameter by a bare name publishes as if org script
+  may run;
+  `packages/cli/src/organizeos-css-tree.d.ts`, which points the CLI's
+  typecheck at the root's css-tree typings for the templates its tests
+  publish; in `prebuild.test.ts`, the marked `vi.mock`s observe the check and
+  let a case set the pause's rules aside to test the check alone; one marked
+  header in `route-templates/xml.tsx` (§8); with tests beside each, among them
   `canvas/organizeos-org-script.wiring.node.test.ts`,
   `canvas/organizeos-org-script.props.test.tsx`,
   `canvas/organizeos-org-script.test.tsx`,
+  `packages/project-build/src/runtime/data.organizeos.test.ts`,
+  `packages/sdk-components-organizeos/src/org-script.without-linter.test.ts`,
+  `packages/cli/src/organizeos-generated-code.test.ts`,
   `packages/cli/src/organizeos-org-script.unsafe-values.test.ts` and
   `packages/cli/src/organizeos-publish-workflow.test.ts`. The builder's panels
   keep an org's content as data: `shared/code-highlight.ts` (the navigator's
@@ -3255,6 +3277,10 @@ exposure needs no publish. Spec (OrganizeOS repo):
 - **An action that could run script or reach a host object**: crafted args, a
   code that reads a member or calls anything, or one that names its args where
   its component may pass a host object. See "Actions" below.
+- **An element reference**: a parameter or an expression prop named `ref`
+  (`isElementReference`). A variable holds plain data only, and such a prop
+  would hand the element to what it names. The log line counts it as an
+  element reference.
 - **An instance of a component the published page does not import**, and one
   stored with the global root's id (`:root`), with what is inside it. Only the
   core components the generator writes itself (a Content Block's body among
@@ -3276,6 +3302,9 @@ exposure needs no publish. Spec (OrganizeOS repo):
   that only the block's own `document` prop names) goes as well, but is
   neither counted nor listed (`unlistedDataSourceIds`), as its author cannot
   change it.
+- **An expression that could run script**, on a prop, a text child, a page
+  setting or a Resource, or one that names a data source the published page
+  does not declare where the expression is written. See "Expressions" below.
 - **XML Node and XML Time on an HTML page**: a custom element that keeps every
   attribute.
 - **Custom code** (Project settings > General), which 0.309.0 keeps in the
@@ -3408,9 +3437,9 @@ as paused, so reversal is the switch.
   the seam the tag check already uses, in both renderers, on every prop the
   component receives, its own or passed in by a parent, given the instance: it
   drops what `withoutBlockedTagProps` drops, every `srcdoc`, every `on…` value
-  that is not a function, and every address value that `urlValueMayRun`
-  refuses, whatever its shape, with `data` decided by the instance's component
-  and tag (Unsafe values, below). So an `iframe` with a `javascript:` `src` or
+  that is not a function, every `ref`, and every address value that
+  `urlValueMayRun` refuses, whatever its shape, with `data` decided by the
+  instance's component and tag (Unsafe values, below). So an `iframe` with a `javascript:` `src` or
   a `srcdoc` no longer runs in the builder's origin, in design or preview mode.
   The canvas judges a bound address by the value it computes; publishing
   judges it by its fixed start, and the Publish dialog lists the difference.
@@ -3437,11 +3466,14 @@ as paused, so reversal is the switch.
   `dangerouslySetInnerHTML` prop, each unsafe value ("Link address (href)",
   "Form address (action)", "Source address (src)", "Object address (data)",
   "Frame document (srcdoc)", "Event handler attribute (onclick)", "Action
-  (onClick)", "Collection item or key (item)", "XML element"), each data
-  source the page module cannot name as itself ("Variable (name)", on the
-  instance it is scoped to, or alone for a global one, but not a Content
-  Block's own document), each page redirect to
-  an unsafe address ("Redirect on {page}", which opens that page's settings), each
+  (onClick)", "Element reference (ref)", "Collection item or key (item)", "XML
+  element"), each data source with a conflicting id ("Variable (name)", on the instance it is scoped to, or alone for a global
+  one, but not a Content Block's own document), each expression publishing
+  leaves out ("Binding (title)", "Text binding", "Page setting (Title)", which
+  opens that page's settings, "Resource (name)", which selects the element
+  that holds its data source, and "Data source (name)", which selects the
+  element it is scoped to), each page redirect to an unsafe address or that
+  may not run ("Redirect on {page}", which opens that page's settings), each
   project redirect to one ("Redirect from {old} (Project settings)", which opens
   Redirects) and "Custom code (Project settings)", once, when the project's
   settings or the pages' meta hold any (a click selects the element or opens the
@@ -3561,7 +3593,9 @@ as paused, so reversal is the switch.
   9. a page redirect to an unsafe target, with the page's literal 3xx status,
      and a project redirect to one, the others kept in order. The bundle's
      pages are read once, in either pages shape, for the page roots, the walk
-     of what HTML and text pages publish and the redirects.
+     of what HTML and text pages publish and the redirects;
+  10. every expression, page setting and Resource that `findPausedExpressions`
+      lists (Expressions, below).
 
   A dropped instance takes its `ws:descendant` children (and any children a
   crafted build gave it), its props and the data sources scoped to it with it,
@@ -3736,6 +3770,140 @@ below lists the action props it may leave out. Tests: `org-script.test.ts`,
 `organizeos-org-script.unsafe-values.test.ts`, a `prebuild.test.ts` case, the
 Publish dialog's `organizeos-publish-paused-script*.test.ts*` and
 `shared/db/signup-form-preset.server.test.tsx` (the provisioned form's action).
+
+**Expressions.** An expression is the stored text behind every binding: a
+prop, a text child, `ws:show`, a Collection's `data`, `className`, a Resource's
+url, search values, header values, body and email fields, and every page
+setting. The canvas, the builder's panels and the builder's server (a form's
+preview and a simulated submission) compute one, and publishing ships it in
+the page and server modules a site runs. While the switch is off an expression is computed or published only
+when `expressionMayRun` (`org-script.ts`) passes it:
+
+- it is a non-empty string that is exactly one expression, with only
+  whitespace around it, read the same way as a script and as a module; it
+  holds no comment, anywhere (`holdsComment`), and no `<` or `<<` followed
+  later by a token that starts with `>` (`holdsAngleBrackets`), as an action
+  may not;
+- `lintExpression` passes it without a diagnostic, given the data sources it
+  names and `undefined`, `NaN` and `Infinity`;
+- it holds only primitive literals (no regular expression or bigint), those
+  three names and data-source names, templates without a tag, unary operators
+  but `delete`, binary, logical and conditional operators, arrays and objects
+  without a spread or a shorthand property, members and object keys the source
+  fixes, and calls of the linter's 13 methods whose arguments are primitive
+  literals or negative numbers;
+- no member is `constructor`, `prototype`, `__proto__`, `__defineGetter__`,
+  `__defineSetter__`, `__lookupGetter__` or `__lookupSetter__`, and no object
+  key is `__proto__`, `valueOf`, `toLocaleString`, `toJSON`, `then` or one of
+  the 13 method names;
+- input validation (`checkValueExpression`, §7) passes it. Input validation
+  is the outer layer: while the switch is off, what it refuses is left out
+  and listed like the rest, and the build that ships passes it.
+
+Publishing also holds each expression to the data sources the published module
+declares where it is written: an expression may name only those
+(`findPausedExpressions`, which `dropOrgScript` and the Publish dialog share,
+and which holds the table for each module). A page holds what prebuild selects
+for it: its root, present or not, and everything under it, but a subtree a
+literal `ws:show` of false hides, and `:root`. It may name a data source it
+does not hold. A page setting it publishes as text is held to input validation
+alone.
+
+Input validation passes every Resource the rule reads whole (`checkResource`:
+a header name is a token). A data source or a Resource named like a module's
+own name or a global it reads goes (`generatedModuleNames`,
+`generatedCodeGlobals`), and so does a `resource` data source or prop whose
+Resource the build does not hold. An expression, a page setting or a Resource
+that names a data source that goes, for its id or name (above), with its
+instance or with its Resource, goes too, until nothing more goes.
+These run in one order, which `dropOrgScript` and the Publish dialog share
+(`findPausedPublishing`): the data sources that go for their id or name, then
+the expressions, then every action, judged against the data sources that ship
+after both. What the rule refuses:
+
+- **in the builder** has no value: one marked guard in `getCompiledExpression`
+  (`packages/project-build/src/runtime/data.ts`, the one evaluator the
+  canvas, the builder's panels and the builder's server share), after input
+  validation's own check, compiles nothing for it, and one marked check in
+  `evaluateExpressionSync` gives no function value for any expression; a
+  caller that asks for errors (a form's preview or simulated submission) gets
+  a fixed refusal. A prop or text is not set, `ws:show` falls back to shown, a
+  Collection renders nothing, and a Resource's request goes without that part.
+  The variable dialog runs no value: it reads one as data (`readLiteralValue`,
+  "Builder panels" above). One difference from publishing stays: a binding
+  that names a Collection's item outside its Collection may still show an
+  item's value on the canvas, and is left out at publish;
+- **at publish** is left out: an expression or parameter prop of any name, on
+  any component and an XML page's included, goes, and so does a Collection's
+  `item` or `itemKey` that is not a parameter of its own (above), or every one
+  of them when it holds more than one, and the Collection then renders
+  nothing; a text child becomes `undefined`; a page title becomes an empty
+  string, a redirect goes with its literal 3xx status, and any other page
+  setting or custom entry goes; a Resource goes whole, on every page, with its
+  data sources and the resource props that name it, and a form that sends it
+  then fails its submission; a data source goes, and so does what names it.
+  The log line counts them as expressions, redirects, Resources and data
+  sources. What no page publishes is read by input validation alone, and what
+  it refuses goes, not counted and not listed: an expression or a text child
+  of an instance no page reaches, that only a Content Block's templates or a
+  hidden subtree hold, a prop a page never publishes, a Resource no page
+  loads or no form sends, a page template's settings and a page's meta title.
+  prebuild makes a Resource of a deprecated Webhook Form's static `action`
+  after the pause runs; every part of it is a JSON literal, which
+  `prebuild.test.ts` pins;
+- **in the Publish dialog** is listed (above).
+
+No writer or template on `main` writes anything the rule refuses: every block
+template and site template, the registry's templates (the Form (Beta)
+template and its email among them), the CMS item page, sitemap and list, the
+block inserts, the email settings' defaults, a Content Block's bound source,
+the asset query form, the provisioned signup form and the fixtures all pass,
+and the builds of the blocks, the CMS item page and the collection list come
+back from `dropOrgScript` unchanged. What it can refuse is typed by hand, old
+or written by an agent: a comment, a call with an argument that is not a
+literal or a negative number (`.includes($v)`), a regular expression, a
+dynamic index (`list[$i]`), a spread, a shorthand property (`({$v})`),
+`delete`, an object key `__proto__`, `valueOf`, `toLocaleString`, `toJSON`,
+`then` or one of the 13 method names, an object key `constructor` or another
+name a member may not read, a computed object key, a member key written as a
+template, a header name that is not a token (`X Custom`), a name no data
+source has (an unset variable a copy and paste left, or an asset query or a
+Content Block source that names a route parameter or a variable by a bare
+name), an element moved out of its Collection that still names the item, a
+CMS field key `constructor` or `prototype`, a CMS collection named like one of
+the modules' globals (`Map`), whose Resource goes, and a `<` followed later by
+a `>` (`$v < 10 && $v > 0`; `$v > 0 && $v < 10` passes). It is a requirement of
+guard level 1 (§5). Tests: `org-script.test.ts`,
+`packages/project-build/src/runtime/data.organizeos.test.ts` (the evaluator,
+a form's draft included), `canvas/organizeos-org-script.props.test.tsx`,
+`canvas/organizeos-org-script.test.tsx` (every template and site template),
+`canvas/organizeos-org-script.wiring.node.test.ts` (the evaluator's two
+blocks, and every place the builder, its runtime, the sdk and the CLI run
+text as code), the writers' tests (`collection-pages.test.ts`,
+`collection-list.test.ts`, `insert-organizeos-block.test.tsx`,
+`signup-form-preset.server.test.tsx`),
+`organizeos-org-script.unsafe-values.test.ts`,
+`organizeos-publish-paused-script.test.ts` and `prebuild.test.ts`, whose cases
+hold every module they generate to declaring each name it reads, and read each
+page of the fixtures and templates as prebuild publishes it.
+
+**The generated modules.** While the switch is off, prebuild also checks each
+page and server module it generates before writing it
+(`packages/cli/src/organizeos-generated-code.ts`, one short marked hook in
+`prebuild.ts`). The publish fails, naming the module, unless each generated
+module reads no undeclared name, past the globals it may read
+(`generatedCodeGlobals`: `Array`, `Error`, `Infinity`, `Map`, `NaN`,
+`Number`, `Object` and `String`), and shadows no import. The check strips
+types with TypeScript 5.8.2, which the CLI holds under its own name
+(`typescript-5`; the CLI's own TypeScript 7 offers no compiler API for it).
+The pause's rules keep an org's expressions and actions to what the module
+declares; this check holds the generated code itself to the same, whatever a
+generator changes. Every block template, every site template page, every
+registry template and every fixture passes it. Tests:
+`organizeos-generated-code.test.ts` and `prebuild.test.ts` ("checks every page
+and server module it generates", the fixtures, the templates, and "fails the
+publish of a module with …, without the pause's rules", one case for each
+shape the pause's own rules leave out).
 
 **Reporting to OrganizeOS.** OrganizeOS launches a Website only from a build
 that carries no org script, so the publish reports what the run's CLI says,
@@ -4021,8 +4189,8 @@ answer sandboxed (the platform's one builder design, section 8.5). The others
 are closed: `javascript:` URLs and `srcdoc`, which publishing leaves out and the
 canvas drops in design and preview mode (Unsafe values, above), and an SVG
 `animate` or `set` that sets a link's `href` to one, which neither publishing
-nor the canvas makes (Tags on the canvas, above); XML pages, which
-answer sandboxed (§8); XML Node in an HTML page, which publishing leaves
+nor the canvas makes (Tags on the canvas, above); expressions while paused
+(Expressions, above); XML pages, which answer sandboxed (§8); XML Node in an HTML page, which publishing leaves
 out; and expressions, actions and generated names, which pass input validation
 before they are compiled or published, as does an instance's tag, whatever the
 switch says, and every build write a client sends (patch requests, the
@@ -4030,7 +4198,7 @@ switch says, and every build write a client sends (patch requests, the
 while the server's own provisioning writes generated values that are checked
 at publish like every build (§7).
 
-**Keeping it on upstream merges.** Seven upstream files carry a change, and
+**Keeping it on upstream merges.** Eight upstream files carry a change, and
 each has a test that fails if a merge takes it back:
 `shared/nano-states/props.ts` gives an action `actionMayRun` refuses no
 function and stores only plain data in a variable
@@ -4051,10 +4219,17 @@ a `div` for a `ws:element` with such a tag
 (`elementTagMayRender` and input validation's tag rule), and the two renderer
 calls, which are `withoutPausedProps`);
 `section-general.tsx` holds the read-only branch (`section-general.test.tsx`);
+`packages/project-build/src/runtime/data.ts` compiles no expression
+`expressionMayRun` refuses and computes no function
+(`data.organizeos.test.ts`, and `organizeos-org-script.wiring.node.test.ts`,
+which also pins every place the source runs text as code, by file and count:
+a merge that adds one fails there until it is sorted);
 the `prebuild.ts` hooks run `dropOrgScript` with the framework's components,
 and `refuseMdxWhilePaused`, and check that the framework imports every
 component the drop may keep (`prebuild.test.ts`, "leaves an org's own script
-out", "leaves unsafe values out" and "MDX content"); and `xml.tsx` answers an XML page sandboxed
+out", "leaves unsafe values out" and "MDX content"), and check each generated
+module (`prebuild.test.ts`, "checks every page and server module it
+generates"); and `xml.tsx` answers an XML page sandboxed
 (`prebuild.test.ts`, "an XML page answers with a sandbox policy and nosniff",
 §8). A merge that adds or redraws a template icon fails the template test (add
 the new string to `templateIconCodes`, keep the old one), and one that adds

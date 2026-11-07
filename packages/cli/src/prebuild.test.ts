@@ -10,6 +10,7 @@ import {
   utimes,
   writeFile,
 } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
@@ -31,11 +32,16 @@ import { log } from "@clack/prompts";
 import { parse as parseModule } from "acorn";
 import { simple as walkSimple } from "acorn-walk";
 import {
+  findPausedExpressions,
   orgScriptMayRun,
   templateIconCodes,
+  type PublishedPage,
 } from "@organizeos/site-components/org-script";
 import * as organizeosPage from "@organizeos/site-components/page";
-import { bundleVersion } from "@webstudio-is/protocol";
+import {
+  bundleVersion,
+  type PublishedProjectBundle,
+} from "@webstudio-is/protocol";
 import { isProtectedResourceReentry } from "@webstudio-is/sdk/protected-resource-fetch";
 import type { Asset, DataSource, Instance, Prop } from "@webstudio-is/sdk";
 import {
@@ -53,11 +59,35 @@ import {
   createStructuredAssetQueryResourceBody,
   encodeDataSourceVariable,
   encodeDataVariableId,
+  getAllPages,
+  getPagePath,
+  replaceFormActionsWithResources,
+  ROOT_INSTANCE_ID,
   SYSTEM_VARIABLE_ID,
   type Resource,
   type ResourceRequest,
+  type WebstudioFragment,
+  type WsComponentMeta,
 } from "@webstudio-is/sdk";
-import { generateRemixRoute, showAttribute } from "@webstudio-is/react-sdk";
+import { migrateResourceFormInstancesMutable } from "@webstudio-is/project-migrations";
+import {
+  hasHistoricalFormComponentIdentityVersion,
+  migratePages,
+} from "@webstudio-is/project-migrations/pages";
+import { canvasComponentLibraries } from "@webstudio-is/sdk-components-registry/canvas";
+import * as blockTemplates from "@organizeos/site-components/templates";
+import * as baseTemplates from "@webstudio-is/sdk-components-react/templates";
+import * as baseComponents from "@webstudio-is/sdk-components-react/components";
+import {
+  SITE_TEMPLATES,
+  renderSiteTemplate,
+} from "@organizeos/site-components/site-templates";
+import { renderTemplate } from "@webstudio-is/template";
+import {
+  findTreeInstanceIdsExcludingStaticHidden,
+  generateRemixRoute,
+  showAttribute,
+} from "@webstudio-is/react-sdk";
 import { submitManagedForm } from "@webstudio-is/sdk-components-react";
 import {
   formBotFieldName,
@@ -77,10 +107,25 @@ import {
 } from "./prebuild";
 import { generateResponseHeadersModule } from "./response-headers";
 import {
+  checkGeneratedModule,
+  findGeneratedCodeProblems,
+} from "./organizeos-generated-code";
+import { dropOrgScript } from "./organizeos-org-script";
+import {
   ORGANIZEOS_PAGE_MODULE,
   findModuleClosure,
   resolveOrganizeosComponentsModule,
 } from "./organizeos-components";
+
+// OrganizeOS fork: the check of each module prebuild generates, observed
+vi.mock("./organizeos-generated-code", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./organizeos-generated-code")>();
+  return {
+    ...actual,
+    checkGeneratedModule: vi.fn(actual.checkGeneratedModule),
+  };
+});
 
 // OrganizeOS fork: Vitest's module runner has no import.meta.resolve, and it
 // resolves @organizeos/site-components with the webstudio condition, to the
@@ -116,14 +161,17 @@ vi.mock("./organizeos-org-script", async (importOriginal) => {
     await importOriginal<typeof import("./organizeos-org-script")>();
   return {
     ...actual,
-    dropOrgScript: <Bundle extends Parameters<typeof actual.dropOrgScript>[0]>(
-      bundle: Bundle,
-      options: Parameters<typeof actual.dropOrgScript>[1] = {}
-    ) =>
-      actual.dropOrgScript(
-        bundle,
-        orgScript.mayRun ? { ...options, mayRun: true } : options
-      ),
+    // observed, and set aside by one case to test the module check alone
+    dropOrgScript: vi.fn(
+      <Bundle extends Parameters<typeof actual.dropOrgScript>[0]>(
+        bundle: Bundle,
+        options: Parameters<typeof actual.dropOrgScript>[1] = {}
+      ) =>
+        actual.dropOrgScript(
+          bundle,
+          orgScript.mayRun ? { ...options, mayRun: true } : options
+        )
+    ),
     refuseMdxWhilePaused: (
       bundle: Parameters<typeof actual.refuseMdxWhilePaused>[0],
       options: Parameters<typeof actual.refuseMdxWhilePaused>[1] = {}
@@ -5225,18 +5273,45 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         value: [{ type: "execute", args, code }],
       });
 
-    test.each([
-      ["the title", page({}, "a()"), 'The title of page "/"'],
-      ["the description", page({ description: "a()" }), "The description"],
-      ["the status", page({ status: "a()" }), "The status"],
+    // a Resource that the page loads, through a data source on its root
+    const loaded = (init: Record<string, unknown>) => ({
+      ...resource(init),
+      dataSources: [
+        [
+          "news-ds",
+          {
+            type: "resource",
+            id: "news-ds",
+            name: "news",
+            scopeInstanceId: "root",
+            resourceId: "news",
+          },
+        ],
+      ] as Array<[string, Record<string, unknown>]>,
+    });
+    const literalTitle = page({});
+    // a field, the build, the check's message and what publishing counts
+    const valueCases: Array<
+      [string, Parameters<typeof createSiteData>[0], string, string]
+    > = [
+      ["the title", page({}, "a()"), 'The title of page "/"', "1 expression"],
+      [
+        "the description",
+        page({ description: "a()" }),
+        "The description",
+        "1 expression",
+      ],
+      ["the status", page({ status: "a()" }), "The status", "1 expression"],
       [
         "custom metadata",
         page({ custom: [{ property: "og:x", content: "a()" }] }),
         'The custom metadata "og:x"',
+        "1 expression",
       ],
       [
         "a text expression",
         {
+          ...literalTitle,
           instances: [
             [
               "root",
@@ -5256,71 +5331,126 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
           ],
         },
         'The text expression of instance "root"',
+        "1 expression",
       ],
       [
         "a property expression",
-        rootProp({ type: "expression", value: "a()" }),
+        { ...literalTitle, ...rootProp({ type: "expression", value: "a()" }) },
         'The property "title" of instance "root"',
+        "1 expression",
       ],
-      ["a resource URL", resource({ url: "a()" }), 'The resource "News" URL'],
+      [
+        "a resource URL",
+        { ...literalTitle, ...loaded({ url: "a()" }) },
+        'The resource "News" URL',
+        "1 Resource",
+      ],
       [
         "a search parameter name",
-        resource({ searchParams: [{ name: 'a"', value: `"b"` }] }),
+        {
+          ...literalTitle,
+          ...loaded({ searchParams: [{ name: 'a"', value: `"b"` }] }),
+        },
         'The resource "News" search parameter name',
+        "1 Resource",
       ],
       [
         "a search parameter value",
-        resource({ searchParams: [{ name: "q", value: "a()" }] }),
+        {
+          ...literalTitle,
+          ...loaded({ searchParams: [{ name: "q", value: "a()" }] }),
+        },
         'The resource "News" search parameter "q"',
+        "1 Resource",
       ],
       [
         "a header name",
-        resource({ headers: [{ name: "a b", value: `"b"` }] }),
+        {
+          ...literalTitle,
+          ...loaded({ headers: [{ name: "a b", value: `"b"` }] }),
+        },
         'The resource "News" header name',
+        "1 Resource",
       ],
       [
         "a header value",
-        resource({ headers: [{ name: "X-A", value: "a()" }] }),
+        {
+          ...literalTitle,
+          ...loaded({ headers: [{ name: "X-A", value: "a()" }] }),
+        },
         'The resource "News" header "X-A"',
+        "1 Resource",
       ],
-      ["a body", resource({ body: "a()" }), 'The resource "News" body'],
+      [
+        "a body",
+        { ...literalTitle, ...loaded({ body: "a()" }) },
+        'The resource "News" body',
+        "1 Resource",
+      ],
       [
         "an email subject",
-        resource({
-          control: "email",
-          email: { subject: `"a".constructor.constructor("return 1")()` },
-        }),
+        {
+          ...literalTitle,
+          ...loaded({
+            control: "email",
+            email: { subject: `"a".constructor.constructor("return 1")()` },
+          }),
+        },
         'The resource "News" email subject',
+        "1 Resource",
       ],
       [
         "an email body",
-        resource({
-          control: "email",
-          email: { body: `"a".constructor.constructor("return 1")()` },
-        }),
+        {
+          ...literalTitle,
+          ...loaded({
+            control: "email",
+            email: { body: `"a".constructor.constructor("return 1")()` },
+          }),
+        },
         'The resource "News" email body',
+        "1 Resource",
       ],
       [
         "an email sender",
-        resource({
-          control: "email",
-          email: {
-            senderExpression: `"a".constructor.constructor("return 1")()`,
-          },
-        }),
+        {
+          ...literalTitle,
+          ...loaded({
+            control: "email",
+            email: {
+              senderExpression: `"a".constructor.constructor("return 1")()`,
+            },
+          }),
+        },
         'The resource "News" email sender',
+        "1 Resource",
       ],
       [
         "an email recipients",
-        resource({
-          control: "email",
-          email: {
-            recipientsExpression: `"a".constructor.constructor("return 1")()`,
-          },
-        }),
+        {
+          ...literalTitle,
+          ...loaded({
+            control: "email",
+            email: {
+              recipientsExpression: `"a".constructor.constructor("return 1")()`,
+            },
+          }),
+        },
         'The resource "News" email recipients',
+        "1 Resource",
       ],
-    ])("%s", async (_field, overrides, message) => {
+    ];
+
+    // With the pause's rules set aside, as when org script may run, a value
+    // input validation refuses stops the build, named
+    test.each(
+      valueCases.map(([field, overrides, message]) => [
+        field,
+        overrides,
+        message,
+      ])
+    )("%s", async (_field, overrides, message) => {
+      vi.mocked(dropOrgScript).mockImplementationOnce((bundle) => bundle);
       await writeSiteData(createSiteData(overrides));
       await expect(
         prebuild({
@@ -5329,6 +5459,27 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         })
       ).rejects.toThrow(message);
     });
+
+    // While org script is paused, publishing leaves out an expression, a page
+    // setting or a Resource that input validation refuses, counted, before
+    // the check runs, and builds the rest
+    test.each(
+      valueCases.map(([field, overrides, , count]) => [field, overrides, count])
+    )(
+      "leaves out %s while org script is paused, and builds the rest",
+      async (_field, overrides, count) => {
+        const info = vi.spyOn(log, "info").mockImplementation(() => {});
+        await writeSiteData(createSiteData(overrides));
+        await prebuild({
+          assets: false,
+          template: ["react-router", "react-router-vercel"],
+        });
+        expect(info).toHaveBeenCalledWith(
+          `Org script is paused until OrganizeOS sites move to their own domain: left out ${count}.`
+        );
+      },
+      slowPrebuildTestTimeout
+    );
 
     // While org script is paused, publishing leaves out an action that input
     // validation refuses before the check runs, and builds the rest
@@ -5344,6 +5495,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         const info = vi.spyOn(log, "info").mockImplementation(() => {});
         await writeSiteData(
           createSiteData({
+            ...literalTitle,
             ...action(args, code),
             dataSources: [
               [
@@ -5366,6 +5518,26 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         expect(info).toHaveBeenCalledWith(
           "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action."
         );
+      },
+      slowPrebuildTestTimeout
+    );
+
+    // and one that nothing publishes goes, not counted
+    test(
+      "leaves out a Resource no page loads that input validation refuses, and builds the rest",
+      async () => {
+        const info = vi.spyOn(log, "info").mockImplementation(() => {});
+        await writeSiteData(
+          createSiteData({
+            ...literalTitle,
+            ...resource({ headers: [{ name: "a b", value: `"b"` }] }),
+          })
+        );
+        await prebuild({
+          assets: false,
+          template: ["react-router", "react-router-vercel"],
+        });
+        expect(info).not.toHaveBeenCalled();
       },
       slowPrebuildTestTimeout
     );
@@ -5447,7 +5619,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
               {
                 id: "jsx",
                 component: elementComponent,
-                tag: "div />{globalThis.pwned = 1}<div",
+                tag: 'div />{"marker_tag"}<div',
                 children: [],
               },
             ],
@@ -5484,7 +5656,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       expect(page).not.toContain("custom.js");
       expect(page).not.toContain("evil.example");
       expect(page).not.toContain("<script");
-      expect(page).not.toContain("pwned");
+      expect(page).not.toContain("marker_");
       // The page still exports its custom code, and now it holds nothing
       expect(page).toMatch(
         /export const CustomCode = \(\) => \{\s*return \(<><\/>\);/
@@ -5737,19 +5909,19 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
           ],
           props: [
             action("crafted", [
-              { args: [") => 0, globalThis.pwned = 1, (x"], code: "0" },
+              { args: [') => 0, "marker_args", (x'], code: "0" },
             ]),
             // a code that starts with an object
             action("block", [
               {
                 args: [],
-                code: '{} / "/}, globalThis.pwned = 1, () => { // "',
+                code: '{} / "/}, "marker_block", () => { // "',
               },
             ]),
             action("member", [
               {
                 args: ["event"],
-                code: 'event.view.location.replace("javascript:0")',
+                code: "event.view.location.hash",
               },
             ]),
             // a < followed later by a >
@@ -5763,7 +5935,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
             action("stored", [{ args: ["event"], code: `${state} = event` }]),
             // a regular expression after a `>`
             action("regex", [
-              { args: [], code: "1 < 2 > /(globalThis.pwned = 1)/g" },
+              { args: [], code: '1 < 2 > /("marker_regex")/g' },
             ]),
             // an arg named like a variable
             action("shadow", [
@@ -5787,7 +5959,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
               [
                 {
                   args: ["state"],
-                  code: `${state} = state.constructor.constructor("globalThis.pwned = 1")()`,
+                  code: `${state} = state.constructor.name`,
                 },
               ],
               "onStateChange"
@@ -5802,7 +5974,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
               [
                 {
                   args: ["state"],
-                  code: `${state} = ${state} < ${state} > /(globalThis.pwned = state)/i`,
+                  code: `${state} = ${state} < ${state} > /("marker_form_regex")/i`,
                 },
               ],
               "onStateChange"
@@ -5818,7 +5990,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
             action("newline-block", [
               {
                 args: [],
-                code: `${state} = 1 < 2 >\n{} / "/}, globalThis.pwned = 1, () => { // "`,
+                code: `${state} = 1 < 2 >\n{} / "/}, "marker_newline", () => { // "`,
               },
             ]),
             ...(
@@ -5831,7 +6003,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
               action(id, [
                 {
                   args: [],
-                  code: `${state} = 1 < 2 >${between}{} / "/}, globalThis.pwned = 1, () => { // "`,
+                  code: `${state} = 1 < 2 >${between}{} / "/}, "marker_newline", () => { // "`,
                 },
               ])
             ),
@@ -5877,7 +6049,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         { loader: "tsx", format: "esm", jsx: "automatic" }
       );
 
-      expect(page).not.toContain("pwned");
+      expect(page).not.toContain("marker_");
       expect(page).not.toContain("location");
       expect(page).not.toContain("constructor");
       expect(compiled).not.toContain("constructor");
@@ -5900,7 +6072,6 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       );
       expect(page.match(/onStateChange=/g)).toHaveLength(1);
 
-      (globalThis as { pwned?: number }).pwned = undefined;
       const exports = await runModule(page, {
         react: React,
         "react/jsx-runtime": jsxRuntime,
@@ -5922,7 +6093,6 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
           system: { params: {}, search: {}, origin: "https://x" },
         })
       );
-      expect((globalThis as { pwned?: number }).pwned).toBeUndefined();
     });
 
     // The builder's global root is not an instance it stores: one stored with
@@ -6164,6 +6334,17 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       const info = vi.spyOn(log, "info").mockImplementation(() => {});
       await writeSiteData(
         createSiteData({
+          // a page title is an expression; the builder writes a string literal
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: '"Home"',
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+          ],
           instances: [
             [
               "root",
@@ -6182,7 +6363,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
               {
                 id: "button",
                 component: "Box",
-                children: [{ type: "text", value: "globalThis.pwned = 1" }],
+                children: [{ type: "text", value: "marker_text_1" }],
               },
             ],
             ["source", { id: "source", component: "Box", children: [] }],
@@ -6191,7 +6372,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
               {
                 id: "label",
                 component: "Box",
-                children: [{ type: "text", value: "globalThis.pwned = 2" }],
+                children: [{ type: "text", value: "marker_text_2" }],
               },
             ],
           ],
@@ -6270,7 +6451,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       });
       expect(html).not.toContain("<script");
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action and 2 variables with a conflicting id."
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action, 2 variables with a conflicting id and 1 expression."
       );
     });
 
@@ -6280,6 +6461,17 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       const info = vi.spyOn(log, "info").mockImplementation(() => {});
       await writeSiteData(
         createSiteData({
+          // a page title is an expression; the builder writes a string literal
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: '"Home"',
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+          ],
           instances: [
             [
               "root",
@@ -6298,7 +6490,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
               {
                 id: "script",
                 component: "x:script",
-                children: [{ type: "text", value: "globalThis.pwned = 1" }],
+                children: [{ type: "text", value: "marker_text_1" }],
               },
             ],
             [
@@ -6321,7 +6513,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         { loader: "tsx", format: "esm", jsx: "automatic" }
       );
 
-      expect(page).not.toContain("pwned");
+      expect(page).not.toContain("marker_");
       expect(page).not.toMatch(/<(script|Location)\b/);
       expect(
         elementTypesOf(compiled).filter(({ kind }) => kind !== "import")
@@ -6337,6 +6529,17 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       const info = vi.spyOn(log, "info").mockImplementation(() => {});
       await writeSiteData(
         createSiteData({
+          // a page title is an expression; the builder writes a string literal
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: '"Home"',
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+          ],
           instances: [
             [
               "root",
@@ -6538,6 +6741,17 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       ];
       await writeSiteData(
         createSiteData({
+          // a page title is an expression; the builder writes a string literal
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: '"Home"',
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+          ],
           instances: [
             [
               "root",
@@ -6627,6 +6841,87 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
 
     // A page's own parameter is declared on that page alone, and a
     // Collection binds one item
+    // A variable holds plain data only: nothing writes an element into one
+    test("leaves out a parameter or an expression named ref, so no ref names a data source", async () => {
+      const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      const ref = (
+        instanceId: string,
+        type: "parameter" | "expression",
+        value: string
+      ): [string, Record<string, unknown>] => [
+        `${instanceId}-ref`,
+        { id: `${instanceId}-ref`, instanceId, name: "ref", type, value },
+      ];
+      await writeSiteData(
+        createSiteData({
+          // a page title is an expression; the builder writes a string literal
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: `"Home"`,
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+          ],
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [
+                  { type: "id", value: "named" },
+                  { type: "id", value: "bound" },
+                ],
+              },
+            ],
+            [
+              "named",
+              {
+                id: "named",
+                component: "Box",
+                children: [{ type: "text", value: "named" }],
+              },
+            ],
+            [
+              "bound",
+              {
+                id: "bound",
+                component: "Box",
+                children: [{ type: "text", value: "bound" }],
+              },
+            ],
+          ],
+          props: [
+            ref("named", "parameter", "held"),
+            ref("bound", "expression", encodeDataSourceVariable("held")),
+          ],
+          dataSources: [
+            [
+              "held",
+              {
+                type: "variable",
+                id: "held",
+                name: "held",
+                scopeInstanceId: "root",
+                value: { type: "json", value: {} },
+              },
+            ],
+          ],
+        })
+      );
+
+      const { page } = await generated();
+
+      expect(page).toContain("named");
+      expect(page).not.toMatch(/\sref=/);
+      expect(info).toHaveBeenCalledWith(
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 2 element references."
+      );
+    });
+
     test("leaves out a page template's own parameter held on the global root's id, and both parameters of a Collection with two item props", async () => {
       const info = vi.spyOn(log, "info").mockImplementation(() => {});
       const ref = (
@@ -6643,6 +6938,17 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         },
       ];
       const siteData = createSiteData({
+        // a page title is an expression; the builder writes a string literal
+        pages: [
+          {
+            id: "home",
+            name: "Home",
+            title: `"Home"`,
+            path: "",
+            rootInstanceId: "root",
+            meta: {},
+          },
+        ],
         instances: [
           [
             "root",
@@ -6918,6 +7224,17 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
                 instanceId: "image",
                 name: "alt",
                 type: "expression",
+                value: encodeDataSourceVariable("label"),
+              },
+            ],
+            // what names the variable that goes goes with it
+            [
+              "image-title",
+              {
+                id: "image-title",
+                instanceId: "image",
+                name: "title",
+                type: "expression",
                 value: `${encodeDataSourceVariable("label")} + ${encodeDataSourceVariable("string-name")}`,
               },
             ],
@@ -6935,9 +7252,10 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
             React.createElement("img", props),
         },
       });
-      expect(html).toContain('alt="A labelundefined"');
+      expect(html).toContain('alt="A label"');
+      expect(html).not.toContain("title=");
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id and 1 expression."
       );
     });
 
@@ -6946,6 +7264,17 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       const info = vi.spyOn(log, "info").mockImplementation(() => {});
       await writeSiteData(
         createSiteData({
+          // a page title is an expression; the builder writes a string literal
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: '"Home"',
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+          ],
           instances: [
             [
               "root",
@@ -7048,6 +7377,17 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       const info = vi.spyOn(log, "info").mockImplementation(() => {});
       await writeSiteData(
         createSiteData({
+          // a page title is an expression; the builder writes a string literal
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: '"Home"',
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+          ],
           instances: [
             [
               "root",
@@ -7163,6 +7503,17 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       const info = vi.spyOn(log, "info").mockImplementation(() => {});
       await writeSiteData(
         createSiteData({
+          // a page title is an expression; the builder writes a string literal
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: '"Home"',
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+          ],
           instances: [
             [
               "root",
@@ -7177,7 +7528,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
               {
                 id: "box",
                 component: "Box",
-                children: [{ type: "text", value: "globalThis.pwned = 1" }],
+                children: [{ type: "text", value: "marker_text_1" }],
               },
             ],
           ],
@@ -7207,7 +7558,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         },
       });
       expect(html).not.toContain("<script");
-      expect(html).toContain("globalThis.pwned = 1</div>");
+      expect(html).toContain("marker_text_1</div>");
       expect(info).toHaveBeenCalledWith(
         "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
       );
@@ -7216,11 +7567,12 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
     // A build holds one entry per id, as the builder reads it: the last
     test("publishes the last of two entries with one id, and only that one", async () => {
       const info = vi.spyOn(log, "info").mockImplementation(() => {});
+      // a page title is an expression; the builder writes a string literal
       const pages = [
         {
           id: "home",
           name: "Home",
-          title: "Home",
+          title: '"Home"',
           path: "",
           rootInstanceId: "root",
           meta: {},
@@ -7228,7 +7580,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         {
           id: "about",
           name: "About",
-          title: "About",
+          title: '"About"',
           path: "/about",
           rootInstanceId: "about-root",
           meta: {},
@@ -7280,7 +7632,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
                 value: [
                   {
                     type: "execute",
-                    args: [") => 0, globalThis.pwned = 1, (x"],
+                    args: [') => 0, "marker_args", (x'],
                     code: "0",
                   },
                 ],
@@ -7341,7 +7693,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       const { page: home } = await generated();
       const { page: about } = await generated("[about]._index");
 
-      expect(home).not.toContain("pwned");
+      expect(home).not.toContain("marker_");
       expect(home).not.toContain("onClick=");
       expect(home).not.toMatch(/\sref=/);
       expect(home).not.toMatch(/\bcapture\b/);
@@ -7352,7 +7704,7 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         /let \[harmless, set\$harmless\] = useVariableState<any>\("idle"\)/
       );
       expect(info).toHaveBeenCalledWith(
-        "Org script is paused until OrganizeOS sites move to their own domain: left out 2 duplicate entries."
+        "Org script is paused until OrganizeOS sites move to their own domain: left out 2 duplicate entries and 1 element reference."
       );
     });
 
@@ -7405,6 +7757,2246 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
         /onStateChange=\{\(state: any\) => \{\s*state = state\s*set\$state\(state\)/
       );
       expect(page).toMatch(/let \[state, set\$state\] = useVariableState/);
+    });
+
+    // While org script is paused, publishing keeps an expression only where
+    // expressionMayRun passes it and it names only data sources the published
+    // module declares where it is written, and a Resource only when every part
+    // of it passes (findPausedExpressions in
+    // @organizeos/site-components/org-script).
+    describe("expressions, Resources and page settings", () => {
+      // An expression the rule refuses, which holds its marker: one that
+      // reads a member it may not read, and one the linter accepts that calls
+      // a method with an argument that is not a literal. A module that holds a
+      // marker published what the rule refuses.
+      const refused = (marker: string) => `"marker_${marker}".constructor.name`;
+      const refusedLintClean = (marker: string) =>
+        `"marker_${marker}".replace("marker", ["x"].join(""))`;
+      const system = {
+        params: {},
+        search: {},
+        origin: "https://x",
+        pathname: "/",
+      };
+      const id = encodeDataSourceVariable;
+
+      // the names a generated module reads past what it declares and the
+      // globals it may read, and the imports it shadows: none, as the check
+      // publishing makes requires
+      const undeclaredIn = async (code: string) => {
+        const { undeclared, shadowed } = await findGeneratedCodeProblems(code);
+        return [...undeclared, ...shadowed];
+      };
+
+      const renderPage = async (page: string) => {
+        const element = (tag: string) => (props: Record<string, unknown>) =>
+          React.createElement(tag, props);
+        const exports = await runModule(page, {
+          react: React,
+          "react/jsx-runtime": jsxRuntime,
+          "@webstudio-is/react-sdk/runtime":
+            await import("@webstudio-is/react-sdk/runtime"),
+          "@webstudio-is/sdk-components-react/components":
+            await import("@webstudio-is/sdk-components-react/components"),
+          "@webstudio-is/sdk-components-react-router": {
+            Body: element("body"),
+            Link: element("a"),
+            RemixForm: element("form"),
+            WebhookForm: element("form"),
+            ResourceForm: element("form"),
+          },
+          "@webstudio-is/sdk": await import("@webstudio-is/sdk"),
+        });
+        const Page = exports.Page as ComponentType<Record<string, unknown>>;
+        return renderToStaticMarkup(React.createElement(Page, { system }));
+      };
+
+      // each request as the page's load makes it, with no Resource's data
+      // yet, by its name, and those a resource prop names, by the prop's
+      const runServer = async (server: string) => {
+        const exports = await runModule(server, {
+          "@webstudio-is/sdk": await import("@webstudio-is/sdk"),
+          "@webstudio-is/sdk/to-string":
+            await import("@webstudio-is/sdk/to-string"),
+          "@webstudio-is/react-sdk": await import("@webstudio-is/react-sdk"),
+        });
+        type Request = { url: unknown; headers: unknown[] };
+        const getResources = exports.getResources as (props: unknown) => {
+          data: {
+            resources: Array<{
+              id: string;
+              outputName: string;
+              createRequest: (
+                documents: ReadonlyMap<string, unknown>
+              ) => Request;
+            }>;
+          };
+          action: Map<string, { outputName: string }>;
+        };
+        const getPageMeta = exports.getPageMeta as (props: unknown) => unknown;
+        const graph = getResources({ system });
+        // a request that reads another Resource's data gets a stand-in
+        const documents = new Map(
+          graph.data.resources.map(({ id }) => [id, { x: `data-of-${id}` }])
+        );
+        const data = new Map(
+          graph.data.resources.map(({ outputName, createRequest }) => [
+            outputName,
+            createRequest(documents),
+          ])
+        );
+        const action = new Map(
+          [...graph.action].map(([name, { outputName }]) => [
+            name,
+            data.get(outputName) as Request,
+          ])
+        );
+        return {
+          resources: { data, action },
+          meta: getPageMeta({ system, resources: {} }),
+        };
+      };
+
+      const expression = (
+        instanceId: string,
+        name: string,
+        value: string
+      ): [string, Record<string, unknown>] => [
+        `${instanceId}-${name}`,
+        {
+          id: `${instanceId}-${name}`,
+          instanceId,
+          name,
+          type: "expression",
+          value,
+        },
+      ];
+      const parameter = (
+        instanceId: string,
+        name: string,
+        value: string
+      ): [string, Record<string, unknown>] => [
+        `${instanceId}-${name}`,
+        {
+          id: `${instanceId}-${name}`,
+          instanceId,
+          name,
+          type: "parameter",
+          value,
+        },
+      ];
+      const box = (
+        instanceId: string,
+        children: Array<{ type: "id" | "expression"; value: string }> = [],
+        component = "Box"
+      ): [
+        string,
+        { id: string; component: string; children: typeof children },
+      ] => [instanceId, { id: instanceId, component, children }];
+      const ids = (...list: string[]) =>
+        list.map((value) => ({ type: "id" as const, value }));
+      const resourceBinding = (
+        resourceId: string,
+        name = resourceId
+      ): [string, Record<string, unknown>] => [
+        `${resourceId}-ds`,
+        {
+          type: "resource",
+          id: `${resourceId}-ds`,
+          name,
+          scopeInstanceId: "root",
+          resourceId,
+        },
+      ];
+      const resource = (
+        resourceId: string,
+        init: Record<string, unknown> = {}
+      ): [string, Record<string, unknown>] => [
+        resourceId,
+        {
+          id: resourceId,
+          name: resourceId,
+          method: "get",
+          url: `"https://example.org/${resourceId}"`,
+          headers: [],
+          ...init,
+        },
+      ];
+
+      // A Collection's item and a Resource's data source, named outside where
+      // the module declares them
+      const item = id("row-item");
+      const named = id("first-ds");
+
+      test("leaves out every expression and page setting that could run script, and every name the module does not declare where it is written", async () => {
+        await writeSiteData(
+          createSiteData({
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: refused("title"),
+                path: "",
+                rootInstanceId: "root",
+                meta: {
+                  description: refused("description"),
+                  excludePageFromSearch: refused("exclude"),
+                  language: refused("language"),
+                  socialImageUrl: refused("social"),
+                  status: refused("status"),
+                  redirect: `"/" + ${refused("redirect")}`,
+                  content: refused("content"),
+                  custom: [
+                    { property: "og:x", content: refused("custom") },
+                    {
+                      property: "og:item",
+                      content: `${item}.x`,
+                    },
+                    { property: "og:type", content: '"website"' },
+                  ],
+                },
+              },
+            ],
+            instances: [
+              box(
+                "root",
+                ids(
+                  "titled",
+                  "link",
+                  "shown",
+                  "text",
+                  "list",
+                  "outside",
+                  "items"
+                ),
+                "Body"
+              ),
+              box("titled"),
+              [
+                "link",
+                {
+                  id: "link",
+                  component: elementComponent,
+                  tag: "a",
+                  children: [],
+                },
+              ],
+              box("shown"),
+              box("text", [
+                {
+                  type: "expression",
+                  value: '"t") && ("marker_text"',
+                },
+              ]),
+              box("list", ids("entry"), "ws:collection"),
+              box("entry"),
+              box("outside"),
+              box("items", ids("inside"), "ws:collection"),
+              box("inside"),
+            ],
+            props: [
+              expression("titled", "title", '"x"} data-x={"marker_prop"'),
+              expression("link", "href", `"/" + ${refused("href")}`),
+              expression("shown", "data-ws-show", 'false) || ("marker_show"'),
+              expression("list", "data", refusedLintClean("collection")),
+              parameter("list", "item", "list-item"),
+              expression("outside", "title", `${item}.x`),
+              expression("items", "data", '[{"x": "item value"}]'),
+              parameter("items", "item", "row-item"),
+              expression("inside", "title", `${item}.x`),
+            ],
+            dataSources: [
+              [
+                "list-item",
+                {
+                  type: "parameter",
+                  id: "list-item",
+                  name: "item",
+                  scopeInstanceId: "list",
+                },
+              ],
+              [
+                "row-item",
+                {
+                  type: "parameter",
+                  id: "row-item",
+                  name: "row",
+                  scopeInstanceId: "items",
+                },
+              ],
+            ],
+          })
+        );
+
+        const { page, resources: server } = await generated();
+
+        expect(page).not.toContain("marker_");
+        expect(server).not.toContain("marker_");
+        expect(await undeclaredIn(page)).toEqual([]);
+        expect(await undeclaredIn(server)).toEqual([]);
+
+        const html = await renderPage(page);
+        const { meta } = await runServer(server);
+        // the item is still read inside its Collection, and the settings that
+        // may run are kept
+        expect(html).toContain('title="item value"');
+        expect(meta).toMatchObject({
+          title: "",
+          custom: [{ property: "og:type", content: "website" }],
+        });
+      });
+
+      test("leaves out every Resource that could run script, and keeps one whose every part may run, one that reads another Resource's data among them", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [box("root", [], "Body")],
+            dataSources: [
+              resourceBinding("first", "row"),
+              resourceBinding("leak"),
+              resourceBinding("in-url"),
+              resourceBinding("in-search"),
+              resourceBinding("in-header"),
+              resourceBinding("in-body"),
+              resourceBinding("in-header-name"),
+              resourceBinding("in-search-name"),
+              resourceBinding("kept"),
+            ],
+            resources: [
+              resource("first"),
+              resource("leak", {
+                url: `"https://example.org/?k=" + ${named}.x`,
+              }),
+              resource("in-url", {
+                url: '"https://example.org/", _u: ("marker_url")',
+              }),
+              resource("in-search", {
+                searchParams: [
+                  { name: "q", value: refusedLintClean("search") },
+                ],
+              }),
+              resource("in-header", {
+                headers: [{ name: "x", value: refusedLintClean("header") }],
+              }),
+              resource("in-body", { method: "post", body: refused("body") }),
+              resource("in-header-name", {
+                headers: [
+                  {
+                    name: 'x", value: ("marker_header_name"), y: "',
+                    value: '"1"',
+                  },
+                ],
+              }),
+              resource("in-search-name", {
+                searchParams: [
+                  {
+                    name: 'q", value: ("marker_search_name") }, { name: "q2',
+                    value: '"1"',
+                  },
+                ],
+              }),
+              resource("kept", {
+                url: '"https://example.org/items/" + ($ws$system.params.slug ?? "-")',
+                headers: [{ name: "Authorization", value: '"Bearer x"' }],
+              }),
+            ],
+          })
+        );
+
+        const { page, resources: server } = await generated();
+
+        expect(server).not.toContain("marker_");
+        expect(await undeclaredIn(page)).toEqual([]);
+        expect(await undeclaredIn(server)).toEqual([]);
+
+        const { resources } = await runServer(server);
+        expect(
+          [...resources.data.values()].map((request) => request.url)
+        ).toEqual([
+          "https://example.org/first",
+          "https://example.org/?k=data-of-first",
+          "https://example.org/items/-",
+        ]);
+      });
+
+      test("checks every page and server module it generates, and a module that may not ship fails the publish", async () => {
+        const check = vi.mocked(checkGeneratedModule);
+        check.mockClear();
+        await writeSiteData(
+          createSiteData({
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: '"Home"',
+                path: "",
+                rootInstanceId: "root",
+                meta: {},
+              },
+              {
+                id: "about",
+                name: "About",
+                title: '"About"',
+                path: "/about",
+                rootInstanceId: "about-root",
+                meta: {},
+              },
+            ],
+            instances: [box("root", [], "Body"), box("about-root", [], "Body")],
+          })
+        );
+        await generated();
+        expect(
+          check.mock.calls
+            .map(([, file]) => relative("app/__generated__", file))
+            .sort()
+        ).toEqual([
+          "[about]._index.server.tsx",
+          "[about]._index.tsx",
+          "_index.server.tsx",
+          "_index.tsx",
+        ]);
+        check.mockRejectedValueOnce(new Error("a module that may not ship"));
+        await expect(generated()).rejects.toThrow("a module that may not ship");
+      });
+
+      test("publishes every fixture past the check", async () => {
+        const fixturesDir = new URL("../../../fixtures/", import.meta.url);
+        const fixtures = (await readdir(fixturesDir, { withFileTypes: true }))
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => entry.name);
+        expect(fixtures.length).toBeGreaterThanOrEqual(8);
+        for (const fixture of fixtures) {
+          const data = await readFile(
+            new URL(`${fixture}/.webstudio/data.json`, fixturesDir),
+            "utf8"
+          );
+          await writeFile(".webstudio/data.json", data);
+          await rm("app", { recursive: true, force: true });
+          await expect(generated(), fixture).resolves.toBeDefined();
+        }
+      }, 120_000);
+
+      // What the pause reads of each page is what prebuild publishes for it:
+      // the instances it holds, the Resources it loads, those only a form's
+      // submission sends, and the page settings it publishes as text
+      test("reads each page as prebuild publishes it: fixtures, block templates, site templates and the registry's templates", async () => {
+        const expectParity = async (label: string) => {
+          const bundle = JSON.parse(
+            await readFile(".webstudio/data.json", "utf8")
+          ) as PublishedProjectBundle;
+          const shipped = dropOrgScript(bundle);
+          const pages = migratePages(shipped.build.pages);
+          const hasMarker = hasHistoricalFormComponentIdentityVersion(
+            shipped.build.pages
+          );
+          const instances = new Map(
+            shipped.build.instances.map(([id, instance]) => {
+              const read = { ...instance };
+              migrateResourceFormInstancesMutable([read], hasMarker);
+              return [id, read] as const;
+            })
+          );
+          const props = new Map(shipped.build.props);
+          const published: PublishedPage[] = [];
+          findPausedExpressions({
+            pages: getAllPages(pages),
+            instances,
+            props: props.values(),
+            dataSources: new Map(shipped.build.dataSources),
+            resources: new Map(shipped.build.resources ?? []),
+            observe: (page) => published.push(page),
+          });
+          let read = 0;
+          for (const page of getAllPages(pages)) {
+            const file = join(
+              "app",
+              "__generated__",
+              `${generateRemixRoute(getPagePath(page.id, pages))}.server.tsx`
+            );
+            if (existsSync(file) === false) {
+              continue;
+            }
+            read += 1;
+            const view = published.find(({ pageId }) => pageId === page.id);
+            const where = `${label} ${page.path}`;
+            expect(view, where).toBeDefined();
+            expect(view?.held, where).toEqual(
+              new Set([
+                ...findTreeInstanceIdsExcludingStaticHidden({
+                  instances,
+                  props,
+                  rootInstanceId: page.rootInstanceId,
+                }),
+                ROOT_INSTANCE_ID,
+              ])
+            );
+            const server = await readFile(file, "utf8");
+            const section = (from: string, to: string) =>
+              server.slice(server.indexOf(from), server.indexOf(to));
+            const idsIn = (text: string, pattern: RegExp) =>
+              new Set(
+                [...text.matchAll(pattern)].map(
+                  ([, id]) => JSON.parse(id) as string
+                )
+              );
+            // a deprecated Webhook Form's action becomes a Resource after
+            // the pause, and holds only literals
+            const stored = new Set(
+              (shipped.build.resources ?? []).map(([resourceId]) => resourceId)
+            );
+            const requests = new Set(
+              [
+                ...idsIn(
+                  section(
+                    "export const getResources",
+                    "export const getManagedFormResourceGraph"
+                  ),
+                  /\{ id: ("(?:[^"\\]|\\.)*"), outputName:/g
+                ),
+              ].filter((resourceId) => stored.has(resourceId))
+            );
+            const sent = idsIn(
+              section(
+                "export const getManagedFormResourceGraph",
+                "export const getPageMeta"
+              ),
+              /\{ id: ("(?:[^"\\]|\\.)*"), name:/g
+            );
+            expect(requests, where).toEqual(view?.inGraph);
+            expect(
+              new Set([...sent].filter((id) => requests.has(id) === false)),
+              where
+            ).toEqual(view?.submission);
+            const meta = server.slice(
+              server.indexOf("export const getPageMeta")
+            );
+            for (const field of [
+              "title",
+              "description",
+              "language",
+              "socialImageUrl",
+              "redirect",
+              "content",
+            ] as const) {
+              const stored = field === "title" ? page.title : page.meta[field];
+              if (stored === undefined) {
+                continue;
+              }
+              const written = meta.match(
+                new RegExp(`\\n\\s*${field}: (.*),\\n`)
+              )?.[1];
+              expect(
+                written === JSON.stringify(stored),
+                `${where} ${field}`
+              ).toBe(view?.text.has(field));
+            }
+          }
+          expect(read, label).toBeGreaterThan(0);
+        };
+
+        const fixturesDir = new URL("../../../fixtures/", import.meta.url);
+        for (const fixture of (
+          await readdir(fixturesDir, { withFileTypes: true })
+        ).filter((entry) => entry.isDirectory())) {
+          await writeFile(
+            ".webstudio/data.json",
+            await readFile(
+              new URL(`${fixture.name}/.webstudio/data.json`, fixturesDir),
+              "utf8"
+            )
+          );
+          await rm("app", { recursive: true, force: true });
+          await generated();
+          await expectParity(fixture.name);
+        }
+
+        const fragments: Array<[string, WebstudioFragment]> = [
+          ...registryFragments(),
+          ...Object.entries(blockTemplates).map(
+            ([name, meta]): [string, WebstudioFragment] => [
+              name,
+              renderTemplate(meta.template),
+            ]
+          ),
+        ];
+        let pageId = 0;
+        for (const template of SITE_TEMPLATES) {
+          for (const page of renderSiteTemplate(template, {
+            assetIds: new Map(
+              Object.keys(template.images).map((file) => [file, file])
+            ),
+            generatePageId: () => `page-${pageId++}`,
+          })) {
+            fragments.push([`${template.id} ${page.key}`, page.fragment]);
+          }
+        }
+        expect(fragments.map(([name]) => name)).toEqual(
+          expect.arrayContaining(["form", "SignupForm"])
+        );
+        for (const [label, fragment] of fragments) {
+          await writeSiteData(
+            createSiteData({
+              pages: [
+                {
+                  id: "home",
+                  name: "Home",
+                  title: "Home",
+                  path: "",
+                  rootInstanceId: "root",
+                  meta: { description: "Welcome" },
+                },
+              ],
+              instances: [
+                box("root", fragment.children as never, "Body"),
+                ...fragment.instances.map(
+                  (instance) => [instance.id, instance] as never
+                ),
+              ],
+              props: fragment.props.map((prop) => [prop.id, prop]),
+              dataSources: fragment.dataSources.map((dataSource) => [
+                dataSource.id,
+                dataSource,
+              ]),
+              resources: fragment.resources.map((resource) => [
+                resource.id,
+                resource,
+              ]),
+            })
+          );
+          await rm("app", { recursive: true, force: true });
+          await generated();
+          await expectParity(label);
+        }
+      }, 300_000);
+
+      test("publishes an expression that names undefined, NaN or Infinity past the check, and leaves out an action that reads NaN or Infinity", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [box("root", ids("box"), "Body"), box("box")],
+            props: [
+              expression("box", "title", "[undefined, NaN, -Infinity]"),
+              [
+                "box-onClick",
+                {
+                  id: "box-onClick",
+                  instanceId: "box",
+                  name: "onClick",
+                  type: "action",
+                  value: [
+                    {
+                      type: "execute",
+                      args: [],
+                      code: `${encodeDataSourceVariable("count")} = Infinity`,
+                    },
+                    {
+                      type: "execute",
+                      args: [],
+                      code: `${encodeDataSourceVariable("count")} = NaN`,
+                    },
+                  ],
+                },
+              ],
+            ],
+            dataSources: [
+              [
+                "count",
+                {
+                  type: "variable",
+                  id: "count",
+                  name: "count",
+                  scopeInstanceId: "root",
+                  value: { type: "number", value: 0 },
+                },
+              ],
+            ],
+          })
+        );
+        const { page } = await generated();
+        expect(page).toContain("title={");
+        expect(page).not.toContain("onClick");
+      });
+
+      test("publishes a page built from each block template and each site template page past the check", async () => {
+        const fragments: Array<[string, WebstudioFragment]> = [
+          ...Object.entries(blockTemplates).map(
+            ([name, meta]): [string, WebstudioFragment] => [
+              name,
+              renderTemplate(meta.template),
+            ]
+          ),
+        ];
+        let pageId = 0;
+        for (const template of SITE_TEMPLATES) {
+          for (const page of renderSiteTemplate(template, {
+            assetIds: new Map(
+              Object.keys(template.images).map((file) => [file, file])
+            ),
+            generatePageId: () => `page-${pageId++}`,
+          })) {
+            fragments.push([`${template.id} ${page.key}`, page.fragment]);
+          }
+        }
+        expect(fragments.length).toBeGreaterThan(
+          Object.keys(blockTemplates).length
+        );
+        const info = vi.spyOn(log, "info").mockImplementation(() => {});
+        for (const [label, fragment] of fragments) {
+          await writeSiteData(
+            createSiteData({
+              pages: [
+                {
+                  id: "home",
+                  name: "Home",
+                  title: '"Home"',
+                  path: "",
+                  rootInstanceId: "root",
+                  meta: {},
+                },
+              ],
+              instances: [
+                box("root", fragment.children as never, "Body"),
+                ...fragment.instances.map(
+                  (instance) => [instance.id, instance] as never
+                ),
+              ],
+              props: fragment.props.map((prop) => [prop.id, prop]),
+              dataSources: fragment.dataSources.map((dataSource) => [
+                dataSource.id,
+                dataSource,
+              ]),
+              resources: fragment.resources.map((resource) => [
+                resource.id,
+                resource,
+              ]),
+            })
+          );
+          await rm("app", { recursive: true, force: true });
+          await expect(generated(), label).resolves.toBeDefined();
+          // and leaves nothing out
+          expect(info.mock.calls.flat().join("\n"), label).not.toContain(
+            "left out"
+          );
+        }
+      }, 120_000);
+
+      // A variable may share its name with an action's arg or with one of the
+      // module's own names: none of them is an import
+      test.each([
+        ["Rotation Control", "value", blockTemplates.RotatingTabs.template],
+        ["Signup Form", "state", blockTemplates.SignupForm.template],
+        ["RSVP Form", "state", blockTemplates.RsvpForm.template],
+        ["Webhook Form", "state", baseTemplates.WebhookForm.template],
+        ["a page", "siteName", undefined],
+        ["a page", "breakpoints", undefined],
+        ["a page", "lastPublished", undefined],
+        ["a page", "jsx", undefined],
+        ["a page", "jsxs", undefined],
+      ] as const)(
+        "publishes %s beside a variable named %s past the check, leaving nothing out",
+        async (_label, name, template) => {
+          const fragment =
+            template === undefined
+              ? {
+                  children: [],
+                  instances: [],
+                  props: [],
+                  dataSources: [],
+                  resources: [],
+                }
+              : // the base library's components, by name, as the builder's
+                // registry renders its templates
+                renderTemplate(template, undefined, [], {
+                  componentIds: new Map(
+                    Object.entries(baseComponents).map(([key, component]) => [
+                      component,
+                      key,
+                    ])
+                  ),
+                });
+          const info = vi.spyOn(log, "info").mockImplementation(() => {});
+          await writeSiteData(
+            createSiteData({
+              pages: [
+                {
+                  id: "home",
+                  name: "Home",
+                  title: '"Home"',
+                  path: "",
+                  rootInstanceId: "root",
+                  meta: { description: id("named") },
+                },
+              ],
+              instances: [
+                box(
+                  "root",
+                  [
+                    ...(fragment.children as never[]),
+                    ...ids("named-box", "other"),
+                  ],
+                  "Body"
+                ),
+                box("named-box"),
+                box("other"),
+                ...fragment.instances.map(
+                  (instance) => [instance.id, instance] as never
+                ),
+              ],
+              props: [
+                ...fragment.props.map((prop): [string, unknown] => [
+                  prop.id,
+                  prop,
+                ]),
+                expression("named-box", "title", id("named")),
+              ] as never,
+              dataSources: [
+                ...fragment.dataSources.map((dataSource): [string, unknown] => [
+                  dataSource.id,
+                  dataSource,
+                ]),
+                [
+                  "named",
+                  {
+                    type: "variable",
+                    id: "named",
+                    name,
+                    scopeInstanceId: "root",
+                    value: { type: "string", value: "kept" },
+                  },
+                ],
+              ] as never,
+              resources: fragment.resources.map((resource) => [
+                resource.id,
+                resource,
+              ]),
+            })
+          );
+          await rm("app", { recursive: true, force: true });
+          const { page } = await generated();
+          expect(page).toContain(`let [${name}, set$${name}]`);
+          expect(info.mock.calls.flat().join("\n")).not.toContain("left out");
+        }
+      );
+
+      test("publishes a variable and a Collection item named like a module's exports, past the check", async () => {
+        const info = vi.spyOn(log, "info").mockImplementation(() => {});
+        await writeSiteData(
+          createSiteData({
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: id("email"),
+                path: "",
+                rootInstanceId: "root",
+                meta: { description: id("meta") },
+              },
+            ],
+            instances: [
+              box("root", ids("items"), "Body"),
+              box("items", ids("inside"), "ws:collection"),
+              box("inside"),
+            ],
+            props: [
+              expression("items", "data", '["a"]'),
+              parameter("items", "item", "item-param"),
+              expression("inside", "title", id("item-param")),
+            ],
+            dataSources: [
+              [
+                "email",
+                {
+                  type: "variable",
+                  id: "email",
+                  name: "contactEmail",
+                  scopeInstanceId: "root",
+                  value: { type: "string", value: "hi@example.org" },
+                },
+              ],
+              [
+                "meta",
+                {
+                  type: "variable",
+                  id: "meta",
+                  name: "getPageMeta",
+                  scopeInstanceId: "root",
+                  value: { type: "string", value: "kept" },
+                },
+              ],
+              [
+                "item-param",
+                {
+                  type: "parameter",
+                  id: "item-param",
+                  name: "siteName",
+                  scopeInstanceId: "items",
+                },
+              ],
+            ],
+          })
+        );
+        await rm("app", { recursive: true, force: true });
+        const { page, resources: server } = await generated();
+        expect(page).toContain("siteName");
+        expect(server).toContain("contactEmail");
+        expect(info.mock.calls.flat().join("\n")).not.toContain("left out");
+      });
+
+      // Publishing reads one entry for each id, the last, as the builder does
+      test("publishes no expression stored beside another entry with its id", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              box("root", ids("box"), "Body"),
+              box("box"),
+              box("orphan"),
+            ],
+            props: [
+              expression("box", "title", '"x".constructor.name'),
+              [
+                "box-title",
+                {
+                  id: "box-title",
+                  instanceId: "orphan",
+                  name: "title",
+                  type: "string",
+                  value: "kept",
+                },
+              ],
+            ],
+          })
+        );
+        const { page } = await generated();
+        expect(page).not.toContain("constructor");
+        expect(await renderPage(page)).not.toContain('title="String"');
+      });
+
+      // A Collection holds one item and one key at most
+      test("leaves out a Collection's items when it holds two, and what reads one", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              box("root", ids("items"), "Body"),
+              box("items", ids("inside"), "ws:collection"),
+              box("inside"),
+            ],
+            props: [
+              expression("items", "data", '[{"x": "item value"}]'),
+              [
+                "items-item-1",
+                {
+                  ...parameter("items", "item", "row-item")[1],
+                  id: "items-item-1",
+                },
+              ],
+              [
+                "items-item-2",
+                {
+                  ...parameter("items", "item", "plain-item")[1],
+                  id: "items-item-2",
+                },
+              ],
+              expression("inside", "title", `${item}.x`),
+            ],
+            dataSources: [
+              [
+                "row-item",
+                {
+                  type: "parameter",
+                  id: "row-item",
+                  name: "row",
+                  scopeInstanceId: "items",
+                },
+              ],
+              [
+                "plain-item",
+                {
+                  type: "parameter",
+                  id: "plain-item",
+                  name: "item",
+                  scopeInstanceId: "items",
+                },
+              ],
+            ],
+          })
+        );
+        const { page } = await generated();
+        expect(await undeclaredIn(page)).toEqual([]);
+        await renderPage(page);
+      });
+
+      // A Collection's item and key may only be parameters of its own that
+      // nothing around it binds
+      test.each([
+        [
+          "one parameter for its item and its key",
+          "items-param",
+          "items-param",
+        ],
+        ["a variable for its item", "state-var", undefined],
+        ["an outer Collection's item for its item", "outer-param", undefined],
+      ])(
+        "publishes a Collection that binds %s, leaving it out",
+        async (_label, itemId, keyId) => {
+          await writeSiteData(
+            createSiteData({
+              instances: [
+                box("root", ids("outer"), "Body"),
+                box("outer", ids("items"), "ws:collection"),
+                box("items", ids("inside"), "ws:collection"),
+                box("inside", [
+                  { type: "expression", value: '"listed entry"' },
+                ]),
+              ],
+              props: [
+                expression("outer", "data", "[[1]]"),
+                parameter("outer", "item", "outer-param"),
+                expression("items", "data", "[1]"),
+                parameter("items", "item", itemId),
+                ...(keyId === undefined
+                  ? []
+                  : [parameter("items", "itemKey", keyId)]),
+              ],
+              dataSources: [
+                [
+                  "outer-param",
+                  {
+                    type: "parameter",
+                    id: "outer-param",
+                    name: "row",
+                    scopeInstanceId: "outer",
+                  },
+                ],
+                [
+                  "items-param",
+                  {
+                    type: "parameter",
+                    id: "items-param",
+                    name: "entry",
+                    scopeInstanceId: "items",
+                  },
+                ],
+                [
+                  "state-var",
+                  {
+                    type: "variable",
+                    id: "state-var",
+                    name: "state",
+                    scopeInstanceId: "root",
+                    value: { type: "string", value: "idle" },
+                  },
+                ],
+              ],
+            })
+          );
+          const { page } = await generated();
+          expect(await undeclaredIn(page)).toEqual([]);
+          expect(await renderPage(page)).not.toContain("listed entry");
+        }
+      );
+
+      // A data source whose id is another of the page module's names goes
+      // (collidingDataSourceIds), and what read it reads nothing
+      test("leaves out a data source whose id is another of the module's names, and what reads it reads nothing", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              box("root", ids("loader", "inline"), "Body"),
+              box("loader"),
+              box("inline", [{ type: "expression", value: `"x"` }]),
+            ],
+            props: [
+              expression("root", "title", id("Box")),
+              [
+                "loader-src",
+                {
+                  id: "loader-src",
+                  instanceId: "loader",
+                  name: "src",
+                  type: "string",
+                  value: "https://example.org/x.js",
+                },
+              ],
+            ],
+            dataSources: [
+              [
+                "Box",
+                {
+                  type: "variable",
+                  id: "Box",
+                  name: "tag",
+                  scopeInstanceId: "root",
+                  value: { type: "string", value: "script" },
+                },
+              ],
+            ],
+          })
+        );
+        const { page } = await generated();
+        expect(await undeclaredIn(page)).toEqual([]);
+        expect(page).not.toMatch(/let \[Box\b/);
+        expect(await renderPage(page)).not.toContain("<script");
+      });
+
+      // The page holds what is scoped to its root, present or not, and
+      // everything under it, an instance with the id `:root` included
+      test("holds what prebuild holds: a missing root, a :root root and a :root instance below the root", async () => {
+        const rowParam = (
+          scopeInstanceId: string
+        ): [string, Record<string, unknown>] => [
+          "row-param",
+          {
+            type: "parameter",
+            id: "row-param",
+            name: "row",
+            scopeInstanceId,
+          },
+        ];
+        const named = id("row-param");
+        // a missing root
+        await writeSiteData(
+          createSiteData({
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: `${named}.x`,
+                path: "",
+                rootInstanceId: "ghost",
+                meta: {},
+              },
+            ],
+            instances: [box("root", [], "Body")],
+            dataSources: [rowParam("ghost"), resourceBinding("ghosted")],
+            resources: [resource("ghosted", { url: refused("ghost_url") })],
+          })
+        );
+        let modules = await generated();
+        expect(await undeclaredIn(modules.page)).toEqual([]);
+        expect(await undeclaredIn(modules.resources)).toEqual([]);
+        await runServer(modules.resources);
+        // the root is :root, then a :root instance below the root
+        for (const tree of [
+          [box(":root", ids("box"), "Body")],
+          [box("root", ids(":root"), "Body"), box(":root", ids("box"))],
+        ]) {
+          await rm("app", { recursive: true, force: true });
+          await writeSiteData(
+            createSiteData({
+              pages: [
+                {
+                  id: "home",
+                  name: "Home",
+                  title: '"Home"',
+                  path: "",
+                  rootInstanceId: tree[0][0],
+                  meta: {},
+                },
+              ],
+              instances: [...tree, box("box")],
+              props: [expression("box", "title", `${named}.x`)],
+              dataSources: [rowParam("box")],
+            })
+          );
+          modules = await generated();
+          expect(await undeclaredIn(modules.page)).toEqual([]);
+          await renderPage(modules.page);
+        }
+      });
+
+      test("leaves out a data source or a resource prop that names a Resource the build does not hold", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              box("root", ids("form"), "Body"),
+              box("form", [], "Form"),
+            ],
+            props: [
+              [
+                "form-action",
+                {
+                  id: "form-action",
+                  instanceId: "form",
+                  name: "action",
+                  type: "resource",
+                  value: "gone",
+                },
+              ],
+            ],
+            dataSources: [
+              [
+                "dangling-ds",
+                {
+                  type: "resource",
+                  id: "dangling-ds",
+                  name: "row",
+                  scopeInstanceId: "root",
+                  resourceId: "missing",
+                },
+              ],
+            ],
+          })
+        );
+        const { page, resources: server } = await generated();
+        expect(await undeclaredIn(page)).toEqual([]);
+        expect(await undeclaredIn(server)).toEqual([]);
+        const { resources } = await runServer(server);
+        expect([...resources.data.keys(), ...resources.action.keys()]).toEqual(
+          []
+        );
+      });
+
+      // A Resource named like a global a module reads goes, whether or not an
+      // expression on the page reads it
+      test("publishes a Resource named like a global a module reads, leaving it out", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [box("root", ids("box"), "Body"), box("box")],
+            dataSources: [resourceBinding("global", "items")],
+            resources: [resource("global", { name: "Map" })],
+          })
+        );
+        const { page, resources: server } = await generated();
+        expect(await undeclaredIn(page)).toEqual([]);
+        expect(await undeclaredIn(server)).toEqual([]);
+        const { resources } = await runServer(server);
+        expect([...resources.data.keys(), ...resources.action.keys()]).toEqual(
+          []
+        );
+      });
+
+      // An action is judged against the data sources that ship
+      test("leaves out an action that names a data source publishing leaves out", async () => {
+        const stored = id("stored");
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              box("root", ids("button"), "Body"),
+              [
+                "button",
+                {
+                  id: "button",
+                  component: elementComponent,
+                  tag: "button",
+                  children: [],
+                },
+              ],
+            ] as never,
+            props: [
+              [
+                "button-onClick",
+                {
+                  id: "button-onClick",
+                  instanceId: "button",
+                  name: "onClick",
+                  type: "action",
+                  value: [
+                    {
+                      type: "execute",
+                      args: [],
+                      code: `${stored} = ${id("leak-ds")}`,
+                    },
+                  ],
+                },
+              ],
+            ],
+            dataSources: [
+              [
+                "stored",
+                {
+                  type: "variable",
+                  id: "stored",
+                  name: "stored",
+                  scopeInstanceId: "root",
+                  value: { type: "string", value: "" },
+                },
+              ],
+              resourceBinding("leak"),
+            ],
+            resources: [
+              resource("leak", { url: '"https://example.org/" + /x/.source' }),
+            ],
+          })
+        );
+        const { page } = await generated();
+        expect(await undeclaredIn(page)).toEqual([]);
+        expect(page).not.toContain("onClick=");
+      });
+
+      // An expression names only what the module declares where it is
+      // written
+      const entry = id("entry-item");
+      const freeNameSites = {
+        "an expression naming a Collection's item outside it": {
+          name: "entry",
+          data: { props: [expression("box", "title", `${entry}.x`)] },
+        },
+        "a Collection's own data naming its item": {
+          name: "entry",
+          // with no data the Collection writes nothing
+          renders: false,
+          data: { props: [expression("items", "data", `[${entry}]`)] },
+        },
+        "a Collection's own ws:show naming its item": {
+          name: "entry",
+          data: {
+            props: [expression("items", "data-ws-show", `${entry} === 1`)],
+          },
+        },
+        "a page setting naming a Collection's item": {
+          name: "entry",
+          data: { pageMeta: { description: `${entry}.x` } },
+        },
+        "a Resource's url naming a Collection's item": {
+          name: "entry",
+          data: {
+            resources: [
+              resource("source", { url: `"https://example.org/" + ${entry}` }),
+            ],
+          },
+        },
+        "a Resource's header naming a Collection's item": {
+          name: "entry",
+          data: {
+            resources: [
+              resource("source", {
+                headers: [{ name: "x", value: `${entry}.x` }],
+              }),
+            ],
+          },
+        },
+        "a Resource's body naming a Collection's item": {
+          name: "entry",
+          data: {
+            resources: [
+              resource("source", { method: "post", body: `${entry}.x` }),
+            ],
+          },
+        },
+        "a Resource's email subject naming a Collection's item": {
+          name: "entry",
+          data: {
+            resources: [
+              resource("source", {
+                control: "email",
+                email: { subject: `"New: " + ${entry}` },
+              }),
+            ],
+          },
+        },
+      } as const;
+      const freeNameSiteData = ({
+        props = [],
+        resources = [],
+        pageMeta = {},
+      }: {
+        props?: readonly (readonly [string, Record<string, unknown>])[];
+        resources?: readonly (readonly [string, Record<string, unknown>])[];
+        pageMeta?: Record<string, unknown>;
+      }) => ({
+        pages: [
+          {
+            id: "home",
+            name: "Home",
+            title: '"Home"',
+            path: "",
+            rootInstanceId: "root",
+            meta: pageMeta,
+          },
+        ],
+        instances: [
+          box("root", ids("box", "items"), "Body"),
+          box("box"),
+          box("items", ids("inside"), "ws:collection"),
+          box("inside"),
+        ],
+        props: [
+          ...(props.some(
+            ([, prop]) => prop.instanceId === "items" && prop.name === "data"
+          )
+            ? []
+            : [expression("items", "data", "[1]")]),
+          parameter("items", "item", "entry-item"),
+          expression("inside", "title", `${entry}.x`),
+          ...props,
+        ],
+        dataSources: [
+          [
+            "entry-item",
+            {
+              type: "parameter",
+              id: "entry-item",
+              name: "entry",
+              scopeInstanceId: "items",
+            },
+          ],
+          resourceBinding("loaded"),
+          ...(resources.length === 0 ? [] : [resourceBinding("source")]),
+        ],
+        resources: [resource("loaded"), ...resources],
+      });
+
+      test.each(Object.keys(freeNameSites))(
+        "leaves out %s, so the module reads no name it does not declare",
+        async (label) => {
+          const site: { data: object; renders?: boolean } =
+            freeNameSites[label as keyof typeof freeNameSites];
+          await writeSiteData(
+            createSiteData(freeNameSiteData(site.data) as never)
+          );
+          const { page, resources: server } = await generated();
+          expect(await undeclaredIn(page)).toEqual([]);
+          expect(await undeclaredIn(server)).toEqual([]);
+          // the item is still read inside its Collection
+          if (site.renders !== false) {
+            expect(page).toContain("title={entry?.x}");
+          }
+        }
+      );
+
+      // Whatever the pause's rules leave in place, a module that reads a
+      // name it does not declare, or shadows one, does not ship
+      test.each([
+        {
+          label: "a Collection with two items",
+          error: "reads names it does not declare: row",
+          data: {
+            instances: [
+              box("root", ids("items"), "Body"),
+              box("items", ids("inside"), "ws:collection"),
+              box("inside"),
+            ],
+            props: [
+              expression("items", "data", "[1]"),
+              [
+                "items-item-1",
+                {
+                  ...parameter("items", "item", "row-item")[1],
+                  id: "items-item-1",
+                },
+              ],
+              [
+                "items-item-2",
+                {
+                  ...parameter("items", "item", "plain-item")[1],
+                  id: "items-item-2",
+                },
+              ],
+              expression("inside", "title", `${item}.x`),
+            ],
+            dataSources: [
+              [
+                "row-item",
+                {
+                  type: "parameter",
+                  id: "row-item",
+                  name: "row",
+                  scopeInstanceId: "items",
+                },
+              ],
+              [
+                "plain-item",
+                {
+                  type: "parameter",
+                  id: "plain-item",
+                  name: "item",
+                  scopeInstanceId: "items",
+                },
+              ],
+            ],
+          },
+        },
+        {
+          label: "a data source with a component's id",
+          error: "shadows names: Box",
+          data: {
+            instances: [box("root", ids("box"), "Body"), box("box")],
+            props: [expression("box", "title", id("Box"))],
+            dataSources: [
+              [
+                "Box",
+                {
+                  type: "variable",
+                  id: "Box",
+                  name: "tag",
+                  scopeInstanceId: "root",
+                  value: { type: "string", value: "" },
+                },
+              ],
+            ],
+          },
+        },
+        {
+          label: "a shadowed import named in text",
+          error: "shadows names: Box",
+          data: {
+            instances: [
+              box("root", ids("box", "text"), "Body"),
+              box("box"),
+              box("text", [{ type: "expression", value: '"Box2 Box_12"' }]),
+            ],
+            props: [expression("box", "title", id("Box"))],
+            dataSources: [
+              [
+                "Box",
+                {
+                  type: "variable",
+                  id: "Box",
+                  name: "tag",
+                  scopeInstanceId: "root",
+                  value: { type: "string", value: "" },
+                },
+              ],
+            ],
+          },
+        },
+        {
+          label: "a page whose root is missing",
+          error: "reads names it does not declare: row",
+          data: {
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: `${id("row-param")}.x`,
+                path: "",
+                rootInstanceId: "ghost",
+                meta: {},
+              },
+            ],
+            instances: [box("root", [], "Body")],
+            dataSources: [
+              [
+                "row-param",
+                {
+                  type: "parameter",
+                  id: "row-param",
+                  name: "row",
+                  scopeInstanceId: "ghost",
+                },
+              ],
+            ],
+          },
+        },
+        {
+          label: "a data source scoped below an instance with the root's id",
+          error: "reads names it does not declare: row",
+          data: {
+            instances: [
+              box("root", ids(":root"), "Body"),
+              box(":root", ids("box")),
+              box("box"),
+            ],
+            props: [expression("box", "title", `${id("row-param")}.x`)],
+            dataSources: [
+              [
+                "row-param",
+                {
+                  type: "parameter",
+                  id: "row-param",
+                  name: "row",
+                  scopeInstanceId: "box",
+                },
+              ],
+            ],
+          },
+        },
+        {
+          // input validation refuses it before the module is generated
+          label: "an action that names a data source that does not ship",
+          error:
+            'The property "onClick" of instance "box" cannot be published: Unknown variable.',
+          drop: (bundle: Parameters<typeof dropOrgScript>[0]) => ({
+            ...bundle,
+            build: {
+              ...bundle.build,
+              resources: [],
+              dataSources: bundle.build.dataSources.filter(
+                ([dataSourceId]) => dataSourceId !== "leak-ds"
+              ),
+            },
+          }),
+          data: {
+            instances: [box("root", ids("box"), "Body"), box("box")],
+            props: [
+              [
+                "box-onClick",
+                {
+                  id: "box-onClick",
+                  instanceId: "box",
+                  name: "onClick",
+                  type: "action",
+                  value: [
+                    {
+                      type: "execute",
+                      args: [],
+                      code: `${id("stored")} = ${id("leak-ds")}`,
+                    },
+                  ],
+                },
+              ],
+            ],
+            dataSources: [
+              [
+                "stored",
+                {
+                  type: "variable",
+                  id: "stored",
+                  name: "stored",
+                  scopeInstanceId: "root",
+                  value: { type: "string", value: "" },
+                },
+              ],
+              resourceBinding("leak"),
+            ],
+            resources: [resource("leak")],
+          },
+        },
+        {
+          label: "a component the page does not import",
+          error: "reads names it does not declare: Script",
+          data: {
+            instances: [
+              box("root", ids("script"), "Body"),
+              box("script", [], "x:Script"),
+            ],
+          },
+        },
+        {
+          label: "an action that sets a Resource",
+          error: "reads names it does not declare: set$set",
+          data: {
+            instances: [box("root", ids("box"), "Body"), box("box")],
+            props: [
+              [
+                "box-onClick",
+                {
+                  id: "box-onClick",
+                  instanceId: "box",
+                  name: "onClick",
+                  type: "action",
+                  value: [
+                    {
+                      type: "execute",
+                      args: [],
+                      code: `${id("set-ds")} = 1`,
+                    },
+                  ],
+                },
+              ],
+            ],
+            dataSources: [resourceBinding("set")],
+            resources: [resource("set")],
+          },
+        },
+        ...Object.entries(freeNameSites).map(([label, site]) => ({
+          label,
+          error: `reads names it does not declare: ${site.name}`,
+          data: freeNameSiteData(site.data),
+          drop: undefined,
+        })),
+      ])(
+        "fails the publish of a module with $label, without the pause's rules",
+        async ({ data, drop, error }) => {
+          vi.mocked(dropOrgScript).mockImplementationOnce(
+            drop ?? ((bundle) => bundle)
+          );
+          await writeSiteData(createSiteData(data as never));
+          await expect(generated()).rejects.toThrow(error);
+        }
+      );
+
+      // An expression holds no `<` or `<<` followed later by a token that
+      // starts with `>` (holdsAngleBrackets)
+      test("leaves out a page setting and a Resource that hold a < followed later by a >", async () => {
+        await writeSiteData(
+          createSiteData({
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: '$ws$system < 1 >\n["x"]',
+                path: "",
+                rootInstanceId: "root",
+                meta: { description: "$ws$system < $ws$system >\n$ws$system" },
+              },
+            ],
+            instances: [box("root", [], "Body")],
+            dataSources: [resourceBinding("typed")],
+            resources: [
+              resource("typed", {
+                url: '$ws$system < 1 >\n["a"] < 1 >\n["b"]',
+              }),
+            ],
+          })
+        );
+        const { resources: server } = await generated();
+        expect(server).not.toMatch(/< 1 >|< system/);
+        expect(await undeclaredIn(server)).toEqual([]);
+        const { resources, meta } = await runServer(server);
+        expect(meta).toMatchObject({ title: "" });
+        expect((meta as { description?: unknown }).description).toBeUndefined();
+        expect([...resources.data.keys()]).toEqual([]);
+      });
+
+      // replaceFormActionsWithResources (prebuild.ts) makes a Resource of a
+      // Form's static action after the pause has run, so that Resource is
+      // never checked: it holds JSON literals only
+      test("a Form's action becomes a Resource whose every part is a literal", async () => {
+        const action = 'https://hooks.example/x"}, "marker_form", {"';
+        const props = new Map<string, Prop>([
+          [
+            "form-method",
+            {
+              id: "form-method",
+              instanceId: "form",
+              name: "method",
+              type: "string",
+              value: "post",
+            },
+          ],
+          [
+            "form-action",
+            {
+              id: "form-action",
+              instanceId: "form",
+              name: "action",
+              type: "string",
+              value: action,
+            },
+          ],
+        ]);
+        const synthesized = new Map<string, Resource>();
+        replaceFormActionsWithResources({
+          // it rewrites the map it is given
+          props: new Map(props),
+          instances: new Map([
+            [
+              "form",
+              {
+                type: "instance",
+                id: "form",
+                component: "WebhookForm",
+                children: [],
+              },
+            ],
+          ]),
+          resources: synthesized,
+        });
+        const fields = [...synthesized.values()].flatMap((request) => [
+          request.url,
+          ...(request.searchParams ?? []).map(({ value }) => value),
+          ...request.headers.map(({ value }) => value),
+          ...(request.body === undefined ? [] : [request.body]),
+        ]);
+        expect(fields.length).toBeGreaterThan(0);
+        for (const field of fields) {
+          expect(typeof JSON.parse(field), field).toBe("string");
+        }
+
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              box("root", ids("form"), "Body"),
+              box("form", [], "Form"),
+            ],
+            props: [...props],
+          })
+        );
+        const { page, resources: server } = await generated();
+
+        expect(await undeclaredIn(page)).toEqual([]);
+        expect(await undeclaredIn(server)).toEqual([]);
+        const { resources } = await runServer(server);
+        expect(
+          [...resources.action.values()].map((request) => request.url)
+        ).toEqual([action]);
+      });
+
+      // the registry's templates, rendered as the builder renders them
+      const registryFragments = () => {
+        const componentIds = new Map<object, string>();
+        const componentMetas = new Map<string, WsComponentMeta>();
+        for (const library of canvasComponentLibraries) {
+          const prefix =
+            "namespace" in library && library.namespace !== undefined
+              ? `${library.namespace}:`
+              : "";
+          for (const [name, meta] of Object.entries(library.metas)) {
+            componentMetas.set(`${prefix}${name}`, meta as WsComponentMeta);
+          }
+          for (const [component, componentId] of library.componentIds ?? []) {
+            componentIds.set(component as object, componentId);
+          }
+          for (const [name, component] of Object.entries(library.components)) {
+            componentIds.set(component as object, `${prefix}${name}`);
+          }
+        }
+        return new Map(
+          canvasComponentLibraries.flatMap((library) =>
+            Object.entries(library.templates).map(
+              ([name, meta]): [string, WebstudioFragment] => [
+                name,
+                renderTemplate(
+                  (meta as { template: JSX.Element }).template,
+                  undefined,
+                  [],
+                  { componentIds, componentMetas }
+                ),
+              ]
+            )
+          )
+        );
+      };
+      const siteOf = (fragment: WebstudioFragment) =>
+        createSiteData({
+          instances: [
+            box("root", fragment.children as never, "Body"),
+            ...fragment.instances.map(
+              (instance) => [instance.id, instance] as never
+            ),
+          ],
+          props: fragment.props.map((prop) => [prop.id, prop]),
+          dataSources: fragment.dataSources.map((dataSource) => [
+            dataSource.id,
+            dataSource,
+          ]),
+          resources: fragment.resources.map((resource) => [
+            resource.id,
+            resource,
+          ]),
+        });
+      // a form's submission graph, by the form's id
+      const formCase = (server: string, formId: string) =>
+        server.slice(
+          server.indexOf(`case ${JSON.stringify(formId)}:`),
+          server.indexOf("export const getPageMeta")
+        );
+
+      test("publishes the Form (Beta) template, its email included, leaving nothing out", async () => {
+        const fragment = registryFragments().get("form") as WebstudioFragment;
+        const form = fragment.instances.find(
+          (instance) => instance.component === "ResourceForm"
+        );
+        expect(form).toBeDefined();
+        expect(
+          fragment.resources.some((resource) => resource.control === "email")
+        ).toBe(true);
+        const info = vi.spyOn(log, "info").mockImplementation(() => {});
+        await writeSiteData(siteOf(fragment));
+        const { page, resources: server } = await generated();
+
+        // its result action alone, which reads members of what it gets
+        expect(info).toHaveBeenCalledWith(
+          "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action."
+        );
+        expect(await undeclaredIn(page)).toEqual([]);
+        expect(await undeclaredIn(server)).toEqual([]);
+        const submission = formCase(server, form?.id ?? "");
+        expect(submission).toContain("resources: [");
+        expect(submission).toContain("subject: ");
+        expect(submission).not.toMatch(/^case [^\n]*: return undefined;/);
+      });
+
+      // A Resource Form's own form data is unset across the page that writes
+      // the form; an XML page writes no form
+      test("reads nothing from a Resource Form's form data outside the form, and leaves it out on an XML page", async () => {
+        const fragment = registryFragments().get("form") as WebstudioFragment;
+        const formData = fragment.dataSources.find(
+          (dataSource) => dataSource.name === "formData"
+        );
+        expect(formData).toBeDefined();
+        const outside = expression(
+          "outside",
+          "title",
+          `"Sent: " + ${id(formData?.id ?? "")}.email`
+        );
+        const site = siteOf(fragment);
+        await writeSiteData({
+          ...site,
+          build: {
+            ...site.build,
+            instances: [
+              ...site.build.instances.map(([instanceId, instance]) =>
+                instanceId === "root"
+                  ? [
+                      instanceId,
+                      {
+                        ...(instance as Instance),
+                        children: [
+                          ...(instance as Instance).children,
+                          { type: "id", value: "outside" },
+                        ],
+                      },
+                    ]
+                  : [instanceId, instance]
+              ),
+              [
+                "outside",
+                {
+                  type: "instance",
+                  id: "outside",
+                  component: "Box",
+                  children: [],
+                },
+              ],
+            ],
+            props: [...site.build.props, outside],
+          },
+        } as never);
+        const { page } = await generated();
+        expect(page).toContain("title={");
+        expect(await undeclaredIn(page)).toEqual([]);
+        expect(await renderPage(page)).toContain('title="Sent: undefined"');
+
+        // on an XML page
+        const info = vi.spyOn(log, "info").mockImplementation(() => {});
+        await writeSiteData(
+          createSiteData({
+            pages: [
+              {
+                id: "home",
+                name: "Home",
+                title: '"Feed"',
+                path: "",
+                rootInstanceId: "root",
+                meta: { documentType: "xml" },
+              },
+            ],
+            instances: [
+              box("root", ids("node", "form"), "Body"),
+              ["node", { id: "node", component: "XmlNode", children: [] }],
+              ["form", { id: "form", component: "ResourceForm", children: [] }],
+            ],
+            props: [
+              expression("node", "tag", '"item"'),
+              expression("node", "title", `${id("form-data")}.email`),
+            ],
+            dataSources: [
+              [
+                "form-data",
+                {
+                  type: "parameter",
+                  id: "form-data",
+                  name: "formData",
+                  scopeInstanceId: "form",
+                },
+              ],
+            ],
+          })
+        );
+        await rm("app", { recursive: true, force: true });
+        const xml = await generated();
+        expect(xml.page).not.toContain("email");
+        expect(await undeclaredIn(xml.page)).toEqual([]);
+        expect(info.mock.calls.flat().join("\n")).toContain("left out");
+      });
+
+      test.each([
+        "subject",
+        "body",
+        "senderExpression",
+        "recipientsExpression",
+      ] as const)(
+        "leaves out an email Resource whose %s may not run, loaded with the page or sent by a form, whose submission then fails closed",
+        async (field) => {
+          const fragment = registryFragments().get("form") as WebstudioFragment;
+          const form = fragment.instances.find(
+            (instance) => instance.component === "ResourceForm"
+          );
+          const refusedField = '"a" + (0 < 1 > "marker_email")';
+          const withField = (
+            resource: WebstudioFragment["resources"][number]
+          ) =>
+            resource.control === "email"
+              ? {
+                  ...resource,
+                  email: { ...resource.email, [field]: refusedField },
+                }
+              : resource;
+          // sent by the form
+          const info = vi.spyOn(log, "info").mockImplementation(() => {});
+          await writeSiteData(
+            siteOf({
+              ...fragment,
+              resources: fragment.resources.map(withField),
+            })
+          );
+          const { page, resources: server } = await generated();
+          expect(server).not.toContain("marker_email");
+          expect(info).toHaveBeenCalledWith(
+            // the form's two emails, and its result action
+            "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action and 2 Resources."
+          );
+          expect(await undeclaredIn(page)).toEqual([]);
+          expect(await undeclaredIn(server)).toEqual([]);
+          expect(server).toContain(
+            `case ${JSON.stringify(form?.id)}: return undefined;`
+          );
+
+          // loaded with the page
+          info.mockClear();
+          await writeSiteData(
+            createSiteData({
+              instances: [box("root", [], "Body")],
+              dataSources: [resourceBinding("mail")],
+              resources: [
+                resource("mail", {
+                  method: "post",
+                  control: "email",
+                  email: { recipientMode: "project", [field]: refusedField },
+                }),
+              ],
+            })
+          );
+          await rm("app", { recursive: true, force: true });
+          const loaded = await generated();
+          expect(loaded.resources).not.toContain("marker_email");
+          expect(info).toHaveBeenCalledWith(
+            "Org script is paused until OrganizeOS sites move to their own domain: left out 1 Resource."
+          );
+          expect(await undeclaredIn(loaded.resources)).toEqual([]);
+        }
+      );
+
+      test.each([
+        "String",
+        "Error",
+        "_data",
+        "_action",
+        "_contentData",
+        "_contentDocuments",
+        "documents",
+      ])(
+        "leaves out a variable and a Resource named %s, and what names them",
+        async (name) => {
+          const info = vi.spyOn(log, "info").mockImplementation(() => {});
+          await writeSiteData(
+            createSiteData({
+              instances: [box("root", ids("box"), "Body"), box("box")],
+              props: [
+                expression("box", "title", `${id("named")}`),
+                expression("box", "data-loaded", `${id("loaded-ds")}.x`),
+              ],
+              dataSources: [
+                [
+                  "named",
+                  {
+                    type: "variable",
+                    id: "named",
+                    name,
+                    scopeInstanceId: "root",
+                    value: { type: "string", value: "" },
+                  },
+                ],
+                resourceBinding("loaded"),
+              ],
+              resources: [resource("loaded", { name })],
+            })
+          );
+          const { page, resources: server } = await generated();
+          expect(page).not.toContain("title={");
+          expect(page).not.toContain("data-loaded");
+          expect(await undeclaredIn(page)).toEqual([]);
+          expect(await undeclaredIn(server)).toEqual([]);
+          expect(info.mock.calls.flat().join("\n")).toMatch(/1 Resource/);
+        }
+      );
+
+      test("writes no copy of a refused expression on a prop typed as text", async () => {
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              box("root", ids("refused", "kept"), "Body"),
+              ["refused", { id: "refused", component: "Image", children: [] }],
+              ["kept", { id: "kept", component: "Image", children: [] }],
+            ],
+            props: [
+              expression("refused", "alt", '"marker_alt" + (0 < 1 > 2)'),
+              expression("kept", "alt", '"kept"'),
+            ],
+          })
+        );
+        const { page } = await generated();
+        expect(page).not.toContain("marker_alt");
+        // a prop the meta types as text keeps the value that may run
+        expect(page).toContain(
+          'alt={"kept" == null ? "kept" : String("kept")}'
+        );
+      });
+
+      test("publishes a bare-word title as text, and leaves out one input validation refuses", async () => {
+        const titleOf = async (title: string) => {
+          await writeSiteData(
+            createSiteData({
+              pages: [
+                {
+                  id: "home",
+                  name: "Home",
+                  title,
+                  path: "",
+                  rootInstanceId: "root",
+                  meta: {},
+                },
+              ],
+              instances: [box("root", [], "Body")],
+            })
+          );
+          await rm("app", { recursive: true, force: true });
+          const { resources: server } = await generated();
+          return (await runServer(server)).meta as { title: unknown };
+        };
+        expect((await titleOf("Hello")).title).toBe("Hello");
+        expect((await titleOf("Hello2")).title).toBe("");
+      });
+
+      test("drops uncounted what a statically hidden subtree holds that input validation refuses, and the build passes it", async () => {
+        const info = vi.spyOn(log, "info").mockImplementation(() => {});
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              box("root", ids("hidden"), "Body"),
+              box("hidden", ids("inside")),
+              box("inside", [
+                { type: "expression", value: '"marker_child".constructor' },
+              ]),
+            ],
+            props: [
+              [
+                "hidden-show",
+                {
+                  id: "hidden-show",
+                  instanceId: "hidden",
+                  name: "data-ws-show",
+                  type: "boolean",
+                  value: false,
+                },
+              ],
+              expression("inside", "title", '"marker_prop".constructor'),
+              // the pause's rule refuses it, input validation passes it, and
+              // it never ships
+              expression("inside", "data-x", '"marker_kept" + (0 < 1 > 2)'),
+            ],
+          })
+        );
+        const { page } = await generated();
+        expect(page).not.toContain("marker_");
+        expect(info.mock.calls.flat().join("\n")).not.toContain("left out");
+      });
+
+      // D7: while org script is paused publishing refuses a build that would
+      // materialize MDX, so a Content Block it lets through publishes no
+      // content of its own: none of what the block's source or document
+      // would write
+      test("publishes no Content Block content from a build it lets through", async () => {
+        const block = (props: Array<[string, Record<string, unknown>]>) =>
+          createSiteData({
+            instances: [
+              box("root", ids("block"), "Body"),
+              ["block", { id: "block", component: "ws:block", children: [] }],
+            ],
+            props,
+          });
+        await writeSiteData(block([]));
+        const { page, resources: server } = await generated();
+        expect(page).not.toContain("frontmatter");
+        expect(page).not.toContain("contentSource");
+        expect(server).not.toContain("_contentDocuments");
+        expect(await undeclaredIn(page)).toEqual([]);
+
+        // a source that is not MDX publishes nothing
+        await writeSiteData({
+          assetIndex: await createTestAssetIndex([]),
+          ...block([
+            [
+              "block-src",
+              {
+                id: "block-src",
+                instanceId: "block",
+                name: "src",
+                type: "asset",
+                value: "asset-image",
+              },
+            ],
+          ]),
+        } as ReturnType<typeof createSiteData>);
+        await rm("app", { recursive: true, force: true });
+        await expect(generated()).rejects.toThrow(
+          'requires unavailable MDX Asset "asset-image"'
+        );
+      });
+
+      // While org script is paused an action names its args only where its
+      // component passes plain data, so no event reaches a variable, and an
+      // expression that reads a host object through one reads nothing
+      // (docs/ORGANIZEOS-FORK.md section 10, Actions)
+      test("drops an action that stores its event, so an expression that reads one reads nothing", async () => {
+        const stored = id("stored");
+        await writeSiteData(
+          createSiteData({
+            instances: [
+              box("root", ids("button", "image"), "Body"),
+              [
+                "button",
+                {
+                  id: "button",
+                  component: elementComponent,
+                  tag: "button",
+                  children: [],
+                },
+              ],
+              [
+                "image",
+                {
+                  id: "image",
+                  component: elementComponent,
+                  tag: "img",
+                  children: [],
+                },
+              ],
+            ] as never,
+            dataSources: [
+              [
+                "stored",
+                {
+                  type: "variable",
+                  id: "stored",
+                  name: "stored",
+                  scopeInstanceId: "root",
+                  value: { type: "string", value: "" },
+                },
+              ],
+            ],
+            props: [
+              [
+                "button-onClick",
+                {
+                  id: "button-onClick",
+                  instanceId: "button",
+                  name: "onClick",
+                  type: "action",
+                  value: [
+                    {
+                      type: "execute",
+                      args: ["event"],
+                      code: `${stored} = event`,
+                    },
+                  ],
+                },
+              ],
+              expression(
+                "image",
+                "src",
+                `"https://example.org/c?" + ${stored}.view.name`
+              ),
+            ],
+          })
+        );
+        const { page } = await generated();
+
+        expect(page).not.toContain("onClick=");
+        expect(page).not.toMatch(/= event\b/);
+        expect(await undeclaredIn(page)).toEqual([]);
+      });
     });
 
     // T12, for the props that choose or fill an element
@@ -7855,6 +10447,17 @@ export const createManagedFormResourceFetch = ({ request, projectDomain }: { req
       const info = vi.spyOn(log, "info").mockImplementation(() => {});
       await writeSiteData(
         createSiteData({
+          // a page title is an expression; the builder writes a string literal
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: '"Home"',
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+          ],
           pageMeta: { code: "<style>x{}</style>" },
           instances: [
             [
@@ -12926,6 +15529,10 @@ export const createManagedFormResourceFetch = () => {
   });
 
   test("prerenders dynamic SSG paths from parameterized Assets resources", async () => {
+    // OrganizeOS fork: its query names a route parameter by a bare name,
+    // which no expression may while org script is paused (the builder writes
+    // the system data's name, which may)
+    publishAsIfOrgScriptMayRun();
     const documents = [
       {
         ...indexedDocument,

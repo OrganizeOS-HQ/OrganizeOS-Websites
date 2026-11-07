@@ -1321,6 +1321,9 @@ importers:
       tus-js-client:
         specifier: ^4.3.1
         version: 4.3.1
+      typescript-5:
+        specifier: npm:typescript@5.8.2
+        version: typescript@5.8.2
       warn-once:
         specifier: ^0.1.1
         version: 0.1.1
@@ -1442,6 +1445,9 @@ importers:
       '@webstudio-is/sdk-components-registry':
         specifier: workspace:*
         version: link:../sdk-components-registry
+      '@webstudio-is/template':
+        specifier: workspace:*
+        version: link:../template
       '@webstudio-is/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig

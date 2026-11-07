@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   blockComponent,
   blockBodyComponent,
@@ -19,6 +19,27 @@ import {
   getBlockTemplateNameConfirmation,
   resolveContentBlockSourceAssetId,
 } from "./block";
+
+// OrganizeOS fork: upstream's tests of a Content Block's source run with org
+// script paused, as the builder runs them, except those that compute a bare
+// name, keyed by name: while org script is paused an expression names only data
+// sources (expressionMayRun). Those run with org script allowed, as upstream
+// runs them (docs/ORGANIZEOS-FORK.md section 10).
+const orgScript = vi.hoisted(() => ({ mayRun: false }));
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@organizeos/site-components/org-script")
+  >()),
+  orgScriptMayRun: () => orgScript.mayRun,
+}));
+const testsWithOrgScriptAllowed = new Set([
+  "block tree helpers > resolves direct sources without expression values",
+]);
+beforeEach(() => {
+  orgScript.mayRun = testsWithOrgScriptAllowed.has(
+    expect.getState().currentTestName ?? ""
+  );
+});
 
 const createInstance = (
   id: Instance["id"],

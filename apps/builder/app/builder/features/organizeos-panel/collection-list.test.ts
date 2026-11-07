@@ -10,14 +10,20 @@ import {
   type Prop,
   type Resource,
   type ResourceRequest,
+  type WebstudioData,
   coreMetas,
   encodeDataVariableId,
+  getAllPages,
 } from "@webstudio-is/sdk";
 import { lintExpression, transpileExpression } from "@webstudio-is/expression";
 import {
   findAvailableVariables,
   isTreeSatisfyingContentModel,
 } from "@webstudio-is/project-build/runtime";
+import {
+  expressionMayRun,
+  findPausedExpressions,
+} from "@organizeos/site-components/org-script";
 import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
 import {
   $assets,
@@ -42,6 +48,15 @@ import {
 } from "~/shared/nano-states";
 import { getResourceKey } from "~/shared/resources";
 import { buildCollectionResourcePresets } from "~/shared/db/resource-presets.server";
+import {
+  bundleVersion,
+  publishedProjectBundle,
+  type PublishedProjectBundle,
+} from "@webstudio-is/protocol";
+import { serializePages } from "@webstudio-is/project-migrations/pages";
+// What prebuild runs on the project bundle, read from the CLI as the Publish
+// dialog's blocks test reads it
+import { dropOrgScript } from "../../../../../../packages/cli/src/organizeos-org-script";
 import { loadCollectionError } from "./collection-schema";
 import {
   type CollectionListOptions,
@@ -488,6 +503,37 @@ describe("insertCollectionList: the empty and error boxes", () => {
   });
 });
 
+// The project bundle prebuild reads, as the server serializes a build and as
+// prebuild parses it (organizeos-publish-paused-script.blocks.test.tsx)
+const toBundle = (data: WebstudioData): PublishedProjectBundle => {
+  const allPages = getAllPages(data.pages);
+  return publishedProjectBundle.parse({
+    bundleVersion,
+    origin: "https://assets.example",
+    projectDomain: "example",
+    projectTitle: "Example",
+    page: allPages[0],
+    pages: allPages,
+    assets: [],
+    build: {
+      id: "build-1",
+      projectId: "project-1",
+      version: 1,
+      createdAt: "2026-11-05T00:00:00.000Z",
+      updatedAt: "2026-11-05T00:00:00.000Z",
+      pages: serializePages(data.pages),
+      breakpoints: [...data.breakpoints],
+      styles: [...data.styles],
+      styleSources: [...data.styleSources],
+      styleSourceSelections: [...data.styleSourceSelections],
+      props: [...data.props],
+      dataSources: [...data.dataSources],
+      resources: [...data.resources],
+      instances: [...data.instances],
+    },
+  });
+};
+
 describe("insertCollectionList: placement and errors", () => {
   test("goes in at the selection", async () => {
     selectInstance(["box", "homeBody"]);
@@ -570,6 +616,21 @@ describe("insertCollectionList: placement and errors", () => {
         lintExpression({ expression, availableVariables }),
         expression
       ).toEqual([]);
+      expect(expressionMayRun(expression), expression).toBe(true);
     }
+    // and each where publishing writes it, while org script is paused
+    const pages = $pages.get();
+    expect(
+      findPausedExpressions({
+        pages: pages === undefined ? [] : getAllPages(pages),
+        instances,
+        props: $props.get().values(),
+        dataSources,
+        resources: $resources.get(),
+      })
+    ).toEqual([]);
+    // and publishing keeps the build as it is
+    const bundle = toBundle(getWebstudioData());
+    expect(dropOrgScript(bundle, { mayRun: false })).toBe(bundle);
   });
 });
