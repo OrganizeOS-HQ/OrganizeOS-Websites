@@ -248,7 +248,7 @@ describe("PausedScriptBanner", () => {
     ]);
   });
 
-  test("lists what is paused under its heading, and says why and that it is kept, in two lines", () => {
+  test("lists what is paused under its heading, and nothing more", () => {
     setBuild({ code: "<script>1</script>", customCode: "<style>x{}</style>" });
     const host = renderBanner();
     const items = Array.from(host.querySelectorAll("li")).map(
@@ -258,15 +258,13 @@ describe("PausedScriptBanner", () => {
       "HTML Embed on Home",
       "Custom code (Project settings)",
     ]);
-    // the heading, the list, the reason: nothing else
+    // the heading and the list: no explanation
     const list = host.querySelector("ul");
     expect(list?.previousElementSibling?.textContent).toBe(
       "Paused, not published"
     );
-    expect(list?.nextElementSibling?.textContent).toBe(
-      "Scripts could read visitors' OrganizeOS sign-in, so these stay off until that's fixed. Your work is kept."
-    );
-    expect(list?.nextElementSibling?.nextElementSibling).toBeNull();
+    expect(list?.previousElementSibling?.previousElementSibling).toBeNull();
+    expect(list?.nextElementSibling).toBeNull();
   });
 
   test("names an element publishing drops for its tag, a script among them, as one with an unsupported tag", () => {

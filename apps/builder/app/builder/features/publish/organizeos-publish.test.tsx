@@ -25,12 +25,14 @@ import {
 } from "~/shared/sync/data-stores";
 import { $planFeatures } from "~/shared/nano-states";
 import { getResourcePresetIds } from "~/shared/organizeos-preset-ids";
+import { planBadgeLabel } from "~/shared/branding";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
 import { OrganizeosPublishContent } from "./organizeos-publish";
 import type { LatestBuildLike } from "./organizeos-publish-status";
 
-// The dialog reads the site's addresses and launch state from the builder's
-// rest.organizeos-site route, through the CSRF-carrying fetch
+// The dialog reads the org's addresses from the builder's rest.organizeos-site
+// route, publishes through rest.organizeos-publish and refreshes the project
+// through tRPC, all through the CSRF-carrying fetch
 const { routeFetch } = vi.hoisted(() => ({ routeFetch: vi.fn() }));
 
 vi.mock("~/shared/fetch.client", () => ({
@@ -52,34 +54,91 @@ const site: OrganizeosSite = {
   blocksEnabled: true,
 };
 
-const addresses = {
-  ok: true,
-  host: "votelabor.org",
-  origin: "https://votelabor.org",
-  manageDomainsUrl: "https://app.organizeos.org/acme/settings/domain",
-  websiteUrl: "https://app.organizeos.org/acme/website",
+const minutesAgo = (minutes: number) =>
+  new Date(Date.now() - minutes * 60 * 1000).toISOString();
+
+type Target = {
+  key: string;
+  host: string;
+  builtin: boolean;
+  main: boolean;
+  publishedAt: string | null;
+  live: boolean;
 };
+
+const builtinTarget: Target = {
+  key: "builtin",
+  host: "acme.organizeos.org",
+  builtin: true,
+  main: false,
+  publishedAt: minutesAgo(10),
+  live: true,
+};
+const mainTarget: Target = {
+  key: "www.acme.org",
+  host: "www.acme.org",
+  builtin: false,
+  main: true,
+  publishedAt: null,
+  live: false,
+};
+const otherTarget: Target = {
+  key: "acme.net",
+  host: "acme.net",
+  builtin: false,
+  main: false,
+  publishedAt: null,
+  live: false,
+};
+
+const notLive = (target: Target): Target => ({
+  ...target,
+  live: false,
+  publishedAt: null,
+});
 
 type Answer = Record<string, unknown>;
 
-/** The route answers these, in turn, and the last one from then on. */
-const routeAnswers = (...answers: Array<Answer | Error | number>) => {
-  let index = 0;
-  routeFetch.mockImplementation(async () => {
-    const answer = answers[Math.min(index, answers.length - 1)];
-    index += 1;
-    if (answer instanceof Error) {
-      throw answer;
-    }
-    if (typeof answer === "number") {
-      return Response.json({ ok: false }, { status: answer });
-    }
-    return Response.json(answer);
-  });
+const answerWith = (targets: Target[] | undefined, change: Answer = {}) => ({
+  ok: true,
+  host: "www.acme.org",
+  origin: "https://www.acme.org",
+  status: "live",
+  manageDomainsUrl: "https://app.organizeos.org/acme/settings/domain",
+  ...(targets === undefined ? {} : { targets }),
+  ...change,
+});
+
+type Reply = Answer | Error | number | Promise<Response>;
+
+const reply = async (answer: Reply) => {
+  if (answer instanceof Error) {
+    throw answer;
+  }
+  if (answer instanceof Promise) {
+    return answer;
+  }
+  if (typeof answer === "number") {
+    return Response.json({ ok: false }, { status: answer });
+  }
+  return Response.json(answer);
 };
 
-const minutesAgo = (minutes: number) =>
-  new Date(Date.now() - minutes * 60 * 1000).toISOString();
+let siteReplies: Reply[] = [];
+let publishReply: Reply = { ok: true };
+/** What the project refresh answers; the current project when unset. */
+let refreshedProject: Project | undefined;
+
+/** The addresses read answers these, in turn, and the last one from then on. */
+const routeAnswers = (...answers: Reply[]) => {
+  siteReplies = answers;
+};
+
+const calls = (path: string) =>
+  routeFetch.mock.calls.filter(([url]) => String(url).includes(path));
+const siteReads = () => calls("/rest/organizeos-site/");
+const publishCalls = () => calls("/rest/organizeos-publish/");
+const projectRefreshes = () => calls("/trpc/domain.project");
 
 const setProject = (latestBuildVirtual: null | LatestBuildLike) => {
   $project.set({
@@ -91,7 +150,7 @@ const setProject = (latestBuildVirtual: null | LatestBuildLike) => {
 
 /** Lets the route's answer reach the dialog. */
 const settle = async () => {
-  for (let turn = 0; turn < 5; turn += 1) {
+  for (let turn = 0; turn < 8; turn += 1) {
     await act(async () => {
       await Promise.resolve();
     });
@@ -138,8 +197,65 @@ const links = (host: HTMLElement) =>
     link.getAttribute("target"),
   ]);
 
-const warning =
-  "This version can't go live yet. Publish again after the next builder update.";
+const publishButton = (host: HTMLElement) =>
+  Array.from(host.querySelectorAll("button")).find(
+    // a pending button keeps its label beside its loading dots
+    (button) => button.textContent?.startsWith("Publish to selected")
+  );
+
+const checkboxes = (host: HTMLElement) =>
+  Array.from(
+    host.querySelectorAll<HTMLButtonElement>('button[role="checkbox"]')
+  );
+
+/** Each row's host and whether it is ticked, in order. */
+const ticks = (host: HTMLElement) =>
+  checkboxes(host).map((box) => [
+    box.getAttribute("aria-label"),
+    box.getAttribute("aria-checked") === "true",
+  ]);
+
+/** Each row's text: the host, then its label, Live or Not live, and when. */
+const rows = (host: HTMLElement) =>
+  checkboxes(host).map((box) => box.parentElement?.textContent);
+
+const checkboxFor = (host: HTMLElement, name: string) =>
+  checkboxes(host).find((box) => box.getAttribute("aria-label") === name);
+
+const click = async (element: HTMLElement | undefined) => {
+  expect(element).toBeDefined();
+  await act(async () => {
+    element?.click();
+    await Promise.resolve();
+  });
+  await settle();
+};
+
+const stubTooltipMeasuring = () => {
+  // an open tooltip measures its arrow
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  );
+};
+
+/** Hovers the element until its tooltip opens, and answers the tooltip's text. */
+const hover = (element: Element | undefined) => {
+  expect(element).toBeDefined();
+  vi.useFakeTimers();
+  act(() => {
+    element?.dispatchEvent(new MouseEvent("pointermove", { bubbles: true }));
+  });
+  act(() => {
+    vi.runAllTimers();
+  });
+  vi.useRealTimers();
+  return document.body.querySelector('[role="tooltip"]')?.textContent;
+};
 
 beforeEach(() => {
   const pages = createDefaultPages({ rootInstanceId: "body" });
@@ -161,7 +277,33 @@ beforeEach(() => {
   $assets.set(new Map());
   $planFeatures.set(defaultPlanFeatures);
   routeFetch.mockReset();
-  routeAnswers({ ...addresses, status: "not_launched" });
+  siteReplies = [answerWith([builtinTarget, mainTarget, otherTarget])];
+  publishReply = { ok: true };
+  refreshedProject = undefined;
+  let siteIndex = 0;
+  routeFetch.mockImplementation(async (url: unknown) => {
+    const path = String(url);
+    if (path.startsWith("/rest/organizeos-site/")) {
+      const answer = siteReplies[Math.min(siteIndex, siteReplies.length - 1)];
+      siteIndex += 1;
+      return reply(answer);
+    }
+    if (path.startsWith("/rest/organizeos-publish/")) {
+      return reply(publishReply);
+    }
+    if (path.includes("/trpc/")) {
+      if (refreshedProject !== undefined) {
+        // the refresh answers after the publish wrote its build
+        return Response.json([
+          { result: { data: { success: true, project: refreshedProject } } },
+        ]);
+      }
+      return Response.json([
+        { result: { data: { success: true, project: $project.get() } } },
+      ]);
+    }
+    throw new Error(`unexpected request ${path}`);
+  });
 });
 
 afterEach(() => {
@@ -175,176 +317,200 @@ describe("the OrganizeOS Publish dialog", () => {
   test("reads the addresses for this project when it opens", async () => {
     setProject(null);
     await render();
-    expect(routeFetch).toHaveBeenCalledTimes(1);
-    expect(routeFetch.mock.calls[0][0]).toBe("/rest/organizeos-site/project-1");
+    expect(siteReads()).toHaveLength(1);
+    expect(siteReads()[0][0]).toBe("/rest/organizeos-site/project-1");
   });
 
-  test("a live site: Publishing to its host, linked, and Manage domains, and nothing more", async () => {
-    routeAnswers({ ...addresses, status: "live", launchable: true });
+  test("lists one row per address in the read's order: the built-in labelled Built-in, the main Main", async () => {
+    setProject(null);
+    const host = await render();
+    expect(rows(host)).toEqual([
+      "acme.organizeos.orgBuilt-in · Live · 10 minutes ago",
+      "www.acme.orgMain · Not live",
+      "acme.netNot live",
+    ]);
+  });
+
+  test("the last-published time has the exact time in a tooltip", async () => {
+    stubTooltipMeasuring();
+    setProject(null);
+    const host = await render();
+    const time = Array.from(host.querySelectorAll("span")).find(
+      (element) => element.textContent === "10 minutes ago"
+    );
+    expect(hover(time)).toBe(
+      new Date(builtinTarget.publishedAt ?? "").toLocaleString()
+    );
+  });
+
+  test("a live host links to the site in a new tab; a host not live is plain", async () => {
     setProject(null);
     const host = await render();
     expect(links(host)).toEqual([
-      ["votelabor.org", "https://votelabor.org", "_blank"],
+      ["acme.organizeos.org", "https://acme.organizeos.org", "_blank"],
       [
         "Manage domains ↗",
         "https://app.organizeos.org/acme/settings/domain",
         "_blank",
       ],
     ]);
-    expect(host.textContent).toBe(
-      "Publishing to votelabor.orgManage domains ↗Not published yet.Publish"
-    );
   });
 
-  test("a site not launched: its host unlinked, Manage domains, and Not live yet with the link to launch it", async () => {
-    setProject(null);
-    const host = await render();
-    expect(links(host)).toEqual([
-      [
-        "Manage domains ↗",
-        "https://app.organizeos.org/acme/settings/domain",
-        "_blank",
-      ],
-      [
-        "Launch your website from OrganizeOS ↗",
-        "https://app.organizeos.org/acme/website",
-        "_blank",
-      ],
-    ]);
-    expect(host.textContent).toBe(
-      "Publishing to votelabor.orgManage domains ↗Not live yet. Launch your website from OrganizeOS ↗Not published yet.Publish"
-    );
-  });
-
-  test("an offline site: its host unlinked, Manage domains, and offline with the link to put it back", async () => {
-    routeAnswers({ ...addresses, status: "offline", launchable: false });
-    setProject(null);
-    const host = await render();
-    expect(links(host)).toEqual([
-      [
-        "Manage domains ↗",
-        "https://app.organizeos.org/acme/settings/domain",
-        "_blank",
-      ],
-      [
-        "Put it back from OrganizeOS ↗",
-        "https://app.organizeos.org/acme/website",
-        "_blank",
-      ],
-    ]);
-    expect(host.textContent).toBe(
-      "Publishing to votelabor.orgManage domains ↗Your website is offline. Put it back from OrganizeOS ↗Not published yet.Publish"
-    );
-  });
-
-  test("the warning shows only for a live site whose version can't go live", async () => {
-    routeAnswers({ ...addresses, status: "live", launchable: false });
-    setProject(null);
-    const host = await render();
-    expect(textOf(host, /^This version/)).toBe(warning);
-    expect(host.textContent).toBe(
-      `Publishing to votelabor.orgManage domains ↗Not published yet.${warning}Publish`
-    );
-    unmount();
-
-    for (const answer of [
-      { status: "offline", launchable: false },
-      { status: "not_launched", launchable: false },
-      { status: "live", launchable: true },
-      { status: "live" },
-    ]) {
-      routeAnswers({ ...addresses, ...answer });
-      const other = await render();
-      expect(other.textContent, JSON.stringify(answer)).not.toContain(
-        "This version"
-      );
-      unmount();
-    }
-  });
-
-  test("a failed read shows no address, no launch line and no warning, and Publish stays", async () => {
-    for (const answer of [
-      { ok: false },
-      403,
-      new Error("network"),
-      { ...addresses, status: "launched" },
-      { ...addresses, status: "live", origin: "javascript:alert(1)" },
-      {
-        ...addresses,
-        status: "live",
-        manageDomainsUrl: "javascript:alert(1)",
-      },
-    ]) {
-      routeAnswers(answer);
-      setProject(null);
-      const host = await render();
-      const label = answer instanceof Error ? "error" : JSON.stringify(answer);
-      expect(host.textContent, label).toBe("Not published yet.Publish");
-      expect(links(host), label).toEqual([]);
-      unmount();
-    }
-  });
-
-  test("shows no platform address of its own, no copy or open buttons, and no Site settings", async () => {
-    routeAnswers({ ...addresses, status: "live" });
-    setProject(null);
-    const host = await render();
-    expect(host.textContent).not.toContain("acme.organizeos.org");
-    expect(host.textContent).not.toContain("Site settings");
-    expect(host.textContent).not.toContain("Your site");
-    expect(
-      host.querySelector(
-        '[aria-label="Copy site link"], [aria-label="Open site"]'
-      )
-    ).toBeNull();
-  });
-
-  test("the host has a tooltip when it does not fit", async () => {
-    // an open tooltip measures its arrow
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-      }
-    );
+  test("a host that does not fit is truncated, with its full text in a tooltip", async () => {
+    stubTooltipMeasuring();
     vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(100);
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(300);
     const long = "www.a-long-custom-domain-for-the-campaign.org";
-    routeAnswers({
-      ...addresses,
-      host: long,
-      origin: `https://${long}`,
-      status: "live",
-    });
+    routeAnswers(
+      answerWith([builtinTarget, { ...mainTarget, key: long, host: long }])
+    );
     setProject(null);
     const host = await render();
-    vi.useFakeTimers();
-    const row = Array.from(host.querySelectorAll("*")).find(
-      (element) => element.textContent === `Publishing to ${long}`
+    const cell = Array.from(host.querySelectorAll("label")).find(
+      (element) => element.textContent === long
     );
-    expect(row).toBeDefined();
-    act(() => {
-      row?.dispatchEvent(new MouseEvent("pointermove", { bubbles: true }));
-    });
-    act(() => {
-      vi.runAllTimers();
-    });
-    expect(document.body.querySelector('[role="tooltip"]')?.textContent).toBe(
-      long
-    );
+    expect(hover(cell?.parentElement ?? undefined)).toBe(long);
   });
 
-  test("a publish that settles reads the addresses again", async () => {
+  test("before the first go-live nothing is ticked and Publish to selected is disabled", async () => {
+    routeAnswers(
+      answerWith([notLive(builtinTarget), mainTarget, otherTarget], {
+        status: "not_launched",
+        launchable: false,
+      })
+    );
+    setProject(null);
+    const host = await render();
+    expect(ticks(host)).toEqual([
+      ["acme.organizeos.org", false],
+      ["www.acme.org", false],
+      ["acme.net", false],
+    ]);
+    expect(publishButton(host)?.disabled).toBe(true);
+    // ticking one enables it
+    await click(checkboxFor(host, "www.acme.org"));
+    expect(publishButton(host)?.disabled).toBe(false);
+    await click(checkboxFor(host, "www.acme.org"));
+    expect(publishButton(host)?.disabled).toBe(true);
+  });
+
+  test("the live addresses are ticked when it opens", async () => {
+    routeAnswers(
+      answerWith([builtinTarget, mainTarget, { ...otherTarget, live: true }])
+    );
+    setProject(null);
+    const host = await render();
+    expect(ticks(host)).toEqual([
+      ["acme.organizeos.org", true],
+      ["www.acme.org", false],
+      ["acme.net", true],
+    ]);
+  });
+
+  test("Publish to selected sends the ticked keys, in row order, and nothing through upstream's publish", async () => {
+    setProject(null);
+    const host = await render();
+    await click(checkboxFor(host, "acme.net"));
+    await click(checkboxFor(host, "www.acme.org"));
+    await click(publishButton(host));
+    expect(publishCalls()).toHaveLength(1);
+    const [url, init] = publishCalls()[0] as [string, RequestInit];
+    expect(url).toBe("/rest/organizeos-publish/project-1");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      targets: ["builtin", "www.acme.org", "acme.net"],
+    });
+    expect(calls("/trpc/domain.publish")).toEqual([]);
+  });
+
+  test.each([
+    ["an ok", { ok: true } as Reply],
+    ["a refusal", { ok: false, error: "unknown_target" } as Reply],
+    ["a timeout", new DOMException("stopped", "TimeoutError") as Reply],
+  ])(
+    "after %s it refreshes the project and reads again, and the rows show the new read",
+    async (_name, answer) => {
+      publishReply = answer;
+      routeAnswers(
+        answerWith([builtinTarget, mainTarget, otherTarget]),
+        answerWith([builtinTarget, { ...mainTarget, live: true }, otherTarget])
+      );
+      setProject(null);
+      const host = await render();
+      await click(publishButton(host));
+      expect(projectRefreshes()).toHaveLength(1);
+      expect(siteReads()).toHaveLength(2);
+      expect(rows(host)[1]).toBe("www.acme.orgMain · Live");
+    }
+  );
+
+  test("a person's ticks hold while their publish is pending, and the read after it settles ticks what is live", async () => {
+    routeAnswers(
+      answerWith([builtinTarget, mainTarget, otherTarget]),
+      // read after the publish answered: nothing new is live yet
+      answerWith([builtinTarget, mainTarget, otherTarget]),
+      // read after the build settled: OrganizeOS put the main live
+      answerWith([builtinTarget, { ...mainTarget, live: true }, otherTarget])
+    );
+    setProject(null);
+    refreshedProject = {
+      id: "project-1",
+      domain: "acme",
+      latestBuildVirtual: {
+        createdAt: minutesAgo(0),
+        publishStatus: "PENDING",
+      },
+    } as unknown as Project;
+    const host = await render();
+    await click(checkboxFor(host, "www.acme.org"));
+    await click(checkboxFor(host, "acme.net"));
+    await click(publishButton(host));
+    expect(textOf(host, /^Publishing,/)).toMatch(/^Publishing, started/);
+    expect(ticks(host)).toEqual([
+      ["acme.organizeos.org", true],
+      ["www.acme.org", true],
+      ["acme.net", true],
+    ]);
+    // pending: Publish to selected waits
+    expect(publishButton(host)?.disabled).toBe(true);
+
+    act(() => {
+      setProject({ createdAt: minutesAgo(0), publishStatus: "PUBLISHED" });
+    });
+    await settle();
+    expect(siteReads()).toHaveLength(3);
+    expect(ticks(host)).toEqual([
+      ["acme.organizeos.org", true],
+      ["www.acme.org", true],
+      ["acme.net", false],
+    ]);
+  });
+
+  test("a ticked address the newer read no longer lists is dropped", async () => {
+    routeAnswers(
+      answerWith([builtinTarget, mainTarget, otherTarget]),
+      answerWith([builtinTarget, mainTarget])
+    );
+    publishReply = { ok: false, error: "unknown_target" };
+    setProject(null);
+    const host = await render();
+    await click(checkboxFor(host, "acme.net"));
+    await click(publishButton(host));
+    expect(ticks(host)).toEqual([
+      ["acme.organizeos.org", true],
+      ["www.acme.org", false],
+    ]);
+  });
+
+  test("a publish that settles, failed or timed out included, reads the addresses again", async () => {
     setProject({ createdAt: minutesAgo(1), publishStatus: "PENDING" });
     await render();
-    expect(routeFetch).toHaveBeenCalledTimes(1);
+    expect(siteReads()).toHaveLength(1);
     act(() => {
       setProject({ createdAt: minutesAgo(1), publishStatus: "PUBLISHED" });
     });
     await settle();
-    expect(routeFetch).toHaveBeenCalledTimes(2);
+    expect(siteReads()).toHaveLength(2);
 
     act(() => {
       setProject({ createdAt: minutesAgo(1), publishStatus: "PENDING" });
@@ -353,82 +519,202 @@ describe("the OrganizeOS Publish dialog", () => {
       setProject({ createdAt: minutesAgo(1), publishStatus: "FAILED" });
     });
     await settle();
-    expect(routeFetch).toHaveBeenCalledTimes(3);
+    expect(siteReads()).toHaveLength(3);
+
+    act(() => {
+      setProject({ createdAt: minutesAgo(1), publishStatus: "PENDING" });
+    });
+    // still pending past the executor's timeout
+    act(() => {
+      setProject({ createdAt: minutesAgo(26), publishStatus: "PENDING" });
+    });
+    await settle();
+    expect(siteReads()).toHaveLength(4);
   });
 
-  test("a slow first read never replaces the read after a publish settles", async () => {
-    vi.spyOn(toast, "success").mockImplementation(() => "");
-    let finishFirst: (response: Response) => void = () => {};
-    routeFetch
-      .mockImplementationOnce(
-        () =>
-          new Promise<Response>((resolve) => {
-            finishFirst = resolve;
-          })
-      )
-      .mockImplementationOnce(async () =>
-        Response.json({ ...addresses, status: "live", launchable: true })
-      );
-    setProject({ createdAt: minutesAgo(1), publishStatus: "PENDING" });
+  test("a newer build by someone else replaces the status row's build, and the next read's rows show what is live", async () => {
+    routeAnswers(
+      answerWith([builtinTarget, mainTarget, otherTarget]),
+      answerWith([builtinTarget, mainTarget, { ...otherTarget, live: true }])
+    );
+    setProject({ createdAt: minutesAgo(3), publishStatus: "PENDING" });
     const host = await render();
+    expect(textOf(host, /^Publishing,/)).toBe(
+      "Publishing, started 3 minutes ago"
+    );
+    // another admin's publish superseded it: the newest build is the one shown
     act(() => {
       setProject({ createdAt: minutesAgo(1), publishStatus: "PUBLISHED" });
     });
     await settle();
-    expect(links(host)[0]).toEqual([
-      "votelabor.org",
-      "https://votelabor.org",
-      "_blank",
-    ]);
-
-    // the read the dialog opened with answers last, and is dropped
-    finishFirst(Response.json({ ...addresses, status: "not_launched" }));
-    await settle();
-    expect(routeFetch).toHaveBeenCalledTimes(2);
-    expect(links(host)[0]).toEqual([
-      "votelabor.org",
-      "https://votelabor.org",
-      "_blank",
-    ]);
-    expect(host.textContent).not.toContain("Not live yet");
+    expect(textOf(host, /^Published/)).toBe("Published 1 minute ago");
+    expect(host.textContent).not.toContain("Publishing, started");
+    expect(rows(host)[2]).toBe("acme.netLive");
   });
 
-  test("a publish that settles says the site is live only when it is and its version can go live, and Published otherwise", async () => {
-    const success = vi.spyOn(toast, "success").mockImplementation(() => "");
-    const live =
-      "Your site is live. Changes can take up to a minute to appear at votelabor.org.";
-    const cases: Array<[Answer | Error, string]> = [
-      [{ ...addresses, status: "live", launchable: true }, live],
-      [{ ...addresses, status: "live" }, live],
-      [{ ...addresses, status: "live", launchable: false }, "Published."],
-      [{ ...addresses, status: "not_launched" }, "Published."],
-      [{ ...addresses, status: "offline" }, "Published."],
-      [new Error("network"), "Published."],
-      [{ ok: false }, "Published."],
-    ];
-    for (const [after, message] of cases) {
-      const label = after instanceof Error ? "error" : JSON.stringify(after);
-      success.mockClear();
-      routeAnswers({ ...addresses, status: "not_launched" }, after);
-      setProject({ createdAt: minutesAgo(1), publishStatus: "PENDING" });
-      await render();
-      act(() => {
-        setProject({ createdAt: minutesAgo(1), publishStatus: "PUBLISHED" });
-      });
-      await settle();
-      expect(success, label).toHaveBeenCalledTimes(1);
-      expect(success.mock.calls[0][0], label).toBe(message);
+  test("the line for a version that can't go live shows only for a published build OrganizeOS will not serve", async () => {
+    const line = "This version can't go live. Publish again.";
+    routeAnswers(answerWith([builtinTarget], { launchable: false }));
+    setProject({ createdAt: minutesAgo(5), publishStatus: "PUBLISHED" });
+    expect((await render()).textContent).toContain(line);
+    unmount();
+
+    for (const [answer, build] of [
+      [
+        answerWith([builtinTarget], { launchable: true }),
+        { createdAt: minutesAgo(5), publishStatus: "PUBLISHED" },
+      ],
+      [
+        answerWith([builtinTarget]),
+        { createdAt: minutesAgo(5), publishStatus: "PUBLISHED" },
+      ],
+      [
+        answerWith([builtinTarget], { launchable: false }),
+        { createdAt: minutesAgo(5), publishStatus: "PENDING" },
+      ],
+      [answerWith([builtinTarget], { launchable: false }), null],
+    ] as Array<[Answer, LatestBuildLike | null]>) {
+      routeAnswers(answer);
+      setProject(build);
+      const host = await render();
+      expect(host.textContent, JSON.stringify([answer, build])).not.toContain(
+        line
+      );
       unmount();
     }
   });
 
-  test("a pending publish reads Publishing, started and when, and no more", async () => {
+  test("a failed read shows one line with Retry, no rows, and Publish to selected disabled", async () => {
+    routeAnswers(500, answerWith([builtinTarget]));
+    setProject(null);
+    const host = await render();
+    expect(textOf(host, /^Couldn't load/)).toBe(
+      "Couldn't load your addresses. Retry"
+    );
+    expect(checkboxes(host)).toEqual([]);
+    expect(publishButton(host)?.disabled).toBe(true);
+    // Manage domains still opens the org's domain settings
+    expect(links(host)).toEqual([
+      [
+        "Manage domains ↗",
+        "https://app.organizeos.org/acme/settings/domain",
+        "_blank",
+      ],
+    ]);
+
+    await click(
+      Array.from(host.querySelectorAll("button")).find(
+        (button) => button.textContent === "Retry"
+      )
+    );
+    expect(siteReads()).toHaveLength(2);
+    expect(host.textContent).not.toContain("Couldn't load");
+    expect(ticks(host)).toEqual([["acme.organizeos.org", true]]);
+  });
+
+  test("a read without targets shows Addresses unavailable, no rows and no publish", async () => {
+    routeAnswers(answerWith(undefined));
+    setProject(null);
+    const host = await render();
+    expect(textOf(host, /^Addresses unavailable/)).toBe(
+      "Addresses unavailable."
+    );
+    expect(checkboxes(host)).toEqual([]);
+    expect(publishButton(host)?.disabled).toBe(true);
+  });
+
+  test.each([
+    [
+      { ok: false, error: "unknown_target" },
+      "Your addresses changed. Check them and publish again.",
+    ],
+    [
+      { ok: false, error: "publish_unavailable" },
+      "Publishing is not available right now.",
+    ],
+    [{ ok: false, error: "build_refused" }, "This version can't be published."],
+    [
+      {
+        ok: false,
+        error: "dispatch_failed",
+        message: "Publishing could not be started. Please try again.",
+      },
+      "Publishing could not be started. Please try again.",
+    ],
+    [403, "You can't publish this site."],
+  ] as Array<[Reply, string]>)(
+    "a refused publish shows its one line once, and no toast: %j",
+    async (answer, line) => {
+      const toasts = [
+        vi.spyOn(toast, "error").mockImplementation(() => ""),
+        vi.spyOn(toast, "success").mockImplementation(() => ""),
+      ];
+      publishReply = answer;
+      setProject(null);
+      const host = await render();
+      await click(publishButton(host));
+      expect(host.textContent?.split(line)).toHaveLength(2);
+      for (const spy of toasts) {
+        expect(spy).not.toHaveBeenCalled();
+      }
+    }
+  );
+
+  test("a publish that settles toasts nothing", async () => {
+    const toasts = [
+      vi.spyOn(toast, "error").mockImplementation(() => ""),
+      vi.spyOn(toast, "success").mockImplementation(() => ""),
+    ];
+    setProject({ createdAt: minutesAgo(1), publishStatus: "PENDING" });
+    await render();
+    act(() => {
+      setProject({ createdAt: minutesAgo(1), publishStatus: "FAILED" });
+    });
+    await settle();
+    act(() => {
+      setProject({ createdAt: minutesAgo(0), publishStatus: "PENDING" });
+    });
+    act(() => {
+      setProject({ createdAt: minutesAgo(0), publishStatus: "PUBLISHED" });
+    });
+    await settle();
+    for (const spy of toasts) {
+      expect(spy).not.toHaveBeenCalled();
+    }
+  });
+
+  test("has no launch links, no idle sentence and one button label", async () => {
+    for (const build of [
+      null,
+      { createdAt: minutesAgo(5), publishStatus: "PUBLISHED" as const },
+    ]) {
+      setProject(build);
+      const host = await render();
+      for (const text of [
+        "Launch",
+        "Put it back",
+        "Not published yet.",
+        "Publish changes",
+        "Publishing to",
+        "offline",
+      ]) {
+        expect(host.textContent, text).not.toContain(text);
+      }
+      expect(publishButton(host)).toBeDefined();
+      unmount();
+    }
+  });
+
+  test("idle shows no status row; a pending publish reads Publishing, started and when", async () => {
+    setProject(null);
+    const idle = await render();
+    expect(idle.textContent).not.toMatch(/Publish(ing|ed) /);
+    unmount();
     setProject({ createdAt: minutesAgo(5), publishStatus: "PENDING" });
     const host = await render();
     expect(textOf(host, /^Publishing,/)).toBe(
       "Publishing, started 5 minutes ago"
     );
-    expect(host.textContent).not.toContain("usually takes");
   });
 
   test("a failed publish reads Publish failed and when, and no more", async () => {
@@ -449,7 +735,7 @@ describe("the OrganizeOS Publish dialog", () => {
     );
   });
 
-  test("the plan banner ends with its Open in OrganizeOS link alone, to the Website area", async () => {
+  test("the plan banner is titled Not in plan and links nowhere", async () => {
     setProject(null);
     // the default plan includes no custom contact email
     $projectSettings.set({
@@ -460,14 +746,11 @@ describe("the OrganizeOS Publish dialog", () => {
     const list = Array.from(host.querySelectorAll("ul")).find((item) =>
       item.textContent?.includes("Custom contact email")
     );
-    expect(list?.previousElementSibling?.textContent).toBe(
-      "This site uses features your plan does not include:"
-    );
-    expect(list?.nextElementSibling?.textContent).toBe("Open in OrganizeOS ↗");
-    expect(list?.nextElementSibling?.querySelector("a")?.href).toBe(
-      "https://app.organizeos.org/acme/website"
-    );
-    expect(host.textContent).not.toContain("plan is managed in");
+    expect(list?.previousElementSibling?.textContent).toBe("Not in plan");
+    expect(list?.nextElementSibling).toBeNull();
+    expect(
+      links(host).filter(([, href]) => href?.includes("/website"))
+    ).toEqual([]);
   });
 
   // The catalog's bindings, each a binding of a catalog Resource (a v5
@@ -532,11 +815,8 @@ describe("the OrganizeOS Publish dialog", () => {
     expect($planFeatures.get().allowDynamicData).toBe(false);
     setProject(null);
     const host = await render();
-    const publish = Array.from(host.querySelectorAll("button")).find(
-      (button) => button.textContent === "Publish"
-    );
-    expect(publish).toBeDefined();
-    expect(host.textContent).not.toContain("This site uses features");
+    expect(publishButton(host)).toBeDefined();
+    expect(host.textContent).not.toContain(planBadgeLabel);
     expect(host.querySelectorAll("li")).toHaveLength(0);
   });
 
@@ -576,16 +856,14 @@ describe("the OrganizeOS Publish dialog", () => {
       );
       setProject(null);
       const host = await render();
-      expect(textOf(host, /^This site uses features/)).toBe(
-        "This site uses features your plan does not include:"
-      );
+      expect(textOf(host, /^Not in plan/)).toBe("Not in plan");
       expect(
         Array.from(host.querySelectorAll("li"), (item) => item.textContent)
       ).toEqual(["Resource variable"]);
     }
   );
 
-  test("an MDX-bound Content Block shows that publishing fails while it uses MDX, and Publish stays enabled", async () => {
+  test("an MDX-bound Content Block shows that publishing fails while it uses MDX, and Publish to selected stays enabled", async () => {
     const instances: Instance[] = [
       {
         type: "instance",
@@ -657,10 +935,7 @@ describe("the OrganizeOS Publish dialog", () => {
     // the block on a page is a button to it; the orphan has nowhere to go
     expect(items[0].querySelector("button")).not.toBeNull();
     expect(items[1].querySelector("button")).toBeNull();
-    const publish = Array.from(host.querySelectorAll("button")).find(
-      (button) => button.textContent === "Publish"
-    );
-    expect(publish?.disabled).toBe(false);
+    expect(publishButton(host)?.disabled).toBe(false);
   });
 
   test("lists the custom code saved in project settings as paused", async () => {
@@ -675,52 +950,35 @@ describe("the OrganizeOS Publish dialog", () => {
     ).toEqual(["Custom code (Project settings)"]);
   });
 
-  test("the Publish button has no tooltip", async () => {
-    // an open tooltip measures its arrow
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-      }
-    );
+  test("Publish to selected has no tooltip", async () => {
+    stubTooltipMeasuring();
     setProject(null);
     const host = await render();
-    vi.useFakeTimers();
-    const publish = Array.from(host.querySelectorAll("button")).find(
-      (button) => button.textContent === "Publish"
-    );
-    expect(publish).toBeDefined();
     const before = document.body.textContent;
-    act(() => {
-      publish?.dispatchEvent(new MouseEvent("pointermove", { bubbles: true }));
-    });
-    act(() => {
-      vi.runAllTimers();
-    });
+    hover(publishButton(host));
     // hovering it shows nothing new
     expect(document.body.textContent).toBe(before);
+  });
+
+  test("Manage domains opens the org's domain settings in OrganizeOS in a new tab", async () => {
+    setProject(null);
+    const host = await render();
+    const link = Array.from(host.querySelectorAll("a")).find(
+      (element) => element.textContent === "Manage domains ↗"
+    );
+    expect(link?.getAttribute("href")).toBe(
+      "https://app.organizeos.org/acme/settings/domain"
+    );
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(link?.getAttribute("rel")).toBe("noreferrer");
   });
 });
 
 // OrganizeOS fork: input validation (organizeos-publish-code-check.ts)
 describe("the Publish dialog with a value that fails input validation", () => {
-  const publishCalls = () =>
-    routeFetch.mock.calls.filter(([url]) =>
-      String(url).includes("/trpc/domain.publish")
-    );
-
   const clickPublish = async () => {
     const host = await render();
-    const publish = Array.from(host.querySelectorAll("button")).find(
-      (button) => button.textContent === "Publish"
-    );
-    await act(async () => {
-      publish?.click();
-      await Promise.resolve();
-    });
-    await settle();
+    await click(publishButton(host));
     return host;
   };
 
@@ -764,7 +1022,7 @@ describe("the Publish dialog with a value that fails input validation", () => {
     );
   });
 
-  test("a clean build dispatches as before", async () => {
+  test("a clean build publishes through the publish route", async () => {
     await clickPublish();
     await vi.waitFor(() => {
       expect(publishCalls()).toHaveLength(1);
