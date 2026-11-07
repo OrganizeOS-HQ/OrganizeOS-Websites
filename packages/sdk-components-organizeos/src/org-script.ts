@@ -4,23 +4,37 @@ import {
   tokenizer,
   tokTypes,
   type Expression,
+  type PrivateIdentifier,
 } from "acorn";
 import {
   blockBodyComponent,
   blockComponent,
+  SYSTEM_VARIABLE_ID,
   blockTemplateComponent,
   collectionComponent,
   contentBlockDocumentProp,
+  createScope,
   decodeDataSourceVariable,
   descendantComponent,
   elementComponent,
+  findTreeInstanceIds,
+  findTreeInstanceIdsExcludingSubtrees,
   getAllPages,
+  getFormActions,
+  getPageResourceRootIds,
+  getParentInstanceById,
+  getResourceDataSourceIds,
+  getResourceDependencyIds,
+  getTransitiveResourceIds,
+  isCoreComponent,
+  isFormSubmission,
   ROOT_INSTANCE_ID,
   tags,
   type DataSource,
   type Instance,
   type Page,
   type Pages,
+  type PageTemplate,
   type Prop,
   type Resource,
 } from "@webstudio-is/sdk";
@@ -28,8 +42,19 @@ import {
   browserInfoParameterName,
   formDataParameterName,
 } from "@webstudio-is/sdk/runtime";
-import { lintExpression, transpileExpression } from "@webstudio-is/expression";
-import { checkAction } from "./code-check";
+import {
+  getExpressionIdentifiers,
+  isValidExpression,
+  lintExpression,
+  parseStaticMemberPath,
+  transpileExpression,
+} from "@webstudio-is/expression";
+import {
+  checkAction,
+  checkResource,
+  checkValueExpression,
+  emailExpressionFields,
+} from "./code-check";
 
 /**
  * Whether an org's own script may run on its Website: HTML Embeds, Content
@@ -467,17 +492,17 @@ const urlStartMayRun = (start: string) => {
   return /^[A-Za-z]/.test(text) === false || /[^A-Za-z0-9+.-]/.test(text);
 };
 
-const expressionMayRun = (node: Expression): boolean => {
+const addressNodeMayRun = (node: Expression): boolean => {
   if (node.type === "ParenthesizedExpression") {
-    return expressionMayRun(node.expression);
+    return addressNodeMayRun(node.expression);
   }
   if (node.type === "ConditionalExpression") {
     return (
-      expressionMayRun(node.consequent) && expressionMayRun(node.alternate)
+      addressNodeMayRun(node.consequent) && addressNodeMayRun(node.alternate)
     );
   }
   if (node.type === "LogicalExpression") {
-    return expressionMayRun(node.left) && expressionMayRun(node.right);
+    return addressNodeMayRun(node.left) && addressNodeMayRun(node.right);
   }
   const start = fixedStartOf(node);
   return start.complete
@@ -523,7 +548,7 @@ export const urlExpressionMayRun = (
   ) {
     return false;
   }
-  return expressionMayRun(node);
+  return addressNodeMayRun(node);
 };
 
 /**
@@ -1335,8 +1360,8 @@ export const holdsAngleBrackets = (code: string): boolean => {
 
 /**
  * Whether the code holds a comment, of either kind, anywhere in it, which no
- * action may. Text in a string or a template does not count. Code it cannot
- * read does.
+ * action and no expression may. Text in a string or a template does not
+ * count. Code it cannot read does.
  */
 export const holdsComment = (code: string): boolean => {
   try {
@@ -1650,16 +1675,26 @@ export const isPlainData = (value: unknown): boolean => {
 };
 
 /**
+ * Whether a prop would hand its element to what it names: a parameter or an
+ * expression named `ref`. A variable holds plain data only, so while org
+ * script is paused neither ships, and the canvas passes no `ref` prop.
+ */
+export const isElementReference = (prop: Pick<Prop, "name" | "type">) =>
+  prop.name === "ref" &&
+  (prop.type === "parameter" || prop.type === "expression");
+
+/**
  * Whether publishing keeps this prop. An action ships when `actionMayRun`
  * says so given `context`, the build's (without it, an action that names its
  * args or a data source does not ship), whatever its name and on any
  * instance: the generator writes it into the page module as code. A
- * Collection's item or key ships only as a parameter. Every other prop of an
- * XML element ships. A `srcdoc` never does, nor an `on…` prop that is not an
- * action. An address ships when it is of a type that cannot hold one (a
- * page, an asset, a resource, a number, a boolean), when its static value
- * may run whatever its shape, or when it is bound and its fixed start decides
- * the scheme or the binding cannot run script (`inertSrcComponents`,
+ * Collection's item or key ships only as a parameter. A parameter or an
+ * expression named `ref` never ships (`isElementReference`). Every other
+ * prop of an XML element ships. A `srcdoc` never does, nor an `on…` prop that
+ * is not an action. An address ships when it is of a type that cannot hold
+ * one (a page, an asset, a resource, a number, a boolean), when its static
+ * value may run whatever its shape, or when it is bound and its fixed start
+ * decides the scheme or the binding cannot run script (`inertSrcComponents`,
  * `inertSrcTags`, `inertHrefComponents`). `data` is an address only on an
  * `object` (`recordDataHolder`).
  */
@@ -1681,6 +1716,9 @@ export const propMayShip = (
     collectionBindingNames.has(prop.name)
   ) {
     return prop.type === "parameter";
+  }
+  if (isElementReference(prop)) {
+    return false;
   }
   if (xmlComponents.has(instance.component)) {
     return true;
@@ -1746,10 +1784,10 @@ export const projectRedirectMayShip = (
  * The props without what may run script on the canvas, for a component that
  * receives them, its own or passed in by a parent: what
  * `withoutBlockedTagProps` drops, every `srcdoc`, every `on…` value that is
- * not a function, and every address value that `urlValueMayRun` refuses,
- * whatever its shape (`data` stays only on a `recordDataHolder`). The same
- * object when nothing goes, never a changed input, and the input itself when
- * the switch is on.
+ * not a function, every address value that `urlValueMayRun` refuses,
+ * whatever its shape (`data` stays only on a `recordDataHolder`), and every
+ * `ref` (`isElementReference`). The same object when nothing goes, never a
+ * changed input, and the input itself when the switch is on.
  */
 export const withoutPausedProps = <Props extends Record<string, unknown>>(
   instance: InstanceKind,
@@ -1766,6 +1804,7 @@ export const withoutPausedProps = <Props extends Record<string, unknown>>(
       continue;
     }
     if (
+      name === "ref" ||
       isFrameDocumentName(name) ||
       (isEventAttributeName(name) && typeof value !== "function") ||
       (isUrlPropName(name) &&
@@ -1944,6 +1983,1157 @@ const literalNodeValue = (node: Expression): unknown => {
     default:
       throw notALiteral();
   }
+};
+
+// Expressions: what the canvas evaluates and publishing writes while org
+// script is paused (docs/ORGANIZEOS-FORK.md section 10, "Expressions")
+
+/**
+ * The globals a generated page or server module may read without declaring
+ * them. The CLI's check of each generated module allows these and no other,
+ * and no data source may be named as one of them.
+ */
+export const generatedCodeGlobals: ReadonlySet<string> = new Set([
+  "Array",
+  "Error",
+  "Infinity",
+  "Map",
+  "NaN",
+  "Number",
+  "Object",
+  "String",
+]);
+
+/**
+ * The names a data source or a Resource may not take: the globals a module
+ * may read (`generatedCodeGlobals`) and a module's own names.
+ */
+export const generatedModuleNames: ReadonlySet<string> = new Set([
+  ...generatedCodeGlobals,
+  "_data",
+  "_action",
+  "_contentData",
+  "_contentDocuments",
+  "documents",
+]);
+
+/** Whether an expression may name this data source where it is written. */
+export type ExpressionNames = (dataSourceId: DataSource["id"]) => boolean;
+
+/** Names an expression may read besides the data sources it names */
+const expressionValueNames: ReadonlySet<string> = new Set([
+  "undefined",
+  "NaN",
+  "Infinity",
+]);
+
+/**
+ * The methods an expression may call: the linter's, which org-script.test.ts
+ * keeps equal to `allowedStringMethods` and `allowedArrayMethods` of
+ * `@webstudio-is/sdk`.
+ */
+export const expressionCallNames: ReadonlySet<string> = new Set([
+  "at",
+  "endsWith",
+  "includes",
+  "join",
+  "replace",
+  "slice",
+  "split",
+  "startsWith",
+  "toLocaleLowerCase",
+  "toLocaleUpperCase",
+  "toLowerCase",
+  "toString",
+  "toUpperCase",
+]);
+
+/** Member names an expression may not read: they lead to a constructor or a prototype. */
+const pausedMemberNames: ReadonlySet<string> = new Set([
+  "constructor",
+  "prototype",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+]);
+
+/**
+ * Keys an object literal may not hold: the listed hooks and the methods an
+ * expression may call.
+ */
+const pausedObjectKeys: ReadonlySet<string> = new Set([
+  "__proto__",
+  "valueOf",
+  "toLocaleString",
+  "toJSON",
+  "then",
+  ...expressionCallNames,
+]);
+
+const isPrimitiveLiteral = (node: Expression) =>
+  node.type === "Literal" &&
+  node.regex === undefined &&
+  node.bigint === undefined;
+
+/** A call's argument: a primitive literal, or a negative number */
+const isLiteralArgument = (node: Expression) =>
+  isPrimitiveLiteral(node) ||
+  (node.type === "UnaryExpression" &&
+    node.operator === "-" &&
+    node.argument.type === "Literal" &&
+    typeof node.argument.value === "number");
+
+/** The key of a computed member or property, when the source fixes it */
+const fixedKeyOf = (node: Expression | PrivateIdentifier) => {
+  if (
+    node.type === "Literal" &&
+    (typeof node.value === "string" || typeof node.value === "number")
+  ) {
+    return String(node.value);
+  }
+  if (node.type === "TemplateLiteral" && node.expressions.length === 0) {
+    return node.quasis[0]?.value.cooked ?? undefined;
+  }
+};
+
+/**
+ * Whether every node of an expression is one an expression may hold, by an
+ * allowlist: parentheses, optional chains, primitive literals, names
+ * (`undefined`, `NaN`, `Infinity` and the data sources `mayName` allows),
+ * templates without a tag, unary operators but `delete`, binary, logical and
+ * conditional operators, arrays without a spread, objects of plain properties
+ * (no shorthand) whose keys the source fixes and `pausedObjectKeys` leaves
+ * out, members whose keys the source fixes and `pausedMemberNames` leaves out,
+ * and calls of an `expressionCallNames` method whose arguments are primitive
+ * literals or negative numbers.
+ */
+const expressionNodeMayRun = (
+  node: Expression,
+  mayName: ExpressionNames
+): boolean => {
+  const mayRun = (child: Expression) => expressionNodeMayRun(child, mayName);
+  switch (node.type) {
+    case "ParenthesizedExpression":
+    case "ChainExpression":
+      return mayRun(node.expression);
+    case "Literal":
+      return isPrimitiveLiteral(node);
+    case "Identifier": {
+      if (expressionValueNames.has(node.name)) {
+        return true;
+      }
+      const id = decodeDataSourceVariable(node.name);
+      return id !== undefined && mayName(id);
+    }
+    case "TemplateLiteral":
+      return node.expressions.every(mayRun);
+    case "UnaryExpression":
+      return node.operator !== "delete" && mayRun(node.argument);
+    case "BinaryExpression":
+      return (
+        node.left.type !== "PrivateIdentifier" &&
+        mayRun(node.left) &&
+        mayRun(node.right)
+      );
+    case "LogicalExpression":
+      return mayRun(node.left) && mayRun(node.right);
+    case "ConditionalExpression":
+      return (
+        mayRun(node.test) && mayRun(node.consequent) && mayRun(node.alternate)
+      );
+    case "ArrayExpression":
+      return node.elements.every(
+        (element) =>
+          element === null ||
+          (element.type !== "SpreadElement" && mayRun(element))
+      );
+    case "ObjectExpression":
+      return node.properties.every((property) => {
+        if (
+          property.type !== "Property" ||
+          property.kind !== "init" ||
+          property.method ||
+          property.shorthand
+        ) {
+          return false;
+        }
+        const key = property.computed
+          ? fixedKeyOf(property.key)
+          : property.key.type === "Identifier"
+            ? property.key.name
+            : property.key.type === "Literal"
+              ? String(property.key.value)
+              : undefined;
+        return (
+          key !== undefined &&
+          pausedObjectKeys.has(key) === false &&
+          mayRun(property.value as Expression)
+        );
+      });
+    case "MemberExpression": {
+      if (node.object.type === "Super") {
+        return false;
+      }
+      const key = node.computed
+        ? fixedKeyOf(node.property)
+        : node.property.type === "Identifier"
+          ? node.property.name
+          : undefined;
+      return (
+        key !== undefined &&
+        pausedMemberNames.has(key) === false &&
+        mayRun(node.object)
+      );
+    }
+    case "CallExpression": {
+      const { callee } = node;
+      return (
+        callee.type === "MemberExpression" &&
+        callee.computed === false &&
+        callee.property.type === "Identifier" &&
+        expressionCallNames.has(callee.property.name) &&
+        node.arguments.every(
+          (argument) =>
+            argument.type !== "SpreadElement" && isLiteralArgument(argument)
+        ) &&
+        mayRun(callee)
+      );
+    }
+    default:
+      return false;
+  }
+};
+
+/**
+ * The token ranges of the code, read as a script or as a module, and a mark
+ * for every comment it holds
+ */
+const tokenRangesOf = (code: string, sourceType: "script" | "module") => {
+  let ranges = "";
+  for (const token of tokenizer(code, { ecmaVersion: "latest", sourceType })) {
+    ranges += `${token.start}-${token.end},`;
+  }
+  return ranges;
+};
+
+/**
+ * Whether an expression may be evaluated or published while org script is
+ * paused. Callers check orgScriptMayRun() first; when org script may run,
+ * nothing calls this and nothing changes. Every part must hold, and anything
+ * else, a value that is not a string among them, may not run:
+ * - it is a non-empty string that is exactly one expression, with only
+ *   whitespace around it, read the same way as a script and as a module, and
+ *   it holds no comment (`holdsComment`);
+ * - it holds no `<` or `<<` followed later by a token that starts with `>`;
+ * - the expression linter reports nothing, given every data source it names
+ *   and `undefined`, `NaN` and `Infinity`;
+ * - every node is one `expressionNodeMayRun` allows;
+ * - every data source it names is one `mayName` allows (`$ws$system` is
+ *   SYSTEM_VARIABLE_ID). The canvas binds every name, so it passes none;
+ * - input validation passes it (`checkValueExpression`).
+ */
+export const expressionMayRun = (
+  expression: unknown,
+  mayName: ExpressionNames = () => true
+): boolean => {
+  try {
+    if (typeof expression !== "string" || expression.trim() === "") {
+      return false;
+    }
+    if (checkValueExpression(expression).ok === false) {
+      return false;
+    }
+    const node = parseExpressionAt(expression, 0, {
+      ecmaVersion: "latest",
+      preserveParens: true,
+    });
+    if (
+      onlyWhitespace.test(expression.slice(0, node.start)) === false ||
+      onlyWhitespace.test(expression.slice(node.end)) === false ||
+      tokenRangesOf(expression, "script") !==
+        tokenRangesOf(expression, "module") ||
+      holdsComment(expression)
+    ) {
+      return false;
+    }
+    if (holdsAngleBrackets(expression)) {
+      return false;
+    }
+    const availableVariables = new Set<string>(expressionValueNames);
+    for (const name of getExpressionIdentifiers(expression)) {
+      if (decodeDataSourceVariable(name) !== undefined) {
+        availableVariables.add(name);
+      }
+    }
+    if (lintExpression({ expression, availableVariables }).length > 0) {
+      return false;
+    }
+    return expressionNodeMayRun(node, mayName);
+  } catch {
+    return false;
+  }
+};
+
+/** A page setting that holds an expression */
+export type PageExpressionField =
+  | "title"
+  | "description"
+  | "excludePageFromSearch"
+  | "language"
+  | "socialImageUrl"
+  | "status"
+  | "redirect"
+  | "content"
+  | `custom.${number}`
+  | "metaTitle";
+
+/**
+ * An expression, or a Resource, that may not be published while org script
+ * is paused. One that no page publishes, which input validation alone reads,
+ * is `unpublished`: it goes, and is neither counted nor listed.
+ */
+export type PausedExpression = (
+  | {
+      kind: "prop";
+      instanceId: Instance["id"];
+      propId: Prop["id"];
+      name: string;
+    }
+  | { kind: "child"; instanceId: Instance["id"]; index: number }
+  | { kind: "page"; pageId: Page["id"]; field: PageExpressionField }
+  | { kind: "resource"; resourceId: Resource["id"] }
+  | { kind: "dataSource"; dataSourceId: DataSource["id"] }
+) & { unpublished?: true };
+
+const pageMetaExpressionFields = [
+  "description",
+  "excludePageFromSearch",
+  "language",
+  "socialImageUrl",
+  "status",
+  "redirect",
+  "content",
+] as const;
+
+/**
+ * What a page publishes, as `findPausedExpressions` reads it: the instances it
+ * holds, the Resources it loads that may name another Resource's data, those
+ * only a form's submission sends, and the page settings it publishes as text
+ */
+export type PublishedPage = {
+  pageId: Page["id"];
+  held: ReadonlySet<Instance["id"]>;
+  inGraph: ReadonlySet<Resource["id"]>;
+  submission: ReadonlySet<Resource["id"]>;
+  text: ReadonlySet<PageExpressionField>;
+};
+
+/** The prop whose literal false hides an instance and what is inside it */
+const showPropName = "data-ws-show";
+
+/**
+ * The instances a page holds, as prebuild selects them: its root (present or
+ * not) and everything under it, but a subtree whose root a `ws:show` prop of
+ * the literal false hides, and ROOT_INSTANCE_ID. A tree with a cycle is read
+ * without following the cycle.
+ */
+const findPageInstanceIds = (
+  instances: ReadonlyMap<Instance["id"], Instance>,
+  props: ReadonlyMap<Prop["id"], Prop>,
+  rootInstanceId: Instance["id"]
+) => {
+  const hidden = new Set<Instance["id"]>();
+  for (const prop of props.values()) {
+    if (
+      prop.name === showPropName &&
+      prop.type === "boolean" &&
+      prop.value === false
+    ) {
+      hidden.add(prop.instanceId);
+    }
+  }
+  const ids = findTreeInstanceIdsExcludingSubtrees(
+    instances as Map<Instance["id"], Instance>,
+    rootInstanceId,
+    hidden
+  );
+  ids.add(ROOT_INSTANCE_ID);
+  return ids;
+};
+
+/** The page settings that publish as text when they read as text */
+const pageTextFields: ReadonlySet<string> = new Set([
+  "title",
+  "description",
+  "language",
+  "socialImageUrl",
+  "redirect",
+  "content",
+]);
+
+/**
+ * Whether a page setting publishes as text: one that is not an expression and
+ * names no data source, or a lone word other than `undefined`
+ */
+const writtenAsText = (expression: string) => {
+  const trimmed = expression.trim();
+  if (isValidExpression(trimmed)) {
+    return (
+      parseStaticMemberPath(trimmed)?.length === 1 &&
+      trimmed !== "undefined" &&
+      trimmed.includes("$ws$") === false
+    );
+  }
+  return trimmed.includes("$ws$") === false;
+};
+
+/**
+ * The data sources that ship: the build's, without each data source
+ * `paused` lists and the `resource` data sources of each Resource it lists.
+ * An action is judged against these.
+ */
+export const withoutPausedDataSources = <Source extends DataSource>(
+  dataSources: ReadonlyMap<DataSource["id"], Source>,
+  paused: readonly PausedExpression[]
+): Map<DataSource["id"], Source> => {
+  const pausedIds = new Set<DataSource["id"]>();
+  const pausedResources = new Set<Resource["id"]>();
+  for (const item of paused) {
+    if (item.kind === "dataSource") {
+      pausedIds.add(item.dataSourceId);
+    } else if (item.kind === "resource") {
+      pausedResources.add(item.resourceId);
+    }
+  }
+  return new Map(
+    Array.from(dataSources).filter(
+      ([id, dataSource]) =>
+        pausedIds.has(id) === false &&
+        (dataSource.type !== "resource" ||
+          pausedResources.has(dataSource.resourceId) === false)
+    )
+  );
+};
+
+/**
+ * What publishing reads of a build while org script is paused, in the one
+ * order that settles it. The data sources `collidingDataSourceIds` lists go
+ * first, and so do those `ships` refuses; `findPausedExpressions` reads the
+ * rest, and an expression that names a data source that goes goes too; and
+ * an action is judged against the data sources that ship after both
+ * (`actionContextOf`). Nothing a later step leaves out changes what an
+ * earlier one read: an action that goes takes no instance and no data source
+ * with it. The CLI's `dropOrgScript` and the Publish dialog both read it.
+ */
+export const findPausedPublishing = ({
+  pages,
+  templates,
+  pageNames,
+  pageRootIds,
+  templateRootIds,
+  instances,
+  dataSources,
+  props,
+  resources,
+  ships = () => true,
+}: {
+  /** Every page entry */
+  pages: readonly Page[];
+  /** The page templates, which publish nothing */
+  templates?: readonly PageTemplate[];
+  /** Its pages and page templates (`pagesAndTemplatesOf`) */
+  pageNames: readonly PageNames[];
+  pageRootIds: ActionContext["pageRootIds"];
+  templateRootIds?: ActionContext["templateRootIds"];
+  instances: ReadonlyMap<Instance["id"], Instance>;
+  dataSources: ReadonlyMap<DataSource["id"], DataSource>;
+  props: ReadonlyMap<Prop["id"], Prop>;
+  resources: ReadonlyMap<Resource["id"], Resource>;
+  /** Whether a data source ships, its instance aside */
+  ships?: (dataSource: DataSource) => boolean;
+}) => {
+  const collidingIds = collidingDataSourceIds({
+    instances,
+    dataSources,
+    props,
+    resources,
+    pages: pageNames,
+  });
+  const named = new Map(
+    Array.from(dataSources).filter(([id]) => collidingIds.has(id) === false)
+  );
+  const dropped = new Set(collidingIds);
+  for (const [id, dataSource] of named) {
+    if (ships(dataSource) === false) {
+      dropped.add(id);
+    }
+  }
+  const pausedExpressions = findPausedExpressions({
+    pages,
+    templates,
+    instances,
+    props: props.values(),
+    dataSources: named,
+    resources,
+    dropped,
+  });
+  const actionContext = actionContextOf({
+    instances,
+    pageRootIds,
+    templateRootIds,
+    dataSources: withoutPausedDataSources(
+      new Map(Array.from(named).filter(([, dataSource]) => ships(dataSource))),
+      pausedExpressions
+    ),
+    props,
+    resources,
+    pages: pageNames,
+  });
+  return { collidingIds, pausedExpressions, actionContext };
+};
+
+/**
+ * The settings of a page or a page template that hold an expression: a custom
+ * entry with no property publishes nothing
+ */
+const pageFieldValues = (page: Page | PageTemplate) =>
+  [
+    ["title", page.title],
+    ...pageMetaExpressionFields.map((field) => [field, page.meta[field]]),
+    ...(page.meta.custom ?? []).flatMap(({ property, content }, index) =>
+      typeof property === "string" && property.trim() === ""
+        ? []
+        : [[`custom.${index}`, content]]
+    ),
+  ] as Array<[PageExpressionField, unknown]>;
+
+/**
+ * Every expression of a build that may not be published while org script is
+ * paused, each once, every Resource that holds one, and every data source
+ * named like a module's own name or a global it reads
+ * (`generatedModuleNames`). A Resource that a data source or a resource prop
+ * of a page names, and that the build does not hold, is paused too. An
+ * expression that names a data source that goes (`dropped`, those it pauses
+ * and those of a Resource it pauses) is paused, wherever the page holds it.
+ * Callers check orgScriptMayRun() first.
+ *
+ * Each expression a page publishes passes `expressionMayRun` and names only
+ * data sources the published module declares where it is written. A page
+ * holds what prebuild selects for it, without a subtree a literal `ws:show`
+ * of false hides; it may name a data source it does not hold, unless that
+ * one goes. A page setting it publishes as text is held to input validation
+ * alone. Input validation passes every Resource it reads (`checkResource`). A
+ * Resource is listed when any part fails, on any page.
+ *
+ * What no page publishes is read by input validation alone, and what it
+ * refuses is paused as `unpublished`.
+ */
+export const findPausedExpressions = (build: {
+  pages: readonly Page[];
+  /** The page templates, which publish nothing */
+  templates?: readonly PageTemplate[];
+  instances: ReadonlyMap<Instance["id"], Instance>;
+  props: Iterable<Prop>;
+  dataSources: ReadonlyMap<DataSource["id"], DataSource>;
+  resources: ReadonlyMap<Resource["id"], Resource>;
+  /** The data sources publishing leaves out before this runs */
+  dropped?: ReadonlySet<DataSource["id"]>;
+  /** Given what each page publishes, as this reads it (for a test) */
+  observe?: (published: PublishedPage) => void;
+}): PausedExpression[] => {
+  const { instances, dataSources, resources } = build;
+  const props = Array.from(build.props);
+  const propsById = new Map(props.map((prop) => [prop.id, prop]));
+  const propsByInstance = new Map<Instance["id"], Prop[]>();
+  for (const prop of props) {
+    const list = propsByInstance.get(prop.instanceId) ?? [];
+    list.push(prop);
+    propsByInstance.set(prop.instanceId, list);
+  }
+  const paused = new Map<string, PausedExpression>();
+  const pause = (key: string, item: PausedExpression) => {
+    if (paused.has(key) === false) {
+      paused.set(key, item);
+    }
+  };
+  // what goes: an expression that names one goes too
+  const goes = new Set(build.dropped);
+
+  // a data source named like a module's own name or a global it reads
+  const liveDataSources = new Map<DataSource["id"], DataSource>();
+  for (const [id, dataSource] of dataSources) {
+    if (generatedModuleNames.has(createScope().getName(id, dataSource.name))) {
+      pause(`dataSource:${id}`, { kind: "dataSource", dataSourceId: id });
+      goes.add(id);
+    } else {
+      liveDataSources.set(id, dataSource);
+    }
+  }
+
+  // what each page selects and generates
+  const views = build.pages.map((page) => {
+    const held = findPageInstanceIds(instances, propsById, page.rootInstanceId);
+    const isXml = page.meta.documentType === "xml";
+    // an XML page publishes only the core and XML components
+    const generated = new Map<Instance["id"], Instance>();
+    for (const id of held) {
+      const instance = instances.get(id);
+      if (
+        instance !== undefined &&
+        (isXml === false ||
+          isCoreComponent(instance.component) ||
+          xmlComponents.has(instance.component))
+      ) {
+        generated.set(id, instance);
+      }
+    }
+    // and its root is the body's first child
+    let rootId = page.rootInstanceId;
+    const firstChild = instances.get(rootId)?.children.at(0);
+    if (isXml && firstChild?.type === "id") {
+      rootId = firstChild.value;
+    }
+    return { page, held, generated, rootId };
+  });
+  type PageView = (typeof views)[number];
+
+  const isHeld = (view: PageView, dataSource: DataSource) =>
+    view.held.has(dataSource.scopeInstanceId ?? "");
+  const isSystem = (view: PageView, dataSource: DataSource) =>
+    dataSource.type === "parameter" &&
+    dataSource.id === view.page.systemDataSourceId;
+  // a Resource Form's own form data or browser info, where the page
+  // publishes the form
+  const isFormParameter = (view: PageView, dataSource: DataSource) =>
+    dataSource.type === "parameter" &&
+    (dataSource.name === formDataParameterName ||
+      dataSource.name === browserInfoParameterName) &&
+    view.generated.get(dataSource.scopeInstanceId ?? "")?.component ===
+      "ResourceForm";
+  // whether a module of this page may name a data source
+  const namesOn =
+    (view: PageView, declares: (dataSource: DataSource) => boolean) =>
+    (id: DataSource["id"]) => {
+      // every module may name the system data, whatever the build stores
+      if (id === SYSTEM_VARIABLE_ID) {
+        return true;
+      }
+      if (goes.has(id)) {
+        return false;
+      }
+      const dataSource = liveDataSources.get(id);
+      if (dataSource === undefined || isHeld(view, dataSource) === false) {
+        return true;
+      }
+      return (
+        dataSource.type === "variable" ||
+        isSystem(view, dataSource) ||
+        declares(dataSource)
+      );
+    };
+
+  // The Resources: what each page loads, and what a form's submission
+  // sends, until nothing more goes
+  const resourceMayRun = (
+    resource: Resource | undefined,
+    mayName: ExpressionNames
+  ) => {
+    if (
+      resource === undefined ||
+      generatedModuleNames.has(
+        createScope().getName(resource.id, resource.name)
+      )
+    ) {
+      return false;
+    }
+    try {
+      return (
+        checkResource(resource) === undefined &&
+        [
+          resource.url,
+          ...(resource.searchParams ?? []).map(({ value }) => value),
+          ...resource.headers.map(({ value }) => value),
+          // an empty body is no body
+          ...(resource.body === undefined || resource.body === ""
+            ? []
+            : [resource.body]),
+          ...emailExpressionFields.flatMap(([field]) => {
+            const value = resource.email?.[field];
+            return value === undefined ? [] : [value];
+          }),
+        ].every((expression) => expressionMayRun(expression, mayName))
+      );
+    } catch {
+      return false;
+    }
+  };
+  const resourcesOf = (view: PageView) => {
+    const pageProps = new Map(
+      props
+        .filter((prop) => view.held.has(prop.instanceId))
+        .map((prop) => [prop.id, prop])
+    );
+    const pageDataSources = new Map(
+      Array.from(liveDataSources).filter(
+        ([id, dataSource]) => goes.has(id) === false && isHeld(view, dataSource)
+      )
+    );
+    // what the page loads
+    const loaded = new Set<Resource["id"]>();
+    for (const prop of pageProps.values()) {
+      if (prop.type === "resource") {
+        loaded.add(prop.value);
+      }
+    }
+    for (const dataSource of pageDataSources.values()) {
+      if (dataSource.type === "resource") {
+        loaded.add(dataSource.resourceId);
+      }
+    }
+    const pageResources = new Map(
+      [...loaded].flatMap((id) => {
+        const resource = resources.get(id);
+        return resource === undefined ? [] : [[id, resource] as const];
+      })
+    );
+    const transitive = (resourceId: Resource["id"]) =>
+      getTransitiveResourceIds({
+        resourceId,
+        resources: pageResources,
+        dataSources: pageDataSources,
+      });
+    // what only a form's submission sends: what names a form's data, what
+    // depends on that, and a form's destination the page does not use
+    const formParameterIds = new Set(
+      Array.from(pageDataSources.values())
+        .filter((dataSource) => isFormParameter(view, dataSource))
+        .map(({ id }) => id)
+    );
+    const submission = new Set(
+      Array.from(pageResources.values())
+        .filter((resource) =>
+          Array.from(getResourceDataSourceIds(resource)).some((id) =>
+            formParameterIds.has(id)
+          )
+        )
+        .map(({ id }) => id)
+    );
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const resource of pageResources.values()) {
+        if (
+          submission.has(resource.id) === false &&
+          Array.from(
+            getResourceDependencyIds({
+              resource,
+              dataSources: pageDataSources,
+            })
+          ).some((id) => submission.has(id))
+        ) {
+          submission.add(resource.id);
+          changed = true;
+        }
+      }
+    }
+    const parents = getParentInstanceById(
+      view.generated as Map<Instance["id"], Instance>
+    );
+    const isInForm = (instanceId: Instance["id"] | undefined) => {
+      const seen = new Set<Instance["id"]>();
+      for (
+        let current = instanceId;
+        current !== undefined && seen.has(current) === false;
+        current = parents.get(current)
+      ) {
+        seen.add(current);
+        if (view.generated.get(current)?.component === "ResourceForm") {
+          return true;
+        }
+      }
+      return false;
+    };
+    const used = getPageResourceRootIds({
+      page: { ...view.page, rootInstanceId: view.rootId },
+      instances: view.generated as Map<Instance["id"], Instance>,
+      props: pageProps,
+      dataSources: pageDataSources,
+    });
+    for (const dataSource of pageDataSources.values()) {
+      if (
+        dataSource.type === "resource" &&
+        isInForm(dataSource.scopeInstanceId) === false
+      ) {
+        used.add(dataSource.resourceId);
+      }
+    }
+    for (const prop of pageProps.values()) {
+      if (prop.type === "resource") {
+        used.add(prop.value);
+      }
+    }
+    for (const resourceId of [...used]) {
+      for (const dependencyId of transitive(resourceId)) {
+        used.add(dependencyId);
+      }
+    }
+    // what a form's submission sends: its destinations and what they read
+    const sent = new Set<Resource["id"]>();
+    for (const prop of pageProps.values()) {
+      if (
+        prop.type !== "json" ||
+        prop.name !== "action" ||
+        view.generated.get(prop.instanceId)?.component !== "ResourceForm" ||
+        isFormSubmission(prop.value) === false
+      ) {
+        continue;
+      }
+      for (const dataSourceId of getFormActions(prop.value)) {
+        const dataSource = pageDataSources.get(dataSourceId);
+        if (dataSource?.type !== "resource") {
+          continue;
+        }
+        for (const resourceId of [
+          dataSource.resourceId,
+          ...transitive(dataSource.resourceId),
+        ]) {
+          sent.add(resourceId);
+          if (used.has(resourceId) === false) {
+            submission.add(resourceId);
+          }
+        }
+      }
+    }
+    // a Resource a data source or a resource prop under the root loads may
+    // name the Resources' data
+    const treeIds = findTreeInstanceIds(
+      view.generated as Map<Instance["id"], Instance>,
+      view.rootId
+    );
+    const inGraph = new Set<Resource["id"]>();
+    for (const dataSource of pageDataSources.values()) {
+      if (dataSource.type === "resource") {
+        inGraph.add(dataSource.resourceId);
+      }
+    }
+    for (const prop of pageProps.values()) {
+      if (prop.type === "resource" && treeIds.has(prop.instanceId)) {
+        inGraph.add(prop.value);
+      }
+    }
+    return { loaded, submission, sent, inGraph };
+  };
+
+  const publishedResources = new Set<Resource["id"]>();
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const view of views) {
+      const { loaded, submission, sent, inGraph } = resourcesOf(view);
+      for (const resourceId of [...loaded].sort()) {
+        if (submission.has(resourceId) && sent.has(resourceId) === false) {
+          // no form on the page sends it
+          continue;
+        }
+        publishedResources.add(resourceId);
+        if (paused.has(`resource:${resourceId}`)) {
+          continue;
+        }
+        const mayName = submission.has(resourceId)
+          ? namesOn(
+              view,
+              (dataSource) =>
+                dataSource.type === "resource" ||
+                isFormParameter(view, dataSource)
+            )
+          : namesOn(
+              view,
+              (dataSource) =>
+                dataSource.type === "resource" && inGraph.has(resourceId)
+            );
+        if (resourceMayRun(resources.get(resourceId), mayName) === false) {
+          pause(`resource:${resourceId}`, { kind: "resource", resourceId });
+          // a Resource that goes takes its data sources
+          for (const dataSource of dataSources.values()) {
+            if (
+              dataSource.type === "resource" &&
+              dataSource.resourceId === resourceId
+            ) {
+              goes.add(dataSource.id);
+            }
+          }
+          changed = true;
+        }
+      }
+    }
+  }
+  if (build.observe !== undefined) {
+    for (const view of views) {
+      const { loaded, submission, sent, inGraph } = resourcesOf(view);
+      build.observe({
+        pageId: view.page.id,
+        held: view.held,
+        inGraph: new Set(
+          [...inGraph].filter(
+            (id) =>
+              loaded.has(id) &&
+              resources.has(id) &&
+              submission.has(id) === false
+          )
+        ),
+        submission: new Set([...submission].filter((id) => sent.has(id))),
+        text: new Set(
+          pageFieldValues(view.page).flatMap(([field, value]) =>
+            typeof value === "string" &&
+            (pageTextFields.has(field) || field.startsWith("custom.")) &&
+            writtenAsText(value)
+              ? [field]
+              : []
+          )
+        ),
+      });
+    }
+  }
+  // a Resource no page loads or sends is not published: input validation
+  // alone
+  for (const [resourceId, resource] of resources) {
+    let refused: boolean;
+    try {
+      refused = checkResource(resource) !== undefined;
+    } catch {
+      refused = true;
+    }
+    if (publishedResources.has(resourceId) === false && refused) {
+      pause(`resource:${resourceId}`, {
+        kind: "resource",
+        resourceId,
+        unpublished: true,
+      });
+    }
+  }
+
+  const judgedProps = new Set<Prop["id"]>();
+  const visitedInstances = new Set<Instance["id"]>();
+  for (const view of views) {
+    const { page } = view;
+
+    // the page's settings
+    const inPageMeta = namesOn(
+      view,
+      (dataSource) => dataSource.type === "resource"
+    );
+    for (const [field, value] of pageFieldValues(page)) {
+      if (field !== "title" && value === undefined) {
+        continue;
+      }
+      let mayRun: boolean;
+      try {
+        mayRun =
+          typeof value === "string" &&
+          ((pageTextFields.has(field) || field.startsWith("custom.")) &&
+          writtenAsText(value)
+            ? checkValueExpression(value).ok
+            : expressionMayRun(value, inPageMeta));
+      } catch {
+        mayRun = false;
+      }
+      if (mayRun === false) {
+        pause(`page:${page.id}:${field}`, {
+          kind: "page",
+          pageId: page.id,
+          field,
+        });
+      }
+    }
+
+    // the page module, along each path to an instance
+    const inPageModule = (parameters: ReadonlySet<DataSource["id"]>) =>
+      namesOn(
+        view,
+        (dataSource) =>
+          dataSource.type === "resource" ||
+          isFormParameter(view, dataSource) ||
+          parameters.has(dataSource.id)
+      );
+    const visited = new Set<string>();
+    const onPath = new Set<Instance["id"]>();
+    const visit = (
+      instanceId: Instance["id"],
+      parameters: ReadonlySet<DataSource["id"]>
+    ) => {
+      const instance = instances.get(instanceId);
+      const visitKey = `${instanceId}\n${[...parameters].sort().join("\n")}`;
+      if (
+        instance === undefined ||
+        view.held.has(instanceId) === false ||
+        instance.component === blockTemplateComponent ||
+        instance.component === descendantComponent ||
+        onPath.has(instanceId) ||
+        visited.has(visitKey)
+      ) {
+        return;
+      }
+      visited.add(visitKey);
+      visitedInstances.add(instanceId);
+      const inPage = inPageModule(parameters);
+      const instanceProps = propsByInstance.get(instanceId) ?? [];
+      const isCollection = instance.component === collectionComponent;
+      // the props a page publishes
+      const writes = (prop: Prop) =>
+        prop.name === showPropName ||
+        (isCollection
+          ? prop.name === "data" || collectionBindingNames.has(prop.name)
+          : instance.component !== blockComponent &&
+            instance.component !== blockBodyComponent);
+      // a Collection's item and itemKey may each be only a parameter of the
+      // Collection's own that nothing around it binds and the other does not
+      // name
+      const isBinding = (prop: Prop) =>
+        isCollection && collectionBindingNames.has(prop.name);
+      const bindingMayRun = (prop: Prop) => {
+        if (prop.type !== "parameter") {
+          return false;
+        }
+        const dataSource = dataSources.get(prop.value);
+        // a binding to a data source the build does not hold, or one that
+        // goes for its id first, may stay
+        if (dataSource === undefined) {
+          return true;
+        }
+        return (
+          instanceProps.filter((other) => other.name === prop.name).length ===
+            1 &&
+          dataSource.type === "parameter" &&
+          dataSource.id !== page.systemDataSourceId &&
+          parameters.has(dataSource.id) === false &&
+          instanceProps.every(
+            (other) =>
+              other.name === prop.name ||
+              isBinding(other) === false ||
+              other.type !== "parameter" ||
+              other.value !== prop.value
+          )
+        );
+      };
+      let inside = parameters;
+      if (isCollection) {
+        inside = new Set(parameters);
+        for (const prop of instanceProps) {
+          if (
+            isBinding(prop) &&
+            bindingMayRun(prop) &&
+            prop.type === "parameter"
+          ) {
+            (inside as Set<DataSource["id"]>).add(prop.value);
+          }
+        }
+      }
+      // a Collection's own children may name its item and itemKey
+      const inChildren = isCollection ? inPageModule(inside) : inPage;
+      for (const prop of instanceProps) {
+        if (writes(prop) === false) {
+          continue;
+        }
+        judgedProps.add(prop.id);
+        const mayRun = isBinding(prop)
+          ? bindingMayRun(prop)
+          : prop.type === "expression"
+            ? expressionMayRun(prop.value, inPage)
+            : prop.type === "parameter"
+              ? goes.has(prop.value) || inPage(prop.value)
+              : true;
+        if (mayRun === false) {
+          pause(`prop:${prop.id}`, {
+            kind: "prop",
+            instanceId,
+            propId: prop.id,
+            name: prop.name,
+          });
+        }
+      }
+      instance.children.forEach((child, index) => {
+        if (
+          child.type === "expression" &&
+          expressionMayRun(child.value, inChildren) === false
+        ) {
+          pause(`child:${instanceId}:${index}`, {
+            kind: "child",
+            instanceId,
+            index,
+          });
+        }
+      });
+      onPath.add(instanceId);
+      for (const child of instance.children) {
+        if (child.type === "id") {
+          visit(child.value, inside);
+        }
+      }
+      onPath.delete(instanceId);
+    };
+    visit(page.rootInstanceId, new Set());
+  }
+
+  // What no page publishes: input validation alone
+  const refusedValue = (value: unknown) =>
+    checkValueExpression(value as string).ok === false;
+  for (const prop of props) {
+    if (
+      judgedProps.has(prop.id) === false &&
+      prop.type === "expression" &&
+      refusedValue(prop.value)
+    ) {
+      pause(`prop:${prop.id}`, {
+        kind: "prop",
+        instanceId: prop.instanceId,
+        propId: prop.id,
+        name: prop.name,
+        unpublished: true,
+      });
+    }
+  }
+  for (const [instanceId, instance] of instances) {
+    if (visitedInstances.has(instanceId)) {
+      continue;
+    }
+    instance.children.forEach((child, index) => {
+      if (child.type === "expression" && refusedValue(child.value)) {
+        pause(`child:${instanceId}:${index}`, {
+          kind: "child",
+          instanceId,
+          index,
+          unpublished: true,
+        });
+      }
+    });
+  }
+  for (const page of build.pages) {
+    if (page.meta.title !== undefined && refusedValue(page.meta.title)) {
+      pause(`page:${page.id}:metaTitle`, {
+        kind: "page",
+        pageId: page.id,
+        field: "metaTitle",
+        unpublished: true,
+      });
+    }
+  }
+  for (const template of build.templates ?? []) {
+    const fields: Array<[PageExpressionField, unknown]> = [
+      ...pageFieldValues(template),
+      ["metaTitle", template.meta.title],
+    ];
+    for (const [field, value] of fields) {
+      if ((field === "title" || value !== undefined) && refusedValue(value)) {
+        pause(`page:${template.id}:${field}`, {
+          kind: "page",
+          pageId: template.id,
+          field,
+          unpublished: true,
+        });
+      }
+    }
+  }
+  return [...paused.values()];
 };
 
 // Input validation for expressions and generated names, read by the builder

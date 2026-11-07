@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   ROOT_FOLDER_ID,
+  ROOT_INSTANCE_ID,
   blockComponent,
   blockTemplateComponent,
   type Asset,
@@ -9,6 +10,8 @@ import {
   type Page,
   type Pages,
   type Prop,
+  type Resource,
+  encodeDataSourceVariable,
 } from "@webstudio-is/sdk";
 import { MenuIcon } from "@webstudio-is/icons/svg";
 import { renderTemplate, type TemplateMeta } from "@webstudio-is/template";
@@ -1155,7 +1158,21 @@ describe("findPausedScript", () => {
       ],
     ]);
 
-    expect(find({ instances, props, dataSources })).toEqual([
+    // the Resource the resource data source names
+    const resources = new Map<string, Resource>([
+      [
+        "res-resource",
+        {
+          id: "res-resource",
+          name: "res",
+          method: "get",
+          url: '"https://example.org/"',
+          headers: [],
+        },
+      ],
+    ]);
+
+    expect(find({ instances, props, dataSources, resources })).toEqual([
       { label: "Action (onClick) on Home", navigate: onHome("button") },
       { label: "Action (href) on Home", navigate: onHome("link") },
       { label: "Action (onChange) on Home", navigate: onHome("input") },
@@ -1886,6 +1903,867 @@ describe("findPausedScript", () => {
       },
       // still last
       { label: "Custom code (Project settings)", view: "projectSettings" },
+    ]);
+  });
+
+  // While org script is paused publishing leaves out an expression that may
+  // not run where the page's modules write it, and a Resource holding one
+  // (findPausedExpressions, as dropOrgScript reads it)
+  test("lists a binding, a text binding, a page setting, a Resource and a redirect that may not run", () => {
+    const reach = '"".constructor';
+    const pages = createPages();
+    const home = pages.pages.get("home") as Page;
+    home.title = reach;
+    home.meta = {
+      description: '"Kept"',
+      redirect: `"/" + ${reach}`,
+      status: "302",
+      custom: [
+        { property: "og:x", content: reach },
+        { property: "og:type", content: '"website"' },
+      ],
+    };
+    (pages.pages.get("about") as Page).meta = { language: reach };
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("box", "text", "link"),
+      },
+      { id: "box", component: "Box" },
+      {
+        id: "text",
+        component: "Text",
+        children: [
+          { type: "expression", value: '"t") && (1' },
+          { type: "expression", value: '"kept"' },
+        ],
+      },
+      { id: "link", component: "Link" },
+    ]);
+    const bound = (instanceId: string, name: string, value: string): Prop => ({
+      id: `${instanceId}-${name}`,
+      instanceId,
+      name,
+      type: "expression",
+      value,
+    });
+    const props = toProps([
+      bound("box", "title", '"x"} data-x={1'),
+      bound("box", "data-ws-show", '"kept" !== ""'),
+      // one that is an unsafe address too is listed once, as an address
+      bound("link", "href", '"javascript:" + 0) || (1'),
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "leak-ds",
+        {
+          type: "resource",
+          id: "leak-ds",
+          name: "leak",
+          scopeInstanceId: "box",
+          resourceId: "leak",
+        },
+      ],
+      [
+        "kept-ds",
+        {
+          type: "resource",
+          id: "kept-ds",
+          name: "kept",
+          scopeInstanceId: "box",
+          resourceId: "kept",
+        },
+      ],
+    ]);
+    const resource = (id: string, url: string): Resource => ({
+      id,
+      name: id,
+      method: "get",
+      url,
+      headers: [],
+    });
+    const resources = new Map<string, Resource>([
+      ["leak", resource("leak", `"https://evil.example/?k=" + (0 < 1 > 2)`)],
+      ["kept", resource("kept", '"https://example.org/"')],
+    ]);
+    const settings = { pageId: "home", instanceSelector: ["home-root"] };
+
+    expect(find({ pages, instances, props, dataSources, resources })).toEqual([
+      { label: "Binding (title) on Home", navigate: onHome("box") },
+      { label: "Text binding on Home", navigate: onHome("text") },
+      { label: "Link address (href) on Home", navigate: onHome("link") },
+      {
+        label: "Page setting (Title) on Home",
+        navigate: settings,
+        view: "pageSettings",
+      },
+      {
+        label: "Page setting (og:x) on Home",
+        navigate: settings,
+        view: "pageSettings",
+      },
+      { label: "Redirect on Home", navigate: settings, view: "pageSettings" },
+      {
+        label: "Page setting (Language) on About",
+        navigate: { pageId: "about", instanceSelector: ["about-root"] },
+        view: "pageSettings",
+      },
+      { label: "Resource (leak) on Home", navigate: onHome("box") },
+    ]);
+  });
+
+  // Input validation (code-check.ts) is the outer layer: publishing leaves
+  // out what it refuses, and lists what a page publishes
+  test("lists what input validation refuses where a page publishes it, and nothing a page does not publish", () => {
+    const pages = createPages();
+    const home = pages.pages.get("home") as Page;
+    home.meta = { title: "a()" };
+    pages.pageTemplates = new Map([
+      [
+        "template",
+        {
+          id: "template",
+          name: "Template",
+          title: "a()",
+          rootInstanceId: "orphan",
+          meta: {},
+        },
+      ],
+    ]);
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("box") },
+      { id: "box", component: "Box" },
+      {
+        id: "orphan",
+        component: "Box",
+        children: [{ type: "expression", value: "a()" }],
+      },
+    ]);
+    const props = toProps([
+      {
+        id: "box-title",
+        instanceId: "box",
+        name: "title",
+        type: "expression",
+        value: "({constructor: 1})",
+      },
+      {
+        id: "orphan-title",
+        instanceId: "orphan",
+        name: "title",
+        type: "expression",
+        value: "a()",
+      },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "news-ds",
+        {
+          type: "resource",
+          id: "news-ds",
+          name: "news",
+          scopeInstanceId: "box",
+          resourceId: "news",
+        },
+      ],
+    ]);
+    const resource = (id: string, init: Partial<Resource>): Resource => ({
+      id,
+      name: id,
+      method: "get",
+      url: '"https://example.org/"',
+      headers: [],
+      ...init,
+    });
+    const resources = new Map<string, Resource>([
+      [
+        "news",
+        resource("news", { headers: [{ name: "X Custom", value: '"1"' }] }),
+      ],
+      ["unused", resource("unused", { url: "a()" })],
+    ]);
+
+    expect(find({ pages, instances, props, dataSources, resources })).toEqual([
+      { label: "Binding (title) on Home", navigate: onHome("box") },
+      { label: "Resource (news) on Home", navigate: onHome("box") },
+    ]);
+  });
+
+  test("lists an expression, a page setting and a Resource that name a data source publishing leaves out", () => {
+    const pages = createPages();
+    const home = pages.pages.get("home") as Page;
+    home.meta = {
+      description: `${encodeDataSourceVariable("broken-ds")}.data`,
+    };
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("box", "embed") },
+      { id: "box", component: "Box" },
+      { id: "embed", component: "HtmlEmbed" },
+    ]);
+    const bound = (instanceId: string, name: string, value: string): Prop => ({
+      id: `${instanceId}-${name}`,
+      instanceId,
+      name,
+      type: "expression",
+      value,
+    });
+    const props = toProps([
+      stringProp("embed", "code", "<b>x</b>"),
+      bound("box", "title", `${encodeDataSourceVariable("Box")}.length`),
+      bound("box", "data-embed", encodeDataSourceVariable("embed-state")),
+    ]);
+    const variable = (id: string, name: string, scopeInstanceId: string) =>
+      [
+        id,
+        {
+          type: "variable",
+          id,
+          name,
+          scopeInstanceId,
+          value: { type: "string", value: "" },
+        },
+      ] as [string, DataSource];
+    const resourceSource = (id: string) =>
+      [
+        `${id}-ds`,
+        {
+          type: "resource",
+          id: `${id}-ds`,
+          name: id,
+          scopeInstanceId: "box",
+          resourceId: id,
+        },
+      ] as [string, DataSource];
+    const dataSources = new Map<string, DataSource>([
+      variable("Box", "tag", "home-root"),
+      variable("embed-state", "embedState", "embed"),
+      resourceSource("broken"),
+      resourceSource("named"),
+    ]);
+    const resources = new Map<string, Resource>([
+      [
+        "broken",
+        {
+          id: "broken",
+          name: "broken",
+          method: "get",
+          url: "a()",
+          headers: [],
+        },
+      ],
+      [
+        "named",
+        {
+          id: "named",
+          name: "named",
+          method: "get",
+          url: '"https://example.org/"',
+          headers: [
+            {
+              name: "x-embed",
+              value: encodeDataSourceVariable("embed-state"),
+            },
+          ],
+        },
+      ],
+    ]);
+    const settings = { pageId: "home", instanceSelector: ["home-root"] };
+
+    expect(find({ pages, instances, props, dataSources, resources })).toEqual([
+      { label: "Variable (tag) on Home", navigate: settings },
+      { label: "Binding (title) on Home", navigate: onHome("box") },
+      { label: "Binding (data-embed) on Home", navigate: onHome("box") },
+      { label: "HTML Embed on Home", navigate: onHome("embed") },
+      {
+        label: "Page setting (Description) on Home",
+        navigate: settings,
+        view: "pageSettings",
+      },
+      { label: "Resource (broken) on Home", navigate: onHome("box") },
+      { label: "Resource (named) on Home", navigate: onHome("box") },
+    ]);
+  });
+
+  // A variable holds plain data only: nothing writes an element into one
+  test("lists a parameter or an expression named ref, and not one of another type", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("named", "bound", "plain"),
+      },
+      { id: "named", component: "Box" },
+      { id: "bound", component: "Link" },
+      { id: "plain", component: "Box" },
+      { id: "orphan", component: "Box" },
+    ]);
+    const props = toProps([
+      {
+        id: "named-ref",
+        instanceId: "named",
+        name: "ref",
+        type: "parameter",
+        value: "held",
+      },
+      {
+        id: "bound-ref",
+        instanceId: "bound",
+        name: "ref",
+        type: "expression",
+        value: encodeDataSourceVariable("held"),
+      },
+      stringProp("plain", "ref", "kept"),
+      {
+        id: "orphan-ref",
+        instanceId: "orphan",
+        name: "ref",
+        type: "parameter",
+        value: "held",
+      },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "held",
+        {
+          type: "variable",
+          id: "held",
+          name: "held",
+          scopeInstanceId: "home-root",
+          value: { type: "json", value: {} },
+        },
+      ],
+    ]);
+
+    expect(find({ instances, props, dataSources })).toEqual([
+      { label: "Element reference (ref) on Home", navigate: onHome("named") },
+      { label: "Element reference (ref) on Home", navigate: onHome("bound") },
+    ]);
+  });
+
+  test("lists nothing for an expression that names what the module declares, or a data source the page does not hold", () => {
+    const item = encodeDataSourceVariable("item");
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("list", "outside") },
+      { id: "list", component: "ws:collection", children: ids("card") },
+      {
+        id: "card",
+        component: "Text",
+        children: [{ type: "expression", value: `${item}.title` }],
+      },
+      { id: "outside", component: "Box" },
+    ]);
+    const props = toProps([
+      {
+        id: "list-data",
+        instanceId: "list",
+        name: "data",
+        type: "expression",
+        value: "[]",
+      },
+      {
+        id: "list-item",
+        instanceId: "list",
+        name: "item",
+        type: "parameter",
+        value: "item",
+      },
+      {
+        id: "outside-title",
+        instanceId: "outside",
+        name: "title",
+        type: "expression",
+        value: `${encodeDataSourceVariable("elsewhere")}.title`,
+      },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "item",
+        {
+          type: "parameter",
+          id: "item",
+          name: "item",
+          scopeInstanceId: "list",
+        },
+      ],
+    ]);
+
+    expect(find({ instances, props, dataSources })).toEqual([]);
+  });
+
+  test("lists a data source that publishing leaves out for its name, and an action judged against the data sources that ship", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("box", "button") },
+      { id: "box", component: "Box" },
+      { id: "button", component: "Button" },
+    ]);
+    const props = toProps([
+      {
+        id: "button-onClick",
+        instanceId: "button",
+        name: "onClick",
+        type: "action",
+        value: [
+          {
+            type: "execute",
+            args: [],
+            code: `${encodeDataSourceVariable("state")} = ${encodeDataSourceVariable("leak-ds")}`,
+          },
+        ],
+      },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "builtin",
+        {
+          type: "variable",
+          id: "builtin",
+          name: "Object",
+          scopeInstanceId: ROOT_INSTANCE_ID,
+          value: { type: "string", value: "" },
+        },
+      ],
+      [
+        "scoped",
+        {
+          type: "variable",
+          id: "scoped",
+          name: "Map",
+          scopeInstanceId: "box",
+          value: { type: "string", value: "" },
+        },
+      ],
+      [
+        "state",
+        {
+          type: "variable",
+          id: "state",
+          name: "state",
+          scopeInstanceId: "home-root",
+          value: { type: "string", value: "" },
+        },
+      ],
+      [
+        "leak-ds",
+        {
+          type: "resource",
+          id: "leak-ds",
+          name: "leak",
+          scopeInstanceId: "home-root",
+          resourceId: "leak",
+        },
+      ],
+    ]);
+    const resources = new Map<string, Resource>([
+      [
+        "leak",
+        {
+          id: "leak",
+          name: "leak",
+          method: "get",
+          url: '"https://example.org/" + /x/.source',
+          headers: [],
+        },
+      ],
+    ]);
+
+    expect(find({ instances, props, dataSources, resources })).toEqual([
+      { label: "Variable (Map) on Home", navigate: onHome("box") },
+      { label: "Action (onClick) on Home", navigate: onHome("button") },
+      { label: "Variable (Object)" },
+      {
+        label: "Resource (leak) on Home",
+        navigate: { pageId: "home", instanceSelector: ["home-root"] },
+      },
+    ]);
+  });
+
+  // A data source whose id is another of the page module's names is listed
+  // (collidingDataSourceIds), and an action and a binding that name it are
+  // judged without it, as publishing judges them
+  test("lists a data source whose id is another of the page module's names", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("box", "button") },
+      { id: "box", component: "Box" },
+      { id: "button", component: "Button" },
+    ]);
+    const props = toProps([
+      {
+        id: "box-title",
+        instanceId: "box",
+        name: "title",
+        type: "expression",
+        value: encodeDataSourceVariable("Box"),
+      },
+      {
+        id: "button-onClick",
+        instanceId: "button",
+        name: "onClick",
+        type: "action",
+        value: [
+          {
+            type: "execute",
+            args: [],
+            code: `${encodeDataSourceVariable("state")} = ${encodeDataSourceVariable("Box")}`,
+          },
+        ],
+      },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "Box",
+        {
+          type: "variable",
+          id: "Box",
+          name: "box",
+          scopeInstanceId: "home-root",
+          value: { type: "string", value: "" },
+        },
+      ],
+      [
+        "state",
+        {
+          type: "variable",
+          id: "state",
+          name: "state",
+          scopeInstanceId: "home-root",
+          value: { type: "string", value: "" },
+        },
+      ],
+    ]);
+
+    // and what names it
+    expect(find({ instances, props, dataSources })).toEqual([
+      {
+        label: "Variable (box) on Home",
+        navigate: { pageId: "home", instanceSelector: ["home-root"] },
+      },
+      { label: "Binding (title) on Home", navigate: onHome("box") },
+      { label: "Action (onClick) on Home", navigate: onHome("button") },
+    ]);
+  });
+
+  // An expression holds no comment, and an object literal no shorthand
+  // property
+  test("lists an expression that holds a comment or a shorthand property", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("box") },
+      { id: "box", component: "Box" },
+    ]);
+    const props = toProps([
+      {
+        id: "box-title",
+        instanceId: "box",
+        name: "title",
+        type: "expression",
+        value: `${encodeDataSourceVariable("state")} /* x */ .length`,
+      },
+      {
+        id: "box-data",
+        instanceId: "box",
+        name: "data-x",
+        type: "expression",
+        value: `({${encodeDataSourceVariable("state")}})`,
+      },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "state",
+        {
+          type: "variable",
+          id: "state",
+          name: "state",
+          scopeInstanceId: "home-root",
+          value: { type: "string", value: "" },
+        },
+      ],
+    ]);
+
+    expect(find({ instances, props, dataSources })).toEqual([
+      { label: "Binding (title) on Home", navigate: onHome("box") },
+      { label: "Binding (data-x) on Home", navigate: onHome("box") },
+    ]);
+  });
+
+  // What the Publish dialog lists, publishing counts: an action of an
+  // instance that only an instance on no page holds once what goes has gone
+  // is neither
+  test("lists no action of an instance that only an instance on no page holds once what goes has gone", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("embed") },
+      { id: "embed", component: "HtmlEmbed", children: ids("held") },
+      { id: "orphan", component: "Box", children: ids("held") },
+      { id: "held", component: "Box" },
+    ]);
+    const props = toProps([
+      {
+        id: "embed-code",
+        instanceId: "embed",
+        name: "code",
+        type: "string",
+        value: "<script>1</script>",
+      },
+      {
+        id: "held-onClick",
+        instanceId: "held",
+        name: "onClick",
+        type: "action",
+        value: [
+          {
+            type: "execute",
+            args: [],
+            code: `${encodeDataSourceVariable("state")} = ${encodeDataSourceVariable("inner")}`,
+          },
+        ],
+      },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "state",
+        {
+          type: "variable",
+          id: "state",
+          name: "state",
+          scopeInstanceId: "home-root",
+          value: { type: "string", value: "" },
+        },
+      ],
+      [
+        "inner",
+        {
+          type: "variable",
+          id: "inner",
+          name: "inner",
+          scopeInstanceId: "embed",
+          value: { type: "string", value: "" },
+        },
+      ],
+    ]);
+
+    expect(
+      find({ instances, props, dataSources }).map(({ label }) => label)
+    ).toEqual(["HTML Embed on Home"]);
+  });
+
+  test("lists a Resource that a data source or a resource prop names and the build does not hold", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("form") },
+      { id: "form", component: "Box" },
+    ]);
+    const props = toProps([
+      {
+        id: "form-action",
+        instanceId: "form",
+        name: "action",
+        type: "resource",
+        value: "absent-action",
+      },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "absent-ds",
+        {
+          type: "resource",
+          id: "absent-ds",
+          name: "absent",
+          scopeInstanceId: "form",
+          resourceId: "absent",
+        },
+      ],
+    ]);
+
+    expect(find({ instances, props, dataSources })).toEqual([
+      { label: "Resource (absent) on Home", navigate: onHome("form") },
+      { label: "Resource (absent-action) on Home", navigate: onHome("form") },
+    ]);
+  });
+
+  // A Collection's item may only be a parameter of its own that nothing around
+  // it binds, and a Resource named like a global a module reads goes
+  test("lists a Collection's item that names a variable, and a Resource named like a global", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("list", "form") },
+      { id: "list", component: "ws:collection" },
+      { id: "form", component: "Box" },
+    ]);
+    const props = toProps([
+      {
+        id: "list-item",
+        instanceId: "list",
+        name: "item",
+        type: "parameter",
+        value: "state",
+      },
+      {
+        id: "form-action",
+        instanceId: "form",
+        name: "action",
+        type: "resource",
+        value: "global",
+      },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "state",
+        {
+          type: "variable",
+          id: "state",
+          name: "state",
+          scopeInstanceId: "home-root",
+          value: { type: "string", value: "" },
+        },
+      ],
+    ]);
+    const resources = new Map<string, Resource>([
+      [
+        "global",
+        {
+          id: "global",
+          name: "Map",
+          method: "post",
+          url: '"https://example.org/form"',
+          headers: [],
+        },
+      ],
+    ]);
+
+    // the shared rule lists the variable a Collection binds
+    expect(find({ instances, props, dataSources, resources })).toEqual([
+      {
+        label: "Variable (state) on Home",
+        navigate: { pageId: "home", instanceSelector: ["home-root"] },
+      },
+      { label: "Resource (Map) on Home", navigate: onHome("form") },
+    ]);
+  });
+
+  // Publishing counts the same two (organizeos-org-script.unsafe-values.test.ts)
+  test("lists a global data source named like one of the module's own names, and what names it", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("box") },
+      { id: "box", component: "Box" },
+    ]);
+    const props = toProps([
+      {
+        id: "box-title",
+        instanceId: "box",
+        name: "title",
+        type: "expression",
+        value: encodeDataSourceVariable("docs"),
+      },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "docs",
+        {
+          type: "variable",
+          id: "docs",
+          name: "documents",
+          scopeInstanceId: ROOT_INSTANCE_ID,
+          value: { type: "string", value: "" },
+        },
+      ],
+    ]);
+
+    expect(find({ instances, props, dataSources })).toEqual([
+      { label: "Binding (title) on Home", navigate: onHome("box") },
+      { label: "Data source (documents)" },
+    ]);
+  });
+
+  // Publishing counts the same (organizeos-org-script.unsafe-values.test.ts)
+  test("lists a Resource or a data source that goes only where an instance that ships holds it, and opens that one", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("node", "other") },
+      { id: "node", component: "XmlNode", children: ids("form", "box") },
+      { id: "form", component: "Box" },
+      { id: "box", component: "Box" },
+      { id: "other", component: "Box" },
+    ]);
+    const props = toProps([
+      {
+        id: "form-action",
+        instanceId: "form",
+        name: "action",
+        type: "resource",
+        value: "sent",
+      },
+      {
+        id: "other-action",
+        instanceId: "other",
+        name: "action",
+        type: "resource",
+        value: "sent",
+      },
+      {
+        id: "box-action",
+        instanceId: "box",
+        name: "action",
+        type: "resource",
+        value: "lost",
+      },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "loaded",
+        {
+          type: "resource",
+          id: "loaded",
+          name: "loaded",
+          scopeInstanceId: "box",
+          resourceId: "feed",
+        },
+      ],
+      [
+        "docs",
+        {
+          type: "variable",
+          id: "docs",
+          name: "documents",
+          scopeInstanceId: "box",
+          value: { type: "string", value: "" },
+        },
+      ],
+    ]);
+    const resources = new Map<string, Resource>([
+      [
+        "sent",
+        {
+          id: "sent",
+          name: "Map",
+          method: "post",
+          url: '"https://example.org/form"',
+          headers: [],
+        },
+      ],
+      [
+        "lost",
+        {
+          id: "lost",
+          name: "Number",
+          method: "post",
+          url: '"https://example.org/form"',
+          headers: [],
+        },
+      ],
+      [
+        "feed",
+        {
+          id: "feed",
+          name: "feed",
+          method: "get",
+          url: '"https://example.org/?k=" + (0 < 1 > 2)',
+          headers: [],
+        },
+      ],
+    ]);
+
+    expect(find({ instances, props, dataSources, resources })).toEqual([
+      {
+        label: "XML element on Home",
+        navigate: onHome("node"),
+      },
+      { label: "Resource (Map) on Home", navigate: onHome("other") },
     ]);
   });
 

@@ -14,6 +14,8 @@ import { formDataParameterName } from "@webstudio-is/sdk/runtime";
 import {
   actionContextOf,
   actionMayRun,
+  expressionMayRun,
+  findPausedExpressions,
 } from "@organizeos/site-components/org-script";
 import {
   buildSignupFormData,
@@ -255,5 +257,41 @@ describe("the published-site fixture", () => {
       writeFileSync(fixturePath, `${JSON.stringify(built, null, 2)}\n`);
     }
     expect(JSON.parse(readFileSync(fixturePath, "utf8"))).toEqual(built);
+  });
+
+  // While org script is paused publishing leaves out an expression or a
+  // Resource that may not run where it is written (docs/ORGANIZEOS-FORK.md
+  // section 10), so the provisioned form's own have to pass
+  test("writes expressions and an action Resource that may run while org script is paused", async () => {
+    const { data, bodyId } = await build();
+    expect(
+      [...data.props.values()].some((prop) => prop.type === "expression")
+    ).toBe(true);
+    expect(
+      findPausedExpressions({
+        pages: [
+          {
+            id: "newsletter",
+            name: "Newsletter",
+            title: '"Newsletter"',
+            path: "/newsletter",
+            rootInstanceId: bodyId,
+            meta: {},
+          },
+        ],
+        instances: data.instances,
+        props: data.props.values(),
+        dataSources: data.dataSources,
+        resources: data.resources,
+      })
+    ).toEqual([]);
+    for (const resource of data.resources.values()) {
+      for (const value of [
+        resource.url,
+        ...resource.headers.map((header) => header.value),
+      ]) {
+        expect(expressionMayRun(value), value).toBe(true);
+      }
+    }
   });
 });

@@ -26,10 +26,15 @@ import {
   checksTagProp,
   componentMayShip,
   elementTagMayRender,
+  findPausedExpressions,
   propMayShip,
   propNameMayRun,
   templateIconCodes,
 } from "@organizeos/site-components/org-script";
+import {
+  SITE_TEMPLATES,
+  renderSiteTemplate,
+} from "@organizeos/site-components/site-templates";
 import { MenuIcon } from "@webstudio-is/icons/svg";
 import type { TemplateMeta } from "@webstudio-is/template";
 import { publishedComponents } from "~/builder/features/publish/organizeos-publish-paused-script";
@@ -470,6 +475,92 @@ describe("the libraries, as the canvas registers them", () => {
       )
     ).toEqual([]);
   });
+
+  // While org script is paused the canvas computes no expression
+  // expressionMayRun refuses, and publishing drops it, so every expression a
+  // template or a site template writes has to pass, where it is written
+  // (findPausedExpressions)
+  test("every expression a template inserts may run", () => {
+    const fragments = registeredTemplates().map(
+      ([key, { template: fragment }]) => ({
+        source: key,
+        title: '"Page"',
+        description: undefined as undefined | string,
+        fragment,
+      })
+    );
+    let lastPageId = 0;
+    for (const template of SITE_TEMPLATES) {
+      const pages = renderSiteTemplate(template, {
+        assetIds: new Map(
+          Object.keys(template.images).map((file) => [file, `asset-${file}`])
+        ),
+        generatePageId: () => `page-${(lastPageId += 1)}`,
+      });
+      for (const page of pages) {
+        fragments.push({
+          source: `${template.id} ${page.key}`,
+          // as the apply step writes them
+          title: JSON.stringify(page.title),
+          description: JSON.stringify(page.description),
+          fragment: page.fragment,
+        });
+      }
+    }
+    expect(SITE_TEMPLATES).toHaveLength(5);
+
+    let expressions = 0;
+    const paused = fragments.flatMap(
+      ({ source, title, description, fragment }) => {
+        const body: Instance = {
+          type: "instance",
+          id: "page-body",
+          component: "Body",
+          children: fragment.children,
+        };
+        for (const prop of fragment.props) {
+          expressions += prop.type === "expression" ? 1 : 0;
+        }
+        for (const instance of fragment.instances) {
+          for (const child of instance.children) {
+            expressions += child.type === "expression" ? 1 : 0;
+          }
+        }
+        return findPausedExpressions({
+          pages: [
+            {
+              id: "page",
+              name: "Page",
+              path: "",
+              title,
+              meta: { description },
+              rootInstanceId: body.id,
+            },
+          ],
+          instances: new Map(
+            [body, ...fragment.instances].map((instance) => [
+              instance.id,
+              instance,
+            ])
+          ),
+          props: fragment.props,
+          dataSources: new Map(
+            fragment.dataSources.map((dataSource) => [
+              dataSource.id,
+              dataSource,
+            ])
+          ),
+          resources: new Map(
+            fragment.resources.map((resource) => [resource.id, resource])
+          ),
+        }).map((item) => ({ source, item }));
+      }
+    );
+    // the forms' states and shows, the cards' fields and links, in the blocks
+    // and in the site templates that place them
+    expect(expressions).toBeGreaterThanOrEqual(200);
+    expect(paused).toEqual([]);
+  }, 60_000);
 
   // What a template inserts is checked by the rules the canvas and publish
   // apply, so no template brings in what the pause would drop or stub.

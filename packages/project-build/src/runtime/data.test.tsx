@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   createTemplateComponentFixture,
   ActionValue,
@@ -83,6 +83,35 @@ import {
   validateResourceBodyExpression,
   validateResourceUrlExpression,
 } from "./data";
+
+// OrganizeOS fork: upstream's tests of the evaluator run with org script
+// paused, as the builder runs them, except those that compute a bare name,
+// keyed by name: while org script is paused an expression names only data
+// sources (expressionMayRun). Those run with org script allowed, as upstream
+// runs them (docs/ORGANIZEOS-FORK.md section 10).
+const orgScript = vi.hoisted(() => ({ mayRun: false }));
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@organizeos/site-components/org-script")
+  >()),
+  orgScriptMayRun: () => orgScript.mayRun,
+}));
+const testsWithOrgScriptAllowed = new Set([
+  "compute expression with decoded names",
+  "compute literal expression when variable is json object",
+  "compute literal expression when object is frozen",
+  "compute expression does not clone unused variables",
+  "compute expression cache reads current variables",
+  "compute unset variables as undefined",
+  "resource expression form validation > computes expressions against encoded variable scope names",
+  "resource expression form validation > validates evaluated resource urls",
+  "resource expression form validation > validates evaluated resource body by body type",
+]);
+beforeEach(() => {
+  orgScript.mayRun = testsWithOrgScriptAllowed.has(
+    expect.getState().currentTestName ?? ""
+  );
+});
 
 const Body = createTemplateComponentFixture("Body");
 const Box = createTemplateComponentFixture("Box");

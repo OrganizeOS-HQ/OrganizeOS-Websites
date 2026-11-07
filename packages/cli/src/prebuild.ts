@@ -156,6 +156,7 @@ import {
   frameworkComponentsOf,
   refuseMdxWhilePaused,
 } from "./organizeos-org-script";
+import { checkGeneratedModule } from "./organizeos-generated-code";
 import { pagesForSitemap } from "@organizeos/site-components/org-script";
 import { assertNoPreviewHeader } from "./organizeos-preview-header";
 import { createFramework as createRemixFramework } from "./framework-remix";
@@ -2099,6 +2100,12 @@ export const createManagedFormResourceFetch = ({ request, context, projectDomain
     const generatedBasename = generateRemixRoute(pagePath);
 
     const clientFile = join(generatedDir, `${generatedBasename}.tsx`);
+    // OrganizeOS fork: while org script is paused, a generated module that reads a name it does not declare, or shadows one, fails the publish (organizeos-generated-code.ts)
+    await checkGeneratedModule(pageExports, clientFile);
+    await checkGeneratedModule(
+      serverExports,
+      join(generatedDir, `${generatedBasename}.server.tsx`)
+    );
     await writeGeneratedFile(clientFile, pageExports);
 
     const serverFile = join(generatedDir, `${generatedBasename}.server.tsx`);
