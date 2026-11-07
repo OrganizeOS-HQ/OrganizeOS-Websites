@@ -754,8 +754,9 @@ can be merged with minimal conflict.
   expression `expressionMayRun` refuses no value, kept in the compiled
   expressions' cache under the same limit as any other, and an expression no
   function; one marked mock and `beforeEach` in each of
-  `packages/project-build/src/runtime/data.test.tsx`, `block.test.ts` and
-  `content-block-application.test.ts` that run upstream's cases that compute a
+  `packages/project-build/src/runtime/data.test.tsx`, `block.test.ts`,
+  `content-block-application.test.ts` and the builder's
+  `shared/content-block-source-utils.test.ts` that run upstream's cases that compute a
   bare name with org script allowed, as upstream runs them, and the rest
   paused; in `prebuild.test.ts`, the upstream case that prerenders an Assets
   query naming a route parameter by a bare name publishes as if org script
