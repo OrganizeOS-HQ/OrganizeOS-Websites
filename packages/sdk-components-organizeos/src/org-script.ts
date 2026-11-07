@@ -84,13 +84,13 @@ export const orgScriptMayRun = (): boolean => false;
 /**
  * Which of OrganizeOS's launch requirements the CLI built from this commit
  * meets. The publish workflow reads it beside orgScriptMayRun() and sends it
- * as guardLevel (docs/ORGANIZEOS-FORK.md section 5). Level 1 has work not
- * yet in this repository; the level stays 0 until it lands.
+ * as guardLevel (docs/ORGANIZEOS-FORK.md section 5). Every level-1
+ * requirement is in this repository, so the level is 1.
  * packages/cli/src/organizeos-guard-level.test.ts fails if a requirement stops
  * holding or loses its tests, and pins the level; changing the level is a
  * reviewed change that edits that test.
  */
-export const ORGANIZEOS_GUARD_LEVEL: number = 0;
+export const ORGANIZEOS_GUARD_LEVEL: number = 1;
 
 /**
  * The SVGs that upstream's own templates put in an HTML Embed (Accordion,
