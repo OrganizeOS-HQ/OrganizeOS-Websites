@@ -387,6 +387,63 @@ const expressionsLeftOut = async () => {
   );
 };
 
+// An action that reads a member of its argument is left out, and one that
+// sets a variable to a plain value stays.
+const actionsLeftOut = async () => {
+  const variable = encodeDataSourceVariable("v");
+  const published = dropOrgScript(
+    bundleOf({
+      instances: [
+        instance("root", "Body", { children: children("reads", "sets") }),
+        instance("reads", "Box"),
+        instance("sets", "Box"),
+      ],
+      props: [
+        [
+          "reads:onClick",
+          {
+            id: "reads:onClick",
+            instanceId: "reads",
+            name: "onClick",
+            type: "action",
+            value: [
+              {
+                type: "execute",
+                args: ["event"],
+                code: `${variable} = event.target.value`,
+              },
+            ],
+          },
+        ],
+        [
+          "sets:onClick",
+          {
+            id: "sets:onClick",
+            instanceId: "sets",
+            name: "onClick",
+            type: "action",
+            value: [{ type: "execute", args: [], code: `${variable} = 1` }],
+          },
+        ],
+      ],
+      dataSources: [
+        [
+          "v",
+          {
+            type: "variable",
+            id: "v",
+            name: "v",
+            scopeInstanceId: "root",
+            value: { type: "number", value: 0 },
+          },
+        ],
+      ],
+    })
+  );
+  const kept = new Map(published.build.props);
+  return kept.has("reads:onClick") === false && kept.has("sets:onClick");
+};
+
 const unsafeValuesTests =
   "packages/cli/src/organizeos-org-script.unsafe-values.test.ts";
 const prebuildTests = "packages/cli/src/prebuild.test.ts";
@@ -724,6 +781,40 @@ const levelOne: Requirement[] = [
       },
     ],
   },
+  {
+    name: "actions that could run script or reach a host object are left out",
+    holds: actionsLeftOut,
+    coveredBy: [
+      {
+        file: "packages/sdk-components-organizeos/src/org-script.test.ts",
+        path: [
+          "actionMayRun",
+          "refuses member access and calls, however they are written",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          "dropOrgScript leaves unsafe values out",
+          "drops an action that could run script or reach the page, on any prop of any instance, an XML page's included, and counts it as an unsafe action",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          "prebuild",
+          "leaves out an action that could run script or reach the page, and keeps one a template writes",
+        ],
+      },
+      {
+        file: "apps/builder/app/canvas/organizeos-org-script.props.test.tsx",
+        path: [
+          "the canvas computes an action",
+          "runs none of the refused actions, and gives them no handler that does anything",
+        ],
+      },
+    ],
+  },
 ];
 
 const present = levelOne.filter(
@@ -914,10 +1005,10 @@ describe("the covering-test lookup", () => {
 });
 
 describe("ORGANIZEOS_GUARD_LEVEL", () => {
-  // The level stays 0 while level-1 work is not yet in this repository; the
-  // change that lands it removes this pin and raises the level.
-  test("stays 0 while level-1 work is not yet in this repository", () => {
-    expect(ORGANIZEOS_GUARD_LEVEL).toBe(0);
+  // Every level-1 requirement holds and is covered, so the level is 1; a
+  // change to it is a reviewed change that edits this pin.
+  test("is 1, with every level-1 requirement in this repository", () => {
+    expect(ORGANIZEOS_GUARD_LEVEL).toBe(1);
   });
 
   test("is an integer from 0 to 32767, and at most 1", () => {
