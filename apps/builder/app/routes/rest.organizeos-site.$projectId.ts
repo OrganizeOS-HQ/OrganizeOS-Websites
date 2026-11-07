@@ -25,9 +25,9 @@ import {
  * A fetch only, for a user signed in as a user (never through a share link's
  * token) who may view the project. The org is the project owner's, resolved
  * as the builder loader resolves it, and never comes from the request. The
- * answer is `{ ok: true, host, origin, status, manageDomainsUrl, websiteUrl,
- * launchable? }`, or `{ ok: false }` for a project no org owns and for any
- * failure, which the dialog shows as nothing extra. A failure logs one code.
+ * answer is `{ ok: true, host, origin, status, manageDomainsUrl, launchable?,
+ * targets? }`, or `{ ok: false }` for a project no org owns and for any
+ * failure, which the dialog shows as one line. A failure logs one code.
  */
 
 const UUID_PATTERN =

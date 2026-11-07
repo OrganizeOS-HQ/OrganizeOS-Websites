@@ -1,0 +1,35 @@
+[
+  {
+    "subdomain": "example-org",
+    "main_host": "www.example.org",
+    "website_hosts": ["www.example.org", "example.net"],
+    "status": "live",
+    "launchable": true,
+    "targets": [
+      {
+        "key": "builtin",
+        "host": null,
+        "main": false,
+        "published_at": "2026-11-07T12:00:00+00:00",
+        "unpublished_at": null,
+        "live": true
+      },
+      {
+        "key": "example.org",
+        "host": "www.example.org",
+        "main": true,
+        "published_at": null,
+        "unpublished_at": null,
+        "live": false
+      },
+      {
+        "key": "example.net",
+        "host": "example.net",
+        "main": false,
+        "published_at": "2026-11-06T09:30:00+00:00",
+        "unpublished_at": "2026-11-07T08:15:00+00:00",
+        "live": false
+      }
+    ]
+  }
+]
