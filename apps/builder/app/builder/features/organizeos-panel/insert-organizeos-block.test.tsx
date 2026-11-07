@@ -32,6 +32,7 @@ import {
   createBlockPlacer,
   localStylesFirst,
 } from "@organizeos/site-components/site-templates";
+import { expressionMayRun } from "@organizeos/site-components/org-script";
 import {
   $organizeosSite,
   $propValuesByInstanceSelector,
@@ -1857,6 +1858,11 @@ describe("the inserted Event List's and Event Card's data", () => {
           }),
           `${key} ${bind.instance}.${bind.prop}`
         ).toEqual([]);
+        // and may run while org script is paused
+        expect(
+          expressionMayRun(bind.value(variable)),
+          `${key} ${bind.instance}.${bind.prop}`
+        ).toBe(true);
         checked += 1;
       }
     }

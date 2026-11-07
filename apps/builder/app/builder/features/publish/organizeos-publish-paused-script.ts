@@ -7,12 +7,15 @@ import {
   parseContentBlockSourceProp,
   ROOT_INSTANCE_ID,
   type Assets,
+  type DataSource,
   type DataSources,
   type Instance,
   type Instances,
+  type Page,
   type Pages,
   type Prop,
   type Props,
+  type Resource,
   type Resources,
 } from "@webstudio-is/sdk";
 import * as baseComponentMetas from "@webstudio-is/sdk-components-react/metas";
@@ -20,15 +23,15 @@ import * as radixComponentMetas from "@webstudio-is/sdk-components-react-radix/m
 import * as organizeosComponentMetas from "@organizeos/site-components/metas";
 import type { ProjectSettings } from "@webstudio-is/project-build";
 import {
-  actionContextOf,
   checksInstanceTag,
   checksTagProp,
   collectionBindingNames,
-  collidingDataSourceIds,
   componentMayShip,
   elementTagMayRun,
+  findPausedPublishing,
   htmlEmbedCodeMayRun,
   instanceIdMayRun,
+  isElementReference,
   isEventAttributeName,
   isFrameDocumentName,
   orgScriptMayRun,
@@ -62,9 +65,13 @@ import { findPageAndSelectorByInstanceId } from "@webstudio-is/project-build/run
  * script, an XML element on an HTML or text page and a redirect to an unsafe
  * address. A bound address the canvas shows with a safe value is still listed
  * when its fixed start decides nothing. So are an instance of a component the
- * page does not import, one stored with the global root's id and a data
- * source the page module cannot name as itself. What is inside an instance
- * publishing drops is listed only where publishing counts it.
+ * page does not import, one stored with the global root's id, a data source
+ * with a conflicting id, and the expressions, page settings,
+ * Resources and data sources publishing leaves out, with an action judged
+ * against the data sources that ship, in the order publishing reads them
+ * (`findPausedPublishing`, which the CLI's `dropOrgScript` reads too). What
+ * is inside an instance publishing drops is listed only where publishing
+ * counts it.
  */
 export type PausedScriptItem = {
   label: string;
@@ -152,6 +159,9 @@ const unsafePropLabel = (instance: Instance, { name, type }: Prop) => {
   if (type === "action") {
     return `Action (${name})`;
   }
+  if (isElementReference({ name, type })) {
+    return `Element reference (${name})`;
+  }
   if (
     instance.component === collectionComponent &&
     collectionBindingNames.has(name)
@@ -175,6 +185,28 @@ const unsafePropLabel = (instance: Instance, { name, type }: Prop) => {
     return `Object address (${name})`;
   }
   return `Link address (${name})`;
+};
+
+/** How the dialog names a page setting that publishing leaves out. */
+const pageSettingLabel = (page: Page, field: string) => {
+  switch (field) {
+    case "title":
+      return "Title";
+    case "description":
+      return "Description";
+    case "excludePageFromSearch":
+      return "Exclude from search";
+    case "language":
+      return "Language";
+    case "socialImageUrl":
+      return "Social image";
+    case "status":
+      return "Status code";
+    case "content":
+      return "Text";
+  }
+  const custom = page.meta.custom?.[Number(field.slice("custom.".length))];
+  return custom?.property.trim() || "Custom metadata";
 };
 
 /**
@@ -207,9 +239,9 @@ export const findPausedScript = ({
   projectSettings?: ProjectSettings;
   instances: Instances;
   props: Props;
-  /** The build's, which an action's rule reads */
+  /** The build's, which an action's rule and the expressions' read */
   dataSources: DataSources;
-  /** The build's, which the rule for a data source's id reads */
+  /** The build's, which the rules for a data source's id and for expressions read */
   resources: Resources;
   /** The components a published page imports */
   components?: ReadonlySet<Instance["component"]>;
@@ -219,38 +251,6 @@ export const findPausedScript = ({
     return [];
   }
 
-  // what an action's rule reads, as publishing and the canvas read it. The
-  // builder's maps hold one entry per id, the one publishing keeps.
-  const names = {
-    instances,
-    dataSources,
-    props,
-    resources,
-    pages: pagesAndTemplatesOf(pages),
-  };
-  const rootIds = pageRootIdsOf(pages);
-  const actionContext = actionContextOf({
-    ...names,
-    pageRootIds: rootIds,
-    templateRootIds: templateRootIdsOf(pages),
-  });
-  // A data source that publishing leaves out for its id is listed where a
-  // page declares it: on the instance it is scoped to, or as a global one
-  const collidingIds = collidingDataSourceIds(names);
-  // a Content Block's own document goes unlisted, as publishing counts it not
-  const unlistedIds = unlistedDataSourceIds(names);
-  const collidingByScope = new Map<string, string[]>();
-  for (const id of collidingIds) {
-    const dataSource = dataSources.get(id);
-    if (dataSource !== undefined && unlistedIds.has(id) === false) {
-      // publishing reads one with no scope as held by an instance whose id
-      // is empty
-      const scope = dataSource.scopeInstanceId ?? "";
-      const list = collidingByScope.get(scope) ?? [];
-      list.push(dataSource.name);
-      collidingByScope.set(scope, list);
-    }
-  }
   const propsByInstance = new Map<Instance["id"], Prop[]>();
   for (const prop of props.values()) {
     const list = propsByInstance.get(prop.instanceId) ?? [];
@@ -311,6 +311,8 @@ export const findPausedScript = ({
     }
   };
 
+  const rootIds = pageRootIdsOf(pages);
+
   // What publishing removes, as `dropOrgScript` does: every instance it
   // leaves out, on a page or not, with what is inside it (a page's root is
   // emptied instead), but what an instance that stays still holds
@@ -357,6 +359,84 @@ export const findPausedScript = ({
       }
     }
   }
+  // What publishing leaves out as an expression and what an action's rule
+  // reads, in the order publishing reads them: a data source that goes for its
+  // id, or with its instance, takes what names it, and an action is judged
+  // against the data sources that ship. An action names only a data source of
+  // an instance on every path to its holder, or a global one, so one of an
+  // instance that goes is in scope only for a holder that goes too. The
+  // builder's maps hold one entry per id, the one publishing keeps. What no
+  // page publishes is neither counted nor listed.
+  const { collidingIds, pausedExpressions, actionContext } =
+    findPausedPublishing({
+      pages: getAllPages(pages),
+      templates: [...(pages.pageTemplates?.values() ?? [])],
+      pageNames: pagesAndTemplatesOf(pages),
+      pageRootIds: rootIds,
+      templateRootIds: templateRootIdsOf(pages),
+      instances,
+      dataSources,
+      props,
+      resources,
+      ships: (dataSource) =>
+        dataSource.scopeInstanceId === undefined ||
+        dataSource.scopeInstanceId === ROOT_INSTANCE_ID ||
+        gone(dataSource.scopeInstanceId) === false,
+    });
+  // A data source that publishing leaves out for its id is listed where a
+  // page declares it: on the instance it is scoped to, or as a global one
+  // (a Content Block's own document goes unlisted, as publishing counts it
+  // not)
+  const unlistedIds = unlistedDataSourceIds({ instances, dataSources, props });
+  const collidingByScope = new Map<string, string[]>();
+  for (const id of collidingIds) {
+    const dataSource = dataSources.get(id);
+    if (dataSource !== undefined && unlistedIds.has(id) === false) {
+      // publishing reads one with no scope as held by an instance whose id
+      // is empty
+      const scope = dataSource.scopeInstanceId ?? "";
+      const list = collidingByScope.get(scope) ?? [];
+      list.push(dataSource.name);
+      collidingByScope.set(scope, list);
+    }
+  }
+  const pausedProps = new Set<Prop["id"]>();
+  const pausedChildren = new Map<Instance["id"], number>();
+  const pausedFields = new Map<Page["id"], string[]>();
+  const pausedResources: Resource["id"][] = [];
+  const pausedDataSources: DataSource["id"][] = [];
+  for (const paused of pausedExpressions) {
+    if (paused.unpublished === true) {
+      continue;
+    }
+    if (paused.kind === "prop") {
+      pausedProps.add(paused.propId);
+    } else if (paused.kind === "child") {
+      pausedChildren.set(
+        paused.instanceId,
+        (pausedChildren.get(paused.instanceId) ?? 0) + 1
+      );
+    } else if (paused.kind === "page") {
+      pausedFields.set(paused.pageId, [
+        ...(pausedFields.get(paused.pageId) ?? []),
+        paused.field,
+      ]);
+    } else if (paused.kind === "resource") {
+      pausedResources.push(paused.resourceId);
+    } else {
+      pausedDataSources.push(paused.dataSourceId);
+    }
+  }
+
+  // What a page publishes once what goes has gone, as publishing counts it
+  const kept = new Map(
+    Array.from(instances).filter(([id]) => gone(id) === false)
+  );
+  const shipped = new Set(
+    getAllPages(pages).flatMap((page) => [
+      ...findPublishedInstanceIds(kept, page.rootInstanceId),
+    ])
+  );
 
   const items: PausedScriptItem[] = [];
   const seen = new Set<Instance["id"]>();
@@ -373,20 +453,36 @@ export const findPausedScript = ({
       seen.add(instanceId);
       const label = labels.get(instanceId);
       const listed = label === undefined ? [] : [label];
-      // an instance that publishing removes takes its props and its data
-      // sources with it
-      if (label === undefined && gone(instanceId) === false) {
+      // an instance that publishing removes, or that no page reaches once
+      // what goes has gone, takes its props and its data sources with it
+      if (label === undefined && shipped.has(instanceId)) {
         for (const prop of propsByInstance.get(instance.id) ?? []) {
-          if (pausedPropNames.has(prop.name)) {
+          if (
+            isElementReference(prop) &&
+            prop.type === "parameter" &&
+            collidingIds.has(prop.value)
+          ) {
+            // it goes with a data source that goes for its id, listed
+            continue;
+          } else if (pausedPropNames.has(prop.name)) {
             listed.push("Raw HTML property");
           } else if (
             propMayShip(instance, prop, false, actionContext) === false
           ) {
             listed.push(unsafePropLabel(instance, prop));
+          } else if (pausedProps.has(prop.id)) {
+            listed.push(`Binding (${prop.name})`);
           }
         }
         for (const name of collidingByScope.get(instance.id) ?? []) {
           listed.push(`Variable (${name})`);
+        }
+        for (
+          let index = 0;
+          index < (pausedChildren.get(instance.id) ?? 0);
+          index += 1
+        ) {
+          listed.push("Text binding");
         }
       }
       if (listed.length === 0) {
@@ -412,13 +508,95 @@ export const findPausedScript = ({
   }
 
   for (const page of getAllPages(pages)) {
-    if (pageRedirectMayShip(page, false) === false) {
+    const navigate = {
+      pageId: page.id,
+      instanceSelector: [page.rootInstanceId],
+    };
+    const fields = pausedFields.get(page.id) ?? [];
+    for (const field of fields) {
+      if (field !== "redirect") {
+        items.push({
+          label: `Page setting (${pageSettingLabel(page, field)}) on ${page.name}`,
+          navigate,
+          view: "pageSettings",
+        });
+      }
+    }
+    if (
+      pageRedirectMayShip(page, false) === false ||
+      fields.includes("redirect")
+    ) {
       items.push({
         label: `Redirect on ${page.name}`,
-        navigate: { pageId: page.id, instanceSelector: [page.rootInstanceId] },
+        navigate,
         view: "pageSettings",
       });
     }
+  }
+  // a Resource is listed where publishing counts it, when an instance that
+  // stays loads it, and opens an instance a page publishes that does
+  for (const resourceId of pausedResources) {
+    const holders = [
+      ...[...dataSources.values()].flatMap((dataSource) =>
+        dataSource.type === "resource" && dataSource.resourceId === resourceId
+          ? [dataSource.scopeInstanceId]
+          : []
+      ),
+      ...[...props.values()].flatMap((prop) =>
+        prop.type === "resource" && prop.value === resourceId
+          ? [prop.instanceId]
+          : []
+      ),
+    ];
+    if (
+      holders.length > 0 &&
+      holders.every((id) => id !== undefined && gone(id))
+    ) {
+      continue;
+    }
+    const holder = holders.find((id) => id !== undefined && shipped.has(id));
+    const name = resources.get(resourceId)?.name ?? resourceId;
+    if (holder === undefined) {
+      items.push({ label: `Resource (${name})` });
+      continue;
+    }
+    const { pageId, instanceSelector } = findPageAndSelectorByInstanceId(
+      pages,
+      instances,
+      holder
+    );
+    const owner = pages.pages.get(pageId);
+    items.push({
+      label: `Resource (${name}) on ${owner?.name ?? pageId}`,
+      navigate: { pageId, instanceSelector },
+    });
+  }
+  // a data source opens the instance it is scoped to, when a page publishes
+  // it once what goes has gone; a global one opens nothing
+  for (const dataSourceId of pausedDataSources) {
+    const dataSource = dataSources.get(dataSourceId);
+    const holder = dataSource?.scopeInstanceId;
+    if (dataSource !== undefined && holder === ROOT_INSTANCE_ID) {
+      items.push({ label: `Data source (${dataSource.name})` });
+      continue;
+    }
+    if (
+      dataSource === undefined ||
+      holder === undefined ||
+      shipped.has(holder) === false
+    ) {
+      continue;
+    }
+    const { pageId, instanceSelector } = findPageAndSelectorByInstanceId(
+      pages,
+      instances,
+      holder
+    );
+    const owner = pages.pages.get(pageId);
+    items.push({
+      label: `Data source (${dataSource.name}) on ${owner?.name ?? pageId}`,
+      navigate: { pageId, instanceSelector },
+    });
   }
   for (const redirect of pages.redirects ?? []) {
     if (projectRedirectMayShip(redirect, false) === false) {
