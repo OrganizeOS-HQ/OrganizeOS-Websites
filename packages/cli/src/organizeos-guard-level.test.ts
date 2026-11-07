@@ -9,6 +9,7 @@ import {
   type PublishedProjectBundle,
 } from "@webstudio-is/protocol";
 import {
+  ROOT_INSTANCE_ID,
   createScope,
   encodeDataSourceVariable,
   generateResources,
@@ -387,44 +388,44 @@ const expressionsLeftOut = async () => {
   );
 };
 
-// An action that reads a member of its argument is left out, and one that
-// sets a variable to a plain value stays.
+// An action that reads a member of its argument, one that reads a member of
+// a variable and one that calls a variable are left out, and one that sets a
+// variable to a plain value stays.
 const actionsLeftOut = async () => {
   const variable = encodeDataSourceVariable("v");
+  const onClick = (
+    instanceId: string,
+    args: string[],
+    code: string
+  ): [string, Prop] => {
+    const id = `${instanceId}:onClick`;
+    return [
+      id,
+      {
+        id,
+        instanceId,
+        name: "onClick",
+        type: "action",
+        value: [{ type: "execute", args, code }],
+      },
+    ];
+  };
   const published = dropOrgScript(
     bundleOf({
       instances: [
-        instance("root", "Body", { children: children("reads", "sets") }),
+        instance("root", "Body", {
+          children: children("reads", "member", "call", "sets"),
+        }),
         instance("reads", "Box"),
+        instance("member", "Box"),
+        instance("call", "Box"),
         instance("sets", "Box"),
       ],
       props: [
-        [
-          "reads:onClick",
-          {
-            id: "reads:onClick",
-            instanceId: "reads",
-            name: "onClick",
-            type: "action",
-            value: [
-              {
-                type: "execute",
-                args: ["event"],
-                code: `${variable} = event.target.value`,
-              },
-            ],
-          },
-        ],
-        [
-          "sets:onClick",
-          {
-            id: "sets:onClick",
-            instanceId: "sets",
-            name: "onClick",
-            type: "action",
-            value: [{ type: "execute", args: [], code: `${variable} = 1` }],
-          },
-        ],
+        onClick("reads", ["event"], `${variable} = event.target.value`),
+        onClick("member", [], `${variable} = ${variable}.length`),
+        onClick("call", [], `${variable} = ${variable}()`),
+        onClick("sets", [], `${variable} = 1`),
       ],
       dataSources: [
         [
@@ -440,8 +441,87 @@ const actionsLeftOut = async () => {
       ],
     })
   );
-  const kept = new Map(published.build.props);
-  return kept.has("reads:onClick") === false && kept.has("sets:onClick");
+  return (
+    JSON.stringify(propIds(published)) === JSON.stringify(["sets:onClick"])
+  );
+};
+
+// One of each kind the page module cannot ship while org script is paused:
+// an HTML Embed holding a script, a Markdown Embed, a JSON-LD element, an
+// instance of a component the page does not import, an instance stored with
+// the global root's id, a data source whose id the module uses for something
+// else, a parameter named ref, raw markup, and the site's custom code. Each is
+// left out, and a plain element and a plain variable stay.
+const unshippableLeftOut = () => {
+  const parameter = (
+    instanceId: string,
+    name: string,
+    value: string
+  ): [string, Prop] => {
+    const id = `${instanceId}:${name}`;
+    return [id, { id, instanceId, name, type: "parameter", value }];
+  };
+  const variable = (id: string): [string, DataSource] => [
+    id,
+    {
+      type: "variable",
+      id,
+      name: "v",
+      scopeInstanceId: "root",
+      value: { type: "string", value: "" },
+    },
+  ];
+  const code = "<script>1</script>";
+  const bundle = bundleOf({
+    instances: [
+      instance("root", "Body", {
+        children: children(
+          "embed",
+          "markdown",
+          "json",
+          "unknown",
+          ROOT_INSTANCE_ID,
+          "box"
+        ),
+      }),
+      instance("embed", "HtmlEmbed"),
+      instance("markdown", "MarkdownEmbed"),
+      instance("json", "JsonLd"),
+      instance("unknown", "x:script"),
+      instance(ROOT_INSTANCE_ID, "Box"),
+      instance("box", "Box"),
+    ],
+    props: [
+      prop("embed", "code", code),
+      prop("markdown", "code", "a"),
+      prop("json", "code", "{}"),
+      prop("box", "id", "box"),
+      prop("box", "dangerouslySetInnerHTML", "<b>1</b>"),
+      parameter("box", "ref", "held"),
+      parameter("box", "title", "Box"),
+    ],
+    dataSources: [variable("held"), variable("Box")],
+  });
+  const published = dropOrgScript({
+    ...bundle,
+    build: {
+      ...bundle.build,
+      pages: {
+        ...bundle.build.pages,
+        meta: { ...bundle.build.pages.meta, code },
+      },
+      projectSettings: { meta: { siteName: "Site", code }, compiler: {} },
+    },
+  });
+  return (
+    JSON.stringify(instanceIds(published)) ===
+      JSON.stringify(["root", "box"]) &&
+    JSON.stringify(propIds(published)) === JSON.stringify(["box:id"]) &&
+    JSON.stringify(published.build.dataSources.map(([id]) => id)) ===
+      JSON.stringify(["held"]) &&
+    published.build.pages.meta?.code === undefined &&
+    published.build.projectSettings?.meta.code === undefined
+  );
 };
 
 const unsafeValuesTests =
@@ -451,9 +531,10 @@ const prebuildTests = "packages/cli/src/prebuild.test.ts";
 const workflowTests = "packages/cli/src/organizeos-publish-workflow.test.ts";
 const unsafeValues = "dropOrgScript leaves unsafe values out";
 const leftOutExpressions = "dropOrgScript leaves expressions out";
+const orgScriptTests = "packages/cli/src/organizeos-org-script.test.ts";
+const prebuildOwnScript = ["prebuild", "leaves an org's own script out"];
 const prebuildExpressions = [
-  "prebuild",
-  "leaves an org's own script out",
+  ...prebuildOwnScript,
   "expressions, Resources and page settings",
 ];
 const prebuildUnsafeValues = ["prebuild", "leaves unsafe values out"];
@@ -777,6 +858,154 @@ const levelOne: Requirement[] = [
         path: [
           "while org script is paused",
           "a form's draft compiles no field the pause refuses, and refuses it",
+        ],
+      },
+      // what ships declares every name it reads, or the publish fails
+      {
+        file: "packages/cli/src/organizeos-generated-code.test.ts",
+        path: [
+          "checkGeneratedModule",
+          "fails while org script is paused, naming the module and the names",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildExpressions,
+          "checks every page and server module it generates, and a module that may not ship fails the publish",
+        ],
+      },
+    ],
+  },
+  {
+    name: "embeds, raw markup, custom code, element references, and instances and data sources the page module cannot ship are left out",
+    holds: unshippableLeftOut,
+    coveredBy: [
+      {
+        file: orgScriptTests,
+        path: [
+          "dropOrgScript",
+          "drops a script embed with its descendants, props, scoped data and the parent's reference",
+        ],
+      },
+      {
+        file: orgScriptTests,
+        path: [
+          "dropOrgScript",
+          "drops a Markdown Embed with a javascript: link, whatever its code, with its subtree",
+        ],
+      },
+      {
+        file: orgScriptTests,
+        path: ["dropOrgScript", "drops a JSON-LD element and counts it"],
+      },
+      {
+        file: orgScriptTests,
+        path: [
+          "raw HTML in the runtime packages",
+          "publishing leaves out each component that uses it",
+        ],
+      },
+      {
+        file: orgScriptTests,
+        path: [
+          "dropOrgScript",
+          "drops the dangerouslySetInnerHTML prop of any instance, whatever its type, and keeps the instance",
+        ],
+      },
+      {
+        file: orgScriptTests,
+        path: [
+          "dropOrgScript",
+          "clears the custom code in the project's settings too, and keeps the rest of them",
+        ],
+      },
+      {
+        file: "packages/sdk-components-organizeos/src/org-script.test.ts",
+        path: [
+          "componentMayShip",
+          "is false for any other, the builder's global root included",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          unsafeValues,
+          "drops an instance whose component the published page does not import, with what is inside it, counts it, and keeps the registered ones",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          unsafeValues,
+          "keeps the global data sources, and leaves out an instance stored with the global root's id",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          unsafeValues,
+          "drops a data source whose id the page module uses for something else when nothing else is left out, and counts it",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          unsafeValues,
+          "drops a parameter or an expression named ref, counts it, and keeps one of another type",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [...prebuildOwnScript, "leaves out HTML Embeds and custom code"],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "leaves out Markdown Embeds and the SVG animate and set elements",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "a dangerouslySetInnerHTML prop ships no markup, and its element stays",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "the org script in projectSettings is dropped and reported",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "leaves out an instance whose component the page does not import",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "keeps the global data sources when it leaves out an instance stored with the global root's id",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "leaves out a data source whose id the page module uses for something else, and what names it reads nothing",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "leaves out a parameter or an expression named ref, so no ref names a data source",
         ],
       },
     ],
