@@ -150,7 +150,13 @@ import {
   getOrganizeosSourceUrl,
   resolveOrganizeosComponentsModule,
 } from "./organizeos-components";
-import { dropOrgScript, refuseMdxWhilePaused } from "./organizeos-org-script";
+import {
+  assertFrameworkImports,
+  dropOrgScript,
+  frameworkComponentsOf,
+  refuseMdxWhilePaused,
+} from "./organizeos-org-script";
+import { checkGeneratedModule } from "./organizeos-generated-code";
 import { pagesForSitemap } from "@organizeos/site-components/org-script";
 import { assertNoPreviewHeader } from "./organizeos-preview-header";
 import { createFramework as createRemixFramework } from "./framework-remix";
@@ -1004,8 +1010,11 @@ export const prebuild = async (options: {
     );
   }
   // OrganizeOS fork: org script is paused, so the build that every step below
-  // reads has none: no HTML Embed, no custom code (organizeos-org-script.ts).
+  // reads has none: no HTML Embed, no custom code, no component the framework
+  // does not import (organizeos-org-script.ts).
+  const frameworkComponents = frameworkComponentsOf(options.template);
   const siteData = dropOrgScript(parsedSiteData.data, {
+    components: frameworkComponents,
     log: options.silent ? undefined : (message) => log.info(message),
   });
   // OrganizeOS fork: no Resource carries the builder's draft-preview header
@@ -1205,6 +1214,9 @@ export const createManagedFormResourceFetch = ({ request, context, projectDomain
   } else {
     framework = await createRemixFramework(frameworkOptions);
   }
+  // OrganizeOS fork: the framework imports every component the drop above may
+  // keep (organizeos-org-script.ts).
+  assertFrameworkImports(frameworkComponents, framework.components);
 
   const assetBaseUrl = await readAssetBaseUrl(join(cwd(), "app/constants.mjs"));
 
@@ -2088,6 +2100,12 @@ export const createManagedFormResourceFetch = ({ request, context, projectDomain
     const generatedBasename = generateRemixRoute(pagePath);
 
     const clientFile = join(generatedDir, `${generatedBasename}.tsx`);
+    // OrganizeOS fork: while org script is paused, a generated module that reads a name it does not declare, or shadows one, fails the publish (organizeos-generated-code.ts)
+    await checkGeneratedModule(pageExports, clientFile);
+    await checkGeneratedModule(
+      serverExports,
+      join(generatedDir, `${generatedBasename}.server.tsx`)
+    );
     await writeGeneratedFile(clientFile, pageExports);
 
     const serverFile = join(generatedDir, `${generatedBasename}.server.tsx`);

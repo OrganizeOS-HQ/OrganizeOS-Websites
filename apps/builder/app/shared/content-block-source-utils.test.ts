@@ -1,10 +1,31 @@
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ROOT_INSTANCE_ID, type Instances } from "@webstudio-is/sdk";
 import {
   isRepeatedContentBlockOccurrence,
   parseContentBlockRenderScope,
   resolveContentBlockOccurrenceAssetId,
 } from "./content-block-source-utils";
+
+// OrganizeOS fork: upstream's cases that compute a bare name, keyed by name,
+// run with org script allowed, as upstream runs them; while org script is
+// paused an expression names only data sources (expressionMayRun, section 10
+// of docs/ORGANIZEOS-FORK.md). The rest run paused, as the builder runs them.
+const orgScript = vi.hoisted(() => ({ mayRun: false }));
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@organizeos/site-components/org-script")
+  >()),
+  orgScriptMayRun: () => orgScript.mayRun,
+}));
+const testsWithOrgScriptAllowed = new Set([
+  "Content Block occurrence source > resolves a root-qualified variable scope",
+  "Content Block occurrence source > resolves each bound Collection occurrence independently",
+]);
+beforeEach(() => {
+  orgScript.mayRun = testsWithOrgScriptAllowed.has(
+    expect.getState().currentTestName ?? ""
+  );
+});
 
 const selector = ["block", "collection[item]", "collection", "body"];
 

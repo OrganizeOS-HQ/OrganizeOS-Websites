@@ -10,6 +10,8 @@ import { useStore } from "@nanostores/react";
 import { formatManagedFormErrors } from "@webstudio-is/sdk";
 import type { Instance, Instances } from "@webstudio-is/sdk";
 import type { Components } from "@webstudio-is/react-sdk";
+// OrganizeOS fork: org script is paused (docs/ORGANIZEOS-FORK.md section 10)
+import { instanceIdMayRun } from "@organizeos/site-components/org-script";
 import { renderText as renderTextValue } from "@webstudio-is/react-sdk/runtime";
 import {
   computeExpression,
@@ -46,7 +48,8 @@ export const createInstanceElement = ({
   ref?: RefObject<HTMLElement>;
 }) => {
   const instance = instances.get(instanceId);
-  if (instance === undefined) {
+  // OrganizeOS fork: org script is paused; an instance stored with the global root's id is not rendered (docs/ORGANIZEOS-FORK.md section 10)
+  if (instance === undefined || instanceIdMayRun(instanceId) === false) {
     return null;
   }
   return (

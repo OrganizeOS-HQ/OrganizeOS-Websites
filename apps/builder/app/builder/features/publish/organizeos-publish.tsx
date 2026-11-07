@@ -119,9 +119,16 @@ const $restrictedFeatures = computed(
 
 // OrganizeOS fork: what publishing leaves out while org script is paused
 const $pausedScript = computed(
-  [$pages, $projectSettings, $instances, $props],
-  (pages, projectSettings, instances, props) =>
-    findPausedScript({ pages, projectSettings, instances, props })
+  [$pages, $projectSettings, $instances, $props, $dataSources, $resources],
+  (pages, projectSettings, instances, props, dataSources, resources) =>
+    findPausedScript({
+      pages,
+      projectSettings,
+      instances,
+      props,
+      dataSources,
+      resources,
+    })
 );
 
 // OrganizeOS fork: the Content Blocks that make publishing refuse the build

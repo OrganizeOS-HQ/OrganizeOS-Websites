@@ -1126,32 +1126,31 @@ describe("insert webstudio component at", () => {
           )
         ).toBe(true);
       }
-      const result = {
-        success: false,
-        status: 502,
-        results: [{ resourceId: "first", status: 200, body: "ok" }],
-        errors: [
-          {
-            resourceId: "second",
-            status: 502,
-            body: "failed",
-            message: "failed",
-          },
-        ],
-      };
+      // OrganizeOS fork: while org script is paused, the result action reads
+      // members of its argument, so it gets no handler; the state and
+      // progress actions run (docs/ORGANIZEOS-FORK.md, section 10)
       await vi.waitFor(() => {
         expect(
           $propValuesByInstanceSelector
             .get()
             .get(getInstanceKey([formId, "bodyId"]))
-            ?.get("onResultChange")
+            ?.get("onStateChange")
         ).toBeTypeOf("function");
       });
-      const onResultChange = $propValuesByInstanceSelector
-        .get()
-        .get(getInstanceKey([formId, "bodyId"]))
-        ?.get("onResultChange") as (value: unknown) => void;
-      onResultChange(result);
+      expect(
+        $propValuesByInstanceSelector
+          .get()
+          .get(getInstanceKey([formId, "bodyId"]))
+          ?.get("onResultChange")
+      ).toBeUndefined();
+      const storedBefore = new Map(
+        Array.from($dataSources.get().values())
+          .filter((dataSource) => dataSource.type === "variable")
+          .map((dataSource) => [
+            dataSource.name,
+            $dataSourceVariables.get().get(dataSource.id),
+          ])
+      );
       const onStateChange = $propValuesByInstanceSelector
         .get()
         .get(getInstanceKey([formId, "bodyId"]))
@@ -1181,8 +1180,8 @@ describe("insert webstudio component at", () => {
       expect(variables.has("status")).toBe(false);
       expect(variables.get("formState")).toBe("error");
       expect(variables.get("formProgress")).toBe(progress);
-      expect(variables.get("results")).toBe(result.results);
-      expect(variables.get("errors")).toBe(result.errors);
+      expect(variables.get("results")).toBe(storedBefore.get("results"));
+      expect(variables.get("errors")).toBe(storedBefore.get("errors"));
       for (const child of $instances.get().get(formId)?.children ?? []) {
         if (child.type !== "id") {
           continue;
