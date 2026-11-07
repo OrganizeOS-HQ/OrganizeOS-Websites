@@ -1573,14 +1573,20 @@ describe("describeDroppedOrgScript", () => {
     markdownEmbeds: 0,
     jsonLd: 0,
     elementsWithUnknownTag: 0,
+    unknownComponents: 0,
+    reservedIds: 0,
     svgAnimations: 0,
     rawHtmlProps: 0,
     xmlElementsOnHtmlPages: 0,
     unsafeAddresses: 0,
     frameDocuments: 0,
     eventAttributes: 0,
+    unsafeActions: 0,
+    conflictingDataSources: 0,
     redirects: 0,
     customCode: false,
+    duplicateEntries: 0,
+    collectionBindings: 0,
   };
 
   test("says nothing when nothing was left out", () => {
@@ -1593,6 +1599,26 @@ describe("describeDroppedOrgScript", () => {
     );
     expect(describeDroppedOrgScript({ ...none, rawHtmlProps: 2 })).toBe(
       "Org script is paused until OrganizeOS sites move to their own domain: left out 2 raw HTML properties."
+    );
+    expect(describeDroppedOrgScript({ ...none, unsafeActions: 1 })).toBe(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 unsafe action."
+    );
+    expect(describeDroppedOrgScript({ ...none, unknownComponents: 2 })).toBe(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 unknown components."
+    );
+    expect(describeDroppedOrgScript({ ...none, reservedIds: 1 })).toBe(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 element with a reserved id."
+    );
+    expect(
+      describeDroppedOrgScript({ ...none, conflictingDataSources: 1 })
+    ).toBe(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 1 variable with a conflicting id."
+    );
+    expect(describeDroppedOrgScript({ ...none, collectionBindings: 2 })).toBe(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 Collection items or keys that are not a parameter."
+    );
+    expect(describeDroppedOrgScript({ ...none, duplicateEntries: 2 })).toBe(
+      "Org script is paused until OrganizeOS sites move to their own domain: left out 2 duplicate entries."
     );
     expect(describeDroppedOrgScript({ ...none, customCode: true })).toBe(
       "Org script is paused until OrganizeOS sites move to their own domain: left out the site's custom code."

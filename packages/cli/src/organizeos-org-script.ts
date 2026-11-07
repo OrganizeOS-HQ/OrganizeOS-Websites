@@ -10,6 +10,11 @@
  * resources, CSS) sees a build without it, on every page and in every
  * framework. It drops:
  *
+ * - every entry of the build's pages, page templates, instances, props, data
+ *   sources and Resources whose id a later entry holds too, or that is stored
+ *   under another id than its own, so the rules below read what publishes
+ *   (and they read a Form stored under an earlier name as the Resource Form
+ *   or Webhook Form it publishes as);
  * - every HTML Embed, unless its code is a static string identical to one of
  *   the SVG icons upstream's own templates insert;
  * - every Markdown Embed (its renderer keeps `javascript:` links);
@@ -20,13 +25,21 @@
  *   code. The tag counts wherever it is held, on a component that makes an
  *   element from it or on one that passes it to the child that does (a Radix
  *   trigger);
+ * - every instance of a component the page does not import
+ *   (`componentMayShip`), and one stored with the global root's id
+ *   (`instanceIdMayRun`), with what is inside it;
+ * - every data source the page module cannot name as itself
+ *   (`collidingDataSourceIds`), and so every parameter prop and every action
+ *   that names one;
  * - the SVG `animate` and `set` elements (a `javascript:` link by SMIL);
  * - the `dangerouslySetInnerHTML` prop, which puts raw markup into any element;
  * - every unsafe address (a scheme other than http, https, mailto, tel and
  *   sms, or a bound value whose fixed start does not decide the scheme), every
- *   `srcdoc` and every event handler attribute that is not an action
- *   (`propMayShip`): a click, a frame, an object or a form runs the address in
- *   the site's origin, and React writes a string `on…` on a custom element;
+ *   `srcdoc`, every event handler attribute that is not an action, and every
+ *   action `actionMayRun` refuses (`propMayShip`): a click, a frame, an
+ *   object or a form runs the address in the site's origin, React writes a
+ *   string `on…` on a custom element, and the generator writes an action
+ *   into the page module as code, which the site's server renders;
  * - every XML element (XML Node, XML Time) on an HTML or text page, where it
  *   is a custom element that keeps every attribute;
  * - every page or project redirect to an unsafe address, which a client-side
@@ -47,17 +60,30 @@ import type { PublishedProjectBundle } from "@webstudio-is/protocol";
 import {
   blockComponent,
   blockTemplateComponent,
+  collectionComponent,
   getStaticContentBlockSourceAssetId,
   parseContentBlockSourceProp,
+  ROOT_INSTANCE_ID,
+  SYSTEM_VARIABLE_ID,
   type Instance,
   type Page,
   type Prop,
 } from "@webstudio-is/sdk";
+import { migrateResourceFormInstancesMutable } from "@webstudio-is/project-migrations";
+import { hasHistoricalFormComponentIdentityVersion } from "@webstudio-is/project-migrations/pages";
+import { createFrameworkComponentRegistry } from "@webstudio-is/sdk-components-registry/framework";
+import * as organizeosComponentMetas from "@organizeos/site-components/metas";
 import {
+  actionContextOf,
+  checkAction,
   checksInstanceTag,
   checksTagProp,
+  collectionBindingNames,
+  collidingDataSourceIds,
+  componentMayShip,
   elementTagMayRun,
   htmlEmbedCodeMayRun,
+  instanceIdMayRun,
   isEventAttributeName,
   isFrameDocumentName,
   orgScriptMayRun,
@@ -66,8 +92,65 @@ import {
   pausedSvgTags,
   projectRedirectMayShip,
   propMayShip,
+  unlistedDataSourceIds,
   xmlComponents,
+  type PageNames,
 } from "@organizeos/site-components/org-script";
+
+/**
+ * The OrganizeOS blocks' namespace (`ORGANIZEOS_NAMESPACE`, in
+ * organizeos-components.ts, which reads files: the builder's tests load this
+ * module in a browser)
+ */
+const organizeosNamespace = "@organizeos/site-components";
+
+/** The components upstream's registry gives every framework */
+const registryComponents = Object.keys(
+  createFrameworkComponentRegistry().components
+);
+
+/**
+ * The components a page of the react-router framework imports, by the name a
+ * build stores (framework-react-router.ts): upstream's registry and the
+ * OrganizeOS blocks. This is what `dropOrgScript` reads without a set.
+ */
+export const publishedComponents: ReadonlySet<Instance["component"]> = new Set([
+  ...registryComponents,
+  ...Object.keys(organizeosComponentMetas).map(
+    (name) => `${organizeosNamespace}:${name}`
+  ),
+]);
+
+/**
+ * The components a page imports in the framework prebuild picks for
+ * `template`, as prebuild picks it: react-router imports `publishedComponents`,
+ * and the others upstream's registry only. Prebuild reads it before it makes
+ * the framework, and `assertFrameworkImports` checks it against the
+ * framework's own map once it has.
+ */
+export const frameworkComponentsOf = (
+  template: readonly string[]
+): ReadonlySet<Instance["component"]> =>
+  template.includes("ssg") === false && template.includes("react-router")
+    ? publishedComponents
+    : new Set(registryComponents);
+
+/**
+ * Refuses the build when `dropOrgScript` kept a component the framework does
+ * not import (see `frameworkComponentsOf`).
+ */
+export const assertFrameworkImports = (
+  components: ReadonlySet<Instance["component"]>,
+  frameworkComponents: Readonly<Record<string, string>>
+) => {
+  for (const component of components) {
+    if (Object.hasOwn(frameworkComponents, component) === false) {
+      throw new Error(
+        `The framework does not import the component "${component}".`
+      );
+    }
+  }
+};
 
 export type DroppedOrgScript = {
   htmlEmbeds: number;
@@ -76,6 +159,10 @@ export type DroppedOrgScript = {
   jsonLd: number;
   /** Elements whose tag the builder does not offer, `script` among them */
   elementsWithUnknownTag: number;
+  /** Instances of a component the page does not import */
+  unknownComponents: number;
+  /** Instances stored with the global root's id */
+  reservedIds: number;
   /** SVG animate and set elements */
   svgAnimations: number;
   /** `dangerouslySetInnerHTML` props, on instances that stay */
@@ -88,9 +175,20 @@ export type DroppedOrgScript = {
   frameDocuments: number;
   /** `on…` props that are not actions, on instances that stay */
   eventAttributes: number;
+  /** Actions `actionMayRun` refuses, on instances that stay */
+  unsafeActions: number;
+  /** Data sources `collidingDataSourceIds` lists, that a page declares, but
+   * those `unlistedDataSourceIds` names */
+  conflictingDataSources: number;
   /** Page and project redirects to an unsafe address */
   redirects: number;
   customCode: boolean;
+  /** Pages, instances, props, data sources and Resources stored under an id
+   * that a later entry holds too, or under another id than their own */
+  duplicateEntries: number;
+  /** A Collection's item or key props that are not a parameter, on
+   * instances that stay */
+  collectionBindings: number;
 };
 
 const plural = (count: number, one: string, many: string) =>
@@ -99,6 +197,9 @@ const plural = (count: number, one: string, many: string) =>
 /** The line the publish workflow logs, for support. Nothing left out, no line. */
 export const describeDroppedOrgScript = (dropped: DroppedOrgScript) => {
   const parts = [
+    dropped.duplicateEntries > 0
+      ? plural(dropped.duplicateEntries, "duplicate entry", "duplicate entries")
+      : undefined,
     dropped.htmlEmbeds > 0
       ? plural(dropped.htmlEmbeds, "HTML Embed", "HTML Embeds")
       : undefined,
@@ -113,6 +214,20 @@ export const describeDroppedOrgScript = (dropped: DroppedOrgScript) => {
           dropped.elementsWithUnknownTag,
           "element with a tag the builder does not offer",
           "elements with a tag the builder does not offer"
+        )
+      : undefined,
+    dropped.unknownComponents > 0
+      ? plural(
+          dropped.unknownComponents,
+          "unknown component",
+          "unknown components"
+        )
+      : undefined,
+    dropped.reservedIds > 0
+      ? plural(
+          dropped.reservedIds,
+          "element with a reserved id",
+          "elements with a reserved id"
         )
       : undefined,
     dropped.svgAnimations > 0
@@ -145,6 +260,23 @@ export const describeDroppedOrgScript = (dropped: DroppedOrgScript) => {
           "event handler attributes"
         )
       : undefined,
+    dropped.unsafeActions > 0
+      ? plural(dropped.unsafeActions, "unsafe action", "unsafe actions")
+      : undefined,
+    dropped.collectionBindings > 0
+      ? plural(
+          dropped.collectionBindings,
+          "Collection item or key that is not a parameter",
+          "Collection items or keys that are not a parameter"
+        )
+      : undefined,
+    dropped.conflictingDataSources > 0
+      ? plural(
+          dropped.conflictingDataSources,
+          "variable with a conflicting id",
+          "variables with a conflicting id"
+        )
+      : undefined,
     dropped.redirects > 0
       ? plural(
           dropped.redirects,
@@ -170,6 +302,8 @@ const withoutCode = <Meta extends { code?: string }>(meta: Meta) => {
 };
 
 type Kind =
+  | "reservedId"
+  | "unknownComponent"
   | "htmlEmbed"
   | "markdownEmbed"
   | "jsonLd"
@@ -275,7 +409,17 @@ const withSafeRedirect = (page: Page): Page => {
 // `checksTagProp`, in org-script.ts). A tag is one the builder offers when
 // `elementTagMayRun` says so; the canvas applies the same rule, and makes no
 // `animate` or `set` either (`elementTagMayRender`).
-const classify = (instance: Instance, props: Prop[] = []): undefined | Kind => {
+const classify = (
+  instance: Instance,
+  props: Prop[] = [],
+  components: ReadonlySet<Instance["component"]>
+): undefined | Kind => {
+  if (instanceIdMayRun(instance.id, false) === false) {
+    return "reservedId";
+  }
+  if (componentMayShip(instance.component, components) === false) {
+    return "unknownComponent";
+  }
   if (instance.component === "HtmlEmbed") {
     // An expression, a resource or a missing code is only known (or empty)
     // when the page renders, so only a static icon stays. Upstream's published
@@ -327,30 +471,100 @@ const classify = (instance: Instance, props: Prop[] = []): undefined | Kind => {
   }
 };
 
-/**
- * The instances that sit only inside a Content Block's templates container. The
- * generator writes nothing for it (`blockTemplateComponent`), so none of them
- * ships, and the Publish dialog does not list them (`findPausedScript`). What
- * a content editor inserted into the block is a copy outside the container, and
- * an instance that a Slot's Fragment shows both inside it and on a page is
- * published, so neither is here.
- */
-const findTemplateOnlyIds = (
-  instances: Map<Instance["id"], Instance>,
-  rootIds: Set<Instance["id"]>
+/** One entry per id, the last, each under its own id */
+const lastEntries = <Item extends { id: string }>(
+  entries: ReadonlyArray<readonly [string, Item]>
 ) => {
-  const templateIds = [...instances.values()]
-    .filter((instance) => instance.component === blockTemplateComponent)
-    .map((instance) => instance.id);
-  if (templateIds.length === 0) {
-    return new Set<Instance["id"]>();
+  const kept = new Map<string, Item>();
+  for (const [id, item] of entries) {
+    if (id === item.id) {
+      kept.set(id, item);
+    }
   }
-  const published = collectIds(instances, rootIds, false);
-  return new Set(
-    [...collectIds(instances, templateIds, true)].filter(
-      (id) => published.has(id) === false
-    )
-  );
+  return {
+    entries: Array.from(kept) as Array<[string, Item]>,
+    dropped: entries.length - kept.size,
+  };
+};
+
+/** One item per id, the last */
+const lastItems = <Item extends { id: string }>(items: readonly Item[]) => {
+  const kept = new Map(items.map((item) => [item.id, item]));
+  return {
+    items: Array.from(kept.values()),
+    dropped: items.length - kept.size,
+  };
+};
+
+/**
+ * The build with one entry per id in its pages, page templates, instances,
+ * props, data sources and Resources: the last, which the builder keeps when
+ * it reads a build. An entry stored under another id than its own goes too.
+ * The Publish dialog reads the builder's maps, which hold one entry per id
+ * already.
+ */
+const withOneEntryPerId = <Build extends PublishedProjectBundle["build"]>(
+  input: Build
+): { build: Build; duplicates: number } => {
+  const instances = lastEntries(input.instances);
+  const props = lastEntries(input.props);
+  const dataSources = lastEntries(input.dataSources);
+  const resources = lastEntries(input.resources ?? []);
+  const pages = lastItems(input.pages.pages);
+  const { pageTemplates } = input.pages;
+  const templates = Array.isArray(pageTemplates)
+    ? lastItems(pageTemplates)
+    : undefined;
+  const duplicates =
+    instances.dropped +
+    props.dropped +
+    dataSources.dropped +
+    resources.dropped +
+    pages.dropped +
+    (templates?.dropped ?? 0);
+  if (duplicates === 0) {
+    return { build: input, duplicates };
+  }
+  return {
+    duplicates,
+    build: {
+      ...input,
+      pages: {
+        ...input.pages,
+        pages: pages.items,
+        ...(templates === undefined ? {} : { pageTemplates: templates.items }),
+      },
+      instances: instances.entries,
+      props: props.entries,
+      dataSources: dataSources.entries,
+      ...(input.resources === undefined
+        ? {}
+        : { resources: resources.entries }),
+    } as Build,
+  };
+};
+
+/**
+ * The build with each Form stored under an earlier name read as the component
+ * prebuild publishes it as, a Resource Form or a Webhook Form
+ * (`migrateResourceFormInstancesMutable`, which prebuild runs after
+ * `dropOrgScript`), so every rule reads that component. The same build when
+ * none is.
+ */
+const withFormComponents = <Build extends PublishedProjectBundle["build"]>(
+  input: Build
+): Build => {
+  const hasMarker = hasHistoricalFormComponentIdentityVersion(input.pages);
+  let changed = false;
+  const instances = input.instances.map(([id, instance]) => {
+    const read = { ...instance };
+    if (migrateResourceFormInstancesMutable([read], hasMarker).size === 0) {
+      return [id, instance] as [Instance["id"], Instance];
+    }
+    changed = true;
+    return [id, read] as [Instance["id"], Instance];
+  });
+  return changed ? { ...input, instances } : input;
 };
 
 /**
@@ -367,19 +581,32 @@ const findTemplateOnlyIds = (
  * page still builds. A `dangerouslySetInnerHTML` prop, and a prop that
  * `propMayShip` refuses, is dropped from its instance, which stays. A page
  * redirect to an unsafe address goes with the page's literal 3xx status, and
- * a project redirect to one goes from the list.
+ * a project redirect to one goes from the list. A data source that
+ * `collidingDataSourceIds` lists goes, with a parameter prop that names it,
+ * and an action is judged without it. An action that names a data source
+ * that goes for any reason goes too, so what stays passes input validation.
+ * What is left out is counted only where a page publishes it. `components`
+ * are the components the page imports, the framework's.
  */
 export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
   bundle: Bundle,
   {
     mayRun = orgScriptMayRun(),
+    components = publishedComponents,
     log,
-  }: { mayRun?: boolean; log?: (message: string) => void } = {}
+  }: {
+    mayRun?: boolean;
+    components?: ReadonlySet<Instance["component"]>;
+    log?: (message: string) => void;
+  } = {}
 ): Bundle => {
   if (mayRun) {
     return bundle;
   }
-  const { build } = bundle;
+  // Every rule reads one entry per id, the last, as the builder does, and so
+  // does everything after it, and a stored Form as the component it publishes
+  const { build: entries, duplicates } = withOneEntryPerId(bundle.build);
+  const build = withFormComponents(entries);
   // Upstream keeps the project's settings in their own column, and prebuild
   // reads them before the pages' meta (`projectSettings?.meta ?? pages.meta`),
   // so the custom code goes from both.
@@ -400,26 +627,66 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
   const allPages = listPages(build.pages);
   const rootIds = new Set(allPages.map((page) => page.rootInstanceId));
   const instances = new Map(build.instances);
+  const dataSources = new Map(build.dataSources);
+  // the page templates, in either shape
+  const templates = Object.values(
+    (
+      build.pages as {
+        pageTemplates?: Record<string, PageNames & { meta?: Page["meta"] }>;
+      }
+    ).pageTemplates ?? {}
+  );
+  const names = {
+    instances,
+    dataSources,
+    props: new Map(build.props),
+    resources: new Map(build.resources ?? []),
+    pages: [...allPages, ...templates].map(
+      ({ rootInstanceId, systemDataSourceId, meta }) => ({
+        rootInstanceId,
+        systemDataSourceId,
+        documentType: meta?.documentType,
+      })
+    ),
+  };
+  const collidingIds = collidingDataSourceIds(names);
+  // what goes uncounted (a Content Block's own document)
+  const unlistedIds = unlistedDataSourceIds(names);
+  // what an action's rule reads, as the canvas and the Publish dialog read it
+  const actionContext = actionContextOf({
+    ...names,
+    pageRootIds: rootIds,
+    templateRootIds: new Set(
+      templates.map((template) => template.rootInstanceId)
+    ),
+  });
   const dropped: DroppedOrgScript = {
     htmlEmbeds: 0,
     markdownEmbeds: 0,
     jsonLd: 0,
     elementsWithUnknownTag: 0,
+    unknownComponents: 0,
+    reservedIds: 0,
     svgAnimations: 0,
     rawHtmlProps: 0,
     xmlElementsOnHtmlPages: 0,
     unsafeAddresses: 0,
     frameDocuments: 0,
     eventAttributes: 0,
+    unsafeActions: 0,
+    conflictingDataSources: 0,
     redirects: 0,
     customCode:
       (build.pages.meta?.code ?? "").trim() !== "" ||
       (settingsCode ?? "").trim() !== "",
+    duplicateEntries: duplicates,
+    collectionBindings: 0,
   };
   const found = new Set<Instance["id"]>();
   const emptiedRoots = new Set<Instance["id"]>();
-  // Left out like the rest, but not counted: it never ships
-  const templateOnly = findTemplateOnlyIds(instances, rootIds);
+  // What a page publishes: anything else is left out like the rest, but not
+  // counted, as the Publish dialog does not list it
+  const publishedIds = collectIds(instances, rootIds, false);
   // An XML element is a custom element on an HTML or text page, which keeps
   // every attribute. One that a Slot also shows on an XML page goes from both.
   const publishedOnHtmlPages = collectIds(
@@ -430,8 +697,10 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     false
   );
   for (const [, instance] of build.instances) {
+    // The builder's global root is virtual: an instance stored with its id is
+    // crafted, and goes. The global data sources stay.
     const kind =
-      classify(instance, propsByInstance.get(instance.id)) ??
+      classify(instance, propsByInstance.get(instance.id), components) ??
       (xmlComponents.has(instance.component) &&
       publishedOnHtmlPages.has(instance.id)
         ? "xmlElement"
@@ -439,8 +708,12 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     if (kind === undefined) {
       continue;
     }
-    if (templateOnly.has(instance.id) === false) {
-      if (kind === "htmlEmbed") {
+    if (publishedIds.has(instance.id)) {
+      if (kind === "reservedId") {
+        dropped.reservedIds += 1;
+      } else if (kind === "unknownComponent") {
+        dropped.unknownComponents += 1;
+      } else if (kind === "htmlEmbed") {
         dropped.htmlEmbeds += 1;
       } else if (kind === "markdownEmbed") {
         dropped.markdownEmbeds += 1;
@@ -460,7 +733,10 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
   // A prop that may not ship, judged on the instance that holds it
   const propFails = (prop: Prop) => {
     const holder = instances.get(prop.instanceId);
-    return holder !== undefined && propMayShip(holder, prop, false) === false;
+    return (
+      holder !== undefined &&
+      propMayShip(holder, prop, false, actionContext) === false
+    );
   };
   const projectRedirects = build.pages.redirects;
   const shippedProjectRedirects = projectRedirects?.filter((redirect) =>
@@ -476,8 +752,10 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     pausedPropNames.has(prop.name)
   );
   if (
+    duplicates === 0 &&
     found.size === 0 &&
     emptiedRoots.size === 0 &&
+    collidingIds.size === 0 &&
     hasCode === false &&
     hasRawHtml === false &&
     build.props.some(([, prop]) => propFails(prop)) === false &&
@@ -564,13 +842,20 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     ([, prop]) => gone(prop.instanceId) === false
   );
   for (const [, prop] of keptProps) {
-    if (templateOnly.has(prop.instanceId)) {
+    if (publishedIds.has(prop.instanceId) === false) {
       continue;
     }
     if (pausedPropNames.has(prop.name)) {
       dropped.rawHtmlProps += 1;
     } else if (propFails(prop)) {
-      if (isFrameDocumentName(prop.name)) {
+      if (prop.type === "action") {
+        dropped.unsafeActions += 1;
+      } else if (
+        instances.get(prop.instanceId)?.component === collectionComponent &&
+        collectionBindingNames.has(prop.name)
+      ) {
+        dropped.collectionBindings += 1;
+      } else if (isFrameDocumentName(prop.name)) {
         dropped.frameDocuments += 1;
       } else if (isEventAttributeName(prop.name)) {
         dropped.eventAttributes += 1;
@@ -580,6 +865,17 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
     }
   }
 
+  // a global data source stays: every page declares it
+  const keptDataSources = build.dataSources.filter(
+    ([id, dataSource]) =>
+      collidingIds.has(id) === false &&
+      (dataSource.scopeInstanceId === ROOT_INSTANCE_ID ||
+        gone(dataSource.scopeInstanceId) === false)
+  );
+  const keptDataSourceIds = new Set([
+    SYSTEM_VARIABLE_ID,
+    ...keptDataSources.map(([id]) => id),
+  ]);
   const { projectSettings } = build;
   const result: Bundle = {
     ...bundle,
@@ -615,15 +911,35 @@ export const dropOrgScript = <Bundle extends PublishedProjectBundle>(
           ],
         ] as Array<[Instance["id"], Instance]>;
       }),
+      // a parameter prop that names a data source that goes, goes too, and
+      // so does an action that names one (only an instance no page
+      // publishes can hold such an action, so it is not counted)
       props: keptProps.filter(
         ([, prop]) =>
-          pausedPropNames.has(prop.name) === false && propFails(prop) === false
+          pausedPropNames.has(prop.name) === false &&
+          propFails(prop) === false &&
+          (prop.type !== "parameter" ||
+            collidingIds.has(prop.value) === false) &&
+          (prop.type !== "action" ||
+            checkAction(prop.value, { dataSourceIds: keptDataSourceIds }).ok)
       ),
-      dataSources: build.dataSources.filter(
-        ([, dataSource]) => gone(dataSource.scopeInstanceId) === false
-      ),
+      dataSources: keptDataSources,
     },
   };
+  // A data source that goes for its id is counted where a page declares it:
+  // a global one, or one of an instance a page publishes that stays (one
+  // with no scope is read as held by an instance whose id is empty)
+  for (const [id, dataSource] of build.dataSources) {
+    const scope = dataSource.scopeInstanceId ?? "";
+    if (
+      collidingIds.has(id) &&
+      unlistedIds.has(id) === false &&
+      (scope === ROOT_INSTANCE_ID ||
+        (publishedIds.has(scope) && gone(scope) === false))
+    ) {
+      dropped.conflictingDataSources += 1;
+    }
+  }
 
   const message = describeDroppedOrgScript(dropped);
   if (message !== undefined) {

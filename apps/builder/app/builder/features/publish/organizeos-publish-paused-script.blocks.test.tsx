@@ -207,6 +207,8 @@ const findOnHomePage = () =>
     pages: $pages.get(),
     instances: $instances.get(),
     props: $props.get(),
+    dataSources: $dataSources.get(),
+    resources: $resources.get(),
     mayRun: false,
   });
 

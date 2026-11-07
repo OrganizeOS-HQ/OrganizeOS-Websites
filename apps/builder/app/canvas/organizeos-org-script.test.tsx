@@ -18,8 +18,13 @@ import * as organizeosComponents from "@organizeos/site-components";
 import * as organizeosComponentMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
 import {
+  actionContextOf,
+  actionMayRun,
   checksInstanceTag,
+  collidingDataSourceIds,
+  unlistedDataSourceIds,
   checksTagProp,
+  componentMayShip,
   elementTagMayRender,
   propMayShip,
   propNameMayRun,
@@ -27,6 +32,7 @@ import {
 } from "@organizeos/site-components/org-script";
 import { MenuIcon } from "@webstudio-is/icons/svg";
 import type { TemplateMeta } from "@webstudio-is/template";
+import { publishedComponents } from "~/builder/features/publish/organizeos-publish-paused-script";
 import {
   $registeredComponents,
   $registeredComponentMetas,
@@ -344,6 +350,127 @@ describe("the libraries, as the canvas registers them", () => {
     expect(getEmbeds("MarkdownEmbed")).toEqual([]);
   });
 
+  // While org script is paused the canvas gives an action actionMayRun
+  // refuses no handler, and publishing drops it, so a template's own action
+  // has to pass
+  test("every action a template inserts may run", () => {
+    const actions = registeredTemplates().flatMap(
+      ([key, { template: fragment }]) => {
+        // as each is scoped, under the template's top instances as a page
+        // holds them
+        const context = actionContextOf({
+          instances: new Map(
+            fragment.instances.map((instance) => [instance.id, instance])
+          ),
+          pageRootIds: new Set(
+            fragment.children.flatMap((child) =>
+              child.type === "id" ? [child.value] : []
+            )
+          ),
+          dataSources: new Map(
+            fragment.dataSources.map((dataSource) => [
+              dataSource.id,
+              dataSource,
+            ])
+          ),
+          props: new Map(fragment.props.map((prop) => [prop.id, prop])),
+          resources: new Map(
+            fragment.resources.map((resource) => [resource.id, resource])
+          ),
+          pages: [],
+        });
+        return fragment.props.flatMap((prop) =>
+          prop.type === "action"
+            ? [{ template: `${key} ${prop.name}`, prop, context }]
+            : []
+        );
+      }
+    );
+    // the Form, Webhook Form, Signup Form, RSVP Form and Rotating Tabs write
+    // some each
+    expect(actions.length).toBeGreaterThanOrEqual(5);
+    // but upstream's Form reads members of its result, which no action may
+    // while org script is paused: it is left out and listed
+    expect(
+      actions
+        .filter(({ prop, context }) => actionMayRun(prop, context) === false)
+        .map(({ template }) => template)
+    ).toEqual(["form onResultChange"]);
+  });
+
+  // A Resource Form's own form data and browser info stay while org script
+  // is paused, so the Form template's data sources do
+  test("every data source a template inserts is one the page module names as itself, but a Content Block's document", () => {
+    const found = registeredTemplates().flatMap(
+      ([key, { template: fragment }]) => {
+        const colliding = collidingDataSourceIds({
+          instances: new Map(
+            fragment.instances.map((instance) => [instance.id, instance])
+          ),
+          dataSources: new Map(
+            fragment.dataSources.map((dataSource) => [
+              dataSource.id,
+              dataSource,
+            ])
+          ),
+          props: new Map(fragment.props.map((prop) => [prop.id, prop])),
+          resources: new Map(
+            fragment.resources.map((resource) => [resource.id, resource])
+          ),
+          // under the template's top instances, as a page holds them
+          pages: fragment.children.flatMap((child) =>
+            child.type === "id" ? [{ rootInstanceId: child.value }] : []
+          ),
+        });
+        const unlisted = unlistedDataSourceIds({
+          instances: new Map(
+            fragment.instances.map((instance) => [instance.id, instance])
+          ),
+          dataSources: new Map(
+            fragment.dataSources.map((dataSource) => [
+              dataSource.id,
+              dataSource,
+            ])
+          ),
+          props: new Map(fragment.props.map((prop) => [prop.id, prop])),
+        });
+        return fragment.dataSources
+          .filter((dataSource) => colliding.has(dataSource.id))
+          .map(
+            (dataSource) =>
+              `${key} ${dataSource.name}${unlisted.has(dataSource.id) ? " (unlisted)" : ""}`
+          );
+      }
+    );
+    // but a Content Block's own document, which publishing leaves out
+    // while org script is paused, and neither counts nor lists
+    expect(found).toEqual(["ws:block document (unlisted)"]);
+    // the Form template's are among them, with its errors' Collection item
+    const form = registeredTemplates().find(([key]) => key === "form");
+    expect(
+      form?.[1].template.dataSources
+        .filter((dataSource) => dataSource.type === "parameter")
+        .map((dataSource) => dataSource.name)
+        .sort()
+    ).toEqual(["browserInfo", "collectionItem", "formData"]);
+  });
+
+  // Publishing leaves out an instance of a component the page does not
+  // import, and the Publish dialog lists it, so a template inserts none
+  test("every component a template inserts is one a published page imports", () => {
+    expect(
+      registeredTemplates().flatMap(([key, { template: fragment }]) =>
+        fragment.instances
+          .filter(
+            (instance) =>
+              componentMayShip(instance.component, publishedComponents) ===
+              false
+          )
+          .map((instance) => `${key}: ${instance.component}`)
+      )
+    ).toEqual([]);
+  });
+
   // What a template inserts is checked by the rules the canvas and publish
   // apply, so no template brings in what the pause would drop or stub.
   test("every registry library's templates render with no paused tag or prop", () => {
@@ -382,7 +509,8 @@ describe("the libraries, as the canvas registers them", () => {
         if (propNameMayRun(prop.name) === false) {
           found.push(`${key}: ${instance.component} ${prop.name}`);
         }
-        if (propMayShip(instance, prop) === false) {
+        // an action is judged in its template's context, above
+        if (prop.type !== "action" && propMayShip(instance, prop) === false) {
           found.push(`${key}: ${instance.component} ${prop.name} ships not`);
         }
         if (

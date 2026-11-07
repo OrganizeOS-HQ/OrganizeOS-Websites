@@ -150,7 +150,12 @@ import {
   getOrganizeosSourceUrl,
   resolveOrganizeosComponentsModule,
 } from "./organizeos-components";
-import { dropOrgScript, refuseMdxWhilePaused } from "./organizeos-org-script";
+import {
+  assertFrameworkImports,
+  dropOrgScript,
+  frameworkComponentsOf,
+  refuseMdxWhilePaused,
+} from "./organizeos-org-script";
 import { pagesForSitemap } from "@organizeos/site-components/org-script";
 import { assertNoPreviewHeader } from "./organizeos-preview-header";
 import { createFramework as createRemixFramework } from "./framework-remix";
@@ -1004,8 +1009,11 @@ export const prebuild = async (options: {
     );
   }
   // OrganizeOS fork: org script is paused, so the build that every step below
-  // reads has none: no HTML Embed, no custom code (organizeos-org-script.ts).
+  // reads has none: no HTML Embed, no custom code, no component the framework
+  // does not import (organizeos-org-script.ts).
+  const frameworkComponents = frameworkComponentsOf(options.template);
   const siteData = dropOrgScript(parsedSiteData.data, {
+    components: frameworkComponents,
     log: options.silent ? undefined : (message) => log.info(message),
   });
   // OrganizeOS fork: no Resource carries the builder's draft-preview header
@@ -1205,6 +1213,9 @@ export const createManagedFormResourceFetch = ({ request, context, projectDomain
   } else {
     framework = await createRemixFramework(frameworkOptions);
   }
+  // OrganizeOS fork: the framework imports every component the drop above may
+  // keep (organizeos-org-script.ts).
+  assertFrameworkImports(frameworkComponents, framework.components);
 
   const assetBaseUrl = await readAssetBaseUrl(join(cwd(), "app/constants.mjs"));
 

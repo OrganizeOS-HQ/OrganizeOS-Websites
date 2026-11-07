@@ -12,6 +12,10 @@ import {
 } from "@webstudio-is/sdk";
 import { formDataParameterName } from "@webstudio-is/sdk/runtime";
 import {
+  actionContextOf,
+  actionMayRun,
+} from "@organizeos/site-components/org-script";
+import {
   buildSignupFormData,
   SIGNUP_FORM_FIELD_NAMES,
   SIGNUP_RESOURCE_NAME,
@@ -37,6 +41,33 @@ const findSignup = async () => {
 };
 
 describe("buildSignupFormData", () => {
+  // While org script is paused the canvas gives an action actionMayRun
+  // refuses no handler and publishing drops it (docs/ORGANIZEOS-FORK.md
+  // section 10), so the form's own state action has to pass
+  test("writes a state action that may run while org script is paused, as it is scoped on the page", async () => {
+    const { data, bodyId } = await build();
+    const actions = [...data.props.values()].filter(
+      (prop) => prop.type === "action"
+    );
+    expect(actions.map((prop) => prop.name)).toEqual(["onStateChange"]);
+    for (const prop of actions) {
+      expect(
+        prop.type === "action" &&
+          actionMayRun(
+            prop,
+            actionContextOf({
+              instances: data.instances,
+              pageRootIds: new Set([bodyId]),
+              dataSources: data.dataSources,
+              props: data.props,
+              resources: data.resources,
+              pages: [{ rootInstanceId: bodyId }],
+            })
+          )
+      ).toBe(true);
+    }
+  });
+
   // Owner decision D15 of the 0.309.0 merge: the provisioned form is the
   // managed Form, persisted as ResourceForm, whose action is a Resource the
   // server runs. It is written as ResourceForm itself, so no

@@ -4,12 +4,16 @@ import {
   blockComponent,
   blockTemplateComponent,
   type Asset,
+  type DataSource,
   type Instance,
   type Page,
   type Pages,
   type Prop,
 } from "@webstudio-is/sdk";
 import { MenuIcon } from "@webstudio-is/icons/svg";
+import { renderTemplate, type TemplateMeta } from "@webstudio-is/template";
+import { canvasComponentLibraries } from "@webstudio-is/sdk-components-registry/canvas";
+import { componentMetas } from "@webstudio-is/sdk-components-registry/metas";
 import {
   findMdxBlocks,
   findPausedScript,
@@ -96,6 +100,8 @@ const find = (
     pages: createPages(),
     instances: createInstances([]),
     props: toProps([]),
+    dataSources: new Map(),
+    resources: new Map(),
     ...overrides,
   });
 
@@ -330,7 +336,7 @@ describe("findPausedScript", () => {
           "kept-nav"
         ),
       },
-      { id: "form", component: "Form", children: ids("donate") },
+      { id: "form", component: "WebhookForm", children: ids("donate") },
       { id: "donate", component: "Link" },
       { id: "script-box", component: "Box", tag: "script" },
       // a tag the builder offers on the instance and on the prop
@@ -395,7 +401,7 @@ describe("findPausedScript", () => {
   test("lists nothing for a tag the builder does not offer when the switch is on", () => {
     const instances = createInstances([
       { id: "home-root", component: "Body", children: ids("form") },
-      { id: "form", component: "Form" },
+      { id: "form", component: "WebhookForm" },
     ]);
     const props = toProps([stringProp("form", "tag", "signup")]);
 
@@ -949,6 +955,882 @@ describe("findPausedScript", () => {
         label: "Event handler attribute (onclick) on Home",
         navigate: onHome("custom"),
       },
+    ]);
+  });
+
+  test("lists an action that could run script or reach the page as an action, whatever its name, and not one a template writes", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids(
+          "button",
+          "link",
+          "input",
+          "rotation",
+          "block",
+          "generic",
+          "regex",
+          "form-regex",
+          "form-member",
+          "shadow",
+          "resource",
+          "newline",
+          "newline-cr",
+          "newline-ls",
+          "newline-comment",
+          "form-newline",
+          "form-a",
+          "proto",
+          "form"
+        ),
+      },
+      { id: "button", component: "ws:element", tag: "button" },
+      { id: "link", component: "Link" },
+      { id: "input", component: "ws:element", tag: "input" },
+      { id: "rotation", component: "ws:element", tag: "div" },
+      { id: "block", component: "ws:element", tag: "button" },
+      {
+        id: "generic",
+        component: "@organizeos/site-components:SignupForm",
+      },
+      { id: "regex", component: "ws:element", tag: "button" },
+      {
+        id: "form-regex",
+        component: "@organizeos/site-components:SignupForm",
+      },
+      {
+        id: "form-member",
+        component: "@organizeos/site-components:SignupForm",
+      },
+      { id: "shadow", component: "ws:element", tag: "button" },
+      { id: "resource", component: "ws:element", tag: "button" },
+      { id: "newline", component: "ws:element", tag: "button" },
+      { id: "newline-cr", component: "ws:element", tag: "button" },
+      { id: "newline-ls", component: "ws:element", tag: "button" },
+      { id: "newline-comment", component: "ws:element", tag: "button" },
+      {
+        id: "form-newline",
+        component: "@organizeos/site-components:SignupForm",
+      },
+      { id: "form-a", component: "@organizeos/site-components:SignupForm" },
+      { id: "proto", component: "ws:element", tag: "button" },
+      { id: "form", component: "WebhookForm" },
+    ]);
+    const action = (
+      instanceId: string,
+      name: string,
+      value: Array<{ args: string[]; code: string }>
+    ): Prop => ({
+      id: `${instanceId}-${name}`,
+      instanceId,
+      name,
+      type: "action",
+      value: value.map((entry) => ({ type: "execute", ...entry })),
+    });
+    const crafted = [{ args: [") => 0, globalThis.pwned = 1, (x"], code: "0" }];
+    const props = toProps([
+      action("button", "onClick", crafted),
+      action("link", "href", crafted),
+      // what upstream's own actions read, while org script is paused
+      action("input", "onChange", [
+        { args: ["event"], code: "$ws$dataSource$state = event.target.value" },
+      ]),
+      // a parameter
+      action("rotation", "onValueChange", [
+        { args: [], code: '$ws$dataSource$param = "x"' },
+      ]),
+      // a code that starts with an object
+      action("block", "onClick", [
+        { args: [], code: '{} / "/}, globalThis.pwned = 1, () => { // "' },
+      ]),
+      // a < followed later by a >
+      action("generic", "onStateChange", [
+        { args: ["a", "b", "c"], code: "$ws$dataSource$state = a < b > (c)" },
+      ]),
+      // a regular expression after a `>`, with no args and with a plain-data
+      // arg
+      action("regex", "onClick", [
+        { args: [], code: "1 < 2 > /(globalThis.pwned = 1)/g" },
+      ]),
+      action("form-regex", "onStateChange", [
+        {
+          args: ["state"],
+          code: "$ws$dataSource$state = $ws$dataSource$state < $ws$dataSource$state > /(globalThis.pwned = state)/i",
+        },
+      ]),
+      // a member, where the args may be named
+      action("form-member", "onStateChange", [
+        { args: ["state"], code: "$ws$dataSource$state = state.length" },
+      ]),
+      // an arg named like a variable
+      action("shadow", "onClick", [
+        { args: ["event"], code: "$ws$dataSource$state = $ws$dataSource$e" },
+      ]),
+      // an assignment to a Resource
+      action("resource", "onClick", [
+        { args: [], code: "$ws$dataSource$res = 1" },
+      ]),
+      // a < followed later by a >, with no args and where the args may be
+      // named
+      action("newline", "onClick", [
+        {
+          args: [],
+          code: '$ws$dataSource$state = "s" < 1 >\n ["constructor"] < 1 >\n ["constructor"]',
+        },
+      ]),
+      ...(
+        [
+          ["newline-cr", "\r"],
+          ["newline-ls", "\u2028"],
+          ["newline-comment", " /*\n*/ "],
+        ] as const
+      ).map(([id, between]) =>
+        action(id, "onClick", [
+          {
+            args: [],
+            code: `$ws$dataSource$state = 1 < 2 >${between}{} / "/}, globalThis.pwned = 1, () => { // "`,
+          },
+        ])
+      ),
+      action("form-newline", "onStateChange", [
+        {
+          args: ["state"],
+          code: '$ws$dataSource$state = state < 1 >\n["constructor"]',
+        },
+      ]),
+      action("form-a", "onStateChange", [
+        {
+          args: ["a"],
+          code: '$ws$dataSource$state = a < 1 >\n["constructor"]',
+        },
+      ]),
+      // an object keyed __proto__
+      action("proto", "onClick", [
+        { args: [], code: "$ws$dataSource$state = { __proto__: null }" },
+      ]),
+      action("form", "onStateChange", [
+        { args: ["state"], code: "$ws$dataSource$state = state" },
+      ]),
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "state",
+        {
+          type: "variable",
+          id: "state",
+          name: "formState",
+          scopeInstanceId: "home-root",
+          value: { type: "string", value: "idle" },
+        },
+      ],
+      [
+        "param",
+        {
+          type: "parameter",
+          id: "param",
+          name: "name",
+          scopeInstanceId: "rotation",
+        },
+      ],
+      [
+        "e",
+        {
+          type: "variable",
+          id: "e",
+          name: "event",
+          scopeInstanceId: "home-root",
+          value: { type: "string", value: "idle" },
+        },
+      ],
+      [
+        "res",
+        {
+          type: "resource",
+          id: "res",
+          name: "res",
+          scopeInstanceId: "home-root",
+          resourceId: "res-resource",
+        },
+      ],
+    ]);
+
+    expect(find({ instances, props, dataSources })).toEqual([
+      { label: "Action (onClick) on Home", navigate: onHome("button") },
+      { label: "Action (href) on Home", navigate: onHome("link") },
+      { label: "Action (onChange) on Home", navigate: onHome("input") },
+      {
+        label: "Action (onValueChange) on Home",
+        navigate: onHome("rotation"),
+      },
+      // the parameter, which no page declares
+      { label: "Variable (name) on Home", navigate: onHome("rotation") },
+      { label: "Action (onClick) on Home", navigate: onHome("block") },
+      {
+        label: "Action (onStateChange) on Home",
+        navigate: onHome("generic"),
+      },
+      { label: "Action (onClick) on Home", navigate: onHome("regex") },
+      {
+        label: "Action (onStateChange) on Home",
+        navigate: onHome("form-regex"),
+      },
+      {
+        label: "Action (onStateChange) on Home",
+        navigate: onHome("form-member"),
+      },
+      { label: "Action (onClick) on Home", navigate: onHome("shadow") },
+      { label: "Action (onClick) on Home", navigate: onHome("resource") },
+      { label: "Action (onClick) on Home", navigate: onHome("newline") },
+      { label: "Action (onClick) on Home", navigate: onHome("newline-cr") },
+      { label: "Action (onClick) on Home", navigate: onHome("newline-ls") },
+      {
+        label: "Action (onClick) on Home",
+        navigate: onHome("newline-comment"),
+      },
+      {
+        label: "Action (onStateChange) on Home",
+        navigate: onHome("form-newline"),
+      },
+      {
+        label: "Action (onStateChange) on Home",
+        navigate: onHome("form-a"),
+      },
+      { label: "Action (onClick) on Home", navigate: onHome("proto") },
+    ]);
+  });
+
+  // An action ships only if it passes input validation
+  test("lists an action that input validation refuses, as publishing drops it", () => {
+    const variable = "$ws$dataSource$v";
+    const signupForm = "@organizeos/site-components:SignupForm";
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("nan", "key", "form", "kept"),
+      },
+      { id: "nan", component: "Box" },
+      { id: "key", component: "Box" },
+      { id: "form", component: signupForm },
+      { id: "kept", component: "Box" },
+    ]);
+    const action = (
+      instanceId: string,
+      name: string,
+      args: string[],
+      code: string
+    ): Prop => ({
+      id: `${instanceId}-${name}`,
+      instanceId,
+      name,
+      type: "action",
+      value: [{ type: "execute", args, code }],
+    });
+    const props = toProps([
+      action("nan", "onClick", [], `${variable} = NaN`),
+      action("key", "onClick", [], `${variable} = { constructor: 1 }`),
+      action("form", "onStateChange", ["state"], "state = 1"),
+      action("kept", "onClick", [], `${variable} = undefined`),
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "v",
+        {
+          type: "variable",
+          id: "v",
+          name: "v",
+          scopeInstanceId: "home-root",
+          value: { type: "string", value: "" },
+        },
+      ],
+    ]);
+
+    expect(
+      find({ instances, props, dataSources }).map((item) => item.label)
+    ).toEqual([
+      "Action (onClick) on Home",
+      "Action (onClick) on Home",
+      "Action (onStateChange) on Home",
+    ]);
+  });
+
+  // Only a component the page imports, or one the generator writes itself,
+  // ships, and the builder's global root is not an instance it stores
+  test("lists an instance whose component the page does not import, and one stored with the global root's id", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("script", ":root", "box", "tabs", "signup", "list"),
+      },
+      { id: "script", component: "x:script", children: ids("inside") },
+      { id: "inside", component: "Box" },
+      { id: ":root", component: "Box" },
+      { id: "box", component: "Box" },
+      { id: "tabs", component: `${radix}:Tabs` },
+      { id: "signup", component: "@organizeos/site-components:SignupForm" },
+      { id: "list", component: "ws:collection" },
+      { id: "about-root", component: "ws:root" },
+    ]);
+    const props = toProps([
+      // a dropped instance takes its props with it
+      stringProp("script", "href", "javascript:alert(1)"),
+    ]);
+
+    expect(find({ instances, props })).toEqual([
+      { label: "Unknown component on Home", navigate: onHome("script") },
+      {
+        label: "Element with a reserved id on Home",
+        navigate: onHome(":root"),
+      },
+      {
+        label: "Unknown component on About",
+        navigate: { pageId: "about", instanceSelector: ["about-root"] },
+      },
+    ]);
+    // the components the page imports decide
+    expect(
+      find({ instances, props, components: new Set(["Body", "Box"]) }).map(
+        (item) => item.label
+      )
+    ).toEqual([
+      "Unknown component on Home",
+      "Element with a reserved id on Home",
+      "Unknown component on Home",
+      "Unknown component on Home",
+      "Unknown component on About",
+    ]);
+  });
+
+  // A data source's id or name may not be one the page module uses for
+  // anything else
+  test("lists a variable whose id or name the page module uses for something else, where a page declares it", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("box") },
+      { id: "box", component: "Box" },
+      { id: "orphan", component: "Box" },
+    ]);
+    const variable = (
+      id: string,
+      name: string,
+      scopeInstanceId: string
+    ): [string, DataSource] => [
+      id,
+      {
+        type: "variable",
+        id,
+        name,
+        scopeInstanceId,
+        value: { type: "string", value: "" },
+      },
+    ];
+    const dataSources = new Map<string, DataSource>([
+      variable("ok", "ok", "home-root"),
+      variable("Box", "boxed", "box"),
+      variable("set$ok", "setter", "home-root"),
+      variable("taken", "taken", "home-root"),
+      variable("k", "_key", "box"),
+      variable("set$global", "global", ":root"),
+      variable("set$orphan", "orphan", "orphan"),
+    ]);
+    const props = toProps([
+      {
+        id: "box-onClick",
+        instanceId: "box",
+        name: "onClick",
+        type: "action",
+        value: [
+          {
+            type: "execute",
+            args: [],
+            code: "$ws$dataSource$ok = $ws$dataSource$Box",
+          },
+        ],
+      },
+    ]);
+
+    expect(
+      find({
+        instances,
+        props,
+        dataSources,
+        resources: new Map([
+          [
+            "taken",
+            {
+              id: "taken",
+              name: "taken",
+              method: "get",
+              url: '"https://example.org"',
+              headers: [],
+            },
+          ],
+        ]),
+      })
+    ).toEqual([
+      {
+        label: "Variable (setter) on Home",
+        navigate: { pageId: "home", instanceSelector: ["home-root"] },
+      },
+      {
+        label: "Variable (taken) on Home",
+        navigate: { pageId: "home", instanceSelector: ["home-root"] },
+      },
+      { label: "Action (onClick) on Home", navigate: onHome("box") },
+      { label: "Variable (boxed) on Home", navigate: onHome("box") },
+      { label: "Variable (_key) on Home", navigate: onHome("box") },
+      { label: "Variable (global)" },
+    ]);
+  });
+
+  // What publishing drops takes what is inside it, but an instance that
+  // another one that stays still holds: the dialog lists what publishing
+  // counts
+  test("lists nothing held inside an instance publishing drops, but what it drops itself and what another instance still holds", () => {
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("unknown", "shared"),
+      },
+      {
+        id: "unknown",
+        component: "x:script",
+        children: ids("inside", "shared"),
+      },
+      { id: "inside", component: "Box", children: ids("embed") },
+      { id: "embed", component: "HtmlEmbed" },
+      { id: "shared", component: "Link" },
+      // on no page, but it holds what the page drops, and it goes too
+      { id: "orphan", component: "x:other", children: ids("inside") },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "Box",
+        {
+          type: "variable",
+          id: "Box",
+          name: "boxed",
+          scopeInstanceId: "inside",
+          value: { type: "string", value: "" },
+        },
+      ],
+    ]);
+    const props = toProps([
+      {
+        id: "inside-onClick",
+        instanceId: "inside",
+        name: "onClick",
+        type: "action",
+        value: [
+          {
+            type: "execute",
+            args: [],
+            code: "$ws$dataSource$Box = 1",
+          },
+        ],
+      },
+      stringProp("inside", "href", "javascript:alert(1)"),
+      stringProp("shared", "href", "javascript:alert(1)"),
+    ]);
+
+    expect(
+      find({ instances, props, dataSources }).map((item) => [
+        item.label,
+        item.navigate?.instanceSelector[0],
+      ])
+    ).toEqual([
+      ["Unknown component on Home", "unknown"],
+      ["HTML Embed on Home", "embed"],
+      ["Link address (href) on Home", "shared"],
+    ]);
+  });
+
+  // A parameter is declared as itself only as a page's own or as a
+  // Collection's item or key, and a Collection binds nothing else
+  test("lists a parameter no page declares, a variable a Collection binds and an action as a Collection's item", () => {
+    const pages = createPages();
+    const home = pages.pages.get("home") as Page;
+    pages.pages.set("home", { ...home, systemDataSourceId: "system" });
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("link", "list", "other"),
+      },
+      { id: "link", component: "Link" },
+      { id: "list", component: "ws:collection", children: ids("card") },
+      { id: "card", component: "Box" },
+      { id: "other", component: "ws:collection" },
+    ]);
+    const parameter = (
+      id: string,
+      name: string,
+      scopeInstanceId: string
+    ): [string, DataSource] => [
+      id,
+      { type: "parameter", id, name, scopeInstanceId },
+    ];
+    const dataSources = new Map<string, DataSource>([
+      parameter("system", "system", "home-root"),
+      parameter("capture", "__oosCapture", "home-root"),
+      parameter("item", "item", "list"),
+      [
+        "v",
+        {
+          type: "variable",
+          id: "v",
+          name: "bound",
+          scopeInstanceId: "home-root",
+          value: { type: "string", value: "" },
+        },
+      ],
+    ]);
+    const parameterProp = (
+      instanceId: string,
+      name: string,
+      value: string
+    ): Prop => ({
+      id: `${instanceId}-${name}`,
+      instanceId,
+      name,
+      type: "parameter",
+      value,
+    });
+    const props = toProps([
+      parameterProp("link", "ref", "capture"),
+      parameterProp("list", "item", "item"),
+      parameterProp("card", "title", "item"),
+      parameterProp("card", "aria-label", "system"),
+      parameterProp("list", "itemKey", "v"),
+      {
+        id: "other-item",
+        instanceId: "other",
+        name: "item",
+        type: "action",
+        value: [],
+      },
+    ]);
+
+    expect(find({ pages, instances, props, dataSources })).toEqual([
+      {
+        label: "Variable (__oosCapture) on Home",
+        navigate: { pageId: "home", instanceSelector: ["home-root"] },
+      },
+      {
+        label: "Variable (bound) on Home",
+        navigate: { pageId: "home", instanceSelector: ["home-root"] },
+      },
+      { label: "Action (item) on Home", navigate: onHome("other") },
+    ]);
+  });
+
+  // A Resource Form's own form data and browser info stay while org script
+  // is paused
+  test("lists no Resource Form's own form data or browser info, and a parameter of either name elsewhere", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("form", "box") },
+      { id: "form", component: "ResourceForm" },
+      { id: "box", component: "Box" },
+    ]);
+    const parameter = (
+      id: string,
+      name: string,
+      scopeInstanceId: string
+    ): [string, DataSource] => [
+      id,
+      { type: "parameter", id, name, scopeInstanceId },
+    ];
+    const parameterProp = (
+      instanceId: string,
+      name: string,
+      value: string
+    ): Prop => ({
+      id: `${instanceId}-${name}`,
+      instanceId,
+      name,
+      type: "parameter",
+      value,
+    });
+
+    expect(
+      find({
+        instances,
+        dataSources: new Map([
+          parameter("form-data", "formData", "form"),
+          parameter("browser-info", "browserInfo", "form"),
+          parameter("box-data", "browserInfo", "box"),
+        ]),
+        props: toProps([
+          parameterProp("form", "formData", "form-data"),
+          parameterProp("form", "browserInfo", "browser-info"),
+          parameterProp("box", "title", "box-data"),
+        ]),
+      })
+    ).toEqual([
+      { label: "Variable (browserInfo) on Home", navigate: onHome("box") },
+    ]);
+  });
+
+  // An XML page does not publish a Resource Form, so its own form data goes
+  // there, and is listed where the form is
+  test("lists the form data of a Resource Form only an XML page holds", () => {
+    const pages = createPages({ xmlAbout: true });
+    const instances = createInstances([
+      { id: "home-root", component: "Body" },
+      { id: "about-root", component: "Body", children: ids("item") },
+      { id: "item", component: "XmlNode", children: ids("form", "title") },
+      { id: "form", component: "ResourceForm" },
+      { id: "title", component: "XmlNode" },
+    ]);
+    expect(
+      find({
+        pages,
+        instances,
+        dataSources: new Map([
+          [
+            "form-data",
+            {
+              type: "parameter",
+              id: "form-data",
+              name: "formData",
+              scopeInstanceId: "form",
+            },
+          ],
+        ]),
+        props: toProps([
+          {
+            id: "form-formData",
+            instanceId: "form",
+            name: "formData",
+            type: "parameter",
+            value: "form-data",
+          },
+          {
+            id: "title-lang",
+            instanceId: "title",
+            name: "lang",
+            type: "parameter",
+            value: "form-data",
+          },
+        ]),
+      })
+    ).toEqual([
+      {
+        label: "Variable (formData) on About",
+        navigate: {
+          pageId: "about",
+          instanceSelector: ["form", "item", "about-root"],
+        },
+      },
+    ]);
+  });
+
+  // A Content Block's own document goes while org script is paused, and is
+  // listed only when something else names it
+  test("lists nothing for the Content Block the core template inserts, and its document where another prop names it", () => {
+    const [core] = canvasComponentLibraries;
+    const fragment = renderTemplate(
+      (core.templates as Record<string, TemplateMeta>)[blockComponent].template,
+      undefined,
+      [],
+      { componentIds: core.componentIds, componentMetas }
+    );
+    const block = fragment.instances.find(
+      (instance) => instance.component === blockComponent
+    );
+    const document = fragment.dataSources.find(
+      (dataSource) => dataSource.scopeInstanceId === block?.id
+    );
+    expect(document?.type).toBe("parameter");
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: [...fragment.children, ...ids("box")],
+      },
+      ...fragment.instances,
+      { id: "box", component: "Box" },
+    ]);
+    const dataSources = new Map(
+      fragment.dataSources.map((dataSource) => [dataSource.id, dataSource])
+    );
+    const props = fragment.props;
+
+    expect(find({ instances, dataSources, props: toProps(props) })).toEqual([]);
+    expect(
+      find({
+        instances,
+        dataSources,
+        props: toProps([
+          ...props,
+          {
+            id: "box-title",
+            instanceId: "box",
+            name: "title",
+            type: "parameter",
+            value: document?.id ?? "",
+          },
+        ]),
+      })
+    ).toEqual([
+      {
+        label: `Variable (${document?.name}) on Home`,
+        navigate: {
+          pageId: "home",
+          instanceSelector: [block?.id, "home-root"],
+        },
+      },
+    ]);
+  });
+
+  // A Content Block's body ships, and no data source may take the name String
+  test("lists a variable named String, and no Content Block body", () => {
+    expect(
+      find({
+        instances: createInstances([
+          { id: "home-root", component: "Body", children: ids("block") },
+          { id: "block", component: blockComponent, children: ids("body") },
+          {
+            id: "body",
+            component: "ws:content-block-body",
+            children: ids("text"),
+          },
+          { id: "text", component: "Paragraph" },
+        ]),
+        dataSources: new Map([
+          [
+            "named",
+            {
+              type: "variable",
+              id: "named",
+              name: "String",
+              scopeInstanceId: "home-root",
+              value: { type: "string", value: "" },
+            },
+          ],
+        ]),
+      })
+    ).toEqual([
+      {
+        label: "Variable (String) on Home",
+        navigate: { pageId: "home", instanceSelector: ["home-root"] },
+      },
+    ]);
+  });
+
+  // Publishing reads a data source with no scope as held by an instance
+  // with an empty id, where a page holds one
+  test("lists a variable with no scope where publishing reads it", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("") },
+      { id: "", component: "Box" },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      [
+        "set$x",
+        {
+          type: "variable",
+          id: "set$x",
+          name: "unscoped",
+          value: { type: "string", value: "" },
+        },
+      ],
+    ]);
+
+    expect(find({ instances, dataSources }).map((item) => item.label)).toEqual([
+      "Variable (unscoped) on Home",
+    ]);
+  });
+
+  // A page's own parameter is declared on that page alone, and a Collection
+  // binds one item and one key, each through a parameter
+  test("lists a page template's own parameter held on the global root's id, both parameters of a Collection with two item props, and a Collection item that is not a parameter", () => {
+    const pages = createPages();
+    pages.pageTemplates = new Map([
+      [
+        "template",
+        {
+          id: "template",
+          name: "Template",
+          title: `"Template"`,
+          rootInstanceId: ":root",
+          systemDataSourceId: "own",
+          meta: {},
+        },
+      ],
+    ]);
+    const instances = createInstances([
+      {
+        id: "home-root",
+        component: "Body",
+        children: ids("link", "list", "other"),
+      },
+      { id: "link", component: "Link" },
+      { id: "list", component: "ws:collection", children: ids("card") },
+      { id: "card", component: "Link" },
+      { id: "other", component: "ws:collection" },
+    ]);
+    const parameter = (
+      id: string,
+      scopeInstanceId: string
+    ): [string, DataSource] => [
+      id,
+      { type: "parameter", id, name: id, scopeInstanceId },
+    ];
+    const parameterProp = (
+      id: string,
+      instanceId: string,
+      name: string,
+      value: string
+    ): Prop => ({ id, instanceId, name, type: "parameter", value });
+    const props = toProps([
+      parameterProp("link-ref", "link", "ref", "own"),
+      parameterProp("list-item", "list", "item", "first"),
+      parameterProp("list-item-2", "list", "item", "last"),
+      parameterProp("card-ref", "card", "ref", "first"),
+      {
+        id: "other-item",
+        instanceId: "other",
+        name: "item",
+        type: "expression",
+        value: '"x"',
+      },
+    ]);
+    const dataSources = new Map<string, DataSource>([
+      parameter("own", ":root"),
+      parameter("first", "list"),
+      parameter("last", "list"),
+    ]);
+
+    expect(
+      find({ pages, instances, props, dataSources }).map((item) => [
+        item.label,
+        item.navigate?.instanceSelector[0],
+      ])
+    ).toEqual([
+      ["Variable (first) on Home", "list"],
+      ["Variable (last) on Home", "list"],
+      ["Collection item or key (item) on Home", "other"],
+      ["Variable (own)", undefined],
+    ]);
+  });
+
+  // Publishing keeps an HTML Embed only when every code it holds is a
+  // template icon
+  test("lists an HTML Embed with a template icon and another code", () => {
+    const instances = createInstances([
+      { id: "home-root", component: "Body", children: ids("embed") },
+      { id: "embed", component: "HtmlEmbed" },
+    ]);
+    const props = toProps([
+      stringProp("embed", "code", MenuIcon),
+      { ...stringProp("embed", "code", "<b>1</b>"), id: "embed-code-2" },
+    ]);
+
+    expect(find({ instances, props }).map((item) => item.label)).toEqual([
+      "HTML Embed on Home",
     ]);
   });
 

@@ -1,22 +1,48 @@
-import { parse, parseExpressionAt, tokenizer, type Expression } from "acorn";
 import {
+  parse,
+  parseExpressionAt,
+  tokenizer,
+  tokTypes,
+  type Expression,
+} from "acorn";
+import {
+  blockBodyComponent,
+  blockComponent,
+  blockTemplateComponent,
   collectionComponent,
+  contentBlockDocumentProp,
+  decodeDataSourceVariable,
+  descendantComponent,
   elementComponent,
+  getAllPages,
+  ROOT_INSTANCE_ID,
   tags,
+  type DataSource,
   type Instance,
+  type Page,
   type Pages,
   type Prop,
+  type Resource,
 } from "@webstudio-is/sdk";
+import {
+  browserInfoParameterName,
+  formDataParameterName,
+} from "@webstudio-is/sdk/runtime";
+import { lintExpression, transpileExpression } from "@webstudio-is/expression";
+import { checkAction } from "./code-check";
 
 /**
  * Whether an org's own script may run on its Website: HTML Embeds, Content
  * Embeds, Markdown Embeds, the SVG `animate` and `set` elements, an element
  * whose tag the builder does not offer, the `dangerouslySetInnerHTML` prop,
- * the site-wide custom code, and the unsafe values (an address that can run
- * script, `srcdoc`, an event handler attribute, an XML element on an HTML page
- * and a redirect to an unsafe address). It is off (owner decision,
- * 2026-10-21); what orgs saved is kept, and each org's next publish ships it
- * again once this is on.
+ * the site-wide custom code, the unsafe values (an address that can run
+ * script, `srcdoc`, an event handler attribute, an action whose args or code
+ * could run script, an XML element on an HTML page and a redirect to an
+ * unsafe address), a component the published page does not import, an
+ * instance stored with the global root's id and a data source the page
+ * module cannot name as itself. It is off (owner decision, 2026-10-21); what
+ * orgs saved is kept, and each org's next publish ships it again once this
+ * is on.
  *
  * Turn it on only when both hold (docs/ORGANIZEOS-FORK.md section 10):
  * - org sites are served from {sub}.organizeos.io and the old
@@ -226,6 +252,42 @@ export const withoutBlockedTagProps = <Props extends Record<string, unknown>>(
   }
   return result;
 };
+
+/**
+ * The core components the generator writes itself rather than import: an
+ * element, a Collection, a Content Block, its body, its templates container
+ * and a descendant's style rule.
+ */
+export const generatedComponents: ReadonlySet<Instance["component"]> = new Set([
+  elementComponent,
+  collectionComponent,
+  blockComponent,
+  blockBodyComponent,
+  blockTemplateComponent,
+  descendantComponent,
+]);
+
+/**
+ * Whether an instance of this component may ship: the generator writes it
+ * itself (`generatedComponents`), or the published page imports it, one of
+ * `components`, those the CLI's framework imports.
+ */
+export const componentMayShip = (
+  component: unknown,
+  components: ReadonlySet<Instance["component"]>
+): boolean =>
+  typeof component === "string" &&
+  (generatedComponents.has(component) || components.has(component));
+
+/**
+ * Whether an instance stored with this id may render or ship: any but one
+ * with the global root's id (`:root`), which the builder only makes as a
+ * virtual instance, unless the switch is on.
+ */
+export const instanceIdMayRun = (
+  id: unknown,
+  mayRun: boolean = orgScriptMayRun()
+): boolean => mayRun || id !== ROOT_INSTANCE_ID;
 
 /**
  * The URL schemes an address may have while org script is paused. Any other
@@ -546,28 +608,1089 @@ const bindingIsInert = (instance: InstanceKind, name: string) =>
   (name === "href" && inertHrefComponents.has(instance.component));
 
 /**
- * Whether publishing keeps this prop. Every prop of an XML element ships. A
- * `srcdoc` never does, nor an `on…` prop that is not an action. An address
- * ships when it is of a type that cannot hold one (a page, an asset, a
- * resource, an action, a number, a boolean), when its static value may run
- * whatever its shape, or when it is bound and its fixed start decides the
- * scheme or the binding cannot run script (`inertSrcComponents`,
+ * An action's arg: a plain ASCII identifier, one name in a parameter list,
+ * that cannot be a name the canvas or the generator writes: it starts with a
+ * letter, holds no `$`, and is neither `arguments`, `eval` nor a reserved
+ * word of a module.
+ */
+const actionArgPattern = /^[A-Za-z][A-Za-z0-9_]*$/;
+const reservedArgs: ReadonlySet<string> = new Set([
+  "arguments",
+  "eval",
+  "await",
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "implements",
+  "import",
+  "in",
+  "instanceof",
+  "interface",
+  "let",
+  "new",
+  "null",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "return",
+  "static",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+]);
+
+const actionArgMayRun = (arg: string) =>
+  actionArgPattern.test(arg) && reservedArgs.has(arg) === false;
+
+/**
+ * The props through which a component passes its action plain data, by
+ * component: a form's state (Resource Form, Webhook Form, Signup Form and
+ * RSVP Form) and Rotation Control's tab, each a string, and a Resource Form's
+ * progress and result, each an object of strings, numbers, booleans, null
+ * and arrays. A build stores a Resource Form or a Webhook Form under these
+ * names, or as `Form` or `NativeForm`, which publishing reads as one of them
+ * first. While org script is paused, only an action on one of these may name
+ * its args.
+ */
+export const plainDataActionProps: ReadonlyMap<
+  Instance["component"],
+  ReadonlySet<Prop["name"]>
+> = new Map([
+  [
+    "ResourceForm",
+    new Set(["onStateChange", "onProgressChange", "onResultChange"]),
+  ],
+  ["WebhookForm", new Set(["onStateChange"])],
+  ["@organizeos/site-components:SignupForm", new Set(["onStateChange"])],
+  ["@organizeos/site-components:RsvpForm", new Set(["onStateChange"])],
+  ["@organizeos/site-components:RotationControl", new Set(["onValueChange"])],
+]);
+
+/**
+ * Characters an action's code may not start with. The canvas and the
+ * generator write each code on a line of its own after another line, and a
+ * code that starts with one of these could be read together with it.
+ */
+const joinsLineBefore = /^[([{`/+-]/;
+
+/** Names an action reads as values. None can be a data source's name. */
+const valueNames: ReadonlySet<string> = new Set(["undefined"]);
+
+/** What an action's rule reads of the build */
+export type ActionContext = {
+  /** Its instances: the action's holder, by the prop's instance id, and the
+   * instances above it */
+  instances: ReadonlyMap<
+    Instance["id"],
+    Pick<Instance, "component" | "children">
+  >;
+  /** The root instance of each of its pages */
+  pageRootIds: ReadonlySet<Instance["id"]>;
+  /** The root instance of each of its page templates, which the canvas edits
+   * as it does a page: they decide for a holder no page reaches */
+  templateRootIds?: ReadonlySet<Instance["id"]>;
+  /** Its data sources, without those `collidingDataSourceIds` lists
+   * (`actionContextOf`) */
+  dataSources: ReadonlyMap<
+    DataSource["id"],
+    Pick<DataSource, "type" | "scopeInstanceId" | "name">
+  >;
+};
+
+const noActionContext: ActionContext = {
+  instances: new Map(),
+  pageRootIds: new Set(),
+  dataSources: new Map(),
+};
+
+/** The root instance of each page */
+export const pageRootIdsOf = (
+  pages: undefined | Pages
+): ReadonlySet<Instance["id"]> =>
+  new Set(
+    pages === undefined
+      ? []
+      : getAllPages(pages).map((page) => page.rootInstanceId)
+  );
+
+/** The root instance of each page template */
+export const templateRootIdsOf = (
+  pages: undefined | Pages
+): ReadonlySet<Instance["id"]> =>
+  new Set(
+    Array.from(
+      pages?.pageTemplates?.values() ?? [],
+      (page) => page.rootInstanceId
+    )
+  );
+
+/** What the rule for a data source reads of a page or a page template */
+export type PageNames = Pick<Page, "rootInstanceId" | "systemDataSourceId"> & {
+  documentType?: Page["meta"]["documentType"];
+};
+
+const noPages: readonly PageNames[] = [];
+const pagesAndTemplatesByPages = new WeakMap<Pages, readonly PageNames[]>();
+
+/**
+ * The root, the own data source and the document type of each page and each
+ * page template, the same list for the same pages
+ */
+export const pagesAndTemplatesOf = (
+  pages: undefined | Pages
+): readonly PageNames[] => {
+  if (pages === undefined) {
+    return noPages;
+  }
+  let found = pagesAndTemplatesByPages.get(pages);
+  if (found === undefined) {
+    found = [
+      ...getAllPages(pages),
+      ...(pages.pageTemplates?.values() ?? []),
+    ].map(({ rootInstanceId, systemDataSourceId, meta }) => ({
+      rootInstanceId,
+      systemDataSourceId,
+      documentType: (meta as Partial<Page["meta"]> | undefined)?.documentType,
+    }));
+    pagesAndTemplatesByPages.set(pages, found);
+  }
+  return found;
+};
+
+/**
+ * A data source's name made a plain identifier: letters, digits, `_` and `$`,
+ * never starting with a digit
+ */
+const generatedNameOf = (name: string) => {
+  const identifier = name.replaceAll(/[^\w$]/g, "");
+  if (identifier === "") {
+    return "_";
+  }
+  return /^[A-Za-z_$]/.test(identifier) ? identifier : `_${identifier}`;
+};
+
+/**
+ * Whether `name` could name a data source called `dataSourceName`: its name
+ * made a plain identifier, or that followed by `_`, `_N` or `__N`
+ */
+const mayBeNamedAs = (dataSourceName: string, name: string) => {
+  const base = generatedNameOf(dataSourceName);
+  return name.startsWith(base) && /^_?(_\d+)?$/.test(name.slice(base.length));
+};
+
+/** Names no data source may take */
+const reservedNames: ReadonlySet<string> = new Set([
+  "_key",
+  "_data",
+  "_action",
+  "renderText",
+  "let",
+  "static",
+  "Array",
+  "Map",
+  "Number",
+  "Object",
+  "String",
+]);
+
+/** The props through which a Collection binds its item and its key */
+export const collectionBindingNames: ReadonlySet<Prop["name"]> = new Set([
+  "item",
+  "itemKey",
+]);
+
+/** The ids the builder gives a data source */
+const dataSourceIdPattern = /^[A-Za-z0-9_-]+$/;
+
+/** What the page module names besides its data sources */
+export type BuildNames = {
+  instances: ReadonlyMap<
+    Instance["id"],
+    Pick<Instance, "component" | "children">
+  >;
+  dataSources: ReadonlyMap<DataSource["id"], DataSource>;
+  props: ReadonlyMap<Prop["id"], Prop>;
+  resources: ReadonlyMap<Resource["id"], unknown>;
+  /** Its pages and page templates (`pagesAndTemplatesOf`) */
+  pages: readonly PageNames[];
+};
+
+/**
+ * The data sources the page module cannot name as themselves:
+ * - one stored under another key, or one whose id is not one the builder
+ *   gives (letters, digits, `_` and `-`), ends in `-index`, or is `Body`, a
+ *   component of the build or a Resource's (a Resource of the build, one a
+ *   prop or a data source names, or a Webhook Form's own);
+ * - one whose name is one no data source may take (`reservedNames`);
+ * - a parameter, unless it is a page's or a page template's own, held on its
+ *   root, which is not the global root's id and which no other page or
+ *   template and no instance holds, a Collection's item or key, or a Resource
+ *   Form's own form data or browser info, which upstream's managed form
+ *   binds as its submission's (`getManagedFormParameterBinding`), on a form
+ *   that may ship and that a page other than an XML page or a page template
+ *   reaches, which a parameter prop names only on the form or inside it, on
+ *   every path to it;
+ * - a page's own that is not such a parameter;
+ * - one a Collection binds as its item or key, unless it is a parameter of
+ *   that Collection, which nothing else binds and which a parameter prop
+ *   names only on an instance inside the Collection, on every path to it,
+ *   the Collection holds no other prop of that name, and the Collection may
+ *   ship (`instanceIdMayRun`).
+ *
+ * While org script is paused publishing leaves them out, the Publish dialog
+ * lists them but those `unlistedDataSourceIds` names, and an action may not
+ * name them (`actionContextOf`).
+ */
+export const collidingDataSourceIds = ({
+  instances,
+  dataSources,
+  props,
+  resources,
+  pages,
+}: BuildNames): ReadonlySet<DataSource["id"]> => {
+  // every page's root is a Body, and so is a root publishing empties
+  const taken = new Set<string>(["Body", ...resources.keys()]);
+  const childIds = new Set<Instance["id"]>();
+  for (const [id, instance] of instances) {
+    taken.add(instance.component);
+    if (instance.component === "WebhookForm" || instance.component === "Form") {
+      taken.add(id);
+    }
+    for (const child of instance.children) {
+      if (child.type === "id") {
+        childIds.add(child.value);
+      }
+    }
+  }
+  // what binds a Collection's item or key, how many props of that name the
+  // Collection holds, and what other parameter prop names a data source
+  const bindings = new Map<DataSource["id"], Prop[]>();
+  const bindingProps = new Map<string, number>();
+  const bindingKey = (prop: Prop) =>
+    JSON.stringify([prop.instanceId, prop.name]);
+  const namedOn = new Map<DataSource["id"], Instance["id"][]>();
+  for (const prop of props.values()) {
+    if (prop.type === "resource") {
+      taken.add(prop.value);
+    }
+    const isBindingProp =
+      instances.get(prop.instanceId)?.component === collectionComponent &&
+      collectionBindingNames.has(prop.name);
+    if (isBindingProp) {
+      bindingProps.set(
+        bindingKey(prop),
+        (bindingProps.get(bindingKey(prop)) ?? 0) + 1
+      );
+    }
+    if (prop.type !== "parameter") {
+      continue;
+    }
+    if (isBindingProp) {
+      bindings.set(prop.value, [...(bindings.get(prop.value) ?? []), prop]);
+    } else {
+      namedOn.set(prop.value, [
+        ...(namedOn.get(prop.value) ?? []),
+        prop.instanceId,
+      ]);
+    }
+  }
+  for (const dataSource of dataSources.values()) {
+    if (dataSource.type === "resource") {
+      taken.add(dataSource.resourceId);
+    }
+  }
+  const rootIds = new Set(pages.map((page) => page.rootInstanceId));
+  const pagesByRoot = new Map<Instance["id"], number>();
+  const ownersById = new Map<DataSource["id"], PageNames[]>();
+  for (const page of pages) {
+    pagesByRoot.set(
+      page.rootInstanceId,
+      (pagesByRoot.get(page.rootInstanceId) ?? 0) + 1
+    );
+    if (page.systemDataSourceId !== undefined) {
+      ownersById.set(page.systemDataSourceId, [
+        ...(ownersById.get(page.systemDataSourceId) ?? []),
+        page,
+      ]);
+    }
+  }
+  // a page's own: held on its root, which nothing else holds
+  const isPageOwn = (dataSource: DataSource) => {
+    const owners = ownersById.get(dataSource.id) ?? [];
+    const [owner] = owners;
+    return (
+      owners.length === 1 &&
+      dataSource.type === "parameter" &&
+      owner.rootInstanceId !== ROOT_INSTANCE_ID &&
+      dataSource.scopeInstanceId === owner.rootInstanceId &&
+      pagesByRoot.get(owner.rootInstanceId) === 1 &&
+      childIds.has(owner.rootInstanceId) === false
+    );
+  };
+  // inside the Collection on every path to it from a page or a template
+  const isInside = (holderId: Instance["id"], collectionId: Instance["id"]) => {
+    if (holderId === collectionId) {
+      return false;
+    }
+    const { onEveryPath, cyclic } = onEveryPathFrom(
+      holderId,
+      instances,
+      rootIds
+    );
+    return (
+      cyclic === false &&
+      (onEveryPath === undefined || onEveryPath.has(collectionId))
+    );
+  };
+  // the roots of what publishes a Resource Form: an XML page publishes none
+  const formRootIds = new Set(
+    pages
+      .filter((page) => page.documentType !== "xml")
+      .map((page) => page.rootInstanceId)
+  );
+  const formShips = (formId: Instance["id"]) => {
+    const { onEveryPath, cyclic } = onEveryPathFrom(
+      formId,
+      instances,
+      formRootIds
+    );
+    return cyclic === false && onEveryPath !== undefined;
+  };
+  // a Resource Form's own form data or browser info, as upstream's
+  // getManagedFormParameterBinding binds them, on a form that ships, named
+  // only on the form or inside it
+  const isFormParameter = (dataSource: DataSource) => {
+    const formId = dataSource.scopeInstanceId;
+    return (
+      dataSource.type === "parameter" &&
+      ownersById.has(dataSource.id) === false &&
+      (dataSource.name === formDataParameterName ||
+        dataSource.name === browserInfoParameterName) &&
+      formId !== undefined &&
+      instanceIdMayRun(formId, false) &&
+      instances.get(formId)?.component === "ResourceForm" &&
+      formShips(formId) &&
+      (namedOn.get(dataSource.id) ?? []).every(
+        (holderId) => holderId === formId || isInside(holderId, formId)
+      )
+    );
+  };
+  const isBinding = (dataSource: DataSource, [binding, ...rest]: Prop[]) =>
+    rest.length === 0 &&
+    bindingProps.get(bindingKey(binding)) === 1 &&
+    instanceIdMayRun(binding.instanceId, false) &&
+    dataSource.type === "parameter" &&
+    dataSource.scopeInstanceId === binding.instanceId &&
+    ownersById.has(dataSource.id) === false &&
+    (namedOn.get(dataSource.id) ?? []).every((holderId) =>
+      isInside(holderId, binding.instanceId)
+    );
+  const colliding = new Set<DataSource["id"]>();
+  for (const [key, dataSource] of dataSources) {
+    try {
+      const binds = bindings.get(dataSource.id) ?? [];
+      if (
+        key !== dataSource.id ||
+        dataSourceIdPattern.test(dataSource.id) === false ||
+        dataSource.id.endsWith("-index") ||
+        taken.has(dataSource.id) ||
+        reservedNames.has(generatedNameOf(dataSource.name)) ||
+        (binds.length > 0
+          ? isBinding(dataSource, binds) === false
+          : (dataSource.type === "parameter" ||
+              ownersById.has(dataSource.id)) &&
+            isPageOwn(dataSource) === false &&
+            isFormParameter(dataSource) === false)
+      ) {
+        colliding.add(key);
+      }
+    } catch {
+      colliding.add(key);
+    }
+  }
+  return colliding;
+};
+
+/**
+ * The data sources publishing leaves out while org script is paused without
+ * counting or listing them, as their author cannot change them: a Content
+ * Block's own document, a parameter held on the block that the block's own
+ * `document` parameter prop names, and no other parameter prop does.
+ */
+export const unlistedDataSourceIds = ({
+  instances,
+  dataSources,
+  props,
+}: Pick<BuildNames, "instances" | "dataSources" | "props">): ReadonlySet<
+  DataSource["id"]
+> => {
+  const namedBy = new Map<DataSource["id"], Prop[]>();
+  for (const prop of props.values()) {
+    if (prop.type === "parameter") {
+      namedBy.set(prop.value, [...(namedBy.get(prop.value) ?? []), prop]);
+    }
+  }
+  const unlisted = new Set<DataSource["id"]>();
+  for (const [key, dataSource] of dataSources) {
+    const blockId = dataSource.scopeInstanceId;
+    const [prop, ...rest] = namedBy.get(dataSource.id) ?? [];
+    if (
+      key === dataSource.id &&
+      dataSource.type === "parameter" &&
+      blockId !== undefined &&
+      instances.get(blockId)?.component === blockComponent &&
+      prop !== undefined &&
+      rest.length === 0 &&
+      prop.instanceId === blockId &&
+      prop.name === contentBlockDocumentProp
+    ) {
+      unlisted.add(key);
+    }
+  }
+  return unlisted;
+};
+
+const shippableByDataSources = new WeakMap<
+  BuildNames["dataSources"],
+  BuildNames & { shippable: ActionContext["dataSources"] }
+>();
+
+/**
+ * The context an action's rule reads, the same for the canvas, publishing and
+ * the Publish dialog: the build's data sources without those
+ * `collidingDataSourceIds` lists, so an action that names one is refused.
+ */
+export const actionContextOf = ({
+  instances,
+  pageRootIds,
+  templateRootIds,
+  dataSources,
+  props,
+  resources,
+  pages,
+}: BuildNames & {
+  instances: ActionContext["instances"];
+  pageRootIds: ActionContext["pageRootIds"];
+  templateRootIds?: ActionContext["templateRootIds"];
+}): ActionContext => {
+  let found = shippableByDataSources.get(dataSources);
+  if (
+    found === undefined ||
+    found.instances !== instances ||
+    found.props !== props ||
+    found.resources !== resources ||
+    found.pages !== pages
+  ) {
+    const colliding = collidingDataSourceIds({
+      instances,
+      dataSources,
+      props,
+      resources,
+      pages,
+    });
+    found = {
+      instances,
+      dataSources,
+      props,
+      resources,
+      pages,
+      shippable:
+        colliding.size === 0
+          ? dataSources
+          : new Map(
+              Array.from(dataSources).filter(
+                ([id]) => colliding.has(id) === false
+              )
+            ),
+    };
+    shippableByDataSources.set(dataSources, found);
+  }
+  return {
+    instances,
+    pageRootIds,
+    templateRootIds,
+    dataSources: found.shippable,
+  };
+};
+
+const parentsByInstances = new WeakMap<
+  ActionContext["instances"],
+  ReadonlyMap<Instance["id"], readonly Instance["id"][]>
+>();
+
+const parentsOf = (instances: ActionContext["instances"]) => {
+  let parents = parentsByInstances.get(instances);
+  if (parents === undefined) {
+    const found = new Map<Instance["id"], Instance["id"][]>();
+    for (const [id, instance] of instances) {
+      for (const child of instance.children) {
+        if (child.type === "id") {
+          const list = found.get(child.value) ?? [];
+          list.push(id);
+          found.set(child.value, list);
+        }
+      }
+    }
+    parents = found;
+    parentsByInstances.set(instances, parents);
+  }
+  return parents;
+};
+
+/**
+ * The instances on every path from one of `rootIds` to the holder, the holder
+ * included; none when no root reaches it, and `cyclic` when a cycle is above
+ * it.
+ */
+const onEveryPathFrom = (
+  holderId: Instance["id"],
+  instances: ActionContext["instances"],
+  rootIds: ReadonlySet<Instance["id"]>
+) => {
+  const parents = parentsOf(instances);
+  const found = new Map<Instance["id"], undefined | Set<Instance["id"]>>();
+  const visiting = new Set<Instance["id"]>();
+  let cyclic = false;
+  const visit = (id: Instance["id"]): undefined | Set<Instance["id"]> => {
+    if (found.has(id)) {
+      return found.get(id);
+    }
+    if (visiting.has(id)) {
+      cyclic = true;
+      return;
+    }
+    visiting.add(id);
+    let common: undefined | Set<Instance["id"]>;
+    if (rootIds.has(id)) {
+      common = new Set();
+    } else {
+      for (const parent of parents.get(id) ?? []) {
+        const above = visit(parent);
+        if (above !== undefined) {
+          common =
+            common === undefined
+              ? new Set(above)
+              : new Set([...common].filter((item) => above.has(item)));
+        }
+      }
+    }
+    visiting.delete(id);
+    common?.add(id);
+    found.set(id, common);
+    return common;
+  };
+  const onEveryPath = visit(holderId);
+  return { onEveryPath, cyclic };
+};
+
+/**
+ * The instances on every path from a page root to the holder, the holder
+ * included, or, for a holder no page reaches, from a page template's root.
+ * A holder neither reaches, or one with a cycle above it, has only itself.
+ */
+const onEveryPathTo = (
+  holderId: Instance["id"],
+  { instances, pageRootIds, templateRootIds }: ActionContext
+): ReadonlySet<Instance["id"]> => {
+  for (const rootIds of [pageRootIds, templateRootIds ?? new Set()]) {
+    const { onEveryPath, cyclic } = onEveryPathFrom(
+      holderId,
+      instances,
+      rootIds
+    );
+    if (cyclic) {
+      break;
+    }
+    if (onEveryPath !== undefined) {
+      return onEveryPath;
+    }
+  }
+  return new Set([holderId]);
+};
+
+/** The name of an object's key that is not computed */
+const keyNameOf = (key: unknown) => {
+  const node = key as { type?: string; name?: unknown; value?: unknown };
+  return node.type === "Identifier"
+    ? node.name
+    : node.type === "Literal"
+      ? String(node.value)
+      : undefined;
+};
+
+/**
+ * Whether an action's code is a plain value, by an allowlist of node types:
+ * literals but a regular expression, names, templates without a tag, unary
+ * operators but `delete`, binary, logical and conditional operators, arrays
+ * without a spread, objects of plain properties (not computed, not a getter,
+ * a setter or a method, and not keyed `__proto__`), and an assignment to a
+ * name that is not `undefined`. Anything else, a member access and a call
+ * among them, is not.
+ */
+const isPlainValue = (node: Expression): boolean => {
+  switch (node.type) {
+    case "Literal":
+      return node.regex === undefined;
+    case "Identifier":
+      return true;
+    case "TemplateLiteral":
+      return node.expressions.every(isPlainValue);
+    case "UnaryExpression":
+      return node.operator !== "delete" && isPlainValue(node.argument);
+    case "BinaryExpression":
+      return (
+        node.left.type !== "PrivateIdentifier" &&
+        isPlainValue(node.left) &&
+        isPlainValue(node.right)
+      );
+    case "LogicalExpression":
+      return isPlainValue(node.left) && isPlainValue(node.right);
+    case "ConditionalExpression":
+      return (
+        isPlainValue(node.test) &&
+        isPlainValue(node.consequent) &&
+        isPlainValue(node.alternate)
+      );
+    case "AssignmentExpression":
+      return (
+        node.left.type === "Identifier" &&
+        valueNames.has(node.left.name) === false &&
+        isPlainValue(node.right)
+      );
+    case "ArrayExpression":
+      return node.elements.every(
+        (element) =>
+          element === null ||
+          (element.type !== "SpreadElement" && isPlainValue(element))
+      );
+    case "ObjectExpression":
+      return node.properties.every(
+        (property) =>
+          property.type === "Property" &&
+          property.kind === "init" &&
+          property.method === false &&
+          property.computed === false &&
+          keyNameOf(property.key) !== "__proto__" &&
+          isPlainValue(property.value as Expression)
+      );
+    default:
+      return false;
+  }
+};
+
+/**
+ * Whether the code holds a `<` or `<<` token followed anywhere later by a
+ * token that starts with `>` (`>`, `>=`, `>>`, `>>=`, `>>>` or `>>>=`), which
+ * no action may. Text in a string or a template does not count. Code it
+ * cannot read does.
+ */
+export const holdsAngleBrackets = (code: string): boolean => {
+  try {
+    let opened = false;
+    for (const token of tokenizer(code, { ecmaVersion: "latest" })) {
+      if (
+        token.type !== tokTypes.relational &&
+        token.type !== tokTypes.bitShift &&
+        token.type !== tokTypes.assign
+      ) {
+        continue;
+      }
+      const operator = code.slice(token.start, token.end);
+      if (opened && operator.startsWith(">")) {
+        return true;
+      }
+      opened = opened || operator === "<" || operator === "<<";
+    }
+    return false;
+  } catch {
+    return true;
+  }
+};
+
+/**
+ * Whether the code holds a comment, of either kind, anywhere in it, which no
+ * action may. Text in a string or a template does not count. Code it cannot
+ * read does.
+ */
+export const holdsComment = (code: string): boolean => {
+  try {
+    let found = false;
+    for (const _token of tokenizer(code, {
+      ecmaVersion: "latest",
+      onComment: () => {
+        found = true;
+      },
+    })) {
+      if (found) {
+        break;
+      }
+    }
+    return found;
+  } catch {
+    return true;
+  }
+};
+
+/**
+ * Whether the code is exactly one expression, read the same way as a
+ * statement: what `parseExpressionAt` reads as the expression is what a
+ * script reads as its one statement, and only whitespace follows it.
+ */
+export const readsAsOneExpression = (code: string): boolean => {
+  try {
+    const node = parseExpressionAt(code, 0, { ecmaVersion: "latest" });
+    const [statement, ...rest] = parse(code, {
+      ecmaVersion: "latest",
+      sourceType: "script",
+    }).body;
+    return (
+      onlyWhitespace.test(code.slice(node.end)) &&
+      rest.length === 0 &&
+      statement?.type === "ExpressionStatement" &&
+      statement.expression.start === node.start &&
+      statement.expression.end === node.end
+    );
+  } catch {
+    return false;
+  }
+};
+
+/** The names a plain value assigns with an operator that reads them too */
+const compoundAssignedNames = (node: Expression): string[] => {
+  switch (node.type) {
+    case "AssignmentExpression":
+      return [
+        ...(node.operator !== "=" && node.left.type === "Identifier"
+          ? [node.left.name]
+          : []),
+        ...compoundAssignedNames(node.right),
+      ];
+    case "TemplateLiteral":
+      return node.expressions.flatMap(compoundAssignedNames);
+    case "UnaryExpression":
+      return compoundAssignedNames(node.argument);
+    case "BinaryExpression":
+    case "LogicalExpression":
+      return [
+        ...(node.left.type === "PrivateIdentifier"
+          ? []
+          : compoundAssignedNames(node.left)),
+        ...compoundAssignedNames(node.right),
+      ];
+    case "ConditionalExpression":
+      return [node.test, node.consequent, node.alternate].flatMap(
+        compoundAssignedNames
+      );
+    case "ArrayExpression":
+      return node.elements.flatMap((element) =>
+        element === null || element.type === "SpreadElement"
+          ? []
+          : compoundAssignedNames(element)
+      );
+    case "ObjectExpression":
+      return node.properties.flatMap((property) =>
+        property.type === "Property"
+          ? compoundAssignedNames(property.value as Expression)
+          : []
+      );
+    default:
+      return [];
+  }
+};
+
+const actionCodeMayRun = (
+  code: string,
+  {
+    ownArgs,
+    lastArgs,
+    argsMayBeNamed,
+    inScope,
+    dataSources,
+  }: {
+    ownArgs: readonly string[];
+    lastArgs: readonly string[];
+    /** the holder passes its action plain data */
+    argsMayBeNamed: boolean;
+    inScope: (scopeInstanceId: undefined | Instance["id"]) => boolean;
+    dataSources: ActionContext["dataSources"];
+  }
+) => {
+  if (
+    holdsComment(code) ||
+    joinsLineBefore.test(code.trimStart()) ||
+    readsAsOneExpression(code) === false
+  ) {
+    return false;
+  }
+  const node = parseExpressionAt(code, 0, { ecmaVersion: "latest" });
+  if (isPlainValue(node) === false || holdsAngleBrackets(code)) {
+    return false;
+  }
+  // the names the code reads and assigns, as the generators read them
+  const assigned = new Map<string, boolean>();
+  const read = new Set<string>(compoundAssignedNames(node));
+  transpileExpression({
+    expression: code,
+    executable: true,
+    replaceVariable: (name, assignee) => {
+      assigned.set(name, assigned.get(name) === true || assignee);
+      if (assignee === false) {
+        read.add(name);
+      }
+    },
+  });
+  // the one name a code that is only `name = value` sets
+  const setOnly =
+    node.type === "AssignmentExpression" &&
+    node.operator === "=" &&
+    node.left.type === "Identifier"
+      ? node.left.name
+      : undefined;
+  const availableVariables = new Set<string>();
+  for (const [name, isAssigned] of assigned) {
+    if (ownArgs.includes(name)) {
+      // an action may name only the args its last entry lists
+      if (argsMayBeNamed === false || lastArgs.includes(name) === false) {
+        return false;
+      }
+    } else if (valueNames.has(name)) {
+      if (isAssigned) {
+        return false;
+      }
+    } else {
+      // an action may name only a variable or a Resource in scope, and
+      // assign only a variable
+      const id = decodeDataSourceVariable(name);
+      const dataSource =
+        id === undefined || id === "" ? undefined : dataSources.get(id);
+      if (
+        (dataSource?.type !== "variable" && dataSource?.type !== "resource") ||
+        (isAssigned && dataSource.type !== "variable") ||
+        inScope(dataSource.scopeInstanceId) === false ||
+        // no arg may be named as one it reads
+        ((name !== setOnly || read.has(name)) &&
+          lastArgs.some((arg) => mayBeNamedAs(dataSource.name, arg)))
+      ) {
+        return false;
+      }
+    }
+    availableVariables.add(name);
+  }
+  // no diagnostic
+  return (
+    lintExpression({
+      expression: code,
+      availableVariables,
+      allowAssignment: true,
+    }).length === 0
+  );
+};
+
+/**
+ * Whether an action may run while org script is paused. The builder's canvas
+ * and the published page's generator write it as code, an arrow function
+ * whose parameters are the last entry's args and whose body is each entry's
+ * code, a line each: the canvas runs it as soon as it computes prop values,
+ * and the site's server renders it, and a component may call it without a
+ * click. So every arg is a plain identifier that is not a reserved word,
+ * listed once, and every code:
+ * - is exactly one expression, read the same way as a statement
+ *   (`readsAsOneExpression`), that starts with none of `joinsLineBefore`'s
+ *   characters;
+ * - is a plain value (`isPlainValue`, an allowlist): it assigns values and
+ *   variables, and reads no member and calls nothing;
+ * - holds no `<` followed later by a `>` (`holdsAngleBrackets`), and no
+ *   comment (`holdsComment`);
+ * - names its args only on a prop through which its holder passes plain data
+ *   (`plainDataActionProps`), and only those both its own entry and the last
+ *   entry list, since an arg can hold a host object (a React event's `view`
+ *   is the window); on any other prop, no entry lists an arg;
+ * - names only a variable or a Resource of the context in scope: the
+ *   holder's own, one of an instance on every path from a page root to the
+ *   holder (from a page template's root, for a holder no page reaches), or a
+ *   global one; and `undefined`; and assigns only a variable;
+ * - reads no data source that an arg of the last entry could be named as,
+ *   and sets one such only where the whole code is `variable = value` and the
+ *   value does not name it;
+ * - passes the expression linter without a diagnostic, assignment allowed.
+ * The action as a whole also passes input validation (`checkAction`).
+ * The holder is the context's instance with the prop's instance id. An action
+ * with no entries may run, but not as a Collection's item or key. A value of
+ * another shape may not.
+ */
+export const actionMayRun = (
+  prop: Extract<Prop, { type: "action" }>,
+  context: ActionContext
+): boolean => {
+  try {
+    const holder = context.instances.get(prop.instanceId);
+    if (
+      holder?.component === collectionComponent &&
+      collectionBindingNames.has(prop.name)
+    ) {
+      return false;
+    }
+    const argsMayBeNamed =
+      holder !== undefined &&
+      plainDataActionProps.get(holder.component)?.has(prop.name) === true;
+    let scope: undefined | ReadonlySet<Instance["id"]>;
+    const inScope = (scopeInstanceId: undefined | Instance["id"]) => {
+      if (scopeInstanceId === ROOT_INSTANCE_ID) {
+        return true;
+      }
+      scope ??= onEveryPathTo(prop.instanceId, context);
+      return scopeInstanceId !== undefined && scope.has(scopeInstanceId);
+    };
+    // off those props an action lists no args
+    if (
+      argsMayBeNamed === false &&
+      prop.value.some((entry) => entry.args.length > 0)
+    ) {
+      return false;
+    }
+    const lastArgs = prop.value.at(-1)?.args ?? [];
+    if (checkAction(prop.value).ok === false) {
+      return false;
+    }
+    return prop.value.every(
+      (entry) =>
+        entry.args.every(actionArgMayRun) &&
+        new Set(entry.args).size === entry.args.length &&
+        actionCodeMayRun(entry.code, {
+          ownArgs: entry.args,
+          lastArgs,
+          argsMayBeNamed,
+          inScope,
+          dataSources: context.dataSources,
+        })
+    );
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Whether a value is plain data: null, a boolean, a number, a string, or an
+ * array or an object (of `Object.prototype` or none) of plain data, held in
+ * data properties and with no cycle. While org script is paused the canvas
+ * stores nothing else in a variable.
+ */
+export const isPlainData = (value: unknown): boolean => {
+  const above = new Set<object>();
+  const check = (item: unknown): boolean => {
+    if (
+      item === null ||
+      typeof item === "boolean" ||
+      typeof item === "number" ||
+      typeof item === "string"
+    ) {
+      return true;
+    }
+    if (typeof item !== "object" || above.has(item)) {
+      return false;
+    }
+    const prototype = Object.getPrototypeOf(item);
+    const isArray = Array.isArray(item) && prototype === Array.prototype;
+    if (
+      isArray === false &&
+      prototype !== Object.prototype &&
+      prototype !== null
+    ) {
+      return false;
+    }
+    above.add(item);
+    for (const key of Reflect.ownKeys(item)) {
+      if (isArray && key === "length") {
+        continue;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(item, key);
+      if (
+        typeof key === "symbol" ||
+        descriptor === undefined ||
+        "value" in descriptor === false ||
+        check(descriptor.value) === false
+      ) {
+        return false;
+      }
+    }
+    above.delete(item);
+    return true;
+  };
+  try {
+    return check(value);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Whether publishing keeps this prop. An action ships when `actionMayRun`
+ * says so given `context`, the build's (without it, an action that names its
+ * args or a data source does not ship), whatever its name and on any
+ * instance: the generator writes it into the page module as code. A
+ * Collection's item or key ships only as a parameter. Every other prop of an
+ * XML element ships. A `srcdoc` never does, nor an `on…` prop that is not an
+ * action. An address ships when it is of a type that cannot hold one (a
+ * page, an asset, a resource, a number, a boolean), when its static value
+ * may run whatever its shape, or when it is bound and its fixed start decides
+ * the scheme or the binding cannot run script (`inertSrcComponents`,
  * `inertSrcTags`, `inertHrefComponents`). `data` is an address only on an
  * `object` (`recordDataHolder`).
  */
 export const propMayShip = (
   instance: InstanceKind,
   prop: Prop,
-  mayRun: boolean = orgScriptMayRun()
+  mayRun: boolean = orgScriptMayRun(),
+  context: ActionContext = noActionContext
 ): boolean => {
-  if (mayRun || xmlComponents.has(instance.component)) {
+  if (mayRun) {
+    return true;
+  }
+  if (prop.type === "action") {
+    return actionMayRun(prop, context);
+  }
+  // a Collection binds its item and key only through a parameter
+  if (
+    instance.component === collectionComponent &&
+    collectionBindingNames.has(prop.name)
+  ) {
+    return prop.type === "parameter";
+  }
+  if (xmlComponents.has(instance.component)) {
     return true;
   }
   if (isFrameDocumentName(prop.name)) {
     return false;
   }
+  // an on… prop that is not an action
   if (isEventAttributeName(prop.name)) {
-    return prop.type === "action";
+    return false;
   }
   if (isUrlPropName(prop.name) === false) {
     return true;
@@ -580,7 +1703,6 @@ export const propMayShip = (
     case "page":
     case "asset":
     case "resource":
-    case "action":
     case "number":
     case "boolean":
       return true;
