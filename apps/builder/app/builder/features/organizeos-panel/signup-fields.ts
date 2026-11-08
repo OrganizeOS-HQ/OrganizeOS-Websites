@@ -673,7 +673,8 @@ export const changeSignupFieldName = (
     }
     const newField = fields.find((field) => field.name === name);
     for (const labelId of findFieldLabels(fieldId, instances)) {
-      const children = instances.get(labelId)?.children ?? [];
+      const children: Instance["children"] =
+        instances.get(labelId)?.children ?? [];
       if (newField?.consent !== undefined) {
         if (isConsentLabel(children) === false) {
           accumulator.execute({
