@@ -369,10 +369,7 @@ const loadEverything = async () => {
 };
 
 /**
- * In the page: each visible text smaller than the minimum, with its size. The
- * fork's AGPL source offer, which every published page ends with, is not the
- * template's text and is 12px by owner decision (2026-10-15), so it is left
- * out.
+ * In the page: each visible text smaller than the minimum, with its size.
  */
 const findSmallText = (minFontSize) => {
   const found = [];
@@ -383,9 +380,7 @@ const findSmallText = (minFontSize) => {
     if (
       text === "" ||
       element === null ||
-      element.closest(
-        "script, style, noscript, template, [data-organizeos-source-offer]"
-      ) !== null ||
+      element.closest("script, style, noscript, template") !== null ||
       element.checkVisibility({ visibilityProperty: true }) === false
     ) {
       continue;

@@ -3062,79 +3062,41 @@ sitemap.map((page) => page.path);`
       );
     });
 
-    // Owner decision of 2026-10-15: AGPL-3.0 section 13 asks that the offer be
-    // prominent, so besides the head links every html page ends its <body>
-    // with a small visible "Source" link. The <body> is rendered by the
-    // generated Page (its Body component, which the byte-identical
-    // sdk-components-react-router package owns), so the route appends the link
-    // to the children of the element Page returns.
-    describe("ends every html page's body with a visible Source link", () => {
+    // Owner decision of 2026-11-07: the source offer is the two head links
+    // above (license and code-repository) and nothing in the body. This
+    // replaces the decision of 2026-10-15, which added a visible "Source" link
+    // at the end of the body.
+    describe("renders no visible source offer in the body", () => {
       /** Code with its whitespace collapsed, so prettier's wrapping is no part of a test. */
       const compact = (code: string) => code.replace(/\s+/g, " ");
 
-      /** The element the route renders for the link: the wrapper and its anchor. */
-      const getSourceOffer = (route: string) =>
-        compact(route).match(
-          /<div [^>]*data-organizeos-source-offer[^>]*>.*?<\/div>/
-        )?.[0] ?? "";
-
-      /** Where the link goes: the value of the constant its href names. */
-      const getLinkTarget = (route: string) => {
-        const name = getSourceOffer(route).match(/<a [^>]*href=\{(\w+)\}/)?.[1];
-        return route.match(new RegExp(`const ${name} = "([^"]*)";`))?.[1];
-      };
-
-      test("it links the fork at the commit the publish workflow built", async () => {
-        vi.stubEnv("GITHUB_REPOSITORY", "OrganizeOS-HQ/OrganizeOS-Websites");
-        vi.stubEnv("GITHUB_SHA", sha);
-
-        const { route } = await prebuildLinks();
-        const offer = getSourceOffer(route);
-
-        expect(offer).toContain("data-organizeos-source-offer");
-        // the code-repository relation only: the anchor's target is a source
-        // tree, not a license document, so it makes no license claim (the
-        // head's license link names the AGPL text)
-        expect(offer).toMatch(/<a [^>]*rel="code-repository"/);
-        expect(offer).not.toMatch(/rel="[^"]*license/);
-        expect(offer).toContain(`title="Source code of this site (AGPL-3.0)"`);
-        expect(offer).toContain(
-          `aria-label="Source code of this site (AGPL-3.0)"`
-        );
-        // the visible text
-        expect(offer).toMatch(/>\s*Source\s*<\/a>/);
-        expect(getLinkTarget(route)).toBe(`${repository}/tree/${sha}`);
-        expect(route).not.toContain("__ORGANIZEOS_SOURCE_URL__");
-      });
-
-      test("without a commit it links the fork's repository", async () => {
-        vi.stubEnv("GITHUB_REPOSITORY", undefined);
-        vi.stubEnv("GITHUB_SHA", undefined);
-
+      test("no html route has the source offer's wrapper, text or anchor", async () => {
         const { route } = await prebuildLinks();
 
-        expect(getSourceOffer(route)).toContain("data-organizeos-source-offer");
-        expect(getLinkTarget(route)).toBe(repository);
+        expect(route).not.toContain("data-organizeos-source-offer");
+        expect(route).not.toContain("SourceOffer");
+        expect(route).not.toContain("Source code of this site");
+        expect(compact(route)).not.toMatch(/>\s*Source\s*<\/a>/);
+        // the head links stay the offer: the route still names the source URL
+        expect(route).toContain("const organizeosSourceUrl =");
       });
 
-      test("it is the last of the page's content in the body, before the scripts the Body appends, and the page's Body is where it goes", async () => {
+      test("the page is rendered through the wrapper that appends the share-code carrier after the page's own children", async () => {
         const { route } = await prebuildLinks();
         const code = compact(route);
 
-        // The page is rendered through the wrapper that appends the link ...
         expect(code).toContain(
-          "<PageWithSourceOffer key={url} system={system} />"
+          "<PageWithShareCode key={url} system={system} />"
         );
         expect(code).not.toContain("<Page key={url}");
-        // ... after the page's own children, never before them.
         const children = code.indexOf("page.props.children");
-        const link = code.indexOf("<SourceOffer", children);
+        const carrier = code.indexOf("<PageShareCodeCarrier", children);
         expect(children).toBeGreaterThan(-1);
-        expect(link).toBeGreaterThan(children);
+        expect(carrier).toBeGreaterThan(children);
       });
 
       // The tests above read the route's text. These render it: the
-      // PageWithSourceOffer the site ships, around the generated Page, whose
+      // PageWithShareCode the site ships, around the generated Page, whose
       // root is the real Body of @webstudio-is/sdk-components-react-router.
       // Only react-router's Scripts and ScrollRestoration are stand-ins (the
       // real ones need a router); they render the <script> elements the real
@@ -3143,7 +3105,7 @@ sitemap.map((page) => page.path);`
         type Wrapper = ComponentType<{ system: unknown }>;
 
         /**
-         * The route's PageWithSourceOffer, as the site ships it, around
+         * The route's PageWithShareCode, as the site ships it, around
          * `Page`, with the page's share-code carrier from `pageModule`: the
          * package's own page module unless a test stands in for it.
          */
@@ -3153,7 +3115,7 @@ sitemap.map((page) => page.path);`
           pageModule: unknown = organizeosPage
         ) => {
           const start = route.indexOf("const organizeosSourceUrl");
-          const wrapper = route.indexOf("const PageWithSourceOffer", start);
+          const wrapper = route.indexOf("const PageWithShareCode", start);
           const end = route.indexOf("\n};\n", wrapper) + "\n};\n".length;
           const reactImport = route.match(
             /import \{[^}]*\bisValidElement\b[^}]*\} from "react";/
@@ -3172,7 +3134,7 @@ sitemap.map((page) => page.path);`
               carrierImport,
               `import { Page } from "./page";`,
               route.slice(start, end),
-              `export { PageWithSourceOffer };`,
+              `export { PageWithShareCode };`,
             ].join("\n"),
             {
               react: React,
@@ -3181,7 +3143,7 @@ sitemap.map((page) => page.path);`
               [carrierSource as string]: pageModule,
             }
           );
-          return exports.PageWithSourceOffer as Wrapper;
+          return exports.PageWithShareCode as Wrapper;
         };
 
         /** The generated Page of the home page, rendering `Body` as its root. */
@@ -3229,7 +3191,7 @@ sitemap.map((page) => page.path);`
             )
           );
 
-        test("the link is inside the <body>, after the page's content and before the scripts", async () => {
+        test("the body holds the page's content and the scripts and no source offer", async () => {
           await writeSiteData(
             createSiteData({
               instances: [
@@ -3266,35 +3228,32 @@ sitemap.map((page) => page.path);`
             })
           );
           const { route } = await prebuildLinks();
-          const PageWithSourceOffer = await loadWrapper(
+          const PageWithShareCode = await loadWrapper(
             route,
             await loadGeneratedPage(await importBody())
           );
 
           const html = renderInHtml(
-            React.createElement(PageWithSourceOffer, { system: {} })
+            React.createElement(PageWithShareCode, { system: {} })
           );
 
-          // <body> comes right after <head> and nothing follows it: the link
-          // is not a sibling of the page's root under <html>
+          // <body> comes right after <head> and nothing follows it: nothing is
+          // a sibling of the page's root under <html>
           expect(html).toMatch(/^<html><head><\/head><body[ >]/);
           expect(html).toMatch(/<\/body><\/html>$/);
           const body = html.slice(
             html.indexOf("<body"),
             html.lastIndexOf("</body>")
           );
-          expect(body.match(/data-organizeos-source-offer/g)).toHaveLength(1);
-          // the wrapper is not hidden from sight or from assistive technology
-          expect(body).not.toMatch(
-            /<div data-organizeos-source-offer=""[^>]*\s(hidden|aria-hidden)[\s=>]/
-          );
-          // the page's two paragraphs, the link, then the scripts
+          expect(body).not.toContain("data-organizeos-source-offer");
+          expect(body).not.toMatch(/<a[ >]/);
+          // the page's two paragraphs, then the scripts
           expect(body).toMatch(
-            /^<body[^>]*><p [^>]*><\/p><p [^>]*><\/p><div data-organizeos-source-offer=""[^>]*><a [^>]*>Source<\/a><\/div><script data-scripts=""><\/script><script data-scroll-restoration=""><\/script>$/
+            /^<body[^>]*><p [^>]*><\/p><p [^>]*><\/p><script data-scripts=""><\/script><script data-scroll-restoration=""><\/script>$/
           );
         });
 
-        test("the page's share-code carrier renders once, after the link, and adds nothing to the markup", async () => {
+        test("the page's share-code carrier renders once, as the last child, and adds nothing to the markup", async () => {
           const { route } = await prebuildLinks();
           const Page = () =>
             React.createElement(
@@ -3303,69 +3262,34 @@ sitemap.map((page) => page.path);`
               React.createElement("p", { id: "content" })
             );
           // a stand-in that shows where the route renders the carrier
-          const PageWithSourceOffer = await loadWrapper(route, Page, {
+          const PageWithShareCode = await loadWrapper(route, Page, {
             PageShareCodeCarrier: () =>
               React.createElement("i", { "data-carrier": "" }),
           });
-          const offer =
-            '<div data-organizeos-source-offer=""[^>]*><a [^>]*>Source</a></div>';
           expect(
-            renderInHtml(
-              React.createElement(PageWithSourceOffer, { system: {} })
-            )
+            renderInHtml(React.createElement(PageWithShareCode, { system: {} }))
           ).toMatch(
-            new RegExp(
-              `<body><p id="content"></p>${offer}<i data-carrier=""></i></body>`
-            )
+            /<body><p id="content"><\/p><i data-carrier=""><\/i><\/body>/
           );
 
-          // the package's carrier renders nothing, so the link stays the last
-          // of the body's content
+          // the package's carrier renders nothing, so the body is the page's
+          // own content
           const html = renderInHtml(
             React.createElement(await loadWrapper(route, Page), { system: {} })
           );
-          expect(html).toMatch(
-            new RegExp(`<body><p id="content"></p>${offer}</body>`)
-          );
+          expect(html).toMatch(/<body><p id="content"><\/p><\/body>/);
         });
 
         test("it renders what Page renders when that is not an element", async () => {
           const { route } = await prebuildLinks();
-          const PageWithSourceOffer = await loadWrapper(route, () => null);
+          const PageWithShareCode = await loadWrapper(route, () => null);
 
           expect(
             renderToStaticMarkup(
-              React.createElement(PageWithSourceOffer, { system: {} })
+              React.createElement(PageWithShareCode, { system: {} })
             )
           ).toBe("");
         });
-      });
-
-      test("it styles itself inline, small, and never overlays the design", async () => {
-        const { route } = await prebuildLinks();
-        const offer = getSourceOffer(route);
-
-        for (const declaration of [
-          `display: "block"`,
-          `textAlign: "center"`,
-          `fontSize: "12px"`,
-          `lineHeight: 1.5`,
-          `padding: "8px"`,
-          `opacity: 0.7`,
-          `color: "inherit"`,
-          // in a grid body it fills a whole row instead of the next cell
-          `gridColumn: "1 / -1"`,
-        ]) {
-          expect(offer).toContain(declaration);
-        }
-        expect(offer).not.toMatch(/position|zIndex|float|top:|bottom:/);
-        // visible: nothing hides it from a sighted visitor or from assistive
-        // technology, which would defeat the point of a prominent offer
-        expect(offer).not.toMatch(
-          /\bhidden\b|visibility|aria-hidden|clip|display: "none"/
-        );
-        // no class: nothing for the org's CSS to reach, nothing of ours to leak
-        expect(offer).not.toContain("className");
       });
 
       test("the xml and text routes do not carry it", async () => {
@@ -3437,7 +3361,7 @@ sitemap.map((page) => page.path);`
           "utf8"
         );
 
-        expect(html).toContain("data-organizeos-source-offer");
+        expect(html).not.toContain("data-organizeos-source-offer");
         expect(xml).not.toContain("data-organizeos-source-offer");
         expect(text).not.toContain("data-organizeos-source-offer");
       });
@@ -3487,13 +3411,13 @@ sitemap.map((page) => page.path);`
         expect(carrierImport, routeFile).toBe(
           'import { PageShareCodeCarrier } from "../__organizeos__/page.js";'
         );
-        const start = code.indexOf("const PageWithSourceOffer");
+        const start = code.indexOf("const PageWithShareCode");
         expect(
           code.slice(start, code.indexOf("\n};\n", start) + "\n};".length),
           routeFile
         ).toBe(
           [
-            "const PageWithSourceOffer = ({ system }: ComponentProps<typeof Page>) => {",
+            "const PageWithShareCode = ({ system }: ComponentProps<typeof Page>) => {",
             "  const page = Page({ system });",
             "  if (isValidElement<{ children?: ReactNode }>(page) === false) {",
             "    return page;",
@@ -3502,7 +3426,6 @@ sitemap.map((page) => page.path);`
             "    page,",
             "    undefined,",
             "    ...Children.toArray(page.props.children),",
-            '    <SourceOffer key="organizeos-source-offer" />,',
             '    <PageShareCodeCarrier key="organizeos-share-code" />',
             "  );",
             "};",
