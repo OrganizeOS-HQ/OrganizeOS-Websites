@@ -1,0 +1,18 @@
+{
+  "description": "X-OOS-Site-Action v1 test vector (plan 2026-11-08-builder-unpublish-and-replace-pages D2). payloadSegment is base64url (no padding) of the UTF-8 JSON of payload, keys in the order aud, act, tgt, org, sub, sid, jti, iat, exp; mac is base64url (no padding) of HMAC-SHA256 keyed by secret over the ASCII bytes of payloadSegment; header is v1. + payloadSegment + . + mac. iat and exp are Unix seconds. The secret is a test value only; it is never the preview secret.",
+  "secret": "oos-site-action-fixture-secret-0123456789abcdef",
+  "payload": {
+    "aud": "site-action",
+    "act": "unpublish",
+    "tgt": "www.example.org",
+    "org": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "sub": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "sid": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    "jti": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "iat": 1793016000,
+    "exp": 1793016060
+  },
+  "payloadSegment": "eyJhdWQiOiJzaXRlLWFjdGlvbiIsImFjdCI6InVucHVibGlzaCIsInRndCI6Ind3dy5leGFtcGxlLm9yZyIsIm9yZyI6ImFhYWFhYWFhLWFhYWEtNGFhYS04YWFhLWFhYWFhYWFhYWFhYSIsInN1YiI6ImNjY2NjY2NjLWNjY2MtNGNjYy04Y2NjLWNjY2NjY2NjY2NjYyIsInNpZCI6ImRkZGRkZGRkLWRkZGQtNGRkZC04ZGRkLWRkZGRkZGRkZGRkZCIsImp0aSI6ImJiYmJiYmJiLWJiYmItNGJiYi04YmJiLWJiYmJiYmJiYmJiYiIsImlhdCI6MTc5MzAxNjAwMCwiZXhwIjoxNzkzMDE2MDYwfQ",
+  "mac": "UMeiHnqve94g1XJRa2FhcYhIT0B3OXlV3KnGaOJ-w_Y",
+  "header": "v1.eyJhdWQiOiJzaXRlLWFjdGlvbiIsImFjdCI6InVucHVibGlzaCIsInRndCI6Ind3dy5leGFtcGxlLm9yZyIsIm9yZyI6ImFhYWFhYWFhLWFhYWEtNGFhYS04YWFhLWFhYWFhYWFhYWFhYSIsInN1YiI6ImNjY2NjY2NjLWNjY2MtNGNjYy04Y2NjLWNjY2NjY2NjY2NjYyIsInNpZCI6ImRkZGRkZGRkLWRkZGQtNGRkZC04ZGRkLWRkZGRkZGRkZGRkZCIsImp0aSI6ImJiYmJiYmJiLWJiYmItNGJiYi04YmJiLWJiYmJiYmJiYmJiYiIsImlhdCI6MTc5MzAxNjAwMCwiZXhwIjoxNzkzMDE2MDYwfQ.UMeiHnqve94g1XJRa2FhcYhIT0B3OXlV3KnGaOJ-w_Y"
+}

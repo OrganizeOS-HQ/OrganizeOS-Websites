@@ -26,7 +26,9 @@ import {
  * either binding mode, and who holds the project's `admin` permit. The org is
  * the project owner's (resolveProjectOrganization), never the request's.
  *
- * The body is `{ targets }`: 1 to 20 distinct keys, each `builtin` or a host.
+ * The body is `{ targets, replacePages? }`: 1 to 20 distinct keys, each
+ * `builtin` or a host, and `replacePages: true` once the admin confirmed
+ * replacing the organization's old site.
  * Every key must be one of the org's own targets in OrganizeOS's addresses
  * read, made here at the moment of the publish; one that is not refuses the
  * whole publish before anything is written. The build row is written as
@@ -37,7 +39,11 @@ import {
  *
  * Answers, never stored: `200 { ok: true }`; `400 invalid_request`; `403` (no
  * user session, no live binding, no `admin` permit, or not an org's project);
- * `409 unknown_target`, or `409` when the build's org is not the project's;
+ * `409 unknown_target`, `replace_unconfirmed` (a ticked address would replace
+ * the organization's old site, unconfirmed), `old_site_needs_main` (a replace
+ * without the address serving the old site) or `old_site_changed` (a replace
+ * for an organization whose addresses no longer show an old site), or `409`
+ * when the build's org is not the project's;
  * `405` for any method but POST; `422 build_refused` (the version cannot be
  * published); `502 dispatch_failed`
  * with the publisher's own message; `503 addresses_unavailable`,
@@ -61,6 +67,8 @@ const bodySchema = z
       .min(1)
       .max(MAX_TARGETS)
       .refine((keys) => new Set(keys).size === keys.length),
+    // The admin confirmed replacing the organization's old site
+    replacePages: z.literal(true).optional(),
   })
   .strict();
 
@@ -98,6 +106,9 @@ type LogCode =
   | "addresses_unavailable"
   | "targets_unavailable"
   | "unknown_target"
+  | "replace_unconfirmed"
+  | "old_site_needs_main"
+  | "old_site_changed"
   | "publish_unavailable"
   | "project_read_failed"
   | "build_refused"
@@ -198,7 +209,7 @@ export const handlePublishRequest = async (
     log("addresses_unavailable");
     return answer({ ok: false, error: "addresses_unavailable" }, 503);
   }
-  const { targets } = composeSiteAddresses({
+  const { targets, oldSiteKey } = composeSiteAddresses({
     row,
     publisherHost: deps.publisherHost,
     platformUrl: deps.platformUrl,
@@ -219,6 +230,31 @@ export const handlePublishRequest = async (
   const keys = targets
     .filter((target) => ticked.has(target.key))
     .map((target) => target.key);
+
+  // The organization's old site (its addresses still show it). Publishing to
+  // a custom address, or to the built-in when it is the address serving the
+  // old site, replaces it: that needs the admin's confirm and the address
+  // serving the old site among the keys. The built-in alone, beside a custom
+  // main that serves the old site, is a trial copy and needs neither.
+  const replacePages = parsed.data.replacePages === true;
+  if (oldSiteKey === undefined) {
+    if (replacePages) {
+      log("old_site_changed");
+      return answer({ ok: false, error: "old_site_changed" }, 409);
+    }
+  } else {
+    const replaces = keys.some(
+      (key) => key !== BUILTIN_TARGET_KEY || oldSiteKey === BUILTIN_TARGET_KEY
+    );
+    if (replaces && replacePages === false) {
+      log("replace_unconfirmed");
+      return answer({ ok: false, error: "replace_unconfirmed" }, 409);
+    }
+    if (replacePages && keys.includes(oldSiteKey) === false) {
+      log("old_site_needs_main");
+      return answer({ ok: false, error: "old_site_needs_main" }, 409);
+    }
+  }
 
   const publisher = deps.getPublisher();
   if (publisher === undefined) {
@@ -256,6 +292,7 @@ export const handlePublishRequest = async (
       buildId,
       destination: "saas",
       targets: keys,
+      ...(replacePages ? { replacePages: true as const } : {}),
       expectedOrganizationId: organizationId,
     });
   } catch (error) {

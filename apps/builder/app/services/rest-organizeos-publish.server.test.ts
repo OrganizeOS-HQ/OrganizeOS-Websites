@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import type { Deployment } from "@webstudio-is/sdk";
 import targetsFixture from "~/shared/__fixtures__/site-addresses-targets.json";
+import oldSiteFixture from "~/shared/__fixtures__/site-addresses-old-site.json";
 import type { SessionData } from "~/services/auth.server.utils";
 import type { OrganizeosBindingOutcome } from "~/services/auth-strategy/organizeos-session.server";
 import type {
@@ -447,4 +448,103 @@ describe("the route module", () => {
     // The first import of the route's graph (the build and session modules)
     // takes seconds, too close to the default 5 s on a busy machine.
   }, 30_000);
+});
+
+// The organization's old site: its custom main still serves it. The built-in
+// alone is a trial copy; any custom address replaces the old site, which needs
+// the admin's confirm and the address serving it.
+describe("rest.organizeos-publish: replacing the old site", () => {
+  const oldSiteRow = oldSiteFixture[0] as SiteAddressesRow;
+
+  test("publishes the built-in alone as a trial copy, with no flag", async () => {
+    state.row = oldSiteRow;
+    const response = await call({ body: { targets: ["builtin"] } });
+    expect(response.status).toBe(200);
+    expect(dispatches).toHaveLength(1);
+    expect(dispatches[0].targets).toEqual(["builtin"]);
+    expect("replacePages" in dispatches[0]).toBe(false);
+  });
+
+  test("refuses a custom address without the confirm, writing nothing", async () => {
+    state.row = oldSiteRow;
+    const response = await call({ body: { targets: ["www.example.org"] } });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "replace_unconfirmed",
+    });
+    expectNothingWritten();
+  });
+
+  test("dispatches replacePages with the confirm and the address serving the old site", async () => {
+    state.row = oldSiteRow;
+    const response = await call({
+      body: { targets: ["builtin", "www.example.org"], replacePages: true },
+    });
+    expect(response.status).toBe(200);
+    expect(dispatches[0]).toMatchObject({
+      targets: ["builtin", "www.example.org"],
+      replacePages: true,
+    });
+  });
+
+  test("refuses a replace without the address serving the old site", async () => {
+    const [source] = oldSiteFixture;
+    state.row = {
+      ...source,
+      targets: [
+        ...source.targets,
+        {
+          key: "example.net",
+          host: "example.net",
+          main: false,
+          published_at: null,
+          unpublished_at: null,
+          live: false,
+          serving: false,
+        },
+      ],
+    } as SiteAddressesRow;
+    const response = await call({
+      body: { targets: ["example.net"], replacePages: true },
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "old_site_needs_main",
+    });
+    expectNothingWritten();
+  });
+
+  test("with the built-in serving the old site, the built-in needs the confirm too", async () => {
+    state.row = { ...oldSiteRow, old_site_key: "builtin" } as SiteAddressesRow;
+    expect((await call({ body: { targets: ["builtin"] } })).status).toBe(409);
+    expectNothingWritten();
+    const response = await call({
+      body: { targets: ["builtin"], replacePages: true },
+    });
+    expect(response.status).toBe(200);
+    expect(dispatches[0]).toMatchObject({ replacePages: true });
+  });
+
+  test("refuses the flag when the organization no longer shows an old site", async () => {
+    const response = await call({
+      body: { targets: ["builtin"], replacePages: true },
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "old_site_changed",
+    });
+    expectNothingWritten();
+  });
+
+  test("refuses replacePages false by the strict body", async () => {
+    state.row = oldSiteRow;
+    expect(
+      (await call({ body: { targets: ["builtin"], replacePages: false } }))
+        .status
+    ).toBe(400);
+    expectNothingWritten();
+  });
 });

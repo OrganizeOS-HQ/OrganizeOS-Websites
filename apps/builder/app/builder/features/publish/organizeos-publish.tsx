@@ -4,8 +4,13 @@ import { useStore } from "@nanostores/react";
 import {
   Button,
   Checkbox,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Flex,
   Grid,
+  IconButton,
   Label,
   Link,
   PanelBanner,
@@ -17,7 +22,7 @@ import {
   theme,
   useIsTruncated,
 } from "@webstudio-is/design-system";
-import { AlertIcon, CheckCircleIcon } from "@webstudio-is/icons";
+import { AlertIcon, CheckCircleIcon, EllipsesIcon } from "@webstudio-is/icons";
 import type { DataSource, DataSources } from "@webstudio-is/sdk";
 import { isOrganizeosCatalogResourceId } from "@webstudio-is/project-build/runtime";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
@@ -57,14 +62,20 @@ import {
 import {
   loadSiteAddresses,
   publishToTargets,
+  unpublishTarget,
   type SiteAddresses,
   type SiteTarget,
 } from "./organizeos-publish-addresses";
 import {
+  canUnpublish,
   cannotGoLive,
+  isServing,
   nextTicks,
   publishErrorLine,
+  replaceState,
   rowLabel,
+  rowWord,
+  unpublishErrorLine,
 } from "./organizeos-publish-targets";
 
 /**
@@ -325,26 +336,39 @@ const newTabLink = {
 const exactTime = (time: string) => new Date(time).toLocaleString();
 
 /**
- * One address: a checkbox, the host (linked while it is live, truncated with
- * its full text in a tooltip), and under it its label, Live or Not live, and
- * when it was last published.
+ * One address: a checkbox, the host (linked while it serves the site,
+ * truncated with its full text in a tooltip), and under it its label, its word
+ * (Live, Not live or Shows your old site) and when it was last published. A
+ * row with a recorded build has Unpublish in its menu, while the builder can
+ * ask; choosing it turns the second line into a one-line confirm.
  */
 const TargetRow = ({
   target,
+  word,
   ticked,
   onTickedChange,
+  unpublish,
 }: {
   target: SiteTarget;
+  word: string;
   ticked: boolean;
   onTickedChange: (ticked: boolean) => void;
+  unpublish?: {
+    confirming: boolean;
+    disabled: boolean;
+    onAsk: () => void;
+    onCancel: () => void;
+    onConfirm: () => void;
+  };
 }) => {
   const id = useId();
   const hostRef = useRef<HTMLDivElement>(null);
   const truncated = useIsTruncated(hostRef, target.host);
   const label = rowLabel(target);
+  const serving = isServing(target);
   const host = (
     <Text ref={hostRef} truncate css={{ minWidth: 0 }}>
-      {target.live ? (
+      {serving ? (
         <Link href={`https://${target.host}`} {...newTabLink}>
           {target.host}
         </Link>
@@ -358,7 +382,10 @@ const TargetRow = ({
   return (
     <Grid
       css={{
-        gridTemplateColumns: "auto minmax(0, 1fr)",
+        gridTemplateColumns:
+          unpublish === undefined
+            ? "auto minmax(0, 1fr)"
+            : "auto minmax(0, 1fr) auto",
         columnGap: theme.spacing[5],
         alignItems: "start",
       }}
@@ -372,21 +399,63 @@ const TargetRow = ({
       />
       <Grid css={{ minWidth: 0 }}>
         {truncated ? <Tooltip content={target.host}>{host}</Tooltip> : host}
-        <Text color="subtle" truncate>
-          {label === undefined ? "" : `${label} · `}
-          {target.live ? "Live" : "Not live"}
-          {target.publishedAt === null ? undefined : (
-            <>
-              {" · "}
-              <Tooltip content={exactTime(target.publishedAt)}>
-                <span>
-                  <RelativeTime time={new Date(target.publishedAt)} />
-                </span>
-              </Tooltip>
-            </>
-          )}
-        </Text>
+        {unpublish?.confirming ? (
+          <Flex align="center" gap="1" css={{ minWidth: 0 }}>
+            <Text truncate css={{ minWidth: 0, flexGrow: 1 }}>
+              Unpublish {target.host}?
+            </Text>
+            <Button
+              type="button"
+              color="neutral"
+              autoFocus
+              onClick={unpublish.onCancel}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              color="destructive"
+              disabled={unpublish.disabled}
+              onClick={unpublish.onConfirm}
+            >
+              Unpublish
+            </Button>
+          </Flex>
+        ) : (
+          <Text color="subtle" truncate>
+            {label === undefined ? "" : `${label} · `}
+            {word}
+            {target.publishedAt === null ? undefined : (
+              <>
+                {" · "}
+                <Tooltip content={exactTime(target.publishedAt)}>
+                  <span>
+                    <RelativeTime time={new Date(target.publishedAt)} />
+                  </span>
+                </Tooltip>
+              </>
+            )}
+          </Text>
+        )}
       </Grid>
+      {unpublish === undefined ? undefined : (
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <IconButton
+              type="button"
+              aria-label={`${target.host} menu`}
+              disabled={unpublish.disabled}
+            >
+              <EllipsesIcon />
+            </IconButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" sideOffset={4}>
+            <DropdownMenuItem withIndicator={false} onSelect={unpublish.onAsk}>
+              Unpublish
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </Grid>
   );
 };
@@ -420,6 +489,13 @@ export const OrganizeosPublishContent = ({
   const [read, setRead] = useState<Read>("loading");
   // undefined until the first read with targets sets the live addresses
   const [ticks, setTicks] = useState<Set<string>>();
+  // Unpublish: the row awaiting its confirm, one in flight, and whether
+  // OrganizeOS said the action is not available (hidden for this session)
+  const [confirmingKey, setConfirmingKey] = useState<string>();
+  const [unpublishing, setUnpublishing] = useState(false);
+  const [unpublishHidden, setUnpublishHidden] = useState(false);
+  // The replace confirm, open above the footer
+  const [confirmingReplace, setConfirmingReplace] = useState(false);
 
   const state = getOrganizeosPublishState(project?.latestBuildVirtual);
   const previousStatus = useRef(state.status);
@@ -493,10 +569,42 @@ export const OrganizeosPublishContent = ({
   const tickedKeys = (targets ?? [])
     .filter((target) => ticks?.has(target.key))
     .map((target) => target.key);
-  const isPending = isSubmitting || state.status === "pending";
+  const isPending = isSubmitting || unpublishing || state.status === "pending";
+  const oldSiteKey = read === "ready" ? addresses?.oldSiteKey : undefined;
+  const actions = read === "ready" && addresses?.actions === true;
+  const replace = replaceState(tickedKeys, targets ?? [], oldSiteKey);
+  const anchorHost = (targets ?? []).find(
+    (target) => target.key === oldSiteKey
+  )?.host;
 
-  const handlePublish = async () => {
+  const handleUnpublish = async (key: string) => {
     setError(undefined);
+    setUnpublishing(true);
+    try {
+      const outcome = await unpublishTarget(project.id, key);
+      if (outcome.ok === false) {
+        if (outcome.error === "unavailable") {
+          setUnpublishHidden(true);
+        }
+        const line = unpublishErrorLine(outcome);
+        if (line !== undefined) {
+          setError(line);
+        }
+      }
+      // Whatever the answer, the rows show what OrganizeOS reports now
+      await refreshProject().catch(() => undefined);
+      await readAddresses(project.id, { reset: false });
+    } finally {
+      setConfirmingKey(undefined);
+      setUnpublishing(false);
+    }
+  };
+
+  const handlePublish = async ({
+    replacePages = false,
+  }: { replacePages?: boolean } = {}) => {
+    setError(undefined);
+    setConfirmingReplace(false);
     // a value that fails input validation would stop the build; name it here
     const blocker = findPublishBlocker({
       pages: $pages.get(),
@@ -511,7 +619,9 @@ export const OrganizeosPublishContent = ({
     }
     setIsSubmitting(true);
     try {
-      const outcome = await publishToTargets(project.id, tickedKeys);
+      const outcome = await publishToTargets(project.id, tickedKeys, {
+        replacePages,
+      });
       if (outcome.ok === false) {
         setError(publishErrorLine(outcome));
       }
@@ -535,6 +645,20 @@ export const OrganizeosPublishContent = ({
             <TargetRow
               key={target.key}
               target={target}
+              word={rowWord(target, oldSiteKey)}
+              unpublish={
+                canUnpublish(target, { actions, hidden: unpublishHidden })
+                  ? {
+                      confirming: confirmingKey === target.key,
+                      disabled: isPending,
+                      onAsk: () => setConfirmingKey(target.key),
+                      onCancel: () => setConfirmingKey(undefined),
+                      onConfirm: () => {
+                        handleUnpublish(target.key).catch(() => undefined);
+                      },
+                    }
+                  : undefined
+              }
               ticked={ticks?.has(target.key) ?? false}
               onTickedChange={(ticked) => {
                 setTicks((previous) => {
@@ -577,11 +701,40 @@ export const OrganizeosPublishContent = ({
           </Text>
         </Flex>
       )}
+      {replace === "needs_anchor" && anchorHost !== undefined && (
+        <Text color="subtle">Tick {anchorHost} to replace your old site.</Text>
+      )}
       {error !== undefined && <Text color="destructive">{error}</Text>}
 
       <RestrictedFeaturesBanner />
       <MdxBlocksBanner />
       <PausedScriptBanner />
+
+      {confirmingReplace && replace === "confirm" && (
+        <Flex align="center" gap="1" css={{ minWidth: 0 }}>
+          <Text css={{ minWidth: 0, flexGrow: 1 }}>
+            Replace your old site at {anchorHost} and your other addresses?
+          </Text>
+          <Button
+            type="button"
+            color="neutral"
+            autoFocus
+            onClick={() => setConfirmingReplace(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            color="destructive"
+            disabled={isPending}
+            onClick={() => {
+              handlePublish({ replacePages: true }).catch(() => undefined);
+            }}
+          >
+            Replace
+          </Button>
+        </Flex>
+      )}
 
       <Flex align="center" justify="between" gap="2">
         {manageDomainsUrl === undefined ? (
@@ -601,9 +754,18 @@ export const OrganizeosPublishContent = ({
         <Button
           type="button"
           color="positive"
-          disabled={tickedKeys.length === 0 || isPending}
+          disabled={
+            tickedKeys.length === 0 ||
+            isPending ||
+            replace === "needs_anchor" ||
+            confirmingReplace
+          }
           state={isPending ? "pending" : undefined}
           onClick={() => {
+            if (replace === "confirm") {
+              setConfirmingReplace(true);
+              return;
+            }
             handlePublish().catch(() => undefined);
           }}
         >
