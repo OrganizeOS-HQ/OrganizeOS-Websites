@@ -26,7 +26,7 @@ import {
  * token) who may view the project. The org is the project owner's, resolved
  * as the builder loader resolves it, and never comes from the request. The
  * answer is `{ ok: true, host, origin, status, manageDomainsUrl, launchable?,
- * targets? }`, or `{ ok: false }` for a project no org owns and for any
+ * targets?, oldSiteKey?, actions? }`, or `{ ok: false }` for a project no org owns and for any
  * failure, which the dialog shows as one line. A failure logs one code.
  */
 
@@ -74,12 +74,19 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
   if (row === undefined) {
     return answer({ ok: false });
   }
+  const addresses = composeSiteAddresses({
+    row,
+    publisherHost: env.PUBLISHER_HOST,
+    platformUrl: env.ORGANIZEOS_APP_URL,
+  });
   return answer({
     ok: true,
-    ...composeSiteAddresses({
-      row,
-      publisherHost: env.PUBLISHER_HOST,
-      platformUrl: env.ORGANIZEOS_APP_URL,
-    }),
+    ...addresses,
+    // The Publish dialog offers Unpublish only while the builder can sign
+    // the action and the platform reports targets.
+    ...(env.WEBSITES2_SITE_ACTION_SECRET !== undefined &&
+    addresses.targets !== undefined
+      ? { actions: true }
+      : {}),
   });
 };

@@ -116,7 +116,9 @@ describe("fetchSiteAddresses and composeSiteAddresses", () => {
           builtin: true,
           main: false,
           publishedAt: "2026-11-07T12:00:00+00:00",
+          unpublishedAt: null,
           live: true,
+          serving: true,
         },
         {
           key: "www.example.org",
@@ -124,7 +126,9 @@ describe("fetchSiteAddresses and composeSiteAddresses", () => {
           builtin: false,
           main: true,
           publishedAt: null,
+          unpublishedAt: null,
           live: false,
+          serving: false,
         },
         {
           key: "example.net",
@@ -132,11 +136,30 @@ describe("fetchSiteAddresses and composeSiteAddresses", () => {
           builtin: false,
           main: false,
           publishedAt: "2026-11-06T09:30:00+00:00",
+          unpublishedAt: "2026-11-07T08:15:00+00:00",
           live: false,
+          serving: false,
         },
       ],
     });
     expect(error).not.toHaveBeenCalled();
+  });
+
+  test("a target without serving (an older platform) serves exactly when it is live", async () => {
+    const [fixture] = targetsFixture;
+    const row = await read([
+      {
+        ...fixture,
+        targets: fixture.targets.map(
+          ({ serving: _serving, ...target }) => target
+        ),
+      },
+    ]);
+    expect(compose(row!).targets?.map((target) => target.serving)).toEqual([
+      true,
+      false,
+      false,
+    ]);
   });
 
   test("a row whose targets are null composes with none", async () => {

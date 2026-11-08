@@ -61,6 +61,9 @@ const targetFields = {
   published_at: timeSchema,
   unpublished_at: timeSchema,
   live: z.boolean(),
+  // Whether the address serves that build now; a platform before it sends
+  // none, and then it is the target's own live.
+  serving: z.boolean().optional(),
 };
 
 const targetRowSchema = z.union([
@@ -160,7 +163,12 @@ export type SiteTarget = {
   builtin: boolean;
   main: boolean;
   publishedAt: string | null;
+  /** When it was taken down, or null while its recorded build stands. */
+  unpublishedAt: string | null;
+  /** The target's own state: a build passing the checks, not taken down. */
   live: boolean;
+  /** The address serves that build now (the row's Live word). */
+  serving: boolean;
 };
 
 export type SiteAddresses = {
@@ -205,7 +213,9 @@ export const composeSiteAddresses = ({
             builtin: target.host === null,
             main: target.main,
             publishedAt: target.published_at,
+            unpublishedAt: target.unpublished_at,
             live: target.live,
+            serving: target.serving ?? target.live,
           })),
         }),
   };
