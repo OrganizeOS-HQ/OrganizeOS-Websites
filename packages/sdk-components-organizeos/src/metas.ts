@@ -19,3 +19,4 @@ export { meta as MarqueeTrack } from "./marquee/marquee-track.ws";
 export { meta as ConvergenceField } from "./field/convergence-field.ws";
 export { meta as ShareCodeCarrier } from "./share-code/share-code-carrier.ws";
 export { meta as RichText } from "./rich-text/rich-text.ws";
+export { meta as Price } from "./shop/price.ws";

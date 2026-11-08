@@ -619,3 +619,22 @@ test("the Rich Text: hidden, styled by descendants only, its root laid out as it
   });
   expect(Object.keys(components)).toContain("RichText");
 });
+
+test("the Price: hidden, a span that takes no children, with cents and currency", () => {
+  const meta = metas.Price;
+  expect(meta.category).toBe("hidden");
+  expect(meta.label).toBe("Price");
+  expect(meta.contentModel).toEqual({ category: "instance", children: [] });
+  expect(Object.keys(meta.presetStyle ?? {})).toEqual(["span"]);
+  expect(meta.initialProps).toEqual(["id", "class", "cents", "currency"]);
+  expect(meta.props).toEqual({
+    cents: expect.objectContaining({ type: "number", required: false }),
+    currency: expect.objectContaining({
+      type: "string",
+      required: false,
+      defaultValue: "USD",
+    }),
+  });
+  expect(Object.keys(components)).toContain("Price");
+  expect(Object.keys(templates)).not.toContain("Price");
+});
