@@ -185,6 +185,17 @@ test("states and prop controls", () => {
     actionPage: "url",
   });
   expect(controls(metas.Field)).toEqual({ field: "text" });
+  // the builder's rows read Form, State, Fields (the data prop's row) and
+  // After submit, with the Page row drawn by After submit
+  expect(metas.SignupForm.initialProps).toEqual([
+    "id",
+    "class",
+    "record",
+    "state",
+    "data",
+    "action",
+    "actionPage",
+  ]);
   expect(metas.SignupForm.props?.state).toMatchObject({
     defaultValue: "initial",
     options: [
@@ -339,10 +350,13 @@ test("the blocks' Settings tooltips that were paragraphs are a few words, or non
     record: undefined,
     data: undefined,
     state: "Shown on the canvas",
-    action: "Success state, or a page",
+    // its options say it
+    action: undefined,
     // the page After submit opens: its label says it
     actionPage: undefined,
   });
+  // a select of the form's fields, whose options say it
+  expect(tooltips(metas.Field, ["field"])).toEqual({ field: undefined });
   expect(
     tooltips(metas.RsvpForm, [
       "record",

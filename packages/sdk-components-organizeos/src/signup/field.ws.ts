@@ -29,8 +29,6 @@ export const metaField: WsComponentMeta = {
       control: "text",
       required: true,
       label: "Form field",
-      description:
-        "The form field this Field collects, by its name in the form (email, first_name, last_name, phone, ...).",
     },
   },
 };
