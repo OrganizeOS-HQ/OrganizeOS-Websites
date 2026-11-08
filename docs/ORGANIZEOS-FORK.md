@@ -93,6 +93,7 @@ OrganizeOS integration (all optional; each feature ships dark until its variable
 - `ORGANIZEOS_BLOCKS_DENY_ORG_IDS` — the orgs denied the OrganizeOS blocks and the rest of the OrganizeOS builder UI (§9, In the builder): comma-separated organization ids, each trimmed and matched in any case. Every other org, new ones included, is offered them; unset, empty or only separators denies none. An entry that is not an organization id denies every org (a malformed value fails closed), and the builder loader logs that once per instance, without the value. Read by the builder loader, which resolves the project's org from its owner's service email (`org+<organizationId>@svc.organizeos.internal`) and hands the result to the builder as `organizeosSite.blocksEnabled`. Set it in Vercel before the deploy that should read it: an env change reaches functions only on a new deployment, and an unset value offers the blocks to every org. It replaced `ORGANIZEOS_BLOCKS_ORG_IDS`, the rollout allowlist, which the builder no longer reads: delete it from every deployment, and never reuse the name.
 - `WEBSITES2_PREVIEW_SECRET` — shared with OrganizeOS (the same value on both sides): the key that signs the canvas's draft-preview assertion, `X-OOS-Preview` (§5, "Draft preview on the canvas"). Unset or blank: no assertion is minted, and the canvas shows published items only. Rotate it on both sides together; a mismatch only turns preview off.
 - `ORGANIZEOS_CMS_PANEL` — builder only: the CMS's switch (§9, "The CMS overlay"). Only the exact value `true` offers the CMS rail button; anything else leaves the rail without it. The OrganizeOS data tab does not depend on it.
+- `ORGANIZEOS_SHOP_BLOCKS` — builder only: the Shop blocks' switch (§9, "Shop blocks"). Only the exact value `true` lists the Product Grid and the Product Card in the Components panel and lets them be inserted, and makes a token provision write the Products catalog Resource; anything else (unset, empty, `TRUE`, `1`) lists neither, refuses their insert and only rewrites a Products Resource a build already has. Placed blocks keep working when it is turned off. To turn it on or off, set or unset it on the builder's Production scope and redeploy.
 - `PUBLISHER_HOST` — the platform base domain an org's site is served from (`<subdomain>.<PUBLISHER_HOST>`); with the org subdomain mirrored into `Project.domain` (§5) every address the builder shows is the real one. **Defaults to `organizeos.org` in code**, so an unset env is correct rather than dangerous; upstream defaulted it to its own staging domain, which is what made a missing value advertise a Webstudio address. Set it only to point a deployment somewhere else.
 - `TRPC_SERVER_API_TOKEN` — the builder's service token. The publish executor uses it to sync the build **and** to report the outcome to `POST /internal/publish-status` (§5). Never commit a value: `apps/builder/.env` keeps it commented out, where upstream's sets an e2e token.
 - `EMAIL_SERVICE_URL` — never set it. It is upstream's email service for Form email actions, which do nothing on an OrganizeOS site (§8); set, the builder's Form Preview would send `TRPC_SERVER_API_TOKEN` to it as a bearer token.
@@ -650,9 +651,10 @@ can be merged with minimal conflict.
     tab in `sidebar-left/sidebar-left.tsx` (shown only for an org the deny
     list does not deny) and `sidebar-left/types.ts`; the panel's controls,
     `settings-panel/controls/organizeos-controls.tsx`,
-    `organizeos-field-control.tsx` and `organizeos-record.tsx`, with
-    `organizeos-controls.test.tsx`, `organizeos-field-control.test.tsx` and
-    `organizeos-record.test.ts`, behind one marked branch in
+    `organizeos-field-control.tsx`, `organizeos-product-control.tsx` and
+    `organizeos-record.tsx`, with `organizeos-controls.test.tsx`,
+    `organizeos-field-control.test.tsx`, `organizeos-product-control.test.tsx`
+    and `organizeos-record.test.ts`, behind one marked branch in
     `settings-panel/controls/combined.tsx`, before the json control, which
     also hands on the props logic's `onChangeByPropName` that one marked line
     in `settings-panel/props-section/props-section.tsx` passes, and one marked
@@ -661,6 +663,19 @@ can be merged with minimal conflict.
     `features/organizeos-panel/signup-fields.ts` with
     `signup-fields.test.tsx`; the `combined.tsx`, `props-section.tsx` and
     `url.tsx` cases in `overlay.wiring.node.test.ts`.
+  - **The Shop blocks (§9, "Shop blocks").** In the blocks package,
+    `src/shop/` (Price, the Product Grid and Product Card roots, their
+    template pieces, the products reader and their tests),
+    `src/product-grid.template.tsx` and `src/product-card.template.tsx`, and
+    the `./products-data` export in its `package.json`; in the builder,
+    `features/organizeos-panel/product-blocks.ts` with
+    `product-blocks.test.tsx`, the Show and Product rows in
+    `organizeos-product-control.tsx`, `ORGANIZEOS_SHOP_BLOCKS` in
+    `env/env.server.ts`, `isShopBlocksSwitchOn` and `shopBlocksEnabled` in
+    `shared/db/organizeos-site.server.ts` and `shared/organizeos-site.ts`
+    (passed by the loader in `routes/_ui.(builder).tsx` and by
+    `routes/internal.provision.tsx`), and the Products preset in
+    `shared/organizeos-preset-ids.ts` and `shared/db/resource-presets.server.ts`.
   - The CMS page templates (§9): `collection-schema.ts`,
     `collection-layout.ts`, `collection-pages.ts`, `collection-list.ts` and
     `collection-row-menu.tsx`, with their tests, the collection rows in
@@ -1196,6 +1211,12 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   than failing. The Event Card is the Event List's template under its own label
   and shows the next upcoming event (one item, see Insert completion); picking
   a specific event waits for the events virtual collection.
+- **Product Grid** and **Product Card**, the Shop blocks (see Shop blocks
+  below), are templates over native elements and a collection, each under a
+  root of its own, `ProductGrid` and `ProductCard`, and **Price**, the one part
+  with code: a `span` that renders integer cents as money in US English
+  (`Intl.NumberFormat("en-US", { style: "currency", currency })`, `currency`
+  defaulting to `USD`), and an empty `span` for a value it cannot format.
 - **RSVP Form** is the root of the Events RSVP block (phase 2b). It renders the
   `<form>`, finds its event by its `record` prop (an event id) in its `data`
   prop (the `GET /v1/events` body, from the project's Events Resource), and on
@@ -1352,7 +1373,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   directly after General. It lists the namespace's templates with the
   Components panel's own cards, in its sections' order (Sections: Rotating
   Tabs, Marquee, Convergence Field; Content: Rich Text; Events: Event List,
-  Event Card, RSVP Form; Signups: Signup Form, Signup Form, inline), skips a name that is not registered yet, and offers a
+  Event Card, RSVP Form; Signups: Signup Form, Signup Form, inline; Shop:
+  Product Grid, Product Card, listed only while `ORGANIZEOS_SHOP_BLOCKS` is
+  `true`), skips a name that is not registered yet, and offers a
   registered block no section names after the others (the "More" rule). A
   card's tooltip is its template's description, a short phrase ("Your
   upcoming public events"; `metas.test.ts` holds every template to a few
@@ -1745,8 +1768,10 @@ collection }` invalidates, through `invalidateResource`, every current
   branch for the namespace. What a block reads from the catalog is a table,
   `organizeosBlockData`, keyed by the template's key (the `component` the
   Components panel inserts, not the root's component: an Event List's root is a
-  Share Code Carrier). An entry names the catalog Resource (`events`, `forms` or
-  `upcoming-events`), the name of the block's binding, and the props that read
+  Share Code Carrier). An entry names the catalog Resource (`events`, `forms`,
+  `upcoming-events` or `products`), whether the block's binding references a
+  Resource of its own (`ownResource`, below) instead, the name of the block's
+  binding, and the props that read
   it: an instance (`root`, or the `ws:id` the template gives it), a prop name,
   and the expression, given the binding's variable. A template key with no entry
   is inserted untouched.
@@ -1762,6 +1787,22 @@ collection }` invalidates, through `invalidateResource`, every current
     unavailable box's (`unavailable`) `data-ws-show` = `<v>.ok === false`. The
     Event Card's entry is the same with `<v>.data.data.slice(0, 1)` for the
     list: the next event.
+  - The Product Grid's entry is Products under "OrganizeOS Products", with
+    four binds read as the Event List's: the collection's (`products`) `data`
+    = `(<v>.ok === true ? <v>.data.data.slice(0, 6) : [])` (the Show row
+    rewrites the slice), the `empty` and `unavailable` lines' `data-ws-show`
+    as the Event List's boxes, and Shop all's (`shop-all`) `data-ws-show` =
+    `<v>.ok === true && <v>.data.data.length > 0`. The insert creates Products
+    when the build lacks it, in provisioning's shape.
+  - The Product Card's entry has `ownResource: { name: "Product" }`: its
+    binding, "OrganizeOS Product", references a Resource of its own under a
+    fresh nanoid, a copy of the Products request (`"<API base>/products"`, the
+    Events `Authorization`), written in the insert's transaction; Products
+    itself is not created for it. Three binds: the collection's (`product`)
+    `data` = `(<v>.ok === true ? <v>.data.data.slice(0, 1) : [])`, and the
+    `empty` and `unavailable` lines as the grid's. Its Product row rewrites
+    that Resource's URL. The token rotation rewrites the copy as it does
+    every block copy (a literal URL on the API base).
   - The RSVP Form's entry is the Events Resource itself under "OrganizeOS
     Events", with one bind: the root's `data` = `<v>.data`, the body, as the
     Signup Form binds its forms. It never creates a Resource (provisioning
@@ -1887,12 +1928,18 @@ collection }` invalidates, through `invalidateResource`, every current
   which both sides use to list the catalog. Provisioning and the builder
   derive the same ids, so a re-provision rewrites the Forms and Upcoming
   Events Resources a block's insert added instead of adding a second. The names of those two Resources
-  and of the bindings the Events blocks bring live there too.
+  and of the bindings the Events blocks bring live there too, as do the
+  Products key and the Shop blocks' names (`PRODUCTS_PRESET_KEY`,
+  `PRODUCTS_RESOURCE_NAME`, `PRODUCT_RESOURCE_NAME`, `PRODUCTS_BINDING_NAME`,
+  `PRODUCT_BINDING_NAME`). `findCatalogResources` lists Products last, after
+  Upcoming Events.
 - **The catalog in provisioning** (`shared/db/resource-presets.server.ts`):
   Events, Fundraisers and Stats are written on every provision, Forms and
   Upcoming Events (`/events?upcoming=true`, "when-present") are rewritten when
-  the build has their Resource and never created, and every collection
-  Resource gets the new token and API base. Upcoming Events' token rotates like
+  the build has their Resource and never created, Products (`/products`,
+  "shop-blocks") is written as Events is while `ORGANIZEOS_SHOP_BLOCKS` is
+  `true` (the provision route passes the switch) and as Forms is otherwise,
+  and every collection Resource gets the new token and API base. Upcoming Events' token rotates like
   the others': the check that finds a copy of a catalog Resource is a prefix
   check on the API base.
   Resources are upserted in place and in order. The unscoped bindings older
@@ -2615,6 +2662,11 @@ code in the page's address only, never in a cookie or storage.
   only on a click, so it cannot cause a hydration mismatch. The builder's
   contrast check classifies it as rendering the designer's children only
   (`rendersDesignerChildrenOnly` in `backgrounds/contrast.ts`).
+- **The Shop blocks' roots**, `ProductGrid` and `ProductCard`, carry the code
+  as the Share Code Carrier does (`useShareCodeCarrier`), so a card's link to
+  `/shop/{slug}` and "Shop all" to `/shop` keep `?r=`; both paths, and
+  `/cart`, are in `platformPathPatterns` already. The blocks render no `/cart`
+  link: a designer's own Cart link is carried by the page carrier.
 - **The copy.** `share-code.ts` copies OrganizeOS's constants and carry
   function (`client/lib/referrals/code.ts`, `client/lib/referrals/carry-code.ts`
   and the flow family of `client/lib/verification/public-route-allowlist.ts`),
@@ -2626,6 +2678,70 @@ code in the page's address only, never in a cookie or storage.
   before the Share Code Carrier keeps its `ws:element` root and has no carrier
   of its own, and the page's carrier carries its link. Nothing changes in the
   published-site runtime packages.
+
+**Shop blocks**, `src/shop/` in the package (OrganizeOS plan
+`docs/superpowers/plans/2026-11-06-builder-shop-blocks.md`): the Product Grid
+lists an org's products and the Product Card shows one, each card linking to
+the product's page on the platform, `/shop/{slug}`; cart and checkout stay
+there.
+
+- **Offered only while `ORGANIZEOS_SHOP_BLOCKS` is exactly `true`** (§4),
+  resolved by the builder loader into `organizeosSite.shopBlocksEnabled`. While
+  it is off, `$organizeosComponentGroups` drops both templates before grouping,
+  so neither the Shop section nor "More" lists them and "Find components" finds
+  neither, and `insertOrganizeosBlock` refuses either with the deny list's
+  toast. The deny list applies on top. Pasting a block is not gated, as for
+  every block.
+- **The templates** (`src/shop/product-card.template.tsx`; metas in
+  `src/product-grid.template.tsx` and `src/product-card.template.tsx`). The
+  card, one function of the collection's `product` parameter shared by both
+  blocks, is a link (`ws:tag="a"`, `"/shop/" + product.slug`,
+  `reloadDocument`) wearing "OS Card" (shared with the events cards, not
+  edited) and holding the Image ("OS Product Image": square, cropped; shown
+  only for a product with an `image_url`), the Title (`h3`, "OS Product
+  Title") and the Price line (`p`, "OS Product Price") of a "From" `span`
+  (shown only when `price_varies` is true) and Price (`cents` and `currency`
+  bound). No element inside the card has a `ws:id`. The Product Grid's root
+  (`columns="3"`) is a grid whose `grid-template-columns` reads
+  `--os-product-columns`: at most that many columns, never under 200px; it
+  holds the collection (`products`), "No products yet." (`empty`), "Products
+  are unavailable right now." (`unavailable`), both "OS Product Note" (no
+  declarations), and "Shop all" (`shop-all`, "OS Product Link", `href="/shop"`,
+  `reloadDocument`), the last three spanning the grid. The Product Card's root
+  holds the collection (`product`), "This product is not available."
+  (`empty`) and the unavailable line. The five tokens are defined once, beside
+  the card; no site template places a shop block yet.
+- **The roots** are `div`s that pass every prop through and carry the share
+  code (Share codes, below). `ProductGrid` sets `--os-product-columns` to its
+  `columns` (`"2"`, `"3"` or `"4"`; anything else reads as 3), merged into any
+  style it is given. Both drop a stored `show` or `product`, which no row
+  writes. The contrast check classifies both as rendering the designer's
+  children only, and Price as a named text component, as upstream's Time.
+- **The rows** (`organizeos-product-control.tsx`, logic in
+  `features/organizeos-panel/product-blocks.ts`, through `getOrganizeosControl`):
+  - **Show** (Product Grid): 3, 4, 6, 8, 12 or All. It reads the collection's
+    `data` against the two forms written for the root's own binding (a slice
+    of n, or no slice for All); another expression shows no value, and
+    choosing writes the form.
+  - **Columns** (Product Grid) is upstream's select on the real prop.
+  - **Product** (Product Card): Newest, then the org's products by title in
+    list order ("Untitled product" for a blank title). It reads the card's own
+    Resource, whose URL is `"<API base>/products"` (Newest) or
+    `"<API base>/products?id=<uuid>"` (a UUID in any case, compared and
+    written lower-cased); another URL shows no value. The list is read live,
+    once when the row mounts, with that Resource's `Authorization`, through the
+    builder's resources loader, bounded at 3 seconds. A picked id the list
+    lacks shows as "Unavailable product". While it loads nothing shows under
+    the select; a failed or timed-out read shows one line, "Products didn't
+    load.", with Reload. A long title truncates, with the whole title in a
+    tooltip.
+  - Each write is one staged transaction and one undo step that keeps the
+    selection, and touches only the block's own collection prop or its own
+    nanoid Resource, never the catalog.
+- **Data loads only where it is used.** A grid reads Products through its own
+  binding and a card its own Resource; a page with no shop block makes no
+  products request. A Newest card and a grid on one page send the same
+  request, which the site's resource cache keeps once.
 
 **Site templates**, `src/site-templates/` in the package and
 `features/organizeos-panel/site-templates/` in the builder (OrganizeOS design
@@ -3148,6 +3264,18 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   "no events"; the blocks show their Unavailable box. Only public, published
   events are listed (one rule for the Website, Website Lite's homepage and
   embeds, `/v1/stats` and the anonymous RSVP gate).
+- `GET /v1/products`, through the Products catalog Resource (the Product
+  Grid) or a Product Card's own copy of it: the products the org's storefront
+  shows, newest first, at most 100, each as `id`, `slug` (slug-shaped:
+  lower-case letters and digits in runs joined by `-`), `title`, `image_url`
+  (an absolute https URL, or null), `price_from_cents` (integer cents, the
+  lowest price), `price_varies` (some price differs, so the card shows
+  "From"), `currency` (always `USD`) and `url` (the product's page on the
+  org's public host; the blocks link `"/shop/" + slug` instead). `?id=<uuid>`
+  lists that one product, or none; an `id` that is not a UUID answers an empty
+  list. A failed read answers 503 `{ error: "unavailable" }` with no
+  `Cache-Control`, and the blocks show their Unavailable line. Cart and
+  checkout stay on the platform's own pages.
 - `GET /v1/forms`, through the Forms catalog Resource, server-side with the
   project's read token, with the `Cache-Control` every `/v1` read sends
   (`public, s-maxage=60, stale-if-error=600`). The site's resource cache (§8)
@@ -3162,7 +3290,7 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
 - Both sides build to the contract fixtures in OrganizeOS's
   `client/tests/fixtures/site-components/`, which the package copies into
   `src/__fixtures__/` for its tests (`forms.json`, `events.json`,
-  `share-code.json`, `signups/` and `rsvps/`). To keep them in step, change the
+  `products.json`, `share-code.json`, `signups/` and `rsvps/`). To keep them in step, change the
   OrganizeOS copy first, copy the files over unchanged, update the source
   commit in the note at the top of the copy's `README.md`, and check that
   `diff -r` between the two folders shows that note alone. `share-code.json`
@@ -3188,7 +3316,9 @@ page published before they exist would find no guests, shifts or questions in
 the event data, which lets a visitor post an RSVP that misses a required
 answer, to an endpoint that is not there. So no RSVP Form is published before
 the platform half is live. The keys are additive, and builds that do not know
-them ignore them. Share codes follow the same order: OrganizeOS accepts
+them ignore them. The Shop blocks (W4) follow it too: `GET /v1/products`
+deploys first, and the builder ships with `ORGANIZEOS_SHOP_BLOCKS` unset, so
+nothing lists the blocks or writes Products until it is set. Share codes follow the same order: OrganizeOS accepts
 `referral_code` before the builder sends it; a block that meets a platform
 without it falls back to a submission without the code.
 
@@ -3277,6 +3407,19 @@ options, and the limits found since in review):
   collection's `data` expression. A
   card's cover image is an absolute URL the platform sends: check that it loads
   under the platform's CSP on a published page.
+- **Shop blocks.** Until an org's shop is open, both blocks show their empty
+  line on the canvas and the live page. The list is the newest 100; a
+  hand-picked set is several Product Cards. A sold-out product is listed while
+  it is active; its page shows what can be bought. The list is cached for up
+  to a minute, and through a platform failure for ten more, so an archived
+  product can show that long and its page then answers 404. A closed shop and
+  an empty one look the same. A product whose slug is not slug-shaped is not
+  listed, and an image that is not an https URL is not shown. The Show row
+  reads only the two forms it and the insert write, and the Product row only
+  the two URLs; an edited expression or URL shows no value until a choice
+  rewrites it. The Product row reads the list live, so offline it shows its
+  load line. Prices are formatted in US English and USD, frozen with the
+  build. A copied card brings its own copy of its Resource.
 - **RSVP Form.**
   - The published page reads the Events list when it renders, not when it was
     published, so an event that is unpublished, deleted or made private
