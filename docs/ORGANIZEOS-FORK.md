@@ -653,11 +653,14 @@ can be merged with minimal conflict.
     `organizeos-field-control.tsx` and `organizeos-record.tsx`, with
     `organizeos-controls.test.tsx`, `organizeos-field-control.test.tsx` and
     `organizeos-record.test.ts`, behind one marked branch in
-    `settings-panel/controls/combined.tsx`, before the json control, and one
-    marked `export` of `BasePage` in `settings-panel/controls/url.tsx`; the
-    Signup Form's Fields logic, `features/organizeos-panel/signup-fields.ts`
-    with `signup-fields.test.tsx`; the `combined.tsx` and `url.tsx` cases in
-    `overlay.wiring.node.test.ts`.
+    `settings-panel/controls/combined.tsx`, before the json control, which
+    also hands on the props logic's `onChangeByPropName` that one marked line
+    in `settings-panel/props-section/props-section.tsx` passes, and one marked
+    `export` of `BasePage` in `settings-panel/controls/url.tsx`, which honours
+    `readOnly` as the other modes do; the Signup Form's Fields logic,
+    `features/organizeos-panel/signup-fields.ts` with
+    `signup-fields.test.tsx`; the `combined.tsx`, `props-section.tsx` and
+    `url.tsx` cases in `overlay.wiring.node.test.ts`.
   - The CMS page templates (§9): `collection-schema.ts`,
     `collection-layout.ts`, `collection-pages.ts`, `collection-list.ts` and
     `collection-row-menu.tsx`, with their tests, the collection rows in
@@ -1419,7 +1422,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   - **After submit** is two radios, Message (`"state"`) and Page (`"page"`),
     the values published sites read. Page draws upstream's page select (the URL
     control's Page mode, `BasePage`, made reachable by one marked `export` in
-    `url.tsx`) under the radios for `actionPage`, whose own row is hidden. An
+    `url.tsx`) under the radios for `actionPage`, whose own row is hidden; the
+    page is written through the props logic (`handleChangeByPropName`), as the
+    other rows are. A bound `action` is read-only, its page select included. An
     `actionPage` left as a plain URL by the old control still works on the
     live page; the select reads "Choose page" until a page is picked.
   - **A Field's Form field**, for a Field under a Signup Form

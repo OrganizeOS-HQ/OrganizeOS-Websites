@@ -36,7 +36,6 @@ import {
 } from "~/shared/nano-states";
 import { $dataSourceVariables } from "~/shared/nano-states/variables";
 import { $instances, $props } from "~/shared/sync/data-stores";
-import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import {
   type ComputedFieldName,
   addSignupField,
@@ -51,7 +50,7 @@ import {
   signupFormComponent,
 } from "~/builder/features/organizeos-panel/signup-fields";
 import { $instanceTags } from "../../style-panel/shared/model";
-import { type ControlProps, VerticalLayout } from "../shared";
+import { type ControlProps, type PropValue, VerticalLayout } from "../shared";
 import { PropertyLabel } from "../property-label";
 import {
   $selectedInstanceDataProp,
@@ -125,14 +124,20 @@ export const getOrganizeosControl = ({
   }
 };
 
-type OrganizeosControlProps = ControlProps<string> & { key?: string };
+/** The props logic's write of another prop of the instance. */
+type ChangeByPropName = (propName: string, value: PropValue) => void;
+
+type OrganizeosControlProps = ControlProps<string> & {
+  key?: string;
+  onChangeByPropName?: ChangeByPropName;
+};
 
 /** Renders the control a kind names; nothing for `"hidden"`. */
 export const renderOrganizeosControl = (
   kind: OrganizeosControlKind,
-  { key, ...props }: OrganizeosControlProps
+  { key, onChangeByPropName, ...props }: OrganizeosControlProps
 ) => {
-  const control = renderKind(kind, props);
+  const control = renderKind(kind, props, onChangeByPropName);
   return control === undefined ? undefined : (
     <Box key={key} data-organizeos-control={kind}>
       {control}
@@ -142,7 +147,8 @@ export const renderOrganizeosControl = (
 
 const renderKind = (
   kind: OrganizeosControlKind,
-  props: ControlProps<string>
+  props: ControlProps<string>,
+  onChangeByPropName: undefined | ChangeByPropName
 ) => {
   // the metas keep upstream's controls; the kind decides what is drawn
   const textProps = props as unknown as ControlProps<"text">;
@@ -154,7 +160,12 @@ const renderKind = (
     case "signup-fields":
       return <SignupFieldsControl {...textProps} />;
     case "signup-after-submit":
-      return <SignupAfterSubmitControl {...textProps} />;
+      return (
+        <SignupAfterSubmitControl
+          {...textProps}
+          onChangeByPropName={onChangeByPropName}
+        />
+      );
     case "record":
       return <OrganizeosRecordControl {...textProps} />;
     case "field-name":
@@ -402,8 +413,10 @@ const afterSubmitOptions = [
 
 /**
  * After submit: Message (the form's own state boxes) or Page, which draws
- * upstream's page select under the radio for `actionPage`. The stored values
- * stay "state" and "page": published sites read them.
+ * upstream's page select under the radio for `actionPage`, written through the
+ * props logic as the other rows are. The stored values stay "state" and
+ * "page": published sites read them. A bound `action` is read-only, its page
+ * select included.
  */
 const SignupAfterSubmitControl = ({
   instanceId,
@@ -411,7 +424,8 @@ const SignupAfterSubmitControl = ({
   propName,
   computedValue,
   onChange,
-}: ControlProps<"text">) => {
+  onChangeByPropName,
+}: ControlProps<"text"> & { onChangeByPropName?: ChangeByPropName }) => {
   const id = useId();
   const props = useStore($props);
   const readOnly = prop !== undefined && prop.type !== "string";
@@ -454,16 +468,13 @@ const SignupAfterSubmitControl = ({
             <BasePage
               id={`${id}:page`}
               instanceId={instanceId}
-              readOnly={false}
+              readOnly={readOnly}
               prop={pageProp as ComponentProps<typeof BasePage>["prop"]}
               value=""
               onChange={(page) => {
-                executeRuntimeMutation({
-                  id: "instances.updateProps",
-                  input: {
-                    updates: [{ instanceId, name: "actionPage", ...page }],
-                  },
-                });
+                if (readOnly === false) {
+                  onChangeByPropName?.("actionPage", page);
+                }
               }}
             />
           </Flex>

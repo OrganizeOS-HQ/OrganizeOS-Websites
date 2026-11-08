@@ -17,6 +17,7 @@ import { FormActionControl } from "./form-action";
 import { TagControl } from "./tag-control";
 import { TimeZoneControl } from "./time-zone";
 // OrganizeOS fork: the OrganizeOS blocks' Settings rows
+import type { PropValue } from "../shared";
 import { $instances } from "~/shared/sync/data-stores";
 import { $selectedInstanceSelector } from "~/shared/nano-states";
 import {
@@ -28,8 +29,14 @@ export const renderControl = ({
   meta,
   prop,
   key,
+  // OrganizeOS fork: the props logic's write of another prop of the instance,
+  // for an OrganizeOS row that draws two props (organizeos-controls.tsx)
+  onChangeByPropName,
   ...rest
-}: ControlProps<string> & { key?: string }) => {
+}: ControlProps<string> & {
+  key?: string;
+  onChangeByPropName?: (propName: string, value: PropValue) => void;
+}) => {
   const computed = rest.computedValue;
 
   if (meta.control === "textContent") {
@@ -73,6 +80,7 @@ export const renderControl = ({
       key,
       meta,
       prop,
+      onChangeByPropName,
       ...rest,
     });
   }

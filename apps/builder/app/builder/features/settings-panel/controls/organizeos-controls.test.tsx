@@ -461,6 +461,69 @@ describe("the Signup Form's Settings", () => {
     ).toMatchObject({ type: "string", value: "state" });
   });
 
+  test("Page writes actionPage through the props logic's change path", async () => {
+    const rootId = setProject();
+    const onChangeByPropName = vi.fn();
+    const onChange = vi.fn();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () =>
+      root?.render(
+        createElement(
+          TooltipProvider,
+          null,
+          renderControl({
+            instanceId: rootId,
+            meta: {
+              type: "string",
+              control: "radio",
+              required: false,
+              options: ["state", "page"],
+            },
+            prop: undefined,
+            propName: "action",
+            computedValue: "page",
+            onChange,
+            onChangeByPropName,
+          })
+        )
+      )
+    );
+    const select = container.querySelector<HTMLElement>(
+      "[data-after-submit-page] [role='combobox']"
+    );
+    await userEvent.click(select as HTMLElement);
+    await userEvent.click(page.getByRole("option", { name: "Home" }));
+    const homePageId = $pages.get()?.homePageId;
+    expect(onChangeByPropName).toHaveBeenCalledWith("actionPage", {
+      type: "page",
+      value: homePageId,
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("a bound After submit is read-only, its page select included", async () => {
+    const rootId = setProject();
+    const props = new Map($props.get());
+    props.set("action-prop", {
+      id: "action-prop",
+      instanceId: rootId,
+      name: "action",
+      type: "expression",
+      value: `"page"`,
+    });
+    $props.set(props);
+    const host = await renderPanel(rootId);
+    const pageSelects = host.querySelectorAll<HTMLButtonElement>(
+      "[data-after-submit-page] [role='combobox']"
+    );
+    expect(pageSelects.length).toBeGreaterThan(0);
+    for (const select of pageSelects) {
+      expect(select.disabled).toBe(true);
+    }
+  });
+
   test("no row is wider than a 240px panel", async () => {
     const rootId = setProject();
     const host = await renderPanel(rootId, 240);

@@ -257,6 +257,9 @@ describe("the OrganizeOS publisher in shared/context.server.ts", () => {
 describe("the settings panel's OrganizeOS controls", () => {
   const combined = read("../settings-panel/controls/combined.tsx");
   const url = read("../settings-panel/controls/url.tsx");
+  const propsSection = read(
+    "../settings-panel/props-section/props-section.tsx"
+  );
 
   test("combined.tsx imports getOrganizeosControl and renderOrganizeosControl", () => {
     expect(combined).toMatch(
@@ -280,9 +283,22 @@ describe("the settings panel's OrganizeOS controls", () => {
     );
   });
 
-  test("url.tsx exports BasePage, the Page mode After submit draws", () => {
+  test("url.tsx exports BasePage, the Page mode After submit draws, read-only when readOnly", () => {
     expect(url).toMatch(
-      /export const BasePage = \(\{ prop, onChange \}: BaseControlProps\) =>/
+      /export const BasePage = \(\{ prop, readOnly, onChange \}: BaseControlProps\) =>/
+    );
+    expect(url).toMatch(/disabled=\{readOnly\}/);
+    expect(url).toMatch(
+      /disabled=\{readOnly \|\| sectionSelectOptions\.length === 0\}/
+    );
+  });
+
+  test("a second prop's write goes through the props logic: props-section passes it, combined.tsx hands it on", () => {
+    expect(propsSection).toMatch(
+      /onChangeByPropName:\s*logic\.handleChangeByPropName,/
+    );
+    expect(combined).toMatch(
+      /return renderOrganizeosControl\(organizeosControl, \{[^}]*onChangeByPropName,/
     );
   });
 });
