@@ -22,6 +22,17 @@ export type FormFieldConfig = {
    * Input stops typing there, or at the designer's own shorter `maxLength`.
    */
   maxLength?: number;
+  /**
+   * The definition's consent marker (`consent`), e.g. "sms" for the SMS
+   * opt-in. Read to render the field and never sent: the label of a consent
+   * field is the platform's wording, read from the Forms data at render.
+   */
+  consent?: string;
+  /**
+   * The definition's consent wording version (`consent_version`). Read and
+   * never sent: the platform takes the version from its stored config.
+   */
+  consentVersion?: string;
 };
 
 /**

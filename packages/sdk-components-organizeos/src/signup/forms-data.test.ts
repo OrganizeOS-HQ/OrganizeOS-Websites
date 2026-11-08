@@ -118,3 +118,64 @@ test("reads leniently: unknown keys are ignored and unreadable entries skipped",
     unavailable: undefined,
   });
 });
+
+// No fixture carries the SMS consent field yet: the platform's forms.json gains
+// it with the profile sign-up's core PR, and this literal stands in until then.
+const smsConsentForms = (consent: unknown, consentVersion: unknown) => ({
+  data: [
+    {
+      id: "form-sms",
+      kind: "newsletter",
+      fields: [
+        { name: "email", label: "Email", type: "email", required: true },
+        { name: "phone", label: "Phone", type: "phone", required: false },
+        {
+          name: "sms_opt_in",
+          label: "Text me updates. Reply STOP to opt out.",
+          type: "checkbox",
+          required: false,
+          consent,
+          consent_version: consentVersion,
+        },
+      ],
+    },
+  ],
+});
+
+const consentField = (consent: unknown, consentVersion: unknown) =>
+  resolveSignupForm("form-sms", smsConsentForms(consent, consentVersion))
+    .fields?.[2];
+
+test("a consent field keeps its consent marker and version", () => {
+  expect(consentField("sms", "v1")).toEqual({
+    name: "sms_opt_in",
+    label: "Text me updates. Reply STOP to opt out.",
+    type: "checkbox",
+    required: false,
+    options: null,
+    consent: "sms",
+    consentVersion: "v1",
+  });
+});
+
+test("a numeric consent version reads as its string", () => {
+  expect(consentField("sms", 3)?.consentVersion).toBe("3");
+});
+
+test("a consent marker or version of another type is absent, never an error", () => {
+  for (const value of [null, undefined, {}, [], true]) {
+    const field = consentField(value, value);
+    expect(field?.name).toBe("sms_opt_in");
+    expect(field).not.toHaveProperty("consent");
+    expect(field).not.toHaveProperty("consentVersion");
+  }
+  // A number is a version, never a marker.
+  expect(consentField(7, "v1")).not.toHaveProperty("consent");
+});
+
+test("a field with no consent keys carries neither", () => {
+  const field = resolveSignupForm("form-sms", smsConsentForms("sms", "v1"))
+    .fields?.[0];
+  expect(field).not.toHaveProperty("consent");
+  expect(field).not.toHaveProperty("consentVersion");
+});

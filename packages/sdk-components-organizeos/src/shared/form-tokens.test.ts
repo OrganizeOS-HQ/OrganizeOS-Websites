@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { expect, test } from "vitest";
 import { generateCss } from "@webstudio-is/sdk";
 import { renderTemplate, ws, type Token } from "@webstudio-is/template";
+import { toValue } from "@webstudio-is/css-engine";
 import {
   cardToken,
   eventCoverToken,
@@ -20,10 +21,12 @@ import {
 import type { BlockTokenName } from "../site-templates/types";
 import {
   buttonToken,
+  errorMessageToken,
   fieldToken,
   formHeadingToken,
   inputToken,
   messageToken,
+  successMessageToken,
 } from "./form-tokens";
 
 // The block tokens read the site's canonical variables (spec rule 2) with
@@ -210,6 +213,8 @@ test("BlockTokenName names every block token", () => {
     "OS Input": inputToken,
     "OS Button": buttonToken,
     "OS Message": messageToken,
+    "OS Success Message": successMessageToken,
+    "OS Error Message": errorMessageToken,
     "OS Card": cardToken,
     "OS Event Date": eventDateToken,
     "OS Event Day": eventDayToken,
@@ -322,3 +327,120 @@ test.each(approvedPalettes.map((palette) => [palette.name, palette] as const))(
     }
   }
 );
+
+// The state boxes' tokens: a tinted box in the site's body font. The tint is
+// a mix of an accent into the base, which the template's CSS parser keeps as
+// unparsed text: the variables and their fallbacks reach the published CSS.
+const cssOf = (token: Token) =>
+  Object.fromEntries(
+    stylesOf(token)
+      .filter((style) => style.state === undefined)
+      .map(({ property, value }) => [property, toValue(value)])
+  );
+
+const boxStyles = {
+  paddingTop: "12px",
+  paddingRight: "16px",
+  paddingBottom: "12px",
+  paddingLeft: "16px",
+  borderTopLeftRadius: "6px",
+  borderTopRightRadius: "6px",
+  borderBottomRightRadius: "6px",
+  borderBottomLeftRadius: "6px",
+  fontFamily: "var(--font-body)",
+  fontSize: "14px",
+  lineHeight: "1.4",
+  color: "var(--text, #18181b)",
+};
+
+test("OS Success Message is a box tinted with the second accent, in the body font", () => {
+  expect(successMessageToken.name).toBe("OS Success Message");
+  expect(cssOf(successMessageToken)).toEqual({
+    ...boxStyles,
+    backgroundColor:
+      "color-mix(in srgb,var(--accent-2, #2563eb) 10%,var(--base, #ffffff))",
+  });
+  expect(valueOf(successMessageToken, "backgroundColor")).toEqual({
+    type: "unparsed",
+    value:
+      "color-mix(in srgb,var(--accent-2, #2563eb) 10%,var(--base, #ffffff))",
+  });
+  expect(valueOf(successMessageToken, "color")).toEqual(
+    variable("text", "#18181b")
+  );
+});
+
+test("OS Error Message is a box tinted with the first accent, marked by a left border and weight, not by colour alone", () => {
+  expect(errorMessageToken.name).toBe("OS Error Message");
+  expect(cssOf(errorMessageToken)).toEqual({
+    ...boxStyles,
+    backgroundColor:
+      "color-mix(in srgb,var(--accent-1, #18181b) 10%,var(--base, #ffffff))",
+    borderLeftWidth: "4px",
+    borderLeftStyle: "solid",
+    borderLeftColor: "var(--text, #18181b)",
+    fontWeight: "600",
+  });
+  expect(valueOf(errorMessageToken, "backgroundColor")).toEqual({
+    type: "unparsed",
+    value:
+      "color-mix(in srgb,var(--accent-1, #18181b) 10%,var(--base, #ffffff))",
+  });
+  // the border's colour is a longhand: a shorthand resolves the variable to
+  // its fallback when it is parsed
+  expect(valueOf(errorMessageToken, "borderLeftColor")).toEqual(
+    variable("text", "#18181b")
+  );
+});
+
+// color-mix(in srgb, accent p%, base): each channel mixed in sRGB, rounded to
+// the nearest whole value, as contrastRatio reads hex.
+const mix = (accent: string, base: string, percent: number) => {
+  const channels = (hex: string) => {
+    const value = hex.replace("#", "");
+    const full =
+      value.length === 3
+        ? value
+            .split("")
+            .map((char) => char + char)
+            .join("")
+        : value;
+    return [0, 2, 4].map((index) =>
+      Number.parseInt(full.slice(index, index + 2), 16)
+    );
+  };
+  const a = channels(accent);
+  const b = channels(base);
+  return `#${a
+    .map((channel, index) =>
+      Math.round((channel * percent + b[index] * (100 - percent)) / 100)
+        .toString(16)
+        .padStart(2, "0")
+    )
+    .join("")}`;
+};
+
+test("the mix is computed as color-mix does", () => {
+  expect(mix("#000000", "#ffffff", 10)).toBe("#e6e6e6");
+  expect(mix("#2563eb", "#ffffff", 100)).toBe("#2563eb");
+  expect(mix("#fff", "#000", 0)).toBe("#000000");
+});
+
+test.each(approvedPalettes.map((palette) => [palette.name, palette] as const))(
+  "the state boxes' text keeps 4.5:1 on its tint on the %s palette",
+  (_name, { colors }) => {
+    const success = mix(colors["accent-2"], colors.base, 10);
+    const error = mix(colors["accent-1"], colors.base, 10);
+    expect(contrastRatio(colors.text, success)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(colors.text, error)).toBeGreaterThanOrEqual(4.5);
+  }
+);
+
+test("the state boxes' text keeps 4.5:1 on its tint with the fallbacks", () => {
+  expect(
+    contrastRatio("#18181b", mix("#2563eb", "#ffffff", 10))
+  ).toBeGreaterThanOrEqual(4.5);
+  expect(
+    contrastRatio("#18181b", mix("#18181b", "#ffffff", 10))
+  ).toBeGreaterThanOrEqual(4.5);
+});

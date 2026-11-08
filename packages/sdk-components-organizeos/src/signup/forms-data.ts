@@ -54,13 +54,24 @@ const parseField = (value: unknown): FormFieldConfig | undefined => {
   const options = Array.isArray(value.options)
     ? value.options.filter((option) => typeof option === "string")
     : null;
-  return {
+  const field: FormFieldConfig = {
     name: value.name,
     label: typeof value.label === "string" ? value.label : value.name,
     type: typeof value.type === "string" ? value.type : "text",
     required: value.required === true,
     options,
   };
+  // The consent keys are optional markers: a value of another type is left
+  // out, never an error.
+  if (typeof value.consent === "string") {
+    field.consent = value.consent;
+  }
+  if (typeof value.consent_version === "string") {
+    field.consentVersion = value.consent_version;
+  } else if (typeof value.consent_version === "number") {
+    field.consentVersion = String(value.consent_version);
+  }
+  return field;
 };
 
 const parseForm = (value: unknown): FormRecord | undefined => {

@@ -10,6 +10,7 @@ import {
   type ElementRef,
   type ReactNode,
 } from "react";
+import { ReactSdkContext } from "@webstudio-is/react-sdk/runtime";
 import {
   FormRootContext,
   useRegisterPart,
@@ -35,11 +36,15 @@ type FieldProps = ComponentProps<"div"> & {
 
 /**
  * Field: names one form field and wires its Label, Input and Message
- * together (`for`, `id`, `aria-describedby`, `aria-invalid`).
+ * together (`for`, `id`, `aria-describedby`, `aria-invalid`). Once its root's
+ * form is known, a Field naming a field the form lacks renders nothing on a
+ * published page or in the preview (it was never sent); the canvas still
+ * shows it, and its root's canvas check names it.
  */
 export const Field = forwardRef<ElementRef<"div">, FieldProps>(
   ({ field, children, ...props }, ref) => {
     const root = useContext(FormRootContext);
+    const { renderer } = useContext(ReactSdkContext);
     const id = useId();
     const name = typeof field === "string" ? field.trim() : "";
     useRegisterPart({ kind: "field", name });
@@ -55,6 +60,13 @@ export const Field = forwardRef<ElementRef<"div">, FieldProps>(
       }),
       [name, config, id, error]
     );
+    if (
+      renderer !== "canvas" &&
+      root?.fields !== undefined &&
+      config === undefined
+    ) {
+      return null;
+    }
     return (
       <div {...props} ref={ref}>
         <FieldContext.Provider value={value}>{children}</FieldContext.Provider>
@@ -65,15 +77,21 @@ export const Field = forwardRef<ElementRef<"div">, FieldProps>(
 
 Field.displayName = "Field";
 
-/** Field Label: the field's label; its text is the designer's. */
+/**
+ * Field Label: the field's label; its text is the designer's, except for a
+ * consent field, whose label is the form's own wording, read from the Forms
+ * data at render so the site never stores it.
+ */
 export const FieldLabel = forwardRef<
   ElementRef<"label">,
   ComponentProps<"label">
 >(({ children, ...props }, ref) => {
   const field = useContext(FieldContext);
+  const consentLabel =
+    field?.config?.consent === undefined ? undefined : field.config.label;
   return (
     <label {...props} htmlFor={field?.inputId ?? props.htmlFor} ref={ref}>
-      {children}
+      {consentLabel ?? children}
     </label>
   );
 });
@@ -86,6 +104,8 @@ const autoCompleteByName: Record<string, string> = {
   last_name: "family-name",
   name: "name",
   phone: "tel",
+  postal_code: "postal-code",
+  zip: "postal-code",
 };
 
 const getAutoComplete = (name: string, type: string) => {
