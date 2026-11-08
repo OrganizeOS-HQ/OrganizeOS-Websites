@@ -1,7 +1,7 @@
 import { css, token } from "@webstudio-is/template";
 
 // Neutral styles through shared tokens: every OrganizeOS form block uses the
-// same five, so restyling a token restyles every block on the site. A project
+// same seven, so restyling a token restyles every block on the site. A project
 // that has more than one such block reuses one token each (the insert resolves
 // a token it already has with "ours"), so the Signup Form and the RSVP Form
 // take them from here and cannot drift apart.
@@ -124,5 +124,50 @@ export const messageToken = token(
       color: var(--text, #b91c1c);
       font-weight: 600;
     }
+  `
+);
+
+// The state boxes: a tinted box in the site's body font (no fallback, as "OS
+// Form Heading" reads the heading font), its text `--text`. The tint is a mix
+// of an accent into the base, a longhand background colour: the template's
+// CSS parser keeps a `color-mix()` as unparsed text, so the variables and
+// their fallbacks reach the published CSS. Success takes the second accent,
+// Error the first, and Error is also marked by a left border and weight, so
+// it is not told apart by colour alone.
+export const successMessageToken = token(
+  "OS Success Message",
+  css`
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--text, #18181b);
+    background-color: color-mix(
+      in srgb,
+      var(--accent-2, #2563eb) 10%,
+      var(--base, #ffffff)
+    );
+  `
+);
+
+export const errorMessageToken = token(
+  "OS Error Message",
+  css`
+    padding: 12px 16px;
+    border-radius: 6px;
+    border-left-width: 4px;
+    border-left-style: solid;
+    border-left-color: var(--text, #18181b);
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--text, #18181b);
+    background-color: color-mix(
+      in srgb,
+      var(--accent-1, #18181b) 10%,
+      var(--base, #ffffff)
+    );
   `
 );

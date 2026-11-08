@@ -37,6 +37,7 @@ import {
   $organizeosSite,
   $propValuesByInstanceSelector,
   $registeredComponentMetas,
+  $selectedInstanceSelector,
   $variableValuesByInstanceSelector,
   getInstanceKey,
   registerComponentLibrary,
@@ -841,6 +842,55 @@ describe("insertOrganizeosBlock", () => {
       expect($dataSources.get().get(pageForms.id)).toBe(pageForms);
     }
   );
+});
+
+describe("the inline Signup Form", () => {
+  const inline = "@organizeos/site-components:SignupFormInline";
+
+  test("shares the Signup Form's table entry", () => {
+    expect(organizeosBlockData.get(inline)).toBe(
+      organizeosBlockData.get(signupForm)
+    );
+  });
+
+  test("with the Forms Resource present, brings its own binding and writes no Resource", async () => {
+    setProject(withForms);
+    const resources = $resources.get();
+
+    expect(await insertOrganizeosBlock(inline)).toBe(true);
+
+    expectBoundToOwnBinding();
+    expect($resources.get()).toBe(resources);
+    const [root] = getBlockRoots();
+    // the inline tree: one Email Field and the Submit Button in one row
+    expect(
+      [...$instances.get().values()].filter(
+        (instance) => instance.component === "@organizeos/site-components:Field"
+      )
+    ).toHaveLength(1);
+    expect($selectedInstanceSelector.get()?.[0]).toBe(root.id);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("with the Forms Resource missing, writes it in provisioning's shape", async () => {
+    setProject(withoutForms);
+
+    expect(await insertOrganizeosBlock(inline)).toBe(true);
+
+    expect($resources.get().get(forms.resourceId)).toStrictEqual(formsResource);
+    expectBoundToOwnBinding();
+  });
+
+  test("a stacked and an inline form each bring a binding of their own", async () => {
+    setProject(withForms);
+
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    selectInstance(["bodyId"]);
+    expect(await insertOrganizeosBlock(inline)).toBe(true);
+
+    expect(getBlockRoots()).toHaveLength(2);
+    expectBoundToOwnBinding();
+  });
 });
 
 describe("the inserted block's data", () => {
@@ -2288,10 +2338,13 @@ describe("the inserted RSVP Form", () => {
         "OS Input",
         "OS Button",
         "OS Message",
+        // the Signup Form's state boxes
+        "OS Success Message",
+        "OS Error Message",
       ]) {
         expect(getTokens(name), name).toHaveLength(1);
       }
-      expect(getTokens("OS ").map((source) => source.type)).toHaveLength(5);
+      expect(getTokens("OS ").map((source) => source.type)).toHaveLength(7);
     });
 
     test("a second RSVP Form after OS Input was restyled uses the restyled token, on its inner controls too", async () => {

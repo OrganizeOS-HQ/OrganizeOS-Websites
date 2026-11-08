@@ -16,12 +16,15 @@ export const meta: WsComponentMeta = {
     descendants: [organizeos.Field, organizeos.SubmitButton],
   },
   presetStyle: { form },
+  // Builder-only: the Settings rows read Form, State, Fields (the builder
+  // draws the form's fields in the data prop's row) and After submit, which
+  // also draws the Page row. A published site never reads it.
   initialProps: [
     "id",
     "class",
     "record",
-    "data",
     "state",
+    "data",
     "action",
     "actionPage",
   ],
@@ -53,7 +56,6 @@ export const meta: WsComponentMeta = {
       defaultValue: "state",
       options: ["state", "page"],
       label: "After submit",
-      description: "Success state, or a page",
     },
     actionPage: {
       type: "string",

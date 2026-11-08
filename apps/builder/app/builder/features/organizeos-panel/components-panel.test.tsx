@@ -179,6 +179,7 @@ describe("the Components panel's OrganizeOS section", () => {
         "EventCard",
         "RsvpForm",
         "SignupForm",
+        "SignupFormInline",
       ].map((name) => `${namespace}:${name}`)
     );
   });

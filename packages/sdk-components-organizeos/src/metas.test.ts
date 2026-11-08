@@ -185,6 +185,17 @@ test("states and prop controls", () => {
     actionPage: "url",
   });
   expect(controls(metas.Field)).toEqual({ field: "text" });
+  // the builder's rows read Form, State, Fields (the data prop's row) and
+  // After submit, with the Page row drawn by After submit
+  expect(metas.SignupForm.initialProps).toEqual([
+    "id",
+    "class",
+    "record",
+    "state",
+    "data",
+    "action",
+    "actionPage",
+  ]);
   expect(metas.SignupForm.props?.state).toMatchObject({
     defaultValue: "initial",
     options: [
@@ -238,6 +249,7 @@ test("states and prop controls", () => {
 test("templates", () => {
   expect(Object.keys(templates)).toEqual([
     "SignupForm",
+    "SignupFormInline",
     "EventList",
     "EventCard",
     "RsvpForm",
@@ -250,6 +262,7 @@ test("templates", () => {
     expect(template.category).toBe("hidden");
   }
   expect(templates.SignupForm.label).toBe("Signup Form");
+  expect(templates.SignupFormInline.label).toBe("Signup Form, inline");
   expect(templates.EventList.label).toBe("Event List");
   expect(templates.EventCard.label).toBe("Event Card");
   expect(templates.RsvpForm.label).toBe("RSVP Form");
@@ -257,10 +270,19 @@ test("templates", () => {
   expect(templates.Marquee.label).toBe("Marquee");
   expect(templates.ConvergenceField.label).toBe("Convergence Field");
   // every template's label is the label a designer sees in the panel and the
-  // navigator, and a template that is a component's has that component's
+  // navigator, and a template that is a component's has that component's; a
+  // second template of one component adds its variant after a comma
   for (const [name, template] of Object.entries(templates)) {
-    expect(template.label, name).toMatch(labelPattern);
+    const [label, variant, ...rest] = (template.label ?? "").split(", ");
+    expect(label, name).toMatch(labelPattern);
+    expect(rest, name).toEqual([]);
+    if (variant !== undefined) {
+      expect(variant, name).toMatch(/^[a-z]+$/);
+    }
   }
+  expect(templates.SignupFormInline.label).toMatch(
+    new RegExp(`^${metas.SignupForm.label}, `)
+  );
   expect(templates.RsvpForm.label).toBe(metas.RsvpForm.label);
   expect(templates.ConvergenceField.label).toBe(metas.ConvergenceField.label);
   expect(templates.RichText.label).toBe(metas.RichText.label);
@@ -328,10 +350,13 @@ test("the blocks' Settings tooltips that were paragraphs are a few words, or non
     record: undefined,
     data: undefined,
     state: "Shown on the canvas",
-    action: "Success state, or a page",
+    // its options say it
+    action: undefined,
     // the page After submit opens: its label says it
     actionPage: undefined,
   });
+  // a select of the form's fields, whose options say it
+  expect(tooltips(metas.Field, ["field"])).toEqual({ field: undefined });
   expect(
     tooltips(metas.RsvpForm, [
       "record",

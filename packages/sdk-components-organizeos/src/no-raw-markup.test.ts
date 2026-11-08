@@ -22,6 +22,9 @@ test("no source in the package uses dangerouslySetInnerHTML, but the org-script 
   const files = sourceFiles(srcDir).map((path) => relative(srcDir, path));
   expect(files).toContain(join("rich-text", "rich-text.tsx"));
   expect(files).toContain("org-script.ts");
+  // the template code the Signup Form and its Fields are built from
+  expect(files).toContain(join("signup", "field.template.tsx"));
+  expect(files).toContain("signup-form.template.tsx");
   const naming = files.filter(
     (path) =>
       /\.test\.tsx?$/.test(path) === false &&

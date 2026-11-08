@@ -313,7 +313,10 @@ const getId = (data: { id: string }) => data.id;
 const getHash = (data: { hash: string }) => data.hash;
 const getInstanceId = (data: { instanceId: string }) => data.instanceId;
 
-const BasePage = ({ prop, onChange }: BaseControlProps) => {
+// OrganizeOS fork: exported for the Signup Form's After submit control, which
+// draws this Page mode alone (organizeos-controls.tsx), and read-only when
+// readOnly, as the other modes are.
+export const BasePage = ({ prop, readOnly, onChange }: BaseControlProps) => {
   const pages = useStore($pages);
   const { allPages, pageSelectOptions } = useMemo(() => {
     const allPages = pages ? getAllPages(pages) : [];
@@ -365,6 +368,7 @@ const BasePage = ({ prop, onChange }: BaseControlProps) => {
       <Row>
         <Select
           value={selectedPageId}
+          disabled={readOnly}
           options={allPages.map(getId)}
           onChange={(id) => onChange({ type: "page", value: id })}
           placeholder="Choose page"
@@ -389,7 +393,7 @@ const BasePage = ({ prop, onChange }: BaseControlProps) => {
       <Row>
         <Select
           key={selectedPageId}
-          disabled={sectionSelectOptions.length === 0}
+          disabled={readOnly || sectionSelectOptions.length === 0}
           placeholder={
             sectionSelectOptions.length === 0
               ? selectedPageId

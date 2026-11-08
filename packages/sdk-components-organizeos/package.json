@@ -47,6 +47,16 @@
       "types": "./lib/types/shared/style-order.d.ts",
       "import": "./lib/shared/style-order.js"
     },
+    "./forms-data": {
+      "webstudio": "./src/signup/forms-data.ts",
+      "types": "./lib/types/signup/forms-data.d.ts",
+      "import": "./lib/signup/forms-data.js"
+    },
+    "./field-template": {
+      "webstudio": "./src/signup/field.template.tsx",
+      "types": "./lib/types/signup/field.template.d.ts",
+      "import": "./lib/signup/field.template.js"
+    },
     "./org-script": {
       "webstudio": "./src/org-script.ts",
       "types": "./lib/types/org-script.d.ts",

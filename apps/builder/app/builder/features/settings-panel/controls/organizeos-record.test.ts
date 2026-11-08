@@ -124,14 +124,16 @@ const signupForm = "@organizeos/site-components:SignupForm";
 const rsvpForm = "@organizeos/site-components:RsvpForm";
 const [newsletter, contactForm, membershipForm] = formsBody.data;
 
-const none = { value: "", label: "None (org defaults)" };
+const none = { value: "", label: "Org defaults" };
 const newsletterOption = {
   value: newsletter.id,
-  label: "Newsletter (Newsletter)",
+  label: "Newsletter",
+  description: "Newsletter",
 };
 const contactOption = {
   value: contactForm.id,
-  label: "Get in touch (Contact)",
+  label: "Get in touch",
+  description: "Contact",
 };
 const unavailable = (value: string) => ({ value, label: "Unavailable form" });
 
@@ -184,7 +186,7 @@ describe("renderControl", () => {
         instance("field", "@organizeos/site-components:Field"),
       ])
     );
-    const getControl = (instanceId: string, propName: string) =>
+    const render = (instanceId: string, propName: string) =>
       renderControl({
         instanceId,
         meta: { type: "string", control: "text", required: false },
@@ -192,11 +194,20 @@ describe("renderControl", () => {
         propName,
         computedValue: undefined,
         onChange: () => {},
-      })?.type;
+      });
+    // an OrganizeOS control is wrapped, and named by its kind
+    const getControl = (instanceId: string, propName: string) => {
+      const element = render(instanceId, propName);
+      return element?.props["data-organizeos-control"] ?? element?.type;
+    };
 
-    expect(getControl("form", "record")).toBe(OrganizeosRecordControl);
-    expect(getControl("form", "actionPage")).toBe(TextControl);
-    expect(getControl("rsvp", "record")).toBe(OrganizeosRecordControl);
+    expect(getControl("form", "record")).toBe("signup-record");
+    // drawn by After submit
+    expect(render("form", "actionPage")).toBeUndefined();
+    expect(getControl("rsvp", "record")).toBe("record");
+    expect(render("rsvp", "record")?.props.children.type).toBe(
+      OrganizeosRecordControl
+    );
     expect(getControl("rsvp", "actionPage")).toBe(TextControl);
     expect(getControl("box", "record")).toBe(TextControl);
     expect(getControl("field", "record")).toBe(TextControl);
@@ -205,7 +216,7 @@ describe("renderControl", () => {
 });
 
 describe("getOrganizeosRecordOptions", () => {
-  test("lists None first, then the newsletter and the contact form, and not the membership form", () => {
+  test("lists Org defaults first, then the newsletter and the contact form, and not the membership form", () => {
     const { options, selected, hasData } = getOrganizeosRecordOptions(
       signupForm,
       formsBody,
@@ -266,7 +277,7 @@ describe("getOrganizeosRecordOptions", () => {
     ["an array", formsBody.data],
     ["the loader's error body", { error: "unauthorized" }],
   ])(
-    "with no data (%s), gives None alone, plus the current value",
+    "with no data (%s), gives Org defaults alone, plus the current value",
     (_case, data) => {
       expect(getOrganizeosRecordOptions(signupForm, data, "")).toEqual({
         options: [none],
@@ -283,7 +294,7 @@ describe("getOrganizeosRecordOptions", () => {
     }
   );
 
-  test("skips entries without an id, and gives None alone when that is all of them", () => {
+  test("skips entries without an id, and gives Org defaults alone when that is all of them", () => {
     const withoutIds = {
       data: formsBody.data.map(({ id: _id, ...form }) => form),
     };
@@ -325,7 +336,11 @@ describe("getOrganizeosRecordOptions", () => {
       options: [
         none,
         newsletterOption,
-        { value: contactForm.id, label: "Untitled form (Contact)" },
+        {
+          value: contactForm.id,
+          label: "Untitled form",
+          description: "Contact",
+        },
       ],
       selected: none,
       hasData: true,
@@ -387,9 +402,7 @@ describe("getOrganizeosRecordOptions for the RSVP Form", () => {
       now
     );
     expect(options.some((item) => item.value === "")).toBe(false);
-    expect(options.map((item) => item.label)).not.toContain(
-      "None (org defaults)"
-    );
+    expect(options.map((item) => item.label)).not.toContain("Org defaults");
   });
 
   test("dates each event in its own zone: the cookout is Nov 13 where it is held, Nov 14 in UTC", () => {
@@ -1263,7 +1276,7 @@ describe("the record picker's binding", () => {
       computedValue: newsletter.id,
     });
     expect(trigger(host)?.disabled).toBe(false);
-    expect(trigger(host)?.textContent).toBe("Newsletter (Newsletter)");
+    expect(trigger(host)?.textContent).toBe("Newsletter");
     expect(bindingVariant(host)).toBe("default");
     expect(controlProps()).toMatchObject({
       bound: false,
@@ -1272,9 +1285,7 @@ describe("the record picker's binding", () => {
 
     await act(async () => page.getByRole("combobox").click());
     await act(async () =>
-      page
-        .getByRole("option", { name: "Get in touch (Contact)", exact: true })
-        .click()
+      page.getByRole("option", { name: "Get in touch", exact: true }).click()
     );
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith({
@@ -1283,6 +1294,40 @@ describe("the record picker's binding", () => {
     });
     // the label opens, and says nothing of an expression
     expect(await labelContent(host)).not.toContain(readOnlyNote);
+  });
+
+  test("with onChangeRecord, choosing a form calls it instead of writing record", async () => {
+    await insertLoaded("p-on-change-record");
+    const [instanceId] = $selectedInstanceSelector.get() ?? [];
+    const onChange = vi.fn();
+    const onChangeRecord = vi.fn();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        createElement(
+          TooltipProvider,
+          null,
+          createElement(OrganizeosRecordControl, {
+            instanceId,
+            meta: { type: "string", control: "text", required: false },
+            prop: undefined,
+            propName: "record",
+            computedValue: newsletter.id,
+            onChange,
+            onChangeRecord,
+          })
+        )
+      );
+    });
+
+    await act(async () => page.getByRole("combobox").click());
+    await act(async () =>
+      page.getByRole("option", { name: "Org defaults", exact: true }).click()
+    );
+    expect(onChangeRecord).toHaveBeenCalledWith("");
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   test("bound, it shows the bound record and is read-only", async () => {
@@ -1299,7 +1344,7 @@ describe("the record picker's binding", () => {
     });
     expect(instanceId).not.toBe("");
     expect(trigger(host)?.disabled).toBe(true);
-    expect(trigger(host)?.textContent).toBe("Newsletter (Newsletter)");
+    expect(trigger(host)?.textContent).toBe("Newsletter");
     expect(bindingVariant(host)).toBe("bound");
     expect(controlProps()).toMatchObject({
       bound: true,

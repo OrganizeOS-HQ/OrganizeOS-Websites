@@ -648,10 +648,19 @@ can be merged with minimal conflict.
     lines in `builder/inspector.tsx`, with `$activeInspectorPanel` widened to
     take `"motion"` in `builder/shared/nano-states.ts`; the OrganizeOS data
     tab in `sidebar-left/sidebar-left.tsx` (shown only for an org the deny
-    list does not deny) and `sidebar-left/types.ts`; the record picker,
-    `settings-panel/controls/organizeos-record.tsx`, with
+    list does not deny) and `sidebar-left/types.ts`; the panel's controls,
+    `settings-panel/controls/organizeos-controls.tsx`,
+    `organizeos-field-control.tsx` and `organizeos-record.tsx`, with
+    `organizeos-controls.test.tsx`, `organizeos-field-control.test.tsx` and
     `organizeos-record.test.ts`, behind one marked branch in
-    `settings-panel/controls/combined.tsx`.
+    `settings-panel/controls/combined.tsx`, before the json control, which
+    also hands on the props logic's `onChangeByPropName` that one marked line
+    in `settings-panel/props-section/props-section.tsx` passes, and one marked
+    `export` of `BasePage` in `settings-panel/controls/url.tsx`, which honours
+    `readOnly` as the other modes do; the Signup Form's Fields logic,
+    `features/organizeos-panel/signup-fields.ts` with
+    `signup-fields.test.tsx`; the `combined.tsx`, `props-section.tsx` and
+    `url.tsx` cases in `overlay.wiring.node.test.ts`.
   - The CMS page templates (§9): `collection-schema.ts`,
     `collection-layout.ts`, `collection-pages.ts`, `collection-list.ts` and
     `collection-row-menu.tsx`, with their tests, the collection rows in
@@ -676,7 +685,9 @@ can be merged with minimal conflict.
     insert imports alone, as `@organizeos/site-components/style-order`) and,
     alone, as `@organizeos/site-components/site-templates/canonical-variables`;
     neither `components.ts` nor `metas.ts` imports it. The block templates are
-    factories, `signupFormTemplate` in `signup-form.template.tsx`,
+    factories, `signupFormTemplate` and `signupFormInlineTemplate` in
+    `signup-form.template.tsx`, `fieldTemplate` in
+    `signup/field.template.tsx`,
     `rsvpFormTemplate` in `rsvp-form.template.tsx` and `rotatingTabsTemplate`
     in `rotating-tabs.template.tsx` (`block-factories.test.tsx`), and the
     block tokens read the site variables in `shared/form-tokens.ts` and
@@ -1094,6 +1105,31 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   which names a form field and wires its **Field Label**, **Field Input** and
   **Field Message** together. `src/form/` holds what later families share: part
   registration, the submit helper, the canvas check.
+  - **Fields come from the form.** A Field takes its input type, `required`
+    and `autocomplete` from its form field. Required follows one rule,
+    `isRequiredField` in `signup/forms-data.ts` (exported through
+    `@organizeos/site-components/forms-data`): the field says required and is
+    not a consent field. The input's `required`, the submit check, the canvas
+    check and the builder's Fields list all read it, so a consent field is never
+    required. Autocomplete: `email`, `given-name`
+    (`first_name`), `family-name` (`last_name`), `name`, `tel` (`phone`) and
+    `postal-code` (`postal_code`, `zip`); the designer's own `autocomplete`
+    applies only where the field gives none. The builder chooses which fields
+    a form has a Field for (the Signup Form's Settings, below).
+  - **A Field its form lacks renders nothing on a live page**, under every
+    root that gives Fields a form (the Signup Form, the RSVP Form): when the
+    resolved form is known and has no field of the Field's name, the Field
+    renders nothing on a published page and in the preview, and renders as
+    before on the canvas, where the root's check and the Settings warning name
+    it. Its value was never sent: a submit sends the form's fields only.
+  - **The SMS consent field.** The forms reader (`signup/forms-data.ts`) reads
+    a field's `consent` and `consent_version` markers leniently, into
+    `FormFieldConfig.consent` and `consentVersion`; neither is sent. The
+    platform lists the SMS opt-in (a checkbox named `sms_opt_in`,
+    `consent: "sms"`) only while the org can text. A Field Label whose Field's
+    form field has `consent` renders that field's label, read from the Forms
+    data at render, and ignores its children, so the site never stores the
+    consent wording.
 - Every meta is `category: "hidden"`, so upstream's grouping in the
   Components panel skips the blocks, and the panel's OrganizeOS section lists
   them (In the builder, below). The **Signup Form template** binds the root's `state` to a
@@ -1103,6 +1139,38 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   `src/shared/form-tokens.ts`, for the Signup Form and the RSVP Form alike: a
   project that has both reuses one token each, so the two templates cannot
   drift apart.
+  - Its Fields are `fieldTemplate`'s (`src/signup/field.template.tsx`), the
+    tree the builder inserts for a field, so a template's Field and an
+    inserted one are the same: a Field with "OS Field", a Field Label holding
+    the field's label as placeholder text, a Field Input with "OS Input" and a
+    Field Message with "OS Message". A checkbox lays out as a row (the box,
+    then its label, then the message on a line of its own); a consent field's
+    Field Label holds no text, only the expression `consentLabelExpression`
+    (`""`), so the canvas, which edits only text with no expression in it,
+    never opens it for typing.
+  - Navigator labels name each part by what it is: a Field by its field's
+    label ("Email", "First name"), a consent Field "SMS consent" (or
+    "Consent"), never by its wording, and the state boxes by their state
+    ("Success", "Check your email", "Error", "Unavailable").
+  - The stacked template's root has a local `max-width: 32rem; width: 100%`.
+    Success and Check your email wear "OS Success Message" and Unavailable
+    "OS Error Message", after Form Content; the Error box sits inside Form
+    Content, just before the Submit Button, where the visitor is looking, and
+    wears "OS Error Message".
+  - **Signup Form, inline** (`signupFormInlineTemplate`, the template
+    `SignupFormInline`) is the same root with the same Forms binding: one row
+    of an Email Field and the Submit Button, with no heading. Form Content is
+    a wrapping flex row, the Email Field `flex: 1 1 320px` and the Submit
+    Button `flex: 0 0 auto`, so the row breaks into two below about 480px of
+    the form's own width, wherever it sits. The Email Field's label is
+    visually hidden (as the honeypot is) and its input reads "Email". The
+    Error box is the row's last item at `flex-basis: 100%`, a full line under
+    it; the state boxes and tokens are the stacked template's.
+  - The package exports `fieldTemplate` alone as
+    `@organizeos/site-components/field-template`, and the forms reader alone as
+    `@organizeos/site-components/forms-data` (`parseFormsData`,
+    `resolveSignupForm`, `orgDefaultFields`), so the builder reads a form
+    exactly as the block does. No component imports the field template.
 - **Event List** and **Event Card** are templates over native elements and a
   collection under a Share Code Carrier root, with no component of their own
   (the package registers no component for them, and `components.ts` never
@@ -1247,8 +1315,8 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   on itself for a missing part (an email Field, a Submit Button, a Field for a
   required form field), a Field naming a field its form lacks, a form inside
   another form, and a picked form that is unavailable.
-- On a published page, a submit with a required form field that has no Field
-  Input reports Unavailable and posts nothing. The page reads its form from the
+- On a published page, a submit with a required form field (`isRequiredField`)
+  that has no Field Input reports Unavailable and posts nothing. The page reads its form from the
   platform when it renders, not when it was published, so the form can gain a
   required field afterwards, and the platform's answer would then name a field
   the page has no Field Message to show it on.
@@ -1284,7 +1352,7 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   directly after General. It lists the namespace's templates with the
   Components panel's own cards, in its sections' order (Sections: Rotating
   Tabs, Marquee, Convergence Field; Content: Rich Text; Events: Event List,
-  Event Card, RSVP Form; Signups: Signup Form), skips a name that is not registered yet, and offers a
+  Event Card, RSVP Form; Signups: Signup Form, Signup Form, inline), skips a name that is not registered yet, and offers a
   registered block no section names after the others (the "More" rule). A
   card's tooltip is its template's description, a short phrase ("Your
   upcoming public events"; `metas.test.ts` holds every template to a few
@@ -1299,6 +1367,94 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   shows only the XML and data categories. The Sections blocks and Rich Text
   read no platform data of their own, so their inserts bind nothing (Rich
   Text has no entry in `organizeosBlockData`).
+- **The Signup Form's Settings** (`settings-panel/controls/organizeos-controls.tsx`,
+  behind the one marked branch in `combined.tsx`, before the json control,
+  which asks `getOrganizeosControl` for a control by component and prop and
+  reads the selection from `$selectedInstanceSelector`, since `renderControl`
+  is given none). The root's rows read Form, State, Fields and After submit
+  (the meta's `initialProps` order), at the panel's 240px, with names that do
+  not fit in a tooltip and no help text. Any other prop, and every RSVP Form
+  prop but its record, keeps upstream's control.
+  - **Form** is the record picker (below). Choosing a form writes `record`
+    and inserts the new form's required Fields the root has none of, in one
+    transaction (`changeSignupForm`), so one undo restores both. The new
+    form's fields are read from the root's computed `data`, which lists every
+    form. Fields the new form lacks are left, and get the warning line.
+  - **State** is six icon buttons, each named in its tooltip (Initial,
+    Submitting, Success, Check email, Error, Unavailable), and drives the
+    canvas only. A `state` bound to one variable (the template's `formState`)
+    sets that variable's value on the canvas, as the block's own action does:
+    no prop is written and no undo step added. Anything else, an unbound
+    `state` or any other expression, has no variable to set, so the buttons are
+    read-only and write nothing.
+  - **Fields** takes the `data` prop's row, under a plain "Fields" label with
+    no menu, so `data` is never shown, and an unbound `data` is reconnected
+    from its own line (below). It lists one checkbox
+    per field of the form the root resolves (`resolveSignupForm` on its
+    `record` and computed `data`, as the block resolves it), in the form's
+    order. A row is checked while the root has a descendant Field of that name,
+    read from `$instances` and `$props`, never from the canvas's part
+    registry, which the template unmounts in the other states. A required row
+    is checked and disabled while its Field exists; with none it is
+    checkable, so a deleted one can be put back. A consent row is listed only
+    while the form lists the field, is never locked, and reads the navigator's
+    name for its Field ("SMS consent", or "Consent": `getFieldNavigatorLabel`
+    in `field.template.tsx`), never the consent wording. Checking inserts one
+    Field (`fieldTemplate`, the tokens reused with "ours") in one transaction:
+    after the last Field; with none, before the first Submit Button; with
+    neither, last in the root's "Form Content", else in its first child; never
+    in the root itself. A name that already has a Field, one whose bound
+    `field` computes to it included, is skipped (by a check or by a Form
+    change), so a double click inserts once. Unchecking deletes every Field of that name
+    under the root, in one transaction. Neither changes the selection, and a
+    Field writes no Resource, binding or variable. All of it is in
+    `features/organizeos-panel/signup-fields.ts`: `formRootComponents` (the
+    roots it serves) and `getFieldRows`' lock rule are where the Join Form
+    plugs in.
+  - **One warning line** under the list, only when something is wrong, the
+    first of: "Nested in a form" (an ancestor whose tag is `form`, the root's
+    own excluded), "Form not found" (the picked form is missing, is a
+    membership form, or the loaded `data` is not the Forms body), "Missing:
+    {label}" (the first required field with no Field), "SMS needs Phone" (an
+    SMS consent Field and no `phone` Field), "No Submit Button", "Not in form:
+    {name}" (a Field whose name the form lacks; "(blank)" for none). Nothing
+    shows while bound `data` loads, and "Form not found" gives way to the
+    record picker's own line while a load has failed. A bound `field` counts
+    by its computed value and is never "Not in form". The canvas outline keeps
+    its full check.
+  - **Unbound `data`.** `data` is bound when it is an expression that reads a
+    variable the project has (`isSignupDataBound`); missing, a literal, or an
+    expression whose variables are gone is not, and is never taken for
+    loading. Then a line reads "No forms data. Reconnect", and the warning
+    line runs the checks that need no data: with no form picked, the org
+    defaults' fields, else the Submit Button ("Form not found" gives way to
+    the "No forms data" line). Reconnect (`restoreSignupFormData`) binds
+    `data` to the org's Forms catalog as the insert does, through the insert's
+    own `completeOrganizeosFragment` and `completeOrganizeosInsertMutable`,
+    reusing the root's own binding of the Forms Resource when it is still
+    there, in one staged transaction and one undo step; the catalog is kept
+    (the Forms Resource is added only when missing). It is refused, with the
+    insert's toast and nothing written, where the insert would be.
+  - **After submit** is two radios, Message (`"state"`) and Page (`"page"`),
+    the values published sites read. Page draws upstream's page select (the URL
+    control's Page mode, `BasePage`, made reachable by one marked `export` in
+    `url.tsx`) under the radios for `actionPage`, whose own row is hidden; the
+    page is written through the props logic (`handleChangeByPropName`), as the
+    other rows are. A bound `action` is read-only, its page select included. An
+    `actionPage` left as a plain URL by the old control still works on the
+    live page; the select reads "Choose page" until a page is picked.
+  - **A Field's Form field**, for a Field under a Signup Form
+    (`organizeos-field-control.tsx`), is a select of that root's resolved
+    fields, each named by its label with its name for the highlighted option;
+    a name the form lacks stays listed first. Choosing writes `field` and, when
+    the Field's navigator label is empty or still names the old field (its
+    label, or "Field: {label}"), renames it to the new field's, in one
+    transaction (`changeSignupFieldName`). In the same transaction a Field
+    that becomes a consent field gets `consentLabelExpression` in its Field
+    Label, so no text of the old field stays, and one that stops being one (or
+    whose Field Label has no text) gets the new field's label as text;
+    otherwise the Field Label's text is the designer's and is never touched.
+    A Field under an RSVP Form or outside any form keeps the text box.
 - **The OrganizeOS data tab** (`organizeos-panel.tsx`), a left-sidebar tab
   after Components with upstream's `ResourceIcon` and the tooltip "OrganizeOS
   data", hidden in content mode and disabled on text pages, as Components is.
@@ -1596,7 +1752,9 @@ collection }` invalidates, through `invalidateResource`, every current
   is inserted untouched.
 
   - The Signup Form's entry is the Forms Resource under "OrganizeOS Forms", and
-    the root's `data` = `<v>.data`.
+    the root's `data` = `<v>.data`. The inline Signup Form's key
+    (`SignupFormInline`) shares that entry: the same catalog, binding name and
+    bind, so it too brings a fresh binding scoped to its own root.
   - The Event List's entry is Upcoming Events under "OrganizeOS Upcoming
     Events", with three binds: the collection's (`events`) `data` =
     `(<v>.ok === true ? <v>.data.data : [])`, the empty box's (`empty`)
@@ -2340,15 +2498,18 @@ no class fallback.
   before each fork PR.
 
 **The record picker**, `settings-panel/controls/organizeos-record.tsx`, behind
-one marked branch in `settings-panel/controls/combined.tsx`, before the text
-control. A table, `recordPickers`, maps a block's component to its picker (what
-it lists, and the wording of its hint and placeholder); a `record` prop on any
-other component keeps the text control. The Signup Form's `record` is a select:
+the one marked branch in `settings-panel/controls/combined.tsx` (the panel's
+controls, above). A table, `recordPickers`, maps a block's component to its
+picker (what it lists, and the wording of its hint and placeholder); a
+`record` prop on any other component keeps the text control. The Signup Form's
+`record` is a select:
 
-- "None (org defaults)" first (an empty `record`), then the forms the block
-  takes, as "name (Newsletter)" or "name (Contact)": newsletter
-  (`contact-signup`) and contact (`contact-form`) forms, never membership
-  forms.
+- "Org defaults" first (an empty `record`), then the forms the block takes,
+  each by its name, with its kind ("Newsletter" or "Contact") shown for the
+  highlighted option: newsletter (`contact-signup`) and contact
+  (`contact-form`) forms, never membership forms. The Signup Form's Form row
+  passes `onChangeRecord`, so a choice goes through `changeSignupForm`
+  instead of the props panel's write.
 - It reads the selected root's computed `data`, which the builder's resources
   loader already fetches for the block's own binding (scoped to its root and
   read by the root's `data`, so loaded while the block is on the open page),
@@ -2547,8 +2708,9 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   Each page has a placer of its own, which records every placement (key and root
   id) beside the page's fragment and throws on a `placementId` used twice.
   Nothing is written into the site to mark a block. This needs each block
-  template to be a factory: `signupFormTemplate`, `rsvpFormTemplate` and
-  `rotatingTabsTemplate` create their `Variable` inside the function, since
+  template to be a factory: `signupFormTemplate`, `signupFormInlineTemplate`,
+  `rsvpFormTemplate` and `rotatingTabsTemplate` create their `Variable` inside
+  the function (and `fieldTemplate` is a factory too), since
   `renderTemplate` scopes a data source by its `Variable`, and a block's
   `meta.template` is its factory called once, so the Components panel is
   unchanged. The insert completion (`completeOrganizeosFragment`) takes an
@@ -2566,7 +2728,8 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   bracketed placeholder in either keeps together.
 - **Template block tokens.** `SiteTemplate.blockTokens` gives the template's
   look for the block tokens by name (`BlockTokenName`: "OS Form Heading", "OS
-  Field", "OS Input", "OS Button", "OS Message", "OS Card", "OS Event Title",
+  Field", "OS Input", "OS Button", "OS Message", "OS Success Message", "OS
+  Error Message", "OS Card", "OS Event Title",
   "OS Event Link", "OS Event Row", "OS Event Date", "OS Event Day", "OS Event
   Cover" and "OS Event Note"). Both cards' titles wear "OS Event Title" (the
   heading font) and their links "OS Event Link" (`--text`, underlined, 600, a
@@ -2601,7 +2764,14 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   on a site without the variable the declaration is invalid and the heading
   inherits, as before), so a template's form heading matches its own
   headings, at a line height of 1.2, so one that wraps on a phone sets as a
-  heading, not at the body's; a template sets their case and size there.
+  heading, not at the body's; a template sets their case and size there. The
+  Signup Form's state boxes wear "OS Success Message" and "OS Error Message":
+  the site's body font (`var(--font-body)`, no fallback), 14px at 1.4,
+  `var(--text, ...)`, padding 12px 16px and a 6px radius, on a tint of the
+  base as a longhand `background-color`, `color-mix(in srgb, <accent> 10%,
+  var(--base, #ffffff))` with `--accent-2` for success and `--accent-1` for
+  error. The error box is also marked by a 4px left border in `--text` and
+  weight 600, so it is not told apart by colour alone.
 - **The check** (`checkSiteTemplate` in `check.ts`, with `style-scan.ts`; run
   over every `SITE_TEMPLATES` entry and the spike fixture by `catalog.test.ts`)
   returns one readable line per violation, and an empty list for a template that

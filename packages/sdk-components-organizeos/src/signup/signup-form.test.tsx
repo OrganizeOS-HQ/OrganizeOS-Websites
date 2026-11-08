@@ -330,6 +330,177 @@ describe("parts", () => {
   });
 });
 
+const smsConsentLabel = "Text me updates. Reply STOP to opt out.";
+
+/** A form with the postal fields and the SMS opt-in, as `GET /v1/forms` gives them. */
+const formsWithConsent = (
+  consentLabel = smsConsentLabel,
+  consentRequired = false
+) => ({
+  data: [
+    {
+      id: "form-sms",
+      kind: "newsletter",
+      fields: [
+        { name: "email", label: "Email", type: "email", required: true },
+        { name: "first_name", label: "First name", type: "text" },
+        { name: "last_name", label: "Last name", type: "text" },
+        { name: "phone", label: "Phone", type: "phone" },
+        { name: "postal_code", label: "Postal code", type: "text" },
+        { name: "zip", label: "ZIP", type: "text" },
+        { name: "ward", label: "Ward", type: "text" },
+        {
+          name: "sms_opt_in",
+          label: consentLabel,
+          type: "checkbox",
+          consent: "sms",
+          consent_version: "v1",
+          ...(consentRequired ? { required: true } : {}),
+        },
+      ],
+    },
+  ],
+});
+
+describe("a Field and its form", () => {
+  test("autocomplete comes from the field's name, and a custom name gets none", () => {
+    render(
+      <Sdk renderer={undefined}>
+        <SignupForm record="form-sms" data={formsWithConsent()}>
+          <TestField name="email" label="Email" />
+          <TestField name="first_name" label="First name" />
+          <TestField name="last_name" label="Last name" />
+          <TestField name="phone" label="Phone" />
+          <TestField name="postal_code" label="Postal code" />
+          <TestField name="zip" label="ZIP" />
+          <TestField name="ward" label="Ward" />
+        </SignupForm>
+      </Sdk>
+    );
+    const autoComplete = (label: string) =>
+      screen.getByLabelText(label).getAttribute("autocomplete");
+    expect(autoComplete("Email")).toBe("email");
+    expect(autoComplete("First name")).toBe("given-name");
+    expect(autoComplete("Last name")).toBe("family-name");
+    expect(autoComplete("Phone")).toBe("tel");
+    expect(autoComplete("Postal code")).toBe("postal-code");
+    expect(autoComplete("ZIP")).toBe("postal-code");
+    expect(autoComplete("Ward")).toBeNull();
+  });
+
+  test("the designer's autocomplete applies only where the field gives none", () => {
+    render(
+      <Sdk renderer={undefined}>
+        <SignupForm record="form-sms" data={formsWithConsent()}>
+          <Field field="zip">
+            <FieldLabel>ZIP</FieldLabel>
+            <FieldInput autoComplete="off" />
+          </Field>
+          <Field field="ward">
+            <FieldLabel>Ward</FieldLabel>
+            <FieldInput autoComplete="address-level3" />
+          </Field>
+        </SignupForm>
+      </Sdk>
+    );
+    expect(screen.getByLabelText("ZIP").getAttribute("autocomplete")).toBe(
+      "postal-code"
+    );
+    expect(screen.getByLabelText("Ward").getAttribute("autocomplete")).toBe(
+      "address-level3"
+    );
+  });
+
+  test("a consent Field's label is the form's wording, whatever its children say", () => {
+    const ConsentBlock = ({ label }: { label?: string }) => (
+      <Sdk renderer={undefined}>
+        <SignupForm record="form-sms" data={formsWithConsent(label)}>
+          <TestField name="email" label="Email" />
+          <TestField name="phone" label="Phone" />
+          <Field field="sms_opt_in">
+            <FieldInput />
+            <FieldLabel>Copied wording</FieldLabel>
+          </Field>
+        </SignupForm>
+      </Sdk>
+    );
+    const { container, rerender } = render(<ConsentBlock />);
+    const checkbox = screen.getByLabelText(smsConsentLabel);
+    expect(checkbox.getAttribute("type")).toBe("checkbox");
+    expect(container.textContent).not.toContain("Copied wording");
+    rerender(<ConsentBlock label="Send me texts." />);
+    expect(screen.getByLabelText("Send me texts.")).toBe(checkbox);
+    expect(container.textContent).not.toContain(smsConsentLabel);
+  });
+
+  test("a Field Label of a field with no consent keeps the designer's text", () => {
+    render(
+      <Sdk renderer={undefined}>
+        <SignupForm record="form-sms" data={formsWithConsent()}>
+          <TestField name="ward" label="Your ward" />
+        </SignupForm>
+      </Sdk>
+    );
+    expect(screen.getByLabelText("Your ward").getAttribute("name")).toBe(
+      "ward"
+    );
+  });
+
+  test("a Field the form lacks renders nothing on a published page and in the preview", () => {
+    for (const renderer of [undefined, "preview"] as const) {
+      const { container } = render(
+        <Block
+          renderer={renderer}
+          fields={[
+            ["email", "Email"],
+            ["favorite_color", "Favorite color"],
+          ]}
+        />
+      );
+      expect(screen.getByLabelText("Email")).toBeDefined();
+      expect(screen.queryByLabelText("Favorite color")).toBeNull();
+      expect(container.textContent).not.toContain("Favorite color");
+      cleanup();
+    }
+  });
+
+  test("a Field the form lacks renders on the canvas", () => {
+    render(
+      <Block
+        renderer="canvas"
+        fields={[
+          ["email", "Email"],
+          ["favorite_color", "Favorite color"],
+        ]}
+      />
+    );
+    expect(screen.getByLabelText("Favorite color")).toBeDefined();
+  });
+
+  test("a Field renders as today while its form is unknown", () => {
+    for (const data of [undefined, {}]) {
+      render(
+        <Block
+          record={newsletterId}
+          data={data}
+          fields={[["favorite_color", "Favorite color"]]}
+        />
+      );
+      expect(screen.getByLabelText("Favorite color")).toBeDefined();
+      cleanup();
+    }
+  });
+
+  test("a Field outside any root renders", () => {
+    render(
+      <Sdk renderer={undefined}>
+        <TestField name="favorite_color" label="Favorite color" />
+      </Sdk>
+    );
+    expect(screen.getByLabelText("Favorite color")).toBeDefined();
+  });
+});
+
 describe("request body", () => {
   /** The newsletter form of request-form.json, filled in as it is there. */
   const submitNewsletter = (fetchMock: ReturnType<typeof stubFetch>) => {
@@ -523,7 +694,8 @@ describe("request body", () => {
       />
     );
     fill("Email", "ada@example.org");
-    fill("Favorite color", "green");
+    // a Field the form lacks is not rendered on a published page at all
+    expect(screen.queryByLabelText("Favorite color")).toBeNull();
     const honeypot = getForm(container).querySelector('[name="website"]');
     if (honeypot === null) {
       throw new Error("no honeypot");
@@ -842,6 +1014,71 @@ describe("unavailable", () => {
   ])("with no record, %s data draws nothing on the canvas", (_case, data) => {
     const { container } = render(<Block renderer="canvas" data={data} />);
     expect(getCanvasCheck(container)).toBeNull();
+  });
+});
+
+describe("a consent field marked required", () => {
+  // consent is never required, whatever its definition says (isRequiredField)
+  const RequiredConsentBlock = ({
+    renderer,
+    withConsent,
+    onStateChange,
+  }: {
+    renderer: Renderer;
+    withConsent: boolean;
+    onStateChange?: (state: SignupFormState, message: string) => void;
+  }) => (
+    <Sdk renderer={renderer}>
+      <SignupForm
+        record="form-sms"
+        data={formsWithConsent(undefined, true)}
+        onStateChange={onStateChange}
+      >
+        <TestField name="email" label="Email" />
+        {withConsent && (
+          <Field field="sms_opt_in">
+            <FieldInput />
+            <FieldLabel />
+          </Field>
+        )}
+        <SubmitButton>Sign up</SubmitButton>
+      </SignupForm>
+    </Sdk>
+  );
+
+  test("its checkbox is not required", () => {
+    render(<RequiredConsentBlock renderer={undefined} withConsent />);
+    expect(
+      screen.getByLabelText(smsConsentLabel).hasAttribute("required")
+    ).toBe(false);
+  });
+
+  test("the canvas check does not ask for its Field", () => {
+    const { container } = render(
+      <RequiredConsentBlock renderer="canvas" withConsent={false} />
+    );
+    expect(getCanvasCheck(container)).toBeNull();
+  });
+
+  test("a published page without its Field still submits", async () => {
+    const fetchMock = answerWith(responseSubscribed);
+    const onStateChange = vi.fn();
+    const { container } = render(
+      <RequiredConsentBlock
+        renderer={undefined}
+        withConsent={false}
+        onStateChange={onStateChange}
+      />
+    );
+    fill("Email", "ada@example.org");
+    fireEvent.submit(getForm(container));
+    await waitFor(() =>
+      expect(onStateChange).toHaveBeenLastCalledWith(
+        "success",
+        expect.any(String)
+      )
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
