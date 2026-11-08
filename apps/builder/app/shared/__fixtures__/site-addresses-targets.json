@@ -12,7 +12,8 @@
         "main": false,
         "published_at": "2026-11-07T12:00:00+00:00",
         "unpublished_at": null,
-        "live": true
+        "live": true,
+        "serving": true
       },
       {
         "key": "example.org",
@@ -20,7 +21,8 @@
         "main": true,
         "published_at": null,
         "unpublished_at": null,
-        "live": false
+        "live": false,
+        "serving": false
       },
       {
         "key": "example.net",
@@ -28,7 +30,8 @@
         "main": false,
         "published_at": "2026-11-06T09:30:00+00:00",
         "unpublished_at": "2026-11-07T08:15:00+00:00",
-        "live": false
+        "live": false,
+        "serving": false
       }
     ]
   }

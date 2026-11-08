@@ -1,0 +1,9 @@
+{
+  "organizationId": "00000000-0000-4000-8000-0000000000e1",
+  "buildId": "build-example-1",
+  "deploymentUrl": "https://organizeos-sites-example-team.vercel.app",
+  "orgScript": false,
+  "guardLevel": 1,
+  "targets": ["builtin", "www.example.org"],
+  "replacePages": true
+}
