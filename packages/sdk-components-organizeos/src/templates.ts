@@ -7,3 +7,5 @@ export { meta as RotatingTabs } from "./rotating-tabs.template";
 export { meta as Marquee } from "./marquee.template";
 export { meta as ConvergenceField } from "./convergence-field.template";
 export { meta as RichText } from "./rich-text/rich-text.template";
+export { meta as ProductGrid } from "./product-grid.template";
+export { meta as ProductCard } from "./product-card.template";

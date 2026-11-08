@@ -31,6 +31,12 @@ export type OrganizeosSite = {
    * role above viewer (builder/features/cms-panel).
    */
   cmsPanelEnabled?: boolean;
+  /**
+   * Whether the deployment offers the Shop blocks, the Product Grid and the
+   * Product Card (`ORGANIZEOS_SHOP_BLOCKS` is exactly `true`). Otherwise the
+   * Components panel lists neither and their insert is refused.
+   */
+  shopBlocksEnabled?: boolean;
 };
 
 /**

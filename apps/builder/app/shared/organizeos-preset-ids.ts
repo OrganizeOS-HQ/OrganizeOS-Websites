@@ -74,6 +74,26 @@ export const FORMS_PRESET_KEY = "forms";
 export const UPCOMING_EVENTS_PRESET_KEY = "upcoming-events";
 
 /**
+ * The Shop blocks' catalog Resource, `GET /v1/products`: the products the
+ * org's storefront shows, newest first. Provisioning writes it once the
+ * builder offers the Shop blocks (`ORGANIZEOS_SHOP_BLOCKS`) and rewrites it
+ * where present otherwise; the first Product Grid creates it when missing. A
+ * Product Card reads a Resource of its own, a copy of this request under a
+ * nanoid (`PRODUCT_RESOURCE_NAME`), whose URL its Product row rewrites.
+ */
+export const PRODUCTS_PRESET_KEY = "products";
+export const PRODUCTS_RESOURCE_NAME = "Products";
+export const PRODUCT_RESOURCE_NAME = "Product";
+
+/**
+ * The names of the bindings the Shop blocks bring, distinctive for the same
+ * reason as FORMS_PRESET_NAME: the Product Grid's, which references the
+ * Products Resource, and the Product Card's, which references its own.
+ */
+export const PRODUCTS_BINDING_NAME = "OrganizeOS Products";
+export const PRODUCT_BINDING_NAME = "OrganizeOS Product";
+
+/**
  * Where provisioning seeds the starter signup page
  * (`shared/db/signup-form-preset.server.tsx`), which applying a site template
  * keeps. Not under any path every org host redirects to the platform
@@ -182,7 +202,7 @@ export type CatalogEntry = {
  * The org's catalog in a build: the Resources found by their deterministic ids,
  * never by name. Events, Fundraisers and Stats first, then the collections in
  * the build's order (a Resource whose url names a collection and whose id is
- * that collection's), then Forms, then Upcoming Events.
+ * that collection's), then Forms, then Upcoming Events, then Products.
  */
 export const findCatalogResources = async (
   projectId: string,
@@ -220,5 +240,6 @@ export const findCatalogResources = async (
   }
   entries.push(...(await find(FORMS_PRESET_KEY)));
   entries.push(...(await find(UPCOMING_EVENTS_PRESET_KEY)));
+  entries.push(...(await find(PRODUCTS_PRESET_KEY)));
   return entries;
 };

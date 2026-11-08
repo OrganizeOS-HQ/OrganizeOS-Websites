@@ -862,6 +862,16 @@ describe("component coverage", () => {
     (name) => `${organizeosNamespace}:${name}`
   );
 
+  test("the Shop blocks' roots render the designer's children, and Price is named text", () => {
+    expect(
+      rendersDesignerChildrenOnly.has(`${organizeosNamespace}:ProductGrid`)
+    ).toBe(true);
+    expect(
+      rendersDesignerChildrenOnly.has(`${organizeosNamespace}:ProductCard`)
+    ).toBe(true);
+    expect(namedTextComponents.has(`${organizeosNamespace}:Price`)).toBe(true);
+  });
+
   test("every registered OrganizeOS component is classified", () => {
     const unclassified = registered.filter(
       (name) =>

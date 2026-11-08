@@ -96,6 +96,10 @@ const environment = z.object({
   // `true` offers it; anything else keeps it hidden.
   ORGANIZEOS_CMS_PANEL: z.string().optional(),
 
+  // The Shop blocks' switch: only the exact value `true` lists the Product
+  // Grid and Product Card and seeds the Products catalog Resource.
+  ORGANIZEOS_SHOP_BLOCKS: z.string().optional(),
+
   PORT: z
     .string()
     .optional()
@@ -184,6 +188,7 @@ const rawEnv = {
   WEBSITES2_PREVIEW_SECRET: process.env.WEBSITES2_PREVIEW_SECRET,
   WEBSITES2_SITE_ACTION_SECRET: process.env.WEBSITES2_SITE_ACTION_SECRET,
   ORGANIZEOS_CMS_PANEL: process.env.ORGANIZEOS_CMS_PANEL,
+  ORGANIZEOS_SHOP_BLOCKS: process.env.ORGANIZEOS_SHOP_BLOCKS,
   PORT: process.env.PORT,
   MAX_UPLOAD_SIZE: process.env.MAX_UPLOAD_SIZE,
   S3_ENDPOINT: process.env.S3_ENDPOINT,

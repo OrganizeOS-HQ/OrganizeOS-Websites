@@ -380,7 +380,7 @@ describe("Upcoming Events in the Data section", () => {
         dataSource.resourceId === upcoming.resourceId
     );
 
-  test("is listed last when the project has it, and not when it lacks it", async () => {
+  test("is listed after Forms, before Products, when the project has it, and not when it lacks it", async () => {
     setProject();
     const keys = async () =>
       (await findCatalogResources(projectId, $resources.get().values())).map(
@@ -393,6 +393,7 @@ describe("Upcoming Events in the Data section", () => {
       ["stats", "Stats"],
       ["forms", "OrganizeOS Forms"],
       ["upcoming-events", "Upcoming Events"],
+      ["products", "Products"],
     ]);
 
     $resources.set(

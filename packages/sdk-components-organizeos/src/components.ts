@@ -17,3 +17,6 @@ export { MarqueeTrack } from "./marquee/marquee-track";
 export { ConvergenceField } from "./field/convergence-field";
 export { ShareCodeCarrier } from "./share-code/share-code-carrier";
 export { RichText } from "./rich-text/rich-text";
+export { Price } from "./shop/price";
+export { ProductGrid } from "./shop/product-grid";
+export { ProductCard } from "./shop/product-card";

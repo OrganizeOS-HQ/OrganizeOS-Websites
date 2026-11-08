@@ -3969,6 +3969,272 @@ sitemap.map((page) => page.path);`
     });
   });
 
+  // OrganizeOS fork: a page with a Product Grid and a Product Card publishes
+  // the package's three shop components, keeps each card's "/shop/" + slug
+  // link and its bound image while org script is paused, and loads the two
+  // blocks' Resources on that page only.
+  describe("publishes a page with the Shop blocks", () => {
+    const ns = "@organizeos/site-components";
+    const gridVariable = encodeDataSourceVariable("grid-binding");
+    const cardVariable = encodeDataSourceVariable("card-binding");
+    const product = encodeDataSourceVariable("product-parameter");
+    const cardProduct = encodeDataSourceVariable("card-product-parameter");
+    const resource = (id: string, name: string, query = "") => ({
+      id,
+      name,
+      method: "get",
+      url: `"https://app.example.org/api/public/v1/products${query}"`,
+      headers: [{ name: "Authorization", value: `"Bearer osk_test"` }],
+    });
+    const element = (
+      id: string,
+      component: string,
+      children: string[],
+      tag?: string
+    ) => [
+      id,
+      {
+        id,
+        component,
+        ...(tag === undefined ? {} : { tag }),
+        children: children.map((value) => ({ type: "id", value })),
+      },
+    ];
+    const prop = (
+      id: string,
+      instanceId: string,
+      name: string,
+      type: string,
+      value: unknown
+    ) => [id, { id, instanceId, name, type, value }];
+
+    const writeShopPage = () =>
+      writeSiteData(
+        createSiteData({
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: "Home",
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+            {
+              id: "about",
+              name: "About",
+              title: "About",
+              path: "/about",
+              rootInstanceId: "about-root",
+              meta: {},
+            },
+          ],
+          instances: [
+            element("root", "Box", ["grid", "card-root"]),
+            element("grid", `${ns}:ProductGrid`, ["products"]),
+            element("products", "ws:collection", ["card"]),
+            element("card", "ws:element", ["image", "amount"], "a"),
+            element("image", "Image", []),
+            element("amount", `${ns}:Price`, []),
+            element("card-root", `${ns}:ProductCard`, ["product"]),
+            element("product", "ws:collection", ["card-link"]),
+            element("card-link", "ws:element", [], "a"),
+            element("about-root", "Box", []),
+          ] as never,
+          props: [
+            prop("grid-columns", "grid", "columns", "string", "4"),
+            prop(
+              "products-item",
+              "products",
+              "item",
+              "parameter",
+              "product-parameter"
+            ),
+            prop(
+              "products-data",
+              "products",
+              "data",
+              "expression",
+              `(${gridVariable}.ok === true ? ${gridVariable}.data.data.slice(0, 6) : [])`
+            ),
+            prop(
+              "card-href",
+              "card",
+              "href",
+              "expression",
+              `"/shop/" + ${product}.slug`
+            ),
+            prop("card-reload", "card", "reloadDocument", "boolean", true),
+            prop(
+              "image-src",
+              "image",
+              "src",
+              "expression",
+              `${product}.image_url`
+            ),
+            prop(
+              "amount-cents",
+              "amount",
+              "cents",
+              "expression",
+              `${product}.price_from_cents`
+            ),
+            prop(
+              "amount-currency",
+              "amount",
+              "currency",
+              "expression",
+              `${product}.currency`
+            ),
+            prop(
+              "product-item",
+              "product",
+              "item",
+              "parameter",
+              "card-product-parameter"
+            ),
+            prop(
+              "product-data",
+              "product",
+              "data",
+              "expression",
+              `(${cardVariable}.ok === true ? ${cardVariable}.data.data.slice(0, 1) : [])`
+            ),
+            prop(
+              "card-link-href",
+              "card-link",
+              "href",
+              "expression",
+              `"/shop/" + ${cardProduct}.slug`
+            ),
+          ] as never,
+          dataSources: [
+            [
+              "grid-binding",
+              {
+                type: "resource",
+                id: "grid-binding",
+                name: "OrganizeOS Products",
+                resourceId: "products-resource",
+                scopeInstanceId: "grid",
+              },
+            ],
+            [
+              "card-binding",
+              {
+                type: "resource",
+                id: "card-binding",
+                name: "OrganizeOS Product",
+                resourceId: "card-resource",
+                scopeInstanceId: "card-root",
+              },
+            ],
+            [
+              "product-parameter",
+              {
+                type: "parameter",
+                id: "product-parameter",
+                name: "product",
+                scopeInstanceId: "products",
+              },
+            ],
+            [
+              "card-product-parameter",
+              {
+                type: "parameter",
+                id: "card-product-parameter",
+                name: "product",
+                scopeInstanceId: "product",
+              },
+            ],
+          ] as never,
+          resources: [
+            ["products-resource", resource("products-resource", "Products")],
+            [
+              "card-resource",
+              resource(
+                "card-resource",
+                "Product",
+                "?id=34efeec7-ef26-4210-946f-866b46b94f46"
+              ),
+            ],
+          ] as never,
+        })
+      );
+
+    const prebuildPage = async (pageFile = "_index") => {
+      await prebuild({
+        assets: false,
+        template: ["react-router", "react-router-vercel"],
+      });
+      const generatedDir = join("app", "__generated__");
+      return {
+        page: await readFile(join(generatedDir, `${pageFile}.tsx`), "utf8"),
+        resources: await readFile(
+          join(generatedDir, `${pageFile}.server.tsx`),
+          "utf8"
+        ),
+      };
+    };
+
+    test("imports Product Grid, Product Card and Price from the copy of the build", async () => {
+      await writeShopPage();
+      const { page } = await prebuildPage();
+      const copy = await readFile(
+        join("app", "__organizeos__", "components.js"),
+        "utf8"
+      );
+      const imported = new Map(
+        (
+          page.match(
+            /import \{([^}]*)\} from "\.\.\/__organizeos__\/components\.js";/
+          )?.[1] ?? ""
+        )
+          .split(",")
+          .map((entry) => entry.trim().split(" as "))
+          .map(([name, local]) => [name, local])
+      );
+      for (const name of ["ProductGrid", "ProductCard", "Price"]) {
+        const localName = imported.get(name);
+        expect(localName, name).toBeDefined();
+        expect(page, name).toContain(`<${localName}`);
+        expect(copy, name).toMatch(
+          new RegExp(`export \\{[^}]*\\bas ${name}\\b[^}]*\\}`)
+        );
+      }
+      await expectCopyToBeTheClosure();
+    });
+
+    test("keeps each card's /shop/ link and its bound image while org script is paused", async () => {
+      expect(orgScriptMayRun()).toBe(false);
+      await writeShopPage();
+      const { page } = await prebuildPage();
+      expect(page).toContain(`"/shop/" + product?.slug`);
+      expect(page).toContain("src={product?.image_url");
+      expect(page).toContain("cents={product?.price_from_cents}");
+    });
+
+    test("loads the grid's and the card's Resources on that page, and neither elsewhere", async () => {
+      await writeShopPage();
+      const { resources } = await prebuildPage();
+      expect(resources).toMatch(/rootIds: \[[^\]]*"products-resource"/);
+      expect(resources).toMatch(/rootIds: \[[^\]]*"card-resource"/);
+      expect(resources).toContain(
+        `url: "https://app.example.org/api/public/v1/products",`
+      );
+      expect(resources).toContain(
+        `url: "https://app.example.org/api/public/v1/products?id=34efeec7-ef26-4210-946f-866b46b94f46",`
+      );
+
+      const about = await prebuildPage("[about]._index");
+      expect(about.page).not.toContain("ProductGrid");
+      expect(about.page).not.toContain("useResource(");
+      expect(about.resources).not.toContain("/v1/products");
+      expect(about.resources).not.toContain("products-resource");
+      expect(about.resources).not.toContain("card-resource");
+    });
+  });
+
   // OrganizeOS fork: every page route's loader fetches its resources through
   // the site's one in-memory cache, which the react-router template carries
   // (templates/react-router/app/organizeos-resource-cache.ts).

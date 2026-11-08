@@ -162,6 +162,15 @@ export const reportMalformedOrgDenyList = (value: string | undefined) => {
 };
 
 /**
+ * Whether the deployment offers the Shop blocks: `ORGANIZEOS_SHOP_BLOCKS` is
+ * exactly `true`, the style of `ORGANIZEOS_CMS_PANEL`. It lists the Product
+ * Grid and Product Card, and makes a token provision seed the Products
+ * catalog Resource.
+ */
+export const isShopBlocksSwitchOn = (value: string | undefined) =>
+  value === "true";
+
+/**
  * Describe the OrganizeOS org behind a project, or undefined for a project a
  * human owns (which is not an OrganizeOS site and gets upstream behavior).
  * Pure: the caller supplies the project's owner row, the deployment's
@@ -175,6 +184,7 @@ export const resolveOrganizeosSite = ({
   platformUrl,
   blocksDenyOrgIds,
   cmsPanel,
+  shopBlocks,
 }: {
   owner: { provider: string | null; email: string | null };
   projectDomain: string;
@@ -183,6 +193,8 @@ export const resolveOrganizeosSite = ({
   blocksDenyOrgIds?: string;
   /** The raw `ORGANIZEOS_CMS_PANEL`: only `true` offers the CMS panel. */
   cmsPanel?: string;
+  /** The raw `ORGANIZEOS_SHOP_BLOCKS`: only `true` offers the Shop blocks. */
+  shopBlocks?: string;
 }): OrganizeosSite | undefined => {
   if (owner.provider !== ORGANIZEOS_SERVICE_PROVIDER || owner.email === null) {
     return undefined;
@@ -207,6 +219,7 @@ export const resolveOrganizeosSite = ({
     blocksEnabled:
       isOrgDenied(parseOrgDenyList(blocksDenyOrgIds), organizationId) === false,
     cmsPanelEnabled: cmsPanel === "true",
+    shopBlocksEnabled: isShopBlocksSwitchOn(shopBlocks),
   };
 };
 

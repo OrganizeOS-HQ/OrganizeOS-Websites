@@ -6,6 +6,8 @@ import {
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import {
   FORMS_PRESET_NAME,
+  PRODUCTS_PRESET_KEY,
+  PRODUCTS_RESOURCE_NAME,
   UPCOMING_EVENTS_PRESET_KEY,
   UPCOMING_EVENTS_RESOURCE_NAME,
   findCatalogResources,
@@ -58,8 +60,10 @@ type V1ResourcePreset = {
    * - "when-present": only a build that already has its Resource, which is
    *   rewritten whole. It is never added: a block's insert creates it when
    *   a block first uses it.
+   * - "shop-blocks": "always" while the builder offers the Shop blocks
+   *   (`ORGANIZEOS_SHOP_BLOCKS` is exactly `true`), "when-present" otherwise.
    */
-  seeding: "always" | "when-present";
+  seeding: "always" | "when-present" | "shop-blocks";
 };
 
 /**
@@ -70,7 +74,10 @@ type V1ResourcePreset = {
  * reads through its `data` prop; a block's insert creates it on the first
  * insert. Upcoming Events is Events without the events already over, which the
  * Event List and Event Card blocks read; a block's insert creates it on the
- * first insert, like Forms.
+ * first insert, like Forms. Products is the products the org's storefront
+ * shows, newest first, at most 100, which the Product Grid reads (a Product
+ * Card reads a copy of its own); it is seeded once the Shop blocks are
+ * offered.
  */
 export const V1_RESOURCE_PRESETS: readonly V1ResourcePreset[] = [
   { key: "events", label: "Events", path: "/events", seeding: "always" },
@@ -92,6 +99,12 @@ export const V1_RESOURCE_PRESETS: readonly V1ResourcePreset[] = [
     label: UPCOMING_EVENTS_RESOURCE_NAME,
     path: "/events?upcoming=true",
     seeding: "when-present",
+  },
+  {
+    key: PRODUCTS_PRESET_KEY,
+    label: PRODUCTS_RESOURCE_NAME,
+    path: "/products",
+    seeding: "shop-blocks",
   },
 ];
 
@@ -459,6 +472,8 @@ const isBearerLiteral = (value: string) => {
  * - Forms and Upcoming Events ("when-present") are rewritten whole when the
  *   build has their Resource, and never created. Their tokens rotate like the
  *   others', since a url under the API base takes the new token.
+ * - Products ("shop-blocks") is written as Events is while `shopBlocks` is
+ *   true (the builder offers the Shop blocks), and as Forms is otherwise.
  * - Each collection Resource the build has (collections-sync seeds them) gets
  *   the new Authorization header and API base, keeping its name and position,
  *   so a rotated token reaches it before the old one is revoked.
@@ -478,7 +493,14 @@ export const seedProjectResourcePresets = async (
     projectId,
     apiBaseUrl,
     readToken,
-  }: { projectId: string; apiBaseUrl: string; readToken: string }
+    shopBlocks = false,
+  }: {
+    projectId: string;
+    apiBaseUrl: string;
+    readToken: string;
+    /** `ORGANIZEOS_SHOP_BLOCKS` is exactly `true` (isShopBlocksSwitchOn). */
+    shopBlocks?: boolean;
+  }
 ): Promise<void> => {
   const presets = await buildOrgResourcePresets({
     projectId,
@@ -500,7 +522,9 @@ export const seedProjectResourcePresets = async (
       const resource = presets.resources.find(({ id }) => id === resourceId);
       if (
         resource !== undefined &&
-        (preset.seeding === "always" || existingIds.has(resourceId))
+        (preset.seeding === "always" ||
+          (preset.seeding === "shop-blocks" && shopBlocks) ||
+          existingIds.has(resourceId))
       ) {
         seeded.push(resource);
       }

@@ -63,13 +63,22 @@ import {
 } from "./organizeos-record";
 import { BasePage } from "./url";
 import { FieldNameControl } from "./organizeos-field-control";
+import {
+  ProductCardControl,
+  ProductShowControl,
+} from "./organizeos-product-control";
+import {
+  productCardComponent,
+  productGridComponent,
+} from "~/builder/features/organizeos-panel/product-blocks";
 
 /**
  * The OrganizeOS blocks' own Settings rows (fork doc section 9, "In the
  * builder"), behind one marked branch in combined.tsx. The Signup Form's rows
  * read Form, State, Fields and After submit, each at the panel's width with
  * no help text; a Field under a Signup Form picks its form field from a list;
- * the RSVP Form keeps its record picker. Anything else falls through to
+ * the RSVP Form keeps its record picker; a Product Grid's Show and a Product
+ * Card's Product write the block's own data. Anything else falls through to
  * upstream's controls.
  */
 
@@ -80,6 +89,8 @@ export type OrganizeosControlKind =
   | "signup-after-submit"
   | "record"
   | "field-name"
+  | "product-show"
+  | "product-card"
   | "hidden";
 
 /**
@@ -112,6 +123,12 @@ export const getOrganizeosControl = ({
         return "hidden";
     }
     return;
+  }
+  if (component === productGridComponent && propName === "show") {
+    return "product-show";
+  }
+  if (component === productCardComponent && propName === "product") {
+    return "product-card";
   }
   if (isOrganizeosRecordProp(component, propName)) {
     return "record";
@@ -173,6 +190,10 @@ const renderKind = (
       return <OrganizeosRecordControl {...textProps} />;
     case "field-name":
       return <FieldNameControl {...textProps} />;
+    case "product-show":
+      return <ProductShowControl {...textProps} />;
+    case "product-card":
+      return <ProductCardControl {...textProps} />;
     case "hidden":
       return;
   }
