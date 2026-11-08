@@ -126,6 +126,7 @@ const reply = async (answer: Reply) => {
 
 let siteReplies: Reply[] = [];
 let publishReply: Reply = { ok: true };
+let actionReply: Reply = { ok: true };
 /** What the project refresh answers; the current project when unset. */
 let refreshedProject: Project | undefined;
 
@@ -138,6 +139,7 @@ const calls = (path: string) =>
   routeFetch.mock.calls.filter(([url]) => String(url).includes(path));
 const siteReads = () => calls("/rest/organizeos-site/");
 const publishCalls = () => calls("/rest/organizeos-publish/");
+const actionCalls = () => calls("/rest/organizeos-site-action/");
 const projectRefreshes = () => calls("/trpc/domain.project");
 
 const setProject = (latestBuildVirtual: null | LatestBuildLike) => {
@@ -279,6 +281,7 @@ beforeEach(() => {
   routeFetch.mockReset();
   siteReplies = [answerWith([builtinTarget, mainTarget, otherTarget])];
   publishReply = { ok: true };
+  actionReply = { ok: true };
   refreshedProject = undefined;
   let siteIndex = 0;
   routeFetch.mockImplementation(async (url: unknown) => {
@@ -290,6 +293,9 @@ beforeEach(() => {
     }
     if (path.startsWith("/rest/organizeos-publish/")) {
       return reply(publishReply);
+    }
+    if (path.startsWith("/rest/organizeos-site-action/")) {
+      return reply(actionReply);
     }
     if (path.includes("/trpc/")) {
       if (refreshedProject !== undefined) {
@@ -1047,5 +1053,218 @@ describe("the Publish dialog with a value that fails input validation", () => {
       expect(publishCalls()).toHaveLength(1);
     });
     await settle();
+  });
+});
+
+/** The row menu's trigger for a host, if the row offers one. */
+const menuFor = (host: HTMLElement, name: string) =>
+  host.querySelector<HTMLButtonElement>(`button[aria-label="${name} menu"]`) ??
+  undefined;
+
+/** Opens a row's menu and chooses Unpublish. */
+const chooseUnpublish = async (host: HTMLElement, name: string) => {
+  const trigger = menuFor(host, name);
+  expect(trigger).toBeDefined();
+  await act(async () => {
+    trigger?.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        pointerType: "mouse",
+      })
+    );
+    await Promise.resolve();
+  });
+  await settle();
+  const item = Array.from(
+    document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
+  ).find((element) => element.textContent === "Unpublish");
+  await click(item);
+};
+
+const buttonNamed = (host: HTMLElement, name: string) =>
+  Array.from(host.querySelectorAll("button")).find(
+    (button) => button.textContent === name
+  );
+
+describe("the OrganizeOS Publish dialog: Unpublish", () => {
+  const actionsAnswer = (targets = [builtinTarget, mainTarget, otherTarget]) =>
+    answerWith(targets, { actions: true });
+
+  test("offers Unpublish on a row with a recorded build, only while the builder can ask", async () => {
+    setProject(null);
+    routeAnswers(actionsAnswer());
+    const host = await render();
+    expect(menuFor(host, "acme.organizeos.org")).toBeDefined();
+    expect(menuFor(host, "www.acme.org")).toBeUndefined();
+    unmount();
+    routeAnswers(answerWith([builtinTarget, mainTarget, otherTarget]));
+    const without = await render();
+    expect(menuFor(without, "acme.organizeos.org")).toBeUndefined();
+  });
+
+  test("asks in one line, Cancel focused, and Cancel sends nothing", async () => {
+    setProject(null);
+    routeAnswers(actionsAnswer());
+    const host = await render();
+    await chooseUnpublish(host, "acme.organizeos.org");
+    expect(textOf(host, /^Unpublish acme\.organizeos\.org\?$/)).toBeDefined();
+    expect(document.activeElement?.textContent).toBe("Cancel");
+    await click(buttonNamed(host, "Cancel"));
+    expect(actionCalls()).toEqual([]);
+    expect(rows(host)[0]).toContain("Built-in · Live");
+  });
+
+  test("a confirmed Unpublish posts once, then refreshes and reads again, and the rows show the new read", async () => {
+    setProject(null);
+    routeAnswers(
+      actionsAnswer(),
+      actionsAnswer([notLive(builtinTarget), mainTarget, otherTarget])
+    );
+    const host = await render();
+    await chooseUnpublish(host, "acme.organizeos.org");
+    await click(buttonNamed(host, "Unpublish"));
+    expect(actionCalls()).toHaveLength(1);
+    const [url, init] = actionCalls()[0] as [string, RequestInit];
+    expect(url).toBe("/rest/organizeos-site-action/project-1");
+    expect(JSON.parse(String(init.body))).toEqual({
+      action: "unpublish",
+      target: "builtin",
+    });
+    expect(projectRefreshes().length).toBeGreaterThan(0);
+    expect(siteReads()).toHaveLength(2);
+    expect(rows(host)[0]).toBe("acme.organizeos.orgBuilt-in · Not live");
+  });
+
+  test.each([
+    [
+      "a refusal",
+      { ok: false, error: "rate_limited" } as Reply,
+      "Try again in a few minutes.",
+    ],
+    [
+      "a timeout",
+      new DOMException("stopped", "TimeoutError") as Reply,
+      "Couldn't unpublish. Try again.",
+    ],
+    [
+      "a failure",
+      { ok: false, error: "failed" } as Reply,
+      "Couldn't unpublish. Try again.",
+    ],
+  ])(
+    "after %s it reads again and shows one line, no toast",
+    async (_name, answer, line) => {
+      setProject(null);
+      actionReply = answer;
+      routeAnswers(actionsAnswer());
+      const host = await render();
+      const toasted = vi.spyOn(toast, "error");
+      await chooseUnpublish(host, "acme.organizeos.org");
+      await click(buttonNamed(host, "Unpublish"));
+      expect(siteReads()).toHaveLength(2);
+      expect(
+        textOf(host, new RegExp(`^${line.replace(/[.?]/g, "\\$&")}$`))
+      ).toBeDefined();
+      expect(toasted).not.toHaveBeenCalled();
+    }
+  );
+
+  test("after OrganizeOS says the action is not available, no row offers Unpublish", async () => {
+    setProject(null);
+    actionReply = 404;
+    routeAnswers(actionsAnswer());
+    const host = await render();
+    await chooseUnpublish(host, "acme.organizeos.org");
+    await click(buttonNamed(host, "Unpublish"));
+    expect(siteReads()).toHaveLength(2);
+    expect(menuFor(host, "acme.organizeos.org")).toBeUndefined();
+    expect(textOf(host, /unpublish/i)).toBeUndefined();
+  });
+});
+
+describe("the OrganizeOS Publish dialog: the old site", () => {
+  const oldSite = (
+    targets = [notLive(builtinTarget), mainTarget, otherTarget]
+  ) =>
+    answerWith(targets, { oldSiteKey: "www.acme.org", status: "not_launched" });
+
+  test("marks the custom rows Shows your old site; the built-in is a plain row", async () => {
+    setProject(null);
+    routeAnswers(oldSite());
+    const host = await render();
+    expect(rows(host)).toEqual([
+      "acme.organizeos.orgBuilt-in · Not live",
+      "www.acme.orgMain · Shows your old site",
+      "acme.netShows your old site",
+    ]);
+  });
+
+  test("the built-in alone publishes as usual, with no confirm and no flag", async () => {
+    setProject(null);
+    routeAnswers(oldSite());
+    const host = await render();
+    await click(checkboxFor(host, "acme.organizeos.org"));
+    await click(publishButton(host));
+    expect(publishCalls()).toHaveLength(1);
+    expect(
+      JSON.parse(String((publishCalls()[0][1] as RequestInit).body))
+    ).toEqual({
+      targets: ["builtin"],
+    });
+  });
+
+  test("another custom row without the main disables Publish to selected, with one line", async () => {
+    setProject(null);
+    routeAnswers(oldSite());
+    const host = await render();
+    await click(checkboxFor(host, "acme.net"));
+    expect(publishButton(host)?.disabled).toBe(true);
+    expect(
+      textOf(host, /^Tick www\.acme\.org to replace your old site\.$/)
+    ).toBeDefined();
+  });
+
+  test("the main asks one confirm, Cancel focused; Replace sends replacePages and Cancel nothing", async () => {
+    setProject(null);
+    routeAnswers(oldSite());
+    const host = await render();
+    await click(checkboxFor(host, "www.acme.org"));
+    await click(publishButton(host));
+    expect(publishCalls()).toEqual([]);
+    expect(
+      textOf(
+        host,
+        /^Replace your old site at www\.acme\.org and your other addresses\?$/
+      )
+    ).toBeDefined();
+    expect(document.activeElement?.textContent).toBe("Cancel");
+    await click(buttonNamed(host, "Cancel"));
+    expect(publishCalls()).toEqual([]);
+    await click(publishButton(host));
+    await click(buttonNamed(host, "Replace"));
+    expect(publishCalls()).toHaveLength(1);
+    expect(
+      JSON.parse(String((publishCalls()[0][1] as RequestInit).body))
+    ).toEqual({
+      targets: ["www.acme.org"],
+      replacePages: true,
+    });
+  });
+
+  test("without oldSiteKey no row is marked and nothing asks", async () => {
+    setProject(null);
+    routeAnswers(
+      answerWith([builtinTarget, mainTarget, otherTarget], { oldSiteKey: 7 })
+    );
+    const host = await render();
+    expect(textOf(host, /old site/)).toBeUndefined();
+    await click(checkboxFor(host, "www.acme.org"));
+    await click(publishButton(host));
+    expect(
+      JSON.parse(String((publishCalls()[0][1] as RequestInit).body))
+    ).toEqual({
+      targets: ["builtin", "www.acme.org"],
+    });
   });
 });
