@@ -17,6 +17,7 @@ import {
   provisionOrgWorkspace,
 } from "./provision.server";
 import { entitlementProductId } from "./organizeos-plan.server";
+import { seedProjectResourcePresets } from "./resource-presets.server";
 
 const UUID_V5 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -61,6 +62,16 @@ vi.mock("@webstudio-is/project-build/server", async (importOriginal) => ({
     typeof import("@webstudio-is/project-build/server")
   >()),
   createBuild: vi.fn(async () => ({ id: "build-1" })),
+}));
+
+vi.mock("./resource-presets.server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./resource-presets.server")>()),
+  seedProjectResourcePresets: vi.fn(async () => {}),
+}));
+
+vi.mock("./signup-form-preset.server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./signup-form-preset.server")>()),
+  seedSignupFormPage: vi.fn(async () => {}),
 }));
 
 const server = createTestServer();
@@ -480,5 +491,55 @@ describe("grantOrgWorkspaceMembership", () => {
         userId: "u-admin",
       })
     ).rejects.toBeTruthy();
+  });
+});
+
+describe("provisionOrgWorkspace catalog seeding", () => {
+  const provisionWithSiteData = async (siteData: {
+    readToken: string;
+    apiBaseUrl: string;
+    shopBlocks?: boolean;
+  }) => {
+    vi.mocked(seedProjectResourcePresets).mockClear();
+    server.use(
+      db.post("User", () => empty({ status: 201 })),
+      db.post("Workspace", () => empty({ status: 201 })),
+      db.post("Product", () => empty({ status: 201 })),
+      db.post("TransactionLog", () => empty({ status: 201 })),
+      db.delete("TransactionLog", () => empty({ status: 204 })),
+      db.get("Project", () =>
+        json({
+          id: deriveProjectId("org-1"),
+          domain: "acme",
+          isDeleted: false,
+          userId: deriveSyntheticUserId("org-1"),
+          workspaceId: deriveWorkspaceId("org-1"),
+        })
+      )
+    );
+    await provisionOrgWorkspace(testContext as unknown as AppContext, {
+      organizationId: "org-1",
+      orgName: "Org One",
+      adminEmails: [],
+      siteData,
+    });
+    return vi.mocked(seedProjectResourcePresets).mock.calls;
+  };
+
+  test("passes the Shop blocks switch to the catalog seed", async () => {
+    const site = { readToken: "osk_t", apiBaseUrl: "https://app.example.org" };
+    expect(await provisionWithSiteData({ ...site, shopBlocks: true })).toEqual([
+      [
+        expect.anything(),
+        {
+          projectId: deriveProjectId("org-1"),
+          apiBaseUrl: site.apiBaseUrl,
+          readToken: site.readToken,
+          shopBlocks: true,
+        },
+      ],
+    ]);
+    const [[, off]] = await provisionWithSiteData(site);
+    expect(off).toMatchObject({ shopBlocks: false });
   });
 });

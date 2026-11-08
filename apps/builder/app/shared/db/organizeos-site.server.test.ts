@@ -10,6 +10,7 @@ import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import {
   deriveProjectDomain,
   isOrgSubdomain,
+  isShopBlocksSwitchOn,
   organizeosWebsiteAreaUrl,
   parseOrgDenyList,
   resolveOrganizeosDashboardExit,
@@ -75,6 +76,21 @@ describe("organizeosWebsiteAreaUrl", () => {
     expect(organizeosWebsiteAreaUrl("https://app.example.org", undefined)).toBe(
       "https://app.example.org/dashboard"
     );
+  });
+});
+
+describe("isShopBlocksSwitchOn", () => {
+  test.each([
+    [undefined, false],
+    ["", false],
+    ["false", false],
+    ["TRUE", false],
+    ["1", false],
+    [" true", false],
+    ["true ", false],
+    ["true", true],
+  ])("ORGANIZEOS_SHOP_BLOCKS %j: %s", (value, expected) => {
+    expect(isShopBlocksSwitchOn(value)).toBe(expected);
   });
 });
 

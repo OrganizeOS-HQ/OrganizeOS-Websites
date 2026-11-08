@@ -96,6 +96,18 @@ describe("ORGANIZEOS_CMS_PANEL", () => {
   });
 });
 
+describe("ORGANIZEOS_SHOP_BLOCKS", () => {
+  test("is undefined when unset", async () => {
+    vi.stubEnv("ORGANIZEOS_SHOP_BLOCKS", undefined);
+    expect((await loadEnv()).ORGANIZEOS_SHOP_BLOCKS).toBeUndefined();
+  });
+
+  test("passes the raw value through", async () => {
+    vi.stubEnv("ORGANIZEOS_SHOP_BLOCKS", "TRUE");
+    expect((await loadEnv()).ORGANIZEOS_SHOP_BLOCKS).toBe("TRUE");
+  });
+});
+
 describe("ORGANIZEOS_BLOCKS_DENY_ORG_IDS", () => {
   test("passes the raw value through", async () => {
     vi.stubEnv("ORGANIZEOS_BLOCKS_DENY_ORG_IDS", " a , b ");

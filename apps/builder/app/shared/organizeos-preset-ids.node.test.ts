@@ -6,6 +6,11 @@ import {
   EVENTS_BINDING_NAME,
   FORMS_PRESET_KEY,
   FORMS_PRESET_NAME,
+  PRODUCT_BINDING_NAME,
+  PRODUCT_RESOURCE_NAME,
+  PRODUCTS_BINDING_NAME,
+  PRODUCTS_PRESET_KEY,
+  PRODUCTS_RESOURCE_NAME,
   STATIC_PRESET_KEYS,
   UPCOMING_EVENTS_BINDING_NAME,
   UPCOMING_EVENTS_PRESET_KEY,
@@ -118,6 +123,40 @@ describe("the Events blocks' names", () => {
       (await getResourcePresetIds("project-1", "events")).resourceId
     );
     expect(isPresetId(upcoming.resourceId)).toBe(true);
+  });
+});
+
+describe("the Shop blocks' names", () => {
+  test("keys and names the builder and provisioning share", () => {
+    expect(PRODUCTS_PRESET_KEY).toBe("products");
+    expect(PRODUCTS_RESOURCE_NAME).toBe("Products");
+    expect(PRODUCTS_BINDING_NAME).toBe("OrganizeOS Products");
+    expect(PRODUCT_RESOURCE_NAME).toBe("Product");
+    expect(PRODUCT_BINDING_NAME).toBe("OrganizeOS Product");
+  });
+
+  test("Products gets deterministic ids of its own, pinned for a fixed project", async () => {
+    const products = await getResourcePresetIds(
+      "project-1",
+      PRODUCTS_PRESET_KEY
+    );
+    expect(products).toEqual({
+      resourceId: "52b66c3c-25c3-5de2-9157-68d0b0885e2b",
+      bindingId: "e1015aec-f830-50fc-a65e-04dc45990da0",
+    });
+    expect(products.resourceId).toBe(
+      nodeUuidV5("project-1:v1:products:resource")
+    );
+    expect(isPresetId(products.resourceId)).toBe(true);
+    for (const key of [
+      ...STATIC_PRESET_KEYS,
+      FORMS_PRESET_KEY,
+      UPCOMING_EVENTS_PRESET_KEY,
+    ]) {
+      const other = await getResourcePresetIds("project-1", key);
+      expect(other.resourceId, key).not.toBe(products.resourceId);
+      expect(other.bindingId, key).not.toBe(products.bindingId);
+    }
   });
 });
 
@@ -294,5 +333,48 @@ describe("findCatalogResources", () => {
         (entry) => entry.key
       )
     ).toEqual(["events", "forms"]);
+  });
+});
+
+describe("findCatalogResources and Products", () => {
+  test("lists Products last, after Upcoming Events, when present", async () => {
+    const resource = (id: string, name: string, path: string): Resource => ({
+      id,
+      name,
+      method: "get",
+      url: JSON.stringify(`https://app.example.org/v1${path}`),
+      headers: [],
+    });
+    const id = async (key: string) =>
+      (await getResourcePresetIds("project-1", key)).resourceId;
+    const products = resource(await id("products"), "Products", "/products");
+    const upcoming = resource(
+      await id("upcoming-events"),
+      "Upcoming Events",
+      "/events?upcoming=true"
+    );
+    const forms = resource(await id("forms"), "OrganizeOS Forms", "/forms");
+    const events = resource(await id("events"), "Events", "/events");
+    // a card's own copy of the request, under a nanoid
+    const card = resource("card-own", "Product", "/products");
+    const catalog = await findCatalogResources("project-1", [
+      products,
+      card,
+      upcoming,
+      forms,
+      events,
+    ]);
+    expect(catalog.map((entry) => entry.key)).toEqual([
+      "events",
+      "forms",
+      "upcoming-events",
+      "products",
+    ]);
+    expect(catalog.at(-1)?.resource).toBe(products);
+    expect(
+      (await findCatalogResources("project-1", [events])).map(
+        (entry) => entry.key
+      )
+    ).toEqual(["events"]);
   });
 });

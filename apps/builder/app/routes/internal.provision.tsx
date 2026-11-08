@@ -9,7 +9,10 @@ import {
   deprovisionOrgWorkspace,
 } from "~/shared/db/provision.server";
 import { defaultOrgEntitlements } from "~/shared/db/organizeos-plan.server";
-import { orgSubdomainSchema } from "~/shared/db/organizeos-site.server";
+import {
+  isShopBlocksSwitchOn,
+  orgSubdomainSchema,
+} from "~/shared/db/organizeos-site.server";
 
 // The internal provisioning route acts as the system (direct inserts as the
 // synthetic owner), so it needs only a Postgres client, not the request-auth
@@ -111,6 +114,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ? {
             readToken: parsed.data.readToken,
             apiBaseUrl: parsed.data.apiBaseUrl,
+            // the Products Resource is seeded once the Shop blocks are offered
+            shopBlocks: isShopBlocksSwitchOn(env.ORGANIZEOS_SHOP_BLOCKS),
           }
         : undefined,
   });
