@@ -126,6 +126,9 @@ const setProject = () => {
     manageUrl: "https://app.example.org/dashboard",
     platformUrl: "https://app.example.org",
     blocksEnabled: true,
+    // the Shop blocks are in the fixture too, as the panel offers them with
+    // ORGANIZEOS_SHOP_BLOCKS on
+    shopBlocksEnabled: true,
   });
 };
 
