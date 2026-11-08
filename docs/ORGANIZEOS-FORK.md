@@ -1145,7 +1145,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     the field's label as placeholder text, a Field Input with "OS Input" and a
     Field Message with "OS Message". A checkbox lays out as a row (the box,
     then its label, then the message on a line of its own); a consent field's
-    Field Label holds no text.
+    Field Label holds no text, only the expression `consentLabelExpression`
+    (`""`), so the canvas, which edits only text with no expression in it,
+    never opens it for typing.
   - Navigator labels name each part by what it is: a Field by its field's
     label ("Email", "First name"), a consent Field "SMS consent" (or
     "Consent"), never by its wording, and the state boxes by their state
@@ -1433,8 +1435,12 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     a name the form lacks stays listed first. Choosing writes `field` and, when
     the Field's navigator label is empty or still names the old field (its
     label, or "Field: {label}"), renames it to the new field's, in one
-    transaction (`changeSignupFieldName`); the Field Label's text is never
-    touched. A Field under an RSVP Form or outside any form keeps the text box.
+    transaction (`changeSignupFieldName`). In the same transaction a Field
+    that becomes a consent field gets `consentLabelExpression` in its Field
+    Label, so no text of the old field stays, and one that stops being one (or
+    whose Field Label has no text) gets the new field's label as text;
+    otherwise the Field Label's text is the designer's and is never touched.
+    A Field under an RSVP Form or outside any form keeps the text box.
 - **The OrganizeOS data tab** (`organizeos-panel.tsx`), a left-sidebar tab
   after Components with upstream's `ResourceIcon` and the tooltip "OrganizeOS
   data", hidden in content mode and disabled on text pages, as Components is.

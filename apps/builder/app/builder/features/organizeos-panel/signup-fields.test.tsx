@@ -7,6 +7,8 @@ import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import { coreMetas, type Instance } from "@webstudio-is/sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
+import { consentLabelExpression } from "@organizeos/site-components/field-template";
+import { findClosestTextEditorTarget } from "@webstudio-is/project-build/runtime";
 import { $, organizeos } from "@organizeos/site-components/site-templates";
 import {
   type SignupFormResolution,
@@ -155,6 +157,19 @@ const childComponents = (instanceId: string) =>
   ($instances.get().get(instanceId) as Instance).children.map((child) =>
     child.type === "id" ? $instances.get().get(child.value)?.component : child
   );
+
+/** The Field Label of a Field. */
+const labelOf = (fieldId: string) => {
+  const label = ($instances.get().get(fieldId) as Instance).children
+    .map((child) =>
+      child.type === "id" ? $instances.get().get(child.value) : undefined
+    )
+    .find((child) => child?.component === `${ns}:FieldLabel`);
+  if (label === undefined) {
+    throw Error("no Field Label");
+  }
+  return label;
+};
 
 const undoDepth = () => serverSyncStore.transactionManager.currentStack.length;
 
@@ -560,6 +575,25 @@ describe("addSignupField", () => {
     );
   });
 
+  test("a consent Field's label is not editable on the canvas; a normal Field's is", async () => {
+    const rootId = setSignupForm();
+    await addSignupField(rootId, contactFields[4]);
+    const isEditable = (name: string) => {
+      const fieldId = rootFields(rootId).byName.get(name)?.[0] as string;
+      const label = labelOf(fieldId);
+      return (
+        findClosestTextEditorTarget({
+          instanceSelector: [label.id, fieldId, rootId, "bodyId"],
+          instances: $instances.get(),
+          props: $props.get(),
+          metas: $registeredComponentMetas.get(),
+        }) !== undefined
+      );
+    };
+    expect(isEditable("email")).toBe(true);
+    expect(isEditable("sms_opt_in")).toBe(false);
+  });
+
   test("two calls for one name before the first settles insert one Field", async () => {
     const rootId = setSignupForm();
     const results = await Promise.all([
@@ -793,6 +827,39 @@ describe("changeSignupFieldName", () => {
     $instances.set(new Map($instances.get()).set(id, unlabelled));
     await changeSignupFieldName(id, "company", contactFields);
     expect($instances.get().get(id)?.label).toBe("Company");
+  });
+
+  test("a Field that becomes a consent field drops its label text; one that stops being one gets its field's label", async () => {
+    const rootId = setSignupForm();
+    const id = fieldIdOf(rootId, "first_name");
+    const textOf = () => labelOf(id).children;
+    expect(textOf()).toEqual([
+      expect.objectContaining({ type: "text", value: "First name" }),
+    ]);
+    const depth = undoDepth();
+
+    await changeSignupFieldName(id, "sms_opt_in", contactFields);
+    expect(undoDepth()).toBe(depth + 1);
+    expect(textOf()).toEqual([
+      expect.objectContaining({
+        type: "expression",
+        value: consentLabelExpression,
+      }),
+    ]);
+    expect(JSON.stringify([...$instances.get().values()])).not.toContain(
+      "First name"
+    );
+
+    await changeSignupFieldName(id, "phone", contactFields);
+    expect(textOf()).toEqual([
+      expect.objectContaining({ type: "text", value: "Phone" }),
+    ]);
+
+    // a normal field's text is the designer's: kept on a change to another
+    await changeSignupFieldName(id, "company", contactFields);
+    expect(textOf()).toEqual([
+      expect.objectContaining({ type: "text", value: "Phone" }),
+    ]);
   });
 
   test("keeps a designer's own label", async () => {

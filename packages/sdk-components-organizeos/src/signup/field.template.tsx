@@ -1,4 +1,4 @@
-import { css, PlaceholderValue } from "@webstudio-is/template";
+import { css, expression, PlaceholderValue } from "@webstudio-is/template";
 import { fieldToken, inputToken, messageToken } from "../shared/form-tokens";
 import { organizeos } from "../shared/proxy";
 
@@ -11,6 +11,14 @@ export type FieldTemplateField = {
   /** The definition's consent marker, e.g. "sms". */
   consent?: string;
 };
+
+/**
+ * The one child of a consent field's Field Label: an expression, so the canvas
+ * never opens the label as editable text (it edits only text with no
+ * expression in it). The block renders the form's own consent wording there
+ * and ignores the value.
+ */
+export const consentLabelExpression = `""`;
 
 /**
  * A Field's label in the navigator, which the builder's Fields list also
@@ -39,7 +47,8 @@ export const getFieldNavigatorLabel = ({
  *
  * The Field is labelled by its field in the navigator. A checkbox lays out as
  * a row, the box before its label and the message on a line of its own. A
- * consent field's Field Label has no text: the block renders the form's own
+ * consent field's Field Label has no text, only `consentLabelExpression`, so
+ * the canvas never opens it for editing: the block renders the form's own
  * wording there, read from the Forms data, so the site never stores it, and
  * the navigator names it by its kind, never by its wording.
  *
@@ -67,7 +76,7 @@ export const fieldTemplate = (field: FieldTemplateField) => {
           `}
         />
         {isConsent ? (
-          <organizeos.FieldLabel />
+          <organizeos.FieldLabel>{expression`""`}</organizeos.FieldLabel>
         ) : (
           <organizeos.FieldLabel>
             {new PlaceholderValue(field.label)}

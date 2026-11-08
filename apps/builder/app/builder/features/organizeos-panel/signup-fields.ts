@@ -10,6 +10,7 @@ import {
 import { localStylesFirst } from "@organizeos/site-components/style-order";
 import {
   type FieldTemplateField,
+  consentLabelExpression,
   fieldTemplate,
   getFieldNavigatorLabel,
 } from "@organizeos/site-components/field-template";
@@ -363,6 +364,35 @@ const insertFieldsMutable = (
   }
 };
 
+const fieldLabelComponent = `${organizeosNamespace}:FieldLabel`;
+
+/** A Field's own Field Labels, not those of a Field inside it. */
+const findFieldLabels = (fieldId: Instance["id"], instances: Instances) => {
+  const labels: Instance["id"][] = [];
+  const visit = (parentId: Instance["id"]) => {
+    for (const child of instances.get(parentId)?.children ?? []) {
+      const instance =
+        child.type === "id" ? instances.get(child.value) : undefined;
+      if (instance === undefined || instance.component === fieldComponent) {
+        continue;
+      }
+      if (instance.component === fieldLabelComponent) {
+        labels.push(instance.id);
+      } else {
+        visit(instance.id);
+      }
+    }
+  };
+  visit(fieldId);
+  return labels;
+};
+
+/** Whether a Field Label holds a consent label: the expression alone. */
+const isConsentLabel = (children: Instance["children"]) =>
+  children.length === 1 &&
+  children[0].type === "expression" &&
+  children[0].value === consentLabelExpression;
+
 /**
  * One staged write: one commit, one undo step, no selection change. Resolves
  * false, after a toast, when refused; the runtime's own refusal of the commit
@@ -441,10 +471,13 @@ export const changeSignupForm = (
   });
 
 /**
- * The Field select's write: `field`, and the navigator label when it still
- * names the old field (none, the old field's label, or "Field: {label}"), in
- * one transaction. The Field Label's text is the designer's and is never
- * touched.
+ * The Field select's write: `field`, the navigator label when it still names
+ * the old field (none, the old field's label, or "Field: {label}"), and the
+ * Field Label's text where the switch calls for it, in one transaction. A
+ * Field that becomes a consent field gets `consentLabelExpression` in its
+ * labels, so no text of the old field stays; one that stops being one, or
+ * whose labels have no text, gets the new field's label as text. Otherwise a
+ * label's text is the designer's and is never touched.
  */
 export const changeSignupFieldName = (
   fieldId: Instance["id"],
@@ -485,8 +518,34 @@ export const changeSignupFieldName = (
       oldLabels.add(`Field: ${oldField.label}`);
       oldLabels.add(getFieldNavigatorLabel(oldField));
     }
+    const newField = fields.find((field) => field.name === name);
+    for (const labelId of findFieldLabels(fieldId, instances)) {
+      const children = instances.get(labelId)?.children ?? [];
+      if (newField?.consent !== undefined) {
+        if (isConsentLabel(children) === false) {
+          accumulator.execute({
+            id: "instances.setTextContent",
+            input: {
+              operation: "set",
+              instanceId: labelId,
+              text: consentLabelExpression,
+              mode: "expression",
+            },
+          });
+        }
+      } else if (children.every((child) => child.type === "expression")) {
+        accumulator.execute({
+          id: "instances.setTextContent",
+          input: {
+            operation: "set",
+            instanceId: labelId,
+            text: newField?.label ?? name,
+            mode: "text",
+          },
+        });
+      }
+    }
     if (label === undefined || label.trim() === "" || oldLabels.has(label)) {
-      const newField = fields.find((field) => field.name === name);
       accumulator.execute({
         id: "instances.setLabel",
         input: {

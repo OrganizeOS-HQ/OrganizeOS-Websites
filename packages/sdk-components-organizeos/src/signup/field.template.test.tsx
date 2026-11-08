@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import type { Instance } from "@webstudio-is/sdk";
 import { renderTemplate, ws } from "@webstudio-is/template";
 import { toValue } from "@webstudio-is/css-engine";
-import { fieldTemplate } from "./field.template";
+import { consentLabelExpression, fieldTemplate } from "./field.template";
 
 const namespace = "@organizeos/site-components";
 
@@ -134,7 +134,7 @@ test("a checkbox lays out as a row: the box, then its label, then the message on
 
 const consentWording = "Text me updates. Reply STOP to opt out.";
 
-test("a consent field is a checkbox row whose Field Label has no text of its own", () => {
+test("a consent field is a checkbox row whose Field Label holds the consent label expression, no text of its own", () => {
   const { root, parts, propsOf, tokensOf, localStylesOf } = render(
     fieldTemplate({
       name: "sms_opt_in",
@@ -157,7 +157,10 @@ test("a consent field is a checkbox row whose Field Label has no text of its own
   ]);
   const [input, label] = parts;
   expect(tokensOf(input)).toEqual([]);
-  expect(label.children).toEqual([]);
+  // an expression child: the canvas never opens it as editable text
+  expect(label.children).toEqual([
+    { type: "expression", value: consentLabelExpression, mode: "read" },
+  ]);
 });
 
 test("a consent field stores none of its wording anywhere in the fragment", () => {
@@ -183,7 +186,9 @@ test("a consent field of another kind is labelled Consent in the navigator", () 
     })
   );
   expect(root.label).toBe("Consent");
-  expect(parts[1].children).toEqual([]);
+  expect(parts[1].children).toEqual([
+    { type: "expression", value: consentLabelExpression, mode: "read" },
+  ]);
 });
 
 test("two Fields in one fragment share their tokens and no instance, prop or local style", () => {
