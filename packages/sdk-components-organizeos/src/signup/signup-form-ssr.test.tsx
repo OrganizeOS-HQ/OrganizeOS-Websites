@@ -43,6 +43,9 @@ test("renders on the server as a published site does", () => {
   expect(html).toContain('name="email"');
   expect(html).toContain('type="email"');
   expect(html).toContain('name="website"');
+  // a Field the form lacks renders nothing on a published page
+  expect(html).not.toContain("favorite_color");
+  expect(html).not.toContain("Favorite color");
   // the canvas check never reaches a published page
   expect(html).not.toContain("data-organizeos-canvas-check");
   expect(consoleError).not.toHaveBeenCalled();
