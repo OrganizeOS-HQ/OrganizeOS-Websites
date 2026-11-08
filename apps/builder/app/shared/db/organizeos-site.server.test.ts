@@ -114,8 +114,31 @@ describe("resolveOrganizeosSite", () => {
       // no deny list denies nobody
       blocksEnabled: true,
       cmsPanelEnabled: false,
+      shopBlocksEnabled: false,
     });
   });
+
+  test.each([
+    [undefined, false],
+    ["", false],
+    ["false", false],
+    ["TRUE", false],
+    ["1", false],
+    [" true", false],
+    ["true", true],
+  ])(
+    "offers the Shop blocks when ORGANIZEOS_SHOP_BLOCKS is %j: %s",
+    (shopBlocks, expected) => {
+      expect(
+        resolveOrganizeosSite({
+          ...base,
+          owner: SERVICE_OWNER,
+          projectDomain: "acme",
+          shopBlocks,
+        })?.shopBlocksEnabled
+      ).toBe(expected);
+    }
+  );
 
   test.each([
     [undefined, false],

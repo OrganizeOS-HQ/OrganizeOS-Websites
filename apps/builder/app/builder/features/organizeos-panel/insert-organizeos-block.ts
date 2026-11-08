@@ -554,6 +554,21 @@ const isCompletionMapped = (
 export const isOrganizeosBlocksEnabled = () =>
   $organizeosSite.get()?.blocksEnabled === true;
 
+const shopBlockComponents = new Set([
+  `${organizeosNamespace}:ProductGrid`,
+  `${organizeosNamespace}:ProductCard`,
+]);
+
+/**
+ * Whether a block may be inserted: the org is not denied, and a Shop block
+ * also needs the deployment's switch (`ORGANIZEOS_SHOP_BLOCKS`), so a stale
+ * panel cannot insert one.
+ */
+const isBlockOffered = (component: string) =>
+  isOrganizeosBlocksEnabled() &&
+  (shopBlockComponents.has(component) === false ||
+    $organizeosSite.get()?.shopBlocksEnabled === true);
+
 /**
  * Insert a block at the selection, or at `insertable` (a drop), the way the
  * Components panel inserts a template, after completing it, in one
@@ -574,7 +589,7 @@ export const insertOrganizeosBlock = async (
     return false;
   }
   const label = getInstanceLabel({ component });
-  if (isOrganizeosBlocksEnabled() === false) {
+  if (isBlockOffered(component) === false) {
     builderApi.toast.error(
       `Cannot add ${label}: ${platformName} blocks are not available for this site yet.`
     );

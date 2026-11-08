@@ -274,7 +274,10 @@ const setProject = (
     resources: Resource[];
     dataSources: DataSource[];
   },
-  { blocksEnabled = true }: { blocksEnabled?: boolean } = {}
+  {
+    blocksEnabled = true,
+    shopBlocksEnabled = true,
+  }: { blocksEnabled?: boolean; shopBlocksEnabled?: boolean } = {}
 ) => {
   const data = renderData(<$.Body ws:id="bodyId"></$.Body>);
   $instances.set(data.instances);
@@ -302,6 +305,7 @@ const setProject = (
     manageUrl: "https://app.example.org/dashboard",
     platformUrl: "https://app.example.org",
     blocksEnabled,
+    shopBlocksEnabled,
   });
 };
 
@@ -3125,6 +3129,27 @@ describe("the Shop blocks", () => {
       expectNothingWritten(before);
     }
   );
+
+  test.each([
+    [productGrid, "Product Grid"],
+    [productCard, "Product Card"],
+  ])(
+    "%s is refused, writing nothing, while the Shop blocks switch is off",
+    async (block, label) => {
+      setProject(withoutProducts, { shopBlocksEnabled: false });
+      const before = getStores();
+      expect(await insertOrganizeosBlock(block)).toBe(false);
+      expectNothingWritten(before);
+      expect(toastError).toHaveBeenCalledWith(
+        `Cannot add ${label}: OrganizeOS blocks are not available for this site yet.`
+      );
+    }
+  );
+
+  test("the switch gates the shop blocks only", async () => {
+    setProject(withForms, { shopBlocksEnabled: false });
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+  });
 
   test.each([productGrid, productCard])(
     "%s writes no :root binding, and passes the catalog check",

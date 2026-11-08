@@ -63,6 +63,8 @@ export const namedTextComponents = new Set([
   organizeos("MarqueePauseButton"),
   // the item's rich text (on the canvas without a value, a sample)
   organizeos("RichText"),
+  // a product's price, formatted from its cents, as Time formats a date
+  organizeos("Price"),
 ]);
 
 /**
@@ -96,6 +98,8 @@ export const rendersDesignerChildrenOnly = new Set([
   organizeos("MarqueeTrack"),
   organizeos("ConvergenceField"),
   organizeos("ShareCodeCarrier"),
+  organizeos("ProductGrid"),
+  organizeos("ProductCard"),
 ]);
 
 /**

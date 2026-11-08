@@ -184,6 +184,7 @@ export const resolveOrganizeosSite = ({
   platformUrl,
   blocksDenyOrgIds,
   cmsPanel,
+  shopBlocks,
 }: {
   owner: { provider: string | null; email: string | null };
   projectDomain: string;
@@ -192,6 +193,8 @@ export const resolveOrganizeosSite = ({
   blocksDenyOrgIds?: string;
   /** The raw `ORGANIZEOS_CMS_PANEL`: only `true` offers the CMS panel. */
   cmsPanel?: string;
+  /** The raw `ORGANIZEOS_SHOP_BLOCKS`: only `true` offers the Shop blocks. */
+  shopBlocks?: string;
 }): OrganizeosSite | undefined => {
   if (owner.provider !== ORGANIZEOS_SERVICE_PROVIDER || owner.email === null) {
     return undefined;
@@ -216,6 +219,7 @@ export const resolveOrganizeosSite = ({
     blocksEnabled:
       isOrgDenied(parseOrgDenyList(blocksDenyOrgIds), organizationId) === false,
     cmsPanelEnabled: cmsPanel === "true",
+    shopBlocksEnabled: isShopBlocksSwitchOn(shopBlocks),
   };
 };
 
