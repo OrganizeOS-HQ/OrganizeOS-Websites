@@ -157,6 +157,36 @@ describe("createOrganizeosPublisher", () => {
     });
   });
 
+  test("with replacePages the dispatch adds replace_pages true, and only then", async () => {
+    const fetcher = vi.fn(async () => new Response(null, { status: 204 }));
+    const publisher = createOrganizeosPublisherClient({ ...deps, fetcher });
+
+    await publisher.publish.mutate({
+      buildId: "build-1",
+      destination: "saas",
+      targets: ["www.example.org"],
+      replacePages: true,
+      expectedOrganizationId: ORG_ID,
+    });
+    await publisher.publish.mutate({
+      buildId: "build-1",
+      destination: "saas",
+      targets: ["www.example.org"],
+      expectedOrganizationId: ORG_ID,
+    });
+
+    const bodies = (
+      fetcher.mock.calls as unknown as Array<[string, RequestInit]>
+    ).map(([, init]) => JSON.parse(init.body as string));
+    expect(bodies[0].inputs).toEqual({
+      build_id: "build-1",
+      organization_id: ORG_ID,
+      targets: '["www.example.org"]',
+      replace_pages: "true",
+    });
+    expect("replace_pages" in bodies[1].inputs).toBe(false);
+  });
+
   test("a build whose project resolves to another org than the caller's is marked FAILED and never dispatched", async () => {
     const statusUpdates: Array<StatusUpdate> = [];
     const fetcher = vi.fn();

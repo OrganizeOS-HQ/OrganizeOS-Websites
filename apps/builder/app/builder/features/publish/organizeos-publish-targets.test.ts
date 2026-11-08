@@ -1,11 +1,16 @@
 import { describe, expect, test } from "vitest";
 import type { SiteAddresses, SiteTarget } from "./organizeos-publish-addresses";
 import {
+  canUnpublish,
   cannotGoLive,
   defaultTicks,
+  isReplaceRow,
   nextTicks,
   publishErrorLine,
+  replaceState,
   rowLabel,
+  rowWord,
+  unpublishErrorLine,
 } from "./organizeos-publish-targets";
 
 const target = (change: Partial<SiteTarget>): SiteTarget => ({
@@ -151,5 +156,93 @@ describe("the line for a failed publish", () => {
     expect(publishErrorLine({ ok: false, error: "anything else" })).toBe(
       "Publishing failed. Please try again."
     );
+  });
+});
+
+describe("serving, the old site and the replace", () => {
+  test("serving drives the ticks and the word; without it, live does", () => {
+    const staged = { ...builtin, live: true, serving: true };
+    const notServing = { ...builtin, live: true, serving: false };
+    expect(defaultTicks([notServing, main])).toEqual(new Set());
+    expect(defaultTicks([staged, main])).toEqual(new Set(["builtin"]));
+    expect(defaultTicks([{ ...builtin, live: true }])).toEqual(
+      new Set(["builtin"])
+    );
+    expect(rowWord(staged, undefined)).toBe("Live");
+    expect(rowWord(notServing, undefined)).toBe("Not live");
+  });
+
+  test("with the old site on a custom main, the custom rows show it and the built-in is a trial copy", () => {
+    const key = "www.example.org";
+    expect(rowWord(main, key)).toBe("Shows your old site");
+    expect(rowWord(other, key)).toBe("Shows your old site");
+    expect(rowWord(builtin, key)).toBe("Not live");
+    expect(isReplaceRow(builtin, key)).toBe(false);
+    expect(isReplaceRow(main, key)).toBe(true);
+    expect(rowWord(main, undefined)).toBe("Not live");
+  });
+
+  test("with the old site on the built-in, the built-in is a replace row too", () => {
+    expect(rowWord(builtin, "builtin")).toBe("Shows your old site");
+    expect(isReplaceRow(builtin, "builtin")).toBe(true);
+  });
+
+  test("replaceState: none, needs the address serving the old site, or the confirm", () => {
+    const targets = [builtin, main, other];
+    const key = "www.example.org";
+    expect(replaceState(["builtin"], targets, key)).toBe("none");
+    expect(replaceState(["example.net"], targets, key)).toBe("needs_anchor");
+    expect(replaceState(["builtin", key], targets, key)).toBe("confirm");
+    expect(replaceState(["example.net", key], targets, key)).toBe("confirm");
+    expect(replaceState(["example.net"], targets, undefined)).toBe("none");
+    expect(replaceState(["builtin"], targets, "builtin")).toBe("confirm");
+  });
+
+  test("Unpublish is offered on a recorded build not taken down, while the builder can ask", () => {
+    const recorded = { ...builtin, publishedAt: at.toISOString(), live: true };
+    const ready = { actions: true, hidden: false };
+    expect(canUnpublish(recorded, ready)).toBe(true);
+    expect(canUnpublish({ ...recorded, serving: false }, ready)).toBe(true);
+    expect(canUnpublish(recorded, { actions: false, hidden: false })).toBe(
+      false
+    );
+    expect(canUnpublish(recorded, { actions: true, hidden: true })).toBe(false);
+    expect(canUnpublish(builtin, ready)).toBe(false);
+    expect(
+      canUnpublish({ ...recorded, unpublishedAt: at.toISOString() }, ready)
+    ).toBe(false);
+  });
+
+  test("one line per Unpublish failure, none where the re-read says it", () => {
+    expect(unpublishErrorLine({ ok: false, error: "rate_limited" })).toBe(
+      "Try again in a few minutes."
+    );
+    expect(unpublishErrorLine({ ok: false, error: "forbidden" })).toBe(
+      "You can't unpublish this address."
+    );
+    for (const error of ["failed", "timeout"] as const) {
+      expect(unpublishErrorLine({ ok: false, error })).toBe(
+        "Couldn't unpublish. Try again."
+      );
+    }
+    for (const error of [
+      "unavailable",
+      "unknown_target",
+      "not_live",
+    ] as const) {
+      expect(unpublishErrorLine({ ok: false, error })).toBeUndefined();
+    }
+  });
+
+  test("a replace refused because the addresses changed says so", () => {
+    for (const error of [
+      "old_site_changed",
+      "replace_unconfirmed",
+      "old_site_needs_main",
+    ]) {
+      expect(publishErrorLine({ ok: false, error })).toBe(
+        "Your addresses changed. Check them and publish again."
+      );
+    }
   });
 });

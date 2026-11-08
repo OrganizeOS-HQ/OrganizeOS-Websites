@@ -61,6 +61,9 @@ const targetFields = {
   published_at: timeSchema,
   unpublished_at: timeSchema,
   live: z.boolean(),
+  // Whether the address serves that build now; a platform before it sends
+  // none, and then it is the target's own live.
+  serving: z.boolean().optional(),
 };
 
 const targetRowSchema = z.union([
@@ -85,6 +88,9 @@ const rowSchema = z.object({
   launchable: z.boolean().nullish(),
   // Optional both ways too: a platform without publish targets sends none
   targets: z.array(targetRowSchema).max(MAX_TARGETS).nullish(),
+  // Read leniently (fetchSiteAddresses): an unknown shape is treated as
+  // absent and logged, and never fails the read.
+  old_site_key: z.unknown().optional(),
 });
 
 export type SiteAddressesRow = z.infer<typeof rowSchema>;
@@ -94,6 +100,8 @@ const answerSchema = z.array(rowSchema).max(1);
 type LogCode =
   | "addresses_rpc_failed"
   | "addresses_invalid"
+  /** old_site_key had an unknown shape: read as absent. */
+  | "old_site_key_invalid"
   /** The route could not read the project or its owner. */
   | "owner_read_failed";
 
@@ -145,7 +153,25 @@ export const fetchSiteAddresses = async (
     log("addresses_invalid");
     return;
   }
-  return parsed.data[0];
+  const row = parsed.data[0];
+  if (row === undefined) {
+    return;
+  }
+  // The address that serves the organization's old site, while it shows one:
+  // `builtin` or a host. Anything else reads as absent, so the dialog marks
+  // nothing and offers no replace.
+  const oldSiteKey = row.old_site_key;
+  if (oldSiteKey === undefined || oldSiteKey === null) {
+    return { ...row, old_site_key: null };
+  }
+  if (
+    typeof oldSiteKey === "string" &&
+    (oldSiteKey === BUILTIN_TARGET_KEY || HOST_PATTERN.test(oldSiteKey))
+  ) {
+    return row;
+  }
+  log("old_site_key_invalid");
+  return { ...row, old_site_key: null };
 };
 
 /** One address the Publish dialog lists. */
@@ -160,7 +186,12 @@ export type SiteTarget = {
   builtin: boolean;
   main: boolean;
   publishedAt: string | null;
+  /** When it was taken down, or null while its recorded build stands. */
+  unpublishedAt: string | null;
+  /** The target's own state: a build passing the checks, not taken down. */
   live: boolean;
+  /** The address serves that build now (the row's Live word). */
+  serving: boolean;
 };
 
 export type SiteAddresses = {
@@ -174,6 +205,11 @@ export type SiteAddresses = {
   launchable?: boolean;
   /** Present only when the platform sent them. */
   targets?: SiteTarget[];
+  /**
+   * While the organization's addresses show its old site: the key of the
+   * address that serves it, which a replace must include. Absent otherwise.
+   */
+  oldSiteKey?: string;
 };
 
 export const composeSiteAddresses = ({
@@ -199,13 +235,18 @@ export const composeSiteAddresses = ({
     ...(row.targets == null
       ? {}
       : {
+          ...(typeof row.old_site_key === "string"
+            ? { oldSiteKey: row.old_site_key }
+            : {}),
           targets: row.targets.map((target) => ({
             key: target.host ?? BUILTIN_TARGET_KEY,
             host: target.host ?? builtinHost,
             builtin: target.host === null,
             main: target.main,
             publishedAt: target.published_at,
+            unpublishedAt: target.unpublished_at,
             live: target.live,
+            serving: target.serving ?? target.live,
           })),
         }),
   };

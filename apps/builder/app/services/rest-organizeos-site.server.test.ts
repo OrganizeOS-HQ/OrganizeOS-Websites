@@ -14,7 +14,21 @@ const state = vi.hoisted(() => ({
   owner: null as null | { provider: string | null; email: string | null },
   failingTable: undefined as undefined | "Project" | "User",
   rpc: undefined as unknown as ReturnType<typeof vi.fn>,
+  siteActionSecret: undefined as string | undefined,
 }));
+
+vi.mock("~/env/env.server", async (importOriginal) => {
+  const actual = (await importOriginal<typeof import("~/env/env.server")>())
+    .default;
+  return {
+    default: new Proxy(actual, {
+      get: (target, key) =>
+        key === "WEBSITES2_SITE_ACTION_SECRET"
+          ? state.siteActionSecret
+          : Reflect.get(target, key),
+    }),
+  };
+});
 
 vi.mock("~/services/csrf-session.server", () => ({
   checkCsrf: async () => {},
@@ -106,6 +120,7 @@ beforeEach(() => {
   state.owner = orgOwner;
   state.failingTable = undefined;
   state.rpc = vi.fn(async () => ({ data: fixture, error: null }));
+  state.siteActionSecret = undefined;
 });
 
 afterEach(() => {
@@ -142,6 +157,15 @@ describe("rest.organizeos-site", () => {
       ["www.example.org", "www.example.org", false],
       ["example.net", "example.net", false],
     ]);
+  });
+
+  test("says actions are available only with the secret and the platform's targets", async () => {
+    state.rpc = vi.fn(async () => ({ data: targetsFixture, error: null }));
+    expect("actions" in ((await (await call()).json()) as object)).toBe(false);
+    state.siteActionSecret = "s3cret";
+    expect(await (await call()).json()).toMatchObject({ actions: true });
+    state.rpc = vi.fn(async () => ({ data: fixture, error: null }));
+    expect("actions" in ((await (await call()).json()) as object)).toBe(false);
   });
 
   test("is refused without a session", async () => {

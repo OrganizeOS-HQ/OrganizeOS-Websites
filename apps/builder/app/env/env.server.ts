@@ -82,6 +82,16 @@ const environment = z.object({
     z.string().optional()
   ),
 
+  // The shared secret that signs the Publish dialog's Unpublish
+  // (X-OOS-Site-Action, shared/organizeos-site-action.server.ts). OrganizeOS
+  // holds the same value and verifies it. Unset or blank: no assertion is
+  // minted, the dialog offers no Unpublish, and the action route answers 404.
+  WEBSITES2_SITE_ACTION_SECRET: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().optional()
+  ),
+
   // The CMS panel's switch (builder/features/cms-panel). Only the exact value
   // `true` offers it; anything else keeps it hidden.
   ORGANIZEOS_CMS_PANEL: z.string().optional(),
@@ -172,6 +182,7 @@ const rawEnv = {
   ORGANIZEOS_APP_URL: process.env.ORGANIZEOS_APP_URL,
   ORGANIZEOS_BLOCKS_DENY_ORG_IDS: process.env.ORGANIZEOS_BLOCKS_DENY_ORG_IDS,
   WEBSITES2_PREVIEW_SECRET: process.env.WEBSITES2_PREVIEW_SECRET,
+  WEBSITES2_SITE_ACTION_SECRET: process.env.WEBSITES2_SITE_ACTION_SECRET,
   ORGANIZEOS_CMS_PANEL: process.env.ORGANIZEOS_CMS_PANEL,
   PORT: process.env.PORT,
   MAX_UPLOAD_SIZE: process.env.MAX_UPLOAD_SIZE,

@@ -84,6 +84,23 @@ describe("WEBSITES2_PREVIEW_SECRET", () => {
   });
 });
 
+describe("WEBSITES2_SITE_ACTION_SECRET", () => {
+  test("is undefined when unset", async () => {
+    vi.stubEnv("WEBSITES2_SITE_ACTION_SECRET", undefined);
+    expect((await loadEnv()).WEBSITES2_SITE_ACTION_SECRET).toBeUndefined();
+  });
+
+  test("reads a blank value as unset", async () => {
+    vi.stubEnv("WEBSITES2_SITE_ACTION_SECRET", "  ");
+    expect((await loadEnv()).WEBSITES2_SITE_ACTION_SECRET).toBeUndefined();
+  });
+
+  test("reads the secret from the process environment", async () => {
+    vi.stubEnv("WEBSITES2_SITE_ACTION_SECRET", "s3cret");
+    expect((await loadEnv()).WEBSITES2_SITE_ACTION_SECRET).toBe("s3cret");
+  });
+});
+
 describe("ORGANIZEOS_CMS_PANEL", () => {
   test("is undefined when unset", async () => {
     vi.stubEnv("ORGANIZEOS_CMS_PANEL", undefined);
