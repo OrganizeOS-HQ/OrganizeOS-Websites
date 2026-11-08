@@ -1,0 +1,44 @@
+{
+  "data": [
+    {
+      "id": "34efeec7-ef26-4210-946f-866b46b94f46",
+      "slug": "organizer-t-shirt",
+      "title": "Organizer T-shirt",
+      "image_url": "https://images.example.org/products/organizer-t-shirt.jpg",
+      "price_from_cents": 1800,
+      "price_varies": true,
+      "currency": "USD",
+      "url": "https://example.organizeos.io/shop/organizer-t-shirt"
+    },
+    {
+      "id": "a66f32f6-7332-4e24-8745-2b27bc8012a0",
+      "slug": "campaign-mug",
+      "title": "Campaign Mug",
+      "image_url": null,
+      "price_from_cents": 1200,
+      "price_varies": false,
+      "currency": "USD",
+      "url": "https://example.organizeos.io/shop/campaign-mug"
+    },
+    {
+      "id": "5087feff-58f2-4407-a702-190424880813",
+      "slug": "canvas-tote-bag",
+      "title": "Canvas Tote Bag",
+      "image_url": "https://images.example.org/products/canvas-tote-bag.png",
+      "price_from_cents": 1999,
+      "price_varies": false,
+      "currency": "USD",
+      "url": "https://example.organizeos.io/shop/canvas-tote-bag"
+    },
+    {
+      "id": "6cadce3d-67cd-4297-9d1e-273eae4123d1",
+      "slug": "sticker-2",
+      "title": "Sticker",
+      "image_url": "https://images.example.org/products/sticker.png",
+      "price_from_cents": 0,
+      "price_varies": false,
+      "currency": "USD",
+      "url": "https://example.organizeos.io/shop/sticker-2"
+    }
+  ]
+}

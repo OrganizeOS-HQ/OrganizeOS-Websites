@@ -52,6 +52,11 @@
       "types": "./lib/types/signup/forms-data.d.ts",
       "import": "./lib/signup/forms-data.js"
     },
+    "./products-data": {
+      "webstudio": "./src/shop/products-data.ts",
+      "types": "./lib/types/shop/products-data.d.ts",
+      "import": "./lib/shop/products-data.js"
+    },
     "./field-template": {
       "webstudio": "./src/signup/field.template.tsx",
       "types": "./lib/types/signup/field.template.d.ts",
