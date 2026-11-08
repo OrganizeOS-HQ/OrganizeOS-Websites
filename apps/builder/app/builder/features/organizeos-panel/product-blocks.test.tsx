@@ -290,6 +290,38 @@ describe("Product", () => {
     expect(readCardProduct(root.id, stores())).toBeUndefined();
   });
 
+  test("a card re-pointed at the catalog Products Resource shows no value, and refuses writes", async () => {
+    const grid = await insert(`${ns}:ProductGrid`);
+    const catalogId = ownBinding(grid.id).resourceId;
+    const root = await insert(`${ns}:ProductCard`);
+    const binding = ownBinding(root.id);
+    $dataSources.set(
+      new Map($dataSources.get()).set(binding.id, {
+        ...binding,
+        resourceId: catalogId,
+      })
+    );
+    expect(findProductBlock(root.id, stores())).toBeUndefined();
+    expect(readCardProduct(root.id, stores())).toBeUndefined();
+    expect(await writeCardProduct(root.id, uuid)).toBe(false);
+    expect(await loadCardProducts(root.id, stores())).toBe("no-block");
+    expect(loaderFetch).not.toHaveBeenCalled();
+  });
+
+  test("an edited URL reads no list: no-block, with no request", async () => {
+    const root = await insert(`${ns}:ProductCard`);
+    const resourceId = ownBinding(root.id).resourceId;
+    const resource = $resources.get().get(resourceId) as Resource;
+    $resources.set(
+      new Map($resources.get()).set(resourceId, {
+        ...resource,
+        url: `"${base}/products?id=${uuid}&x=1"`,
+      })
+    );
+    expect(await loadCardProducts(root.id, stores())).toBe("no-block");
+    expect(loaderFetch).not.toHaveBeenCalled();
+  });
+
   test("options: Newest, then the titles in order; a missing pick listed first as Unavailable product", () => {
     const products = [
       { id: "a", title: "Organizer T-shirt" },
@@ -343,5 +375,8 @@ describe("Product", () => {
     const pending = loadCardProducts(root.id, stores());
     await vi.advanceTimersByTimeAsync(productsLoadTimeout);
     expect(await pending).toBeUndefined();
+    // the request past the timeout is aborted, not left running
+    const init = loaderFetch.mock.calls.at(-1)?.[1] as RequestInit;
+    expect(init.signal?.aborted).toBe(true);
   });
 });

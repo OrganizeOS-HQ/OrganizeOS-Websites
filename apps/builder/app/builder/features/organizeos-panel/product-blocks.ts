@@ -98,8 +98,9 @@ const findCollection = (rootId: Instance["id"], instances: Instances) => {
 /**
  * A Shop block's root, its own resource binding (scoped to the root, of a
  * Resource whose URL is a products URL) and that Resource, and its
- * collection. The grid's binding reads the list (no id); undefined when the
- * root is not a Shop block or its binding was removed or rewritten.
+ * collection. The grid's binding reads the list (no id); a card's binding
+ * references its own Resource, never a catalog one. Undefined when the root
+ * is not a Shop block or its binding was removed or rewritten.
  */
 export const findProductBlock = (rootId: Instance["id"], data: BlockData) => {
   const root = data.instances.get(rootId);
@@ -112,7 +113,9 @@ export const findProductBlock = (rootId: Instance["id"], data: BlockData) => {
   for (const dataSource of data.dataSources.values()) {
     if (
       dataSource.type !== "resource" ||
-      dataSource.scopeInstanceId !== rootId
+      dataSource.scopeInstanceId !== rootId ||
+      (root.component === productCardComponent &&
+        isPresetId(dataSource.resourceId))
     ) {
       continue;
     }
@@ -284,28 +287,35 @@ const authorizationOf = (resource: Resource) =>
 
 /**
  * The org's products, read live with the card's own Resource's
- * `Authorization` (`GET <API base>/products`), or undefined when the read
- * fails or takes longer than `productsLoadTimeout`.
+ * `Authorization` (`GET <API base>/products`); undefined when the read fails
+ * or takes longer than `productsLoadTimeout`, which aborts it; "no-block",
+ * with no read, when the card's own Resource is not a products URL.
  */
 export const loadCardProducts = async (
   rootId: Instance["id"],
   data: BlockData
-): Promise<undefined | ProductOption[]> => {
+): Promise<undefined | "no-block" | ProductOption[]> => {
   const block = findProductBlock(rootId, data);
-  const authorization =
-    block === undefined ? undefined : authorizationOf(block.resource);
-  if (block === undefined || authorization === undefined) {
+  if (block === undefined || block.root.component !== productCardComponent) {
+    return "no-block";
+  }
+  const authorization = authorizationOf(block.resource);
+  if (authorization === undefined) {
     return;
   }
+  const controller = new AbortController();
   let timer: undefined | ReturnType<typeof setTimeout>;
   const timeout = new Promise<undefined>((resolve) => {
-    timer = setTimeout(() => resolve(undefined), productsLoadTimeout);
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(undefined);
+    }, productsLoadTimeout);
   });
   try {
     const loaded = await Promise.race([
       loadCatalogRequest(
         { resource: block.resource, apiBase: block.url.apiBase, authorization },
-        { url: `${block.url.apiBase}/products` }
+        { url: `${block.url.apiBase}/products`, signal: controller.signal }
       ),
       timeout,
     ]);

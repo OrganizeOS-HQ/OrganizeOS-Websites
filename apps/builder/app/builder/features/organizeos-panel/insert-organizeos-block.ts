@@ -426,16 +426,25 @@ export const completeOrganizeosFragment = ({
   }[entry.catalog];
   const resourceId =
     entry.ownResource === undefined ? catalogResourceId : nanoid();
+  // A Resource of its own is always created, whatever the catalog: the
+  // binding references its fresh id, which no project holds yet.
+  const created =
+    entry.catalog === "events" ? undefined : createdResources[entry.catalog];
   let resource: undefined | Resource;
-  if (entry.catalog !== "events" && resources.has(resourceId) === false) {
-    const { name, path } = createdResources[entry.catalog];
-    const url = getSiblingUrl(events.url, path);
+  if (
+    entry.ownResource !== undefined ||
+    (created !== undefined && resources.has(resourceId) === false)
+  ) {
+    const url =
+      created === undefined
+        ? events.url
+        : getSiblingUrl(events.url, created.path);
     if (url === undefined) {
       return { status: "refused" };
     }
     resource = {
       id: resourceId,
-      name: entry.ownResource?.name ?? name,
+      name: entry.ownResource?.name ?? created?.name ?? events.name,
       method: "get",
       url,
       headers: [{ name: "Authorization", value: authorization.value }],

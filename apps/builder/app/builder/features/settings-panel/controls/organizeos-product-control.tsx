@@ -68,7 +68,8 @@ export const ProductShowControl = ({ instanceId }: ControlProps<"text">) => {
 type Load =
   | { status: "loading" }
   | { status: "loaded"; products: ProductOption[] }
-  | { status: "failed" };
+  | { status: "failed" }
+  | { status: "no-block" };
 
 const getOptionKey = (option: ProductRowOption) => `product:${option.value}`;
 const getOptionLabel = (option: ProductRowOption) => option.label;
@@ -95,7 +96,9 @@ export const ProductCardControl = ({ instanceId }: ControlProps<"text">) => {
         setLoad(
           products === undefined
             ? { status: "failed" }
-            : { status: "loaded", products }
+            : products === "no-block"
+              ? { status: "no-block" }
+              : { status: "loaded", products }
         );
       }
     });
@@ -104,14 +107,17 @@ export const ProductCardControl = ({ instanceId }: ControlProps<"text">) => {
     };
   }, [instanceId]);
 
-  useEffect(() => read(), [read]);
-
   const picked = readCardProduct(instanceId, data);
   const pickedId = picked?.kind === "product" ? picked.id : undefined;
+  // read again when the card's own Resource becomes a products URL (an undo)
+  const readable = picked !== undefined;
+  useEffect(() => read(), [read, readable]);
+
+  // a pick is "Unavailable product" only once the list loaded without it
   const options =
     load.status === "loaded"
       ? getProductOptions(load.products, pickedId)
-      : getProductOptions([], pickedId);
+      : [newestOption];
   const selected =
     picked === undefined
       ? undefined

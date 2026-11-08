@@ -1360,6 +1360,37 @@ describe("an Events block, through the completion table", () => {
     );
   });
 
+  test("an events entry with a Resource of its own creates that Resource, a copy of the Events request", () => {
+    organizeosBlockData.set(testBlock, {
+      catalog: "events",
+      ownResource: { name: "Own Events" },
+      bindingName: EVENTS_BINDING_NAME,
+      binds: [
+        { instance: "events", prop: "data", value: (variable) => variable },
+      ],
+    });
+
+    const completion = completeOrganizeosFragment({
+      component: testBlock,
+      fragment: getComponentTemplateData(testBlock),
+      presetIds: { events, forms, upcomingEvents, products },
+      resources: new Map(provisioned.resources.map((item) => [item.id, item])),
+    });
+
+    const binding =
+      completion.status === "ready" ? completion.binding : undefined;
+    expect(binding?.resourceId).not.toBe(events.resourceId);
+    expect(binding?.resource).toEqual({
+      id: binding?.resourceId,
+      name: "Own Events",
+      method: "get",
+      url: eventsResource.url,
+      headers: [
+        { name: "Authorization", value: eventsResource.headers[0].value },
+      ],
+    });
+  });
+
   // The insert returns only its roots' ids, and the rest are found by walking
   // the inserted tree against the template: here a walk that misses one.
   test.each([

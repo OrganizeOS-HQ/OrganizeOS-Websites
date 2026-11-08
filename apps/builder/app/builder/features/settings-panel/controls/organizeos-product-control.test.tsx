@@ -9,7 +9,12 @@ import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { renderData } from "@webstudio-is/template";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
-import { type Instance, coreMetas } from "@webstudio-is/sdk";
+import {
+  type DataSource,
+  type Instance,
+  type Resource,
+  coreMetas,
+} from "@webstudio-is/sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
 import { $ } from "@organizeos/site-components/site-templates";
@@ -300,6 +305,59 @@ describe("the Product Card's Product row", () => {
         control(host, "product-card")?.querySelector("[data-products-load]")
       ).toBeNull()
     );
+  });
+
+  test("a card whose own Resource URL is in neither form shows no value and no line, and reads nothing", async () => {
+    answer(productsBody);
+    const card = await insert(`${ns}:ProductCard`);
+    const binding = [...$dataSources.get().values()].find(
+      (dataSource) =>
+        dataSource.type === "resource" && dataSource.scopeInstanceId === card.id
+    ) as Extract<DataSource, { type: "resource" }>;
+    const resource = $resources.get().get(binding.resourceId) as Resource;
+    $resources.set(
+      new Map($resources.get()).set(resource.id, {
+        ...resource,
+        url: `"${base}/products?sort=price"`,
+      })
+    );
+    const host = await renderPanel(card.id);
+    const row = control(host, "product-card");
+    expect(row?.querySelector('[role="combobox"]')?.textContent).toBe("");
+    expect(row?.querySelector("[data-products-load]")).toBeNull();
+    expect(loaderFetch).not.toHaveBeenCalled();
+  });
+
+  test("while the list loads, and after a failed read, a pick is not listed as Unavailable product", async () => {
+    let resolve: (value: unknown) => void = () => {};
+    loaderFetch.mockImplementation(
+      () => new Promise((done) => (resolve = done))
+    );
+    const card = await insert(`${ns}:ProductCard`);
+    await writeCardProduct(card.id, productsBody.data[0].id);
+    const host = await renderPanel(card.id);
+    const combobox = () =>
+      control(host, "product-card")?.querySelector(
+        '[role="combobox"]'
+      ) as HTMLElement;
+    const listed = async () => {
+      await userEvent.click(combobox());
+      const options = Array.from(
+        document.querySelectorAll('[role="option"]'),
+        (option) => option.textContent
+      );
+      await userEvent.keyboard("{Escape}");
+      await settle();
+      return options;
+    };
+    expect(await listed()).toEqual(["Newest"]);
+    await act(async () => resolve({ ok: false, json: async () => [] }));
+    await settle();
+    expect(
+      control(host, "product-card")?.querySelector("[data-products-load]")
+    ).toBeInstanceOf(HTMLElement);
+    expect(combobox().textContent).toBe("");
+    expect(await listed()).toEqual(["Newest"]);
   });
 
   test("a failed read answer shows the line too", async () => {
