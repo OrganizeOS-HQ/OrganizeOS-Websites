@@ -35,7 +35,7 @@ import {
   getInstanceKey,
 } from "~/shared/nano-states";
 import { $dataSourceVariables } from "~/shared/nano-states/variables";
-import { $instances, $props } from "~/shared/sync/data-stores";
+import { $dataSources, $instances, $props } from "~/shared/sync/data-stores";
 import {
   type ComputedFieldName,
   addSignupField,
@@ -45,8 +45,10 @@ import {
   getFieldRows,
   getSignupWarning,
   isNestedInForm,
+  isSignupDataBound,
   listRootFields,
   removeSignupField,
+  restoreSignupFormData,
   signupFormComponent,
 } from "~/builder/features/organizeos-panel/signup-fields";
 import { $instanceTags } from "../../style-panel/shared/model";
@@ -56,6 +58,7 @@ import {
   $selectedInstanceDataProp,
   $selectedInstanceFailedLoads,
   OrganizeosRecordControl,
+  linkButtonClass,
   isOrganizeosRecordProp,
 } from "./organizeos-record";
 import { BasePage } from "./url";
@@ -329,6 +332,9 @@ const getComputedFieldName =
  * Fields, in the `data` prop's row: one checkbox per field of the form, in its
  * order, and the one warning line. The Forms data itself is never shown, and
  * `data` stays bound: its row has a plain label, with no menu to reset it.
+ * With `data` unbound (isSignupDataBound), a line says so, and its Reconnect
+ * binds it to the org's Forms catalog again as the insert does
+ * (restoreSignupFormData).
  */
 const SignupFieldsControl = ({
   instanceId: rootId,
@@ -342,6 +348,8 @@ const SignupFieldsControl = ({
   const instanceTags = useStore($instanceTags);
   const selected = useStore($selectedInstanceSelector);
   const propValues = useStore($propValuesByInstanceSelector);
+  const dataSources = useStore($dataSources);
+  const dataBound = isSignupDataBound(rootId, props, dataSources);
   const rootSelector =
     selected?.[0] === rootId ? selected : ([rootId] as InstanceSelector);
 
@@ -359,6 +367,7 @@ const SignupFieldsControl = ({
       : getFieldRows(resolution.fields, rootFields.byName);
   const warning = getSignupWarning({
     nested: isNestedInForm(rootSelector, instanceTags),
+    dataBound,
     data,
     resolution,
     rootFields,
@@ -392,6 +401,24 @@ const SignupFieldsControl = ({
             </CheckboxAndLabel>
           );
         })}
+        {dataBound === false && (
+          <Text
+            truncate
+            css={{ color: cssVar("--foreground-warning") }}
+            data-signup-data-unbound
+          >
+            No forms data.{" "}
+            <button
+              type="button"
+              className={linkButtonClass}
+              onClick={() => {
+                void restoreSignupFormData(rootId);
+              }}
+            >
+              Reconnect
+            </button>
+          </Text>
+        )}
         {warning !== undefined && (
           <Text
             truncate

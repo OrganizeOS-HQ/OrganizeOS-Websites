@@ -4,7 +4,13 @@ import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { renderData, ws } from "@webstudio-is/template";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
-import { coreMetas, type Instance } from "@webstudio-is/sdk";
+import {
+  type Instance,
+  type Prop,
+  coreMetas,
+  encodeDataSourceVariable,
+} from "@webstudio-is/sdk";
+import { getOrganizeosPresetIds } from "./insert-organizeos-block";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
 import { consentLabelExpression } from "@organizeos/site-components/field-template";
@@ -52,8 +58,10 @@ import {
   isNestedInForm,
   getFieldRows,
   getSignupWarning,
+  isSignupDataBound,
   listRootFields,
   removeSignupField,
+  restoreSignupFormData,
   signupFormComponent,
 } from "./signup-fields";
 
@@ -388,6 +396,7 @@ describe("listRootFields and getFieldRows", () => {
           hasSubmit: true,
         },
         failedLoads: false,
+        dataBound: true,
       })
     ).toBeUndefined();
     const rootId = setSignupForm();
@@ -769,6 +778,7 @@ describe("changeSignupForm", () => {
         },
         rootFields: rootFields(rootId),
         failedLoads: false,
+        dataBound: true,
       })
     ).toBe("Not in form: first_name");
 
@@ -875,6 +885,151 @@ describe("changeSignupFieldName", () => {
   });
 });
 
+describe("isSignupDataBound", () => {
+  const setData = (rootId: string, prop: undefined | Partial<Prop>) => {
+    const props = new Map(
+      [...$props.get()].filter(
+        ([, item]) => item.instanceId !== rootId || item.name !== "data"
+      )
+    );
+    if (prop !== undefined) {
+      props.set("data-prop", {
+        id: "data-prop",
+        instanceId: rootId,
+        name: "data",
+        ...prop,
+      } as Prop);
+    }
+    $props.set(props);
+  };
+  const bound = (rootId: string) =>
+    isSignupDataBound(rootId, $props.get(), $dataSources.get());
+
+  test("only an expression that reads a variable the project has", () => {
+    const rootId = setSignupForm();
+    $dataSources.set(
+      new Map($dataSources.get()).set("forms-var", {
+        type: "variable",
+        id: "forms-var",
+        scopeInstanceId: rootId,
+        name: "Forms",
+        value: { type: "json", value: { data: [] } },
+      })
+    );
+    setData(rootId, undefined);
+    expect(bound(rootId)).toBe(false);
+    setData(rootId, { type: "json", value: { data: [] } });
+    expect(bound(rootId)).toBe(false);
+    setData(rootId, { type: "expression", value: `{ data: [] }` });
+    expect(bound(rootId)).toBe(false);
+    setData(rootId, {
+      type: "expression",
+      value: `${encodeDataSourceVariable("gone")}.data`,
+    });
+    expect(bound(rootId)).toBe(false);
+    setData(rootId, {
+      type: "expression",
+      value: `${encodeDataSourceVariable("forms-var")}`,
+    });
+    expect(bound(rootId)).toBe(true);
+  });
+});
+
+describe("restoreSignupFormData", () => {
+  const setCatalog = async () => {
+    const { events } = await getOrganizeosPresetIds("project-1");
+    $resources.set(
+      new Map([
+        [
+          events.resourceId,
+          {
+            id: events.resourceId,
+            name: "Events",
+            method: "get",
+            url: `"https://staging.example.org/api/public/v1/events"`,
+            headers: [
+              { name: "Authorization", value: `"Bearer osk_eventstoken"` },
+            ],
+          },
+        ],
+      ])
+    );
+  };
+  const dataProp = (rootId: string) =>
+    [...$props.get().values()].find(
+      (prop) => prop.instanceId === rootId && prop.name === "data"
+    );
+  const formsBindings = (rootId: string, resourceId: string) =>
+    [...$dataSources.get().values()].filter(
+      (dataSource) =>
+        dataSource.type === "resource" &&
+        dataSource.scopeInstanceId === rootId &&
+        dataSource.resourceId === resourceId
+    );
+
+  test("binds data to the Forms catalog as the insert does, in one undo step, the catalog kept", async () => {
+    const rootId = setSignupForm();
+    await setCatalog();
+    const { forms } = await getOrganizeosPresetIds("project-1");
+    const events = new Map($resources.get());
+    expect(dataProp(rootId)).toBeUndefined();
+
+    expect(await restoreSignupFormData(rootId)).toBe(true);
+
+    expect(undoDepth()).toBe(1);
+    const [binding] = formsBindings(rootId, forms.resourceId);
+    expect(binding).toMatchObject({ name: "OrganizeOS Forms" });
+    expect(dataProp(rootId)).toMatchObject({
+      type: "expression",
+      value: `${encodeDataSourceVariable(binding.id)}.data`,
+    });
+    expect($resources.get().get(forms.resourceId)).toMatchObject({
+      url: `"https://staging.example.org/api/public/v1/forms"`,
+    });
+    for (const [id, resource] of events) {
+      expect($resources.get().get(id)).toBe(resource);
+    }
+    expect(isSignupDataBound(rootId, $props.get(), $dataSources.get())).toBe(
+      true
+    );
+
+    serverSyncStore.undo();
+    expect(dataProp(rootId)).toBeUndefined();
+    expect(formsBindings(rootId, forms.resourceId)).toEqual([]);
+  });
+
+  test("reuses the root's own Forms binding when it is still there", async () => {
+    const rootId = setSignupForm();
+    await setCatalog();
+    const { forms } = await getOrganizeosPresetIds("project-1");
+    await restoreSignupFormData(rootId);
+    const [binding] = formsBindings(rootId, forms.resourceId);
+    $props.set(
+      new Map(
+        [...$props.get()].filter(
+          ([, prop]) => prop.instanceId !== rootId || prop.name !== "data"
+        )
+      )
+    );
+
+    expect(await restoreSignupFormData(rootId)).toBe(true);
+
+    expect(formsBindings(rootId, forms.resourceId)).toEqual([binding]);
+    expect(dataProp(rootId)).toMatchObject({
+      value: `${encodeDataSourceVariable(binding.id)}.data`,
+    });
+  });
+
+  test("refused, writing nothing, without the project's link to its data", async () => {
+    const rootId = setSignupForm();
+    const before = { props: $props.get(), dataSources: $dataSources.get() };
+    expect(await restoreSignupFormData(rootId)).toBe(false);
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect($props.get()).toBe(before.props);
+    expect($dataSources.get()).toBe(before.dataSources);
+  });
+});
+
 describe("getSignupWarning", () => {
   const defaults = resolveSignupForm("", undefined);
   const resolved = (fields: FormField[]): SignupFormResolution => ({
@@ -898,6 +1053,7 @@ describe("getSignupWarning", () => {
       resolution: defaults,
       rootFields: present(["email"]),
       failedLoads: false,
+      dataBound: true,
       ...input,
     });
 
@@ -982,7 +1138,37 @@ describe("getSignupWarning", () => {
     ).toBeUndefined();
   });
 
-  test("nothing while data is undefined", () => {
+  test("with data unbound, the checks that need no data still run, and Form not found gives way to the No forms data line", () => {
+    const unbound = { dataBound: false, data: undefined };
+    expect(warn({ ...unbound, nested: true })).toBe("Nested in a form");
+    // the org defaults need no data
+    expect(warn({ ...unbound, rootFields: present(["first_name"]) })).toBe(
+      "Missing: Email"
+    );
+    const unresolved: SignupFormResolution = {
+      formId: "x",
+      fields: undefined,
+      unavailable: "data",
+    };
+    expect(
+      warn({
+        ...unbound,
+        resolution: unresolved,
+        rootFields: present(["email"], { hasSubmit: false }),
+      })
+    ).toBe("No Submit Button");
+    expect(warn({ ...unbound, resolution: unresolved })).toBeUndefined();
+    // a literal left where the binding was is no binding either
+    expect(
+      warn({
+        dataBound: false,
+        data: { error: "Unavailable" },
+        resolution: unresolved,
+      })
+    ).toBeUndefined();
+  });
+
+  test("nothing while bound data is undefined: it is loading", () => {
     expect(warn({ data: undefined, nested: true })).toBeUndefined();
     expect(
       warn({

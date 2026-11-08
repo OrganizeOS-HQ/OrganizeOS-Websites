@@ -1,5 +1,14 @@
 import { nanoid } from "nanoid";
-import type { Instance, Instances, Prop, Props } from "@webstudio-is/sdk";
+import {
+  type DataSources,
+  type Instance,
+  type Instances,
+  type Prop,
+  type Props,
+  decodeDataVariableId,
+  encodeDataSourceVariable,
+} from "@webstudio-is/sdk";
+import { getExpressionIdentifiers } from "@webstudio-is/expression";
 import { renderTemplate } from "@webstudio-is/template";
 import {
   type InstanceSelector,
@@ -24,10 +33,16 @@ import {
   type RuntimeMutationAccumulator,
   executeStagedRuntimeMutation,
 } from "~/shared/instance-utils/data";
+import { $instances, $project, $resources } from "~/shared/sync/data-stores";
 import {
+  type OrganizeosPresetIds,
+  completeOrganizeosFragment,
+  completeOrganizeosInsertMutable,
+  getOrganizeosPresetIds,
   isOrganizeosBlocksEnabled,
   organizeosNamespace,
 } from "./insert-organizeos-block";
+import { updateWebstudioDataStaged } from "./staged-data";
 
 /**
  * The Signup Form's Fields list (fork doc section 9, "In the builder"): which
@@ -249,15 +264,51 @@ export const findFieldInsertTarget = (
   };
 };
 
-/** The one warning line, in the order the spec gives, or undefined. */
+/**
+ * Whether a root's `data` is bound: an expression that reads at least one
+ * variable the project has. Missing, a literal (what an unbind leaves), or an
+ * expression whose variables are all gone is not bound, and no load will ever
+ * fill it, so it is never taken for loading.
+ */
+export const isSignupDataBound = (
+  rootId: Instance["id"],
+  props: Props,
+  dataSources: DataSources
+) => {
+  for (const prop of props.values()) {
+    if (
+      prop.instanceId === rootId &&
+      prop.name === "data" &&
+      prop.type === "expression"
+    ) {
+      return Array.from(getExpressionIdentifiers(prop.value)).some(
+        (identifier) => {
+          const id = decodeDataVariableId(identifier);
+          return id !== undefined && dataSources.has(id);
+        }
+      );
+    }
+  }
+  return false;
+};
+
+/**
+ * The one warning line, in the order the spec gives, or undefined. While
+ * bound `data` loads, nothing. With `data` unbound, its own line says so
+ * (the Fields row's "No forms data"), and this runs the checks that need no
+ * data: with no form picked the org defaults' fields, else the Submit Button.
+ */
 export const getSignupWarning = ({
   nested,
+  dataBound,
   data,
   resolution,
   rootFields,
   failedLoads,
 }: {
   nested: boolean;
+  /** Whether the root's `data` is bound (isSignupDataBound). */
+  dataBound: boolean;
   /** The root's computed `data`. */
   data: unknown;
   resolution: SignupFormResolution;
@@ -266,17 +317,20 @@ export const getSignupWarning = ({
   failedLoads: boolean;
 }): undefined | string => {
   // nothing while the forms load
-  if (data === undefined) {
+  if (dataBound && data === undefined) {
     return;
   }
   if (nested) {
     return "Nested in a form";
   }
+  const { byName, order, hasSubmit } = rootFields;
   const { fields } = resolution;
   if (resolution.unavailable !== undefined || fields === undefined) {
+    if (dataBound === false) {
+      return hasSubmit ? undefined : "No Submit Button";
+    }
     return failedLoads ? undefined : "Form not found";
   }
-  const { byName, order, hasSubmit } = rootFields;
   const missing = fields.find(
     (field) => isRequiredField(field) && byName.has(field.name) === false
   );
@@ -392,6 +446,105 @@ const isConsentLabel = (children: Instance["children"]) =>
   children.length === 1 &&
   children[0].type === "expression" &&
   children[0].value === consentLabelExpression;
+
+/**
+ * Binds a root's `data` to the org's Forms catalog again, as the insert binds
+ * it: through the insert's own completion (completeOrganizeosFragment, then
+ * completeOrganizeosInsertMutable), reusing the root's own binding of the
+ * Forms Resource when it is still there, in one transaction and one undo
+ * step. The catalog is kept: the Forms Resource is added only when missing,
+ * in provisioning's shape, and nothing else of it is written. Refused, with a
+ * toast and nothing written, where the insert would be.
+ */
+export const restoreSignupFormData = async (
+  rootId: Instance["id"]
+): Promise<boolean> => {
+  const project = $project.get();
+  const root = $instances.get().get(rootId);
+  if (project === undefined || root === undefined) {
+    return false;
+  }
+  const label = "the forms data";
+  if (isOrganizeosBlocksEnabled() === false) {
+    builderApi.toast.error(
+      `Cannot restore ${label}: ${platformName} blocks are not available for this site yet.`
+    );
+    return false;
+  }
+  let presetIds: OrganizeosPresetIds;
+  try {
+    presetIds = await getOrganizeosPresetIds(project.id);
+  } catch (error) {
+    console.error(error);
+    builderApi.toast.error(`Cannot restore ${label}.`);
+    return false;
+  }
+  const completion = completeOrganizeosFragment({
+    component: root.component,
+    fragment: {
+      children: [{ type: "id", value: rootId }],
+      instances: [root],
+      assets: [],
+      dataSources: [],
+      resources: [],
+      props: [],
+      breakpoints: [],
+      styleSourceSelections: [],
+      styleSources: [],
+      styles: [],
+    },
+    presetIds,
+    resources: $resources.get(),
+  });
+  if (completion.status === "refused" || completion.binding === undefined) {
+    builderApi.toast.error(
+      `Cannot restore ${label}: this site's link to your organization's data was removed or changed. Contact ${platformName} support to restore it.`
+    );
+    return false;
+  }
+  const { binding } = completion;
+  try {
+    return await updateWebstudioDataStaged((data) => {
+      const own = Array.from(data.dataSources.values()).find(
+        (dataSource) =>
+          dataSource.type === "resource" &&
+          dataSource.scopeInstanceId === rootId &&
+          dataSource.resourceId === binding.resourceId
+      );
+      if (own === undefined) {
+        completeOrganizeosInsertMutable(
+          data,
+          completion,
+          new Map([[rootId, rootId]])
+        );
+        return true;
+      }
+      const variable = encodeDataSourceVariable(own.id);
+      for (const bind of binding.binds) {
+        for (const prop of data.props.values()) {
+          if (prop.instanceId === bind.instanceId && prop.name === bind.prop) {
+            data.props.delete(prop.id);
+          }
+        }
+        const id = nanoid();
+        data.props.set(id, {
+          id,
+          instanceId: bind.instanceId,
+          name: bind.prop,
+          type: "expression",
+          value: bind.value(variable),
+        });
+      }
+      return true;
+    });
+  } catch (error) {
+    console.error(error);
+    builderApi.toast.error(
+      error instanceof Error ? error.message : `Cannot restore ${label}.`
+    );
+    return false;
+  }
+};
 
 /**
  * One staged write: one commit, one undo step, no selection change. Resolves

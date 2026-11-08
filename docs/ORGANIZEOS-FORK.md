@@ -1388,7 +1388,8 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     `state` or any other expression, has no variable to set, so the buttons are
     read-only and write nothing.
   - **Fields** takes the `data` prop's row, under a plain "Fields" label with
-    no menu, so `data` is never shown and stays bound. It lists one checkbox
+    no menu, so `data` is never shown, and an unbound `data` is reconnected
+    from its own line (below). It lists one checkbox
     per field of the form the root resolves (`resolveSignupForm` on its
     `record` and computed `data`, as the block resolves it), in the form's
     order. A row is checked while the root has a descendant Field of that name,
@@ -1417,10 +1418,23 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     {label}" (the first required field with no Field), "SMS needs Phone" (an
     SMS consent Field and no `phone` Field), "No Submit Button", "Not in form:
     {name}" (a Field whose name the form lacks; "(blank)" for none). Nothing
-    shows while the forms load, and "Form not found" gives way to the record
-    picker's own line while a load has failed. A bound `field` counts by its
-    computed value and is never "Not in form". The canvas outline keeps its
-    full check.
+    shows while bound `data` loads, and "Form not found" gives way to the
+    record picker's own line while a load has failed. A bound `field` counts
+    by its computed value and is never "Not in form". The canvas outline keeps
+    its full check.
+  - **Unbound `data`.** `data` is bound when it is an expression that reads a
+    variable the project has (`isSignupDataBound`); missing, a literal, or an
+    expression whose variables are gone is not, and is never taken for
+    loading. Then a line reads "No forms data. Reconnect", and the warning
+    line runs the checks that need no data: with no form picked, the org
+    defaults' fields, else the Submit Button ("Form not found" gives way to
+    the "No forms data" line). Reconnect (`restoreSignupFormData`) binds
+    `data` to the org's Forms catalog as the insert does, through the insert's
+    own `completeOrganizeosFragment` and `completeOrganizeosInsertMutable`,
+    reusing the root's own binding of the Forms Resource when it is still
+    there, in one staged transaction and one undo step; the catalog is kept
+    (the Forms Resource is added only when missing). It is refused, with the
+    insert's toast and nothing written, where the insert would be.
   - **After submit** is two radios, Message (`"state"`) and Page (`"page"`),
     the values published sites read. Page draws upstream's page select (the URL
     control's Page mode, `BasePage`, made reachable by one marked `export` in

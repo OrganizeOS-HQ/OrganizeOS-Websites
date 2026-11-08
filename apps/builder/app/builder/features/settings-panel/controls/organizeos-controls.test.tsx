@@ -10,7 +10,12 @@ import { createDefaultPages } from "@webstudio-is/project-build";
 import { renderData } from "@webstudio-is/template";
 import { showAttribute } from "@webstudio-is/react-sdk";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
-import { coreMetas, type Instance, type Prop } from "@webstudio-is/sdk";
+import {
+  type Instance,
+  type Prop,
+  coreMetas,
+  encodeDataSourceVariable,
+} from "@webstudio-is/sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
 import { $ } from "@organizeos/site-components/site-templates";
@@ -90,7 +95,10 @@ const settle = () =>
     }
   });
 
-/** A Signup Form whose `data` is the Forms body and whose form is Newsletter. */
+/**
+ * A Signup Form whose `data` is bound to a variable holding the Forms body and
+ * whose form is Newsletter.
+ */
 const setProject = (template = organizeosTemplates.SignupForm.template) => {
   const data = renderData(<$.Body ws:id="bodyId">{template}</$.Body>);
   const formRoot = [...data.instances.values()].find(
@@ -102,8 +110,8 @@ const setProject = (template = organizeosTemplates.SignupForm.template) => {
       id: "data-prop",
       instanceId: formRoot.id,
       name: "data",
-      type: "json",
-      value: formsBody,
+      type: "expression",
+      value: encodeDataSourceVariable("forms-variable"),
     },
     {
       id: "record-prop",
@@ -123,7 +131,15 @@ const setProject = (template = organizeosTemplates.SignupForm.template) => {
   $styleSourceSelections.set(data.styleSourceSelections);
   $assets.set(new Map());
   $resources.set(new Map());
-  $dataSources.set(data.dataSources);
+  $dataSources.set(
+    new Map(data.dataSources).set("forms-variable", {
+      type: "variable",
+      id: "forms-variable",
+      scopeInstanceId: formRoot.id,
+      name: "Forms",
+      value: { type: "json", value: formsBody },
+    })
+  );
   $dataSourceVariables.set(new Map());
   const pages = createDefaultPages({ rootInstanceId: "bodyId" });
   $pages.set(pages);
@@ -427,6 +443,51 @@ describe("the Signup Form's Settings", () => {
     expect(host.querySelector("[data-signup-warning]")?.textContent).toBe(
       "Not in form: nickname"
     );
+  });
+
+  test("with data unbound, Fields says so in a line with Reconnect, and still runs the checks that need no data", async () => {
+    const rootId = setProject();
+    const props = new Map($props.get());
+    props.delete("data-prop");
+    props.set("record-prop", {
+      id: "record-prop",
+      instanceId: rootId,
+      name: "record",
+      type: "string",
+      value: "",
+    });
+    $props.set(props);
+    // no Submit Button
+    const submit = [...$instances.get().values()].find(
+      (instance) => instance.component === `${ns}:SubmitButton`
+    ) as Instance;
+    const instances = new Map($instances.get());
+    for (const instance of instances.values()) {
+      if (instance.children.some((child) => child.value === submit.id)) {
+        instances.set(instance.id, {
+          ...instance,
+          children: instance.children.filter(
+            (child) => child.value !== submit.id
+          ),
+        });
+      }
+    }
+    instances.delete(submit.id);
+    $instances.set(instances);
+    const host = await renderPanel(rootId);
+    expect(host.querySelector("[data-signup-data-unbound]")?.textContent).toBe(
+      "No forms data. Reconnect"
+    );
+    expect(host.querySelector("[data-signup-warning]")?.textContent).toBe(
+      "No Submit Button"
+    );
+    // the org defaults still list their rows
+    expect(checkbox(host, "Email")?.getAttribute("data-state")).toBe("checked");
+  });
+
+  test("bound data shows no No forms data line", async () => {
+    const host = await renderPanel(setProject());
+    expect(host.querySelector("[data-signup-data-unbound]")).toBeNull();
   });
 
   test("After submit maps Message to state, and Page shows the page select", async () => {

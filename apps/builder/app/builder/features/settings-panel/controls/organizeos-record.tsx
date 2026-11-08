@@ -419,7 +419,8 @@ export const reloadFailedLoads = (results: readonly unknown[]) => {
   }
 };
 
-const reloadClass = css({
+/** A button that reads as a link in a line of text: Reload, Reconnect. */
+export const linkButtonClass = css({
   all: "unset",
   cursor: "pointer",
   ...textVariants.link,
@@ -534,7 +535,7 @@ export const OrganizeosRecordControl = ({
             {picker.loadFailed}{" "}
             <button
               type="button"
-              className={reloadClass}
+              className={linkButtonClass}
               onClick={() => {
                 setReloading(failedLoads);
                 reloadFailedLoads(failedLoads);
