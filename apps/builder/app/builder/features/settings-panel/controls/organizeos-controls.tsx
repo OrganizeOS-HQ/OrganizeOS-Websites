@@ -40,6 +40,8 @@ import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import {
   addSignupField,
   changeSignupForm,
+  fieldComponent,
+  findSignupFormRoot,
   getFieldRows,
   getSignupWarning,
   isNestedInForm,
@@ -57,6 +59,7 @@ import {
   isOrganizeosRecordProp,
 } from "./organizeos-record";
 import { BasePage } from "./url";
+import { FieldNameControl } from "./organizeos-field-control";
 
 /**
  * The OrganizeOS blocks' own Settings rows (fork doc section 9, "In the
@@ -73,6 +76,7 @@ export type OrganizeosControlKind =
   | "signup-fields"
   | "signup-after-submit"
   | "record"
+  | "field-name"
   | "hidden";
 
 /**
@@ -82,11 +86,14 @@ export type OrganizeosControlKind =
 export const getOrganizeosControl = ({
   component,
   propName,
+  instanceSelector,
+  instances = $instances.get(),
 }: {
   component: undefined | string;
   propName: string;
   /** The selected instance's selector: renderControl is given none. */
   instanceSelector: undefined | InstanceSelector;
+  instances?: Instances;
 }): undefined | OrganizeosControlKind => {
   if (component === signupFormComponent) {
     switch (propName) {
@@ -105,6 +112,15 @@ export const getOrganizeosControl = ({
   }
   if (isOrganizeosRecordProp(component, propName)) {
     return "record";
+  }
+  // a Field under an RSVP Form, or outside any form, keeps the text box
+  if (
+    component === fieldComponent &&
+    propName === "field" &&
+    instanceSelector !== undefined &&
+    findSignupFormRoot(instanceSelector, instances) !== undefined
+  ) {
+    return "field-name";
   }
 };
 
@@ -140,6 +156,8 @@ const renderKind = (
       return <SignupAfterSubmitControl {...textProps} />;
     case "record":
       return <OrganizeosRecordControl {...textProps} />;
+    case "field-name":
+      return <FieldNameControl {...textProps} />;
     case "hidden":
       return;
   }
