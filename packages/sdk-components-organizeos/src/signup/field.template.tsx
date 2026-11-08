@@ -12,7 +12,17 @@ export type FieldTemplateField = {
   consent?: string;
 };
 
-const navigatorLabel = ({ label, name, consent }: FieldTemplateField) => {
+/**
+ * A Field's label in the navigator, which the builder's Fields list also
+ * shows for a consent field: its field's label (its name when blank), "SMS
+ * consent" for the SMS opt-in and "Consent" for another consent field, never
+ * the consent wording.
+ */
+export const getFieldNavigatorLabel = ({
+  label,
+  name,
+  consent,
+}: Pick<FieldTemplateField, "label" | "name" | "consent">) => {
   if (consent === "sms") {
     return "SMS consent";
   }
@@ -37,7 +47,7 @@ const navigatorLabel = ({ label, name, consent }: FieldTemplateField) => {
  * imports this file.
  */
 export const fieldTemplate = (field: FieldTemplateField) => {
-  const label = navigatorLabel(field);
+  const label = getFieldNavigatorLabel(field);
   const isConsent = field.consent !== undefined;
   if (field.type === "checkbox" || isConsent) {
     return (

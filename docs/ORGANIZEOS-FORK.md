@@ -1390,7 +1390,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     registry, which the template unmounts in the other states. A required row
     is checked and disabled while its Field exists; with none it is
     checkable, so a deleted one can be put back. A consent row is listed only
-    while the form lists the field, and is never locked. Checking inserts one
+    while the form lists the field, is never locked, and reads the navigator's
+    name for its Field ("SMS consent", or "Consent": `getFieldNavigatorLabel`
+    in `field.template.tsx`), never the consent wording. Checking inserts one
     Field (`fieldTemplate`, the tokens reused with "ours") in one transaction:
     after the last Field; with none, before the first Submit Button; with
     neither, last in the root's "Form Content", else in its first child; never

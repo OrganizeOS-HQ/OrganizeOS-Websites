@@ -11,6 +11,7 @@ import { localStylesFirst } from "@organizeos/site-components/style-order";
 import {
   type FieldTemplateField,
   fieldTemplate,
+  getFieldNavigatorLabel,
 } from "@organizeos/site-components/field-template";
 import {
   type SignupFormResolution,
@@ -196,7 +197,11 @@ export const getFieldRows = (
     const checked = present.has(field.name);
     return {
       name: field.name,
-      label: field.label,
+      // a consent row by its kind, as the navigator names its Field
+      label:
+        field.consent === undefined
+          ? field.label
+          : getFieldNavigatorLabel(field),
       checked,
       locked: checked && isLocked(field),
       consent: field.consent !== undefined,
@@ -292,11 +297,6 @@ export const getSignupWarning = ({
     return `Not in form: ${unknown === "" ? "(blank)" : unknown}`;
   }
 };
-
-/** A Field's label in the navigator, as `fieldTemplate` gives it. */
-const getNavigatorLabel = (field: FieldTemplateField) =>
-  renderTemplate(fieldTemplate(field), nanoid).instances[0]?.label ??
-  field.label;
 
 const toTemplateField = (field: FormField): FieldTemplateField => ({
   name: field.name,
@@ -468,7 +468,7 @@ export const changeSignupFieldName = (
     if (oldField !== undefined) {
       oldLabels.add(oldField.label);
       oldLabels.add(`Field: ${oldField.label}`);
-      oldLabels.add(getNavigatorLabel(toTemplateField(oldField)));
+      oldLabels.add(getFieldNavigatorLabel(oldField));
     }
     if (label === undefined || label.trim() === "" || oldLabels.has(label)) {
       const newField = fields.find((field) => field.name === name);
@@ -477,9 +477,7 @@ export const changeSignupFieldName = (
         input: {
           instanceId: fieldId,
           label:
-            newField === undefined
-              ? name
-              : getNavigatorLabel(toTemplateField(newField)),
+            newField === undefined ? name : getFieldNavigatorLabel(newField),
         },
       });
     }

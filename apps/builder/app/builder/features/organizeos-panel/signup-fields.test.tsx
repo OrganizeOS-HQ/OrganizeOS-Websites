@@ -247,7 +247,7 @@ describe("listRootFields and getFieldRows", () => {
       },
       {
         name: "sms_opt_in",
-        label: "Text me updates",
+        label: "SMS consent",
         checked: false,
         locked: false,
         consent: true,
@@ -296,6 +296,28 @@ describe("listRootFields and getFieldRows", () => {
     });
   });
 
+  test("a consent row reads the navigator's short name, never the form's consent wording", () => {
+    const present = new Map<string, string[]>();
+    const labels = getFieldRows(
+      [
+        ...contactFields,
+        field("email_opt_in", "Email me news and updates.", {
+          type: "checkbox",
+          consent: "email",
+        }),
+      ],
+      present
+    ).map((row) => row.label);
+    expect(labels).toEqual([
+      "Email",
+      "First name",
+      "Company",
+      "Phone",
+      "SMS consent",
+      "Consent",
+    ]);
+  });
+
   test("a consent row is listed only while the definition has it, and never locked", () => {
     const required = contactFields.map((item) =>
       item.consent === undefined ? item : { ...item, required: true }
@@ -305,7 +327,7 @@ describe("listRootFields and getFieldRows", () => {
       getFieldRows(required, present).find((row) => row.name === "sms_opt_in")
     ).toEqual({
       name: "sms_opt_in",
-      label: "Text me updates",
+      label: "SMS consent",
       checked: true,
       locked: false,
       consent: true,
