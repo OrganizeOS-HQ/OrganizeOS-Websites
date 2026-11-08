@@ -253,3 +253,36 @@ describe("the OrganizeOS publisher in shared/context.server.ts", () => {
     expect(contextServer).not.toContain("createOrganizeosPublisher");
   });
 });
+
+describe("the settings panel's OrganizeOS controls", () => {
+  const combined = read("../settings-panel/controls/combined.tsx");
+  const url = read("../settings-panel/controls/url.tsx");
+
+  test("combined.tsx imports getOrganizeosControl and renderOrganizeosControl", () => {
+    expect(combined).toMatch(
+      /import\s*\{\s*getOrganizeosControl,\s*renderOrganizeosControl,?\s*\}\s*from\s*"\.\/organizeos-controls"/
+    );
+  });
+
+  test("the branch asks for the control before the json control, and draws nothing for a hidden prop", () => {
+    const branch = combined.indexOf("getOrganizeosControl({");
+    const json = combined.indexOf('meta.control === "json"');
+    expect(branch).toBeGreaterThan(-1);
+    expect(json).toBeGreaterThan(branch);
+    expect(combined).toMatch(
+      /instanceSelector:\s*\$selectedInstanceSelector\.get\(\)/
+    );
+    expect(combined).toMatch(
+      /if\s*\(organizeosControl === "hidden"\)\s*\{\s*return undefined;\s*\}/
+    );
+    expect(combined).toMatch(
+      /return renderOrganizeosControl\(organizeosControl,/
+    );
+  });
+
+  test("url.tsx exports BasePage, the Page mode After submit draws", () => {
+    expect(url).toMatch(
+      /export const BasePage = \(\{ prop, onChange \}: BaseControlProps\) =>/
+    );
+  });
+});

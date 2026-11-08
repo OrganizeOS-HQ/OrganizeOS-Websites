@@ -16,11 +16,13 @@ import { ResourceControl } from "./resource-control";
 import { FormActionControl } from "./form-action";
 import { TagControl } from "./tag-control";
 import { TimeZoneControl } from "./time-zone";
+// OrganizeOS fork: the OrganizeOS blocks' Settings rows
 import { $instances } from "~/shared/sync/data-stores";
+import { $selectedInstanceSelector } from "~/shared/nano-states";
 import {
-  OrganizeosRecordControl,
-  isOrganizeosRecordProp,
-} from "./organizeos-record";
+  getOrganizeosControl,
+  renderOrganizeosControl,
+} from "./organizeos-controls";
 
 export const renderControl = ({
   meta,
@@ -54,26 +56,33 @@ export const renderControl = ({
     return;
   }
 
+  // OrganizeOS fork: an OrganizeOS block's own Settings rows (the Signup
+  // Form's Form, State, Fields and After submit, a record picker, a Field's
+  // form field), and none for a prop another row draws; any other prop keeps
+  // upstream's control (organizeos-controls.tsx).
+  const organizeosControl = getOrganizeosControl({
+    component: $instances.get().get(rest.instanceId)?.component,
+    propName: rest.propName,
+    instanceSelector: $selectedInstanceSelector.get(),
+  });
+  if (organizeosControl === "hidden") {
+    return undefined;
+  }
+  if (organizeosControl !== undefined) {
+    return renderOrganizeosControl(organizeosControl, {
+      key,
+      meta,
+      prop,
+      ...rest,
+    });
+  }
+
   if (meta.control === "json") {
     return <JsonControl key={key} meta={meta} prop={prop} {...rest} />;
   }
 
   if (meta.control === "json-code") {
     return <JsonCodeControl key={key} meta={meta} prop={prop} {...rest} />;
-  }
-
-  // OrganizeOS fork: an OrganizeOS block's record is picked from the org's
-  // records; a record prop on any other component stays a text control.
-  if (
-    meta.control === "text" &&
-    isOrganizeosRecordProp(
-      $instances.get().get(rest.instanceId)?.component,
-      rest.propName
-    )
-  ) {
-    return (
-      <OrganizeosRecordControl key={key} meta={meta} prop={prop} {...rest} />
-    );
   }
 
   if (meta.control === "text") {

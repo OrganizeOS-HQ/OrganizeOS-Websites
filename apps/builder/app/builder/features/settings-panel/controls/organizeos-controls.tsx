@@ -1,0 +1,431 @@
+import { type ComponentProps, useId, useRef } from "react";
+import { useStore } from "@nanostores/react";
+import type { Instance, Instances, Prop } from "@webstudio-is/sdk";
+import { decodeDataVariableId } from "@webstudio-is/sdk";
+import type { InstanceSelector } from "@webstudio-is/project-build/runtime";
+import {
+  Box,
+  Checkbox,
+  CheckboxAndLabel,
+  Flex,
+  Label as BaseLabel,
+  Radio,
+  RadioAndLabel,
+  RadioGroup,
+  Text,
+  ToggleGroup,
+  ToggleGroupButton,
+  Tooltip,
+  cssVar,
+  theme,
+  useIsTruncated,
+} from "@webstudio-is/design-system";
+import {
+  AlertCircleIcon,
+  CheckCircleIcon,
+  EmailIcon,
+  FormTextFieldIcon,
+  LoadingDotsIcon,
+  XCircledFilledIcon,
+} from "@webstudio-is/icons";
+import { resolveSignupForm } from "@organizeos/site-components/forms-data";
+import {
+  $propValuesByInstanceSelector,
+  $selectedInstanceSelector,
+  getInstanceKey,
+} from "~/shared/nano-states";
+import { $dataSourceVariables } from "~/shared/nano-states/variables";
+import { $instances, $props } from "~/shared/sync/data-stores";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
+import {
+  addSignupField,
+  changeSignupForm,
+  getFieldRows,
+  getSignupWarning,
+  isNestedInForm,
+  listRootFields,
+  removeSignupField,
+  signupFormComponent,
+} from "~/builder/features/organizeos-panel/signup-fields";
+import { $instanceTags } from "../../style-panel/shared/model";
+import { type ControlProps, VerticalLayout } from "../shared";
+import { PropertyLabel } from "../property-label";
+import {
+  $selectedInstanceDataProp,
+  $selectedInstanceFailedLoads,
+  OrganizeosRecordControl,
+  isOrganizeosRecordProp,
+} from "./organizeos-record";
+import { BasePage } from "./url";
+
+/**
+ * The OrganizeOS blocks' own Settings rows (fork doc section 9, "In the
+ * builder"), behind one marked branch in combined.tsx. The Signup Form's rows
+ * read Form, State, Fields and After submit, each at the panel's width with
+ * no help text; a Field under a Signup Form picks its form field from a list;
+ * the RSVP Form keeps its record picker. Anything else falls through to
+ * upstream's controls.
+ */
+
+export type OrganizeosControlKind =
+  | "signup-record"
+  | "signup-state"
+  | "signup-fields"
+  | "signup-after-submit"
+  | "record"
+  | "hidden";
+
+/**
+ * The OrganizeOS control a prop gets, `"hidden"` for a prop whose row is drawn
+ * by another, or undefined for upstream's own control.
+ */
+export const getOrganizeosControl = ({
+  component,
+  propName,
+}: {
+  component: undefined | string;
+  propName: string;
+  /** The selected instance's selector: renderControl is given none. */
+  instanceSelector: undefined | InstanceSelector;
+}): undefined | OrganizeosControlKind => {
+  if (component === signupFormComponent) {
+    switch (propName) {
+      case "record":
+        return "signup-record";
+      case "state":
+        return "signup-state";
+      case "data":
+        return "signup-fields";
+      case "action":
+        return "signup-after-submit";
+      case "actionPage":
+        return "hidden";
+    }
+    return;
+  }
+  if (isOrganizeosRecordProp(component, propName)) {
+    return "record";
+  }
+};
+
+type OrganizeosControlProps = ControlProps<string> & { key?: string };
+
+/** Renders the control a kind names; nothing for `"hidden"`. */
+export const renderOrganizeosControl = (
+  kind: OrganizeosControlKind,
+  { key, ...props }: OrganizeosControlProps
+) => {
+  const control = renderKind(kind, props);
+  return control === undefined ? undefined : (
+    <Box key={key} data-organizeos-control={kind}>
+      {control}
+    </Box>
+  );
+};
+
+const renderKind = (
+  kind: OrganizeosControlKind,
+  props: ControlProps<string>
+) => {
+  // the metas keep upstream's controls; the kind decides what is drawn
+  const textProps = props as unknown as ControlProps<"text">;
+  switch (kind) {
+    case "signup-record":
+      return <SignupFormRecordControl {...textProps} />;
+    case "signup-state":
+      return <SignupStateControl {...textProps} />;
+    case "signup-fields":
+      return <SignupFieldsControl {...textProps} />;
+    case "signup-after-submit":
+      return <SignupAfterSubmitControl {...textProps} />;
+    case "record":
+      return <OrganizeosRecordControl {...textProps} />;
+    case "hidden":
+      return;
+  }
+  kind satisfies never;
+};
+
+/** A label that truncates, with the whole text in a tooltip when it does. */
+const TruncatedLabel = ({
+  children,
+  ...rest
+}: ComponentProps<typeof BaseLabel> & { children: string }) => {
+  const ref = useRef<HTMLLabelElement>(null);
+  const truncated = useIsTruncated(ref, children);
+  const label = (
+    <BaseLabel truncate {...rest} ref={ref}>
+      {children}
+    </BaseLabel>
+  );
+  return truncated ? <Tooltip content={children}>{label}</Tooltip> : label;
+};
+
+/**
+ * Form: the record picker. Choosing a form also adds the new form's missing
+ * required Fields, in the same transaction (changeSignupForm).
+ */
+const SignupFormRecordControl = (props: ControlProps<"text">) => (
+  <OrganizeosRecordControl
+    {...props}
+    onChangeRecord={(record) => {
+      const { fields } = resolveSignupForm(
+        record,
+        $selectedInstanceDataProp.get()
+      );
+      void changeSignupForm(props.instanceId, record, fields);
+    }}
+  />
+);
+
+const states = [
+  { value: "initial", label: "Initial", icon: <FormTextFieldIcon /> },
+  { value: "submitting", label: "Submitting", icon: <LoadingDotsIcon /> },
+  { value: "success", label: "Success", icon: <CheckCircleIcon /> },
+  { value: "confirm-email", label: "Check email", icon: <EmailIcon /> },
+  { value: "error", label: "Error", icon: <AlertCircleIcon /> },
+  { value: "unavailable", label: "Unavailable", icon: <XCircledFilledIcon /> },
+] as const;
+
+/**
+ * The variable a `state` expression reads when it is that variable alone,
+ * as the template binds it (`formState`); undefined for any other expression.
+ */
+export const getStateVariableId = (expression: string) => {
+  const identifier = expression.trim();
+  return /^[\w$]+$/.test(identifier)
+    ? decodeDataVariableId(identifier)
+    : undefined;
+};
+
+/**
+ * State: which state the canvas shows. A `state` bound to one variable sets
+ * that variable's value on the canvas, as the block's own action does:
+ * nothing is written to the project and nothing is added to undo. An unbound
+ * `state` is written as a string; any other expression is read-only.
+ */
+const SignupStateControl = ({
+  prop,
+  computedValue,
+  onChange,
+}: ControlProps<"text">) => {
+  const variableId =
+    prop?.type === "expression" ? getStateVariableId(prop.value) : undefined;
+  const readOnly =
+    prop !== undefined && prop.type !== "string" && variableId === undefined;
+  const value = typeof computedValue === "string" ? computedValue : "initial";
+  return (
+    <VerticalLayout label={<BaseLabel>State</BaseLabel>}>
+      <ToggleGroup
+        type="single"
+        value={value}
+        disabled={readOnly}
+        css={{ width: "100%" }}
+        onValueChange={(state: string) => {
+          if (variableId !== undefined) {
+            $dataSourceVariables.set(
+              new Map($dataSourceVariables.get()).set(variableId, state)
+            );
+            return;
+          }
+          if (readOnly === false) {
+            onChange({ type: "string", value: state });
+          }
+        }}
+      >
+        {states.map((state) => (
+          <Tooltip key={state.value} content={state.label}>
+            <ToggleGroupButton value={state.value} aria-label={state.label}>
+              {state.icon}
+            </ToggleGroupButton>
+          </Tooltip>
+        ))}
+      </ToggleGroup>
+    </VerticalLayout>
+  );
+};
+
+/** A descendant's selector under a root's, by its parents. */
+const getDescendantSelector = (
+  rootSelector: InstanceSelector,
+  instanceId: Instance["id"],
+  instances: Instances
+): undefined | InstanceSelector => {
+  const path: Instance["id"][] = [];
+  const visit = (id: Instance["id"]): boolean => {
+    if (id === instanceId) {
+      return true;
+    }
+    for (const child of instances.get(id)?.children ?? []) {
+      if (child.type === "id" && visit(child.value)) {
+        path.push(child.value);
+        return true;
+      }
+    }
+    return false;
+  };
+  if (visit(rootSelector[0]) === false) {
+    return;
+  }
+  return [...path, ...rootSelector];
+};
+
+/**
+ * Fields, in the `data` prop's row: one checkbox per field of the form, in its
+ * order, and the one warning line. The Forms data itself is never shown, and
+ * `data` stays bound: its row has a plain label, with no menu to reset it.
+ */
+const SignupFieldsControl = ({
+  instanceId: rootId,
+  computedProps,
+}: ControlProps<"text">) => {
+  const id = useId();
+  const instances = useStore($instances);
+  const props = useStore($props);
+  const data = useStore($selectedInstanceDataProp);
+  const failedLoads = useStore($selectedInstanceFailedLoads);
+  const instanceTags = useStore($instanceTags);
+  const selected = useStore($selectedInstanceSelector);
+  const propValues = useStore($propValuesByInstanceSelector);
+  const rootSelector =
+    selected?.[0] === rootId ? selected : ([rootId] as InstanceSelector);
+
+  const resolution = resolveSignupForm(computedProps?.get("record"), data);
+  const rootFields = listRootFields(rootId, instances, props, (fieldId) => {
+    const selector = getDescendantSelector(rootSelector, fieldId, instances);
+    const value =
+      selector === undefined
+        ? undefined
+        : propValues.get(getInstanceKey(selector))?.get("field");
+    return typeof value === "string" ? value : undefined;
+  });
+  const rows =
+    resolution.fields === undefined
+      ? []
+      : getFieldRows(resolution.fields, rootFields.byName);
+  const warning = getSignupWarning({
+    nested: isNestedInForm(rootSelector, instanceTags),
+    data,
+    resolution,
+    rootFields,
+    failedLoads: failedLoads.length > 0,
+  });
+
+  return (
+    <VerticalLayout label={<BaseLabel>Fields</BaseLabel>}>
+      <Flex direction="column" css={{ gap: theme.spacing[3], minWidth: 0 }}>
+        {rows.map((row) => {
+          const field = resolution.fields?.find(
+            (item) => item.name === row.name
+          );
+          return (
+            <CheckboxAndLabel key={row.name} css={{ minWidth: 0 }}>
+              <Checkbox
+                id={`${id}:${row.name}`}
+                checked={row.checked}
+                disabled={row.locked}
+                onCheckedChange={(checked) => {
+                  if (checked === true && field !== undefined) {
+                    void addSignupField(rootId, field);
+                  } else if (checked === false) {
+                    void removeSignupField(rootId, row.name);
+                  }
+                }}
+              />
+              <TruncatedLabel htmlFor={`${id}:${row.name}`}>
+                {row.label}
+              </TruncatedLabel>
+            </CheckboxAndLabel>
+          );
+        })}
+        {warning !== undefined && (
+          <Text
+            truncate
+            css={{ color: cssVar("--foreground-warning") }}
+            data-signup-warning
+          >
+            {warning}
+          </Text>
+        )}
+      </Flex>
+    </VerticalLayout>
+  );
+};
+
+const afterSubmitOptions = [
+  { value: "state", label: "Message" },
+  { value: "page", label: "Page" },
+] as const;
+
+/**
+ * After submit: Message (the form's own state boxes) or Page, which draws
+ * upstream's page select under the radio for `actionPage`. The stored values
+ * stay "state" and "page": published sites read them.
+ */
+const SignupAfterSubmitControl = ({
+  instanceId,
+  prop,
+  propName,
+  computedValue,
+  onChange,
+}: ControlProps<"text">) => {
+  const id = useId();
+  const props = useStore($props);
+  const readOnly = prop !== undefined && prop.type !== "string";
+  const value = computedValue === "page" ? "page" : "state";
+  let actionPage: undefined | Prop;
+  for (const item of props.values()) {
+    if (item.instanceId === instanceId && item.name === "actionPage") {
+      actionPage = item;
+    }
+  }
+  const pageProp =
+    actionPage?.type === "page" ||
+    actionPage?.type === "string" ||
+    actionPage?.type === "expression"
+      ? { type: actionPage.type, value: actionPage.value }
+      : undefined;
+
+  return (
+    <VerticalLayout
+      label={<PropertyLabel name={propName} readOnly={readOnly} />}
+    >
+      <Flex direction="column" css={{ gap: theme.spacing[3] }}>
+        <RadioGroup
+          disabled={readOnly}
+          name={`${id}:after-submit`}
+          value={value}
+          onValueChange={(next) => onChange({ type: "string", value: next })}
+        >
+          {afterSubmitOptions.map((option) => (
+            <RadioAndLabel key={option.value}>
+              <Radio value={option.value} id={`${id}:${option.value}`} />
+              <BaseLabel htmlFor={`${id}:${option.value}`}>
+                {option.label}
+              </BaseLabel>
+            </RadioAndLabel>
+          ))}
+        </RadioGroup>
+        {value === "page" && (
+          <Flex direction="column" data-after-submit-page>
+            <BasePage
+              id={`${id}:page`}
+              instanceId={instanceId}
+              readOnly={false}
+              prop={pageProp as ComponentProps<typeof BasePage>["prop"]}
+              value=""
+              onChange={(page) => {
+                executeRuntimeMutation({
+                  id: "instances.updateProps",
+                  input: {
+                    updates: [{ instanceId, name: "actionPage", ...page }],
+                  },
+                });
+              }}
+            />
+          </Flex>
+        )}
+      </Flex>
+    </VerticalLayout>
+  );
+};

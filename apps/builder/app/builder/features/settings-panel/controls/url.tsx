@@ -313,7 +313,9 @@ const getId = (data: { id: string }) => data.id;
 const getHash = (data: { hash: string }) => data.hash;
 const getInstanceId = (data: { instanceId: string }) => data.instanceId;
 
-const BasePage = ({ prop, onChange }: BaseControlProps) => {
+// OrganizeOS fork: exported for the Signup Form's After submit control, which
+// draws this Page mode alone (organizeos-controls.tsx).
+export const BasePage = ({ prop, onChange }: BaseControlProps) => {
   const pages = useStore($pages);
   const { allPages, pageSelectOptions } = useMemo(() => {
     const allPages = pages ? getAllPages(pages) : [];

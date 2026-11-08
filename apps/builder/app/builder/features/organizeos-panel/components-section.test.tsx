@@ -236,10 +236,7 @@ describe("groupOrganizeosBlocks", () => {
           `${namespace}:RsvpForm`,
         ],
       ],
-      [
-        "Signups",
-        [`${namespace}:SignupForm`, `${namespace}:SignupFormInline`],
-      ],
+      ["Signups", [`${namespace}:SignupForm`, `${namespace}:SignupFormInline`]],
       ["More", [`${namespace}:FutureBlock`]],
     ]);
   });
@@ -266,10 +263,7 @@ describe("groupOrganizeosBlocks", () => {
       ],
       ["Content", [`${namespace}:RichText`]],
       ["Events", [`${namespace}:EventList`, `${namespace}:EventCard`]],
-      [
-        "Signups",
-        [`${namespace}:SignupForm`, `${namespace}:SignupFormInline`],
-      ],
+      ["Signups", [`${namespace}:SignupForm`, `${namespace}:SignupFormInline`]],
     ]);
   });
 
