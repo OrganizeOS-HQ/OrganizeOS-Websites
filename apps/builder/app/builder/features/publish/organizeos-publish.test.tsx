@@ -394,6 +394,25 @@ describe("the OrganizeOS Publish dialog", () => {
     expect(publishButton(host)?.disabled).toBe(true);
   });
 
+  test("a ticked address is filled with the accent and an unticked one is not", async () => {
+    routeAnswers(answerWith([builtinTarget, mainTarget, otherTarget]));
+    setProject(null);
+    const host = await render();
+    const fill = (name: string) => {
+      const box = checkboxFor(host, name);
+      return [
+        box?.getAttribute("data-state"),
+        box === undefined ? "" : getComputedStyle(box).backgroundColor,
+      ];
+    };
+    const [, unticked] = fill("www.acme.org");
+    await click(checkboxFor(host, "www.acme.org"));
+    expect(fill("www.acme.org")).toEqual(["checked", "rgb(13, 148, 136)"]);
+    expect(unticked).not.toBe("rgb(13, 148, 136)");
+    await click(checkboxFor(host, "www.acme.org"));
+    expect(fill("www.acme.org")[0]).toBe("unchecked");
+  });
+
   test("the live addresses are ticked when it opens", async () => {
     routeAnswers(
       answerWith([builtinTarget, mainTarget, { ...otherTarget, live: true }])

@@ -48,6 +48,7 @@ import {
   findPausedScript,
   type PausedScriptItem,
 } from "./organizeos-publish-paused-script";
+import { tickedCheckboxCss } from "./organizeos-publish-checkbox";
 import { findPublishBlocker } from "./organizeos-publish-code-check";
 import {
   getOrganizeosPublishState,
@@ -365,6 +366,7 @@ const TargetRow = ({
       <Checkbox
         id={id}
         aria-label={target.host}
+        css={tickedCheckboxCss}
         checked={ticked}
         onCheckedChange={(value) => onTickedChange(value === true)}
       />
