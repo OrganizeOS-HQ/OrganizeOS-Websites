@@ -238,6 +238,7 @@ test("states and prop controls", () => {
 test("templates", () => {
   expect(Object.keys(templates)).toEqual([
     "SignupForm",
+    "SignupFormInline",
     "EventList",
     "EventCard",
     "RsvpForm",
@@ -250,6 +251,7 @@ test("templates", () => {
     expect(template.category).toBe("hidden");
   }
   expect(templates.SignupForm.label).toBe("Signup Form");
+  expect(templates.SignupFormInline.label).toBe("Signup Form, inline");
   expect(templates.EventList.label).toBe("Event List");
   expect(templates.EventCard.label).toBe("Event Card");
   expect(templates.RsvpForm.label).toBe("RSVP Form");
@@ -257,10 +259,19 @@ test("templates", () => {
   expect(templates.Marquee.label).toBe("Marquee");
   expect(templates.ConvergenceField.label).toBe("Convergence Field");
   // every template's label is the label a designer sees in the panel and the
-  // navigator, and a template that is a component's has that component's
+  // navigator, and a template that is a component's has that component's; a
+  // second template of one component adds its variant after a comma
   for (const [name, template] of Object.entries(templates)) {
-    expect(template.label, name).toMatch(labelPattern);
+    const [label, variant, ...rest] = (template.label ?? "").split(", ");
+    expect(label, name).toMatch(labelPattern);
+    expect(rest, name).toEqual([]);
+    if (variant !== undefined) {
+      expect(variant, name).toMatch(/^[a-z]+$/);
+    }
   }
+  expect(templates.SignupFormInline.label).toMatch(
+    new RegExp(`^${metas.SignupForm.label}, `)
+  );
   expect(templates.RsvpForm.label).toBe(metas.RsvpForm.label);
   expect(templates.ConvergenceField.label).toBe(metas.ConvergenceField.label);
   expect(templates.RichText.label).toBe(metas.RichText.label);

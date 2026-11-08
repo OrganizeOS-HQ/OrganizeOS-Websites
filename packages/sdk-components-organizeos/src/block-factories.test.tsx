@@ -3,7 +3,10 @@ import { encodeDataSourceVariable } from "@webstudio-is/sdk";
 import { renderTemplate, ws } from "@webstudio-is/template";
 import { rotatingTabsTemplate } from "./rotating-tabs.template";
 import { rsvpFormTemplate } from "./rsvp-form.template";
-import { signupFormTemplate } from "./signup-form.template";
+import {
+  signupFormInlineTemplate,
+  signupFormTemplate,
+} from "./signup-form.template";
 import { $, organizeos, radix } from "./shared/proxy";
 import * as siteTemplates from "./site-templates";
 
@@ -13,6 +16,11 @@ import * as siteTemplates from "./site-templates";
 // scoped to the first copy's root.
 test.each([
   { label: "Signup Form", template: signupFormTemplate, name: "formState" },
+  {
+    label: "Signup Form, inline",
+    template: signupFormInlineTemplate,
+    name: "formState",
+  },
   { label: "RSVP Form", template: rsvpFormTemplate, name: "rsvpState" },
   { label: "Rotating Tabs", template: rotatingTabsTemplate, name: "activeTab" },
 ])("two $label blocks in one render keep their own state", (block) => {

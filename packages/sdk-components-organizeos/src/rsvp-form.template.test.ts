@@ -323,8 +323,11 @@ test("the tokens are the Signup Form's, by name and by style", () => {
     );
   const rsvpTokens = stylesByToken(fragment);
   const signupTokens = stylesByToken(signup);
-  expect(Array.from(rsvpTokens.keys()).sort()).toEqual(
-    Array.from(signupTokens.keys()).sort()
+  // every token the RSVP Form wears is the Signup Form's; the Signup Form's
+  // state boxes also wear the two message tokens, which the RSVP Form's
+  // state boxes do not
+  expect(Array.from(signupTokens.keys()).sort()).toEqual(
+    [...rsvpTokens.keys(), "OS Success Message", "OS Error Message"].sort()
   );
   for (const [name, styles] of rsvpTokens) {
     expect(styles.length, name).toBeGreaterThan(0);
