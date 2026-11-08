@@ -26,6 +26,10 @@ import { afterEach, describe, expect, test } from "vitest";
 // The publish targets the builder sends (the targets input) are checked before
 // anything installs and again before the callback body is built, which must
 // equal the platform's fixture (__fixtures__/publish-callback-body.json).
+// The replace flag (the replace_pages input, true after the admin confirmed
+// replacing the organization's old site) is checked before anything installs
+// and again before the body is built, which then must equal
+// __fixtures__/publish-callback-body-replace.json.
 // The build's deployment.domains needs no test here: the builder writes it as
 // before ([Project.domain]), and the CLI reads it only in its Cloudflare
 // branch, which this workflow does not build.
@@ -93,6 +97,7 @@ const probeOf = (script: string) =>
   script.match(/node --input-type=module -e '([^']*)'/)?.[1];
 
 const targetsStep = stepNamed("Read the targets");
+const replaceStep = stepNamed("Read the replace flag");
 const switchStep = stepNamed("Read the org script switch");
 const guardStep = stepNamed("Read the guard level");
 const installVercelStep = stepNamed("Install the Vercel CLI");
@@ -102,6 +107,7 @@ const publishedStep = stepNamed("Report the build as published");
 const failedStep = stepNamed("Report the build as failed");
 
 const targetsScript = runScriptOf(targetsStep);
+const replaceScript = runScriptOf(replaceStep);
 const switchScript = runScriptOf(switchStep);
 const guardScript = runScriptOf(guardStep);
 
@@ -207,6 +213,7 @@ const substitutions: Record<string, string> = {
   "inputs.build_id": hostileBuildId,
   "inputs.organization_id": "a6b33e8c-3f0e-4c21-9d4e-6b0c1f2e3d4a",
   "inputs.targets": "",
+  "inputs.replace_pages": "",
   "vars.BUILDER_ORIGIN": "https://builder.example",
   "secrets.WSTD_SERVICE_TOKEN": secrets.serviceToken,
   "secrets.PUBLISH_CALLBACK_URL": "https://app.example/publish-callback",
@@ -219,6 +226,8 @@ const substitutions: Record<string, string> = {
   "steps.guard-level.outputs.value": "1",
   // a builder that sends no targets
   "steps.targets.outputs.value": "",
+  // and no replace
+  "steps.replace-pages.outputs.value": "",
 };
 
 /** The step's env as the runner fills it, with some substitutions replaced. */
@@ -438,7 +447,7 @@ describe("the publish workflow's inputs", () => {
     const scripts = steps
       .filter((item) => /^ {8}run: \|$/m.test(item.text))
       .map(runScriptOf);
-    expect(scripts).toHaveLength(11);
+    expect(scripts).toHaveLength(12);
     for (const script of scripts) {
       expect(script).not.toContain("${{");
     }
@@ -457,11 +466,12 @@ describe("the publish workflow's inputs", () => {
     expect(workflow).not.toMatch(/^ {0,4}env:/m);
   });
 
-  test("feeds orgScript, guardLevel and targets from their steps' outputs alone", () => {
+  test("feeds orgScript, guardLevel, targets and the replace flag from their steps' outputs alone", () => {
     const env = envOf(callbackStep);
     expect(env.ORG_SCRIPT).toBe("${{ steps.org-script.outputs.value }}");
     expect(env.GUARD_LEVEL).toBe("${{ steps.guard-level.outputs.value }}");
     expect(env.TARGETS).toBe("${{ steps.targets.outputs.value }}");
+    expect(env.REPLACE_PAGES).toBe("${{ steps.replace-pages.outputs.value }}");
     expect(Object.keys(env).sort()).toEqual([
       "BUILD_ID",
       "CALLBACK_TOKEN",
@@ -470,6 +480,7 @@ describe("the publish workflow's inputs", () => {
       "GUARD_LEVEL",
       "ORGANIZATION_ID",
       "ORG_SCRIPT",
+      "REPLACE_PAGES",
       "TARGETS",
     ]);
     // nothing else reads the outputs on the way
@@ -477,6 +488,7 @@ describe("the publish workflow's inputs", () => {
       "steps.org-script",
       "steps.guard-level",
       "steps.targets",
+      "steps.replace-pages",
     ]) {
       expect(
         steps.filter((item) => item.text.includes(id)).map((item) => item.name)
@@ -571,7 +583,9 @@ describe("the publish workflow's targets", () => {
   test("reads the targets after setup-node and before anything installs, under an id, from the input alone", () => {
     const index = steps.indexOf(targetsStep);
     expect(steps[index - 1].text).toMatch(/^uses: actions\/setup-node@/);
-    expect(steps[index + 1].name).toBe("Install and build CLI");
+    // then the replace flag, also before anything installs
+    expect(steps[index + 1].name).toBe("Read the replace flag");
+    expect(steps[index + 2].name).toBe("Install and build CLI");
     expect(targetsStep.text).toMatch(/^ {8}id: targets$/m);
     expect(envOf(targetsStep)).toEqual({ TARGETS: "${{ inputs.targets }}" });
   });
@@ -614,6 +628,64 @@ describe("the publish workflow's targets", () => {
     expect(given.status).toBe(0);
     expect(given.output).toBe('value=["builtin","www.example.org"]\n');
     expect(given.calls).toEqual([]);
+  });
+});
+
+const callbackReplaceFixture = readFileSync(
+  join(cliDir, "src", "__fixtures__", "publish-callback-body-replace.json"),
+  "utf8"
+);
+
+/** "Read the replace flag" run with the inputs as the runner fills them. */
+const readReplace = (input: string, targets = '["www.example.org"]') =>
+  runStep(
+    replaceScript,
+    envFor(replaceStep, {
+      "inputs.replace_pages": input,
+      "inputs.targets": targets,
+    })
+  );
+
+describe("the publish workflow's replace flag", () => {
+  test("declares the replace_pages input, not required", () => {
+    expect(workflow).toMatch(
+      /^ {6}replace_pages:\n {8}description: "true when the admin confirmed replacing the old site"\n {8}required: false$/m
+    );
+  });
+
+  test("reads the flag before anything installs, under an id, from the inputs alone", () => {
+    expect(replaceStep.text).toMatch(/^ {8}id: replace-pages$/m);
+    expect(envOf(replaceStep)).toEqual({
+      REPLACE_PAGES: "${{ inputs.replace_pages }}",
+      TARGETS_INPUT: "${{ inputs.targets }}",
+    });
+  });
+
+  test("writes an empty output without the input, and true for exactly true with targets", () => {
+    const absent = readReplace("");
+    expect(absent.status).toBe(0);
+    expect(absent.output).toBe("value=\n");
+    const given = readReplace("true");
+    expect(given.status).toBe(0);
+    expect(given.output).toBe("value=true\n");
+    expect(given.calls).toEqual([]);
+  });
+
+  test("fails the run, writing nothing, on anything else, or true without targets", () => {
+    for (const [input, targets] of [
+      ["false", '["builtin"]'],
+      ["TRUE", '["builtin"]'],
+      ["1", '["builtin"]'],
+      ["true ", '["builtin"]'],
+      ["true", ""],
+    ]) {
+      const run = readReplace(input, targets);
+      expect(run.status, input).toBe(1);
+      expect(run.stdout, input).toContain(
+        "::error::The replace_pages input is not true with targets given."
+      );
+      expect(run.output, input).toBe("");
+    }
   });
 });
 
@@ -664,6 +736,61 @@ describe("the publish callback", () => {
       "targets",
     ]);
     expectNoSecretIn(run);
+  });
+
+  test("with the replace flag, sends exactly the platform's replace fixture body: seven keys in order", () => {
+    const expected = JSON.parse(callbackReplaceFixture);
+    const read = readTargets(JSON.stringify(expected.targets));
+    const flag = readReplace("true", JSON.stringify(expected.targets));
+    const run = runWithAnswer(callbackStep, {
+      replaced: {
+        "inputs.organization_id": expected.organizationId,
+        "inputs.build_id": expected.buildId,
+        "steps.deploy.outputs.deployment_url": expected.deploymentUrl,
+        "steps.targets.outputs.value": read.output
+          .replace(/^value=/, "")
+          .trim(),
+        "steps.replace-pages.outputs.value": flag.output
+          .replace(/^value=/, "")
+          .trim(),
+      },
+      answer: JSON.stringify({ ok: true, live: true, targets: [] }),
+    });
+
+    expect(run.status).toBe(0);
+    const [call] = run.calls;
+    expect(argAfter(call, "--data-binary")).toBe(JSON.stringify(expected));
+    expect(Object.keys(JSON.parse(argAfter(call, "--data-binary")))).toEqual([
+      "organizationId",
+      "buildId",
+      "deploymentUrl",
+      "orgScript",
+      "guardLevel",
+      "targets",
+      "replacePages",
+    ]);
+    expect(run.stdout).toContain("replaced_pages=true");
+    expectNoSecretIn(run);
+  });
+
+  test("sends nothing when the replace flag fails the check again, or comes without targets", () => {
+    for (const [flag, targets] of [
+      ["false", '["builtin"]'],
+      ["1", '["builtin"]'],
+      ["true", ""],
+    ]) {
+      const run = runWithAnswer(callbackStep, {
+        replaced: {
+          "steps.replace-pages.outputs.value": flag,
+          "steps.targets.outputs.value": targets,
+        },
+      });
+      expect(run.status, flag).not.toBe(0);
+      expect(run.stdout, flag).toContain(
+        "::error::The replace flag did not pass the check, so nothing was sent."
+      );
+      expect(run.calls, flag).toEqual([]);
+    }
   });
 
   test("sends nothing when the targets fail the check again", () => {

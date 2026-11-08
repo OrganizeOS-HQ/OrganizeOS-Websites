@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import fixture from "../__fixtures__/site-addresses.json";
 import targetsFixture from "../__fixtures__/site-addresses-targets.json";
+import oldSiteFixture from "../__fixtures__/site-addresses-old-site.json";
 import {
   composeSiteAddresses,
   fetchSiteAddresses,
@@ -282,5 +283,57 @@ describe("fetchSiteAddresses and composeSiteAddresses", () => {
       ["[organizeos-site-addresses] addresses_rpc_failed"],
       ["[organizeos-site-addresses] addresses_rpc_failed"],
     ]);
+  });
+});
+
+describe("old_site_key: the address that serves the organization's old site", () => {
+  let logged: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    logged.mockRestore();
+  });
+
+  test("the old-site fixture as copied composes oldSiteKey, and serving drives each row", async () => {
+    const row = await read(oldSiteFixture);
+    expect(row).toBeDefined();
+    const composed = compose(row!);
+    expect(composed.oldSiteKey).toBe("www.example.org");
+    expect(composed.status).toBe("not_launched");
+    expect(
+      composed.targets?.map(({ key, live, serving }) => [key, live, serving])
+    ).toEqual([
+      ["builtin", true, true],
+      ["www.example.org", false, false],
+    ]);
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  test("an absent or null key composes none", async () => {
+    expect(compose((await read(targetsFixture))!).oldSiteKey).toBeUndefined();
+    const [source] = oldSiteFixture;
+    const nulled = await read([{ ...source, old_site_key: null }]);
+    expect(compose(nulled!).oldSiteKey).toBeUndefined();
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  test("an unknown shape reads as absent, logs one code, and keeps the rest of the read", async () => {
+    const [source] = oldSiteFixture;
+    for (const value of [1, "WWW.EXAMPLE.ORG", "https://example.org", "", {}]) {
+      logged.mockClear();
+      const row = await read([{ ...source, old_site_key: value }]);
+      expect(row, JSON.stringify(value)).toBeDefined();
+      const composed = compose(row!);
+      expect(composed.oldSiteKey).toBeUndefined();
+      expect(composed.targets).toHaveLength(2);
+      expect(logged.mock.calls.map((call) => call[0]).join(" ")).toContain(
+        "old_site_key_invalid"
+      );
+    }
+    expect(
+      compose((await read([{ ...source, old_site_key: "builtin" }]))!)
+        .oldSiteKey
+    ).toBe("builtin");
   });
 });

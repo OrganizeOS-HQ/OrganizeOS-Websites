@@ -18,7 +18,10 @@ name: Publish site
 # it to OrganizeOS as the callback's targets, which puts the site live at each
 # one when the build passes OrganizeOS's checks. A dispatch without it (an
 # older builder) sends no targets, and OrganizeOS records the build at no
-# address.
+# address. After the admin confirmed replacing the organization's old site in
+# the dialog, the replace_pages input is true; the run checks it and sends
+# replacePages to OrganizeOS, which replaces the old site only when the
+# targets include the address that serves it.
 #
 # The run ends by telling the builder how it went (internal/publish-status):
 # PUBLISHED once the pointer is flipped, FAILED when any step fails or the run
@@ -53,6 +56,9 @@ on:
         required: true
       targets:
         description: "JSON array of the publish targets: builtin or a host"
+        required: false
+      replace_pages:
+        description: "true when the admin confirmed replacing the old site"
         required: false
 
 concurrency:
@@ -111,6 +117,31 @@ jobs:
               process.exit(1);
             }
             process.stdout.write(JSON.stringify(targets));
+          ') || { printf '%s\n' "$value"; exit 1; }
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+      - name: Read the replace flag
+        # OrganizeOS fork: the admin confirmed replacing the organization's old
+        # site in the Publish dialog (docs/ORGANIZEOS-FORK.md section 5).
+        # Untrusted text, checked before anything installs, syncs or deploys:
+        # absent or empty writes an empty output; exactly true, with targets
+        # given, writes true; anything else fails the run here and nothing
+        # deploys. The output is written only after the check.
+        id: replace-pages
+        env:
+          REPLACE_PAGES: ${{ inputs.replace_pages }}
+          TARGETS_INPUT: ${{ inputs.targets }}
+        run: |
+          value=$(node -e '
+            const raw = process.env.REPLACE_PAGES ?? "";
+            if (raw === "") {
+              process.exit(0);
+            }
+            if (raw !== "true" || (process.env.TARGETS_INPUT ?? "") === "") {
+              console.log("::error::The replace_pages input is not true with targets given.");
+              process.exit(1);
+            }
+            process.stdout.write("true");
           ') || { printf '%s\n' "$value"; exit 1; }
           echo "value=$value" >> "$GITHUB_OUTPUT"
 
@@ -213,9 +244,12 @@ jobs:
         # is sent: orgScript the JSON false, guardLevel an integer from 0 to
         # 32767 (docs/ORGANIZEOS-FORK.md sections 5 and 10). targets is what
         # "Read the targets" wrote, checked again by the same rule, and sent only
-        # when there are any. On success the log shows the answer's live and
-        # launchable only, each only when it is a boolean, and live_targets, the
-        # count of the answer's targets that are live, never a host; on failure
+        # when there are any. replacePages is sent, as true, only when "Read the
+        # replace flag" wrote true and targets are sent. On success the log
+        # shows the answer's live and launchable only, each only when it is a
+        # boolean, live_targets, the count of the answer's targets that are
+        # live, never a host, and replaced_pages=true when the flag was sent;
+        # on failure
         # it shows the answer. The report steps read this step's outcome, under
         # its id.
         id: flip
@@ -228,6 +262,7 @@ jobs:
           ORG_SCRIPT: ${{ steps.org-script.outputs.value }}
           GUARD_LEVEL: ${{ steps.guard-level.outputs.value }}
           TARGETS: ${{ steps.targets.outputs.value }}
+          REPLACE_PAGES: ${{ steps.replace-pages.outputs.value }}
         run: |
           body=$(node -e '
             const env = process.env;
@@ -261,6 +296,14 @@ jobs:
                 process.exit(1);
               }
             }
+            let replacePages = false;
+            if ((env.REPLACE_PAGES ?? "") !== "") {
+              if (env.REPLACE_PAGES !== "true" || targets === undefined) {
+                console.log("::error::The replace flag did not pass the check, so nothing was sent.");
+                process.exit(1);
+              }
+              replacePages = true;
+            }
             process.stdout.write(JSON.stringify({
               organizationId: env.ORGANIZATION_ID ?? "",
               buildId: env.BUILD_ID ?? "",
@@ -268,6 +311,7 @@ jobs:
               orgScript,
               guardLevel: Number(level),
               ...(targets === undefined ? {} : { targets }),
+              ...(replacePages ? { replacePages: true } : {}),
             }));
           ') || { printf '%s\n' "$body"; exit 1; }
           response="$RUNNER_TEMP/callback-response.txt"
@@ -297,6 +341,9 @@ jobs:
                 if (Array.isArray(targets)) {
                   const live = targets.filter((target) => typeof target === "object" && target !== null && target.live === true);
                   console.log("live_targets=" + live.length);
+                }
+                if (process.env.REPLACE_PAGES === "true") {
+                  console.log("replaced_pages=true");
                 }
               ' || true
               ;;

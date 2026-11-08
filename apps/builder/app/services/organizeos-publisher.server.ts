@@ -144,6 +144,11 @@ export type OrganizeosPublishInput = {
   /** The publish targets, as keys: `builtin` or a served host. */
   targets?: string[];
   /**
+   * The admin confirmed replacing the organization's old site: dispatched as
+   * the workflow's `replace_pages` input, `"true"`, only when given.
+   */
+  replacePages?: true;
+  /**
    * The org the caller resolved from the project; a build whose project
    * resolves to another org is marked FAILED and never dispatched.
    */
@@ -228,6 +233,9 @@ export const createOrganizeosPublisherClient = (
                 ...(input.targets === undefined
                   ? {}
                   : { targets: JSON.stringify(input.targets) }),
+                ...(input.replacePages === true
+                  ? { replace_pages: "true" }
+                  : {}),
               },
             }),
           });
