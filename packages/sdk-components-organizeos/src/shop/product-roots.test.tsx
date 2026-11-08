@@ -107,9 +107,7 @@ describe.each(roots)("the %s root", (_label, Root) => {
   test("never renders a stored show or product", () => {
     const { container } = render(
       <Sdk>
-        <Root
-          {...({ show: "6", product: "x" } as Record<string, string>)}
-        />
+        <Root {...({ show: "6", product: "x" } as Record<string, string>)} />
       </Sdk>
     );
     const div = container.firstElementChild as HTMLElement;
