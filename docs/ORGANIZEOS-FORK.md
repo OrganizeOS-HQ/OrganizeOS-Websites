@@ -1396,8 +1396,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     Field (`fieldTemplate`, the tokens reused with "ours") in one transaction:
     after the last Field; with none, before the first Submit Button; with
     neither, last in the root's "Form Content", else in its first child; never
-    in the root itself. A name that already has a Field is skipped, so a
-    double click inserts once. Unchecking deletes every Field of that name
+    in the root itself. A name that already has a Field, one whose bound
+    `field` computes to it included, is skipped (by a check or by a Form
+    change), so a double click inserts once. Unchecking deletes every Field of that name
     under the root, in one transaction. Neither changes the selection, and a
     Field writes no Resource, binding or variable. All of it is in
     `features/organizeos-panel/signup-fields.ts`: `formRootComponents` (the

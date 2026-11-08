@@ -570,6 +570,38 @@ describe("addSignupField", () => {
     expect(rootFields(rootId).byName.get("phone")).toHaveLength(1);
   });
 
+  test("a Field whose bound field computes to the name counts: nothing is inserted, by a check or by a Form change", async () => {
+    const rootId = setSignupForm();
+    const email = rootFields(rootId).byName.get("email")?.[0] as string;
+    const prop = [...$props.get().values()].find(
+      (item) => item.instanceId === email && item.name === "field"
+    );
+    if (prop === undefined) {
+      throw Error("no field prop");
+    }
+    $props.set(
+      new Map($props.get()).set(prop.id, {
+        ...prop,
+        type: "expression",
+        value: `"email"`,
+      })
+    );
+    const computedName = (id: string) => (id === email ? "email" : undefined);
+    expect(await addSignupField(rootId, contactFields[0], computedName)).toBe(
+      true
+    );
+    await changeSignupForm(rootId, "form-1", contactFields, computedName);
+    expect(instancesOf(fieldComponent)).toHaveLength(3);
+    expect(
+      listRootFields(
+        rootId,
+        $instances.get(),
+        $props.get(),
+        computedName
+      ).byName.get("email")
+    ).toEqual([email]);
+  });
+
   test("refused, writing nothing, for an org whose blocks are not enabled", async () => {
     const rootId = setSignupForm();
     $organizeosSite.set({

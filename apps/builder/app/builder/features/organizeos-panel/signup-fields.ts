@@ -122,7 +122,7 @@ export const listRootFields = (
   rootId: Instance["id"],
   instances: Instances,
   props: Props,
-  computedName?: (fieldId: Instance["id"]) => string | undefined
+  computedName?: ComputedFieldName
 ): {
   byName: Map<string, Instance["id"][]>;
   order: string[];
@@ -305,6 +305,9 @@ const toTemplateField = (field: FormField): FieldTemplateField => ({
   ...(field.consent === undefined ? {} : { consent: field.consent }),
 });
 
+/** A bound `field`'s computed value, as listRootFields takes it. */
+export type ComputedFieldName = (fieldId: Instance["id"]) => string | undefined;
+
 const getState = (accumulator: RuntimeMutationAccumulator) => ({
   instances: accumulator.state.instances ?? new Map(),
   props: accumulator.state.props ?? new Map(),
@@ -313,17 +316,23 @@ const getState = (accumulator: RuntimeMutationAccumulator) => ({
 /**
  * Inserts a Field for each field the root has none of, in the given order,
  * each where findFieldInsertTarget puts it, all on the accumulator's state: a
- * name already present (a second click before the first settled) is skipped.
+ * name already present (a second click before the first settled) is skipped,
+ * a Field whose bound `field` computes to it (`computedName`) included.
  * A Field brings no block data: no Resource, DataSource or binding.
  */
 const insertFieldsMutable = (
   accumulator: RuntimeMutationAccumulator,
   rootId: Instance["id"],
-  fields: readonly FormField[]
+  fields: readonly FormField[],
+  computedName?: ComputedFieldName
 ) => {
   for (const field of fields) {
     const { instances, props } = getState(accumulator);
-    if (listRootFields(rootId, instances, props).byName.has(field.name)) {
+    if (
+      listRootFields(rootId, instances, props, computedName).byName.has(
+        field.name
+      )
+    ) {
       continue;
     }
     if (isOrganizeosBlocksEnabled() === false) {
@@ -381,9 +390,13 @@ const runStaged = async (
 };
 
 /** Checking a row: one Field for the field, in one transaction. */
-export const addSignupField = (rootId: Instance["id"], field: FormField) =>
+export const addSignupField = (
+  rootId: Instance["id"],
+  field: FormField,
+  computedName?: ComputedFieldName
+) =>
   runStaged(`Cannot add ${field.label}.`, (accumulator) =>
-    insertFieldsMutable(accumulator, rootId, [field])
+    insertFieldsMutable(accumulator, rootId, [field], computedName)
   );
 
 /** Unchecking a row: every Field of the name under the root, in one transaction. */
@@ -407,7 +420,8 @@ export const removeSignupField = (rootId: Instance["id"], name: string) =>
 export const changeSignupForm = (
   rootId: Instance["id"],
   record: string,
-  newFields: readonly FormField[] | undefined
+  newFields: readonly FormField[] | undefined,
+  computedName?: ComputedFieldName
 ) =>
   runStaged("Cannot change the form.", (accumulator) => {
     accumulator.execute({
@@ -421,7 +435,8 @@ export const changeSignupForm = (
     insertFieldsMutable(
       accumulator,
       rootId,
-      (newFields ?? []).filter(isRequiredField)
+      (newFields ?? []).filter(isRequiredField),
+      computedName
     );
   });
 

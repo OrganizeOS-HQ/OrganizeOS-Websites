@@ -38,6 +38,7 @@ import { $dataSourceVariables } from "~/shared/nano-states/variables";
 import { $instances, $props } from "~/shared/sync/data-stores";
 import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import {
+  type ComputedFieldName,
   addSignupField,
   changeSignupForm,
   fieldComponent,
@@ -191,7 +192,17 @@ const SignupFormRecordControl = (props: ControlProps<"text">) => (
         record,
         $selectedInstanceDataProp.get()
       );
-      void changeSignupForm(props.instanceId, record, fields);
+      void changeSignupForm(
+        props.instanceId,
+        record,
+        fields,
+        getComputedFieldName(
+          props.instanceId,
+          $selectedInstanceSelector.get(),
+          $instances.get(),
+          $propValuesByInstanceSelector.get()
+        )
+      );
     }}
   />
 );
@@ -289,6 +300,29 @@ const getDescendantSelector = (
 };
 
 /**
+ * A bound `field`'s computed value under a root, read from the canvas's prop
+ * values by the Field's selector below the root's (the selection's, when the
+ * root is selected).
+ */
+const getComputedFieldName =
+  (
+    rootId: Instance["id"],
+    selected: undefined | InstanceSelector,
+    instances: Instances,
+    propValues: ReturnType<typeof $propValuesByInstanceSelector.get>
+  ): ComputedFieldName =>
+  (fieldId) => {
+    const rootSelector =
+      selected?.[0] === rootId ? selected : ([rootId] as InstanceSelector);
+    const selector = getDescendantSelector(rootSelector, fieldId, instances);
+    const value =
+      selector === undefined
+        ? undefined
+        : propValues.get(getInstanceKey(selector))?.get("field");
+    return typeof value === "string" ? value : undefined;
+  };
+
+/**
  * Fields, in the `data` prop's row: one checkbox per field of the form, in its
  * order, and the one warning line. The Forms data itself is never shown, and
  * `data` stays bound: its row has a plain label, with no menu to reset it.
@@ -309,14 +343,13 @@ const SignupFieldsControl = ({
     selected?.[0] === rootId ? selected : ([rootId] as InstanceSelector);
 
   const resolution = resolveSignupForm(computedProps?.get("record"), data);
-  const rootFields = listRootFields(rootId, instances, props, (fieldId) => {
-    const selector = getDescendantSelector(rootSelector, fieldId, instances);
-    const value =
-      selector === undefined
-        ? undefined
-        : propValues.get(getInstanceKey(selector))?.get("field");
-    return typeof value === "string" ? value : undefined;
-  });
+  const computedName = getComputedFieldName(
+    rootId,
+    selected,
+    instances,
+    propValues
+  );
+  const rootFields = listRootFields(rootId, instances, props, computedName);
   const rows =
     resolution.fields === undefined
       ? []
@@ -344,7 +377,7 @@ const SignupFieldsControl = ({
                 disabled={row.locked}
                 onCheckedChange={(checked) => {
                   if (checked === true && field !== undefined) {
-                    void addSignupField(rootId, field);
+                    void addSignupField(rootId, field, computedName);
                   } else if (checked === false) {
                     void removeSignupField(rootId, row.name);
                   }
