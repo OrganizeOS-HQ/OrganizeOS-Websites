@@ -461,6 +461,9 @@ can be merged with minimal conflict.
   `shared/db/publish-status.server.test.ts`;
   `publish-site.yml`, with the callback body fixture copy
   `packages/cli/src/__fixtures__/publish-callback-body.json` and its README;
+  `features/publish/organizeos-publish-checkbox.ts` (the Publish popup's
+  ticked-address style: `BRAND_ACCENT` fill, light check mark, passed as `css`
+  to the design-system Checkbox, so no upstream file changes);
   in `features/publish/publish.tsx`, marked: the dialog's OrganizeOS branch
   with its own title and no settings gear, upstream's status refresh skipped
   for an OrganizeOS site (`publish.organizeos.test.tsx`), and no Export; and
