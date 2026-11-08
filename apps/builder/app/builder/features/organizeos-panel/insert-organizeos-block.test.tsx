@@ -79,6 +79,7 @@ import { commitCanvasDragDrop } from "~/canvas/shared/use-drag-drop";
 import { emitCommand } from "~/builder/shared/commands";
 import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
 import eventsBody from "../../../../../../packages/sdk-components-organizeos/src/__fixtures__/events.json";
+import productsBody from "../../../../../../packages/sdk-components-organizeos/src/__fixtures__/products.json";
 import {
   UPCOMING_EVENTS_BINDING_NAME,
   EVENTS_BINDING_NAME,
@@ -204,7 +205,7 @@ const provisioned = await buildOrgResourcePresets({
   apiBaseUrl: "https://staging.example.org/api/public/v1",
   readToken: "osk_eventstoken",
 });
-const { events, forms, upcomingEvents } =
+const { events, forms, upcomingEvents, products } =
   await getOrganizeosPresetIds(projectId);
 const formsResource = provisioned.resources.find(
   (resource) => resource.id === forms.resourceId
@@ -2393,7 +2394,7 @@ describe("the inserted RSVP Form", () => {
 
 describe("completeOrganizeosFragment", () => {
   const presets = {
-    presetIds: { events, forms, upcomingEvents },
+    presetIds: { events, forms, upcomingEvents, products },
     resources: new Map(provisioned.resources.map((item) => [item.id, item])),
   };
 
@@ -2436,7 +2437,7 @@ describe("completeOrganizeosFragment", () => {
     const completion = completeOrganizeosFragment({
       component: signupForm,
       fragment: getComponentTemplateData(signupForm),
-      presetIds: { events, forms, upcomingEvents },
+      presetIds: { events, forms, upcomingEvents, products },
       resources: new Map(withoutForms.resources.map((item) => [item.id, item])),
     });
 
@@ -2519,7 +2520,7 @@ describe("completeOrganizeosFragment", () => {
       completeOrganizeosFragment({
         component: "Box",
         fragment,
-        presetIds: { events, forms, upcomingEvents },
+        presetIds: { events, forms, upcomingEvents, products },
         resources: new Map(),
       })
     ).toEqual({ status: "ready", fragment });
@@ -2910,5 +2911,350 @@ describe("Rich Text", () => {
     expect(
       root.children.map((child) => $instances.get().get(child.value)?.component)
     ).toEqual(Array.from({ length: 17 }, () => "ws:descendant"));
+  });
+});
+
+const productsId = products.resourceId;
+
+describe("the Shop blocks", () => {
+  const productGrid = "@organizeos/site-components:ProductGrid";
+  const productCard = "@organizeos/site-components:ProductCard";
+  const base = "https://staging.example.org/api/public/v1";
+  // the Products catalog Resource as both writers write it
+  const expectedProductsResource: Resource = {
+    id: productsId,
+    name: "Products",
+    method: "get",
+    url: `"${base}/products"`,
+    headers: [{ name: "Authorization", value: `"Bearer osk_eventstoken"` }],
+  };
+  const withoutProducts = {
+    resources: provisioned.resources.filter(
+      (resource) => resource.id !== productsId
+    ),
+    dataSources: [] as DataSource[],
+  };
+  const withProducts = {
+    resources: provisioned.resources,
+    dataSources: [] as DataSource[],
+  };
+  const getRoots = (component: string) =>
+    [...$instances.get().values()].filter(
+      (instance) => instance.component === component
+    );
+  const byIdPrefix = (rootId: string, label: string) => {
+    const found: Instance[] = [];
+    const visit = (id: string) => {
+      const instance = $instances.get().get(id);
+      if (instance === undefined) {
+        return;
+      }
+      if (instance.label === label) {
+        found.push(instance);
+      }
+      for (const child of instance.children) {
+        if (child.type === "id") {
+          visit(child.value);
+        }
+      }
+    };
+    visit(rootId);
+    return found;
+  };
+  const expressionOn = (instanceId: string, name: string) =>
+    getInstanceProps(instanceId, name).map((prop) => prop.value);
+
+  test("the Products ids agree with provisioning's", () => {
+    expect(
+      provisioned.resources.find((resource) => resource.id === productsId)
+    ).toEqual(expectedProductsResource);
+    expect(isOrganizeosCatalogResourceId(productsId)).toBe(true);
+  });
+
+  test("a Product Grid into a build without Products creates it, brings its own binding and binds four props by id", async () => {
+    setProject(withoutProducts);
+    const depth = undoDepth();
+    expect(await insertOrganizeosBlock(productGrid)).toBe(true);
+    expect(undoDepth()).toBe(depth + 1);
+
+    const [root] = getRoots(productGrid);
+    expect($resources.get().get(productsId)).toEqual(expectedProductsResource);
+    const bindings = getResourceBindings();
+    expect(bindings).toEqual([
+      {
+        type: "resource",
+        id: expect.any(String),
+        scopeInstanceId: root.id,
+        name: "OrganizeOS Products",
+        resourceId: productsId,
+      },
+    ]);
+    expect(isOrganizeosCatalogResourceId(bindings[0].id)).toBe(false);
+    const v = encodeDataSourceVariable(bindings[0].id);
+    const [collection] = byIdPrefix(root.id, "Products");
+    const [empty] = byIdPrefix(root.id, "No products");
+    const [unavailable] = byIdPrefix(root.id, "Products unavailable");
+    const [shopAll] = byIdPrefix(root.id, "Shop all");
+    expect(expressionOn(collection.id, "data")).toEqual([
+      `(${v}.ok === true ? ${v}.data.data.slice(0, 6) : [])`,
+    ]);
+    expect(expressionOn(empty.id, "data-ws-show")).toEqual([
+      `${v}.ok === true && ${v}.data.data.length === 0`,
+    ]);
+    expect(expressionOn(unavailable.id, "data-ws-show")).toEqual([
+      `${v}.ok === false`,
+    ]);
+    expect(expressionOn(shopAll.id, "data-ws-show")).toEqual([
+      `${v}.ok === true && ${v}.data.data.length > 0`,
+    ]);
+  });
+
+  test("one undo removes the Product Grid, its binding and the Products Resource it created", async () => {
+    setProject(withoutProducts);
+    const before = getStores();
+    expect(await insertOrganizeosBlock(productGrid)).toBe(true);
+    emitCommand("undo");
+    expect(getStores()).toEqual(before);
+  });
+
+  test("with Products present, the grid keeps it byte for byte", async () => {
+    const custom = { ...expectedProductsResource };
+    setProject({
+      resources: [...withoutProducts.resources, custom],
+      dataSources: [],
+    });
+    expect(await insertOrganizeosBlock(productGrid)).toBe(true);
+    expect($resources.get().get(productsId)).toBe(custom);
+  });
+
+  test("a Product Card creates a Resource of its own, Newest, a binding of it and three binds, and no catalog Resource", async () => {
+    setProject(withoutProducts);
+    const depth = undoDepth();
+    const before = new Set($resources.get().keys());
+    expect(await insertOrganizeosBlock(productCard)).toBe(true);
+    expect(undoDepth()).toBe(depth + 1);
+
+    const [root] = getRoots(productCard);
+    const added = [...$resources.get().values()].filter(
+      (resource) => before.has(resource.id) === false
+    );
+    expect(added).toEqual([
+      {
+        id: expect.any(String),
+        name: "Product",
+        method: "get",
+        url: `"${base}/products"`,
+        headers: [{ name: "Authorization", value: `"Bearer osk_eventstoken"` }],
+      },
+    ]);
+    expect(isOrganizeosCatalogResourceId(added[0].id)).toBe(false);
+    expect($resources.get().has(productsId)).toBe(false);
+    const bindings = getResourceBindings();
+    expect(bindings).toEqual([
+      {
+        type: "resource",
+        id: expect.any(String),
+        scopeInstanceId: root.id,
+        name: "OrganizeOS Product",
+        resourceId: added[0].id,
+      },
+    ]);
+    const v = encodeDataSourceVariable(bindings[0].id);
+    const [collection] = byIdPrefix(root.id, "Products");
+    const [empty] = byIdPrefix(root.id, "No product");
+    const [unavailable] = byIdPrefix(root.id, "Products unavailable");
+    expect(expressionOn(collection.id, "data")).toEqual([
+      `(${v}.ok === true ? ${v}.data.data.slice(0, 1) : [])`,
+    ]);
+    expect(expressionOn(empty.id, "data-ws-show")).toEqual([
+      `${v}.ok === true && ${v}.data.data.length === 0`,
+    ]);
+    expect(expressionOn(unavailable.id, "data-ws-show")).toEqual([
+      `${v}.ok === false`,
+    ]);
+  });
+
+  test("two Product Cards each bring a Resource of their own", async () => {
+    setProject(withProducts);
+    expect(await insertOrganizeosBlock(productCard)).toBe(true);
+    selectInstance(["bodyId"]);
+    expect(await insertOrganizeosBlock(productCard)).toBe(true);
+    const ids = getResourceBindings().map((binding) => binding.resourceId);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids).not.toContain(productsId);
+  });
+
+  test("one undo removes the Product Card, its binding and its own Resource", async () => {
+    setProject(withProducts);
+    const before = getStores();
+    expect(await insertOrganizeosBlock(productCard)).toBe(true);
+    emitCommand("undo");
+    expect(getStores()).toEqual(before);
+  });
+
+  test.each([productGrid, productCard])(
+    "%s refuses, writing nothing, without Events, without its token, or with an Events URL that is not provisioning's",
+    async (block) => {
+      const eventsWith = (change: Partial<Resource>) => ({
+        resources: [
+          ...withoutProducts.resources.filter(
+            (resource) => resource.id !== events.resourceId
+          ),
+          { ...eventsResource, ...change },
+        ],
+        dataSources: [] as DataSource[],
+      });
+      for (const project of [
+        {
+          resources: withoutProducts.resources.filter(
+            (resource) => resource.id !== events.resourceId
+          ),
+          dataSources: [] as DataSource[],
+        },
+        eventsWith({ headers: [] }),
+        eventsWith({ url: "`${base}/events`" }),
+      ]) {
+        setProject(project);
+        const before = getStores();
+        expect(await insertOrganizeosBlock(block)).toBe(false);
+        expectNothingWritten(before);
+      }
+      setProject(withoutProducts, { blocksEnabled: false });
+      const before = getStores();
+      expect(await insertOrganizeosBlock(block)).toBe(false);
+      expectNothingWritten(before);
+    }
+  );
+
+  test.each([productGrid, productCard])(
+    "%s writes no :root binding, and passes the catalog check",
+    async (block) => {
+      setProject(withoutProducts);
+      expect(await insertOrganizeosBlock(block)).toBe(true);
+      expect(
+        getResourceBindings().filter(
+          (binding) =>
+            binding.scopeInstanceId === ROOT_INSTANCE_ID ||
+            binding.scopeInstanceId === "bodyId"
+        )
+      ).toEqual([]);
+      expect(toastError).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    ["under a Body", false],
+    ["under a Box", true],
+  ])(
+    "both blocks satisfy the content model %s: a card is a link holding a heading and a paragraph",
+    async (_case, inBox) => {
+      setProject(withProducts);
+      if (inBox) {
+        const data = renderData(
+          <$.Body ws:id="bodyId">
+            <$.Box ws:id="boxId"></$.Box>
+          </$.Body>
+        );
+        $instances.set(data.instances);
+        selectInstance(["boxId", "bodyId"]);
+      }
+      for (const block of [productGrid, productCard]) {
+        if (inBox) {
+          selectInstance(["boxId", "bodyId"]);
+        } else {
+          selectInstance(["bodyId"]);
+        }
+        expect(await insertOrganizeosBlock(block)).toBe(true);
+        const [root] = getRoots(block);
+        const errors: string[] = [];
+        expect(
+          isTreeSatisfyingContentModel({
+            instances: $instances.get(),
+            props: $props.get(),
+            metas: $registeredComponentMetas.get(),
+            instanceSelector: inBox
+              ? [root.id, "boxId", "bodyId"]
+              : [root.id, "bodyId"],
+            onError: (message) => errors.push(message),
+          }),
+          errors.join("\n")
+        ).toBe(true);
+        expect(errors).toEqual([]);
+      }
+    }
+  );
+
+  test("a Product Grid dropped on the canvas inserts through here, bound", async () => {
+    setProject(withoutProducts);
+    expect(
+      commitCanvasDragDrop({
+        dragPayload: {
+          origin: "panel",
+          type: "insert",
+          dragComponent: productGrid,
+        },
+        dropTarget: {
+          itemSelector: ["bodyId"],
+          placement: {
+            closestChildIndex: 0,
+            indexAdjustment: 0,
+            childrenOrientation: { type: "vertical", reverse: false },
+          },
+          indexWithinChildren: 0,
+        },
+      })
+    ).toBe(true);
+    await vi.waitFor(() => expect(getRoots(productGrid)).toHaveLength(1));
+    expect(getResourceBindings()).toEqual([
+      expect.objectContaining({
+        name: "OrganizeOS Products",
+        resourceId: productsId,
+      }),
+    ]);
+    expect(insertWebstudioComponentAt).not.toHaveBeenCalled();
+  });
+
+  test("the grid renders products.json: each card links its slug, and the lines follow the read", async () => {
+    setProject(withProducts);
+    expect(await insertOrganizeosBlock(productGrid)).toBe(true);
+    const [root] = getRoots(productGrid);
+    const [collection] = byIdPrefix(root.id, "Products");
+    const [empty] = byIdPrefix(root.id, "No products");
+    const [shopAll] = byIdPrefix(root.id, "Shop all");
+    const [card] = byIdPrefix(root.id, "Product");
+    const cache = async (result: unknown) => {
+      const request = await computeResourceRequest(
+        expectedProductsResource,
+        new Map()
+      );
+      $resourcesCache.set(new Map([[getResourceKey(request), result]]));
+    };
+    const read = (selector: string[], name: string) =>
+      $propValuesByInstanceSelector
+        .get()
+        .get(getInstanceKey(selector))
+        ?.get(name);
+    const outer = [root.id, "bodyId"];
+    await cache({ ok: true, status: 200, statusText: "", data: productsBody });
+    await vi.waitFor(() => {
+      expect(read([collection.id, ...outer], "data")).toEqual(
+        productsBody.data
+      );
+      productsBody.data.forEach((product, index) => {
+        expect(
+          read(
+            [card.id, `${collection.id}[${index}]`, collection.id, ...outer],
+            "href"
+          )
+        ).toBe(`/shop/${product.slug}`);
+      });
+      expect(read([empty.id, ...outer], "data-ws-show")).toBe(false);
+      expect(read([shopAll.id, ...outer], "data-ws-show")).toBe(true);
+    });
+    await cache({ ok: true, status: 200, statusText: "", data: { data: [] } });
+    await vi.waitFor(() => {
+      expect(read([empty.id, ...outer], "data-ws-show")).toBe(true);
+      expect(read([shopAll.id, ...outer], "data-ws-show")).toBe(false);
+    });
   });
 });
