@@ -235,6 +235,17 @@ describe("getOrganizeosControl", () => {
     }
   });
 
+  test("the Shop blocks' rows: Show and Product, and Columns stays upstream's", () => {
+    expect(kind(`${ns}:ProductGrid`, "show")).toBe("product-show");
+    expect(kind(`${ns}:ProductGrid`, "columns")).toBeUndefined();
+    expect(kind(`${ns}:ProductCard`, "product")).toBe("product-card");
+    for (const propName of ["id", "class", "show"]) {
+      expect(kind(`${ns}:ProductCard`, propName)).toBeUndefined();
+    }
+    expect(kind(`${ns}:ProductGrid`, "product")).toBeUndefined();
+    expect(kind(`${ns}:Price`, "cents")).toBeUndefined();
+  });
+
   test("anything else is upstream's", () => {
     expect(kind("Box", "record")).toBeUndefined();
     expect(kind(undefined, "data")).toBeUndefined();
