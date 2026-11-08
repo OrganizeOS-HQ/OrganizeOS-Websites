@@ -12,7 +12,10 @@ import {
   type FieldTemplateField,
   fieldTemplate,
 } from "@organizeos/site-components/field-template";
-import type { SignupFormResolution } from "@organizeos/site-components/forms-data";
+import {
+  type SignupFormResolution,
+  isRequiredField,
+} from "@organizeos/site-components/forms-data";
 import { builderApi } from "~/shared/builder-api";
 import { platformName } from "~/shared/branding";
 import {
@@ -176,13 +179,11 @@ export type FieldRow = {
   consent: boolean;
 };
 
-const isRequiredField = (field: { required: boolean; consent?: string }) =>
-  field.required && field.consent === undefined;
-
 /**
  * One row per field of the resolved form, in the form's order. A row is
  * checked while the root has a Field of its name. A locked field (by default:
- * required and not consent) is locked only while its Field exists, so a
+ * required, by the blocks' isRequiredField, so never a consent field) is
+ * locked only while its Field exists, so a
  * deleted one can be put back from the list. A consent field is listed only
  * while the definition has it, which is what `fields` holds.
  */

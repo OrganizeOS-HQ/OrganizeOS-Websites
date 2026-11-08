@@ -17,6 +17,7 @@ import {
   type FormFieldConfig,
 } from "../form/context";
 import { useMergedRef } from "../form/merge-ref";
+import { isRequiredField } from "./forms-data";
 
 type FieldContextValue = {
   name: string;
@@ -203,7 +204,7 @@ export const FieldInput = forwardRef<InputElement, FieldInputProps>(
       ...props,
       id: field?.inputId ?? props.id,
       name: field?.name ?? props.name,
-      required: field?.config?.required === true,
+      required: field?.config !== undefined && isRequiredField(field.config),
       "aria-describedby": field?.messageId ?? props["aria-describedby"],
       "aria-invalid": invalid ? true : undefined,
       "data-invalid": invalid ? "" : undefined,

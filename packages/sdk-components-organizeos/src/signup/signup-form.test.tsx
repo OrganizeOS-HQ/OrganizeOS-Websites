@@ -333,7 +333,10 @@ describe("parts", () => {
 const smsConsentLabel = "Text me updates. Reply STOP to opt out.";
 
 /** A form with the postal fields and the SMS opt-in, as `GET /v1/forms` gives them. */
-const formsWithConsent = (consentLabel = smsConsentLabel) => ({
+const formsWithConsent = (
+  consentLabel = smsConsentLabel,
+  consentRequired = false
+) => ({
   data: [
     {
       id: "form-sms",
@@ -352,6 +355,7 @@ const formsWithConsent = (consentLabel = smsConsentLabel) => ({
           type: "checkbox",
           consent: "sms",
           consent_version: "v1",
+          ...(consentRequired ? { required: true } : {}),
         },
       ],
     },
@@ -1010,6 +1014,71 @@ describe("unavailable", () => {
   ])("with no record, %s data draws nothing on the canvas", (_case, data) => {
     const { container } = render(<Block renderer="canvas" data={data} />);
     expect(getCanvasCheck(container)).toBeNull();
+  });
+});
+
+describe("a consent field marked required", () => {
+  // consent is never required, whatever its definition says (isRequiredField)
+  const RequiredConsentBlock = ({
+    renderer,
+    withConsent,
+    onStateChange,
+  }: {
+    renderer: Renderer;
+    withConsent: boolean;
+    onStateChange?: (state: SignupFormState, message: string) => void;
+  }) => (
+    <Sdk renderer={renderer}>
+      <SignupForm
+        record="form-sms"
+        data={formsWithConsent(undefined, true)}
+        onStateChange={onStateChange}
+      >
+        <TestField name="email" label="Email" />
+        {withConsent && (
+          <Field field="sms_opt_in">
+            <FieldInput />
+            <FieldLabel />
+          </Field>
+        )}
+        <SubmitButton>Sign up</SubmitButton>
+      </SignupForm>
+    </Sdk>
+  );
+
+  test("its checkbox is not required", () => {
+    render(<RequiredConsentBlock renderer={undefined} withConsent />);
+    expect(
+      screen.getByLabelText(smsConsentLabel).hasAttribute("required")
+    ).toBe(false);
+  });
+
+  test("the canvas check does not ask for its Field", () => {
+    const { container } = render(
+      <RequiredConsentBlock renderer="canvas" withConsent={false} />
+    );
+    expect(getCanvasCheck(container)).toBeNull();
+  });
+
+  test("a published page without its Field still submits", async () => {
+    const fetchMock = answerWith(responseSubscribed);
+    const onStateChange = vi.fn();
+    const { container } = render(
+      <RequiredConsentBlock
+        renderer={undefined}
+        withConsent={false}
+        onStateChange={onStateChange}
+      />
+    );
+    fill("Email", "ada@example.org");
+    fireEvent.submit(getForm(container));
+    await waitFor(() =>
+      expect(onStateChange).toHaveBeenLastCalledWith(
+        "success",
+        expect.any(String)
+      )
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

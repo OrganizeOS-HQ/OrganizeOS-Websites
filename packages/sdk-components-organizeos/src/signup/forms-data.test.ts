@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import forms from "../__fixtures__/forms.json";
 import {
+  isRequiredField,
   orgDefaultFields,
   parseFormsData,
   resolveSignupForm,
@@ -178,4 +179,16 @@ test("a field with no consent keys carries neither", () => {
     .fields?.[0];
   expect(field).not.toHaveProperty("consent");
   expect(field).not.toHaveProperty("consentVersion");
+});
+
+test("isRequiredField: a required field is required, a consent field never is", () => {
+  const base = { name: "x", label: "X", type: "text", options: null };
+  expect(isRequiredField({ ...base, required: true })).toBe(true);
+  expect(isRequiredField({ ...base, required: false })).toBe(false);
+  expect(isRequiredField({ ...base, required: true, consent: "sms" })).toBe(
+    false
+  );
+  expect(isRequiredField({ ...base, required: false, consent: "sms" })).toBe(
+    false
+  );
 });

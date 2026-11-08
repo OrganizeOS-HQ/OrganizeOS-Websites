@@ -1,6 +1,18 @@
 import type { FormFieldConfig } from "../form/context";
 
 /**
+ * Whether a form field must be filled in: the field says so and it is not a
+ * consent field. Consent is the visitor's choice, so a consent field is never
+ * required, whatever its definition says. The one rule the blocks (the input's
+ * `required`, the submit check, the canvas check) and the builder (the Fields
+ * list, its warning line, the Form change) read.
+ */
+export const isRequiredField = (field: {
+  required: boolean;
+  consent?: string;
+}) => field.required && field.consent === undefined;
+
+/**
  * The fields a Signup Form collects with no form picked, as the platform
  * applies them: email required; first name, last name and phone optional.
  */

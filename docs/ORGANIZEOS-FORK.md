@@ -1103,7 +1103,12 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   **Field Message** together. `src/form/` holds what later families share: part
   registration, the submit helper, the canvas check.
   - **Fields come from the form.** A Field takes its input type, `required`
-    and `autocomplete` from its form field: `email`, `given-name`
+    and `autocomplete` from its form field. Required follows one rule,
+    `isRequiredField` in `signup/forms-data.ts` (exported through
+    `@organizeos/site-components/forms-data`): the field says required and is
+    not a consent field. The input's `required`, the submit check, the canvas
+    check and the builder's Fields list all read it, so a consent field is never
+    required. Autocomplete: `email`, `given-name`
     (`first_name`), `family-name` (`last_name`), `name`, `tel` (`phone`) and
     `postal-code` (`postal_code`, `zip`); the designer's own `autocomplete`
     applies only where the field gives none. The builder chooses which fields
@@ -1305,8 +1310,8 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   on itself for a missing part (an email Field, a Submit Button, a Field for a
   required form field), a Field naming a field its form lacks, a form inside
   another form, and a picked form that is unavailable.
-- On a published page, a submit with a required form field that has no Field
-  Input reports Unavailable and posts nothing. The page reads its form from the
+- On a published page, a submit with a required form field (`isRequiredField`)
+  that has no Field Input reports Unavailable and posts nothing. The page reads its form from the
   platform when it renders, not when it was published, so the form can gain a
   required field afterwards, and the platform's answer would then name a field
   the page has no Field Message to show it on.

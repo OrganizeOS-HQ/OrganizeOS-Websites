@@ -10,6 +10,7 @@ import * as organizeosTemplates from "@organizeos/site-components/templates";
 import { $, organizeos } from "@organizeos/site-components/site-templates";
 import {
   type SignupFormResolution,
+  isRequiredField,
   orgDefaultFields,
   resolveSignupForm,
 } from "@organizeos/site-components/forms-data";
@@ -315,6 +316,46 @@ describe("listRootFields and getFieldRows", () => {
     expect(
       getFieldRows(withoutConsent, present).map((row) => row.name)
     ).not.toContain("sms_opt_in");
+  });
+
+  test("a consent field its definition marks required is not locked, missing or inserted: the blocks' one rule", async () => {
+    const requiredConsent = contactFields.map((item) =>
+      item.consent === undefined ? item : { ...item, required: true }
+    );
+    expect(
+      requiredConsent
+        .filter((item) => item.consent !== undefined)
+        .map(isRequiredField)
+    ).toEqual([false]);
+    const rows = getFieldRows(
+      requiredConsent,
+      new Map([["sms_opt_in", ["id"]]])
+    );
+    expect(rows.find((row) => row.name === "sms_opt_in")?.locked).toBe(false);
+    expect(
+      getSignupWarning({
+        nested: false,
+        data: { data: [] },
+        resolution: {
+          formId: "form-1",
+          fields: requiredConsent,
+          unavailable: undefined,
+        },
+        rootFields: {
+          byName: new Map([
+            ["email", ["a"]],
+            ["company", ["b"]],
+          ]),
+          order: ["email", "company"],
+          bound: [],
+          hasSubmit: true,
+        },
+        failedLoads: false,
+      })
+    ).toBeUndefined();
+    const rootId = setSignupForm();
+    await changeSignupForm(rootId, "form-1", requiredConsent);
+    expect(fieldNames(rootId)).toEqual(["email", "first_name", "company"]);
   });
 
   test("a custom lock rule locks what it says", () => {
