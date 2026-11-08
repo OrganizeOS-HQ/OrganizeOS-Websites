@@ -80,7 +80,7 @@ const sections: Section[] = [
   },
   {
     label: "Signups",
-    blocks: ["SignupForm"],
+    blocks: ["SignupForm", "SignupFormInline"],
     area: manageLink,
   },
 ];

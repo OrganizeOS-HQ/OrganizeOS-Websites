@@ -157,6 +157,16 @@ describe("groupOrganizeosBlocks", () => {
               component: `${namespace}:SignupForm`,
             }),
           },
+          {
+            name: `${namespace}:SignupFormInline`,
+            label: "Signup Form, inline",
+            description: organizeosTemplates.SignupFormInline.description,
+            icon: undefined,
+            // the same root component: only the template differs
+            firstInstance: expect.objectContaining({
+              component: `${namespace}:SignupForm`,
+            }),
+          },
         ],
       },
     ]);
@@ -226,7 +236,10 @@ describe("groupOrganizeosBlocks", () => {
           `${namespace}:RsvpForm`,
         ],
       ],
-      ["Signups", [`${namespace}:SignupForm`]],
+      [
+        "Signups",
+        [`${namespace}:SignupForm`, `${namespace}:SignupFormInline`],
+      ],
       ["More", [`${namespace}:FutureBlock`]],
     ]);
   });
@@ -253,7 +266,10 @@ describe("groupOrganizeosBlocks", () => {
       ],
       ["Content", [`${namespace}:RichText`]],
       ["Events", [`${namespace}:EventList`, `${namespace}:EventCard`]],
-      ["Signups", [`${namespace}:SignupForm`]],
+      [
+        "Signups",
+        [`${namespace}:SignupForm`, `${namespace}:SignupFormInline`],
+      ],
     ]);
   });
 
@@ -356,6 +372,7 @@ describe("$organizeosComponentGroups", () => {
         "EventCard",
         "RsvpForm",
         "SignupForm",
+        "SignupFormInline",
         "FutureBlock",
       ].map((name) => `${namespace}:${name}`)
     );
@@ -384,6 +401,7 @@ describe("$organizeosComponentGroups", () => {
       "EventCard",
       "RsvpForm",
       "SignupForm",
+      "SignupFormInline",
     ] as const) {
       registerLibrary({ [name]: organizeosTemplates[name] });
       expect($organizeosComponentGroups.get()[0].link, name).toBe(manageLink);

@@ -127,25 +127,29 @@ const eventsBlockData = (
 });
 
 /**
+ * What a Signup Form binds, stacked or inline: the two inserts are the same
+ * root with the same Forms binding, and differ only in their template.
+ */
+const signupFormBlockData: BlockData = {
+  catalog: "forms",
+  bindingName: FORMS_PRESET_NAME,
+  // GET /v1/forms: `{ data: [...] }`
+  binds: [
+    {
+      instance: "root",
+      prop: "data",
+      value: (variable) => `${variable}.data`,
+    },
+  ],
+};
+
+/**
  * The blocks that read the org's data. A template key with no entry is
  * inserted untouched. Exported so a test can register a block of its own.
  */
 export const organizeosBlockData = new Map<string, BlockData>([
-  [
-    `${organizeosNamespace}:SignupForm`,
-    {
-      catalog: "forms",
-      bindingName: FORMS_PRESET_NAME,
-      // GET /v1/forms: `{ data: [...] }`
-      binds: [
-        {
-          instance: "root",
-          prop: "data",
-          value: (variable) => `${variable}.data`,
-        },
-      ],
-    },
-  ],
+  [`${organizeosNamespace}:SignupForm`, signupFormBlockData],
+  [`${organizeosNamespace}:SignupFormInline`, signupFormBlockData],
   [
     `${organizeosNamespace}:RsvpForm`,
     {
