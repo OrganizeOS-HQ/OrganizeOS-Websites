@@ -638,3 +638,51 @@ test("the Price: hidden, a span that takes no children, with cents and currency"
   expect(Object.keys(components)).toContain("Price");
   expect(Object.keys(templates)).not.toContain("Price");
 });
+
+test("the Product Grid and Product Card roots: hidden divs that take any children, with their rows", () => {
+  for (const meta of [metas.ProductGrid, metas.ProductCard]) {
+    expect(meta.category).toBe("hidden");
+    expect(meta.contentModel).toEqual({
+      category: "instance",
+      children: ["instance"],
+    });
+    expect(Object.keys(meta.presetStyle ?? {})).toEqual(["div"]);
+  }
+  expect(metas.ProductGrid.label).toBe("Product Grid");
+  expect(metas.ProductCard.label).toBe("Product Card");
+  expect(metas.ProductGrid.initialProps).toEqual([
+    "id",
+    "class",
+    "show",
+    "columns",
+  ]);
+  expect(metas.ProductGrid.props).toEqual({
+    columns: expect.objectContaining({
+      type: "string",
+      control: "select",
+      options: ["2", "3", "4"],
+      defaultValue: "3",
+      label: "Columns",
+    }),
+    show: expect.objectContaining({
+      type: "string",
+      control: "select",
+      options: ["3", "4", "6", "8", "12", "All"],
+      label: "Show",
+    }),
+  });
+  expect(metas.ProductCard.initialProps).toEqual(["id", "class", "product"]);
+  expect(metas.ProductCard.props).toEqual({
+    product: expect.objectContaining({
+      type: "string",
+      control: "text",
+      label: "Product",
+    }),
+  });
+  // no row tooltips: the labels say it
+  for (const meta of [metas.ProductGrid, metas.ProductCard]) {
+    for (const [name, prop] of Object.entries(meta.props ?? {})) {
+      expect(prop.description, name).toBeUndefined();
+    }
+  }
+});

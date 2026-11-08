@@ -20,3 +20,5 @@ export { meta as ConvergenceField } from "./field/convergence-field.ws";
 export { meta as ShareCodeCarrier } from "./share-code/share-code-carrier.ws";
 export { meta as RichText } from "./rich-text/rich-text.ws";
 export { meta as Price } from "./shop/price.ws";
+export { meta as ProductGrid } from "./shop/product-grid.ws";
+export { meta as ProductCard } from "./shop/product-card.ws";
