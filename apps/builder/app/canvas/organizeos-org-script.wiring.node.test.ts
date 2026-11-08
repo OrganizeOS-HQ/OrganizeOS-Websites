@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 
@@ -123,4 +124,97 @@ test("both renderers check every prop a component receives with withoutPausedPro
   expect(previewRenderer.match(call)).toHaveLength(1);
   expect(webstudioComponent.match(/withoutPausedProps\(/g)).toHaveLength(2);
   expect(webstudioComponent).not.toContain("withoutBlockedTagProps(");
+});
+
+// Every expression the canvas, the builder's panels and the builder's server
+// compute goes through one evaluator (project-build's runtime/data.ts). While
+// org script is paused it compiles no expression expressionMayRun refuses,
+// after input validation's own check, and gives no function, so a merge that
+// moves either fails here as well as in data.organizeos.test.ts.
+test("the evaluator compiles no expression the pause refuses and gives no function", () => {
+  const data = withoutComments(
+    readFileSync(
+      fileURLToPath(
+        new URL(
+          "../../../../packages/project-build/src/runtime/data.ts",
+          import.meta.url
+        )
+      ),
+      "utf8"
+    )
+  );
+  const compile = data.slice(
+    data.indexOf("const getCompiledExpression = "),
+    data.indexOf("export const encodeDataVariableName = ")
+  );
+  const validation = compile.indexOf("checkValueExpression(expression)");
+  const guard = compile.search(
+    /if\s*\(\s*orgScriptMayRun\(\)\s*===\s*false\s*&&\s*expressionMayRun\(expression\)\s*===\s*false\s*\)\s*\{[\s\S]*?return pausedExpression;/
+  );
+  const transpile = compile.indexOf("transpileExpression(");
+  expect(validation).toBeGreaterThan(0);
+  expect(guard).toBeGreaterThan(validation);
+  expect(transpile).toBeGreaterThan(guard);
+  expect(data.match(/new Function\(/g)).toHaveLength(1);
+
+  const evaluate = data.slice(
+    data.indexOf("export const evaluateExpressionSync = "),
+    data.indexOf("export type ResolveExpressionDataSource")
+  );
+  expect(evaluate).toMatch(
+    /const result = getCompiledExpression\(expression\)\(\{ get: getVariable \}\);\s*if\s*\(\s*orgScriptMayRun\(\)\s*===\s*false\s*&&\s*typeof result\s*===\s*"function"\s*\)\s*\{\s*return pausedExpression\(\{ get: getVariable \}\);\s*\}\s*return result;/
+  );
+});
+
+// Every place in the builder, its runtime, the sdk and the CLI that runs text
+// as code, by file and count. While org script is paused each one either runs
+// no org's text or holds it to a rule, so a merge or a change that adds one
+// fails here until it is sorted: what it runs, and whether the pause covers
+// it.
+test("the source runs text as code in these places only", () => {
+  const repository = fileURLToPath(new URL("../../../../", import.meta.url));
+  const evaluator =
+    /new Function\(|\beval\(|runInNewContext|runInThisContext|new vm\.Script/g;
+  const isSource = (file: string) =>
+    /\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(file) &&
+    /\.(?:test|spec|stories)\.[a-z]+$/.test(file) === false &&
+    file.includes("/__generated__/") === false;
+  const found: Record<string, number> = {};
+  const read = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "node_modules") {
+          read(path);
+        }
+      } else if (isSource(path)) {
+        const count = readFileSync(path, "utf8").match(evaluator)?.length ?? 0;
+        if (count > 0) {
+          found[relative(repository, path)] = count;
+        }
+      }
+    }
+  };
+  for (const directory of [
+    "apps/builder/app",
+    "packages/project-build/src",
+    "packages/sdk/src",
+    "packages/cli/src",
+  ]) {
+    read(join(repository, directory));
+  }
+  expect(found).toEqual({
+    // actions, which the pause's action rule holds
+    "apps/builder/app/shared/nano-states/props.ts": 1,
+    // the user's own typing, read after a literal check
+    "apps/builder/app/builder/features/settings-panel/controls/json.tsx": 1,
+    // digits and operators only
+    "apps/builder/app/builder/features/style-panel/shared/css-value-input/evaluate-math.ts": 1,
+    // every expression, which the pause's expression rule holds
+    "packages/project-build/src/runtime/data.ts": 1,
+    // no org's expression reaches it
+    "packages/sdk/src/expression.ts": 1,
+    // pasted JSX, which the route refuses
+    "packages/project-build/src/runtime/jsx/evaluate.server.ts": 2,
+  });
 });

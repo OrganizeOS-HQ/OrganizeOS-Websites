@@ -58,10 +58,13 @@ import { createBuilderPatchPayloadFromImmerPatches } from "../state/patch";
 import type { BuilderState } from "../state/builder-state";
 import "../state/immer";
 import type { BuilderRuntimeContext } from "./context";
-// OrganizeOS fork: input validation (docs/ORGANIZEOS-FORK.md section 10)
+// OrganizeOS fork: input validation, and the org script pause's rule for
+// expressions (docs/ORGANIZEOS-FORK.md section 10)
 import {
   checkValueExpression,
   codeCheckReasons,
+  expressionMayRun,
+  orgScriptMayRun,
 } from "@organizeos/site-components/org-script";
 import {
   addZodValidationIssue,
@@ -382,6 +385,10 @@ const skipExpression =
     throw new Error(`Expression skipped: ${reason}`);
   };
 
+// OrganizeOS fork: what an expression expressionMayRun refuses reads as while
+// org script is paused, with a reason that never quotes the expression
+const pausedExpression = skipExpression("Org script is paused");
+
 const getCompiledExpression = (expression: string) => {
   const cached = compiledExpressionCache.get(expression);
   if (cached) {
@@ -396,6 +403,19 @@ const getCompiledExpression = (expression: string) => {
     const skipped = skipExpression(check.reason);
     compiledExpressionCache.set(expression, skipped);
     return skipped;
+  }
+  // OrganizeOS fork: org script is paused, and an expression expressionMayRun
+  // refuses is never compiled; it is cached, and dropped past the limit, as a
+  // compiled one is (docs/ORGANIZEOS-FORK.md section 10)
+  if (orgScriptMayRun() === false && expressionMayRun(expression) === false) {
+    compiledExpressionCache.set(expression, pausedExpression);
+    if (compiledExpressionCache.size > compiledExpressionCacheLimit) {
+      const oldestExpression = compiledExpressionCache.keys().next().value;
+      if (oldestExpression !== undefined) {
+        compiledExpressionCache.delete(oldestExpression);
+      }
+    }
+    return pausedExpression;
   }
 
   const usedVariables = new Map<string, DataSource["name"]>();
@@ -550,6 +570,10 @@ export const evaluateExpressionSync = (
     };
 
     const result = getCompiledExpression(expression)({ get: getVariable });
+    // OrganizeOS fork: while org script is paused no expression gives a function (docs/ORGANIZEOS-FORK.md section 10)
+    if (orgScriptMayRun() === false && typeof result === "function") {
+      return pausedExpression({ get: getVariable });
+    }
     return result;
   } catch (error) {
     if (throwOnError) {

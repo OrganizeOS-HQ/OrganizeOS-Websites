@@ -24,8 +24,8 @@ const trpcSharedClient = vi.hoisted(() => ({
   domain: {},
   deployment: { upstream: true },
 }));
-const createOrganizeosPublisher = vi.hoisted(() =>
-  vi.fn(() => ({ organizeos: true }))
+const getOrganizeosPublisher = vi.hoisted(() =>
+  vi.fn((): unknown => ({ organizeos: true }))
 );
 
 vi.mock("~/env/env.server", () => ({
@@ -49,7 +49,7 @@ vi.mock("~/services/trpc.server", () => ({
 }));
 
 vi.mock("~/services/organizeos-publisher.server", () => ({
-  createOrganizeosPublisher,
+  getOrganizeosPublisher,
 }));
 
 vi.mock("~/shared/entri/entri-api.server", () => ({
@@ -344,42 +344,23 @@ describe("OrganizeOS session binding", () => {
 });
 
 // OrganizeOS fork: the publish seam (ORGANIZEOS-FORK.md §5). The publisher is
-// built once, when the module loads, from the two variables.
+// the instance getOrganizeosPublisher shares with the Publish dialog's route,
+// built from the two variables (organizeos-publisher.server.test.ts).
 describe("OrganizeOS publisher", () => {
-  const loadContext = async () => {
-    vi.resetModules();
-    const module = await import("./context.server");
-    return module.createContext(new Request("https://webstudio.is/trpc"));
-  };
-
-  test("deployment.deploymentTrpc is the OrganizeOS publisher when ORGANIZEOS_PUBLISH_REPO and ORGANIZEOS_PUBLISH_GITHUB_TOKEN are set, and upstream's deployment client otherwise", async () => {
-    env.ORGANIZEOS_PUBLISH_REPO = "OrganizeOS-HQ/OrganizeOS-Websites";
-    env.ORGANIZEOS_PUBLISH_GITHUB_TOKEN = "github-token";
-    const published = await loadContext();
-    expect(published.deployment.deploymentTrpc).toEqual({ organizeos: true });
-    expect(createOrganizeosPublisher).toHaveBeenCalledTimes(1);
-    expect(createOrganizeosPublisher).toHaveBeenCalledWith(
-      expect.objectContaining({
-        repo: "OrganizeOS-HQ/OrganizeOS-Websites",
-        githubToken: "github-token",
-      })
+  test("deployment.deploymentTrpc is the OrganizeOS publisher when one is configured, and upstream's deployment client otherwise", async () => {
+    getOrganizeosPublisher.mockReturnValue({ organizeos: true });
+    const published = await createContext(
+      new Request("https://webstudio.is/trpc")
     );
+    expect(published.deployment.deploymentTrpc).toEqual({ organizeos: true });
+    expect(getOrganizeosPublisher).toHaveBeenCalled();
 
-    for (const [repo, token] of [
-      [undefined, undefined],
-      ["OrganizeOS-HQ/OrganizeOS-Websites", undefined],
-      [undefined, "github-token"],
-    ]) {
-      createOrganizeosPublisher.mockClear();
-      env.ORGANIZEOS_PUBLISH_REPO = repo;
-      env.ORGANIZEOS_PUBLISH_GITHUB_TOKEN = token;
-      const upstream = await loadContext();
-      expect(upstream.deployment.deploymentTrpc).toBe(
-        trpcSharedClient.deployment
-      );
-      expect(createOrganizeosPublisher).not.toHaveBeenCalled();
-    }
-    // Four fresh imports of the context graph, one per pair of variables:
-    // about 2 s here, too close to the default 5 s on a busy machine.
-  }, 20_000);
+    getOrganizeosPublisher.mockReturnValue(undefined);
+    const upstream = await createContext(
+      new Request("https://webstudio.is/trpc")
+    );
+    expect(upstream.deployment.deploymentTrpc).toBe(
+      trpcSharedClient.deployment
+    );
+  });
 });

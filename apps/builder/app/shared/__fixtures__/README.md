@@ -31,3 +31,19 @@ diff ../OrganizeOS/client/tests/fixtures/site-components/site-addresses.json \
 ```
 
 and update this note's commit when it changes.
+
+`site-addresses-targets.json` is a byte-for-byte copy of the OrganizeOS repo's
+`client/tests/fixtures/site-components/site-addresses-targets.json`, at commit
+`9cdad8c63b60e2f80b44943a3a2603fa8dd8e9d0` (the last commit that touched it).
+It is the same answer once the platform reports publish targets: `launchable`
+and `targets`, the built-in address first, then the main, then the other
+domains. The Publish dialog lists one row per target, and the publish route
+checks every ticked address against it. Before each fork PR that touches that
+read or the publish route, compare it with the platform's copy:
+
+```sh
+diff ../OrganizeOS/client/tests/fixtures/site-components/site-addresses-targets.json \
+  apps/builder/app/shared/__fixtures__/site-addresses-targets.json
+```
+
+and update this note's commit when it changes.

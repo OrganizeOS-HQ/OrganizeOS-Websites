@@ -12,6 +12,14 @@ name: Publish site
 # and the guard level (guardLevel, ORGANIZEOS_GUARD_LEVEL), which OrganizeOS
 # stores per build (docs/ORGANIZEOS-FORK.md section 5).
 #
+# The builder's Publish dialog sends the addresses the admin ticked as the
+# targets input, a JSON array of keys (builtin, or a host the org's site is
+# served on). The run checks it before anything installs or deploys and sends
+# it to OrganizeOS as the callback's targets, which puts the site live at each
+# one when the build passes OrganizeOS's checks. A dispatch without it (an
+# older builder) sends no targets, and OrganizeOS records the build at no
+# address.
+#
 # The run ends by telling the builder how it went (internal/publish-status):
 # PUBLISHED once the pointer is flipped, FAILED when any step fails or the run
 # is cancelled before the flip (see the two report steps). That is what the
@@ -43,6 +51,9 @@ on:
       organization_id:
         description: "OrganizeOS organization id (for the pointer flip)"
         required: true
+      targets:
+        description: "JSON array of the publish targets: builtin or a host"
+        required: false
 
 concurrency:
   # One publish at a time per org; a newer publish supersedes a queued one.
@@ -66,6 +77,42 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
+      - name: Read the targets
+        # OrganizeOS fork: the addresses ticked in the Publish dialog
+        # (docs/ORGANIZEOS-FORK.md section 5), untrusted text, checked before
+        # anything installs, syncs or deploys. Absent or empty writes an empty
+        # output (a builder that sends none). Otherwise it must be a JSON array
+        # of 1 to 20 distinct strings, each builtin or a lower-case host with no
+        # scheme, port or path, or the run fails here and nothing deploys. The
+        # output is the array as JSON, written only after the check.
+        id: targets
+        env:
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          value=$(node -e '
+            const raw = process.env.TARGETS ?? "";
+            if (raw === "") {
+              process.exit(0);
+            }
+            const host = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+            let targets;
+            try {
+              targets = JSON.parse(raw);
+            } catch {}
+            const valid =
+              Array.isArray(targets) &&
+              targets.length >= 1 &&
+              targets.length <= 20 &&
+              new Set(targets).size === targets.length &&
+              targets.every((key) => typeof key === "string" && (key === "builtin" || host.test(key)));
+            if (valid === false) {
+              console.log("::error::The targets input is not a JSON array of 1 to 20 distinct keys, each builtin or a host.");
+              process.exit(1);
+            }
+            process.stdout.write(JSON.stringify(targets));
+          ') || { printf '%s\n' "$value"; exit 1; }
+          echo "value=$value" >> "$GITHUB_OUTPUT"
 
       - name: Install and build CLI
         run: |
@@ -164,10 +211,13 @@ jobs:
         # said ("Read the org script switch", "Read the guard level"), each
         # from that step's output alone and checked again here before anything
         # is sent: orgScript the JSON false, guardLevel an integer from 0 to
-        # 32767 (docs/ORGANIZEOS-FORK.md sections 5 and 10). On success the log
-        # shows the answer's live and launchable only, each only when it is a
-        # boolean; on failure it shows the answer. The report steps read this
-        # step's outcome, under its id.
+        # 32767 (docs/ORGANIZEOS-FORK.md sections 5 and 10). targets is what
+        # "Read the targets" wrote, checked again by the same rule, and sent only
+        # when there are any. On success the log shows the answer's live and
+        # launchable only, each only when it is a boolean, and live_targets, the
+        # count of the answer's targets that are live, never a host; on failure
+        # it shows the answer. The report steps read this step's outcome, under
+        # its id.
         id: flip
         env:
           CALLBACK_URL: ${{ secrets.PUBLISH_CALLBACK_URL }}
@@ -177,6 +227,7 @@ jobs:
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment_url }}
           ORG_SCRIPT: ${{ steps.org-script.outputs.value }}
           GUARD_LEVEL: ${{ steps.guard-level.outputs.value }}
+          TARGETS: ${{ steps.targets.outputs.value }}
         run: |
           body=$(node -e '
             const env = process.env;
@@ -193,12 +244,30 @@ jobs:
               console.log("::error::The guard level is not an integer from 0 to 32767, so nothing was sent.");
               process.exit(1);
             }
+            let targets;
+            if ((env.TARGETS ?? "") !== "") {
+              const host = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+              try {
+                targets = JSON.parse(env.TARGETS);
+              } catch {}
+              const valid =
+                Array.isArray(targets) &&
+                targets.length >= 1 &&
+                targets.length <= 20 &&
+                new Set(targets).size === targets.length &&
+                targets.every((key) => typeof key === "string" && (key === "builtin" || host.test(key)));
+              if (valid === false) {
+                console.log("::error::The targets did not pass the check, so nothing was sent.");
+                process.exit(1);
+              }
+            }
             process.stdout.write(JSON.stringify({
               organizationId: env.ORGANIZATION_ID ?? "",
               buildId: env.BUILD_ID ?? "",
               deploymentUrl: env.DEPLOYMENT_URL ?? "",
               orgScript,
               guardLevel: Number(level),
+              ...(targets === undefined ? {} : { targets }),
             }));
           ') || { printf '%s\n' "$body"; exit 1; }
           response="$RUNNER_TEMP/callback-response.txt"
@@ -223,6 +292,11 @@ jobs:
                   if (typeof value === "boolean") {
                     console.log(key + "=" + value);
                   }
+                }
+                const targets = typeof answer === "object" && answer !== null ? answer.targets : undefined;
+                if (Array.isArray(targets)) {
+                  const live = targets.filter((target) => typeof target === "object" && target !== null && target.live === true);
+                  console.log("live_targets=" + live.length);
                 }
               ' || true
               ;;

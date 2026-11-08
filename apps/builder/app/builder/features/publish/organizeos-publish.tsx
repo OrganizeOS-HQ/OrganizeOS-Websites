@@ -1,20 +1,20 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import {
   Button,
+  Checkbox,
   Flex,
   Grid,
+  Label,
   Link,
   PanelBanner,
-  Separator,
   Text,
   Tooltip,
   css,
   cssVar,
   textVariants,
   theme,
-  toast,
   useIsTruncated,
 } from "@webstudio-is/design-system";
 import { AlertIcon, CheckCircleIcon } from "@webstudio-is/icons";
@@ -40,13 +40,12 @@ import {
 import { setActiveSidebarPanel } from "~/builder/shared/nano-states";
 import { nativeClient } from "~/shared/trpc/trpc-client";
 import { RelativeTime } from "~/builder/shared/relative-time";
-import { platformName } from "~/shared/branding";
+import { planBadgeLabel } from "~/shared/branding";
 import { getRestrictedFeatures } from "./restricted-features";
 import { $openProjectSettings } from "~/shared/nano-states/project-settings";
 import {
   findMdxBlocks,
   findPausedScript,
-  pausedScriptExplanation,
   type PausedScriptItem,
 } from "./organizeos-publish-paused-script";
 import { findPublishBlocker } from "./organizeos-publish-code-check";
@@ -56,22 +55,29 @@ import {
 } from "./organizeos-publish-status";
 import {
   loadSiteAddresses,
-  servesThisVersion,
+  publishToTargets,
   type SiteAddresses,
+  type SiteTarget,
 } from "./organizeos-publish-addresses";
+import {
+  cannotGoLive,
+  nextTicks,
+  publishErrorLine,
+  rowLabel,
+} from "./organizeos-publish-targets";
 
 /**
  * The Publish dialog for an OrganizeOS site.
  *
  * Upstream's dialog is built around Webstudio hosting: a <project>.wstd.work
  * staging domain you can rename, staging credentials, custom domains verified
- * through Entri, per-domain checkboxes, plan upgrade banners and a static
- * export. None of that applies to an org's site: it is served by OrganizeOS
- * at the org's subdomain and its custom domains, which are managed there. So
- * this dialog shows where it publishes and whether the site is live, as
- * OrganizeOS answers (organizeos-publish-addresses.ts), points at OrganizeOS
- * for everything else, and has one Publish button whose status follows the
- * executor (see organizeos-publish-status.ts).
+ * through Entri, plan upgrade banners and a static export. None of that
+ * applies to an org's site: it is served by OrganizeOS at the org's built-in
+ * address and its domains, which are managed there. So this dialog lists the
+ * addresses OrganizeOS reports (organizeos-publish-addresses.ts), one row
+ * each with a checkbox, whether it is live and when it was last published,
+ * and publishes to the ticked ones (organizeos-publish-targets.ts). Its status
+ * row follows the executor (organizeos-publish-status.ts).
  */
 
 const POLL_INTERVAL_MS = 10_000;
@@ -119,9 +125,16 @@ const $restrictedFeatures = computed(
 
 // OrganizeOS fork: what publishing leaves out while org script is paused
 const $pausedScript = computed(
-  [$pages, $projectSettings, $instances, $props],
-  (pages, projectSettings, instances, props) =>
-    findPausedScript({ pages, projectSettings, instances, props })
+  [$pages, $projectSettings, $instances, $props, $dataSources, $resources],
+  (pages, projectSettings, instances, props, dataSources, resources) =>
+    findPausedScript({
+      pages,
+      projectSettings,
+      instances,
+      props,
+      dataSources,
+      resources,
+    })
 );
 
 // OrganizeOS fork: the Content Blocks that make publishing refuse the build
@@ -151,10 +164,11 @@ const buttonLinkClass = css({
   ...textVariants.link,
 }).toString();
 
-const StatusLine = ({ state }: { state: OrganizeosPublishState }) => {
+/** The latest build's state, once; nothing before the first publish. */
+const StatusRow = ({ state }: { state: OrganizeosPublishState }) => {
   switch (state.status) {
     case "idle":
-      return <Text color="subtle">Not published yet.</Text>;
+      return;
     case "pending":
       return (
         <Text color="subtle">
@@ -185,20 +199,17 @@ const StatusLine = ({ state }: { state: OrganizeosPublishState }) => {
 
 /**
  * Names the features in this site that the org's plan does not cover, so the
- * admin knows what will not work once it is live. The pointer is the org's
- * Website area, not "ask your administrator": everyone who can open an org
- * project is one.
+ * admin knows what will not work once it is live. Each one selects its
+ * element, or opens its settings, when clicked.
  */
-const RestrictedFeaturesBanner = ({ manageUrl }: { manageUrl: string }) => {
+const RestrictedFeaturesBanner = () => {
   const restrictedFeatures = useStore($restrictedFeatures);
   if (restrictedFeatures.size === 0) {
     return;
   }
   return (
     <PanelBanner variant="warning">
-      <Text variant="regularBold">
-        This site uses features your plan does not include:
-      </Text>
+      <Text variant="regularBold">{planBadgeLabel}</Text>
       <Text as="ul" css={{ paddingLeft: "1em" }}>
         {Array.from(restrictedFeatures).map(([message, feature], index) => (
           <li key={index}>
@@ -227,17 +238,6 @@ const RestrictedFeaturesBanner = ({ manageUrl }: { manageUrl: string }) => {
           </li>
         ))}
       </Text>
-      <Text>
-        <Link
-          href={manageUrl}
-          target="_blank"
-          rel="noreferrer"
-          color="inherit"
-          variant="inherit"
-        >
-          Open in {platformName} ↗
-        </Link>
-      </Text>
     </PanelBanner>
   );
 };
@@ -258,7 +258,6 @@ export const PausedScriptBanner = () => {
     <PanelBanner variant="warning">
       <Text variant="regularBold">Paused, not published</Text>
       <PausedItemList items={pausedScript} />
-      <Text>{pausedScriptExplanation}</Text>
     </PanelBanner>
   );
 };
@@ -320,80 +319,91 @@ const PausedItemList = ({ items }: { items: PausedScriptItem[] }) => (
 const newTabLink = {
   target: "_blank",
   rel: "noreferrer",
-  color: "inherit",
-  variant: "inherit",
 } as const;
 
-/** Publishing to {host}, linked when the site is live, and Manage domains. */
-const PublishingTo = ({ addresses }: { addresses: SiteAddresses }) => {
-  const ref = useRef<HTMLDivElement>(null);
-  const truncated = useIsTruncated(ref, addresses.host);
-  const target = (
-    <Text ref={ref} truncate css={{ flexGrow: 1, minWidth: 0 }}>
-      Publishing to{" "}
-      {addresses.status === "live" ? (
-        <Link href={addresses.origin} target="_blank" rel="noreferrer">
-          {addresses.host}
-        </Link>
-      ) : (
-        addresses.host
-      )}
-    </Text>
-  );
-  return (
-    <Flex align="center" gap="2" css={{ minWidth: 0 }}>
-      {truncated ? (
-        <Tooltip content={addresses.host}>{target}</Tooltip>
-      ) : (
-        target
-      )}
-      <Text color="subtle" css={{ flexShrink: 0 }}>
-        <Link href={addresses.manageDomainsUrl} {...newTabLink}>
-          Manage domains ↗
-        </Link>
-      </Text>
-    </Flex>
-  );
-};
+const exactTime = (time: string) => new Date(time).toLocaleString();
 
-/** A site that is not live: where to launch it, or put it back, in OrganizeOS. */
-const LaunchLine = ({ addresses }: { addresses: SiteAddresses }) => {
-  if (addresses.status === "live") {
-    return;
-  }
-  return (
-    <Text color="subtle">
-      {addresses.status === "offline"
-        ? "Your website is offline."
-        : "Not live yet."}{" "}
-      <Link href={addresses.websiteUrl} {...newTabLink}>
-        {addresses.status === "offline"
-          ? `Put it back from ${platformName} ↗`
-          : `Launch your website from ${platformName} ↗`}
-      </Link>
-    </Text>
-  );
-};
-
-/** A live site whose current version OrganizeOS will not serve. */
-const CannotGoLiveWarning = ({
-  addresses,
+/**
+ * One address: a checkbox, the host (linked while it is live, truncated with
+ * its full text in a tooltip), and under it its label, Live or Not live, and
+ * when it was last published.
+ */
+const TargetRow = ({
+  target,
+  ticked,
+  onTickedChange,
 }: {
-  addresses: SiteAddresses | undefined;
+  target: SiteTarget;
+  ticked: boolean;
+  onTickedChange: (ticked: boolean) => void;
 }) => {
-  if (addresses?.status !== "live" || addresses.launchable !== false) {
-    return;
-  }
+  const id = useId();
+  const hostRef = useRef<HTMLDivElement>(null);
+  const truncated = useIsTruncated(hostRef, target.host);
+  const label = rowLabel(target);
+  const host = (
+    <Text ref={hostRef} truncate css={{ minWidth: 0 }}>
+      {target.live ? (
+        <Link href={`https://${target.host}`} {...newTabLink}>
+          {target.host}
+        </Link>
+      ) : (
+        <Label htmlFor={id} css={{ display: "inline" }}>
+          {target.host}
+        </Label>
+      )}
+    </Text>
+  );
   return (
-    <Flex gap="1" align="center">
-      <AlertIcon color={cssVar("--foreground-warning")} />
-      <Text css={{ color: cssVar("--foreground-warning") }}>
-        This version can&apos;t go live yet. Publish again after the next
-        builder update.
-      </Text>
-    </Flex>
+    <Grid
+      css={{
+        gridTemplateColumns: "auto minmax(0, 1fr)",
+        columnGap: theme.spacing[5],
+        alignItems: "start",
+      }}
+    >
+      <Checkbox
+        id={id}
+        aria-label={target.host}
+        checked={ticked}
+        onCheckedChange={(value) => onTickedChange(value === true)}
+      />
+      <Grid css={{ minWidth: 0 }}>
+        {truncated ? <Tooltip content={target.host}>{host}</Tooltip> : host}
+        <Text color="subtle" truncate>
+          {label === undefined ? "" : `${label} · `}
+          {target.live ? "Live" : "Not live"}
+          {target.publishedAt === null ? undefined : (
+            <>
+              {" · "}
+              <Tooltip content={exactTime(target.publishedAt)}>
+                <span>
+                  <RelativeTime time={new Date(target.publishedAt)} />
+                </span>
+              </Tooltip>
+            </>
+          )}
+        </Text>
+      </Grid>
+    </Grid>
   );
 };
+
+/** OrganizeOS's domain settings, from the read, else from the site. */
+const manageDomainsUrlOf = (
+  site: OrganizeosSite,
+  addresses: SiteAddresses | undefined
+) => {
+  if (addresses !== undefined) {
+    return addresses.manageDomainsUrl;
+  }
+  if (site.subdomain === undefined) {
+    return;
+  }
+  return `${site.platformUrl.replace(/\/+$/, "")}/${site.subdomain}/settings/domain`;
+};
+
+type Read = "loading" | "failed" | "ready";
 
 export const OrganizeosPublishContent = ({
   site,
@@ -405,6 +415,9 @@ export const OrganizeosPublishContent = ({
   const [error, setError] = useState<string>();
 
   const [addresses, setAddresses] = useState<SiteAddresses>();
+  const [read, setRead] = useState<Read>("loading");
+  // undefined until the first read with targets sets the live addresses
+  const [ticks, setTicks] = useState<Set<string>>();
 
   const state = getOrganizeosPublishState(project?.latestBuildVirtual);
   const previousStatus = useRef(state.status);
@@ -413,23 +426,31 @@ export const OrganizeosPublishContent = ({
   // Reads can finish out of order (a slow first read after a publish's
   // refetch): only the latest one is shown.
   const latestRead = useRef(0);
-  const readAddresses = (id: string) => {
+  const readAddresses = (id: string, { reset }: { reset: boolean }) => {
     latestRead.current += 1;
-    const read = latestRead.current;
+    const current = latestRead.current;
     return loadSiteAddresses(id).then((loaded) => {
-      if (mounted.current && read === latestRead.current) {
-        setAddresses(loaded);
+      if (mounted.current === false || current !== latestRead.current) {
+        return;
       }
-      return loaded;
+      if (loaded === undefined) {
+        setRead("failed");
+        return;
+      }
+      setAddresses(loaded);
+      setRead("ready");
+      const targets = loaded.targets;
+      if (targets !== undefined) {
+        setTicks((previous) => nextTicks(previous, targets, { reset }));
+      }
     });
   };
 
-  // Where it publishes and whether the site is live, read when the dialog
-  // opens
+  // The addresses, read when the dialog opens
   useEffect(() => {
     mounted.current = true;
     if (projectId !== undefined) {
-      readAddresses(projectId);
+      readAddresses(projectId, { reset: false });
     }
     return () => {
       mounted.current = false;
@@ -448,32 +469,16 @@ export const OrganizeosPublishContent = ({
     return () => clearInterval(interval);
   }, [state.status]);
 
-  // Announce the outcome of a publish that was pending while the dialog was
-  // open, and read the addresses again; a dialog opened onto an old result
-  // stays quiet. The site is called live only when OrganizeOS serves this
-  // version.
+  // A publish that was pending while the dialog was open settled: read the
+  // addresses again, and tick what is live now. A dialog opened onto an old
+  // result reads nothing more.
   useEffect(() => {
     if (
       previousStatus.current === "pending" &&
       projectId !== undefined &&
       (state.status === "published" || state.status === "failed")
     ) {
-      const settled = state.status;
-      if (settled === "failed") {
-        toast.error("Publishing failed. Please try again.");
-      }
-      readAddresses(projectId).then((loaded) => {
-        if (settled === "published") {
-          if (servesThisVersion(loaded)) {
-            toast.success(
-              `Your site is live. Changes can take up to a minute to appear at ${loaded.host}.`,
-              { duration: 10000 }
-            );
-          } else {
-            toast.success("Published.");
-          }
-        }
-      });
+      readAddresses(projectId, { reset: true });
     }
     previousStatus.current = state.status;
   }, [state.status, projectId]);
@@ -481,6 +486,12 @@ export const OrganizeosPublishContent = ({
   if (project === undefined) {
     return;
   }
+
+  const targets = read === "ready" ? addresses?.targets : undefined;
+  const tickedKeys = (targets ?? [])
+    .filter((target) => ticks?.has(target.key))
+    .map((target) => target.key);
+  const isPending = isSubmitting || state.status === "pending";
 
   const handlePublish = async () => {
     setError(undefined);
@@ -498,62 +509,105 @@ export const OrganizeosPublishContent = ({
     }
     setIsSubmitting(true);
     try {
-      const result = await nativeClient.domain.publish.mutate({
-        projectId: project.id,
-        domains: [project.domain],
-        destination: "saas",
-      });
-      if (result.success === false) {
-        const message =
-          result.error === "NOT_IMPLEMENTED"
-            ? "Publishing is not set up on this builder yet."
-            : result.error;
-        setError(message);
-        toast.error(message);
+      const outcome = await publishToTargets(project.id, tickedKeys);
+      if (outcome.ok === false) {
+        setError(publishErrorLine(outcome));
       }
-      // Either way the project's latest build changed; show it.
-      await refreshProject();
-    } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "Publishing failed.";
-      setError(message);
-      toast.error(message);
+      // Whatever the answer, the rows show what OrganizeOS reports now
+      await refreshProject().catch(() => undefined);
+      await readAddresses(project.id, { reset: false });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const isPending = isSubmitting || state.status === "pending";
+  const manageDomainsUrl = manageDomainsUrlOf(site, addresses);
 
   return (
     <Grid css={{ padding: theme.panel.padding }} gap={3}>
-      {addresses !== undefined && (
-        <>
-          <Grid gap={1}>
-            <PublishingTo addresses={addresses} />
-            <LaunchLine addresses={addresses} />
-          </Grid>
-          <Separator />
-        </>
-      )}
+      <StatusRow state={state} />
 
-      <StatusLine state={state} />
-      <CannotGoLiveWarning addresses={addresses} />
+      {targets !== undefined && targets.length > 0 && (
+        <Grid gap={2}>
+          {targets.map((target) => (
+            <TargetRow
+              key={target.key}
+              target={target}
+              ticked={ticks?.has(target.key) ?? false}
+              onTickedChange={(ticked) => {
+                setTicks((previous) => {
+                  const next = new Set(previous);
+                  if (ticked) {
+                    next.add(target.key);
+                  } else {
+                    next.delete(target.key);
+                  }
+                  return next;
+                });
+              }}
+            />
+          ))}
+        </Grid>
+      )}
+      {read === "ready" && addresses?.targets === undefined && (
+        <Text color="subtle">Addresses unavailable.</Text>
+      )}
+      {read === "failed" && (
+        <Text color="destructive">
+          Couldn&apos;t load your addresses.{" "}
+          <button
+            className={buttonLinkClass}
+            type="button"
+            onClick={() => {
+              setRead("loading");
+              readAddresses(project.id, { reset: false });
+            }}
+          >
+            Retry
+          </button>
+        </Text>
+      )}
+      {cannotGoLive(read === "ready" ? addresses : undefined, state) && (
+        <Flex gap="1" align="center">
+          <AlertIcon color={cssVar("--foreground-warning")} />
+          <Text css={{ color: cssVar("--foreground-warning") }}>
+            This version can&apos;t go live. Publish again.
+          </Text>
+        </Flex>
+      )}
       {error !== undefined && <Text color="destructive">{error}</Text>}
-      <RestrictedFeaturesBanner manageUrl={site.manageUrl} />
+
+      <RestrictedFeaturesBanner />
       <MdxBlocksBanner />
       <PausedScriptBanner />
 
-      <Button
-        type="button"
-        color="positive"
-        state={isPending ? "pending" : undefined}
-        onClick={() => {
-          handlePublish().catch(() => undefined);
-        }}
-      >
-        {state.status === "published" ? "Publish changes" : "Publish"}
-      </Button>
+      <Flex align="center" justify="between" gap="2">
+        {manageDomainsUrl === undefined ? (
+          <span />
+        ) : (
+          <Text color="subtle" css={{ flexShrink: 0 }}>
+            <Link
+              href={manageDomainsUrl}
+              color="inherit"
+              variant="inherit"
+              {...newTabLink}
+            >
+              Manage domains ↗
+            </Link>
+          </Text>
+        )}
+        <Button
+          type="button"
+          color="positive"
+          disabled={tickedKeys.length === 0 || isPending}
+          state={isPending ? "pending" : undefined}
+          onClick={() => {
+            handlePublish().catch(() => undefined);
+          }}
+        >
+          Publish to selected
+        </Button>
+      </Flex>
     </Grid>
   );
 };

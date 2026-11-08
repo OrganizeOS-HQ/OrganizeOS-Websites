@@ -20,7 +20,6 @@ import { normalizePatchRequest } from "~/shared/sync/patch/patch-normalize.serve
 import { loadById } from "@webstudio-is/project/index.server";
 import type { BuildPatchTransaction } from "@webstudio-is/project/index.server";
 import { loadDevBuildByProjectId } from "@webstudio-is/project-build/server";
-import { parseWebstudioJsxFragment } from "@webstudio-is/project-build/transfer/server";
 import { serializePages } from "@webstudio-is/project-migrations/pages";
 import { loadAssetDataByProject } from "@webstudio-is/asset-uploader/server";
 import {
@@ -283,6 +282,9 @@ export const loadBuilderDataByProjectId = async (
   };
 };
 
+// OrganizeOS fork: the message a paste of JSX gets (section 7).
+export const pastedJsxUnavailable = "Pasting JSX is not available.";
+
 export const buildRouter = router({
   createJsxFragment: procedure
     .input(z.object({ projectId: z.string(), source: z.string() }))
@@ -294,7 +296,9 @@ export const buildRouter = router({
       if (canView === false) {
         throw new AuthorizationError("You don't have access to this project");
       }
-      return await parseWebstudioJsxFragment(input.source);
+      // OrganizeOS fork: the builder server does not turn pasted JSX into
+      // project data (docs/ORGANIZEOS-FORK.md, section 7).
+      throw new AuthorizationError(pastedJsxUnavailable);
     }),
 
   loadData: procedure

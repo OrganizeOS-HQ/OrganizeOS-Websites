@@ -1,15 +1,15 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import {
-  authorizeProject,
-  ORGANIZEOS_SERVICE_PROVIDER,
-} from "@webstudio-is/trpc-interface/index.server";
+import { authorizeProject } from "@webstudio-is/trpc-interface/index.server";
 import env from "~/env/env.server";
 import { createContext } from "~/shared/context.server";
 import { preventCrossOriginCookie } from "~/services/no-cross-origin-cookie";
 import { checkCsrf } from "~/services/csrf-session.server";
 import { allowedDestinations } from "~/services/destinations.server";
 import { privateNoStoreResponseHeaders } from "~/services/cache-control.server";
-import { parseOrganizationIdFromServiceEmail } from "~/services/organizeos-publisher.server";
+import {
+  resolveProjectOrganization,
+  type ProjectOrganizationClient,
+} from "~/shared/db/organizeos-project-org.server";
 import {
   composeSiteAddresses,
   fetchSiteAddresses,
@@ -25,13 +25,10 @@ import {
  * A fetch only, for a user signed in as a user (never through a share link's
  * token) who may view the project. The org is the project owner's, resolved
  * as the builder loader resolves it, and never comes from the request. The
- * answer is `{ ok: true, host, origin, status, manageDomainsUrl, websiteUrl,
- * launchable? }`, or `{ ok: false }` for a project no org owns and for any
- * failure, which the dialog shows as nothing extra. A failure logs one code.
+ * answer is `{ ok: true, host, origin, status, manageDomainsUrl, launchable?,
+ * targets? }`, or `{ ok: false }` for a project no org owns and for any
+ * failure, which the dialog shows as one line. A failure logs one code.
  */
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const answer = (body: object, status = 200) =>
   json(body, { status, headers: privateNoStoreResponseHeaders });
@@ -57,40 +54,18 @@ export const loader = async ({ params, request }: LoaderFunctionArgs) => {
     return answer({ ok: false }, 403);
   }
 
-  const client = context.postgrest.client;
-  const project = await client
-    .from("Project")
-    .select("userId")
-    .eq("id", projectId)
-    .eq("isDeleted", false)
-    .maybeSingle();
-  if (project.error) {
+  const owner = await resolveProjectOrganization(
+    context.postgrest.client as unknown as ProjectOrganizationClient,
+    projectId
+  );
+  if ("failed" in owner) {
     logSiteAddressesFailure("owner_read_failed");
     return answer({ ok: false });
   }
-  if (project.data === null || project.data.userId === null) {
+  if ("none" in owner) {
     return answer({ ok: false });
   }
-  const owner = await client
-    .from("User")
-    .select("provider, email")
-    .eq("id", project.data.userId)
-    .maybeSingle();
-  if (owner.error) {
-    logSiteAddressesFailure("owner_read_failed");
-    return answer({ ok: false });
-  }
-  if (
-    owner.data === null ||
-    owner.data.provider !== ORGANIZEOS_SERVICE_PROVIDER ||
-    owner.data.email === null
-  ) {
-    return answer({ ok: false });
-  }
-  const organizationId = parseOrganizationIdFromServiceEmail(owner.data.email);
-  if (organizationId === null || UUID_PATTERN.test(organizationId) === false) {
-    return answer({ ok: false });
-  }
+  const { organizationId } = owner;
 
   const row = await fetchSiteAddresses(
     getSiteAddressesClient(),

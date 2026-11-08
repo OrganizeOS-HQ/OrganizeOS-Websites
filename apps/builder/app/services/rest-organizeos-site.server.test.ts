@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import fixture from "~/shared/__fixtures__/site-addresses.json";
+import targetsFixture from "~/shared/__fixtures__/site-addresses-targets.json";
 
 // OrganizeOS fork: the Publish dialog's read of the site's addresses and
 // launch state. Its answer is validated in
@@ -122,8 +123,25 @@ describe("rest.organizeos-site", () => {
       origin: "https://votelabor.org",
       status: "not_launched",
       manageDomainsUrl: "https://app.organizeos.org/laborparty/settings/domain",
-      websiteUrl: "https://app.organizeos.org/laborparty/website",
     });
+  });
+
+  test("answers the org's publish targets when the read has them, the built-in host composed", async () => {
+    state.rpc = vi.fn(async () => ({ data: targetsFixture, error: null }));
+    const response = await call();
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      targets: Array<Record<string, unknown>>;
+    };
+    expect(body).toMatchObject({ ok: true, status: "live", launchable: true });
+    expect(
+      body.targets.map(({ key, host, live }) => [key, host, live])
+    ).toEqual([
+      ["builtin", "example-org.organizeos.org", true],
+      ["www.example.org", "www.example.org", false],
+      ["example.net", "example.net", false],
+    ]);
   });
 
   test("is refused without a session", async () => {
