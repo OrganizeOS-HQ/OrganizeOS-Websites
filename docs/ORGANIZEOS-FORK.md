@@ -1379,8 +1379,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     Submitting, Success, Check email, Error, Unavailable), and drives the
     canvas only. A `state` bound to one variable (the template's `formState`)
     sets that variable's value on the canvas, as the block's own action does:
-    no prop is written and no undo step added. An unbound `state` is written as
-    a string; any other expression is read-only.
+    no prop is written and no undo step added. Anything else, an unbound
+    `state` or any other expression, has no variable to set, so the buttons are
+    read-only and write nothing.
   - **Fields** takes the `data` prop's row, under a plain "Fields" label with
     no menu, so `data` is never shown and stays bound. It lists one checkbox
     per field of the form the root resolves (`resolveSignupForm` on its

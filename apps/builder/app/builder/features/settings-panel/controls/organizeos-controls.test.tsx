@@ -340,7 +340,7 @@ describe("the Signup Form's Settings", () => {
     ).toBe("true");
   });
 
-  test("an unbound state is written as a string", async () => {
+  test("an unbound state is read-only: State drives the canvas only, and writes nothing", async () => {
     const rootId = setProject();
     const onChange = vi.fn();
     container = document.createElement("div");
@@ -367,10 +367,12 @@ describe("the Signup Form's Settings", () => {
         )
       )
     );
-    await userEvent.click(
-      container.querySelector('[aria-label="Success"]') as HTMLElement
+    const success = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Success"]'
     );
-    expect(onChange).toHaveBeenCalledWith({ type: "string", value: "success" });
+    expect(success?.disabled).toBe(true);
+    await userEvent.click(success as HTMLElement, { force: true });
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   test("the Fields rows follow the form, lock Email while it exists, and check and uncheck a Field", async () => {

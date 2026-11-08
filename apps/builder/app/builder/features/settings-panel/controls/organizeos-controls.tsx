@@ -228,20 +228,16 @@ export const getStateVariableId = (expression: string) => {
 };
 
 /**
- * State: which state the canvas shows. A `state` bound to one variable sets
- * that variable's value on the canvas, as the block's own action does:
- * nothing is written to the project and nothing is added to undo. An unbound
- * `state` is written as a string; any other expression is read-only.
+ * State: which state the canvas shows, and nothing else. A `state` bound to
+ * one variable sets that variable's value on the canvas, as the block's own
+ * action does: nothing is written to the project and nothing is added to
+ * undo. Anything else (an unbound `state`, any other expression) has no
+ * variable to set, so the buttons are read-only and write nothing.
  */
-const SignupStateControl = ({
-  prop,
-  computedValue,
-  onChange,
-}: ControlProps<"text">) => {
+const SignupStateControl = ({ prop, computedValue }: ControlProps<"text">) => {
   const variableId =
     prop?.type === "expression" ? getStateVariableId(prop.value) : undefined;
-  const readOnly =
-    prop !== undefined && prop.type !== "string" && variableId === undefined;
+  const readOnly = variableId === undefined;
   const value = typeof computedValue === "string" ? computedValue : "initial";
   return (
     <VerticalLayout label={<BaseLabel>State</BaseLabel>}>
@@ -255,10 +251,6 @@ const SignupStateControl = ({
             $dataSourceVariables.set(
               new Map($dataSourceVariables.get()).set(variableId, state)
             );
-            return;
-          }
-          if (readOnly === false) {
-            onChange({ type: "string", value: state });
           }
         }}
       >
