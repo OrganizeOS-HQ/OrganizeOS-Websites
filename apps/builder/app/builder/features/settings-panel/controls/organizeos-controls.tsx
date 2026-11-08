@@ -330,9 +330,8 @@ const getComputedFieldName =
 
 /**
  * Fields, in the `data` prop's row: one checkbox per field of the form, in its
- * order, and the one warning line. The Forms data itself is never shown, and
- * `data` stays bound: its row has a plain label, with no menu to reset it.
- * With `data` unbound (isSignupDataBound), a line says so, and its Reconnect
+ * order, and the one warning line. The Forms data itself is never shown: its
+ * row has a plain label, with no menu to reset it. With `data` unbound (isSignupDataBound), a line says so, and its Reconnect
  * binds it to the org's Forms catalog again as the insert does
  * (restoreSignupFormData).
  */
