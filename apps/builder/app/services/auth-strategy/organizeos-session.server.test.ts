@@ -311,6 +311,7 @@ describe("every session read goes through the binding check", () => {
   // apps/builder/app
   const appRoot = fileURLToPath(new URL("../..", import.meta.url));
   const self = "services/auth-strategy/organizeos-session.server.ts";
+  const leaf = "services/auth-strategy/organizeos-binding.server.ts";
 
   const walk = (dir: string): string[] =>
     readdirSync(dir).flatMap((name) => {
@@ -336,9 +337,62 @@ describe("every session read goes through the binding check", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("the binding module never builds a context (recursion trap)", () => {
-    const source = readFileSync(join(appRoot, self), "utf8");
-    expect(source).not.toMatch(/from\s+["'][^"']*context\.server["']/);
-    expect(source).not.toMatch(/\bcreateContext\s*\(/);
+  test.each([self, leaf])(
+    "the binding module never builds a context (recursion trap): %s",
+    (path) => {
+      const source = readFileSync(join(appRoot, path), "utf8");
+      expect(source).not.toMatch(/from\s+["'][^"']*context\.server["']/);
+      expect(source).not.toMatch(/\bcreateContext\s*\(/);
+    }
+  );
+
+  test("the binding check is a leaf module", () => {
+    const source = readFileSync(join(appRoot, leaf), "utf8");
+    const imports = [...source.matchAll(/from\s+["']([^"']+)["']/g)].map(
+      (match) => match[1]
+    );
+    expect(imports.sort()).toEqual(
+      [
+        "@webstudio-is/postgrest/index.server",
+        "node:crypto",
+        "~/env/env.server",
+        "~/services/auth.server.utils",
+      ].sort()
+    );
+    // The SessionData import is a type, so it pulls in no module.
+    expect(source).toMatch(
+      /import type \{[^}]*\} from "~\/services\/auth\.server\.utils"/
+    );
+    // No module enters any other way: no side-effect import, no dynamic
+    // import, no require.
+    expect(source).not.toMatch(/(^|[\s;])import\s*["']/m);
+    expect(source).not.toMatch(/\bimport\s*\(/);
+    expect(source).not.toMatch(/\brequire\s*\(/);
+  });
+
+  test("the collab writer imports the leaf check, not the session readers", () => {
+    const source = readFileSync(
+      join(appRoot, "shared/sync/patch/patch-auth.server.ts"),
+      "utf8"
+    );
+    expect(source).toContain(
+      'from "~/services/auth-strategy/organizeos-binding.server"'
+    );
+    expect(source).not.toMatch(/organizeos-session\.server/);
+  });
+
+  test("every access token reader passes the binding check", () => {
+    const files = walk(appRoot).map((path) => relative(appRoot, path));
+    const readers = files
+      .filter((path) => /\.test\./.test(path) === false)
+      .filter((path) =>
+        readFileSync(join(appRoot, path), "utf8").includes("readAccessToken(")
+      );
+    // The ws login callback refuses a collab token, and the collab writer
+    // checks the binding.
+    expect(readers.sort()).toEqual([
+      "services/builder-auth.server.ts",
+      "shared/sync/patch/patch-auth.server.ts",
+    ]);
   });
 });

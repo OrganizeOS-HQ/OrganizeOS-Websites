@@ -12,6 +12,10 @@ import {
   pastedJsxUnavailable,
 } from "./build-router.server";
 import { authorizeProject } from "@webstudio-is/trpc-interface/index.server";
+import env from "~/env/env.server";
+import { readAccessToken } from "./token.server";
+import { checkOrganizeosBindingClaims } from "~/services/auth-strategy/organizeos-binding.server";
+import { createWriterContext } from "~/shared/sync/patch/patch-auth.server";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { serializePages } from "@webstudio-is/project-build/persistence";
 import * as projectBuild from "@webstudio-is/project-build/server";
@@ -21,6 +25,20 @@ import {
   createAssetIndex,
   createCanonicalAssetFileEntry,
 } from "@webstudio-is/content-engine/compiler";
+
+vi.mock(
+  "~/services/auth-strategy/organizeos-binding.server",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("~/services/auth-strategy/organizeos-binding.server")
+      >();
+    return {
+      ...actual,
+      checkOrganizeosBindingClaims: vi.fn(actual.checkOrganizeosBindingClaims),
+    };
+  }
+);
 
 const {
   assertCliBundleVersion,
@@ -574,5 +592,92 @@ describe("build router restore points", () => {
     expect(patchBuild).not.toHaveBeenCalled();
     await expect(restore(`"a"`)).resolves.toEqual({ version: 2 });
     expect(patchBuild).toHaveBeenCalledTimes(1);
+  });
+});
+
+// OrganizeOS: a collab token carries the session binding as one encrypted
+// claim, so collaboration writes pass the same binding check as session reads
+// (patch-auth.server.ts) while the token's readable payload names neither the
+// session nor the user.
+describe("createCollabToken", () => {
+  const SID = "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b";
+  const ORGANIZEOS_USER = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+
+  const mintCollabToken = async () => {
+    vi.spyOn(authorizeProject, "hasProjectPermit").mockResolvedValue(true);
+    const context = {
+      authorization: {
+        type: "user",
+        userId: "user-1",
+        sessionCreatedAt: 1,
+        isLoggedInToBuilder: async () => true,
+        organizeosSid: SID,
+        organizeosUserId: ORGANIZEOS_USER,
+      },
+      postgrest: {
+        client: {
+          from: () => ({
+            select: () => ({
+              eq: () => ({
+                single: async () => ({
+                  data: { projectId: "project-1" },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        },
+      },
+    } as never;
+
+    const { token } = await buildRouter
+      .createCaller(context)
+      .createCollabToken({ buildId: "build-1", projectId: "project-1" });
+    return token;
+  };
+
+  test("a collab token carries its purpose and an encrypted binding", async () => {
+    const token = await mintCollabToken();
+
+    expect(await readAccessToken(token, env.AUTH_WS_CLIENT_SECRET)).toEqual({
+      userId: "user-1",
+      projectId: "project-1",
+      binding: expect.any(String),
+      purpose: "collab",
+    });
+  });
+
+  test("the readable payload names neither the session nor the user", async () => {
+    const token = await mintCollabToken();
+
+    const payload = Buffer.from(token.split(".")[1], "base64url").toString(
+      "utf8"
+    );
+    expect(payload).toContain('"purpose":"collab"');
+    expect(payload).not.toContain(SID);
+    expect(payload).not.toContain(ORGANIZEOS_USER);
+    expect(payload).not.toContain("organizeosSid");
+    expect(payload).not.toContain("organizeosUserId");
+  });
+
+  test("a collab writer recovers the binding from the token", async () => {
+    const token = await mintCollabToken();
+    const createTokenContext = vi.fn();
+
+    const writerContext = await createWriterContext(
+      { createTokenContext } as never,
+      token
+    );
+
+    expect(writerContext.authorization).toMatchObject({
+      type: "user",
+      userId: "user-1",
+    });
+    expect(checkOrganizeosBindingClaims).toHaveBeenCalledWith(
+      "user-1",
+      SID,
+      ORGANIZEOS_USER
+    );
+    expect(createTokenContext).not.toHaveBeenCalled();
   });
 });

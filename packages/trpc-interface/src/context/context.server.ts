@@ -18,6 +18,10 @@ type AuthorizationContext =
        * Has projectId in the tracked sessions
        */
       isLoggedInToBuilder: (projectId: string) => Promise<boolean>;
+      // OrganizeOS: the OrganizeOS session binding of the session this user
+      // context was read from, so a collab token minted from it carries it.
+      organizeosSid?: string;
+      organizeosUserId?: string;
     }
   | {
       type: "token";
