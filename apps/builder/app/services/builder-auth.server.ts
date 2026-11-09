@@ -49,6 +49,12 @@ builderAuthenticator.use(
         throw new AuthorizationError("Invalid or expired access token");
       }
 
+      // OrganizeOS: a token minted for another purpose (a collab token)
+      // never opens a session.
+      if (accessToken.purpose !== undefined) {
+        throw new AuthorizationError("Invalid or expired access token");
+      }
+
       const { projectId } = parseBuilderUrl(request.url);
 
       if (accessToken.projectId !== projectId) {

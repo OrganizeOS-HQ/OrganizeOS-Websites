@@ -152,6 +152,9 @@ const createAuthorizationContext = async (
       userId,
       sessionCreatedAt: sessionData.createdAt,
       isLoggedInToBuilder,
+      // OrganizeOS: the session binding, for the collab token (build-router).
+      organizeosSid: sessionData.organizeosSid,
+      organizeosUserId: sessionData.organizeosUserId,
     };
   }
 

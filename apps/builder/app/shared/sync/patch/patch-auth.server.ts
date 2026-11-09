@@ -23,6 +23,7 @@ import { migrateResourceFormInstancesMutable } from "@webstudio-is/project-migra
 import { hasHistoricalFormComponentIdentityVersion } from "@webstudio-is/project-migrations/pages";
 import env from "~/env/env.server";
 import { readAccessToken } from "~/services/token.server";
+import { checkOrganizeosBindingClaims } from "~/services/auth-strategy/organizeos-binding.server";
 import { componentMetas } from "~/shared/component-metas.server";
 import type {
   NormalizedPatchRequest,
@@ -56,27 +57,42 @@ export const createWriterContext = async (
   if (authToken.length === 0 || authToken === "session") {
     throw new AuthorizationError("Collab writer token is not authorized");
   }
+  let accessToken: Awaited<ReturnType<typeof readAccessToken>>;
   try {
-    const accessToken = await readAccessToken(
-      authToken,
-      env.AUTH_WS_CLIENT_SECRET
-    );
-    if (accessToken !== undefined) {
-      return {
-        ...context,
-        authorization: {
-          type: "user" as const,
-          userId: accessToken.userId,
-          sessionCreatedAt: 0,
-          isLoggedInToBuilder: async (projectId: string) =>
-            projectId === accessToken.projectId,
-        },
-      };
-    }
+    accessToken = await readAccessToken(authToken, env.AUTH_WS_CLIENT_SECRET);
   } catch {
-    // Not a signed collab token; try the existing shared-link token flow.
+    accessToken = undefined;
   }
-  return context.createTokenContext(authToken);
+  if (accessToken === undefined) {
+    // Not a signed collab token; try the existing shared-link token flow.
+    return context.createTokenContext(authToken);
+  }
+  // OrganizeOS: a signed token is a collab writer only when it was minted as
+  // one, and its session binding passes the same check as session reads
+  // (organizeos-binding.server.ts). Either refusal rejects the entry; a
+  // failure of the check itself fails the request.
+  if (accessToken.purpose !== "collab") {
+    throw new AuthorizationError("Collab writer token is not authorized");
+  }
+  const binding = await checkOrganizeosBindingClaims(
+    accessToken.userId,
+    accessToken.organizeosSid,
+    accessToken.organizeosUserId
+  );
+  if (binding.allow === false) {
+    throw new AuthorizationError("Collab writer token is not authorized");
+  }
+  const tokenProjectId = accessToken.projectId;
+  return {
+    ...context,
+    authorization: {
+      type: "user" as const,
+      userId: accessToken.userId,
+      sessionCreatedAt: 0,
+      isLoggedInToBuilder: async (projectId: string) =>
+        projectId === tokenProjectId,
+    },
+  };
 };
 
 const resolveEntryWriterContext = async (

@@ -145,6 +145,10 @@ const accessTokenPayload = z.object({
   userId: z.string(),
   projectId: z.string(),
   ...organizeosBinding,
+  // OrganizeOS: "collab" on a collab token (createCollabToken), absent on a
+  // WS OAuth access token. A collab writer accepts only the first, the ws
+  // login callback only the second. Optional, so older tokens still parse.
+  purpose: z.string().optional(),
 });
 
 type AccessTokenPayload = z.infer<typeof accessTokenPayload>;

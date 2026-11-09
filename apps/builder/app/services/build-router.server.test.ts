@@ -12,6 +12,8 @@ import {
   pastedJsxUnavailable,
 } from "./build-router.server";
 import { authorizeProject } from "@webstudio-is/trpc-interface/index.server";
+import env from "~/env/env.server";
+import { readAccessToken } from "./token.server";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { serializePages } from "@webstudio-is/project-build/persistence";
 import * as projectBuild from "@webstudio-is/project-build/server";
@@ -574,5 +576,49 @@ describe("build router restore points", () => {
     expect(patchBuild).not.toHaveBeenCalled();
     await expect(restore(`"a"`)).resolves.toEqual({ version: 2 });
     expect(patchBuild).toHaveBeenCalledTimes(1);
+  });
+});
+
+// OrganizeOS: a collab token carries the session binding, so collaboration
+// writes pass the same binding check as session reads (patch-auth.server.ts).
+describe("createCollabToken", () => {
+  test("a collab token carries the caller's session binding and its purpose", async () => {
+    vi.spyOn(authorizeProject, "hasProjectPermit").mockResolvedValue(true);
+    const context = {
+      authorization: {
+        type: "user",
+        userId: "user-1",
+        sessionCreatedAt: 1,
+        isLoggedInToBuilder: async () => true,
+        organizeosSid: "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b",
+        organizeosUserId: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      },
+      postgrest: {
+        client: {
+          from: () => ({
+            select: () => ({
+              eq: () => ({
+                single: async () => ({
+                  data: { projectId: "project-1" },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        },
+      },
+    } as never;
+
+    const { token } = await buildRouter
+      .createCaller(context)
+      .createCollabToken({ buildId: "build-1", projectId: "project-1" });
+
+    expect(await readAccessToken(token, env.AUTH_WS_CLIENT_SECRET)).toEqual({
+      userId: "user-1",
+      projectId: "project-1",
+      organizeosSid: "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b",
+      organizeosUserId: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      purpose: "collab",
+    });
   });
 });

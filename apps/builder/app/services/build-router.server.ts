@@ -401,7 +401,15 @@ export const buildRouter = router({
 
       return {
         token: await createAccessToken(
-          { userId: ctx.authorization.userId, projectId: input.projectId },
+          {
+            userId: ctx.authorization.userId,
+            projectId: input.projectId,
+            // OrganizeOS: a collab token carries the session binding, which
+            // every collaboration write passes (patch-auth.server.ts).
+            organizeosSid: ctx.authorization.organizeosSid,
+            organizeosUserId: ctx.authorization.organizeosUserId,
+            purpose: "collab",
+          },
           env.AUTH_WS_CLIENT_SECRET,
           { maxAge: 5 * 60 * 1000 }
         ),
