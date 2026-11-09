@@ -303,6 +303,22 @@ describe("OrganizeOS session binding", () => {
     });
   });
 
+  test("the user authorization carries the session binding", async () => {
+    signIn();
+    answerLiveness(true);
+
+    const context = await createContext(
+      new Request("https://webstudio.is/trpc")
+    );
+
+    expect(context.authorization).toMatchObject({
+      type: "user",
+      userId: boundSession.userId,
+      organizeosSid: boundSession.organizeosSid,
+      organizeosUserId: boundSession.organizeosUserId,
+    });
+  });
+
   test("an explicit token is not read through the session", async () => {
     signIn();
     env.ORGANIZEOS_SESSION_BINDING = "enforce";

@@ -21,8 +21,10 @@ import {
 } from "@webstudio-is/project-build/persistence";
 import { migrateResourceFormInstancesMutable } from "@webstudio-is/project-migrations";
 import { hasHistoricalFormComponentIdentityVersion } from "@webstudio-is/project-migrations/pages";
+import { z } from "zod";
 import env from "~/env/env.server";
-import { readAccessToken } from "~/services/token.server";
+import { decrypt, readAccessToken } from "~/services/token.server";
+import { checkOrganizeosBindingClaims } from "~/services/auth-strategy/organizeos-binding.server";
 import { componentMetas } from "~/shared/component-metas.server";
 import type {
   NormalizedPatchRequest,
@@ -49,6 +51,31 @@ type GetInitialContentModeCapabilities = () =>
   | ReturnType<typeof createContentModeCapabilities>
   | Promise<ReturnType<typeof createContentModeCapabilities>>;
 
+// OrganizeOS: the session binding a collab token carries as one encrypted
+// claim (createCollabToken in build-router.server.ts). An absent claim, one
+// that does not decrypt under the signing secret, or one off this shape reads
+// as no binding, which the binding check treats as missing.
+const collabBinding = z.object({
+  sid: z.string().optional(),
+  uid: z.string().optional(),
+});
+
+const openCollabBinding = async (
+  binding: string | undefined
+): Promise<z.infer<typeof collabBinding>> => {
+  if (binding === undefined) {
+    return {};
+  }
+  try {
+    const parsed = collabBinding.safeParse(
+      JSON.parse(await decrypt(binding, env.AUTH_WS_CLIENT_SECRET))
+    );
+    return parsed.success ? parsed.data : {};
+  } catch {
+    return {};
+  }
+};
+
 export const createWriterContext = async (
   context: AppContext,
   authToken: string
@@ -56,27 +83,43 @@ export const createWriterContext = async (
   if (authToken.length === 0 || authToken === "session") {
     throw new AuthorizationError("Collab writer token is not authorized");
   }
+  let accessToken: Awaited<ReturnType<typeof readAccessToken>>;
   try {
-    const accessToken = await readAccessToken(
-      authToken,
-      env.AUTH_WS_CLIENT_SECRET
-    );
-    if (accessToken !== undefined) {
-      return {
-        ...context,
-        authorization: {
-          type: "user" as const,
-          userId: accessToken.userId,
-          sessionCreatedAt: 0,
-          isLoggedInToBuilder: async (projectId: string) =>
-            projectId === accessToken.projectId,
-        },
-      };
-    }
+    accessToken = await readAccessToken(authToken, env.AUTH_WS_CLIENT_SECRET);
   } catch {
-    // Not a signed collab token; try the existing shared-link token flow.
+    accessToken = undefined;
   }
-  return context.createTokenContext(authToken);
+  if (accessToken === undefined) {
+    // Not a signed collab token; try the existing shared-link token flow.
+    return context.createTokenContext(authToken);
+  }
+  // OrganizeOS: a signed token is a collab writer only when it was minted as
+  // one, and its session binding passes the same check as session reads
+  // (organizeos-binding.server.ts). Either refusal rejects the entry; a
+  // failure of the check itself fails the request.
+  if (accessToken.purpose !== "collab") {
+    throw new AuthorizationError("Collab writer token is not authorized");
+  }
+  const { sid, uid } = await openCollabBinding(accessToken.binding);
+  const binding = await checkOrganizeosBindingClaims(
+    accessToken.userId,
+    sid,
+    uid
+  );
+  if (binding.allow === false) {
+    throw new AuthorizationError("Collab writer token is not authorized");
+  }
+  const tokenProjectId = accessToken.projectId;
+  return {
+    ...context,
+    authorization: {
+      type: "user" as const,
+      userId: accessToken.userId,
+      sessionCreatedAt: 0,
+      isLoggedInToBuilder: async (projectId: string) =>
+        projectId === tokenProjectId,
+    },
+  };
 };
 
 const resolveEntryWriterContext = async (

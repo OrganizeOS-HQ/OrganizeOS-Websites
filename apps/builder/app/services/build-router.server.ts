@@ -10,7 +10,7 @@ import {
 } from "@webstudio-is/trpc-interface/index.server";
 import { publicStaticEnv } from "~/env/env.static";
 import env from "~/env/env.server";
-import { createAccessToken } from "~/services/token.server";
+import { createAccessToken, encrypt } from "~/services/token.server";
 import {
   applyPatchRequest,
   loadAuthorizedPatchState,
@@ -399,9 +399,27 @@ export const buildRouter = router({
         );
       }
 
+      // OrganizeOS: a collab token carries the session binding, which every
+      // collaboration write passes (patch-auth.server.ts). The token reaches
+      // the browser and the relay, so the binding travels as one claim
+      // encrypted under the signing secret, opened only by the writer check.
+      const { organizeosSid, organizeosUserId } = ctx.authorization;
+      const binding =
+        organizeosSid === undefined && organizeosUserId === undefined
+          ? undefined
+          : await encrypt(
+              JSON.stringify({ sid: organizeosSid, uid: organizeosUserId }),
+              env.AUTH_WS_CLIENT_SECRET
+            );
+
       return {
         token: await createAccessToken(
-          { userId: ctx.authorization.userId, projectId: input.projectId },
+          {
+            userId: ctx.authorization.userId,
+            projectId: input.projectId,
+            ...(binding === undefined ? {} : { binding }),
+            purpose: "collab",
+          },
           env.AUTH_WS_CLIENT_SECRET,
           { maxAge: 5 * 60 * 1000 }
         ),
