@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from "vitest";
 
 const hasProjectPermit = vi.hoisted(() => vi.fn());
 const readAccessToken = vi.hoisted(() => vi.fn());
@@ -79,7 +87,8 @@ vi.mock("@webstudio-is/project/index.server", () => ({
   patchLoadedBuild: vi.fn(),
 }));
 
-vi.mock("~/services/token.server", () => ({
+vi.mock("~/services/token.server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/services/token.server")>()),
   readAccessToken,
 }));
 
@@ -106,6 +115,7 @@ import {
   createContentModeCapabilities,
   createWriterContext,
 } from "./patch-auth.server";
+import { encrypt } from "~/services/token.server";
 import { loadAuthorizedPatchState } from "./patch-service.server";
 import type { NormalizedPatchRequest } from "./patch-normalize.server";
 
@@ -189,6 +199,30 @@ describe("createWriterContext", () => {
     expect(await authorization.isLoggedInToBuilder("project-2")).toBe(false);
   });
 
+  test.each([
+    ["malformed", new Error("Invalid token")],
+    ["off-schema", new Error("Expected string, received number")],
+  ])(
+    "a token that reads as %s falls back to the shared-link token context",
+    async (_name, error) => {
+      readAccessToken.mockRejectedValue(error);
+      const context = createContext();
+
+      const writerContext = await createWriterContext(
+        context as never,
+        "shared-link-token"
+      );
+
+      expect(context.createTokenContext).toHaveBeenCalledWith(
+        "shared-link-token"
+      );
+      expect(writerContext.authorization).toEqual({
+        type: "token",
+        authToken: "shared-link-token",
+      });
+    }
+  );
+
   test("falls back to the shared-link token context", async () => {
     readAccessToken.mockResolvedValue(undefined);
     const context = createContext();
@@ -213,13 +247,19 @@ describe("createWriterContext", () => {
 describe("collaboration writes pass the session binding check", () => {
   const SID = "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b";
   const ORGANIZEOS_USER = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
-  const boundToken = {
-    userId: "user-1",
-    projectId: "project-1",
-    organizeosSid: SID,
-    organizeosUserId: ORGANIZEOS_USER,
-    purpose: "collab",
-  };
+  let boundToken: Record<string, string>;
+
+  beforeAll(async () => {
+    boundToken = {
+      userId: "user-1",
+      projectId: "project-1",
+      binding: await encrypt(
+        JSON.stringify({ sid: SID, uid: ORGANIZEOS_USER }),
+        env.AUTH_WS_CLIENT_SECRET
+      ),
+      purpose: "collab",
+    };
+  });
   const unauthorized = "Collab writer token is not authorized";
 
   const writerPatch = (): NormalizedPatchRequest => ({
@@ -329,6 +369,79 @@ describe("collaboration writes pass the session binding check", () => {
     } else {
       await expect(result).rejects.toThrow(unauthorized);
     }
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["tampered", async () => `${boundToken.binding.slice(0, -4)}AAAA`],
+    [
+      "sealed under another key",
+      async () =>
+        encrypt(
+          JSON.stringify({ sid: SID, uid: ORGANIZEOS_USER }),
+          "another-secret"
+        ),
+    ],
+    ["not ciphertext", async () => "not-a-binding"],
+    [
+      "off-shape",
+      async () => encrypt(JSON.stringify(["x"]), env.AUTH_WS_CLIENT_SECRET),
+    ],
+  ])(
+    "a %s binding reads as missing: refused under enforce, without the share-link path",
+    async (_name, makeBinding) => {
+      env.ORGANIZEOS_SESSION_BINDING = "enforce";
+      readAccessToken.mockResolvedValue({
+        ...boundToken,
+        binding: await makeBinding(),
+      });
+      const context = createContext();
+
+      await expect(
+        createWriterContext(context as never, "token-1")
+      ).rejects.toThrow(unauthorized);
+      expect(context.createTokenContext).not.toHaveBeenCalled();
+      expect(checkOrganizeosBindingClaims).toHaveBeenCalledWith(
+        "user-1",
+        undefined,
+        undefined
+      );
+      expect(rpc).not.toHaveBeenCalled();
+    }
+  );
+
+  test("an undecryptable binding is allowed and logged as missing under observe", async () => {
+    readAccessToken.mockResolvedValue({
+      ...boundToken,
+      binding: `${boundToken.binding.slice(0, -4)}AAAA`,
+    });
+    const context = createContext();
+
+    await expect(
+      createWriterContext(context as never, "token-1")
+    ).resolves.toMatchObject({ authorization: { type: "user" } });
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ organizeosBinding: "missing", mode: "observe" })
+    );
+    expect(context.createTokenContext).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  test("plain binding claims are not a binding", async () => {
+    env.ORGANIZEOS_SESSION_BINDING = "enforce";
+    readAccessToken.mockResolvedValue({
+      userId: "user-1",
+      projectId: "project-1",
+      organizeosSid: SID,
+      organizeosUserId: ORGANIZEOS_USER,
+      purpose: "collab",
+    });
+    const context = createContext();
+
+    await expect(
+      createWriterContext(context as never, "token-1")
+    ).rejects.toThrow(unauthorized);
+    expect(context.createTokenContext).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
   });
 

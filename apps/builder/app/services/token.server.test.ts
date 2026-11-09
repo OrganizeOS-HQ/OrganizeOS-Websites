@@ -105,15 +105,21 @@ test("tokens without the OrganizeOS session binding still parse", async () => {
   expect(accessPayload?.organizeosSid).toBeUndefined();
   expect(accessPayload?.organizeosUserId).toBeUndefined();
   expect(accessPayload?.purpose).toBeUndefined();
+  expect(accessPayload?.binding).toBeUndefined();
 });
 
-test("a collab token carries its purpose and the session binding", async () => {
+test("a collab token carries its purpose and the encrypted binding", async () => {
   const secret = "1212121212";
   const payload = {
     userId: "1",
     projectId: "2",
-    organizeosSid: "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b",
-    organizeosUserId: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+    binding: await encrypt(
+      JSON.stringify({
+        sid: "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b",
+        uid: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      }),
+      secret
+    ),
     purpose: "collab",
   };
   const token = await createAccessToken(payload, secret, {

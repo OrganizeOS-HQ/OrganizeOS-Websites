@@ -145,6 +145,11 @@ const accessTokenPayload = z.object({
   userId: z.string(),
   projectId: z.string(),
   ...organizeosBinding,
+  // OrganizeOS: on a collab token, the session binding as one encrypted
+  // claim (`encrypt` of `{ sid, uid }` under the signing secret), opened by
+  // the collab writer (patch-auth.server.ts). Optional, so a token without it
+  // still parses and reads as a missing binding.
+  binding: z.string().optional(),
   // OrganizeOS: "collab" on a collab token (createCollabToken), absent on a
   // WS OAuth access token. A collab writer accepts only the first, the ws
   // login callback only the second. Optional, so older tokens still parse.

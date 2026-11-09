@@ -21,8 +21,9 @@ import {
 } from "@webstudio-is/project-build/persistence";
 import { migrateResourceFormInstancesMutable } from "@webstudio-is/project-migrations";
 import { hasHistoricalFormComponentIdentityVersion } from "@webstudio-is/project-migrations/pages";
+import { z } from "zod";
 import env from "~/env/env.server";
-import { readAccessToken } from "~/services/token.server";
+import { decrypt, readAccessToken } from "~/services/token.server";
 import { checkOrganizeosBindingClaims } from "~/services/auth-strategy/organizeos-binding.server";
 import { componentMetas } from "~/shared/component-metas.server";
 import type {
@@ -50,6 +51,31 @@ type GetInitialContentModeCapabilities = () =>
   | ReturnType<typeof createContentModeCapabilities>
   | Promise<ReturnType<typeof createContentModeCapabilities>>;
 
+// OrganizeOS: the session binding a collab token carries as one encrypted
+// claim (createCollabToken in build-router.server.ts). An absent claim, one
+// that does not decrypt under the signing secret, or one off this shape reads
+// as no binding, which the binding check treats as missing.
+const collabBinding = z.object({
+  sid: z.string().optional(),
+  uid: z.string().optional(),
+});
+
+const openCollabBinding = async (
+  binding: string | undefined
+): Promise<z.infer<typeof collabBinding>> => {
+  if (binding === undefined) {
+    return {};
+  }
+  try {
+    const parsed = collabBinding.safeParse(
+      JSON.parse(await decrypt(binding, env.AUTH_WS_CLIENT_SECRET))
+    );
+    return parsed.success ? parsed.data : {};
+  } catch {
+    return {};
+  }
+};
+
 export const createWriterContext = async (
   context: AppContext,
   authToken: string
@@ -74,10 +100,11 @@ export const createWriterContext = async (
   if (accessToken.purpose !== "collab") {
     throw new AuthorizationError("Collab writer token is not authorized");
   }
+  const { sid, uid } = await openCollabBinding(accessToken.binding);
   const binding = await checkOrganizeosBindingClaims(
     accessToken.userId,
-    accessToken.organizeosSid,
-    accessToken.organizeosUserId
+    sid,
+    uid
   );
   if (binding.allow === false) {
     throw new AuthorizationError("Collab writer token is not authorized");
