@@ -340,7 +340,8 @@ const exactTime = (time: string) => new Date(time).toLocaleString();
  * truncated with its full text in a tooltip), and under it its label, its word
  * (Live, Not live or Shows your old site) and when it was last published. A
  * row with a recorded build has Unpublish in its menu, while the builder can
- * ask; choosing it turns the second line into a one-line confirm.
+ * ask; choosing it turns the second line into a confirm, its buttons on a
+ * row of their own so they fit the panel.
  */
 const TargetRow = ({
   target,
@@ -400,27 +401,29 @@ const TargetRow = ({
       <Grid css={{ minWidth: 0 }}>
         {truncated ? <Tooltip content={target.host}>{host}</Tooltip> : host}
         {unpublish?.confirming ? (
-          <Flex align="center" gap="1" css={{ minWidth: 0 }}>
-            <Text truncate css={{ minWidth: 0, flexGrow: 1 }}>
+          <Grid css={{ minWidth: 0, rowGap: theme.spacing[3] }}>
+            <Text truncate css={{ minWidth: 0 }}>
               Unpublish {target.host}?
             </Text>
-            <Button
-              type="button"
-              color="neutral"
-              autoFocus
-              onClick={unpublish.onCancel}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              color="destructive"
-              disabled={unpublish.disabled}
-              onClick={unpublish.onConfirm}
-            >
-              Unpublish
-            </Button>
-          </Flex>
+            <Flex justify="end" gap="2">
+              <Button
+                type="button"
+                color="neutral"
+                autoFocus
+                onClick={unpublish.onCancel}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                color="destructive"
+                disabled={unpublish.disabled}
+                onClick={unpublish.onConfirm}
+              >
+                Unpublish
+              </Button>
+            </Flex>
+          </Grid>
         ) : (
           <Text color="subtle" truncate>
             {label === undefined ? "" : `${label} · `}
