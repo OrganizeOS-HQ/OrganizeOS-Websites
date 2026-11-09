@@ -402,6 +402,20 @@ describe("parts", () => {
     expect(screen.getByLabelText("Phone").getAttribute("maxlength")).toBe("40");
   });
 
+  test("a Field with a name an RSVP does not have renders nothing on a published page, and renders on the canvas", () => {
+    const fields: Array<[string, string]> = [
+      ...defaultFields,
+      ["favorite_color", "Favorite color"],
+    ];
+    const { container } = render(<Block fields={fields} />);
+    expect(screen.getByLabelText("Email")).toBeDefined();
+    expect(screen.queryByLabelText("Favorite color")).toBeNull();
+    expect(container.textContent).not.toContain("Favorite color");
+    cleanup();
+    render(<Block renderer="canvas" fields={fields} />);
+    expect(screen.getByLabelText("Favorite color")).toBeDefined();
+  });
+
   test("the fields are there before the event is known: no record, no data", () => {
     render(<Block record={undefined} data={undefined} />);
     expect(screen.getByLabelText("First name").hasAttribute("required")).toBe(
@@ -638,7 +652,8 @@ describe("request body", () => {
       />
     );
     fillPerson();
-    fill("Favorite color", "green");
+    // a Field the RSVP lacks is not rendered on a published page at all
+    expect(screen.queryByLabelText("Favorite color")).toBeNull();
     fireEvent.submit(getForm(container));
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(Object.keys(sentBody(fetchMock)).sort()).toEqual(

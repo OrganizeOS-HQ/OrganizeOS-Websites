@@ -60,6 +60,8 @@ export type OrganizeosRecordOption = {
   /** What choosing it writes to `record`: a record id, or "" for the org defaults. */
   value: string;
   label: string;
+  /** Shown for the highlighted option: a form's kind. */
+  description?: string;
 };
 
 type RecordOptions = {
@@ -81,7 +83,7 @@ export type RecordPicker = {
 
 const orgDefaultsOption: OrganizeosRecordOption = {
   value: "",
-  label: "None (org defaults)",
+  label: "Org defaults",
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -135,7 +137,7 @@ const formsPicker = (kinds: ReadonlyMap<string, string>): RecordPicker => ({
         typeof form.name === "string" && form.name.trim() !== ""
           ? form.name
           : "Untitled form";
-      options.push({ value: form.id, label: `${name} (${kindLabel})` });
+      options.push({ value: form.id, label: name, description: kindLabel });
     }
 
     const current = toRecordValue(value);
@@ -417,7 +419,8 @@ export const reloadFailedLoads = (results: readonly unknown[]) => {
   }
 };
 
-const reloadClass = css({
+/** A button that reads as a link in a line of text: Reload, Reconnect. */
+export const linkButtonClass = css({
   all: "unset",
   cursor: "pointer",
   ...textVariants.link,
@@ -435,6 +438,9 @@ const getOptionKey = (option: OrganizeosRecordOption) =>
 
 const getOptionLabel = (option: OrganizeosRecordOption) => option.label;
 
+const getOptionDescription = (option: OrganizeosRecordOption) =>
+  option.description;
+
 /**
  * A select with `select.tsx`'s binding support (useBindableControl), over the
  * options above, and a line under it, with Reload, when the records failed to
@@ -449,7 +455,11 @@ export const OrganizeosRecordControl = ({
   propName,
   computedValue,
   onChange,
-}: ControlProps<"text">) => {
+  onChangeRecord,
+}: ControlProps<"text"> & {
+  /** With it, choosing an option calls it instead of writing `record`. */
+  onChangeRecord?: (value: string) => void;
+}) => {
   const id = useId();
   const component = useStore($instances).get(instanceId)?.component;
   const data = useStore($selectedInstanceDataProp);
@@ -490,9 +500,13 @@ export const OrganizeosRecordControl = ({
           // Checked as the text control checks it, not against the options:
           // a bound id may name a record that has not loaded yet.
           validate={(value) => validatePrimitiveValue(value, label)}
-          onChangeValue={(option) =>
-            onChange({ type: "string", value: option?.value ?? "" })
-          }
+          onChangeValue={(option) => {
+            if (onChangeRecord !== undefined) {
+              onChangeRecord(option?.value ?? "");
+              return;
+            }
+            onChange({ type: "string", value: option?.value ?? "" });
+          }}
           onChangeExpression={(value) =>
             onChange({ type: "expression", value })
           }
@@ -508,6 +522,7 @@ export const OrganizeosRecordControl = ({
               placeholder={picker.placeholder}
               options={options}
               getLabel={getOptionLabel}
+              getDescription={getOptionDescription}
               getValue={getOptionKey}
               // type to find an option by its label, not its key
               getItemProps={(option) => ({ textValue: option.label })}
@@ -520,7 +535,7 @@ export const OrganizeosRecordControl = ({
             {picker.loadFailed}{" "}
             <button
               type="button"
-              className={reloadClass}
+              className={linkButtonClass}
               onClick={() => {
                 setReloading(failedLoads);
                 reloadFailedLoads(failedLoads);

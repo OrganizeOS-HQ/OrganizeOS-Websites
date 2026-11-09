@@ -1,6 +1,6 @@
 > Copied unchanged from `client/tests/fixtures/site-components/` in OrganizeOS-HQ/OrganizeOS (commit 39ce1bbe3): change both copies together.
 >
-> `rich-text.json` and `preview-assertion.json` were copied later, from commit 826b5a764 (where `rich-text.json` last changed in 35d7867ec and `preview-assertion.json` in 5a9d4789c). Before each fork PR, `diff -r` this folder against the platform's to find drift.
+> `rich-text.json` and `preview-assertion.json` were copied later, from commit 826b5a764 (where `rich-text.json` last changed in 35d7867ec and `preview-assertion.json` in 5a9d4789c). `products.json` and its bullet below were copied from commit 7a61c6866, where `products.json` last changed. Before each fork PR, `diff -r` this folder against the platform's to find drift.
 
 # Site component contract fixtures
 
@@ -95,3 +95,12 @@ additive, or it ships under a new endpoint version.
   nullable keys (`description`, `help_text`), and no shift or role count, leader
   or skills appears anywhere (a shift and a role say only whether they are
   `full`).
+- `products.json`: the body of `GET /v1/products` (plan
+  `docs/superpowers/plans/2026-11-06-builder-shop-blocks.md`, D3 and D6): four
+  products on one host, newest first, as the route lists them. A T-shirt whose
+  active variants differ in price (`price_varies: true`), a mug with one price
+  and no image, a tote bag at odd cents (1999) and a sticker at 0, whose slug
+  `sticker-2` is the shape a second product of the same name gets. The one
+  nullable key, `image_url`, is null at least once, so a copy's schema is held
+  to it. Prices are integer cents, `currency` is always `USD`, and `url` is the
+  product's page, `{host}/shop/{slug}`.

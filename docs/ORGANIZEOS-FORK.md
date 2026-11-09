@@ -94,6 +94,7 @@ OrganizeOS integration (all optional; each feature ships dark until its variable
 - `WEBSITES2_PREVIEW_SECRET` — shared with OrganizeOS (the same value on both sides): the key that signs the canvas's draft-preview assertion, `X-OOS-Preview` (§5, "Draft preview on the canvas"). Unset or blank: no assertion is minted, and the canvas shows published items only. Rotate it on both sides together; a mismatch only turns preview off.
 - `WEBSITES2_SITE_ACTION_SECRET` — shared with OrganizeOS (the same value on both sides; set in Production only): the key that signs the Publish dialog's Unpublish assertion, `X-OOS-Site-Action` (§5, item 4). Unset or blank: the dialog offers no Unpublish, nothing is minted, and the action route answers 404. Rotate it on both sides together; a mismatch only turns Unpublish off (OrganizeOS refuses the assertion).
 - `ORGANIZEOS_CMS_PANEL` — builder only: the CMS's switch (§9, "The CMS overlay"). Only the exact value `true` offers the CMS rail button; anything else leaves the rail without it. The OrganizeOS data tab does not depend on it.
+- `ORGANIZEOS_SHOP_BLOCKS` — builder only: the Shop blocks' switch (§9, "Shop blocks"). Only the exact value `true` lists the Product Grid and the Product Card in the Components panel and lets them be inserted, and makes a token provision write the Products catalog Resource; anything else (unset, empty, `TRUE`, `1`) lists neither, refuses their insert and only rewrites a Products Resource a build already has. Placed blocks keep working when it is turned off. To turn it on or off, set or unset it on the builder's Production scope and redeploy.
 - `PUBLISHER_HOST` — the platform base domain an org's site is served from (`<subdomain>.<PUBLISHER_HOST>`); with the org subdomain mirrored into `Project.domain` (§5) every address the builder shows is the real one. **Defaults to `organizeos.org` in code**, so an unset env is correct rather than dangerous; upstream defaulted it to its own staging domain, which is what made a missing value advertise a Webstudio address. Set it only to point a deployment somewhere else.
 - `TRPC_SERVER_API_TOKEN` — the builder's service token. The publish executor uses it to sync the build **and** to report the outcome to `POST /internal/publish-status` (§5). Never commit a value: `apps/builder/.env` keeps it commented out, where upstream's sets an e2e token.
 - `EMAIL_SERVICE_URL` — never set it. It is upstream's email service for Form email actions, which do nothing on an OrganizeOS site (§8); set, the builder's Form Preview would send `TRPC_SERVER_API_TOKEN` to it as a bearer token.
@@ -665,10 +666,33 @@ can be merged with minimal conflict.
     lines in `builder/inspector.tsx`, with `$activeInspectorPanel` widened to
     take `"motion"` in `builder/shared/nano-states.ts`; the OrganizeOS data
     tab in `sidebar-left/sidebar-left.tsx` (shown only for an org the deny
-    list does not deny) and `sidebar-left/types.ts`; the record picker,
-    `settings-panel/controls/organizeos-record.tsx`, with
-    `organizeos-record.test.ts`, behind one marked branch in
-    `settings-panel/controls/combined.tsx`.
+    list does not deny) and `sidebar-left/types.ts`; the panel's controls,
+    `settings-panel/controls/organizeos-controls.tsx`,
+    `organizeos-field-control.tsx`, `organizeos-product-control.tsx` and
+    `organizeos-record.tsx`, with `organizeos-controls.test.tsx`,
+    `organizeos-field-control.test.tsx`, `organizeos-product-control.test.tsx`
+    and `organizeos-record.test.ts`, behind one marked branch in
+    `settings-panel/controls/combined.tsx`, before the json control, which
+    also hands on the props logic's `onChangeByPropName` that one marked line
+    in `settings-panel/props-section/props-section.tsx` passes, and one marked
+    `export` of `BasePage` in `settings-panel/controls/url.tsx`, which honours
+    `readOnly` as the other modes do; the Signup Form's Fields logic,
+    `features/organizeos-panel/signup-fields.ts` with
+    `signup-fields.test.tsx`; the `combined.tsx`, `props-section.tsx` and
+    `url.tsx` cases in `overlay.wiring.node.test.ts`.
+  - **The Shop blocks (§9, "Shop blocks").** In the blocks package,
+    `src/shop/` (Price, the Product Grid and Product Card roots, their
+    template pieces, the products reader and their tests),
+    `src/product-grid.template.tsx` and `src/product-card.template.tsx`, and
+    the `./products-data` export in its `package.json`; in the builder,
+    `features/organizeos-panel/product-blocks.ts` with
+    `product-blocks.test.tsx`, the Show and Product rows in
+    `organizeos-product-control.tsx`, `ORGANIZEOS_SHOP_BLOCKS` in
+    `env/env.server.ts`, `isShopBlocksSwitchOn` and `shopBlocksEnabled` in
+    `shared/db/organizeos-site.server.ts` and `shared/organizeos-site.ts`
+    (passed by the loader in `routes/_ui.(builder).tsx` and by
+    `routes/internal.provision.tsx`), and the Products preset in
+    `shared/organizeos-preset-ids.ts` and `shared/db/resource-presets.server.ts`.
   - The CMS page templates (§9): `collection-schema.ts`,
     `collection-layout.ts`, `collection-pages.ts`, `collection-list.ts` and
     `collection-row-menu.tsx`, with their tests, the collection rows in
@@ -693,7 +717,9 @@ can be merged with minimal conflict.
     insert imports alone, as `@organizeos/site-components/style-order`) and,
     alone, as `@organizeos/site-components/site-templates/canonical-variables`;
     neither `components.ts` nor `metas.ts` imports it. The block templates are
-    factories, `signupFormTemplate` in `signup-form.template.tsx`,
+    factories, `signupFormTemplate` and `signupFormInlineTemplate` in
+    `signup-form.template.tsx`, `fieldTemplate` in
+    `signup/field.template.tsx`,
     `rsvpFormTemplate` in `rsvp-form.template.tsx` and `rotatingTabsTemplate`
     in `rotating-tabs.template.tsx` (`block-factories.test.tsx`), and the
     block tokens read the site variables in `shared/form-tokens.ts` and
@@ -1111,6 +1137,31 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   which names a form field and wires its **Field Label**, **Field Input** and
   **Field Message** together. `src/form/` holds what later families share: part
   registration, the submit helper, the canvas check.
+  - **Fields come from the form.** A Field takes its input type, `required`
+    and `autocomplete` from its form field. Required follows one rule,
+    `isRequiredField` in `signup/forms-data.ts` (exported through
+    `@organizeos/site-components/forms-data`): the field says required and is
+    not a consent field. The input's `required`, the submit check, the canvas
+    check and the builder's Fields list all read it, so a consent field is never
+    required. Autocomplete: `email`, `given-name`
+    (`first_name`), `family-name` (`last_name`), `name`, `tel` (`phone`) and
+    `postal-code` (`postal_code`, `zip`); the designer's own `autocomplete`
+    applies only where the field gives none. The builder chooses which fields
+    a form has a Field for (the Signup Form's Settings, below).
+  - **A Field its form lacks renders nothing on a live page**, under every
+    root that gives Fields a form (the Signup Form, the RSVP Form): when the
+    resolved form is known and has no field of the Field's name, the Field
+    renders nothing on a published page and in the preview, and renders as
+    before on the canvas, where the root's check and the Settings warning name
+    it. Its value was never sent: a submit sends the form's fields only.
+  - **The SMS consent field.** The forms reader (`signup/forms-data.ts`) reads
+    a field's `consent` and `consent_version` markers leniently, into
+    `FormFieldConfig.consent` and `consentVersion`; neither is sent. The
+    platform lists the SMS opt-in (a checkbox named `sms_opt_in`,
+    `consent: "sms"`) only while the org can text. A Field Label whose Field's
+    form field has `consent` renders that field's label, read from the Forms
+    data at render, and ignores its children, so the site never stores the
+    consent wording.
 - Every meta is `category: "hidden"`, so upstream's grouping in the
   Components panel skips the blocks, and the panel's OrganizeOS section lists
   them (In the builder, below). The **Signup Form template** binds the root's `state` to a
@@ -1120,6 +1171,38 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   `src/shared/form-tokens.ts`, for the Signup Form and the RSVP Form alike: a
   project that has both reuses one token each, so the two templates cannot
   drift apart.
+  - Its Fields are `fieldTemplate`'s (`src/signup/field.template.tsx`), the
+    tree the builder inserts for a field, so a template's Field and an
+    inserted one are the same: a Field with "OS Field", a Field Label holding
+    the field's label as placeholder text, a Field Input with "OS Input" and a
+    Field Message with "OS Message". A checkbox lays out as a row (the box,
+    then its label, then the message on a line of its own); a consent field's
+    Field Label holds no text, only the expression `consentLabelExpression`
+    (`""`), so the canvas, which edits only text with no expression in it,
+    never opens it for typing.
+  - Navigator labels name each part by what it is: a Field by its field's
+    label ("Email", "First name"), a consent Field "SMS consent" (or
+    "Consent"), never by its wording, and the state boxes by their state
+    ("Success", "Check your email", "Error", "Unavailable").
+  - The stacked template's root has a local `max-width: 32rem; width: 100%`.
+    Success and Check your email wear "OS Success Message" and Unavailable
+    "OS Error Message", after Form Content; the Error box sits inside Form
+    Content, just before the Submit Button, where the visitor is looking, and
+    wears "OS Error Message".
+  - **Signup Form, inline** (`signupFormInlineTemplate`, the template
+    `SignupFormInline`) is the same root with the same Forms binding: one row
+    of an Email Field and the Submit Button, with no heading. Form Content is
+    a wrapping flex row, the Email Field `flex: 1 1 320px` and the Submit
+    Button `flex: 0 0 auto`, so the row breaks into two below about 480px of
+    the form's own width, wherever it sits. The Email Field's label is
+    visually hidden (as the honeypot is) and its input reads "Email". The
+    Error box is the row's last item at `flex-basis: 100%`, a full line under
+    it; the state boxes and tokens are the stacked template's.
+  - The package exports `fieldTemplate` alone as
+    `@organizeos/site-components/field-template`, and the forms reader alone as
+    `@organizeos/site-components/forms-data` (`parseFormsData`,
+    `resolveSignupForm`, `orgDefaultFields`), so the builder reads a form
+    exactly as the block does. No component imports the field template.
 - **Event List** and **Event Card** are templates over native elements and a
   collection under a Share Code Carrier root, with no component of their own
   (the package registers no component for them, and `components.ts` never
@@ -1145,6 +1228,12 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   than failing. The Event Card is the Event List's template under its own label
   and shows the next upcoming event (one item, see Insert completion); picking
   a specific event waits for the events virtual collection.
+- **Product Grid** and **Product Card**, the Shop blocks (see Shop blocks
+  below), are templates over native elements and a collection, each under a
+  root of its own, `ProductGrid` and `ProductCard`, and **Price**, the one part
+  with code: a `span` that renders integer cents as money in US English
+  (`Intl.NumberFormat("en-US", { style: "currency", currency })`, `currency`
+  defaulting to `USD`), and an empty `span` for a value it cannot format.
 - **RSVP Form** is the root of the Events RSVP block (phase 2b). It renders the
   `<form>`, finds its event by its `record` prop (an event id) in its `data`
   prop (the `GET /v1/events` body, from the project's Events Resource), and on
@@ -1264,8 +1353,8 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   on itself for a missing part (an email Field, a Submit Button, a Field for a
   required form field), a Field naming a field its form lacks, a form inside
   another form, and a picked form that is unavailable.
-- On a published page, a submit with a required form field that has no Field
-  Input reports Unavailable and posts nothing. The page reads its form from the
+- On a published page, a submit with a required form field (`isRequiredField`)
+  that has no Field Input reports Unavailable and posts nothing. The page reads its form from the
   platform when it renders, not when it was published, so the form can gain a
   required field afterwards, and the platform's answer would then name a field
   the page has no Field Message to show it on.
@@ -1301,7 +1390,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   directly after General. It lists the namespace's templates with the
   Components panel's own cards, in its sections' order (Sections: Rotating
   Tabs, Marquee, Convergence Field; Content: Rich Text; Events: Event List,
-  Event Card, RSVP Form; Signups: Signup Form), skips a name that is not registered yet, and offers a
+  Event Card, RSVP Form; Signups: Signup Form, Signup Form, inline; Shop:
+  Product Grid, Product Card, listed only while `ORGANIZEOS_SHOP_BLOCKS` is
+  `true`), skips a name that is not registered yet, and offers a
   registered block no section names after the others (the "More" rule). A
   card's tooltip is its template's description, a short phrase ("Your
   upcoming public events"; `metas.test.ts` holds every template to a few
@@ -1316,6 +1407,94 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   shows only the XML and data categories. The Sections blocks and Rich Text
   read no platform data of their own, so their inserts bind nothing (Rich
   Text has no entry in `organizeosBlockData`).
+- **The Signup Form's Settings** (`settings-panel/controls/organizeos-controls.tsx`,
+  behind the one marked branch in `combined.tsx`, before the json control,
+  which asks `getOrganizeosControl` for a control by component and prop and
+  reads the selection from `$selectedInstanceSelector`, since `renderControl`
+  is given none). The root's rows read Form, State, Fields and After submit
+  (the meta's `initialProps` order), at the panel's 240px, with names that do
+  not fit in a tooltip and no help text. Any other prop, and every RSVP Form
+  prop but its record, keeps upstream's control.
+  - **Form** is the record picker (below). Choosing a form writes `record`
+    and inserts the new form's required Fields the root has none of, in one
+    transaction (`changeSignupForm`), so one undo restores both. The new
+    form's fields are read from the root's computed `data`, which lists every
+    form. Fields the new form lacks are left, and get the warning line.
+  - **State** is six icon buttons, each named in its tooltip (Initial,
+    Submitting, Success, Check email, Error, Unavailable), and drives the
+    canvas only. A `state` bound to one variable (the template's `formState`)
+    sets that variable's value on the canvas, as the block's own action does:
+    no prop is written and no undo step added. Anything else, an unbound
+    `state` or any other expression, has no variable to set, so the buttons are
+    read-only and write nothing.
+  - **Fields** takes the `data` prop's row, under a plain "Fields" label with
+    no menu, so `data` is never shown, and an unbound `data` is reconnected
+    from its own line (below). It lists one checkbox
+    per field of the form the root resolves (`resolveSignupForm` on its
+    `record` and computed `data`, as the block resolves it), in the form's
+    order. A row is checked while the root has a descendant Field of that name,
+    read from `$instances` and `$props`, never from the canvas's part
+    registry, which the template unmounts in the other states. A required row
+    is checked and disabled while its Field exists; with none it is
+    checkable, so a deleted one can be put back. A consent row is listed only
+    while the form lists the field, is never locked, and reads the navigator's
+    name for its Field ("SMS consent", or "Consent": `getFieldNavigatorLabel`
+    in `field.template.tsx`), never the consent wording. Checking inserts one
+    Field (`fieldTemplate`, the tokens reused with "ours") in one transaction:
+    after the last Field; with none, before the first Submit Button; with
+    neither, last in the root's "Form Content", else in its first child; never
+    in the root itself. A name that already has a Field, one whose bound
+    `field` computes to it included, is skipped (by a check or by a Form
+    change), so a double click inserts once. Unchecking deletes every Field of that name
+    under the root, in one transaction. Neither changes the selection, and a
+    Field writes no Resource, binding or variable. All of it is in
+    `features/organizeos-panel/signup-fields.ts`: `formRootComponents` (the
+    roots it serves) and `getFieldRows`' lock rule are where the Join Form
+    plugs in.
+  - **One warning line** under the list, only when something is wrong, the
+    first of: "Nested in a form" (an ancestor whose tag is `form`, the root's
+    own excluded), "Form not found" (the picked form is missing, is a
+    membership form, or the loaded `data` is not the Forms body), "Missing:
+    {label}" (the first required field with no Field), "SMS needs Phone" (an
+    SMS consent Field and no `phone` Field), "No Submit Button", "Not in form:
+    {name}" (a Field whose name the form lacks; "(blank)" for none). Nothing
+    shows while bound `data` loads, and "Form not found" gives way to the
+    record picker's own line while a load has failed. A bound `field` counts
+    by its computed value and is never "Not in form". The canvas outline keeps
+    its full check.
+  - **Unbound `data`.** `data` is bound when it is an expression that reads a
+    variable the project has (`isSignupDataBound`); missing, a literal, or an
+    expression whose variables are gone is not, and is never taken for
+    loading. Then a line reads "No forms data. Reconnect", and the warning
+    line runs the checks that need no data: with no form picked, the org
+    defaults' fields, else the Submit Button ("Form not found" gives way to
+    the "No forms data" line). Reconnect (`restoreSignupFormData`) binds
+    `data` to the org's Forms catalog as the insert does, through the insert's
+    own `completeOrganizeosFragment` and `completeOrganizeosInsertMutable`,
+    reusing the root's own binding of the Forms Resource when it is still
+    there, in one staged transaction and one undo step; the catalog is kept
+    (the Forms Resource is added only when missing). It is refused, with the
+    insert's toast and nothing written, where the insert would be.
+  - **After submit** is two radios, Message (`"state"`) and Page (`"page"`),
+    the values published sites read. Page draws upstream's page select (the URL
+    control's Page mode, `BasePage`, made reachable by one marked `export` in
+    `url.tsx`) under the radios for `actionPage`, whose own row is hidden; the
+    page is written through the props logic (`handleChangeByPropName`), as the
+    other rows are. A bound `action` is read-only, its page select included. An
+    `actionPage` left as a plain URL by the old control still works on the
+    live page; the select reads "Choose page" until a page is picked.
+  - **A Field's Form field**, for a Field under a Signup Form
+    (`organizeos-field-control.tsx`), is a select of that root's resolved
+    fields, each named by its label with its name for the highlighted option;
+    a name the form lacks stays listed first. Choosing writes `field` and, when
+    the Field's navigator label is empty or still names the old field (its
+    label, or "Field: {label}"), renames it to the new field's, in one
+    transaction (`changeSignupFieldName`). In the same transaction a Field
+    that becomes a consent field gets `consentLabelExpression` in its Field
+    Label, so no text of the old field stays, and one that stops being one (or
+    whose Field Label has no text) gets the new field's label as text;
+    otherwise the Field Label's text is the designer's and is never touched.
+    A Field under an RSVP Form or outside any form keeps the text box.
 - **The OrganizeOS data tab** (`organizeos-panel.tsx`), a left-sidebar tab
   after Components with upstream's `ResourceIcon` and the tooltip "OrganizeOS
   data", hidden in content mode and disabled on text pages, as Components is.
@@ -1606,14 +1785,18 @@ collection }` invalidates, through `invalidateResource`, every current
   branch for the namespace. What a block reads from the catalog is a table,
   `organizeosBlockData`, keyed by the template's key (the `component` the
   Components panel inserts, not the root's component: an Event List's root is a
-  Share Code Carrier). An entry names the catalog Resource (`events`, `forms` or
-  `upcoming-events`), the name of the block's binding, and the props that read
+  Share Code Carrier). An entry names the catalog Resource (`events`, `forms`,
+  `upcoming-events` or `products`), whether the block's binding references a
+  Resource of its own (`ownResource`, below) instead, the name of the block's
+  binding, and the props that read
   it: an instance (`root`, or the `ws:id` the template gives it), a prop name,
   and the expression, given the binding's variable. A template key with no entry
   is inserted untouched.
 
   - The Signup Form's entry is the Forms Resource under "OrganizeOS Forms", and
-    the root's `data` = `<v>.data`.
+    the root's `data` = `<v>.data`. The inline Signup Form's key
+    (`SignupFormInline`) shares that entry: the same catalog, binding name and
+    bind, so it too brings a fresh binding scoped to its own root.
   - The Event List's entry is Upcoming Events under "OrganizeOS Upcoming
     Events", with three binds: the collection's (`events`) `data` =
     `(<v>.ok === true ? <v>.data.data : [])`, the empty box's (`empty`)
@@ -1621,6 +1804,22 @@ collection }` invalidates, through `invalidateResource`, every current
     unavailable box's (`unavailable`) `data-ws-show` = `<v>.ok === false`. The
     Event Card's entry is the same with `<v>.data.data.slice(0, 1)` for the
     list: the next event.
+  - The Product Grid's entry is Products under "OrganizeOS Products", with
+    four binds read as the Event List's: the collection's (`products`) `data`
+    = `(<v>.ok === true ? <v>.data.data.slice(0, 6) : [])` (the Show row
+    rewrites the slice), the `empty` and `unavailable` lines' `data-ws-show`
+    as the Event List's boxes, and Shop all's (`shop-all`) `data-ws-show` =
+    `<v>.ok === true && <v>.data.data.length > 0`. The insert creates Products
+    when the build lacks it, in provisioning's shape.
+  - The Product Card's entry has `ownResource: { name: "Product" }`: its
+    binding, "OrganizeOS Product", references a Resource of its own under a
+    fresh nanoid, a copy of the Products request (`"<API base>/products"`, the
+    Events `Authorization`), written in the insert's transaction; Products
+    itself is not created for it. Three binds: the collection's (`product`)
+    `data` = `(<v>.ok === true ? <v>.data.data.slice(0, 1) : [])`, and the
+    `empty` and `unavailable` lines as the grid's. Its Product row rewrites
+    that Resource's URL. The token rotation rewrites the copy as it does
+    every block copy (a literal URL on the API base).
   - The RSVP Form's entry is the Events Resource itself under "OrganizeOS
     Events", with one bind: the root's `data` = `<v>.data`, the body, as the
     Signup Form binds its forms. It never creates a Resource (provisioning
@@ -1746,12 +1945,18 @@ collection }` invalidates, through `invalidateResource`, every current
   which both sides use to list the catalog. Provisioning and the builder
   derive the same ids, so a re-provision rewrites the Forms and Upcoming
   Events Resources a block's insert added instead of adding a second. The names of those two Resources
-  and of the bindings the Events blocks bring live there too.
+  and of the bindings the Events blocks bring live there too, as do the
+  Products key and the Shop blocks' names (`PRODUCTS_PRESET_KEY`,
+  `PRODUCTS_RESOURCE_NAME`, `PRODUCT_RESOURCE_NAME`, `PRODUCTS_BINDING_NAME`,
+  `PRODUCT_BINDING_NAME`). `findCatalogResources` lists Products last, after
+  Upcoming Events.
 - **The catalog in provisioning** (`shared/db/resource-presets.server.ts`):
   Events, Fundraisers and Stats are written on every provision, Forms and
   Upcoming Events (`/events?upcoming=true`, "when-present") are rewritten when
-  the build has their Resource and never created, and every collection
-  Resource gets the new token and API base. Upcoming Events' token rotates like
+  the build has their Resource and never created, Products (`/products`,
+  "shop-blocks") is written as Events is while `ORGANIZEOS_SHOP_BLOCKS` is
+  `true` (the provision route passes the switch) and as Forms is otherwise,
+  and every collection Resource gets the new token and API base. Upcoming Events' token rotates like
   the others': the check that finds a copy of a catalog Resource is a prefix
   check on the API base.
   Resources are upserted in place and in order. The unscoped bindings older
@@ -2357,15 +2562,18 @@ no class fallback.
   before each fork PR.
 
 **The record picker**, `settings-panel/controls/organizeos-record.tsx`, behind
-one marked branch in `settings-panel/controls/combined.tsx`, before the text
-control. A table, `recordPickers`, maps a block's component to its picker (what
-it lists, and the wording of its hint and placeholder); a `record` prop on any
-other component keeps the text control. The Signup Form's `record` is a select:
+the one marked branch in `settings-panel/controls/combined.tsx` (the panel's
+controls, above). A table, `recordPickers`, maps a block's component to its
+picker (what it lists, and the wording of its hint and placeholder); a
+`record` prop on any other component keeps the text control. The Signup Form's
+`record` is a select:
 
-- "None (org defaults)" first (an empty `record`), then the forms the block
-  takes, as "name (Newsletter)" or "name (Contact)": newsletter
-  (`contact-signup`) and contact (`contact-form`) forms, never membership
-  forms.
+- "Org defaults" first (an empty `record`), then the forms the block takes,
+  each by its name, with its kind ("Newsletter" or "Contact") shown for the
+  highlighted option: newsletter (`contact-signup`) and contact
+  (`contact-form`) forms, never membership forms. The Signup Form's Form row
+  passes `onChangeRecord`, so a choice goes through `changeSignupForm`
+  instead of the props panel's write.
 - It reads the selected root's computed `data`, which the builder's resources
   loader already fetches for the block's own binding (scoped to its root and
   read by the root's `data`, so loaded while the block is on the open page),
@@ -2471,6 +2679,11 @@ code in the page's address only, never in a cookie or storage.
   only on a click, so it cannot cause a hydration mismatch. The builder's
   contrast check classifies it as rendering the designer's children only
   (`rendersDesignerChildrenOnly` in `backgrounds/contrast.ts`).
+- **The Shop blocks' roots**, `ProductGrid` and `ProductCard`, carry the code
+  as the Share Code Carrier does (`useShareCodeCarrier`), so a card's link to
+  `/shop/{slug}` and "Shop all" to `/shop` keep `?r=`; both paths, and
+  `/cart`, are in `platformPathPatterns` already. The blocks render no `/cart`
+  link: a designer's own Cart link is carried by the page carrier.
 - **The copy.** `share-code.ts` copies OrganizeOS's constants and carry
   function (`client/lib/referrals/code.ts`, `client/lib/referrals/carry-code.ts`
   and the flow family of `client/lib/verification/public-route-allowlist.ts`),
@@ -2482,6 +2695,70 @@ code in the page's address only, never in a cookie or storage.
   before the Share Code Carrier keeps its `ws:element` root and has no carrier
   of its own, and the page's carrier carries its link. Nothing changes in the
   published-site runtime packages.
+
+**Shop blocks**, `src/shop/` in the package (OrganizeOS plan
+`docs/superpowers/plans/2026-11-06-builder-shop-blocks.md`): the Product Grid
+lists an org's products and the Product Card shows one, each card linking to
+the product's page on the platform, `/shop/{slug}`; cart and checkout stay
+there.
+
+- **Offered only while `ORGANIZEOS_SHOP_BLOCKS` is exactly `true`** (§4),
+  resolved by the builder loader into `organizeosSite.shopBlocksEnabled`. While
+  it is off, `$organizeosComponentGroups` drops both templates before grouping,
+  so neither the Shop section nor "More" lists them and "Find components" finds
+  neither, and `insertOrganizeosBlock` refuses either with the deny list's
+  toast. The deny list applies on top. Pasting a block is not gated, as for
+  every block.
+- **The templates** (`src/shop/product-card.template.tsx`; metas in
+  `src/product-grid.template.tsx` and `src/product-card.template.tsx`). The
+  card, one function of the collection's `product` parameter shared by both
+  blocks, is a link (`ws:tag="a"`, `"/shop/" + product.slug`,
+  `reloadDocument`) wearing "OS Card" (shared with the events cards, not
+  edited) and holding the Image ("OS Product Image": square, cropped; shown
+  only for a product with an `image_url`), the Title (`h3`, "OS Product
+  Title") and the Price line (`p`, "OS Product Price") of a "From" `span`
+  (shown only when `price_varies` is true) and Price (`cents` and `currency`
+  bound). No element inside the card has a `ws:id`. The Product Grid's root
+  (`columns="3"`) is a grid whose `grid-template-columns` reads
+  `--os-product-columns`: at most that many columns, never under 200px; it
+  holds the collection (`products`), "No products yet." (`empty`), "Products
+  are unavailable right now." (`unavailable`), both "OS Product Note" (no
+  declarations), and "Shop all" (`shop-all`, "OS Product Link", `href="/shop"`,
+  `reloadDocument`), the last three spanning the grid. The Product Card's root
+  holds the collection (`product`), "This product is not available."
+  (`empty`) and the unavailable line. The five tokens are defined once, beside
+  the card; no site template places a shop block yet.
+- **The roots** are `div`s that pass every prop through and carry the share
+  code (Share codes, below). `ProductGrid` sets `--os-product-columns` to its
+  `columns` (`"2"`, `"3"` or `"4"`; anything else reads as 3), merged into any
+  style it is given. Both drop a stored `show` or `product`, which no row
+  writes. The contrast check classifies both as rendering the designer's
+  children only, and Price as a named text component, as upstream's Time.
+- **The rows** (`organizeos-product-control.tsx`, logic in
+  `features/organizeos-panel/product-blocks.ts`, through `getOrganizeosControl`):
+  - **Show** (Product Grid): 3, 4, 6, 8, 12 or All. It reads the collection's
+    `data` against the two forms written for the root's own binding (a slice
+    of n, or no slice for All); another expression shows no value, and
+    choosing writes the form.
+  - **Columns** (Product Grid) is upstream's select on the real prop.
+  - **Product** (Product Card): Newest, then the org's products by title in
+    list order ("Untitled product" for a blank title). It reads the card's own
+    Resource, whose URL is `"<API base>/products"` (Newest) or
+    `"<API base>/products?id=<uuid>"` (a UUID in any case, compared and
+    written lower-cased); another URL shows no value. The list is read live,
+    once when the row mounts, with that Resource's `Authorization`, through the
+    builder's resources loader, bounded at 3 seconds. A picked id the list
+    lacks shows as "Unavailable product". While it loads nothing shows under
+    the select; a failed or timed-out read shows one line, "Products didn't
+    load.", with Reload. A long title truncates, with the whole title in a
+    tooltip.
+  - Each write is one staged transaction and one undo step that keeps the
+    selection, and touches only the block's own collection prop or its own
+    nanoid Resource, never the catalog.
+- **Data loads only where it is used.** A grid reads Products through its own
+  binding and a card its own Resource; a page with no shop block makes no
+  products request. A Newest card and a grid on one page send the same
+  request, which the site's resource cache keeps once.
 
 **Site templates**, `src/site-templates/` in the package and
 `features/organizeos-panel/site-templates/` in the builder (OrganizeOS design
@@ -2564,8 +2841,9 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   Each page has a placer of its own, which records every placement (key and root
   id) beside the page's fragment and throws on a `placementId` used twice.
   Nothing is written into the site to mark a block. This needs each block
-  template to be a factory: `signupFormTemplate`, `rsvpFormTemplate` and
-  `rotatingTabsTemplate` create their `Variable` inside the function, since
+  template to be a factory: `signupFormTemplate`, `signupFormInlineTemplate`,
+  `rsvpFormTemplate` and `rotatingTabsTemplate` create their `Variable` inside
+  the function (and `fieldTemplate` is a factory too), since
   `renderTemplate` scopes a data source by its `Variable`, and a block's
   `meta.template` is its factory called once, so the Components panel is
   unchanged. The insert completion (`completeOrganizeosFragment`) takes an
@@ -2583,7 +2861,8 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   bracketed placeholder in either keeps together.
 - **Template block tokens.** `SiteTemplate.blockTokens` gives the template's
   look for the block tokens by name (`BlockTokenName`: "OS Form Heading", "OS
-  Field", "OS Input", "OS Button", "OS Message", "OS Card", "OS Event Title",
+  Field", "OS Input", "OS Button", "OS Message", "OS Success Message", "OS
+  Error Message", "OS Card", "OS Event Title",
   "OS Event Link", "OS Event Row", "OS Event Date", "OS Event Day", "OS Event
   Cover" and "OS Event Note"). Both cards' titles wear "OS Event Title" (the
   heading font) and their links "OS Event Link" (`--text`, underlined, 600, a
@@ -2618,7 +2897,14 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   on a site without the variable the declaration is invalid and the heading
   inherits, as before), so a template's form heading matches its own
   headings, at a line height of 1.2, so one that wraps on a phone sets as a
-  heading, not at the body's; a template sets their case and size there.
+  heading, not at the body's; a template sets their case and size there. The
+  Signup Form's state boxes wear "OS Success Message" and "OS Error Message":
+  the site's body font (`var(--font-body)`, no fallback), 14px at 1.4,
+  `var(--text, ...)`, padding 12px 16px and a 6px radius, on a tint of the
+  base as a longhand `background-color`, `color-mix(in srgb, <accent> 10%,
+  var(--base, #ffffff))` with `--accent-2` for success and `--accent-1` for
+  error. The error box is also marked by a 4px left border in `--text` and
+  weight 600, so it is not told apart by colour alone.
 - **The check** (`checkSiteTemplate` in `check.ts`, with `style-scan.ts`; run
   over every `SITE_TEMPLATES` entry and the spike fixture by `catalog.test.ts`)
   returns one readable line per violation, and an empty list for a template that
@@ -2995,6 +3281,18 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   "no events"; the blocks show their Unavailable box. Only public, published
   events are listed (one rule for the Website, Website Lite's homepage and
   embeds, `/v1/stats` and the anonymous RSVP gate).
+- `GET /v1/products`, through the Products catalog Resource (the Product
+  Grid) or a Product Card's own copy of it: the products the org's storefront
+  shows, newest first, at most 100, each as `id`, `slug` (slug-shaped:
+  lower-case letters and digits in runs joined by `-`), `title`, `image_url`
+  (an absolute https URL, or null), `price_from_cents` (integer cents, the
+  lowest price), `price_varies` (some price differs, so the card shows
+  "From"), `currency` (always `USD`) and `url` (the product's page on the
+  org's public host; the blocks link `"/shop/" + slug` instead). `?id=<uuid>`
+  lists that one product, or none; an `id` that is not a UUID answers an empty
+  list. A failed read answers 503 `{ error: "unavailable" }` with no
+  `Cache-Control`, and the blocks show their Unavailable line. Cart and
+  checkout stay on the platform's own pages.
 - `GET /v1/forms`, through the Forms catalog Resource, server-side with the
   project's read token, with the `Cache-Control` every `/v1` read sends
   (`public, s-maxage=60, stale-if-error=600`). The site's resource cache (§8)
@@ -3009,7 +3307,7 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
 - Both sides build to the contract fixtures in OrganizeOS's
   `client/tests/fixtures/site-components/`, which the package copies into
   `src/__fixtures__/` for its tests (`forms.json`, `events.json`,
-  `share-code.json`, `signups/` and `rsvps/`). To keep them in step, change the
+  `products.json`, `share-code.json`, `signups/` and `rsvps/`). To keep them in step, change the
   OrganizeOS copy first, copy the files over unchanged, update the source
   commit in the note at the top of the copy's `README.md`, and check that
   `diff -r` between the two folders shows that note alone. `share-code.json`
@@ -3035,7 +3333,9 @@ page published before they exist would find no guests, shifts or questions in
 the event data, which lets a visitor post an RSVP that misses a required
 answer, to an endpoint that is not there. So no RSVP Form is published before
 the platform half is live. The keys are additive, and builds that do not know
-them ignore them. Share codes follow the same order: OrganizeOS accepts
+them ignore them. The Shop blocks (W4) follow it too: `GET /v1/products`
+deploys first, and the builder ships with `ORGANIZEOS_SHOP_BLOCKS` unset, so
+nothing lists the blocks or writes Products until it is set. Share codes follow the same order: OrganizeOS accepts
 `referral_code` before the builder sends it; a block that meets a platform
 without it falls back to a submission without the code.
 
@@ -3124,6 +3424,19 @@ options, and the limits found since in review):
   collection's `data` expression. A
   card's cover image is an absolute URL the platform sends: check that it loads
   under the platform's CSP on a published page.
+- **Shop blocks.** Until an org's shop is open, both blocks show their empty
+  line on the canvas and the live page. The list is the newest 100; a
+  hand-picked set is several Product Cards. A sold-out product is listed while
+  it is active; its page shows what can be bought. The list is cached for up
+  to a minute, and through a platform failure for ten more, so an archived
+  product can show that long and its page then answers 404. A closed shop and
+  an empty one look the same. A product whose slug is not slug-shaped is not
+  listed, and an image that is not an https URL is not shown. The Show row
+  reads only the two forms it and the insert write, and the Product row only
+  the two URLs; an edited expression or URL shows no value until a choice
+  rewrites it. The Product row reads the list live, so offline it shows its
+  load line. Prices are formatted in US English and USD, frozen with the
+  build. A copied card brings its own copy of its Resource.
 - **RSVP Form.**
   - The published page reads the Events list when it renders, not when it was
     published, so an event that is unpublished, deleted or made private

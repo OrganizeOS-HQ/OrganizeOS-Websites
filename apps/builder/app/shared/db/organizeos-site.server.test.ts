@@ -10,6 +10,7 @@ import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import {
   deriveProjectDomain,
   isOrgSubdomain,
+  isShopBlocksSwitchOn,
   organizeosWebsiteAreaUrl,
   parseOrgDenyList,
   resolveOrganizeosDashboardExit,
@@ -78,6 +79,21 @@ describe("organizeosWebsiteAreaUrl", () => {
   });
 });
 
+describe("isShopBlocksSwitchOn", () => {
+  test.each([
+    [undefined, false],
+    ["", false],
+    ["false", false],
+    ["TRUE", false],
+    ["1", false],
+    [" true", false],
+    ["true ", false],
+    ["true", true],
+  ])("ORGANIZEOS_SHOP_BLOCKS %j: %s", (value, expected) => {
+    expect(isShopBlocksSwitchOn(value)).toBe(expected);
+  });
+});
+
 describe("resolveOrganizeosSite", () => {
   const base = {
     platformUrl: "https://app.example.org",
@@ -98,8 +114,31 @@ describe("resolveOrganizeosSite", () => {
       // no deny list denies nobody
       blocksEnabled: true,
       cmsPanelEnabled: false,
+      shopBlocksEnabled: false,
     });
   });
+
+  test.each([
+    [undefined, false],
+    ["", false],
+    ["false", false],
+    ["TRUE", false],
+    ["1", false],
+    [" true", false],
+    ["true", true],
+  ])(
+    "offers the Shop blocks when ORGANIZEOS_SHOP_BLOCKS is %j: %s",
+    (shopBlocks, expected) => {
+      expect(
+        resolveOrganizeosSite({
+          ...base,
+          owner: SERVICE_OWNER,
+          projectDomain: "acme",
+          shopBlocks,
+        })?.shopBlocksEnabled
+      ).toBe(expected);
+    }
+  );
 
   test.each([
     [undefined, false],

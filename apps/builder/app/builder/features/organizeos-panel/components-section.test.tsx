@@ -157,6 +157,40 @@ describe("groupOrganizeosBlocks", () => {
               component: `${namespace}:SignupForm`,
             }),
           },
+          {
+            name: `${namespace}:SignupFormInline`,
+            label: "Signup Form, inline",
+            description: organizeosTemplates.SignupFormInline.description,
+            icon: undefined,
+            // the same root component: only the template differs
+            firstInstance: expect.objectContaining({
+              component: `${namespace}:SignupForm`,
+            }),
+          },
+        ],
+      },
+      {
+        label: "Shop",
+        area: { label: "Manage in OrganizeOS ↗", path: "website" },
+        blocks: [
+          {
+            name: `${namespace}:ProductGrid`,
+            label: "Product Grid",
+            description: organizeosTemplates.ProductGrid.description,
+            icon: organizeosTemplates.ProductGrid.icon,
+            firstInstance: expect.objectContaining({
+              component: `${namespace}:ProductGrid`,
+            }),
+          },
+          {
+            name: `${namespace}:ProductCard`,
+            label: "Product Card",
+            description: organizeosTemplates.ProductCard.description,
+            icon: organizeosTemplates.ProductCard.icon,
+            firstInstance: expect.objectContaining({
+              component: `${namespace}:ProductCard`,
+            }),
+          },
         ],
       },
     ]);
@@ -226,7 +260,8 @@ describe("groupOrganizeosBlocks", () => {
           `${namespace}:RsvpForm`,
         ],
       ],
-      ["Signups", [`${namespace}:SignupForm`]],
+      ["Signups", [`${namespace}:SignupForm`, `${namespace}:SignupFormInline`]],
+      ["Shop", [`${namespace}:ProductGrid`, `${namespace}:ProductCard`]],
       ["More", [`${namespace}:FutureBlock`]],
     ]);
   });
@@ -253,7 +288,8 @@ describe("groupOrganizeosBlocks", () => {
       ],
       ["Content", [`${namespace}:RichText`]],
       ["Events", [`${namespace}:EventList`, `${namespace}:EventCard`]],
-      ["Signups", [`${namespace}:SignupForm`]],
+      ["Signups", [`${namespace}:SignupForm`, `${namespace}:SignupFormInline`]],
+      ["Shop", [`${namespace}:ProductGrid`, `${namespace}:ProductCard`]],
     ]);
   });
 
@@ -356,6 +392,7 @@ describe("$organizeosComponentGroups", () => {
         "EventCard",
         "RsvpForm",
         "SignupForm",
+        "SignupFormInline",
         "FutureBlock",
       ].map((name) => `${namespace}:${name}`)
     );
@@ -377,6 +414,65 @@ describe("$organizeosComponentGroups", () => {
     });
   });
 
+  test("with the Shop blocks switch on, Product Grid then Product Card after the Signups, before More", () => {
+    registerLibrary({
+      ...organizeosTemplates,
+      FutureBlock: organizeosTemplates.SignupForm,
+    });
+    $organizeosSite.set({ ...site, shopBlocksEnabled: true });
+    expect(
+      $organizeosComponentGroups.get()[0].metas.map((meta) => meta.name)
+    ).toEqual(
+      [
+        "RotatingTabs",
+        "Marquee",
+        "ConvergenceField",
+        "RichText",
+        "EventList",
+        "EventCard",
+        "RsvpForm",
+        "SignupForm",
+        "SignupFormInline",
+        "ProductGrid",
+        "ProductCard",
+        "FutureBlock",
+      ].map((name) => `${namespace}:${name}`)
+    );
+  });
+
+  test.each([undefined, false])(
+    "with the Shop blocks switch %s, no group lists either shop block, More included",
+    (shopBlocksEnabled) => {
+      registerLibrary({
+        ...organizeosTemplates,
+        FutureBlock: organizeosTemplates.SignupForm,
+      });
+      $organizeosSite.set({ ...site, shopBlocksEnabled });
+      const names = $organizeosComponentGroups
+        .get()
+        .flatMap((group) => group.metas.map((meta) => meta.name));
+      expect(names).not.toContain(`${namespace}:ProductGrid`);
+      expect(names).not.toContain(`${namespace}:ProductCard`);
+      expect(names.at(-1)).toBe(`${namespace}:FutureBlock`);
+      // with only the shop blocks registered, no group at all
+      registerLibrary({
+        ProductGrid: organizeosTemplates.ProductGrid,
+        ProductCard: organizeosTemplates.ProductCard,
+      });
+      expect($organizeosComponentGroups.get()).toEqual([]);
+    }
+  );
+
+  test("a denied org gets no shop block whatever the switch", () => {
+    registerLibrary(organizeosTemplates);
+    $organizeosSite.set({
+      ...site,
+      blocksEnabled: false,
+      shopBlocksEnabled: true,
+    });
+    expect($organizeosComponentGroups.get()).toEqual([]);
+  });
+
   test("the Manage link shows with any block that reads the org's data, and not with only the others", () => {
     $organizeosSite.set(site);
     for (const name of [
@@ -384,6 +480,7 @@ describe("$organizeosComponentGroups", () => {
       "EventCard",
       "RsvpForm",
       "SignupForm",
+      "SignupFormInline",
     ] as const) {
       registerLibrary({ [name]: organizeosTemplates[name] });
       expect($organizeosComponentGroups.get()[0].link, name).toBe(manageLink);

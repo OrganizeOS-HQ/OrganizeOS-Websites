@@ -64,6 +64,7 @@ describe("buildOrgResourcePresets", () => {
         `"https://app.example.org/api/public/v1/stats"`,
         `"https://app.example.org/api/public/v1/forms"`,
         `"https://app.example.org/api/public/v1/events?upcoming=true"`,
+        `"https://app.example.org/api/public/v1/products"`,
       ].sort()
     );
   });
@@ -1302,5 +1303,145 @@ describe("upsertById", () => {
       { id: "b", value: 2 },
     ];
     expect(upsertById(items, [{ id: "a", value: 1 }])).toEqual(items);
+  });
+});
+
+describe("Products, the Shop blocks' catalog Resource", () => {
+  const projectId = "project-1";
+  const base = "https://app.example.org/api/public/v1";
+  const args = { projectId, apiBaseUrl: base, readToken: "osk_secrettoken" };
+  const parseResources = (row: { resources: string } | null) =>
+    JSON.parse(row?.resources ?? "[]") as Resource[];
+  const getProducts = async (token = "osk_secrettoken"): Promise<Resource> => ({
+    id: (await getResourcePresetIds(projectId, "products")).resourceId,
+    name: "Products",
+    method: "get",
+    url: `"${base}/products"`,
+    headers: [{ name: "Authorization", value: `"Bearer ${token}"` }],
+  });
+  // a Product Card's own copy of the request, under a nanoid, picking a product
+  const cardResource = (token: string): Resource => ({
+    id: "card-own-resource",
+    name: "Product",
+    method: "get",
+    url: `"${base}/products?id=34efeec7-ef26-4210-946f-866b46b94f46"`,
+    headers: [{ name: "Authorization", value: `"Bearer ${token}"` }],
+  });
+  const byName = (resources: Resource[], name: string) =>
+    resources.find((resource) => resource.name === name);
+
+  test("is the last preset, at /products, seeded as the Shop blocks switch says", () => {
+    expect(V1_RESOURCE_PRESETS.at(-1)).toEqual({
+      key: "products",
+      label: "Products",
+      path: "/products",
+      seeding: "shop-blocks",
+    });
+  });
+
+  test("buildOrgResourcePresets builds it in provisioning's shape", async () => {
+    const { resources } = await buildOrgResourcePresets(args);
+    expect(byName(resources, "Products")).toEqual(await getProducts());
+  });
+
+  test("with the switch on, a token provision adds it to a build without it, and rewrites it in place", async () => {
+    const empty = makeBuildContext({ build: {} });
+    await seedProjectResourcePresets(empty.context, {
+      ...args,
+      shopBlocks: true,
+    });
+    expect(byName(parseResources(empty.state.row), "Products")).toEqual(
+      await getProducts()
+    );
+
+    const stale = await getProducts("osk_old");
+    const present = makeBuildContext({
+      build: {
+        resources: JSON.stringify([
+          { ...stale, name: "My products", url: `"${base}/products?x=1"` },
+        ]),
+      },
+    });
+    await seedProjectResourcePresets(present.context, {
+      ...args,
+      shopBlocks: true,
+    });
+    const resources = parseResources(present.state.row);
+    expect(resources[0]).toEqual(await getProducts());
+    expect(resources.filter((r) => r.name === "Products")).toHaveLength(1);
+  });
+
+  test.each([undefined, false])(
+    "with the switch %s, a token provision adds none, and rewrites one an insert created (URL and token)",
+    async (shopBlocks) => {
+      const empty = makeBuildContext({ build: {} });
+      await seedProjectResourcePresets(empty.context, { ...args, shopBlocks });
+      expect(byName(parseResources(empty.state.row), "Products")).toBe(
+        undefined
+      );
+
+      const stale = await getProducts("osk_old");
+      const present = makeBuildContext({
+        build: {
+          resources: JSON.stringify([
+            { ...stale, url: `"https://old.example.org/v1/products"` },
+          ]),
+        },
+      });
+      await seedProjectResourcePresets(present.context, {
+        ...args,
+        shopBlocks,
+      });
+      expect(parseResources(present.state.row)[0]).toEqual(await getProducts());
+    }
+  );
+
+  test.each([true, false])(
+    "the rotation rewrites Products and a card's own Resource, switch %s",
+    async (shopBlocks) => {
+      const { context, state } = makeBuildContext({
+        build: {
+          resources: JSON.stringify([
+            await getProducts("osk_old"),
+            cardResource("osk_old"),
+          ]),
+        },
+      });
+      await seedProjectResourcePresets(context, { ...args, shopBlocks });
+      const resources = parseResources(state.row);
+      expect(resources[0]).toEqual(await getProducts());
+      expect(resources[1]).toEqual(cardResource("osk_secrettoken"));
+    }
+  );
+
+  test("readV1PresetSeed reads a seed from Products alone", async () => {
+    expect(
+      await readV1PresetSeed({ projectId, resources: [await getProducts()] })
+    ).toEqual({
+      apiBase: base,
+      authHeaderExpression: `"Bearer osk_secrettoken"`,
+    });
+  });
+
+  test("a platform collection with slug products is skipped; a custom one is seeded beside the preset", async () => {
+    const { resources } = await buildCollectionResourcePresets({
+      projectId,
+      apiBase: base,
+      authHeaderExpression: `"Bearer osk_secrettoken"`,
+      collections: [
+        { slug: "products", name: "Platform products", kind: "platform" },
+      ],
+    });
+    expect(resources).toEqual([]);
+    const custom = await buildCollectionResourcePresets({
+      projectId,
+      apiBase: base,
+      authHeaderExpression: `"Bearer osk_secrettoken"`,
+      collections: [{ slug: "products", name: "Our goods", kind: "custom" }],
+    });
+    expect(custom.resources.map((resource) => resource.name)).toEqual([
+      "Our goods",
+    ]);
+    expect(custom.resources[0].id).not.toBe((await getProducts()).id);
   });
 });

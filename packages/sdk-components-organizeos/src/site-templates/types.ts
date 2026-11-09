@@ -66,6 +66,8 @@ export type BlockTokenName =
   | "OS Input"
   | "OS Button"
   | "OS Message"
+  | "OS Success Message"
+  | "OS Error Message"
   | "OS Card"
   | "OS Event Title"
   | "OS Event Link"

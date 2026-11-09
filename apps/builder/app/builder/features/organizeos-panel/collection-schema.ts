@@ -81,14 +81,20 @@ type LoadedResource = {
 
 /**
  * One GET with the catalog's `Authorization`, through the builder's
- * resources loader. Undefined when the read fails in any way.
+ * resources loader. Undefined when the read fails in any way, or is aborted
+ * through `signal`.
  */
 export const loadCatalogRequest = async (
   catalog: CollectionCatalog,
   {
     url,
     searchParams = [],
-  }: { url: string; searchParams?: ResourceRequest["searchParams"] }
+    signal,
+  }: {
+    url: string;
+    searchParams?: ResourceRequest["searchParams"];
+    signal?: AbortSignal;
+  }
 ): Promise<undefined | LoadedResource> => {
   const authorization = evaluateLiteral(catalog.authorization);
   if (authorization === undefined) {
@@ -105,6 +111,7 @@ export const loadCatalogRequest = async (
     const response = await fetch(restResourcesLoader(), {
       method: "POST",
       body: JSON.stringify([request]),
+      signal,
     });
     if (response.ok === false) {
       return;

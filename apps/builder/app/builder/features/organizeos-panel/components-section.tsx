@@ -25,7 +25,8 @@ import { organizeosNamespace } from "./insert-organizeos-block";
  * it; the canvas routes a drop there by name (canvas/shared/use-drag-drop.ts).
  *
  * Offered only to orgs the deny list does not deny (`blocksEnabled`), and
- * never on an XML page.
+ * never on an XML page. The Shop blocks also need the deployment's switch
+ * (`shopBlocksEnabled`).
  */
 
 export type OrganizeosCategory = "organizeos";
@@ -57,6 +58,15 @@ export const manageLink: WorkspaceLink = {
   path: "website",
 };
 
+/**
+ * The Shop blocks, by name without the namespace. They are offered only while
+ * the deployment's switch is on (`shopBlocksEnabled`, `ORGANIZEOS_SHOP_BLOCKS`).
+ */
+export const shopBlocks = ["ProductGrid", "ProductCard"];
+
+const isShopBlock = (name: string) =>
+  shopBlocks.some((block) => name === `${organizeosNamespace}:${block}`);
+
 // Signups, Events, Membership and Donations in the spec; so far the Signup
 // Form, the Events blocks, Rotating Tabs, Marquee, Convergence Field and Rich
 // Text. A section names its blocks in the order they are listed, and one that
@@ -80,7 +90,13 @@ const sections: Section[] = [
   },
   {
     label: "Signups",
-    blocks: ["SignupForm"],
+    blocks: ["SignupForm", "SignupFormInline"],
+    area: manageLink,
+  },
+  {
+    // listed only while the Shop blocks are offered ($organizeosComponentGroups)
+    label: "Shop",
+    blocks: shopBlocks,
     area: manageLink,
   },
 ];
@@ -181,7 +197,15 @@ export const $organizeosComponentGroups = computed(
     if (site?.blocksEnabled !== true) {
       return [];
     }
-    const blockSections = groupOrganizeosBlocks(templates, metas);
+    // Without the Shop blocks switch, neither the Shop section nor "More"
+    // lists them, and "Find components" finds neither.
+    const offered =
+      site.shopBlocksEnabled === true
+        ? templates
+        : new Map(
+            [...templates].filter(([name]) => isShopBlock(name) === false)
+          );
+    const blockSections = groupOrganizeosBlocks(offered, metas);
     if (blockSections.length === 0) {
       return [];
     }

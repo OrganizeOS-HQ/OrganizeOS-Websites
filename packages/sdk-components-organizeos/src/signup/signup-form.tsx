@@ -31,7 +31,11 @@ import {
 } from "../form/submit";
 import { readPageShareCode } from "../share-code/share-code";
 import { useShareCodeCarrier } from "../share-code/use-share-code-carrier";
-import { resolveSignupForm, type SignupFormResolution } from "./forms-data";
+import {
+  isRequiredField,
+  resolveSignupForm,
+  type SignupFormResolution,
+} from "./forms-data";
 import { signupsPath, type SignupFormState } from "./states";
 
 /**
@@ -163,7 +167,7 @@ const lacksRequiredInput = (
     }
   }
   return fields.some(
-    (field) => field.required && collected.has(field.name) === false
+    (field) => isRequiredField(field) && collected.has(field.name) === false
   );
 };
 
@@ -220,7 +224,7 @@ const getProblems = ({
     }
   }
   const missing = fields.filter(
-    (field) => field.required && fieldNames.has(field.name) === false
+    (field) => isRequiredField(field) && fieldNames.has(field.name) === false
   );
   if (missing.some((field) => field.name === "email")) {
     problems.push("Add a Field for email: the form requires it.");

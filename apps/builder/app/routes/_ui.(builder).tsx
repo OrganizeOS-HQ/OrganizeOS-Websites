@@ -273,6 +273,7 @@ export const loader = async (loaderArgs: LoaderFunctionArgs) => {
             platformUrl: env.ORGANIZEOS_APP_URL,
             blocksDenyOrgIds: env.ORGANIZEOS_BLOCKS_DENY_ORG_IDS,
             cmsPanel: env.ORGANIZEOS_CMS_PANEL,
+            shopBlocks: env.ORGANIZEOS_SHOP_BLOCKS,
           });
 
     const headers = createPrivateNoStoreHeaders();

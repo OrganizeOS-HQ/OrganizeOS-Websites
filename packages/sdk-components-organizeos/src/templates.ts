@@ -1,4 +1,5 @@
 export { meta as SignupForm } from "./signup-form.template";
+export { inlineMeta as SignupFormInline } from "./signup-form.template";
 export { meta as EventList } from "./event-list.template";
 export { meta as EventCard } from "./event-card.template";
 export { meta as RsvpForm } from "./rsvp-form.template";
@@ -6,3 +7,5 @@ export { meta as RotatingTabs } from "./rotating-tabs.template";
 export { meta as Marquee } from "./marquee.template";
 export { meta as ConvergenceField } from "./convergence-field.template";
 export { meta as RichText } from "./rich-text/rich-text.template";
+export { meta as ProductGrid } from "./product-grid.template";
+export { meta as ProductCard } from "./product-card.template";

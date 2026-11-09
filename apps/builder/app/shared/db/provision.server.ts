@@ -108,7 +108,12 @@ export const provisionOrgWorkspace = async (
     organizationId: string;
     orgName: string;
     adminEmails: string[];
-    siteData?: { readToken: string; apiBaseUrl: string };
+    siteData?: {
+      readToken: string;
+      apiBaseUrl: string;
+      /** The builder offers the Shop blocks (isShopBlocksSwitchOn). */
+      shopBlocks?: boolean;
+    };
     entitlements?: OrgEntitlements;
     subdomain?: string;
   }
@@ -230,6 +235,7 @@ export const provisionOrgWorkspace = async (
       projectId,
       apiBaseUrl: siteData.apiBaseUrl,
       readToken: siteData.readToken,
+      shopBlocks: siteData.shopBlocks === true,
     });
     await seedSignupFormPage(context, {
       projectId,

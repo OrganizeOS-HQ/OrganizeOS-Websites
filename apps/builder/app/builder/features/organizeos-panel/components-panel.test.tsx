@@ -179,6 +179,7 @@ describe("the Components panel's OrganizeOS section", () => {
         "EventCard",
         "RsvpForm",
         "SignupForm",
+        "SignupFormInline",
       ].map((name) => `${namespace}:${name}`)
     );
   });
@@ -270,6 +271,42 @@ describe("the Components panel's OrganizeOS section", () => {
     expect(host.querySelector(`[data-drag-component^="${namespace}:"]`)).toBe(
       null
     );
+  });
+
+  test("with the Shop blocks switch on, Product Grid and Product Card follow the Signups, and a search finds both", () => {
+    $organizeosSite.set({ ...site, shopBlocksEnabled: true });
+    const host = render();
+    const section = host
+      .querySelector("[data-organizeos-links]")
+      ?.closest("[data-state]");
+    expect(
+      Array.from(
+        section?.querySelectorAll("[data-drag-component]") ?? [],
+        (element) => element.getAttribute("data-drag-component")
+      ).slice(-3)
+    ).toEqual(
+      ["SignupFormInline", "ProductGrid", "ProductCard"].map(
+        (name) => `${namespace}:${name}`
+      )
+    );
+    search(host, "product");
+    const found = Array.from(
+      host.querySelectorAll("[data-drag-component]"),
+      (element) => element.getAttribute("data-drag-component")
+    );
+    expect(found).toContain(`${namespace}:ProductGrid`);
+    expect(found).toContain(`${namespace}:ProductCard`);
+  });
+
+  test("with the Shop blocks switch off, neither is listed or found", () => {
+    const host = render();
+    expect(
+      host.querySelector(`[data-drag-component="${namespace}:ProductGrid"]`)
+    ).toBeNull();
+    search(host, "product");
+    expect(
+      host.querySelector(`[data-drag-component^="${namespace}:Product"]`)
+    ).toBeNull();
   });
 
   test("none on an XML page", () => {

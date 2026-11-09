@@ -18,6 +18,11 @@ import {
   EVENTS_BINDING_NAME,
   FORMS_PRESET_KEY,
   FORMS_PRESET_NAME,
+  PRODUCT_BINDING_NAME,
+  PRODUCT_RESOURCE_NAME,
+  PRODUCTS_BINDING_NAME,
+  PRODUCTS_PRESET_KEY,
+  PRODUCTS_RESOURCE_NAME,
   UPCOMING_EVENTS_BINDING_NAME,
   UPCOMING_EVENTS_PRESET_KEY,
   UPCOMING_EVENTS_RESOURCE_NAME,
@@ -36,10 +41,12 @@ import { insertCompletedFragment } from "./staged-data";
  * Inserting an OrganizeOS block (spec section 4.3). A template cannot know a
  * project's catalog ids, so the block is completed at insert time: it brings
  * its own binding, a resource DataSource scoped to the block's root that
- * references one of the project's catalog Resources (Forms, Events or Upcoming
- * Events), and the props its table entry names are bound to that binding by
- * id. The Forms and Upcoming Events Resources are added when the project
- * lacks them, from the Events Resource that provisioning wrote. Click and
+ * references one of the project's catalog Resources (Forms, Events, Upcoming
+ * Events or Products), and the props its table entry names are bound to that
+ * binding by id. The Forms, Upcoming Events and Products Resources are added
+ * when the project lacks them, from the Events Resource that provisioning
+ * wrote. A Product Card's binding references a Resource of its own instead, a
+ * copy of the Products request that its Product row rewrites. Click and
  * Enter (the Components panel's OrganizeOS section) and drop (the canvas's
  * drag and drop) all insert through here.
  *
@@ -62,7 +69,14 @@ export const isOrganizeosBlock = (component: string) =>
  */
 export type BlockData = {
   /** The catalog Resource the block's binding references. */
-  catalog: "events" | "forms" | "upcoming-events";
+  catalog: "events" | "forms" | "upcoming-events" | "products";
+  /**
+   * The block's binding references a Resource of its own, under a fresh
+   * nanoid, with the catalog Resource's request (its URL beside the Events
+   * one, and the Events Authorization), instead of the catalog Resource,
+   * which is then not created.
+   */
+  ownResource?: { name: string };
   /** The name of the block's binding. */
   bindingName: string;
   /** The props bound to the binding, by the `ws:id` the template gives. */
@@ -127,25 +141,84 @@ const eventsBlockData = (
 });
 
 /**
+ * What a Signup Form binds, stacked or inline: the two inserts are the same
+ * root with the same Forms binding, and differ only in their template.
+ */
+const signupFormBlockData: BlockData = {
+  catalog: "forms",
+  bindingName: FORMS_PRESET_NAME,
+  // GET /v1/forms: `{ data: [...] }`
+  binds: [
+    {
+      instance: "root",
+      prop: "data",
+      value: (variable) => `${variable}.data`,
+    },
+  ],
+};
+
+/**
+ * What the Product Grid and the Product Card bind (their template:
+ * packages/sdk-components-organizeos `shop/product-card.template.tsx`), read
+ * as the events blocks read theirs (eventsBlockData): the collection takes the
+ * list only for a successful read, parenthesized; "No products" shows for an
+ * empty list and "Products unavailable" for a failed read. The grid shows its
+ * newest six (the Show row rewrites the slice) and "Shop all" once there is a
+ * product; the card shows the first product of its own read.
+ */
+const productsBinds = (
+  list: (variable: string) => string
+): BlockData["binds"] => [
+  {
+    instance: "products",
+    prop: "data",
+    value: (variable) => `(${variable}.ok === true ? ${list(variable)} : [])`,
+  },
+  {
+    instance: "empty",
+    prop: showAttribute,
+    value: (variable) =>
+      `${variable}.ok === true && ${variable}.data.data.length === 0`,
+  },
+  {
+    instance: "unavailable",
+    prop: showAttribute,
+    value: (variable) => `${variable}.ok === false`,
+  },
+];
+
+const productGridBlockData: BlockData = {
+  catalog: "products",
+  bindingName: PRODUCTS_BINDING_NAME,
+  binds: [
+    ...productsBinds((variable) => `${variable}.data.data.slice(0, 6)`),
+    {
+      instance: "shop-all",
+      prop: showAttribute,
+      value: (variable) =>
+        `${variable}.ok === true && ${variable}.data.data.length > 0`,
+    },
+  ],
+};
+
+const productCardBlockData: BlockData = {
+  catalog: "products",
+  ownResource: { name: PRODUCT_RESOURCE_NAME },
+  bindingName: PRODUCT_BINDING_NAME,
+  // the collection's ws:id is "product" in the card's template
+  binds: productsBinds((variable) => `${variable}.data.data.slice(0, 1)`).map(
+    (bind) =>
+      bind.instance === "products" ? { ...bind, instance: "product" } : bind
+  ),
+};
+
+/**
  * The blocks that read the org's data. A template key with no entry is
  * inserted untouched. Exported so a test can register a block of its own.
  */
 export const organizeosBlockData = new Map<string, BlockData>([
-  [
-    `${organizeosNamespace}:SignupForm`,
-    {
-      catalog: "forms",
-      bindingName: FORMS_PRESET_NAME,
-      // GET /v1/forms: `{ data: [...] }`
-      binds: [
-        {
-          instance: "root",
-          prop: "data",
-          value: (variable) => `${variable}.data`,
-        },
-      ],
-    },
-  ],
+  [`${organizeosNamespace}:SignupForm`, signupFormBlockData],
+  [`${organizeosNamespace}:SignupFormInline`, signupFormBlockData],
   [
     `${organizeosNamespace}:RsvpForm`,
     {
@@ -176,6 +249,8 @@ export const organizeosBlockData = new Map<string, BlockData>([
     `${organizeosNamespace}:EventCard`,
     eventsBlockData((variable) => `${variable}.data.data.slice(0, 1)`),
   ],
+  [`${organizeosNamespace}:ProductGrid`, productGridBlockData],
+  [`${organizeosNamespace}:ProductCard`, productCardBlockData],
 ]);
 
 type PresetIds = { resourceId: string; bindingId: string };
@@ -184,17 +259,19 @@ export type OrganizeosPresetIds = {
   events: PresetIds;
   forms: PresetIds;
   upcomingEvents: PresetIds;
+  products: PresetIds;
 };
 
 export const getOrganizeosPresetIds = async (
   projectId: string
 ): Promise<OrganizeosPresetIds> => {
-  const [events, forms, upcomingEvents] = await Promise.all([
+  const [events, forms, upcomingEvents, products] = await Promise.all([
     getResourcePresetIds(projectId, "events"),
     getResourcePresetIds(projectId, FORMS_PRESET_KEY),
     getResourcePresetIds(projectId, UPCOMING_EVENTS_PRESET_KEY),
+    getResourcePresetIds(projectId, PRODUCTS_PRESET_KEY),
   ]);
-  return { events, forms, upcomingEvents };
+  return { events, forms, upcomingEvents, products };
 };
 
 const isBlankExpression = (expression: string) => {
@@ -239,6 +316,7 @@ const createdResources = {
     name: UPCOMING_EVENTS_RESOURCE_NAME,
     path: "/events?upcoming=true",
   },
+  products: { name: PRODUCTS_RESOURCE_NAME, path: "/products" },
 } as const;
 
 export type OrganizeosBlockCompletion =
@@ -336,22 +414,37 @@ export const completeOrganizeosFragment = ({
   // the shape provisioning writes (buildOrgResourcePresets), so a
   // re-provision rewrites this same Resource instead of adding a second one.
   // Events is always there by now, and is never created.
+  // A block with a Resource of its own (the Product Card) gets a fresh id
+  // and a copy of the catalog request; the catalog Resource is not created
+  // for it. The token rotation rewrites the copy (a literal URL on the API
+  // base), so it keeps working.
+  const catalogResourceId = {
+    events: presetIds.events.resourceId,
+    forms: presetIds.forms.resourceId,
+    "upcoming-events": presetIds.upcomingEvents.resourceId,
+    products: presetIds.products.resourceId,
+  }[entry.catalog];
   const resourceId =
-    entry.catalog === "events"
-      ? presetIds.events.resourceId
-      : entry.catalog === "forms"
-        ? presetIds.forms.resourceId
-        : presetIds.upcomingEvents.resourceId;
+    entry.ownResource === undefined ? catalogResourceId : nanoid();
+  // A Resource of its own is always created, whatever the catalog: the
+  // binding references its fresh id, which no project holds yet.
+  const created =
+    entry.catalog === "events" ? undefined : createdResources[entry.catalog];
   let resource: undefined | Resource;
-  if (entry.catalog !== "events" && resources.has(resourceId) === false) {
-    const { name, path } = createdResources[entry.catalog];
-    const url = getSiblingUrl(events.url, path);
+  if (
+    entry.ownResource !== undefined ||
+    (created !== undefined && resources.has(resourceId) === false)
+  ) {
+    const url =
+      created === undefined
+        ? events.url
+        : getSiblingUrl(events.url, created.path);
     if (url === undefined) {
       return { status: "refused" };
     }
     resource = {
       id: resourceId,
-      name,
+      name: entry.ownResource?.name ?? created?.name ?? events.name,
       method: "get",
       url,
       headers: [{ name: "Authorization", value: authorization.value }],
@@ -470,6 +563,21 @@ const isCompletionMapped = (
 export const isOrganizeosBlocksEnabled = () =>
   $organizeosSite.get()?.blocksEnabled === true;
 
+const shopBlockComponents = new Set([
+  `${organizeosNamespace}:ProductGrid`,
+  `${organizeosNamespace}:ProductCard`,
+]);
+
+/**
+ * Whether a block may be inserted: the org is not denied, and a Shop block
+ * also needs the deployment's switch (`ORGANIZEOS_SHOP_BLOCKS`), so a stale
+ * panel cannot insert one.
+ */
+const isBlockOffered = (component: string) =>
+  isOrganizeosBlocksEnabled() &&
+  (shopBlockComponents.has(component) === false ||
+    $organizeosSite.get()?.shopBlocksEnabled === true);
+
 /**
  * Insert a block at the selection, or at `insertable` (a drop), the way the
  * Components panel inserts a template, after completing it, in one
@@ -490,7 +598,7 @@ export const insertOrganizeosBlock = async (
     return false;
   }
   const label = getInstanceLabel({ component });
-  if (isOrganizeosBlocksEnabled() === false) {
+  if (isBlockOffered(component) === false) {
     builderApi.toast.error(
       `Cannot add ${label}: ${platformName} blocks are not available for this site yet.`
     );

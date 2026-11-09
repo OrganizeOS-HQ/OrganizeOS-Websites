@@ -267,6 +267,9 @@ const renderProperty = (
     onChange: (propValue) => {
       logic.handleChange({ prop, propName }, propValue);
     },
+    // OrganizeOS fork: an OrganizeOS row that draws a second prop writes it
+    // through the same props logic (organizeos-controls.tsx)
+    onChangeByPropName: logic.handleChangeByPropName,
   });
   return control === undefined ? undefined : (
     <Box key={propName} css={{ paddingInline: theme.panel.paddingInline }}>
