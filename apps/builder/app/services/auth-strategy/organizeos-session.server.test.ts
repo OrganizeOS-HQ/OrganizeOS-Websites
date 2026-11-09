@@ -363,6 +363,22 @@ describe("every session read goes through the binding check", () => {
     expect(source).toMatch(
       /import type \{[^}]*\} from "~\/services\/auth\.server\.utils"/
     );
+    // No module enters any other way: no side-effect import, no dynamic
+    // import, no require.
+    expect(source).not.toMatch(/(^|[\s;])import\s*["']/m);
+    expect(source).not.toMatch(/\bimport\s*\(/);
+    expect(source).not.toMatch(/\brequire\s*\(/);
+  });
+
+  test("the collab writer imports the leaf check, not the session readers", () => {
+    const source = readFileSync(
+      join(appRoot, "shared/sync/patch/patch-auth.server.ts"),
+      "utf8"
+    );
+    expect(source).toContain(
+      'from "~/services/auth-strategy/organizeos-binding.server"'
+    );
+    expect(source).not.toMatch(/organizeos-session\.server/);
   });
 
   test("every access token reader passes the binding check", () => {
