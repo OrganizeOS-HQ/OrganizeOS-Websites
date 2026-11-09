@@ -290,8 +290,9 @@ can be merged with minimal conflict.
 
 - **Repository and configuration.** `vercel.json` (`git.deploymentEnabled`,
   §4); `apps/builder/.env` (the OrganizeOS block); `env/env.server.ts` with
-  `env/env.server.test.ts` (the variables of §4); `README.md` (the license
-  lines); `CLAUDE.md` and `.claude/agents/spec-reviewer.md` (agent context);
+  `env/env.server.test.ts` (the variables of §4); `README.md` (rewritten
+  for this fork: what it is, what it changes, where its source offer leads,
+  the license); `CLAUDE.md` and `.claude/agents/spec-reviewer.md` (agent context);
   `.gitignore` (`previews/`, the preview tool's output); `.oxfmtrc.json`, whose
   `ignorePatterns` keeps the formatter off the Convergence Field fixture (§9).
 - **The proprietary package's removal (§2).** In the component registry
