@@ -71,7 +71,7 @@ export const StructureHeader = ({
       <Text variant="titles" css={{ flexShrink: 0 }}>
         /
       </Text>
-      <TruncatedText variant="titles" css={{ flex: "0 1 auto" }}>
+      <TruncatedText variant="titles" css={{ flex: "0 1 auto", minWidth: 0 }}>
         {name}
       </TruncatedText>
     </Flex>

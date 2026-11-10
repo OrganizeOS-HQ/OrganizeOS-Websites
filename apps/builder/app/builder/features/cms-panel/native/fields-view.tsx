@@ -23,6 +23,7 @@ import {
   List,
   ListItem,
   ScrollAreaNative,
+  Separator,
   Text,
   theme,
   Tooltip,
@@ -30,6 +31,7 @@ import {
 } from "@webstudio-is/design-system";
 import {
   CalendarIcon,
+  DragHandleIcon,
   ContentBlockIcon,
   EmailIcon,
   FormTextAreaIcon,
@@ -48,7 +50,11 @@ import {
 } from "@webstudio-is/icons";
 import { planBadgeLabel } from "~/shared/branding";
 import type { CmsFieldKind } from "./cms-source";
-import { FIELD_KIND_GROUPS, FIELD_KIND_LABELS } from "./cms-structure-logic";
+import {
+  FIELDS_HARD_MAX,
+  FIELD_KIND_GROUPS,
+  FIELD_KIND_LABELS,
+} from "./cms-structure-logic";
 import type { CmsStructureField } from "./cms-structure-source";
 import { TruncatedText } from "./truncated-text";
 
@@ -93,7 +99,14 @@ const outlineChipCss = {
 };
 
 const rowStyle = css({
+  display: "grid",
   "&[data-dragging]": { opacity: 0.5 },
+  // the grip takes the kind icon's place while a row can move
+  "& [data-grip]": { display: "none" },
+  "&[data-movable]:hover [data-grip], &[data-movable]:focus-within [data-grip]":
+    { display: "flex" },
+  "&[data-movable]:hover [data-kind-icon], &[data-movable]:focus-within [data-kind-icon]":
+    { display: "none" },
 });
 
 const iconSlotStyle = css({
@@ -144,6 +157,7 @@ const FieldRow = ({
   field,
   isCurrent,
   isDragging,
+  isMovable,
   onSelect,
   onMove,
 }: {
@@ -151,6 +165,7 @@ const FieldRow = ({
   field: CmsStructureField;
   isCurrent: boolean;
   isDragging: boolean;
+  isMovable: boolean;
   onSelect: () => void;
   onMove: (offset: -1 | 1) => void;
 }) => (
@@ -159,6 +174,7 @@ const FieldRow = ({
     data-id={field.key}
     data-cms-field-row={field.key}
     data-dragging={isDragging || undefined}
+    data-movable={isMovable || undefined}
     className={rowStyle()}
   >
     <ListItem
@@ -185,8 +201,11 @@ const FieldRow = ({
           gap: theme.spacing[3],
         }}
       >
-        <span className={iconSlotStyle()}>
+        <span className={iconSlotStyle()} data-kind-icon>
           <FieldKindIcon kind={field.kind} />
+        </span>
+        <span className={iconSlotStyle()} data-grip aria-hidden>
+          <DragHandleIcon size={16} />
         </span>
         <TruncatedText variant="labels">
           {`${field.label}${field.required ? " *" : ""}`}
@@ -253,6 +272,7 @@ export const FieldsList = ({
                 field={field}
                 isCurrent={field.key === currentKey}
                 isDragging={dragItemId === field.key}
+                isMovable={canManage && fields.length > 1}
                 onSelect={() => onSelect(field.key)}
                 onMove={(offset) => {
                   if (canManage) {
@@ -266,20 +286,24 @@ export const FieldsList = ({
       </ScrollAreaNative>
       {placementIndicator}
       {fields.length >= cap && (
-        <Flex
-          align="center"
-          justify="between"
-          gap="2"
-          data-cms-field-cap
-          css={{
-            flexShrink: 0,
-            paddingInline: theme.spacing[7],
-            paddingBlock: theme.spacing[5],
-          }}
-        >
-          <Text color="subtle">{`${fields.length} of ${cap} fields`}</Text>
-          <Chip>{planBadgeLabel}</Chip>
-        </Flex>
+        <>
+          <Separator />
+          <Flex
+            align="center"
+            justify="between"
+            gap="2"
+            data-cms-field-cap
+            css={{
+              flexShrink: 0,
+              paddingInline: theme.spacing[7],
+              paddingBlock: theme.spacing[5],
+            }}
+          >
+            <Text color="subtle">{`${fields.length} of ${cap} fields`}</Text>
+            {/* the plan chip only where a higher plan allows more */}
+            {cap < FIELDS_HARD_MAX && <Chip>{planBadgeLabel}</Chip>}
+          </Flex>
+        </>
       )}
     </Flex>
   );

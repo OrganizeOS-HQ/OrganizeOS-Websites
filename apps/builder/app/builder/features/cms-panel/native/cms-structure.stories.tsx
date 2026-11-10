@@ -265,6 +265,20 @@ export const NewField: Story = {
   },
 };
 
+/** An edited name: Save is on, and leaving asks first. */
+export const EditedField: Story = {
+  render,
+  loaders: [loadSource()],
+  args: FieldSheet.args,
+  play: async ({ canvasElement }) => {
+    const name = await waitFor<HTMLInputElement>(
+      canvasElement,
+      "#cms-field-sheet-label"
+    );
+    typeInto(name, "Teaser");
+  },
+};
+
 /** "Summary" derives the key `summary`, which News already has. */
 export const KeyInUse: Story = {
   render,
@@ -367,6 +381,18 @@ export const NewCollection: Story = {
     view: {
       collectionId: news,
       structure: { dialog: "new-collection", newCollectionType: "blog" },
+    },
+  },
+};
+
+/** Custom: the singular name joins the form. */
+export const NewCustomCollection: Story = {
+  render,
+  loaders: [loadSource()],
+  args: {
+    view: {
+      collectionId: news,
+      structure: { dialog: "new-collection", newCollectionType: "custom" },
     },
   },
 };

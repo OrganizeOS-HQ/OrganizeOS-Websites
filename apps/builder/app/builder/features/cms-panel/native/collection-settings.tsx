@@ -98,11 +98,13 @@ export const DeleteCollectionDialog = ({
   const title =
     collection === undefined
       ? ""
-      : collection.total > 0
-        ? `Delete ${collection.name} and its ${collection.total} ${
-            collection.total === 1 ? "item" : "items"
-          }?`
-        : `Delete ${collection.name}?`;
+      : blockedBy.length > 0
+        ? `${collection.name} is in use`
+        : collection.total > 0
+          ? `Delete ${collection.name} and its ${collection.total} ${
+              collection.total === 1 ? "item" : "items"
+            }?`
+          : `Delete ${collection.name}?`;
   return (
     <Dialog open={collection !== undefined} onOpenChange={onOpenChange}>
       <DialogContent
@@ -138,7 +140,7 @@ export const DeleteCollectionDialog = ({
           )}
           <DialogClose>
             <Button ref={cancelRef} color="ghost">
-              Cancel
+              {blockedBy.length > 0 ? "Close" : "Cancel"}
             </Button>
           </DialogClose>
         </DialogActions>
