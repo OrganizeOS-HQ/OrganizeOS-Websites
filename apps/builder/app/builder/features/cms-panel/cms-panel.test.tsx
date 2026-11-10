@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { enableMapSet } from "immer";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { userEvent } from "@vitest/browser/context";
 import { rawTheme, toast, TooltipProvider } from "@webstudio-is/design-system";
 import { defaultPlanFeatures } from "@webstudio-is/plans";
 import type { ResourceRequest } from "@webstudio-is/sdk";
@@ -34,14 +35,18 @@ import {
 import { SidebarLeft } from "../../sidebar-left/sidebar-left";
 import { sidebarPanelNames } from "../../sidebar-left/types";
 import {
+  $cmsClassicDeepLink,
   $cmsDirty,
   $cmsFrameMounted,
+  $isClassicCmsShown,
   $isCmsOverlayOpen,
   $isCmsPanelAvailable,
   CMS_FRAME_SANDBOX,
   CMS_OVERLAY_Z_INDEX,
   COLLECTION_CHANGED_NOTICE,
   getCmsPanelSrc,
+  showClassicCms,
+  showNativeCms,
 } from "./cms-panel";
 import { CmsIcon } from "./cms-icon";
 // Read as text through Vite: the suite runs in the browser, without node:fs
@@ -169,6 +174,28 @@ describe("CmsIcon", () => {
     act(() => {
       root.unmount();
     });
+  });
+});
+
+describe("getCmsPanelSrc", () => {
+  test("without a deep link is today's address", () => {
+    expect(getCmsPanelSrc(site, "light")).toBe(
+      `${platformUrl}/cms-panel/${orgId}?theme=light`
+    );
+  });
+
+  test("adds the collection and the item, encoded", () => {
+    expect(
+      getCmsPanelSrc(site, "light", { collection: "news", item: "a b" })
+    ).toBe(
+      `${platformUrl}/cms-panel/${orgId}?theme=light&collection=news&item=a%20b`
+    );
+  });
+
+  test("adds only what is defined", () => {
+    expect(getCmsPanelSrc(site, "light", { collection: "news" })).toBe(
+      `${platformUrl}/cms-panel/${orgId}?theme=light&collection=news`
+    );
   });
 });
 
@@ -845,6 +872,187 @@ describe("the CMS overlay in the builder", () => {
       press("Escape");
       expect(confirm).not.toHaveBeenCalled();
       expect(frame()).toBe(iframe);
+    });
+  });
+
+  describe("the native screen (ORGANIZEOS_CMS_NATIVE)", () => {
+    const itemId = "33333333-3333-4333-8333-333333333333";
+
+    const nativeScreen = () =>
+      document.querySelector<HTMLElement>("[data-cms-native-screen]");
+
+    const menuItem = (label: string) =>
+      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (item) => item.textContent === label
+      );
+
+    const titleText = () =>
+      [...(nativeScreen()?.querySelectorAll<HTMLElement>("*") ?? [])].find(
+        (element) =>
+          element.childElementCount === 0 && element.textContent === "CMS"
+      );
+
+    beforeEach(() => {
+      $organizeosSite.set({ ...site, cmsNativeEnabled: true });
+      $isClassicCmsShown.set(false);
+      $cmsClassicDeepLink.set(undefined);
+      $cmsFrameMounted.set(false);
+    });
+
+    test("the overlay shows the native screen and frames nothing", () => {
+      render();
+      clickRail();
+      expect(isShown()).toBe(true);
+      expect(nativeScreen()).not.toBeNull();
+      expect(nativeScreen()?.style.display).toBe("flex");
+      expect(frame()).toBeNull();
+    });
+
+    test("focus moves to the screen on open and on reopen", () => {
+      render();
+      railButton()?.focus();
+      clickRail();
+      expect(document.activeElement).toBe(nativeScreen());
+      clickRail();
+      railButton()?.focus();
+      clickRail();
+      expect(document.activeElement).toBe(nativeScreen());
+    });
+
+    test("its root is a floating-panel container", () => {
+      render();
+      clickRail();
+      expect(
+        nativeScreen()?.hasAttribute("data-floating-panel-container")
+      ).toBe(true);
+      expect(nativeScreen()?.getAttribute("tabindex")).toBe("-1");
+    });
+
+    test("follows the builder's colour scheme", () => {
+      render();
+      clickRail();
+      const title = titleText();
+      expect(title).toBeDefined();
+      const colors: string[] = [];
+      try {
+        for (const scheme of ["light", "dark"]) {
+          document.documentElement.dataset.colorScheme = scheme;
+          const color = getComputedStyle(title!).color;
+          expect(color, scheme).not.toBe("rgba(0, 0, 0, 0)");
+          colors.push(color);
+        }
+      } finally {
+        delete document.documentElement.dataset.colorScheme;
+      }
+      expect(colors[0]).not.toBe(colors[1]);
+    });
+
+    test("Classic CMS mounts the frame once and shows it in place of the screen", async () => {
+      render();
+      // The suite's viewport is narrow and its rail unstyled: pin the rail's
+      // box as the builder lays it out, so the menu is within the viewport.
+      const rail =
+        railButton()?.closest<HTMLElement>('[role="tablist"]')?.parentElement
+          ?.parentElement;
+      vi.spyOn(rail as HTMLElement, "getBoundingClientRect").mockReturnValue({
+        top: 40,
+        bottom: 800,
+        left: 0,
+        right: 41,
+        width: 41,
+        height: 760,
+        x: 0,
+        y: 40,
+        toJSON: () => ({}),
+      });
+      clickRail();
+      await act(async () =>
+        userEvent.click(
+          nativeScreen()!.querySelector<HTMLElement>('[aria-label="CMS menu"]')!
+        )
+      );
+      await act(async () => userEvent.click(menuItem("Classic CMS")!));
+      const iframe = frame();
+      expect(iframe?.getAttribute("src")).toBe(
+        `${platformUrl}/cms-panel/${orgId}?theme=light`
+      );
+      expect(iframe?.style.display).toBe("block");
+      expect(nativeScreen()?.style.display).toBe("none");
+      expect(document.activeElement).toBe(iframe);
+      act(() => showNativeCms());
+      act(() => showClassicCms({ collection: "news", item: itemId }));
+      expect(frame()).toBe(iframe);
+      expect(frame()?.getAttribute("src")).toBe(
+        `${platformUrl}/cms-panel/${orgId}?theme=light`
+      );
+    });
+
+    test("a first Classic CMS with something open carries the deep link", () => {
+      render();
+      clickRail();
+      act(() => showClassicCms({ collection: "news", item: itemId }));
+      expect(frame()?.getAttribute("src")).toBe(
+        `${platformUrl}/cms-panel/${orgId}?theme=light&collection=news&item=${itemId}`
+      );
+    });
+
+    test("cms.close_requested from the frame returns to the native screen, not out of the overlay", () => {
+      render();
+      clickRail();
+      act(() => showClassicCms({}));
+      const iframe = frame();
+      post({ type: "cms.close_requested" });
+      expect(isShown()).toBe(true);
+      expect($isClassicCmsShown.get()).toBe(false);
+      expect(nativeScreen()?.style.display).toBe("flex");
+      expect(iframe?.isConnected).toBe(true);
+      expect(frame()).toBe(iframe);
+      expect(document.activeElement).toBe(nativeScreen());
+    });
+
+    test("the frame's messages still act while it exists", () => {
+      const news: ResourceRequest = {
+        name: "news",
+        method: "get",
+        url: `${platformUrl}/api/public/v1/collections/news/items`,
+        searchParams: [],
+        headers: [],
+      };
+      vi.spyOn($computedResourceRequests, "get").mockReturnValue([news]);
+      render();
+      clickRail();
+      act(() => showClassicCms({}));
+      post({ type: "cms.item_saved", collection: "news" });
+      expect(vi.mocked(invalidateResource).mock.calls).toEqual([[news]]);
+      post({ type: "cms.dirty", dirty: true });
+      expect($cmsDirty.get()).toBe(true);
+    });
+
+    test("reopening shows the screen that was showing", () => {
+      render();
+      clickRail();
+      act(() => showClassicCms({}));
+      const iframe = frame();
+      press("Escape");
+      expect(isShown()).toBe(false);
+      clickRail();
+      expect(isShown()).toBe(true);
+      expect(frame()).toBe(iframe);
+      expect(frame()?.style.display).toBe("block");
+      expect(nativeScreen()?.style.display).toBe("none");
+      expect(document.activeElement).toBe(iframe);
+    });
+
+    test("the close button hides the overlay", () => {
+      render();
+      clickRail();
+      act(() => {
+        nativeScreen()
+          ?.querySelector<HTMLElement>('[aria-label="Close"]')
+          ?.click();
+      });
+      expect(isShown()).toBe(false);
+      expect($isCmsOverlayOpen.get()).toBe(false);
     });
   });
 });

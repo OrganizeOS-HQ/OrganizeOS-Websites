@@ -533,7 +533,8 @@ can be merged with minimal conflict.
   `src/clients/s3/s3.test.ts` and `src/clients/s3/object-url.test.ts`.
   `services/staged-upload.server.ts` keeps its local staged uploads in the OS
   temporary folder, since a serverless bundle's folder is read-only.
-- **The CMS overlay (§9, "The CMS overlay").** `features/cms-panel/*`, with its
+- **The CMS overlay (§9, "The CMS overlay").** `features/cms-panel/*` and
+  `features/cms-panel/native/*` (the native CMS screen), with their
   tests (its site fixture is a loopback origin, so the suite frames no live
   platform), among them `cms-icon.tsx`, the database icon; in
   `sidebar-left/sidebar-left.tsx`, the one `<CmsRailButton />` after the tab
@@ -1588,7 +1589,12 @@ allow-same-origin allow-forms allow-popups allow-modals
 allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     own unsaved-changes prompt and confirm dialogs show; its origin is the
     app's, not the builder's). The builder route's `frame-src` carries the
-    origin of `ORGANIZEOS_APP_URL` (`builderFrameSrcPolicy`).
+    origin of `ORGANIZEOS_APP_URL` (`builderFrameSrcPolicy`). With
+    `ORGANIZEOS_CMS_NATIVE` on for the org, the overlay holds the native CMS
+    screen instead, and its header's "..." menu offers "Classic CMS", which
+    mounts the frame on first use with `&collection={slug}&item={id}` for what
+    the native screen has open, then keeps it mounted and hidden; the frame's
+    close (`cms.close_requested`) returns to the native screen.
   - **Messages, frame to builder only** (`cms-messages.ts`). The listener
     accepts a message only when `event.origin` is the platform URL's origin
     and `event.source` is the frame's `contentWindow`, and parses it with

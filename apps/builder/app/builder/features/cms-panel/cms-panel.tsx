@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { atom, computed } from "nanostores";
 import { useStore } from "@nanostores/react";
@@ -29,6 +29,7 @@ import {
   readCmsMessage,
   type CmsMessage,
 } from "./cms-messages";
+import { CmsNativeScreen } from "./native/cms-native-screen";
 
 /**
  * The CMS overlay: the OrganizeOS app's CMS screen, framed over the builder
@@ -79,11 +80,50 @@ export const $isCmsPanelAvailable = computed(
 /** Whether the overlay shows. */
 export const $isCmsOverlayOpen = atom(false);
 
-/** Whether the frame exists: from the first open, for the document's life. */
+/**
+ * Whether the overlay exists: from the first open, for the document's life.
+ * With the native screen off it holds the frame; with it on it holds the
+ * native screen, and the frame inside it mounts once Classic CMS is first
+ * shown (`$cmsClassicDeepLink`).
+ */
 export const $cmsFrameMounted = atom(false);
 
 /** Whether the frame's editor has unsaved changes (`cms.dirty`). */
 export const $cmsDirty = atom(false);
+
+/** What the native screen has open: a collection's slug, an item's id. */
+export type CmsDeepLink = { collection?: string; item?: string };
+
+/**
+ * Whether the overlay holds the native CMS screen in place of the frame
+ * (`ORGANIZEOS_CMS_NATIVE`, for the org).
+ */
+export const $isCmsNative = computed(
+  $organizeosSite,
+  (site) => site?.cmsNativeEnabled === true
+);
+
+/** Whether the frame shows in place of the native screen. */
+export const $isClassicCmsShown = atom(false);
+
+/**
+ * The deep link the frame first mounted with; undefined until Classic CMS is
+ * first shown. The frame then stays mounted, so later switches keep its state.
+ */
+export const $cmsClassicDeepLink = atom<CmsDeepLink | undefined>(undefined);
+
+/** Show the frame in place of the native screen. */
+export const showClassicCms = (deepLink: CmsDeepLink) => {
+  if ($cmsClassicDeepLink.get() === undefined) {
+    $cmsClassicDeepLink.set(deepLink);
+  }
+  $isClassicCmsShown.set(true);
+};
+
+/** Show the native screen in place of the frame. */
+export const showNativeCms = () => {
+  $isClassicCmsShown.set(false);
+};
 
 /** The left rail, whose right edge the overlay starts at. */
 const $cmsRail = atom<HTMLElement | null>(null);
@@ -119,12 +159,24 @@ export const toggleCmsOverlay = () => {
  */
 export const getBuilderColorMode = (): "light" | "dark" => "light";
 
-/** The frame's address, from the loader's org, never from the page URL. */
+/**
+ * The frame's address, from the loader's org, never from the page URL, with
+ * the native screen's deep link when it has one.
+ */
 export const getCmsPanelSrc = (
   site: Pick<OrganizeosSite, "platformUrl" | "organizationId">,
-  theme: "light" | "dark"
-) =>
-  `${site.platformUrl}/cms-panel/${encodeURIComponent(site.organizationId)}?theme=${theme}`;
+  theme: "light" | "dark",
+  deepLink?: CmsDeepLink
+) => {
+  let src = `${site.platformUrl}/cms-panel/${encodeURIComponent(site.organizationId)}?theme=${theme}`;
+  if (deepLink?.collection !== undefined) {
+    src += `&collection=${encodeURIComponent(deepLink.collection)}`;
+  }
+  if (deepLink?.item !== undefined) {
+    src += `&item=${encodeURIComponent(deepLink.item)}`;
+  }
+  return src;
+};
 
 export const showCollectionChangedNotice = () => {
   toast.info(
@@ -162,7 +214,12 @@ export const applyCmsMessage = (message: CmsMessage, platformUrl: string) => {
       $cmsDirty.set(message.dirty);
       return;
     case "cms.close_requested":
-      hideCmsOverlay();
+      // With the native screen, the frame's close returns to it.
+      if ($isCmsNative.get()) {
+        showNativeCms();
+      } else {
+        hideCmsOverlay();
+      }
       return;
   }
 };
@@ -245,8 +302,9 @@ const onOverlayPointerDown = (event: PointerEvent) => {
 };
 
 /**
- * The persistent frame, rendered once by the left sidebar and portalled to
- * the document's body.
+ * The persistent overlay, rendered once by the left sidebar and portalled to
+ * the document's body. It holds the frame, or, with the native screen on, the
+ * native screen and, once Classic CMS is first shown, the frame behind it.
  */
 export const CmsOverlay = () => {
   const isAvailable = useStore($isCmsPanelAvailable);
@@ -256,22 +314,25 @@ export const CmsOverlay = () => {
   const isPreviewMode = useStore($isPreviewMode);
   const isUiHidden = useStore($isUiHidden);
   const rail = useStore($cmsRail);
+  const isNative = useStore($isCmsNative);
+  const isClassicShown = useStore($isClassicCmsShown);
+  const classicDeepLink = useStore($cmsClassicDeepLink);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const nativeRef = useRef<HTMLDivElement>(null);
 
   const platformUrl = site?.platformUrl;
   const organizationId = site?.organizationId;
-  const src = useMemo(
-    () =>
-      platformUrl === undefined || organizationId === undefined
-        ? undefined
-        : getCmsPanelSrc(
-            { platformUrl, organizationId },
-            getBuilderColorMode()
-          ),
-    [platformUrl, organizationId]
-  );
 
-  const isRendered = isAvailable && isMounted && src !== undefined;
+  const isRendered =
+    isAvailable &&
+    isMounted &&
+    platformUrl !== undefined &&
+    organizationId !== undefined;
+  // The frame exists always without the native screen, and with it from the
+  // first Classic CMS on.
+  const hasFrame =
+    isRendered && (isNative === false || classicDeepLink !== undefined);
+  const isFrameShown = isNative === false || isClassicShown;
   const isShown =
     isRendered && isOpen && isPreviewMode === false && isUiHidden === false;
   const { right: railRight, bottom: railBottom } = useRailBox(rail, isShown);
@@ -301,7 +362,7 @@ export const CmsOverlay = () => {
   }, [isAvailable]);
 
   useEffect(() => {
-    if (isRendered === false || platformUrl === undefined) {
+    if (hasFrame === false || platformUrl === undefined) {
       return;
     }
     const onMessage = (event: MessageEvent) => {
@@ -317,7 +378,7 @@ export const CmsOverlay = () => {
     return () => {
       window.removeEventListener("message", onMessage);
     };
-  }, [isRendered, platformUrl]);
+  }, [hasFrame, platformUrl]);
 
   useEffect(() => {
     if (isRendered === false) {
@@ -343,16 +404,47 @@ export const CmsOverlay = () => {
     };
   }, [isShown]);
 
-  // Focus leaves the canvas and the rail for the CMS screen.
+  // Focus leaves the canvas and the rail for the CMS screen that shows.
   useLayoutEffect(() => {
-    if (isShown) {
-      iframeRef.current?.focus();
+    if (isShown === false) {
+      return;
     }
-  }, [isShown]);
+    if (isFrameShown) {
+      iframeRef.current?.focus();
+    } else {
+      nativeRef.current?.focus();
+    }
+  }, [isShown, isNative, isFrameShown]);
 
-  if (isRendered === false || typeof document === "undefined") {
+  if (
+    isRendered === false ||
+    platformUrl === undefined ||
+    organizationId === undefined ||
+    typeof document === "undefined"
+  ) {
     return null;
   }
+
+  const frameElement = hasFrame ? (
+    <iframe
+      ref={iframeRef}
+      data-cms-frame
+      src={getCmsPanelSrc(
+        { platformUrl, organizationId },
+        getBuilderColorMode(),
+        isNative ? classicDeepLink : undefined
+      )}
+      title="CMS"
+      referrerPolicy="no-referrer"
+      sandbox={CMS_FRAME_SANDBOX}
+      style={{
+        display: isFrameShown ? "block" : "none",
+        width: "100%",
+        height: "100%",
+        border: "none",
+      }}
+    />
+  ) : undefined;
 
   return createPortal(
     <div
@@ -369,20 +461,15 @@ export const CmsOverlay = () => {
         display: isShown ? "block" : "none",
       }}
     >
-      <iframe
-        ref={iframeRef}
-        data-cms-frame
-        src={src}
-        title="CMS"
-        referrerPolicy="no-referrer"
-        sandbox={CMS_FRAME_SANDBOX}
-        style={{
-          display: "block",
-          width: "100%",
-          height: "100%",
-          border: "none",
-        }}
-      />
+      {isNative && (
+        <CmsNativeScreen
+          ref={nativeRef}
+          hidden={isClassicShown}
+          onClose={hideCmsOverlay}
+          onShowClassic={showClassicCms}
+        />
+      )}
+      {frameElement}
       {/* The corner below the rail, where the footer would show through. */}
       <div
         data-cms-overlay-corner
