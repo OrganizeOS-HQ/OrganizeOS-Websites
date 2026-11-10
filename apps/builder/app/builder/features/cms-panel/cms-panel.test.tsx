@@ -47,6 +47,8 @@ import {
   $isUiHidden,
   setActiveSidebarPanel,
 } from "~/builder/shared/nano-states";
+import { setSetting } from "~/builder/shared/client-settings";
+import { IDLE, POTENTIAL } from "~/builder/shared/assets/drag-monitor";
 import { SidebarLeft } from "../../sidebar-left/sidebar-left";
 import { sidebarPanelNames } from "../../sidebar-left/types";
 import {
@@ -66,6 +68,65 @@ import { CmsIcon } from "./cms-icon";
 // Read as text through Vite: the suite runs in the browser, without node:fs
 import topbarSource from "../../shared/topbar.tsx?raw";
 import toastSource from "../../../../../../packages/design-system/src/components/toast.tsx?raw";
+
+// A test source for the external drag state and drops. The real monitor
+// never starts in this suite (the canvas API is not initialised). `set` calls
+// each subscriber synchronously, in subscription order.
+const drag = vi.hoisted(() => {
+  const source = {
+    state: 0 as 0 | 1,
+    listeners: [] as Array<(state: 0 | 1) => void>,
+    drops: [] as Array<() => void>,
+    set(state: 0 | 1) {
+      source.state = state;
+      for (const listener of [...source.listeners]) {
+        listener(state);
+      }
+    },
+    drop() {
+      for (const listener of [...source.drops]) {
+        listener();
+      }
+    },
+  };
+  return source;
+});
+
+vi.mock("~/builder/shared/assets/drag-monitor", async (importOriginal) => {
+  const { useEffect, useRef } = await import("react");
+  // As upstream's hooks: the latest callback in a ref, one subscription for
+  // the component's life; the drag state calls back at once.
+  const useExternalDragStateEffect = (callback: (state: 0 | 1) => void) => {
+    const ref = useRef(callback);
+    ref.current = callback;
+    useEffect(() => {
+      const listener = (state: 0 | 1) => ref.current(state);
+      drag.listeners.push(listener);
+      listener(drag.state);
+      return () => {
+        drag.listeners.splice(drag.listeners.indexOf(listener), 1);
+      };
+    }, []);
+  };
+  const useOnDropEffect = (callback: () => void) => {
+    const ref = useRef(callback);
+    ref.current = callback;
+    useEffect(() => {
+      const listener = () => ref.current();
+      drag.drops.push(listener);
+      return () => {
+        drag.drops.splice(drag.drops.indexOf(listener), 1);
+      };
+    }, []);
+  };
+  return {
+    ...(await importOriginal<
+      typeof import("~/builder/shared/assets/drag-monitor")
+    >()),
+    useExternalDragStateEffect,
+    useOnDropEffect,
+  };
+});
 
 vi.mock("~/shared/resources", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/shared/resources")>()),
@@ -274,7 +335,7 @@ describe("the CMS overlay in the builder", () => {
 
   // The suite's viewport is narrow and its rail unstyled: pin the rail's box
   // as the builder lays it out, so what the overlay holds is in the viewport.
-  const pinRail = () => {
+  const pinRail = (right = 41) => {
     const rail =
       railButton()?.closest<HTMLElement>('[role="tablist"]')?.parentElement
         ?.parentElement;
@@ -282,11 +343,11 @@ describe("the CMS overlay in the builder", () => {
     vi.spyOn(rail as HTMLElement, "getBoundingClientRect").mockReturnValue({
       top: 40,
       bottom: 800,
-      left: 0,
-      right: 41,
+      left: right - 41,
+      right,
       width: 41,
       height: 760,
-      x: 0,
+      x: right - 41,
       y: 40,
       toJSON: () => ({}),
     });
@@ -360,6 +421,8 @@ describe("the CMS overlay in the builder", () => {
       $builderMode.set("design");
       setActiveSidebarPanel("none");
       root?.unmount();
+      setSetting("navigatorLayout", "undocked");
+      drag.set(IDLE);
     });
     container?.remove();
     root = undefined;
@@ -672,14 +735,11 @@ describe("the CMS overlay in the builder", () => {
           setActiveSidebarPanel("pages");
         });
         clickRail();
-        // From inside the sidebar's tab content, whose own Escape closes
-        // the open panel.
-        const inPanel = document.querySelector('[role="tabpanel"]');
-        expect(inPanel).not.toBeNull();
-        press("Escape", inPanel ?? document.body);
+        // Opening closed the panel; from inside the overlay.
+        press("Escape", overlay()!);
         expect(isShown()).toBe(false);
         expect(escape).not.toHaveBeenCalled();
-        expect($activeSidebarPanel.get()).toBe("pages");
+        expect($activeSidebarPanel.get()).toBe("none");
 
         // Hidden, Escape is the builder's again.
         press("Escape");
@@ -732,6 +792,72 @@ describe("the CMS overlay in the builder", () => {
       expect($isCmsOverlayOpen.get()).toBe(false);
       expect(isShown()).toBe(false);
     });
+
+    test.each([
+      ["pages", "undocked"],
+      ["pages", "docked"],
+      ["navigator", "undocked"],
+      ["assets", "docked"],
+    ] as const)(
+      "opening it from %s (%s navigator) sets the sidebar panel to none",
+      (panel, layout) => {
+        act(() => setSetting("navigatorLayout", layout));
+        render();
+        act(() => setActiveSidebarPanel(panel));
+        expect($activeSidebarPanel.get()).toBe(panel);
+        clickRail();
+        expect($activeSidebarPanel.get()).toBe("none");
+        expect(isShown()).toBe(true);
+      }
+    );
+
+    describe.each(["undocked", "docked"] as const)(
+      "an external drag, %s navigator, with Pages open before the overlay",
+      (layout) => {
+        beforeEach(() => {
+          act(() => setSetting("navigatorLayout", layout));
+          render();
+          // The sidebar switches to Assets and keeps a drop only while its
+          // tabs are not covered: lay the rail out at the viewport's left
+          // edge, as the builder does, whichever panel is open.
+          container!.style.width = "max-content";
+          pinRail();
+          act(() => setActiveSidebarPanel("pages"));
+          clickRail();
+        });
+
+        test("does not hide it when the drag starts: the overlay's drag-state subscriber runs before the sidebar's", () => {
+          act(() => drag.set(POTENTIAL));
+          expect($activeSidebarPanel.get()).toBe("assets");
+          expect(isShown()).toBe(true);
+        });
+
+        test("does not hide it when the drag leaves and the sidebar restores its tab", () => {
+          act(() => drag.set(POTENTIAL));
+          act(() => drag.set(IDLE));
+          expect(isShown()).toBe(true);
+        });
+
+        test("does not hide it on a drop; Assets shows once it closes", () => {
+          act(() => drag.set(POTENTIAL));
+          act(() => drag.drop());
+          act(() => drag.set(IDLE));
+          expect(isShown()).toBe(true);
+          expect($activeSidebarPanel.get()).toBe("assets");
+          clickRail();
+          expect(isShown()).toBe(false);
+          expect($activeSidebarPanel.get()).toBe("assets");
+        });
+
+        test("after the drag, a panel activated any other way hides it again", async () => {
+          act(() => drag.set(POTENTIAL));
+          act(() => drag.set(IDLE));
+          await Promise.resolve();
+          act(() => setActiveSidebarPanel("pages"));
+          expect(isShown()).toBe(false);
+        });
+      }
+    );
 
     test("preview mode hides it, and leaving preview keeps it hidden", () => {
       render();

@@ -1569,7 +1569,12 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     top level), when another rail tab is clicked (which then shows its
     panel, even the one already open) or a panel becomes active any other
     way, on entering preview mode, on hiding the builder UI, and when the
-    CMS stops being offered. Leaving preview keeps it hidden.
+    CMS stops being offered. Leaving preview keeps it hidden. Opening the
+    overlay sets the sidebar panel to none, as another rail tab replaces the
+    open panel. A panel change made during an external file drag, or by the
+    sidebar's restore when it ends, does not hide the overlay, so a drag's
+    switch to Assets, its restore and a drop leave it open, and closing it
+    after a drop shows Assets.
   - **Focus and shortcuts,** with no upstream edit. Opening calls
     `iframe.focus()`, so focus leaves the canvas and the rail. While it
     shows, a capture-phase `keydown` listener on the builder document calls

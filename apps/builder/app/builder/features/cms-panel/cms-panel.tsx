@@ -21,7 +21,15 @@ import {
 import { invalidateResource } from "~/shared/resources";
 import { suppressCommandsForEvent } from "~/shared/commands-emitter";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
-import { $activeSidebarPanel, $isUiHidden } from "~/builder/shared/nano-states";
+import {
+  $activeSidebarPanel,
+  $isUiHidden,
+  setActiveSidebarPanel,
+} from "~/builder/shared/nano-states";
+import {
+  POTENTIAL,
+  useExternalDragStateEffect,
+} from "~/builder/shared/assets/drag-monitor";
 import { SidebarButton } from "~/builder/sidebar-left/sidebar-tabs";
 import { CmsIcon } from "./cms-icon";
 import {
@@ -123,7 +131,20 @@ export const registerCmsRail = (element: HTMLElement | null) => {
   $cmsRail.set(element);
 };
 
+/**
+ * Opening closes the sidebar panel first, as another rail tab replaces the
+ * open one, so the panel listener never sees an open overlay mid-way. From
+ * another panel, closing opens the undocked navigator, so it takes up to two
+ * calls.
+ */
 export const openCmsOverlay = () => {
+  for (
+    let call = 0;
+    call < 2 && $activeSidebarPanel.get() !== "none";
+    call += 1
+  ) {
+    setActiveSidebarPanel("none");
+  }
   $cmsFrameMounted.set(true);
   $isCmsOverlayOpen.set(true);
 };
@@ -341,10 +362,33 @@ export const CmsOverlay = () => {
     }
   }, [isPreviewMode, isUiHidden]);
 
-  // Another rail tab becoming active hides the overlay.
+  // The external file drag's phase. A drag switches the sidebar to Assets,
+  // and its end restores the saved tab (which, for "none", opens the
+  // undocked navigator) in the same notification; "settling" covers that
+  // notification and ends in a microtask. This subscriber is a child's of the
+  // sidebar's, so it runs first.
+  const dragPhase = useRef<"idle" | "dragging" | "settling">("idle");
+  useExternalDragStateEffect((state) => {
+    if (state === POTENTIAL) {
+      dragPhase.current = "dragging";
+      return;
+    }
+    if (dragPhase.current === "dragging") {
+      dragPhase.current = "settling";
+      queueMicrotask(() => {
+        if (dragPhase.current === "settling") {
+          dragPhase.current = "idle";
+        }
+      });
+    }
+  });
+
+  // Another rail tab becoming active hides the overlay, except for a panel
+  // change made by an external drag. A tab clicked during a drag still hides
+  // it, through the sidebar's own hideCmsOverlay().
   useEffect(() => {
     return $activeSidebarPanel.listen((panel) => {
-      if (panel !== "none") {
+      if (panel !== "none" && dragPhase.current === "idle") {
         hideCmsOverlay();
       }
     });
