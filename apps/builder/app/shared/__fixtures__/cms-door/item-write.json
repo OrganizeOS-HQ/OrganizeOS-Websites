@@ -1,0 +1,15 @@
+{
+  "status": 201,
+  "body": {
+    "item": {
+      "id": "44444444-4444-4444-8444-000000000001",
+      "slug": "new-post",
+      "status": "draft",
+      "hasStagedChanges": false,
+      "data": { "title": "New post", "body": null, "cover": null },
+      "updatedAt": "2026-11-07T10:05:00.654321+00:00",
+      "createdAt": "2026-11-07T10:05:00.654321+00:00",
+      "publishedAt": null
+    }
+  }
+}
