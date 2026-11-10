@@ -40,10 +40,12 @@ import {
   type CmsItemsPage,
   type CmsSource,
 } from "./cms-source";
+import type { CmsStructureSource } from "./cms-structure-source";
 import { CollectionsColumn } from "./collections-column";
 import { ItemEditor } from "./item-editor";
 import { ItemsView } from "./items-view";
 import { RefusalLine, type CmsLineKind } from "./refusal-line";
+import { useCmsStructure, type CmsStructureInitial } from "./use-cms-structure";
 
 export type CmsScreenView = {
   collectionId?: string;
@@ -51,6 +53,8 @@ export type CmsScreenView = {
   itemId?: string | null;
   page?: number;
   query?: string;
+  /** Slice 3: a tab, the field sheet or settings, a dialog. */
+  structure?: CmsStructureInitial;
 };
 
 const lineOf = (failure: CmsFailure): CmsLineKind =>
@@ -72,6 +76,8 @@ export const CmsScreen = ({
   openCount = 0,
   onOpenClassic,
   onItemWritten,
+  structure,
+  renderCollectionActionItems,
 }: {
   source: CmsSource;
   /** Hides the overlay; never discards anything. */
@@ -98,6 +104,13 @@ export const CmsScreen = ({
   onOpenClassic?: () => void;
   /** After a write: W2 invalidates the collection's canvas requests (4.7). */
   onItemWritten?: (collectionSlug: string, item: CmsItem) => void;
+  /** Slice 3: the structure screens; absent, the screen is slice 1's. */
+  structure?: CmsStructureSource;
+  /**
+   * With `structure`, the row's "..." is one menu: Settings, these
+   * collection actions as menu items, then Delete.
+   */
+  renderCollectionActionItems?: (collection: CmsCollectionSummary) => ReactNode;
 }) => {
   const [access, setAccess] = useState<CmsAccess | undefined>(undefined);
   const [line, setLine] = useState<CmsLineKind | undefined>(undefined);
@@ -245,6 +258,10 @@ export const CmsScreen = ({
   }, [isEditorDirty]);
   useEffect(() => () => $cmsNativeDirty.set(false), []);
 
+  const onDirtyChange = useCallback((dirty: boolean) => {
+    setIsEditorDirty(dirty);
+  }, []);
+
   /** The unsaved guard: back, another item or collection, Classic CMS. */
   const guard = (run: () => void) => {
     if (isEditorDirty) {
@@ -256,19 +273,40 @@ export const CmsScreen = ({
 
   const collection = collections.find((entry) => entry.id === collectionId);
 
+  /** Opens a collection's items, past the guard. */
+  const applyCollection = (nextId: string | undefined) => {
+    setIsEditorDirty(false);
+    if (nextId !== collectionId) {
+      setItemsPage(undefined);
+      setDetail(undefined);
+    }
+    setCollectionId(nextId);
+    setItemId(undefined);
+    setPage(1);
+    setQuery("");
+    setReturnFocusItemId(undefined);
+    structureScreens.closeView();
+  };
+
+  const structureScreens = useCmsStructure({
+    structure,
+    access,
+    collections,
+    collectionId,
+    initial: initialView?.structure,
+    guard,
+    onDirtyChange,
+    onChanged: () => {
+      setListVersion((current) => current + 1);
+      setDetailAttempt((current) => current + 1);
+    },
+    onOpenCollection: applyCollection,
+    onRefusal: setLine,
+    renderActionItems: renderCollectionActionItems,
+  });
+
   const selectCollection = (nextId: string) =>
-    guard(() => {
-      setIsEditorDirty(false);
-      if (nextId !== collectionId) {
-        setItemsPage(undefined);
-        setDetail(undefined);
-      }
-      setCollectionId(nextId);
-      setItemId(undefined);
-      setPage(1);
-      setQuery("");
-      setReturnFocusItemId(undefined);
-    });
+    guard(() => applyCollection(nextId));
 
   const openItem = (nextId: string | null) => {
     setEditorSession((current) => current + 1);
@@ -283,10 +321,6 @@ export const CmsScreen = ({
       setReturnFocusItemId(itemId ?? undefined);
       setItemId(undefined);
     });
-
-  const onDirtyChange = useCallback((dirty: boolean) => {
-    setIsEditorDirty(dirty);
-  }, []);
 
   const onWritten = (item: CmsItem) => {
     setListVersion((current) => current + 1);
@@ -382,7 +416,12 @@ export const CmsScreen = ({
         collections={collections}
         currentCollectionId={line === undefined ? collectionId : undefined}
         catalog={isReady ? catalog : undefined}
-        renderCollectionActions={isReady ? renderCollectionActions : undefined}
+        renderCollectionActions={
+          isReady
+            ? (structureScreens.renderRowMenu ?? renderCollectionActions)
+            : undefined
+        }
+        structure={isReady ? structureScreens.column : undefined}
         footer={isReady ? collectionsFooter : undefined}
         onSelectCollection={selectCollection}
         onOpenClassic={
@@ -408,9 +447,10 @@ export const CmsScreen = ({
             minHeight: 0,
           }}
         >
-          {renderView()}
+          {structureScreens.mainView ?? renderView()}
         </Box>
       </Flex>
+      {structureScreens.dialogs}
       <Dialog
         open={pending !== undefined}
         onOpenChange={(open) => {

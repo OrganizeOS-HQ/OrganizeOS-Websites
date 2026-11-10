@@ -12,6 +12,10 @@ import {
   InsetListItem,
   List,
   ListItem,
+  PanelTabs,
+  PanelTabsContent,
+  PanelTabsList,
+  PanelTabsTrigger,
   PanelTitle,
   ScrollAreaNative,
   Separator,
@@ -21,6 +25,7 @@ import {
 } from "@webstudio-is/design-system";
 import { EllipsesIcon, XIcon } from "@webstudio-is/icons";
 import type { CmsCatalogView, CmsCollectionSummary } from "./cms-source";
+import type { CmsStructureColumn } from "./use-cms-structure";
 import { TruncatedText } from "./truncated-text";
 
 /** The data tab's warning line (`collection-row-menu.tsx` `staleAddressLine`). */
@@ -120,6 +125,7 @@ export const CollectionsColumn = ({
   onSelectCollection,
   onOpenClassic,
   onClose,
+  structure,
 }: {
   collections: CmsCollectionSummary[];
   currentCollectionId: string | undefined;
@@ -136,8 +142,54 @@ export const CollectionsColumn = ({
   /** Present while the classic frame exists (4.6). */
   onOpenClassic?: () => void;
   onClose: () => void;
+  /** Slice 3: the Collections and Fields tabs. */
+  structure?: CmsStructureColumn;
 }) => {
   const staleSlugs = catalog?.staleSlugs ?? [];
+  const collectionsBody = (
+    <>
+      <ScrollAreaNative css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
+        <List asChild>
+          <InsetList
+            role="list"
+            css={{ gap: theme.spacing[1] }}
+            aria-label="Collections"
+          >
+            {collections.map((collection, index) => (
+              <CollectionRow
+                key={collection.id}
+                index={index}
+                collection={collection}
+                isCurrent={collection.id === currentCollectionId}
+                isStale={staleSlugs.includes(collection.slug)}
+                actions={renderCollectionActions?.(collection)}
+                reserveMenu={renderCollectionActions !== undefined}
+                onSelect={() => onSelectCollection(collection.id)}
+              />
+            ))}
+          </InsetList>
+        </List>
+      </ScrollAreaNative>
+      {footer !== undefined && footer !== null && (
+        <>
+          <Separator />
+          <Flex
+            direction="column"
+            gap="2"
+            data-cms-orphans
+            css={{
+              flexShrink: 0,
+              padding: theme.spacing[5],
+              maxHeight: "40%",
+              overflowY: "auto",
+            }}
+          >
+            {footer}
+          </Flex>
+        </>
+      )}
+    </>
+  );
   return (
     <Flex
       direction="column"
@@ -180,45 +232,46 @@ export const CollectionsColumn = ({
         CMS
       </PanelTitle>
       <Separator />
-      <ScrollAreaNative css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
-        <List asChild>
-          <InsetList
-            role="list"
-            css={{ gap: theme.spacing[1] }}
-            aria-label="Collections"
-          >
-            {collections.map((collection, index) => (
-              <CollectionRow
-                key={collection.id}
-                index={index}
-                collection={collection}
-                isCurrent={collection.id === currentCollectionId}
-                isStale={staleSlugs.includes(collection.slug)}
-                actions={renderCollectionActions?.(collection)}
-                reserveMenu={renderCollectionActions !== undefined}
-                onSelect={() => onSelectCollection(collection.id)}
-              />
-            ))}
-          </InsetList>
-        </List>
-      </ScrollAreaNative>
-      {footer !== undefined && footer !== null && (
-        <>
-          <Separator />
+      {structure === undefined ? (
+        collectionsBody
+      ) : (
+        <PanelTabs
+          value={structure.tab}
+          onValueChange={(tab) =>
+            structure.onTabChange(tab === "fields" ? "fields" : "collections")
+          }
+          css={{ flexGrow: 1, minHeight: 0 }}
+        >
           <Flex
-            direction="column"
-            gap="2"
-            data-cms-orphans
-            css={{
-              flexShrink: 0,
-              padding: theme.spacing[5],
-              maxHeight: "40%",
-              overflowY: "auto",
-            }}
+            align="center"
+            justify="between"
+            css={{ paddingRight: theme.spacing[5] }}
           >
-            {footer}
+            <PanelTabsList>
+              <PanelTabsTrigger value="collections">
+                Collections
+              </PanelTabsTrigger>
+              <PanelTabsTrigger value="fields" disabled={!structure.hasFields}>
+                Fields
+              </PanelTabsTrigger>
+            </PanelTabsList>
+            {structure.add}
           </Flex>
-        </>
+          <PanelTabsContent
+            value="collections"
+            tabIndex={-1}
+            css={{ display: "flex", flexDirection: "column", flexGrow: 1 }}
+          >
+            {collectionsBody}
+          </PanelTabsContent>
+          <PanelTabsContent
+            value="fields"
+            tabIndex={-1}
+            css={{ display: "flex", flexDirection: "column", flexGrow: 1 }}
+          >
+            {structure.fields}
+          </PanelTabsContent>
+        </PanelTabs>
       )}
     </Flex>
   );
