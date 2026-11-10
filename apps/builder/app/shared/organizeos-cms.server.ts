@@ -115,3 +115,128 @@ export const readCmsActorIp = (headers: Headers): string | null => {
   }
   return candidate;
 };
+
+/** The largest answer relayed: 5 MB (1 MB is 1,048,576 bytes). */
+export const CMS_ANSWER_MAX_BYTES = 5_242_880;
+
+/**
+ * Read a stream to its end, at most `maxBytes`. A null stream is empty bytes;
+ * a stream longer than `maxBytes` is cancelled and reads as `undefined`.
+ */
+export const readBoundedBytes = async (
+  stream: ReadableStream<Uint8Array> | null,
+  maxBytes: number
+): Promise<Uint8Array | undefined> => {
+  if (stream === null) {
+    return new Uint8Array();
+  }
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return undefined;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+};
+
+export type CmsForwardRequest = {
+  method: "GET" | "POST" | "PUT";
+  /** A canonical target under `CMS_PLATFORM_BASE_PATH`. */
+  target: string;
+  /** The minted `X-OOS-Actor`. */
+  header: string;
+  body?: Uint8Array;
+  contentType?: string;
+  timeoutMs: number;
+};
+
+/** What OrganizeOS answered, reduced to what the route relays. */
+export type CmsForwardAnswer =
+  /** A JSON answer within 5 MB, its bytes as received. */
+  | { kind: "answer"; status: number; bytes: Uint8Array }
+  | { kind: "timeout" }
+  /** A redirect or a network error. */
+  | { kind: "failed" }
+  /** Not `application/json`, over 5 MB, empty, not UTF-8 or malformed. */
+  | { kind: "not_json" };
+
+const isJsonMediaType = (contentType: string | null) =>
+  (contentType ?? "").split(";")[0].trim().toLowerCase() === "application/json";
+
+const thrownAnswer = (error: unknown): CmsForwardAnswer =>
+  error instanceof Error && error.name === "TimeoutError"
+    ? { kind: "timeout" }
+    : { kind: "failed" };
+
+/**
+ * Send one door call to OrganizeOS. Never throws: a timeout, a network error
+ * or a redirect (refused, `redirect: "error"`) is an answer. The bytes of a
+ * JSON answer are returned as read, never re-serialised.
+ */
+export const forwardCmsRequest = async ({
+  appUrl,
+  method,
+  target,
+  header,
+  body,
+  contentType,
+  timeoutMs,
+  fetchImpl = fetch,
+}: CmsForwardRequest & {
+  appUrl: string;
+  fetchImpl?: typeof fetch;
+}): Promise<CmsForwardAnswer> => {
+  const headers: Record<string, string> = { [CMS_ACTOR_HEADER]: header };
+  if (contentType !== undefined) {
+    headers["Content-Type"] = contentType;
+  }
+  let response: Response;
+  try {
+    response = await fetchImpl(`${appUrl.replace(/\/+$/, "")}${target}`, {
+      method,
+      headers,
+      // The same bytes, untouched: a Uint8Array body is sent with its
+      // Content-Length.
+      body: body as Uint8Array<ArrayBuffer> | undefined,
+      redirect: "error",
+      credentials: "omit",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    return thrownAnswer(error);
+  }
+  if (!isJsonMediaType(response.headers.get("content-type"))) {
+    await response.body?.cancel().catch(() => undefined);
+    return { kind: "not_json" };
+  }
+  let bytes: Uint8Array | undefined;
+  try {
+    bytes = await readBoundedBytes(response.body, CMS_ANSWER_MAX_BYTES);
+  } catch (error) {
+    return thrownAnswer(error);
+  }
+  if (bytes === undefined) {
+    return { kind: "not_json" };
+  }
+  try {
+    JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    return { kind: "not_json" };
+  }
+  return { kind: "answer", status: response.status, bytes };
+};
