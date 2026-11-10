@@ -199,7 +199,8 @@ const readQuery = (
   const pairs = [...search];
   const query: Record<string, string> = {};
   for (const [key, value] of pairs) {
-    if (Object.hasOwn(query, key)) {
+    // A repeated key, or a key no plain object can hold as its own, is no match.
+    if (Object.hasOwn(query, key) || key === "__proto__") {
       return;
     }
     query[key] = value;

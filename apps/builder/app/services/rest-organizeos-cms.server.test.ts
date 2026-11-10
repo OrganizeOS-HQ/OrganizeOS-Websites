@@ -147,6 +147,8 @@ describe("matchCmsPath", () => {
     ["GET", `collections/${c}/items/search`, `?ids=${c},`],
     ["GET", `collections/${c}/items/search`, "?ids=x"],
     ["POST", `collections/${c}/items`, "?clientId=1"],
+    ["GET", "access", "?__proto__=x"],
+    ["GET", `collections/${c}/items`, "?constructor=x"],
   ])("%s %s%s matches nothing", (method, splat, search) =>
     expect(match(method, splat, search)).toBeUndefined()
   );
