@@ -80,3 +80,19 @@ diff ../OrganizeOS/client/tests/fixtures/site-components/site-action-assertion.j
 ```
 
 and update this note's commit when it changes.
+
+`cms-actor-assertion.json` is a byte-for-byte copy of the OrganizeOS repo's
+`client/tests/fixtures/site-components/cms-actor-assertion.json`, at commit
+`f8019f718d2e30fee7f4802d10b7a690823a9486` (the last commit that touched it).
+It pins the `X-OOS-Actor` v1 byte format and the canonical target that
+`../organizeos-cms.server.ts` mints for the native CMS's door and the
+platform's `/api/internal/websites2/cms/{organizationId}/...` verifies. Before
+each fork PR that touches the assertion or the canonical target, compare it
+with the platform's copy:
+
+```sh
+diff ../OrganizeOS/client/tests/fixtures/site-components/cms-actor-assertion.json \
+  apps/builder/app/shared/__fixtures__/cms-actor-assertion.json
+```
+
+and update this note's commit when it changes.
