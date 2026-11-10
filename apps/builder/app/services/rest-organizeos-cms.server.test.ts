@@ -36,6 +36,9 @@ import {
   resetOrganizeosBindingCache,
 } from "~/services/auth-strategy/organizeos-session.server";
 import {
+  CMS_JSON_BODY_MAX_BYTES,
+  CMS_UPLOAD_BODY_MAX_BYTES,
+  CMS_UPLOAD_FILE_MAX_BYTES,
   handleCmsRequest,
   matchCmsPath,
   type CmsRouteDeps,
@@ -700,4 +703,285 @@ describe("under ORGANIZEOS_SESSION_BINDING=enforce", () => {
     expect(sent).toHaveLength(1);
     expect(rpc).toHaveBeenCalled();
   });
+});
+
+describe("bodies", () => {
+  const send = (
+    method: string,
+    splat: string,
+    body: BodyInit,
+    contentType = "application/json"
+  ) => call({ method, splat, body, headers: { "content-type": contentType } });
+
+  /** A stream of `chunks` chunks of `size` bytes, read on demand. */
+  const countingStream = (chunks: number, size: number, last = 0) => {
+    const counter = { pulls: 0, cancelled: false };
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          counter.pulls += 1;
+          if (counter.pulls <= chunks) {
+            controller.enqueue(new Uint8Array(size).fill(0x61));
+          } else if (counter.pulls === chunks + 1 && last > 0) {
+            controller.enqueue(new Uint8Array(last).fill(0x61));
+          } else {
+            controller.close();
+          }
+        },
+        cancel() {
+          counter.cancelled = true;
+        },
+      },
+      { highWaterMark: 0 }
+    );
+    return { stream, counter };
+  };
+
+  const multipart = async (form: FormData) => {
+    const prepared = new Request("https://example.test/", {
+      method: "POST",
+      body: form,
+    });
+    return {
+      type: prepared.headers.get("content-type") ?? "",
+      bytes: new Uint8Array(await prepared.arrayBuffer()),
+    };
+  };
+
+  const png = (size: number, name = "a.png") =>
+    new File([new Uint8Array(size)], name, { type: "image/png" });
+
+  test("caps a write's body at 2 MB and an upload's at 4 MB plus 64 KB, a file at 4 MB", () => {
+    expect(CMS_JSON_BODY_MAX_BYTES).toBe(2_097_152);
+    expect(CMS_UPLOAD_BODY_MAX_BYTES).toBe(4_259_840);
+    expect(CMS_UPLOAD_FILE_MAX_BYTES).toBe(4_194_304);
+  });
+
+  test.each([
+    ["POST", `collections/${c}/items`],
+    ["PUT", `collections/${c}/items/${i}`],
+    ["POST", `collections/${c}/items/${i}/publish`],
+    ["POST", `collections/${c}/items/${i}/discard`],
+  ])(
+    "%s %s forwards its JSON bytes untouched, bound into m, p and h",
+    async (method, splat) => {
+      const body =
+        '{ "expectedUpdatedAt" : "2026-11-07T10:00:00.123456+00:00" }';
+      const response = await send(method, splat, body);
+      expect(response.status).toBe(200);
+      expect(sent).toHaveLength(1);
+      expect(new TextDecoder().decode(sent[0].body)).toBe(body);
+      expect(sent[0].contentType).toBe("application/json");
+      expect(sent[0].timeoutMs).toBe(15_000);
+      expect(sent[0].target).toBe(`${base}/${splat}`);
+      const claims = claimsOf(sent[0].header);
+      expect(claims.m).toBe(method);
+      expect(claims.h).toBe(hashCmsBytes(body));
+      expect(claims.p).toBe(hashCmsBytes(sent[0].target));
+    }
+  );
+
+  test("takes application/json with a charset and forwards it as application/json", async () => {
+    const response = await send(
+      "POST",
+      `collections/${c}/items`,
+      "{}",
+      "Application/JSON; charset=utf-8"
+    );
+    expect(response.status).toBe(200);
+    expect(sent[0].contentType).toBe("application/json");
+  });
+
+  test("takes JSON of exactly 2 MB and refuses a byte more, minting nothing", async () => {
+    const exact = `"${"a".repeat(2_097_150)}"`;
+    expect(utf8(exact).byteLength).toBe(2_097_152);
+    expect((await send("POST", `collections/${c}/items`, exact)).status).toBe(
+      200
+    );
+    order = [];
+    sent = [];
+    const over = `"${"a".repeat(2_097_151)}"`;
+    const response = await send("POST", `collections/${c}/items`, over);
+    expect(response.status).toBe(400);
+    expect(await errorOf(response)).toBe("invalid");
+    expect(order).not.toContain("mint");
+    expect(sent).toEqual([]);
+  });
+
+  test("stops reading a body at its cap", async () => {
+    const { stream, counter } = countingStream(48, 65_536);
+    const response = await send("POST", `collections/${c}/items`, stream);
+    expect(response.status).toBe(400);
+    expect(counter.pulls).toBeLessThan(48);
+    expect(counter.cancelled).toBe(true);
+    expect(sent).toEqual([]);
+  });
+
+  test("refuses a declared Content-Length over the cap before reading", async () => {
+    const { stream, counter } = countingStream(1, 2);
+    const response = await call({
+      method: "POST",
+      splat: `collections/${c}/items`,
+      body: stream,
+      headers: {
+        "content-type": "application/json",
+        "content-length": "2097153",
+      },
+    });
+    expect(response.status).toBe(400);
+    expect(counter.pulls).toBe(0);
+    expect(sent).toEqual([]);
+  });
+
+  test.each(["text/plain", "multipart/form-data; boundary=x", ""])(
+    "a JSON route refuses a body of type %j",
+    async (type) => {
+      const response = await send("POST", `collections/${c}/items`, "{}", type);
+      expect(response.status).toBe(400);
+      expect(await errorOf(response)).toBe("invalid");
+      expect(sent).toEqual([]);
+    }
+  );
+
+  test.each(["{", "", "[1,"])(
+    "a JSON route refuses the malformed body %j",
+    async (body) => {
+      const response = await send("PUT", `collections/${c}/items/${i}`, body);
+      expect(response.status).toBe(400);
+      expect(sent).toEqual([]);
+    }
+  );
+
+  test("a JSON route refuses bytes that are not UTF-8", async () => {
+    const response = await send(
+      "POST",
+      `collections/${c}/items`,
+      new Uint8Array([0x22, 0xff, 0x22])
+    );
+    expect(response.status).toBe(400);
+    expect(sent).toEqual([]);
+  });
+
+  test("a refused body logs nothing", async () => {
+    await send("POST", `collections/${c}/items`, "{", "application/json");
+    await send("POST", "uploads/image", "{}", "application/json");
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  test("forwards an upload with its own Content-Type, boundary included, and a 30 s timeout", async () => {
+    const form = new FormData();
+    form.append("file", png(4_194_304));
+    const { type, bytes } = await multipart(form);
+    expect(type).toMatch(/^multipart\/form-data; boundary=/);
+    const response = await send("POST", "uploads/image", bytes, type);
+    expect(response.status).toBe(200);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].contentType).toBe(type);
+    expect(Buffer.compare(Buffer.from(sent[0].body!), Buffer.from(bytes))).toBe(
+      0
+    );
+    expect(sent[0].timeoutMs).toBe(30_000);
+    expect(sent[0].target).toBe(`${base}/uploads/image`);
+    expect(claimsOf(sent[0].header).h).toBe(hashCmsBytes(bytes));
+    expect(asked).toEqual(["edit"]);
+  });
+
+  test("refuses an upload whose file is over 4 MB, whose body is over 4 MB plus 64 KB, or that is not one part named file", async () => {
+    const forms: FormData[] = [];
+    const big = new FormData();
+    big.append("file", png(4_194_305));
+    forms.push(big);
+    const two = new FormData();
+    two.append("file", png(10));
+    two.append("file", png(10, "b.png"));
+    forms.push(two);
+    const fileAndMore = new FormData();
+    fileAndMore.append("file", png(10));
+    fileAndMore.append("alt", "x");
+    forms.push(fileAndMore);
+    const misnamed = new FormData();
+    misnamed.append("image", png(10));
+    forms.push(misnamed);
+    const text = new FormData();
+    text.append("file", "not a file");
+    forms.push(text);
+    for (const form of forms) {
+      const { type, bytes } = await multipart(form);
+      const response = await send("POST", "uploads/image", bytes, type);
+      expect(response.status).toBe(400);
+      expect(await errorOf(response)).toBe("invalid");
+    }
+    // 4 MB plus 64 KB is 65 chunks of 64 KiB: one byte more is refused, its
+    // read stopped.
+    const { stream, counter } = countingStream(65, 65_536, 1);
+    const response = await send(
+      "POST",
+      "uploads/image",
+      stream,
+      "multipart/form-data; boundary=b"
+    );
+    expect(response.status).toBe(400);
+    expect(counter.cancelled).toBe(true);
+    expect(sent).toEqual([]);
+  });
+
+  test("refuses an upload without a boundary", async () => {
+    const form = new FormData();
+    form.append("file", png(10));
+    const { bytes } = await multipart(form);
+    for (const type of [
+      "multipart/form-data",
+      "multipart/form-data; boundary=",
+    ]) {
+      expect((await send("POST", "uploads/image", bytes, type)).status).toBe(
+        400
+      );
+    }
+    expect(sent).toEqual([]);
+  });
+
+  test("refuses JSON on the upload route and a multipart body on a JSON route", async () => {
+    expect((await send("POST", "uploads/image", "{}")).status).toBe(400);
+    const form = new FormData();
+    form.append("file", png(10));
+    const { type, bytes } = await multipart(form);
+    expect(
+      (await send("POST", `collections/${c}/items`, bytes, type)).status
+    ).toBe(400);
+    expect(sent).toEqual([]);
+  });
+
+  // Names as Chromium sends them: raw UTF-8 in filename=.
+  test.each([
+    [
+      "a macOS screenshot name (U+202F before AM)",
+      "Screenshot 2026-11-10 at 10.00.00 AM.png",
+    ],
+    ["an accented name with spaces", "café été.png"],
+    ["a name holding a quote, as Chromium escapes it", "a%22b.png"],
+  ])(
+    "forwards an upload named with %s, its bytes untouched",
+    async (_, name) => {
+      const head = utf8(
+        `--b\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: image/png\r\n\r\n`
+      );
+      const bytes = new Uint8Array([
+        ...head,
+        ...new Uint8Array(10),
+        ...utf8("\r\n--b--\r\n"),
+      ]);
+      const response = await send(
+        "POST",
+        "uploads/image",
+        bytes,
+        "multipart/form-data; boundary=b"
+      );
+      expect(response.status).toBe(200);
+      expect(
+        Buffer.compare(Buffer.from(sent[0].body!), Buffer.from(bytes))
+      ).toBe(0);
+      expect(sent[0].contentType).toBe("multipart/form-data; boundary=b");
+      expect(claimsOf(sent[0].header).h).toBe(hashCmsBytes(bytes));
+    }
+  );
 });

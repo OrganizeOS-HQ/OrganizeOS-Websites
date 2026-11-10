@@ -13,6 +13,7 @@ import {
   cmsCanonicalTarget,
   hashCmsBytes,
   mintCmsActorAssertion,
+  readBoundedBytes,
   readCmsActorIp,
   type CmsForwardAnswer,
   type CmsForwardRequest,
@@ -56,8 +57,14 @@ import {
  *    request's own path and query are never forwarded. The request's own
  *    path must also hold no encoded slash, backslash or dot and no
  *    backslash, and must end in the rebuilt path.
- * 8. A write's body is JSON; an upload's body is multipart. In this
- *    version no body is accepted: such a request is 400 `invalid`.
+ * 8. A body, else 400 `invalid`, with no log. A declared `Content-Length`
+ *    over the endpoint's cap is refused before reading, and a read stops
+ *    at the cap. A write's (E6 to E8b) is `application/json`, at most 2 MB,
+ *    well-formed UTF-8 JSON, and is forwarded as `application/json`. An
+ *    upload's (E9) is `multipart/form-data` with a boundary, at most 4 MB
+ *    plus 64 KB, holding exactly one entry, named `file`, a file of at most
+ *    4 MB, and is forwarded with its own `Content-Type`. The bytes forwarded
+ *    are the bytes read.
  * 9. The assertion is minted for the session's OrganizeOS user and session,
  *    the org, the method, the canonical target of the rebuilt path and
  *    query, the body bytes, a fresh `jti`, 60 seconds of life and the
@@ -352,17 +359,116 @@ const UPLOAD_TIMEOUT_MS = 30_000;
 /** An encoded slash, backslash or dot. */
 const ENCODED_SEPARATOR = /%(?:2f|5c|2e)/i;
 
+/** A write's JSON body: 2 MB (1 MB is 1,048,576 bytes, as /api/uploads counts it). */
+export const CMS_JSON_BODY_MAX_BYTES = 2_097_152;
+/** An upload's whole multipart body: 4 MB plus 64 KB. */
+export const CMS_UPLOAD_BODY_MAX_BYTES = 4_259_840;
+/** An upload's one file: 4 MB. */
+export const CMS_UPLOAD_FILE_MAX_BYTES = 4_194_304;
+
 type CmsBody = { bytes: Uint8Array; contentType?: string };
 
-/** The bytes to forward, or undefined to refuse with 400. */
+const mediaTypeOf = (contentType: string) =>
+  contentType.split(";")[0].trim().toLowerCase();
+
+/** A non-empty `boundary` parameter, quoted or not. */
+const hasBoundary = (contentType: string) =>
+  contentType
+    .split(";")
+    .slice(1)
+    .some((parameter) => {
+      const [name, ...rest] = parameter.split("=");
+      const value = rest
+        .join("=")
+        .trim()
+        .replace(/^"(.*)"$/, "$1");
+      return name.trim().toLowerCase() === "boundary" && value !== "";
+    });
+
+const readCapped = async (
+  request: Request,
+  cap: number
+): Promise<Uint8Array | undefined> => {
+  const declared = request.headers.get("content-length");
+  if (declared !== null && Number(declared) > cap) {
+    return;
+  }
+  try {
+    return await readBoundedBytes(request.body, cap);
+  } catch {
+    return;
+  }
+};
+
+const isJson = (bytes: Uint8Array) => {
+  try {
+    JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Exactly one entry, named `file`, a file of at most 4 MB. */
+const isOneImageFile = async (bytes: Uint8Array, contentType: string) => {
+  let form: FormData;
+  try {
+    form = await new Response(bytes as Uint8Array<ArrayBuffer>, {
+      headers: { "Content-Type": contentType },
+    }).formData();
+  } catch {
+    return false;
+  }
+  const entries = [...form.entries()];
+  if (entries.length !== 1) {
+    return false;
+  }
+  const [name, value] = entries[0];
+  return (
+    name === "file" &&
+    value instanceof File &&
+    value.size <= CMS_UPLOAD_FILE_MAX_BYTES
+  );
+};
+
+/**
+ * The bytes to forward, as read, or undefined to refuse with 400. A write's
+ * body is well-formed UTF-8 JSON sent as `application/json`; an upload's is
+ * multipart with one `file` part, sent with its own `Content-Type`.
+ */
 const readCmsBody = async (
-  _request: Request,
+  request: Request,
   match: CmsPathMatch
 ): Promise<CmsBody | undefined> => {
   if (match.body === "none") {
     return { bytes: new Uint8Array() };
   }
-  return;
+  const contentType = request.headers.get("content-type") ?? "";
+  const mediaType = mediaTypeOf(contentType);
+  if (match.body === "json") {
+    if (mediaType !== "application/json") {
+      return;
+    }
+    const bytes = await readCapped(request, CMS_JSON_BODY_MAX_BYTES);
+    if (bytes === undefined || isJson(bytes) === false) {
+      return;
+    }
+    return { bytes, contentType: "application/json" };
+  }
+  if (
+    mediaType !== "multipart/form-data" ||
+    hasBoundary(contentType) === false
+  ) {
+    return;
+  }
+  const bytes = await readCapped(request, CMS_UPLOAD_BODY_MAX_BYTES);
+  if (
+    bytes === undefined ||
+    (await isOneImageFile(bytes, contentType)) === false
+  ) {
+    return;
+  }
+  return { bytes, contentType };
 };
 
 export const handleCmsRequest = async (
