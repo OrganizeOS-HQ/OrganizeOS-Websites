@@ -96,6 +96,25 @@ const environment = z.object({
   // `true` offers it; anything else keeps it hidden.
   ORGANIZEOS_CMS_PANEL: z.string().optional(),
 
+  // The shared secret that signs the CMS door's actor assertion (X-OOS-Actor,
+  // shared/organizeos-cms.server.ts). OrganizeOS holds the same value and
+  // verifies it. Unset or blank: the native CMS screen is off and the door's
+  // route answers 503.
+  WEBSITES2_CMS_SECRET: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim() === "" ? undefined : value,
+    z.string().optional()
+  ),
+
+  // The native CMS screen's switch: only the exact value `true`, with
+  // ORGANIZEOS_CMS_PANEL=true and WEBSITES2_CMS_SECRET set, shows it in the
+  // CMS overlay, to the orgs ORGANIZEOS_CMS_NATIVE_ORG_IDS lists.
+  ORGANIZEOS_CMS_NATIVE: z.string().optional(),
+
+  // The orgs that get the native CMS screen: comma-separated organization
+  // ids; anything else is ignored.
+  ORGANIZEOS_CMS_NATIVE_ORG_IDS: z.string().optional(),
+
   // The Shop blocks' switch: only the exact value `true` lists the Product
   // Grid and Product Card and seeds the Products catalog Resource.
   ORGANIZEOS_SHOP_BLOCKS: z.string().optional(),
@@ -188,6 +207,9 @@ const rawEnv = {
   WEBSITES2_PREVIEW_SECRET: process.env.WEBSITES2_PREVIEW_SECRET,
   WEBSITES2_SITE_ACTION_SECRET: process.env.WEBSITES2_SITE_ACTION_SECRET,
   ORGANIZEOS_CMS_PANEL: process.env.ORGANIZEOS_CMS_PANEL,
+  WEBSITES2_CMS_SECRET: process.env.WEBSITES2_CMS_SECRET,
+  ORGANIZEOS_CMS_NATIVE: process.env.ORGANIZEOS_CMS_NATIVE,
+  ORGANIZEOS_CMS_NATIVE_ORG_IDS: process.env.ORGANIZEOS_CMS_NATIVE_ORG_IDS,
   ORGANIZEOS_SHOP_BLOCKS: process.env.ORGANIZEOS_SHOP_BLOCKS,
   PORT: process.env.PORT,
   MAX_UPLOAD_SIZE: process.env.MAX_UPLOAD_SIZE,

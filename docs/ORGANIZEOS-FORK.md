@@ -94,6 +94,9 @@ OrganizeOS integration (all optional; each feature ships dark until its variable
 - `WEBSITES2_PREVIEW_SECRET` — shared with OrganizeOS (the same value on both sides): the key that signs the canvas's draft-preview assertion, `X-OOS-Preview` (§5, "Draft preview on the canvas"). Unset or blank: no assertion is minted, and the canvas shows published items only. Rotate it on both sides together; a mismatch only turns preview off.
 - `WEBSITES2_SITE_ACTION_SECRET` — shared with OrganizeOS (the same value on both sides; set in Production only): the key that signs the Publish dialog's Unpublish assertion, `X-OOS-Site-Action` (§5, item 4). Unset or blank: the dialog offers no Unpublish, nothing is minted, and the action route answers 404. Rotate it on both sides together; a mismatch only turns Unpublish off (OrganizeOS refuses the assertion).
 - `ORGANIZEOS_CMS_PANEL` — builder only: the CMS's switch (§9, "The CMS overlay"). Only the exact value `true` offers the CMS rail button; anything else leaves the rail without it. The OrganizeOS data tab does not depend on it.
+- `WEBSITES2_CMS_SECRET` — shared with OrganizeOS (the same value on both sides; never the preview's or the site action's value): the key that signs the CMS door's actor assertion, `X-OOS-Actor` (§5, "The CMS door"). Unset or blank: the native CMS screen is off (the framed CMS shows) and the door's route answers 503 `unavailable`, minting nothing. Rotate it on both sides together; a mismatch makes OrganizeOS refuse every door call.
+- `ORGANIZEOS_CMS_NATIVE` — builder only. Only the exact value `true`, with `ORGANIZEOS_CMS_PANEL=true` and `WEBSITES2_CMS_SECRET` set, shows the native CMS screen in the overlay (§9, "The CMS overlay") to the orgs `ORGANIZEOS_CMS_NATIVE_ORG_IDS` lists; anything else shows the framed CMS. Unset it and redeploy to roll back.
+- `ORGANIZEOS_CMS_NATIVE_ORG_IDS` — builder only. Comma-separated organization ids, each trimmed and matched in any case, that get the native screen while the switch is on; an entry that is not an organization id is ignored, and unset or empty gives it to none. Removing an org is its rollback.
 - `ORGANIZEOS_SHOP_BLOCKS` — builder only: the Shop blocks' switch (§9, "Shop blocks"). Only the exact value `true` lists the Product Grid and the Product Card in the Components panel and lets them be inserted, and makes a token provision write the Products catalog Resource; anything else (unset, empty, `TRUE`, `1`) lists neither, refuses their insert and only rewrites a Products Resource a build already has. Placed blocks keep working when it is turned off. To turn it on or off, set or unset it on the builder's Production scope and redeploy.
 - `PUBLISHER_HOST` — the platform base domain an org's site is served from (`<subdomain>.<PUBLISHER_HOST>`); with the org subdomain mirrored into `Project.domain` (§5) every address the builder shows is the real one. **Defaults to `organizeos.org` in code**, so an unset env is correct rather than dangerous; upstream defaulted it to its own staging domain, which is what made a missing value advertise a Webstudio address. Set it only to point a deployment somewhere else.
 - `TRPC_SERVER_API_TOKEN` — the builder's service token. The publish executor uses it to sync the build **and** to report the outcome to `POST /internal/publish-status` (§5). Never commit a value: `apps/builder/.env` keeps it commented out, where upstream's sets an e2e token.
@@ -545,7 +548,11 @@ can be merged with minimal conflict.
   pinned by `shared/resources.organizeos.test.ts`; `cmsPanelEnabled` on
   `OrganizeosSite` (`shared/organizeos-site.ts`), set by `resolveOrganizeosSite`
   from `ORGANIZEOS_CMS_PANEL` in `env/env.server.ts`, passed by the loader in
-  `routes/_ui.(builder).tsx`; and the app's origin in that route's `frame-src`,
+  `routes/_ui.(builder).tsx`; `cmsNativeEnabled`, set by `resolveOrganizeosSite`
+  (with `isCmsNativeSwitchOn` and `parseCmsNativeOrgIds`) from
+  `ORGANIZEOS_CMS_NATIVE`, `ORGANIZEOS_CMS_NATIVE_ORG_IDS` and whether
+  `WEBSITES2_CMS_SECRET` is set, passed by the same loader's marked lines; and
+  the app's origin in that route's `frame-src`,
   through `builderFrameSrcPolicy` in `shared/frame-protection.ts`.
 - **Frame protection (§4).** `shared/frame-protection.ts`, with
   `shared/frame-protection.node.test.ts` and

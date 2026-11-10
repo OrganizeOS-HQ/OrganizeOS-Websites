@@ -171,6 +171,31 @@ export const isShopBlocksSwitchOn = (value: string | undefined) =>
   value === "true";
 
 /**
+ * Whether the deployment's native CMS screen switch is on:
+ * `ORGANIZEOS_CMS_NATIVE` is exactly `true`, the style of
+ * `ORGANIZEOS_CMS_PANEL`.
+ */
+export const isCmsNativeSwitchOn = (value: string | undefined) =>
+  value === "true";
+
+/**
+ * `ORGANIZEOS_CMS_NATIVE_ORG_IDS`: comma-separated organization ids, each
+ * trimmed and lower-cased; an entry that is not an organization id is dropped.
+ * Unset, empty or only separators lists no org. `parseOrgDenyList` is not
+ * reused: its malformed-entry rule (`{ all: true }`) would open an allow list
+ * to every org.
+ */
+export const parseCmsNativeOrgIds = (
+  value: string | undefined
+): ReadonlySet<string> =>
+  new Set(
+    (value ?? "")
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter((item) => ORGANIZATION_ID_PATTERN.test(item))
+  );
+
+/**
  * Describe the OrganizeOS org behind a project, or undefined for a project a
  * human owns (which is not an OrganizeOS site and gets upstream behavior).
  * Pure: the caller supplies the project's owner row, the deployment's
@@ -185,6 +210,9 @@ export const resolveOrganizeosSite = ({
   blocksDenyOrgIds,
   cmsPanel,
   shopBlocks,
+  cmsNative,
+  cmsNativeOrgIds,
+  cmsSecretSet,
 }: {
   owner: { provider: string | null; email: string | null };
   projectDomain: string;
@@ -195,6 +223,12 @@ export const resolveOrganizeosSite = ({
   cmsPanel?: string;
   /** The raw `ORGANIZEOS_SHOP_BLOCKS`: only `true` offers the Shop blocks. */
   shopBlocks?: string;
+  /** The raw `ORGANIZEOS_CMS_NATIVE`: only `true` turns the native CMS screen on. */
+  cmsNative?: string;
+  /** The raw `ORGANIZEOS_CMS_NATIVE_ORG_IDS`: the orgs that get the native CMS screen. */
+  cmsNativeOrgIds?: string;
+  /** Whether `WEBSITES2_CMS_SECRET` is set; never its value. */
+  cmsSecretSet?: boolean;
 }): OrganizeosSite | undefined => {
   if (owner.provider !== ORGANIZEOS_SERVICE_PROVIDER || owner.email === null) {
     return undefined;
@@ -220,6 +254,11 @@ export const resolveOrganizeosSite = ({
       isOrgDenied(parseOrgDenyList(blocksDenyOrgIds), organizationId) === false,
     cmsPanelEnabled: cmsPanel === "true",
     shopBlocksEnabled: isShopBlocksSwitchOn(shopBlocks),
+    cmsNativeEnabled:
+      cmsPanel === "true" &&
+      isCmsNativeSwitchOn(cmsNative) &&
+      cmsSecretSet === true &&
+      parseCmsNativeOrgIds(cmsNativeOrgIds).has(organizationId.toLowerCase()),
   };
 };
 
