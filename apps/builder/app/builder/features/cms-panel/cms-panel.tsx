@@ -290,6 +290,19 @@ const onOverlayEscape = (event: KeyboardEvent) => {
 };
 
 /**
+ * While the overlay shows, a clipboard event on a target that is not
+ * editable stops at the window, before the builder's document listeners;
+ * editable targets are untouched.
+ */
+const onOverlayClipboard = (event: ClipboardEvent) => {
+  if (isEditableTarget(event.target) === false) {
+    event.stopPropagation();
+  }
+};
+
+const clipboardEventTypes = ["copy", "cut", "paste"] as const;
+
+/**
  * The rail's right and bottom edges in the viewport, measured while the
  * overlay shows. Below the rail the builder's footer spans the full width,
  * so the overlay also covers that corner.
@@ -467,10 +480,16 @@ export const CmsOverlay = () => {
     document.addEventListener("keydown", onOverlayKeyDown, true);
     document.addEventListener("keydown", onOverlayEscape);
     document.addEventListener("pointerdown", onOverlayPointerDown, true);
+    for (const type of clipboardEventTypes) {
+      window.addEventListener(type, onOverlayClipboard, true);
+    }
     return () => {
       document.removeEventListener("keydown", onOverlayKeyDown, true);
       document.removeEventListener("keydown", onOverlayEscape);
       document.removeEventListener("pointerdown", onOverlayPointerDown, true);
+      for (const type of clipboardEventTypes) {
+        window.removeEventListener(type, onOverlayClipboard, true);
+      }
     };
   }, [isShown]);
 

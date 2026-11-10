@@ -1582,8 +1582,11 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     bubble phase, only when nothing took it (a design-system layer that
     dismisses calls `preventDefault`) and not in an input, a textarea, a
     select or a contenteditable. A hide by Escape, the close button or the
-    frame's close returns focus to the rail button. Keys typed inside the
-    frame never reach the builder or the canvas documents.
+    frame's close returns focus to the rail button. While the overlay
+    shows, `copy`, `cut` and `paste` on a target that is not editable stop
+    at the window, so the builder's document handlers never paste into the
+    hidden canvas; inputs and editable regions keep their own handling. Keys
+    typed inside the frame never reach the builder or the canvas documents.
   - **The frame.** `src` is
     `{platformUrl}/cms-panel/{organizationId}?theme=light`, both from
     `$organizeosSite` (the loader's org, never the page URL). The frame stays

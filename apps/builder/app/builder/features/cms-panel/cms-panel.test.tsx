@@ -432,6 +432,45 @@ describe("the CMS overlay in the builder", () => {
     return event;
   };
 
+  const clip = (type: "copy" | "cut" | "paste", target: Element) => {
+    const event = new ClipboardEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: new DataTransfer(),
+    });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+    return event;
+  };
+
+  // Spies on the document for copy, cut and paste, each in the capture and
+  // the bubble phase, as the builder's handlers listen
+  // (shared/copy-paste/copy-paste.ts). Returns them and their removal.
+  const spyOnDocumentClipboard = () => {
+    const spies = {
+      capture: { copy: vi.fn(), cut: vi.fn(), paste: vi.fn() },
+      bubble: { copy: vi.fn(), cut: vi.fn(), paste: vi.fn() },
+    };
+    const types = ["copy", "cut", "paste"] as const;
+    for (const type of types) {
+      document.addEventListener(type, spies.capture[type], true);
+      document.addEventListener(type, spies.bubble[type]);
+    }
+    const remove = () => {
+      for (const type of types) {
+        document.removeEventListener(type, spies.capture[type], true);
+        document.removeEventListener(type, spies.bubble[type]);
+      }
+    };
+    const calls = (phase: "capture" | "bubble") =>
+      types.reduce(
+        (sum, type) => sum + spies[phase][type].mock.calls.length,
+        0
+      );
+    return { spies, remove, calls };
+  };
+
   // jsdom has no PointerEvent constructor; the listener reads only the target.
   const pointerDown = (target: EventTarget) => {
     act(() => {
@@ -829,6 +868,20 @@ describe("the CMS overlay in the builder", () => {
       post({ type: "cms.close_requested" });
       expect(isShown()).toBe(false);
       expect(document.activeElement).toBe(railButton());
+    });
+
+    test("a paste on the overlay itself reaches no builder handler", () => {
+      const clipboard = spyOnDocumentClipboard();
+      try {
+        render();
+        clickRail();
+        const event = clip("paste", overlay()!);
+        expect(clipboard.calls("capture")).toBe(0);
+        expect(clipboard.calls("bubble")).toBe(0);
+        expect(event.defaultPrevented).toBe(false);
+      } finally {
+        clipboard.remove();
+      }
     });
 
     test("another rail tab hides it and shows its panel", () => {
@@ -1553,6 +1606,116 @@ describe("the CMS overlay in the builder", () => {
         });
         expect(isShown()).toBe(false);
         expect(document.activeElement).toBe(railButton());
+      });
+    });
+
+    describe("the clipboard", () => {
+      const commands = { copy: vi.fn(), cut: vi.fn(), paste: vi.fn() };
+      let unsubscribe: (() => void) | undefined;
+      let clipboard: ReturnType<typeof spyOnDocumentClipboard> | undefined;
+
+      const row = () => document.querySelector<HTMLElement>("[data-row]")!;
+      const input = () => document.querySelector<HTMLElement>("[data-input]")!;
+      const editable = () =>
+        document.querySelector<HTMLElement>("[data-editable]")!;
+
+      const pressMeta = (key: string, target: Element) => {
+        const event = new KeyboardEvent("keydown", {
+          key,
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        act(() => {
+          target.dispatchEvent(event);
+        });
+      };
+
+      beforeEach(() => {
+        for (const command of Object.values(commands)) {
+          command.mockClear();
+        }
+        const emitter = createCommandsEmitter({
+          source: "cms-native-clipboard-test",
+          commands: [
+            {
+              name: "cmsTestCopy",
+              defaultHotkeys: ["meta+c"],
+              handler: commands.copy,
+            },
+            {
+              name: "cmsTestCut",
+              defaultHotkeys: ["meta+x"],
+              handler: commands.cut,
+            },
+            {
+              name: "cmsTestPaste",
+              defaultHotkeys: ["meta+v"],
+              handler: commands.paste,
+            },
+          ],
+        });
+        unsubscribe = emitter.subscribeCommands();
+        clipboard = spyOnDocumentClipboard();
+        render();
+        clickRail();
+        mountInScreen(
+          <div>
+            {/* a stand-in CMS row */}
+            <div data-row tabIndex={0}>
+              row
+            </div>
+            <input data-input />
+            {/* a stand-in for the rich-text editor */}
+            <div data-editable contentEditable suppressContentEditableWarning>
+              text
+            </div>
+          </div>
+        );
+      });
+
+      afterEach(() => {
+        unsubscribe?.();
+        unsubscribe = undefined;
+        clipboard?.remove();
+        clipboard = undefined;
+      });
+
+      test("Cmd+C, Cmd+X and Cmd+V on a CMS row reach no builder handler", () => {
+        row().focus();
+        for (const key of ["c", "x", "v"]) {
+          pressMeta(key, row());
+        }
+        const events = (["copy", "cut", "paste"] as const).map((type) =>
+          clip(type, row())
+        );
+        expect(commands.copy).not.toHaveBeenCalled();
+        expect(commands.cut).not.toHaveBeenCalled();
+        expect(commands.paste).not.toHaveBeenCalled();
+        expect(clipboard!.calls("capture")).toBe(0);
+        expect(clipboard!.calls("bubble")).toBe(0);
+        // The browser still copies text the person selected.
+        for (const event of events) {
+          expect(event.defaultPrevented).toBe(false);
+        }
+      });
+
+      test("copy, cut and paste in an input and in a contenteditable still reach their handlers", () => {
+        clip("paste", input());
+        clip("paste", editable());
+        clip("copy", input());
+        clip("cut", editable());
+        expect(clipboard!.calls("capture")).toBe(4);
+        expect(clipboard!.spies.capture.paste).toHaveBeenCalledTimes(2);
+        expect(clipboard!.spies.capture.copy).toHaveBeenCalledTimes(1);
+        expect(clipboard!.spies.capture.cut).toHaveBeenCalledTimes(1);
+      });
+
+      test("closed, the overlay leaves the clipboard alone", () => {
+        clickRail();
+        expect(isShown()).toBe(false);
+        clip("paste", row());
+        expect(clipboard!.spies.capture.paste).toHaveBeenCalledTimes(1);
       });
     });
 
