@@ -1,9 +1,50 @@
-import { describe, expect, test } from "vitest";
-import { matchCmsPath } from "./organizeos-cms-route.server";
+import { randomUUID } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
+import vector from "~/shared/__fixtures__/cms-actor-assertion.json";
+import type { SessionData } from "~/services/auth.server.utils";
+import type { OrganizeosBindingOutcome } from "~/services/auth-strategy/organizeos-session.server";
+import type { ProjectOrganization } from "~/shared/db/organizeos-project-org.server";
+import {
+  CMS_PLATFORM_BASE_PATH,
+  cmsCanonicalTarget,
+  hashCmsBytes,
+  type CmsForwardAnswer,
+  type CmsForwardRequest,
+} from "~/shared/organizeos-cms.server";
+
+// The enforce cases run the real session read over these.
+const env = vi.hoisted(() => ({
+  ORGANIZEOS_SSO_PUBLIC_KEY: "key",
+  ORGANIZEOS_SESSION_BINDING: "enforce",
+  POSTGREST_URL: "http://localhost:3000",
+  POSTGREST_API_KEY: "service-key",
+}));
+const authenticator = vi.hoisted(() => ({ isAuthenticated: vi.fn() }));
+const builderAuthenticator = vi.hoisted(() => ({ isAuthenticated: vi.fn() }));
+const rpc = vi.hoisted(() => vi.fn());
+const createClient = vi.hoisted(() => vi.fn(() => ({ rpc })));
+
+vi.mock("~/env/env.server", () => ({ default: env }));
+vi.mock("~/services/auth.server", () => ({ authenticator }));
+vi.mock("~/services/builder-auth.server", () => ({ builderAuthenticator }));
+vi.mock("@webstudio-is/postgrest/index.server", () => ({ createClient }));
+
+import {
+  checkOrganizeosBinding,
+  readBuilderSession,
+  resetOrganizeosBindingCache,
+} from "~/services/auth-strategy/organizeos-session.server";
+import {
+  handleCmsRequest,
+  matchCmsPath,
+  type CmsRouteDeps,
+} from "./organizeos-cms-route.server";
 
 // OrganizeOS fork: the native CMS screen's door to OrganizeOS. The route
-// forwards only a request whose path and query match one of its fixed
-// endpoints, rebuilt from the parsed values.
+// checks the person, forwards only a request whose path and query match one
+// of its fixed endpoints, rebuilt from the parsed values, with an actor
+// assertion minted for that one request, and relays OrganizeOS's answer.
 
 const c = "22222222-2222-4222-8222-222222222222";
 const i = "33333333-3333-4333-8333-333333333333";
@@ -152,4 +193,511 @@ describe("matchCmsPath", () => {
   ])("%s %s%s matches nothing", (method, splat, search) =>
     expect(match(method, splat, search)).toBeUndefined()
   );
+});
+
+const projectId = "11111111-1111-4111-8111-111111111111";
+const userId = "builder-user";
+const org = vector.payload.org;
+const base = `${CMS_PLATFORM_BASE_PATH}/${org}`;
+
+const utf8 = (text: string) => new TextEncoder().encode(text);
+
+const liveSession: SessionData = {
+  userId,
+  createdAt: 1,
+  organizeosUserId: vector.payload.sub,
+  organizeosSid: vector.payload.sid,
+};
+
+type State = {
+  authorization: { type: string; userId?: string };
+  session: SessionData | null;
+  outcome: OrganizeosBindingOutcome;
+  permits: { view: boolean; edit: boolean };
+  owner: ProjectOrganization;
+  secret: string | undefined;
+  answer: CmsForwardAnswer;
+  csrfInvalid: boolean;
+};
+
+let state: State;
+let sent: CmsForwardRequest[];
+let order: string[];
+let asked: string[];
+let contexts: number;
+let logged: ReturnType<typeof vi.spyOn>;
+
+const deps = (): CmsRouteDeps => ({
+  checkCsrf: async () => {
+    if (state.csrfInvalid) {
+      throw new Response(null, { status: 403 });
+    }
+  },
+  createContext: async () => {
+    contexts += 1;
+    return { authorization: state.authorization } as unknown as AppContext;
+  },
+  readSession: async () => state.session,
+  bindingOutcome: async () => state.outcome,
+  hasPermit: async (_projectId, permit) => {
+    asked.push(permit);
+    return state.permits[permit];
+  },
+  resolveOrganization: async () => {
+    order.push("owner");
+    return state.owner;
+  },
+  secret: state.secret,
+  now: () => vector.payload.iat * 1000,
+  randomId: () => {
+    order.push("mint");
+    return vector.payload.jti;
+  },
+  send: async (request) => {
+    order.push("send");
+    sent.push(request);
+    return state.answer;
+  },
+});
+
+type Call = {
+  method?: string;
+  splat?: string;
+  /** The request's own path after the project id, when it is not the splat. */
+  rawPath?: string;
+  search?: string;
+  headers?: Record<string, string>;
+  body?: BodyInit;
+  destination?: string;
+  routeProjectId?: string;
+  with?: CmsRouteDeps;
+};
+
+const call = ({
+  method = "GET",
+  splat = "access",
+  rawPath,
+  search = "",
+  headers = {},
+  body,
+  destination = "empty",
+  with: given,
+  ...rest
+}: Call = {}) => {
+  const request = new Request(
+    `https://p-${projectId}.builder.organizeos.org/rest/organizeos-cms/${projectId}/${rawPath ?? splat}${search}`,
+    {
+      method,
+      headers: {
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-dest": destination,
+        ...headers,
+      },
+      ...(body === undefined ? {} : { body, duplex: "half" }),
+    } as RequestInit
+  );
+  const routeProjectId =
+    "routeProjectId" in rest ? rest.routeProjectId : projectId;
+  return handleCmsRequest(request, routeProjectId, splat, given ?? deps());
+};
+
+const claimsOf = (header: string) =>
+  JSON.parse(Buffer.from(header.split(".")[1], "base64url").toString("utf8"));
+
+const errorOf = async (response: Response) =>
+  ((await response.json()) as { error?: string }).error;
+
+const rejection = async (promise: Promise<unknown>): Promise<unknown> => {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+};
+
+beforeEach(() => {
+  state = {
+    authorization: { type: "user", userId },
+    session: { ...liveSession },
+    outcome: "live",
+    permits: { view: true, edit: true },
+    owner: { organizationId: org },
+    secret: vector.secret,
+    answer: { kind: "answer", status: 200, bytes: utf8('{"ok":1}') },
+    csrfInvalid: false,
+  };
+  sent = [];
+  order = [];
+  asked = [];
+  contexts = 0;
+  logged = vi.spyOn(console, "error").mockImplementation(() => {});
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("rest.organizeos-cms", () => {
+  test("mints the fixture's assertion for the fixture's request and sends it once", async () => {
+    const target = new URL(vector.target, "https://app.organizeos.org");
+    const splat = target.pathname.slice(
+      `${CMS_PLATFORM_BASE_PATH}/${vector.payload.org}/`.length
+    );
+    const response = await call({
+      splat,
+      search: target.search,
+      headers:
+        vector.payload.ip === null ? {} : { "x-real-ip": vector.payload.ip },
+    });
+    expect(response.status).toBe(200);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toEqual({
+      method: "GET",
+      target: cmsCanonicalTarget(target.pathname, target.searchParams),
+      header: vector.header,
+      timeoutMs: 15_000,
+    });
+    expect(sent[0].target).toBe(vector.target);
+  });
+
+  test("sends the rebuilt path and query, keys sorted, never the request's", async () => {
+    await call({
+      splat: `collections/${c}/items`,
+      search: "?q=caf%C3%A9&page=2",
+    });
+    const expected = `${base}/collections/${c}/items?page=2&q=caf%C3%A9`;
+    expect(sent[0].target).toBe(expected);
+    expect(claimsOf(sent[0].header).p).toBe(hashCmsBytes(expected));
+  });
+
+  test("takes the org from the project's owner, whatever the request says", async () => {
+    await call({ headers: { "x-organization-id": c } });
+    expect(sent[0].target).toBe(`${base}/access`);
+    expect(claimsOf(sent[0].header).org).toBe(org);
+  });
+
+  test("lower-cases a mixed-case org before minting and building the path", async () => {
+    state.owner = { organizationId: org.toUpperCase() };
+    expect(org.toUpperCase()).not.toBe(org);
+    await call();
+    expect(claimsOf(sent[0].header).org).toBe(org);
+    expect(sent[0].target).toBe(`${base}/access`);
+  });
+
+  test("answers 405 to any method but GET, POST and PUT, reading nothing", async () => {
+    for (const method of ["DELETE", "PATCH", "HEAD"]) {
+      const response = await call({ method });
+      expect(response.status, method).toBe(405);
+      if (method !== "HEAD") {
+        expect(await errorOf(response)).toBe("invalid");
+      }
+      expect(response.headers.get("cache-control")).toContain("no-store");
+    }
+    expect(contexts).toBe(0);
+    expect(order).toEqual([]);
+  });
+
+  test("a missing project id is 404 not_found", async () => {
+    const response = await call({ routeProjectId: undefined });
+    expect(response.status).toBe(404);
+    expect(await errorOf(response)).toBe("not_found");
+    expect(contexts).toBe(0);
+  });
+
+  test("refuses a cross-origin request, a document load and a bad CSRF token", async () => {
+    const refusals = [
+      await rejection(call({ headers: { "sec-fetch-site": "cross-site" } })),
+      await rejection(call({ destination: "document" })),
+    ];
+    state.csrfInvalid = true;
+    refusals.push(await rejection(call()));
+    for (const refusal of refusals) {
+      expect(refusal).toBeInstanceOf(Response);
+      expect((refusal as Response).status).toBe(403);
+    }
+    expect(contexts).toBe(0);
+    expect(order).toEqual([]);
+  });
+
+  test("an anonymous request or no session is 401 unauthorized, nothing minted", async () => {
+    state.authorization = { type: "anonymous" };
+    let response = await call();
+    expect(response.status).toBe(401);
+    expect(await errorOf(response)).toBe("unauthorized");
+    state.authorization = { type: "user", userId };
+    state.session = null;
+    response = await call();
+    expect(response.status).toBe(401);
+    expect(await errorOf(response)).toBe("unauthorized");
+    expect(order).toEqual([]);
+  });
+
+  test("a share link's token, a service call and another user's session are 403 forbidden", async () => {
+    for (const change of [
+      () => (state.authorization = { type: "token" }),
+      () => (state.authorization = { type: "service" }),
+      () => (state.session = { ...liveSession, userId: "someone-else" }),
+    ]) {
+      change();
+      const response = await call();
+      expect(response.status).toBe(403);
+      expect(await errorOf(response)).toBe("forbidden");
+      state.authorization = { type: "user", userId };
+      state.session = { ...liveSession };
+    }
+    expect(order).toEqual([]);
+  });
+
+  test("under observe, a binding of pass, missing or dead is 401 unauthorized and error is 503 unavailable", async () => {
+    for (const [outcome, status, error] of [
+      ["pass", 401, "unauthorized"],
+      ["missing", 401, "unauthorized"],
+      ["dead", 401, "unauthorized"],
+      ["error", 503, "unavailable"],
+    ] as const) {
+      state.outcome = outcome;
+      const response = await call();
+      expect(response.status, outcome).toBe(status);
+      expect(await errorOf(response)).toBe(error);
+    }
+    expect(asked).toEqual([]);
+    expect(order).toEqual([]);
+  });
+
+  test("a live binding without the session's OrganizeOS user or session is 401 unauthorized", async () => {
+    state.session = {
+      userId,
+      createdAt: 1,
+      organizeosUserId: vector.payload.sub,
+    };
+    expect((await call()).status).toBe(401);
+    state.session = { userId, createdAt: 1, organizeosSid: vector.payload.sid };
+    expect((await call()).status).toBe(401);
+    expect(order).toEqual([]);
+  });
+
+  test("asks for view on a GET and edit on a POST and a PUT", async () => {
+    await call();
+    await call({ method: "POST", splat: `collections/${c}/items`, body: "{}" });
+    await call({
+      method: "PUT",
+      splat: `collections/${c}/items/${i}`,
+      body: "{}",
+    });
+    expect(asked).toEqual(["view", "edit", "edit"]);
+  });
+
+  test("without the permit, 403 forbidden, nothing read", async () => {
+    state.permits = { view: false, edit: true };
+    const response = await call();
+    expect(response.status).toBe(403);
+    expect(await errorOf(response)).toBe("forbidden");
+    state.permits = { view: true, edit: false };
+    const write = await call({
+      method: "POST",
+      splat: `collections/${c}/items`,
+      body: "{}",
+    });
+    expect(write.status).toBe(403);
+    expect(order).toEqual([]);
+  });
+
+  test("without the secret, or with a blank one, 503 unavailable, nothing read or minted", async () => {
+    for (const secret of [undefined, "", "  "]) {
+      state.secret = secret;
+      const response = await call();
+      expect(response.status).toBe(503);
+      expect(await errorOf(response)).toBe("unavailable");
+    }
+    expect(order).toEqual([]);
+  });
+
+  test("an owner read that fails is 503 unavailable; a project no org owns is 403 forbidden", async () => {
+    state.owner = { failed: true };
+    let response = await call();
+    expect(response.status).toBe(503);
+    expect(await errorOf(response)).toBe("unavailable");
+    expect(order).toEqual(["owner"]);
+    order = [];
+    state.owner = { none: true };
+    response = await call();
+    expect(response.status).toBe(403);
+    expect(await errorOf(response)).toBe("forbidden");
+    expect(order).toEqual(["owner"]);
+  });
+
+  test("an unmatched path is 404 not_found and is never forwarded", async () => {
+    for (const splat of ["nothing", "access/", `collections/${c}/../access`]) {
+      order = [];
+      const response = await call({ splat });
+      expect(response.status, splat).toBe(404);
+      expect(await errorOf(response)).toBe("not_found");
+      expect(order).toEqual(["owner"]);
+    }
+    expect(sent).toEqual([]);
+  });
+
+  test("an encoded slash, backslash or dot in the request's path is 404, whatever the splat", async () => {
+    for (const rawPath of [
+      `collections%2F${c}`,
+      `collections/${c}%5Citems`,
+      `collections/%2E%2E/access`,
+      `collections/${c}%2e`,
+    ]) {
+      const response = await call({ rawPath, splat: `collections/${c}` });
+      expect(response.status, rawPath).toBe(404);
+      expect(await errorOf(response)).toBe("not_found");
+    }
+    expect(sent).toEqual([]);
+  });
+
+  test("relays the platform's answer byte for byte, private and no-store", async () => {
+    const sentBytes =
+      '{ "item" : { "updatedAt" : "2026-11-07T10:00:00.123456+00:00" } }';
+    state.answer = { kind: "answer", status: 200, bytes: utf8(sentBytes) };
+    const response = await call();
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(sentBytes);
+    expect(response.headers.get("content-type")).toBe("application/json");
+    expect(response.headers.get("cache-control")).toContain("private");
+    expect(response.headers.get("cache-control")).toContain("no-store");
+  });
+
+  test("relays a platform 401 with its code, refused and unauthorized each", async () => {
+    for (const code of ["refused", "unauthorized"]) {
+      const bytes = JSON.stringify({ error: code });
+      state.answer = { kind: "answer", status: 401, bytes: utf8(bytes) };
+      const response = await call();
+      expect(response.status).toBe(401);
+      expect(await response.text()).toBe(bytes);
+    }
+  });
+
+  test("a timeout, a failed send and an answer that is not JSON are 502 unavailable, sent once", async () => {
+    for (const answer of [
+      { kind: "timeout" },
+      { kind: "failed" },
+      { kind: "not_json" },
+    ] as const) {
+      sent = [];
+      state.answer = answer;
+      const response = await call();
+      expect(response.status, answer.kind).toBe(502);
+      expect(await errorOf(response)).toBe("unavailable");
+      expect(sent).toHaveLength(1);
+    }
+  });
+
+  test("two requests get two jtis, each a lower-case UUID, and ip is null without an address header", async () => {
+    const given = { ...deps(), randomId: randomUUID };
+    await call({ with: given });
+    await call({ with: given });
+    const [first, second] = sent.map((request) => claimsOf(request.header));
+    const uuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    expect(first.jti).toMatch(uuid);
+    expect(second.jti).toMatch(uuid);
+    expect(first.jti).not.toBe(second.jti);
+    expect(first.ip).toBeNull();
+    expect(second.ip).toBeNull();
+  });
+
+  test("logs codes only: never the org, the user, the session, the project or the header", async () => {
+    await call({ headers: { "x-real-ip": "203.0.113.7" } });
+    const header = sent[0].header;
+    for (const answer of [
+      { kind: "timeout" },
+      { kind: "failed" },
+      { kind: "not_json" },
+    ] as const) {
+      state.answer = answer;
+      await call({ headers: { "x-real-ip": "203.0.113.7" } });
+    }
+    state.owner = { failed: true };
+    await call();
+    state.secret = undefined;
+    await call();
+    state.outcome = "error";
+    await call();
+    state.outcome = "dead";
+    await call();
+    expect(logged.mock.calls).toHaveLength(7);
+    for (const args of logged.mock.calls) {
+      expect(args).toHaveLength(1);
+      expect(args[0]).toMatch(/^\[organizeos-cms\] [a-z_]+$/);
+    }
+    const text = JSON.stringify(logged.mock.calls);
+    for (const value of [
+      org,
+      vector.payload.sub,
+      vector.payload.sid,
+      projectId,
+      userId,
+      header,
+      "203.0.113.7",
+    ]) {
+      expect(text).not.toContain(value);
+    }
+  });
+});
+
+describe("under ORGANIZEOS_SESSION_BINDING=enforce", () => {
+  const enforceDeps = (): CmsRouteDeps => ({
+    ...deps(),
+    readSession: readBuilderSession,
+    bindingOutcome: async (session) =>
+      (await checkOrganizeosBinding(session)).outcome,
+    // createContext answers anonymous when the session read is null, as it
+    // then does.
+    createContext: async (request) =>
+      ({
+        authorization:
+          (await readBuilderSession(request)) === null
+            ? { type: "anonymous" }
+            : { type: "user", userId },
+      }) as unknown as AppContext,
+  });
+
+  beforeEach(() => {
+    resetOrganizeosBindingCache();
+    authenticator.isAuthenticated.mockReset();
+    builderAuthenticator.isAuthenticated.mockReset();
+    builderAuthenticator.isAuthenticated.mockResolvedValue({ ...liveSession });
+    rpc.mockReset();
+    rpc.mockResolvedValue({ data: true, error: null });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  test.each([
+    [
+      "missing",
+      () =>
+        builderAuthenticator.isAuthenticated.mockResolvedValue({
+          userId,
+          createdAt: 1,
+        }),
+    ],
+    ["dead", () => rpc.mockResolvedValue({ data: false, error: null })],
+    [
+      "error",
+      () => rpc.mockResolvedValue({ data: null, error: { message: "down" } }),
+    ],
+  ])(
+    "a %s binding is 401 unauthorized, never 403, nothing minted",
+    async (_, arrange) => {
+      arrange();
+      const response = await call({ with: enforceDeps() });
+      expect(response.status).toBe(401);
+      expect(await errorOf(response)).toBe("unauthorized");
+      expect(order).toEqual([]);
+      expect(sent).toEqual([]);
+    }
+  );
+
+  test("a live binding is forwarded", async () => {
+    const response = await call({ with: enforceDeps() });
+    expect(response.status).toBe(200);
+    expect(sent).toHaveLength(1);
+    expect(rpc).toHaveBeenCalled();
+  });
 });
