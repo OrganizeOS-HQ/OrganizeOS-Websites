@@ -1,0 +1,23 @@
+{
+  "status": 200,
+  "body": {
+    "collection": {
+      "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      "slug": "posts",
+      "name": "Posts",
+      "singularName": "Post",
+      "isPublic": true,
+      "fields": [
+        {
+          "key": "title",
+          "label": "Title",
+          "kind": "text",
+          "required": true,
+          "isTitle": true
+        },
+        { "key": "body", "label": "Body", "kind": "richtext" },
+        { "key": "cover", "label": "Cover", "kind": "image" }
+      ]
+    }
+  }
+}
