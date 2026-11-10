@@ -7,12 +7,20 @@
  * publishing and the edit lock. `flags` simulates a conflict and each
  * refusal.
  */
-import { getItemTitle, isSameValue, slugify, isSlug } from "./cms-logic";
 import {
+  getItemTitle,
+  isSameValue,
+  isSlug,
+  normalizeCollection,
+  slugify,
+} from "./cms-logic";
+import {
+  CMS_IMAGE_MAX_BYTES,
+  CMS_IMAGE_TYPES,
   CMS_PAGE_SIZE,
+  CMS_SEARCH_IDS_MAX,
   type CmsAccess,
   type CmsCatalogView,
-  type CmsCollection,
   type CmsErrorCode,
   type CmsFailure,
   type CmsField,
@@ -20,6 +28,8 @@ import {
   type CmsItem,
   type CmsItemData,
   type CmsItemStatus,
+  type CmsRawCollection,
+  type CmsRawFieldKind,
   type CmsRichTextValue,
   type CmsSource,
 } from "./cms-source";
@@ -34,6 +44,11 @@ export type SampleCmsFlags = {
    * one field and moves the lock, then answers `conflict`.
    */
   conflictOnNextWrite?: boolean;
+  /**
+   * The next write lands, then answers `unavailable`, as a timeout whose
+   * write went through: the editor's unknown-outcome rule reads it back.
+   */
+  lostAnswerOnNextWrite?: boolean;
   /** Milliseconds each call waits. */
   latency?: number;
 };
@@ -63,6 +78,32 @@ export const SAMPLE_COLLECTION_IDS = {
   leadership: uuid(3, 0),
   locals: uuid(4, 0),
 } as const;
+
+/** Items the stories open. */
+export const SAMPLE_ITEM_IDS = {
+  /** Published, with staged changes. */
+  safeStaffingNow: uuid(2, 1),
+  /** Published, every field kind set. */
+  fairContract2027: uuid(2, 2),
+  /** A draft whose story holds an image: read-only rich text. */
+  childcareStipend: uuid(2, 9),
+  /** A Lite-era photo, a bare URL string. */
+  lenaFischer: uuid(3, 7),
+} as const;
+
+/** About 80 characters a name, for the stories that check truncation. */
+const longCollectionNames: Record<string, string> = {
+  news: "News and bargaining updates from every local, unit and chapter across Eastbrook",
+  campaigns:
+    "Campaigns for the 2027 statewide master agreement and every bargaining unit",
+  leadership:
+    "Leadership, stewards and executive board members of the Eastbrook Allied Workers",
+  locals:
+    "Locals and chapters across the Eastbrook metropolitan region and the county",
+};
+
+const lengthen = (title: string) =>
+  `${title}: what members across every Eastbrook local need to know this year`;
 
 const svgDataUri = (svg: string) =>
   `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
@@ -111,7 +152,9 @@ const richText = (html: string): CmsRichTextValue => ({
     .trim(),
 });
 
-const newsFields: CmsField[] = [
+type SampleField = CmsField<CmsRawFieldKind>;
+
+const newsFields: SampleField[] = [
   {
     key: "title",
     label: "Headline",
@@ -163,7 +206,7 @@ const newsFields: CmsField[] = [
 ];
 
 /** Every one of the 15 kinds, in schema order. */
-const campaignFields: CmsField[] = [
+const campaignFields: SampleField[] = [
   {
     key: "name",
     label: "Name",
@@ -217,7 +260,8 @@ const campaignFields: CmsField[] = [
   },
 ];
 
-const leadershipFields: CmsField[] = [
+/** Stored before the kinds were renamed: `url` and `boolean` (E2 as is). */
+const leadershipFields: SampleField[] = [
   {
     key: "name",
     label: "Name",
@@ -231,6 +275,8 @@ const leadershipFields: CmsField[] = [
   { key: "photo", label: "Photo", kind: "image" },
   { key: "email", label: "Email", kind: "email" },
   { key: "phone", label: "Phone", kind: "phone" },
+  { key: "website", label: "Website", kind: "url" },
+  { key: "onBoard", label: "On the executive board", kind: "boolean" },
   {
     key: "local",
     label: "Home local",
@@ -239,7 +285,7 @@ const leadershipFields: CmsField[] = [
   },
 ];
 
-const localFields: CmsField[] = [
+const localFields: SampleField[] = [
   {
     key: "name",
     label: "Name",
@@ -267,8 +313,7 @@ type SampleItem = {
   publishedAt: string | null;
 };
 
-type SampleCollection = Omit<CmsCollection, "fields"> & {
-  fields: CmsField[];
+type SampleCollection = CmsRawCollection & {
   items: SampleItem[];
 };
 
@@ -395,8 +440,12 @@ const newsHeadlines = () => {
 
 const dateOnly = (time: number) => new Date(time).toISOString().slice(0, 10);
 
-const buildCollections = (now: number): SampleCollection[] => {
+const buildCollections = (
+  now: number,
+  longNames: boolean
+): SampleCollection[] => {
   const stamp = (ago: number) => toPostgrestTimestamp(now - ago);
+  const title = (name: string) => (longNames ? lengthen(name) : name);
 
   const item = ({
     id,
@@ -439,16 +488,22 @@ const buildCollections = (now: number): SampleCollection[] => {
         name,
         role,
         bio: `${name.split(" ")[0]} has worked in the Eastbrook transit and health systems for over a decade and was elected ${role.toLowerCase()} in 2025.`,
-        photo: portraitImage(index, name),
+        // the last one was saved by Lite, as a bare URL
+        photo:
+          index === 6
+            ? portraitImage(index, name).url
+            : portraitImage(index, name),
         email: `${name.split(" ")[0].toLowerCase()}@eastbrookworkers.example`,
         phone: `(555) 014-${String(2200 + index * 17).padStart(4, "0")}`,
+        website: `https://eastbrookworkers.example/leadership/${slugify(name)}`,
+        onBoard: index < 3,
         local: null,
       },
     })
   );
 
-  const headlines = newsHeadlines();
-  const newsItems = headlines.map((title, index) => {
+  const headlines = newsHeadlines().map(title);
+  const newsItems = headlines.map((headline, index) => {
     const status: CmsItemStatus =
       index === 0 || index === 1 || index === 7 || index === 23
         ? "draft"
@@ -466,16 +521,17 @@ const buildCollections = (now: number): SampleCollection[] => {
       staged:
         status === "published" && (index === 2 || index === 5 || index === 30)
           ? {
-              summary: `${title}: corrected figures from the members' meeting.`,
+              summary: `${headline}: corrected figures from the members' meeting.`,
             }
           : undefined,
       data: {
-        title,
-        summary: `${title}. Read what members won, what comes next, and how to get involved.`,
+        title: headline,
+        summary: `${headline}. Read what members won, what comes next, and how to get involved.`,
         body: richText(
-          `<p>${title}. Members met on Tuesday evening and voted to move forward.</p><p>Read the full statement from the <a href="https://eastbrookworkers.example/bargaining">bargaining committee</a>.</p>`
+          `<p>${headline}. Members met on Tuesday evening and voted to move forward.</p><p>Read the full statement from the <a href="https://eastbrookworkers.example/bargaining">bargaining committee</a>.</p>`
         ),
-        cover: index % 4 === 0 ? coverImage(index, title.split(":")[0]) : null,
+        cover:
+          index % 4 === 0 ? coverImage(index, headline.split(":")[0]) : null,
         publishedOn: dateOnly(now - ago),
         category: categories[index % categories.length],
         author: leaderItems[index % leaderItems.length].id,
@@ -496,7 +552,7 @@ const buildCollections = (now: number): SampleCollection[] => {
     "published",
     "draft",
   ];
-  const campaignItems = campaigns.map((name, index) =>
+  const campaignItems = campaigns.map(title).map((name, index) =>
     item({
       id: uuid(2, index + 1),
       titleKey: "name",
@@ -517,9 +573,14 @@ const buildCollections = (now: number): SampleCollection[] => {
             ? "Safe ratios on every ward, every shift."
             : `${name}: what we are asking for, who it covers, and how to add your name.`,
         story: richText(
-          `<p>Across Eastbrook, members are organizing for <strong>${name.toLowerCase()}</strong>. Management has had two years to fix it.</p><p>Sign the petition, then bring a coworker to the next <em>general meeting</em>.<br>Every signature is counted at the table.</p><hr><p>Questions? Ask your <a href="https://eastbrookworkers.example/stewards">steward</a>.</p>`
+          `<p>Across Eastbrook, members are organizing for <strong>${name.toLowerCase()}</strong>. Management has had two years to fix it.</p>${
+            // saved by the classic CMS with a picture: read-only here
+            index === 8
+              ? `<p><img src="${coverImage(index, campaigns[index]).url}" alt="Members at the childcare rally"></p>`
+              : ""
+          }<p>Sign the petition, then bring a coworker to the next <em>general meeting</em>.<br>Every signature is counted at the table.</p><hr><p>Questions? Ask your <a href="https://eastbrookworkers.example/stewards">steward</a>.</p>`
         ),
-        cover: coverImage(index, name),
+        cover: coverImage(index, campaigns[index]),
         petition: `https://eastbrookworkers.example/petitions/${slugify(name)}`,
         contactEmail: "campaigns@eastbrookworkers.example",
         hotline: "(555) 014-3300",
@@ -537,7 +598,7 @@ const buildCollections = (now: number): SampleCollection[] => {
     })
   );
 
-  return [
+  const collections: SampleCollection[] = [
     {
       id: SAMPLE_COLLECTION_IDS.news,
       slug: "news",
@@ -575,40 +636,34 @@ const buildCollections = (now: number): SampleCollection[] => {
       items: [],
     },
   ];
+  return longNames
+    ? collections.map((collection) => ({
+        ...collection,
+        name: longCollectionNames[collection.slug] ?? collection.name,
+      }))
+    : collections;
 };
 
-/** The catalog side of the sample: one stale row and two orphans. */
+/** The catalog side of the sample: one collection's item page is stale. */
 export const sampleCatalogView: CmsCatalogView = {
-  actionsEnabled: true,
-  rows: {
-    news: { hasItemPage: true, isStale: false, isSitemapOrphan: false },
-    campaigns: { hasItemPage: true, isStale: true, isSitemapOrphan: false },
-    leadership: { hasItemPage: false, isStale: false, isSitemapOrphan: false },
-  },
-  orphans: [
-    { name: "Press releases", isStale: false, sitemapSlug: "press-releases" },
-    { name: "Events", isStale: true },
-  ],
+  staleSlugs: ["campaigns"],
 };
-
-const IMAGE_TYPES: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/gif": "gif",
-  "image/webp": "webp",
-};
-const IMAGE_MAX_BYTES = 4 * 1024 * 1024;
 
 export const createSampleCmsSource = ({
   now = Date.now(),
   flags = {},
   access = { canEdit: true, canPublish: true, canManageSettings: true },
+  longNames = false,
 }: {
   now?: number;
   flags?: SampleCmsFlags;
   access?: CmsAccess;
+  /** Collection names and item titles of about 80 characters. */
+  longNames?: boolean;
 } = {}): SampleCmsSource => {
-  const collections = buildCollections(now);
+  const collections = buildCollections(now, longNames);
+  /** E6's create-once keys: clientId to the item it made. */
+  const created = new Map<string, string>();
   let clock = now;
   const tick = () => {
     clock += 1000;
@@ -646,7 +701,16 @@ export const createSampleCmsSource = ({
   });
 
   const titleOf = (collection: SampleCollection, sample: SampleItem) =>
-    getItemTitle(sample.data, collection.fields);
+    getItemTitle(sample.data, normalizeCollection(collection).fields);
+
+  /** A write that lands and loses its answer, once. */
+  const loseAnswer = (): CmsFailure | undefined => {
+    if (flags.lostAnswerOnNextWrite) {
+      flags.lostAnswerOnNextWrite = false;
+      return { error: "unavailable" };
+    }
+    return undefined;
+  };
 
   /** The lock check, and the simulated edit by someone else. */
   const checkLock = (
@@ -687,7 +751,8 @@ export const createSampleCmsSource = ({
         (other) => other.slug === slug && other.id !== itemId
       )
     ) {
-      return { error: "slug_taken", field: "slug" };
+      // 23505 carries no field (5.7)
+      return { error: "slug_taken" };
     }
     return undefined;
   };
@@ -779,6 +844,13 @@ export const createSampleCmsSource = ({
         title: titleOf(collection, sample),
         status: sample.status,
       });
+      // E5's input rule: at least one of the two, at most 100 ids
+      if (
+        (q === undefined && ids === undefined) ||
+        (ids !== undefined && ids.length > CMS_SEARCH_IDS_MAX)
+      ) {
+        return { error: "invalid" };
+      }
       if (ids !== undefined) {
         return {
           items: ids.flatMap((id) => {
@@ -800,7 +872,7 @@ export const createSampleCmsSource = ({
       };
     },
 
-    async createItem(collectionId, { slug, data }) {
+    async createItem(collectionId, { clientId, slug, data }) {
       const failure = await refusal(true);
       if (failure) {
         return failure;
@@ -809,7 +881,15 @@ export const createSampleCmsSource = ({
       if (collection === undefined) {
         return { error: "not_found" };
       }
-      const finalSlug = slug ?? slugify(getItemTitle(data, collection.fields));
+      // a repeat of a create that went through answers its item (200)
+      const madeId = created.get(`${collectionId}:${clientId}`);
+      const made = collection.items.find((sample) => sample.id === madeId);
+      if (made !== undefined) {
+        return { item: toItem(made) };
+      }
+      const finalSlug =
+        slug ??
+        slugify(getItemTitle(data, normalizeCollection(collection).fields));
       const slugFailure = checkSlug(collection, finalSlug);
       if (slugFailure) {
         return slugFailure;
@@ -828,7 +908,8 @@ export const createSampleCmsSource = ({
         publishedAt: null,
       };
       collection.items.unshift(sample);
-      return { item: toItem(sample) };
+      created.set(`${collectionId}:${clientId}`, sample.id);
+      return loseAnswer() ?? { item: toItem(sample) };
     },
 
     async updateItem(collectionId, itemId, { slug, data, expectedUpdatedAt }) {
@@ -860,7 +941,7 @@ export const createSampleCmsSource = ({
           sample.liveSlug !== sample.slug;
       }
       sample.updatedAt = toPostgrestTimestamp(tick());
-      return { item: toItem(sample) };
+      return loseAnswer() ?? { item: toItem(sample) };
     },
 
     async publishItem(collectionId, itemId, { expectedUpdatedAt }) {
@@ -886,7 +967,7 @@ export const createSampleCmsSource = ({
       sample.hasStagedChanges = false;
       sample.publishedAt = toPostgrestTimestamp(time);
       sample.updatedAt = toPostgrestTimestamp(time);
-      return { item: toItem(sample) };
+      return loseAnswer() ?? { item: toItem(sample) };
     },
 
     async discardItemChanges(collectionId, itemId, { expectedUpdatedAt }) {
@@ -911,7 +992,7 @@ export const createSampleCmsSource = ({
         sample.hasStagedChanges = false;
         sample.updatedAt = toPostgrestTimestamp(tick());
       }
-      return { item: toItem(sample) };
+      return loseAnswer() ?? { item: toItem(sample) };
     },
 
     async uploadImage(file) {
@@ -919,8 +1000,8 @@ export const createSampleCmsSource = ({
       if (failure) {
         return failure;
       }
-      const extension = IMAGE_TYPES[file.type];
-      if (extension === undefined || file.size > IMAGE_MAX_BYTES) {
+      const extension = CMS_IMAGE_TYPES[file.type];
+      if (extension === undefined || file.size > CMS_IMAGE_MAX_BYTES) {
         return { error: "invalid", field: "file" };
       }
       return {

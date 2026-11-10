@@ -3,14 +3,20 @@
  * docs/superpowers/specs/2026-11-07-native-cms-in-the-builder-design.md,
  * 4.3): the collections column, then the items view or the item editor.
  *
- * Its state is local (D10): React state, and `$cmsNativeDirty` for the
- * window's `beforeunload`. Nothing here reads or writes the build's stores;
- * W2's overlay passes the door's `CmsSource`, the catalog join and the
- * collection actions in.
+ * Its state is local (D10): React state, and `$cmsNativeDirty`
+ * (`cms-native-stores.ts`) for the window's `beforeunload`. Nothing here
+ * reads or writes the build's stores; W2's overlay passes the door's
+ * `CmsSource`, the catalog join and the collection actions in.
  */
-import { useCallback, useEffect, useState } from "react";
-import { atom } from "nanostores";
 import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  Box,
   Button,
   cssVar,
   Dialog,
@@ -21,13 +27,13 @@ import {
   Flex,
   toast,
 } from "@webstudio-is/design-system";
-import { getRefusal, getToastText } from "./cms-logic";
+import { getRefusal, getToastText, normalizeCollection } from "./cms-logic";
+import { $cmsNativeDirty } from "./cms-native-stores";
 import {
   isCmsFailure,
   type CmsAccess,
   type CmsCatalogView,
   type CmsCollection,
-  type CmsCollectionActions,
   type CmsCollectionSummary,
   type CmsFailure,
   type CmsItem,
@@ -38,12 +44,6 @@ import { CollectionsColumn } from "./collections-column";
 import { ItemEditor } from "./item-editor";
 import { ItemsView } from "./items-view";
 import { RefusalLine, type CmsLineKind } from "./refusal-line";
-
-/**
- * The native editor's unsaved flag. W2 makes `$cmsDirty` the computed of
- * `$cmsFrameDirty` and this (4.3.2); clearing one never clears the other.
- */
-export const $cmsNativeDirty = atom(false);
 
 export type CmsScreenView = {
   collectionId?: string;
@@ -56,26 +56,44 @@ export type CmsScreenView = {
 const lineOf = (failure: CmsFailure): CmsLineKind =>
   getRefusal(failure.error) ?? "unavailable";
 
+const isSameAccess = (left: CmsAccess, right: CmsAccess) =>
+  left.canEdit === right.canEdit &&
+  left.canPublish === right.canPublish &&
+  left.canManageSettings === right.canManageSettings;
+
 export const CmsScreen = ({
   source,
   onClose,
   catalog,
-  actions = {},
+  renderCollectionActions,
+  collectionsFooter,
   homeUrl,
   initialView,
+  openCount = 0,
   onOpenClassic,
   onItemWritten,
 }: {
   source: CmsSource;
   /** Hides the overlay; never discards anything. */
   onClose: () => void;
-  /** The build's side of each collection row (4.5). */
+  /** What the column draws from the build's catalog (4.5). */
   catalog?: CmsCatalogView;
-  actions?: CmsCollectionActions;
+  /**
+   * Each row's "..." (4.5): W2's `CollectionActionsMenu`. W2 passes it only
+   * in Design mode, for an org the deny list allows.
+   */
+  renderCollectionActions?: (collection: CmsCollectionSummary) => ReactNode;
+  /** The orphan rows at the column's foot (4.5). */
+  collectionsFooter?: ReactNode;
   /** The builder menu's "Back to OrganizeOS" address, for sign-in lines. */
   homeUrl?: string;
   /** Where to open, as the classic frame's `?collection` and `?item`. */
   initialView?: CmsScreenView;
+  /**
+   * The overlay's opens so far. Each reopen reads E0 again (4.3.1) and keeps
+   * the view, unsaved edits included.
+   */
+  openCount?: number;
   /** Present while the classic frame exists (4.6). */
   onOpenClassic?: () => void;
   /** After a write: W2 invalidates the collection's canvas requests (4.7). */
@@ -92,6 +110,8 @@ export const CmsScreen = ({
     undefined
   );
   const [detail, setDetail] = useState<CmsCollection | undefined>(undefined);
+  const [detailFailed, setDetailFailed] = useState(false);
+  const [detailAttempt, setDetailAttempt] = useState(0);
   const [isEditorDirty, setIsEditorDirty] = useState(false);
   const [pending, setPending] = useState<{ run: () => void } | undefined>(
     undefined
@@ -100,8 +120,14 @@ export const CmsScreen = ({
   // A new editor for each item opened; a created item keeps its editor.
   const [editorSession, setEditorSession] = useState(0);
   const [listVersion, setListVersion] = useState(0);
+  const [focusBack, setFocusBack] = useState(false);
+  const [returnFocusItemId, setReturnFocusItemId] = useState<
+    string | undefined
+  >(undefined);
+  const keepEditingRef = useRef<HTMLButtonElement>(null);
+  const isReady = access !== undefined;
 
-  // E0 and E1, on open and on Retry.
+  // E0 and E1, on open, on each reopen and on Retry.
   useEffect(() => {
     const effect = { isCurrent: true };
     // a function: narrowing would outlive the awaits
@@ -124,15 +150,24 @@ export const CmsScreen = ({
         return;
       }
       setLine(undefined);
-      setAccess(accessResult);
+      setAccess((current) =>
+        current !== undefined && isSameAccess(current, accessResult)
+          ? current
+          : accessResult
+      );
       setCollections(listResult.collections);
-      setCollectionId((current) => current ?? listResult.collections[0]?.id);
+      // a deep link to a collection E1 does not list opens the first one
+      setCollectionId((current) =>
+        listResult.collections.some((entry) => entry.id === current)
+          ? current
+          : listResult.collections[0]?.id
+      );
     };
     void load();
     return () => {
       effect.isCurrent = false;
     };
-  }, [source, attempt]);
+  }, [source, attempt, openCount]);
 
   // Counts refetch after each write, silently.
   useEffect(() => {
@@ -150,31 +185,36 @@ export const CmsScreen = ({
     };
   }, [source, listVersion]);
 
-  // E2: the open collection's fields.
+  // E2: the open collection's fields, kinds normalised once.
   useEffect(() => {
-    if (collectionId === undefined || access === undefined) {
+    if (collectionId === undefined || isReady === false) {
       return;
     }
     let isCurrent = true;
-    setDetail(undefined);
+    setDetailFailed(false);
     void source.getCollection(collectionId).then((result) => {
       if (isCurrent === false) {
         return;
       }
       if (isCmsFailure(result)) {
-        toast.error(getToastText(result.error));
+        const refusal = getRefusal(result.error);
+        if (refusal === undefined) {
+          setDetailFailed(true);
+        } else {
+          setLine(refusal);
+        }
         return;
       }
-      setDetail(result.collection);
+      setDetail(normalizeCollection(result.collection));
     });
     return () => {
       isCurrent = false;
     };
-  }, [source, collectionId, access]);
+  }, [source, collectionId, isReady, detailAttempt]);
 
   // E3: the open page of items.
   useEffect(() => {
-    if (collectionId === undefined || access === undefined) {
+    if (collectionId === undefined || isReady === false) {
       return;
     }
     let isCurrent = true;
@@ -198,7 +238,7 @@ export const CmsScreen = ({
     return () => {
       isCurrent = false;
     };
-  }, [source, collectionId, access, page, query, listVersion]);
+  }, [source, collectionId, isReady, page, query, listVersion]);
 
   useEffect(() => {
     $cmsNativeDirty.set(isEditorDirty);
@@ -221,17 +261,28 @@ export const CmsScreen = ({
       setIsEditorDirty(false);
       if (nextId !== collectionId) {
         setItemsPage(undefined);
+        setDetail(undefined);
       }
       setCollectionId(nextId);
       setItemId(undefined);
       setPage(1);
       setQuery("");
+      setReturnFocusItemId(undefined);
     });
 
   const openItem = (nextId: string | null) => {
     setEditorSession((current) => current + 1);
+    setFocusBack(true);
+    setReturnFocusItemId(undefined);
     setItemId(nextId);
   };
+
+  const closeEditor = () =>
+    guard(() => {
+      setIsEditorDirty(false);
+      setReturnFocusItemId(itemId ?? undefined);
+      setItemId(undefined);
+    });
 
   const onDirtyChange = useCallback((dirty: boolean) => {
     setIsEditorDirty(dirty);
@@ -244,22 +295,29 @@ export const CmsScreen = ({
     }
   };
 
-  const renderMain = () => {
-    if (line !== undefined) {
-      return (
-        <Flex align="center" justify="center" grow>
-          <RefusalLine
-            kind={line}
-            homeUrl={homeUrl}
-            onRetry={() => setAttempt((current) => current + 1)}
-          />
-        </Flex>
-      );
-    }
+  /** `unauthorized` (4.3.4): the guard, then this tab to the home address. */
+  const onOpenHome =
+    homeUrl === undefined
+      ? undefined
+      : () =>
+          guard(() => {
+            setIsEditorDirty(false);
+            window.location.assign(homeUrl);
+          });
+
+  const renderView = () => {
     if (access === undefined || collection === undefined) {
       return null;
     }
     if (itemId !== undefined) {
+      if (detailFailed) {
+        return (
+          <RefusalLine
+            kind="unavailable"
+            onRetry={() => setDetailAttempt((current) => current + 1)}
+          />
+        );
+      }
       if (detail === undefined || detail.id !== collection.id) {
         return null;
       }
@@ -271,15 +329,12 @@ export const CmsScreen = ({
           collection={detail}
           itemId={itemId}
           homeUrl={homeUrl}
-          onBack={() =>
-            guard(() => {
-              setIsEditorDirty(false);
-              setItemId(undefined);
-            })
-          }
+          focusBack={focusBack}
+          onBack={closeEditor}
           onDirtyChange={onDirtyChange}
           onWritten={onWritten}
           onCreated={(item) => setItemId(item.id)}
+          onOpenHome={onOpenHome}
           onOpenClassic={
             onOpenClassic === undefined ? undefined : () => guard(onOpenClassic)
           }
@@ -292,11 +347,16 @@ export const CmsScreen = ({
         page={itemsPage}
         query={query}
         canEdit={access.canEdit}
+        focusItemId={returnFocusItemId}
         onQueryChange={(next) => {
           setQuery(next);
           setPage(1);
+          setReturnFocusItemId(undefined);
         }}
-        onPageChange={setPage}
+        onPageChange={(next) => {
+          setPage(next);
+          setReturnFocusItemId(undefined);
+        }}
         onOpenItem={(nextId) => openItem(nextId)}
         onNewItem={() => openItem(null)}
       />
@@ -306,9 +366,14 @@ export const CmsScreen = ({
   return (
     <Flex
       data-cms-native
+      // the overlay focuses the screen on open (4.2.5); popups that float
+      // panels anchor here (4.2.7)
+      tabIndex={-1}
+      data-floating-panel-container
       css={{
         width: "100%",
         height: "100%",
+        outline: "none",
         background: cssVar("--background-primary"),
         color: cssVar("--foreground-primary"),
       }}
@@ -316,8 +381,9 @@ export const CmsScreen = ({
       <CollectionsColumn
         collections={collections}
         currentCollectionId={line === undefined ? collectionId : undefined}
-        catalog={access === undefined ? undefined : catalog}
-        actions={actions}
+        catalog={isReady ? catalog : undefined}
+        renderCollectionActions={isReady ? renderCollectionActions : undefined}
+        footer={isReady ? collectionsFooter : undefined}
         onSelectCollection={selectCollection}
         onOpenClassic={
           onOpenClassic === undefined ? undefined : () => guard(onOpenClassic)
@@ -325,7 +391,25 @@ export const CmsScreen = ({
         onClose={onClose}
       />
       <Flex direction="column" grow css={{ minWidth: 0, height: "100%" }}>
-        {renderMain()}
+        {line !== undefined && (
+          <RefusalLine
+            kind={line}
+            homeUrl={homeUrl}
+            onOpenHome={onOpenHome}
+            onRetry={() => setAttempt((current) => current + 1)}
+          />
+        )}
+        {/* a refusal on reopen hides the view and keeps its edits */}
+        <Box
+          css={{
+            display: line === undefined ? "flex" : "none",
+            flexDirection: "column",
+            flexGrow: 1,
+            minHeight: 0,
+          }}
+        >
+          {renderView()}
+        </Box>
       </Flex>
       <Dialog
         open={pending !== undefined}
@@ -335,7 +419,15 @@ export const CmsScreen = ({
           }
         }}
       >
-        <DialogContent width={420} aria-describedby={undefined}>
+        <DialogContent
+          width={420}
+          aria-describedby={undefined}
+          // the safe choice takes the first focus; Discard stays right
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            keepEditingRef.current?.focus();
+          }}
+        >
           <DialogActions>
             <Button
               color="destructive"
@@ -349,7 +441,9 @@ export const CmsScreen = ({
               Discard
             </Button>
             <DialogClose>
-              <Button color="ghost">Keep editing</Button>
+              <Button ref={keepEditingRef} color="ghost">
+                Keep editing
+              </Button>
             </DialogClose>
           </DialogActions>
           {/* last in the DOM, so the close button is last in tab order */}

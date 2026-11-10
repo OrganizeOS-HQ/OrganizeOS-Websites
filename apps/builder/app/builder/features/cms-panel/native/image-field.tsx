@@ -12,24 +12,27 @@ import {
   Tooltip,
 } from "@webstudio-is/design-system";
 import { TrashIcon, UploadIcon } from "@webstudio-is/icons";
-import { isCmsFailure, type CmsImageValue, type CmsSource } from "./cms-source";
+import {
+  CMS_IMAGE_MAX_BYTES,
+  CMS_IMAGE_TYPES,
+  isCmsFailure,
+  type CmsImageValue,
+  type CmsSource,
+} from "./cms-source";
 
-export const IMAGE_ACCEPT = "image/jpeg,image/png,image/gif,image/webp";
-export const IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+const IMAGE_ACCEPT = Object.keys(CMS_IMAGE_TYPES).join(",");
 
+/** The picture itself, left-aligned, at most 192 px tall: no frame around it. */
 const frameStyle = css({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  height: theme.spacing[27],
+  justifySelf: "start",
+  maxWidth: "100%",
   borderRadius: theme.borderRadius[4],
   border: `1px solid ${cssVar("--border-default")}`,
-  background: cssVar("--background-secondary"),
   overflow: "hidden",
   "& img": {
     display: "block",
     maxWidth: "100%",
-    maxHeight: "100%",
+    maxHeight: theme.spacing[27],
     objectFit: "contain",
   },
 });
@@ -87,11 +90,11 @@ export const ImageField = ({
   const url = typeof image === "string" ? image : image?.url;
 
   const choose = async (file: File) => {
-    if (IMAGE_ACCEPT.split(",").includes(file.type) === false) {
+    if (CMS_IMAGE_TYPES[file.type] === undefined) {
       onError("Not an image");
       return;
     }
-    if (file.size > IMAGE_MAX_BYTES) {
+    if (file.size > CMS_IMAGE_MAX_BYTES) {
       onError("Over 4 MB");
       return;
     }

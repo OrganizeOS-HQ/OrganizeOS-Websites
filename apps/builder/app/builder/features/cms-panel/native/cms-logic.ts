@@ -1,16 +1,20 @@
 /**
- * The native CMS screen's pure logic: status chips, the address rule, dirty
- * tracking, paging and field checks. No React, no stores, no I/O.
+ * The native CMS screen's pure logic: status chips, kinds, the address rule,
+ * dirty tracking, kept values, paging and field checks. No React, no stores,
+ * no I/O.
  */
 import type {
+  CmsCollection,
   CmsErrorCode,
   CmsField,
   CmsFieldKind,
   CmsItemData,
   CmsItemStatus,
+  CmsRawCollection,
 } from "./cms-source";
 
-export type CmsChipColor = "neutral" | "green" | "purple";
+/** `outline`: a neutral chip with a border and no fill. */
+export type CmsChipColor = "neutral" | "green" | "purple" | "outline";
 
 export type CmsStatusChip = {
   label: "Draft" | "Published" | "Staged changes" | "Archived";
@@ -31,13 +35,38 @@ export const getStatusChip = ({
       : { label: "Published", color: "green" };
   }
   if (status === "archived") {
-    return { label: "Archived", color: "neutral" };
+    return { label: "Archived", color: "outline" };
   }
   return { label: "Draft", color: "neutral" };
 };
 
+/** The platform's legacy spellings (`field-kinds.ts` `FIELD_KIND_ALIASES`). */
+const kindAliases: Record<string, CmsFieldKind> = {
+  url: "link",
+  boolean: "switch",
+};
+
+/**
+ * The canonical kind of a stored spelling, as the platform's
+ * `normalizeKind`. An unknown kind is kept as it is: `FieldControl` gives it
+ * a text input, so it is never invisible.
+ */
+const normalizeKind = (kind: string): CmsFieldKind =>
+  kindAliases[kind] ?? (kind as CmsFieldKind);
+
+/** E2 as the screen uses it: every field's kind normalised once. */
+export const normalizeCollection = (
+  collection: CmsRawCollection
+): CmsCollection => ({
+  ...collection,
+  fields: collection.fields.map((field) => ({
+    ...field,
+    kind: normalizeKind(field.kind),
+  })),
+});
+
 /** The platform's slug shape (`client/lib/collections/slug.ts`). */
-export const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /** Generated slugs stop here, so a numeric suffix still fits under 63. */
 const GENERATED_MAX = 48;
@@ -91,7 +120,7 @@ export const getItemTitle = (
 };
 
 /** The value an unset field carries: false, [] or null. */
-export const emptyValueFor = (kind: CmsFieldKind): unknown => {
+const emptyValueFor = (kind: CmsFieldKind): unknown => {
   if (kind === "switch") {
     return false;
   }
@@ -176,6 +205,75 @@ export const isItemDirty = ({
   slug !== baselineSlug ||
   getChangedFieldKeys(fields, baseline, values).length > 0;
 
+/** The person's values, set aside by Reload (4.3.2). */
+export type CmsKeptValues = { values: CmsItemData; slug: string };
+
+/**
+ * What Reload sets aside: the person's current values, and for a field they
+ * have not touched since an earlier Reload, what that one set aside, so a
+ * second Reload never drops an edit still waiting for "Use my edit".
+ */
+export const keepAside = ({
+  fields,
+  kept,
+  baseline,
+  baselineSlug,
+  values,
+  slug,
+}: {
+  fields: readonly CmsField[];
+  kept: CmsKeptValues | undefined;
+  baseline: CmsItemData;
+  baselineSlug: string;
+  values: CmsItemData;
+  slug: string;
+}): CmsKeptValues => {
+  if (kept === undefined) {
+    return { values: structuredClone(values), slug };
+  }
+  const next: CmsItemData = {};
+  for (const field of fields) {
+    const untouched = isSameValue(values[field.key], baseline[field.key]);
+    next[field.key] = structuredClone(
+      untouched ? kept.values[field.key] : values[field.key]
+    );
+  }
+  return { values: next, slug: slug === baselineSlug ? kept.slug : slug };
+};
+
+/** The keys, address included as `slug`, whose kept value differs. */
+export const getKeptDifferences = ({
+  fields,
+  kept,
+  values,
+  slug,
+}: {
+  fields: readonly CmsField[];
+  kept: CmsKeptValues | undefined;
+  values: CmsItemData;
+  slug: string;
+}) => {
+  if (kept === undefined) {
+    return [];
+  }
+  const keys = fields
+    .filter(
+      (field) =>
+        isSameValue(kept.values[field.key], values[field.key]) === false
+    )
+    .map((field) => field.key);
+  return kept.slug === slug ? keys : [...keys, "slug"];
+};
+
+/** Splits E5's `ids` into calls of at most `size`. */
+export const chunk = <Value>(values: readonly Value[], size: number) => {
+  const chunks: Value[][] = [];
+  for (let start = 0; start < values.length; start += size) {
+    chunks.push(values.slice(start, start + size));
+  }
+  return chunks;
+};
+
 export const getPageCount = (total: number, pageSize: number) =>
   Math.max(1, Math.ceil(total / pageSize));
 
@@ -221,6 +319,12 @@ export const localInputToIso = (local: string) => {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
+/** The kinds whose `maxLength` the platform applies (`validation.ts`). */
+const maxLengthKinds: readonly CmsFieldKind[] = ["text", "textarea", "phone"];
+
+export const appliesMaxLength = (kind: CmsFieldKind) =>
+  maxLengthKinds.includes(kind);
+
 const isBlank = (kind: CmsFieldKind, value: unknown) => {
   if (kind === "multireference") {
     return Array.isArray(value) === false || value.length === 0;
@@ -256,15 +360,45 @@ const isUrl = (value: string) => {
   }
 };
 
+/** The first check a string value fails, in two or three words. */
+const checkText = (field: CmsField, value: string) => {
+  const trimmed = value.trim();
+  if (field.kind === "email" && EMAIL_RE.test(trimmed) === false) {
+    return "Not an email";
+  }
+  if (field.kind === "link" && isUrl(trimmed) === false) {
+    return "Not a link";
+  }
+  if (field.kind === "color" && COLOR_RE.test(trimmed) === false) {
+    return "Not a color";
+  }
+  if (
+    appliesMaxLength(field.kind) &&
+    field.maxLength !== undefined &&
+    field.maxLength > 0 &&
+    trimmed.length > field.maxLength
+  ) {
+    return "Too long";
+  }
+};
+
 /**
  * Client-side checks, in two or three words a field (4.3.2). The platform
- * checks again; its `invalid` with a `field` key marks that field.
+ * checks again; its `invalid` with a `field` key marks that field. An
+ * existing item's address is required; a new item's empty address is
+ * derived by the platform.
  */
-export const validateItem = (
-  fields: readonly CmsField[],
-  values: CmsItemData,
-  slug: string
-) => {
+export const validateItem = ({
+  fields,
+  values,
+  slug,
+  isNew,
+}: {
+  fields: readonly CmsField[];
+  values: CmsItemData;
+  slug: string;
+  isNew: boolean;
+}) => {
   const errors: Record<string, string> = {};
   for (const field of fields) {
     const value = values[field.key];
@@ -275,21 +409,17 @@ export const validateItem = (
       continue;
     }
     if (typeof value === "string") {
-      if (field.kind === "email" && EMAIL_RE.test(value.trim()) === false) {
-        errors[field.key] = "Not an email";
-      }
-      if (field.kind === "link" && isUrl(value.trim()) === false) {
-        errors[field.key] = "Not a link";
-      }
-      if (field.kind === "color" && COLOR_RE.test(value.trim()) === false) {
-        errors[field.key] = "Not a color";
-      }
-      if (field.maxLength !== undefined && value.length > field.maxLength) {
-        errors[field.key] = "Too long";
+      const error = checkText(field, value);
+      if (error !== undefined) {
+        errors[field.key] = error;
       }
     }
   }
-  if (slug !== "" && isSlug(slug) === false) {
+  if (slug === "") {
+    if (isNew === false) {
+      errors.slug = "Required";
+    }
+  } else if (isSlug(slug) === false) {
     errors.slug = "Not an address";
   }
   return errors;
@@ -316,6 +446,7 @@ export const getToastText = (code: CmsErrorCode) => {
     case "unavailable":
     case "updating":
     case "replayed":
+    case "refused":
       return "Try again in a minute";
     case "limit":
       return "Item limit reached";

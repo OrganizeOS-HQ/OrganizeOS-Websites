@@ -10,7 +10,7 @@
  */
 
 /** Every field kind a collection schema may use (`client/lib/collections`). */
-export const cmsFieldKinds = [
+const cmsFieldKinds = [
   "text",
   "textarea",
   "richtext",
@@ -30,13 +30,20 @@ export const cmsFieldKinds = [
 
 export type CmsFieldKind = (typeof cmsFieldKinds)[number];
 
+/**
+ * A kind as E2 returns it: stored schemas and curated templates still hold
+ * the legacy spellings `url` and `boolean` (`field-kinds.ts`
+ * `FIELD_KIND_ALIASES`). The screen normalises them when E2 arrives.
+ */
+export type CmsRawFieldKind = CmsFieldKind | "url" | "boolean";
+
 export type CmsFieldOption = { value: string; label: string };
 
-export type CmsField = {
+export type CmsField<Kind extends string = CmsFieldKind> = {
   /** Immutable once created. */
   key: string;
   label: string;
-  kind: CmsFieldKind;
+  kind: Kind;
   required?: boolean;
   /** Org-authored; shown in the label's tooltip, never under the field. */
   help?: string;
@@ -60,6 +67,15 @@ export type CmsImageValue = {
   path?: string;
 };
 
+/** E9's types and cap. */
+export const CMS_IMAGE_TYPES: Readonly<Record<string, string>> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/gif": "gif",
+  "image/webp": "webp",
+};
+export const CMS_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+
 /** Stored shape of a `richtext` field: sanitised HTML and its plain text. */
 export type CmsRichTextValue = { html: string; text: string };
 
@@ -82,9 +98,14 @@ export type CmsCollectionSummary = {
   total: number;
 };
 
-/** E2 */
+/** E2, as the screen uses it: every kind normalised. */
 export type CmsCollection = Omit<CmsCollectionSummary, "total"> & {
   fields: CmsField[];
+};
+
+/** E2, as the door returns it. */
+export type CmsRawCollection = Omit<CmsCollectionSummary, "total"> & {
+  fields: CmsField<CmsRawFieldKind>[];
 };
 
 /** E3, one row */
@@ -124,10 +145,14 @@ export type CmsSearchResult = {
   status: CmsItemStatus;
 };
 
+/** E5 takes at most this many `ids` a call. */
+export const CMS_SEARCH_IDS_MAX = 100;
+
 /** 5.7 */
-export const cmsErrorCodes = [
+const cmsErrorCodes = [
   "invalid",
   "unauthorized",
+  "refused",
   "forbidden",
   "plan",
   "mfa_required",
@@ -169,7 +194,7 @@ export type CmsSource = {
   /** E2 `GET /collections/{collectionId}` */
   getCollection: (
     collectionId: string
-  ) => Promise<CmsResult<{ collection: CmsCollection }>>;
+  ) => Promise<CmsResult<{ collection: CmsRawCollection }>>;
   /** E3 `GET /collections/{collectionId}/items` */
   listItems: (
     collectionId: string,
@@ -180,15 +205,24 @@ export type CmsSource = {
     collectionId: string,
     itemId: string
   ) => Promise<CmsResult<{ item: CmsItem }>>;
-  /** E5 `GET /collections/{collectionId}/items/search`: `q`, `ids`, or both. */
+  /**
+   * E5 `GET /collections/{collectionId}/items/search`: `q`, `ids`, or both.
+   * - `ids`: at most `CMS_SEARCH_IDS_MAX`; the screen asks in chunks.
+   * - `q: ""` is a query: the first 20 titles, as the picker opens. W1
+   *   forwards it, so "at least one of `q` and `ids`" holds.
+   */
   searchItems: (
     collectionId: string,
     query: { q?: string; ids?: string[] }
   ) => Promise<CmsResult<{ items: CmsSearchResult[] }>>;
-  /** E6 `POST /collections/{collectionId}/items` */
+  /**
+   * E6 `POST /collections/{collectionId}/items`. `clientId` is minted once
+   * when a new item's editor opens and sent with every attempt until one
+   * succeeds: a repeat answers 200 with the item the first one made.
+   */
   createItem: (
     collectionId: string,
-    body: { slug?: string; data: CmsItemData }
+    body: { clientId: string; slug?: string; data: CmsItemData }
   ) => Promise<CmsResult<{ item: CmsItem }>>;
   /** E7 `PUT /collections/{collectionId}/items/{itemId}` */
   updateItem: (
@@ -208,41 +242,19 @@ export type CmsSource = {
     itemId: string,
     body: { expectedUpdatedAt: string }
   ) => Promise<CmsResult<{ item: CmsItem }>>;
-  /** E9 `POST /uploads/image`: JPEG, PNG, GIF or WebP, at most 4 MB. */
+  /** E9 `POST /uploads/image`: `CMS_IMAGE_TYPES`, at most 4 MB. */
   uploadImage: (
     file: File
   ) => Promise<CmsResult<{ url: string; path: string }>>;
 };
 
 /**
- * The builder's side of a collection row (4.5): what the build's catalog
- * says about it. Not from the platform: W2 derives it from `useCatalog`,
- * `findStaleItemPages` and the sitemap lookup, keyed by collection slug.
+ * What the column itself draws from the build's catalog (4.5): the stale
+ * line under a row. W2 derives it from `findStaleItemPages` and the stale
+ * join, keyed by collection slug. The menus and the orphan rows are W2's
+ * own components, passed in as render slots.
  */
-export type CmsCatalogRow = {
-  hasItemPage: boolean;
-  isStale: boolean;
-  isSitemapOrphan: boolean;
-};
-
-export type CmsCatalogOrphan = {
-  name: string;
-  isStale: boolean;
-  sitemapSlug?: string;
-};
-
 export type CmsCatalogView = {
-  /** Design mode, the deny list allows, and the plan allows dynamic data. */
-  actionsEnabled: boolean;
-  /** By collection slug. A private collection has no row, so no menu. */
-  rows: Record<string, CmsCatalogRow>;
-  orphans: CmsCatalogOrphan[];
-};
-
-/** The collection actions of 4.5; W2 binds them to the existing handlers. */
-export type CmsCollectionActions = {
-  onCreateItemPage?: (slug: string) => void;
-  onOpenItemPage?: (slug: string) => void;
-  onAddList?: (slug: string) => void;
-  onRemoveFromSitemap?: (slug: string) => void;
+  /** Collections one of whose item pages reads an old address. */
+  staleSlugs: readonly string[];
 };

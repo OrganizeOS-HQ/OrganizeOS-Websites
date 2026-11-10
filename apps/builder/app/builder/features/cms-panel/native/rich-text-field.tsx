@@ -6,41 +6,29 @@
  * `@lexical/code` as direct dependencies (spec 4.3.3.1). Until then this
  * control registers only what already resolves from `apps/builder`
  * (`lexical`, `@lexical/link`, `@lexical/react`): paragraphs, the text
- * formats, links, line breaks and the divider. W2 then
+ * formats, links, line breaks and the divider, and its toolbar offers only
+ * those. W2 then
  * - registers `HeadingNode` (h2 to h4), `QuoteNode`, `ListNode`,
- *   `ListItemNode` and the code block, and turns on the block-type select
- *   and the list buttons, which stay disabled here;
- * - swaps `importRichTextHtml` and `exportRichTextHtml` for
- *   `$generateNodesFromDOM` and `$generateHtmlFromNodes`.
+ *   `ListItemNode` and the code block, and adds the block-type `Select` and
+ *   the two list buttons to the toolbar;
+ * - swaps `importRichTextHtml` and `exportRichTextHtml`
+ *   (`rich-text-html.ts`) for `$generateNodesFromDOM` and
+ *   `$generateHtmlFromNodes`.
  * A value holding a tag this node set cannot keep opens read-only, so
  * nothing is lost silently.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  $createLineBreakNode,
-  $createParagraphNode,
-  $createTextNode,
   $getRoot,
   $getSelection,
-  $isElementNode,
-  $isLineBreakNode,
-  $isParagraphNode,
   $isRangeSelection,
-  $isTextNode,
   COMMAND_PRIORITY_LOW,
   FORMAT_TEXT_COMMAND,
   SELECTION_CHANGE_COMMAND,
-  type ElementNode,
   type LexicalEditor,
-  type LexicalNode,
   type TextFormatType,
 } from "lexical";
-import {
-  $createLinkNode,
-  $isLinkNode,
-  LinkNode,
-  TOGGLE_LINK_COMMAND,
-} from "@lexical/link";
+import { $isLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { mergeRegister } from "@lexical/utils";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
@@ -52,7 +40,6 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin";
 import {
-  $createHorizontalRuleNode,
   $isHorizontalRuleNode,
   HorizontalRuleNode,
   INSERT_HORIZONTAL_RULE_COMMAND,
@@ -69,8 +56,6 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-  Select,
-  Separator,
   Switch,
   Text,
   textVariants,
@@ -80,13 +65,18 @@ import {
 import {
   BoldIcon,
   LinkIcon,
-  ListIcon,
   MinusIcon,
   TextItalicIcon,
   TextStrikethroughIcon,
   TextUnderlineIcon,
 } from "@webstudio-is/icons";
 import type { CmsRichTextValue } from "./cms-source";
+import {
+  exportRichTextHtml,
+  getRichTextReadOnlyReason,
+  importRichTextHtml,
+  readRichTextValue,
+} from "./rich-text-html";
 
 /** Lexical takes class name strings; stitches gives each from `.className`. */
 const editorTheme = {
@@ -124,6 +114,7 @@ const frameStyle = css({
   },
   "&[data-disabled]": {
     background: cssVar("--background-disabled"),
+    color: cssVar("--foreground-disabled"),
   },
 });
 
@@ -133,7 +124,7 @@ const toolbarStyle = css({
   alignItems: "center",
   gap: theme.spacing[1],
   padding: theme.spacing[2],
-  borderBottom: `1px solid ${cssVar("--background-primary")}`,
+  borderBottom: `1px solid ${cssVar("--border-default")}`,
 });
 
 const contentStyle = css(textVariants.regular, {
@@ -149,194 +140,6 @@ const contentStyle = css(textVariants.regular, {
     marginBlock: theme.spacing[5],
   },
 });
-
-const blockTypes = ["paragraph", "h2", "h3", "h4", "quote", "code"] as const;
-
-const blockTypeLabels: Record<(typeof blockTypes)[number], string> = {
-  paragraph: "Paragraph",
-  h2: "Heading 2",
-  h3: "Heading 3",
-  h4: "Heading 4",
-  quote: "Quote",
-  code: "Code",
-};
-
-/** The tags this node set keeps; any other block opens read-only. */
-const IMAGE_TAGS = "img, figure, figcaption";
-const UNKEPT_TAGS = "h1, h2, h3, h4, h5, h6, blockquote, ul, ol, pre, table";
-
-export type RichTextReadOnlyReason = "images" | "unsupported";
-
-export const getRichTextReadOnlyReason = (
-  html: string
-): RichTextReadOnlyReason | undefined => {
-  if (html === "" || typeof DOMParser === "undefined") {
-    return;
-  }
-  // An inert document: never inserted into the live page.
-  const body = new DOMParser().parseFromString(html, "text/html").body;
-  if (body.querySelector(IMAGE_TAGS) !== null) {
-    return "images";
-  }
-  if (body.querySelector(UNKEPT_TAGS) !== null) {
-    return "unsupported";
-  }
-};
-
-const formatTags: Array<[string, TextFormatType]> = [
-  ["STRONG", "bold"],
-  ["B", "bold"],
-  ["EM", "italic"],
-  ["I", "italic"],
-  ["U", "underline"],
-  ["S", "strikethrough"],
-  ["DEL", "strikethrough"],
-  ["STRIKE", "strikethrough"],
-  ["CODE", "code"],
-];
-
-const importInline = (
-  node: Node,
-  formats: TextFormatType[],
-  parent: ElementNode
-) => {
-  if (node.nodeType === Node.TEXT_NODE) {
-    const text = node.textContent ?? "";
-    if (text !== "") {
-      const textNode = $createTextNode(text);
-      for (const format of formats) {
-        textNode.toggleFormat(format);
-      }
-      parent.append(textNode);
-    }
-    return;
-  }
-  if (node instanceof Element === false) {
-    return;
-  }
-  if (node.tagName === "BR") {
-    parent.append($createLineBreakNode());
-    return;
-  }
-  if (node.tagName === "A") {
-    const link = $createLinkNode(node.getAttribute("href") ?? "", {
-      target: node.getAttribute("target"),
-      rel: node.getAttribute("rel"),
-      title: node.getAttribute("title"),
-    });
-    for (const child of node.childNodes) {
-      importInline(child, formats, link);
-    }
-    parent.append(link);
-    return;
-  }
-  const format = formatTags.find(([tag]) => tag === node.tagName)?.[1];
-  const nextFormats = format === undefined ? formats : [...formats, format];
-  for (const child of node.childNodes) {
-    importInline(child, nextFormats, parent);
-  }
-};
-
-/** W2: `$generateNodesFromDOM`. Runs inside an editor update. */
-export const importRichTextHtml = (html: string) => {
-  const root = $getRoot();
-  root.clear();
-  const body = new DOMParser().parseFromString(html, "text/html").body;
-  let loose: ElementNode | undefined;
-  for (const child of body.childNodes) {
-    if (child instanceof Element && child.tagName === "P") {
-      loose = undefined;
-      const paragraph = $createParagraphNode();
-      for (const inline of child.childNodes) {
-        importInline(inline, [], paragraph);
-      }
-      root.append(paragraph);
-    } else if (child instanceof Element && child.tagName === "HR") {
-      loose = undefined;
-      root.append($createHorizontalRuleNode());
-    } else {
-      if (loose === undefined) {
-        loose = $createParagraphNode();
-        root.append(loose);
-      }
-      importInline(child, [], loose);
-    }
-  }
-  if (root.getChildrenSize() === 0) {
-    root.append($createParagraphNode());
-  }
-};
-
-const escapeText = (text: string) =>
-  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-const escapeAttribute = (text: string) =>
-  escapeText(text).replace(/"/g, "&quot;");
-
-const formatWrappers: Array<[TextFormatType, string]> = [
-  ["code", "code"],
-  ["strikethrough", "s"],
-  ["underline", "u"],
-  ["italic", "em"],
-  ["bold", "strong"],
-];
-
-const exportInline = (node: LexicalNode): string => {
-  if ($isLineBreakNode(node)) {
-    return "<br>";
-  }
-  if ($isTextNode(node)) {
-    let html = escapeText(node.getTextContent());
-    for (const [format, tag] of formatWrappers) {
-      if (node.hasFormat(format)) {
-        html = `<${tag}>${html}</${tag}>`;
-      }
-    }
-    return html;
-  }
-  if ($isLinkNode(node)) {
-    const attributes = [
-      `href="${escapeAttribute(node.getURL())}"`,
-      node.getTarget()
-        ? `target="${escapeAttribute(node.getTarget() ?? "")}"`
-        : "",
-      node.getRel() ? `rel="${escapeAttribute(node.getRel() ?? "")}"` : "",
-      node.getTitle()
-        ? `title="${escapeAttribute(node.getTitle() ?? "")}"`
-        : "",
-    ].filter(Boolean);
-    return `<a ${attributes.join(" ")}>${node
-      .getChildren()
-      .map(exportInline)
-      .join("")}</a>`;
-  }
-  if ($isElementNode(node)) {
-    return node.getChildren().map(exportInline).join("");
-  }
-  return "";
-};
-
-/** W2: `$generateHtmlFromNodes`. Runs inside an editor read. */
-export const exportRichTextHtml = () =>
-  $getRoot()
-    .getChildren()
-    .map((node) => {
-      if ($isHorizontalRuleNode(node)) {
-        return "<hr>";
-      }
-      if ($isParagraphNode(node)) {
-        return `<p>${node.getChildren().map(exportInline).join("")}</p>`;
-      }
-      return exportInline(node);
-    })
-    .join("");
-
-const readValue = (value: unknown): CmsRichTextValue | undefined =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as CmsRichTextValue).html === "string"
-    ? (value as CmsRichTextValue)
-    : undefined;
 
 const ToolbarButton = ({
   label,
@@ -531,7 +334,11 @@ const LinkButton = ({
   );
 };
 
-/** One `role="toolbar"` row, on upstream's `MarkdownToolbar` pattern. */
+/**
+ * One `role="toolbar"` row, on upstream's `MarkdownToolbar` pattern: only
+ * the controls this node set can apply (the module comment says what W2
+ * adds).
+ */
 const Toolbar = ({ disabled }: { disabled: boolean }) => {
   const [editor] = useLexicalComposerContext();
   const active = useActiveFormats(editor);
@@ -539,18 +346,6 @@ const Toolbar = ({ disabled }: { disabled: boolean }) => {
     editor.dispatchCommand(FORMAT_TEXT_COMMAND, type);
   return (
     <div className={toolbarStyle()} role="toolbar" aria-label="Formatting">
-      <Select
-        aria-label="Block type"
-        options={blockTypes}
-        value="paragraph"
-        getLabel={(option) =>
-          blockTypeLabels[option as (typeof blockTypes)[number]]
-        }
-        // W2: on once the block nodes are registered
-        disabled
-        css={{ width: theme.spacing[25] }}
-      />
-      <Separator orientation="vertical" css={{ height: theme.spacing[9] }} />
       <ToolbarButton
         label="Bold"
         active={active.bold}
@@ -583,18 +378,6 @@ const Toolbar = ({ disabled }: { disabled: boolean }) => {
       >
         <TextStrikethroughIcon />
       </ToolbarButton>
-      <Separator orientation="vertical" css={{ height: theme.spacing[9] }} />
-      {/* W2: on once ListNode and ListItemNode are registered */}
-      <ToolbarButton label="Bulleted list" disabled>
-        <ListIcon fill="currentColor" />
-      </ToolbarButton>
-      <ToolbarButton label="Numbered list" disabled>
-        {/* as upstream's MarkdownToolbar draws it */}
-        <Text as="span" variant="mono">
-          1.
-        </Text>
-      </ToolbarButton>
-      <Separator orientation="vertical" css={{ height: theme.spacing[9] }} />
       <LinkButton active={active.link} disabled={disabled} />
       <ToolbarButton
         label="Divider"
@@ -609,8 +392,19 @@ const Toolbar = ({ disabled }: { disabled: boolean }) => {
   );
 };
 
+/** `editable` is read once at mount; a save in flight turns it off. */
+const EditablePlugin = ({ editable }: { editable: boolean }) => {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => {
+    editor.setEditable(editable);
+  }, [editor, editable]);
+  return null;
+};
+
 export const RichTextField = ({
   id,
+  labelId,
+  describedBy,
   value,
   disabled = false,
   invalid,
@@ -618,13 +412,16 @@ export const RichTextField = ({
   onOpenClassic,
 }: {
   id: string;
+  /** The field's label: a contenteditable takes its name from it. */
+  labelId: string;
+  describedBy?: string;
   value: unknown;
   disabled?: boolean;
   invalid?: boolean;
   onChange: (value: CmsRichTextValue | null) => void;
   onOpenClassic?: () => void;
 }) => {
-  const initial = readValue(value);
+  const initial = readRichTextValue(value);
   const [readOnlyReason] = useState(() =>
     getRichTextReadOnlyReason(initial?.html ?? "")
   );
@@ -633,11 +430,15 @@ export const RichTextField = ({
     return (
       <Grid gap="1" data-cms-rich-text-read-only={readOnlyReason}>
         <div className={frameStyle()} data-disabled>
-          <Text css={{ padding: theme.spacing[5], whiteSpace: "pre-wrap" }}>
+          <Text
+            id={id}
+            aria-labelledby={labelId}
+            css={{ padding: theme.spacing[5], whiteSpace: "pre-wrap" }}
+          >
             {initial?.text ?? ""}
           </Text>
         </div>
-        <Flex align="center" gap="2">
+        <Flex align="center" gap="2" css={{ flexWrap: "wrap" }}>
           <Text color="destructive">
             {readOnlyReason === "images"
               ? "Has images; edit in Classic CMS"
@@ -678,11 +479,14 @@ export const RichTextField = ({
             <ContentEditable
               id={id}
               className={contentStyle()}
-              aria-invalid={invalid || undefined}
+              ariaLabelledBy={labelId}
+              ariaDescribedBy={describedBy}
+              ariaInvalid={invalid || undefined}
             />
           }
           ErrorBoundary={LexicalErrorBoundary}
         />
+        <EditablePlugin editable={disabled === false} />
         <HistoryPlugin />
         <LinkPlugin />
         <HorizontalRulePlugin />

@@ -1,21 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Combobox,
+  css,
   cssVar,
   Flex,
   Grid,
   NestedInputButton,
   SmallIconButton,
-  Text,
   theme,
-  Tooltip,
 } from "@webstudio-is/design-system";
-import { XIcon, XSmallIcon } from "@webstudio-is/icons";
+import { XIcon } from "@webstudio-is/icons";
+import { chunk } from "./cms-logic";
 import {
+  CMS_SEARCH_IDS_MAX,
   isCmsFailure,
   type CmsSearchResult,
   type CmsSource,
 } from "./cms-source";
+import { TruncatedText } from "./truncated-text";
+
+/** A chosen item: a list row, filled only on hover, not an input. */
+const chosenRowStyle = css({
+  display: "flex",
+  alignItems: "center",
+  gap: theme.spacing[3],
+  minHeight: theme.sizes.controlHeight,
+  paddingLeft: theme.spacing[3],
+  paddingRight: theme.spacing[2],
+  borderRadius: theme.borderRadius[4],
+  "&:hover, &:focus-within": {
+    background: cssVar("--overlay-interaction-hover"),
+  },
+});
 
 type Option = { id?: string; title: string };
 
@@ -38,16 +54,19 @@ const useReferenceTitles = (
       return;
     }
     let isCurrent = true;
-    void source.searchItems(collectionId, { ids: missing }).then((result) => {
-      if (isCurrent && isCmsFailure(result) === false) {
-        setTitles((current) => ({
-          ...current,
-          ...Object.fromEntries(
-            result.items.map((item) => [item.id, item.title])
-          ),
-        }));
-      }
-    });
+    // E5 takes at most 100 ids; a multi-reference holds up to 200
+    for (const ids of chunk(missing, CMS_SEARCH_IDS_MAX)) {
+      void source.searchItems(collectionId, { ids }).then((result) => {
+        if (isCurrent && isCmsFailure(result) === false) {
+          setTitles((current) => ({
+            ...current,
+            ...Object.fromEntries(
+              result.items.map((item) => [item.id, item.title])
+            ),
+          }));
+        }
+      });
+    }
     return () => {
       isCurrent = false;
     };
@@ -85,11 +104,16 @@ const ReferencePicker = ({
   const [input, setInput] = useState<Option | undefined>(undefined);
   const [results, setResults] = useState<CmsSearchResult[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Only the newest search's answer lands: an older one never overwrites it.
+  const sequence = useRef(0);
 
   const search = useCallback(
     (q: string) => {
+      sequence.current += 1;
+      const current = sequence.current;
+      // `q: ""` lists the first 20 (the seam's contract for E5)
       void source.searchItems(collectionId, { q }).then((result) => {
-        if (isCmsFailure(result) === false) {
+        if (current === sequence.current && isCmsFailure(result) === false) {
           setResults(result.items);
         }
       });
@@ -99,11 +123,18 @@ const ReferencePicker = ({
 
   useEffect(() => {
     search("");
-    return () => clearTimeout(timer.current);
+    return () => {
+      clearTimeout(timer.current);
+      // an answer after unmount is dropped
+      sequence.current += 1;
+    };
   }, [search]);
 
   return (
     <Combobox<Option>
+      // Combobox takes no id; downshift gives the input its own, so the
+      // label's htmlFor is written onto the element. The group's
+      // aria-labelledby names it as well.
       inputRef={(element) => {
         if (element !== null && id !== undefined) {
           element.id = id;
@@ -230,32 +261,22 @@ export const MultiReferenceField = ({
   return (
     <Grid gap="1">
       {ids.map((itemId) => (
-        <Flex
+        <div
           key={itemId}
-          align="center"
-          gap="1"
+          className={chosenRowStyle()}
           data-cms-reference={itemId}
-          css={{
-            height: theme.sizes.controlHeight,
-            paddingLeft: theme.spacing[3],
-            paddingRight: theme.spacing[2],
-            borderRadius: theme.borderRadius[4],
-            background: cssVar("--background-secondary"),
-          }}
         >
-          <Tooltip content={titles[itemId] ?? ""} delayDuration={600}>
-            <Text truncate css={{ flexGrow: 1 }}>
-              {titles[itemId] ?? ""}
-            </Text>
-          </Tooltip>
+          <TruncatedText css={{ flexGrow: 1 }}>
+            {titles[itemId] ?? ""}
+          </TruncatedText>
           {disabled !== true && (
             <SmallIconButton
               aria-label={`Remove ${titles[itemId] ?? "item"}`}
-              icon={<XSmallIcon />}
+              icon={<XIcon />}
               onClick={() => onChange(ids.filter((entry) => entry !== itemId))}
             />
           )}
-        </Flex>
+        </div>
       ))}
       {disabled !== true && (
         <ReferencePicker

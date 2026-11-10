@@ -9,7 +9,7 @@ import {
   InsetListItem,
   List,
   ListItem,
-  ScrollArea,
+  ScrollAreaNative,
   SearchField,
   Text,
   theme,
@@ -29,8 +29,10 @@ import {
   type CmsItemsPage,
 } from "./cms-source";
 import { StatusChip } from "./status-chip";
+import { TruncatedText } from "./truncated-text";
 
-const columns = `minmax(0, 1fr) ${theme.spacing[25]} ${theme.spacing[26]}`;
+/** Proportional, as the dashboard's `projects-list.tsx`: 3 to 1 to 1. */
+const columns = "minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1fr)";
 
 const tableStyle = css({
   display: "grid",
@@ -61,7 +63,7 @@ const headerRowStyle = css({
   borderBottom: `1px solid ${cssVar("--border-default")}`,
 });
 
-export const TopBar = ({
+const TopBar = ({
   collection,
   query,
   canEdit,
@@ -79,7 +81,8 @@ export const TopBar = ({
   const [draft, setDraft] = useState(query);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
-    setDraft(query);
+    // the trimmed query comes back: keep what the person typed
+    setDraft((current) => (current.trim() === query ? current : query));
   }, [query]);
   useEffect(() => () => clearTimeout(timer.current), []);
   const change = (value: string, delay: number) => {
@@ -100,11 +103,7 @@ export const TopBar = ({
       }}
     >
       <Flex align="center" gap="2" css={{ minWidth: 0, flexGrow: 1 }}>
-        <Tooltip content={collection.name} delayDuration={600}>
-          <Text variant="titles" truncate>
-            {collection.name}
-          </Text>
-        </Tooltip>
+        <TruncatedText variant="titles">{collection.name}</TruncatedText>
         <Text color="subtle" css={{ flexShrink: 0 }}>
           {collection.total}
         </Text>
@@ -114,13 +113,23 @@ export const TopBar = ({
           aria-label={`Search ${collection.name}`}
           placeholder="Search"
           value={draft}
-          css={{ width: theme.spacing[30], flexShrink: 1 }}
+          // the title truncates first, then the search shrinks to 128 px
+          css={{
+            width: theme.spacing[30],
+            minWidth: theme.spacing[23],
+            flexShrink: 1,
+          }}
           onChange={(event) => change(event.currentTarget.value, 250)}
           onAbort={() => change("", 0)}
         />
       )}
-      {canEdit && showSearch && (
-        <Button color="primary" prefix={<PlusIcon />} onClick={onNewItem}>
+      {canEdit && (
+        <Button
+          color="primary"
+          prefix={<PlusIcon />}
+          css={{ flexShrink: 0 }}
+          onClick={onNewItem}
+        >
           New item
         </Button>
       )}
@@ -139,11 +148,9 @@ const ItemRow = ({
 }) => (
   <ListItem index={index} asChild onSelect={onOpen}>
     <InsetListItem asChild>
-      <div role="row" data-cms-item={item.slug}>
+      <div role="row" data-cms-item={item.slug} data-cms-item-id={item.id}>
         <div role="cell">
-          <Tooltip content={item.title} delayDuration={600}>
-            <Text truncate>{item.title}</Text>
-          </Tooltip>
+          <TruncatedText>{item.title}</TruncatedText>
         </div>
         <div role="cell">
           <StatusChip {...item} />
@@ -158,43 +165,66 @@ const ItemRow = ({
   </ListItem>
 );
 
-export const ItemsTable = ({
+const ItemsTable = ({
   collectionName,
   page,
+  focusItemId,
   onOpenItem,
 }: {
   collectionName: string;
   page: CmsItemsPage;
+  /** The item whose editor just closed: its row takes the focus back. */
+  focusItemId: string | undefined;
   onOpenItem: (itemId: string) => void;
-}) => (
-  <div className={tableStyle()} role="table" aria-label={collectionName}>
-    <div role="rowgroup">
-      <div role="row" className={headerRowStyle()}>
-        {["Name", "Status", "Modified"].map((label) => (
-          <div role="columnheader" key={label}>
-            <Text variant="labels" color="subtle">
-              {label}
-            </Text>
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focusItemId === undefined) {
+      return;
+    }
+    ref.current
+      ?.querySelector<HTMLElement>(
+        `[data-cms-item-id="${CSS.escape(focusItemId)}"]`
+      )
+      ?.focus();
+  }, [focusItemId]);
+  return (
+    <div
+      ref={ref}
+      className={tableStyle()}
+      role="table"
+      aria-label={collectionName}
+    >
+      {page.items.length > 0 && (
+        <div role="rowgroup">
+          <div role="row" className={headerRowStyle()}>
+            {["Name", "Status", "Modified"].map((label) => (
+              <div role="columnheader" key={label}>
+                <Text variant="labels" color="subtle">
+                  {label}
+                </Text>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+      <List asChild>
+        <InsetList role="rowgroup" css={{ gap: 0, paddingTop: 0 }}>
+          {page.items.map((item, index) => (
+            <ItemRow
+              key={item.id}
+              index={index}
+              item={item}
+              onOpen={() => onOpenItem(item.id)}
+            />
+          ))}
+        </InsetList>
+      </List>
     </div>
-    <List asChild>
-      <InsetList role="rowgroup" css={{ gap: 0, paddingTop: 0 }}>
-        {page.items.map((item, index) => (
-          <ItemRow
-            key={item.id}
-            index={index}
-            item={item}
-            onOpen={() => onOpenItem(item.id)}
-          />
-        ))}
-      </InsetList>
-    </List>
-  </div>
-);
+  );
+};
 
-export const Pager = ({
+const Pager = ({
   page,
   total,
   onPageChange,
@@ -248,6 +278,7 @@ export const ItemsView = ({
   page,
   query,
   canEdit,
+  focusItemId,
   onQueryChange,
   onPageChange,
   onOpenItem,
@@ -257,12 +288,13 @@ export const ItemsView = ({
   page: CmsItemsPage | undefined;
   query: string;
   canEdit: boolean;
+  focusItemId?: string;
   onQueryChange: (query: string) => void;
   onPageChange: (page: number) => void;
   onOpenItem: (itemId: string) => void;
   onNewItem: () => void;
 }) => {
-  // "No items yet" is the New item button alone (4.1 inventory).
+  // "No items yet" is the New item button alone (4.1 inventory), in its place
   const isEmpty = collection.total === 0 && query === "";
   return (
     <Flex direction="column" css={{ height: "100%", minWidth: 0 }}>
@@ -274,25 +306,18 @@ export const ItemsView = ({
         onQueryChange={onQueryChange}
         onNewItem={onNewItem}
       />
-      {isEmpty ? (
-        <Flex align="center" justify="center" grow>
-          {canEdit && (
-            <Button color="primary" prefix={<PlusIcon />} onClick={onNewItem}>
-              New item
-            </Button>
-          )}
-        </Flex>
-      ) : (
+      {isEmpty === false && (
         <>
-          <ScrollArea css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
+          <ScrollAreaNative css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
             {page !== undefined && (
               <ItemsTable
                 collectionName={collection.name}
                 page={page}
+                focusItemId={focusItemId}
                 onOpenItem={onOpenItem}
               />
             )}
-          </ScrollArea>
+          </ScrollAreaNative>
           {page !== undefined && page.total > 0 && (
             <Pager
               page={page.page}

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   css,
   cssVar,
@@ -12,24 +13,18 @@ import {
   List,
   ListItem,
   PanelTitle,
-  ScrollArea,
+  ScrollAreaNative,
   Separator,
-  SmallIconButton,
   Text,
   theme,
   Tooltip,
 } from "@webstudio-is/design-system";
 import { EllipsesIcon, XIcon } from "@webstudio-is/icons";
-import type {
-  CmsCatalogOrphan,
-  CmsCatalogRow,
-  CmsCatalogView,
-  CmsCollectionActions,
-  CmsCollectionSummary,
-} from "./cms-source";
+import type { CmsCatalogView, CmsCollectionSummary } from "./cms-source";
+import { TruncatedText } from "./truncated-text";
 
-/** The existing warning line of the data tab (`collection-row-menu.tsx`). */
-export const STALE_ADDRESS_LINE = "Item page uses an old address";
+/** The data tab's warning line (`collection-row-menu.tsx` `staleAddressLine`). */
+const STALE_ADDRESS_LINE = "Item page uses an old address";
 
 const rowStyle = css({
   position: "relative",
@@ -37,7 +32,7 @@ const rowStyle = css({
   "& [data-cms-row-menu]": {
     opacity: 0,
   },
-  "&:hover [data-cms-row-menu], &:focus-within [data-cms-row-menu], & [data-cms-row-menu][data-state=open], &[data-current] [data-cms-row-menu]":
+  "&:hover [data-cms-row-menu], &:focus-within [data-cms-row-menu], & [data-cms-row-menu]:has([data-state=open]), &[data-current] [data-cms-row-menu]":
     {
       opacity: 1,
     },
@@ -57,78 +52,39 @@ const staleLineStyle = css({
   paddingBottom: theme.spacing[3],
 });
 
-/**
- * The collection actions of 4.5, one "..." per row. W2 replaces this menu's
- * body with `CollectionActionsMenu`, split from the data tab's
- * `CollectionRow`, so the Add list popover and the busy state come with it.
- */
-const CollectionActionsMenu = ({
-  name,
-  slug,
-  catalogRow,
-  actions,
-}: {
-  name: string;
-  slug: string;
-  catalogRow: CmsCatalogRow | undefined;
-  actions: CmsCollectionActions;
-}) => (
-  <DropdownMenu modal={false}>
-    <DropdownMenuTrigger asChild>
-      <SmallIconButton
-        data-cms-row-menu
-        aria-label={`${name} actions`}
-        icon={<EllipsesIcon />}
-      />
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="start" css={{ width: theme.spacing[29] }}>
-      {catalogRow?.hasItemPage ? (
-        <DropdownMenuItem onSelect={() => actions.onOpenItemPage?.(slug)}>
-          Open item page
-        </DropdownMenuItem>
-      ) : (
-        <DropdownMenuItem onSelect={() => actions.onCreateItemPage?.(slug)}>
-          Create item page
-        </DropdownMenuItem>
-      )}
-      <DropdownMenuItem onSelect={() => actions.onAddList?.(slug)}>
-        Add list
-      </DropdownMenuItem>
-      {catalogRow?.isSitemapOrphan && (
-        <DropdownMenuItem onSelect={() => actions.onRemoveFromSitemap?.(slug)}>
-          Remove from sitemap
-        </DropdownMenuItem>
-      )}
-    </DropdownMenuContent>
-  </DropdownMenu>
-);
-
 const CollectionRow = ({
   index,
   collection,
   isCurrent,
-  catalogRow,
-  showActions,
-  reserveMenu,
+  isStale,
   actions,
+  reserveMenu,
   onSelect,
 }: {
   index: number;
   collection: CmsCollectionSummary;
   isCurrent: boolean;
-  catalogRow: CmsCatalogRow | undefined;
-  showActions: boolean;
+  isStale: boolean;
+  /** W2's `CollectionActionsMenu`, or nothing for a private collection. */
+  actions: ReactNode;
   /** Keeps every count in one column, menu or not. */
   reserveMenu: boolean;
-  actions: CmsCollectionActions;
   onSelect: () => void;
 }) => (
   <div
+    role="listitem"
     className={rowStyle()}
     data-current={isCurrent || undefined}
     data-cms-collection={collection.slug}
   >
-    <ListItem asChild index={index} current={isCurrent} onSelect={onSelect}>
+    {/* a native button with aria-current, not a listbox option */}
+    <ListItem
+      asChild
+      role={undefined}
+      index={index}
+      current={isCurrent}
+      onSelect={onSelect}
+    >
       <InsetListItem
         css={{
           gridTemplateColumns: "minmax(0, 1fr) auto",
@@ -136,87 +92,18 @@ const CollectionRow = ({
           paddingRight: reserveMenu ? theme.spacing[13] : undefined,
         }}
       >
-        <Tooltip content={collection.name} delayDuration={600}>
-          <Text variant="labels" truncate>
-            {collection.name}
-          </Text>
-        </Tooltip>
+        <TruncatedText variant="labels">{collection.name}</TruncatedText>
         <Text color="subtle" css={{ fontVariantNumeric: "tabular-nums" }}>
           {collection.total}
         </Text>
       </InsetListItem>
     </ListItem>
-    {showActions && (
-      <div className={rowMenuSlotStyle()}>
-        <CollectionActionsMenu
-          name={collection.name}
-          slug={collection.slug}
-          catalogRow={catalogRow}
-          actions={actions}
-        />
+    {actions !== null && actions !== undefined && actions !== false && (
+      <div className={rowMenuSlotStyle()} data-cms-row-menu>
+        {actions}
       </div>
     )}
-    {catalogRow?.isStale && (
-      <Text color="destructive" className={staleLineStyle()}>
-        {STALE_ADDRESS_LINE}
-      </Text>
-    )}
-  </div>
-);
-
-/** W2 renders the data tab's `OrphanRow` here; this is its look. */
-const OrphanRow = ({
-  orphan,
-  showActions,
-  actions,
-}: {
-  orphan: CmsCatalogOrphan;
-  showActions: boolean;
-  actions: CmsCollectionActions;
-}) => (
-  <div className={rowStyle()} data-cms-orphan={orphan.name}>
-    <Flex
-      align="center"
-      gap="2"
-      css={{
-        minHeight: theme.spacing[13],
-        paddingInline: theme.spacing[3],
-        paddingRight:
-          showActions && orphan.sitemapSlug !== undefined
-            ? theme.spacing[13]
-            : theme.spacing[3],
-      }}
-    >
-      <Tooltip content={orphan.name} delayDuration={600}>
-        <Text color="subtle" truncate>
-          {orphan.name}
-        </Text>
-      </Tooltip>
-    </Flex>
-    {showActions && orphan.sitemapSlug !== undefined && (
-      <div className={rowMenuSlotStyle()}>
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <SmallIconButton
-              data-cms-row-menu
-              aria-label={`${orphan.name} actions`}
-              icon={<EllipsesIcon />}
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem
-              onSelect={() =>
-                orphan.sitemapSlug !== undefined &&
-                actions.onRemoveFromSitemap?.(orphan.sitemapSlug)
-              }
-            >
-              Remove from sitemap
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    )}
-    {orphan.isStale && (
+    {isStale && (
       <Text color="destructive" className={staleLineStyle()}>
         {STALE_ADDRESS_LINE}
       </Text>
@@ -228,7 +115,8 @@ export const CollectionsColumn = ({
   collections,
   currentCollectionId,
   catalog,
-  actions,
+  renderCollectionActions,
+  footer,
   onSelectCollection,
   onOpenClassic,
   onClose,
@@ -236,14 +124,20 @@ export const CollectionsColumn = ({
   collections: CmsCollectionSummary[];
   currentCollectionId: string | undefined;
   catalog: CmsCatalogView | undefined;
-  actions: CmsCollectionActions;
+  /**
+   * Each row's "..." (4.5): W2's `CollectionActionsMenu`, with its Add list
+   * popover, busy state and plan chip. Called only when the actions are
+   * allowed; returns nothing for a row with no catalog Resource.
+   */
+  renderCollectionActions?: (collection: CmsCollectionSummary) => ReactNode;
+  /** The orphan rows at the foot (4.5): W2 renders the data tab's. */
+  footer?: ReactNode;
   onSelectCollection: (collectionId: string) => void;
   /** Present while the classic frame exists (4.6). */
   onOpenClassic?: () => void;
   onClose: () => void;
 }) => {
-  const actionsEnabled = catalog?.actionsEnabled === true;
-  const orphans = catalog?.orphans ?? [];
+  const staleSlugs = catalog?.staleSlugs ?? [];
   return (
     <Flex
       direction="column"
@@ -286,41 +180,44 @@ export const CollectionsColumn = ({
         CMS
       </PanelTitle>
       <Separator />
-      <ScrollArea css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
+      <ScrollAreaNative css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
         <List asChild>
-          <InsetList css={{ gap: theme.spacing[1] }} aria-label="Collections">
-            {collections.map((collection, index) => {
-              const catalogRow = catalog?.rows[collection.slug];
-              return (
-                <CollectionRow
-                  key={collection.id}
-                  index={index}
-                  collection={collection}
-                  isCurrent={collection.id === currentCollectionId}
-                  catalogRow={catalogRow}
-                  showActions={actionsEnabled && catalogRow !== undefined}
-                  reserveMenu={actionsEnabled}
-                  actions={actions}
-                  onSelect={() => onSelectCollection(collection.id)}
-                />
-              );
-            })}
-          </InsetList>
-        </List>
-      </ScrollArea>
-      {orphans.length > 0 && (
-        <>
-          <Separator />
-          <InsetList css={{ gap: theme.spacing[1] }} data-cms-orphans>
-            {orphans.map((orphan) => (
-              <OrphanRow
-                key={orphan.name}
-                orphan={orphan}
-                showActions={actionsEnabled}
-                actions={actions}
+          <InsetList
+            role="list"
+            css={{ gap: theme.spacing[1] }}
+            aria-label="Collections"
+          >
+            {collections.map((collection, index) => (
+              <CollectionRow
+                key={collection.id}
+                index={index}
+                collection={collection}
+                isCurrent={collection.id === currentCollectionId}
+                isStale={staleSlugs.includes(collection.slug)}
+                actions={renderCollectionActions?.(collection)}
+                reserveMenu={renderCollectionActions !== undefined}
+                onSelect={() => onSelectCollection(collection.id)}
               />
             ))}
           </InsetList>
+        </List>
+      </ScrollAreaNative>
+      {footer !== undefined && footer !== null && (
+        <>
+          <Separator />
+          <Flex
+            direction="column"
+            gap="2"
+            data-cms-orphans
+            css={{
+              flexShrink: 0,
+              padding: theme.spacing[5],
+              maxHeight: "40%",
+              overflowY: "auto",
+            }}
+          >
+            {footer}
+          </Flex>
         </>
       )}
     </Flex>
