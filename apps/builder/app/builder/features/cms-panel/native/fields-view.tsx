@@ -213,7 +213,11 @@ const FieldRow = ({
         <Flex align="center" gap="1" css={{ flexShrink: 0 }}>
           {field.locked && (
             <Tooltip content="From the template">
-              <span className={iconSlotStyle()} aria-label="From the template">
+              <span
+                className={iconSlotStyle()}
+                role="img"
+                aria-label="From the template"
+              >
                 <LockIcon size={12} />
               </span>
             </Tooltip>

@@ -154,6 +154,8 @@ export type FieldDraft = {
   isNew: boolean;
   /** The person typed a key, so the name no longer derives it. */
   keyTouched: boolean;
+  /** Required as it was before the title switch forced it on. */
+  requiredBeforeTitle: boolean;
 };
 
 let optionSequence = 0;
@@ -186,6 +188,7 @@ export const draftFromField = (field: CmsStructureField): FieldDraft => ({
   locked: field.locked === true,
   isNew: false,
   keyTouched: true,
+  requiredBeforeTitle: field.required === true,
 });
 
 export const newDraft = (kind: CmsFieldKind, referenceId = ""): FieldDraft => ({
@@ -202,6 +205,7 @@ export const newDraft = (kind: CmsFieldKind, referenceId = ""): FieldDraft => ({
   locked: false,
   isNew: true,
   keyTouched: false,
+  requiredBeforeTitle: false,
 });
 
 /** A name edit; a new field's key follows it until the key is typed. */
@@ -229,13 +233,19 @@ export const withKind = (
       ? [newOption()]
       : draft.options,
   maxLength: takesMaxLength(kind) ? draft.maxLength : "",
+  // a title the kind change clears gives back the Required it forced
+  required:
+    kind !== "text" && draft.isTitle
+      ? draft.requiredBeforeTitle
+      : draft.required,
 });
 
 /** The title is always required and always the table's Name column. */
 export const withTitle = (draft: FieldDraft, isTitle: boolean): FieldDraft => ({
   ...draft,
   isTitle,
-  required: isTitle ? true : draft.required,
+  requiredBeforeTitle: isTitle ? draft.required : draft.requiredBeforeTitle,
+  required: isTitle ? true : draft.requiredBeforeTitle,
   showInTable: isTitle ? false : draft.showInTable,
 });
 
@@ -275,8 +285,8 @@ export const draftToField = (draft: FieldDraft): CmsStructureField => {
     };
   }
   const maxLength = Number(draft.maxLength);
+  // kept on any kind, as the platform keeps it; the sheet edits it on two
   if (
-    takesMaxLength(draft.kind) &&
     draft.maxLength.trim() !== "" &&
     Number.isInteger(maxLength) &&
     maxLength > 0
@@ -401,10 +411,25 @@ export const getFieldDraftErrors = (
   return errors;
 };
 
+/** A stable form: keys sorted at every level, so order never counts. */
+const canonical = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(canonical);
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonical((value as Record<string, unknown>)[key])])
+    );
+  }
+  return value;
+};
+
 export const isSameField = (
   left: CmsStructureField,
   right: CmsStructureField
-) => JSON.stringify(left) === JSON.stringify(right);
+) => JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
 
 /** Whether the sheet holds anything a Save would change. */
 export const isFieldDraftDirty = (
@@ -418,7 +443,11 @@ export const isFieldDraftDirty = (
       draft.options.some((option) => option.label.trim() !== "")
     );
   }
-  return isSameField(original, draftToField(draft)) === false;
+  // both through the draft, so what the sheet cannot hold never counts
+  return (
+    isSameField(draftToField(draftFromField(original)), draftToField(draft)) ===
+    false
+  );
 };
 
 /** Why the table-column switch is off and fixed, or undefined. */

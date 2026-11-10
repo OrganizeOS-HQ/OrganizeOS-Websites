@@ -273,3 +273,41 @@ test("collection settings need a name, a singular name and an address", () => {
     slug: "Lower-case letters, digits, hyphens",
   });
 });
+
+test("an untouched field is not dirty, in any property order", () => {
+  const platformOrder: CmsStructureField = {
+    key: "question",
+    label: "Question",
+    kind: "text",
+    required: true,
+    locked: true,
+    isTitle: true,
+  };
+  expect(isFieldDraftDirty(platformOrder, draftFromField(platformOrder))).toBe(
+    false
+  );
+  const reference: CmsStructureField = {
+    key: "author",
+    label: "Author",
+    kind: "reference",
+    locked: true,
+    reference: { multiple: false, collectionId: "c1" },
+  };
+  expect(isFieldDraftDirty(reference, draftFromField(reference))).toBe(false);
+});
+
+test("maxLength stays on a kind the sheet does not edit it on", () => {
+  const field: CmsStructureField = {
+    key: "a",
+    label: "A",
+    kind: "email",
+    maxLength: 80,
+  };
+  expect(draftToField(draftFromField(field)).maxLength).toBe(80);
+});
+
+test("a kind change that clears the title gives Required back", () => {
+  const draft = withTitle({ ...newDraft("text"), required: false }, true);
+  expect(draft.required).toBe(true);
+  expect(withKind(draft, "number").required).toBe(false);
+});

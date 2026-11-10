@@ -65,8 +65,11 @@ export const DeleteCollectionDialog = ({
   onOpenChange,
   onDeleted,
   onRefusal,
+  onRefresh,
 }: {
   structure: CmsStructureSource;
+  /** Refetches the collection, for its current references. */
+  onRefresh: (collectionId: string) => void;
   /** The collection to delete; undefined closes the dialog. */
   collection: CmsStructureCollection | undefined;
   onOpenChange: (open: boolean) => void;
@@ -85,10 +88,13 @@ export const DeleteCollectionDialog = ({
     setBusy(false);
     if (isCmsFailure(result)) {
       const refusal = getRefusal(result.error);
-      if (refusal === undefined) {
-        toast.error(getStructureToastText(result.error, "collection"));
-      } else {
+      if (refusal !== undefined) {
         onRefusal(refusal);
+      } else if (result.error === "refused") {
+        // a reference made since the dialog opened: show who uses it
+        onRefresh(collection.id);
+      } else {
+        toast.error(getStructureToastText(result.error, "collection"));
       }
       return;
     }

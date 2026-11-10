@@ -4,7 +4,13 @@
  * schema, the plan's caps and the templates, and the New collection and
  * Delete dialogs. Absent a `CmsStructureSource`, it adds nothing.
  */
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { IconButton, toast, Tooltip } from "@webstudio-is/design-system";
 import { PlusIcon } from "@webstudio-is/icons";
 import { getRefusal } from "./cms-logic";
@@ -168,12 +174,13 @@ export const useCmsStructure = ({
   }, [collectionId, isReady, version, fetchStructure]);
 
   // A story may open the Delete dialog.
-  const [initialDialog] = useState(initial?.dialog);
+  const pendingDialogRef = useRef(initial?.dialog);
   useEffect(() => {
-    if (initialDialog === "delete" && detail !== undefined) {
-      setDeleteTarget((current) => current ?? detail);
+    if (pendingDialogRef.current === "delete" && detail !== undefined) {
+      pendingDialogRef.current = undefined;
+      setDeleteTarget(detail);
     }
-  }, [initialDialog, detail]);
+  }, [detail]);
 
   const closeView = useCallback(() => setView(undefined), []);
 
@@ -211,11 +218,25 @@ export const useCmsStructure = ({
       return;
     }
     const before = detail;
+    const from = before.fields.findIndex((field) => field.key === key);
+    if (toIndex < 0 || toIndex >= before.fields.length || toIndex === from) {
+      return;
+    }
     const fields = moveField(before.fields, key, toIndex);
     setDetail({ ...before, fields });
+    // the moved row keeps the focus, for the next Alt+Arrow
+    requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>(`[data-cms-field-row="${key}"] button`)
+        ?.focus();
+    });
     const result = await structure.updateSchema(before.id, { fields });
     if (isCmsFailure(result)) {
-      setDetail(before);
+      setDetail((current) =>
+        current?.id === before.id
+          ? { ...current, fields: before.fields }
+          : current
+      );
       const refusal = getRefusal(result.error);
       if (refusal === undefined) {
         toast.error(getStructureToastText(result.error, "field"));
@@ -224,7 +245,8 @@ export const useCmsStructure = ({
       }
       return;
     }
-    changed();
+    // the screen's E2 only: a refetch here could undo a later move
+    onChanged();
   };
 
   if (structure === undefined) {
@@ -377,6 +399,12 @@ export const useCmsStructure = ({
         structure={structure}
         collection={deleteTarget}
         onRefusal={onRefusal}
+        onRefresh={async (id) => {
+          const found = await fetchStructure(id);
+          if (found !== undefined) {
+            setDeleteTarget(found);
+          }
+        }}
         onOpenChange={(isOpen) => {
           if (isOpen === false) {
             setDeleteTarget(undefined);

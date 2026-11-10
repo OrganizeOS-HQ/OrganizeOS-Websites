@@ -232,7 +232,9 @@ export const NewCollectionDialog = ({
         name: template?.label ?? "",
       });
     }
-  }, [open, initialType, templates, setValues]);
+    // templates refetch after each write; a story's preselection is once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialType, setValues]);
   const submit = async () => {
     if (await create()) {
       onOpenChange(false);
