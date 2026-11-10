@@ -54,16 +54,6 @@ export const COLLECTION_CHANGED_NOTICE =
   "Collection changes appear after you reload the builder";
 
 /**
- * Above the top bar (`zIndex: 1`, builder/shared/topbar.tsx) and below the
- * toast layer (`theme.zIndices.max`, 999), so the "Reload" notice for
- * `cms.collection_changed` shows over the CMS. The overlay is portalled to
- * the document's body, because the left sidebar's own box isolates its
- * stacking (builder.tsx `SidePanel`), where a z-index would not reach past
- * the inspector.
- */
-export const CMS_OVERLAY_Z_INDEX = 2;
-
-/**
  * Offered for an OrganizeOS project when the deployment's switch is on
  * (`ORGANIZEOS_CMS_PANEL`), the plan allows dynamic data, and the user is
  * not a viewer (by workspace relation, or by a view-only permit).
@@ -305,6 +295,12 @@ const onOverlayPointerDown = (event: PointerEvent) => {
  * The persistent overlay, rendered once by the left sidebar and portalled to
  * the document's body. It holds the frame, or, with the native screen on, the
  * native screen and, once Classic CMS is first shown, the frame behind it.
+ *
+ * It takes no z-index. As a later body child than the builder root, whose
+ * `Main` and `SidePanel` isolate their stacking and whose top bar has a
+ * z-index only while the UI is hidden, it paints over them. Design-system
+ * popups portal to the body later still and paint over it; toasts keep
+ * `zIndices.max`.
  */
 export const CmsOverlay = () => {
   const isAvailable = useStore($isCmsPanelAvailable);
@@ -455,7 +451,6 @@ export const CmsOverlay = () => {
         bottom: 0,
         left: railRight,
         right: 0,
-        zIndex: CMS_OVERLAY_Z_INDEX,
         background: cssVar("--background-primary"),
         // Hidden, never unmounted: display none keeps the document alive.
         display: isShown ? "block" : "none",

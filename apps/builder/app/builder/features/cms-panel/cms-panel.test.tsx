@@ -6,7 +6,22 @@ import { act } from "react-dom/test-utils";
 import { enableMapSet } from "immer";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { userEvent } from "@vitest/browser/context";
-import { rawTheme, toast, TooltipProvider } from "@webstudio-is/design-system";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Select,
+  rawTheme,
+  toast,
+  TooltipProvider,
+} from "@webstudio-is/design-system";
 import { defaultPlanFeatures } from "@webstudio-is/plans";
 import type { ResourceRequest } from "@webstudio-is/sdk";
 import { createDefaultPages } from "@webstudio-is/project-build";
@@ -42,7 +57,6 @@ import {
   $isCmsOverlayOpen,
   $isCmsPanelAvailable,
   CMS_FRAME_SANDBOX,
-  CMS_OVERLAY_Z_INDEX,
   COLLECTION_CHANGED_NOTICE,
   getCmsPanelSrc,
   showClassicCms,
@@ -200,16 +214,13 @@ describe("getCmsPanelSrc", () => {
 });
 
 describe("the overlay's stacking", () => {
-  test("sits above the top bar and below the toast layer", () => {
+  test("has no z-index, the toast layer above it", () => {
     expect(topbarSource.match(/zIndex: (\d+)/g)).toEqual([
       "zIndex: 1",
       "zIndex: 1",
     ]);
     expect(toastSource).toMatch(/zIndex: theme\.zIndices\.max/);
     expect(rawTheme.zIndices.max).toBe("999");
-    expect(CMS_OVERLAY_Z_INDEX).toBe(2);
-    expect(CMS_OVERLAY_Z_INDEX).toBeGreaterThan(1);
-    expect(CMS_OVERLAY_Z_INDEX).toBeLessThan(Number(rawTheme.zIndices.max));
   });
 });
 
@@ -260,6 +271,26 @@ describe("the CMS overlay in the builder", () => {
   };
 
   const isShown = () => overlay()?.style.display === "block";
+
+  // The suite's viewport is narrow and its rail unstyled: pin the rail's box
+  // as the builder lays it out, so what the overlay holds is in the viewport.
+  const pinRail = () => {
+    const rail =
+      railButton()?.closest<HTMLElement>('[role="tablist"]')?.parentElement
+        ?.parentElement;
+    expect(rail).toBeTruthy();
+    vi.spyOn(rail as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      top: 40,
+      bottom: 800,
+      left: 0,
+      right: 41,
+      width: 41,
+      height: 760,
+      x: 0,
+      y: 40,
+      toJSON: () => ({}),
+    });
+  };
 
   const post = (data: unknown, overrides: Partial<MessageEventInit> = {}) => {
     act(() => {
@@ -499,7 +530,7 @@ describe("the CMS overlay in the builder", () => {
       window.history.replaceState(null, "", "/");
     });
 
-    test("covers from the rail's right edge to the viewport's, top to bottom, at z-index 2", () => {
+    test("covers from the rail's right edge to the viewport's, top to bottom, with no z-index", () => {
       render();
       // The rail: the tab list, in its display: contents wrapper, in the
       // bordered column.
@@ -526,7 +557,8 @@ describe("the CMS overlay in the builder", () => {
       expect(element?.style.right).toBe("0px");
       expect(element?.style.top).toBe("0px");
       expect(element?.style.bottom).toBe("0px");
-      expect(element?.style.zIndex).toBe("2");
+      expect(element?.style.zIndex).toBe("");
+      expect(getComputedStyle(element!).zIndex).toBe("auto");
       expect(frame()?.style.width).toBe("100%");
       expect(frame()?.style.height).toBe("100%");
       // The corner below the rail, over the footer's left end.
@@ -751,9 +783,7 @@ describe("the CMS overlay in the builder", () => {
     test("the toast shows above it", () => {
       render();
       clickRail();
-      expect(Number(overlay()?.style.zIndex)).toBeLessThan(
-        Number(rawTheme.zIndices.max)
-      );
+      expect(overlay()?.style.zIndex).toBe("");
     });
   });
 
@@ -892,11 +922,44 @@ describe("the CMS overlay in the builder", () => {
           element.childElementCount === 0 && element.textContent === "CMS"
       );
 
+    // Content rendered by a root of its own into the native screen's main
+    // region, as the screen's regions will be. Returns its unmount.
+    const mounted: Array<() => void> = [];
+    const mountInScreen = (node: ReactElement) => {
+      const main = document.querySelector("[data-cms-native-main]");
+      expect(main).not.toBeNull();
+      const host = document.createElement("div");
+      main!.appendChild(host);
+      const hostRoot = createRoot(host);
+      act(() => {
+        hostRoot.render(createElement(TooltipProvider, null, node));
+      });
+      let isMounted = true;
+      const unmount = () => {
+        if (isMounted === false) {
+          return;
+        }
+        isMounted = false;
+        act(() => {
+          hostRoot.unmount();
+        });
+        host.remove();
+      };
+      mounted.push(unmount);
+      return unmount;
+    };
+
     beforeEach(() => {
       $organizeosSite.set({ ...site, cmsNativeEnabled: true });
       $isClassicCmsShown.set(false);
       $cmsClassicDeepLink.set(undefined);
       $cmsFrameMounted.set(false);
+    });
+
+    afterEach(() => {
+      for (const unmount of mounted.splice(0)) {
+        unmount();
+      }
     });
 
     test("the overlay shows the native screen and frames nothing", () => {
@@ -1041,6 +1104,126 @@ describe("the CMS overlay in the builder", () => {
       expect(frame()?.style.display).toBe("block");
       expect(nativeScreen()?.style.display).toBe("none");
       expect(document.activeElement).toBe(iframe);
+    });
+
+    const bodyChildOf = (node: Element) => {
+      let current = node;
+      while (current.parentElement !== document.body) {
+        current = current.parentElement!;
+      }
+      return current;
+    };
+
+    const follows = (a: Node, b: Node) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+    test.each([
+      [
+        "Select",
+        <Select
+          key="select"
+          open
+          options={["One", "Two"]}
+          value="One"
+          onChange={() => {}}
+        />,
+        '[role="listbox"]',
+      ],
+      [
+        "DropdownMenu",
+        <DropdownMenu key="menu" open>
+          <DropdownMenuTrigger>t</DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem>i</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>,
+        '[role="menu"]',
+      ],
+      [
+        "Popover",
+        <Popover key="popover" open>
+          <PopoverTrigger>t</PopoverTrigger>
+          <PopoverContent>p</PopoverContent>
+        </Popover>,
+        "[data-radix-popper-content-wrapper]",
+      ],
+      [
+        "Dialog",
+        <Dialog key="dialog" open>
+          <DialogContent>
+            <DialogTitle>d</DialogTitle>
+          </DialogContent>
+        </Dialog>,
+        '[role="dialog"]',
+      ],
+    ])(
+      "a %s opened inside it is a later body child than it",
+      (_kind, node, selector) => {
+        render();
+        clickRail();
+        mountInScreen(node);
+        const popup = document.querySelector(selector);
+        expect(popup).not.toBeNull();
+        expect(follows(overlay()!, bodyChildOf(popup!))).toBe(true);
+      }
+    );
+
+    test("it paints over the builder", () => {
+      // A stand-in for builder.tsx's Main, which isolates its stacking.
+      const main = document.createElement("div");
+      main.style.position = "relative";
+      main.style.isolation = "isolate";
+      main.style.width = "100vw";
+      main.style.height = "100vh";
+      document.body.appendChild(main);
+      try {
+        render();
+        pinRail();
+        clickRail();
+        const { left, top, width, height } = overlay()!.getBoundingClientRect();
+        expect(width).toBeGreaterThan(0);
+        expect(height).toBeGreaterThan(0);
+        expect(
+          overlay()!.contains(
+            document.elementFromPoint(left + width / 2, top + height / 2)
+          )
+        ).toBe(true);
+      } finally {
+        main.remove();
+      }
+    });
+
+    test("an open Select's option inside it paints over it", async () => {
+      render();
+      pinRail();
+      clickRail();
+      mountInScreen(
+        <Select open options={["One", "Two"]} value="One" onChange={() => {}} />
+      );
+      const option = [...document.querySelectorAll('[role="option"]')].at(-1)!;
+      expect(option).toBeDefined();
+      // The popper places its content off screen until it has measured it.
+      await vi.waitFor(() => {
+        const { top, left } = option.getBoundingClientRect();
+        expect(top).toBeGreaterThanOrEqual(0);
+        expect(left).toBeGreaterThanOrEqual(0);
+      });
+      // The open Select turns off pointer events outside it, and hit testing
+      // skips such elements: turn them back on for the overlay, so the
+      // element at the point is the one painted there.
+      expect(getComputedStyle(overlay()!).pointerEvents).toBe("none");
+      overlay()!.style.pointerEvents = "auto";
+      const r = option.getBoundingClientRect();
+      expect(
+        overlay()!.contains(
+          document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+        )
+      ).toBe(false);
+      expect(
+        option.contains(
+          document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+        )
+      ).toBe(true);
     });
 
     test("the close button hides the overlay", () => {

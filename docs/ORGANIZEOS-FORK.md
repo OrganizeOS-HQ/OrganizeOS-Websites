@@ -1549,14 +1549,14 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     viewport's right edge, top to bottom, over the top bar, the sidebar
     panel, the canvas and the inspector, plus a strip from the rail's
     measured bottom edge down, under the rail, where the full-width footer
-    would otherwise show through. Its `z-index` is 2
-    (`CMS_OVERLAY_Z_INDEX`): above the top bar (`zIndex: 1`) and below the
-    toast layer (`theme.zIndices.max`, 999), so the "Reload" notice shows
-    over it. It is portalled because the left sidebar's own box isolates
-    its stacking (`isolation: isolate` on builder.tsx's `SidePanel`), where
-    a z-index would not reach past the inspector. Design-system dialogs and
-    popovers portal with no z-index and so render beneath it; the builder
-    opens none on its behalf.
+    would otherwise show through. It takes no z-index. It is portalled
+    because the left sidebar's own box isolates its stacking
+    (`isolation: isolate` on builder.tsx's `SidePanel`); as a later body
+    child than the builder root, whose `Main` and `SidePanel` isolate their
+    stacking and whose top bar has a z-index only while the UI is hidden, it
+    paints over them. The toast layer keeps `theme.zIndices.max`, so the
+    "Reload" notice shows over it. Design-system popups, menus, tooltips and
+    dialogs portal with no z-index after it, and so open above it.
   - **Close means hide.** The frame is mounted on the first open and stays
     mounted for the life of the builder document. Closing sets
     `display: none`, so reopening shows the screen as it was left, unsaved
