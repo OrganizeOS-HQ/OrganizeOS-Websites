@@ -1561,10 +1561,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     mounted for the life of the builder document. Closing sets
     `display: none`, so reopening shows the screen as it was left, unsaved
     text included; there is no discard and no confirm. It hides on the rail
-    button, on Escape pressed in the builder document, on a press on the
-    top bar (its corner beside the overlay holds the builder's main menu,
-    whose menus and dialogs portal without a z-index and would open beneath
-    the overlay), on
+    button, on Escape pressed in the builder document that no layer took, on
+    a press on the top bar (its corner beside the overlay holds the
+    builder's main menu), on
     `cms.close_requested` (the screen's own close button, or Escape at its
     top level), when another rail tab is clicked (which then shows its
     panel, even the one already open) or a panel becomes active any other
@@ -1575,14 +1574,16 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     sidebar's restore when it ends, does not hide the overlay, so a drag's
     switch to Assets, its restore and a drop leave it open, and closing it
     after a drop shows Assets.
-  - **Focus and shortcuts,** with no upstream edit. Opening calls
-    `iframe.focus()`, so focus leaves the canvas and the rail. While it
-    shows, a capture-phase `keydown` listener on the builder document calls
-    upstream's `suppressCommandsForEvent` for every key. Escape also hides
-    the overlay and stops there: it runs neither the builder's own Escape
-    command (deselect, or leave preview) nor the sidebar's Escape, which
-    would close the open panel. Keys typed inside the frame never reach the
-    builder or the canvas documents.
+  - **Focus and shortcuts,** with no upstream edit. Opening focuses the
+    native screen's root (`tabIndex={-1}`) or the frame, so focus leaves the
+    canvas and the rail. While it shows, a capture-phase `keydown` listener
+    on the builder document calls upstream's `suppressCommandsForEvent` for
+    every key, so no builder command runs. Escape hides the overlay in the
+    bubble phase, only when nothing took it (a design-system layer that
+    dismisses calls `preventDefault`) and not in an input, a textarea, a
+    select or a contenteditable. A hide by Escape, the close button or the
+    frame's close returns focus to the rail button. Keys typed inside the
+    frame never reach the builder or the canvas documents.
   - **The frame.** `src` is
     `{platformUrl}/cms-panel/{organizationId}?theme=light`, both from
     `$organizeosSite` (the loader's org, never the page URL). The frame stays

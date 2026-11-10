@@ -158,6 +158,26 @@ export const hideCmsOverlay = (): boolean => {
   return true;
 };
 
+/** Hide the overlay; when it was open, focus the rail's CMS button. */
+export const closeCmsOverlay = () => {
+  if (hideCmsOverlay()) {
+    $cmsRail
+      .get()
+      ?.querySelector<HTMLElement>("[data-cms-rail-button]")
+      ?.focus();
+  }
+};
+
+/**
+ * An input, a textarea, a select, or an element inside a contenteditable
+ * region.
+ */
+export const isEditableTarget = (target: EventTarget | null): boolean =>
+  target instanceof HTMLInputElement ||
+  target instanceof HTMLTextAreaElement ||
+  target instanceof HTMLSelectElement ||
+  (target instanceof HTMLElement && target.isContentEditable);
+
 export const toggleCmsOverlay = () => {
   if (hideCmsOverlay() === false) {
     openCmsOverlay();
@@ -229,7 +249,7 @@ export const applyCmsMessage = (message: CmsMessage, platformUrl: string) => {
       if ($isCmsNative.get()) {
         showNativeCms();
       } else {
-        hideCmsOverlay();
+        closeCmsOverlay();
       }
       return;
   }
@@ -244,19 +264,28 @@ const onBeforeUnload = (event: BeforeUnloadEvent) => {
 };
 
 /**
- * While the overlay shows, no builder shortcut runs from the builder
- * document (the canvas is covered, and keys typed inside the CMS frame never
- * reach the builder). Escape hides the overlay and does nothing else: it
- * neither runs the builder's own Escape command (deselect, or leave preview)
- * nor reaches the sidebar's Escape, which would close the open panel.
- * Capture phase on the document, so it runs before the commands' own
- * document listener and before React's root.
+ * While the overlay shows, every key is kept from the builder's commands in
+ * the capture phase on the document, before the commands' own document
+ * listener (the canvas is covered, and keys typed inside the CMS frame never
+ * reach the builder).
  */
 const onOverlayKeyDown = (event: KeyboardEvent) => {
   suppressCommandsForEvent(event);
-  if (event.key === "Escape") {
-    event.stopPropagation();
-    hideCmsOverlay();
+};
+
+/**
+ * Escape hides the overlay only in the bubble phase on the document, only
+ * when no layer took it (a design-system layer that dismisses calls
+ * `preventDefault`) and not in an editable element. A hide by Escape or a
+ * close button returns focus to the rail button.
+ */
+const onOverlayEscape = (event: KeyboardEvent) => {
+  if (
+    event.key === "Escape" &&
+    event.defaultPrevented === false &&
+    isEditableTarget(event.target) === false
+  ) {
+    closeCmsOverlay();
   }
 };
 
@@ -296,8 +325,7 @@ const useRailBox = (rail: HTMLElement | null, isShown: boolean) => {
 
 /**
  * A press on the top bar (the builder's main menu sits in its corner beside
- * the overlay) hides the overlay, as another rail tab does. Menus and the
- * dialogs they open portal without a z-index and would open beneath it.
+ * the overlay) hides the overlay, as another rail tab does.
  */
 const onOverlayPointerDown = (event: PointerEvent) => {
   const target = event.target;
@@ -437,9 +465,11 @@ export const CmsOverlay = () => {
       return;
     }
     document.addEventListener("keydown", onOverlayKeyDown, true);
+    document.addEventListener("keydown", onOverlayEscape);
     document.addEventListener("pointerdown", onOverlayPointerDown, true);
     return () => {
       document.removeEventListener("keydown", onOverlayKeyDown, true);
+      document.removeEventListener("keydown", onOverlayEscape);
       document.removeEventListener("pointerdown", onOverlayPointerDown, true);
     };
   }, [isShown]);
@@ -504,7 +534,7 @@ export const CmsOverlay = () => {
         <CmsNativeScreen
           ref={nativeRef}
           hidden={isClassicShown}
-          onClose={hideCmsOverlay}
+          onClose={closeCmsOverlay}
           onShowClassic={showClassicCms}
         />
       )}

@@ -61,6 +61,7 @@ import {
   CMS_FRAME_SANDBOX,
   COLLECTION_CHANGED_NOTICE,
   getCmsPanelSrc,
+  isEditableTarget,
   showClassicCms,
   showNativeCms,
 } from "./cms-panel";
@@ -271,6 +272,59 @@ describe("getCmsPanelSrc", () => {
     expect(getCmsPanelSrc(site, "light", { collection: "news" })).toBe(
       `${platformUrl}/cms-panel/${orgId}?theme=light&collection=news`
     );
+  });
+});
+
+describe("isEditableTarget", () => {
+  const make = (html: string) => {
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    document.body.appendChild(host);
+    return host;
+  };
+
+  test.each([
+    ["an input", "<input>"],
+    ["a textarea", "<textarea></textarea>"],
+    ["a select", "<select></select>"],
+    ["a contenteditable element", '<div contenteditable="true"></div>'],
+  ])("is true for %s", (_kind, html) => {
+    const host = make(html);
+    try {
+      expect(isEditableTarget(host.firstElementChild)).toBe(true);
+    } finally {
+      host.remove();
+    }
+  });
+
+  test("is true for a child of a contenteditable element", () => {
+    const host = make('<div contenteditable="true"><span>text</span></div>');
+    try {
+      expect(isEditableTarget(host.querySelector("span"))).toBe(true);
+    } finally {
+      host.remove();
+    }
+  });
+
+  test.each([
+    ["a div", "<div></div>"],
+    ["a button", "<button></button>"],
+    [
+      'a contenteditable="false" element',
+      '<div contenteditable="false"></div>',
+    ],
+  ])("is false for %s", (_kind, html) => {
+    const host = make(html);
+    try {
+      expect(isEditableTarget(host.firstElementChild)).toBe(false);
+    } finally {
+      host.remove();
+    }
+  });
+
+  test("is false for the document and for null", () => {
+    expect(isEditableTarget(document)).toBe(false);
+    expect(isEditableTarget(null)).toBe(false);
   });
 });
 
@@ -757,6 +811,24 @@ describe("the CMS overlay in the builder", () => {
       expect($isCmsOverlayOpen.get()).toBe(false);
       expect(isShown()).toBe(false);
       expect(frame()).toBe(iframe);
+    });
+
+    test("Escape in the builder hides it and returns focus to the rail button", () => {
+      render();
+      clickRail();
+      expect(document.activeElement).toBe(frame());
+      press("Escape");
+      expect(isShown()).toBe(false);
+      expect(document.activeElement).toBe(railButton());
+    });
+
+    test("cms.close_requested hides it and returns focus to the rail button", () => {
+      render();
+      clickRail();
+      expect(document.activeElement).toBe(frame());
+      post({ type: "cms.close_requested" });
+      expect(isShown()).toBe(false);
+      expect(document.activeElement).toBe(railButton());
     });
 
     test("another rail tab hides it and shows its panel", () => {
@@ -1350,6 +1422,138 @@ describe("the CMS overlay in the builder", () => {
           document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
         )
       ).toBe(true);
+    });
+
+    describe("Escape", () => {
+      const escape = vi.fn();
+      let unsubscribe: (() => void) | undefined;
+
+      beforeEach(() => {
+        escape.mockClear();
+        const { subscribeCommands } = createCommandsEmitter({
+          source: "cms-native-escape-test",
+          commands: [
+            {
+              name: "cmsNativeTestEscape",
+              defaultHotkeys: ["escape"],
+              preventDefault: false,
+              handler: escape,
+            },
+          ],
+        });
+        unsubscribe = subscribeCommands();
+      });
+
+      afterEach(() => {
+        unsubscribe?.();
+        unsubscribe = undefined;
+      });
+
+      test("Escape in an open Select inside it closes only the Select", async () => {
+        render();
+        pinRail();
+        clickRail();
+        mountInScreen(
+          <Select options={["One", "Two"]} value="One" onChange={() => {}} />
+        );
+        await act(async () =>
+          userEvent.click(
+            nativeScreen()!.querySelector<HTMLElement>(
+              "[data-cms-native-main] button"
+            )!
+          )
+        );
+        expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+        await act(async () => userEvent.keyboard("{Escape}"));
+        expect(document.querySelector('[role="listbox"]')).toBeNull();
+        expect(isShown()).toBe(true);
+        expect(escape).not.toHaveBeenCalled();
+      });
+
+      test("Escape in the open CMS menu closes only the menu", async () => {
+        render();
+        pinRail();
+        clickRail();
+        await act(async () =>
+          userEvent.click(
+            nativeScreen()!.querySelector<HTMLElement>(
+              '[aria-label="CMS menu"]'
+            )!
+          )
+        );
+        expect(document.querySelector('[role="menu"]')).not.toBeNull();
+        await act(async () => userEvent.keyboard("{Escape}"));
+        expect(document.querySelector('[role="menu"]')).toBeNull();
+        expect(isShown()).toBe(true);
+        expect(nativeScreen()?.style.display).toBe("flex");
+        expect(escape).not.toHaveBeenCalled();
+      });
+
+      test.each([
+        ["input", <input key="input" data-editable />],
+        ["textarea", <textarea key="textarea" data-editable />],
+        [
+          "select",
+          <select key="select" data-editable>
+            <option>One</option>
+          </select>,
+        ],
+        [
+          "contenteditable",
+          <div
+            key="editable"
+            data-editable
+            contentEditable
+            suppressContentEditableWarning
+          >
+            text
+          </div>,
+        ],
+      ])("Escape in a %s inside it does nothing", (_kind, node) => {
+        render();
+        clickRail();
+        mountInScreen(node);
+        const element = document.querySelector<HTMLElement>("[data-editable]");
+        expect(element).not.toBeNull();
+        press("Escape", element!);
+        expect(isShown()).toBe(true);
+        expect(escape).not.toHaveBeenCalled();
+      });
+
+      test("Escape a layer took is left alone", () => {
+        render();
+        clickRail();
+        mountInScreen(<div data-layer tabIndex={-1} />);
+        const layer = document.querySelector<HTMLElement>("[data-layer]")!;
+        layer.addEventListener("keydown", (event) => event.preventDefault());
+        press("Escape", layer);
+        expect(isShown()).toBe(true);
+        expect(escape).not.toHaveBeenCalled();
+      });
+
+      test("Escape at the top level hides it and returns focus to the rail button", () => {
+        render();
+        clickRail();
+        expect(document.activeElement).toBe(nativeScreen());
+        press("Escape", nativeScreen()!);
+        expect(isShown()).toBe(false);
+        expect(document.activeElement).toBe(railButton());
+        expect(escape).not.toHaveBeenCalled();
+      });
+
+      test("the close button hides it and returns focus to the rail button", () => {
+        render();
+        clickRail();
+        const close = nativeScreen()!.querySelector<HTMLElement>(
+          '[aria-label="Close"]'
+        )!;
+        close.focus();
+        act(() => {
+          close.click();
+        });
+        expect(isShown()).toBe(false);
+        expect(document.activeElement).toBe(railButton());
+      });
     });
 
     test("the close button hides the overlay", () => {
