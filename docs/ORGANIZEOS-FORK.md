@@ -554,7 +554,7 @@ can be merged with minimal conflict.
   `routes/_ui.$.tsx`.
 - **Branding.**
   - `shared/branding.ts`: the product and platform names, the publisher
-    host, `planBadgeLabel` ("Not in plan") and `planUpgradeHint`.
+    host, and `planBadgeLabel` ("Not in plan").
   - The OrganizeOS mark v3 in `shared/organizeos-logo.tsx`, the OrganizeOS
     repo's `LOGO_MARK_PATHS` drawn inline in the brand's in-app pair like its
     `BrandMark`: ink on light and cream on dark through `light-dark()`, so it
@@ -598,12 +598,16 @@ can be merged with minimal conflict.
 - **Plan copy (owner decision D4).** Plans are org entitlements, never a
   checkout in the builder. `packages/design-system/src/components/pro-chip.tsx`
   is a plain `Chip`, linking nowhere (`pro-chip.test.tsx`), and every plan
-  badge, `ProChip` or `Chip`, reads `planBadgeLabel`; a plan gate says
-  `planUpgradeHint` and links no pricing page, except in the Settings dialog,
-  where a gate is the chip alone (below). Marked:
+  badge, `ProChip` or `Chip`, reads `planBadgeLabel`; a plan gate shows the chip
+  alone, or one short sentence naming what the plan lacks, and no sentence
+  points at a plan page or links a pricing page (`planUpgradeHint` is gone,
+  2026-11-11). Marked:
   `features/builder-mode.tsx` (with `builder-mode.test.tsx`);
   `features/settings-panel/variable-editors/dialog/fields.tsx` (with
   `variable-popover-type.test.tsx`);
+  `features/settings-panel/variables-section.tsx`, the chip beside the
+  Variables title where `settings-panel.tsx` held a banner
+  (`settings-panel.organizeos.test.tsx`);
   `features/settings-panel/settings-panel.tsx`;
   `shared/project-settings/section-emails.tsx` (with `section-emails.test.tsx`);
   `shared/project-settings/section-headers.tsx` (with
@@ -670,7 +674,7 @@ can be merged with minimal conflict.
   while `orgScriptMayRun()`, with no paragraph (`section-general.test.tsx`);
   `section-emails.tsx` titled "Form emails", `section-auth.tsx` titled "Page
   passwords", `section-headers.tsx` and `section-redirects.tsx`, each with a
-  one-line tooltip and no `planUpgradeHint` (`section-emails.test.tsx`,
+  one-line tooltip and no pointer sentence (`section-emails.test.tsx`,
   `section-auth.organizeos.test.tsx`, `section-headers.test.tsx`,
   `section-redirects.organizeos.test.tsx`); `section-backups.tsx` titled
   "Published versions", the plan chip in place of the upgrade banner and its
@@ -684,8 +688,7 @@ can be merged with minimal conflict.
   dialog's Built-in or Main label and "Manage domains", from the same
   `loadSiteAddresses` read; `newTabLink` and `manageDomainsUrlOf`, moved into
   `features/publish/organizeos-publish-targets.ts` for both. The Recipients
-  validation error still ends with `planUpgradeHint` (the contract message
-  above). Upstream's e2e spec `project-settings-runtime.[shard-8].e2e.ts`
+  validation error is the contract message above, with no pointer sentence. Upstream's e2e spec `project-settings-runtime.[shard-8].e2e.ts`
   still names "Project settings"; it is not run (D14).
 - **The OrganizeOS blocks (§9).** The `packages/sdk-components-organizeos`
   package, `@organizeos/site-components`, a `workspace:*` dependency in

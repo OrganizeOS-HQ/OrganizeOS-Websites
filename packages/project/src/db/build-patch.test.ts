@@ -820,8 +820,7 @@ describe("patchBuild", () => {
     expect(result).toMatchObject({
       status: "error",
       // OrganizeOS fork: the message names no Webstudio tier
-      errors:
-        "Custom recipients are not included in your plan. Your organization's plan is managed in OrganizeOS.",
+      errors: "Custom recipients are not included in your plan.",
     });
     expect(didUpdateBuild).toBe(false);
   });

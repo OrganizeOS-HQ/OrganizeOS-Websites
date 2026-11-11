@@ -35,28 +35,13 @@ import {
   cssVar,
   declareCssVar,
 } from "@webstudio-is/design-system";
-import {
-  CopyIcon,
-  EllipsesIcon,
-  PlusIcon,
-  UpgradeIcon,
-} from "@webstudio-is/icons";
+import { CopyIcon, EllipsesIcon, PlusIcon } from "@webstudio-is/icons";
 import { CopyToClipboard } from "~/shared/copy-to-clipboard";
-import { planUpgradeHint } from "~/shared/branding";
 import { useIds } from "../form-utils";
 import type { BuilderMode } from "../nano-states";
 
 const Item = (props: ComponentProps<typeof Flex>) => (
   <PanelContent as={Flex} direction="column" gap="1" {...props} />
-);
-
-// OrganizeOS fork: plans are org entitlements, so the upgrade notice names
-// how to get the feature instead of linking to Webstudio's pricing.
-const UpgradeLink = () => (
-  <Flex align="center" gap={1}>
-    <UpgradeIcon />
-    <Text>{planUpgradeHint}</Text>
-  </Flex>
 );
 
 export const ShareLinkSecurityNotice = () => (
@@ -65,7 +50,6 @@ export const ShareLinkSecurityNotice = () => (
       Sharing links over insecure channels can expose project access. A plan
       with Team collaboration makes sharing safer.
     </Text>
-    <UpgradeLink />
   </PanelBanner>
 );
 
@@ -87,21 +71,10 @@ const PermissionTooltip = ({
   />
 );
 
-const PermissionTooltipContent = ({
-  children,
-  upgrade = false,
-}: {
-  children: ReactNode;
-  upgrade?: boolean;
-}) => (
-  <Flex direction="column">
-    {children}
-    {upgrade && (
-      <Box css={{ mt: theme.spacing[2] }}>
-        <UpgradeLink />
-      </Box>
-    )}
-  </Flex>
+// OrganizeOS fork: upstream appended an upgrade link when a permission was
+// gated; a plan gate here is the disabled control, with no pointer sentence.
+const PermissionTooltipContent = ({ children }: { children: ReactNode }) => (
+  <Flex direction="column">{children}</Flex>
 );
 
 const getApiPermissionDescription = ({
@@ -130,7 +103,6 @@ export const __testing__ = { getApiPermissionDescription };
 type PermissionProps = {
   title: string;
   description: ReactNode;
-  upgrade?: boolean;
   checked: boolean;
   disabled?: boolean;
   onCheckedChange: (checked: boolean) => void;
@@ -138,7 +110,6 @@ type PermissionProps = {
 const Permission = ({
   title,
   description,
-  upgrade = false,
   checked,
   disabled = false,
   onCheckedChange,
@@ -157,9 +128,7 @@ const Permission = ({
         {title}
       </Label>
       <PermissionTooltip title={title}>
-        <PermissionTooltipContent upgrade={upgrade}>
-          {description}
-        </PermissionTooltipContent>
+        <PermissionTooltipContent>{description}</PermissionTooltipContent>
       </PermissionTooltip>
     </Flex>
   );
@@ -261,7 +230,7 @@ const Menu = ({
     const canUseApi = draftLink.canUseApi === true;
     const isApiForbidden = !allowAdditionalPermissions && canUseApi === false;
     const description = (
-      <PermissionTooltipContent upgrade={!allowAdditionalPermissions}>
+      <PermissionTooltipContent>
         {getApiPermissionDescription({
           canPublish: draftLink.canPublish,
           role,
@@ -368,9 +337,7 @@ const Menu = ({
                 disabled={!allowAdditionalPermissions}
                 onCheckedChange={(canClone) => updateDraftLink({ canClone })}
                 description={
-                  <PermissionTooltipContent
-                    upgrade={!allowAdditionalPermissions}
-                  >
+                  <PermissionTooltipContent>
                     Allows viewers to clone the project from this share link.
                   </PermissionTooltipContent>
                 }
@@ -382,9 +349,7 @@ const Menu = ({
                 disabled={!allowAdditionalPermissions}
                 onCheckedChange={(canCopy) => updateDraftLink({ canCopy })}
                 description={
-                  <PermissionTooltipContent
-                    upgrade={!allowAdditionalPermissions}
-                  >
+                  <PermissionTooltipContent>
                     Allows viewers to copy project content from this share link.
                   </PermissionTooltipContent>
                 }
@@ -399,7 +364,6 @@ const Menu = ({
             checked={draftLink.relation === "editors"}
             title={roleLabels.editors}
             description={roleDescriptions.editors}
-            upgrade={!allowAdditionalPermissions}
           />
           {renderAdvanced(
             "editors",
@@ -413,9 +377,7 @@ const Menu = ({
                   updateDraftLink({ canPublish })
                 }
                 description={
-                  <PermissionTooltipContent
-                    upgrade={!allowAdditionalPermissions}
-                  >
+                  <PermissionTooltipContent>
                     Allows editors to publish from this share link.
                   </PermissionTooltipContent>
                 }
@@ -437,7 +399,6 @@ const Menu = ({
             checked={draftLink.relation === "administrators"}
             title={roleLabels.administrators}
             description={roleDescriptions.administrators}
-            upgrade={!allowAdditionalPermissions}
           />
           {renderAdvanced(
             "administrators",

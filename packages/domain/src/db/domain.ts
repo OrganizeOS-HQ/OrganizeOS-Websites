@@ -52,10 +52,9 @@ export const create = async (
   if (totalDomainsCount >= ownerPlan.maxDomainsAllowedPerUser) {
     return {
       success: false,
-      // OrganizeOS fork: names no Webstudio tier (the builder's
-      // planUpgradeHint)
-      error:
-        "You have reached the number of domains your plan includes. Your organization's plan is managed in OrganizeOS.",
+      // OrganizeOS fork: names no Webstudio tier and points at no plan
+      // page
+      error: "You have reached the number of domains your plan includes.",
     };
   }
 

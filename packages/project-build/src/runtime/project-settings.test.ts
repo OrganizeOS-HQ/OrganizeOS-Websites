@@ -273,7 +273,7 @@ describe("project settings runtime", () => {
     );
     // OrganizeOS fork: the message names no Webstudio tier
     expect(validateContactEmail("hello@webstudio.is", 0)).toBe(
-      "Custom recipients are not included in your plan. Your organization's plan is managed in OrganizeOS."
+      "Custom recipients are not included in your plan."
     );
     expect(
       validateContactEmail("hello@webstudio.is, support@webstudio.is", 1)

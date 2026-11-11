@@ -5,7 +5,6 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { defaultPlanFeatures } from "@webstudio-is/plans";
 import { $planFeatures } from "~/shared/nano-states";
-import { planUpgradeHint } from "~/shared/branding";
 import { $projectSettings } from "~/shared/sync/data-stores";
 import { SectionHeaders } from "./section-headers";
 
@@ -435,7 +434,7 @@ test("the tooltip is one line, without the plan sentence", async () => {
     expect(text).toBe(
       "/* is every path, / the root. The last matching rule wins."
     );
-    expect(text).not.toContain(planUpgradeHint);
+    expect(text).not.toContain("plan is managed");
     expect(text).not.toContain("managed by the platform");
   } finally {
     $planFeatures.set(previousPlan);

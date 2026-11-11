@@ -78,7 +78,6 @@ import {
   AlertIcon,
   CopyIcon,
   GearIcon,
-  UpgradeIcon,
   HelpIcon,
   InfoCircleIcon,
   EllipsesIcon,
@@ -112,7 +111,6 @@ import {
   getRestrictedFeatures,
   type RestrictedFeature,
 } from "./restricted-features";
-import { planUpgradeHint } from "~/shared/branding";
 import { $organizeosSite } from "~/shared/nano-states";
 import { OrganizeosPublishContent } from "./organizeos-publish";
 import {
@@ -1482,7 +1480,7 @@ const buttonLinkClass = css({
 }).toString();
 
 // OrganizeOS fork: the banner's plan copy names no Webstudio tier and links no
-// pricing page; each upgrade link is planUpgradeHint (shared/branding.ts)
+// pricing page and no sentence points at a plan page
 const UpgradeBanner = ({ hasCustomDomains }: { hasCustomDomains: boolean }) => {
   const restrictedFeatures = useStore($restrictedFeatures);
   const { canAddDomain } = useCanAddDomain();
@@ -1493,7 +1491,6 @@ const UpgradeBanner = ({ hasCustomDomains }: { hasCustomDomains: boolean }) => {
         <Text variant="regularBold">
           Your plan allows {maxDailyPublishesPerUser} publishes per day.
         </Text>
-        <Text>{planUpgradeHint}</Text>
       </PanelBanner>
     );
   }
@@ -1550,10 +1547,6 @@ const UpgradeBanner = ({ hasCustomDomains }: { hasCustomDomains: boolean }) => {
           You can delete these features, or publish to custom domains on a plan
           that includes them.
         </Text>
-        <Flex align="center" gap={1}>
-          <UpgradeIcon />
-          <Text>{planUpgradeHint}</Text>
-        </Flex>
       </PanelBanner>
     );
   }
@@ -1564,10 +1557,6 @@ const UpgradeBanner = ({ hasCustomDomains }: { hasCustomDomains: boolean }) => {
           Adding unlimited domains and publishing to each domain individually is
           not included in your plan.
         </Text>
-        <Flex align="center" gap={1}>
-          <UpgradeIcon />
-          <Text>{planUpgradeHint}</Text>
-        </Flex>
       </PanelBanner>
     );
   }

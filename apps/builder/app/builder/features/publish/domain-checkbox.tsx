@@ -10,7 +10,6 @@ import {
 
 import { $project } from "~/shared/sync/data-stores";
 import { $permissions } from "~/shared/nano-states";
-import { planUpgradeHint } from "~/shared/branding";
 
 export const domainToPublishName = "domainToPublish[]";
 
@@ -95,8 +94,6 @@ export const DomainCheckbox = (props: DomainCheckboxProps) => {
             <br />
             <br />
             Publishing to each domain individually is not included in your plan.
-            <br /> <br />
-            {planUpgradeHint}
           </>
         </Flex>
       </Text>
