@@ -1,10 +1,24 @@
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { $projectSettings } from "~/shared/sync/data-stores";
+import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import { SectionGeneral } from "./section-general";
+
+// OrganizeOS fork: orgScriptMayRun is a constant false while org script is
+// paused (docs/ORGANIZEOS-FORK.md section 10); the case for after the unpause
+// flips it here
+const orgScript = vi.hoisted(() => ({ mayRun: false }));
+vi.mock("@organizeos/site-components/org-script", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@organizeos/site-components/org-script")
+  >()),
+  orgScriptMayRun: () => orgScript.mayRun,
+}));
+
+vi.mock("~/shared/instance-utils/data", { spy: true });
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -28,11 +42,17 @@ const renderSection = (code: string | undefined) => {
   return container;
 };
 
-// The editors in the section, in order; Custom code is the last
 const getEditors = (host: HTMLElement) =>
   Array.from(host.querySelectorAll<HTMLElement>(".cm-content"));
 
+const getLabels = (host: HTMLElement) =>
+  Array.from(host.querySelectorAll("label")).map((label) => label.textContent);
+
 beforeEach(() => {
+  orgScript.mayRun = false;
+  vi.mocked(executeRuntimeMutation)
+    .mockReset()
+    .mockImplementation(() => undefined);
   previousSettings = $projectSettings.get();
   $projectSettings.set(undefined);
 });
@@ -48,31 +68,51 @@ afterEach(() => {
 });
 
 describe("SectionGeneral, Custom code", () => {
-  // T9
-  test("shows the saved code in an editor that cannot be edited", () => {
+  test("while org script is paused there is no Custom code box", () => {
     const host = renderSection("<script>1</script>");
+    expect(getLabels(host)).not.toContain("Custom code");
+    expect(getEditors(host)).toEqual([]);
+    expect(host.textContent).not.toContain("<script>1</script>");
+    expect(host.textContent).not.toContain("paused");
+  });
+
+  test("once org script may run it is the label and an editor, with no paragraph", () => {
+    orgScript.mayRun = true;
+    const host = renderSection("<script>1</script>");
+    expect(getLabels(host)).toContain("Custom code");
     const editor = getEditors(host).at(-1);
     expect(editor?.textContent).toBe("<script>1</script>");
-    expect(editor?.getAttribute("contenteditable")).toBe("false");
+    expect(editor?.getAttribute("contenteditable")).toBe("true");
+    expect(host.textContent).not.toContain("<head>");
+    expect(host.textContent).not.toContain("published site");
   });
+});
 
-  test("says custom code is paused, and that it is kept", () => {
-    const host = renderSection("<script>1</script>");
-    expect(host.textContent).toContain(
-      "Custom code is paused for now: it isn't added to any page of your published site. Scripts on your site could read the OrganizeOS sign-in of people who visit, so it stays off while we make it safe. The code saved here is kept and starts running again when it is."
-    );
-  });
-
-  test("no longer says the code is added to the head and runs on the published site", () => {
-    const host = renderSection("<script>1</script>");
-    expect(host.textContent).not.toContain("end of the <head>");
-    expect(host.textContent).not.toContain("will be added at the end");
-    expect(host.textContent).not.toContain("will run only on the published");
-  });
-
-  test("is read-only when there is no code too", () => {
+describe("SectionGeneral", () => {
+  test("the favicon has no caption", () => {
     const host = renderSection(undefined);
-    const editor = getEditors(host).at(-1);
-    expect(editor?.getAttribute("contenteditable")).toBe("false");
+    expect(getLabels(host)).toContain("Favicon");
+    expect(host.textContent).not.toContain("Upload a square image");
+  });
+
+  test("editing the site name sends siteName only, never the saved code", () => {
+    const host = renderSection("<script>1</script>");
+    const input = host.querySelector<HTMLInputElement>(
+      'input[placeholder="Current site name"]'
+    );
+    expect(input).not.toBeNull();
+    act(() => {
+      const setValue = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value"
+      )?.set;
+      setValue?.call(input, "New name");
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(executeRuntimeMutation).toHaveBeenCalledTimes(1);
+    expect(executeRuntimeMutation).toHaveBeenCalledWith({
+      id: "projectSettings.update",
+      input: { meta: { siteName: "New name" } },
+    });
   });
 });

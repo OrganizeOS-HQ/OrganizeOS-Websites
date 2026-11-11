@@ -574,7 +574,7 @@ can be merged with minimal conflict.
   `routes/_ui.$.tsx`.
 - **Branding.**
   - `shared/branding.ts`: the product and platform names, the publisher
-    host, `planBadgeLabel` ("Not in plan") and `planUpgradeHint`.
+    host, and `planBadgeLabel` ("Not in plan").
   - The OrganizeOS mark v3 in `shared/organizeos-logo.tsx`, the OrganizeOS
     repo's `LOGO_MARK_PATHS` drawn inline in the brand's in-app pair like its
     `BrandMark`: ink on light and cream on dark through `light-dark()`, so it
@@ -618,11 +618,16 @@ can be merged with minimal conflict.
 - **Plan copy (owner decision D4).** Plans are org entitlements, never a
   checkout in the builder. `packages/design-system/src/components/pro-chip.tsx`
   is a plain `Chip`, linking nowhere (`pro-chip.test.tsx`), and every plan
-  badge, `ProChip` or `Chip`, reads `planBadgeLabel`; a plan gate says
-  `planUpgradeHint` and links no pricing page. Marked:
+  badge, `ProChip` or `Chip`, reads `planBadgeLabel`; a plan gate shows the chip
+  alone, or one short sentence naming what the plan lacks, and no sentence
+  points at a plan page or links a pricing page (`planUpgradeHint` is gone,
+  2026-11-11). Marked:
   `features/builder-mode.tsx` (with `builder-mode.test.tsx`);
   `features/settings-panel/variable-editors/dialog/fields.tsx` (with
   `variable-popover-type.test.tsx`);
+  `features/settings-panel/variables-section.tsx`, the chip beside the
+  Variables title where `settings-panel.tsx` held a banner
+  (`settings-panel.organizeos.test.tsx`);
   `features/settings-panel/settings-panel.tsx`;
   `shared/project-settings/section-emails.tsx` (with `section-emails.test.tsx`);
   `shared/project-settings/section-headers.tsx` (with
@@ -646,7 +651,6 @@ can be merged with minimal conflict.
   `features/blocking-alerts/blocking-alerts.tsx` (marked) and
   `alert.stories.tsx` (§6). With no comment, from before the convention,
   where the change is a link or a line taken out: the plan copy of
-  `shared/project-settings/section-auth.tsx` and `section-backups.tsx`, of
   `features/pages/page-settings/section-auth.tsx` and `section-general.tsx`,
   of `features/publish/domain-checkbox.tsx` and `domains.tsx`, of
   `builder/shared/asset-manager/asset-settings.tsx` and of
@@ -674,6 +678,38 @@ can be merged with minimal conflict.
   with `shared/organizeos-site.node.test.ts`; `features/menu/menu.test.tsx`,
   which renders the menu for an org site and another project; and
   `$organizeosSite` in `shared/nano-states/misc.ts`.
+- **The Settings dialog (2026-11-11).** The builder's "Project settings" is
+  "Settings", rebuilt to the builder UI rule (`CLAUDE.md`: options, not
+  explanations; spec `docs/superpowers/specs/2026-11-11-builder-settings-screen-design.md`
+  in the OrganizeOS repo). Marked, in `shared/project-settings/`:
+  `project-settings.tsx`, one block after upstream's `sectionLabels` with the
+  OrganizeOS order (General, Domains, Form emails, Redirects, Page passwords,
+  Headers, Published versions), the labels, the lookup that adds Domains to
+  upstream's untouched `sections` map, and `useOrganizeosVisibleSections`,
+  which lists that order for an org project (`$organizeosSite` set) and
+  upstream's keys otherwise, so Agents and Publish are gone only for an org;
+  the list, `open` and the section all read the visible list, and the title
+  reads "Settings" (`project-settings.organizeos.test.tsx`);
+  `section-general.tsx`, no favicon caption and the Custom code block only
+  while `orgScriptMayRun()`, with no paragraph (`section-general.test.tsx`);
+  `section-emails.tsx` titled "Form emails", `section-auth.tsx` titled "Page
+  passwords", `section-headers.tsx` and `section-redirects.tsx`, each with a
+  one-line tooltip and no pointer sentence (`section-emails.test.tsx`,
+  `section-auth.organizeos.test.tsx`, `section-headers.test.tsx`,
+  `section-redirects.organizeos.test.tsx`); `section-backups.tsx` titled
+  "Published versions", the plan chip in place of the upgrade banner and its
+  artwork, dates without domains (`section-backups.organizeos.test.tsx`);
+  `project-settings.stories.tsx` (story title). Also marked: the `domains` key
+  in `shared/nano-states/project-settings.ts`; the menu item "Settings" in
+  `features/menu/menu.tsx` (`menu.test.tsx`); one string in
+  `features/settings-panel/variable-editors/email-resource-editor.tsx`
+  (`resource-panel.test.ts`). OrganizeOS-only: `section-domains.tsx` (with
+  `section-domains.test.tsx`), the org's addresses as text with the Publish
+  dialog's Built-in or Main label and "Manage domains", from the same
+  `loadSiteAddresses` read; `newTabLink` and `manageDomainsUrlOf`, moved into
+  `features/publish/organizeos-publish-targets.ts` for both. The Recipients
+  validation error is the contract message above, with no pointer sentence. Upstream's e2e spec `project-settings-runtime.[shard-8].e2e.ts`
+  still names "Project settings"; it is not run (D14).
 - **The OrganizeOS blocks (§9).** The `packages/sdk-components-organizeos`
   package, `@organizeos/site-components`, a `workspace:*` dependency in
   `apps/builder/package.json` and `packages/cli/package.json`, and so in
@@ -833,8 +869,8 @@ can be merged with minimal conflict.
   `canvas/features/webstudio-component/webstudio-component.tsx` (the
   instance-tag gate and the two prop skips in `useInstanceProps`, the `div`
   fallback in each renderer, and `withoutPausedProps` in each renderer) that
-  keep it off every component; one marked branch in
-  `shared/project-settings/section-general.tsx`, with
+  keep it off every component; one marked condition in
+  `shared/project-settings/section-general.tsx` that hides Custom code, with
   `section-general.test.tsx`;
   `features/publish/organizeos-publish-paused-script.ts`, whose banners are in
   `organizeos-publish.tsx`; one marked guard in `getAction` in
@@ -1070,7 +1106,7 @@ webstudio-is/webstudio#6627) changes both the sdk and these templates here:
 check this again then.
 
 **Upstream settings that do nothing here (owner decision D11).** Custom response
-headers (Project settings > Headers) are applied by upstream's Cloudflare
+headers (Settings > Headers) are applied by upstream's Cloudflare
 template only, and a Form's email action needs Webstudio's email service (the
 Node module's `createManagedFormEmailSender` sends nothing, and the builder's
 `EMAIL_SERVICE_URL` is never set, §4), so both are inert on an OrganizeOS site.
@@ -3714,7 +3750,7 @@ exposure needs no publish. Spec (OrganizeOS repo):
   does not declare where the expression is written. See "Expressions" below.
 - **XML Node and XML Time on an HTML page**: a custom element that keeps every
   attribute.
-- **Custom code** (Project settings > General), which 0.309.0 keeps in the
+- **Custom code** (Settings > General while it may run; hidden while paused), which 0.309.0 keeps in the
   project's settings (`projectSettings.meta.code`) and an older build in its
   pages' meta.
 - **MDX content** (owner decision D7): a Content Block bound to a Markdown or
@@ -3751,10 +3787,13 @@ and only when all three hold:
 
 The platform unpauses Website Lite custom code at C2 as well, and the two should
 move together. When it is on, everything follows it: the panel lists the embeds
-again, the canvas renders upstream's components, Custom code is editable,
+again, the canvas renders upstream's components, Custom code shows in Settings again, editable,
 prebuild keeps all of it, and the Publish dialog's list goes away. Nothing needs
 migrating: each org's next publish ships what it saved, including code someone
-may have forgotten, so tell the orgs first. The unpause also decides how an
+may have forgotten, so tell the orgs first. The builder hides Custom code
+while paused, so an org cannot see what it saved: before the flip, tell each
+org whose `meta.code` (or an older build's pages' meta) is not empty what is
+stored there. The unpause also decides how an
 org's own click handlers meet the share-code carriers (§9, "Share codes"): the
 page's carrier cancels a plain click on a same-origin link to a platform page
 in the document's capture phase, and a block's carrier does the same within its
@@ -3862,9 +3901,10 @@ as paused, so reversal is the switch.
   `organizeos-org-script.props.test.tsx` renders each case in both modes, and
   `organizeos-org-script.wiring.node.test.ts` pins the two calls.
 
-- **Custom code field.** Read-only, with a sentence that says it is paused and
-  kept (`section-general.tsx`, one marked branch). The saved code stays readable
-  and copyable.
+- **Custom code field.** Hidden while paused (owner decision, 2026-11-10:
+  no read-only box with an explanation; `section-general.tsx`, one marked
+  condition). The saved code is kept, untouched, and the box returns, editable,
+  when `orgScriptMayRun()` does.
 - **Builder panels.** The builder's panels never put an org's HTML, styles or
   values into the builder's own page as markup or code. The HTML Embed code
   check is upstream's `validateHtmlEmbedCode`, which reads the code with parse5
@@ -3890,10 +3930,10 @@ as paused, so reversal is the switch.
   that holds its data source, and "Data source (name)", which selects the
   element it is scoped to), each page redirect to an unsafe address or that
   may not run ("Redirect on {page}", which opens that page's settings), each
-  project redirect to one ("Redirect from {old} (Project settings)", which opens
-  Redirects) and "Custom code (Project settings)", once, when the project's
+  project redirect to one ("Redirect from {old} (Settings)", which opens
+  Redirects) and "Custom code", once, as plain text, when the project's
   settings or the pages' meta hold any (a click selects the element or opens the
-  settings), from `findPausedScript`
+  settings; Custom code has nowhere to open while it is hidden), from `findPausedScript`
   (`features/publish/organizeos-publish-paused-script.ts`). A bound address that
   the canvas shows with a safe value is still listed, and dropped at publish,
   when its fixed start decides nothing. The tag items follow `classify` in the
@@ -4633,7 +4673,7 @@ a `div` for a `ws:element` with such a tag
 `useInstanceProps`, the two `div` fallbacks, which read `instanceTagMayRender`
 (`elementTagMayRender` and input validation's tag rule), and the two renderer
 calls, which are `withoutPausedProps`);
-`section-general.tsx` holds the read-only branch (`section-general.test.tsx`);
+`section-general.tsx` hides Custom code (`section-general.test.tsx`);
 `packages/project-build/src/runtime/data.ts` compiles no expression
 `expressionMayRun` refuses and computes no function
 (`data.organizeos.test.ts`, and `organizeos-org-script.wiring.node.test.ts`,

@@ -20,11 +20,16 @@ import {
   Text,
   Tooltip,
   Kbd,
+  ProChip,
   theme,
 } from "@webstudio-is/design-system";
 import { AlertIcon, PlusIcon, TrashIcon } from "@webstudio-is/icons";
 import { ROOT_INSTANCE_ID, type DataSource } from "@webstudio-is/sdk";
-import { $variableValuesByInstanceSelector } from "~/shared/nano-states";
+import {
+  $permissions,
+  $variableValuesByInstanceSelector,
+} from "~/shared/nano-states";
+import { planBadgeLabel } from "~/shared/branding";
 import { $dataSources } from "~/shared/sync/data-stores";
 import {
   $instances,
@@ -459,6 +464,7 @@ const VariablesList = ({ isOpen }: { isOpen: boolean }) => {
 const label = "Variables";
 
 export const VariablesSection = () => {
+  const { allowDynamicData } = useStore($permissions);
   const variableToFocus = useStore($variableToFocus);
   const variableToOpen = useStore($variableToOpen);
   const availableVariables = useStore($availableVariables);
@@ -532,6 +538,10 @@ export const VariablesSection = () => {
             }
           >
             <SectionTitleLabel>Variables</SectionTitleLabel>
+            {/* OrganizeOS fork: upstream sold its CMS in a banner under the
+                panel, with a pitch that was untrue here (one address, no
+                staging). The gate is this chip beside the title, no sentence. */}
+            {allowDynamicData === false && <ProChip>{planBadgeLabel}</ProChip>}
           </SectionTitle>
         }
       >

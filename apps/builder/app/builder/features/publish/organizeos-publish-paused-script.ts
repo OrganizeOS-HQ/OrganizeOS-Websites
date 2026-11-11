@@ -77,7 +77,7 @@ export type PausedScriptItem = {
   /** Select the element on its page when clicked */
   navigate?: { pageId: string; instanceSelector: string[] };
   /** Open a view when clicked */
-  view?: "projectSettings" | "projectRedirects" | "pageSettings";
+  view?: "projectRedirects" | "pageSettings";
 };
 
 /**
@@ -598,7 +598,7 @@ export const findPausedScript = ({
   for (const redirect of pages.redirects ?? []) {
     if (projectRedirectMayShip(redirect, false) === false) {
       items.push({
-        label: `Redirect from ${redirect.old} (Project settings)`,
+        label: `Redirect from ${redirect.old} (Settings)`,
         view: "projectRedirects",
       });
     }
@@ -608,10 +608,9 @@ export const findPausedScript = ({
     (pages.meta?.code ?? "").trim() !== "" ||
     (projectSettings?.meta.code ?? "").trim() !== ""
   ) {
-    items.push({
-      label: "Custom code (Project settings)",
-      view: "projectSettings",
-    });
+    // Text, not a link: Settings shows no custom code while org script is
+    // paused (shared/project-settings/section-general.tsx)
+    items.push({ label: "Custom code" });
   }
   return items;
 };

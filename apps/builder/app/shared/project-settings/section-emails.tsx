@@ -69,8 +69,10 @@ export const SectionEmails = () => {
   const replyToError = validateEmailSender(meta.emailSender ?? "");
   return (
     <Grid gap={2}>
+      {/* OrganizeOS fork: plain names and one-line tooltips (builder UI rule,
+          fork CLAUDE.md). */}
       <Text variant="titles" css={sectionSpacing}>
-        Emails
+        Form emails
       </Text>
       <Grid gap={1} css={sectionSpacing}>
         <Flex gap={1} align="center">
@@ -83,7 +85,7 @@ export const SectionEmails = () => {
           </Label>
           <InfoTooltip
             label="Recipients"
-            content="These addresses are used by email resources. Leave empty to send to the account holder."
+            content="Where form submissions go. Empty: the account holder."
           />
         </Flex>
         <InputErrorsTooltip errors={contactError ? [contactError] : undefined}>
@@ -103,7 +105,7 @@ export const SectionEmails = () => {
           <Label htmlFor="project-emailSender">Reply to</Label>
           <InfoTooltip
             label="Reply to"
-            content="This is the default Reply to address for email resources. Its display name is used in generated default visitor confirmation subjects and messages when the resource has no Reply to value. Custom subjects and messages stay unchanged. If no display name is set, “Site Owner” is used."
+            content="Default reply-to address for form emails."
           />
         </Flex>
         <InputErrorsTooltip errors={replyToError ? [replyToError] : undefined}>

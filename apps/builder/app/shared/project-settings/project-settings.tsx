@@ -21,7 +21,7 @@ import {
   $openProjectSettings,
   type SectionName,
 } from "~/shared/nano-states/project-settings";
-import { $isDesignMode } from "~/shared/nano-states";
+import { $isDesignMode, $organizeosSite } from "~/shared/nano-states";
 import { leftPanelWidth, rightPanelWidth } from "./utils";
 import { SectionGeneral } from "./section-general";
 import { SectionEmails } from "./section-emails";
@@ -32,6 +32,7 @@ import { SectionRedirects } from "./section-redirects";
 import { SectionPublish } from "./section-publish";
 import { SectionBackups } from "./section-backups";
 import { titleCase } from "title-case";
+import { SectionDomains } from "./section-domains";
 
 // OrganizeOS fork: no "marketplace" section. Upstream's submits the project to
 // the Webstudio template marketplace for review; this deployment has no
@@ -55,6 +56,53 @@ const sectionLabels = new Map<SectionName, string>([
   ["auth", "Authentication"],
 ]);
 
+// OrganizeOS fork: the dialog's sections for an org project, in this order,
+// with plain names, and the org-only Domains section. Upstream's Agents and
+// Publish sections are not offered to an org (owner decision D1); an org
+// publishes from its own Publish popup. A project no org owns keeps upstream's
+// list, with the same names and without Domains. The visible list drives both
+// the left list and whether the dialog opens, so asking for a section the
+// project does not offer opens nothing
+// (docs/superpowers/specs/2026-11-11-builder-settings-screen-design.md).
+const organizeosSectionOrder: SectionName[] = [
+  "general",
+  "domains",
+  "emails",
+  "redirects",
+  "auth",
+  "headers",
+  "backups",
+];
+
+const organizeosSectionLabels = new Map<SectionName, string>([
+  ["general", "General"],
+  ["domains", "Domains"],
+  ["emails", "Form emails"],
+  ["redirects", "Redirects"],
+  ["auth", "Page passwords"],
+  ["headers", "Headers"],
+  ["backups", "Published versions"],
+  ["agents", "Agents"],
+  ["publish", "Publish"],
+]);
+
+const organizeosSections = new Map<
+  SectionName,
+  FunctionComponent<{ projectId?: string }>
+>([...sections, ["domains", SectionDomains]]);
+
+const useOrganizeosVisibleSections = (): SectionName[] => {
+  const isOrganizeosSite = useStore($organizeosSite) !== undefined;
+  return isOrganizeosSite
+    ? organizeosSectionOrder
+    : Array.from(sections.keys());
+};
+
+const organizeosSectionLabel = (name: SectionName) =>
+  organizeosSectionLabels.get(name) ??
+  sectionLabels.get(name) ??
+  titleCase(name);
+
 export const ProjectSettingsDialog = ({
   currentSection,
   onSectionChange,
@@ -69,14 +117,19 @@ export const ProjectSettingsDialog = ({
   status?: "idle" | "loading" | "loaded";
 }) => {
   const isDesignMode = useStore($isDesignMode);
-  const SectionComponent = currentSection
-    ? sections.get(currentSection)
-    : undefined;
+  // OrganizeOS fork: the sections this project offers, Domains included for
+  // an org (see organizeosSectionOrder).
+  const visibleSections = useOrganizeosVisibleSections();
+  const SectionComponent =
+    currentSection && visibleSections.includes(currentSection)
+      ? organizeosSections.get(currentSection)
+      : undefined;
 
   return (
     <Dialog
       draggable
-      open={sections.has(currentSection!)}
+      // OrganizeOS fork: opens only for a section this project offers.
+      open={visibleSections.includes(currentSection!)}
       onOpenChange={onOpenChange}
     >
       <DialogContent
@@ -96,7 +149,8 @@ export const ProjectSettingsDialog = ({
                   borderRight: `1px solid  ${cssVar("--border-default")}`,
                 }}
               >
-                {Array.from(sections.keys()).map((name, index) => {
+                {/* OrganizeOS fork: the visible list, with plain names. */}
+                {visibleSections.map((name, index) => {
                   return (
                     <ListItem
                       current={currentSection === name}
@@ -109,7 +163,7 @@ export const ProjectSettingsDialog = ({
                     >
                       <InsetListItem>
                         <Text variant="labels" truncate>
-                          {sectionLabels.get(name) ?? titleCase(name)}
+                          {organizeosSectionLabel(name)}
                         </Text>
                       </InsetListItem>
                     </ListItem>
@@ -140,7 +194,8 @@ export const ProjectSettingsDialog = ({
           {/* Title is at the end intentionally,
            * to make the close button last in the tab order
            */}
-          <DialogTitle>Project settings</DialogTitle>
+          {/* OrganizeOS fork: the dialog's plain name (spec D3). */}
+          <DialogTitle>Settings</DialogTitle>
         </fieldset>
       </DialogContent>
     </Dialog>

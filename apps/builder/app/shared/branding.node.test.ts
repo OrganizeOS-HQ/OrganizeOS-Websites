@@ -8,8 +8,8 @@ import { describe, expect, test } from "vitest";
  * OrganizeOS plans are org entitlements resolved by OrganizeOS, never a
  * checkout in the builder (branding.ts, owner decision D4). So no shipped
  * builder, design-system or server file links Webstudio's pricing page or
- * names a Webstudio plan; a plan-gated control says `planBadgeLabel` and
- * `planUpgradeHint` instead. Upstream merges bring such copy back, and this
+ * names a Webstudio plan; a plan-gated control says `planBadgeLabel` alone,
+ * with no sentence pointing at a plan page. Upstream merges bring such copy back, and this
  * fails on it with each file and line.
  */
 const repositoryRoot = fileURLToPath(new URL("../../../../", import.meta.url));

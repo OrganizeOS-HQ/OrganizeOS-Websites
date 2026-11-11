@@ -972,7 +972,7 @@ describe("the OrganizeOS Publish dialog", () => {
     const host = await render();
     expect(
       Array.from(host.querySelectorAll("li"), (item) => item.textContent)
-    ).toEqual(["Custom code (Project settings)"]);
+    ).toEqual(["Custom code"]);
   });
 
   test("Publish to selected has no tooltip", async () => {

@@ -1,3 +1,4 @@
+import type { OrganizeosSite } from "~/shared/organizeos-site";
 import type { OrganizeosPublishState } from "./organizeos-publish-status";
 import type {
   PublishOutcome,
@@ -44,6 +45,26 @@ export const rowLabel = (target: SiteTarget): string | undefined => {
   if (target.main) {
     return "Main";
   }
+};
+
+/** The props that open a link in a new tab. */
+export const newTabLink = {
+  target: "_blank",
+  rel: "noreferrer",
+} as const;
+
+/** OrganizeOS's domain settings, from the read, else from the site. */
+export const manageDomainsUrlOf = (
+  site: Pick<OrganizeosSite, "platformUrl" | "subdomain">,
+  addresses: SiteAddresses | undefined
+): string | undefined => {
+  if (addresses !== undefined) {
+    return addresses.manageDomainsUrl;
+  }
+  if (site.subdomain === undefined) {
+    return;
+  }
+  return `${site.platformUrl.replace(/\/+$/, "")}/${site.subdomain}/settings/domain`;
 };
 
 /** The last build is published, and OrganizeOS says it cannot go live. */

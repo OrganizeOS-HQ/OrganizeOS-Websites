@@ -6,7 +6,7 @@ import { defaultPlanFeatures } from "@webstudio-is/plans";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { validateContactEmail } from "@webstudio-is/project-build/contracts";
 import { $planFeatures } from "~/shared/nano-states";
-import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
+import { planBadgeLabel } from "~/shared/branding";
 import { $projectSettings } from "~/shared/sync/data-stores";
 import { SectionEmails } from "./section-emails";
 
@@ -72,8 +72,9 @@ test("shows the free and paid address limits in Project Emails", async () => {
 });
 
 // OrganizeOS fork: project-build cannot import the builder's branding, so its
-// message is held to planUpgradeHint here
-const customRecipientsNotInPlan = `Custom recipients are not included in your plan. ${planUpgradeHint}`;
+// message is held to the plan copy here
+const customRecipientsNotInPlan =
+  "Custom recipients are not included in your plan.";
 
 test("the contract's plan message is the builder's plan copy", () => {
   expect(validateContactEmail("one@example.com", 0)).toBe(
@@ -101,9 +102,20 @@ test("subject and body are configured on each Email Resource", () => {
   );
 });
 
+test("the section is titled Form emails", () => {
+  act(() =>
+    root.render(
+      <TooltipProvider delayDuration={0}>
+        <SectionEmails />
+      </TooltipProvider>
+    )
+  );
+  expect(document.body.textContent).toContain("Form emails");
+});
+
 test("keyboard users can open the recipients helper", async () => {
   const recipientsHelp =
-    "These addresses are used by email resources. Leave empty to send to the account holder.";
+    "Where form submissions go. Empty: the account holder.";
   act(() =>
     root.render(
       <TooltipProvider delayDuration={0}>
@@ -131,11 +143,13 @@ test("keyboard users can open the recipients helper", async () => {
   expect(document.activeElement).toBe(recipientsHelpButton);
   await act(async () => userEvent.keyboard("{Enter}"));
   expect(page.getByRole("tooltip").getByText(recipientsHelp)).toBeVisible();
+  expect(page.getByRole("tooltip").element().textContent).not.toContain(
+    "plan is managed"
+  );
 });
 
-test("Reply to helper explains the visitor confirmation display name", async () => {
-  const replyToHelp =
-    "This is the default Reply to address for email resources. Its display name is used in generated default visitor confirmation subjects and messages when the resource has no Reply to value. Custom subjects and messages stay unchanged. If no display name is set, “Site Owner” is used.";
+test("Reply to helper is one line", async () => {
+  const replyToHelp = "Default reply-to address for form emails.";
   act(() =>
     root.render(
       <TooltipProvider delayDuration={0}>
@@ -158,4 +172,7 @@ test("Reply to helper explains the visitor confirmation display name", async () 
   expect(document.activeElement).toBe(replyToHelpButton);
   await act(async () => userEvent.keyboard("{Enter}"));
   expect(page.getByRole("tooltip").getByText(replyToHelp)).toBeVisible();
+  expect(page.getByRole("tooltip").element().textContent).not.toContain(
+    "plan is managed"
+  );
 });

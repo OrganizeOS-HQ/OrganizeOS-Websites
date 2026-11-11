@@ -29,7 +29,7 @@ import {
   responseHeaderNames,
 } from "./response-header-suggestions";
 import { getExistingRoutePaths, sectionSpacing } from "./utils";
-import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
+import { planBadgeLabel } from "~/shared/branding";
 
 // OrganizeOS fork: the sdk's platform-header message names Webstudio Cloud
 const organizeosIssueMessage = (message: string) =>
@@ -99,39 +99,17 @@ export const SectionHeaders = ({
       <Flex align="center" gap={1}>
         <Text variant="titles">Headers</Text>
         {/* OrganizeOS fork: plan copy names no Webstudio tier, service or
-            pricing page (planBadgeLabel, planUpgradeHint) */}
+            pricing page (planBadgeLabel) */}
         {allowDynamicData === false && <ProChip>{planBadgeLabel}</ProChip>}
+        {/* OrganizeOS fork: a one-line tooltip; the chip says what the plan
+            lacks, and the form refuses a platform-managed header with its own
+            message (builder UI rule, fork CLAUDE.md). */}
         <InfoTooltip
           label="About response headers"
           content={
-            <>
-              <Text>
-                Set response headers for all paths or a route. Routes use the
-                same syntax as Authentication, including :params and *. If
-                multiple rules set the same header on a path, the last matching
-                rule in this list wins.
-              </Text>
-              <br />
-              {/* OrganizeOS fork: names no Webstudio service */}
-              <Text>
-                /* applies to every path; / applies only to the root. CSP,
-                X-Frame-Options, and Referrer-Policy get defaults when they are
-                not set. X-Powered-By, X-Content-Type-Options, and
-                Strict-Transport-Security are managed by the platform and cannot
-                be configured here. Cookie, connection, and response-body
-                framing headers are also unavailable. Publish to apply changes.
-              </Text>
-              {allowDynamicData === false && (
-                <>
-                  <br />
-                  {/* OrganizeOS fork: planUpgradeHint, no Upgrade link */}
-                  <Text>
-                    Custom headers on a custom domain are not included in your
-                    plan. {planUpgradeHint}
-                  </Text>
-                </>
-              )}
-            </>
+            <Text>
+              /* is every path, / the root. The last matching rule wins.
+            </Text>
           }
         />
       </Flex>
