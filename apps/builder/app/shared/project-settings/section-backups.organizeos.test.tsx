@@ -6,7 +6,7 @@ import { defaultPlanFeatures } from "@webstudio-is/plans";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import type { Project } from "@webstudio-is/project";
 import { $planFeatures } from "~/shared/nano-states";
-import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
+import { planBadgeLabel } from "~/shared/branding";
 import { $project } from "~/shared/sync/data-stores";
 import { SectionBackups } from "./section-backups";
 
@@ -94,7 +94,7 @@ test("a plan without restore shows the chip, and no banner or image", () => {
   render(false);
   expect(document.body.textContent).toContain(planBadgeLabel);
   expect(document.querySelector("img")).toBeNull();
-  expect(document.body.textContent).not.toContain(planUpgradeHint);
+  expect(document.body.textContent).not.toContain("plan is managed");
   expect(document.body.textContent).not.toContain("not included in your plan");
   expect(
     page.getByRole("button", { name: "Restore" }).element()

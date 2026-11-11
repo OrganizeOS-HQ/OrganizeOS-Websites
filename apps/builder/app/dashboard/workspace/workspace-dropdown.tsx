@@ -23,7 +23,6 @@ import type { WorkspaceWithRelation } from "@webstudio-is/project";
 import { useNavigate, useLocation } from "@remix-run/react";
 import { useStore } from "@nanostores/react";
 import { $permissions } from "~/shared/nano-states";
-import { planUpgradeHint } from "~/shared/branding";
 import { CreateWorkspaceDialog } from "./create-workspace-dialog";
 import { RenameWorkspaceDialog } from "./rename-workspace-dialog";
 import { ManageMembersDialog } from "./manage-members-dialog";
@@ -238,15 +237,14 @@ export const WorkspaceSelector = ({
             Leave
           </DropdownMenuItem>
         )}
-        {/* OrganizeOS: plans are org entitlements, so there is nothing to buy
-            from here. State the limit instead of linking to a checkout. */}
+        {/* OrganizeOS fork: plans are org entitlements, so there is nothing to
+            buy from here. State the limit; no sentence points at a plan page. */}
         {permissions.canCreateWorkspace === false && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuLabel>
               <Text color="subtle">
-                Additional workspaces are not included in your plan.{" "}
-                {planUpgradeHint}
+                Additional workspaces are not included in your plan.
               </Text>
             </DropdownMenuLabel>
           </>

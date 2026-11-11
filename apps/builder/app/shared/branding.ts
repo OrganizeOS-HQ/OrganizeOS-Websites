@@ -31,18 +31,6 @@ export const platformUrl = "https://app.organizeos.org";
 export const publisherHost = "organizeos.org";
 
 /**
- * Plans are per-org entitlements resolved by OrganizeOS (see
- * `shared/db/organizeos-plan.server.ts`), never a checkout inside the builder,
- * so a gated feature must not point at a payment page.
- *
- * It must not point at "your administrator" either: provisioning seats only the
- * org's owners and admins, so everyone who can open an org project IS the
- * administrator, and telling them to go ask one is circular. Name where the
- * plan actually lives instead.
- */
-export const planUpgradeHint = `Your organization's plan is managed in ${platformName}.`;
-
-/**
  * Label for the badge that marks a control the org's plan does not include.
  * Upstream said "PRO", naming a Webstudio tier that has no OrganizeOS
  * equivalent. A status, not a verb: nothing can be bought from inside the

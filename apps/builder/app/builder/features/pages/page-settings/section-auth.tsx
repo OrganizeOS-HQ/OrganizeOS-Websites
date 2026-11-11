@@ -17,7 +17,7 @@ import type {
   PageSettingsValues,
 } from "@webstudio-is/project-build/runtime";
 import type { OnChange } from "./shared";
-import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
+import { planBadgeLabel } from "~/shared/branding";
 
 const emptyAuth: PageSettingsValues["auth"] = {
   login: "",
@@ -75,15 +75,6 @@ export const AuthSection = ({
                   Authentication asks visitors for HTTP Basic Auth credentials
                   before protected pages load on custom domains.
                 </Text>
-                {showUpgrade && (
-                  <>
-                    <br />
-                    <Text>
-                      Page authentication is not included in your plan.{" "}
-                      {planUpgradeHint}
-                    </Text>
-                  </>
-                )}
               </>
             }
             variant="wrapped"

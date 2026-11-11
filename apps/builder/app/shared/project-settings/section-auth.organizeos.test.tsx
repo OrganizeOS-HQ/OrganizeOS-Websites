@@ -6,7 +6,7 @@ import { defaultPlanFeatures } from "@webstudio-is/plans";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { $planFeatures } from "~/shared/nano-states";
-import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
+import { planBadgeLabel } from "~/shared/branding";
 import { $pages, $projectSettings } from "~/shared/sync/data-stores";
 import { registerContainers } from "~/shared/sync/sync-stores";
 import { SectionAuth } from "./section-auth";
@@ -59,5 +59,5 @@ test("the tooltip is one line, without the plan sentence", async () => {
   await expect.element(tooltip).toBeVisible();
   const text = tooltip.element().textContent;
   expect(text).toBe("Paths use page syntax, with :params and * wildcards.");
-  expect(text).not.toContain(planUpgradeHint);
+  expect(text).not.toContain("plan is managed");
 });

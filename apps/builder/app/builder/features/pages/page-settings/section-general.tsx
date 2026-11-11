@@ -25,7 +25,7 @@ import type {
   PageSettingsValues,
 } from "@webstudio-is/project-build/runtime";
 import { usePageSettingsText, type OnChange } from "./shared";
-import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
+import { planBadgeLabel } from "~/shared/branding";
 
 const autoSelectHandler: FocusEventHandler<HTMLInputElement> = (event) =>
   event.target.select();
@@ -56,15 +56,6 @@ const PathField = ({
                 be made optional using :name?, or have a wildcard such as /* or
                 /:name* to store whole remaining part at the end of the URL.
               </Text>
-              {allowDynamicData === false && (
-                <>
-                  <br />
-                  <Text>
-                    To make the path dynamic and use it with CMS, you can use
-                    parameters and other features. {planUpgradeHint}
-                  </Text>
-                </>
-              )}
             </>
           }
           variant="wrapped"
@@ -201,14 +192,6 @@ const RedirectField = ({
                 Redirect value can be a path or an expression that returns a
                 path for dynamic response handling.
               </Text>
-              {allowDynamicData === false && (
-                <>
-                  <br />
-                  <Text>
-                    Redirects are not included in your plan. {planUpgradeHint}
-                  </Text>
-                </>
-              )}
             </>
           }
           variant="wrapped"

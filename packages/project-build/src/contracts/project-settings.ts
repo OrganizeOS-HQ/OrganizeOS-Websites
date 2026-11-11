@@ -21,9 +21,9 @@ export const validateContactEmail = (
     emails.length > maxContactEmailsPerProject
   ) {
     if (maxContactEmailsPerProject === 0) {
-      // OrganizeOS fork: names no Webstudio tier; the builder's branding.ts
-      // planUpgradeHint, which section-emails.test.tsx holds this to
-      return "Custom recipients are not included in your plan. Your organization's plan is managed in OrganizeOS.";
+      // OrganizeOS fork: names no Webstudio tier and points at no plan page
+      // (section-emails.test.tsx holds this message)
+      return "Custom recipients are not included in your plan.";
     }
     return `Only ${maxContactEmailsPerProject} emails are allowed.`;
   }

@@ -1,5 +1,3 @@
-import { planUpgradeHint } from "~/shared/branding";
-
 export const SEAT_SUSPENDED_TOAST_ID = "seat-suspended";
 
 /**
@@ -10,4 +8,4 @@ export const SEAT_SUSPENDED_TOAST_ID = "seat-suspended";
  * fires for a human-owned workspace; keep it accurate but plan-model-neutral.
  */
 export const getSeatSuspendedMessage = (workspaceName: string) =>
-  `Your editing access to "${workspaceName}" has been paused because the workspace owner's plan no longer covers it. ${planUpgradeHint}`;
+  `Your editing access to "${workspaceName}" has been paused because the workspace owner's plan no longer covers it.`;

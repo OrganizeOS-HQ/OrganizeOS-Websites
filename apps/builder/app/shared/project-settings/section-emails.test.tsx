@@ -6,7 +6,7 @@ import { defaultPlanFeatures } from "@webstudio-is/plans";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { validateContactEmail } from "@webstudio-is/project-build/contracts";
 import { $planFeatures } from "~/shared/nano-states";
-import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
+import { planBadgeLabel } from "~/shared/branding";
 import { $projectSettings } from "~/shared/sync/data-stores";
 import { SectionEmails } from "./section-emails";
 
@@ -72,8 +72,9 @@ test("shows the free and paid address limits in Project Emails", async () => {
 });
 
 // OrganizeOS fork: project-build cannot import the builder's branding, so its
-// message is held to planUpgradeHint here
-const customRecipientsNotInPlan = `Custom recipients are not included in your plan. ${planUpgradeHint}`;
+// message is held to the plan copy here
+const customRecipientsNotInPlan =
+  "Custom recipients are not included in your plan.";
 
 test("the contract's plan message is the builder's plan copy", () => {
   expect(validateContactEmail("one@example.com", 0)).toBe(
@@ -143,7 +144,7 @@ test("keyboard users can open the recipients helper", async () => {
   await act(async () => userEvent.keyboard("{Enter}"));
   expect(page.getByRole("tooltip").getByText(recipientsHelp)).toBeVisible();
   expect(page.getByRole("tooltip").element().textContent).not.toContain(
-    planUpgradeHint
+    "plan is managed"
   );
 });
 
@@ -172,6 +173,6 @@ test("Reply to helper is one line", async () => {
   await act(async () => userEvent.keyboard("{Enter}"));
   expect(page.getByRole("tooltip").getByText(replyToHelp)).toBeVisible();
   expect(page.getByRole("tooltip").element().textContent).not.toContain(
-    planUpgradeHint
+    "plan is managed"
   );
 });
