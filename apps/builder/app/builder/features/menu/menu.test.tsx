@@ -119,7 +119,7 @@ describe("the builder menu", () => {
     renderMenu();
     expect(labels()).toEqual([
       "Back to OrganizeOS",
-      "Project settings",
+      "Settings",
       "Breakpoints",
       "View",
       "Undo",
@@ -138,7 +138,7 @@ describe("the builder menu", () => {
     renderMenu();
     expect(labels()).toEqual([
       "Dashboard",
-      "Project settings",
+      "Settings",
       "Breakpoints",
       "View",
       "Undo",

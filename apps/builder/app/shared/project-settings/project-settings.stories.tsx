@@ -7,7 +7,8 @@ import type { Project } from "@webstudio-is/project";
 import { $authPermit, $builderMode } from "~/shared/nano-states";
 
 export default {
-  title: "Project settings",
+  // OrganizeOS fork: the dialog is titled "Settings".
+  title: "Settings",
   component: ProjectSettingsDialog,
 };
 

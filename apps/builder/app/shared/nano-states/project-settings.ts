@@ -8,6 +8,9 @@ export type SectionName =
   | "headers"
   | "redirects"
   | "publish"
-  | "backups";
+  | "backups"
+  // OrganizeOS fork: the org-only Domains section
+  // (shared/project-settings/section-domains.tsx).
+  | "domains";
 
 export const $openProjectSettings = atom<SectionName | undefined>();
