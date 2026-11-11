@@ -208,6 +208,12 @@ describe("createCmsApi", () => {
     });
   });
 
+  test("accepts a richtext value of null in an item answer", async () => {
+    const data = { ...item.data, body: null };
+    routeFetch.mockResolvedValueOnce(ok({ item: { ...item, data } }));
+    expect(await api.getItem(c, i)).toEqual({ item: { ...item, data } });
+  });
+
   test("returns the door's error code, and its field", async () => {
     routeFetch.mockResolvedValueOnce(ok({ error: "conflict" }, 409));
     expect(

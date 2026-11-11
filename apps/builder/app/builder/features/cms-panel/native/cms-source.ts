@@ -71,7 +71,11 @@ export const CMS_IMAGE_TYPES: Readonly<Record<string, string>> = {
 };
 export const CMS_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
 
-/** Stored shape of a `richtext` field: sanitised HTML and its plain text. */
+/**
+ * Stored shape of a `richtext` field: sanitised HTML and its plain text. An
+ * item answer carries `null` instead when the stored value is not readable or
+ * its HTML sanitises to empty.
+ */
 export type CmsRichTextValue = { html: string; text: string };
 
 export type CmsItemData = Record<string, unknown>;
