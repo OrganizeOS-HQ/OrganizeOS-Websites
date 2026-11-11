@@ -19,9 +19,11 @@ builder calls under `/api/internal/websites2/cms/{organizationId}`. Spec:
 
 | File               | Endpoint                                                                                   |
 | ------------------ | ------------------------------------------------------------------------------------------ |
+| `access.json`      | E0, `GET /access`: the owner's three flags                                                 |
 | `collections.json` | E1, `GET /collections`: org A's one collection, with its item total                        |
 | `collection.json`  | E2, `GET /collections/{collectionId}`: the collection, each field's kind canonical         |
 | `items.json`       | E3, `GET /collections/{collectionId}/items`: page 1, in the collection's order             |
 | `item.json`        | E4, `GET /collections/{collectionId}/items/{itemId}`: the staged item, rich text sanitised |
 | `search.json`      | E5, `GET /collections/{collectionId}/items/search?ids=…`: another org's id dropped         |
 | `item-write.json`  | E6, `POST /collections/{collectionId}/items`: 201, a new draft                             |
+| `upload.json`      | E9, `POST /uploads/image`: a stored PNG (tests compare its shape)                          |

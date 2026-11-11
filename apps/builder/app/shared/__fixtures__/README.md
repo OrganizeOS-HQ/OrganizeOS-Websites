@@ -83,7 +83,8 @@ and update this note's commit when it changes.
 
 `cms-actor-assertion.json` is a byte-for-byte copy of the OrganizeOS repo's
 `client/tests/fixtures/site-components/cms-actor-assertion.json`, at commit
-`f8019f718d2e30fee7f4802d10b7a690823a9486` (the last commit that touched it).
+`06c7eb46340c3d9f523ff3e589be993c8e886df8` (the merge into `master` that brought
+it; unchanged since `f8019f718d2e30fee7f4802d10b7a690823a9486`).
 It pins the `X-OOS-Actor` v1 byte format and the canonical target that
 `../organizeos-cms.server.ts` mints for the native CMS's door and the
 platform's `/api/internal/websites2/cms/{organizationId}/...` verifies. Before
@@ -99,8 +100,8 @@ and update this note's commit when it changes.
 
 `cms-door/` holds byte-for-byte copies of the OrganizeOS repo's
 `client/tests/fixtures/cms-door/` (every `.json` file and its README), at
-commit `8d03443ff43a1a797915c13a79f697f9e351ce46` (the last commit that touched
-the folder). Each `.json` file is one CMS door endpoint's
+commit `06c7eb46340c3d9f523ff3e589be993c8e886df8` (the merge into `master` that
+brought them). Each `.json` file is one CMS door endpoint's
 `{ status, body }` as the platform answers it, which
 `../builder/features/cms-panel/native/cms-api.ts` parses
 (`cms-api.test.ts` parses each body through its endpoint's schema). Before

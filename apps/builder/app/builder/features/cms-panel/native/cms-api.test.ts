@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
+import accessFixture from "~/shared/__fixtures__/cms-door/access.json";
 import collectionFixture from "~/shared/__fixtures__/cms-door/collection.json";
 import collectionsFixture from "~/shared/__fixtures__/cms-door/collections.json";
 import itemFixture from "~/shared/__fixtures__/cms-door/item.json";
 import itemWriteFixture from "~/shared/__fixtures__/cms-door/item-write.json";
 import itemsFixture from "~/shared/__fixtures__/cms-door/items.json";
 import searchFixture from "~/shared/__fixtures__/cms-door/search.json";
+import uploadFixture from "~/shared/__fixtures__/cms-door/upload.json";
 import {
   CMS_REQUEST_TIMEOUT_MS,
   CMS_UPLOAD_TIMEOUT_MS,
@@ -336,8 +338,7 @@ describe("createCmsApi", () => {
     expect(await api.getCollection(c)).toEqual({ error: "unavailable" });
   });
 
-  // The platform pins no E0 or E9 answer; these are spec 5.4's shapes
-  test("parses E0's and E9's answers", async () => {
+  test("refuses an E0 answer of the wrong shape", async () => {
     const access = {
       canEdit: true,
       canPublish: false,
@@ -360,6 +361,7 @@ describe("createCmsApi", () => {
   // The platform's own answers, so the two repositories' shapes cannot
   // drift apart unseen
   test.each([
+    ["access", accessFixture, () => api.getAccess()],
     ["collections", collectionsFixture, () => api.listCollections()],
     ["collection", collectionFixture, () => api.getCollection(c)],
     ["items", itemsFixture, () => api.listItems(c, {})],
@@ -369,6 +371,11 @@ describe("createCmsApi", () => {
       "item-write",
       itemWriteFixture,
       () => api.createItem(c, { clientId: i, data: { title: "New post" } }),
+    ],
+    [
+      "upload",
+      uploadFixture,
+      () => api.uploadImage(new File([new Uint8Array(1)], "a.png")),
     ],
   ] as const)(
     "parses the platform's %s fixture as it is",
