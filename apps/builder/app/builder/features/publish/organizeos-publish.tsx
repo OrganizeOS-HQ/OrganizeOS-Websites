@@ -308,9 +308,6 @@ const PausedItemList = ({ items }: { items: PausedScriptItem[] }) => (
                 $selectedPageId.set(navigate.pageId);
                 selectInstance(navigate.instanceSelector);
               }
-              if (view === "projectSettings") {
-                $openProjectSettings.set("general");
-              }
               if (view === "pageSettings" && navigate !== undefined) {
                 setActiveSidebarPanel("pages");
                 $editingPageId.set(navigate.pageId);

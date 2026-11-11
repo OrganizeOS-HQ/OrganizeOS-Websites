@@ -254,10 +254,7 @@ describe("PausedScriptBanner", () => {
     const items = Array.from(host.querySelectorAll("li")).map(
       (item) => item.textContent
     );
-    expect(items).toEqual([
-      "HTML Embed on Home",
-      "Custom code (Project settings)",
-    ]);
+    expect(items).toEqual(["HTML Embed on Home", "Custom code"]);
     // the heading and the list: no explanation
     const list = host.querySelector("ul");
     expect(list?.previousElementSibling?.textContent).toBe(
@@ -307,19 +304,24 @@ describe("PausedScriptBanner", () => {
     const host = renderBanner();
     expect(
       Array.from(host.querySelectorAll("li"), (item) => item.textContent)
-    ).toEqual(["Custom code (Project settings)"]);
+    ).toEqual(["Custom code"]);
   });
 
-  test("opens Project settings from the custom code item", () => {
+  // Settings shows no custom code while org script is paused, so the item
+  // is text that opens nothing
+  test("the custom code item is text, not a button", () => {
+    $openProjectSettings.set(undefined);
     setBuild({ code: MenuIcon, customCode: "<style>x{}</style>" });
     const host = renderBanner();
-    const button = Array.from(host.querySelectorAll("button")).find(
-      (item) => item.textContent === "Custom code (Project settings)"
+    const item = Array.from(host.querySelectorAll("li")).find(
+      (element) => element.textContent === "Custom code"
     );
+    expect(item).toBeDefined();
+    expect(item?.querySelector("button")).toBeNull();
     act(() => {
-      button?.click();
+      item?.click();
     });
-    expect($openProjectSettings.get()).toBe("general");
+    expect($openProjectSettings.get()).toBeUndefined();
   });
 
   test("shows nothing for template icons alone", () => {
@@ -370,7 +372,7 @@ describe("PausedScriptBanner", () => {
     });
     setActiveSidebarPanel.mockClear();
 
-    clickItem(renderBanner(), "Redirect from /go (Project settings)");
+    clickItem(renderBanner(), "Redirect from /go (Settings)");
 
     expect($openProjectSettings.get()).toBe("redirects");
     expect(setActiveSidebarPanel).not.toHaveBeenCalled();

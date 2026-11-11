@@ -706,9 +706,7 @@ describe("findPausedScript", () => {
   test("lists the custom code when it is not blank", () => {
     expect(
       find({ pages: createPages({ code: "<script>1</script>" }) })
-    ).toEqual([
-      { label: "Custom code (Project settings)", view: "projectSettings" },
-    ]);
+    ).toEqual([{ label: "Custom code" }]);
   });
 
   // 0.309.0 keeps the custom code in the project's settings, and a build that
@@ -718,9 +716,7 @@ describe("findPausedScript", () => {
       find({
         projectSettings: { meta: { code: "<script>1</script>" }, compiler: {} },
       })
-    ).toEqual([
-      { label: "Custom code (Project settings)", view: "projectSettings" },
-    ]);
+    ).toEqual([{ label: "Custom code" }]);
     // once, when both hold it
     expect(
       find({
@@ -776,7 +772,7 @@ describe("findPausedScript", () => {
     });
     expect(items.map((item) => item.label)).toEqual([
       "HTML Embed on Home",
-      "Custom code (Project settings)",
+      "Custom code",
     ]);
   });
 
@@ -1898,11 +1894,11 @@ describe("findPausedScript", () => {
         view: "pageSettings",
       },
       {
-        label: "Redirect from /go (Project settings)",
+        label: "Redirect from /go (Settings)",
         view: "projectRedirects",
       },
       // still last
-      { label: "Custom code (Project settings)", view: "projectSettings" },
+      { label: "Custom code" },
     ]);
   });
 
