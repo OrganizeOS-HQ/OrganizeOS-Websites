@@ -5,6 +5,8 @@ import {
   cannotGoLive,
   defaultTicks,
   isReplaceRow,
+  manageDomainsUrlOf,
+  newTabLink,
   nextTicks,
   publishErrorLine,
   replaceState,
@@ -244,5 +246,43 @@ describe("serving, the old site and the replace", () => {
         "Your addresses changed. Check them and publish again."
       );
     }
+  });
+});
+
+describe("the link to OrganizeOS's domain settings", () => {
+  const site = {
+    platformUrl: "https://app.organizeos.org",
+    subdomain: "example-org",
+  };
+
+  test("the read's URL wins", () => {
+    expect(
+      manageDomainsUrlOf(
+        site,
+        addresses({ manageDomainsUrl: "https://app.example.net/domains" })
+      )
+    ).toBe("https://app.example.net/domains");
+  });
+
+  test("without a read it is the site's domain settings, trailing slashes trimmed", () => {
+    expect(manageDomainsUrlOf(site, undefined)).toBe(
+      "https://app.organizeos.org/example-org/settings/domain"
+    );
+    expect(
+      manageDomainsUrlOf(
+        { ...site, platformUrl: "https://app.organizeos.org//" },
+        undefined
+      )
+    ).toBe("https://app.organizeos.org/example-org/settings/domain");
+  });
+
+  test("without a read or a subdomain there is none", () => {
+    expect(
+      manageDomainsUrlOf({ platformUrl: site.platformUrl }, undefined)
+    ).toBeUndefined();
+  });
+
+  test("it opens in a new tab without an opener", () => {
+    expect(newTabLink).toEqual({ target: "_blank", rel: "noreferrer" });
   });
 });

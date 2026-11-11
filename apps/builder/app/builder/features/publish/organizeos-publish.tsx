@@ -70,6 +70,8 @@ import {
   canUnpublish,
   cannotGoLive,
   isServing,
+  manageDomainsUrlOf,
+  newTabLink,
   nextTicks,
   publishErrorLine,
   replaceState,
@@ -328,11 +330,6 @@ const PausedItemList = ({ items }: { items: PausedScriptItem[] }) => (
   </Text>
 );
 
-const newTabLink = {
-  target: "_blank",
-  rel: "noreferrer",
-} as const;
-
 const exactTime = (time: string) => new Date(time).toLocaleString();
 
 /**
@@ -461,20 +458,6 @@ const TargetRow = ({
       )}
     </Grid>
   );
-};
-
-/** OrganizeOS's domain settings, from the read, else from the site. */
-const manageDomainsUrlOf = (
-  site: OrganizeosSite,
-  addresses: SiteAddresses | undefined
-) => {
-  if (addresses !== undefined) {
-    return addresses.manageDomainsUrl;
-  }
-  if (site.subdomain === undefined) {
-    return;
-  }
-  return `${site.platformUrl.replace(/\/+$/, "")}/${site.subdomain}/settings/domain`;
 };
 
 type Read = "loading" | "failed" | "ready";
