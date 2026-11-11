@@ -28,7 +28,7 @@ import {
   ProjectSettingsDeleteRuleButton,
   ProjectSettingsRuleList,
 } from "./rule-list";
-import { planBadgeLabel, planUpgradeHint } from "~/shared/branding";
+import { planBadgeLabel } from "~/shared/branding";
 
 const saveAuthRoutes = (authRoutes: WsAuthRoute[]) => {
   executeRuntimeMutation({
@@ -90,31 +90,14 @@ export const SectionAuth = () => {
 
   return (
     <Grid gap={3} css={sectionSpacing}>
+      {/* OrganizeOS fork: a plain name and a one-line tooltip; the chip says
+          what the plan lacks (builder UI rule, fork CLAUDE.md). */}
       <Flex align="center" gap={1}>
-        <Text variant="titles">Authentication</Text>
+        <Text variant="titles">Page passwords</Text>
         {allowAuth === false && <ProChip>{planBadgeLabel}</ProChip>}
         <Tooltip
           content={
-            <>
-              <Text>
-                Authentication asks visitors for HTTP Basic Auth credentials
-                before protected pages load on custom domains.
-              </Text>
-              <br />
-              <Text>
-                Routes use the same syntax as page paths, including :params and
-                * wildcards.
-              </Text>
-              {allowAuth === false && (
-                <>
-                  <br />
-                  <Text>
-                    Authentication is not included in your plan.{" "}
-                    {planUpgradeHint}
-                  </Text>
-                </>
-              )}
-            </>
+            <Text>Paths use page syntax, with :params and * wildcards.</Text>
           }
           variant="wrapped"
         >

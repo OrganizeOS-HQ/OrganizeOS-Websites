@@ -13,16 +13,14 @@ import {
   DialogClose,
   Flex,
   toast,
-  PanelBanner,
-  rawTheme,
+  ProChip,
 } from "@webstudio-is/design-system";
-import { UpgradeIcon } from "@webstudio-is/icons";
 import { nativeClient, trpcClient } from "~/shared/trpc/trpc-client";
 import { $project } from "~/shared/sync/data-stores";
 import { $permissions } from "~/shared/nano-states";
 import { sectionSpacing } from "./utils";
-import { planUpgradeHint } from "~/shared/branding";
-import cmsUpgradeBanner from "../cms-upgrade-banner.svg?url";
+// OrganizeOS fork: the plan chip replaces the upgrade banner.
+import { planBadgeLabel } from "~/shared/branding";
 
 const formatPublishDate = (date: string) => {
   try {
@@ -70,7 +68,12 @@ export const SectionBackups = ({
 
   return (
     <Grid gap={2} css={sectionSpacing}>
-      <Text variant="titles">Backups</Text>
+      {/* OrganizeOS fork: a plain name, with the plan chip instead of the
+          upgrade banner (builder UI rule, fork CLAUDE.md). */}
+      <Flex align="center" gap={1}>
+        <Text variant="titles">Published versions</Text>
+        {canRestoreBackups === false && <ProChip>{planBadgeLabel}</ProChip>}
+      </Flex>
       <Select
         placeholder="No backups"
         options={options}
@@ -79,11 +82,8 @@ export const SectionBackups = ({
           if (!option.createdAt) {
             return;
           }
-          let label = formatPublishDate(option.createdAt);
-          if (option.domains) {
-            label += ` (${option.domains})`;
-          }
-          return label;
+          // OrganizeOS fork: the date only, without the domains.
+          return formatPublishDate(option.createdAt);
         }}
         value={backupBuild}
         onChange={setBackupBuild}
@@ -101,10 +101,8 @@ export const SectionBackups = ({
         <DialogContent width={320}>
           <DialogTitle>Restore published version</DialogTitle>
           <PanelContent as={Flex} direction="column" gap={2}>
-            <Text>
-              Are you sure you want to restore the project to its published
-              version?
-            </Text>
+            {/* OrganizeOS fork: plain wording. */}
+            <Text>Restore the site to this published version?</Text>
             {backupBuild?.createdAt && (
               <Text color="destructive">
                 All changes made after{" "}
@@ -124,23 +122,6 @@ export const SectionBackups = ({
           </PanelContent>
         </DialogContent>
       </Dialog>
-      {canRestoreBackups === false && (
-        <PanelBanner>
-          <img
-            src={cmsUpgradeBanner}
-            alt="Backups"
-            width={rawTheme.spacing[28]}
-            style={{ aspectRatio: "4.1" }}
-          />
-          <Text variant="regularBold">
-            Restoring from backups is not included in your plan
-          </Text>
-          <Flex align="center" gap={1}>
-            <UpgradeIcon />
-            <Text>{planUpgradeHint}</Text>
-          </Flex>
-        </PanelBanner>
-      )}
     </Grid>
   );
 };

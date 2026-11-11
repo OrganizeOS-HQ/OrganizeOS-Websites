@@ -124,7 +124,9 @@ export const Menu = ({ defaultOpen }: { defaultOpen?: boolean } = {}) => {
               $openProjectSettings.set("general");
             }}
           >
-            Project settings
+            {/* OrganizeOS fork: the dialog is "Settings", its plain name
+             * (docs/superpowers/specs/2026-11-11-builder-settings-screen-design.md D3). */}
+            Settings
           </DropdownMenuItem>
         </Tooltip>
         <DropdownMenuItem onSelect={() => emitCommand("openBreakpointsMenu")}>

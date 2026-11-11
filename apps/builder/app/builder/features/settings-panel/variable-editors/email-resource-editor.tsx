@@ -431,9 +431,11 @@ export const EmailResourceForm = forwardRef<
                   ? "Custom recipients"
                   : "Visitor email field"
             }
+            // OrganizeOS fork: names the dialog and section as they read now
+            // (Settings, Form emails).
             getDescription={(value: "project" | "custom" | "visitor") =>
               value === "project"
-                ? "Send to the addresses in project settings, or to the account holder if none are set."
+                ? "Send to the addresses in Settings, Form emails, or to the account holder if none are set."
                 : value === "custom"
                   ? "Send to the addresses entered below."
                   : "Choose a Form input to use as the recipient’s email address. The confirmation email is sent to that address."
