@@ -219,10 +219,8 @@ export const SectionRedirects = () => {
             label="About redirects"
             content={
               <Flex direction="column" gap="2">
-                <Text>
-                  Redirect old URLs to new ones so you don't lose traffic or
-                  search engine rankings.
-                </Text>
+                {/* OrganizeOS fork: no explanation sentence, only the patterns
+                    (builder UI rule, fork CLAUDE.md). */}
                 <Flex direction="column" gap="1">
                   <Text>Supported patterns:</Text>
                   <Text>/path → Exact match</Text>

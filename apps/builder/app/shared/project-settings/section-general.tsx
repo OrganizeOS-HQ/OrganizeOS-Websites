@@ -24,7 +24,6 @@ import { sectionSpacing } from "./utils";
 import { CodeEditor } from "~/shared/code-editor";
 import { CopyToClipboard } from "~/shared/copy-to-clipboard";
 import { executeRuntimeMutation } from "~/shared/instance-utils/data";
-import { platformName } from "~/shared/branding";
 import { orgScriptMayRun } from "@organizeos/site-components/org-script";
 
 const imgStyle = css({
@@ -134,10 +133,9 @@ export const SectionGeneral = ({ projectId }: { projectId?: string }) => {
             })}
           />
 
+          {/* OrganizeOS fork: no caption; the label and the button say it
+              (builder UI rule, fork CLAUDE.md). */}
           <Grid gap={2}>
-            <Text color="subtle">
-              Upload a square image to display in browser tabs.
-            </Text>
             <ImageControl onAssetIdChange={handleSave("faviconAssetId")}>
               <Button color="primary" css={{ justifySelf: "start" }}>
                 Upload
@@ -147,33 +145,26 @@ export const SectionGeneral = ({ projectId }: { projectId?: string }) => {
         </Grid>
       </Grid>
 
-      <Separator />
+      {/* OrganizeOS fork: while org script is paused (docs/ORGANIZEOS-FORK.md
+          section 10) there is no Custom code box; what is saved is kept and
+          runs again once scripts may run. When they may, the box is the label
+          and the editor, with no paragraph (builder UI rule, fork CLAUDE.md). */}
+      {orgScriptMayRun() && (
+        <>
+          <Separator />
 
-      <Grid gap={2} css={sectionSpacing}>
-        <Label>Custom code</Label>
-        {/* OrganizeOS fork: custom code is paused, its field read-only, until
-            org sites move to their own domain (docs/ORGANIZEOS-FORK.md
-            section 10). What is saved here is kept. */}
-        <Text color="subtle">
-          {orgScriptMayRun() ? (
-            <>
-              Custom code and scripts will be added at the end of the
-              &lt;head&gt; tag to every page across the published project and
-              will run <strong>only</strong> on the published site.
-            </>
-          ) : (
-            `Custom code is paused for now: it isn't added to any page of your published site. Scripts on your site could read the ${platformName} sign-in of people who visit, so it stays off while we make it safe. The code saved here is kept and starts running again when it is.`
-          )}
-        </Text>
-        <CodeEditor
-          title="Custom code"
-          lang="html"
-          readOnly={orgScriptMayRun() === false}
-          value={meta.code ?? ""}
-          onChange={handleSave("code")}
-          onChangeComplete={handleSave("code")}
-        />
-      </Grid>
+          <Grid gap={2} css={sectionSpacing}>
+            <Label>Custom code</Label>
+            <CodeEditor
+              title="Custom code"
+              lang="html"
+              value={meta.code ?? ""}
+              onChange={handleSave("code")}
+              onChangeComplete={handleSave("code")}
+            />
+          </Grid>
+        </>
+      )}
     </Grid>
   );
 };

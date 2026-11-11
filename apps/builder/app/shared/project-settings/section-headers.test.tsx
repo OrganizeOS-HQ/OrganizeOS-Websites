@@ -3,6 +3,9 @@ import { act } from "react-dom/test-utils";
 import { page } from "@vitest/browser/context";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { TooltipProvider } from "@webstudio-is/design-system";
+import { defaultPlanFeatures } from "@webstudio-is/plans";
+import { $planFeatures } from "~/shared/nano-states";
+import { planUpgradeHint } from "~/shared/branding";
 import { $projectSettings } from "~/shared/sync/data-stores";
 import { SectionHeaders } from "./section-headers";
 
@@ -414,4 +417,27 @@ test("a platform header saved by an older client is managed by the platform, as 
     "This header is managed by the platform."
   );
   expect(document.body.textContent).not.toContain("Webstudio");
+});
+
+// OrganizeOS fork: the tooltip is one line, and the plan sentence and the
+// platform-managed header list are gone (builder UI rule, fork CLAUDE.md)
+test("the tooltip is one line, without the plan sentence", async () => {
+  const previousPlan = $planFeatures.get();
+  $planFeatures.set({ ...defaultPlanFeatures, allowDynamicData: false });
+  try {
+    render();
+    await act(async () =>
+      page.getByLabelText("About response headers").hover()
+    );
+    const tooltip = page.getByRole("tooltip");
+    await expect.element(tooltip).toBeVisible();
+    const text = tooltip.element().textContent;
+    expect(text).toBe(
+      "/* is every path, / the root. The last matching rule wins."
+    );
+    expect(text).not.toContain(planUpgradeHint);
+    expect(text).not.toContain("managed by the platform");
+  } finally {
+    $planFeatures.set(previousPlan);
+  }
 });

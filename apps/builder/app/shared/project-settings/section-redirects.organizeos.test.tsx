@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { act } from "react-dom/test-utils";
+import { page } from "@vitest/browser/context";
 import { afterEach, expect, test } from "vitest";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { TooltipProvider } from "@webstudio-is/design-system";
@@ -69,4 +70,15 @@ test("the form refuses a target that may not run while org script is paused", ()
   expect(__testing__.validateToPath("https://example.org/", "/old")).toEqual(
     []
   );
+});
+
+test("the redirects tooltip lists the patterns, without an explanation", async () => {
+  await renderRedirects([]);
+  await act(async () => page.getByLabelText("About redirects").hover());
+  const tooltip = page.getByRole("tooltip");
+  await expect.element(tooltip).toBeVisible();
+  const text = tooltip.element().textContent;
+  expect(text).toContain("Supported patterns:");
+  expect(text).toContain("/blog/*");
+  expect(text).not.toContain("so you don't lose traffic");
 });

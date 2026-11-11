@@ -588,7 +588,7 @@ test("Email Resource recipient modes and attachment radios", async () => {
     document.querySelector<HTMLElement>('[data-select-description="content"]')
       ?.lastElementChild?.textContent;
   expect(recipientDescription()).toBe(
-    "Send to the addresses in project settings, or to the account holder if none are set."
+    "Send to the addresses in Settings, Form emails, or to the account holder if none are set."
   );
   const customOption = Array.from(
     document.querySelectorAll<HTMLElement>('[role="option"]')
@@ -600,7 +600,7 @@ test("Email Resource recipient modes and attachment radios", async () => {
   ).find((option) => option.textContent === "Project recipients (or owner)")!;
   await act(async () => await userEvent.hover(projectOption));
   expect(recipientDescription()).toBe(
-    "Send to the addresses in project settings, or to the account holder if none are set."
+    "Send to the addresses in Settings, Form emails, or to the account holder if none are set."
   );
   await act(async () => await userEvent.click(customOption));
   await expect(
