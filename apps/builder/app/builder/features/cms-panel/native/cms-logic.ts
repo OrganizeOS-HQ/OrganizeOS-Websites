@@ -208,6 +208,164 @@ export const isSameValue = (left: unknown, right: unknown): boolean => {
   return false;
 };
 
+/** The platform's rich-text sanitiser allowlist (`rich-text.ts`). */
+const RICH_TEXT_TAGS = new Set([
+  "p",
+  "br",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "u",
+  "s",
+  "a",
+  "ul",
+  "ol",
+  "li",
+  "h2",
+  "h3",
+  "h4",
+  "blockquote",
+  "code",
+  "pre",
+  "hr",
+  "img",
+  "figure",
+  "figcaption",
+]);
+
+const RICH_TEXT_ATTRIBUTES = new Set([
+  "href",
+  "target",
+  "rel",
+  "src",
+  "alt",
+  "width",
+  "height",
+  "title",
+]);
+
+/** Tags the sanitiser drops with their content; any other is unwrapped. */
+const RICH_TEXT_DROPPED = new Set([
+  "script",
+  "style",
+  "textarea",
+  "option",
+  "noscript",
+]);
+
+const keepStoredMarkup = (parent: Node) => {
+  for (const node of [...parent.childNodes]) {
+    if (node.nodeType === node.COMMENT_NODE) {
+      node.remove();
+      continue;
+    }
+    if (node.nodeType !== node.ELEMENT_NODE) {
+      continue;
+    }
+    const element = node as Element;
+    const tag = element.tagName.toLowerCase();
+    if (RICH_TEXT_DROPPED.has(tag)) {
+      element.remove();
+      continue;
+    }
+    keepStoredMarkup(element);
+    if (RICH_TEXT_TAGS.has(tag) === false) {
+      element.replaceWith(...element.childNodes);
+      continue;
+    }
+    // a link that opens a new tab without a rel gets the platform's rel
+    if (
+      tag === "a" &&
+      (element.getAttribute("target") ?? "").toLowerCase() === "_blank" &&
+      (element.getAttribute("rel") ?? "") === ""
+    ) {
+      element.setAttribute("rel", "noopener noreferrer");
+    }
+    for (const { name, value } of [...element.attributes]) {
+      if (
+        RICH_TEXT_ATTRIBUTES.has(name) === false ||
+        // the platform drops an empty attribute, an empty alt aside
+        (value === "" && name !== "alt")
+      ) {
+        element.removeAttribute(name);
+      }
+    }
+  }
+};
+
+/**
+ * Rich-text HTML as the platform keeps it, for comparison only: parsed
+ * inertly, spans and other tags outside the allowlist unwrapped, attributes
+ * outside it and empty ones dropped, a new-tab link's missing rel added, then
+ * serialised. Without a DOM parser, the HTML as it
+ * is.
+ */
+const toStoredRichTextHtml = (html: string) => {
+  if (typeof DOMParser === "undefined") {
+    return html;
+  }
+  const { body } = new DOMParser().parseFromString(html, "text/html");
+  keepStoredMarkup(body);
+  return body.innerHTML;
+};
+
+/** The kinds the platform trims, storing blank as null (`trimOrNull`). */
+const trimmedKinds: readonly CmsFieldKind[] = [
+  "text",
+  "textarea",
+  "phone",
+  "link",
+  "email",
+  "date",
+  "datetime",
+  "option",
+  "reference",
+];
+
+const trimOrNull = (value: unknown) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+};
+
+/**
+ * A value in the form the platform stores it (`validation.ts`), for
+ * comparison only: string kinds trimmed, colours upper-cased, an image's url
+ * and alt trimmed, rich text as its kept HTML or null.
+ */
+export const toStoredForm = (kind: CmsFieldKind, value: unknown): unknown => {
+  if (trimmedKinds.includes(kind)) {
+    return trimOrNull(value);
+  }
+  if (kind === "color") {
+    const trimmed = trimOrNull(value);
+    return typeof trimmed === "string" ? trimmed.toUpperCase() : trimmed;
+  }
+  if (kind === "richtext") {
+    const html = richTextHtmlOrNull(value);
+    return html === null ? null : toStoredRichTextHtml(html);
+  }
+  if (kind === "image" && typeof value === "object" && value !== null) {
+    const image = value as Record<string, unknown>;
+    return {
+      ...image,
+      url: trimOrNull(image.url),
+      alt: typeof image.alt === "string" ? image.alt.trim() : image.alt,
+    };
+  }
+  return value;
+};
+
+/** Whether two values of a kind are stored alike. */
+export const isSameStoredValue = (
+  kind: CmsFieldKind,
+  left: unknown,
+  right: unknown
+) => isSameValue(toStoredForm(kind, left), toStoredForm(kind, right));
+
 /** A field's value; a key the data lacks reads as the field's empty value. */
 const valueOf = (data: CmsItemData, field: CmsField) =>
   field.key in data ? data[field.key] : emptyValueFor(field.kind);
@@ -243,6 +401,33 @@ export const isItemDirty = ({
   getChangedFieldKeys(fields, baseline, values).length > 0;
 
 /**
+ * Whether the values or the address differ from a stored item, each value
+ * compared in the platform's stored form: what a write of them would change.
+ */
+export const differsFromStored = ({
+  fields,
+  stored,
+  values,
+  storedSlug,
+  slug,
+}: {
+  fields: readonly CmsField[];
+  stored: CmsItemData;
+  values: CmsItemData;
+  storedSlug: string;
+  slug: string;
+}) =>
+  slug !== storedSlug ||
+  fields.some(
+    (field) =>
+      isSameStoredValue(
+        field.kind,
+        valueOf(stored, field),
+        valueOf(values, field)
+      ) === false
+  );
+
+/**
  * The person's values, set aside by Reload (4.3.2): only the fields they
  * changed, and the address when they changed it. A field or an address
  * absent here has nothing kept.
@@ -273,7 +458,11 @@ export const keepAside = ({
   const next: CmsItemData = {};
   for (const field of fields) {
     if (
-      isSameValue(valueOf(values, field), valueOf(baseline, field)) === false
+      isSameStoredValue(
+        field.kind,
+        valueOf(values, field),
+        valueOf(baseline, field)
+      ) === false
     ) {
       next[field.key] = structuredClone(valueOf(values, field));
     } else if (kept !== undefined && field.key in kept.values) {
@@ -305,7 +494,11 @@ export const getKeptDifferences = ({
     .filter(
       (field) =>
         field.key in kept.values &&
-        isSameValue(kept.values[field.key], values[field.key]) === false
+        isSameStoredValue(
+          field.kind,
+          kept.values[field.key],
+          values[field.key]
+        ) === false
     )
     .map((field) => field.key);
   return kept.slug === undefined || kept.slug === slug
@@ -499,6 +692,7 @@ export const getToastText = (code: CmsErrorCode) => {
     case "limit":
       return "Item limit reached";
     case "not_found":
+    case "reference_invalid":
       return "Item not found";
     case "forbidden":
       return "No access";

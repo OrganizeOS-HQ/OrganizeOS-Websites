@@ -406,6 +406,86 @@ describe("refusals on a load", () => {
       expect(lineButtons()).toEqual(["Retry"]);
     }
   );
+
+  test("a first page answered unavailable: Try again in a minute, with Retry, which reads the page again and draws its rows", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    fake.listItems.mockResolvedValueOnce({ error: "unavailable" });
+    mount({ homeUrl: HOME });
+    await settle();
+    expect(line()?.textContent).toBe("Try again in a minute" + "Retry");
+    expect(toastError).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-cms-item-id]")).toBeNull();
+    expect(fake.listItems).toHaveBeenCalledTimes(1);
+    await click(buttonByText("Retry"));
+    expect(fake.listItems).toHaveBeenCalledTimes(2);
+    expect(fake.listItems).toHaveBeenLastCalledWith(POSTS.id, {
+      q: undefined,
+      page: 1,
+    });
+    expect(line()).toBeNull();
+    expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
+  });
+
+  test.each([
+    ["E2", "getCollection"],
+    ["E3", "listItems"],
+  ] as const)(
+    "a line that %s caused: Retry reads E0, E1, E2 and E3 again, and the line clears once they answer",
+    async (_name, method) => {
+      fake[method].mockResolvedValueOnce({ error: "forbidden" });
+      mount({ homeUrl: HOME });
+      await settle();
+      expect(line()?.textContent).toBe("No access to the CMSRetry");
+      const calls = {
+        getAccess: fake.getAccess.mock.calls.length,
+        listCollections: fake.listCollections.mock.calls.length,
+        getCollection: fake.getCollection.mock.calls.length,
+        listItems: fake.listItems.mock.calls.length,
+      };
+      await click(buttonByText("Retry"));
+      for (const [name, count] of Object.entries(calls)) {
+        expect(fake[name as keyof typeof calls]).toHaveBeenCalledTimes(
+          count + 1
+        );
+      }
+      expect(fake.getCollection).toHaveBeenLastCalledWith(POSTS.id);
+      expect(fake.listItems).toHaveBeenLastCalledWith(POSTS.id, {
+        q: undefined,
+        page: 1,
+      });
+      expect(line()).toBeNull();
+      expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
+    }
+  );
+
+  test("a line that E2 caused stays while Retry's E2 is still refused", async () => {
+    fake.getCollection.mockResolvedValue({ error: "forbidden" });
+    mount({ homeUrl: HOME });
+    await settle();
+    expect(line()?.textContent).toBe("No access to the CMSRetry");
+    await click(buttonByText("Retry"));
+    expect(fake.getCollection).toHaveBeenCalledTimes(2);
+    expect(line()?.textContent).toBe("No access to the CMSRetry");
+  });
+
+  test("a page answered unavailable while another page is drawn: the toast, and the drawn page stays", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    mount({ homeUrl: HOME });
+    await settle();
+    fake.listItems.mockResolvedValueOnce({ error: "unavailable" });
+    await act(async () => userEvent.type(byLabel("Search Posts")!, "x"));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+    await settle();
+    expect(fake.listItems).toHaveBeenLastCalledWith(POSTS.id, {
+      q: "x",
+      page: 1,
+    });
+    expect(toastError).toHaveBeenCalledWith("Try again in a minute");
+    expect(line()).toBeNull();
+    expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
+  });
 });
 
 describe("refusals on a write", () => {
@@ -523,6 +603,27 @@ describe("refusals on a write", () => {
     expect(navigate).toHaveBeenCalledWith(HOME);
     expect(dirtyAtNavigate).toBe(false);
   });
+
+  test.each(["rate_limited", "unavailable"] as const)(
+    "a Save answered mfa_required, then Retry whose E2 answers %s: the editor and its edits stay",
+    async (error) => {
+      mount({ homeUrl: HOME });
+      await settle();
+      await editTitle();
+      fake.updateItem.mockResolvedValue({ error: "mfa_required" });
+      await click(buttonByText("Save"));
+      expect(line()?.textContent).toContain("Two-step sign-in required");
+      expect(isEditorShown()).toBe(false);
+      const fields = fake.getCollection.mock.calls.length;
+      fake.getCollection.mockResolvedValueOnce({ error });
+      await click(buttonByText("Retry"));
+      expect(fake.getCollection).toHaveBeenCalledTimes(fields + 1);
+      expect(line()).toBeNull();
+      expect(isEditorShown()).toBe(true);
+      expect(titleInput()?.value).toBe("Mine");
+      expect($cmsNativeDirty.get()).toBe(true);
+    }
+  );
 
   test("after a write, the counts and the open page refetch", async () => {
     mount({ homeUrl: HOME });
@@ -860,6 +961,48 @@ describe("refusals on the reads that hold the person's values", () => {
     await editIntoUnknownOutcome();
     fake.getItem.mockResolvedValue({ error: "unauthorized" });
     await click(buttonByText("Save"));
+    expect(line()?.textContent).toContain("Signed out of OrganizeOS");
+    expect(isEditorShown()).toBe(false);
+    expect(titleInput()?.value).toBe("Mine");
+    expect($cmsNativeDirty.get()).toBe(true);
+  });
+
+  test.each([
+    ["E2 on a refresh", "getCollection", "forbidden", "No access"],
+    ["E3 on a refresh", "listItems", "forbidden", "No access"],
+    ["E2 on a refresh", "getCollection", "plan", "Not in plan"],
+    ["E0 on a reopen", "getAccess", "forbidden", "No access"],
+    ["E1 on a reopen", "listCollections", "plan", "Not in plan"],
+  ] as const)(
+    "with unsaved values, %s (%s) answered %s: the toast %s; the editor and its values stay",
+    async (when, method, error, text) => {
+      const toastError = vi.spyOn(toast, "error");
+      mount({ homeUrl: HOME });
+      await settle();
+      await editTitle();
+      fake[method].mockResolvedValue({ error });
+      if (when.endsWith("reopen")) {
+        await reopen();
+      } else {
+        act(() => refreshCmsNative());
+        await settle();
+      }
+      expect(fake[method]).toHaveBeenCalledTimes(2);
+      expect(toastError.mock.calls.map(([value]) => value)).toContain(text);
+      expect(line()).toBeNull();
+      expect(isEditorShown()).toBe(true);
+      expect(titleInput()?.value).toBe("Mine");
+      expect($cmsNativeDirty.get()).toBe(true);
+    }
+  );
+
+  test("with unsaved values, a refresh whose E2 answers unauthorized shows Signed out of OrganizeOS, and the edits are kept", async () => {
+    mount({ homeUrl: HOME, navigate: vi.fn() });
+    await settle();
+    await editTitle();
+    fake.getCollection.mockResolvedValue({ error: "unauthorized" });
+    act(() => refreshCmsNative());
+    await settle();
     expect(line()?.textContent).toContain("Signed out of OrganizeOS");
     expect(isEditorShown()).toBe(false);
     expect(titleInput()?.value).toBe("Mine");

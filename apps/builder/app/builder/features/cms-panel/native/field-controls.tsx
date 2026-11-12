@@ -180,6 +180,7 @@ export const FieldRow = ({
   inline = false,
   error,
   onUseMine,
+  useMineDisabled = false,
   children,
 }: {
   id: string;
@@ -190,6 +191,8 @@ export const FieldRow = ({
   inline?: boolean;
   error?: string;
   onUseMine?: () => void;
+  /** A write is in flight: its answer replaces the values. */
+  useMineDisabled?: boolean;
   children: ReactNode;
 }) => {
   const ids = fieldIds(id);
@@ -224,6 +227,7 @@ export const FieldRow = ({
             aria-label={`Use my edit: ${label}`}
             data-cms-use-mine={id}
             icon={<ResetIcon fill="currentColor" />}
+            disabled={useMineDisabled}
             onClick={onUseMine}
           />
         </Tooltip>
@@ -338,6 +342,7 @@ export const FieldControl = ({
   onBusyChange,
   onRefusal,
   onOpenClassic,
+  onUnresolvedChange,
 }: {
   id: string;
   field: CmsField;
@@ -354,6 +359,8 @@ export const FieldControl = ({
   /** An upload answered a refusal: the screen's line, not the field's. */
   onRefusal?: (refusal: CmsRefusal) => void;
   onOpenClassic?: () => void;
+  /** A reference's chosen ids whose items E5 no longer finds. */
+  onUnresolvedChange?: (ids: string[]) => void;
 }) => {
   const color = invalid ? ("error" as const) : undefined;
   const ids = fieldIds(id);
@@ -499,6 +506,7 @@ export const FieldControl = ({
           disabled={disabled}
           invalid={invalid}
           onChange={onChange}
+          onUnresolvedChange={onUnresolvedChange}
         />
       );
     case "multireference":
@@ -511,6 +519,7 @@ export const FieldControl = ({
           disabled={disabled}
           invalid={invalid}
           onChange={onChange}
+          onUnresolvedChange={onUnresolvedChange}
         />
       );
     case "image":

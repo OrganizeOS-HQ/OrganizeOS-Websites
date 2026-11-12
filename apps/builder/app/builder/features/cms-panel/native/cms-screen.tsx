@@ -32,13 +32,19 @@ import {
   toast,
 } from "@webstudio-is/design-system";
 import type { CmsDeepLink } from "../cms-panel";
-import { getClassicDeepLink, getRefusal, getToastText } from "./cms-logic";
+import {
+  getClassicDeepLink,
+  getRefusal,
+  getToastText,
+  type CmsRefusal,
+} from "./cms-logic";
 import { $cmsNativeDirty, $cmsNativeRefresh } from "./cms-native-stores";
 import {
   isCmsFailure,
   type CmsAccess,
   type CmsCollection,
   type CmsCollectionSummary,
+  type CmsErrorCode,
   type CmsItem,
   type CmsItemsPage,
   type CmsSource,
@@ -117,6 +123,28 @@ const isSameAccess = (left: CmsAccess, right: CmsAccess) =>
   left.canPublish === right.canPublish &&
   left.canManageSettings === right.canManageSettings;
 
+/**
+ * A read's failure (4.3.4): a read made while the editor holds unsaved values
+ * maps as a write, so `forbidden` and `plan` are the toast ("toast") and the
+ * editor keeps its values; `unauthorized` and `mfa_required` keep their
+ * lines. Undefined: no refusal.
+ */
+const mapReadFailure = (
+  code: CmsErrorCode
+): CmsRefusal | "toast" | undefined => {
+  const isDirty = $cmsNativeDirty.get();
+  const refusal = getRefusal(code, isDirty ? "write" : "load");
+  if (refusal === undefined && getRefusal(code, "load") !== undefined) {
+    // one toast for the reads of one refetch
+    toast.error(getToastText(code), { id: `cms-read-${code}` });
+    return "toast";
+  }
+  return refusal;
+};
+
+/** What showed the screen's line: E0 and E1, the editor, E2 or E3. */
+type LineCause = "load" | "editor" | "detail" | "page";
+
 const defaultNavigate = (url: string) => {
   window.location.assign(url);
 };
@@ -156,6 +184,27 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
   ) => {
     const [access, setAccess] = useState<CmsAccess | undefined>(undefined);
     const [line, setLine] = useState<CmsLineKind | undefined>(undefined);
+    // The read whose refusal shows the line; that read's next answer
+    // clears it. E0 and E1 also clear the editor's.
+    const lineCause = useRef<LineCause | undefined>(undefined);
+    const showLine = useCallback((kind: CmsLineKind, cause: LineCause) => {
+      lineCause.current = cause;
+      setLine(kind);
+    }, []);
+    const clearLine = useCallback((cause: Exclude<LineCause, "editor">) => {
+      const current = lineCause.current;
+      if (
+        current === cause ||
+        (cause === "load" && (current === "editor" || current === undefined))
+      ) {
+        lineCause.current = undefined;
+        setLine(undefined);
+      }
+    }, []);
+    const onEditorRefusal = useCallback(
+      (refusal: CmsRefusal) => showLine(refusal, "editor"),
+      [showLine]
+    );
     const [collections, setCollections] = useState<CmsCollectionSummary[]>([]);
     const [collectionId, setCollectionId] = useState(initialView?.collectionId);
     const [itemId, setItemId] = useState(initialView?.itemId);
@@ -167,6 +216,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const [detail, setDetail] = useState<CmsCollection | undefined>(undefined);
     const [detailFailed, setDetailFailed] = useState(false);
     const [detailAttempt, setDetailAttempt] = useState(0);
+    const [pageFailed, setPageFailed] = useState(false);
+    const [pageAttempt, setPageAttempt] = useState(0);
     const [isEditorDirty, setIsEditorDirty] = useState(false);
     const [pending, setPending] = useState<
       { run: () => void; movesFocus: boolean } | undefined
@@ -192,6 +243,16 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const isLoadBackground = useIsBackgroundFetch();
     const isDetailBackground = useIsBackgroundFetch();
     const isPageBackground = useIsBackgroundFetch();
+    // read at E3's answer: whether a page is drawn to keep
+    const hasItemsPage = useRef(false);
+    hasItemsPage.current = itemsPage !== undefined;
+    // read at E2's answer: the collection whose fields are drawn
+    const drawnDetailId = useRef<string | undefined>(undefined);
+    drawnDetailId.current = detail?.id;
+    // The collection, search and page number of the page drawn.
+    const drawnPage = useRef<
+      { collectionId: string; query: string; page: number } | undefined
+    >(undefined);
     // The E3 inputs whose answer is already drawn: a page E3 answered in
     // place of the one asked for.
     const adoptedPageKey = useRef<string | undefined>(undefined);
@@ -202,7 +263,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
     }, [isVisible]);
 
-    // E0 and E1, on open, on each reopen and on Retry.
+    // E0 and E1, on open, on each reopen and on Retry (which reads E2 and
+    // E3 again too).
     useEffect(() => {
       if (source === undefined || opens === 0) {
         return;
@@ -213,12 +275,15 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       const isStale = () => effect.isCurrent === false;
       // A refusal always shows its line; any other failure only on a
       // fetch the person asked for, so a background one changes nothing.
-      const onFailure = (error: Parameters<typeof getRefusal>[0]) => {
-        const refusal = getRefusal(error, "load");
+      const onFailure = (error: CmsErrorCode) => {
+        const refusal = mapReadFailure(error);
+        if (refusal === "toast") {
+          return;
+        }
         if (refusal !== undefined) {
-          setLine(refusal);
+          showLine(refusal, "load");
         } else if (isBackground === false) {
-          setLine("unavailable");
+          showLine("unavailable", "load");
         }
       };
       const load = async () => {
@@ -238,7 +303,12 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           onFailure(listResult.error);
           return;
         }
-        setLine(undefined);
+        clearLine("load");
+        // with no collection, no E2 or E3 is left to clear their line
+        if (listResult.collections.length === 0) {
+          lineCause.current = undefined;
+          setLine(undefined);
+        }
         setAccess((current) =>
           current !== undefined && isSameAccess(current, accessResult)
             ? current
@@ -250,7 +320,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       return () => {
         effect.isCurrent = false;
       };
-    }, [source, attempt, opens, isLoadBackground]);
+    }, [source, attempt, opens, isLoadBackground, showLine, clearLine]);
 
     // E1 alone after each write, here or in the classic frame, silently.
     useEffect(() => {
@@ -303,7 +373,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
       const isBackground = isDetailBackground(
         source,
-        JSON.stringify([collectionId, detailAttempt])
+        JSON.stringify([collectionId, detailAttempt, attempt])
       );
       let isCurrent = true;
       if (isBackground === false) {
@@ -314,14 +384,23 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           return;
         }
         if (isCmsFailure(result)) {
-          const refusal = getRefusal(result.error, "load");
+          const refusal = mapReadFailure(result.error);
+          if (refusal === "toast") {
+            return;
+          }
           if (refusal !== undefined) {
-            setLine(refusal);
-          } else if (isBackground === false) {
+            showLine(refusal, "detail");
+          } else if (
+            isBackground === false &&
+            drawnDetailId.current !== collectionId
+          ) {
+            // with this collection's fields drawn, the editor and its edits
+            // stay and nothing on screen changes; with none, the line
             setDetailFailed(true);
           }
           return;
         }
+        clearLine("detail");
         setDetailFailed(false);
         setDetail(result.collection);
       });
@@ -333,9 +412,12 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       collectionId,
       isReady,
       detailAttempt,
+      attempt,
       opens,
       refresh,
       isDetailBackground,
+      showLine,
+      clearLine,
     ]);
 
     // E3: the open page of items.
@@ -347,7 +429,14 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       ) {
         return;
       }
-      const key = JSON.stringify([collectionId, page, query, listVersion]);
+      const key = JSON.stringify([
+        collectionId,
+        page,
+        query,
+        listVersion,
+        pageAttempt,
+        attempt,
+      ]);
       const isBackground = isPageBackground(source, key);
       // the page E3 answered in place of the one asked for is drawn already
       if (adoptedPageKey.current === key) {
@@ -356,6 +445,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
       adoptedPageKey.current = undefined;
       let isCurrent = true;
+      if (isBackground === false) {
+        setPageFailed(false);
+      }
       void source
         .listItems(collectionId, { q: query === "" ? undefined : query, page })
         .then((result) => {
@@ -363,15 +455,46 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             return;
           }
           if (isCmsFailure(result)) {
-            const refusal = getRefusal(result.error, "load");
+            const refusal = mapReadFailure(result.error);
+            if (refusal === "toast") {
+              return;
+            }
             if (refusal !== undefined) {
-              setLine(refusal);
+              showLine(refusal, "page");
             } else if (isBackground === false) {
-              toast.error(getToastText(result.error));
+              // a page on screen stays, with the toast; with none drawn,
+              // the line and its Retry (4.3.4)
+              if (hasItemsPage.current) {
+                toast.error(getToastText(result.error));
+                // a failed page change goes back to the drawn page, unread,
+                // so the pager asks for the same page again
+                const drawn = drawnPage.current;
+                if (
+                  drawn !== undefined &&
+                  drawn.collectionId === collectionId &&
+                  drawn.query === query &&
+                  drawn.page !== page
+                ) {
+                  adoptedPageKey.current = JSON.stringify([
+                    collectionId,
+                    drawn.page,
+                    query,
+                    listVersion,
+                    pageAttempt,
+                    attempt,
+                  ]);
+                  setPage(drawn.page);
+                }
+              } else {
+                setPageFailed(true);
+              }
             }
             return;
           }
+          clearLine("page");
+          setPageFailed(false);
           setItemsPage(result);
+          drawnPage.current = { collectionId, query, page: result.page };
           // a page past the end answers the last one (A4): the screen
           // keeps that page from here on
           if (result.page !== page) {
@@ -380,6 +503,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
               result.page,
               query,
               listVersion,
+              pageAttempt,
+              attempt,
             ]);
             setPage(result.page);
           }
@@ -394,9 +519,13 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       page,
       query,
       listVersion,
+      pageAttempt,
+      attempt,
       opens,
       refresh,
       isPageBackground,
+      showLine,
+      clearLine,
     ]);
 
     useEffect(() => {
@@ -475,9 +604,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
       const result = await source.getCollection(collectionId);
       if (isCmsFailure(result)) {
-        const refusal = getRefusal(result.error, "load");
-        if (refusal !== undefined) {
-          setLine(refusal);
+        const refusal = mapReadFailure(result.error);
+        if (refusal !== undefined && refusal !== "toast") {
+          showLine(refusal, "detail");
         }
         return;
       }
@@ -549,9 +678,17 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             onWritten={onWritten}
             onCreated={(item) => setItemId(item.id)}
             onSchemaStale={refetchFields}
-            onRefusal={setLine}
+            onRefusal={onEditorRefusal}
             onOpenHome={onOpenHome}
             onOpenClassic={showClassic}
+          />
+        );
+      }
+      if (pageFailed && itemsPage === undefined) {
+        return (
+          <RefusalLine
+            kind="unavailable"
+            onRetry={() => setPageAttempt((current) => current + 1)}
           />
         );
       }
