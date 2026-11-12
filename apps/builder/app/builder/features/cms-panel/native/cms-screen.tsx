@@ -390,13 +390,17 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           }
           if (refusal !== undefined) {
             showLine(refusal, "detail");
-          } else if (
-            isBackground === false &&
-            drawnDetailId.current !== collectionId
-          ) {
+          } else if (isBackground === false) {
             // with this collection's fields drawn, the editor and its edits
-            // stay and nothing on screen changes; with none, the line
-            setDetailFailed(true);
+            // stay, with the toast (one for the reads of one Retry); with
+            // none, the line
+            if (drawnDetailId.current === collectionId) {
+              toast.error(getToastText(result.error), {
+                id: `cms-read-${result.error}`,
+              });
+            } else {
+              setDetailFailed(true);
+            }
           }
           return;
         }
@@ -465,7 +469,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
               // a page on screen stays, with the toast; with none drawn,
               // the line and its Retry (4.3.4)
               if (hasItemsPage.current) {
-                toast.error(getToastText(result.error));
+                toast.error(getToastText(result.error), {
+                  id: `cms-read-${result.error}`,
+                });
                 // a failed page change or search goes back to the drawn
                 // page number, unread, so the pager asks from the rows on
                 // screen; the search keeps the term asked for

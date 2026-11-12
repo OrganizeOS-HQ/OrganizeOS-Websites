@@ -482,7 +482,9 @@ describe("refusals on a load", () => {
       q: "x",
       page: 1,
     });
-    expect(toastError).toHaveBeenCalledWith("Try again in a minute");
+    expect(toastError).toHaveBeenCalledWith("Try again in a minute", {
+      id: "cms-read-unavailable",
+    });
     expect(line()).toBeNull();
     expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
   });
@@ -1007,6 +1009,47 @@ describe("refusals on the reads that hold the person's values", () => {
     expect(isEditorShown()).toBe(false);
     expect(titleInput()?.value).toBe("Mine");
     expect($cmsNativeDirty.get()).toBe(true);
+  });
+
+  test("a Retry whose E2 fails, after E2 caused the line, shows the toast once and keeps the editor's values", async () => {
+    mount({ homeUrl: HOME });
+    await settle();
+    await editTitle();
+    fake.getCollection.mockResolvedValueOnce({ error: "mfa_required" });
+    act(() => refreshCmsNative());
+    await settle();
+    expect(line()?.textContent).toContain("Two-step sign-in required");
+    const toastError = vi.spyOn(toast, "error");
+    fake.getCollection.mockResolvedValueOnce({ error: "unavailable" });
+    await click(buttonByText("Retry"));
+    expect(toastError.mock.calls).toEqual([
+      ["Try again in a minute", { id: "cms-read-unavailable" }],
+    ]);
+    expect(titleInput()?.value).toBe("Mine");
+    expect($cmsNativeDirty.get()).toBe(true);
+  });
+
+  test("a Retry whose E2 and E3 both fail shows one toast", async () => {
+    mount({ homeUrl: HOME });
+    await settle();
+    await editTitle();
+    fake.getCollection.mockResolvedValueOnce({ error: "mfa_required" });
+    act(() => refreshCmsNative());
+    await settle();
+    expect(line()?.textContent).toContain("Two-step sign-in required");
+    const toastError = vi.spyOn(toast, "error");
+    fake.getCollection.mockResolvedValueOnce({ error: "unavailable" });
+    fake.listItems.mockResolvedValueOnce({ error: "unavailable" });
+    await click(buttonByText("Retry"));
+    expect(fake.listItems).toHaveBeenLastCalledWith(POSTS.id, {
+      q: undefined,
+      page: 1,
+    });
+    expect(toastError.mock.calls).toEqual([
+      ["Try again in a minute", { id: "cms-read-unavailable" }],
+      ["Try again in a minute", { id: "cms-read-unavailable" }],
+    ]);
+    expect(titleInput()?.value).toBe("Mine");
   });
 
   test("opening an item answered forbidden still shows the screen's line", async () => {

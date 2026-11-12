@@ -211,7 +211,9 @@ describe("the items view", () => {
     await settle();
     expect(fake.listItems).toHaveBeenCalledTimes(calls + 1);
     expect(lastListItemsCall()).toEqual([POSTS.id, { q: undefined, page: 2 }]);
-    expect(toastError).toHaveBeenCalledWith("Try again in a minute");
+    expect(toastError).toHaveBeenCalledWith("Try again in a minute", {
+      id: "cms-read-unavailable",
+    });
     expect(pagerText()).toBe("1-50 of 120");
     await act(async () => userEvent.click(byLabel("Next")!));
     await settle();
