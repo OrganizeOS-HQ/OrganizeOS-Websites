@@ -3,6 +3,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { parseCssValue } from "@webstudio-is/css-data";
 import type { CssProperty } from "@webstudio-is/css-engine";
 import type { BuilderPatchChange } from "@webstudio-is/project-build/contracts";
+import { readVariablesRegistry } from "@webstudio-is/project-build";
 import {
   createBuildPatchUpdate,
   type BuildPatchTransaction,
@@ -487,6 +488,38 @@ test("reorderVariable maps a row position to a registry index; an unregistered t
   expect(reorderVariable("b", 0)).toEqual({ ok: true });
   expect(undoDepth()).toBe(2);
 });
+
+const long = (letter: string) => letter.repeat(140);
+
+test.each([
+  [
+    "a rename by CSS name",
+    () => renameVariable({ from: "a", to: long("r") }),
+    "r",
+  ],
+  ["a move", () => moveVariables([long("m")], "c1"), "m"],
+  ["a reorder", () => reorderVariable(long("m"), 0), "m"],
+  ["a first type", () => setVariableType(long("t"), "fontFamily"), "t"],
+] as const)(
+  "%s: a display name derived from a CSS name over 128 characters is cut to 128, so the registry stays readable",
+  (_label, write, letter) => {
+    project({
+      styles: css({
+        "--a": "1px",
+        [`--${long("m")}`]: "2px",
+        [`--${long("t")}`]: "Inter",
+      }),
+      organizeos: { variables: site(size("a")) },
+    });
+    expect(write()).toMatchObject({ ok: true });
+    expect(
+      readVariablesRegistry($projectSettings.get()?.organizeos).status
+    ).toBe("readable");
+    expect(
+      registry().variables.find((entry) => entry.cssName === long(letter))?.name
+    ).toBe(letter.repeat(128));
+  }
+);
 
 test("a stage that throws returns ok false, commits nothing and shows the error toast", async () => {
   // a real stage on a real accumulator throws: executeStagedRuntimeMutation
