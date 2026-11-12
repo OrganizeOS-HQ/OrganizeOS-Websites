@@ -54,6 +54,7 @@ import { sidebarPanelNames } from "../../sidebar-left/types";
 import {
   $cmsClassicDeepLink,
   $cmsDirty,
+  $cmsFrameDirty,
   $cmsFrameMounted,
   $isClassicCmsShown,
   $isCmsOverlayOpen,
@@ -66,6 +67,8 @@ import {
   showNativeCms,
 } from "./cms-panel";
 import { CmsIcon } from "./cms-icon";
+import { invalidateCollectionOnCanvas } from "./native/cms-canvas";
+import { $cmsNativeDirty, $cmsNativeRefresh } from "./native/cms-native-stores";
 // Read as text through Vite: the suite runs in the browser, without node:fs
 import topbarSource from "../../shared/topbar.tsx?raw";
 import toastSource from "../../../../../../packages/design-system/src/components/toast.tsx?raw";
@@ -504,7 +507,8 @@ describe("the CMS overlay in the builder", () => {
     $selectedPageId.set(pages.homePageId);
     $isCmsOverlayOpen.set(false);
     $cmsFrameMounted.set(false);
-    $cmsDirty.set(false);
+    $cmsFrameDirty.set(false);
+    $cmsNativeDirty.set(false);
     vi.mocked(invalidateResource).mockClear();
   });
 
@@ -1036,6 +1040,43 @@ describe("the CMS overlay in the builder", () => {
       clickRail();
       expect(overlay()?.style.zIndex).toBe("");
     });
+
+    describe("the two dirty flags", () => {
+      test("$cmsDirty holds while either is set, and clearing one leaves it set", () => {
+        act(() => $cmsFrameDirty.set(true));
+        expect($cmsDirty.get()).toBe(true);
+        act(() => $cmsNativeDirty.set(true));
+        act(() => $cmsFrameDirty.set(false));
+        expect($cmsDirty.get()).toBe(true);
+        act(() => $cmsNativeDirty.set(false));
+        expect($cmsDirty.get()).toBe(false);
+      });
+
+      test("cms.dirty writes the frame's flag only", () => {
+        render();
+        clickRail();
+        post({ type: "cms.dirty", dirty: true });
+        expect($cmsFrameDirty.get()).toBe(true);
+        act(() => $cmsNativeDirty.set(true));
+        post({ type: "cms.dirty", dirty: false });
+        expect($cmsFrameDirty.get()).toBe(false);
+        expect($cmsNativeDirty.get()).toBe(true);
+        expect($cmsDirty.get()).toBe(true);
+      });
+
+      test("beforeunload is refused while only the native editor is dirty", () => {
+        render();
+        clickRail();
+        act(() => $cmsNativeDirty.set(true));
+        const guarded = new Event("beforeunload", { cancelable: true });
+        window.dispatchEvent(guarded);
+        expect(guarded.defaultPrevented).toBe(true);
+        act(() => $cmsNativeDirty.set(false));
+        const after = new Event("beforeunload", { cancelable: true });
+        window.dispatchEvent(after);
+        expect(after.defaultPrevented).toBe(false);
+      });
+    });
   });
 
   describe("messages", () => {
@@ -1067,7 +1108,29 @@ describe("the CMS overlay in the builder", () => {
       ]);
       render();
       clickRail();
+      const refresh = $cmsNativeRefresh.get();
       post({ type: "cms.item_saved", collection: "news" });
+      expect(vi.mocked(invalidateResource).mock.calls).toEqual([[news]]);
+      expect($cmsNativeRefresh.get()).toBe(refresh + 1);
+    });
+
+    test("invalidateCollectionOnCanvas invalidates only that collection's requests", () => {
+      const request = (url: string): ResourceRequest => ({
+        name: url,
+        method: "get",
+        url,
+        searchParams: [],
+        headers: [],
+      });
+      const news = request(
+        `${platformUrl}/api/public/v1/collections/news?limit=6`
+      );
+      const events = request(`${platformUrl}/api/public/v1/collections/events`);
+      vi.spyOn($computedResourceRequests, "get").mockReturnValue([
+        news,
+        events,
+      ]);
+      invalidateCollectionOnCanvas("news", platformUrl);
       expect(vi.mocked(invalidateResource).mock.calls).toEqual([[news]]);
     });
 
@@ -1100,7 +1163,9 @@ describe("the CMS overlay in the builder", () => {
       const info = vi.spyOn(toast, "info").mockImplementation(() => "id");
       render();
       clickRail();
+      const refresh = $cmsNativeRefresh.get();
       post({ type: "cms.collection_changed", collection: null });
+      expect($cmsNativeRefresh.get()).toBe(refresh + 1);
       expect(info).toHaveBeenCalledTimes(1);
       const [content, options] = info.mock.calls[0];
       expect(options).toMatchObject({ id: "cms-collection-changed" });
