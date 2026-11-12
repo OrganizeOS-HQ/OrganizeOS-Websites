@@ -208,6 +208,10 @@ export const isSameValue = (left: unknown, right: unknown): boolean => {
   return false;
 };
 
+/** A field's value; a key the data lacks reads as the field's empty value. */
+const valueOf = (data: CmsItemData, field: CmsField) =>
+  field.key in data ? data[field.key] : emptyValueFor(field.kind);
+
 /** The keys, in schema order, whose value differs from the baseline. */
 export const getChangedFieldKeys = (
   fields: readonly CmsField[],
@@ -216,7 +220,8 @@ export const getChangedFieldKeys = (
 ) =>
   fields
     .filter(
-      (field) => isSameValue(baseline[field.key], values[field.key]) === false
+      (field) =>
+        isSameValue(valueOf(baseline, field), valueOf(values, field)) === false
     )
     .map((field) => field.key);
 
@@ -267,8 +272,10 @@ export const keepAside = ({
 }): CmsKeptValues => {
   const next: CmsItemData = {};
   for (const field of fields) {
-    if (isSameValue(values[field.key], baseline[field.key]) === false) {
-      next[field.key] = structuredClone(values[field.key]);
+    if (
+      isSameValue(valueOf(values, field), valueOf(baseline, field)) === false
+    ) {
+      next[field.key] = structuredClone(valueOf(values, field));
     } else if (kept !== undefined && field.key in kept.values) {
       next[field.key] = structuredClone(kept.values[field.key]);
     }

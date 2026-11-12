@@ -136,6 +136,27 @@ describe("dirty tracking", () => {
     ).toEqual(["name", "tags", "cover"]);
   });
 
+  test("a field the values lack reads as its empty value", () => {
+    const added: CmsField[] = [
+      { key: "name", label: "Name", kind: "text" },
+      { key: "on", label: "On", kind: "switch" },
+      { key: "refs", label: "Refs", kind: "multireference" },
+    ];
+    const values = { name: "A" };
+    const baseline = { ...emptyItemData(added), ...values };
+    expect(getChangedFieldKeys(added, baseline, values)).toEqual([]);
+    expect(
+      keepAside({
+        fields: added,
+        kept: undefined,
+        baseline,
+        baselineSlug: "a",
+        values,
+        slug: "a",
+      }).values
+    ).toEqual({});
+  });
+
   test("an edited address alone is dirty", () => {
     expect(
       isItemDirty({

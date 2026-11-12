@@ -574,6 +574,28 @@ describe("saving, publishing and discarding", () => {
     });
   });
 
+  test("a clean editor that gains a switch and a multi-reference field stays clean", async () => {
+    await openItem();
+    expect(isDisabled("Save")).toBe(true);
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "featured", label: "Featured", kind: "switch" },
+      {
+        key: "related",
+        label: "Related",
+        kind: "multireference",
+        reference: { collectionId: POSTS.id, multiple: true },
+      },
+    ]);
+    // the item's own read fails, so only the fields change
+    fake.getItem.mockResolvedValue({ error: "unavailable" });
+    act(() => refreshCmsNative());
+    await settle();
+    expect(document.querySelector("#cms-field-featured")).not.toBeNull();
+    expect($cmsNativeDirty.get()).toBe(false);
+    expect(isDisabled("Save")).toBe(true);
+  });
+
   test("invalid with no field refetches the fields, so the next Save sends their keys", async () => {
     const error = vi.spyOn(toast, "error");
     await openItem();
