@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, expect, test, vi } from "vitest";
 import { userEvent } from "@vitest/browser/context";
+import { $getRoot, type LexicalEditor } from "lexical";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { RichTextField, type RichTextFieldProps } from "./rich-text-field";
 import { createLazyRichTextField, FieldControl } from "./field-controls";
@@ -324,16 +325,54 @@ test.each([
   expect(lastHtml(onChange)).not.toContain(`<${tag}`);
 });
 
-const lossy = fixture.readOnly.find((entry) => entry.reason === "lossy");
-test.runIf(lossy !== undefined)(
-  "a value the editor would not keep whole is read-only with Edit in Classic CMS",
-  async () => {
-    const { onOpenClassic } = mountField({ value: { html: lossy!.input } });
+test("a value the editor would not keep whole is read-only with Edit in Classic CMS", async () => {
+  const lossy = fixture.readOnly.find((entry) => entry.reason === "lossy");
+  expect(lossy, "the fixture's lossy entry").toBeDefined();
+  const { onOpenClassic } = mountField({ value: { html: lossy!.input } });
+  await settle();
+  expect(editable()).toBeNull();
+  expect(document.body.textContent).toContain("Edit in Classic CMS");
+  await click(buttonByText("Classic CMS"));
+  expect(onOpenClassic).toHaveBeenCalledTimes(1);
+});
+
+/** The HTML without the live editor's theme classes and text direction. */
+const withoutClassAndDir = (html: string) => {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  for (const element of template.content.querySelectorAll("*")) {
+    element.removeAttribute("class");
+    element.removeAttribute("dir");
+  }
+  return template.innerHTML;
+};
+
+test.each(fixture.cases.map((entry) => [entry.name, entry] as const))(
+  "the live field writes the fixture's editor HTML for %s",
+  async (_name, entry) => {
+    const { onChange } = mountField({ value: { html: entry.input } });
     await settle();
-    expect(editable()).toBeNull();
-    expect(document.body.textContent).toContain("Edit in Classic CMS");
-    await click(buttonByText("Classic CMS"));
-    expect(onOpenClassic).toHaveBeenCalledTimes(1);
+    const root = editable() as
+      | (HTMLElement & { __lexicalEditor?: LexicalEditor })
+      | null;
+    const editor = root?.__lexicalEditor;
+    expect(editor).toBeDefined();
+    expect(onChange).not.toHaveBeenCalled();
+    // a change that alters no content: the field writes what it holds
+    await act(async () => {
+      editor!.update(() => {
+        $getRoot().markDirty();
+      });
+    });
+    await settle();
+    expect(onChange).toHaveBeenCalled();
+    const written = lastValue(onChange);
+    if (entry.stored === null) {
+      // nothing but blank text: the field writes no value
+      expect(written).toBeNull();
+      return;
+    }
+    expect(withoutClassAndDir(written?.html ?? "")).toBe(entry.editor);
   }
 );
 
