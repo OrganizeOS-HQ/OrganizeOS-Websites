@@ -98,21 +98,20 @@ export const $referencedCssVariables = computed(
 
 // Get all unused CSS variables (defined in instances but not referenced)
 export const $unusedCssVariables = computed(
-  // OrganizeOS fork: never offers a protected name or one in custom code (builder/features/variables).
-  [
-    $cssVariableDefinitionsByVariable,
-    $referencedCssVariables,
-    $projectSettings,
-  ],
-  (definitionsByVariable, referencedVariables, projectSettings) => {
-    return withoutKeptCssVariables(
-      getUnusedCssVariableNames({
-        definitionsByVariable,
-        referencedVariables,
-      }),
-      projectSettings?.meta.code
-    );
+  [$cssVariableDefinitionsByVariable, $referencedCssVariables],
+  (definitionsByVariable, referencedVariables) => {
+    return getUnusedCssVariableNames({
+      definitionsByVariable,
+      referencedVariables,
+    });
   }
+);
+
+// OrganizeOS fork: what "Delete unused" offers: never a protected name or one in custom code; the Cmd+K usage labels keep reading $unusedCssVariables (builder/features/variables).
+export const $deletableUnusedCssVariables = computed(
+  [$unusedCssVariables, $projectSettings],
+  (unusedVariables, projectSettings) =>
+    withoutKeptCssVariables(unusedVariables, projectSettings?.meta.code)
 );
 
 export const validateCssVariableName = (
@@ -166,7 +165,8 @@ export const deleteCssVariable = (property: string) => {
 
 // OrganizeOS fork: undefined when a routed commit did not land; its error toast already showed (builder/features/variables).
 export const deleteUnusedCssVariables = (): number | undefined => {
-  const unusedVariables = $unusedCssVariables.get();
+  // OrganizeOS fork: the deletable ones (builder/features/variables).
+  const unusedVariables = $deletableUnusedCssVariables.get();
 
   if (unusedVariables.size === 0) {
     return 0;
@@ -344,7 +344,8 @@ const DeleteUnusedCssVariablesDialogContent = ({
 }: {
   onClose: () => void;
 }) => {
-  const unusedVariables = useStore($unusedCssVariables);
+  // OrganizeOS fork: the deletable ones (builder/features/variables).
+  const unusedVariables = useStore($deletableUnusedCssVariables);
   // Convert Set to Array for display
   const unusedVariablesArray = Array.from(unusedVariables);
   // OrganizeOS fork: a refusal shows here instead of deleting (builder/features/variables).

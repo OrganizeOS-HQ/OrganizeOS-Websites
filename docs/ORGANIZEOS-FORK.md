@@ -893,9 +893,12 @@ can be merged with minimal conflict.
   `features/variables/`; `canCommitWebstudioData` exported by one marked word
   in `shared/instance-utils/data.ts`; and the Cmd+K guard and routing in
   `builder/shared/css-variable-utils.tsx` (marked: the import, the
-  `$unusedCssVariables` filter, the routing at the top of `renameCssVariable`,
+  `$deletableUnusedCssVariables` store that "Delete unused" reads instead of
+  `$unusedCssVariables`, so Cmd+K's usage labels stay upstream's, the routing
+  at the top of `renameCssVariable`,
   `deleteCssVariable` and `deleteUnusedCssVariables`, and the refusal in both
-  delete dialogs), with `css-variable-utils.organizeos.test.tsx`. Pinned by
+  delete dialogs), with `css-variable-utils.organizeos.test.tsx`; the test-only
+  store helpers in `features/variables/test-stores.ts`. Pinned by
   `overlay.wiring.node.test.ts`.
 - **Published sites (§1, §8).** The CLI's copy of the blocks' build into every
   published site, `packages/cli/src/organizeos-components.ts`, called from
@@ -2302,8 +2305,9 @@ Style panel's "+" in PR B.
   value (`unset` when it does not resolve). Embed and custom code keep their
   text and count in the usage.
 - The six canonical names and the two band names are protected: no rename or
-  delete from the Variables operations or Cmd+K, and "Delete unused" never
-  offers them. A missing canonical variable is restored only while another of
+  delete from the Variables operations or Cmd+K, no other variable renamed to
+  one, and "Delete unused" never offers them; Cmd+K still labels them unused
+  when nothing reads them. A missing canonical variable is restored only while another of
   the six exists, so the template chooser's gate is unchanged.
 - Cmd+K rename and delete of a listed root variable (Global Root's local
   source, base breakpoint) go through the Variables operations, keeping the

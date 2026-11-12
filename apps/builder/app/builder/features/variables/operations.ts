@@ -799,6 +799,10 @@ export const routeCssVariableRename = (
   if (isProtectedName(from)) {
     return { type: "invalid", message: "Can't rename this variable" };
   }
+  // on every path: a name declared only on elements must not take one either
+  if (isProtectedName(newProperty.slice(2))) {
+    return { type: "invalid", message: "This name is reserved" };
+  }
   if (isListedRoot(from) === false) {
     return "upstream";
   }

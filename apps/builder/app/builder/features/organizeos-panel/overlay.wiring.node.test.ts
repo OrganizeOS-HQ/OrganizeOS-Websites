@@ -339,11 +339,18 @@ describe("the Cmd+K CSS variable guard and routing", () => {
     );
   });
 
-  test("$unusedCssVariables leaves out kept names", () => {
+  test("Delete unused reads a store that leaves out kept names; Cmd+K's labels keep upstream's", () => {
     expect(utils).toMatch(
-      /\[\s*\$cssVariableDefinitionsByVariable,\s*\$referencedCssVariables,\s*\$projectSettings,?\s*\]/
+      /export const \$unusedCssVariables = computed\(\s*\[\$cssVariableDefinitionsByVariable, \$referencedCssVariables\],/
     );
-    expect(utils).toMatch(/withoutKeptCssVariables\(/);
+    expect(utils).toMatch(
+      /export const \$deletableUnusedCssVariables = computed\(\s*\[\$unusedCssVariables, \$projectSettings\],[\s\S]*?withoutKeptCssVariables\(/
+    );
+    expect(
+      utils.match(
+        /\$deletableUnusedCssVariables\.get\(\)|useStore\(\$deletableUnusedCssVariables\)/g
+      )
+    ).toHaveLength(2);
   });
 
   test("rename, delete and delete unused route first", () => {

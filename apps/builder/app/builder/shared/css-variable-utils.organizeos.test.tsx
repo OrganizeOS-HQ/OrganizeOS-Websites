@@ -26,6 +26,12 @@ import {
   type Fixture,
 } from "~/builder/features/variables/test-stores";
 import {
+  closeCommandPanel,
+  openCommandPanel,
+} from "~/builder/features/command-panel/command-state";
+import { $cssVariableOptions } from "~/builder/features/command-panel/groups/css-variables-group";
+import {
+  $deletableUnusedCssVariables,
   $unusedCssVariables,
   DeleteCssVariableDialog,
   deleteCssVariable,
@@ -181,7 +187,7 @@ test("a protected name: the delete dialog refuses and stays open", async () => {
   expect(onConfirm).not.toHaveBeenCalled();
 });
 
-test("$unusedCssVariables leaves out protected names and names in project custom code", () => {
+test("Delete unused leaves out protected names and names in project custom code", () => {
   project({
     styles: [
       ...six,
@@ -190,8 +196,43 @@ test("$unusedCssVariables leaves out protected names and names in project custom
     ],
     code: "<style>a{gap:var(--in-code)}</style>",
   });
-  expect($unusedCssVariables.get()).toEqual(new Set(["--free"]));
+  expect($deletableUnusedCssVariables.get()).toEqual(new Set(["--free"]));
 });
+
+test("the Cmd+K list still labels an unreferenced Brand or band variable unused", () => {
+  project({
+    styles: [
+      ...six,
+      { on: "box", property: "--focus-ring" as CssProperty, value: "#000" },
+    ],
+  });
+  expect($unusedCssVariables.get()).toContain("--base");
+  openCommandPanel();
+  const usagesOf = (property: string) =>
+    $cssVariableOptions.get().find((option) => option.property === property)
+      ?.usages;
+  expect(usagesOf("--base")).toBe(0);
+  expect(usagesOf("--focus-ring")).toBe(0);
+  closeCommandPanel();
+});
+
+test.each(["--accent-text", "--base"])(
+  "a rename of a name declared only on elements to the protected %s is refused, staging nothing",
+  (name) => {
+    project({
+      styles: [
+        { on: "box", property: "--local" as CssProperty, value: "1px" },
+        { on: "box", property: "color", value: v("local") },
+      ],
+    });
+    expect(renameCssVariable("--local", name)).toEqual({
+      type: "invalid",
+      message: "This name is reserved",
+    });
+    expect(undoDepth()).toBe(0);
+    expect(boxStyle("color")).toEqual({ type: "var", value: "local" });
+  }
+);
 
 test("a rename of a registered root variable keeps its entry and rewrites everything", () => {
   project(brandBlue);
