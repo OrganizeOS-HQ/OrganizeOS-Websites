@@ -942,6 +942,59 @@ describe("conflicts, unknown outcomes and field errors", () => {
     expect(chipText()).toBe("Published");
   });
 
+  /** A new item with a rich-text Body: the Title typed, the Body "Two". */
+  const openNewItemWithBody = async (title: string) => {
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "body", label: "Body", kind: "richtext" },
+    ]);
+    await openNewItem();
+    await retype(titleInput(), title);
+    const editable = await vi.waitFor(() => {
+      const element = document.querySelector<HTMLElement>(
+        '[data-cms-field="cms-field-body"] [contenteditable="true"]'
+      );
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    await act(async () => userEvent.click(editable));
+    await act(async () => userEvent.keyboard("Two"));
+    await settle();
+  };
+
+  /** The item the first E6 made, as the platform stored it. */
+  const madeWithBody = (title: string, slug: string) =>
+    itemOf({
+      id: NEW_ID,
+      slug,
+      data: {
+        title,
+        summary: null,
+        author: null,
+        body: { html: "<p>Two</p>", text: "Two" },
+      },
+      updatedAt: V2,
+    });
+
+  test("an E6 replay that stored the person's values leaves the editor clean", async () => {
+    await openNewItemWithBody("Hello world");
+    fake.createItem.mockResolvedValueOnce({ error: "unavailable" });
+    await click(buttonByText("Save"));
+    const sent = fake.createItem.mock.lastCall?.[1].data.body as {
+      html: string;
+    };
+    expect(sent.html).not.toBe("<p>Two</p>");
+    fake.createItem.mockResolvedValueOnce({
+      item: madeWithBody("Hello world", "hello-world"),
+      created: false,
+    });
+    await click(buttonByText("Save"));
+    expect(fake.createItem).toHaveBeenCalledTimes(2);
+    expect(fake.updateItem).not.toHaveBeenCalled();
+    expect($cmsNativeDirty.get()).toBe(false);
+    expect(isDisabled("Save")).toBe(true);
+  });
+
   test("after E6 answers not_found, the next Save sends a fresh clientId", async () => {
     const error = vi.spyOn(toast, "error");
     await openNewItem();

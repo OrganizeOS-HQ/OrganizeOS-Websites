@@ -569,6 +569,11 @@ export const ItemEditor = ({
         storedSlug: saved.slug,
         slug,
       });
+    // a replay that stored the person's values: they take its stored form,
+    // so the editor is clean
+    if (replayed && differs === false) {
+      applyItem(saved);
+    }
     return { saved, differs };
   };
 
