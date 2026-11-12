@@ -53,10 +53,10 @@ const render = (allowDynamicData: boolean) => {
   );
 };
 
-test("a plan without dynamic data shows the chip beside Variables, not a banner", () => {
+test("a plan without dynamic data shows the chip beside Data variables, not a banner", () => {
   render(false);
   const text = document.body.textContent ?? "";
-  expect(text).toContain("Variables");
+  expect(text).toContain("Data variables");
   expect(text).toContain(planBadgeLabel);
   expect(text).not.toContain("not included in your plan");
   expect(text).not.toContain("plan is managed");
@@ -64,6 +64,6 @@ test("a plan without dynamic data shows the chip beside Variables, not a banner"
 
 test("a plan with dynamic data shows no chip", () => {
   render(true);
-  expect(document.body.textContent).toContain("Variables");
+  expect(document.body.textContent).toContain("Data variables");
   expect(document.body.textContent).not.toContain(planBadgeLabel);
 });

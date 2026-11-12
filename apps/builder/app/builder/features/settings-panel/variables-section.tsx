@@ -537,7 +537,8 @@ export const VariablesSection = () => {
               </Flex>
             }
           >
-            <SectionTitleLabel>Variables</SectionTitleLabel>
+            {/* OrganizeOS fork: "Data variables", so the builder never shows two things called Variables (builder/features/variables). */}
+            <SectionTitleLabel>Data variables</SectionTitleLabel>
             {/* OrganizeOS fork: upstream sold its CMS in a banner under the
                 panel, with a pitch that was untrue here (one address, no
                 staging). The gate is this chip beside the title, no sentence. */}

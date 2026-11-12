@@ -546,13 +546,21 @@ can be merged with minimal conflict.
   `src/clients/s3/s3.test.ts` and `src/clients/s3/object-url.test.ts`.
   `services/staged-upload.server.ts` keeps its local staged uploads in the OS
   temporary folder, since a serverless bundle's folder is read-only.
+- **The rail-overlay host (§9, "The CMS overlay").** `features/rail-overlay/*`
+  (`rail-overlay.tsx`, with `rail-overlay.test.tsx`): opening, hiding, Escape,
+  focus, drags, the clipboard guard and the stacking of a screen opened from a
+  rail button, shared by the CMS and Variables. `shared/commands-emitter.ts`
+  (marked: `suppressCommandsForEvent`'s `allow`, so a suppression can let
+  named commands through), pinned by the wiring test and
+  `shared/commands-emitter.organizeos.test.ts`.
 - **The CMS overlay (§9, "The CMS overlay").** `features/cms-panel/*` and
   `features/cms-panel/native/*` (the native CMS screen), with their
   tests (its site fixture is a loopback origin, so the suite frames no live
   platform), among them `cms-icon.tsx`, the database icon; in
   `sidebar-left/sidebar-left.tsx`, the one `<CmsRailButton />` after the tab
   triggers in the rail, the `ref={registerCmsRail}` on the rail's column, the
-  `hideCmsOverlay()` branch in a tab trigger's click, and the one
+  `hideRailOverlay()` branch in a tab trigger's click, with its marked import
+  from the host, and the one
   `<CmsOverlay />` outside the tab content; the per-panel `maxWidth` and
   `defaultWidth` in `PanelConfig`, which no panel sets since the CMS left the
   sidebar; `$computedResourceRequests` (the last resource requests computed
@@ -901,6 +909,25 @@ can be merged with minimal conflict.
   delete dialogs), with `css-variable-utils.organizeos.test.tsx`; the test-only
   store helpers in `features/variables/test-stores.ts`. Pinned by
   `overlay.wiring.node.test.ts`.
+- **The Variables manager (§9, "Variables").** `features/variables/*` (the
+  manager: `variables-overlay.tsx`, `variables-rail-button.tsx`,
+  `variables-icon.tsx`, `index.ts`; the collections in
+  `collections-column.tsx` and `collection-memory.ts`; the toolbar, the table
+  and its parts in `variables-toolbar.tsx`, `variables-table.tsx`,
+  `name-cell.tsx`, `value-cell.tsx`, `link-menu.tsx`, `row-menu.tsx`,
+  `delete-dialog.tsx`; `search.ts` and `brand-contrast.ts`; the manager's
+  writes in `operations.ts` beside part 1's; with
+  `variables-overlay.test.tsx`, `collections-column.test.tsx`,
+  `collection-memory.test.ts`, `variables-table.test.tsx`,
+  `variables-rows.test.tsx`, `manager-operations.test.ts`,
+  `search.node.test.ts`, `brand-contrast.node.test.ts`, and the test-only
+  `test-utils.tsx`), on the rail-overlay host; in `sidebar-left/sidebar-left.tsx`, the one
+  `<VariablesRailButton />` after `<CmsRailButton />`, the one
+  `<VariablesOverlay />` after `<CmsOverlay />`, and their marked import; and
+  the one marked title in `features/settings-panel/variables-section.tsx`,
+  "Data variables" for upstream's "Variables" (its open-state key stays
+  `Variables`), so the builder never shows two things called Variables.
+  Pinned by `overlay.wiring.node.test.ts`.
 - **Published sites (§1, §8).** The CLI's copy of the blocks' build into every
   published site, `packages/cli/src/organizeos-components.ts`, called from
   short marked hooks in `prebuild.ts` and `framework-react-router.ts`, with
@@ -1655,7 +1682,8 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     grid with a 1 px `currentColor` stroke, taking upstream `IconComponent`'s
     `size`, `color` and SVG props; upstream has no database icon). It is
     the rail's last button, after the tabs, and is not a `SidebarPanelName`:
-    it toggles `$isCmsOverlayOpen` and is pressed (`aria-pressed`, which
+    it toggles the host's `$openRailOverlay` (`$isCmsOverlayOpen` reads it)
+    and is pressed (`aria-pressed`, which
     upstream's `IconButton` styles) while the overlay is open. It is
     offered for an OrganizeOS project only when `ORGANIZEOS_CMS_PANEL` is
     exactly `true` on the builder (the loader sets
@@ -1665,7 +1693,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     (`$isCmsPanelAvailable`). It shows in Design and Content modes. Preview
     mode hides the rail, and the button with it.
   - **What it covers.** `CmsOverlay`, rendered once by `sidebar-left.tsx`
-    outside the tab content and portalled to the document's body, is a
+    outside the tab content on the rail-overlay host
+    (`features/rail-overlay/rail-overlay.tsx`, shared with Variables), which
+    portals it to the document's body, is a
     `position: fixed` box from the rail's measured right edge to the
     viewport's right edge, top to bottom, over the top bar, the sidebar
     panel, the canvas and the inspector, plus a strip from the rail's
@@ -1689,21 +1719,26 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     top level), when another rail tab is clicked (which then shows its
     panel, even the one already open) or a panel becomes active any other
     way, on entering preview mode, on hiding the builder UI, and when the
-    CMS stops being offered. Leaving preview keeps it hidden. Opening the
+    CMS stops being offered, and when Variables opens (one rail overlay is
+    open at a time). Leaving preview keeps it hidden. Opening the
     overlay sets the sidebar panel to none, as another rail tab replaces the
     open panel. A panel change made during an external file drag, or by the
     sidebar's restore when it ends, does not hide the overlay, so a drag's
     switch to Assets, its restore and a drop leave it open, and closing it
     after a drop shows Assets.
-  - **Focus and shortcuts,** with no upstream edit. Opening focuses the
-    native screen's root (`tabIndex={-1}`) or the frame, so focus leaves the
-    canvas and the rail. While it shows, a capture-phase `keydown` listener
-    on the builder document calls upstream's `suppressCommandsForEvent` for
-    every key, so no builder command runs. Escape hides the overlay in the
-    bubble phase, only when nothing took it (a design-system layer that
-    dismisses calls `preventDefault`) and not in an input, a textarea, a
-    select or a contenteditable. A hide by Escape, the close button or the
-    frame's close returns focus to the rail button. While the overlay
+  - **Focus and shortcuts,** with one marked emitter option, which the CMS
+    does not pass (`suppressCommandsForEvent`'s `allow`, for Variables).
+    Opening focuses the host's root (`tabIndex={-1}`), then the native
+    screen's root or the frame, which take it in a layout effect that runs
+    after the host's, so focus leaves the canvas and the rail. While it
+    shows, a capture-phase `keydown` listener on the builder document calls
+    `suppressCommandsForEvent` for every key, so no builder command runs.
+    Escape hides the overlay in the bubble phase, only when nothing took it
+    (a design-system layer that dismisses calls `preventDefault`) and not in
+    an input, a textarea, a select, a `color-input` or a contenteditable. A
+    hide with focus inside the overlay, or lost to the body (Escape, the
+    close button, the frame's close, the native screen's "show on canvas"),
+    returns focus to the rail button. While the overlay
     shows, `copy`, `cut` and `paste` on a target that is not editable stop
     at the window, so the builder's document handlers never paste into the
     hidden canvas; inputs and editable regions keep their own handling. Keys
@@ -2285,8 +2320,33 @@ collection }` invalidates, through `invalidateResource`, every current
 
 **Variables**, `features/variables/` (design:
 `docs/superpowers/specs/2026-11-11-builder-variables-design.md` in the
-OrganizeOS repo). Part 1's data layer; the manager arrives in PR A2 and the
-Style panel's "+" in PR B.
+OrganizeOS repo). Part 1's data layer and the manager; the Style panel's "+"
+arrives in PR B.
+
+- **The manager.** A rail button, "Variables", after the CMS's, in Design
+  mode only; it opens a full overlay on the rail-overlay host (shared with
+  the CMS; one is open at a time), whose content renders only while it is
+  open. While it shows, the builder's commands are kept from every key but
+  undo and redo (`suppressCommandsForEvent`'s `allow`), so a designer can
+  undo an edit made in it. It is read-only for a permit below `build`
+  (`view`, `edit`) and while the registry is unreadable, which shows the line
+  "Reload to edit variables".
+- **Collections.** Brand (the six canonical variables, locked; a missing one
+  is an empty row that a value restores; a line under it names a text or
+  accent pair below 4.5:1), Site (the designer's variables, and every
+  unregistered declaration), then the designer's own, which can be added,
+  renamed, reordered and deleted (with their variables). The selected one is
+  remembered per project in `localStorage`
+  (`organizeos:variables:collection:<projectId>`).
+- **The table.** One row per variable, grouped by display name
+  (`Group/Name`), with a value editor per type, Link to variable and Unlink,
+  a row menu (Rename, Duplicate, Copy CSS name, Move to collection, Delete),
+  and reorder by drag or Alt+Arrow, which stores the rows' display order.
+  Enter or a double-click renames. A delete asks first when the variable is
+  used. A refused write says why in a toast.
+- **Select mode.** Checkboxes, Shift ranges and a header checkbox over the
+  rows shown; Move to collection, Group and Delete act on the selected rows
+  the search shows. Escape leaves it before it closes the overlay.
 
 - A variable's value is a `--name` declaration on Global Root's local style
   source at the base breakpoint. A bound property stores upstream's

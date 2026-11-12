@@ -63,10 +63,10 @@ import {
   CMS_FRAME_SANDBOX,
   COLLECTION_CHANGED_NOTICE,
   getCmsPanelSrc,
-  isEditableTarget,
   showClassicCms,
   showNativeCms,
 } from "./cms-panel";
+import { $openRailOverlay } from "../rail-overlay/rail-overlay";
 import { CmsIcon } from "./cms-icon";
 import { invalidateCollectionOnCanvas } from "./native/cms-canvas";
 import { $cmsNativeDirty, $cmsNativeRefresh } from "./native/cms-native-stores";
@@ -288,59 +288,6 @@ describe("getCmsPanelSrc", () => {
   });
 });
 
-describe("isEditableTarget", () => {
-  const make = (html: string) => {
-    const host = document.createElement("div");
-    host.innerHTML = html;
-    document.body.appendChild(host);
-    return host;
-  };
-
-  test.each([
-    ["an input", "<input>"],
-    ["a textarea", "<textarea></textarea>"],
-    ["a select", "<select></select>"],
-    ["a contenteditable element", '<div contenteditable="true"></div>'],
-  ])("is true for %s", (_kind, html) => {
-    const host = make(html);
-    try {
-      expect(isEditableTarget(host.firstElementChild)).toBe(true);
-    } finally {
-      host.remove();
-    }
-  });
-
-  test("is true for a child of a contenteditable element", () => {
-    const host = make('<div contenteditable="true"><span>text</span></div>');
-    try {
-      expect(isEditableTarget(host.querySelector("span"))).toBe(true);
-    } finally {
-      host.remove();
-    }
-  });
-
-  test.each([
-    ["a div", "<div></div>"],
-    ["a button", "<button></button>"],
-    [
-      'a contenteditable="false" element',
-      '<div contenteditable="false"></div>',
-    ],
-  ])("is false for %s", (_kind, html) => {
-    const host = make(html);
-    try {
-      expect(isEditableTarget(host.firstElementChild)).toBe(false);
-    } finally {
-      host.remove();
-    }
-  });
-
-  test("is false for the document and for null", () => {
-    expect(isEditableTarget(document)).toBe(false);
-    expect(isEditableTarget(null)).toBe(false);
-  });
-});
-
 describe("the overlay's stacking", () => {
   test("has no z-index, the toast layer above it", () => {
     expect(topbarSource.match(/zIndex: (\d+)/g)).toEqual([
@@ -372,10 +319,10 @@ describe("the CMS overlay in the builder", () => {
   };
 
   const railButton = () =>
-    document.querySelector<HTMLButtonElement>("[data-cms-rail-button]");
+    document.querySelector<HTMLButtonElement>('[data-rail-button="cms"]');
 
   const overlay = () =>
-    document.querySelector<HTMLElement>("[data-cms-overlay]");
+    document.querySelector<HTMLElement>('[data-rail-overlay="cms"]');
 
   const frame = () =>
     document.querySelector<HTMLIFrameElement>("iframe[data-cms-frame]");
@@ -388,7 +335,7 @@ describe("the CMS overlay in the builder", () => {
   const railLabels = () =>
     Array.from(
       document.querySelectorAll<HTMLButtonElement>(
-        '[role="tab"], [data-cms-rail-button]'
+        '[role="tab"], [data-rail-button]'
       )
     ).map((button) => button.getAttribute("aria-label"));
 
@@ -515,7 +462,7 @@ describe("the CMS overlay in the builder", () => {
     const pages = createDefaultPages({ rootInstanceId: "body" });
     $pages.set(pages);
     $selectedPageId.set(pages.homePageId);
-    $isCmsOverlayOpen.set(false);
+    $openRailOverlay.set(undefined);
     $cmsFrameMounted.set(false);
     $cmsFrameDirty.set(false);
     $cmsNativeDirty.set(false);
@@ -524,7 +471,7 @@ describe("the CMS overlay in the builder", () => {
 
   afterEach(() => {
     act(() => {
-      $isCmsOverlayOpen.set(false);
+      $openRailOverlay.set(undefined);
       $builderMode.set("design");
       setActiveSidebarPanel("none");
       root?.unmount();
@@ -603,7 +550,16 @@ describe("the CMS overlay in the builder", () => {
         "Navigator",
         "Assets",
         "CMS",
+        "Variables",
       ]);
+    });
+
+    test("the Variables button shows for an org denied the blocks", () => {
+      $organizeosSite.set({ ...site, blocksEnabled: false });
+      render();
+      expect(
+        document.querySelector('[data-rail-button="variables"]')
+      ).not.toBeNull();
     });
 
     test("keeps its rules: only for an org not denied the blocks", () => {
@@ -632,7 +588,7 @@ describe("the CMS overlay in the builder", () => {
       render();
       clickRail();
       const corner = document.querySelector<HTMLElement>(
-        "[data-cms-overlay-corner]"
+        "[data-rail-overlay-corner]"
       );
       const probe = document.createElement("div");
       probe.style.background = "var(--background-primary)";
@@ -733,7 +689,7 @@ describe("the CMS overlay in the builder", () => {
       expect(frame()?.style.height).toBe("100%");
       // The corner below the rail, over the footer's left end.
       const corner = element?.querySelector<HTMLElement>(
-        "[data-cms-overlay-corner]"
+        "[data-rail-overlay-corner]"
       );
       expect(corner?.style.position).toBe("fixed");
       expect(corner?.style.left).toBe("0px");
@@ -896,6 +852,38 @@ describe("the CMS overlay in the builder", () => {
       } finally {
         clipboard.remove();
       }
+    });
+
+    test("the Variables button hides the CMS and the CMS button hides Variables", () => {
+      render();
+      const variablesButton = () =>
+        document.querySelector<HTMLButtonElement>(
+          '[data-rail-button="variables"]'
+        );
+      clickRail();
+      act(() => {
+        variablesButton()?.click();
+      });
+      expect(isShown()).toBe(false);
+      expect($openRailOverlay.get()).toBe("variables");
+      clickRail();
+      expect(isShown()).toBe(true);
+      expect($openRailOverlay.get()).toBe("cms");
+    });
+
+    test("a rail tab hides Variables and shows its panel", () => {
+      render();
+      act(() => {
+        document
+          .querySelector<HTMLButtonElement>('[data-rail-button="variables"]')
+          ?.click();
+      });
+      expect($openRailOverlay.get()).toBe("variables");
+      act(() => {
+        tab("Pages")?.click();
+      });
+      expect($openRailOverlay.get()).toBe(undefined);
+      expect($activeSidebarPanel.get()).toBe("pages");
     });
 
     test("another rail tab hides it and shows its panel", () => {

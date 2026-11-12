@@ -518,6 +518,26 @@ test("reorderVariable maps a row position to a registry index; an unregistered t
   expect(undoDepth()).toBe(2);
 });
 
+test("reorderVariable at the end position registers an unregistered row after the last entry", () => {
+  project({
+    styles: css({ "--a": "1px", "--b": "1px", "--free": "2px" }),
+    organizeos: { variables: site(size("a"), size("b")) },
+  });
+  expect(reorderVariable("free", 2)).toEqual({ ok: true });
+  expect(registry().variables.map((entry) => entry.cssName)).toEqual([
+    "a",
+    "b",
+    "free",
+  ]);
+  // a registered row to the end
+  expect(reorderVariable("a", 2)).toEqual({ ok: true });
+  expect(registry().variables.map((entry) => entry.cssName)).toEqual([
+    "b",
+    "free",
+    "a",
+  ]);
+});
+
 const long = (letter: string) => letter.repeat(140);
 
 test.each([
