@@ -246,6 +246,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     // read at E3's answer: whether a page is drawn to keep
     const hasItemsPage = useRef(false);
     hasItemsPage.current = itemsPage !== undefined;
+    // read at E2's answer: the collection whose fields are drawn
+    const drawnDetailId = useRef<string | undefined>(undefined);
+    drawnDetailId.current = detail?.id;
     // The E3 inputs whose answer is already drawn: a page E3 answered in
     // place of the one asked for.
     const adoptedPageKey = useRef<string | undefined>(undefined);
@@ -383,7 +386,12 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           }
           if (refusal !== undefined) {
             showLine(refusal, "detail");
-          } else if (isBackground === false) {
+          } else if (
+            isBackground === false &&
+            drawnDetailId.current !== collectionId
+          ) {
+            // with this collection's fields drawn, the editor and its edits
+            // stay and nothing on screen changes; with none, the line
             setDetailFailed(true);
           }
           return;

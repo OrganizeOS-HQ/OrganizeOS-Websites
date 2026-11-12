@@ -604,6 +604,27 @@ describe("refusals on a write", () => {
     expect(dirtyAtNavigate).toBe(false);
   });
 
+  test.each(["rate_limited", "unavailable"] as const)(
+    "a Save answered mfa_required, then Retry whose E2 answers %s: the editor and its edits stay",
+    async (error) => {
+      mount({ homeUrl: HOME });
+      await settle();
+      await editTitle();
+      fake.updateItem.mockResolvedValue({ error: "mfa_required" });
+      await click(buttonByText("Save"));
+      expect(line()?.textContent).toContain("Two-step sign-in required");
+      expect(isEditorShown()).toBe(false);
+      const fields = fake.getCollection.mock.calls.length;
+      fake.getCollection.mockResolvedValueOnce({ error });
+      await click(buttonByText("Retry"));
+      expect(fake.getCollection).toHaveBeenCalledTimes(fields + 1);
+      expect(line()).toBeNull();
+      expect(isEditorShown()).toBe(true);
+      expect(titleInput()?.value).toBe("Mine");
+      expect($cmsNativeDirty.get()).toBe(true);
+    }
+  );
+
   test("after a write, the counts and the open page refetch", async () => {
     mount({ homeUrl: HOME });
     await settle();
