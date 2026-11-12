@@ -49,10 +49,25 @@ export type Command<CommandName extends string> = CommandMeta<CommandName> & {
 export const $commandMetas = atom(new Map<string, CommandMeta<string>>());
 clientSyncStore.register("commandMetas", $commandMetas);
 
-const suppressedCommandEvents = new WeakSet<KeyboardEvent>();
+// OrganizeOS fork: a suppressed event may let named commands through, so the
+// Variables overlay keeps undo and redo (builder/features/variables).
+const suppressedCommandEvents = new WeakMap<
+  KeyboardEvent,
+  ReadonlySet<string>
+>();
 
-export const suppressCommandsForEvent = (event: KeyboardEvent) => {
-  suppressedCommandEvents.add(event);
+export const suppressCommandsForEvent = (
+  event: KeyboardEvent,
+  options?: { allow?: readonly string[] }
+) => {
+  const allow = new Set(options?.allow);
+  const previous = suppressedCommandEvents.get(event);
+  suppressedCommandEvents.set(
+    event,
+    previous === undefined
+      ? allow
+      : new Set([...previous].filter((name) => allow.has(name)))
+  );
 };
 
 // Copied from https://github.com/ai/keyux/blob/main/hotkey.js#L1C1-L2C1
@@ -153,12 +168,18 @@ export const createCommandsEmitter = <CommandName extends string>({
       commandHandlers.get(name)?.(source);
     });
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (suppressedCommandEvents.has(event)) {
+      // OrganizeOS fork: a suppression's allowed commands still run (builder/features/variables).
+      const allowed = suppressedCommandEvents.get(event);
+      if (allowed !== undefined && allowed.size === 0) {
         return;
       }
       let emitted = false;
       let preventDefault = true;
       for (const commandMeta of findCommandsMatchingHotkeys(event)) {
+        // OrganizeOS fork: only the allowed commands of a suppressed event (builder/features/variables).
+        if (allowed !== undefined && allowed.has(commandMeta.name) === false) {
+          continue;
+        }
         if (
           commandMeta.disableHotkeyOutsideApp &&
           commandHandlers.has(commandMeta.name) === false

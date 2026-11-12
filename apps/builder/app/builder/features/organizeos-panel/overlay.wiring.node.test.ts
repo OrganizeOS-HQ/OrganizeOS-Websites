@@ -210,9 +210,12 @@ describe("the left sidebar", () => {
     expect(sidebarLeft).toMatch(/ref=\{registerCmsRail\}/);
   });
 
-  test("sidebar-left.tsx hides the CMS overlay when a rail tab is clicked over it", () => {
+  test("sidebar-left.tsx hides a rail overlay when a rail tab is clicked over it", () => {
     expect(sidebarLeft).toMatch(
-      /if \(hideCmsOverlay\(\)\) \{\s*setActiveSidebarPanel\(name\);\s*return;\s*\}\s*toggleActiveSidebarPanel\(name\);/
+      /if \(hideRailOverlay\(\)\) \{\s*setActiveSidebarPanel\(name\);\s*return;\s*\}\s*toggleActiveSidebarPanel\(name\);/
+    );
+    expect(sidebarLeft).toMatch(
+      /import\s*\{\s*hideRailOverlay,?\s*\}\s*from\s*"~\/builder\/features\/rail-overlay\/rail-overlay";/
     );
   });
 
@@ -231,6 +234,19 @@ describe("the left sidebar", () => {
     );
     expect(sidebarLeft).toMatch(
       /import\s*\{[^}]*\bResourceIcon\b[^}]*\}\s*from\s*"@webstudio-is\/icons"/
+    );
+  });
+});
+
+describe("the commands emitter's suppression", () => {
+  test("a suppression may allow named commands, which still run", () => {
+    const emitter = read("../../../shared/commands-emitter.ts");
+    expect(emitter).toMatch(/options\?: \{ allow\?: readonly string\[\] \}/);
+    expect(emitter).toMatch(
+      /const allowed = suppressedCommandEvents\.get\(event\);/
+    );
+    expect(emitter).toMatch(
+      /allowed !== undefined && allowed\.has\(commandMeta\.name\) === false/
     );
   });
 });

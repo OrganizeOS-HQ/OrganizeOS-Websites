@@ -51,9 +51,10 @@ import {
 import {
   CmsOverlay,
   CmsRailButton,
-  hideCmsOverlay,
   registerCmsRail,
 } from "~/builder/features/cms-panel";
+// OrganizeOS fork: a tab clicked over a rail overlay (CMS or Variables) hides it (builder/features/rail-overlay).
+import { hideRailOverlay } from "~/builder/features/rail-overlay/rail-overlay";
 import { PagesPanel } from "~/builder/features/pages";
 import { NavigatorPanel } from "~/builder/features/navigator";
 import { AssetsPanel } from "~/builder/features/assets";
@@ -288,7 +289,7 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
           grow
           direction="column"
           css={{ borderRight: `1px solid ${cssVar("--border-default")}` }}
-          // OrganizeOS fork: the CMS overlay starts at the rail's right edge.
+          // OrganizeOS fork: the CMS and Variables overlays start at the rail's right edge.
           ref={registerCmsRail}
         >
           <ExternalDragDropMonitor />
@@ -306,9 +307,9 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
                       value={name}
                       disabled={disabled}
                       onClick={() => {
-                        // OrganizeOS fork: a tab clicked over the CMS overlay
+                        // OrganizeOS fork: a tab clicked over a rail overlay
                         // hides it and shows its panel.
-                        if (hideCmsOverlay()) {
+                        if (hideRailOverlay()) {
                           setActiveSidebarPanel(name);
                           return;
                         }
