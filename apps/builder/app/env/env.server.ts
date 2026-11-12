@@ -119,6 +119,12 @@ const environment = z.object({
   // Grid and Product Card and seeds the Products catalog Resource.
   ORGANIZEOS_SHOP_BLOCKS: z.string().optional(),
 
+  // The catalog's :root bindings' switch: only the exact value `true` makes
+  // provisioning, the entry re-sync and collections-sync write one :root
+  // binding per catalog Resource for every org ORGANIZEOS_BLOCKS_DENY_ORG_IDS
+  // allows; anything else removes the unreferenced ones.
+  ORGANIZEOS_CATALOG_ROOT_BINDINGS: z.string().optional(),
+
   PORT: z
     .string()
     .optional()
@@ -211,6 +217,8 @@ const rawEnv = {
   ORGANIZEOS_CMS_NATIVE: process.env.ORGANIZEOS_CMS_NATIVE,
   ORGANIZEOS_CMS_NATIVE_ORG_IDS: process.env.ORGANIZEOS_CMS_NATIVE_ORG_IDS,
   ORGANIZEOS_SHOP_BLOCKS: process.env.ORGANIZEOS_SHOP_BLOCKS,
+  ORGANIZEOS_CATALOG_ROOT_BINDINGS:
+    process.env.ORGANIZEOS_CATALOG_ROOT_BINDINGS,
   PORT: process.env.PORT,
   MAX_UPLOAD_SIZE: process.env.MAX_UPLOAD_SIZE,
   S3_ENDPOINT: process.env.S3_ENDPOINT,

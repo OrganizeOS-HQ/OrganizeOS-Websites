@@ -110,6 +110,7 @@ const makeBuildRowContext = (base: BuildContent, builderSaves = 0) => {
   const row = {
     id: "build-1",
     version: 3,
+    updatedAt: "2026-11-01T00:00:00.000Z",
     instances: JSON.stringify(base.instances),
     props: JSON.stringify(base.props),
     dataSources: JSON.stringify(base.dataSources),
@@ -832,7 +833,11 @@ describe("seedSignupFormPage", () => {
     expect(state.writes).toHaveLength(1);
     expect(state.writes[0]).toMatchObject({
       version: 4,
-      match: { id: "build-1", version: 3 },
+      match: {
+        id: "build-1",
+        version: 3,
+        updatedAt: "2026-11-01T00:00:00.000Z",
+      },
     });
     expect(
       [...parsePages(state.row.pages).pages.values()].map((page) => page.path)
@@ -856,8 +861,8 @@ describe("seedSignupFormPage", () => {
     await seedSignupFormPage(context, args);
 
     expect(state.writes.map((write) => write.match)).toEqual([
-      { id: "build-1", version: 3 },
-      { id: "build-1", version: 4 },
+      { id: "build-1", version: 3, updatedAt: "2026-11-01T00:00:00.000Z" },
+      { id: "build-1", version: 4, updatedAt: "2026-11-01T00:00:00.000Z" },
     ]);
     expect(state.row.version).toBe(5);
   });

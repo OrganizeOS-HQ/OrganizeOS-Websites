@@ -108,6 +108,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     adminEmails: parsed.data.adminEmails,
     entitlements: parsed.data.entitlements,
     subdomain: parsed.data.subdomain,
+    // the catalog's :root bindings, for the orgs the deny list allows
+    catalogRootBindings: {
+      switchValue: env.ORGANIZEOS_CATALOG_ROOT_BINDINGS,
+      denyList: env.ORGANIZEOS_BLOCKS_DENY_ORG_IDS,
+    },
     siteData:
       parsed.data.readToken !== undefined &&
       parsed.data.apiBaseUrl !== undefined

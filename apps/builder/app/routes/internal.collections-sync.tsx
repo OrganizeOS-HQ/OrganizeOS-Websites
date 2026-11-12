@@ -61,10 +61,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ error: "Invalid collections sync request" }, { status: 400 });
   }
 
-  const result = await syncOrgCollectionPresets(
-    createSyncContext(),
-    parsed.data
-  );
+  const result = await syncOrgCollectionPresets(createSyncContext(), {
+    ...parsed.data,
+    // the catalog's :root bindings, for the orgs the deny list allows
+    catalogRootBindings: {
+      switchValue: env.ORGANIZEOS_CATALOG_ROOT_BINDINGS,
+      denyList: env.ORGANIZEOS_BLOCKS_DENY_ORG_IDS,
+    },
+  });
 
   switch (result.status) {
     case "no-project":

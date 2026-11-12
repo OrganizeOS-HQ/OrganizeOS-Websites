@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   encodeDataSourceVariable,
   type DataSource,
@@ -20,6 +20,7 @@ import {
   readV1PresetSeed,
   removeUnusedPresetBindings,
   seedProjectResourcePresets,
+  syncCatalogRootBindings,
   upsertById,
   V1_RESOURCE_PRESETS,
 } from "./resource-presets.server";
@@ -128,6 +129,7 @@ describe("buildOrgResourcePresets", () => {
 type BuildRow = {
   id: string;
   version: number;
+  updatedAt: string | null;
   instances: string;
   props: string;
   dataSources: string;
@@ -142,17 +144,23 @@ type Write = {
 };
 
 /**
- * Stateful fake of the Build table. The update honours its match on version
- * the way PostgREST does (no row matches, count 0). Each `builderSaves` entry
- * is a builder save that lands just before a write: it bumps the version (and
- * may change the build), so that write loses.
+ * Stateful fake of the Build table. The update honours its match on id,
+ * version and updatedAt the way PostgREST does (no row matches, count 0); a
+ * `filter(column, "is", null)` adds a null condition. Each `builderSaves`
+ * entry is a builder save that lands just before a write: it bumps the
+ * version (and may change the build), so that write loses. Each
+ * `versionKeepingWrites` entry is a write of another catalog writer that
+ * keeps the version (the entry re-sync, collections-sync): it changes the
+ * build and its updatedAt only.
  */
 const makeBuildContext = ({
   build,
   builderSaves = [],
+  versionKeepingWrites = [],
 }: {
   build: Partial<BuildRow> | null;
   builderSaves?: Array<(row: BuildRow) => void>;
+  versionKeepingWrites?: Array<(row: BuildRow) => void>;
 }) => {
   const row: BuildRow | null =
     build === null
@@ -160,6 +168,7 @@ const makeBuildContext = ({
       : {
           id: "build-1",
           version: 7,
+          updatedAt: "2026-11-01T00:00:00.000Z",
           instances: "[]",
           props: "[]",
           dataSources: "[]",
@@ -167,35 +176,71 @@ const makeBuildContext = ({
           pages: "{}",
           ...build,
         };
-  const state = { row, reads: 0, writes: [] as Write[] };
+  const state = {
+    row,
+    reads: 0,
+    selects: [] as string[],
+    writes: [] as Write[],
+  };
   const pendingSaves = [...builderSaves];
+  const pendingOtherWrites = [...versionKeepingWrites];
+  const read = async () => {
+    state.reads += 1;
+    return state.row === null
+      ? { data: null, error: { message: "not found" } }
+      : { data: { ...state.row }, error: null };
+  };
   const client = {
     from: () => ({
-      select: () => ({
-        eq: () => ({
-          is: () => ({
-            single: async () => {
-              state.reads += 1;
-              return state.row === null
-                ? { data: null, error: { message: "not found" } }
-                : { data: { ...state.row }, error: null };
-            },
+      select: (columns: string) => {
+        state.selects.push(columns);
+        return {
+          eq: () => ({
+            is: () => ({
+              single: read,
+              maybeSingle: async () =>
+                state.row === null ? { data: null, error: null } : read(),
+            }),
           }),
-        }),
-      }),
+        };
+      },
       update: (payload: Record<string, unknown>, options: unknown) => ({
-        match: async (match: Record<string, unknown>) => {
-          state.writes.push({ payload, options, match });
-          const save = pendingSaves.shift();
-          if (save !== undefined && state.row !== null) {
-            save(state.row);
-            state.row.version += 1;
-          }
-          if (state.row === null || state.row.version !== match.version) {
-            return { error: null, count: 0 };
-          }
-          Object.assign(state.row, payload);
-          return { error: null, count: 1 };
+        match: (match: Record<string, unknown>) => {
+          const conditions = { ...match };
+          const run = async () => {
+            state.writes.push({ payload, options, match: conditions });
+            const save = pendingSaves.shift();
+            if (save !== undefined && state.row !== null) {
+              save(state.row);
+              state.row.version += 1;
+            }
+            const other = pendingOtherWrites.shift();
+            if (other !== undefined && state.row !== null) {
+              other(state.row);
+            }
+            const current = state.row;
+            if (
+              current === null ||
+              Object.entries(conditions).some(
+                ([column, value]) => current[column as keyof BuildRow] !== value
+              )
+            ) {
+              return { error: null, count: 0 };
+            }
+            Object.assign(current, payload);
+            return { error: null, count: 1 };
+          };
+          const query = {
+            filter: (column: string, _operator: string, value: unknown) => {
+              conditions[column] = value;
+              return query;
+            },
+            then: <Result>(
+              resolve: (value: { error: null; count: number }) => Result,
+              reject?: (reason: unknown) => Result
+            ) => run().then(resolve, reject),
+          };
+          return query;
         },
       }),
     }),
@@ -292,7 +337,11 @@ describe("seedProjectResourcePresets", () => {
 
     expect(state.writes).toHaveLength(1);
     expect(state.writes[0].options).toEqual({ count: "exact" });
-    expect(state.writes[0].match).toEqual({ id: "build-1", version: 7 });
+    expect(state.writes[0].match).toEqual({
+      id: "build-1",
+      version: 7,
+      updatedAt: "2026-11-01T00:00:00.000Z",
+    });
     expect(state.writes[0].payload.version).toBe(8);
     expect(state.row?.version).toBe(8);
     // cleared with the bump, so an open tab's next save cannot read the new
@@ -1866,5 +1915,275 @@ describe("buildMissingCatalogResources", () => {
         },
       ])
     ).toEqual([]);
+  });
+});
+
+// OrganizeOS fork (fork doc sections 5.1 and 9): the writers of the catalog's
+// `:root` bindings, and their compare-and-set on { id, version, updatedAt }.
+describe("the catalog's :root bindings, written", () => {
+  const projectId = "project-1";
+  const base = "https://app.example.org/api/public/v1";
+  const token = `"Bearer osk_secrettoken"`;
+  const now = "2026-11-12T10:00:00.000Z";
+  const read = "2026-11-01T00:00:00.000Z";
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const preset = async (key: string, name: string, path: string) =>
+    ({
+      id: (await getResourcePresetIds(projectId, key)).resourceId,
+      name,
+      method: "get",
+      url: JSON.stringify(`${base}${path}`),
+      headers: [{ name: "Authorization", value: token }],
+    }) satisfies Resource;
+  const getStatic = async () => [
+    await preset("events", "Events", "/events"),
+    await preset("fundraisers", "Fundraisers", "/fundraisers"),
+    await preset("stats", "Stats", "/stats"),
+  ];
+  const getFull = async () => [
+    ...(await getStatic()),
+    await preset("forms", "OrganizeOS Forms", "/forms"),
+    await preset("upcoming-events", "Upcoming Events", "/events?upcoming=true"),
+  ];
+  const keys = ["events", "fundraisers", "stats", "forms", "upcoming-events"];
+  const getBindings = async (resources: Resource[]) =>
+    Promise.all(
+      resources.map(
+        async (resource, index): Promise<DataSource> => ({
+          type: "resource",
+          id: await getCatalogRootBindingId(projectId, keys[index]),
+          scopeInstanceId: ":root",
+          name: resource.name,
+          resourceId: resource.id,
+        })
+      )
+    );
+  const parse = (row: BuildRow | null) => ({
+    resources: JSON.parse(row?.resources ?? "[]") as Resource[],
+    dataSources: JSON.parse(row?.dataSources ?? "[]") as DataSource[],
+  });
+
+  describe("a token provision", () => {
+    const args = {
+      projectId,
+      apiBaseUrl: base,
+      readToken: "osk_secrettoken",
+    };
+
+    test("wanted: the Resources and the bindings in one version-bumped write on { id, version, updatedAt }", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(now));
+      const { context, state } = makeBuildContext({ build: {} });
+      await seedProjectResourcePresets(context, { ...args, wanted: true });
+
+      expect(state.writes).toHaveLength(1);
+      const [write] = state.writes;
+      expect(write.match).toEqual({
+        id: "build-1",
+        version: 7,
+        updatedAt: read,
+      });
+      expect(write.payload).toMatchObject({
+        version: 8,
+        lastTransactionId: null,
+        updatedAt: now,
+      });
+      const full = await getFull();
+      expect(parse(state.row)).toEqual({
+        resources: full,
+        dataSources: await getBindings(full),
+      });
+    });
+
+    test("not wanted: no binding, and the unreferenced ones go", async () => {
+      const full = await getFull();
+      const bindings = await getBindings(full);
+      const props: Prop[] = [
+        {
+          id: "p",
+          instanceId: "text",
+          name: "title",
+          type: "expression",
+          value: `${encodeDataSourceVariable(bindings[1].id)}.data`,
+        },
+      ];
+      const { context, state } = makeBuildContext({
+        build: {
+          props: JSON.stringify(props),
+          resources: JSON.stringify(full),
+          dataSources: JSON.stringify(bindings),
+        },
+      });
+      await seedProjectResourcePresets(context, { ...args, wanted: false });
+      expect(parse(state.row).dataSources).toEqual([bindings[1]]);
+    });
+  });
+
+  describe("the entry re-sync (syncCatalogRootBindings)", () => {
+    test("wanted: the missing Forms and Upcoming Events and the bindings, in one write that keeps the version", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(now));
+      const { context, state } = makeBuildContext({
+        build: { resources: JSON.stringify(await getStatic()) },
+      });
+      await syncCatalogRootBindings(context, { projectId, wanted: true });
+
+      expect(state.writes).toHaveLength(1);
+      const [write] = state.writes;
+      expect(write.match).toEqual({
+        id: "build-1",
+        version: 7,
+        updatedAt: read,
+      });
+      expect(write.payload.updatedAt).toBe(now);
+      expect(write.payload).not.toHaveProperty("version");
+      expect(write.payload).not.toHaveProperty("lastTransactionId");
+      expect(state.row?.version).toBe(7);
+      const full = await getFull();
+      expect(parse(state.row)).toEqual({
+        resources: full,
+        dataSources: await getBindings(full),
+      });
+    });
+
+    test("wanted: writes nothing when the build already holds them", async () => {
+      const full = await getFull();
+      const { context, state } = makeBuildContext({
+        build: {
+          resources: JSON.stringify(full),
+          dataSources: JSON.stringify(await getBindings(full)),
+        },
+      });
+      await syncCatalogRootBindings(context, { projectId, wanted: true });
+      expect(state.writes).toEqual([]);
+    });
+
+    test("a read stale by updatedAt alone loses, re-reads, and keeps the other writer's change", async () => {
+      const blog = await preset(
+        "collection:blog",
+        "Blog",
+        "/collections/blog/items"
+      );
+      const { context, state } = makeBuildContext({
+        build: { resources: JSON.stringify(await getFull()) },
+        versionKeepingWrites: [
+          (row) => {
+            // collections-sync, same version
+            row.resources = JSON.stringify([
+              ...(JSON.parse(row.resources) as Resource[]),
+              blog,
+            ]);
+            row.updatedAt = "2026-11-02T00:00:00.000Z";
+          },
+        ],
+      });
+      await syncCatalogRootBindings(context, { projectId, wanted: true });
+
+      expect(state.writes).toHaveLength(2);
+      expect(state.writes[0].match.updatedAt).toBe(read);
+      expect(state.writes[1].match.updatedAt).toBe("2026-11-02T00:00:00.000Z");
+      expect(state.row?.version).toBe(7);
+      const { resources, dataSources } = parse(state.row);
+      expect(resources.at(-1)).toEqual(blog);
+      expect(dataSources.map(({ name }) => name)).toEqual([
+        "Events",
+        "Fundraisers",
+        "Stats",
+        "Blog",
+        "OrganizeOS Forms",
+        "Upcoming Events",
+      ]);
+    });
+
+    test("matches a null updatedAt with is null", async () => {
+      const { context, state } = makeBuildContext({
+        build: { updatedAt: null, resources: JSON.stringify(await getFull()) },
+      });
+      await syncCatalogRootBindings(context, { projectId, wanted: true });
+      expect(state.writes[0].match).toEqual({
+        id: "build-1",
+        version: 7,
+        updatedAt: null,
+      });
+      expect(state.writes).toHaveLength(1);
+    });
+
+    test("not wanted, with no catalog :root binding: one small read, no write", async () => {
+      const { context, state } = makeBuildContext({
+        build: { resources: JSON.stringify(await getFull()) },
+      });
+      await syncCatalogRootBindings(context, { projectId, wanted: false });
+      expect(state.selects).toEqual([
+        "id, version, updatedAt, dataSources, resources",
+      ]);
+      expect(state.writes).toEqual([]);
+    });
+
+    test("not wanted, with one: reads the instances, props and pages, and removes it when unreferenced", async () => {
+      const full = await getFull();
+      const bindings = await getBindings(full);
+      const instances: Instance[] = [
+        {
+          type: "instance",
+          id: "text",
+          component: "Text",
+          children: [
+            {
+              type: "expression",
+              value: `${encodeDataSourceVariable(bindings[0].id)}.data`,
+            },
+          ],
+        },
+      ];
+      const { context, state } = makeBuildContext({
+        build: {
+          instances: JSON.stringify(instances),
+          resources: JSON.stringify(full),
+          dataSources: JSON.stringify(bindings),
+        },
+      });
+      await syncCatalogRootBindings(context, { projectId, wanted: false });
+      expect(state.selects).toEqual([
+        "id, version, updatedAt, dataSources, resources",
+        "instances, props, pages",
+      ]);
+      expect(parse(state.row)).toEqual({
+        resources: full,
+        dataSources: [bindings[0]],
+      });
+      expect(state.writes[0].payload).not.toHaveProperty("resources");
+      expect(state.row?.version).toBe(7);
+    });
+
+    test("gives up after three lost compare-and-sets", async () => {
+      const lose = (row: BuildRow) => {
+        row.updatedAt = `${row.updatedAt}+`;
+      };
+      const { context, state } = makeBuildContext({
+        build: { resources: JSON.stringify(await getFull()) },
+        versionKeepingWrites: [lose, lose, lose],
+      });
+      await expect(
+        syncCatalogRootBindings(context, { projectId, wanted: true })
+      ).rejects.toThrow("kept changing");
+      expect(state.writes).toHaveLength(3);
+    });
+
+    test("no build, or no catalog: no write", async () => {
+      const missing = makeBuildContext({ build: null });
+      await syncCatalogRootBindings(missing.context, {
+        projectId,
+        wanted: true,
+      });
+      expect(missing.state.writes).toEqual([]);
+
+      const empty = makeBuildContext({ build: {} });
+      await syncCatalogRootBindings(empty.context, { projectId, wanted: true });
+      expect(empty.state.writes).toEqual([]);
+    });
   });
 });

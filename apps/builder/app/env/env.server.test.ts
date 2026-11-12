@@ -166,6 +166,18 @@ describe("ORGANIZEOS_SHOP_BLOCKS", () => {
   });
 });
 
+describe("ORGANIZEOS_CATALOG_ROOT_BINDINGS", () => {
+  test("is undefined when unset", async () => {
+    vi.stubEnv("ORGANIZEOS_CATALOG_ROOT_BINDINGS", undefined);
+    expect((await loadEnv()).ORGANIZEOS_CATALOG_ROOT_BINDINGS).toBeUndefined();
+  });
+
+  test("passes the raw value through", async () => {
+    vi.stubEnv("ORGANIZEOS_CATALOG_ROOT_BINDINGS", "TRUE");
+    expect((await loadEnv()).ORGANIZEOS_CATALOG_ROOT_BINDINGS).toBe("TRUE");
+  });
+});
+
 describe("ORGANIZEOS_BLOCKS_DENY_ORG_IDS", () => {
   test("passes the raw value through", async () => {
     vi.stubEnv("ORGANIZEOS_BLOCKS_DENY_ORG_IDS", " a , b ");

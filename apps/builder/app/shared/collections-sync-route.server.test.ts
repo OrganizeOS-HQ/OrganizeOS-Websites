@@ -34,6 +34,7 @@ type FakeState = {
   build: {
     id: string;
     version: number;
+    updatedAt: string;
     dataSources: string;
     resources: string;
   };
@@ -68,7 +69,13 @@ const presets = await provisionedPresets({
 
 const state: FakeState = {
   project: null,
-  build: { id: "build-1", version: 1, dataSources: "[]", resources: "[]" },
+  build: {
+    id: "build-1",
+    version: 1,
+    updatedAt: "2026-11-01T00:00:00.000Z",
+    dataSources: "[]",
+    resources: "[]",
+  },
   losingWrites: 0,
   writes: 0,
 };
@@ -78,6 +85,7 @@ beforeEach(() => {
   state.build = {
     id: "build-1",
     version: 1,
+    updatedAt: "2026-11-01T00:00:00.000Z",
     dataSources: "[]",
     resources: JSON.stringify(presets.resources),
   };

@@ -525,6 +525,8 @@ const findAuthorizationValues = (resource: Resource) =>
 export type DevBuild = {
   id: string;
   version: number;
+  /** The compare-and-set's second key, beside the version. */
+  updatedAt: string | null;
   instances: string;
   props: string;
   dataSources: string;
@@ -541,6 +543,28 @@ type DevBuildContent = Partial<
 const MAX_ATTEMPTS = 3;
 
 /**
+ * The compare-and-set every catalog writer matches its update on: the build's
+ * id, version and updatedAt as it read them. A builder save bumps the version;
+ * the writers that keep the version (the entry re-sync, collections-sync) set
+ * updatedAt, so each also fails the other's match, and a bumping write's.
+ * A null updatedAt is matched with `is null`.
+ */
+export const matchBuildRead = <
+  Query extends {
+    match: (query: Record<string, unknown>) => Query;
+    filter: (column: string, operator: string, value: unknown) => Query;
+  },
+>(
+  query: Query,
+  row: { id: string; version: number; updatedAt: string | null }
+): Query => {
+  const read = { id: row.id, version: row.version };
+  return row.updatedAt === null
+    ? query.match(read).filter("updatedAt", "is", null)
+    : query.match({ ...read, updatedAt: row.updatedAt });
+};
+
+/**
  * Rewrite the org's dev build (the one with no deployment) with what `change`
  * returns for it, as a compare-and-swap on the version it read that also bumps
  * the version. A builder tab open on the project then gets
@@ -549,6 +573,10 @@ const MAX_ATTEMPTS = 3;
  * save that lands between the read and the write costs a re-read and another
  * try, three attempts in all; then it throws. A change that writes the same
  * text writes nothing and bumps nothing.
+ *
+ * It matches on updatedAt too and sets it (matchBuildRead), so a write of
+ * collections-sync or the entry re-sync, which keep the version, landing
+ * between the read and the write is not overwritten either.
  *
  * collections-sync makes the same compare-and-swap without the bump: it runs
  * often, and a bump makes every open builder reload.
@@ -562,7 +590,9 @@ export const updateDevBuildWithVersionBump = async (
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     const build = await client
       .from("Build")
-      .select("id, version, instances, props, dataSources, resources, pages")
+      .select(
+        "id, version, updatedAt, instances, props, dataSources, resources, pages"
+      )
       .eq("projectId", projectId)
       .is("deployment", null)
       .single();
@@ -572,6 +602,7 @@ export const updateDevBuildWithVersionBump = async (
     const row: DevBuild = {
       id: build.data.id,
       version: build.data.version,
+      updatedAt: build.data.updatedAt ?? null,
       instances: build.data.instances ?? "[]",
       props: build.data.props ?? "[]",
       dataSources: build.data.dataSources ?? "[]",
@@ -587,16 +618,24 @@ export const updateDevBuildWithVersionBump = async (
       return;
     }
 
-    const update = await client
-      .from("Build")
-      // lastTransactionId is cleared with the bump: a builder save whose
-      // transaction id matched it would otherwise read the new version as its
-      // own already-applied retry (build-patch-core) and skip the reload.
-      .update(
-        { ...content, version: row.version + 1, lastTransactionId: null },
-        { count: "exact" }
-      )
-      .match({ id: row.id, version: row.version });
+    const update = await matchBuildRead(
+      client
+        .from("Build")
+        // lastTransactionId is cleared with the bump: a builder save whose
+        // transaction id matched it would otherwise read the new version as
+        // its own already-applied retry (build-patch-core) and skip the
+        // reload.
+        .update(
+          {
+            ...content,
+            version: row.version + 1,
+            lastTransactionId: null,
+            updatedAt: new Date().toISOString(),
+          },
+          { count: "exact" }
+        ),
+      row
+    );
     if (update.error) {
       throw update.error;
     }
@@ -655,8 +694,11 @@ const isBearerLiteral = (value: string) => {
  *   literal Bearer header: a block pasted from another org's project brings
  *   that org's token, and this replaces it with this org's.
  * - The unscoped bindings older provisioning wrote are removed where nothing
- *   references them (removeUnusedPresetBindings). No binding is written: a
- *   use brings its own, and a re-provision never touches it.
+ *   references them (removeUnusedPresetBindings).
+ * - The catalog's `:root` bindings are planned in the same write
+ *   (planCatalogRootBindings): one per catalog Resource when `wanted`, and
+ *   otherwise the ones nothing references are removed. No other binding is
+ *   written: a block brings its own, and a re-provision never touches it.
  */
 export const seedProjectResourcePresets = async (
   context: AppContext,
@@ -665,12 +707,15 @@ export const seedProjectResourcePresets = async (
     apiBaseUrl,
     readToken,
     shopBlocks = false,
+    wanted = false,
   }: {
     projectId: string;
     apiBaseUrl: string;
     readToken: string;
     /** `ORGANIZEOS_SHOP_BLOCKS` is exactly `true` (isShopBlocksSwitchOn). */
     shopBlocks?: boolean;
+    /** catalogRootBindingsWanted for the org. */
+    wanted?: boolean;
   }
 ): Promise<void> => {
   const presets = await buildOrgResourcePresets({
@@ -741,11 +786,23 @@ export const seedProjectResourcePresets = async (
         : resource;
     });
 
-    const dataSources = await removeUnusedPresetBindings({
+    const searchable = [build.instances, build.props, build.pages];
+    const kept = await removeUnusedPresetBindings({
       projectId,
       dataSources: existingDataSources,
       resources,
-      searchable: [build.instances, build.props, build.pages],
+      searchable,
+    });
+    const dataSources = await planCatalogRootBindings({
+      projectId,
+      dataSources: kept,
+      resources,
+      wanted,
+      isReferenced: createBindingReferenceTest({
+        dataSources: kept,
+        resources,
+        searchable,
+      }),
     });
 
     return {
@@ -753,4 +810,132 @@ export const seedProjectResourcePresets = async (
       resources: JSON.stringify(resources),
     };
   });
+};
+
+/**
+ * The membership re-sync's catalog writer (a provision with no `siteData`,
+ * which runs before every builder entry). Best effort: the caller logs a
+ * failure and the provision still succeeds.
+ *
+ * Wanted: reads the dev build's id, version, updatedAt, data sources and
+ * resources, adds Forms and Upcoming Events where missing
+ * (buildMissingCatalogResources) and plans the `:root` bindings.
+ *
+ * Not wanted: with no catalog `:root` binding in the build it stops after that
+ * one read and writes nothing. Only with one does it read the instances,
+ * props and pages, and remove the ones nothing references.
+ *
+ * It writes only a change, matched on the id, version and updatedAt it read
+ * (matchBuildRead), setting updatedAt and leaving the version and
+ * lastTransactionId alone: no token changes, so an open tab need not reload.
+ * Three attempts; then it throws.
+ */
+export const syncCatalogRootBindings = async (
+  context: AppContext,
+  { projectId, wanted }: { projectId: string; wanted: boolean }
+): Promise<void> => {
+  const client = context.postgrest.client;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    const build = await client
+      .from("Build")
+      .select("id, version, updatedAt, dataSources, resources")
+      .eq("projectId", projectId)
+      .is("deployment", null)
+      .maybeSingle();
+    if (build.error) {
+      throw build.error;
+    }
+    if (build.data === null) {
+      return;
+    }
+    const row = {
+      id: build.data.id,
+      version: build.data.version,
+      updatedAt: build.data.updatedAt ?? null,
+    };
+    const storedDataSources = build.data.dataSources ?? "[]";
+    const storedResources = build.data.resources ?? "[]";
+    const dataSources = JSON.parse(storedDataSources) as DataSource[];
+    const existingResources = JSON.parse(storedResources) as Resource[];
+
+    let resources = existingResources;
+    let isReferenced: undefined | ((dataSource: DataSource) => boolean);
+    if (wanted) {
+      resources = [
+        ...existingResources,
+        ...(await buildMissingCatalogResources(projectId, existingResources)),
+      ];
+    } else {
+      const catalog = await findCatalogResources(projectId, resources);
+      const rootBindingIds = new Set(
+        await Promise.all(
+          catalog.map(({ key }) => getCatalogRootBindingId(projectId, key))
+        )
+      );
+      if (dataSources.some(({ id }) => rootBindingIds.has(id)) === false) {
+        return;
+      }
+      const texts = await client
+        .from("Build")
+        .select("instances, props, pages")
+        .eq("projectId", projectId)
+        .is("deployment", null)
+        .single();
+      if (texts.error) {
+        throw texts.error;
+      }
+      isReferenced = createBindingReferenceTest({
+        dataSources,
+        resources,
+        searchable: [
+          texts.data.instances ?? "[]",
+          texts.data.props ?? "[]",
+          texts.data.pages ?? "",
+        ],
+      });
+    }
+    const planned = await planCatalogRootBindings({
+      projectId,
+      dataSources,
+      resources,
+      wanted,
+      isReferenced,
+    });
+
+    const content: { dataSources?: string; resources?: string } = {};
+    if (planned !== dataSources) {
+      content.dataSources = JSON.stringify(planned);
+    }
+    if (resources !== existingResources) {
+      content.resources = JSON.stringify(resources);
+    }
+    if (
+      (content.dataSources ?? storedDataSources) === storedDataSources &&
+      (content.resources ?? storedResources) === storedResources
+    ) {
+      return;
+    }
+
+    const update = await matchBuildRead(
+      client
+        .from("Build")
+        .update(
+          { ...content, updatedAt: new Date().toISOString() },
+          { count: "exact" }
+        ),
+      row
+    );
+    if (update.error) {
+      throw update.error;
+    }
+    if (update.count == null) {
+      throw new Error("Update count is null");
+    }
+    if (update.count > 0) {
+      return;
+    }
+  }
+  throw new Error(
+    `The build of project ${projectId} kept changing; the catalog re-sync gave up`
+  );
 };
