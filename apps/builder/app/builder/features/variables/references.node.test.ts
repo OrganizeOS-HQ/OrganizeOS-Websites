@@ -132,3 +132,49 @@ test("countVariableInText counts --name with a boundary on both sides", () => {
     )
   ).toBe(2);
 });
+
+test("a var() item in a font family stack takes the literal's families; a longer name is left alone", () => {
+  const stack: StyleValue = {
+    type: "fontFamily",
+    value: ["var(--display)", "Georgia", "serif"],
+  };
+  const spliced = {
+    type: "fontFamily",
+    value: ["Playfair Display", "serif", "Georgia", "serif"],
+  };
+  expect(
+    replaceVariableReferences(stack, "display", {
+      type: "fontFamily",
+      value: ["Playfair Display", "serif"],
+    })
+  ).toEqual(spliced);
+  // a value Global Root stores as text
+  expect(
+    replaceVariableReferences(stack, "display", {
+      type: "unparsed",
+      value: '"Playfair Display", serif',
+    })
+  ).toEqual(spliced);
+  const other: StyleValue = {
+    type: "fontFamily",
+    value: ["var(--display-alt)", "serif"],
+  };
+  expect(
+    replaceVariableReferences(other, "display", {
+      type: "fontFamily",
+      value: ["Inter"],
+    })
+  ).toBe(other);
+});
+
+test("a font family stack whose reference cannot take the literal falls back to text with no var() left", () => {
+  const stack: StyleValue = {
+    type: "fontFamily",
+    value: ["var(--display)", "serif"],
+  };
+  const replaced = replaceVariableReferences(stack, "display", {
+    type: "keyword",
+    value: "unset",
+  });
+  expect(toValue(replaced)).not.toContain("var(--display)");
+});

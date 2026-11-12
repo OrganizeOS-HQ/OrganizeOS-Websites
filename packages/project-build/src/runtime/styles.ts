@@ -458,6 +458,17 @@ const rewriteCssVariableReferencesInNode = (
       value: rewriteCssVariableReferencesInString(record.value, replacements),
     };
   }
+  // a font family stack keeps each family as text, var() items included
+  if (record.type === "fontFamily" && Array.isArray(record.value)) {
+    return {
+      ...record,
+      value: record.value.map((family) =>
+        typeof family === "string"
+          ? rewriteCssVariableReferencesInString(family, replacements)
+          : family
+      ),
+    };
+  }
   const next: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(record)) {
     next[key] = rewriteCssVariableReferencesInNode(child, replacements);

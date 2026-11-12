@@ -170,3 +170,19 @@ test("usage counts no longer count --spacing--large for --large", () => {
     )
   ).toEqual(new Set());
 });
+
+test("a var() inside a font family stack is renamed by whole name, as upstream's JSON rewrite did", () => {
+  expect(
+    rename(
+      {
+        type: "fontFamily",
+        value: ["var(--display)", "var(--display-alt)", "Georgia", "serif"],
+      },
+      "--display",
+      "--headline"
+    )
+  ).toEqual({
+    type: "fontFamily",
+    value: ["var(--headline)", "var(--display-alt)", "Georgia", "serif"],
+  });
+});

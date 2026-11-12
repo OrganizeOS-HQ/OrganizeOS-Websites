@@ -318,6 +318,9 @@ describe("the Variables edits in project-build", () => {
     expect(styles).toContain("(?<![\\\\w-])${escapeRegex(name)}(?![\\\\w-])");
     expect(styles).toMatch(/`\(\?<!\[\\\\w-\]\)\(\?:\$\{Array\.from\(names\)/);
     expect(styles).not.toContain('("value":")');
+    expect(styles).toMatch(
+      /record\.type === "fontFamily" && Array\.isArray\(record\.value\)/
+    );
     expect(styles).toMatch(/export const getCssVariableUsageCounts = /);
   });
 });

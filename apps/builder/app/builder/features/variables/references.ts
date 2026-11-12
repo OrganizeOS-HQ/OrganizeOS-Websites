@@ -1,4 +1,5 @@
 import { toValue, type StyleValue } from "@webstudio-is/css-engine";
+import { parseCssValue } from "@webstudio-is/css-data";
 
 /**
  * Delete's replacement pass (spec 4.8): every whole-name reference to a
@@ -133,9 +134,48 @@ const replaceInNode = (
         ? { ...node, alpha: toAlpha(literal) }
         : node;
     }
+    case "fontFamily": {
+      let changed = false;
+      const value: string[] = [];
+      for (const family of node.value) {
+        if (replaceVariableInText(family, cssName, literalText) === family) {
+          value.push(family);
+          continue;
+        }
+        changed = true;
+        value.push(...familiesOf(family, cssName, literal, literalText));
+      }
+      return changed ? { ...node, value } : node;
+    }
     default:
       return node;
   }
+};
+
+const WHOLE = "\u0000";
+
+/**
+ * A stack item that is exactly `var(--name[, fallback])` takes the literal's
+ * families; text is parsed as a font-family list, since one item of text
+ * would be quoted as a single family when printed.
+ */
+const familiesOf = (
+  family: string,
+  cssName: string,
+  literal: StyleValue,
+  literalText: string
+) => {
+  if (replaceVariableInText(family.trim(), cssName, WHOLE) !== WHOLE) {
+    throw new Refused();
+  }
+  if (literal.type === "fontFamily") {
+    return literal.value;
+  }
+  const parsed = parseCssValue("font-family", literalText);
+  if (parsed.type !== "fontFamily") {
+    throw new Refused();
+  }
+  return parsed.value;
 };
 
 /**

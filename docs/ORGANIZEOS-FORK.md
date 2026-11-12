@@ -884,7 +884,8 @@ can be merged with minimal conflict.
   marked line in `src/shared/project-settings.ts`; the whole-name rename in
   `src/runtime/styles.ts` (marked: both name regexes take a left boundary,
   `rewriteCssVariableReferencesInStyleValue` walks the value instead of its
-  JSON, `getCssVariableUsageCounts` exported), with
+  JSON, renaming `VarValue`s, unparsed text and font family items,
+  `getCssVariableUsageCounts` exported), with
   `styles.organizeos.test.ts`. In the builder, `features/variables/color.ts`
   and `style-model.ts`, with their tests, moved from
   `features/organizeos-panel/backgrounds/`, and
@@ -1018,7 +1019,9 @@ can be merged with minimal conflict.
   temporary file when many downloads fail at once", in `asset-files.test.ts`.
   `packages/project-build/src/runtime/styles.ts` renames a CSS variable's
   references by whole name: renaming `--black` leaves `color: black`, and
-  renaming `--large` leaves `var(--spacing--large)` (Variables, above).
+  renaming `--large` leaves `var(--spacing--large)` (Variables, above). Its
+  boundaries use lookbehind, which needs Safari 16.4 or later; say so when
+  offering it.
 
 **Sitemap page settings.** The builder's sitemap loader
 (`shared/$resources/sitemap.xml.server.ts`, one marked change) and prebuild's
@@ -2296,14 +2299,16 @@ Style panel's "+" in PR B.
   parsing, never written whole and never written when unreadable; every
   change is a narrow single-index patch, staged in the same transaction as
   the style change, so one write is one undo step. Unknown keys survive.
-- A rename goes by whole name: only `VarValue`s and `var(--name)` text are
-  rewritten, never a keyword and never a longer name that ends with it, in
+- A rename goes by whole name: only `VarValue`s and `var(--name)` text
+  (unparsed values and font family items included) are rewritten, never a
+  keyword and never a longer name that ends with it, in
   styles, HTML Embed `code` props and the project's custom code
   (`projectSettings.meta.code`).
 - A delete removes every declaration of the name, in every style source,
   breakpoint and state; every reference takes the variable's resolved base
-  value (`unset` when it does not resolve). Embed and custom code keep their
-  text and count in the usage.
+  value (`unset` when it does not resolve), and a font family stack's
+  `var()` item takes its families. Embed and custom code keep their text and
+  count in the usage.
 - The six canonical names and the two band names are protected: no rename or
   delete from the Variables operations or Cmd+K, no other variable renamed to
   one, and "Delete unused" never offers them; Cmd+K still labels them unused

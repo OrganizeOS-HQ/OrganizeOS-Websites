@@ -408,6 +408,35 @@ test("deleteVariables: references take the base value, every declaration goes, u
 });
 
 // Review Focus 4
+test("a font family stack that starts with a variable: a rename renames it; a delete splices in its families", () => {
+  project({
+    styles: [
+      {
+        on: root,
+        property: "--display" as CssProperty,
+        value: { type: "fontFamily", value: ["Playfair Display", "serif"] },
+      },
+      {
+        on: "box",
+        property: "font-family",
+        value: { type: "fontFamily", value: ["var(--display)", "Georgia"] },
+      },
+    ],
+  });
+  expect(renameVariable({ from: "display", to: "headline" })).toMatchObject({
+    ok: true,
+  });
+  expect(boxStyle("fontFamily")).toEqual({
+    type: "fontFamily",
+    value: ["var(--headline)", "Georgia"],
+  });
+  expect(deleteVariables(["headline"])).toMatchObject({ ok: true });
+  expect(boxStyle("fontFamily")).toEqual({
+    type: "fontFamily",
+    value: ["Playfair Display", "serif", "Georgia"],
+  });
+});
+
 test("undo right after a rename or a delete restores styles, Embed code, custom code and the registry in one step", () => {
   for (const write of [
     () => renameVariable({ from: "large", displayName: "Big" }),
