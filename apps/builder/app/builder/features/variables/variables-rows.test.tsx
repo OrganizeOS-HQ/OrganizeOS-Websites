@@ -70,6 +70,18 @@ const openRowMenu = async (cssName: string) => {
 
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
 
+/**
+ * The design system's Dialog calls onOpenChange a frame after Cancel or
+ * Escape. Waiting for that frame inside act lets the close render before the
+ * next step: else it lands in the next step's act, which holds it unrendered
+ * while that step waits for the overlay to go.
+ */
+const afterDialogFrame = () =>
+  act(
+    async () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  );
+
 const dialogButton = (label: string) =>
   Array.from(dialog()?.querySelectorAll("button") ?? []).find(
     (button) => button.textContent === label
@@ -206,6 +218,8 @@ test("Cancel keeps it; Delete removes it, its references take #000000, one undo 
   await openRowMenu("black");
   await chooseMenuItem("Delete");
   await act(async () => userEvent.click(dialogButton("Cancel")!));
+  await afterDialogFrame();
+  expect(dialog()).toBeNull();
   expect(rowOf("black")).not.toBeNull();
   expect(undoDepth()).toBe(0);
   await openRowMenu("black");
@@ -223,11 +237,7 @@ test("Escape in the delete dialog closes only the dialog", async () => {
   await chooseMenuItem("Delete");
   expect(dialog()).not.toBeNull();
   await act(async () => userEvent.keyboard("{Escape}"));
-  // onOpenChange runs a frame later
-  await act(
-    async () =>
-      new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-  );
+  await afterDialogFrame();
   expect(dialog()).toBeNull();
   expect($openRailOverlay.get()).toBe("variables");
 });
