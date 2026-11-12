@@ -211,13 +211,78 @@ describe("the items view", () => {
     await settle();
     expect(fake.listItems).toHaveBeenCalledTimes(calls + 1);
     expect(lastListItemsCall()).toEqual([POSTS.id, { q: undefined, page: 2 }]);
-    expect(toastError).toHaveBeenCalledWith("Try again in a minute");
+    expect(toastError).toHaveBeenCalledWith("Try again in a minute", {
+      id: "cms-read-unavailable",
+    });
     expect(pagerText()).toBe("1-50 of 120");
     await act(async () => userEvent.click(byLabel("Next")!));
     await settle();
     expect(fake.listItems).toHaveBeenCalledTimes(calls + 2);
     expect(lastListItemsCall()).toEqual([POSTS.id, { q: undefined, page: 2 }]);
     expect(pagerText()).toBe("51-100 of 120");
+  });
+
+  test("after a failed search, a failed page change keeps the pager working", async () => {
+    fake.listItems.mockImplementation(async (_, { page }) =>
+      pageOf(page ?? 1, 120)
+    );
+    mount();
+    await settle();
+    expect(pagerText()).toBe("1-50 of 120");
+    fake.listItems.mockResolvedValueOnce({ error: "unavailable" });
+    await act(async () => userEvent.type(searchInput()!, "x"));
+    await wait(300);
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "x", page: 1 }]);
+    fake.listItems.mockResolvedValueOnce({ error: "unavailable" });
+    await act(async () => userEvent.click(byLabel("Next")!));
+    await settle();
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "x", page: 2 }]);
+    const calls = fake.listItems.mock.calls.length;
+    await act(async () => userEvent.click(byLabel("Next")!));
+    await settle();
+    expect(fake.listItems).toHaveBeenCalledTimes(calls + 1);
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "x", page: 2 }]);
+  });
+
+  test("with page 2 drawn, a failed search keeps Previous working", async () => {
+    fake.listItems.mockImplementation(async (_, { page }) =>
+      pageOf(page ?? 1, 120)
+    );
+    mount();
+    await settle();
+    await act(async () => userEvent.click(byLabel("Next")!));
+    await settle();
+    expect(pagerText()).toBe("51-100 of 120");
+    fake.listItems.mockResolvedValueOnce({ error: "unavailable" });
+    await act(async () => userEvent.type(searchInput()!, "x"));
+    await wait(300);
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "x", page: 1 }]);
+    expect(pagerText()).toBe("51-100 of 120");
+    const calls = fake.listItems.mock.calls.length;
+    await act(async () => userEvent.click(byLabel("Previous")!));
+    await settle();
+    expect(fake.listItems).toHaveBeenCalledTimes(calls + 1);
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "x", page: 1 }]);
+  });
+
+  test("with page 2 drawn, a failed search keeps page 1 for the next read of that search", async () => {
+    fake.listItems.mockImplementation(async (_, { page }) =>
+      pageOf(page ?? 1, 120)
+    );
+    mount();
+    await settle();
+    await act(async () => userEvent.click(byLabel("Next")!));
+    await settle();
+    expect(pagerText()).toBe("51-100 of 120");
+    fake.listItems.mockResolvedValueOnce({ error: "unavailable" });
+    await act(async () => userEvent.type(searchInput()!, "x"));
+    await wait(300);
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "x", page: 1 }]);
+    act(() => {
+      refreshCmsNative();
+    });
+    await settle();
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "x", page: 1 }]);
   });
 
   test.each(["click", "Enter"])("a row opens its editor by %s", async (how) => {
