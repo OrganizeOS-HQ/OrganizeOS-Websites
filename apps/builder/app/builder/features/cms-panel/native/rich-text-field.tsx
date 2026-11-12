@@ -41,7 +41,6 @@ import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HorizontalRulePlugin } from "@lexical/react/LexicalHorizontalRulePlugin";
 import {
   $isHorizontalRuleNode,
-  HorizontalRuleNode,
   INSERT_HORIZONTAL_RULE_COMMAND,
 } from "@lexical/react/LexicalHorizontalRuleNode";
 import {
@@ -76,6 +75,8 @@ import {
   getRichTextReadOnlyReason,
   importRichTextHtml,
   readRichTextValue,
+  richTextHtmlConfig,
+  richTextNodes,
 } from "./rich-text-html";
 
 /** Lexical takes class name strings; stitches gives each from `.className`. */
@@ -459,12 +460,14 @@ export const RichTextField = ({
       initialConfig={{
         namespace: "cms-rich-text",
         theme: editorTheme,
-        nodes: [LinkNode, HorizontalRuleNode],
+        nodes: [...richTextNodes],
+        html: richTextHtmlConfig,
         editable: disabled === false,
         onError: (error) => {
           throw error;
         },
-        editorState: () => importRichTextHtml(initial?.html ?? ""),
+        editorState: (editor) =>
+          importRichTextHtml(editor, initial?.html ?? ""),
       }}
     >
       <div
@@ -492,9 +495,9 @@ export const RichTextField = ({
         <HorizontalRulePlugin />
         <OnChangePlugin
           ignoreSelectionChange
-          onChange={(editorState) => {
+          onChange={(editorState, editor) => {
+            const html = exportRichTextHtml(editor);
             editorState.read(() => {
-              const html = exportRichTextHtml();
               const text = $getRoot().getTextContent().trim();
               const hasDivider = $getRoot()
                 .getChildren()

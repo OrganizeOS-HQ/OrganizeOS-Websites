@@ -1,88 +1,152 @@
 import { describe, expect, test } from "vitest";
 import { createEditor } from "lexical";
-import { LinkNode } from "@lexical/link";
-import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
+import fixture from "./__fixtures__/rich-text-roundtrip.json";
 import {
   exportRichTextHtml,
   getRichTextReadOnlyReason,
   importRichTextHtml,
+  readRichTextValue,
+  richTextBlockSignature,
+  richTextHref,
+  richTextHtmlConfig,
+  richTextImportHref,
+  richTextNodes,
 } from "./rich-text-html";
 
 /** Loads stored HTML into the editor's node set, then writes it back. */
 const roundTrip = (html: string) => {
   const editor = createEditor({
-    namespace: "cms-rich-text-test",
-    nodes: [LinkNode, HorizontalRuleNode],
+    nodes: [...richTextNodes],
+    html: richTextHtmlConfig,
     onError: (error) => {
       throw error;
     },
   });
-  editor.update(() => importRichTextHtml(html), { discrete: true });
-  return editor.getEditorState().read(exportRichTextHtml);
+  editor.update(() => importRichTextHtml(editor, html), { discrete: true });
+  return exportRichTextHtml(editor);
 };
 
-describe("the rich text round trip", () => {
-  test.each([
-    ["a paragraph", "<p>Members voted.</p>"],
-    [
-      "every text format",
-      "<p><strong>bold</strong> <em>italic</em> <u>underline</u> <s>struck</s> <code>code</code></p>",
-    ],
-    [
-      "a link with a new tab",
-      '<p>Ask your <a href="https://eastbrookworkers.example/stewards" target="_blank" rel="noopener noreferrer">steward</a>.</p>',
-    ],
-    [
-      "a link with a title",
-      '<p><a href="https://eastbrookworkers.example" title="Home">Home</a></p>',
-    ],
-    ["a line break", "<p>Every signature<br>is counted.</p>"],
-    ["a divider between paragraphs", "<p>Before</p><hr><p>After</p>"],
-    ["text that needs escaping", "<p>Pay &amp; safety &lt;now&gt;</p>"],
-  ])("keeps %s", (_, html) => {
-    expect(roundTrip(html)).toBe(html);
+describe("the round trip (spec 8)", () => {
+  test.each(fixture.cases)(
+    "$name: loading input and writing gives editor",
+    ({ input, editor }) => {
+      expect(roundTrip(input)).toBe(editor);
+    }
+  );
+
+  test.each(fixture.readOnly)(
+    "$name opens read-only: $reason",
+    ({ input, reason }) => {
+      expect(getRichTextReadOnlyReason(input)).toBe(reason);
+    }
+  );
+
+  test.each(fixture.cases)("$name is not read-only", ({ input }) => {
+    expect(getRichTextReadOnlyReason(input)).toBeUndefined();
   });
 
-  test("a stable second pass", () => {
-    const html =
-      '<p>Across <strong>Eastbrook</strong>, <em>members</em> organize.</p><hr><p><a href="https://eastbrookworkers.example">Join</a><br>today</p>';
-    expect(roundTrip(roundTrip(html))).toBe(roundTrip(html));
-  });
-
-  test("b and i write their semantic tags", () => {
-    expect(roundTrip("<p><b>bold</b> <i>italic</i></p>")).toBe(
-      "<p><strong>bold</strong> <em>italic</em></p>"
-    );
-  });
-
-  test("an empty value is one empty paragraph", () => {
-    expect(roundTrip("")).toBe("<p></p>");
+  test("the editor never writes a tag outside the allowlist but span", () => {
+    const allowed = new Set([
+      "p",
+      "br",
+      "strong",
+      "b",
+      "em",
+      "i",
+      "u",
+      "s",
+      "a",
+      "ul",
+      "ol",
+      "li",
+      "h2",
+      "h3",
+      "h4",
+      "blockquote",
+      "code",
+      "pre",
+      "hr",
+      "span",
+    ]);
+    for (const { editor } of fixture.cases) {
+      const tags = [...editor.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)].map(
+        (match) => match[1].toLowerCase()
+      );
+      expect(tags.filter((tag) => allowed.has(tag) === false)).toEqual([]);
+    }
   });
 });
 
-describe("what opens read-only, so nothing is lost silently", () => {
+describe("link addresses", () => {
   test.each([
-    [
-      "an image",
-      '<p><img src="https://example.com/a.png" alt="A"></p>',
-      "images",
-    ],
-    ["a figure", "<figure><figcaption>Caption</figcaption></figure>", "images"],
-    ["a heading", "<h2>Heading</h2><p>Body</p>", "unsupported"],
-    ["a list", "<ul><li>One</li></ul>", "unsupported"],
-    ["a numbered list", "<ol><li>One</li></ol>", "unsupported"],
-    ["a quote", "<blockquote><p>Quote</p></blockquote>", "unsupported"],
-    ["a code block", "<pre><code>code</code></pre>", "unsupported"],
-  ])("%s", (_, html, reason) => {
-    expect(getRichTextReadOnlyReason(html)).toBe(reason);
+    ["https://a.org", "https://a.org"],
+    ["/about", "/about"],
+    ["#join", "#join"],
+    ["mailto:a@b.org", "mailto:a@b.org"],
+    ["tel:+1", "tel:+1"],
+    [" https://a.org ", "https://a.org"],
+    ["//a.org", null],
+    ["/\\a.org", null],
+    ["javascript:alert(1)", null],
+    ["data:text/html,x", null],
+    ["https://a.\u0001org", null],
+    ["https://a.org/\u0001", "https://a.org/"],
+    ["contact", null],
+    ["", null],
+  ])("richTextHref(%j) is %j", (raw, out) => {
+    expect(richTextHref(raw)).toBe(out);
   });
 
-  test("what the node set keeps opens for editing", () => {
-    expect(
-      getRichTextReadOnlyReason(
-        '<p><strong>b</strong> <a href="https://example.com">a</a><br>x</p><hr>'
-      )
-    ).toBeUndefined();
-    expect(getRichTextReadOnlyReason("")).toBeUndefined();
+  test.each([
+    ["https://a.org", "https://a.org"],
+    ["contact", "contact"],
+    ["//a.org/", "//a.org/"],
+    ["#join", "#join"],
+    ["mailto:a@b.org", "mailto:a@b.org"],
+    ["javascript:alert(1)", null],
+    ["data:text/html,x", null],
+    ["", null],
+  ])("richTextImportHref(%j) is %j", (raw, out) => {
+    expect(richTextImportHref(raw)).toBe(out);
+  });
+});
+
+describe("the block signature", () => {
+  test.each([
+    ["<p>a</p><p></p>", "links=0"],
+    [
+      '<ul><li><p>a</p><ul><li><p>b</p></li></ul></li></ul><p><a href="/x">x</a></p>',
+      "ul@0 li@1 ul@2 li@3 links=1",
+    ],
+    [
+      '<blockquote><h2>A</h2></blockquote><p><a href="javascript:x">y</a></p>',
+      "blockquote@0 h2@1 links=0",
+    ],
+  ])("richTextBlockSignature(%j) is %j", (html, signature) => {
+    expect(richTextBlockSignature(html)).toBe(signature);
+  });
+});
+
+describe("readRichTextValue", () => {
+  test.each([null, 42, {}, { html: 1 }])(
+    "readRichTextValue(%j) is null",
+    (value) => {
+      expect(readRichTextValue(value)).toBeNull();
+    }
+  );
+
+  test("readRichTextValue derives the text a value without one lacks", () => {
+    expect(readRichTextValue("<p>a</p><p>b</p>")).toEqual({
+      html: "<p>a</p><p>b</p>",
+      text: "a b",
+    });
+    expect(readRichTextValue({ html: "<p>x &amp; y<br />z</p>" })).toEqual({
+      html: "<p>x &amp; y<br />z</p>",
+      text: "x & y z",
+    });
+    expect(readRichTextValue({ html: "<p>a</p>", text: "kept" })).toEqual({
+      html: "<p>a</p>",
+      text: "kept",
+    });
   });
 });
