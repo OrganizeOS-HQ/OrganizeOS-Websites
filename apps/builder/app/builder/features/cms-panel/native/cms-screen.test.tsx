@@ -899,6 +899,33 @@ describe("answers that arrive after the screen moved on", () => {
     expect(titleInput()?.value).toBe("Hello");
   });
 
+  test("a search typed in one collection never reaches the next one", async () => {
+    mount();
+    await settle();
+    const search = document.querySelector<HTMLInputElement>(
+      '[aria-label="Search Posts"]'
+    );
+    expect(search).not.toBeNull();
+    await act(async () => userEvent.type(search!, "Fr"));
+    await click(rowOf("people")?.querySelector("button"));
+    expect(currentSlug()).toBe("people");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+    await settle();
+    const peopleCalls = fake.listItems.mock.calls.filter(
+      ([collectionId]) => collectionId === PEOPLE.id
+    );
+    expect(peopleCalls.length).toBeGreaterThan(0);
+    for (const [, options] of peopleCalls) {
+      expect(options?.q).toBeUndefined();
+    }
+    expect(
+      document.querySelector<HTMLInputElement>('[aria-label="Search People"]')
+        ?.value
+    ).toBe("");
+  });
+
   test.each([
     ["Back", () => click(byLabel("Back")), "posts"],
     [

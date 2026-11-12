@@ -299,6 +299,8 @@ export const ItemsView = ({
   return (
     <Flex direction="column" css={{ height: "100%", minWidth: 0 }}>
       <TopBar
+        // a new collection starts with an empty search and no pending one
+        key={collection.id}
         collection={collection}
         query={query}
         canEdit={canEdit}
