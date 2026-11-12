@@ -164,15 +164,27 @@ importers:
       '@floating-ui/dom':
         specifier: ^1.6.13
         version: 1.6.13
+      '@lexical/code':
+        specifier: ^0.21.0
+        version: 0.21.0
       '@lexical/headless':
+        specifier: ^0.21.0
+        version: 0.21.0
+      '@lexical/html':
         specifier: ^0.21.0
         version: 0.21.0
       '@lexical/link':
         specifier: ^0.21.0
         version: 0.21.0
+      '@lexical/list':
+        specifier: ^0.21.0
+        version: 0.21.0
       '@lexical/react':
         specifier: ^0.21.0
         version: 0.21.0(react-dom@18.3.0-canary-14898b6a9-20240318(react@18.3.0-canary-14898b6a9-20240318))(react@18.3.0-canary-14898b6a9-20240318)(yjs@13.5.52)
+      '@lexical/rich-text':
+        specifier: ^0.21.0
+        version: 0.21.0
       '@lexical/selection':
         specifier: ^0.21.0
         version: 0.21.0
