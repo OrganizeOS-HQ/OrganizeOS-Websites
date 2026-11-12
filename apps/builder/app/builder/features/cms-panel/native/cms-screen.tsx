@@ -249,6 +249,10 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     // read at E2's answer: the collection whose fields are drawn
     const drawnDetailId = useRef<string | undefined>(undefined);
     drawnDetailId.current = detail?.id;
+    // The collection, search and page number of the page drawn.
+    const drawnPage = useRef<
+      { collectionId: string; query: string; page: number } | undefined
+    >(undefined);
     // The E3 inputs whose answer is already drawn: a page E3 answered in
     // place of the one asked for.
     const adoptedPageKey = useRef<string | undefined>(undefined);
@@ -462,6 +466,25 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
               // the line and its Retry (4.3.4)
               if (hasItemsPage.current) {
                 toast.error(getToastText(result.error));
+                // a failed page change goes back to the drawn page, unread,
+                // so the pager asks for the same page again
+                const drawn = drawnPage.current;
+                if (
+                  drawn !== undefined &&
+                  drawn.collectionId === collectionId &&
+                  drawn.query === query &&
+                  drawn.page !== page
+                ) {
+                  adoptedPageKey.current = JSON.stringify([
+                    collectionId,
+                    drawn.page,
+                    query,
+                    listVersion,
+                    pageAttempt,
+                    attempt,
+                  ]);
+                  setPage(drawn.page);
+                }
               } else {
                 setPageFailed(true);
               }
@@ -471,6 +494,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           clearLine("page");
           setPageFailed(false);
           setItemsPage(result);
+          drawnPage.current = { collectionId, query, page: result.page };
           // a page past the end answers the last one (A4): the screen
           // keeps that page from here on
           if (result.page !== page) {
