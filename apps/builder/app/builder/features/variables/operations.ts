@@ -691,6 +691,9 @@ export const reorderVariable = (
       .get()
       .find((collection) => collection.id === row.collectionId)
       ?.rows.filter((item) => item.registered) ?? [];
+  // Past the last registered row, the row goes after it: an unregistered row
+  // dropped at the end is registered last.
+  const atEnd = toIndex >= registeredRows.length;
   const position = Math.min(
     Math.max(toIndex, 0),
     Math.max(registeredRows.length - 1, 0)
@@ -738,7 +741,11 @@ export const reorderVariable = (
             type,
             name: derivedName(row.displayName),
           },
-          anchorIndex === -1 ? registry.variables.length : anchorIndex
+          anchorIndex === -1
+            ? registry.variables.length
+            : atEnd
+              ? anchorIndex + 1
+              : anchorIndex
         )
       );
     },
