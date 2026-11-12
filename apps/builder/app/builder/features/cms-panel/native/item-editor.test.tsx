@@ -729,6 +729,32 @@ describe("conflicts, unknown outcomes and field errors", () => {
     expect(byLabel("Use my edit: Title")).toBeNull();
   });
 
+  test("Use my edit is disabled while a write is in flight", async () => {
+    await openItem();
+    await retype(titleInput(), "Mine");
+    await retype(input("cms-field-summary"), "My S");
+    fake.updateItem.mockResolvedValueOnce({ error: "conflict" });
+    await click(buttonByText("Save"));
+    fake.getItem.mockResolvedValueOnce({ item: theirs });
+    await click(buttonByText("Reload"));
+    await click(byLabel("Use my edit: Title"));
+    const useSummary = () =>
+      byLabel("Use my edit: Summary") as HTMLButtonElement | null;
+    expect(useSummary()?.disabled).toBe(false);
+    const held = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.updateItem.mockReturnValueOnce(held.promise);
+    await click(buttonByText("Save"));
+    expect(useSummary()?.disabled).toBe(true);
+    held.resolve({
+      item: itemOf({
+        data: { title: "Mine", summary: "Theirs S", author: null },
+        updatedAt: V3,
+      }),
+    });
+    await settle();
+    expect(useSummary()).toBeNull();
+  });
+
   test("Publish whose E8a answer was lost after its save never brings back what the save retired", async () => {
     await openItem();
     await retype(titleInput(), "Mine");

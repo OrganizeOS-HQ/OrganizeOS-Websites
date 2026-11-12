@@ -639,7 +639,8 @@ export const ItemEditor = ({
   };
 
   const restoreMine = (key: string) => {
-    if (kept === undefined) {
+    // a write's answer replaces the values: nothing is restored under it
+    if (kept === undefined || busy !== undefined) {
       return;
     }
     if (key === "slug") {
@@ -831,6 +832,7 @@ export const ItemEditor = ({
                       ? () => restoreMine(field.key)
                       : undefined
                   }
+                  useMineDisabled={busy !== undefined}
                 >
                   <FieldControl
                     id={id}
@@ -879,6 +881,7 @@ export const ItemEditor = ({
                   ? () => restoreMine("slug")
                   : undefined
               }
+              useMineDisabled={busy !== undefined}
             >
               <InputField
                 id="cms-field-slug"

@@ -180,6 +180,7 @@ export const FieldRow = ({
   inline = false,
   error,
   onUseMine,
+  useMineDisabled = false,
   children,
 }: {
   id: string;
@@ -190,6 +191,8 @@ export const FieldRow = ({
   inline?: boolean;
   error?: string;
   onUseMine?: () => void;
+  /** A write is in flight: its answer replaces the values. */
+  useMineDisabled?: boolean;
   children: ReactNode;
 }) => {
   const ids = fieldIds(id);
@@ -224,6 +227,7 @@ export const FieldRow = ({
             aria-label={`Use my edit: ${label}`}
             data-cms-use-mine={id}
             icon={<ResetIcon fill="currentColor" />}
+            disabled={useMineDisabled}
             onClick={onUseMine}
           />
         </Tooltip>
