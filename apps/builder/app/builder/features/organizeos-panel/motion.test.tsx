@@ -537,7 +537,7 @@ describe("the Motion area", () => {
     const stack = undoDepth();
     await applyMotionPreset(reveal);
     expect(toastError).toHaveBeenCalledTimes(1);
-    expect(toastError).toHaveBeenCalledWith("Cannot wrap in Animation group");
+    expect(toastError).toHaveBeenCalledWith("Cannot wrap in Animation Group");
     // neither the wrapper nor its props
     expect(getStores()).toEqual(before);
     expect($props.get().size).toBe(0);

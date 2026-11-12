@@ -380,7 +380,7 @@ export const Motion = ({ editor }: { editor?: ReactNode }) => {
             data-motion-select-wrapper
             onClick={() => selectInstance(selector.slice(1))}
           >
-            Select animation group
+            Select Animation Group
           </Button>
         )}
         {isWrapperSelected && stagger !== undefined && (

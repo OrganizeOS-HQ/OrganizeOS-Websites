@@ -2439,10 +2439,10 @@ OrganizeOS repo (its section 14 amends the earlier sections), plan
 2026-10-26: no Motion (the library) fallback; a browser without scroll and view
 timelines gets the static page.
 
-- **Animation group** (`src/animate/`, registered as
+- **Animation Group** (`src/animate/`, registered as
   `@organizeos/site-components:AnimateChildren`, meta `category: "hidden"`;
   the component keeps its code name, since stored projects reference it, and
-  its label in the builder is "Animation group"):
+  its label in the builder is "Animation Group"):
   a `div` with every prop passed through, `display: contents` by its preset so
   wrapping keeps the layout, content model `instance` with `instance`
   children. Props: `action` (upstream's `animationAction`, the one initial
@@ -2487,7 +2487,7 @@ timelines gets the static page.
   which play.
 - **The canvas play flag.** Since 0.309.0 upstream reveals a selection
   through its metas (`selectionReveal`), so the package has no hook: the
-  Animation group and Convergence Field metas each set
+  Animation Group and Convergence Field metas each set
   `selectionReveal: { type: "fixed", ancestor: "self", … }`, which gives the
   player the memory prop `data-ws-animation-can-play-on-canvas` (upstream's
   Navigator reads it for its icon) while it, or an instance inside it, is
@@ -2529,7 +2529,7 @@ timelines gets the static page.
   breakpoints, where upstream would render the whole props panel instead).
   Settings shows the same editor, and the two are never mounted together. With a
   child of an animation group selected, the presets act on the wrapper, and
-  "Select animation group" selects it. The tab shows the presets and fields
+  "Select Animation Group" selects it. The tab shows the presets and fields
   only: no line explaining what a preset does to the selection, and no note on
   where and when the motion plays. Tests check that the package's copies of
   upstream's "new animation" presets (`src/animate/__fixtures__/`, under
@@ -4289,7 +4289,7 @@ bound `href` on Head Link is a `<link>` in the head. A prop whose type cannot
 hold an address (a page, an asset, a Resource, a number or a boolean) ships, an
 action is held to its own rule (Actions, below), and an animation's
 settings (`animationAction`, an object) are judged by their value, so the
-OrganizeOS Animation group (`AnimateChildren`) keeps its `action`. `data` is an address only on
+OrganizeOS Animation Group (`AnimateChildren`) keeps its `action`. `data` is an address only on
 an `object`, so it is decided by its holder, never by the value's shape:
 Collection, Signup Form and RSVP Form hold records in it, and on a
 `ws:element` that is not an `object` it is a plain attribute, so they keep

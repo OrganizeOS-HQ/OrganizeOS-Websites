@@ -22,7 +22,7 @@ type Props = ComponentProps<"div"> & {
 };
 
 /**
- * Animation group (the AnimateChildren component): plays its `action` on each of its element children with
+ * Animation Group (the AnimateChildren component): plays its `action` on each of its element children with
  * native scroll and view timelines (spec 4.1, 4.2). A `div` styled
  * `display: contents` by its preset, so wrapping a section keeps its layout.
  *
@@ -50,7 +50,7 @@ export const AnimateChildren = forwardRef<ElementRef<"div">, Props>(
     return (
       <div {...props} ref={mergedRef}>
         {children}
-        <CanvasCheck title="Animation group" problems={[]} notes={notes} />
+        <CanvasCheck title="Animation Group" problems={[]} notes={notes} />
       </div>
     );
   }

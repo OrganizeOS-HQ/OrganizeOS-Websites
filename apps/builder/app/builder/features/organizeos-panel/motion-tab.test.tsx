@@ -159,7 +159,7 @@ const motionTarget = (host: HTMLElement) =>
 const explanations = [
   "A preset wraps",
   "A preset replaces",
-  "inside an animation group",
+  "inside an Animate Children",
   "Edit it below",
   "Plays on the published page",
   "reduced motion",
@@ -331,7 +331,7 @@ describe("the Inspector's Motion tab", () => {
     expect(text.indexOf("Stagger")).toBeLessThan(text.indexOf("Run on canvas"));
   });
 
-  test("with a child of a wrapper selected, the presets, no Stagger, and Select animation group selects the wrapper", () => {
+  test("with a child of a wrapper selected, the presets, no Stagger, and Select Animation Group selects the wrapper", () => {
     selectInstance(["child", "wrapper", "body"]);
     $activeInspectorPanel.set("motion");
     const host = render();
@@ -344,7 +344,7 @@ describe("the Inspector's Motion tab", () => {
     const select = host.querySelector<HTMLButtonElement>(
       "[data-motion-select-wrapper]"
     );
-    expect(select?.textContent).toBe("Select animation group");
+    expect(select?.textContent).toBe("Select Animation Group");
     act(() => select?.click());
     expect($selectedInstanceSelector.get()).toEqual(["wrapper", "body"]);
     expect(host.querySelector("[data-motion-select-wrapper]")).toBeNull();
