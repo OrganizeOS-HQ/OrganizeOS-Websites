@@ -930,7 +930,10 @@ can be merged with minimal conflict.
   `<VariableBindControl properties={properties}>` wrapper around
   `ResettableLabel` (upstream has since split this label into
   `ResettablePropertyLabel`; the next merge re-applies the wrapper there),
-  tested by `features/style-panel/variable-bind.organizeos.test.tsx`; in `sidebar-left/sidebar-left.tsx`, the one
+  tested by `features/style-panel/variable-bind.organizeos.test.tsx`; and
+  `packages/cli/src/prebuild.organizeos.test.ts`, spec 10's publish test (a
+  Global Root `--name` reaches the published `:root` rule and a bound property
+  prints `var(--name)`, with atomic styles on and off); in `sidebar-left/sidebar-left.tsx`, the one
   `<VariablesRailButton />` after `<CmsRailButton />`, the one
   `<VariablesOverlay />` after `<CmsOverlay />`, and their marked import; and
   the one marked title in `features/settings-panel/variables-section.tsx`,
