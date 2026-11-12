@@ -995,6 +995,39 @@ describe("conflicts, unknown outcomes and field errors", () => {
     expect(isDisabled("Save")).toBe(true);
   });
 
+  test("Publish after an E6 replay that stored the person's values, trimmed and sanitised, publishes with no E7", async () => {
+    await openNewItemWithBody("Hello ");
+    fake.createItem.mockResolvedValueOnce({ error: "unavailable" });
+    await click(buttonByText("Save"));
+    const order: string[] = [];
+    fake.createItem.mockImplementationOnce(async (_, body) => {
+      order.push("createItem");
+      return {
+        item: madeWithBody("Hello", body.slug ?? "hello"),
+        created: false,
+      };
+    });
+    fake.updateItem.mockImplementationOnce(async () => {
+      order.push("updateItem");
+      return { error: "unavailable" };
+    });
+    fake.publishItem.mockImplementationOnce(async () => {
+      order.push("publishItem");
+      return {
+        item: {
+          ...madeWithBody("Hello", "hello"),
+          status: "published",
+          updatedAt: V3,
+        },
+      };
+    });
+    await click(buttonByText("Publish"));
+    expect(order).toEqual(["createItem", "publishItem"]);
+    expect(fake.publishItem).toHaveBeenCalledWith(POSTS.id, NEW_ID, {
+      expectedUpdatedAt: V2,
+    });
+  });
+
   test("after E6 answers not_found, the next Save sends a fresh clientId", async () => {
     const error = vi.spyOn(toast, "error");
     await openNewItem();
