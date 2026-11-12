@@ -388,7 +388,11 @@ export const ItemEditor = ({
       setErrors((current) => ({ ...current, slug: "Address in use" }));
       return;
     }
-    if (failure.error === "invalid" && failure.field === undefined) {
+    // a field the editor draws, or the address, shows its error in place
+    const isDrawnField =
+      failure.field === "slug" ||
+      fields.some((field) => field.key === failure.field);
+    if (failure.error === "invalid" && isDrawnField === false) {
       // no write until the fields are current
       setBusy("reload");
       void onSchemaStale()

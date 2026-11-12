@@ -963,6 +963,19 @@ describe("conflicts, unknown outcomes and field errors", () => {
     expect(titleInput()?.value).toBe("Mine");
   });
 
+  test("invalid on a field the editor does not draw refetches the fields, then the toast Not saved", async () => {
+    const error = vi.spyOn(toast, "error");
+    await openItem();
+    await retype(titleInput(), "Mine");
+    const calls = fake.getCollection.mock.calls.length;
+    fake.updateItem.mockResolvedValueOnce({ error: "invalid", field: "gone" });
+    await click(buttonByText("Save"));
+    expect(fake.getCollection).toHaveBeenCalledTimes(calls + 1);
+    expect(error).toHaveBeenCalledWith("Not saved");
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(titleInput()?.value).toBe("Mine");
+  });
+
   test("below 600 px of header, Discard changes is in the Item menu", async () => {
     const staged = itemOf({ status: "published", hasStagedChanges: true });
     // a 560 px main
