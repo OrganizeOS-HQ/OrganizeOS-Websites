@@ -1,14 +1,25 @@
 import { useState } from "react";
 import { useStore } from "@nanostores/react";
 import { Flex, Text, theme } from "@webstudio-is/design-system";
-import { SITE_COLLECTION_ID } from "@webstudio-is/project-build";
+import {
+  BRAND_COLLECTION_ID,
+  SITE_COLLECTION_ID,
+  type VariableType,
+} from "@webstudio-is/project-build";
 import { $authPermit, $isDesignMode } from "~/shared/nano-states";
 import { $project } from "~/shared/sync/data-stores";
 import {
   $openRailOverlay,
   RailOverlay,
 } from "~/builder/features/rail-overlay/rail-overlay";
-import { $variableCollections, $variablesRegistryState } from "./reader";
+import {
+  $variableCollections,
+  $variablesRegistryState,
+  resolveRootVariable,
+} from "./reader";
+import { matchesVariableSearch } from "./search";
+import { VariablesToolbar } from "./variables-toolbar";
+import { VariablesTable } from "./variables-table";
 import { CollectionsColumn } from "./collections-column";
 import {
   readSelectedCollection,
@@ -39,12 +50,43 @@ const VariablesManager = () => {
     collections.find((collection) => collection.id === chosen)?.id ??
     collections[0]?.id ??
     SITE_COLLECTION_ID;
+  const [search, setSearch] = useState("");
+  const [draftType, setDraftType] = useState<VariableType>();
   const select = (id: string) => {
     setChosen(id);
+    setDraftType(undefined);
     if (projectId !== undefined) {
       writeSelectedCollection(projectId, id);
     }
   };
+  const collection = collections.find((item) => item.id === selectedId);
+  const allRows = collections.flatMap((item) => item.rows);
+  const canAdd = readOnly === false && selectedId !== BRAND_COLLECTION_ID;
+  const isSearching = search.trim() !== "";
+  const rows =
+    collection === undefined
+      ? []
+      : isSearching
+        ? collection.rows.filter((row) =>
+            matchesVariableSearch(
+              row,
+              // an alias matches by what it resolves to
+              row.value?.type === "var"
+                ? resolveRootVariable(row.cssName)
+                : undefined,
+              search
+            )
+          )
+        : collection.rows;
+  // A new font takes the body font's first family (spec 5.4).
+  const hasBodyFont = collections.some(
+    (item) =>
+      item.id === BRAND_COLLECTION_ID &&
+      item.rows.some(
+        (row) => row.cssName === "font-body" && row.value !== undefined
+      )
+  );
+  const bodyFont = hasBodyFont ? resolveRootVariable("font-body") : undefined;
   return (
     <Flex
       data-variables-manager
@@ -58,12 +100,29 @@ const VariablesManager = () => {
         onSelect={select}
       />
       <Flex direction="column" grow css={{ minWidth: 0 }}>
-        <Flex
-          align="center"
-          css={{ height: theme.spacing[15], flexShrink: 0 }}
+        <VariablesToolbar
+          name={collection?.name ?? ""}
+          canAdd={canAdd}
+          search={search}
+          onSearchChange={setSearch}
+          onNewVariable={setDraftType}
         />
         {isUnreadable && (
           <Text css={{ px: theme.spacing[9] }}>Reload to edit variables</Text>
+        )}
+        {collection !== undefined && (
+          <VariablesTable
+            collection={collection}
+            rows={rows}
+            allRows={allRows}
+            readOnly={readOnly}
+            canAdd={canAdd}
+            isSearching={isSearching}
+            draftType={draftType}
+            bodyFont={bodyFont}
+            onDraftEnd={() => setDraftType(undefined)}
+            onNewVariable={setDraftType}
+          />
         )}
       </Flex>
     </Flex>

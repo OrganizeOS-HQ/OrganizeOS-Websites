@@ -23,9 +23,25 @@ export type ValidationResult =
 
 const number = "-?(?:\\d+(?:\\.\\d+)?|\\.\\d+)";
 
-const sizeUnits = "px|em|rem|ch|vw|vh|vmin|vmax|dvh|dvw|svh|svw|lvh|lvw".split(
-  "|"
-);
+/** The units a Size variable takes (spec 4.5), in the unit menu's order. */
+export const SIZE_UNITS = [
+  "px",
+  "em",
+  "rem",
+  "ch",
+  "vw",
+  "vh",
+  "vmin",
+  "vmax",
+  "dvh",
+  "dvw",
+  "svh",
+  "svw",
+  "lvh",
+  "lvw",
+] as const;
+
+const sizeUnits: readonly string[] = SIZE_UNITS;
 
 const sizePattern = new RegExp(`^(${number})(${sizeUnits.join("|")})$`);
 const percentagePattern = new RegExp(`^(${number})%$`);
