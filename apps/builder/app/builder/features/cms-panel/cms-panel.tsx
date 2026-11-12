@@ -12,13 +12,11 @@ import {
 } from "@webstudio-is/design-system";
 import {
   $authPermit,
-  $computedResourceRequests,
   $isPreviewMode,
   $organizeosSite,
   $planFeatures,
   $workspaceRole,
 } from "~/shared/nano-states";
-import { invalidateResource } from "~/shared/resources";
 import { suppressCommandsForEvent } from "~/shared/commands-emitter";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
 import {
@@ -32,11 +30,9 @@ import {
 } from "~/builder/shared/assets/drag-monitor";
 import { SidebarButton } from "~/builder/sidebar-left/sidebar-tabs";
 import { CmsIcon } from "./cms-icon";
-import {
-  findCollectionRequests,
-  readCmsMessage,
-  type CmsMessage,
-} from "./cms-messages";
+import { readCmsMessage, type CmsMessage } from "./cms-messages";
+import { invalidateCollectionOnCanvas } from "./native/cms-canvas";
+import { $cmsNativeDirty, refreshCmsNative } from "./native/cms-native-stores";
 import { CmsNativeScreen } from "./native/cms-native-screen";
 
 /**
@@ -51,8 +47,10 @@ import { CmsNativeScreen } from "./native/cms-native-screen";
  *
  * Close means hide. The frame is mounted on the first open and stays mounted
  * for the life of the builder document; closing sets `display: none`, so
- * reopening shows the screen as it was left, unsaved text included. Nothing
- * discards it, so `cms.dirty` guards only the window's `beforeunload`.
+ * reopening shows the screen as it was left, unsaved text included.
+ * `$cmsDirty` is set while the frame's editor or the native editor has
+ * unsaved changes, and guards only the window's `beforeunload`; clearing one
+ * flag never clears the other.
  */
 
 export const CMS_FRAME_SANDBOX =
@@ -87,7 +85,13 @@ export const $isCmsOverlayOpen = atom(false);
 export const $cmsFrameMounted = atom(false);
 
 /** Whether the frame's editor has unsaved changes (`cms.dirty`). */
-export const $cmsDirty = atom(false);
+export const $cmsFrameDirty = atom(false);
+
+/** Whether the frame's editor or the native editor has unsaved changes. */
+export const $cmsDirty = computed(
+  [$cmsFrameDirty, $cmsNativeDirty],
+  (frame, native) => frame || native
+);
 
 /** What the native screen has open: a collection's slug, an item's id. */
 export type CmsDeepLink = { collection?: string; item?: string };
@@ -228,21 +232,16 @@ export const showCollectionChangedNotice = () => {
 /** Act on one accepted message. */
 export const applyCmsMessage = (message: CmsMessage, platformUrl: string) => {
   switch (message.type) {
-    case "cms.item_saved": {
-      const requests = findCollectionRequests($computedResourceRequests.get(), {
-        slug: message.collection,
-        platformUrl,
-      });
-      for (const request of requests) {
-        invalidateResource(request);
-      }
+    case "cms.item_saved":
+      invalidateCollectionOnCanvas(message.collection, platformUrl);
+      refreshCmsNative();
       return;
-    }
     case "cms.collection_changed":
       showCollectionChangedNotice();
+      refreshCmsNative();
       return;
     case "cms.dirty":
-      $cmsDirty.set(message.dirty);
+      $cmsFrameDirty.set(message.dirty);
       return;
     case "cms.close_requested":
       // With the native screen, the frame's close returns to it.
@@ -463,8 +462,9 @@ export const CmsOverlay = () => {
 
   useEffect(() => {
     if (isRendered === false) {
-      // No frame, nothing unsaved.
-      $cmsDirty.set(false);
+      // No frame, nothing unsaved in it. The native flag clears when the
+      // native screen unmounts.
+      $cmsFrameDirty.set(false);
       return;
     }
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -553,7 +553,11 @@ export const CmsOverlay = () => {
         <CmsNativeScreen
           ref={nativeRef}
           hidden={isClassicShown}
+          overlayShown={isShown}
           onClose={closeCmsOverlay}
+          onHide={() => {
+            hideCmsOverlay();
+          }}
           onShowClassic={showClassicCms}
         />
       )}

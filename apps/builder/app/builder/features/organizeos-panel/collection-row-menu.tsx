@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useStore } from "@nanostores/react";
 import {
   theme,
@@ -80,7 +80,8 @@ const AddListForm = ({
 }: {
   slug: string;
   hasItemPage: boolean;
-  onDone: () => void;
+  /** After an add that read the collection: whether the list was inserted. */
+  onDone: (inserted: boolean) => void;
 }) => {
   const [layout, setLayout] = useState<ListLayout>("grid");
   const [sort, setSort] = useState<ListSort>("newest");
@@ -101,7 +102,7 @@ const AddListForm = ({
       toast.error(result.error);
       return;
     }
-    onDone();
+    onDone(result.inserted);
   };
   return (
     <Grid
@@ -189,22 +190,41 @@ const GatedLabel = ({
   </Flex>
 );
 
-export const CollectionRow = ({
-  resource,
+/** The warning under a row whose item page reads an old address. */
+export const StaleItemPageLine = () => (
+  <Text color="destructive" data-organizeos-stale-address>
+    {staleAddressLine}
+  </Text>
+);
+
+/**
+ * A collection's "..." menu: `leadingItems`, Create item page or Open item
+ * page, Add list, `trailingItems`, then Remove from sitemap for a sitemap
+ * orphan. Add list opens its popover anchored on the menu's own trigger.
+ * `onShowCanvas` runs after Create item page (made or found), Open item page
+ * and an Add list that inserted; `onRemovedFromSitemap` after a removal that
+ * removed.
+ */
+export const CollectionActionsMenu = ({
   slug,
+  name,
   itemPage,
-  isOnPage,
-  isStale,
   isSitemapOrphan,
+  leadingItems,
+  trailingItems,
+  onShowCanvas,
+  onRemovedFromSitemap,
 }: {
-  resource: Resource;
   slug: string;
+  /** The trigger's label is "{name} menu". */
+  name: string;
   itemPage: undefined | Page;
-  isOnPage: boolean;
-  /** An item page of this collection reads an old address. */
-  isStale: boolean;
   /** The sitemap lists the collection, which has no item page. */
   isSitemapOrphan: boolean;
+  leadingItems?: ReactNode;
+  trailingItems?: ReactNode;
+  onShowCanvas?: () => void;
+  onRemovedFromSitemap?: () => void;
 }) => {
   const { allowDynamicData } = useStore($permissions);
   const [isListOpen, setIsListOpen] = useState(false);
@@ -222,8 +242,103 @@ export const CollectionRow = ({
     if (result.created) {
       toast.success(itemPageCreated);
     }
+    onShowCanvas?.();
   };
 
+  const removeFromSitemap = async () => {
+    if (await removeCollectionFromSitemap(slug)) {
+      onRemovedFromSitemap?.();
+    }
+  };
+
+  return (
+    <Popover
+      open={isListOpen}
+      onOpenChange={(open) => {
+        // opened from the menu only: the button is the menu's trigger,
+        // and the popover's anchor
+        if (open === false) {
+          setIsListOpen(false);
+        }
+      }}
+    >
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <PopoverTrigger asChild>
+            <SmallIconButton
+              aria-label={`${name} menu`}
+              icon={<EllipsesIcon />}
+              disabled={isBusy}
+              data-organizeos-collection-menu
+            />
+          </PopoverTrigger>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          onCloseAutoFocus={(event) => event.preventDefault()}
+        >
+          {leadingItems}
+          {itemPage === undefined ? (
+            <DropdownMenuItem disabled={gated} onSelect={createItemPage}>
+              <GatedLabel gated={gated}>Create item page</GatedLabel>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              onSelect={() => {
+                selectPage(itemPage.id);
+                onShowCanvas?.();
+              }}
+            >
+              Open item page
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem
+            disabled={gated}
+            onSelect={() => setIsListOpen(true)}
+          >
+            <GatedLabel gated={gated}>Add list</GatedLabel>
+          </DropdownMenuItem>
+          {trailingItems}
+          {isSitemapOrphan && (
+            <DropdownMenuItem onSelect={() => void removeFromSitemap()}>
+              Remove from sitemap
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <PopoverContent align="end">
+        <AddListForm
+          slug={slug}
+          hasItemPage={itemPage !== undefined}
+          onDone={(inserted) => {
+            setIsListOpen(false);
+            if (inserted) {
+              onShowCanvas?.();
+            }
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+export const CollectionRow = ({
+  resource,
+  slug,
+  itemPage,
+  isOnPage,
+  isStale,
+  isSitemapOrphan,
+}: {
+  resource: Resource;
+  slug: string;
+  itemPage: undefined | Page;
+  isOnPage: boolean;
+  /** An item page of this collection reads an old address. */
+  isStale: boolean;
+  /** The sitemap lists the collection, which has no item page. */
+  isSitemapOrphan: boolean;
+}) => {
   return (
     <Flex direction="column" data-organizeos-collection={slug}>
       <Flex align="center" justify="between" gap="2">
@@ -232,76 +347,23 @@ export const CollectionRow = ({
         </Tooltip>
         <Flex align="center" gap="2" css={{ flexShrink: 0 }}>
           {isOnPage && <Text color="subtle">On this page</Text>}
-          <Popover
-            open={isListOpen}
-            onOpenChange={(open) => {
-              // opened from the menu only: the button is the menu's trigger,
-              // and the popover's anchor
-              if (open === false) {
-                setIsListOpen(false);
-              }
-            }}
-          >
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <PopoverTrigger asChild>
-                  <SmallIconButton
-                    aria-label={`${resource.name} menu`}
-                    icon={<EllipsesIcon />}
-                    disabled={isBusy}
-                    data-organizeos-collection-menu
-                  />
-                </PopoverTrigger>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                onCloseAutoFocus={(event) => event.preventDefault()}
+          <CollectionActionsMenu
+            slug={slug}
+            name={resource.name}
+            itemPage={itemPage}
+            isSitemapOrphan={isSitemapOrphan}
+            trailingItems={
+              <DropdownMenuItem
+                disabled={isOnPage}
+                onSelect={() => void addCatalogResourceToPage(resource.id)}
               >
-                {itemPage === undefined ? (
-                  <DropdownMenuItem disabled={gated} onSelect={createItemPage}>
-                    <GatedLabel gated={gated}>Create item page</GatedLabel>
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem onSelect={() => selectPage(itemPage.id)}>
-                    Open item page
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem
-                  disabled={gated}
-                  onSelect={() => setIsListOpen(true)}
-                >
-                  <GatedLabel gated={gated}>Add list</GatedLabel>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={isOnPage}
-                  onSelect={() => void addCatalogResourceToPage(resource.id)}
-                >
-                  Add to this page
-                </DropdownMenuItem>
-                {isSitemapOrphan && (
-                  <DropdownMenuItem
-                    onSelect={() => void removeCollectionFromSitemap(slug)}
-                  >
-                    Remove from sitemap
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <PopoverContent align="end">
-              <AddListForm
-                slug={slug}
-                hasItemPage={itemPage !== undefined}
-                onDone={() => setIsListOpen(false)}
-              />
-            </PopoverContent>
-          </Popover>
+                Add to this page
+              </DropdownMenuItem>
+            }
+          />
         </Flex>
       </Flex>
-      {isStale && (
-        <Text color="destructive" data-organizeos-stale-address>
-          {staleAddressLine}
-        </Text>
-      )}
+      {isStale && <StaleItemPageLine />}
     </Flex>
   );
 };
@@ -315,30 +377,59 @@ export const OrphanRow = ({
   name,
   isStale,
   sitemapSlug,
+  removeIn = "button",
+  onRemovedFromSitemap,
 }: {
   name: string;
   isStale: boolean;
   sitemapSlug?: string;
-}) => (
-  <Flex direction="column" data-organizeos-orphan>
-    <Flex align="center" justify="between" gap="2">
-      <Tooltip content={name} delayDuration={600}>
-        <Text truncate>{name}</Text>
-      </Tooltip>
-      {sitemapSlug !== undefined && (
-        <Button
-          color="neutral"
-          css={{ flexShrink: 0 }}
-          onClick={() => void removeCollectionFromSitemap(sitemapSlug)}
-        >
-          Remove from sitemap
-        </Button>
-      )}
+  /** Where Remove from sitemap sits: a button, or a "{name} menu". */
+  removeIn?: "button" | "menu";
+  onRemovedFromSitemap?: () => void;
+}) => {
+  const removeFromSitemap = async (slug: string) => {
+    if (await removeCollectionFromSitemap(slug)) {
+      onRemovedFromSitemap?.();
+    }
+  };
+  return (
+    <Flex direction="column" data-organizeos-orphan>
+      <Flex align="center" justify="between" gap="2">
+        <Tooltip content={name} delayDuration={600}>
+          <Text truncate>{name}</Text>
+        </Tooltip>
+        {sitemapSlug !== undefined &&
+          (removeIn === "menu" ? (
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <SmallIconButton
+                  aria-label={`${name} menu`}
+                  icon={<EllipsesIcon />}
+                  css={{ flexShrink: 0 }}
+                />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                onCloseAutoFocus={(event) => event.preventDefault()}
+              >
+                <DropdownMenuItem
+                  onSelect={() => void removeFromSitemap(sitemapSlug)}
+                >
+                  Remove from sitemap
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button
+              color="neutral"
+              css={{ flexShrink: 0 }}
+              onClick={() => void removeFromSitemap(sitemapSlug)}
+            >
+              Remove from sitemap
+            </Button>
+          ))}
+      </Flex>
+      {isStale && <StaleItemPageLine />}
     </Flex>
-    {isStale && (
-      <Text color="destructive" data-organizeos-stale-address>
-        {staleAddressLine}
-      </Text>
-    )}
-  </Flex>
-);
+  );
+};

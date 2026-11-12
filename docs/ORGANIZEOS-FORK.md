@@ -567,7 +567,20 @@ can be merged with minimal conflict.
   `ORGANIZEOS_CMS_NATIVE`, `ORGANIZEOS_CMS_NATIVE_ORG_IDS` and whether
   `WEBSITES2_CMS_SECRET` is set, passed by the same loader's marked lines; and
   the app's origin in that route's `frame-src`,
-  through `builderFrameSrcPolicy` in `shared/frame-protection.ts`.
+  through `builderFrameSrcPolicy` in `shared/frame-protection.ts`. The native
+  screen also adds the four `@lexical/*` packages `code`, `html`, `list` and
+  `rich-text` as direct dependencies in `apps/builder/package.json`, and so in
+  `pnpm-lock.yaml` (neither can carry a mark); the rich-text
+  round-trip fixture
+  `features/cms-panel/native/__fixtures__/rich-text-roundtrip.json`, a byte
+  copy of the platform's at a recorded commit and hash, with its README
+  beside it; `$cmsFrameDirty` and `$cmsDirty`, computed from it and
+  `$cmsNativeDirty` (`native/cms-native-stores.ts`); the stories and the
+  sample data they run on, `native/cms-screen.stories.tsx`,
+  `native/sample-cms-source.ts` and `native/sample-collection-actions.tsx`;
+  and, in `apps/builder/vitest.config.ts`, the `OrganizeOS fork:` line above
+  the `@lexical/react/LexicalListPlugin` and `@lexical/selection` entries of
+  `optimizeDeps.include`.
 - **Frame protection (§4).** `shared/frame-protection.ts`, with
   `shared/frame-protection.node.test.ts` and
   `shared/frame-protection-routes.server.test.ts`, and the `headers` exports
@@ -769,7 +782,11 @@ can be merged with minimal conflict.
   - The CMS page templates (§9): `collection-schema.ts`,
     `collection-layout.ts`, `collection-pages.ts`, `collection-list.ts` and
     `collection-row-menu.tsx`, with their tests, the collection rows in
-    `organizeos-data.ts` and `organizeos-panel.tsx`, and cases in
+    `organizeos-data.ts` and `organizeos-panel.tsx`, `collection-catalog.ts`
+    (the catalog helpers moved out of `organizeos-panel.tsx`, and the CMS
+    column's join) with its test, the `collection-row-menu.tsx` split
+    (`CollectionActionsMenu`, `StaleItemPageLine` and `OrphanRow`'s menu
+    variant) with the native screen as its second mount, and cases in
     `shared/db/resource-presets.server.test.ts` and
     `shared/organizeos-preview.server.test.ts`.
   - **The site templates (§9, "Site templates").** In the blocks package, the
@@ -1680,6 +1697,31 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     mounts the frame on first use with `&collection={slug}&item={id}` for what
     the native screen has open, then keeps it mounted and hidden; the frame's
     close (`cms.close_requested`) returns to the native screen.
+  - **The native screen** (`features/cms-panel/native/`). A 240 px column
+    lists the org's collections from the platform, each with its count, the
+    open one highlighted. In Design mode, for an org allowed blocks, each row
+    has a "..." menu of the collection's actions, a collection with a stale
+    item page shows the stale line under its row, and the orphan rows sit at
+    the column's foot. The items view has a title search, 50 items a page with
+    the range ("1-50 of 120") and a pager, and the columns Name, Status and
+    Modified. The editor opens beside the column: 448 px of fields in schema
+    order, then Address, derived from the title until it is edited; the status
+    chip; Save, Publish (Publish changes once published) and Discard changes;
+    on a conflict the line "Changed by someone else" with Reload, and "Use my
+    edit" on each field the person changed. Below 600 px of header, Discard
+    changes moves into the item's "..." menu. Each field type has its control.
+    Rich text is a Lexical editor, loaded with the first rich-text field. It
+    is read-only for a value with images ("Has images; edit in Classic CMS")
+    and when the editor would not keep the value's blocks or links whole
+    ("Edit in Classic CMS"). A refusal is one line each, with the "Not in
+    plan" chip for the plan. The unsaved guard stands before Back, another
+    collection, Classic CMS and "Open OrganizeOS". Every open reads the
+    access (E0) again. The lists refetch after each write, on reopen and on
+    the frame's `cms.item_saved` and `cms.collection_changed`, and an open
+    editor's item too while it has no unsaved edit. After each write the
+    canvas's requests for the collection are invalidated. "Classic CMS", behind
+    the guard, mounts the frame with `&collection={slug}&item={id}` for what is
+    open.
   - **Messages, frame to builder only** (`cms-messages.ts`). The listener
     accepts a message only when `event.origin` is the platform URL's origin
     and `event.source` is the frame's `contentWindow`, and parses it with
@@ -1693,10 +1735,12 @@ collection }` invalidates, through `invalidateResource`, every current
     `{ type: "cms.collection_changed", collection }` (`null` after a delete)
     shows a toast, "Collection changes appear after you reload the builder",
     with Reload (collections-sync has already written the Resources, §5.7);
-    `{ type: "cms.dirty", dirty }` sets the flag that guards the window's
-    `beforeunload`, its only use, since nothing else discards the frame;
+    `{ type: "cms.dirty", dirty }` sets the frame's flag
+    (`$cmsFrameDirty`), one of the two that make `$cmsDirty`, which guards the
+    window's `beforeunload`; `cms.item_saved` and `cms.collection_changed` also
+    refetch the native screen's lists;
     `{ type: "cms.close_requested" }`, with nothing beside its type, hides
-    the overlay. Anything else, a nested `payload` included, is dropped. No
+    the overlay, or, with the native screen on, returns to it. Anything else, a nested `payload` included, is dropped. No
     message chooses an org, a collection's data or a permission.
 - One link sits at the foot of the OrganizeOS section while it lists a block
   that reads the org's data (the Events and Signups blocks): "Manage in
@@ -1757,7 +1801,11 @@ collection }` invalidates, through `invalidateResource`, every current
     one), Add list, Add to this page and, only when the sitemap lists a
     collection with no item page, Remove from sitemap. Other catalog rows keep
     their button. The menu holds options only: no help text, the row's name in
-    a tooltip.
+    a tooltip. The CMS column is the menu's second mount (Design mode,
+    `blocksEnabled`, a collection with a catalog Resource), without Add to this
+    page; there Create item page, Open item page and Add list hide the
+    overlay, Remove from sitemap toasts "Removed from sitemap", and an
+    orphan's Remove from sitemap is in its "..." menu.
   - **The plan gate.** Create item page and Add list are disabled, with a plain
     label (a `Chip` reading `planBadgeLabel`, as every plan badge is, §7), when
     `$permissions` lacks `allowDynamicData`. Open item page, Add to this page

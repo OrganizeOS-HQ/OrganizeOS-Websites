@@ -213,11 +213,12 @@ export type CmsSource = {
    * E6 `POST /collections/{collectionId}/items`. `clientId` is minted once
    * when a new item's editor opens and sent with every attempt until one
    * succeeds: a repeat answers 200 with the item the first one made.
+   * `created` is true on a 201, and false on that 200, a replay.
    */
   createItem: (
     collectionId: string,
     body: { clientId: string; slug?: string; data: CmsItemData }
-  ) => Promise<CmsResult<{ item: CmsItem }>>;
+  ) => Promise<CmsResult<{ item: CmsItem; created: boolean }>>;
   /** E7 `PUT /collections/{collectionId}/items/{itemId}` */
   updateItem: (
     collectionId: string,
@@ -240,15 +241,4 @@ export type CmsSource = {
   uploadImage: (
     file: File
   ) => Promise<CmsResult<{ url: string; path: string }>>;
-};
-
-/**
- * What the column itself draws from the build's catalog (4.5): the stale
- * line under a row. W2 derives it from `findStaleItemPages` and the stale
- * join, keyed by collection slug. The menus and the orphan rows are W2's
- * own components, passed in as render slots.
- */
-export type CmsCatalogView = {
-  /** Collections one of whose item pages reads an old address. */
-  staleSlugs: readonly string[];
 };

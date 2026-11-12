@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
-import type { Resource } from "@webstudio-is/sdk";
 import {
   theme,
   Box,
@@ -15,29 +13,23 @@ import {
 import { $organizeosSite, $selectedPage } from "~/shared/nano-states";
 import { platformName } from "~/shared/branding";
 import {
-  type CatalogEntry,
-  findCatalogResources,
-  getCollectionPresetKey,
-  parseCollectionUrl,
-} from "~/shared/organizeos-preset-ids";
-import {
   $dataSources,
   $instances,
   $pages,
-  $project,
   $props,
   $resources,
 } from "~/shared/sync/data-stores";
 import {
   addCatalogResourceToPage,
-  findStaleItemPages,
   isCatalogResourceOnPage,
 } from "./organizeos-data";
-import {
-  findCollectionItemPage,
-  listSitemapCollections,
-} from "./collection-pages";
+import { findCollectionItemPage } from "./collection-pages";
 import { CollectionRow, OrphanRow } from "./collection-row-menu";
+import {
+  getCollectionSlug,
+  joinCatalog,
+  useCatalog,
+} from "./collection-catalog";
 
 /**
  * The OrganizeOS data tab of the left sidebar: the org's data catalog, which a
@@ -56,44 +48,6 @@ export const $isOrganizeosPanelAvailable = computed(
   $organizeosSite,
   (site) => site?.blocksEnabled === true
 );
-
-/**
- * The project's catalog, found by its deterministic ids, which take a hash to
- * derive, so it is refreshed asynchronously whenever the resources change.
- * Undefined until it first resolves, and with no project.
- */
-const useCatalog = () => {
-  const project = useStore($project);
-  const resources = useStore($resources);
-  const [catalog, setCatalog] = useState<CatalogEntry[]>();
-  useEffect(() => {
-    if (project === undefined) {
-      setCatalog(undefined);
-      return;
-    }
-    let isCurrent = true;
-    findCatalogResources(project.id, resources.values()).then(
-      (entries) => {
-        if (isCurrent) {
-          setCatalog(entries);
-        }
-      },
-      (error) => console.error(error)
-    );
-    return () => {
-      isCurrent = false;
-    };
-  }, [project, resources]);
-  return catalog;
-};
-
-/** A catalog entry's collection slug, when it is a collection's Resource. */
-const getCollectionSlug = ({ key, resource }: CatalogEntry) => {
-  const slug = parseCollectionUrl(resource.url)?.slug;
-  return slug !== undefined && key === getCollectionPresetKey(slug)
-    ? slug
-    : undefined;
-};
 
 const DataSection = () => {
   const catalog = useCatalog();
@@ -118,24 +72,8 @@ const DataSection = () => {
     );
   }
   const data = { pages, instances, props, dataSources, resources };
-  const catalogSlugs = new Set(
-    catalog.flatMap((entry) => getCollectionSlug(entry) ?? [])
-  );
-  // an item page left at an old address shows on the row of its collection's
-  // new address, found by the name Create item page gave the page, or on a
-  // row of its own
-  const stalePages = findStaleItemPages(data, catalogSlugs);
-  const isStaleFor = (resource: Resource) =>
-    stalePages.some(({ page }) => page.name === `${resource.name} template`);
-  const unmatchedStalePages = stalePages.filter(
-    ({ page }) =>
-      catalog.some(
-        ({ resource }) => page.name === `${resource.name} template`
-      ) === false
-  );
-  const sitemapOrphans = listSitemapCollections(data).filter(
-    (slug) => findCollectionItemPage(slug, pages) === undefined
-  );
+  const { catalogSlugs, isStaleFor, unmatchedStalePages, sitemapOrphans } =
+    joinCatalog(catalog, data);
   return (
     <Flex
       direction="column"

@@ -102,6 +102,9 @@ export default defineConfig({
       "@lexical/react/LexicalHistoryPlugin",
       "@lexical/react/LexicalLinkPlugin",
       "@lexical/react/LexicalRichTextPlugin",
+      // OrganizeOS fork: the native CMS's Lexical entry points (fork doc section 7).
+      "@lexical/react/LexicalListPlugin",
+      "@lexical/selection",
     ],
   },
   resolve: {
