@@ -3218,7 +3218,7 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
 - **The chooser** (`template-chooser.tsx`, mounted by one marked import and one
   marked `<TemplateChooser />` in `builder/builder.tsx`): "Start from a
   template", the offered templates under their category headings with a
-  thumbnail and one line each, and "Start blank". It is offered only when the
+  thumbnail and name each (no caption; `oneLine` stays in the data), and "Start blank". It is offered only when the
   data is loaded, the permit is `build`, `admin` or `own` (a viewer's or content
   editor's writes would not save), the project belongs to an OrganizeOS org not
   on the blocks deny list (§4; a template places blocks), the project is
@@ -3230,7 +3230,7 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   opens its Home, in Simple mode (the builder's Content mode) when the plan
   allows it (`$isContentModeAllowed`), in Design mode otherwise. A refused apply
   says why in one error toast: the site already has content (touched, or one of
-  the variables set), the template's pages clash with the site's, the runtime's
+  the variables set), "Its pages clash with this site's pages.", the runtime's
   own message when it refuses the write, or, for a template holding a Resource
   or with no project open, that the template cannot be applied. **Drafts** are
   offered beside the listed templates only when the builder's URL carries
