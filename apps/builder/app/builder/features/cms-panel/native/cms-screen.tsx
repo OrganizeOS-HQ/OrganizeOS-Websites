@@ -167,6 +167,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const [detail, setDetail] = useState<CmsCollection | undefined>(undefined);
     const [detailFailed, setDetailFailed] = useState(false);
     const [detailAttempt, setDetailAttempt] = useState(0);
+    const [pageFailed, setPageFailed] = useState(false);
+    const [pageAttempt, setPageAttempt] = useState(0);
     const [isEditorDirty, setIsEditorDirty] = useState(false);
     const [pending, setPending] = useState<
       { run: () => void; movesFocus: boolean } | undefined
@@ -192,6 +194,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const isLoadBackground = useIsBackgroundFetch();
     const isDetailBackground = useIsBackgroundFetch();
     const isPageBackground = useIsBackgroundFetch();
+    // read at E3's answer: whether a page is drawn to keep
+    const hasItemsPage = useRef(false);
+    hasItemsPage.current = itemsPage !== undefined;
     // The E3 inputs whose answer is already drawn: a page E3 answered in
     // place of the one asked for.
     const adoptedPageKey = useRef<string | undefined>(undefined);
@@ -347,7 +352,13 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       ) {
         return;
       }
-      const key = JSON.stringify([collectionId, page, query, listVersion]);
+      const key = JSON.stringify([
+        collectionId,
+        page,
+        query,
+        listVersion,
+        pageAttempt,
+      ]);
       const isBackground = isPageBackground(source, key);
       // the page E3 answered in place of the one asked for is drawn already
       if (adoptedPageKey.current === key) {
@@ -356,6 +367,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
       adoptedPageKey.current = undefined;
       let isCurrent = true;
+      if (isBackground === false) {
+        setPageFailed(false);
+      }
       void source
         .listItems(collectionId, { q: query === "" ? undefined : query, page })
         .then((result) => {
@@ -367,10 +381,17 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             if (refusal !== undefined) {
               setLine(refusal);
             } else if (isBackground === false) {
-              toast.error(getToastText(result.error));
+              // a page on screen stays, with the toast; with none drawn,
+              // the line and its Retry (4.3.4)
+              if (hasItemsPage.current) {
+                toast.error(getToastText(result.error));
+              } else {
+                setPageFailed(true);
+              }
             }
             return;
           }
+          setPageFailed(false);
           setItemsPage(result);
           // a page past the end answers the last one (A4): the screen
           // keeps that page from here on
@@ -380,6 +401,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
               result.page,
               query,
               listVersion,
+              pageAttempt,
             ]);
             setPage(result.page);
           }
@@ -394,6 +416,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       page,
       query,
       listVersion,
+      pageAttempt,
       opens,
       refresh,
       isPageBackground,
@@ -552,6 +575,14 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             onRefusal={setLine}
             onOpenHome={onOpenHome}
             onOpenClassic={showClassic}
+          />
+        );
+      }
+      if (pageFailed && itemsPage === undefined) {
+        return (
+          <RefusalLine
+            kind="unavailable"
+            onRetry={() => setPageAttempt((current) => current + 1)}
           />
         );
       }

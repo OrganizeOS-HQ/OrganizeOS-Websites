@@ -406,6 +406,44 @@ describe("refusals on a load", () => {
       expect(lineButtons()).toEqual(["Retry"]);
     }
   );
+
+  test("a first page answered unavailable: Try again in a minute, with Retry, which reads the page again and draws its rows", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    fake.listItems.mockResolvedValueOnce({ error: "unavailable" });
+    mount({ homeUrl: HOME });
+    await settle();
+    expect(line()?.textContent).toBe("Try again in a minute" + "Retry");
+    expect(toastError).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-cms-item-id]")).toBeNull();
+    expect(fake.listItems).toHaveBeenCalledTimes(1);
+    await click(buttonByText("Retry"));
+    expect(fake.listItems).toHaveBeenCalledTimes(2);
+    expect(fake.listItems).toHaveBeenLastCalledWith(POSTS.id, {
+      q: undefined,
+      page: 1,
+    });
+    expect(line()).toBeNull();
+    expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
+  });
+
+  test("a page answered unavailable while another page is drawn: the toast, and the drawn page stays", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    mount({ homeUrl: HOME });
+    await settle();
+    fake.listItems.mockResolvedValueOnce({ error: "unavailable" });
+    await act(async () => userEvent.type(byLabel("Search Posts")!, "x"));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+    await settle();
+    expect(fake.listItems).toHaveBeenLastCalledWith(POSTS.id, {
+      q: "x",
+      page: 1,
+    });
+    expect(toastError).toHaveBeenCalledWith("Try again in a minute");
+    expect(line()).toBeNull();
+    expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
+  });
 });
 
 describe("refusals on a write", () => {
