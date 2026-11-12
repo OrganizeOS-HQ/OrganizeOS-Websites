@@ -1,6 +1,9 @@
 /**
- * The native screen's nanostores, in a module of their own so the overlay
- * can read them without importing the screen (and Lexical) into its chunk.
+ * The native screen's nanostores. `native/` imports `cms-panel.tsx` for types
+ * only, and `cms-panel.tsx` imports from `native/` only this module,
+ * `cms-canvas.ts` and `cms-native-screen.tsx`, so the flags both sides share
+ * live here. Lexical stays out of the first load through `field-controls.tsx`,
+ * which loads the rich-text field lazily.
  */
 import { atom } from "nanostores";
 
