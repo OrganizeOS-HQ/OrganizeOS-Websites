@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   Box,
+  Checkbox,
   Flex,
   Grid,
   InputErrorsTooltip,
@@ -20,7 +21,14 @@ import {
 import type { StyleValue } from "@webstudio-is/css-engine";
 import type { VariableType } from "@webstudio-is/project-build";
 import type { CollectionView, VariableRow } from "./reader";
-import { createVariable, reorderVariable } from "./operations";
+import {
+  createVariable,
+  deleteVariables,
+  getVariableUsage,
+  reorderVariable,
+} from "./operations";
+import { DeleteDialog } from "./delete-dialog";
+import { RowMenu } from "./row-menu";
 import { VARIABLE_TYPE_LABELS } from "./value-types";
 import { NameCell } from "./name-cell";
 import { ValueCell } from "./value-cell";
@@ -37,6 +45,37 @@ const rowCss = {
   px: theme.spacing[5],
   borderBottom: `1px solid ${cssVar("--border-default")}`,
 } as const;
+
+/** Select mode's state, held by the manager (spec 5.6). */
+export type Selection = {
+  active: boolean;
+  selected: ReadonlySet<string>;
+  /** `order` is the visible rows' CSS names, for a Shift-click's range */
+  onToggle: (cssName: string, range: boolean, order: readonly string[]) => void;
+  onSetMany: (cssNames: readonly string[], on: boolean) => void;
+};
+
+/** A checkbox over several rows: checked when every one is selected. */
+const ManyCheckbox = ({
+  cssNames,
+  selection,
+}: {
+  cssNames: readonly string[];
+  selection: Selection;
+}) => {
+  const all =
+    cssNames.length > 0 &&
+    cssNames.every((cssName) => selection.selected.has(cssName));
+  return (
+    <Checkbox
+      checked={all}
+      onClick={(event) => {
+        event.stopPropagation();
+        selection.onSetMany(cssNames, all === false);
+      }}
+    />
+  );
+};
 
 /** A group's rows, or a run of rows with no group, in collection order. */
 type Segment = { group?: string; rows: VariableRow[] };
@@ -69,18 +108,34 @@ const segmentsOf = (rows: readonly VariableRow[]) => {
 const RowView = ({
   row,
   rows,
+  collections,
   readOnly,
   showLeaf,
   canDrag,
+  selection,
+  order,
   onMove,
 }: {
   row: VariableRow;
   rows: readonly VariableRow[];
+  collections: readonly CollectionView[];
   readOnly: boolean;
   showLeaf: boolean;
   canDrag: boolean;
+  selection: Selection;
+  order: readonly string[];
   onMove: (direction: -1 | 1) => void;
 }) => {
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [uses, setUses] = useState<number>();
+  const requestDelete = () => {
+    const count = getVariableUsage(row.cssName);
+    if (count === 0) {
+      deleteVariables([row.cssName]);
+      return;
+    }
+    setUses(count);
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget) {
       return;
@@ -118,21 +173,57 @@ const RowView = ({
       }}
     >
       <Flex role="cell" justify="center">
-        {canDrag && (
-          <DragHandleIcon
-            data-id={row.cssName}
-            color={cssVar("--foreground-secondary")}
-            style={{ cursor: "grab" }}
-          />
-        )}
+        {selection.active
+          ? row.locked === false && (
+              <Checkbox
+                checked={selection.selected.has(row.cssName)}
+                onClick={(event) =>
+                  selection.onToggle(row.cssName, event.shiftKey, order)
+                }
+              />
+            )
+          : canDrag && (
+              <DragHandleIcon
+                data-id={row.cssName}
+                color={cssVar("--foreground-secondary")}
+                style={{ cursor: "grab" }}
+              />
+            )}
       </Flex>
       <Box role="cell" css={{ minWidth: 0 }}>
-        <NameCell row={row} readOnly={readOnly} showLeaf={showLeaf} />
+        <NameCell
+          row={row}
+          readOnly={readOnly}
+          showLeaf={showLeaf}
+          editing={isRenaming}
+          onEditingChange={setIsRenaming}
+        />
       </Box>
       <Box role="cell" css={{ minWidth: 0 }}>
         <ValueCell row={row} rows={rows} readOnly={readOnly} />
       </Box>
-      <Box role="cell" />
+      <Flex role="cell" justify="center">
+        <RowMenu
+          row={row}
+          collections={collections}
+          readOnly={readOnly}
+          onRename={() => setIsRenaming(true)}
+          onDelete={requestDelete}
+        />
+        <DeleteDialog
+          open={uses !== undefined}
+          name={row.displayName}
+          uses={uses ?? 0}
+          onConfirm={() => {
+            deleteVariables([row.cssName]);
+          }}
+          onOpenChange={(open) => {
+            if (open === false) {
+              setUses(undefined);
+            }
+          }}
+        />
+      </Flex>
     </Grid>
   );
 };
@@ -141,20 +232,27 @@ const SegmentView = ({
   segment,
   collectionRows,
   allRows,
+  collections,
   readOnly,
   isSearching,
   isCollapsed,
+  selection,
+  order,
   onToggle,
 }: {
   segment: Segment;
   collectionRows: readonly VariableRow[];
   allRows: readonly VariableRow[];
+  collections: readonly CollectionView[];
   readOnly: boolean;
   isSearching: boolean;
   isCollapsed: boolean;
+  selection: Selection;
+  order: readonly string[];
   onToggle: () => void;
 }) => {
-  const canDrag = readOnly === false && isSearching === false;
+  const canDrag =
+    readOnly === false && isSearching === false && selection.active === false;
   const items = segment.rows.map((row) => ({ id: row.cssName }));
   /** The collection-rows index the contract's reorder takes. */
   const rowsIndexOf = (row: VariableRow | undefined) =>
@@ -180,7 +278,18 @@ const SegmentView = ({
           onClick={onToggle}
         >
           <Flex role="cell" justify="center">
-            {isCollapsed ? <ChevronRightIcon /> : <ChevronDownIcon />}
+            {selection.active ? (
+              <ManyCheckbox
+                cssNames={segment.rows
+                  .filter((row) => row.locked === false)
+                  .map((row) => row.cssName)}
+                selection={selection}
+              />
+            ) : isCollapsed ? (
+              <ChevronRightIcon />
+            ) : (
+              <ChevronDownIcon />
+            )}
           </Flex>
           <Text role="cell" variant="labels" truncate>
             {segment.group}
@@ -194,9 +303,12 @@ const SegmentView = ({
               key={row.cssName}
               row={row}
               rows={allRows}
+              collections={collections}
               readOnly={readOnly}
               showLeaf={segment.group !== undefined}
               canDrag={canDrag && row.locked === false}
+              selection={selection}
+              order={order}
               onMove={(direction) => {
                 const target = segment.rows[index + direction];
                 if (readOnly === false && target !== undefined) {
@@ -304,11 +416,13 @@ export const VariablesTable = ({
   collection,
   rows,
   allRows,
+  collections,
   readOnly,
   canAdd,
   isSearching,
   draftType,
   bodyFont,
+  selection,
   onDraftEnd,
   onNewVariable,
 }: {
@@ -317,23 +431,41 @@ export const VariablesTable = ({
   rows: readonly VariableRow[];
   /** every collection's rows, for links */
   allRows: readonly VariableRow[];
+  collections: readonly CollectionView[];
   readOnly: boolean;
   canAdd: boolean;
   isSearching: boolean;
   draftType: VariableType | undefined;
   bodyFont: StyleValue | undefined;
+  selection: Selection;
   onDraftEnd: () => void;
   onNewVariable: (type: VariableType) => void;
 }) => {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const segments = segmentsOf(rows);
+  // the visible rows in display order, for a Shift-click's range
+  const order = segments.flatMap((segment) =>
+    segment.rows.map((row) => row.cssName)
+  );
+  const selectable = segments.flatMap((segment) =>
+    segment.rows.filter((row) => row.locked === false).map((row) => row.cssName)
+  );
   return (
     <Box
       role="table"
       aria-label={collection.name}
       css={{ overflowY: "auto", flexGrow: 1, minHeight: 0 }}
     >
-      <Grid role="row" css={{ ...rowCss, minHeight: theme.spacing[11] }}>
-        <Box role="columnheader" />
+      <Grid
+        role="row"
+        data-variables-header
+        css={{ ...rowCss, minHeight: theme.spacing[11] }}
+      >
+        <Flex role="columnheader" justify="center">
+          {selection.active && (
+            <ManyCheckbox cssNames={selectable} selection={selection} />
+          )}
+        </Flex>
         <Text role="columnheader" variant="labels">
           Name
         </Text>
@@ -342,14 +474,17 @@ export const VariablesTable = ({
         </Text>
         <Box role="columnheader" />
       </Grid>
-      {segmentsOf(rows).map((segment, index) => (
+      {segments.map((segment, index) => (
         <SegmentView
           key={segment.group ?? `run-${index}`}
           segment={segment}
           collectionRows={collection.rows}
           allRows={allRows}
+          collections={collections}
           readOnly={readOnly}
           isSearching={isSearching}
+          selection={selection}
+          order={order}
           isCollapsed={
             segment.group !== undefined && collapsed.has(segment.group)
           }

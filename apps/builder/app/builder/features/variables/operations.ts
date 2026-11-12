@@ -991,7 +991,7 @@ export const groupVariables = (
   if (trimmed.includes("/")) {
     return commitPrepared(refuse("Use a name without /"));
   }
-  const renames = [];
+  const renames: Array<(accumulator: RuntimeMutationAccumulator) => void> = [];
   for (const cssName of cssNames) {
     const row = findRow(cssName);
     const prepared = prepareRenameVariable({
@@ -1001,14 +1001,14 @@ export const groupVariables = (
     if (prepared.ok === false) {
       return commitPrepared(prepared);
     }
-    renames.push(prepared);
+    renames.push(prepared.stage);
   }
   return commitPrepared({
     ok: true,
     result: {},
     stage: (accumulator) => {
-      for (const rename of renames) {
-        rename.stage(accumulator);
+      for (const stage of renames) {
+        stage(accumulator);
       }
     },
   });
