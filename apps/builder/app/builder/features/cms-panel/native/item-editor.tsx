@@ -342,7 +342,15 @@ export const ItemEditor = ({
       setBusy(undefined);
     }
     if (isCmsFailure(result)) {
+      // Reload is the way on; a refusal is answered as on a write, so the
+      // view stays unless the session itself needs the person
       setConflict(true);
+      const refusal = getRefusal(result.error, "write");
+      if (refusal !== undefined) {
+        onRefusal(refusal);
+      } else if (result.error === "forbidden" || result.error === "plan") {
+        toast.error(getToastText(result.error));
+      }
       return;
     }
     if (result.item.updatedAt === sent.updatedAt) {
@@ -579,7 +587,9 @@ export const ItemEditor = ({
       setBusy(undefined);
     }
     if (isCmsFailure(result)) {
-      fail(result, undefined, "load");
+      // the editor holds the person's values: refused as a write is, so the
+      // view and the conflict line with its Reload stay
+      fail(result);
       return;
     }
     setKept(keepAside({ fields, kept, baseline, baselineSlug, values, slug }));

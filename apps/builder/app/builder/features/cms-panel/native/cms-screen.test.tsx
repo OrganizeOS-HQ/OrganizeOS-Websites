@@ -779,3 +779,98 @@ describe("the unsaved guard, and Classic CMS's deep link", () => {
     });
   });
 });
+
+const conflictLine = () =>
+  document.querySelector<HTMLElement>("[data-cms-conflict]");
+
+/** Edits the Title to "Mine", then a Save answered `conflict`. */
+const editIntoConflict = async () => {
+  await editTitle();
+  fake.updateItem.mockResolvedValue({ error: "conflict" });
+  await click(buttonByText("Save"));
+  expect(conflictLine()?.textContent).toContain("Changed by someone else");
+  expect(buttonByText("Reload")).toBeTruthy();
+};
+
+/** Edits the Title to "Mine", then a Save whose answer was lost. */
+const editIntoUnknownOutcome = async () => {
+  await editTitle();
+  fake.updateItem.mockResolvedValue({ error: "unavailable" });
+};
+
+describe("refusals on the reads that hold the person's values", () => {
+  test.each([
+    ["forbidden", "No access"],
+    ["plan", "Not in plan"],
+  ] as const)(
+    "a Reload answered %s: the toast %s; the editor, its values and the conflict line stay",
+    async (error, text) => {
+      const toastError = vi.spyOn(toast, "error");
+      mount({ homeUrl: HOME });
+      await settle();
+      await editIntoConflict();
+      fake.getItem.mockResolvedValue({ error });
+      await click(buttonByText("Reload"));
+      expect(toastError).toHaveBeenCalledWith(text);
+      expect(line()).toBeNull();
+      expect(isEditorShown()).toBe(true);
+      expect(titleInput()?.value).toBe("Mine");
+      expect($cmsNativeDirty.get()).toBe(true);
+      expect(conflictLine()?.textContent).toContain("Changed by someone else");
+      expect(buttonByText("Reload")).toBeTruthy();
+    }
+  );
+
+  test("a Reload answered unauthorized shows Signed out of OrganizeOS, and the edits are kept", async () => {
+    mount({ homeUrl: HOME, navigate: vi.fn() });
+    await settle();
+    await editIntoConflict();
+    fake.getItem.mockResolvedValue({ error: "unauthorized" });
+    await click(buttonByText("Reload"));
+    expect(line()?.textContent).toContain("Signed out of OrganizeOS");
+    expect(isEditorShown()).toBe(false);
+    expect(titleInput()?.value).toBe("Mine");
+    expect($cmsNativeDirty.get()).toBe(true);
+  });
+
+  test.each([
+    ["forbidden", "No access"],
+    ["plan", "Not in plan"],
+  ] as const)(
+    "the read after a lost answer, answered %s: the toast %s; the editor, its values and the conflict line stay",
+    async (error, text) => {
+      const toastError = vi.spyOn(toast, "error");
+      mount({ homeUrl: HOME });
+      await settle();
+      await editIntoUnknownOutcome();
+      fake.getItem.mockResolvedValue({ error });
+      await click(buttonByText("Save"));
+      expect(toastError).toHaveBeenCalledWith(text);
+      expect(line()).toBeNull();
+      expect(isEditorShown()).toBe(true);
+      expect(titleInput()?.value).toBe("Mine");
+      expect(conflictLine()?.textContent).toContain("Changed by someone else");
+      expect(buttonByText("Reload")).toBeTruthy();
+    }
+  );
+
+  test("the read after a lost answer, answered unauthorized, shows Signed out of OrganizeOS, and the edits are kept", async () => {
+    mount({ homeUrl: HOME, navigate: vi.fn() });
+    await settle();
+    await editIntoUnknownOutcome();
+    fake.getItem.mockResolvedValue({ error: "unauthorized" });
+    await click(buttonByText("Save"));
+    expect(line()?.textContent).toContain("Signed out of OrganizeOS");
+    expect(isEditorShown()).toBe(false);
+    expect(titleInput()?.value).toBe("Mine");
+    expect($cmsNativeDirty.get()).toBe(true);
+  });
+
+  test("opening an item answered forbidden still shows the screen's line", async () => {
+    fake.getItem.mockResolvedValue({ error: "forbidden" });
+    mount({ homeUrl: HOME });
+    await settle();
+    await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+    expect(line()?.textContent).toContain("No access to the CMS");
+  });
+});
