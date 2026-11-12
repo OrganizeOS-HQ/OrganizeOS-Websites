@@ -20,11 +20,9 @@ import {
   Tooltip,
 } from "@webstudio-is/design-system";
 import { EllipsesIcon, XIcon } from "@webstudio-is/icons";
-import type { CmsCatalogView, CmsCollectionSummary } from "./cms-source";
+import type { CmsCatalogSlots } from "./cms-screen";
+import type { CmsCollectionSummary } from "./cms-source";
 import { TruncatedText } from "./truncated-text";
-
-/** The data tab's warning line (`collection-row-menu.tsx` `staleAddressLine`). */
-const STALE_ADDRESS_LINE = "Item page uses an old address";
 
 const rowStyle = css({
   position: "relative",
@@ -52,11 +50,14 @@ const staleLineStyle = css({
   paddingBottom: theme.spacing[3],
 });
 
+const isDrawn = (node: ReactNode) =>
+  node !== null && node !== undefined && node !== false;
+
 const CollectionRow = ({
   index,
   collection,
   isCurrent,
-  isStale,
+  staleLine,
   actions,
   reserveMenu,
   onSelect,
@@ -64,8 +65,9 @@ const CollectionRow = ({
   index: number;
   collection: CmsCollectionSummary;
   isCurrent: boolean;
-  isStale: boolean;
-  /** W2's `CollectionActionsMenu`, or nothing for a private collection. */
+  /** The stale item page's line, or nothing. */
+  staleLine: ReactNode;
+  /** The collection's actions menu, or nothing without a catalog Resource. */
   actions: ReactNode;
   /** Keeps every count in one column, menu or not. */
   reserveMenu: boolean;
@@ -98,46 +100,33 @@ const CollectionRow = ({
         </Text>
       </InsetListItem>
     </ListItem>
-    {actions !== null && actions !== undefined && actions !== false && (
+    {isDrawn(actions) && (
       <div className={rowMenuSlotStyle()} data-cms-row-menu>
         {actions}
       </div>
     )}
-    {isStale && (
-      <Text color="destructive" className={staleLineStyle()}>
-        {STALE_ADDRESS_LINE}
-      </Text>
-    )}
+    {isDrawn(staleLine) && <div className={staleLineStyle()}>{staleLine}</div>}
   </div>
 );
 
 export const CollectionsColumn = ({
   collections,
   currentCollectionId,
-  catalog,
-  renderCollectionActions,
-  footer,
+  slots,
   onSelectCollection,
   onShowClassic,
   onClose,
 }: {
   collections: CmsCollectionSummary[];
   currentCollectionId: string | undefined;
-  catalog: CmsCatalogView | undefined;
-  /**
-   * Each row's "..." (4.5): W2's `CollectionActionsMenu`, with its Add list
-   * popover, busy state and plan chip. Called only when the actions are
-   * allowed; returns nothing for a row with no catalog Resource.
-   */
-  renderCollectionActions?: (collection: CmsCollectionSummary) => ReactNode;
-  /** The orphan rows at the foot (4.5): W2 renders the data tab's. */
-  footer?: ReactNode;
+  /** The build's side (4.5): undefined where the actions are not allowed. */
+  slots: CmsCatalogSlots | undefined;
   onSelectCollection: (collectionId: string) => void;
   /** "Classic CMS" (4.6), run once the menu has closed. */
   onShowClassic: () => void;
   onClose: () => void;
 }) => {
-  const staleSlugs = catalog?.staleSlugs ?? [];
+  const footer = slots?.footer;
   // The menu's choice runs once the menu has closed, so the focus it moves
   // is not taken back by the menu.
   const classicChosen = useRef(false);
@@ -211,16 +200,16 @@ export const CollectionsColumn = ({
                 index={index}
                 collection={collection}
                 isCurrent={collection.id === currentCollectionId}
-                isStale={staleSlugs.includes(collection.slug)}
-                actions={renderCollectionActions?.(collection)}
-                reserveMenu={renderCollectionActions !== undefined}
+                staleLine={slots?.renderStaleLine(collection)}
+                actions={slots?.renderActions(collection)}
+                reserveMenu={slots !== undefined}
                 onSelect={() => onSelectCollection(collection.id)}
               />
             ))}
           </InsetList>
         </List>
       </ScrollAreaNative>
-      {footer !== undefined && footer !== null && (
+      {isDrawn(footer) && (
         <>
           <Separator />
           <Flex

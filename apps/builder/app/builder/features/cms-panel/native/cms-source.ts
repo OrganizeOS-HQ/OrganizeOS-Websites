@@ -241,14 +241,3 @@ export type CmsSource = {
     file: File
   ) => Promise<CmsResult<{ url: string; path: string }>>;
 };
-
-/**
- * What the column itself draws from the build's catalog (4.5): the stale
- * line under a row. W2 derives it from `findStaleItemPages` and the stale
- * join, keyed by collection slug. The menus and the orphan rows are W2's
- * own components, passed in as render slots.
- */
-export type CmsCatalogView = {
-  /** Collections one of whose item pages reads an old address. */
-  staleSlugs: readonly string[];
-};

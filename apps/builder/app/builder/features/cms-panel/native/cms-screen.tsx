@@ -37,7 +37,6 @@ import { $cmsNativeDirty, $cmsNativeRefresh } from "./cms-native-stores";
 import {
   isCmsFailure,
   type CmsAccess,
-  type CmsCatalogView,
   type CmsCollection,
   type CmsCollectionSummary,
   type CmsItem,
@@ -78,12 +77,24 @@ export type CmsScreenProps = {
   onItemWritten?: (collectionSlug: string, item: CmsItem) => void;
   /** Where to open; stories only. */
   initialView?: CmsScreenView;
-  /** What the column draws from the build's catalog (4.5). */
-  catalog?: CmsCatalogView;
-  /** Each row's "..." (4.5), only where the actions are allowed. */
-  renderCollectionActions?: (collection: CmsCollectionSummary) => ReactNode;
-  /** The orphan rows at the column's foot (4.5). */
-  collectionsFooter?: ReactNode;
+  /**
+   * The build's side of the column (4.5), for E1's collections: given only
+   * where the collection actions are allowed; undefined until the build's
+   * catalog has resolved.
+   */
+  catalogSlots?: (
+    collections: readonly CmsCollectionSummary[]
+  ) => CmsCatalogSlots | undefined;
+};
+
+/** What the column draws from the build's catalog (4.5). */
+export type CmsCatalogSlots = {
+  /** A row's "..." menu; null for a collection with no catalog Resource. */
+  renderActions: (collection: CmsCollectionSummary) => ReactNode;
+  /** The line under a row; null when its item page is not stale. */
+  renderStaleLine: (collection: CmsCollectionSummary) => ReactNode;
+  /** The orphan rows at the column's foot. */
+  footer: ReactNode;
 };
 
 const Root = styled("div", {
@@ -139,9 +150,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       navigate = defaultNavigate,
       onItemWritten,
       initialView,
-      catalog,
-      renderCollectionActions,
-      collectionsFooter,
+      catalogSlots,
     },
     ref
   ) => {
@@ -520,11 +529,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         <CollectionsColumn
           collections={collections}
           currentCollectionId={line === undefined ? collectionId : undefined}
-          catalog={isReady ? catalog : undefined}
-          renderCollectionActions={
-            isReady ? renderCollectionActions : undefined
-          }
-          footer={isReady ? collectionsFooter : undefined}
+          slots={isReady ? catalogSlots?.(collections) : undefined}
           onSelectCollection={selectCollection}
           onShowClassic={() => onShowClassic({})}
           onClose={onClose}

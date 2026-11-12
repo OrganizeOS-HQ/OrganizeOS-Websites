@@ -3,16 +3,14 @@ import { cssVar, Toaster } from "@webstudio-is/design-system";
 import { CmsScreen, type CmsScreenView } from "./cms-screen";
 import type { CmsAccess } from "./cms-source";
 import {
-  renderSampleCollectionActions,
   sampleCatalog,
-  SampleOrphanRows,
+  sampleCatalogSlots,
   type SampleCatalog,
 } from "./sample-collection-actions";
 import {
   createSampleCmsSource,
   SAMPLE_COLLECTION_IDS,
   SAMPLE_ITEM_IDS,
-  sampleCatalogView,
   type SampleCmsFlags,
   type SampleCmsSource,
 } from "./sample-cms-source";
@@ -93,9 +91,7 @@ const Overlay = ({
     >
       <CmsScreen
         source={source}
-        catalog={sampleCatalogView}
-        renderCollectionActions={renderSampleCollectionActions(catalog)}
-        collectionsFooter={<SampleOrphanRows catalog={catalog} />}
+        catalogSlots={sampleCatalogSlots(catalog)}
         initialView={view}
         homeUrl="https://app.organizeos.org/dashboard"
         hidden={false}
