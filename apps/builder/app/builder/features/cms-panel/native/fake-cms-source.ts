@@ -96,12 +96,13 @@ export const createFakeCmsSource = (): FakeCmsSource => ({
   listCollections: vi.fn<CmsSource["listCollections"]>(async () => ({
     collections: [POSTS, PEOPLE],
   })),
+  // a fresh copy per call, as each answer of the platform is
   getCollection: vi.fn<CmsSource["getCollection"]>(async (collectionId) => {
     if (collectionId === POSTS.id) {
-      return { collection: POSTS_DETAIL };
+      return { collection: structuredClone(POSTS_DETAIL) };
     }
     if (collectionId === PEOPLE.id) {
-      return { collection: PEOPLE_DETAIL };
+      return { collection: structuredClone(PEOPLE_DETAIL) };
     }
     return { error: "not_found" };
   }),

@@ -223,13 +223,16 @@ export const ItemEditor = ({
   // the latest callback: a new one never restarts the item's load
   const onRefusalRef = useRef(onRefusal);
   onRefusalRef.current = onRefusal;
+  // the latest fields: a refetch of the fields never restarts the item's load
+  const applyItemRef = useRef(applyItem);
+  applyItemRef.current = applyItem;
   useEffect(() => {
     if (loadedId.current === itemId) {
       return;
     }
     loadedId.current = itemId;
     if (itemId === null) {
-      applyItem(null);
+      applyItemRef.current(null);
       return;
     }
     let isCurrent = true;
@@ -255,12 +258,12 @@ export const ItemEditor = ({
         });
         return;
       }
-      applyItem(result.item);
+      applyItemRef.current(result.item);
     });
     return () => {
       isCurrent = false;
     };
-  }, [source, collection.id, itemId, applyItem, loadAttempt]);
+  }, [source, collection.id, itemId, loadAttempt]);
 
   // What a refetch's answer is checked against when it arrives.
   const latest = useRef({ item, isDirty, busy });

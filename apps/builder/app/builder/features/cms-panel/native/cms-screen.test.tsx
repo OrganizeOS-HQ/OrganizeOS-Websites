@@ -8,7 +8,7 @@ import { userEvent } from "@vitest/browser/context";
 import { toast, TooltipProvider } from "@webstudio-is/design-system";
 import { CmsScreen, type CmsScreenProps } from "./cms-screen";
 import { $cmsNativeDirty, refreshCmsNative } from "./cms-native-stores";
-import type { CmsErrorCode } from "./cms-source";
+import type { CmsErrorCode, CmsItem, CmsResult } from "./cms-source";
 import {
   createFakeCmsSource,
   itemOf,
@@ -872,6 +872,31 @@ describe("refusals on the reads that hold the person's values", () => {
     await settle();
     await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
     expect(line()?.textContent).toContain("No access to the CMS");
+  });
+});
+
+const deferred = <T,>() => {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+};
+
+describe("answers that arrive after the screen moved on", () => {
+  test("an item's first load survives a refetch of the fields while it is in flight", async () => {
+    mount();
+    await settle();
+    const held = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.getItem.mockReturnValueOnce(held.promise);
+    await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+    const fieldCalls = fake.getCollection.mock.calls.length;
+    act(() => refreshCmsNative());
+    await settle();
+    expect(fake.getCollection.mock.calls.length).toBeGreaterThan(fieldCalls);
+    await act(async () => held.resolve({ item: itemOf() }));
+    await settle();
+    expect(titleInput()?.value).toBe("Hello");
   });
 });
 
