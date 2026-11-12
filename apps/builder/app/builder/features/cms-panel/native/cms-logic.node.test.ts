@@ -321,6 +321,75 @@ describe("kept values", () => {
     ).toEqual([]);
   });
 
+  test("keepAside keeps only what the person changed", () => {
+    const kept = keepAside({
+      fields: POSTS_DETAIL.fields,
+      kept: undefined,
+      baseline: { title: "A", summary: "S", author: null },
+      baselineSlug: "a",
+      values: { title: "Mine", summary: "S", author: null },
+      slug: "a",
+    });
+    expect(kept.values).toEqual({ title: "Mine" });
+    expect(kept.slug).toBeUndefined();
+  });
+
+  test("a field only someone else changed gets no Use my edit", () => {
+    const kept = keepAside({
+      fields: POSTS_DETAIL.fields,
+      kept: undefined,
+      baseline: { title: "A", summary: "S", author: null },
+      baselineSlug: "a",
+      values: { title: "Mine", summary: "S", author: null },
+      slug: "a",
+    });
+    // after Reload the editor shows the platform's values
+    expect(
+      getKeptDifferences({
+        fields: POSTS_DETAIL.fields,
+        kept,
+        values: { title: "Theirs", summary: "Theirs S", author: null },
+        slug: "theirs",
+      })
+    ).toEqual(["title"]);
+  });
+
+  test("a second Reload keeps an earlier kept value for a field untouched since", () => {
+    const first = { values: { title: "Mine" }, slug: "mine" };
+    const theirs = { title: "Theirs", summary: "Theirs S", author: null };
+    // nothing touched since the first Reload: it keeps what that one kept
+    const untouched = keepAside({
+      fields: POSTS_DETAIL.fields,
+      kept: first,
+      baseline: theirs,
+      baselineSlug: "theirs",
+      values: theirs,
+      slug: "theirs",
+    });
+    expect(untouched).toEqual({ values: { title: "Mine" }, slug: "mine" });
+    // a field changed since joins it; a field nobody changed stays out
+    const touched = keepAside({
+      fields: POSTS_DETAIL.fields,
+      kept: first,
+      baseline: theirs,
+      baselineSlug: "theirs",
+      values: { ...theirs, summary: "Newer" },
+      slug: "theirs",
+    });
+    expect(touched).toEqual({
+      values: { title: "Mine", summary: "Newer" },
+      slug: "mine",
+    });
+    expect(
+      getKeptDifferences({
+        fields: POSTS_DETAIL.fields,
+        kept: touched,
+        values: { title: "Newest", summary: "Theirs S", author: null },
+        slug: "theirs",
+      })
+    ).toEqual(["title", "summary", "slug"]);
+  });
+
   test("a second Reload keeps an edit still waiting for Use my edit", () => {
     const first = { values: { name: "Mine", summary: "Mine too" }, slug: "x" };
     const second = keepAside({

@@ -15,6 +15,10 @@ import {
   DialogClose,
   DialogContent,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Flex,
   Grid,
   IconButton,
@@ -25,7 +29,7 @@ import {
   toast,
   Tooltip,
 } from "@webstudio-is/design-system";
-import { ChevronLeftIcon, ResetIcon } from "@webstudio-is/icons";
+import { ChevronLeftIcon, EllipsesIcon } from "@webstudio-is/icons";
 import {
   emptyItemData,
   emptyValueFor,
@@ -64,8 +68,8 @@ import { TruncatedText } from "./truncated-text";
  */
 const editorColumnMaxWidth = `calc(${theme.spacing[35]} + 2 * ${theme.spacing[9]})`;
 
-/** Below this the header's Discard changes becomes an icon. */
-const COMPACT_HEADER_WIDTH = 600;
+/** Below this header width, Discard changes moves into the Item menu. */
+export const COMPACT_HEADER_WIDTH = 600;
 
 type Busy = "save" | "publish" | "discard" | "reload";
 
@@ -148,10 +152,13 @@ export const ItemEditor = ({
   // Rich text reads its value once: it remounts when values are replaced.
   const [epoch, setEpoch] = useState(0);
   const [fieldEpochs, setFieldEpochs] = useState<Record<string, number>>({});
-  // One per new item's editor, sent with every E6 until one succeeds.
-  const [clientId] = useState(() => crypto.randomUUID());
+  // One per new item's editor, sent with every E6 until one succeeds; a new
+  // one after E6 answers not_found.
+  const [clientId, setClientId] = useState(() => crypto.randomUUID());
   const backRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // Discard changes chosen in the Item menu: its dialog takes the focus.
+  const discardChosen = useRef(false);
   const [setHeader, isCompact] = useIsNarrow(COMPACT_HEADER_WIDTH);
 
   const isNew = item === null;
@@ -314,14 +321,25 @@ export const ItemEditor = ({
     toast.error(getToastText(failure.error));
   };
 
+  /**
+   * E6's replay (200): the item the first attempt made becomes the baseline
+   * and version, and the person's values and address stay, so whatever
+   * differs is saved by the next E7.
+   */
+  const adoptVersion = (next: CmsItem) => {
+    setItem(next);
+    setErrors({});
+    setConflict(false);
+  };
+
   const write = async (
     kind: Busy,
-    run: () => Promise<CmsResult<{ item: CmsItem }>>,
+    run: () => Promise<CmsResult<{ item: CmsItem; created?: boolean }>>,
     retry: () => void,
     settleWith?: Settle
   ) => {
     setBusy(kind);
-    let result: CmsResult<{ item: CmsItem }>;
+    let result: CmsResult<{ item: CmsItem; created?: boolean }>;
     try {
       result = await run();
     } catch {
@@ -335,47 +353,91 @@ export const ItemEditor = ({
       return;
     }
     setLine(undefined);
-    applyItem(result.item);
+    if (result.created === false) {
+      adoptVersion(result.item);
+    } else {
+      applyItem(result.item);
+    }
     onWritten(result.item);
     return result.item;
   };
 
-  const save = async (): Promise<CmsItem | undefined> => {
-    if (item === undefined) {
-      return;
-    }
-    const clientErrors = validateItem({ fields, values, slug, isNew });
+  /**
+   * Saves the person's values over `from` (null: a new item). Answers the
+   * saved item, and whether the values still differ from it, which only an
+   * E6 replay leaves.
+   */
+  const saveFrom = async (
+    from: CmsItem | null
+  ): Promise<{ saved: CmsItem; differs: boolean } | undefined> => {
+    const clientErrors = validateItem({
+      fields,
+      values,
+      slug,
+      isNew: from === null,
+    });
     setErrors(clientErrors);
     if (Object.keys(clientErrors).length > 0) {
       return;
     }
+    const data = toItemData(fields, values);
+    let replayed = false;
     const saved = await write(
       "save",
-      () =>
-        item === null
-          ? source.createItem(collection.id, {
-              clientId,
-              slug: slug === "" ? undefined : slug,
-              data: toItemData(fields, values),
-            })
-          : source.updateItem(collection.id, item.id, {
-              slug: slug === item.slug ? undefined : slug,
-              data: toItemData(fields, values),
-              expectedUpdatedAt: item.updatedAt,
-            }),
+      async () => {
+        if (from !== null) {
+          return source.updateItem(collection.id, from.id, {
+            slug: slug === from.slug ? undefined : slug,
+            data,
+            expectedUpdatedAt: from.updatedAt,
+          });
+        }
+        const result = await source.createItem(collection.id, {
+          clientId,
+          slug: slug === "" ? undefined : slug,
+          data,
+        });
+        // the clientId made nothing that still exists: the next Save is a
+        // new create
+        if (isCmsFailure(result)) {
+          if (result.error === "not_found") {
+            setClientId(crypto.randomUUID());
+          }
+        } else {
+          replayed = result.created === false;
+        }
+        return result;
+      },
       () => void save(),
       // E6's repeat is the same clientId; E7 reads the item back
-      item === null ? undefined : { sent: item }
+      from === null ? undefined : { sent: from }
     );
-    if (saved !== undefined) {
-      // the "Use my edit" buttons go on the next Save
-      setKept(undefined);
-      if (item === null) {
-        loadedId.current = saved.id;
-        onCreated(saved);
-      }
+    if (saved === undefined) {
+      return;
     }
-    return saved;
+    // the "Use my edit" buttons go on the next Save
+    setKept(undefined);
+    if (from === null) {
+      loadedId.current = saved.id;
+      onCreated(saved);
+    }
+    const differs =
+      replayed &&
+      isItemDirty({
+        fields,
+        baseline: { ...emptyItemData(fields), ...saved.data },
+        values,
+        baselineSlug: saved.slug,
+        slug,
+      });
+    return { saved, differs };
+  };
+
+  const save = async () => {
+    if (item === undefined) {
+      return;
+    }
+    await saveFrom(item);
   };
 
   const publish = async () => {
@@ -385,9 +447,18 @@ export const ItemEditor = ({
     }
     // With unsaved edits it saves, then publishes: two calls, each locked.
     if (current === null || isDirty) {
-      current = await save();
-      if (current === undefined || current === null) {
+      const first = await saveFrom(current);
+      if (first === undefined) {
         return;
+      }
+      current = first.saved;
+      // an E6 replay of older values: they are saved before publishing
+      if (first.differs) {
+        const second = await saveFrom(current);
+        if (second === undefined) {
+          return;
+        }
+        current = second.saved;
       }
     }
     const target = current;
@@ -456,8 +527,10 @@ export const ItemEditor = ({
       return;
     }
     if (key === "slug") {
-      setSlug(kept.slug);
-      setFollows(false);
+      if (kept.slug !== undefined) {
+        setSlug(kept.slug);
+        setFollows(false);
+      }
       return;
     }
     setValues((current) => ({
@@ -517,15 +590,34 @@ export const ItemEditor = ({
       {canEdit &&
         hasStagedChanges &&
         (isCompact ? (
-          <Tooltip content="Discard changes" side="bottom">
-            <IconButton
-              aria-label="Discard changes"
-              disabled={busy !== undefined}
-              onClick={() => setConfirmDiscard(true)}
+          <DropdownMenu modal={false}>
+            <Tooltip content="Item menu" side="bottom">
+              <DropdownMenuTrigger asChild>
+                <IconButton aria-label="Item menu">
+                  <EllipsesIcon />
+                </IconButton>
+              </DropdownMenuTrigger>
+            </Tooltip>
+            <DropdownMenuContent
+              align="end"
+              onCloseAutoFocus={(event) => {
+                if (discardChosen.current) {
+                  discardChosen.current = false;
+                  event.preventDefault();
+                }
+              }}
             >
-              <ResetIcon fill="currentColor" />
-            </IconButton>
-          </Tooltip>
+              <DropdownMenuItem
+                disabled={busy !== undefined}
+                onSelect={() => {
+                  discardChosen.current = true;
+                  setConfirmDiscard(true);
+                }}
+              >
+                Discard changes
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : (
           <Button
             color="ghost"

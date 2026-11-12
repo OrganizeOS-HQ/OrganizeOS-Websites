@@ -234,13 +234,18 @@ export const isItemDirty = ({
   slug !== baselineSlug ||
   getChangedFieldKeys(fields, baseline, values).length > 0;
 
-/** The person's values, set aside by Reload (4.3.2). */
-export type CmsKeptValues = { values: CmsItemData; slug: string };
+/**
+ * The person's values, set aside by Reload (4.3.2): only the fields they
+ * changed, and the address when they changed it. A field or an address
+ * absent here has nothing kept.
+ */
+export type CmsKeptValues = { values: CmsItemData; slug: string | undefined };
 
 /**
- * What Reload sets aside: the person's current values, and for a field they
- * have not touched since an earlier Reload, what that one set aside, so a
- * second Reload never drops an edit still waiting for "Use my edit".
+ * What Reload sets aside: each field whose value differs from the baseline
+ * it was edited from, and the address when it differs from its baseline. For
+ * a field untouched since an earlier Reload, that Reload's kept value stays,
+ * so a second Reload never drops an edit still waiting for "Use my edit".
  */
 export const keepAside = ({
   fields,
@@ -257,17 +262,18 @@ export const keepAside = ({
   values: CmsItemData;
   slug: string;
 }): CmsKeptValues => {
-  if (kept === undefined) {
-    return { values: structuredClone(values), slug };
-  }
   const next: CmsItemData = {};
   for (const field of fields) {
-    const untouched = isSameValue(values[field.key], baseline[field.key]);
-    next[field.key] = structuredClone(
-      untouched ? kept.values[field.key] : values[field.key]
-    );
+    if (isSameValue(values[field.key], baseline[field.key]) === false) {
+      next[field.key] = structuredClone(values[field.key]);
+    } else if (kept !== undefined && field.key in kept.values) {
+      next[field.key] = structuredClone(kept.values[field.key]);
+    }
   }
-  return { values: next, slug: slug === baselineSlug ? kept.slug : slug };
+  return {
+    values: next,
+    slug: slug === baselineSlug ? kept?.slug : slug,
+  };
 };
 
 /** The keys, address included as `slug`, whose kept value differs. */
@@ -288,10 +294,13 @@ export const getKeptDifferences = ({
   const keys = fields
     .filter(
       (field) =>
+        field.key in kept.values &&
         isSameValue(kept.values[field.key], values[field.key]) === false
     )
     .map((field) => field.key);
-  return kept.slug === slug ? keys : [...keys, "slug"];
+  return kept.slug === undefined || kept.slug === slug
+    ? keys
+    : [...keys, "slug"];
 };
 
 /** Splits E5's `ids` into calls of at most `size`. */

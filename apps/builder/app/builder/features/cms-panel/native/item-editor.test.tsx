@@ -103,6 +103,16 @@ const input = (id: string) =>
 const titleInput = () => input("cms-field-title") as HTMLInputElement | null;
 const addressInput = () => input("cms-field-slug") as HTMLInputElement | null;
 
+const fieldError = (id: string) =>
+  document
+    .querySelector<HTMLElement>(`[data-cms-field="${id}"]`)
+    ?.querySelector<HTMLElement>('[role="alert"]')?.textContent;
+
+const conflictLine = () =>
+  document.querySelector<HTMLElement>("[data-cms-conflict]");
+
+const isDisabled = (text: string) => buttonByText(text)?.disabled;
+
 const chipText = () =>
   header()?.querySelector<HTMLElement>("[data-cms-status]")?.textContent;
 
@@ -325,7 +335,7 @@ describe("saving, publishing and discarding", () => {
       data: { title: "Hello world", summary: null, author: null },
       updatedAt: V2,
     });
-    fake.createItem.mockResolvedValueOnce({ item: made });
+    fake.createItem.mockResolvedValueOnce({ item: made, created: true });
     fake.publishItem.mockResolvedValueOnce({
       item: { ...made, status: "published", updatedAt: V3 },
     });
@@ -389,7 +399,10 @@ describe("saving, publishing and discarding", () => {
     await click(buttonByText("Discard changes"));
     expect(hasText("Discard staged changes?")).toBe(true);
     await click(buttonByText("Cancel"));
-    expect(hasText("Discard staged changes?")).toBe(false);
+    // the dialog leaves once its closing animation ends
+    await vi.waitFor(() =>
+      expect(hasText("Discard staged changes?")).toBe(false)
+    );
     expect(fake.discardItemChanges).not.toHaveBeenCalled();
     expect(chipText()).toBe("Staged changes");
   });
@@ -444,7 +457,7 @@ describe("saving, publishing and discarding", () => {
   test("Save stays disabled while a write is in flight", async () => {
     await openNewItem();
     await retype(titleInput(), "Hello world");
-    const held = deferred<CmsResult<{ item: CmsItem }>>();
+    const held = deferred<CmsResult<{ item: CmsItem; created: boolean }>>();
     fake.createItem.mockReturnValueOnce(held.promise);
     const save = buttonByText("Save")!;
     await act(async () => userEvent.click(save));
@@ -457,6 +470,7 @@ describe("saving, publishing and discarding", () => {
         slug: "hello-world",
         data: { title: "Hello world", summary: null, author: null },
       }),
+      created: true,
     });
     await settle();
     expect(fake.createItem).toHaveBeenCalledTimes(1);
@@ -559,5 +573,349 @@ describe("saving, publishing and discarding", () => {
       },
       { timeout: 3000 }
     );
+  });
+});
+
+describe("conflicts, unknown outcomes and field errors", () => {
+  const mine = itemOf({ data: { title: "Mine", summary: null, author: null } });
+  const theirs = itemOf({
+    data: { title: "Theirs", summary: "Theirs S", author: null },
+    updatedAt: V2,
+  });
+  const made = (title: string, updatedAt = V2) =>
+    itemOf({
+      id: NEW_ID,
+      slug: "hello-world",
+      data: { title, summary: null, author: null },
+      updatedAt,
+    });
+
+  test.each([
+    ["updateItem", itemOf()],
+    ["publishItem", itemOf()],
+    [
+      "discardItemChanges",
+      itemOf({ status: "published", hasStagedChanges: true }),
+    ],
+  ] as const)(
+    "%s answered conflict shows Changed by someone else with Reload",
+    async (method, item) => {
+      fake[method].mockResolvedValueOnce({ error: "conflict" });
+      await openItem(item);
+      expect(conflictLine()).toBeNull();
+      if (method === "updateItem") {
+        await retype(titleInput(), "Mine");
+        await click(buttonByText("Save"));
+      } else if (method === "publishItem") {
+        await click(buttonByText("Publish"));
+      } else {
+        await click(buttonByText("Discard changes"));
+        await click(buttonByText("Discard"));
+      }
+      expect(fake[method]).toHaveBeenCalledTimes(1);
+      expect(conflictLine()?.textContent).toContain("Changed by someone else");
+      expect(buttonByText("Reload")).toBeDefined();
+    }
+  );
+
+  test("Reload keeps the person's edit aside, and Use my edit puts it back", async () => {
+    await openItem();
+    await retype(titleInput(), "Mine");
+    fake.updateItem.mockResolvedValueOnce({ error: "conflict" });
+    await click(buttonByText("Save"));
+    fake.getItem.mockResolvedValueOnce({ item: theirs });
+    await click(buttonByText("Reload"));
+    expect(titleInput()?.value).toBe("Theirs");
+    expect(input("cms-field-summary")?.value).toBe("Theirs S");
+    expect(byLabel("Use my edit: Title")).not.toBeNull();
+    expect(byLabel("Use my edit: Summary")).toBeNull();
+    await click(byLabel("Use my edit: Title"));
+    expect(titleInput()?.value).toBe("Mine");
+    fake.updateItem.mockResolvedValueOnce({
+      item: itemOf({
+        data: { title: "Mine", summary: "Theirs S", author: null },
+        updatedAt: V3,
+      }),
+    });
+    await click(buttonByText("Save"));
+    expect(fake.updateItem).toHaveBeenLastCalledWith(
+      POSTS.id,
+      itemOf().id,
+      expect.objectContaining({
+        data: { title: "Mine", summary: "Theirs S", author: null },
+        expectedUpdatedAt: V2,
+      })
+    );
+    expect(conflictLine()).toBeNull();
+    expect(byLabel("Use my edit: Title")).toBeNull();
+  });
+
+  test("after E6 times out or answers unavailable, the next Save sends the same clientId, and a 200 opens that item", async () => {
+    const error = vi.spyOn(toast, "error");
+    await openNewItem();
+    await retype(titleInput(), "Hello world");
+    fake.createItem.mockResolvedValueOnce({ error: "unavailable" });
+    await click(buttonByText("Save"));
+    expect(error).toHaveBeenCalledWith("Try again in a minute");
+    fake.createItem.mockResolvedValueOnce({
+      item: made("Hello world"),
+      created: false,
+    });
+    await click(buttonByText("Save"));
+    expect(fake.createItem).toHaveBeenCalledTimes(2);
+    const [first, second] = fake.createItem.mock.calls.map(
+      ([, body]) => body.clientId
+    );
+    expect(first).toMatch(UUID_RE);
+    expect(second).toBe(first);
+    expect(crumbParts()).toEqual({ collection: "Posts", item: "Hello world" });
+    expect(isDisabled("Save")).toBe(true);
+    expect($cmsNativeDirty.get()).toBe(false);
+  });
+
+  test("a 200 replay keeps the edits made since the first attempt, and the next Save is an E7", async () => {
+    await openNewItem();
+    await retype(titleInput(), "Hello world");
+    fake.createItem.mockResolvedValueOnce({ error: "unavailable" });
+    await click(buttonByText("Save"));
+    await retype(titleInput(), "Hello world 2");
+    fake.createItem.mockResolvedValueOnce({
+      item: made("Hello world"),
+      created: false,
+    });
+    await click(buttonByText("Save"));
+    expect(titleInput()?.value).toBe("Hello world 2");
+    expect(isDisabled("Save")).toBe(false);
+    expect($cmsNativeDirty.get()).toBe(true);
+    fake.updateItem.mockResolvedValueOnce({
+      item: made("Hello world 2", V3),
+    });
+    await click(buttonByText("Save"));
+    expect(fake.updateItem).toHaveBeenCalledWith(
+      POSTS.id,
+      NEW_ID,
+      expect.objectContaining({
+        data: expect.objectContaining({ title: "Hello world 2" }),
+        expectedUpdatedAt: V2,
+      })
+    );
+    expect(fake.createItem).toHaveBeenCalledTimes(2);
+    expect(isDisabled("Save")).toBe(true);
+  });
+
+  test("Publish on a new item whose E6 replayed older values saves them first", async () => {
+    await openNewItem();
+    await retype(titleInput(), "Hello world");
+    fake.createItem.mockResolvedValueOnce({ error: "unavailable" });
+    await click(buttonByText("Save"));
+    await retype(titleInput(), "Hello world 2");
+    const order: string[] = [];
+    fake.createItem.mockImplementationOnce(async () => {
+      order.push("createItem");
+      return { item: made("Hello world"), created: false };
+    });
+    fake.updateItem.mockImplementationOnce(async () => {
+      order.push("updateItem");
+      return { item: made("Hello world 2", V3) };
+    });
+    fake.publishItem.mockImplementationOnce(async () => {
+      order.push("publishItem");
+      return {
+        item: {
+          ...made("Hello world 2", "2026-11-12T10:00:04+00:00"),
+          status: "published",
+        },
+      };
+    });
+    await click(buttonByText("Publish"));
+    expect(order).toEqual(["createItem", "updateItem", "publishItem"]);
+    expect(fake.updateItem).toHaveBeenCalledWith(
+      POSTS.id,
+      NEW_ID,
+      expect.objectContaining({
+        data: expect.objectContaining({ title: "Hello world 2" }),
+        expectedUpdatedAt: V2,
+      })
+    );
+    expect(fake.publishItem).toHaveBeenCalledWith(POSTS.id, NEW_ID, {
+      expectedUpdatedAt: V3,
+    });
+    expect(chipText()).toBe("Published");
+  });
+
+  test("after E6 answers not_found, the next Save sends a fresh clientId", async () => {
+    const error = vi.spyOn(toast, "error");
+    await openNewItem();
+    await retype(titleInput(), "Hello world");
+    fake.createItem.mockResolvedValueOnce({ error: "not_found" });
+    await click(buttonByText("Save"));
+    expect(error).toHaveBeenCalledWith("Item not found");
+    fake.createItem.mockResolvedValueOnce({
+      item: made("Hello world"),
+      created: true,
+    });
+    await click(buttonByText("Save"));
+    const [first, second] = fake.createItem.mock.calls.map(
+      ([, body]) => body.clientId
+    );
+    expect(first).toMatch(UUID_RE);
+    expect(second).toMatch(UUID_RE);
+    expect(second).not.toBe(first);
+  });
+
+  test("after E7 is unavailable, the item is fetched before Save, Publish and Discard enable again", async () => {
+    const staged = itemOf({ status: "published", hasStagedChanges: true });
+    await openItem(staged);
+    await retype(titleInput(), "Mine");
+    const held = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.getItem.mockReturnValueOnce(held.promise);
+    fake.updateItem.mockResolvedValueOnce({ error: "unavailable" });
+    const calls = fake.getItem.mock.calls.length;
+    await click(buttonByText("Save"));
+    expect(fake.getItem).toHaveBeenCalledTimes(calls + 1);
+    expect(isDisabled("Save")).toBe(true);
+    expect(isDisabled("Publish changes")).toBe(true);
+    expect(isDisabled("Discard changes")).toBe(true);
+    held.resolve({ item: staged });
+    await settle();
+    expect(isDisabled("Save")).toBe(false);
+    expect(isDisabled("Publish changes")).toBe(false);
+    expect(isDisabled("Discard changes")).toBe(false);
+  });
+
+  test.each([
+    [
+      "nothing landed (the same version)",
+      "same",
+      "still dirty, no conflict line",
+    ],
+    [
+      "the write landed (the person's values)",
+      "landed",
+      "clean, no conflict line",
+    ],
+    ["another write landed", "other", "the conflict line and Use my edit"],
+    ["the fetch failed", "failed", "the conflict line"],
+  ] as const)(
+    "after E7 is unavailable and %s: %s",
+    async (_name, outcome, _expected) => {
+      await openItem();
+      await retype(titleInput(), "Mine");
+      fake.updateItem.mockResolvedValueOnce({ error: "unavailable" });
+      fake.getItem.mockResolvedValueOnce(
+        outcome === "same"
+          ? { item: itemOf() }
+          : outcome === "landed"
+            ? { item: { ...mine, slug: "mine", updatedAt: V2 } }
+            : outcome === "other"
+              ? { item: theirs }
+              : { error: "unavailable" }
+      );
+      await click(buttonByText("Save"));
+      if (outcome === "same") {
+        expect(titleInput()?.value).toBe("Mine");
+        expect($cmsNativeDirty.get()).toBe(true);
+        expect(isDisabled("Save")).toBe(false);
+        expect(conflictLine()).toBeNull();
+      } else if (outcome === "landed") {
+        expect(titleInput()?.value).toBe("Mine");
+        expect($cmsNativeDirty.get()).toBe(false);
+        expect(isDisabled("Save")).toBe(true);
+        expect(conflictLine()).toBeNull();
+        expect(byLabel("Use my edit: Title")).toBeNull();
+      } else if (outcome === "other") {
+        expect(titleInput()?.value).toBe("Theirs");
+        expect(conflictLine()?.textContent).toContain(
+          "Changed by someone else"
+        );
+        expect(byLabel("Use my edit: Title")).not.toBeNull();
+        expect(byLabel("Use my edit: Summary")).toBeNull();
+      } else {
+        expect(titleInput()?.value).toBe("Mine");
+        expect(conflictLine()?.textContent).toContain(
+          "Changed by someone else"
+        );
+        expect(buttonByText("Reload")).toBeDefined();
+      }
+    }
+  );
+
+  test("client checks run first: an empty required Title is Required, and nothing is sent", async () => {
+    await openItem();
+    await retype(titleInput(), "");
+    await click(buttonByText("Save"));
+    expect(fieldError("cms-field-title")).toBe("Required");
+    expect(fake.updateItem).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [
+      { error: "invalid", field: "title" },
+      "Title",
+      "cms-field-title",
+      "Not valid",
+    ],
+    [{ error: "slug_taken" }, "Address", "cms-field-slug", "Address in use"],
+    [
+      { error: "reference_invalid", field: "author" },
+      "Author",
+      "cms-field-author",
+      "Item not found",
+    ],
+  ] as const)("%o shows under %s: %s", async (failure, _label, id, text) => {
+    const error = vi.spyOn(toast, "error");
+    await openItem();
+    await retype(titleInput(), "Mine");
+    fake.updateItem.mockResolvedValueOnce(failure);
+    await click(buttonByText("Save"));
+    expect(fieldError(id)).toBe(text);
+    expect(error).not.toHaveBeenCalled();
+    expect(titleInput()?.value).toBe("Mine");
+  });
+
+  test("invalid with no field is the toast Not saved", async () => {
+    const error = vi.spyOn(toast, "error");
+    await openItem();
+    await retype(titleInput(), "Mine");
+    fake.updateItem.mockResolvedValueOnce({ error: "invalid" });
+    await click(buttonByText("Save"));
+    expect(error).toHaveBeenCalledWith("Not saved");
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(titleInput()?.value).toBe("Mine");
+  });
+
+  test("below 600 px of header, Discard changes is in the Item menu", async () => {
+    const staged = itemOf({ status: "published", hasStagedChanges: true });
+    // a 560 px main
+    await openItem(staged, 800);
+    expect(header()!.getBoundingClientRect().width).toBeLessThan(600);
+    expect(buttonByText("Discard changes")).toBeUndefined();
+    const trigger = byLabel("Item menu");
+    expect(trigger).not.toBeNull();
+    await click(trigger);
+    const item = [
+      ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ].find((element) => element.textContent === "Discard changes");
+    expect(item).toBeDefined();
+    await click(item);
+    expect(hasText("Discard staged changes?")).toBe(true);
+    act(() => root?.unmount());
+    container?.remove();
+
+    // an 800 px main
+    await openItem(staged, 1040);
+    expect(buttonByText("Discard changes")).toBeDefined();
+    expect(byLabel("Item menu")).toBeNull();
+    act(() => root?.unmount());
+    container?.remove();
+
+    // a draft has neither, at either width
+    for (const width of [800, 1040]) {
+      await openItem(itemOf(), width);
+      expect(buttonByText("Discard changes")).toBeUndefined();
+      expect(byLabel("Item menu")).toBeNull();
+      act(() => root?.unmount());
+      container?.remove();
+    }
   });
 });

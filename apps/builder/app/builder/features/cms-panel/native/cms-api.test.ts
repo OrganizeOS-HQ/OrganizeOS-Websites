@@ -216,6 +216,19 @@ describe("createCmsApi", () => {
     expect(await api.getItem(c, i)).toEqual({ item: { ...item, data } });
   });
 
+  test("createItem reports a 201 as created and a 200 as a replay", async () => {
+    const { status, body } = itemWriteFixture;
+    expect(status).toBe(201);
+    routeFetch.mockResolvedValueOnce(ok(body, 201));
+    expect(
+      await api.createItem(c, { clientId: i, data: { title: "New post" } })
+    ).toEqual({ item: body.item, created: true });
+    routeFetch.mockResolvedValueOnce(ok(body, 200));
+    expect(
+      await api.createItem(c, { clientId: i, data: { title: "New post" } })
+    ).toEqual({ item: body.item, created: false });
+  });
+
   test("returns the door's error code, and its field", async () => {
     routeFetch.mockResolvedValueOnce(ok({ error: "conflict" }, 409));
     expect(
@@ -369,7 +382,11 @@ describe("createCmsApi", () => {
     ["search", searchFixture, () => api.searchItems(c, { ids: [i] })],
     [
       "item-write",
-      itemWriteFixture,
+      // E6's 201: a created item
+      {
+        ...itemWriteFixture,
+        expected: { ...itemWriteFixture.body, created: true },
+      },
       () => api.createItem(c, { clientId: i, data: { title: "New post" } }),
     ],
     [
@@ -379,9 +396,12 @@ describe("createCmsApi", () => {
     ],
   ] as const)(
     "parses the platform's %s fixture as it is",
-    async (_name, { status, body }, run) => {
+    async (_name, fixture, run) => {
+      const { status, body } = fixture;
       routeFetch.mockResolvedValueOnce(ok(body, status));
-      expect(await run()).toEqual(body);
+      expect(await run()).toEqual(
+        "expected" in fixture ? fixture.expected : body
+      );
     }
   );
 });
