@@ -94,7 +94,7 @@ const base: Breakpoint = { id: "base", label: "Base" };
 let root: Root | undefined;
 let container: HTMLElement | undefined;
 
-/** body > section > card, and an Animate Children with a child. */
+/** body > section > card, and an animation group with a child. */
 const project = ({
   documentType = "html",
   breakpoints = [base],
@@ -331,7 +331,7 @@ describe("the Inspector's Motion tab", () => {
     expect(text.indexOf("Stagger")).toBeLessThan(text.indexOf("Run on canvas"));
   });
 
-  test("with a child of a wrapper selected, the presets, no Stagger, and Select Animate Children selects the wrapper", () => {
+  test("with a child of a wrapper selected, the presets, no Stagger, and Select Animation Group selects the wrapper", () => {
     selectInstance(["child", "wrapper", "body"]);
     $activeInspectorPanel.set("motion");
     const host = render();
@@ -344,7 +344,7 @@ describe("the Inspector's Motion tab", () => {
     const select = host.querySelector<HTMLButtonElement>(
       "[data-motion-select-wrapper]"
     );
-    expect(select?.textContent).toBe("Select Animate Children");
+    expect(select?.textContent).toBe("Select Animation Group");
     act(() => select?.click());
     expect($selectedInstanceSelector.get()).toEqual(["wrapper", "body"]);
     expect(host.querySelector("[data-motion-select-wrapper]")).toBeNull();
@@ -381,7 +381,7 @@ describe("the Inspector's Motion tab", () => {
     expect(runOnCanvas(host)).toBe(true);
   });
 
-  test("with no breakpoints an Animate Children shows Stagger and nothing below: no Properties & attributes and no Animation editor", () => {
+  test("with no breakpoints an animation group shows Stagger and nothing below: no Properties & attributes and no Animation editor", () => {
     project({ breakpoints: [] });
     selectInstance(["wrapper", "body"]);
     $activeInspectorPanel.set("motion");

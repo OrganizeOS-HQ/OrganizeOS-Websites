@@ -104,6 +104,21 @@ const render = () => {
 const headings = (host: HTMLElement) =>
   Array.from(host.querySelectorAll("label"), (label) => label.textContent);
 
+// The section under a heading: the nearest ancestor of the heading's label that holds cards.
+const sectionOf = (host: HTMLElement, title: string) => {
+  let element: null | HTMLElement =
+    Array.from(host.querySelectorAll("label")).find(
+      (label) => label.textContent === title
+    ) ?? null;
+  while (
+    element !== null &&
+    element.querySelector("[data-drag-component]") === null
+  ) {
+    element = element.parentElement;
+  }
+  return element;
+};
+
 const card = (host: HTMLElement, name: string) => {
   const element = host.querySelector<HTMLElement>(
     `[data-drag-component="${name}"]`
@@ -155,15 +170,13 @@ afterEach(() => {
 });
 
 describe("the Components panel's OrganizeOS section", () => {
-  test("headings in the order General, OrganizeOS, then upstream's", () => {
+  test("headings in the order General, Blocks, then upstream's", () => {
     const host = render();
     const titles = headings(host);
-    expect(titles.slice(0, 3)).toEqual(["General", "OrganizeOS", "Typography"]);
-    expect(titles.filter((title) => title === "OrganizeOS")).toHaveLength(1);
+    expect(titles.slice(0, 3)).toEqual(["General", "Blocks", "Typography"]);
+    expect(titles.filter((title) => title === "Blocks")).toHaveLength(1);
     // the blocks, in the sections' order
-    const section = host
-      .querySelector("[data-organizeos-links]")
-      ?.closest("[data-state]");
+    const section = sectionOf(host, "Blocks");
     expect(
       Array.from(
         section?.querySelectorAll("[data-drag-component]") ?? [],
@@ -235,33 +248,16 @@ describe("the Components panel's OrganizeOS section", () => {
     expect(insertWebstudioComponentAt).not.toHaveBeenCalled();
   });
 
-  test("one Manage link, to the org's Website area", () => {
+  test("the section has no link to the platform", () => {
     const host = render();
-    const links = Array.from(
-      host.querySelectorAll<HTMLAnchorElement>("[data-organizeos-links] a")
-    );
-    expect(
-      links.map((link) => [
-        link.textContent,
-        link.getAttribute("href"),
-        link.getAttribute("target"),
-        link.getAttribute("rel"),
-      ])
-    ).toEqual([
-      [
-        "Manage in OrganizeOS ↗",
-        // the Website area, where the builder's menu leads too
-        "https://app.organizeos.org/acme/website",
-        "_blank",
-        "noreferrer",
-      ],
-    ]);
+    expect(host.querySelector("[data-organizeos-links]")).toBeNull();
+    expect(host.textContent).not.toContain("Manage in");
   });
 
   test("no OrganizeOS section for a denied org", () => {
     $organizeosSite.set({ ...site, blocksEnabled: false });
     const host = render();
-    expect(headings(host)).not.toContain("OrganizeOS");
+    expect(headings(host)).not.toContain("Blocks");
     expect(host.querySelector(`[data-drag-component^="${namespace}:"]`)).toBe(
       null
     );
@@ -276,9 +272,7 @@ describe("the Components panel's OrganizeOS section", () => {
   test("with the Shop blocks switch on, Product Grid and Product Card follow the Signups, and a search finds both", () => {
     $organizeosSite.set({ ...site, shopBlocksEnabled: true });
     const host = render();
-    const section = host
-      .querySelector("[data-organizeos-links]")
-      ?.closest("[data-state]");
+    const section = sectionOf(host, "Blocks");
     expect(
       Array.from(
         section?.querySelectorAll("[data-drag-component]") ?? [],
@@ -312,11 +306,10 @@ describe("the Components panel's OrganizeOS section", () => {
   test("none on an XML page", () => {
     setPage("xml");
     const host = render();
-    expect(headings(host)).not.toContain("OrganizeOS");
+    expect(headings(host)).not.toContain("Blocks");
     expect(host.querySelector(`[data-drag-component^="${namespace}:"]`)).toBe(
       null
     );
-    expect(host.querySelector("[data-organizeos-links]")).toBeNull();
   });
 
   test("a pointer drag from an OrganizeOS card publishes dragStart with origin panel and the block's name", () => {

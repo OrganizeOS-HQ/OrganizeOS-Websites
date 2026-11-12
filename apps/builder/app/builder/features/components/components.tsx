@@ -41,7 +41,6 @@ import { titleCase } from "title-case";
 // OrganizeOS fork: the OrganizeOS blocks, as one section of this panel (organizeos-panel/components-section.tsx)
 import {
   $organizeosComponentGroups,
-  OrganizeosGroupFooter,
   organizeosGroupLabel,
   withOrganizeosGroups,
 } from "~/builder/features/organizeos-panel/components-section";
@@ -270,8 +269,6 @@ export const ComponentsPanel = ({
                 )}
               </Flex>
             </List>
-            {/* OrganizeOS fork: the OrganizeOS section's workspace links */}
-            <OrganizeosGroupFooter category={group.category} />
           </CollapsibleSection>
         ))}
       </ScrollArea>

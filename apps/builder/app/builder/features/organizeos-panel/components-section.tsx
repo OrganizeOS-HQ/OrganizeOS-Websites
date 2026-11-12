@@ -1,16 +1,12 @@
 import { computed } from "nanostores";
-import { useStore } from "@nanostores/react";
 import { matchSorter } from "match-sorter";
 import type { WsComponentMeta } from "@webstudio-is/sdk";
 import type { GeneratedTemplateMeta } from "@webstudio-is/template";
-import { theme, Flex, Link, Text } from "@webstudio-is/design-system";
 import {
   $organizeosSite,
   $registeredComponentMetas,
   $registeredTemplates,
 } from "~/shared/nano-states";
-import type { OrganizeosSite } from "~/shared/organizeos-site";
-import { platformName, platformUrl } from "~/shared/branding";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { organizeosNamespace } from "./insert-organizeos-block";
 
@@ -20,7 +16,7 @@ import { organizeosNamespace } from "./insert-organizeos-block";
  * `category: "hidden"`, since the category list is in @webstudio-is/sdk, which
  * this fork keeps byte-identical to upstream, so upstream's grouping skips
  * them. A few marked lines in the Components panel add this module's group,
- * heading and links, and send a click or Enter on a block to
+ * and heading, and send a click or Enter on a block to
  * insertOrganizeosBlock, which binds it to the project's data as it inserts
  * it; the canvas routes a drop there by name (canvas/shared/use-drag-drop.ts).
  *
@@ -42,20 +38,10 @@ export type ComponentsPanelMeta = {
   firstInstance: { component: string; tag?: string };
 };
 
-type WorkspaceLink = { label: string; path: string };
-
 type Section = {
   label: string;
   /** Block names without the namespace, in the order they are listed. */
   blocks: string[];
-  /** The workspace area where the org makes what these blocks act on. */
-  area?: WorkspaceLink;
-};
-
-/** The one workspace link: it opens the org's Website area in OrganizeOS. */
-export const manageLink: WorkspaceLink = {
-  label: `Manage in ${platformName} ↗`,
-  path: "website",
 };
 
 /**
@@ -86,18 +72,15 @@ const sections: Section[] = [
   {
     label: "Events",
     blocks: ["EventList", "EventCard", "RsvpForm"],
-    area: manageLink,
   },
   {
     label: "Signups",
     blocks: ["SignupForm", "SignupFormInline"],
-    area: manageLink,
   },
   {
     // listed only while the Shop blocks are offered ($organizeosComponentGroups)
     label: "Shop",
     blocks: shopBlocks,
-    area: manageLink,
   },
 ];
 
@@ -111,7 +94,6 @@ type Block = {
 
 export type BlockSection = {
   label: string;
-  area?: Section["area"];
   blocks: Block[];
 };
 
@@ -131,7 +113,7 @@ export const groupOrganizeosBlocks = (
     firstInstance: meta.template.instances[0],
   });
   const listed = new Set<string>();
-  const grouped: BlockSection[] = sections.map(({ label, area, blocks }) => {
+  const grouped: BlockSection[] = sections.map(({ label, blocks }) => {
     const sectionBlocks: Block[] = [];
     for (const block of blocks) {
       const name = `${prefix}${block}`;
@@ -141,7 +123,7 @@ export const groupOrganizeosBlocks = (
         listed.add(name);
       }
     }
-    return { label, area, blocks: sectionBlocks };
+    return { label, blocks: sectionBlocks };
   });
   // A block no section names yet is still offered, after the others.
   const unlisted = [...templates].filter(
@@ -156,38 +138,15 @@ export const groupOrganizeosBlocks = (
   return grouped.filter((section) => section.blocks.length > 0);
 };
 
-/**
- * A link into the org's workspace on the app host,
- * <platform URL>/<subdomain>/<path>; the path `website` is the Website area
- * the builder's menu links to. Without a known subdomain it is the Website
- * area's own URL, which is then the platform dashboard; for a project no org
- * owns, the platform home.
- */
-export const getWorkspaceAreaUrl = (
-  site: undefined | OrganizeosSite,
-  path: string
-) => {
-  if (site === undefined) {
-    return platformUrl;
-  }
-  if (site.subdomain === undefined) {
-    return site.manageUrl;
-  }
-  return `${site.platformUrl}/${site.subdomain}/${path}`;
-};
-
 export type OrganizeosComponentGroup = {
   category: OrganizeosCategory;
   metas: ComponentsPanelMeta[];
-  /** The workspace link shown at its foot: its blocks' area, when any has one. */
-  link: undefined | WorkspaceLink;
 };
 
 /**
  * The OrganizeOS groups of the Components panel: none for a denied org, for
  * a project no org owns, or while no block is registered; otherwise one,
- * holding every section's blocks in order ("More" last) and the workspace
- * link of its sections' areas (they share one). groupOrganizeosBlocks keeps
+ * holding every section's blocks in order ("More" last). groupOrganizeosBlocks keeps
  * its per-section result, so a group per section would change only this
  * flattening.
  */
@@ -223,7 +182,6 @@ export const $organizeosComponentGroups = computed(
             firstInstance: block.firstInstance,
           }))
         ),
-        link: blockSections.find((section) => section.area !== undefined)?.area,
       },
     ];
   }
@@ -271,38 +229,4 @@ export const withOrganizeosGroups = <Category extends string>(
 
 /** The heading of an OrganizeOS group; undefined for upstream's categories. */
 export const organizeosGroupLabel = (category: string) =>
-  category === "organizeos" ? platformName : undefined;
-
-/**
- * The workspace link at the foot of a group: the OrganizeOS group's, and
- * nothing for a category without one.
- */
-export const OrganizeosGroupFooter = ({ category }: { category: string }) => {
-  const organizeosGroups = useStore($organizeosComponentGroups);
-  const site = useStore($organizeosSite);
-  const link = organizeosGroups.find(
-    (group) => group.category === category
-  )?.link;
-  if (link === undefined) {
-    return;
-  }
-  return (
-    <Flex
-      direction="column"
-      data-organizeos-links
-      css={{ paddingInline: theme.panel.paddingInline }}
-    >
-      <Text color="subtle">
-        <Link
-          href={getWorkspaceAreaUrl(site, link.path)}
-          target="_blank"
-          rel="noreferrer"
-          color="inherit"
-          variant="inherit"
-        >
-          {link.label}
-        </Link>
-      </Text>
-    </Flex>
-  );
-};
+  category === "organizeos" ? "Blocks" : undefined;
