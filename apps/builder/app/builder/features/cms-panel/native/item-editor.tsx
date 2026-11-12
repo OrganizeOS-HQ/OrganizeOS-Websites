@@ -28,6 +28,7 @@ import {
 import { ChevronLeftIcon, ResetIcon } from "@webstudio-is/icons";
 import {
   emptyItemData,
+  emptyValueFor,
   getFieldErrorText,
   getItemTitle,
   getKeptDifferences,
@@ -38,6 +39,7 @@ import {
   keepAside,
   slugFollowsTitle,
   slugify,
+  toItemData,
   validateItem,
   type CmsKeptValues,
 } from "./cms-logic";
@@ -98,6 +100,7 @@ export const ItemEditor = ({
   onDirtyChange,
   onWritten,
   onCreated,
+  onSchemaStale,
   onOpenHome,
   onOpenClassic,
 }: {
@@ -115,6 +118,11 @@ export const ItemEditor = ({
   /** After every write: the lists refetch and the canvas invalidates (4.7). */
   onWritten: (item: CmsItem) => void;
   onCreated: (item: CmsItem) => void;
+  /**
+   * A write answered `invalid` with no field: the open collection's fields
+   * are fetched again before the toast.
+   */
+  onSchemaStale: () => Promise<void>;
   /** `unauthorized`: the guard, then this tab home (4.3.4). */
   onOpenHome?: () => void;
   onOpenClassic?: () => void;
@@ -277,6 +285,17 @@ export const ItemEditor = ({
       setErrors((current) => ({ ...current, slug: "Address in use" }));
       return;
     }
+    if (failure.error === "invalid" && failure.field === undefined) {
+      // no write until the fields are current
+      setBusy("reload");
+      void onSchemaStale()
+        .catch(() => undefined)
+        .finally(() => {
+          setBusy(undefined);
+          toast.error(getToastText(failure.error));
+        });
+      return;
+    }
     const fieldText = getFieldErrorText(failure.error);
     const fieldKey = failure.field;
     if (fieldText !== undefined && fieldKey !== undefined) {
@@ -337,11 +356,11 @@ export const ItemEditor = ({
           ? source.createItem(collection.id, {
               clientId,
               slug: slug === "" ? undefined : slug,
-              data: values,
+              data: toItemData(fields, values),
             })
           : source.updateItem(collection.id, item.id, {
               slug: slug === item.slug ? undefined : slug,
-              data: values,
+              data: toItemData(fields, values),
               expectedUpdatedAt: item.updatedAt,
             }),
       () => void save(),
@@ -575,6 +594,7 @@ export const ItemEditor = ({
       {refusalLine}
       <ScrollAreaNative css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
         <Box
+          data-cms-editor-fields
           css={{
             maxWidth: editorColumnMaxWidth,
             marginInline: "auto",
@@ -605,7 +625,12 @@ export const ItemEditor = ({
                     id={id}
                     remountKey={`${epoch}:${fieldEpochs[field.key] ?? 0}`}
                     field={field}
-                    value={values[field.key]}
+                    // a field added since the item loaded shows empty
+                    value={
+                      field.key in values
+                        ? values[field.key]
+                        : emptyValueFor(field.kind)
+                    }
                     source={source}
                     disabled={disabled}
                     invalid={errors[field.key] !== undefined}

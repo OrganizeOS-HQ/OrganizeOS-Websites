@@ -93,7 +93,7 @@ export const getItemTitle = (
 };
 
 /** The value an unset field carries: false, [] or null. */
-const emptyValueFor = (kind: CmsFieldKind): unknown => {
+export const emptyValueFor = (kind: CmsFieldKind): unknown => {
   if (kind === "switch") {
     return false;
   }
@@ -107,6 +107,62 @@ const emptyValueFor = (kind: CmsFieldKind): unknown => {
 export const emptyItemData = (fields: readonly CmsField[]): CmsItemData =>
   Object.fromEntries(
     fields.map((field) => [field.key, emptyValueFor(field.kind)])
+  );
+
+/**
+ * A rich-text value's HTML, or null when it holds neither text nor an image,
+ * by the platform's rule for what it stores (`rich-text.ts`). A value is a
+ * string or `{ html, text? }`; anything else is no value.
+ */
+const richTextHtmlOrNull = (value: unknown): string | null => {
+  let html: string;
+  let text: string | undefined;
+  if (typeof value === "string") {
+    html = value;
+  } else if (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { html?: unknown }).html === "string"
+  ) {
+    html = (value as { html: string }).html;
+    const given = (value as { text?: unknown }).text;
+    text = typeof given === "string" ? given : undefined;
+  } else {
+    return null;
+  }
+  const plain =
+    text ??
+    html
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;|&#(?:160|x0*a0);/gi, " ")
+      .replace(/&(?:[a-z]+|#\d+|#x[0-9a-f]+);/gi, "x");
+  if (plain.trim() === "" && /<img\b/i.test(html) === false) {
+    return null;
+  }
+  return html;
+};
+
+/**
+ * The `data` of a write: exactly the schema's keys, in its order, a key the
+ * values lack at its empty value; rich text as `{ html }`, or null when it
+ * holds neither text nor an image.
+ */
+export const toItemData = (
+  fields: readonly CmsField[],
+  values: CmsItemData
+): CmsItemData =>
+  Object.fromEntries(
+    fields.map((field) => {
+      const value = values[field.key];
+      if (field.kind === "richtext") {
+        const html = richTextHtmlOrNull(value);
+        return [field.key, html === null ? null : { html }];
+      }
+      return [
+        field.key,
+        value === undefined ? emptyValueFor(field.kind) : value,
+      ];
+    })
   );
 
 /** Unset and blank compare equal: undefined, null and "" are one value. */
@@ -303,8 +359,7 @@ const isBlank = (kind: CmsFieldKind, value: unknown) => {
     return Array.isArray(value) === false || value.length === 0;
   }
   if (kind === "richtext") {
-    const text = (value as { text?: unknown } | null)?.text;
-    return typeof text !== "string" || text.trim() === "";
+    return richTextHtmlOrNull(value) === null;
   }
   if (kind === "image") {
     return (

@@ -14,9 +14,11 @@ import {
   localInputToIso,
   slugFollowsTitle,
   slugify,
+  toItemData,
   validateItem,
 } from "./cms-logic";
 import type { CmsField } from "./cms-source";
+import { POSTS_DETAIL } from "./fake-cms-source";
 
 describe("getStatusChip", () => {
   test.each([
@@ -239,6 +241,51 @@ describe("canonical kinds", () => {
       urgent: false,
     });
     expect(getTitleField(fields)?.key).toBe("name");
+  });
+});
+
+describe("the data a write sends", () => {
+  const body: CmsField = { key: "body", label: "Body", kind: "richtext" };
+  const image = '<p><img src="https://x/a.png" /></p>';
+
+  test("toItemData sends the schema's keys only, a missing one at its empty value", () =>
+    expect(toItemData(POSTS_DETAIL.fields, { title: "A", old: "x" })).toEqual({
+      title: "A",
+      summary: null,
+      author: null,
+    }));
+
+  test("toItemData sends rich text as { html }, and null without text or image", () => {
+    expect(
+      toItemData([body], { body: { html: "<p>a</p>", text: "a" } })
+    ).toEqual({ body: { html: "<p>a</p>" } });
+    expect(toItemData([body], { body: { html: "<p></p>", text: "" } })).toEqual(
+      { body: null }
+    );
+    expect(toItemData([body], { body: { html: image, text: "" } })).toEqual({
+      body: { html: image },
+    });
+    expect(toItemData([body], { body: null })).toEqual({ body: null });
+  });
+
+  test("a required image-only rich-text field passes validateItem", () => {
+    const required: CmsField[] = [{ ...body, required: true }];
+    expect(
+      validateItem({
+        fields: required,
+        values: { body: { html: image, text: "" } },
+        slug: "item",
+        isNew: false,
+      })
+    ).toEqual({});
+    expect(
+      validateItem({
+        fields: required,
+        values: { body: { html: "<p></p>", text: "" } },
+        slug: "item",
+        isNew: false,
+      })
+    ).toEqual({ body: "Required" });
   });
 });
 
