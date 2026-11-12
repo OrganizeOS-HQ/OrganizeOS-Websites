@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import { createBuild } from "@webstudio-is/project-build/server";
 import { resolveOrCreateUserByEmail } from "./user.server";
-import { seedProjectResourcePresets } from "./resource-presets.server";
+import {
+  seedProjectResourcePresets,
+  syncCatalogRootBindings,
+} from "./resource-presets.server";
 import { seedSignupFormPage } from "./signup-form-preset.server";
 import {
   defaultOrgEntitlements,
@@ -10,6 +13,7 @@ import {
   type OrgEntitlements,
 } from "./organizeos-plan.server";
 import {
+  catalogRootBindingsWanted,
   deriveProjectDomain,
   resolveOrgProjectDomain,
   syncOrgProjectDomain,
@@ -94,6 +98,12 @@ export type ProvisionResult = {
  * `subdomain` is the org's platform subdomain. It becomes Project.domain (see
  * organizeos-site.server.ts), so the builder shows the site's real address.
  * Omitted (an older caller) keeps the derived org-<id> placeholder.
+ *
+ * `catalogRootBindings` carries the raw `ORGANIZEOS_CATALOG_ROOT_BINDINGS` and
+ * `ORGANIZEOS_BLOCKS_DENY_ORG_IDS` (catalogRootBindingsWanted). A provision
+ * with `siteData` plans the catalog's `:root` bindings in its catalog write;
+ * one without it (the membership re-sync before every builder entry) runs
+ * syncCatalogRootBindings last, best effort.
  */
 export const provisionOrgWorkspace = async (
   context: AppContext,
@@ -104,6 +114,7 @@ export const provisionOrgWorkspace = async (
     siteData,
     entitlements = defaultOrgEntitlements,
     subdomain,
+    catalogRootBindings,
   }: {
     organizationId: string;
     orgName: string;
@@ -116,6 +127,12 @@ export const provisionOrgWorkspace = async (
     };
     entitlements?: OrgEntitlements;
     subdomain?: string;
+    catalogRootBindings?: {
+      /** The raw `ORGANIZEOS_CATALOG_ROOT_BINDINGS`. */
+      switchValue?: string;
+      /** The raw `ORGANIZEOS_BLOCKS_DENY_ORG_IDS`. */
+      denyList?: string;
+    };
   }
 ): Promise<ProvisionResult> => {
   const client = context.postgrest.client;
@@ -123,6 +140,11 @@ export const provisionOrgWorkspace = async (
   const serviceUserId = deriveSyntheticUserId(organizationId);
   const workspaceId = deriveWorkspaceId(organizationId);
   const projectId = deriveProjectId(organizationId);
+  const wanted = catalogRootBindingsWanted({
+    organizationId,
+    switchValue: catalogRootBindings?.switchValue,
+    denyList: catalogRootBindings?.denyList,
+  });
 
   // 1. Synthetic service owner (provider marks it as org-owned + always-licensed).
   const userResult = await client.from("User").upsert(
@@ -236,6 +258,7 @@ export const provisionOrgWorkspace = async (
       apiBaseUrl: siteData.apiBaseUrl,
       readToken: siteData.readToken,
       shopBlocks: siteData.shopBlocks === true,
+      wanted,
     });
     await seedSignupFormPage(context, {
       projectId,
@@ -267,6 +290,20 @@ export const provisionOrgWorkspace = async (
       workspaceId,
       keepUserIds: adminUserIds,
     });
+  }
+
+  // 5. The membership re-sync (no siteData) keeps the catalog's `:root`
+  //    bindings current, so they exist before the builder loads. Best effort,
+  //    like the re-sync itself: a failure is one log line, and the provision
+  //    still succeeds.
+  if (siteData === undefined) {
+    try {
+      await syncCatalogRootBindings(context, { projectId, wanted });
+    } catch {
+      console.error(
+        `[organizeos-provision] CATALOG_ROOT_BINDINGS_SYNC_FAILED project=${projectId}`
+      );
+    }
   }
 
   return { serviceUserId, workspaceId, projectId };

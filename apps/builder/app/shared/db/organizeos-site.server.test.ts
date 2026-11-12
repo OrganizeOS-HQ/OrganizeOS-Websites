@@ -10,6 +10,7 @@ import {
 } from "@webstudio-is/postgrest/testing";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import {
+  catalogRootBindingsWanted,
   deriveProjectDomain,
   isCmsNativeSwitchOn,
   isOrgSubdomain,
@@ -95,6 +96,71 @@ describe("isShopBlocksSwitchOn", () => {
     ["true", true],
   ])("ORGANIZEOS_SHOP_BLOCKS %j: %s", (value, expected) => {
     expect(isShopBlocksSwitchOn(value)).toBe(expected);
+  });
+});
+
+// OrganizeOS fork (fork doc section 4): the catalog's `:root` bindings are
+// written only for an org the deny list allows, with the switch on.
+describe("catalogRootBindingsWanted", () => {
+  test("true for an allowed org with the switch exactly true", () => {
+    expect(
+      catalogRootBindingsWanted({
+        organizationId: ORG_ID,
+        switchValue: "true",
+        denyList: `${OTHER_ORG_ID},${THIRD_ORG_ID}`,
+      })
+    ).toBe(true);
+    expect(
+      catalogRootBindingsWanted({
+        organizationId: ORG_ID,
+        switchValue: "true",
+        denyList: undefined,
+      })
+    ).toBe(true);
+  });
+
+  test.each([undefined, "", "TRUE", " true", "true ", "1", "false"])(
+    "false with the switch %j",
+    (switchValue) => {
+      expect(
+        catalogRootBindingsWanted({
+          organizationId: ORG_ID,
+          switchValue,
+          denyList: undefined,
+        })
+      ).toBe(false);
+    }
+  );
+
+  test("false for a denied org, in any case", () => {
+    for (const denyList of [ORG_ID, ORG_ID.toUpperCase(), ` ${ORG_ID} `]) {
+      expect(
+        catalogRootBindingsWanted({
+          organizationId: ORG_ID,
+          switchValue: "true",
+          denyList,
+        })
+      ).toBe(false);
+      expect(
+        catalogRootBindingsWanted({
+          organizationId: ORG_ID.toUpperCase(),
+          switchValue: "true",
+          denyList,
+        })
+      ).toBe(false);
+    }
+  });
+
+  test("false for every org under a malformed list", () => {
+    for (const organizationId of [ORG_ID, OTHER_ORG_ID]) {
+      expect(
+        catalogRootBindingsWanted({
+          organizationId,
+          switchValue: "true",
+          denyList: `${THIRD_ORG_ID},not-an-id`,
+        })
+      ).toBe(false);
+    }
   });
 });
 

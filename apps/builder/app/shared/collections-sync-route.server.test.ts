@@ -34,6 +34,7 @@ type FakeState = {
   build: {
     id: string;
     version: number;
+    updatedAt: string;
     dataSources: string;
     resources: string;
   };
@@ -42,17 +43,18 @@ type FakeState = {
   writes: number;
 };
 
-// What a provision writes: the "always" catalog Resources, and no binding.
-// Forms is "when-present" (a block's insert adds it when a block first
-// uses it), so a freshly provisioned build does not have it.
+// What a provision wrote before Forms and Upcoming Events were seeded for
+// every org: Events, Fundraisers and Stats, and no binding. (OrganizeOS fork:
+// a provision now writes Forms and Upcoming Events too; the sync copies its
+// seed from any of them alike.)
 const provisionedPresets = async (
   args: Parameters<typeof buildOrgResourcePresets>[0]
 ) => {
   const all = await buildOrgResourcePresets(args);
   const names = new Set(
-    V1_RESOURCE_PRESETS.filter((preset) => preset.seeding === "always").map(
-      (preset) => preset.label
-    )
+    V1_RESOURCE_PRESETS.filter((preset) =>
+      ["events", "fundraisers", "stats"].includes(preset.key)
+    ).map((preset) => preset.label)
   );
   return {
     resources: all.resources.filter((item) => names.has(item.name)),
@@ -67,7 +69,13 @@ const presets = await provisionedPresets({
 
 const state: FakeState = {
   project: null,
-  build: { id: "build-1", version: 1, dataSources: "[]", resources: "[]" },
+  build: {
+    id: "build-1",
+    version: 1,
+    updatedAt: "2026-11-01T00:00:00.000Z",
+    dataSources: "[]",
+    resources: "[]",
+  },
   losingWrites: 0,
   writes: 0,
 };
@@ -77,6 +85,7 @@ beforeEach(() => {
   state.build = {
     id: "build-1",
     version: 1,
+    updatedAt: "2026-11-01T00:00:00.000Z",
     dataSources: "[]",
     resources: JSON.stringify(presets.resources),
   };

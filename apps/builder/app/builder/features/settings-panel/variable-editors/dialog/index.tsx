@@ -7,6 +7,7 @@ import {
   DialogMaximize,
   DialogTitleActions,
   Tooltip,
+  toast,
 } from "@webstudio-is/design-system";
 import {
   type DataSource,
@@ -14,7 +15,10 @@ import {
   hasAssetsResourceUrl,
 } from "@webstudio-is/sdk";
 import { currentDateResourceUrl } from "@webstudio-is/sdk/runtime";
-import { isManagedFormParameter } from "@webstudio-is/project-build/runtime";
+import {
+  BuilderRuntimeError,
+  isManagedFormParameter,
+} from "@webstudio-is/project-build/runtime";
 import { formatValue } from "~/builder/shared/expression-editor";
 import { $resources, $instances } from "~/shared/sync/data-stores";
 import { Row } from "../../shared";
@@ -103,7 +107,20 @@ export const VariableEditorDialog = ({
       nameElement instanceof HTMLInputElement &&
       nameElement.checkValidity()
     ) {
-      const saved = editorRef.current?.save(formData);
+      let saved: unknown;
+      try {
+        saved = editorRef.current?.save(formData);
+      } catch (error) {
+        // OrganizeOS fork: a save the runtime refuses (the org's data catalog
+        // is locked, fork doc section 9) says why and keeps the editor open;
+        // it was dropped with no message before.
+        if (error instanceof BuilderRuntimeError) {
+          toast.error(error.message);
+          onSave(false);
+          return;
+        }
+        throw error;
+      }
       onSave(saved !== false);
       // close popover whenever new variable is created
       // to prevent creating duplicated variable

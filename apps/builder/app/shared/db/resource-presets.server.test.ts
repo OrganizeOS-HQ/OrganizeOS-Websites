@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   encodeDataSourceVariable,
   type DataSource,
@@ -6,14 +6,21 @@ import {
   type Prop,
   type Resource,
 } from "@webstudio-is/sdk";
-import { getResourcePresetIds } from "../organizeos-preset-ids";
+import {
+  getCatalogRootBindingId,
+  getResourcePresetIds,
+} from "../organizeos-preset-ids";
 import {
   buildCollectionResourcePresets,
+  buildMissingCatalogResources,
+  createBindingReferenceTest,
+  planCatalogRootBindings,
   buildOrgResourcePresets,
   COLLECTION_SLUG_RE,
   readV1PresetSeed,
   removeUnusedPresetBindings,
   seedProjectResourcePresets,
+  syncCatalogRootBindings,
   upsertById,
   V1_RESOURCE_PRESETS,
 } from "./resource-presets.server";
@@ -114,7 +121,7 @@ describe("buildOrgResourcePresets", () => {
       key: "upcoming-events",
       label: "Upcoming Events",
       path: "/events?upcoming=true",
-      seeding: "when-present",
+      seeding: "always",
     });
   });
 });
@@ -122,6 +129,7 @@ describe("buildOrgResourcePresets", () => {
 type BuildRow = {
   id: string;
   version: number;
+  updatedAt: string | null;
   instances: string;
   props: string;
   dataSources: string;
@@ -136,17 +144,23 @@ type Write = {
 };
 
 /**
- * Stateful fake of the Build table. The update honours its match on version
- * the way PostgREST does (no row matches, count 0). Each `builderSaves` entry
- * is a builder save that lands just before a write: it bumps the version (and
- * may change the build), so that write loses.
+ * Stateful fake of the Build table. The update honours its match on id,
+ * version and updatedAt the way PostgREST does (no row matches, count 0); a
+ * `filter(column, "is", null)` adds a null condition. Each `builderSaves`
+ * entry is a builder save that lands just before a write: it bumps the
+ * version (and may change the build), so that write loses. Each
+ * `versionKeepingWrites` entry is a write of another catalog writer that
+ * keeps the version (the entry re-sync, collections-sync): it changes the
+ * build and its updatedAt only.
  */
 const makeBuildContext = ({
   build,
   builderSaves = [],
+  versionKeepingWrites = [],
 }: {
   build: Partial<BuildRow> | null;
   builderSaves?: Array<(row: BuildRow) => void>;
+  versionKeepingWrites?: Array<(row: BuildRow) => void>;
 }) => {
   const row: BuildRow | null =
     build === null
@@ -154,6 +168,7 @@ const makeBuildContext = ({
       : {
           id: "build-1",
           version: 7,
+          updatedAt: "2026-11-01T00:00:00.000Z",
           instances: "[]",
           props: "[]",
           dataSources: "[]",
@@ -161,35 +176,71 @@ const makeBuildContext = ({
           pages: "{}",
           ...build,
         };
-  const state = { row, reads: 0, writes: [] as Write[] };
+  const state = {
+    row,
+    reads: 0,
+    selects: [] as string[],
+    writes: [] as Write[],
+  };
   const pendingSaves = [...builderSaves];
+  const pendingOtherWrites = [...versionKeepingWrites];
+  const read = async () => {
+    state.reads += 1;
+    return state.row === null
+      ? { data: null, error: { message: "not found" } }
+      : { data: { ...state.row }, error: null };
+  };
   const client = {
     from: () => ({
-      select: () => ({
-        eq: () => ({
-          is: () => ({
-            single: async () => {
-              state.reads += 1;
-              return state.row === null
-                ? { data: null, error: { message: "not found" } }
-                : { data: { ...state.row }, error: null };
-            },
+      select: (columns: string) => {
+        state.selects.push(columns);
+        return {
+          eq: () => ({
+            is: () => ({
+              single: read,
+              maybeSingle: async () =>
+                state.row === null ? { data: null, error: null } : read(),
+            }),
           }),
-        }),
-      }),
+        };
+      },
       update: (payload: Record<string, unknown>, options: unknown) => ({
-        match: async (match: Record<string, unknown>) => {
-          state.writes.push({ payload, options, match });
-          const save = pendingSaves.shift();
-          if (save !== undefined && state.row !== null) {
-            save(state.row);
-            state.row.version += 1;
-          }
-          if (state.row === null || state.row.version !== match.version) {
-            return { error: null, count: 0 };
-          }
-          Object.assign(state.row, payload);
-          return { error: null, count: 1 };
+        match: (match: Record<string, unknown>) => {
+          const conditions = { ...match };
+          const run = async () => {
+            state.writes.push({ payload, options, match: conditions });
+            const save = pendingSaves.shift();
+            if (save !== undefined && state.row !== null) {
+              save(state.row);
+              state.row.version += 1;
+            }
+            const other = pendingOtherWrites.shift();
+            if (other !== undefined && state.row !== null) {
+              other(state.row);
+            }
+            const current = state.row;
+            if (
+              current === null ||
+              Object.entries(conditions).some(
+                ([column, value]) => current[column as keyof BuildRow] !== value
+              )
+            ) {
+              return { error: null, count: 0 };
+            }
+            Object.assign(current, payload);
+            return { error: null, count: 1 };
+          };
+          const query = {
+            filter: (column: string, _operator: string, value: unknown) => {
+              conditions[column] = value;
+              return query;
+            },
+            then: <Result>(
+              resolve: (value: { error: null; count: number }) => Result,
+              reject?: (reason: unknown) => Result
+            ) => run().then(resolve, reject),
+          };
+          return query;
         },
       }),
     }),
@@ -210,25 +261,34 @@ describe("seedProjectResourcePresets", () => {
     dataSources: JSON.parse(row?.dataSources ?? "[]") as DataSource[],
   });
 
-  // Events, Fundraisers and Stats as every provision seeds them.
+  // Events, Fundraisers, Stats, Forms and Upcoming Events, as every
+  // provision seeds them (OrganizeOS fork: Forms and Upcoming Events for
+  // every org since the catalog's :root bindings).
   const getAlwaysSeeded = async (token = "osk_secrettoken") => {
     const resources: Resource[] = [];
-    for (const [key, name] of [
-      ["events", "Events"],
-      ["fundraisers", "Fundraisers"],
-      ["stats", "Stats"],
+    for (const [key, name, path] of [
+      ["events", "Events", "events"],
+      ["fundraisers", "Fundraisers", "fundraisers"],
+      ["stats", "Stats", "stats"],
+      ["forms", "OrganizeOS Forms", "forms"],
+      ["upcoming-events", "Upcoming Events", "events?upcoming=true"],
     ] as const) {
       const { resourceId } = await getResourcePresetIds(projectId, key);
       resources.push({
         id: resourceId,
         name,
         method: "get",
-        url: `"https://app.example.org/api/public/v1/${key}"`,
+        url: `"https://app.example.org/api/public/v1/${path}"`,
         headers: [{ name: "Authorization", value: `"Bearer ${token}"` }],
       });
     }
     return resources;
   };
+  // What a provision appends to a build that holds `present`.
+  const getAppended = async (present: Resource[]) =>
+    (await getAlwaysSeeded()).filter(
+      ({ id }) => present.some((resource) => resource.id === id) === false
+    );
 
   // The unscoped bindings older provisioning wrote next to each Resource.
   const getOldBindings = async () => {
@@ -261,7 +321,7 @@ describe("seedProjectResourcePresets", () => {
     headers: [{ name: "Authorization", value: `"Bearer mine"` }],
   };
 
-  test("seeds Events, Fundraisers and Stats into an empty build, and neither Forms nor a binding", async () => {
+  test("seeds Events, Fundraisers, Stats, Forms and Upcoming Events into an empty build, and no binding", async () => {
     const { context, state } = makeBuildContext({ build: {} });
     await seedProjectResourcePresets(context, args);
 
@@ -277,7 +337,11 @@ describe("seedProjectResourcePresets", () => {
 
     expect(state.writes).toHaveLength(1);
     expect(state.writes[0].options).toEqual({ count: "exact" });
-    expect(state.writes[0].match).toEqual({ id: "build-1", version: 7 });
+    expect(state.writes[0].match).toEqual({
+      id: "build-1",
+      version: 7,
+      updatedAt: "2026-11-01T00:00:00.000Z",
+    });
     expect(state.writes[0].payload.version).toBe(8);
     expect(state.row?.version).toBe(8);
     // cleared with the bump, so an open tab's next save cannot read the new
@@ -340,14 +404,22 @@ describe("seedProjectResourcePresets", () => {
     });
     await seedProjectResourcePresets(context, args);
 
-    const [newEvents, newFundraisers, newStats] = await getAlwaysSeeded();
+    const [newEvents, newFundraisers, newStats, newForms, newUpcoming] =
+      await getAlwaysSeeded();
     expect(parseRow(state.row)).toEqual({
-      resources: [newStats, userResource, newEvents, newFundraisers],
+      resources: [
+        newStats,
+        userResource,
+        newEvents,
+        newFundraisers,
+        newForms,
+        newUpcoming,
+      ],
       dataSources: [userVariable],
     });
   });
 
-  describe("Forms, which only the builder creates", () => {
+  describe("Forms, which every provision seeds", () => {
     const getForms = async (token = "osk_secrettoken") => {
       const { resourceId, bindingId } = await getResourcePresetIds(
         projectId,
@@ -378,13 +450,14 @@ describe("seedProjectResourcePresets", () => {
       });
       await seedProjectResourcePresets(context, args);
 
+      const forms2 = (await getForms()).resource;
       expect(parseRow(state.row).resources).toEqual([
-        (await getForms()).resource,
-        ...(await getAlwaysSeeded()),
+        forms2,
+        ...(await getAppended([forms2])),
       ]);
     });
 
-    test("is never created, whatever else the build has", async () => {
+    test("is created under its own id, and a lookalike under another id is left alone", async () => {
       const forms = await getForms();
       const lookalike = { ...forms.resource, id: "user" };
       const { context, state } = makeBuildContext({
@@ -412,7 +485,7 @@ describe("seedProjectResourcePresets", () => {
     });
   });
 
-  describe("Upcoming Events, which only the first Event List or Event Card creates", () => {
+  describe("Upcoming Events, which every provision seeds", () => {
     const getUpcoming = async (token = "osk_secrettoken") => {
       const { resourceId, bindingId } = await getResourcePresetIds(
         projectId,
@@ -443,24 +516,23 @@ describe("seedProjectResourcePresets", () => {
       });
       await seedProjectResourcePresets(context, args);
 
+      const upcoming2 = (await getUpcoming()).resource;
       expect(parseRow(state.row).resources).toEqual([
-        (await getUpcoming()).resource,
-        ...(await getAlwaysSeeded()),
+        upcoming2,
+        ...(await getAppended([upcoming2])),
       ]);
     });
 
-    test("is never added to a build that lacks it", async () => {
+    test("is added to a build that lacks it", async () => {
       const { context, state } = makeBuildContext({ build: {} });
       await seedProjectResourcePresets(context, args);
 
       const resources = parseRow(state.row).resources;
       expect(resources).toEqual(await getAlwaysSeeded());
-      expect(resources.map(({ name }) => name)).not.toContain(
-        "Upcoming Events"
-      );
+      expect(resources.at(-1)).toEqual((await getUpcoming()).resource);
     });
 
-    test("is never created from a lookalike under another id", async () => {
+    test("is created under its own id beside a lookalike under another id", async () => {
       const lookalike = { ...(await getUpcoming()).resource, id: "user" };
       const { context, state } = makeBuildContext({
         build: { resources: JSON.stringify([lookalike]) },
@@ -473,7 +545,7 @@ describe("seedProjectResourcePresets", () => {
       ]);
     });
 
-    test("leaves Events, Fundraisers and Stats as they are written without it", async () => {
+    test("leaves the rest of the catalog as it is written without it", async () => {
       const upcoming = await getUpcoming("osk_old");
       const withIt = makeBuildContext({
         build: { resources: JSON.stringify([upcoming.resource]) },
@@ -483,8 +555,12 @@ describe("seedProjectResourcePresets", () => {
       await seedProjectResourcePresets(without.context, args);
 
       const [, ...seeded] = parseRow(withIt.state.row).resources;
-      expect(seeded).toEqual(await getAlwaysSeeded());
-      expect(seeded).toEqual(parseRow(without.state.row).resources);
+      expect(seeded).toEqual(await getAppended([upcoming.resource]));
+      expect(seeded).toEqual(
+        parseRow(without.state.row).resources.filter(
+          ({ id }) => id !== upcoming.resource.id
+        )
+      );
     });
 
     test("counts its old unscoped binding as a preset binding: removed where nothing references it", async () => {
@@ -1443,5 +1519,671 @@ describe("Products, the Shop blocks' catalog Resource", () => {
       "Our goods",
     ]);
     expect(custom.resources[0].id).not.toBe((await getProducts()).id);
+  });
+});
+
+// OrganizeOS fork (fork doc section 9, "The catalog in provisioning"): one
+// `:root` resource binding per catalog Resource, planned by the server.
+describe("planCatalogRootBindings", () => {
+  const projectId = "project-1";
+  const base = "https://app.example.org/api/public/v1";
+  const auth = `"Bearer osk_secrettoken"`;
+  const catalogResource = async (
+    key: string,
+    name: string,
+    path: string
+  ): Promise<Resource> => ({
+    id: (await getResourcePresetIds(projectId, key)).resourceId,
+    name,
+    method: "get",
+    url: JSON.stringify(`${base}${path}`),
+    headers: [{ name: "Authorization", value: auth }],
+  });
+  const getCatalog = async () => [
+    await catalogResource("events", "Events", "/events"),
+    await catalogResource("fundraisers", "Fundraisers", "/fundraisers"),
+    await catalogResource("stats", "Stats", "/stats"),
+    await catalogResource("collection:blog", "Blog", "/collections/blog/items"),
+    await catalogResource("forms", "OrganizeOS Forms", "/forms"),
+    await catalogResource(
+      "upcoming-events",
+      "Upcoming Events",
+      "/events?upcoming=true"
+    ),
+  ];
+  const keys = [
+    "events",
+    "fundraisers",
+    "stats",
+    "collection:blog",
+    "forms",
+    "upcoming-events",
+  ];
+  const rootBinding = async (
+    key: string,
+    name: string,
+    resourceId: string
+  ): Promise<DataSource> => ({
+    type: "resource",
+    id: await getCatalogRootBindingId(projectId, key),
+    scopeInstanceId: ":root",
+    name,
+    resourceId,
+  });
+  const getExpected = async (resources: Resource[]) =>
+    Promise.all(
+      resources.map((resource, index) =>
+        rootBinding(keys[index], resource.name, resource.id)
+      )
+    );
+  const userVariable: DataSource = {
+    type: "variable",
+    id: "user-var",
+    scopeInstanceId: "body",
+    name: "My variable",
+    value: { type: "string", value: "keep me" },
+  };
+  const plan = (
+    dataSources: DataSource[],
+    resources: Resource[],
+    wanted = true,
+    isReferenced?: (dataSource: DataSource) => boolean
+  ) =>
+    planCatalogRootBindings({
+      projectId,
+      dataSources,
+      resources,
+      wanted,
+      isReferenced,
+    });
+
+  describe("wanted", () => {
+    test("one binding per catalog Resource, in catalog order, after the existing data sources", async () => {
+      const resources = await getCatalog();
+      // the build's order is not the catalog's
+      const shuffled = [resources[4], resources[3], ...resources.slice(0, 3)];
+      shuffled.push(resources[5]);
+      expect(await plan([userVariable], shuffled)).toEqual([
+        userVariable,
+        ...(await getExpected(resources)),
+      ]);
+    });
+
+    test("Products, where the build has it, gets a seventh, last; nothing creates it", async () => {
+      const resources = await getCatalog();
+      const products = await catalogResource(
+        "products",
+        "Products",
+        "/products"
+      );
+      const card: Resource = {
+        ...products,
+        id: "card-own-resource",
+        name: "Product",
+      };
+      const withProducts = await plan([], [...resources, products, card]);
+      expect(withProducts).toHaveLength(7);
+      expect(withProducts.at(-1)).toEqual(
+        await rootBinding("products", "Products", products.id)
+      );
+      const without = await plan([], resources);
+      expect(without).toHaveLength(6);
+      expect(without.map(({ name }) => name)).not.toContain("Products");
+    });
+
+    test("is idempotent", async () => {
+      const resources = await getCatalog();
+      const first = await plan([userVariable], resources);
+      expect(JSON.stringify(await plan(first, resources))).toBe(
+        JSON.stringify(first)
+      );
+    });
+
+    test("keeps a stored binding whose fields match, whatever its key order", async () => {
+      const resources = await getCatalog();
+      const [events] = await getExpected(resources);
+      const reordered = {
+        resourceId: events.type === "resource" ? events.resourceId : "",
+        name: events.name,
+        id: events.id,
+        scopeInstanceId: ":root",
+        type: "resource",
+      } as DataSource;
+      const planned = await plan([reordered], resources.slice(0, 1));
+      expect(planned).toHaveLength(1);
+      expect(planned[0]).toBe(reordered);
+    });
+
+    test("restores in place a binding changed outside the builder", async () => {
+      const resources = await getCatalog();
+      const expected = await getExpected(resources);
+      const [events] = expected;
+      const changed: DataSource[] = [
+        {
+          type: "variable",
+          id: events.id,
+          scopeInstanceId: ":root",
+          name: "Events",
+          value: { type: "string", value: "retyped" },
+        },
+        {
+          type: "resource",
+          id: events.id,
+          scopeInstanceId: "body",
+          name: "Events",
+          resourceId: resources[0].id,
+        },
+        {
+          type: "resource",
+          id: events.id,
+          scopeInstanceId: ":root",
+          name: "My events",
+          resourceId: resources[0].id,
+        },
+        {
+          type: "resource",
+          id: events.id,
+          scopeInstanceId: ":root",
+          name: "Events",
+          resourceId: resources[1].id,
+        },
+      ];
+      for (const stored of changed) {
+        expect(await plan([userVariable, stored], resources)).toEqual([
+          userVariable,
+          ...expected,
+        ]);
+      }
+      // its position is kept
+      expect(
+        await plan([changed[2], userVariable], resources.slice(0, 1))
+      ).toEqual([events, userVariable]);
+    });
+
+    test("a designer's :root variable takes the name first; a page-root one does not", async () => {
+      const resources = await getCatalog();
+      const rootEvents: DataSource = {
+        ...userVariable,
+        id: "designer",
+        scopeInstanceId: ":root",
+        name: "Events",
+      };
+      const pageEvents: DataSource = {
+        ...userVariable,
+        id: "page",
+        scopeInstanceId: "body",
+        name: "Events",
+      };
+      const fromRoot = await plan([rootEvents], resources);
+      expect(fromRoot[1].name).toBe("Events 2");
+      const fromPage = await plan([pageEvents], resources);
+      expect(fromPage[1].name).toBe("Events");
+    });
+
+    test("two catalog Resources with one name become <name> and <name> 2, in catalog order", async () => {
+      const resources = await getCatalog();
+      resources[3] = { ...resources[3], name: "Events" };
+      const planned = await plan([], resources);
+      expect(planned[0].name).toBe("Events");
+      expect(planned[3].name).toBe("Events 2");
+      // and the next free number after that
+      const third = await plan(
+        [{ ...userVariable, scopeInstanceId: ":root", name: "Events 2" }],
+        resources
+      );
+      expect(third[1].name).toBe("Events");
+      expect(third[4].name).toBe("Events 3");
+    });
+
+    test("a renamed collection's binding is renamed and keeps its id", async () => {
+      const resources = await getCatalog();
+      const first = await plan([], resources);
+      resources[3] = { ...resources[3], name: "News" };
+      const second = await plan(first, resources);
+      expect(second[3]).toEqual({ ...first[3], name: "News" });
+    });
+
+    test("a kept legacy :root Forms binding makes the new one OrganizeOS Forms 2", async () => {
+      const resources = await getCatalog();
+      const { bindingId } = await getResourcePresetIds(projectId, "forms");
+      const legacy: DataSource = {
+        type: "resource",
+        id: bindingId,
+        scopeInstanceId: ":root",
+        name: "OrganizeOS Forms",
+        resourceId: resources[4].id,
+      };
+      const planned = await plan([legacy], resources);
+      expect(planned[0]).toBe(legacy);
+      expect(planned[5]).toEqual(
+        await rootBinding("forms", "OrganizeOS Forms 2", resources[4].id)
+      );
+    });
+
+    test("page-root, block and legacy-id bindings come back byte-identical", async () => {
+      const resources = await getCatalog();
+      const { bindingId } = await getResourcePresetIds(projectId, "events");
+      const others: DataSource[] = [
+        {
+          type: "resource",
+          id: "page-events",
+          scopeInstanceId: "body",
+          name: "Events",
+          resourceId: resources[0].id,
+        },
+        {
+          type: "resource",
+          id: "block-forms",
+          scopeInstanceId: "signup-form",
+          name: "OrganizeOS Forms",
+          resourceId: resources[4].id,
+        },
+        {
+          type: "resource",
+          id: bindingId,
+          name: "Events",
+          resourceId: resources[0].id,
+        },
+      ];
+      const planned = await plan(others, resources);
+      expect(JSON.stringify(planned.slice(0, 3))).toBe(JSON.stringify(others));
+    });
+
+    test("a build with no catalog comes back unchanged", async () => {
+      const mine: Resource = {
+        id: "mine",
+        name: "Mine",
+        method: "get",
+        url: `"https://example.org"`,
+        headers: [],
+      };
+      const dataSources = [userVariable];
+      expect(await plan(dataSources, [mine])).toBe(dataSources);
+    });
+  });
+
+  describe("not wanted", () => {
+    test("removes unreferenced catalog :root bindings, keeps referenced ones", async () => {
+      const resources = await getCatalog();
+      const bindings = await getExpected(resources);
+      const [events, fundraisers, stats] = bindings;
+      const props: Prop[] = [
+        {
+          id: "p",
+          instanceId: "text",
+          name: "title",
+          type: "expression",
+          value: `${encodeDataSourceVariable(events.id)}.data`,
+        },
+      ];
+      const userResource: Resource = {
+        id: "mine",
+        name: "Mine",
+        method: "get",
+        url: `"https://example.org/" + ${encodeDataSourceVariable(fundraisers.id)}.data`,
+        headers: [],
+      };
+      const dataSources = [userVariable, ...bindings];
+      const planned = await plan(
+        dataSources,
+        [...resources, userResource],
+        false,
+        createBindingReferenceTest({
+          dataSources,
+          resources: [...resources, userResource],
+          searchable: [JSON.stringify(props)],
+        })
+      );
+      expect(planned).toEqual([userVariable, events, fundraisers]);
+      expect(planned).not.toContain(stats);
+    });
+
+    test("removes nothing without a reference test", async () => {
+      const resources = await getCatalog();
+      const dataSources = [userVariable, ...(await getExpected(resources))];
+      expect(await plan(dataSources, resources, false)).toBe(dataSources);
+    });
+
+    test("adds nothing; a build without a catalog :root binding comes back identical", async () => {
+      const resources = await getCatalog();
+      const { bindingId } = await getResourcePresetIds(projectId, "forms");
+      const dataSources: DataSource[] = [
+        userVariable,
+        {
+          type: "resource",
+          id: bindingId,
+          scopeInstanceId: ":root",
+          name: "OrganizeOS Forms",
+          resourceId: resources[4].id,
+        },
+      ];
+      expect(await plan(dataSources, resources, false, () => false)).toBe(
+        dataSources
+      );
+    });
+  });
+});
+
+describe("buildMissingCatalogResources", () => {
+  const projectId = "project-1";
+  const base = "https://app.example.org/api/public/v1";
+
+  test("builds Forms and Upcoming Events from Events, as provisioning does", async () => {
+    const presets = await buildOrgResourcePresets({
+      projectId,
+      apiBaseUrl: base,
+      readToken: "osk_secrettoken",
+    });
+    const byName = (name: string) =>
+      presets.resources.find((resource) => resource.name === name);
+    const events = byName("Events");
+    if (events === undefined) {
+      throw new Error("no events");
+    }
+    expect(await buildMissingCatalogResources(projectId, [events])).toEqual([
+      byName("OrganizeOS Forms"),
+      byName("Upcoming Events"),
+    ]);
+  });
+
+  test("returns only the missing ones", async () => {
+    const presets = await buildOrgResourcePresets({
+      projectId,
+      apiBaseUrl: base,
+      readToken: "osk_secrettoken",
+    });
+    const [events, , , forms, upcoming] = presets.resources;
+    expect(
+      await buildMissingCatalogResources(projectId, [events, forms])
+    ).toEqual([upcoming]);
+    expect(
+      await buildMissingCatalogResources(projectId, [events, forms, upcoming])
+    ).toEqual([]);
+  });
+
+  test("no usable seed returns none", async () => {
+    expect(await buildMissingCatalogResources(projectId, [])).toEqual([]);
+    const { resourceId } = await getResourcePresetIds(projectId, "events");
+    expect(
+      await buildMissingCatalogResources(projectId, [
+        {
+          id: resourceId,
+          name: "Events",
+          method: "get",
+          url: `"https://app.example.org/api/public/v1/events"`,
+          headers: [],
+        },
+      ])
+    ).toEqual([]);
+  });
+});
+
+// OrganizeOS fork (fork doc sections 5.1 and 9): the writers of the catalog's
+// `:root` bindings, and their compare-and-set on { id, version, updatedAt }.
+describe("the catalog's :root bindings, written", () => {
+  const projectId = "project-1";
+  const base = "https://app.example.org/api/public/v1";
+  const token = `"Bearer osk_secrettoken"`;
+  const now = "2026-11-12T10:00:00.000Z";
+  const read = "2026-11-01T00:00:00.000Z";
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const preset = async (key: string, name: string, path: string) =>
+    ({
+      id: (await getResourcePresetIds(projectId, key)).resourceId,
+      name,
+      method: "get",
+      url: JSON.stringify(`${base}${path}`),
+      headers: [{ name: "Authorization", value: token }],
+    }) satisfies Resource;
+  const getStatic = async () => [
+    await preset("events", "Events", "/events"),
+    await preset("fundraisers", "Fundraisers", "/fundraisers"),
+    await preset("stats", "Stats", "/stats"),
+  ];
+  const getFull = async () => [
+    ...(await getStatic()),
+    await preset("forms", "OrganizeOS Forms", "/forms"),
+    await preset("upcoming-events", "Upcoming Events", "/events?upcoming=true"),
+  ];
+  const keys = ["events", "fundraisers", "stats", "forms", "upcoming-events"];
+  const getBindings = async (resources: Resource[]) =>
+    Promise.all(
+      resources.map(
+        async (resource, index): Promise<DataSource> => ({
+          type: "resource",
+          id: await getCatalogRootBindingId(projectId, keys[index]),
+          scopeInstanceId: ":root",
+          name: resource.name,
+          resourceId: resource.id,
+        })
+      )
+    );
+  const parse = (row: BuildRow | null) => ({
+    resources: JSON.parse(row?.resources ?? "[]") as Resource[],
+    dataSources: JSON.parse(row?.dataSources ?? "[]") as DataSource[],
+  });
+
+  describe("a token provision", () => {
+    const args = {
+      projectId,
+      apiBaseUrl: base,
+      readToken: "osk_secrettoken",
+    };
+
+    test("wanted: the Resources and the bindings in one version-bumped write on { id, version, updatedAt }", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(now));
+      const { context, state } = makeBuildContext({ build: {} });
+      await seedProjectResourcePresets(context, { ...args, wanted: true });
+
+      expect(state.writes).toHaveLength(1);
+      const [write] = state.writes;
+      expect(write.match).toEqual({
+        id: "build-1",
+        version: 7,
+        updatedAt: read,
+      });
+      expect(write.payload).toMatchObject({
+        version: 8,
+        lastTransactionId: null,
+        updatedAt: now,
+      });
+      const full = await getFull();
+      expect(parse(state.row)).toEqual({
+        resources: full,
+        dataSources: await getBindings(full),
+      });
+    });
+
+    test("not wanted: no binding, and the unreferenced ones go", async () => {
+      const full = await getFull();
+      const bindings = await getBindings(full);
+      const props: Prop[] = [
+        {
+          id: "p",
+          instanceId: "text",
+          name: "title",
+          type: "expression",
+          value: `${encodeDataSourceVariable(bindings[1].id)}.data`,
+        },
+      ];
+      const { context, state } = makeBuildContext({
+        build: {
+          props: JSON.stringify(props),
+          resources: JSON.stringify(full),
+          dataSources: JSON.stringify(bindings),
+        },
+      });
+      await seedProjectResourcePresets(context, { ...args, wanted: false });
+      expect(parse(state.row).dataSources).toEqual([bindings[1]]);
+    });
+  });
+
+  describe("the entry re-sync (syncCatalogRootBindings)", () => {
+    test("wanted: the missing Forms and Upcoming Events and the bindings, in one write that keeps the version", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(now));
+      const { context, state } = makeBuildContext({
+        build: { resources: JSON.stringify(await getStatic()) },
+      });
+      await syncCatalogRootBindings(context, { projectId, wanted: true });
+
+      expect(state.writes).toHaveLength(1);
+      const [write] = state.writes;
+      expect(write.match).toEqual({
+        id: "build-1",
+        version: 7,
+        updatedAt: read,
+      });
+      expect(write.payload.updatedAt).toBe(now);
+      expect(write.payload).not.toHaveProperty("version");
+      expect(write.payload).not.toHaveProperty("lastTransactionId");
+      expect(state.row?.version).toBe(7);
+      const full = await getFull();
+      expect(parse(state.row)).toEqual({
+        resources: full,
+        dataSources: await getBindings(full),
+      });
+    });
+
+    test("wanted: writes nothing when the build already holds them", async () => {
+      const full = await getFull();
+      const { context, state } = makeBuildContext({
+        build: {
+          resources: JSON.stringify(full),
+          dataSources: JSON.stringify(await getBindings(full)),
+        },
+      });
+      await syncCatalogRootBindings(context, { projectId, wanted: true });
+      expect(state.writes).toEqual([]);
+    });
+
+    test("a read stale by updatedAt alone loses, re-reads, and keeps the other writer's change", async () => {
+      const blog = await preset(
+        "collection:blog",
+        "Blog",
+        "/collections/blog/items"
+      );
+      const { context, state } = makeBuildContext({
+        build: { resources: JSON.stringify(await getFull()) },
+        versionKeepingWrites: [
+          (row) => {
+            // collections-sync, same version
+            row.resources = JSON.stringify([
+              ...(JSON.parse(row.resources) as Resource[]),
+              blog,
+            ]);
+            row.updatedAt = "2026-11-02T00:00:00.000Z";
+          },
+        ],
+      });
+      await syncCatalogRootBindings(context, { projectId, wanted: true });
+
+      expect(state.writes).toHaveLength(2);
+      expect(state.writes[0].match.updatedAt).toBe(read);
+      expect(state.writes[1].match.updatedAt).toBe("2026-11-02T00:00:00.000Z");
+      expect(state.row?.version).toBe(7);
+      const { resources, dataSources } = parse(state.row);
+      expect(resources.at(-1)).toEqual(blog);
+      expect(dataSources.map(({ name }) => name)).toEqual([
+        "Events",
+        "Fundraisers",
+        "Stats",
+        "Blog",
+        "OrganizeOS Forms",
+        "Upcoming Events",
+      ]);
+    });
+
+    test("matches a null updatedAt with is null", async () => {
+      const { context, state } = makeBuildContext({
+        build: { updatedAt: null, resources: JSON.stringify(await getFull()) },
+      });
+      await syncCatalogRootBindings(context, { projectId, wanted: true });
+      expect(state.writes[0].match).toEqual({
+        id: "build-1",
+        version: 7,
+        updatedAt: null,
+      });
+      expect(state.writes).toHaveLength(1);
+    });
+
+    test("not wanted, with no catalog :root binding: one small read, no write", async () => {
+      const { context, state } = makeBuildContext({
+        build: { resources: JSON.stringify(await getFull()) },
+      });
+      await syncCatalogRootBindings(context, { projectId, wanted: false });
+      expect(state.selects).toEqual([
+        "id, version, updatedAt, dataSources, resources",
+      ]);
+      expect(state.writes).toEqual([]);
+    });
+
+    test("not wanted, with one: reads the instances, props and pages, and removes it when unreferenced", async () => {
+      const full = await getFull();
+      const bindings = await getBindings(full);
+      const instances: Instance[] = [
+        {
+          type: "instance",
+          id: "text",
+          component: "Text",
+          children: [
+            {
+              type: "expression",
+              value: `${encodeDataSourceVariable(bindings[0].id)}.data`,
+            },
+          ],
+        },
+      ];
+      const { context, state } = makeBuildContext({
+        build: {
+          instances: JSON.stringify(instances),
+          resources: JSON.stringify(full),
+          dataSources: JSON.stringify(bindings),
+        },
+      });
+      await syncCatalogRootBindings(context, { projectId, wanted: false });
+      expect(state.selects).toEqual([
+        "id, version, updatedAt, dataSources, resources",
+        "instances, props, pages",
+      ]);
+      expect(parse(state.row)).toEqual({
+        resources: full,
+        dataSources: [bindings[0]],
+      });
+      expect(state.writes[0].payload).not.toHaveProperty("resources");
+      expect(state.row?.version).toBe(7);
+    });
+
+    test("gives up after three lost compare-and-sets", async () => {
+      const lose = (row: BuildRow) => {
+        row.updatedAt = `${row.updatedAt}+`;
+      };
+      const { context, state } = makeBuildContext({
+        build: { resources: JSON.stringify(await getFull()) },
+        versionKeepingWrites: [lose, lose, lose],
+      });
+      await expect(
+        syncCatalogRootBindings(context, { projectId, wanted: true })
+      ).rejects.toThrow("kept changing");
+      expect(state.writes).toHaveLength(3);
+    });
+
+    test("no build, or no catalog: no write", async () => {
+      const missing = makeBuildContext({ build: null });
+      await syncCatalogRootBindings(missing.context, {
+        projectId,
+        wanted: true,
+      });
+      expect(missing.state.writes).toEqual([]);
+
+      const empty = makeBuildContext({ build: {} });
+      await syncCatalogRootBindings(empty.context, { projectId, wanted: true });
+      expect(empty.state.writes).toEqual([]);
+    });
   });
 });

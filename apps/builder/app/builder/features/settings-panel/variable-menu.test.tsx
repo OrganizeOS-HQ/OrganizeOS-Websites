@@ -18,7 +18,11 @@ import {
   $props,
 } from "~/shared/sync/data-stores";
 import { registerContainers } from "~/shared/sync/sync-stores";
-import { VariableContextMenu, VariableMenu } from "./variable-menu";
+import {
+  VariableContextMenu,
+  VariableMenu,
+  canDeleteVariable,
+} from "./variable-menu";
 import { VariablePopoverTrigger } from "./variable-popover";
 import { __testing__ as variablesSectionTesting } from "./variables-section";
 
@@ -933,4 +937,48 @@ test("an inherited page variable cannot be deleted from the context menu", async
     document.querySelectorAll<HTMLElement>('[role="menuitem"]')
   ).find((item) => item.textContent === "Delete");
   expect(deleteItem?.getAttribute("aria-disabled")).toBe("true");
+});
+
+// OrganizeOS fork (fork doc section 9): a catalog :root binding is locked in
+// the builder, so Delete is not offered for it, even with Global Root
+// selected (where a :root variable is local).
+test("no Delete for a catalog :root binding; Delete for a designer's :root variable and a binding whose Resource the build lacks", () => {
+  const catalogResourceId = "385fcd4c-92f8-5d7c-abfe-cb941b8f2449";
+  const catalogBinding: DataSource = {
+    type: "resource",
+    id: "6f1c2a3b-4d5e-5f60-8a1b-2c3d4e5f6a7b",
+    scopeInstanceId: ":root",
+    name: "Events",
+    resourceId: catalogResourceId,
+  };
+  const foreignBinding: DataSource = {
+    ...catalogBinding,
+    id: "1a2b3c4d-5e6f-5a7b-8c9d-0e1f2a3b4c5d",
+    name: "Foreign",
+    resourceId: "7a2b3c4d-5e6f-5a7b-9c8d-0e1f2a3b4c5d",
+  };
+  const designerVariable: DataSource = {
+    type: "variable",
+    id: "designer",
+    scopeInstanceId: ":root",
+    name: "Site name",
+    value: { type: "string", value: "" },
+  };
+  $resources.set(
+    new Map([
+      [
+        catalogResourceId,
+        {
+          id: catalogResourceId,
+          name: "Events",
+          method: "get",
+          url: `"https://app.example.org/api/public/v1/events"`,
+          headers: [],
+        },
+      ],
+    ])
+  );
+  expect(canDeleteVariable(catalogBinding, true)).toBe(false);
+  expect(canDeleteVariable(designerVariable, true)).toBe(true);
+  expect(canDeleteVariable(foreignBinding, true)).toBe(true);
 });

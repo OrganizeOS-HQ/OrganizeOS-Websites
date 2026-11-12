@@ -4235,6 +4235,157 @@ sitemap.map((page) => page.path);`
     });
   });
 
+  // OrganizeOS fork (fork doc section 9, "Data loads only where it is used"):
+  // each catalog Resource has one binding at `:root`, in every page's scope.
+  // 0.309.0 loads a Resource only on a page whose expressions read it, so a
+  // page that reads none never fetches the catalog. This fails if an upstream
+  // merge loads by scope again.
+  describe("OrganizeOS catalog: a page loads only what it uses", () => {
+    const eventsId = "0b6f1a52-3c1e-5d4a-9f2b-7a8c9d0e1f20";
+    const fundraisersId = "1c7a2b63-4d2f-5e5b-8a3c-8b9d0e1f2a31";
+    const catalogResource = (id: string, name: string, path: string) => [
+      id,
+      {
+        id,
+        name,
+        method: "get",
+        url: `"https://app.example.org/api/public/v1/${path}"`,
+        headers: [{ name: "Authorization", value: `"Bearer osk_catalog"` }],
+      },
+    ];
+    const rootBinding = (id: string, name: string, resourceId: string) => [
+      id,
+      { type: "resource", id, scopeInstanceId: ":root", name, resourceId },
+    ];
+
+    const writeCatalogSite = () =>
+      writeSiteData(
+        createSiteData({
+          pages: [
+            {
+              id: "home",
+              name: "Home",
+              title: "Home",
+              path: "",
+              rootInstanceId: "root",
+              meta: {},
+            },
+            {
+              id: "about",
+              name: "About",
+              title: "About",
+              path: "/about",
+              rootInstanceId: "about-root",
+              meta: {},
+            },
+          ],
+          instances: [
+            [
+              "root",
+              {
+                id: "root",
+                component: "Body",
+                children: [{ type: "id", value: "events-text" }],
+              },
+            ],
+            [
+              "events-text",
+              {
+                id: "events-text",
+                component: "Text",
+                children: [
+                  {
+                    type: "expression",
+                    value: `${encodeDataSourceVariable("events-root")}.data.length`,
+                  },
+                ],
+              },
+            ],
+            [
+              "about-root",
+              {
+                id: "about-root",
+                component: "Body",
+                children: [{ type: "id", value: "about-text" }],
+              },
+            ],
+            [
+              "about-text",
+              {
+                id: "about-text",
+                component: "Text",
+                children: [{ type: "text", value: "About us" }],
+              },
+            ],
+          ],
+          dataSources: [
+            rootBinding("events-root", "Events", eventsId),
+            rootBinding("fundraisers-root", "Fundraisers", fundraisersId),
+          ] as never,
+          resources: [
+            catalogResource(eventsId, "Events", "events"),
+            catalogResource(fundraisersId, "Fundraisers", "fundraisers"),
+          ] as never,
+        })
+      );
+
+    const rootIdsOf = (server: string) => {
+      const match = /rootIds: \[([^\]]*)\]/.exec(server);
+      expect(match, "rootIds").not.toBeNull();
+      return [...(match?.[1] ?? "").matchAll(/"([^"]+)"/g)].map(([, id]) => id);
+    };
+
+    test("a page's rootIds are the catalog Resources it reads, and none on a page that reads none", async () => {
+      await writeCatalogSite();
+      await prebuild({
+        assets: false,
+        template: ["react-router"],
+        preserveRouteTemplates: true,
+      });
+      const generatedDir = join("app", "__generated__");
+      const home = await readFile(
+        join(generatedDir, "_index.server.tsx"),
+        "utf8"
+      );
+      const about = await readFile(
+        join(generatedDir, "[about]._index.server.tsx"),
+        "utf8"
+      );
+      expect(rootIdsOf(home)).toEqual([eventsId]);
+      expect(rootIdsOf(about)).toEqual([]);
+    });
+
+    test("the catalog's token stays in the server modules", async () => {
+      await writeCatalogSite();
+      await prebuild({
+        assets: false,
+        template: ["react-router"],
+        preserveRouteTemplates: true,
+      });
+      const files = await getFilePaths(join("app", "__generated__"));
+      const withToken: string[] = [];
+      for (const file of files) {
+        const source = await readFile(file, "utf8");
+        if (source.includes("Bearer ")) {
+          withToken.push(file);
+        }
+        if (file.endsWith(".server.tsx") || /\.[jt]sx?$/.test(file) === false) {
+          continue;
+        }
+        // neither a page module nor a $resources module imports a page's
+        // server module, which holds the request definitions
+        const imports = await getImportSources(source);
+        for (const source of imports) {
+          expect(source, file).not.toMatch(/\.server(\.tsx)?$/);
+        }
+      }
+      expect(withToken.length).toBeGreaterThan(0);
+      for (const file of withToken) {
+        expect(file).toMatch(/\.server\.tsx$/);
+      }
+    });
+  });
+
   // OrganizeOS fork: every page route's loader fetches its resources through
   // the site's one in-memory cache, which the react-router template carries
   // (templates/react-router/app/organizeos-resource-cache.ts).
