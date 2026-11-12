@@ -18,12 +18,8 @@ test("metas are valid, hidden from the Components panel, and labelled", () => {
   for (const [name, meta] of Object.entries(metas)) {
     expect(() => wsComponentMeta.parse(meta), name).not.toThrow();
     expect(meta.category, name).toBe("hidden");
-    // The animation wrapper is not a block: the owner's label is sentence case.
-    if (name !== "AnimateChildren") {
-      expect(meta.label, name).toMatch(labelPattern);
-    }
+    expect(meta.label, name).toMatch(labelPattern);
   }
-  expect(metas.AnimateChildren.label).toBe("Animation group");
   expect(metas.SignupForm.label).toBe("Signup Form");
   expect(metas.SubmitButton.label).toBe("Submit Button");
   expect(metas.RsvpForm.label).toBe("RSVP Form");
