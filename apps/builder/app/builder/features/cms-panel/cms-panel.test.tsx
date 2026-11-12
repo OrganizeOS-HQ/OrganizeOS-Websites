@@ -71,6 +71,7 @@ import { CmsIcon } from "./cms-icon";
 import { invalidateCollectionOnCanvas } from "./native/cms-canvas";
 import { $cmsNativeDirty, $cmsNativeRefresh } from "./native/cms-native-stores";
 import { createFakeCmsSource } from "./native/fake-cms-source";
+import { RichTextField } from "./native/rich-text-field";
 // Read as text through Vite: the suite runs in the browser, without node:fs
 import topbarSource from "../../shared/topbar.tsx?raw";
 import toastSource from "../../../../../../packages/design-system/src/components/toast.tsx?raw";
@@ -1808,6 +1809,45 @@ describe("the CMS overlay in the builder", () => {
         clip("paste", row());
         expect(clipboard!.spies.capture.paste).toHaveBeenCalledTimes(1);
       });
+    });
+
+    test("a paste into the rich-text editor inside the overlay reaches the editor", async () => {
+      render();
+      clickRail();
+      mountInScreen(
+        <RichTextField
+          id="cms-field-body"
+          labelId="cms-field-body-label"
+          value={null}
+          onChange={() => {}}
+        />
+      );
+      const editor = document.querySelector<HTMLElement>(
+        '[data-cms-native-main] [contenteditable="true"]'
+      );
+      expect(editor).not.toBeNull();
+      // The caret in the editor, as a click would put it.
+      editor!.focus();
+      const range = document.createRange();
+      range.selectNodeContents(editor!);
+      range.collapse(false);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", "pasted");
+      act(() => {
+        editor!.dispatchEvent(
+          new ClipboardEvent("paste", {
+            bubbles: true,
+            cancelable: true,
+            clipboardData,
+          })
+        );
+      });
+      await vi.waitFor(() => expect(editor!.textContent).toContain("pasted"));
     });
 
     test("the close button hides the overlay", () => {

@@ -1,5 +1,15 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  Component,
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
+import {
+  Button,
   ColorThumb,
   Flex,
   Grid,
@@ -23,7 +33,69 @@ import {
 import type { CmsField, CmsSource } from "./cms-source";
 import { ImageField } from "./image-field";
 import { MultiReferenceField, ReferenceField } from "./reference-field";
-import { RichTextField } from "./rich-text-field";
+// types only: Lexical loads with the first rich-text field
+import type { RichTextFieldProps } from "./rich-text-field";
+
+type RichTextModule = typeof import("./rich-text-field");
+
+/** A failed load of the editor's chunk: the field's line, and Retry. */
+class RichTextLoadBoundary extends Component<
+  { onRetry: () => void; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <Flex align="center" gap="2" wrap="wrap">
+          <Text color="destructive">Try again in a minute</Text>
+          <Button color="neutral" onClick={this.props.onRetry}>
+            Retry
+          </Button>
+        </Flex>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/**
+ * The rich-text field over `load`, loaded when it first renders. A failed
+ * load shows under that field only, and Retry loads again: a rejected lazy
+ * stays rejected, so each Retry builds a new one.
+ */
+export const createLazyRichTextField = (
+  load: () => Promise<RichTextModule> = () => import("./rich-text-field")
+): ComponentType<RichTextFieldProps> => {
+  const toLazy = () =>
+    lazy(() => load().then((module) => ({ default: module.RichTextField })));
+  let current = toLazy();
+  const LazyRichTextField = (props: RichTextFieldProps) => {
+    const [attempt, setAttempt] = useState(0);
+    const Field = current;
+    return (
+      <RichTextLoadBoundary
+        key={attempt}
+        onRetry={() => {
+          current = toLazy();
+          setAttempt((count) => count + 1);
+        }}
+      >
+        <Suspense fallback={null}>
+          <Field {...props} />
+        </Suspense>
+      </RichTextLoadBoundary>
+    );
+  };
+  return LazyRichTextField;
+};
+
+const RichTextField = createLazyRichTextField();
 
 const asText = (value: unknown) =>
   typeof value === "string"
