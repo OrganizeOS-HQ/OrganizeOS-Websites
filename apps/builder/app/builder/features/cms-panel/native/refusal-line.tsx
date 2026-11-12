@@ -1,5 +1,13 @@
 import type { ReactNode } from "react";
-import { Button, css, cssVar, Text, theme } from "@webstudio-is/design-system";
+import {
+  Button,
+  Chip,
+  css,
+  cssVar,
+  Text,
+  theme,
+} from "@webstudio-is/design-system";
+import { planBadgeLabel } from "~/shared/branding";
 import type { CmsRefusal } from "./cms-logic";
 
 /**
@@ -31,12 +39,14 @@ export const LineRow = ({
 
 export type CmsLineKind = CmsRefusal | "unavailable" | "not_found";
 
-/** 4.3.4: one line and its buttons, no cards, no paragraphs. */
-const lines: Record<CmsLineKind, string> = {
+/**
+ * 4.3.4: one line and its buttons, no cards, no paragraphs. `plan` is the
+ * neutral plan chip alone, as the builder's other plan gates draw it.
+ */
+const lines: Record<Exclude<CmsLineKind, "plan">, string> = {
   unauthorized: "Signed out of OrganizeOS",
   mfa_required: "Two-step sign-in required",
   forbidden: "No access to the CMS",
-  plan: "Not in your plan",
   unavailable: "Try again in a minute",
   not_found: "Item not found",
 };
@@ -63,7 +73,11 @@ export const RefusalLine = ({
   onRetry?: () => void;
 }) => (
   <LineRow data-cms-refusal={kind}>
-    <Text color="destructive">{lines[kind]}</Text>
+    {kind === "plan" ? (
+      <Chip data-cms-chip>{planBadgeLabel}</Chip>
+    ) : (
+      <Text color="destructive">{lines[kind]}</Text>
+    )}
     {kind === "unauthorized" && onOpenHome !== undefined && (
       <Button color="neutral" onClick={onOpenHome}>
         Open OrganizeOS

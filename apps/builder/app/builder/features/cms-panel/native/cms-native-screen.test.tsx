@@ -12,9 +12,11 @@ import { defaultPlanFeatures } from "@webstudio-is/plans";
 import type { Page, ResourceRequest } from "@webstudio-is/sdk";
 import { renderData } from "@webstudio-is/template";
 import { $ } from "@organizeos/site-components/site-templates";
+import { userEvent } from "@vitest/browser/context";
 import {
   $authPermit,
   $builderMode,
+  $computedResourceRequests,
   $organizeosSite,
   $planFeatures,
   selectInstance,
@@ -34,7 +36,7 @@ import {
   $styleSources,
   $styles,
 } from "~/shared/sync/data-stores";
-import { getResourceKey } from "~/shared/resources";
+import { getResourceKey, invalidateResource } from "~/shared/resources";
 import {
   buildCollectionResourcePresets,
   buildOrgResourcePresets,
@@ -48,7 +50,13 @@ import {
 } from "../../organizeos-panel/collection-pages";
 import { updateWebstudioDataStaged } from "../../organizeos-panel/staged-data";
 import type { CmsCollectionSummary } from "./cms-source";
-import { createFakeCmsSource } from "./fake-cms-source";
+import {
+  createFakeCmsSource,
+  itemOf,
+  POSTS_DETAIL,
+  rowOf,
+  type FakeCmsSource,
+} from "./fake-cms-source";
 import { CmsNativeScreen } from "./cms-native-screen";
 import hostSource from "./cms-native-screen.tsx?raw";
 
@@ -59,6 +67,11 @@ const cmsApi = vi.hoisted(() => ({ createCmsApi: vi.fn() }));
 vi.mock("./cms-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./cms-api")>()),
   createCmsApi: cmsApi.createCmsApi,
+}));
+
+vi.mock("~/shared/resources", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/shared/resources")>()),
+  invalidateResource: vi.fn(),
 }));
 
 enableMapSet();
@@ -550,4 +563,139 @@ describe("the collection actions in the CMS column", () => {
     expect(hostSource).toContain("organizeos-panel/collection-catalog");
     expect(hostSource).not.toMatch(/organizeos-panel(\/index)?["']/);
   });
+});
+
+describe("the canvas after a write", () => {
+  const NEW_ID = "77777777-7777-4777-8777-777777777777";
+  const V2 = "2026-11-12T10:00:02.5+00:00";
+
+  const request = (url: string): ResourceRequest => ({
+    name: url,
+    method: "get",
+    url,
+    searchParams: [],
+    headers: [],
+  });
+
+  const buttonByText = (text: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === text
+    );
+
+  const click = async (element: HTMLElement | null | undefined) => {
+    expect(element).toBeTruthy();
+    await act(async () => userEvent.click(element!));
+    await settle();
+  };
+
+  const retypeTitle = async (text: string) => {
+    const title = await until(() => {
+      const element =
+        document.querySelector<HTMLInputElement>("#cms-field-title");
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    await act(async () => userEvent.clear(title));
+    await act(async () => userEvent.type(title, text));
+    await settle();
+  };
+
+  const openFirstItem = async () =>
+    click(
+      await until(() => {
+        const element =
+          document.querySelector<HTMLElement>("[data-cms-item-id]");
+        expect(element).not.toBeNull();
+        return element!;
+      })
+    );
+
+  const buttonNamed = (text: string) =>
+    until(() => {
+      const button = buttonByText(text);
+      expect(button, text).toBeDefined();
+      return button!;
+    });
+
+  test.each(["create", "save", "publish", "discard"] as const)(
+    "after a %s the canvas refetches that collection's requests only",
+    async (action) => {
+      const news = request(
+        `${site.platformUrl}/api/public/v1/collections/news?limit=6`
+      );
+      const events = request(
+        `${site.platformUrl}/api/public/v1/collections/events`
+      );
+      vi.spyOn($computedResourceRequests, "get").mockReturnValue([
+        news,
+        events,
+      ]);
+      const item =
+        action === "discard"
+          ? itemOf({ status: "published", hasStagedChanges: true })
+          : itemOf();
+      const written = itemOf({
+        id: action === "create" ? NEW_ID : item.id,
+        slug: action === "create" ? "hello-world" : item.slug,
+        status: action === "publish" ? "published" : item.status,
+        data: { title: "Hello world", summary: null, author: null },
+        updatedAt: V2,
+      });
+      let fake: FakeCmsSource | undefined;
+      cmsApi.createCmsApi.mockImplementation(() => {
+        fake = createFakeCmsSource();
+        fake.listCollections.mockResolvedValue({
+          collections: platformCollections,
+        });
+        fake.getCollection.mockResolvedValue({
+          collection: {
+            ...POSTS_DETAIL,
+            id: NEWS.id,
+            slug: NEWS.slug,
+            name: NEWS.name,
+            singularName: NEWS.singularName,
+          },
+        });
+        fake.listItems.mockResolvedValue({
+          items: [rowOf(item)],
+          total: 1,
+          page: 1,
+        });
+        fake.getItem.mockResolvedValue({ item });
+        fake.createItem.mockResolvedValue({ item: written, created: true });
+        fake.updateItem.mockResolvedValue({ item: written });
+        fake.publishItem.mockResolvedValue({ item: written });
+        fake.discardItemChanges.mockResolvedValue({ item: written });
+        return fake;
+      });
+      await render();
+      vi.mocked(invalidateResource).mockClear();
+      switch (action) {
+        case "create":
+          await click(await buttonNamed("New item"));
+          await retypeTitle("Hello world");
+          await click(buttonByText("Save"));
+          expect(fake?.createItem).toHaveBeenCalledTimes(1);
+          break;
+        case "save":
+          await openFirstItem();
+          await retypeTitle("Hello world");
+          await click(buttonByText("Save"));
+          expect(fake?.updateItem).toHaveBeenCalledTimes(1);
+          break;
+        case "publish":
+          await openFirstItem();
+          await click(await buttonNamed("Publish"));
+          expect(fake?.publishItem).toHaveBeenCalledTimes(1);
+          break;
+        case "discard":
+          await openFirstItem();
+          await click(await buttonNamed("Discard changes"));
+          await click(await buttonNamed("Discard"));
+          expect(fake?.discardItemChanges).toHaveBeenCalledTimes(1);
+          break;
+      }
+      expect(vi.mocked(invalidateResource).mock.calls).toEqual([[news]]);
+    }
+  );
 });

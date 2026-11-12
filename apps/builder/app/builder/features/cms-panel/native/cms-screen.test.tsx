@@ -8,10 +8,13 @@ import { userEvent } from "@vitest/browser/context";
 import { toast, TooltipProvider } from "@webstudio-is/design-system";
 import { CmsScreen, type CmsScreenProps } from "./cms-screen";
 import { $cmsNativeDirty, refreshCmsNative } from "./cms-native-stores";
+import type { CmsErrorCode } from "./cms-source";
 import {
   createFakeCmsSource,
+  itemOf,
   PEOPLE,
   POSTS,
+  POSTS_DETAIL,
   type FakeCmsSource,
 } from "./fake-cms-source";
 
@@ -309,6 +312,235 @@ describe("a background refetch never drops an edit", () => {
     expect(titleInput()).toBeNull();
     expect(currentSlug()).toBe("people");
     expect(fake.listItems).toHaveBeenLastCalledWith(PEOPLE.id, {
+      q: undefined,
+      page: 1,
+    });
+  });
+});
+
+const HOME = "https://app.example.org/acme";
+
+const line = () => document.querySelector<HTMLElement>("[data-cms-refusal]");
+
+const lineButtons = () =>
+  [...(line()?.querySelectorAll<HTMLButtonElement>("button") ?? [])].map(
+    (button) => button.textContent
+  );
+
+const click = async (element: HTMLElement | null | undefined) => {
+  expect(element).toBeTruthy();
+  await act(async () => userEvent.click(element!));
+  await settle();
+};
+
+/** Whether the editor is drawn: a view hidden under a line is not. */
+const isEditorShown = () =>
+  document.querySelector<HTMLElement>("[data-cms-editor]")?.checkVisibility() ??
+  false;
+
+describe("refusals on a load", () => {
+  test("unauthorized: Signed out of OrganizeOS, one button Open OrganizeOS, no Retry; it goes to the home address", async () => {
+    fake.getAccess.mockResolvedValue({ error: "unauthorized" });
+    const navigate = vi.fn();
+    mount({ homeUrl: HOME, navigate });
+    await settle();
+    expect(line()?.textContent).toContain("Signed out of OrganizeOS");
+    expect(lineButtons()).toEqual(["Open OrganizeOS"]);
+    await click(buttonByText("Open OrganizeOS"));
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith(HOME);
+  });
+
+  test("mfa_required: Two-step sign-in required, Open OrganizeOS in a new tab, then Retry, which asks E0 again", async () => {
+    fake.getAccess.mockResolvedValue({ error: "mfa_required" });
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const navigate = vi.fn();
+    mount({ homeUrl: HOME, navigate });
+    await settle();
+    expect(line()?.textContent).toContain("Two-step sign-in required");
+    expect(lineButtons()).toEqual(["Open OrganizeOS", "Retry"]);
+    await click(buttonByText("Open OrganizeOS"));
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).toHaveBeenCalledWith(HOME, "_blank", "noopener,noreferrer");
+    expect(navigate).not.toHaveBeenCalled();
+    expect(fake.getAccess).toHaveBeenCalledTimes(1);
+    await click(buttonByText("Retry"));
+    expect(fake.getAccess).toHaveBeenCalledTimes(2);
+  });
+
+  test("forbidden: No access to the CMS, with Retry", async () => {
+    fake.getAccess.mockResolvedValue({ error: "forbidden" });
+    mount({ homeUrl: HOME });
+    await settle();
+    expect(line()?.textContent).toBe("No access to the CMSRetry");
+    expect(lineButtons()).toEqual(["Retry"]);
+    fake.getAccess.mockResolvedValue({
+      canEdit: true,
+      canPublish: true,
+      canManageSettings: true,
+    });
+    await click(buttonByText("Retry"));
+    expect(line()).toBeNull();
+    expect(rowSlugs()).toEqual(["posts", "people"]);
+  });
+
+  test("plan: the Not in plan chip, no button, and no line text", async () => {
+    fake.getAccess.mockResolvedValue({ error: "plan" });
+    mount({ homeUrl: HOME });
+    await settle();
+    const chip = line()?.querySelector<HTMLElement>("[data-cms-chip]");
+    expect(chip?.tagName).toBe("SPAN");
+    expect(chip?.textContent).toBe("Not in plan");
+    expect(line()?.textContent).toBe("Not in plan");
+    expect(lineButtons()).toEqual([]);
+    expect(hasText("Not in your plan")).toBe(false);
+  });
+
+  test.each(["unavailable", "refused", "rate_limited", "updating"] as const)(
+    "a first load answered %s: Try again in a minute, with Retry",
+    async (error) => {
+      fake.getAccess.mockResolvedValue({ error });
+      mount({ homeUrl: HOME });
+      await settle();
+      expect(line()?.textContent).toBe("Try again in a minute" + "Retry");
+      expect(lineButtons()).toEqual(["Retry"]);
+    }
+  );
+});
+
+describe("refusals on a write", () => {
+  test.each([
+    "rate_limited",
+    "unavailable",
+    "updating",
+    "replayed",
+    "refused",
+  ] as const)(
+    "a Save answered %s: the toast Try again in a minute; the editor keeps its values",
+    async (error) => {
+      const toastError = vi.spyOn(toast, "error");
+      mount({ homeUrl: HOME });
+      await settle();
+      await editTitle();
+      fake.updateItem.mockResolvedValue({ error });
+      await click(buttonByText("Save"));
+      expect(toastError).toHaveBeenCalledWith("Try again in a minute");
+      expect(line()).toBeNull();
+      expect(isEditorShown()).toBe(true);
+      expect(titleInput()?.value).toBe("Mine");
+      expect($cmsNativeDirty.get()).toBe(true);
+    }
+  );
+
+  test.each([
+    ["limit", "Item limit reached"],
+    ["forbidden", "No access"],
+    ["plan", "Not in plan"],
+    ["not_found", "Item not found"],
+  ] as const)(
+    "a Save answered %s: the toast %s, no line; the editor keeps its values",
+    async (error, text) => {
+      const toastError = vi.spyOn(toast, "error");
+      mount({ homeUrl: HOME });
+      await settle();
+      await editTitle();
+      fake.updateItem.mockResolvedValue({ error: error as CmsErrorCode });
+      await click(buttonByText("Save"));
+      expect(toastError).toHaveBeenCalledWith(text);
+      expect(line()).toBeNull();
+      expect(isEditorShown()).toBe(true);
+      expect(titleInput()?.value).toBe("Mine");
+      expect($cmsNativeDirty.get()).toBe(true);
+    }
+  );
+
+  test("an upload answered unauthorized shows Signed out of OrganizeOS, and the edits are kept", async () => {
+    fake.getCollection.mockResolvedValue({
+      collection: {
+        ...POSTS_DETAIL,
+        fields: [
+          ...POSTS_DETAIL.fields,
+          { key: "cover", label: "Cover", kind: "image" },
+        ],
+      },
+    });
+    fake.uploadImage.mockResolvedValue({ error: "unauthorized" });
+    mount({ homeUrl: HOME, navigate: vi.fn() });
+    await settle();
+    await editTitle();
+    const input = document
+      .querySelector<HTMLElement>('[data-cms-field="cms-field-cover"]')
+      ?.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).toBeTruthy();
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" })
+    );
+    await act(async () => {
+      input!.files = transfer.files;
+      input!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    await vi.waitFor(() =>
+      expect(line()?.textContent).toContain("Signed out of OrganizeOS")
+    );
+    expect(isEditorShown()).toBe(false);
+    expect(titleInput()?.value).toBe("Mine");
+    expect($cmsNativeDirty.get()).toBe(true);
+    expect(hasText("Not uploaded")).toBe(false);
+  });
+
+  // Review Focus 4
+  test("a Save answered unauthorized hides the view, keeps the edits, and Open OrganizeOS asks first", async () => {
+    let dirtyAtNavigate: boolean | undefined;
+    const navigate = vi.fn(() => {
+      dirtyAtNavigate = $cmsNativeDirty.get();
+    });
+    mount({ homeUrl: HOME, navigate });
+    await settle();
+    await editTitle();
+    fake.updateItem.mockResolvedValue({ error: "unauthorized" });
+    await click(buttonByText("Save"));
+    expect(line()?.textContent).toContain("Signed out of OrganizeOS");
+    expect(lineButtons()).toEqual(["Open OrganizeOS"]);
+    expect(isEditorShown()).toBe(false);
+    expect(titleInput()?.value).toBe("Mine");
+    expect($cmsNativeDirty.get()).toBe(true);
+
+    await click(buttonByText("Open OrganizeOS"));
+    expect(hasText("Discard unsaved changes?")).toBe(true);
+    await click(buttonByText("Keep editing"));
+    expect(navigate).not.toHaveBeenCalled();
+    expect($cmsNativeDirty.get()).toBe(true);
+    await vi.waitFor(() =>
+      expect(hasText("Discard unsaved changes?")).toBe(false)
+    );
+
+    await click(buttonByText("Open OrganizeOS"));
+    expect(hasText("Discard unsaved changes?")).toBe(true);
+    await click(buttonByText("Discard"));
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith(HOME);
+    expect(dirtyAtNavigate).toBe(false);
+  });
+
+  test("after a write, the counts and the open page refetch", async () => {
+    mount({ homeUrl: HOME });
+    await settle();
+    await editTitle();
+    fake.updateItem.mockResolvedValue({
+      item: itemOf({
+        data: { title: "Mine", summary: null, author: null },
+        updatedAt: "2026-11-12T10:00:02.5+00:00",
+      }),
+    });
+    const collections = fake.listCollections.mock.calls.length;
+    const pages = fake.listItems.mock.calls.length;
+    await click(buttonByText("Save"));
+    expect(fake.updateItem).toHaveBeenCalledTimes(1);
+    expect(fake.listCollections).toHaveBeenCalledTimes(collections + 1);
+    expect(fake.listItems).toHaveBeenCalledTimes(pages + 1);
+    expect(fake.listItems).toHaveBeenLastCalledWith(POSTS.id, {
       q: undefined,
       page: 1,
     });

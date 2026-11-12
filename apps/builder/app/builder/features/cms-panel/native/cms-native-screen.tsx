@@ -23,6 +23,7 @@ import {
 } from "../../organizeos-panel/collection-row-menu";
 import type { CmsDeepLink } from "../cms-panel";
 import { createCmsApi } from "./cms-api";
+import { invalidateCollectionOnCanvas } from "./cms-canvas";
 import { CmsScreen, type CmsCatalogSlots } from "./cms-screen";
 import type { CmsCollectionSummary } from "./cms-source";
 
@@ -164,6 +165,16 @@ export const CmsNativeScreen = forwardRef<
     [projectId]
   );
   const catalogSlots = useCatalogSlots(onHide);
+  const platformUrl = site?.platformUrl;
+  // 4.7: after a create, save, publish or discard, the canvas refetches the
+  // collection's requests
+  const onItemWritten = useMemo(
+    () =>
+      platformUrl === undefined
+        ? undefined
+        : (slug: string) => invalidateCollectionOnCanvas(slug, platformUrl),
+    [platformUrl]
+  );
   return (
     <CmsScreen
       ref={ref}
@@ -173,6 +184,7 @@ export const CmsNativeScreen = forwardRef<
       homeUrl={site === undefined ? undefined : organizeosHomeUrl(site)}
       onClose={onClose}
       onShowClassic={onShowClassic}
+      onItemWritten={onItemWritten}
       catalogSlots={catalogSlots}
     />
   );

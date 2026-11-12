@@ -3,6 +3,7 @@
  * dirty tracking, kept values, paging and field checks. No React, no stores,
  * no I/O.
  */
+import { planBadgeLabel } from "~/shared/branding";
 import type {
   CmsErrorCode,
   CmsField,
@@ -491,6 +492,8 @@ export const getToastText = (code: CmsErrorCode) => {
       return "Item not found";
     case "forbidden":
       return "No access";
+    case "plan":
+      return planBadgeLabel;
     default:
       return "Not saved";
   }
@@ -498,11 +501,20 @@ export const getToastText = (code: CmsErrorCode) => {
 
 export type CmsRefusal = "unauthorized" | "mfa_required" | "forbidden" | "plan";
 
-/** The codes that replace the screen with one line (4.3.4). */
-export const getRefusal = (code: CmsErrorCode): CmsRefusal | undefined =>
-  code === "unauthorized" ||
-  code === "mfa_required" ||
-  code === "forbidden" ||
-  code === "plan"
-    ? code
-    : undefined;
+/**
+ * The codes that replace the view with one line (4.3.4): `unauthorized` and
+ * `mfa_required` on any call; `forbidden` and `plan` on a load only. A write
+ * answered `forbidden` or `plan` is a toast, and the view stays.
+ */
+export const getRefusal = (
+  code: CmsErrorCode,
+  on: "load" | "write"
+): CmsRefusal | undefined => {
+  if (code === "unauthorized" || code === "mfa_required") {
+    return code;
+  }
+  if ((code === "forbidden" || code === "plan") && on === "load") {
+    return code;
+  }
+  return undefined;
+};

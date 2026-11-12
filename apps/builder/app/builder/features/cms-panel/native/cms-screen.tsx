@@ -211,7 +211,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       // A refusal always shows its line; any other failure only on a
       // fetch the person asked for, so a background one changes nothing.
       const onFailure = (error: Parameters<typeof getRefusal>[0]) => {
-        const refusal = getRefusal(error);
+        const refusal = getRefusal(error, "load");
         if (refusal !== undefined) {
           setLine(refusal);
         } else if (isBackground === false) {
@@ -311,7 +311,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           return;
         }
         if (isCmsFailure(result)) {
-          const refusal = getRefusal(result.error);
+          const refusal = getRefusal(result.error, "load");
           if (refusal !== undefined) {
             setLine(refusal);
           } else if (isBackground === false) {
@@ -360,7 +360,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             return;
           }
           if (isCmsFailure(result)) {
-            const refusal = getRefusal(result.error);
+            const refusal = getRefusal(result.error, "load");
             if (refusal !== undefined) {
               setLine(refusal);
             } else if (isBackground === false) {
@@ -468,7 +468,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
       const result = await source.getCollection(collectionId);
       if (isCmsFailure(result)) {
-        const refusal = getRefusal(result.error);
+        const refusal = getRefusal(result.error, "load");
         if (refusal !== undefined) {
           setLine(refusal);
         }
@@ -532,6 +532,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             onWritten={onWritten}
             onCreated={(item) => setItemId(item.id)}
             onSchemaStale={refetchFields}
+            onRefusal={setLine}
             onOpenHome={onOpenHome}
             onOpenClassic={() => guard(() => onShowClassic({}))}
           />
@@ -625,6 +626,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
                   const next = pending;
                   setPending(undefined);
                   setIsEditorDirty(false);
+                  // cleared before the action runs, so leaving the builder
+                  // never meets the unsaved prompt
+                  $cmsNativeDirty.set(false);
                   next?.run();
                 }}
               >

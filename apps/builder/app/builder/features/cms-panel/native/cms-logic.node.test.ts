@@ -5,6 +5,7 @@ import {
   formatPageRange,
   getChangedFieldKeys,
   getKeptDifferences,
+  getRefusal,
   getStatusChip,
   getTitleField,
   getToastText,
@@ -447,4 +448,30 @@ describe("getToastText", () => {
     expect(getToastText("refused")).toBe("Try again in a minute");
     expect(getToastText("unavailable")).toBe("Try again in a minute");
   });
+
+  test.each([
+    ["forbidden", "No access"],
+    ["plan", "Not in plan"],
+    ["limit", "Item limit reached"],
+    ["not_found", "Item not found"],
+  ] as const)("a write answered %s is the toast %s", (code, text) =>
+    expect(getToastText(code)).toBe(text)
+  );
+});
+
+describe("getRefusal", () => {
+  test.each([
+    ["unauthorized", "write", "unauthorized"],
+    ["mfa_required", "write", "mfa_required"],
+    ["unauthorized", "load", "unauthorized"],
+    ["mfa_required", "load", "mfa_required"],
+    ["plan", "load", "plan"],
+    ["plan", "write", undefined],
+    ["forbidden", "load", "forbidden"],
+    ["forbidden", "write", undefined],
+    ["unavailable", "load", undefined],
+    ["not_found", "write", undefined],
+  ] as const)("getRefusal(%s, %s) is %s", (code, on, refusal) =>
+    expect(getRefusal(code, on)).toBe(refusal)
+  );
 });

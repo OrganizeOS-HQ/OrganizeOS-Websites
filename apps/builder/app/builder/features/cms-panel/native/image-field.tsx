@@ -12,6 +12,7 @@ import {
   Tooltip,
 } from "@webstudio-is/design-system";
 import { TrashIcon, UploadIcon } from "@webstudio-is/icons";
+import { getRefusal, type CmsRefusal } from "./cms-logic";
 import {
   CMS_IMAGE_MAX_BYTES,
   CMS_IMAGE_TYPES,
@@ -77,6 +78,7 @@ export const ImageField = ({
   onChange,
   onError,
   onBusyChange,
+  onRefusal,
 }: {
   id: string;
   source: CmsSource;
@@ -86,6 +88,8 @@ export const ImageField = ({
   onError: (error: string | undefined) => void;
   /** True while E9 is in flight: Save and Publish wait for it. */
   onBusyChange?: (busy: boolean) => void;
+  /** E9 answered `unauthorized` or `mfa_required`: the screen's line. */
+  onRefusal?: (refusal: CmsRefusal) => void;
 }) => {
   const fileRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -120,6 +124,11 @@ export const ImageField = ({
       onBusyChange?.(false);
     }
     if (isCmsFailure(uploaded)) {
+      const refusal = getRefusal(uploaded.error, "write");
+      if (refusal !== undefined && onRefusal !== undefined) {
+        onRefusal(refusal);
+        return;
+      }
       onError(uploaded.error === "invalid" ? "Not an image" : "Not uploaded");
       return;
     }

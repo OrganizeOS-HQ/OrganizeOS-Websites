@@ -46,6 +46,7 @@ import {
   toItemData,
   validateItem,
   type CmsKeptValues,
+  type CmsRefusal,
 } from "./cms-logic";
 import {
   isCmsFailure,
@@ -105,6 +106,7 @@ export const ItemEditor = ({
   onWritten,
   onCreated,
   onSchemaStale,
+  onRefusal,
   onOpenHome,
   onOpenClassic,
 }: {
@@ -127,6 +129,12 @@ export const ItemEditor = ({
    * are fetched again before the toast.
    */
   onSchemaStale: () => Promise<void>;
+  /**
+   * A call answered `unauthorized` or `mfa_required` (any call), or
+   * `forbidden` or `plan` on the item's load: the screen shows the line
+   * and hides the view, which keeps this editor and its edits.
+   */
+  onRefusal: (refusal: CmsRefusal) => void;
   /** `unauthorized`: the guard, then this tab home (4.3.4). */
   onOpenHome?: () => void;
   onOpenClassic?: () => void;
@@ -206,6 +214,9 @@ export const ItemEditor = ({
   );
 
   const loadedId = useRef<string | null | undefined>(undefined);
+  // the latest callback: a new one never restarts the item's load
+  const onRefusalRef = useRef(onRefusal);
+  onRefusalRef.current = onRefusal;
   useEffect(() => {
     if (loadedId.current === itemId) {
       return;
@@ -221,9 +232,13 @@ export const ItemEditor = ({
         return;
       }
       if (isCmsFailure(result)) {
-        const kind =
-          getRefusal(result.error) ??
-          (result.error === "not_found" ? "not_found" : "unavailable");
+        const refusal = getRefusal(result.error, "load");
+        if (refusal !== undefined) {
+          onRefusalRef.current(refusal);
+        }
+        // the editor's own line is its load's: the screen's line, if any,
+        // goes when Retry there succeeds, and this one stays for its Retry
+        const kind = result.error === "not_found" ? "not_found" : "unavailable";
         setLine({
           kind,
           retry: () => {
@@ -285,8 +300,8 @@ export const ItemEditor = ({
 
   const fail = (
     failure: CmsFailure,
-    retry: () => void,
-    settleWith?: Settle
+    settleWith?: Settle,
+    on: "load" | "write" = "write"
   ) => {
     if (failure.error === "conflict") {
       setConflict(true);
@@ -314,9 +329,9 @@ export const ItemEditor = ({
       setErrors((current) => ({ ...current, [fieldKey]: fieldText }));
       return;
     }
-    const refusal = getRefusal(failure.error);
+    const refusal = getRefusal(failure.error, on);
     if (refusal !== undefined) {
-      setLine({ kind: refusal, retry });
+      onRefusal(refusal);
       return;
     }
     if (failure.error === "unavailable" && settleWith !== undefined) {
@@ -340,7 +355,6 @@ export const ItemEditor = ({
   const write = async (
     kind: Busy,
     run: () => Promise<CmsResult<{ item: CmsItem; created?: boolean }>>,
-    retry: () => void,
     settleWith?: Settle
   ) => {
     setBusy(kind);
@@ -354,7 +368,7 @@ export const ItemEditor = ({
       setBusy(undefined);
     }
     if (isCmsFailure(result)) {
-      fail(result, retry, settleWith);
+      fail(result, settleWith);
       return;
     }
     setLine(undefined);
@@ -413,7 +427,6 @@ export const ItemEditor = ({
         }
         return result;
       },
-      () => void save(),
       // E6's repeat is the same clientId; E7 reads the item back
       from === null ? undefined : { sent: from }
     );
@@ -473,7 +486,6 @@ export const ItemEditor = ({
         source.publishItem(collection.id, target.id, {
           expectedUpdatedAt: target.updatedAt,
         }),
-      () => void publish(),
       { sent: target }
     );
   };
@@ -489,7 +501,6 @@ export const ItemEditor = ({
         source.discardItemChanges(collection.id, item.id, {
           expectedUpdatedAt: item.updatedAt,
         }),
-      () => void discard(),
       { sent: item }
     );
     if (discarded !== undefined) {
@@ -512,7 +523,7 @@ export const ItemEditor = ({
       setBusy(undefined);
     }
     if (isCmsFailure(result)) {
-      fail(result, () => void reload());
+      fail(result, undefined, "load");
       return;
     }
     setKept(keepAside({ fields, kept, baseline, baselineSlug, values, slug }));
@@ -753,6 +764,7 @@ export const ItemEditor = ({
                         return next;
                       })
                     }
+                    onRefusal={onRefusal}
                     onOpenClassic={onOpenClassic}
                   />
                 </FieldRow>

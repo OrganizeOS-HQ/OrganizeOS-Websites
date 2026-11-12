@@ -511,9 +511,11 @@ describe("saving, publishing and discarding", () => {
     await act(async () => {
       held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
     });
-    await settle();
-    expect(isDisabled("Save")).toBe(false);
-    expect(isDisabled("Publish")).toBe(false);
+    // the upload answers once the file's size is measured too
+    await vi.waitFor(() => {
+      expect(isDisabled("Save")).toBe(false);
+      expect(isDisabled("Publish")).toBe(false);
+    });
     expect($cmsNativeDirty.get()).toBe(true);
     await click(buttonByText("Save"));
     expect(fake.updateItem).toHaveBeenCalledWith(

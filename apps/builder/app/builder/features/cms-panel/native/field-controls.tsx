@@ -27,6 +27,7 @@ import {
   appliesMaxLength,
   isoToLocalInput,
   localInputToIso,
+  type CmsRefusal,
 } from "./cms-logic";
 import type { CmsField, CmsSource } from "./cms-source";
 import { ImageField } from "./image-field";
@@ -335,6 +336,7 @@ export const FieldControl = ({
   onChange,
   onError,
   onBusyChange,
+  onRefusal,
   onOpenClassic,
 }: {
   id: string;
@@ -349,6 +351,8 @@ export const FieldControl = ({
   onError: (error: string | undefined) => void;
   /** True while a write of this field's value is in flight (an upload). */
   onBusyChange?: (busy: boolean) => void;
+  /** An upload answered a refusal: the screen's line, not the field's. */
+  onRefusal?: (refusal: CmsRefusal) => void;
   onOpenClassic?: () => void;
 }) => {
   const color = invalid ? ("error" as const) : undefined;
@@ -519,6 +523,7 @@ export const FieldControl = ({
           onChange={onChange}
           onError={onError}
           onBusyChange={onBusyChange}
+          onRefusal={onRefusal}
         />
       );
     case "richtext":
