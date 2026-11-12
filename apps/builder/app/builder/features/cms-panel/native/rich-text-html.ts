@@ -215,9 +215,50 @@ const signatureTags = new Set([
   "HR",
 ]);
 
+/** Elements that end the paragraph they stand in, as the site reads them. */
+const paragraphBreakTags = new Set([
+  ...signatureTags,
+  "P",
+  "IMG",
+  "FIGURE",
+  "FIGCAPTION",
+]);
+
+const hasContent = (node: Node): boolean =>
+  node.nodeType === Node.TEXT_NODE
+    ? (node.textContent ?? "").trim() !== ""
+    : node instanceof Element &&
+      (node.tagName === "BR" || Array.from(node.childNodes).some(hasContent));
+
 /**
- * The nesting of the value's headings, quotes, lists, list items, code
- * blocks and rules, in document order, and the number of its kept links.
+ * The paragraphs a list item holds, as the site counts them: each `p` with
+ * content is one, and each run of inline content between blocks is one.
+ */
+const countListItemParagraphs = (item: Element) => {
+  let count = 0;
+  let inRun = false;
+  for (const child of Array.from(item.childNodes)) {
+    if (child instanceof Element && paragraphBreakTags.has(child.tagName)) {
+      if (inRun) {
+        count += 1;
+        inRun = false;
+      }
+      if (child.tagName === "P" && hasContent(child)) {
+        count += 1;
+      }
+      continue;
+    }
+    if (hasContent(child)) {
+      inRun = true;
+    }
+  }
+  return inRun ? count + 1 : count;
+};
+
+/**
+ * The nesting of the value's headings, quotes, lists, list items (each with
+ * its count of paragraphs), code blocks and rules, in document order, and
+ * the number of its kept links.
  */
 export const richTextBlockSignature = (html: string) => {
   const body = parseHtml(html).body;
@@ -235,7 +276,12 @@ export const richTextBlockSignature = (html: string) => {
           depth += 1;
         }
       }
-      tokens.push(`${element.tagName.toLowerCase()}@${depth}`);
+      const token = `${element.tagName.toLowerCase()}@${depth}`;
+      tokens.push(
+        element.tagName === "LI"
+          ? `${token}:p${countListItemParagraphs(element)}`
+          : token
+      );
     }
     if (
       element.tagName === "A" &&

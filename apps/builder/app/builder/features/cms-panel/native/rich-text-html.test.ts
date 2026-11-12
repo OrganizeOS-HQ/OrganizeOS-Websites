@@ -116,8 +116,19 @@ describe("the block signature", () => {
     ["<p>a</p><p></p>", "links=0"],
     [
       '<ul><li><p>a</p><ul><li><p>b</p></li></ul></li></ul><p><a href="/x">x</a></p>',
-      "ul@0 li@1 ul@2 li@3 links=1",
+      "ul@0 li@1:p1 ul@2 li@3:p1 links=1",
     ],
+    ["<ul><li><p>a</p><p>b</p></li></ul>", "ul@0 li@1:p2 links=0"],
+    ["<ul><li>a<br>b</li></ul>", "ul@0 li@1:p1 links=0"],
+    [
+      "<ul><li><p>One</p></li><li>Two</li></ul>",
+      "ul@0 li@1:p1 li@1:p1 links=0",
+    ],
+    [
+      "<ul><li>a<ul><li>b</li></ul>c</li></ul>",
+      "ul@0 li@1:p2 ul@2 li@3:p1 links=0",
+    ],
+    ["<ul><li><p></p></li></ul>", "ul@0 li@1:p0 links=0"],
     [
       '<blockquote><h2>A</h2></blockquote><p><a href="javascript:x">y</a></p>',
       "blockquote@0 h2@1 links=0",

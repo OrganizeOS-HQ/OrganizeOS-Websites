@@ -53,11 +53,6 @@
       "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">a</span><ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">b</span></li></ul></li></ul><p></p>"
     },
     {
-      "name": "list item with two paragraphs",
-      "input": "<ul><li><p>a</p><p>b</p></li></ul><p></p>",
-      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">a</span><br><span style=\"white-space: pre-wrap;\">b</span></li></ul><p></p>"
-    },
-    {
       "name": "quote",
       "input": "<blockquote><p>Quote</p></blockquote><p></p>",
       "editor": "<blockquote><p><span style=\"white-space: pre-wrap;\">Quote</span></p></blockquote><p></p>"
@@ -165,6 +160,11 @@
       "name": "figure with a caption",
       "input": "<figure><img src=\"https://example.org/a.png\" alt=\"A\" /><figcaption>Caption</figcaption></figure>",
       "reason": "images"
+    },
+    {
+      "name": "list item with two paragraphs",
+      "input": "<ul><li><p>a</p><p>b</p></li></ul><p></p>",
+      "reason": "lossy"
     }
   ]
 }
