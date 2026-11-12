@@ -212,16 +212,25 @@ const findRow = (cssName: string): VariableRow | undefined =>
 const isCanonical = (cssName: string) =>
   (CANONICAL_CSS_NAMES as readonly string[]).includes(cssName);
 
+/** The registry schema's cap on a display name. */
+const MAX_NAME_LENGTH = 128;
+
 const checkDisplayName = (displayName: string) => {
   const name = displayName.trim();
   if (name === "") {
     return "Name is required";
   }
-  if (name.length > 128) {
+  if (name.length > MAX_NAME_LENGTH) {
     return "Name is too long";
   }
   return;
 };
+
+/**
+ * A display name derived from a CSS name, which has no cap: cut to the
+ * schema's, so the registry stays readable.
+ */
+const derivedName = (name: string) => name.slice(0, MAX_NAME_LENGTH);
 
 /** A link must name a listed variable of the same type, and never loop. */
 const checkAlias = (
@@ -422,7 +431,7 @@ const prepareRenameVariable = (
       if (registry === undefined) {
         return;
       }
-      const name = displayName ?? displayNameFromCssName(cssName);
+      const name = displayName ?? derivedName(displayNameFromCssName(cssName));
       if (registry.variables.some((entry) => entry.cssName === from)) {
         stagePatches(
           accumulator,
@@ -642,7 +651,7 @@ export const moveVariables = (
             ...(entry ?? {
               cssName: row.cssName,
               type: row.type,
-              name: row.displayName,
+              name: derivedName(row.displayName),
             }),
             collectionId,
           })
@@ -722,7 +731,7 @@ export const reorderVariable = (
             cssName,
             collectionId: row.collectionId,
             type,
-            name: row.displayName,
+            name: derivedName(row.displayName),
           },
           anchorIndex === -1 ? registry.variables.length : anchorIndex
         )
@@ -763,7 +772,7 @@ export const setVariableType = (
             cssName,
             collectionId: SITE_COLLECTION_ID,
             type,
-            name: row.displayName,
+            name: derivedName(row.displayName),
           })
         );
       }
