@@ -189,6 +189,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const isLoadBackground = useIsBackgroundFetch();
     const isDetailBackground = useIsBackgroundFetch();
     const isPageBackground = useIsBackgroundFetch();
+    // The E3 inputs whose answer is already drawn: a page E3 answered in
+    // place of the one asked for.
+    const adoptedPageKey = useRef<string | undefined>(undefined);
 
     useEffect(() => {
       if (isVisible) {
@@ -341,10 +344,14 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       ) {
         return;
       }
-      const isBackground = isPageBackground(
-        source,
-        JSON.stringify([collectionId, page, query, listVersion])
-      );
+      const key = JSON.stringify([collectionId, page, query, listVersion]);
+      const isBackground = isPageBackground(source, key);
+      // the page E3 answered in place of the one asked for is drawn already
+      if (adoptedPageKey.current === key) {
+        adoptedPageKey.current = undefined;
+        return;
+      }
+      adoptedPageKey.current = undefined;
       let isCurrent = true;
       void source
         .listItems(collectionId, { q: query === "" ? undefined : query, page })
@@ -362,6 +369,17 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             return;
           }
           setItemsPage(result);
+          // a page past the end answers the last one (A4): the screen
+          // keeps that page from here on
+          if (result.page !== page) {
+            adoptedPageKey.current = JSON.stringify([
+              collectionId,
+              result.page,
+              query,
+              listVersion,
+            ]);
+            setPage(result.page);
+          }
         });
       return () => {
         isCurrent = false;

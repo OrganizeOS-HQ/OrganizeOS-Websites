@@ -19,20 +19,19 @@ import {
 import type { CmsField } from "./cms-source";
 
 describe("getStatusChip", () => {
-  test("maps the live status and staged changes", () => {
-    expect(getStatusChip({ status: "draft", hasStagedChanges: false })).toEqual(
-      { label: "Draft", color: "neutral" }
-    );
-    expect(
-      getStatusChip({ status: "published", hasStagedChanges: false })
-    ).toEqual({ label: "Published", color: "green" });
-    expect(
-      getStatusChip({ status: "published", hasStagedChanges: true })
-    ).toEqual({ label: "Staged changes", color: "purple" });
-    expect(
-      getStatusChip({ status: "archived", hasStagedChanges: false })
-    ).toEqual({ label: "Archived", color: "outline" });
-  });
+  test.each([
+    ["draft", false, "Draft", "neutral"],
+    ["published", false, "Published", "outline"],
+    ["published", true, "Staged changes", "purple"],
+    ["archived", false, "Archived", "outline"],
+  ] as const)(
+    "%s (staged %s) is %s, %s",
+    (status, hasStagedChanges, label, color) =>
+      expect(getStatusChip({ status, hasStagedChanges })).toEqual({
+        label,
+        color,
+      })
+  );
 
   test("staged changes only count on a published item", () => {
     expect(

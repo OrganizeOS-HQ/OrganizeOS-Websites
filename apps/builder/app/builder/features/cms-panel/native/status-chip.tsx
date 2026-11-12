@@ -2,7 +2,7 @@ import { Chip, cssVar } from "@webstudio-is/design-system";
 import { getStatusChip } from "./cms-logic";
 import type { CmsItemStatus } from "./cms-source";
 
-/** Archived: no fill, a 1 px inset border, as the platform's badge draws it. */
+/** Published and Archived: no fill, a 1 px inset border, as the platform's badge draws it. */
 const outlineCss = {
   backgroundColor: "transparent",
   color: cssVar("--foreground-secondary"),
