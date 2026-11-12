@@ -265,6 +265,26 @@ describe("the items view", () => {
     expect(lastListItemsCall()).toEqual([POSTS.id, { q: "x", page: 1 }]);
   });
 
+  test("with page 2 drawn, a failed search keeps page 1 for the next read of that search", async () => {
+    fake.listItems.mockImplementation(async (_, { page }) =>
+      pageOf(page ?? 1, 120)
+    );
+    mount();
+    await settle();
+    await act(async () => userEvent.click(byLabel("Next")!));
+    await settle();
+    expect(pagerText()).toBe("51-100 of 120");
+    fake.listItems.mockResolvedValueOnce({ error: "unavailable" });
+    await act(async () => userEvent.type(searchInput()!, "x"));
+    await wait(300);
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "x", page: 1 }]);
+    act(() => {
+      refreshCmsNative();
+    });
+    await settle();
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "x", page: 1 }]);
+  });
+
   test.each(["click", "Enter"])("a row opens its editor by %s", async (how) => {
     mount();
     await settle();

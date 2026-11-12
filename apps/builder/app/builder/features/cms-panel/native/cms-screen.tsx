@@ -249,9 +249,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     // read at E2's answer: the collection whose fields are drawn
     const drawnDetailId = useRef<string | undefined>(undefined);
     drawnDetailId.current = detail?.id;
-    // The collection and page number of the page drawn.
+    // The collection, search and page number of the page drawn.
     const drawnPage = useRef<
-      { collectionId: string; page: number } | undefined
+      { collectionId: string; query: string; page: number } | undefined
     >(undefined);
     // The E3 inputs whose answer is already drawn: a page E3 answered in
     // place of the one asked for.
@@ -472,13 +472,14 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
                 toast.error(getToastText(result.error), {
                   id: `cms-read-${result.error}`,
                 });
-                // a failed page change or search goes back to the drawn
-                // page number, unread, so the pager asks from the rows on
-                // screen; the search keeps the term asked for
+                // a failed page change goes back to the drawn page number,
+                // unread, so the pager asks from the rows on screen; a
+                // failed search keeps the page it asked for
                 const drawn = drawnPage.current;
                 if (
                   drawn !== undefined &&
                   drawn.collectionId === collectionId &&
+                  drawn.query === query &&
                   drawn.page !== page
                 ) {
                   adoptedPageKey.current = JSON.stringify([
@@ -500,7 +501,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           clearLine("page");
           setPageFailed(false);
           setItemsPage(result);
-          drawnPage.current = { collectionId, page: result.page };
+          drawnPage.current = { collectionId, query, page: result.page };
           // a page past the end answers the last one (A4): the screen
           // keeps that page from here on
           if (result.page !== page) {
@@ -711,7 +712,12 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             setReturnFocusItemId(undefined);
           }}
           onPageChange={(next) => {
-            setPage(next);
+            // a page already asked for (its read failed) is asked again
+            if (next === page) {
+              setPageAttempt((current) => current + 1);
+            } else {
+              setPage(next);
+            }
             setReturnFocusItemId(undefined);
           }}
           onOpenItem={(nextId) => openItem(nextId)}
