@@ -83,6 +83,8 @@ import productsBody from "../../../../../../packages/sdk-components-organizeos/s
 import {
   UPCOMING_EVENTS_BINDING_NAME,
   EVENTS_BINDING_NAME,
+  findCatalogResources,
+  getCatalogRootBindingId,
 } from "~/shared/organizeos-preset-ids";
 import {
   type BlockData,
@@ -3312,5 +3314,90 @@ describe("the Shop blocks", () => {
       expect(read([empty.id, ...outer], "data-ws-show")).toBe(true);
       expect(read([shopAll.id, ...outer], "data-ws-show")).toBe(false);
     });
+  });
+});
+
+// OrganizeOS fork (the data-automatic plan's D7 and D8): with the catalog's
+// :root bindings present, a block still brings its own binding, and its
+// insert passes the panels' catalog guard.
+describe("an insert with the catalog's :root bindings present", () => {
+  const eventList = "@organizeos/site-components:EventList";
+  const eventCard = "@organizeos/site-components:EventCard";
+  const getRootBindings = async (resources: Resource[]) =>
+    Promise.all(
+      (await findCatalogResources(projectId, resources)).map(
+        async ({ key, resource }): Promise<DataSource> => ({
+          type: "resource",
+          id: await getCatalogRootBindingId(projectId, key),
+          scopeInstanceId: ROOT_INSTANCE_ID,
+          name: resource.name,
+          resourceId: resource.id,
+        })
+      )
+    );
+  const expectOwnBinding = (rootBindings: DataSource[], resourceId: string) => {
+    const added = [...$dataSources.get().values()].filter(
+      (dataSource) =>
+        dataSource.type === "resource" &&
+        rootBindings.some((binding) => binding.id === dataSource.id) === false
+    );
+    expect(added).toHaveLength(1);
+    const [binding] = added;
+    expect(binding).toMatchObject({ type: "resource", resourceId });
+    expect(binding.scopeInstanceId).not.toBe(ROOT_INSTANCE_ID);
+    expect(isOrganizeosCatalogResourceId(binding.id)).toBe(false);
+    for (const rootBinding of rootBindings) {
+      expect($dataSources.get().get(rootBinding.id)).toBe(rootBinding);
+    }
+    // the block reads its own binding, never a :root one
+    const props = JSON.stringify([...$props.get().values()]);
+    expect(props).toContain(encodeDataSourceVariable(binding.id));
+    for (const rootBinding of rootBindings) {
+      expect(props).not.toContain(encodeDataSourceVariable(rootBinding.id));
+    }
+  };
+
+  test.each([
+    ["a Signup Form", signupForm, forms.resourceId],
+    ["an Event List", eventList, upcomingEvents.resourceId],
+    ["an Event Card", eventCard, upcomingEvents.resourceId],
+  ])(
+    "%s with its catalog Resource present binds through its own binding; one undo removes the block and its binding",
+    async (_label, block, resourceId) => {
+      const rootBindings = await getRootBindings(withForms.resources);
+      expect(rootBindings.length).toBeGreaterThanOrEqual(5);
+      setProject({ resources: withForms.resources, dataSources: rootBindings });
+      const before = getStores();
+      const depth = undoDepth();
+
+      expect(await insertOrganizeosBlock(block)).toBe(true);
+
+      expect(toastError).not.toHaveBeenCalled();
+      expectOwnBinding(rootBindings, resourceId);
+      expect($resources.get()).toBe(before.resources);
+      expect(undoDepth()).toBe(depth + 1);
+      emitCommand("undo");
+      expect(getStores()).toEqual(before);
+    }
+  );
+
+  test("with Forms missing, the insert creates Forms; one undo removes the block, its binding and Forms", async () => {
+    const rootBindings = await getRootBindings(withoutForms.resources);
+    setProject({
+      resources: withoutForms.resources,
+      dataSources: rootBindings,
+    });
+    const before = getStores();
+
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect($resources.get().get(forms.resourceId)).toEqual(
+      expectedFormsResource
+    );
+    expectOwnBinding(rootBindings, forms.resourceId);
+    emitCommand("undo");
+    expect(getStores()).toEqual(before);
+    expect($resources.get().has(forms.resourceId)).toBe(false);
   });
 });

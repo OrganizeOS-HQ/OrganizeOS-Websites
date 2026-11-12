@@ -83,8 +83,12 @@ import {
 } from "./expression-validation";
 import { runtimeGeneratedIdInput } from "./generated-id-input";
 import { createRuntimeMutation } from "./mutation";
-// OrganizeOS fork: catalog Resources outlive their bindings (fork doc section 9).
-import { isOrganizeosCatalogResourceId } from "./organizeos-catalog";
+// OrganizeOS fork: catalog Resources outlive their bindings, and the catalog is
+// locked in the builder (fork doc section 9).
+import {
+  isOrganizeosCatalogResourceId,
+  keepOrganizeosCatalog,
+} from "./organizeos-catalog";
 import {
   paginateOutput,
   projectOutput,
@@ -1732,7 +1736,8 @@ export const updateDataVariable = (
       metadataValues.scopeInstanceId === dataSource.scopeInstanceId)
   ) {
     return createRuntimeMutation({
-      payload,
+      // OrganizeOS fork: a catalog :root binding is not renamed (fork doc section 9).
+      payload: keepOrganizeosCatalog(state, payload),
       result: { dataSourceId: dataSource.id },
       invalidatesNamespaces: ["dataSources"],
     });
@@ -1754,10 +1759,14 @@ export const updateDataVariable = (
           ...(value === undefined ? {} : { value }),
         };
   return createRuntimeMutation({
-    payload: createDataSourceUpsertPayload({
-      ...state,
-      dataSource: nextDataSource,
-    }),
+    // OrganizeOS fork: a catalog :root binding is not rescoped or retyped (fork doc section 9).
+    payload: keepOrganizeosCatalog(
+      state,
+      createDataSourceUpsertPayload({
+        ...state,
+        dataSource: nextDataSource,
+      })
+    ),
     result: { dataSourceId: nextDataSource.id },
     invalidatesNamespaces: [
       "pages",
@@ -1798,7 +1807,8 @@ export const deleteDataVariable = (
     return throwBuilderRuntimeError("NOT_FOUND", "Variable not found");
   }
   return createRuntimeMutation({
-    payload,
+    // OrganizeOS fork: a catalog :root binding is not deleted (fork doc section 9).
+    payload: keepOrganizeosCatalog(state, payload),
     result: { dataSourceId: deletedVariable.id },
     invalidatesNamespaces: [
       "pages",
@@ -3294,14 +3304,18 @@ export const updateResource = (
     methodPath: ["values", "method"],
   });
   return createRuntimeMutation({
-    payload: createResourceUpsertPatchPayload({
-      build,
-      resource: nextResource,
-      dataSourceId,
-      scopeInstanceId,
-      dataSourceName: input.dataSourceName ?? dataSource?.name,
-      exposeAsDataSource,
-    }),
+    // OrganizeOS fork: the catalog is not changed, and a pass writes no catalog Resource (fork doc section 9).
+    payload: keepOrganizeosCatalog(
+      state,
+      createResourceUpsertPatchPayload({
+        build,
+        resource: nextResource,
+        dataSourceId,
+        scopeInstanceId,
+        dataSourceName: input.dataSourceName ?? dataSource?.name,
+        exposeAsDataSource,
+      })
+    ),
     result: {
       resourceId: resource.id,
       dataSourceId: exposeAsDataSource ? dataSourceId : undefined,
@@ -3336,6 +3350,10 @@ export const replaceResourceText = (
   let matchingFieldCount = 0;
   for (const resource of getRequiredResources(state).values()) {
     if (resourceIds !== undefined && resourceIds.has(resource.id) === false) {
+      continue;
+    }
+    // OrganizeOS fork: a catalog Resource is skipped, and never counted (fork doc section 9).
+    if (isOrganizeosCatalogResourceId(resource.id)) {
       continue;
     }
     const fields: Array<{
@@ -3453,13 +3471,17 @@ export const upsertResource = (
   });
 
   return createRuntimeMutation({
-    payload: createResourceUpsertPatchPayload({
-      build,
-      resource,
-      dataSourceId,
-      scopeInstanceId: input.scopeInstanceId,
-      dataSourceName: input.dataSourceName,
-    }),
+    // OrganizeOS fork: the catalog is not changed, and a pass writes no catalog Resource (fork doc section 9).
+    payload: keepOrganizeosCatalog(
+      state,
+      createResourceUpsertPatchPayload({
+        build,
+        resource,
+        dataSourceId,
+        scopeInstanceId: input.scopeInstanceId,
+        dataSourceName: input.dataSourceName,
+      })
+    ),
     result: { resourceId, dataSourceId },
     invalidatesNamespaces: [
       "pages",
@@ -3552,14 +3574,18 @@ export const upsertResourceProp = (
     nextProps: [nextProp.prop],
   });
   return createRuntimeMutation({
-    payload: compactBuilderPatchPayload([
-      ...createResourceUpsertPatchPayload({
-        build,
-        resource,
-        exposeAsDataSource: false,
-      }),
-      ...propPayload,
-    ]),
+    // OrganizeOS fork: the catalog is not changed, and a pass writes no catalog Resource (fork doc section 9).
+    payload: keepOrganizeosCatalog(
+      state,
+      compactBuilderPatchPayload([
+        ...createResourceUpsertPatchPayload({
+          build,
+          resource,
+          exposeAsDataSource: false,
+        }),
+        ...propPayload,
+      ])
+    ),
     result: { resourceId, dataSourceId: undefined, propIds },
     invalidatesNamespaces: [
       "pages",

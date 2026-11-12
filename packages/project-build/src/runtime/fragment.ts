@@ -58,6 +58,8 @@ import {
 } from "./style-utils";
 import { countDataSourceAssetReferences } from "./assets";
 import { throwBuilderRuntimeError } from "./errors";
+// OrganizeOS fork: a page paste keeps the stored catalog Resource (fork doc section 9).
+import { isOrganizeosCatalogResourceId } from "./organizeos-catalog";
 import {
   ambiguousFormClipboardMessage,
   hasAmbiguousFormInstance,
@@ -772,6 +774,14 @@ export const insertWebstudioFragmentCopy = ({
 
       for (const resource of fragment.resources) {
         if (usedResourceIds.has(resource.id)) {
+          // OrganizeOS fork: a catalog Resource the target holds is never
+          // replaced by the clipboard's copy (fork doc section 9).
+          if (
+            resources.has(resource.id) &&
+            isOrganizeosCatalogResourceId(resource.id)
+          ) {
+            continue;
+          }
           resources.set(resource.id, resource);
         }
       }

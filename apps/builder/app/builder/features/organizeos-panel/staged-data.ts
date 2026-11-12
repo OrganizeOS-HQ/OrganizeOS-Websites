@@ -1,14 +1,14 @@
 import {
-  type DataSource,
   type Instance,
   type Instances,
   type WebstudioData,
   type WebstudioFragment,
-  ROOT_INSTANCE_ID,
 } from "@webstudio-is/sdk";
 import {
   type ConflictResolution,
   BuilderRuntimeError,
+  assertCatalogRootBindingsKept,
+  catalogChangeMessage,
   createRuntimeMutation,
   isOrganizeosCatalogResourceId,
   produceWebstudioDataMutation,
@@ -41,21 +41,15 @@ import { builderApi } from "~/shared/builder-api";
  * resource DataSource at `:root` whose id and resourceId are v5 ids):
  * stageWebstudioDataMutable refuses a recipe that does. Adding a missing one
  * is allowed, in provisioning's exact shape: the block insert and the
- * site-template apply do that (D8).
+ * site-template apply do that (D8). The predicate, the binding rule and the
+ * message are the runtime lock's own (runtime/organizeos-catalog.ts).
  */
-
-const catalogChangeMessage = "Cannot change your organization's data catalog.";
-
-const isCatalogRootBinding = (dataSource: DataSource) =>
-  dataSource.type === "resource" &&
-  dataSource.scopeInstanceId === ROOT_INSTANCE_ID &&
-  isOrganizeosCatalogResourceId(dataSource.id) &&
-  isOrganizeosCatalogResourceId(dataSource.resourceId);
 
 /**
  * Throws when `after` lacks, or holds another value for, a catalog Resource
- * or a catalog `:root` binding that `before` has. Untouched entries keep their
- * identity through a produce, so identity is the test.
+ * that `before` has (untouched entries keep their identity through a produce,
+ * so identity is the test, name included), or changes a catalog `:root`
+ * binding (assertCatalogRootBindingsKept, the runtime's rule).
  */
 const assertCatalogKept = (
   before: Partial<Pick<WebstudioData, "resources" | "dataSources">>,
@@ -69,14 +63,11 @@ const assertCatalogKept = (
       throw Error(catalogChangeMessage);
     }
   }
-  for (const [id, dataSource] of before.dataSources ?? []) {
-    if (
-      isCatalogRootBinding(dataSource) &&
-      after.dataSources?.get(id) !== dataSource
-    ) {
-      throw Error(catalogChangeMessage);
-    }
-  }
+  assertCatalogRootBindingsKept(
+    before.dataSources,
+    after.dataSources,
+    before.resources
+  );
 };
 
 /**
