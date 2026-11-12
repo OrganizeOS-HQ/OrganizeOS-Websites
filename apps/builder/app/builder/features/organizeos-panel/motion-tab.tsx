@@ -26,7 +26,7 @@ import { animateChildrenComponent, Motion } from "./motion";
  * The Inspector's Motion tab (panel overhaul spec 5.4), after Style and
  * Settings, mounted by marked lines in builder/inspector.tsx. It holds the
  * motion presets (motion.tsx) for the selected instance and, for a selected
- * Animate Children, upstream's Animation editor below them, by rendering
+ * animation group, upstream's Animation editor below them, by rendering
  * upstream's own PropsSectionContainer. Offered for an org not denied the
  * blocks, in design mode, on an HTML page.
  */

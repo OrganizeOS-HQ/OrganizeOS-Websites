@@ -232,7 +232,7 @@ describe("the meta", () => {
   test("is valid and hidden from the Components panel", () => {
     expect(() => wsComponentMeta.parse(meta)).not.toThrow();
     expect(meta.category).toBe("hidden");
-    expect(meta.label).toBe("Animate Children");
+    expect(meta.label).toBe("Animation Group");
     expect(meta.icon).toBeDefined();
   });
 

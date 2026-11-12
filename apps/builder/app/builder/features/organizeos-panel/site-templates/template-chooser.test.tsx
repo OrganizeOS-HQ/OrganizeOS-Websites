@@ -363,7 +363,7 @@ describe("the dialog", () => {
     expect(startBlankButton()).toBeDefined();
     expect(headings()).toEqual(["Nonprofit", "Union"]);
     expect(cardIds()).toEqual(["nonprofit", "union"]);
-    expect(card("nonprofit")?.textContent).toBe("nonprofit namenonprofit line");
+    expect(card("nonprofit")?.textContent).toBe("nonprofit name");
     expect(card("nonprofit")?.querySelector("img")?.getAttribute("src")).toBe(
       "/site-templates/nonprofit/thumbnail.jpg"
     );
@@ -374,17 +374,17 @@ describe("the dialog", () => {
     const buttons = Array.from(dialog()?.querySelectorAll("button") ?? []);
     expect(buttons.map((button) => button.textContent)).toEqual([
       "Start blank",
-      "nonprofit namenonprofit line",
-      "union nameunion line",
+      "nonprofit name",
+      "union name",
     ]);
     expect(dialog()?.textContent).toBe(
       [
         "Start from a template",
         "Start blank",
         "Nonprofit",
-        "nonprofit namenonprofit line",
+        "nonprofit name",
         "Union",
-        "union nameunion line",
+        "union name",
       ].join("")
     );
   });
@@ -506,7 +506,7 @@ describe("choosing", () => {
     { reason: "touched", message: "This site already has content." },
     {
       reason: "path-taken",
-      message: "This template's pages clash with pages this site already has.",
+      message: "Its pages clash with this site's pages.",
     },
     { reason: "resources", message: "This template cannot be applied." },
     { reason: "no-project", message: "This template cannot be applied." },

@@ -133,7 +133,7 @@ const refusalMessages: Record<
   string
 > = {
   touched: "This site already has content.",
-  "path-taken": "This template's pages clash with pages this site already has.",
+  "path-taken": "Its pages clash with this site's pages.",
   resources: "This template cannot be applied.",
   "no-project": "This template cannot be applied.",
 };
@@ -242,9 +242,6 @@ const TemplateCard = ({
     <Thumbnail src={template.images[template.thumbnail]?.url} alt="" />
     <Text as="span" variant="labels" truncate>
       {template.name}
-    </Text>
-    <Text as="span" color="subtle">
-      {template.oneLine}
     </Text>
   </CardButton>
 );

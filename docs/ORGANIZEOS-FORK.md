@@ -731,11 +731,10 @@ can be merged with minimal conflict.
   in `canvas/canvas.tsx`, after upstream's loop. It builds with upstream's
   `vite.sdk-components.config.ts`, which builds every export of its
   `package.json`. Its builder UI is `features/organizeos-panel/*`:
-  - **The Components panel's OrganizeOS section**, in marked lines of
+  - **The Components panel's section**, headed "Blocks", in marked lines of
     `features/components/components.tsx` (its imports,
     `useStore($selectedPage)`, the branch in `handleInsert` that sends a
-    block to `insertOrganizeosBlock`, the groups, the heading and the
-    footer), and the branch in `commitCanvasDragDrop`
+    block to `insertOrganizeosBlock`, the groups and the heading), and the branch in `commitCanvasDragDrop`
     (`canvas/shared/use-drag-drop.ts`) that sends a dropped block there too;
     `features/organizeos-panel/overlay.wiring.node.test.ts` pins the marked
     lines.
@@ -1742,12 +1741,9 @@ collection }` invalidates, through `invalidateResource`, every current
     `{ type: "cms.close_requested" }`, with nothing beside its type, hides
     the overlay, or, with the native screen on, returns to it. Anything else, a nested `payload` included, is dropped. No
     message chooses an org, a collection's data or a permission.
-- One link sits at the foot of the OrganizeOS section while it lists a block
-  that reads the org's data (the Events and Signups blocks): "Manage in
-  OrganizeOS ↗", which opens the org's Website area in OrganizeOS,
-  `<platform URL>/<subdomain>/website` (`getWorkspaceAreaUrl`), where the
-  builder's menu leads too. While the builder does not know the subdomain it
-  is the Website area's URL, `manageUrl`.
+- The Blocks section has no link to the platform: no "Manage in OrganizeOS"
+  footer (owner decision, 2026-11-07; the platform's Website area is going
+  away).
 - **Data loads only where it is used, never page-wide.** The org's data is a
   catalog of GET Resources with deterministic ids: Events, Fundraisers, Stats,
   Forms and Upcoming Events (provisioning; a build provisioned earlier gets
@@ -2491,8 +2487,10 @@ OrganizeOS repo (its section 14 amends the earlier sections), plan
 2026-10-26: no Motion (the library) fallback; a browser without scroll and view
 timelines gets the static page.
 
-- **Animate Children** (`src/animate/`, registered as
-  `@organizeos/site-components:AnimateChildren`, meta `category: "hidden"`):
+- **Animation Group** (`src/animate/`, registered as
+  `@organizeos/site-components:AnimateChildren`, meta `category: "hidden"`;
+  the component keeps its code name, since stored projects reference it, and
+  its label in the builder is "Animation Group"):
   a `div` with every prop passed through, `display: contents` by its preset so
   wrapping keeps the layout, content model `instance` with `instance`
   children. Props: `action` (upstream's `animationAction`, the one initial
@@ -2537,12 +2535,12 @@ timelines gets the static page.
   which play.
 - **The canvas play flag.** Since 0.309.0 upstream reveals a selection
   through its metas (`selectionReveal`), so the package has no hook: the
-  Animate Children and Convergence Field metas each set
+  Animation Group and Convergence Field metas each set
   `selectionReveal: { type: "fixed", ancestor: "self", … }`, which gives the
   player the memory prop `data-ws-animation-can-play-on-canvas` (upstream's
   Navigator reads it for its icon) while it, or an instance inside it, is
   selected, and drops it when the selection leaves. A player nested in another
-  is flagged with it, so both play. On the canvas an Animate Children plays
+  is flagged with it, so both play. On the canvas an animation group plays
   only with that flag or its action's "Run on canvas" (`isPinned`), a
   Convergence Field only with the flag; preview and published pages ignore
   both. `canvas/organizeos-play-flag.test.ts` pins the flag for each player,
@@ -2553,7 +2551,7 @@ timelines gets the static page.
   the rest of the OrganizeOS builder UI is, in design mode, on an HTML page;
   content mode, XML and text pages keep upstream's Settings only, and a stored
   `"motion"` falls back to Settings where the tab is not offered. Its target is
-  the selected Animate Children, else the selection's parent if that is one,
+  the selected animation group, else the selection's parent if that is one,
   else the selection, which a preset wraps in a new one; the Body, the page root
   and Global Root are refused (the tab reads "Select a section"), and so, with a
   toast, are rich text and what the content model does not allow (an `li`, a
@@ -2570,7 +2568,7 @@ timelines gets the static page.
   edits to the previous action. Without build access (a page template outside
   design mode) both are refused with the runtime's message, in one toast, and
   nothing is written (`motion.test.tsx` covers both paths). The Stagger field
-  writes through `instances.updateProps` as well. With an Animate Children
+  writes through `instances.updateProps` as well. With an animation group
   selected (a preset selects the wrapper it adds), the tab shows its Stagger
   field, 0 to 20 (the range is the Stagger label's tooltip, "0–20 %", a
   `FieldLabel` as the Animation editor's labels are), and below it upstream's
@@ -2578,8 +2576,8 @@ timelines gets the static page.
   while a breakpoint is selected (it is undefined only in a project with no
   breakpoints, where upstream would render the whole props panel instead).
   Settings shows the same editor, and the two are never mounted together. With a
-  child of an Animate Children selected, the presets act on the wrapper, and
-  "Select Animate Children" selects it. The tab shows the presets and fields
+  child of an animation group selected, the presets act on the wrapper, and
+  "Select Animation Group" selects it. The tab shows the presets and fields
   only: no line explaining what a preset does to the selection, and no note on
   where and when the motion plays. Tests check that the package's copies of
   upstream's "new animation" presets (`src/animate/__fixtures__/`, under
@@ -2590,9 +2588,9 @@ timelines gets the static page.
   denied or not. Harmless: one with no animations plays nothing. The
   Motion presets themselves are behind the blocks' deny list. That wrap, like
   one through the API or MCP, is the runtime's alone, which checks the content
-  model against upstream's registry, so there an Animate Children fits
+  model against upstream's registry, so there an animation group fits
   anywhere, an `li` included; only the Motion tab checks the builder's metas.
-- The builder's contrast check classifies Animate Children as rendering no
+- The builder's contrast check classifies the animation group as rendering no
   text of its own. Nothing changes in the published-site runtime packages,
   the CLI or the templates.
 
@@ -2717,7 +2715,7 @@ slice"`, so it covers the element and is cropped on its narrower axis.
   flag could not tell the builder's document from the canvas's); any other
   registration error leaves the field static with the unsupported note. The
   animation is cancelled on unmount and when Motion changes. The notes are a
-  `CanvasCheck` after the children, as Animate Children's are, so they render
+  `CanvasCheck` after the children, as the animation group's are, so they render
   on the canvas only.
 - **Settle cost.** A registered property animates on the main thread: the
   browser recomputes the two groups' rotation each frame and re-renders the
@@ -2732,7 +2730,7 @@ slice"`, so it covers the element and is cropped on its narrower axis.
   scrim) is still checked.
 - The package gains no runtime dependency, and the shipped closure no bare
   specifier (the field uses `react` and `@webstudio-is/react-sdk/runtime`, as
-  Animate Children does). The paused-script and contrast coverage fixtures
+  an animation group does). The paused-script and contrast coverage fixtures
   cover it through the Components panel's OrganizeOS section. Nothing changes
   in the
   published-site runtime packages, the CLI or the templates.
@@ -3268,7 +3266,7 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
 - **The chooser** (`template-chooser.tsx`, mounted by one marked import and one
   marked `<TemplateChooser />` in `builder/builder.tsx`): "Start from a
   template", the offered templates under their category headings with a
-  thumbnail and one line each, and "Start blank". It is offered only when the
+  thumbnail and name each (no caption; `oneLine` stays in the data), and "Start blank". It is offered only when the
   data is loaded, the permit is `build`, `admin` or `own` (a viewer's or content
   editor's writes would not save), the project belongs to an OrganizeOS org not
   on the blocks deny list (§4; a template places blocks), the project is
@@ -3280,7 +3278,7 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   opens its Home, in Simple mode (the builder's Content mode) when the plan
   allows it (`$isContentModeAllowed`), in Design mode otherwise. A refused apply
   says why in one error toast: the site already has content (touched, or one of
-  the variables set), the template's pages clash with the site's, the runtime's
+  the variables set), "Its pages clash with this site's pages.", the runtime's
   own message when it refuses the write, or, for a template holding a Resource
   or with no project open, that the template cannot be applied. **Drafts** are
   offered beside the listed templates only when the builder's URL carries
@@ -4339,7 +4337,7 @@ bound `href` on Head Link is a `<link>` in the head. A prop whose type cannot
 hold an address (a page, an asset, a Resource, a number or a boolean) ships, an
 action is held to its own rule (Actions, below), and an animation's
 settings (`animationAction`, an object) are judged by their value, so the
-OrganizeOS Animate Children keeps its `action`. `data` is an address only on
+OrganizeOS Animation Group (`AnimateChildren`) keeps its `action`. `data` is an address only on
 an `object`, so it is decided by its holder, never by the value's shape:
 Collection, Signup Form and RSVP Form hold records in it, and on a
 `ws:element` that is not an `object` it is a plain attribute, so they keep
