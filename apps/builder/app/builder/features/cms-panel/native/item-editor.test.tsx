@@ -729,6 +729,41 @@ describe("conflicts, unknown outcomes and field errors", () => {
     expect(byLabel("Use my edit: Title")).toBeNull();
   });
 
+  test("Publish whose E8a answer was lost after its save never brings back what the save retired", async () => {
+    await openItem();
+    await retype(titleInput(), "Mine");
+    await retype(input("cms-field-summary"), "My S");
+    fake.updateItem.mockResolvedValueOnce({ error: "conflict" });
+    await click(buttonByText("Save"));
+    fake.getItem.mockResolvedValueOnce({ item: theirs });
+    await click(buttonByText("Reload"));
+    expect(byLabel("Use my edit: Title")).not.toBeNull();
+    expect(byLabel("Use my edit: Summary")).not.toBeNull();
+    await click(byLabel("Use my edit: Title"));
+    const saved = itemOf({
+      data: { title: "Mine", summary: "Theirs S", author: null },
+      updatedAt: V3,
+    });
+    fake.updateItem.mockResolvedValueOnce({ item: saved });
+    fake.publishItem.mockResolvedValueOnce({ error: "unavailable" });
+    fake.getItem.mockResolvedValueOnce({
+      item: {
+        ...saved,
+        status: "published",
+        updatedAt: "2026-11-12T10:00:04+00:00",
+      },
+    });
+    await click(buttonByText("Publish"));
+    expect(fake.updateItem).toHaveBeenCalledTimes(2);
+    expect(fake.publishItem).toHaveBeenCalledTimes(1);
+    expect(titleInput()?.value).toBe("Mine");
+    expect(input("cms-field-summary")?.value).toBe("Theirs S");
+    expect(byLabel("Use my edit: Summary")).toBeNull();
+    expect(byLabel("Use my edit: Title")).toBeNull();
+    expect(conflictLine()).toBeNull();
+    expect($cmsNativeDirty.get()).toBe(false);
+  });
+
   test("after E6 times out or answers unavailable, the next Save sends the same clientId, and a 200 opens that item", async () => {
     const error = vi.spyOn(toast, "error");
     await openNewItem();

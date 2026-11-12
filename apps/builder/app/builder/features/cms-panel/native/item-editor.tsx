@@ -74,8 +74,12 @@ export const COMPACT_HEADER_WIDTH = 600;
 
 type Busy = "save" | "publish" | "discard" | "reload";
 
-/** A write whose answer was lost may have landed (4.3.2). */
-type Settle = { sent: CmsItem };
+/**
+ * A write whose answer was lost may have landed (4.3.2). `afterSave`: the
+ * write followed a save in the same action, so `sent` is the saved item and
+ * nothing set aside before that save is kept.
+ */
+type Settle = { sent: CmsItem; afterSave?: boolean };
 
 /** Whether an element is narrower than `width`, kept current on resize. */
 const useIsNarrow = (width: number) => {
@@ -343,7 +347,7 @@ export const ItemEditor = ({
    * baseline, with the person's values kept aside, so a write that landed
    * leaves the editor clean and one that did not shows "Use my edit".
    */
-  const settle = async ({ sent }: Settle) => {
+  const settle = async ({ sent, afterSave = false }: Settle) => {
     setBusy("reload");
     let result: CmsResult<{ item: CmsItem }>;
     try {
@@ -369,7 +373,18 @@ export const ItemEditor = ({
       toast.error(getToastText("unavailable"));
       return;
     }
-    setKept(keepAside({ fields, kept, baseline, baselineSlug, values, slug }));
+    setKept(
+      afterSave
+        ? keepAside({
+            fields,
+            kept: undefined,
+            baseline: { ...emptyItemData(fields), ...sent.data },
+            baselineSlug: sent.slug,
+            values,
+            slug,
+          })
+        : keepAside({ fields, kept, baseline, baselineSlug, values, slug })
+    );
     applyItem(result.item);
     onWritten(result.item);
   };
@@ -545,8 +560,9 @@ export const ItemEditor = ({
     if (current === undefined) {
       return;
     }
+    const afterSave = current === null || isDirty;
     // With unsaved edits it saves, then publishes: two calls, each locked.
-    if (current === null || isDirty) {
+    if (afterSave) {
       const first = await saveFrom(current);
       if (first === undefined) {
         return;
@@ -568,7 +584,7 @@ export const ItemEditor = ({
         source.publishItem(collection.id, target.id, {
           expectedUpdatedAt: target.updatedAt,
         }),
-      { sent: target }
+      { sent: target, afterSave }
     );
   };
 
