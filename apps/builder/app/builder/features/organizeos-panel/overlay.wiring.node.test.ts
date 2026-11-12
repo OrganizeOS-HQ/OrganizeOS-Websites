@@ -31,11 +31,7 @@ describe("the Components panel's OrganizeOS section", () => {
     expect(components).toMatch(
       /import\s*\{[^}]*\$organizeosComponentGroups[^}]*\}\s*from\s*"~\/builder\/features\/organizeos-panel\/components-section"/
     );
-    for (const name of [
-      "OrganizeosGroupFooter",
-      "organizeosGroupLabel",
-      "withOrganizeosGroups",
-    ]) {
+    for (const name of ["organizeosGroupLabel", "withOrganizeosGroups"]) {
       expect(components).toMatch(
         new RegExp(
           `import\\s*\\{[^}]*\\b${name}\\b[^}]*\\}\\s*from\\s*"~/builder/features/organizeos-panel/components-section"`
@@ -84,13 +80,11 @@ describe("the Components panel's OrganizeOS section", () => {
     expect(filterAndGroup.match(/matchSorter\(/g)).toHaveLength(1);
   });
 
-  test("a group's heading and foot come from the OrganizeOS module", () => {
+  test("a group's heading comes from the OrganizeOS module", () => {
     expect(components).toMatch(
       /label=\{\s*organizeosGroupLabel\(group\.category\) \?\? titleCase\(group\.category\)\s*\}/
     );
-    expect(components).toMatch(
-      /<\/List>\s*\{\}\s*<OrganizeosGroupFooter category=\{group\.category\} \/>/
-    );
+    expect(components).not.toContain("OrganizeosGroupFooter");
   });
 
   // Not a fork line: it watches upstream's type, which withOrganizeosGroups'

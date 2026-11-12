@@ -5,7 +5,6 @@ import * as organizeosMetas from "@organizeos/site-components/metas";
 import * as organizeosTemplates from "@organizeos/site-components/templates";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import * as radixMetas from "@webstudio-is/sdk-components-react-radix/metas";
-import { platformUrl } from "~/shared/branding";
 import {
   $organizeosSite,
   $registeredComponentMetas,
@@ -14,9 +13,7 @@ import {
 import type { OrganizeosSite } from "~/shared/organizeos-site";
 import {
   $organizeosComponentGroups,
-  getWorkspaceAreaUrl,
   groupOrganizeosBlocks,
-  manageLink,
   organizeosGroupLabel,
   withOrganizeosGroups,
   type ComponentsPanelMeta,
@@ -58,8 +55,6 @@ describe("groupOrganizeosBlocks", () => {
     expect(groupOrganizeosBlocks(templates, metas)).toEqual([
       {
         label: "Sections",
-        // no workspace area: the block reads no platform data
-        area: undefined,
         blocks: [
           {
             name: `${namespace}:RotatingTabs`,
@@ -93,8 +88,6 @@ describe("groupOrganizeosBlocks", () => {
       },
       {
         label: "Content",
-        // no workspace area: a designer binds it to a collection's item
-        area: undefined,
         blocks: [
           {
             name: `${namespace}:RichText`,
@@ -109,8 +102,6 @@ describe("groupOrganizeosBlocks", () => {
       },
       {
         label: "Events",
-        // the Website area, the one link the Signups share
-        area: { label: "Manage in OrganizeOS ↗", path: "website" },
         blocks: [
           {
             name: `${namespace}:EventList`,
@@ -146,7 +137,6 @@ describe("groupOrganizeosBlocks", () => {
       },
       {
         label: "Signups",
-        area: { label: "Manage in OrganizeOS ↗", path: "website" },
         blocks: [
           {
             name: `${namespace}:SignupForm`,
@@ -171,7 +161,6 @@ describe("groupOrganizeosBlocks", () => {
       },
       {
         label: "Shop",
-        area: { label: "Manage in OrganizeOS ↗", path: "website" },
         blocks: [
           {
             name: `${namespace}:ProductGrid`,
@@ -298,46 +287,6 @@ describe("groupOrganizeosBlocks", () => {
   });
 });
 
-describe("getWorkspaceAreaUrl", () => {
-  const site: OrganizeosSite = {
-    organizationId: "org-1",
-    subdomain: "acme",
-    manageUrl: "https://app.organizeos.org/acme/website",
-    platformUrl: "https://app.organizeos.org",
-    blocksEnabled: true,
-  };
-
-  test("links the org's workspace area on the app host", () => {
-    expect(getWorkspaceAreaUrl(site, "pages/embeds")).toBe(
-      "https://app.organizeos.org/acme/pages/embeds"
-    );
-    expect(getWorkspaceAreaUrl(site, "events")).toBe(
-      "https://app.organizeos.org/acme/events"
-    );
-  });
-
-  test("links the Manage link to the Website area, the menu's own link", () => {
-    expect(getWorkspaceAreaUrl(site, manageLink.path)).toBe(site.manageUrl);
-  });
-
-  test("falls back to the Website area's link while the subdomain is unknown", () => {
-    expect(
-      getWorkspaceAreaUrl(
-        {
-          ...site,
-          subdomain: undefined,
-          manageUrl: "https://app.organizeos.org/dashboard",
-        },
-        "pages/embeds"
-      )
-    ).toBe("https://app.organizeos.org/dashboard");
-  });
-
-  test("links the platform home for a project no org owns", () => {
-    expect(getWorkspaceAreaUrl(undefined, "pages/embeds")).toBe(platformUrl);
-  });
-});
-
 describe("$organizeosComponentGroups", () => {
   const site: OrganizeosSite = {
     organizationId: "org-1",
@@ -372,7 +321,7 @@ describe("$organizeosComponentGroups", () => {
     expect($organizeosComponentGroups.get()).toEqual([]);
   });
 
-  test("for an org not denied, one OrganizeOS group with the blocks in order, More last, and one Manage link", () => {
+  test("for an org not denied, one OrganizeOS group with the blocks in order, More last and no link", () => {
     registerLibrary({
       ...organizeosTemplates,
       FutureBlock: organizeosTemplates.SignupForm,
@@ -408,10 +357,7 @@ describe("$organizeosComponentGroups", () => {
         component: "@webstudio-is/sdk-components-react-radix:Tabs",
       }),
     });
-    expect(group.link).toEqual({
-      label: "Manage in OrganizeOS ↗",
-      path: "website",
-    });
+    expect(group).not.toHaveProperty("link");
   });
 
   test("with the Shop blocks switch on, Product Grid then Product Card after the Signups, before More", () => {
@@ -471,25 +417,6 @@ describe("$organizeosComponentGroups", () => {
       shopBlocksEnabled: true,
     });
     expect($organizeosComponentGroups.get()).toEqual([]);
-  });
-
-  test("the Manage link shows with any block that reads the org's data, and not with only the others", () => {
-    $organizeosSite.set(site);
-    for (const name of [
-      "EventList",
-      "EventCard",
-      "RsvpForm",
-      "SignupForm",
-      "SignupFormInline",
-    ] as const) {
-      registerLibrary({ [name]: organizeosTemplates[name] });
-      expect($organizeosComponentGroups.get()[0].link, name).toBe(manageLink);
-    }
-    registerLibrary({
-      Marquee: organizeosTemplates.Marquee,
-      RichText: organizeosTemplates.RichText,
-    });
-    expect($organizeosComponentGroups.get()[0].link).toBeUndefined();
   });
 });
 
@@ -618,7 +545,7 @@ describe("withOrganizeosGroups", () => {
 
 describe("organizeosGroupLabel", () => {
   test("OrganizeOS for the group, undefined for upstream's categories", () => {
-    expect(organizeosGroupLabel("organizeos")).toBe("OrganizeOS");
+    expect(organizeosGroupLabel("organizeos")).toBe("Blocks");
     for (const category of ["general", "typography", "found", "radix"]) {
       expect(organizeosGroupLabel(category)).toBeUndefined();
     }

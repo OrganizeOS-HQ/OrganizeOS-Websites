@@ -718,11 +718,10 @@ can be merged with minimal conflict.
   in `canvas/canvas.tsx`, after upstream's loop. It builds with upstream's
   `vite.sdk-components.config.ts`, which builds every export of its
   `package.json`. Its builder UI is `features/organizeos-panel/*`:
-  - **The Components panel's OrganizeOS section**, in marked lines of
+  - **The Components panel's section**, headed "Blocks", in marked lines of
     `features/components/components.tsx` (its imports,
     `useStore($selectedPage)`, the branch in `handleInsert` that sends a
-    block to `insertOrganizeosBlock`, the groups, the heading and the
-    footer), and the branch in `commitCanvasDragDrop`
+    block to `insertOrganizeosBlock`, the groups and the heading), and the branch in `commitCanvasDragDrop`
     (`canvas/shared/use-drag-drop.ts`) that sends a dropped block there too;
     `features/organizeos-panel/overlay.wiring.node.test.ts` pins the marked
     lines.
@@ -1698,12 +1697,9 @@ collection }` invalidates, through `invalidateResource`, every current
     `{ type: "cms.close_requested" }`, with nothing beside its type, hides
     the overlay. Anything else, a nested `payload` included, is dropped. No
     message chooses an org, a collection's data or a permission.
-- One link sits at the foot of the OrganizeOS section while it lists a block
-  that reads the org's data (the Events and Signups blocks): "Manage in
-  OrganizeOS ↗", which opens the org's Website area in OrganizeOS,
-  `<platform URL>/<subdomain>/website` (`getWorkspaceAreaUrl`), where the
-  builder's menu leads too. While the builder does not know the subdomain it
-  is the Website area's URL, `manageUrl`.
+- The Blocks section has no link to the platform: no "Manage in OrganizeOS"
+  footer (owner decision, 2026-11-07; the platform's Website area is going
+  away).
 - **Data loads only where it is used, never page-wide.** The org's data is a
   catalog of GET Resources with deterministic ids: Events, Fundraisers, Stats,
   Forms and Upcoming Events (provisioning; a build provisioned earlier gets
