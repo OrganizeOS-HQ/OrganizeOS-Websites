@@ -733,6 +733,61 @@ describe("conflicts, unknown outcomes and field errors", () => {
     expect(byLabel("Use my edit: Title")).toBeNull();
   });
 
+  test("a write that landed in the platform's stored form leaves the editor clean, with no conflict line", async () => {
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "tint", label: "Tint", kind: "color" },
+      { key: "body", label: "Body", kind: "richtext" },
+    ]);
+    await openItem(
+      itemOf({
+        data: {
+          title: "Hello",
+          summary: null,
+          author: null,
+          tint: null,
+          body: { html: "<p>One</p>", text: "One" },
+        },
+      })
+    );
+    await retype(titleInput(), "Mine ");
+    await retype(input("cms-field-tint"), "#aabbcc");
+    const editable = await vi.waitFor(() => {
+      const element = document.querySelector<HTMLElement>(
+        '[data-cms-field="cms-field-body"] [contenteditable="true"]'
+      );
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    await act(async () => userEvent.click(editable));
+    await act(async () => userEvent.keyboard("{Control>}a{/Control}Two"));
+    await settle();
+    fake.updateItem.mockResolvedValueOnce({ error: "unavailable" });
+    // the platform trimmed, upper-cased and sanitised what it stored
+    fake.getItem.mockResolvedValueOnce({
+      item: itemOf({
+        data: {
+          title: "Mine",
+          summary: null,
+          author: null,
+          tint: "#AABBCC",
+          body: { html: "<p>Two</p>", text: "Two" },
+        },
+        slug: "mine",
+        updatedAt: V2,
+      }),
+    });
+    await click(buttonByText("Save"));
+    const sent = fake.updateItem.mock.lastCall?.[2].data.body as {
+      html: string;
+    };
+    expect(sent.html).toContain("Two");
+    expect(conflictLine()).toBeNull();
+    expect(document.querySelector("[data-cms-use-mine]")).toBeNull();
+    expect($cmsNativeDirty.get()).toBe(false);
+    expect(isDisabled("Save")).toBe(true);
+  });
+
   test("Use my edit is disabled while a write is in flight", async () => {
     await openItem();
     await retype(titleInput(), "Mine");

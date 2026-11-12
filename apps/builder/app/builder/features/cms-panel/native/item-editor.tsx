@@ -32,6 +32,7 @@ import {
 import { ChevronLeftIcon, EllipsesIcon } from "@webstudio-is/icons";
 import {
   emptyItemData,
+  differsFromStored,
   emptyValueFor,
   getFieldErrorText,
   getItemTitle,
@@ -561,11 +562,11 @@ export const ItemEditor = ({
     }
     const differs =
       replayed &&
-      isItemDirty({
+      differsFromStored({
         fields,
-        baseline: { ...emptyItemData(fields), ...saved.data },
+        stored: { ...emptyItemData(fields), ...saved.data },
         values,
-        baselineSlug: saved.slug,
+        storedSlug: saved.slug,
         slug,
       });
     return { saved, differs };

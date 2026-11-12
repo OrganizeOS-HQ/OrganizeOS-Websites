@@ -10,6 +10,8 @@ import {
   getStatusChip,
   getTitleField,
   getToastText,
+  isSameStoredValue,
+  toStoredForm,
   isItemDirty,
   isoToLocalInput,
   keepAside,
@@ -536,4 +538,89 @@ describe("getClassicDeepLink", () => {
   ] as const)("getClassicDeepLink(%o, %o) is %o", (collection, itemId, link) =>
     expect(getClassicDeepLink(collection, itemId)).toEqual(link)
   );
+});
+
+describe("toStoredForm", () => {
+  test.each([
+    ["text", "  Hello ", "Hello"],
+    ["textarea", "Hi\n", "Hi"],
+    ["phone", " 555 ", "555"],
+    ["link", " https://example.org ", "https://example.org"],
+    ["email", "a@example.org ", "a@example.org"],
+    ["date", " 2026-11-12", "2026-11-12"],
+    ["option", " a ", "a"],
+    ["text", "   ", null],
+    ["color", " #aabbcc ", "#AABBCC"],
+    ["number", 2, 2],
+    ["switch", true, true],
+  ] as const)("%s %o is stored as %o", (kind, value, stored) =>
+    expect(toStoredForm(kind, value)).toEqual(stored)
+  );
+
+  test("an image's url and alt are trimmed", () =>
+    expect(
+      toStoredForm("image", {
+        url: " https://example.org/a.png ",
+        alt: "A ",
+        width: 2,
+        height: 3,
+      })
+    ).toEqual({
+      url: "https://example.org/a.png",
+      alt: "A",
+      width: 2,
+      height: 3,
+    }));
+
+  test("rich text without a DOM parser compares its HTML as it is", () => {
+    expect(toStoredForm("richtext", { html: "<p>a</p>", text: "a" })).toBe(
+      "<p>a</p>"
+    );
+    expect(toStoredForm("richtext", { html: "<p></p>" })).toBeNull();
+  });
+
+  test("isSameStoredValue compares in the stored form", () => {
+    expect(isSameStoredValue("text", "Mine ", "Mine")).toBe(true);
+    expect(isSameStoredValue("color", "#aabbcc", "#AABBCC")).toBe(true);
+    expect(isSameStoredValue("text", "Mine", "Yours")).toBe(false);
+  });
+});
+
+describe("kept values in the stored form", () => {
+  const fields: CmsField[] = [
+    { key: "title", label: "Title", kind: "text", isTitle: true },
+    { key: "tint", label: "Tint", kind: "color" },
+  ];
+
+  test("an edit the platform stored trimmed and upper-cased is no kept difference", () => {
+    const kept = keepAside({
+      fields,
+      kept: undefined,
+      baseline: { title: "Hello", tint: null },
+      baselineSlug: "hello",
+      values: { title: "Mine ", tint: "#aabbcc" },
+      slug: "hello",
+    });
+    expect(
+      getKeptDifferences({
+        fields,
+        kept,
+        values: { title: "Mine", tint: "#AABBCC" },
+        slug: "hello",
+      })
+    ).toEqual([]);
+  });
+
+  test("a value equal to its baseline in the stored form is not set aside", () => {
+    expect(
+      keepAside({
+        fields,
+        kept: undefined,
+        baseline: { title: "Hello", tint: "#AABBCC" },
+        baselineSlug: "hello",
+        values: { title: "Hello ", tint: "#aabbcc" },
+        slug: "hello",
+      }).values
+    ).toEqual({});
+  });
 });
