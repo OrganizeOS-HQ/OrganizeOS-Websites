@@ -914,7 +914,10 @@ can be merged with minimal conflict.
   `variables-icon.tsx`, `index.ts`, and the test-only `test-utils.tsx`), on
   the rail-overlay host; in `sidebar-left/sidebar-left.tsx`, the one
   `<VariablesRailButton />` after `<CmsRailButton />`, the one
-  `<VariablesOverlay />` after `<CmsOverlay />`, and their marked import.
+  `<VariablesOverlay />` after `<CmsOverlay />`, and their marked import; and
+  the one marked title in `features/settings-panel/variables-section.tsx`,
+  "Data variables" for upstream's "Variables" (its open-state key stays
+  `Variables`), so the builder never shows two things called Variables.
   Pinned by `overlay.wiring.node.test.ts`.
 - **Published sites (§1, §8).** The CLI's copy of the blocks' build into every
   published site, `packages/cli/src/organizeos-components.ts`, called from

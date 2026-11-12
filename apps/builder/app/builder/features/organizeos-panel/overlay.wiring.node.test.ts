@@ -282,6 +282,14 @@ describe("the OrganizeOS publisher in shared/context.server.ts", () => {
 });
 
 describe("the settings panel's OrganizeOS controls", () => {
+  test("variables-section.tsx titles the binding section Data variables, its open-state key unchanged", () => {
+    const section = read("../settings-panel/variables-section.tsx");
+    expect(section).toMatch(
+      /<SectionTitleLabel>Data variables<\/SectionTitleLabel>/
+    );
+    expect(section).toMatch(/const label = "Variables";/);
+  });
+
   const combined = read("../settings-panel/controls/combined.tsx");
   const url = read("../settings-panel/controls/url.tsx");
   const propsSection = read(
