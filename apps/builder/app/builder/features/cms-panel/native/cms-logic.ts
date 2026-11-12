@@ -274,8 +274,20 @@ const keepStoredMarkup = (parent: Node) => {
       element.replaceWith(...element.childNodes);
       continue;
     }
-    for (const { name } of [...element.attributes]) {
-      if (RICH_TEXT_ATTRIBUTES.has(name) === false) {
+    // a link that opens a new tab without a rel gets the platform's rel
+    if (
+      tag === "a" &&
+      (element.getAttribute("target") ?? "").toLowerCase() === "_blank" &&
+      (element.getAttribute("rel") ?? "") === ""
+    ) {
+      element.setAttribute("rel", "noopener noreferrer");
+    }
+    for (const { name, value } of [...element.attributes]) {
+      if (
+        RICH_TEXT_ATTRIBUTES.has(name) === false ||
+        // the platform drops an empty attribute, an empty alt aside
+        (value === "" && name !== "alt")
+      ) {
         element.removeAttribute(name);
       }
     }
@@ -285,7 +297,8 @@ const keepStoredMarkup = (parent: Node) => {
 /**
  * Rich-text HTML as the platform keeps it, for comparison only: parsed
  * inertly, spans and other tags outside the allowlist unwrapped, attributes
- * outside it dropped, then serialised. Without a DOM parser, the HTML as it
+ * outside it and empty ones dropped, a new-tab link's missing rel added, then
+ * serialised. Without a DOM parser, the HTML as it
  * is.
  */
 const toStoredRichTextHtml = (html: string) => {

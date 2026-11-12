@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { userEvent } from "@vitest/browser/context";
-import { TooltipProvider } from "@webstudio-is/design-system";
+import { toast, TooltipProvider } from "@webstudio-is/design-system";
 import { CmsScreen, type CmsScreenProps } from "./cms-screen";
 import { refreshCmsNative } from "./cms-native-stores";
 import type { CmsItemsPage, CmsResult } from "./cms-source";
@@ -195,6 +195,29 @@ describe("the items view", () => {
     expect(pagerText()).toBe("101-120 of 120");
     expect(itemRows()).toHaveLength(20);
     expect((byLabel("Next") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test("a page change that fails keeps the drawn page, and Next asks the next page again", async () => {
+    const toastError = vi.spyOn(toast, "error");
+    fake.listItems.mockImplementation(async (_, { page }) =>
+      pageOf(page ?? 1, 120)
+    );
+    mount();
+    await settle();
+    expect(pagerText()).toBe("1-50 of 120");
+    const calls = fake.listItems.mock.calls.length;
+    fake.listItems.mockResolvedValueOnce({ error: "unavailable" });
+    await act(async () => userEvent.click(byLabel("Next")!));
+    await settle();
+    expect(fake.listItems).toHaveBeenCalledTimes(calls + 1);
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: undefined, page: 2 }]);
+    expect(toastError).toHaveBeenCalledWith("Try again in a minute");
+    expect(pagerText()).toBe("1-50 of 120");
+    await act(async () => userEvent.click(byLabel("Next")!));
+    await settle();
+    expect(fake.listItems).toHaveBeenCalledTimes(calls + 2);
+    expect(lastListItemsCall()).toEqual([POSTS.id, { q: undefined, page: 2 }]);
+    expect(pagerText()).toBe("51-100 of 120");
   });
 
   test.each(["click", "Enter"])("a row opens its editor by %s", async (how) => {
