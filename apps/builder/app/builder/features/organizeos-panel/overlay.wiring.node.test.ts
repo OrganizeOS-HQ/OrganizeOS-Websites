@@ -296,3 +296,20 @@ describe("the settings panel's OrganizeOS controls", () => {
     );
   });
 });
+
+const projectBuild = (path: string) =>
+  read(`../../../../../../packages/project-build/src/${path}`);
+
+describe("the Variables edits in project-build", () => {
+  test("projectSettings keeps the organizeos key, unparsed", () => {
+    expect(projectBuild("shared/project-settings.ts")).toMatch(
+      /organizeos:\s*z\.unknown\(\)\.optional\(\),/
+    );
+  });
+
+  test("index.ts exports the registry module", () => {
+    expect(projectBuild("index.ts")).toMatch(
+      /export \* from "\.\/shared\/organizeos-variables";/
+    );
+  });
+});

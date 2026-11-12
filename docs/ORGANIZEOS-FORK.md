@@ -877,6 +877,12 @@ can be merged with minimal conflict.
   `apps/builder/.env`; `shared/organizeos-catalog-reach.test.ts` and a marked
   `describe` in `packages/cli/src/prebuild.test.ts` pin that the catalog loads
   only where a page uses it.
+- **Variables (§9, "Variables").** In project-build:
+  `src/shared/organizeos-variables.ts` (the registry schema and
+  `readVariablesRegistry`, with `organizeos-variables.organizeos.test.ts`),
+  exported by one marked line in `src/index.ts`; and the `organizeos` key, one
+  marked line in `src/shared/project-settings.ts`. Pinned by
+  `overlay.wiring.node.test.ts`.
 - **Published sites (§1, §8).** The CLI's copy of the blocks' build into every
   published site, `packages/cli/src/organizeos-components.ts`, called from
   short marked hooks in `prebuild.ts` and `framework-react-router.ts`, with
