@@ -1748,7 +1748,7 @@ export const propMayShip = (
     case "json":
     case "string[]":
     // An animation's settings: an object, which React writes as
-    // [object Object] (the OrganizeOS Animate Children's `action`)
+    // [object Object] (the OrganizeOS Animation group's `action`)
     case "animationAction":
       return urlValueMayRun(prop.value, false);
     case "expression":

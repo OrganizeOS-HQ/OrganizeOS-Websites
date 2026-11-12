@@ -4,7 +4,7 @@ import { canPlayOnCanvasProperty } from "./flag";
 
 export const meta: WsComponentMeta = {
   category: "hidden",
-  label: "Animate Children",
+  label: "Animation group",
   description: "Animates each child on scroll",
   icon: AnimationGroupIcon,
   contentModel: {

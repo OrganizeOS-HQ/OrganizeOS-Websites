@@ -85,7 +85,7 @@ let root: Root | undefined;
 let container: HTMLElement | undefined;
 
 /**
- * body > section > card, a list, and an Animate Children with a child;
+ * body > section > card, a list, and an animation group with a child;
  * `wrapperProps` are the existing wrapper's own props.
  */
 const project = (wrapperProps: Prop[] = []) => {
@@ -277,7 +277,7 @@ describe("getMotionTarget", () => {
     ).toEqual({ kind: "wrap", instanceId: "section" });
   });
 
-  test("an Animate Children, or a child of one, is the existing wrapper", () => {
+  test("an animation group, or a child of one, is the existing wrapper", () => {
     project();
     const page = { rootInstanceId: "body" };
     expect(
@@ -537,7 +537,7 @@ describe("the Motion area", () => {
     const stack = undoDepth();
     await applyMotionPreset(reveal);
     expect(toastError).toHaveBeenCalledTimes(1);
-    expect(toastError).toHaveBeenCalledWith("Cannot wrap in Animate Children");
+    expect(toastError).toHaveBeenCalledWith("Cannot wrap in Animation group");
     // neither the wrapper nor its props
     expect(getStores()).toEqual(before);
     expect($props.get().size).toBe(0);
@@ -670,7 +670,7 @@ describe("the Motion area", () => {
 describe("upstream's Animation section", () => {
   // props-section.tsx shows the Animation section, in place of the props
   // panel, for an instance whose initial props include an animationAction
-  test("shows for an Animate Children", () => {
+  test("shows for an animation group", () => {
     project();
     selectInstance(["wrapper", "body"]);
     const initialProps = $selectedInstanceInitialPropNames.get();

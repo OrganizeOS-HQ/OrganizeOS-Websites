@@ -2439,8 +2439,10 @@ OrganizeOS repo (its section 14 amends the earlier sections), plan
 2026-10-26: no Motion (the library) fallback; a browser without scroll and view
 timelines gets the static page.
 
-- **Animate Children** (`src/animate/`, registered as
-  `@organizeos/site-components:AnimateChildren`, meta `category: "hidden"`):
+- **Animation group** (`src/animate/`, registered as
+  `@organizeos/site-components:AnimateChildren`, meta `category: "hidden"`;
+  the component keeps its code name, since stored projects reference it, and
+  its label in the builder is "Animation group"):
   a `div` with every prop passed through, `display: contents` by its preset so
   wrapping keeps the layout, content model `instance` with `instance`
   children. Props: `action` (upstream's `animationAction`, the one initial
@@ -2485,12 +2487,12 @@ timelines gets the static page.
   which play.
 - **The canvas play flag.** Since 0.309.0 upstream reveals a selection
   through its metas (`selectionReveal`), so the package has no hook: the
-  Animate Children and Convergence Field metas each set
+  Animation group and Convergence Field metas each set
   `selectionReveal: { type: "fixed", ancestor: "self", … }`, which gives the
   player the memory prop `data-ws-animation-can-play-on-canvas` (upstream's
   Navigator reads it for its icon) while it, or an instance inside it, is
   selected, and drops it when the selection leaves. A player nested in another
-  is flagged with it, so both play. On the canvas an Animate Children plays
+  is flagged with it, so both play. On the canvas an animation group plays
   only with that flag or its action's "Run on canvas" (`isPinned`), a
   Convergence Field only with the flag; preview and published pages ignore
   both. `canvas/organizeos-play-flag.test.ts` pins the flag for each player,
@@ -2501,7 +2503,7 @@ timelines gets the static page.
   the rest of the OrganizeOS builder UI is, in design mode, on an HTML page;
   content mode, XML and text pages keep upstream's Settings only, and a stored
   `"motion"` falls back to Settings where the tab is not offered. Its target is
-  the selected Animate Children, else the selection's parent if that is one,
+  the selected animation group, else the selection's parent if that is one,
   else the selection, which a preset wraps in a new one; the Body, the page root
   and Global Root are refused (the tab reads "Select a section"), and so, with a
   toast, are rich text and what the content model does not allow (an `li`, a
@@ -2518,7 +2520,7 @@ timelines gets the static page.
   edits to the previous action. Without build access (a page template outside
   design mode) both are refused with the runtime's message, in one toast, and
   nothing is written (`motion.test.tsx` covers both paths). The Stagger field
-  writes through `instances.updateProps` as well. With an Animate Children
+  writes through `instances.updateProps` as well. With an animation group
   selected (a preset selects the wrapper it adds), the tab shows its Stagger
   field, 0 to 20 (the range is the Stagger label's tooltip, "0–20 %", a
   `FieldLabel` as the Animation editor's labels are), and below it upstream's
@@ -2526,8 +2528,8 @@ timelines gets the static page.
   while a breakpoint is selected (it is undefined only in a project with no
   breakpoints, where upstream would render the whole props panel instead).
   Settings shows the same editor, and the two are never mounted together. With a
-  child of an Animate Children selected, the presets act on the wrapper, and
-  "Select Animate Children" selects it. The tab shows the presets and fields
+  child of an animation group selected, the presets act on the wrapper, and
+  "Select animation group" selects it. The tab shows the presets and fields
   only: no line explaining what a preset does to the selection, and no note on
   where and when the motion plays. Tests check that the package's copies of
   upstream's "new animation" presets (`src/animate/__fixtures__/`, under
@@ -2538,9 +2540,9 @@ timelines gets the static page.
   denied or not. Harmless: one with no animations plays nothing. The
   Motion presets themselves are behind the blocks' deny list. That wrap, like
   one through the API or MCP, is the runtime's alone, which checks the content
-  model against upstream's registry, so there an Animate Children fits
+  model against upstream's registry, so there an animation group fits
   anywhere, an `li` included; only the Motion tab checks the builder's metas.
-- The builder's contrast check classifies Animate Children as rendering no
+- The builder's contrast check classifies the animation group as rendering no
   text of its own. Nothing changes in the published-site runtime packages,
   the CLI or the templates.
 
@@ -2665,7 +2667,7 @@ slice"`, so it covers the element and is cropped on its narrower axis.
   flag could not tell the builder's document from the canvas's); any other
   registration error leaves the field static with the unsupported note. The
   animation is cancelled on unmount and when Motion changes. The notes are a
-  `CanvasCheck` after the children, as Animate Children's are, so they render
+  `CanvasCheck` after the children, as the animation group's are, so they render
   on the canvas only.
 - **Settle cost.** A registered property animates on the main thread: the
   browser recomputes the two groups' rotation each frame and re-renders the
@@ -2680,7 +2682,7 @@ slice"`, so it covers the element and is cropped on its narrower axis.
   scrim) is still checked.
 - The package gains no runtime dependency, and the shipped closure no bare
   specifier (the field uses `react` and `@webstudio-is/react-sdk/runtime`, as
-  Animate Children does). The paused-script and contrast coverage fixtures
+  an animation group does). The paused-script and contrast coverage fixtures
   cover it through the Components panel's OrganizeOS section. Nothing changes
   in the
   published-site runtime packages, the CLI or the templates.
@@ -4287,7 +4289,7 @@ bound `href` on Head Link is a `<link>` in the head. A prop whose type cannot
 hold an address (a page, an asset, a Resource, a number or a boolean) ships, an
 action is held to its own rule (Actions, below), and an animation's
 settings (`animationAction`, an object) are judged by their value, so the
-OrganizeOS Animate Children keeps its `action`. `data` is an address only on
+OrganizeOS Animation group (`AnimateChildren`) keeps its `action`. `data` is an address only on
 an `object`, so it is decided by its holder, never by the value's shape:
 Collection, Signup Form and RSVP Form hold records in it, and on a
 `ws:element` that is not an `object` it is a plain attribute, so they keep

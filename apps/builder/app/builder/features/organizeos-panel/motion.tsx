@@ -48,7 +48,7 @@ import { motionPresets, type MotionPreset } from "./motion/presets";
  * Children whose `action` is the preset, or replaces the action of the Animate
  * Children the selection is, or sits directly in. `action` is upstream's data,
  * edited afterwards in upstream's Animation section, which the tab embeds
- * below the presets for a selected Animate Children (`editor`); `stagger` is
+ * below the presets for a selected animation group (`editor`); `stagger` is
  * edited only here, because that section replaces the props panel.
  */
 
@@ -60,13 +60,13 @@ export const motionRefusal = "Select a section";
 
 export type MotionTarget =
   | { kind: "refused" }
-  /** wrap the selection in a new Animate Children */
+  /** wrap the selection in a new animation group */
   | { kind: "wrap"; instanceId: Instance["id"] }
-  /** an existing Animate Children: the selection or its parent */
+  /** an existing animation group: the selection or its parent */
   | { kind: "wrapper"; instanceId: Instance["id"] };
 
 /**
- * What a preset acts on: the selected Animate Children, else its parent if
+ * What a preset acts on: the selected animation group, else its parent if
  * that is one, else the selection to wrap. Nothing, Global Root, the page
  * root and the Body are refused.
  */
@@ -140,7 +140,7 @@ export const clampMotionStagger = (value: number) =>
  * list items) is refused with a toast, and nothing is written.
  *
  * The runtime's wrap checks content models against the static registry, which
- * has no OrganizeOS metas, so there an Animate Children is tagless and fits
+ * has no OrganizeOS metas, so there an animation group is tagless and fits
  * anywhere. The check here uses the builder's registered metas, as the
  * builder's own wrap did before 0.309.0 (ruling panels OQ1). Without build
  * access either is refused with the runtime's message.
@@ -235,7 +235,7 @@ export const applyMotionPreset = async (preset: MotionPreset) => {
   }
 };
 
-/** Sets an Animate Children's stagger, clamped to 0..20, keeping the prop's id. */
+/** Sets an animation group's stagger, clamped to 0..20, keeping the prop's id. */
 export const setMotionStagger = (instanceId: Instance["id"], value: number) => {
   executeRuntimeMutation({
     id: "instances.updateProps",
@@ -324,7 +324,7 @@ const StaggerField = ({
 };
 
 /**
- * `editor` is upstream's Animation editor for a selected Animate Children,
+ * `editor` is upstream's Animation editor for a selected animation group,
  * shown full width below the Stagger field; the Motion tab passes it only
  * where upstream renders the editor alone (motion-tab.tsx).
  */
@@ -380,7 +380,7 @@ export const Motion = ({ editor }: { editor?: ReactNode }) => {
             data-motion-select-wrapper
             onClick={() => selectInstance(selector.slice(1))}
           >
-            Select Animate Children
+            Select animation group
           </Button>
         )}
         {isWrapperSelected && stagger !== undefined && (
