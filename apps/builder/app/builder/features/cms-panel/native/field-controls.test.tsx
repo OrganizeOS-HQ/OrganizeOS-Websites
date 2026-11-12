@@ -499,6 +499,28 @@ describe("the image", () => {
     );
   });
 
+  test("image disables Alt and Remove while E9 is in flight", async () => {
+    const held = deferred<CmsResult<{ url: string; path: string }>>();
+    fake.uploadImage.mockReturnValue(held.promise);
+    mountField(imageField, {
+      url: "https://cdn.example.org/old.png",
+      alt: "Old",
+      width: 1,
+      height: 1,
+    });
+    const alt = () => document.querySelector<HTMLInputElement>(`#${ID}-alt`);
+    expect(alt()?.disabled).toBe(false);
+    expect((byLabel("Remove") as HTMLButtonElement).disabled).toBe(false);
+    await chooseFile(await pngOf(2, 3));
+    expect(alt()?.disabled).toBe(true);
+    expect((byLabel("Remove") as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => {
+      held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
+    });
+    await vi.waitFor(() => expect(alt()?.disabled).toBe(false));
+    expect((byLabel("Remove") as HTMLButtonElement).disabled).toBe(false);
+  });
+
   test("image keeps a Lite-era bare URL until replaced", async () => {
     const spies = mountField(imageField, "https://x/a.png");
     await settle();

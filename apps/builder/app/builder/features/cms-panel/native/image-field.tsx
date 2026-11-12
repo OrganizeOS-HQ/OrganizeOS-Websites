@@ -184,7 +184,7 @@ export const ImageField = ({
             <InputField
               id={`${id}-alt`}
               value={typeof image === "object" ? image.alt : ""}
-              disabled={disabled || typeof image === "string"}
+              disabled={disabled || isUploading || typeof image === "string"}
               maxLength={500}
               onChange={(event) => {
                 if (typeof image === "object") {
@@ -196,7 +196,7 @@ export const ImageField = ({
             <Tooltip content="Remove">
               <IconButton
                 aria-label="Remove"
-                disabled={disabled}
+                disabled={disabled || isUploading}
                 onClick={() => onChange(null)}
               >
                 <TrashIcon />
