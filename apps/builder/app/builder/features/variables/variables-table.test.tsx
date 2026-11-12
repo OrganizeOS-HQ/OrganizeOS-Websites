@@ -97,6 +97,11 @@ const startRename = async (cssName: string) => {
 const newVariable = async (label: string) => {
   await act(async () => userEvent.click(toolbarButton("New variable")!));
   await chooseMenuItem(label);
+  // The draft's name field takes the focus a frame after the menu closes:
+  // typing before then goes nowhere.
+  await vi.waitFor(() => {
+    expect(document.activeElement).toBe(draftInput());
+  });
 };
 
 beforeEach(() => {
