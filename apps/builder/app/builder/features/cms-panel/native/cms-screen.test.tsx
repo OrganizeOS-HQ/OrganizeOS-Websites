@@ -874,3 +874,88 @@ describe("refusals on the reads that hold the person's values", () => {
     expect(line()?.textContent).toContain("No access to the CMS");
   });
 });
+
+describe("the builder's colour scheme", () => {
+  afterEach(() => {
+    document.documentElement.removeAttribute("data-color-scheme");
+  });
+
+  const colorOf = (element: Element | null | undefined, property: string) => {
+    expect(element).toBeTruthy();
+    return getComputedStyle(element as Element).getPropertyValue(property);
+  };
+
+  // Label eases its color for 150 ms after the scheme changes; 300 ms covers it.
+  const untilTransitionsEnd = async () => {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+  };
+
+  const columnTitle = () =>
+    [...document.querySelectorAll<HTMLElement>("*")].find(
+      (element) =>
+        element.children.length === 0 && element.textContent === "CMS"
+    );
+
+  const nameHeader = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="columnheader"] *')].find(
+      (element) => element.textContent === "Name"
+    );
+
+  const readItemsView = () => [
+    colorOf(columnTitle(), "color"),
+    colorOf(nameHeader(), "color"),
+  ];
+
+  const readEditor = () => [
+    colorOf(document.querySelector('label[for="cms-field-title"]'), "color"),
+    colorOf(
+      document.querySelector('[data-cms-status="Staged changes"]'),
+      "background-color"
+    ),
+    colorOf(document.querySelector("#cms-field-slug"), "color"),
+  ];
+
+  // The chip is the design system's accent, the same in both schemes.
+  const sameInBothSchemes = new Set(["editor:1"]);
+
+  test("the screen follows the builder's scheme", async () => {
+    fake.getItem.mockResolvedValue({
+      item: itemOf({ status: "published", hasStagedChanges: true }),
+    });
+    mount();
+    await settle();
+
+    const itemsView: Record<string, string[]> = {};
+    for (const scheme of ["light", "dark"]) {
+      document.documentElement.setAttribute("data-color-scheme", scheme);
+      await untilTransitionsEnd();
+      itemsView[scheme] = readItemsView();
+    }
+
+    await openItem();
+    const editor: Record<string, string[]> = {};
+    for (const scheme of ["light", "dark"]) {
+      document.documentElement.setAttribute("data-color-scheme", scheme);
+      await untilTransitionsEnd();
+      editor[scheme] = readEditor();
+    }
+
+    for (const [name, light, dark] of [
+      ["items", itemsView.light, itemsView.dark],
+      ["editor", editor.light, editor.dark],
+    ] as const) {
+      expect(light).toHaveLength(name === "items" ? 2 : 3);
+      light.forEach((color, index) => {
+        expect(color).not.toBe("");
+        expect(color).not.toBe("rgba(0, 0, 0, 0)");
+        expect(dark[index]).not.toBe("");
+        expect(dark[index]).not.toBe("rgba(0, 0, 0, 0)");
+        if (sameInBothSchemes.has(`${name}:${index}`) === false) {
+          expect(color).not.toBe(dark[index]);
+        }
+      });
+    }
+  });
+});
