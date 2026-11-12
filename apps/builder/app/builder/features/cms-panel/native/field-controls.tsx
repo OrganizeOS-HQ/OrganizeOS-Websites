@@ -342,6 +342,7 @@ export const FieldControl = ({
   onBusyChange,
   onRefusal,
   onOpenClassic,
+  onUnresolvedChange,
 }: {
   id: string;
   field: CmsField;
@@ -358,6 +359,8 @@ export const FieldControl = ({
   /** An upload answered a refusal: the screen's line, not the field's. */
   onRefusal?: (refusal: CmsRefusal) => void;
   onOpenClassic?: () => void;
+  /** A reference's chosen ids whose items E5 no longer finds. */
+  onUnresolvedChange?: (ids: string[]) => void;
 }) => {
   const color = invalid ? ("error" as const) : undefined;
   const ids = fieldIds(id);
@@ -503,6 +506,7 @@ export const FieldControl = ({
           disabled={disabled}
           invalid={invalid}
           onChange={onChange}
+          onUnresolvedChange={onUnresolvedChange}
         />
       );
     case "multireference":
@@ -515,6 +519,7 @@ export const FieldControl = ({
           disabled={disabled}
           invalid={invalid}
           onChange={onChange}
+          onUnresolvedChange={onUnresolvedChange}
         />
       );
     case "image":

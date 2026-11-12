@@ -499,6 +499,7 @@ export const getToastText = (code: CmsErrorCode) => {
     case "limit":
       return "Item limit reached";
     case "not_found":
+    case "reference_invalid":
       return "Item not found";
     case "forbidden":
       return "No access";

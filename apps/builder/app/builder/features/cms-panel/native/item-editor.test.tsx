@@ -18,6 +18,7 @@ import type {
 import {
   createFakeCmsSource,
   itemOf,
+  PEOPLE,
   POSTS,
   POSTS_DETAIL,
   rowOf,
@@ -32,6 +33,9 @@ import {
 const V2 = "2026-11-12T10:00:02.5+00:00";
 const V3 = "2026-11-12T10:00:03.75+00:00";
 const NEW_ID = "44444444-4444-4444-8444-444444444444";
+/** A referenced item since deleted: E5 by id no longer answers it. */
+const GONE = "99999999-9999-4999-8999-999999999999";
+const ANN = "55555555-5555-4555-8555-555555555555";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -994,22 +998,89 @@ describe("conflicts, unknown outcomes and field errors", () => {
       "Title",
       "cms-field-title",
       "Not valid",
+      itemOf(),
     ],
-    [{ error: "slug_taken" }, "Address", "cms-field-slug", "Address in use"],
     [
-      { error: "reference_invalid", field: "author" },
+      { error: "slug_taken" },
+      "Address",
+      "cms-field-slug",
+      "Address in use",
+      itemOf(),
+    ],
+    // the door's shape: no field; the author E5 no longer finds is named
+    [
+      { error: "reference_invalid" },
       "Author",
       "cms-field-author",
       "Item not found",
+      itemOf({ data: { title: "Hello", summary: null, author: GONE } }),
     ],
-  ] as const)("%o shows under %s: %s", async (failure, _label, id, text) => {
+  ] as const)(
+    "%o shows under %s: %s",
+    async (failure, _label, id, text, item) => {
+      const error = vi.spyOn(toast, "error");
+      await openItem(item);
+      await retype(titleInput(), "Mine");
+      fake.updateItem.mockResolvedValueOnce(failure);
+      await click(buttonByText("Save"));
+      expect(fieldError(id)).toBe(text);
+      expect(error).not.toHaveBeenCalled();
+      expect(titleInput()?.value).toBe("Mine");
+    }
+  );
+
+  test("reference_invalid marks each reference and multi-reference field holding an item E5 no longer finds", async () => {
+    const error = vi.spyOn(toast, "error");
+    setFields([
+      ...POSTS_DETAIL.fields,
+      {
+        key: "editors",
+        label: "Editors",
+        kind: "multireference",
+        reference: { collectionId: PEOPLE.id, multiple: true },
+      },
+      {
+        key: "reviewer",
+        label: "Reviewer",
+        kind: "reference",
+        reference: { collectionId: PEOPLE.id, multiple: false },
+      },
+    ]);
+    fake.searchItems.mockImplementation(async (_collectionId, query) => ({
+      items: (query.ids ?? [])
+        .filter((id) => id === ANN)
+        .map((id) => ({ id, title: "Ann", status: "published" as const })),
+    }));
+    await openItem(
+      itemOf({
+        data: {
+          title: "Hello",
+          summary: null,
+          author: ANN,
+          editors: [ANN, GONE],
+          reviewer: null,
+        },
+      })
+    );
+    await retype(titleInput(), "Mine");
+    fake.updateItem.mockResolvedValueOnce({ error: "reference_invalid" });
+    await click(buttonByText("Save"));
+    expect(fieldError("cms-field-editors")).toBe("Item not found");
+    expect(fieldError("cms-field-author")).toBeUndefined();
+    expect(fieldError("cms-field-reviewer")).toBeUndefined();
+    expect(error).not.toHaveBeenCalled();
+    expect(titleInput()?.value).toBe("Mine");
+  });
+
+  test("reference_invalid with no field to name is the toast Item not found, never Not saved", async () => {
     const error = vi.spyOn(toast, "error");
     await openItem();
     await retype(titleInput(), "Mine");
-    fake.updateItem.mockResolvedValueOnce(failure);
+    fake.updateItem.mockResolvedValueOnce({ error: "reference_invalid" });
     await click(buttonByText("Save"));
-    expect(fieldError(id)).toBe(text);
-    expect(error).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith("Item not found");
+    expect(error).not.toHaveBeenCalledWith("Not saved");
+    expect(document.querySelector('[role="alert"]')).toBeNull();
     expect(titleInput()?.value).toBe("Mine");
   });
 

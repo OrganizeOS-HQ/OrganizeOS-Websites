@@ -180,6 +180,8 @@ export const ItemEditor = ({
   const [clientId, setClientId] = useState(() => crypto.randomUUID());
   const backRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // Per reference field, its chosen ids whose items E5 no longer finds.
+  const unresolved = useRef<Record<string, readonly string[]>>({});
   // Discard changes chosen in the Item menu: its dialog takes the focus.
   const discardChosen = useRef(false);
   const [setHeader, isCompact] = useIsNarrow(COMPACT_HEADER_WIDTH);
@@ -416,6 +418,27 @@ export const ItemEditor = ({
           setBusy(undefined);
           toast.error(getToastText(failure.error));
         });
+      return;
+    }
+    // the door names no field: each reference holding an item E5 no longer
+    // finds is marked, and with none to name it is a toast
+    if (failure.error === "reference_invalid" && failure.field === undefined) {
+      const text = getToastText(failure.error);
+      const keys = fields
+        .filter(
+          (field) =>
+            (field.kind === "reference" || field.kind === "multireference") &&
+            (unresolved.current[field.key]?.length ?? 0) > 0
+        )
+        .map((field) => field.key);
+      if (keys.length === 0) {
+        toast.error(text);
+        return;
+      }
+      setErrors((current) => ({
+        ...current,
+        ...Object.fromEntries(keys.map((key) => [key, text])),
+      }));
       return;
     }
     const fieldText = getFieldErrorText(failure.error);
@@ -868,6 +891,9 @@ export const ItemEditor = ({
                     }
                     onRefusal={onRefusal}
                     onOpenClassic={onOpenClassic}
+                    onUnresolvedChange={(ids) => {
+                      unresolved.current[field.key] = ids;
+                    }}
                   />
                 </FieldRow>
               );

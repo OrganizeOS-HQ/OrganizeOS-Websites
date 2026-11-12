@@ -43,13 +43,18 @@ const chosenRowStyle = css({
 
 type Option = { id?: string; title: string };
 
-/** Titles of referenced items, read through E5 by id. */
+/**
+ * Titles of referenced items, read through E5 by id. An id E5 answered
+ * without is `onUnresolvedChange`'s: an item that no longer exists.
+ */
 const useReferenceTitles = (
   source: CmsSource,
   collectionId: string,
-  ids: readonly string[]
+  ids: readonly string[],
+  onUnresolvedChange?: (ids: string[]) => void
 ) => {
   const [titles, setTitles] = useState<Record<string, string>>({});
+  const [dropped, setDropped] = useState<ReadonlySet<string>>(() => new Set());
   // A cache, not an input: the effect reads it without depending on it.
   const titlesRef = useRef(titles);
   titlesRef.current = titles;
@@ -72,6 +77,11 @@ const useReferenceTitles = (
               result.items.map((item) => [item.id, item.title])
             ),
           }));
+          const found = new Set(result.items.map((item) => item.id));
+          const gone = ids.filter((id) => found.has(id) === false);
+          if (gone.length > 0) {
+            setDropped((current) => new Set([...current, ...gone]));
+          }
         }
       });
     }
@@ -82,6 +92,18 @@ const useReferenceTitles = (
   const remember = useCallback((item: CmsSearchResult) => {
     setTitles((current) => ({ ...current, [item.id]: item.title }));
   }, []);
+  // the latest callback: a new one never reports again on its own
+  const onUnresolvedRef = useRef(onUnresolvedChange);
+  onUnresolvedRef.current = onUnresolvedChange;
+  const unresolvedKey = key
+    .split(",")
+    .filter((id) => dropped.has(id))
+    .join(",");
+  useEffect(() => {
+    onUnresolvedRef.current?.(
+      unresolvedKey === "" ? [] : unresolvedKey.split(",")
+    );
+  }, [unresolvedKey]);
   return { titles, remember };
 };
 
@@ -315,6 +337,7 @@ export const ReferenceField = ({
   disabled,
   invalid,
   onChange,
+  onUnresolvedChange,
 }: {
   id: string;
   source: CmsSource;
@@ -323,13 +346,16 @@ export const ReferenceField = ({
   disabled?: boolean;
   invalid?: boolean;
   onChange: (value: string | null) => void;
+  /** The chosen id, when E5 no longer finds its item. */
+  onUnresolvedChange?: (ids: string[]) => void;
 }) => {
   const selectedId =
     typeof value === "string" && value !== "" ? value : undefined;
   const { titles, remember } = useReferenceTitles(
     source,
     collectionId,
-    selectedId === undefined ? [] : [selectedId]
+    selectedId === undefined ? [] : [selectedId],
+    onUnresolvedChange
   );
   const selected =
     selectedId === undefined
@@ -376,6 +402,7 @@ export const MultiReferenceField = ({
   disabled,
   invalid,
   onChange,
+  onUnresolvedChange,
 }: {
   id: string;
   source: CmsSource;
@@ -384,11 +411,18 @@ export const MultiReferenceField = ({
   disabled?: boolean;
   invalid?: boolean;
   onChange: (value: string[]) => void;
+  /** The chosen ids whose items E5 no longer finds. */
+  onUnresolvedChange?: (ids: string[]) => void;
 }) => {
   const ids = Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
     : [];
-  const { titles, remember } = useReferenceTitles(source, collectionId, ids);
+  const { titles, remember } = useReferenceTitles(
+    source,
+    collectionId,
+    ids,
+    onUnresolvedChange
+  );
   return (
     <Grid gap="1">
       {ids.map((itemId) => (

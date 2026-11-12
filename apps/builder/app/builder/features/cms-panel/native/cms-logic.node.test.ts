@@ -503,6 +503,7 @@ describe("getToastText", () => {
     ["plan", "Not in plan"],
     ["limit", "Item limit reached"],
     ["not_found", "Item not found"],
+    ["reference_invalid", "Item not found"],
   ] as const)("a write answered %s is the toast %s", (code, text) =>
     expect(getToastText(code)).toBe(text)
   );
