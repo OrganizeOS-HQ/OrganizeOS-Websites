@@ -1,10 +1,14 @@
-import { createElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { enableMapSet } from "immer";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Project } from "@webstudio-is/project";
-import { TooltipProvider, toast } from "@webstudio-is/design-system";
+import {
+  DropdownMenuItem,
+  TooltipProvider,
+  toast,
+} from "@webstudio-is/design-system";
 import { createDefaultPages } from "@webstudio-is/project-build";
 import { defaultPlanFeatures } from "@webstudio-is/plans";
 import type { Page, ResourceRequest } from "@webstudio-is/sdk";
@@ -39,6 +43,7 @@ import {
 import { registerTestMetas } from "./backgrounds/test-fixtures";
 import { loadCollectionError } from "./collection-schema";
 import {
+  addCollectionToSitemapMutable,
   findCollectionItemPage,
   listSitemapCollections,
 } from "./collection-pages";
@@ -48,6 +53,11 @@ import {
   parseItemResourceSlug,
 } from "./organizeos-data";
 import { OrganizeosPanel } from "./organizeos-panel";
+import {
+  CollectionActionsMenu,
+  OrphanRow,
+  StaleItemPageLine,
+} from "./collection-row-menu";
 import { updateWebstudioDataStaged } from "./staged-data";
 
 const { loaderFetch } = vi.hoisted(() => ({ loaderFetch: vi.fn() }));
@@ -618,5 +628,269 @@ describe("Remove from sitemap", () => {
       (orphan.querySelector("button") as HTMLElement).click();
     });
     await until(() => expect(listSitemapCollections()).toEqual([]));
+  });
+});
+
+describe("the split for the CMS column", () => {
+  /** Renders one element, as the CMS column would hold it. */
+  const renderElement = (element: () => ReactElement) => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const draw = () =>
+      act(() => {
+        root?.render(createElement(TooltipProvider, null, element()));
+      });
+    draw();
+    return draw;
+  };
+
+  const openTrigger = async (label: string) => {
+    const trigger = await until(() => {
+      const element = document.querySelector<HTMLElement>(
+        `[aria-label="${label}"]`
+      );
+      expect(element, label).not.toBeNull();
+      return element as HTMLElement;
+    });
+    act(() => {
+      trigger.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true, button: 0 })
+      );
+    });
+    return until(() => {
+      const items = Array.from(
+        document.querySelectorAll<HTMLElement>('[role="menuitem"]')
+      );
+      expect(items.length).toBeGreaterThan(0);
+      return items;
+    });
+  };
+
+  const submitAddList = async () => {
+    await until(() => expect(addListForm()).not.toBeNull());
+    act(() => {
+      (
+        addListForm()?.querySelector(
+          "[data-organizeos-add-list-submit]"
+        ) as HTMLElement
+      ).click();
+    });
+    await until(() => expect(addListForm()).toBeNull());
+  };
+
+  const blogLists = () =>
+    Array.from($instances.get().values()).filter(
+      (instance) => instance.label === "Blog posts list"
+    ).length;
+
+  /** The blog's item page made and then deleted: the sitemap still lists it. */
+  const leaveBlogInSitemap = async () => {
+    await render();
+    await createBlogItemPage();
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+    $selectedPageId.set($pages.get()?.homePageId);
+    const page = findCollectionItemPage("blog") as Page;
+    await updateWebstudioDataStaged((data) => {
+      data.pages.pages.delete(page.id);
+      for (const folder of data.pages.folders.values()) {
+        folder.children = folder.children.filter((id) => id !== page.id);
+      }
+    });
+    expect(listSitemapCollections()).toEqual(["blog"]);
+  };
+
+  test("CollectionActionsMenu calls onShowCanvas after Create item page, Open item page and an Add list that inserted", async () => {
+    const onShowCanvas = vi.fn();
+    const redraw = renderElement(() => (
+      <CollectionActionsMenu
+        slug="blog"
+        name="Blog posts"
+        itemPage={findCollectionItemPage("blog")}
+        isSitemapOrphan={false}
+        onShowCanvas={onShowCanvas}
+      />
+    ));
+    await choose(
+      menuItem(await openTrigger("Blog posts menu"), "Create item page")
+    );
+    const page = await until(() => {
+      const found = findCollectionItemPage("blog");
+      expect(found).toBeDefined();
+      return found as Page;
+    });
+    await until(() => expect(onShowCanvas).toHaveBeenCalledTimes(1));
+
+    $selectedPageId.set($pages.get()?.homePageId);
+    redraw();
+    await settle();
+    await choose(
+      menuItem(await openTrigger("Blog posts menu"), "Open item page")
+    );
+    expect($selectedPageId.get()).toEqual(page.id);
+    expect(onShowCanvas).toHaveBeenCalledTimes(2);
+
+    await choose(menuItem(await openTrigger("Blog posts menu"), "Add list"));
+    await submitAddList();
+    await until(() => expect(blogLists()).toBe(1));
+    expect(onShowCanvas).toHaveBeenCalledTimes(3);
+
+    // no page selected: the list has no place to go
+    $selectedPageId.set(undefined);
+    await choose(menuItem(await openTrigger("Blog posts menu"), "Add list"));
+    await submitAddList();
+    await settle();
+    expect(blogLists()).toBe(1);
+    expect(onShowCanvas).toHaveBeenCalledTimes(3);
+  });
+
+  test("CollectionActionsMenu calls onRemovedFromSitemap only when the removal succeeded", async () => {
+    await leaveBlogInSitemap();
+    const onRemovedFromSitemap = vi.fn();
+    renderElement(() => (
+      <CollectionActionsMenu
+        slug="blog"
+        name="Blog posts"
+        itemPage={undefined}
+        isSitemapOrphan={true}
+        onRemovedFromSitemap={onRemovedFromSitemap}
+      />
+    ));
+    await choose(
+      menuItem(await openTrigger("Blog posts menu"), "Remove from sitemap")
+    );
+    await until(() => expect(listSitemapCollections()).toEqual([]));
+    await until(() => expect(onRemovedFromSitemap).toHaveBeenCalledTimes(1));
+    // nothing left to remove: the removal answers false
+    await choose(
+      menuItem(await openTrigger("Blog posts menu"), "Remove from sitemap")
+    );
+    await settle();
+    expect(onRemovedFromSitemap).toHaveBeenCalledTimes(1);
+  });
+
+  test("CollectionActionsMenu puts leadingItems before its items and trailingItems after, in one menu", async () => {
+    renderElement(() => (
+      <CollectionActionsMenu
+        slug="blog"
+        name="Blog posts"
+        itemPage={undefined}
+        isSitemapOrphan={false}
+        leadingItems={<DropdownMenuItem>Settings</DropdownMenuItem>}
+        trailingItems={<DropdownMenuItem>Delete</DropdownMenuItem>}
+      />
+    ));
+    const items = await openTrigger("Blog posts menu");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Settings",
+      "Create item page",
+      "Add list",
+      "Delete",
+    ]);
+    expect(document.querySelectorAll('[role="menu"]')).toHaveLength(1);
+  });
+
+  test("CollectionActionsMenu puts Remove from sitemap after trailingItems", async () => {
+    renderElement(() => (
+      <CollectionActionsMenu
+        slug="blog"
+        name="Blog posts"
+        itemPage={undefined}
+        isSitemapOrphan={true}
+        trailingItems={<DropdownMenuItem>Delete</DropdownMenuItem>}
+      />
+    ));
+    const items = await openTrigger("Blog posts menu");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Create item page",
+      "Add list",
+      "Delete",
+      "Remove from sitemap",
+    ]);
+  });
+
+  test("CollectionActionsMenu holds no Add to this page", async () => {
+    renderElement(() => (
+      <CollectionActionsMenu
+        slug="blog"
+        name="Blog posts"
+        itemPage={undefined}
+        isSitemapOrphan={true}
+      />
+    ));
+    const items = await openTrigger("Blog posts menu");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Create item page",
+      "Add list",
+      "Remove from sitemap",
+    ]);
+  });
+
+  test("the tab's menu keeps today's order for a sitemap orphan", async () => {
+    await leaveBlogInSitemap();
+    await render();
+    const items = await openMenu("blog");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Create item page",
+      "Add list",
+      "Add to this page",
+      "Remove from sitemap",
+    ]);
+  });
+
+  test("OrphanRow with removeIn menu holds Remove from sitemap in its menu, with no inline button", async () => {
+    await updateWebstudioDataStaged((data) => {
+      addCollectionToSitemapMutable(data, {
+        schema: { slug: "gone", name: "Gone" },
+        catalog: { apiBase, authorization: `"Bearer osk_token"` },
+      });
+    });
+    expect(listSitemapCollections()).toEqual(["gone"]);
+    const onRemovedFromSitemap = vi.fn();
+    renderElement(() => (
+      <OrphanRow
+        name="gone"
+        isStale={false}
+        sitemapSlug="gone"
+        removeIn="menu"
+        onRemovedFromSitemap={onRemovedFromSitemap}
+      />
+    ));
+    const orphan = await orphanRow();
+    expect(
+      Array.from(orphan.querySelectorAll("button")).some(
+        (button) => button.textContent === "Remove from sitemap"
+      )
+    ).toBe(false);
+    expect(orphan.textContent).toEqual("gone");
+    const items = await openTrigger("gone menu");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Remove from sitemap",
+    ]);
+    await choose(items[0]);
+    await until(() => expect(listSitemapCollections()).toEqual([]));
+    await until(() => expect(onRemovedFromSitemap).toHaveBeenCalledTimes(1));
+  });
+
+  test("OrphanRow with no sitemap slug has no menu", async () => {
+    renderElement(() => (
+      <OrphanRow name="Events" isStale={false} removeIn="menu" />
+    ));
+    const orphan = await orphanRow();
+    expect(orphan.textContent).toEqual("Events");
+    expect(orphan.querySelector("button")).toBeNull();
+  });
+
+  test("StaleItemPageLine reads Item page uses an old address", async () => {
+    renderElement(() => <StaleItemPageLine />);
+    const line = await until(() => {
+      const element = document.querySelector("[data-organizeos-stale-address]");
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+    expect(line.textContent).toEqual("Item page uses an old address");
   });
 });
