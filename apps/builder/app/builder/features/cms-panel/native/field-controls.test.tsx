@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { userEvent } from "@vitest/browser/context";
-import { TooltipProvider } from "@webstudio-is/design-system";
+import { toast, TooltipProvider } from "@webstudio-is/design-system";
 import { FieldControl, FieldRow } from "./field-controls";
 import type { CmsField, CmsResult, CmsSearchResult } from "./cms-source";
 import {
@@ -476,6 +476,22 @@ describe("the image", () => {
       const spies = mountField(imageField);
       await chooseFile(await pngOf(2, 3));
       await vi.waitFor(() => expect(fieldError()).toBe("Not uploaded"));
+      expect(spies.onChange).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    ["forbidden", "No access"],
+    ["plan", "Not in plan"],
+  ] as const)(
+    "image whose upload is answered %s is the write toast %s, with no field error",
+    async (code, text) => {
+      const error = vi.spyOn(toast, "error");
+      fake.uploadImage.mockResolvedValue({ error: code });
+      const spies = mountField(imageField);
+      await chooseFile(await pngOf(2, 3));
+      await vi.waitFor(() => expect(error).toHaveBeenCalledWith(text));
+      expect(fieldError()).toBeUndefined();
       expect(spies.onChange).not.toHaveBeenCalled();
     }
   );
