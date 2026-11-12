@@ -413,3 +413,30 @@ describe("the Cmd+K CSS variable guard and routing", () => {
     expect(utils.match(/getCssVariableDeleteRefusal\(/g)).toHaveLength(2);
   });
 });
+
+describe("the Style panel's variable binding", () => {
+  const label = read("../style-panel/property-label.tsx");
+  const body = label.slice(
+    label.indexOf("export const PropertyLabel = ("),
+    label.indexOf("export const PropertySectionLabel = (")
+  );
+
+  test("property-label.tsx imports VariableBindControl from the Variables feature", () => {
+    expect(label).toMatch(
+      /import \{ VariableBindControl \} from "~\/builder\/features\/variables";/
+    );
+  });
+
+  test("PropertyLabel wraps ResettableLabel in VariableBindControl", () => {
+    const open = body.indexOf("<VariableBindControl properties={properties}>");
+    const labelOpen = body.indexOf("<ResettableLabel");
+    const labelClose = body.indexOf("</ResettableLabel>");
+    const close = body.indexOf("</VariableBindControl>");
+    expect(open).toBeGreaterThanOrEqual(0);
+    expect(labelOpen).toBeGreaterThan(open);
+    expect(labelClose).toBeGreaterThan(labelOpen);
+    expect(close).toBeGreaterThan(labelClose);
+    expect(label.match(/<VariableBindControl\b/g)).toHaveLength(1);
+    expect(label.match(/<\/VariableBindControl>/g)).toHaveLength(1);
+  });
+});

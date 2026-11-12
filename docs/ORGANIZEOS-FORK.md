@@ -921,7 +921,16 @@ can be merged with minimal conflict.
   `collection-memory.test.ts`, `variables-table.test.tsx`,
   `variables-rows.test.tsx`, `manager-operations.test.ts`,
   `search.node.test.ts`, `brand-contrast.node.test.ts`, and the test-only
-  `test-utils.tsx`), on the rail-overlay host; in `sidebar-left/sidebar-left.tsx`, the one
+  `test-utils.tsx`), on the rail-overlay host; the binding in the Style panel
+  (`property-types.ts`, `bind-target.ts`, `bind-control.tsx`,
+  `bind-picker.tsx`, `new-variable-form.tsx`, with
+  `property-types.node.test.ts`, `property-label-call-sites.node.test.ts` and
+  `bind-target.test.ts`); in `features/style-panel/property-label.tsx`, the
+  marked `VariableBindControl` import and the one
+  `<VariableBindControl properties={properties}>` wrapper around
+  `ResettableLabel` (upstream has since split this label into
+  `ResettablePropertyLabel`; the next merge re-applies the wrapper there),
+  tested by `features/style-panel/variable-bind.organizeos.test.tsx`; in `sidebar-left/sidebar-left.tsx`, the one
   `<VariablesRailButton />` after `<CmsRailButton />`, the one
   `<VariablesOverlay />` after `<CmsOverlay />`, and their marked import; and
   the one marked title in `features/settings-panel/variables-section.tsx`,
@@ -2347,6 +2356,18 @@ arrives in PR B.
 - **Select mode.** Checkboxes, Shift ranges and a header checkbox over the
   rows shown; Move to collection, Group and Delete act on the selected rows
   the search shows. Escape leaves it before it closes the overlay.
+- **Binding.** Hovering a Style panel label shows a "+" where the row takes a
+  variable: colours, font family, and the sizes, percentages and numbers its
+  unit groups allow, with Perspective by that rule; never on layered
+  background properties, position pairs, the grid lines, aspect ratio or font
+  weight, nor on a row whose properties disagree. The picker lists the
+  variables the row takes (only whole Numbers on Z index and Order) and writes
+  `var()` where typing writes: the selected source, breakpoint and state,
+  never a locked token, as one undo step; hovering an option previews it.
+  New variable from this value creates a Site variable and binds it in one
+  transaction. A bound row shows a dot, named in its tooltip, with Edit
+  variable and Detach (Detach writes the computed value). Inside the
+  per-side Space and Position popovers the picker centres on screen.
 
 - A variable's value is a `--name` declaration on Global Root's local style
   source at the base breakpoint. A bound property stores upstream's

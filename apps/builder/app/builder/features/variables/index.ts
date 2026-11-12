@@ -2,3 +2,4 @@
 // from ./operations directly, so builder/shared never pulls the UI in.
 export { VariablesOverlay } from "./variables-overlay";
 export { VariablesRailButton } from "./variables-rail-button";
+export { VariableBindControl } from "./bind-control";
