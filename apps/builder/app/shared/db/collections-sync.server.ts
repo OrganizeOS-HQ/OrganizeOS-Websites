@@ -1,8 +1,12 @@
 import type { DataSource, Resource } from "@webstudio-is/sdk";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import { deriveProjectId } from "./provision.server";
+import { catalogRootBindingsWanted } from "./organizeos-site.server";
 import {
   buildCollectionResourcePresets,
+  createBindingReferenceTest,
+  matchBuildRead,
+  planCatalogRootBindings,
   readV1PresetSeed,
   removeUnusedPresetBindings,
   upsertById,
@@ -14,11 +18,12 @@ import {
  *
  * OrganizeOS calls this with a full snapshot of an org's PUBLIC collections
  * whenever they change; each one becomes a catalog Resource in the org's dev
- * build (see buildCollectionResourcePresets), which the builder lists
- * so an admin can add it to a page. No binding is written: data loads only
- * where it is used, and a use brings its own. The unscoped bindings an older
- * sync wrote are removed where nothing references them. Idempotent: same
- * snapshot, no write.
+ * build (see buildCollectionResourcePresets). Where the org is wanted
+ * (`catalogRootBindings`, catalogRootBindingsWanted), the same write gives each
+ * catalog Resource its `:root` binding (planCatalogRootBindings), so a new
+ * collection is bindable from every element; otherwise the unreferenced ones
+ * are removed. The unscoped bindings an older sync wrote are removed where
+ * nothing references them. Idempotent: same snapshot, no write.
  *
  * Collections missing from the snapshot are not removed yet.
  */
@@ -41,10 +46,24 @@ export const syncOrgCollectionPresets = async (
   {
     organizationId,
     collections,
-  }: { organizationId: string; collections: CollectionPresetInput[] }
+    catalogRootBindings,
+  }: {
+    organizationId: string;
+    collections: CollectionPresetInput[];
+    /**
+     * The raw `ORGANIZEOS_CATALOG_ROOT_BINDINGS` and
+     * `ORGANIZEOS_BLOCKS_DENY_ORG_IDS`.
+     */
+    catalogRootBindings?: { switchValue?: string; denyList?: string };
+  }
 ): Promise<CollectionsSyncResult> => {
   const client = context.postgrest.client;
   const projectId = deriveProjectId(organizationId);
+  const wanted = catalogRootBindingsWanted({
+    organizationId,
+    switchValue: catalogRootBindings?.switchValue,
+    denyList: catalogRootBindings?.denyList,
+  });
 
   const project = await client
     .from("Project")
@@ -61,7 +80,9 @@ export const syncOrgCollectionPresets = async (
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     const build = await client
       .from("Build")
-      .select("id, version, instances, props, dataSources, resources, pages")
+      .select(
+        "id, version, updatedAt, instances, props, dataSources, resources, pages"
+      )
       .eq("projectId", projectId)
       .is("deployment", null)
       .single();
@@ -96,16 +117,28 @@ export const syncOrgCollectionPresets = async (
     };
 
     const upserted = upsertById(existingResources, presets.resources);
+    const searchable = [
+      build.data.instances ?? "[]",
+      build.data.props ?? "[]",
+      build.data.pages ?? "",
+    ];
+    const kept = await removeUnusedPresetBindings({
+      projectId,
+      dataSources: existingDataSources,
+      resources: upserted,
+      searchable,
+    });
     const dataSources = JSON.stringify(
-      await removeUnusedPresetBindings({
+      await planCatalogRootBindings({
         projectId,
-        dataSources: existingDataSources,
+        dataSources: kept,
         resources: upserted,
-        searchable: [
-          build.data.instances ?? "[]",
-          build.data.props ?? "[]",
-          build.data.pages ?? "",
-        ],
+        wanted,
+        isReferenced: createBindingReferenceTest({
+          dataSources: kept,
+          resources: upserted,
+          searchable,
+        }),
       })
     );
     const resources = JSON.stringify(upserted);
@@ -113,13 +146,24 @@ export const syncOrgCollectionPresets = async (
       return synced;
     }
 
-    // Compare-and-swap on the version we read, the way a builder save does. A
-    // plain update could overwrite a save that landed since the read, and a
+    // Compare-and-swap on the version and updatedAt we read (matchBuildRead).
+    // A plain update could overwrite a save that landed since the read, and a
     // version bump would make every open builder session reload, so neither.
-    const update = await client
-      .from("Build")
-      .update({ dataSources, resources }, { count: "exact" })
-      .match({ id: build.data.id, version: build.data.version });
+    // The entry re-sync also keeps the version; each sets updatedAt, so each
+    // fails the other's match instead of overwriting its change.
+    const update = await matchBuildRead(
+      client
+        .from("Build")
+        .update(
+          { dataSources, resources, updatedAt: new Date().toISOString() },
+          { count: "exact" }
+        ),
+      {
+        id: build.data.id,
+        version: build.data.version,
+        updatedAt: build.data.updatedAt ?? null,
+      }
+    );
     if (update.error) {
       throw update.error;
     }

@@ -98,6 +98,7 @@ OrganizeOS integration (all optional; each feature ships dark until its variable
 - `ORGANIZEOS_CMS_NATIVE` — builder only. Only the exact value `true`, with `ORGANIZEOS_CMS_PANEL=true` and `WEBSITES2_CMS_SECRET` set, shows the native CMS screen in the overlay (§9, "The CMS overlay") to the orgs `ORGANIZEOS_CMS_NATIVE_ORG_IDS` lists; anything else shows the framed CMS. Unset it and redeploy to roll back.
 - `ORGANIZEOS_CMS_NATIVE_ORG_IDS` — builder only. Comma-separated organization ids, each trimmed and matched in any case, that get the native screen while the switch is on; an entry that is not an organization id is ignored, and unset or empty gives it to none. Removing an org is its rollback.
 - `ORGANIZEOS_SHOP_BLOCKS` — builder only: the Shop blocks' switch (§9, "Shop blocks"). Only the exact value `true` lists the Product Grid and the Product Card in the Components panel and lets them be inserted, and makes a token provision write the Products catalog Resource; anything else (unset, empty, `TRUE`, `1`) lists neither, refuses their insert and only rewrites a Products Resource a build already has. Placed blocks keep working when it is turned off. To turn it on or off, set or unset it on the builder's Production scope and redeploy.
+- `ORGANIZEOS_CATALOG_ROOT_BINDINGS` — builder only: the switch for the catalog's `:root` bindings (§9, "The catalog in provisioning"). Only the exact value `true` makes a token provision, the membership re-sync before every SSO entry, and collections-sync give each catalog Resource one resource binding at `:root`, named like it, for every org `ORGANIZEOS_BLOCKS_DENY_ORG_IDS` allows, so every element can bind the catalog; anything else (unset, empty, `TRUE`, `1`) adds none, and each writer removes the ones nothing references. Ships unset. To turn it off, unset it and redeploy (an env change reaches functions only on a new deployment): each allowed org's next entry or collections sync, or a support restore, removes its unreferenced bindings; referenced ones stay as ordinary data sources. The catalog lock (§9, "Catalog Resources outlive their bindings") does not depend on it.
 - `PUBLISHER_HOST` — the platform base domain an org's site is served from (`<subdomain>.<PUBLISHER_HOST>`); with the org subdomain mirrored into `Project.domain` (§5) every address the builder shows is the real one. **Defaults to `organizeos.org` in code**, so an unset env is correct rather than dangerous; upstream defaulted it to its own staging domain, which is what made a missing value advertise a Webstudio address. Set it only to point a deployment somewhere else.
 - `TRPC_SERVER_API_TOKEN` — the builder's service token. The publish executor uses it to sync the build **and** to report the outcome to `POST /internal/publish-status` (§5). Never commit a value: `apps/builder/.env` keeps it commented out, where upstream's sets an e2e token.
 - `EMAIL_SERVICE_URL` — never set it. It is upstream's email service for Form email actions, which do nothing on an OrganizeOS site (§8); set, the builder's Form Preview would send `TRPC_SERVER_API_TOKEN` to it as a bearer token.
@@ -224,7 +225,7 @@ or changed `headers` export upstream is how it would be lost.
 
 How an org admin's session is wired end to end, and which side owns each step. The OrganizeOS repo is `OrganizeOS-HQ/OrganizeOS` (`client/lib/websites2/*`, `client/lib/actions/websites/*`, `client/app/api/websites2/*`, `client/app/api/internal/websites2/*`).
 
-1. **Provision** (OrganizeOS → builder, `POST /internal/provision`, `ORGANIZEOS_PROVISION_TOKEN`). Creates the org's synthetic owner, workspace, project, plan (from `entitlements`), data catalog and a starter signup page at `/newsletter` (§9). The body also carries the org's platform `subdomain`; it becomes `Project.domain` (`shared/db/organizeos-site.server.ts`). Idempotent, so it doubles as a re-sync: a re-provision restores a workspace and project that an offboard soft-deleted, follows an org rename, seats the admins in `adminEmails` and retires every other active member (an empty list retires nobody, so a failed admin lookup on the OrganizeOS side can never evict everyone). Without `readToken`/`apiBaseUrl` the catalog is left untouched, which is what a membership re-sync wants. With them, a provision that changes the build writes it as a compare-and-swap on its `version` that also bumps it (three attempts, then the request fails), so a builder tab open on the project gets `version_mismatched` on its next save and reloads instead of keeping, or copying from, a replaced token.
+1. **Provision** (OrganizeOS → builder, `POST /internal/provision`, `ORGANIZEOS_PROVISION_TOKEN`). Creates the org's synthetic owner, workspace, project, plan (from `entitlements`), data catalog and a starter signup page at `/newsletter` (§9). The body also carries the org's platform `subdomain`; it becomes `Project.domain` (`shared/db/organizeos-site.server.ts`). Idempotent, so it doubles as a re-sync: a re-provision restores a workspace and project that an offboard soft-deleted, follows an org rename, seats the admins in `adminEmails` and retires every other active member (an empty list retires nobody, so a failed admin lookup on the OrganizeOS side can never evict everyone). Without `readToken`/`apiBaseUrl` (the membership re-sync OrganizeOS runs before every builder SSO entry) no token is touched; the re-sync's only catalog write is the catalog's `:root` bindings (`syncCatalogRootBindings` in `shared/db/resource-presets.server.ts`, run last). For an org `ORGANIZEOS_CATALOG_ROOT_BINDINGS` wants (§4), it reads the dev build's id, version, `updatedAt`, data sources and resources, adds Forms and Upcoming Events where missing (from a static Resource's API base and `Authorization`, in provisioning's shape) and plans one `:root` binding per catalog Resource (§9, "The catalog in provisioning"). For any other org it writes nothing unless the build holds a catalog `:root` binding; only then does it read the instances, props and pages, and remove the ones nothing references. It writes only a change, as a compare-and-set on `{ id, version, updatedAt }` that sets `updatedAt` and leaves the version and `lastTransactionId` alone (no token changed, so an open tab need not reload); three attempts. It is best effort: a failure is one log line, `CATALOG_ROOT_BINDINGS_SYNC_FAILED` with the project id, and the provision still succeeds. With `readToken`/`apiBaseUrl`, a provision that changes the build writes it as a compare-and-swap on its `version` and `updatedAt` that bumps the version and sets `updatedAt` (three attempts, then the request fails), so a builder tab open on the project gets `version_mismatched` on its next save and reloads instead of keeping, or copying from, a replaced token, and a write of the re-sync or collections-sync that lands between its read and its write is not overwritten. That write plans the `:root` bindings too.
 2. **Enter** (OrganizeOS → browser → builder, `POST /auth/organizeos`). OrganizeOS mints a 60s single-use ES256 token for an active admin and auto-POSTs it; the builder verifies it, seats that admin in the org's workspace (the signed token is the authority: OrganizeOS only signs for a currently active owner/admin, so an admin added after provisioning gets in on their first entry), refreshes the org's plan from the `entitlements` claim and its project domain from the `subdomain` claim (a rename converges on the next entry), and lands the admin directly in the org's project (`resolveSsoLandingUrl`). Nothing about the fork dashboard is part of the flow.
 3. **Build.** The builder loader recognises an org project by its owner (`User.provider = organizeos-service`) and passes an `organizeosSite` (`manageUrl`, `platformUrl`, the `subdomain` when known, and `blocksEnabled`, true unless `ORGANIZEOS_BLOCKS_DENY_ORG_IDS` denies the org) to the client. It carries no site address: the Publish dialog reads that from OrganizeOS (item 4). For such a project the chrome is OrganizeOS-shaped: the menu's first item is "Back to OrganizeOS", which opens the org's workspace home, `{ORGANIZEOS_APP_URL}/{subdomain}` (`organizeosHomeUrl` in `shared/organizeos-site.ts`; the app's dashboard while the subdomain is unknown), instead of Dashboard; Share, Export and Clone are not offered (membership, publishing and the single project all live in OrganizeOS).
 
@@ -256,9 +257,9 @@ How an org admin's session is wired end to end, and which side owns each step. T
    **Inputs reach scripts through `env:`.** No `run:` script holds a `${{ }}` substitution: inputs, variables, secrets and step outputs reach each script through its step's `env:`, and the callback's and the two status reports' JSON bodies are built with `node` from there, so a dispatch input cannot break out of the shell or a body. A step output is written only after its value is checked: the targets' JSON array, the switch's `false`, the level's integer, the deployment's `https://` host. The callback step checks `orgScript`, `guardLevel` and `targets` again before it sends anything, and keeps its 2xx check. On success it logs only the answer's `live` and `launchable`, as `live=<value>` and `launchable=<value>`, each only when it is a boolean, and `live_targets=<count>`, never the answer itself; on failure it prints the answer. The Vercel CLI is installed in a step of its own, with no secret in its environment, at a pinned version and with `--ignore-scripts`, so no install script runs; bump the pin on purpose, to a release at least two weeks old. The deploy step passes the token only in its environment, as `VERCEL_TOKEN`, which the CLI reads, and never on a command line. The token is still in that step's environment while the pinned CLI deploys. `packages/cli/src/organizeos-publish-workflow.test.ts` runs the steps' scripts against a fake `curl`, `npm` and `vercel`.
 
 6. **Status.** The dialog polls the project while a build is pending and treats a build as failed only after the executor's 25 minute timeout (`organizeos-publish-status.ts`; upstream assumes 3 minutes). Its status row reads "Publishing, started {when}", "Published {when}", "Publish failed {when}" or "Publishing did not finish {when}", and nothing before the first publish; there are no toasts (the dialog unmounts when it closes). After the route answers (success, refusal, error or the client's timeout) the dialog refreshes the project and reads the addresses again, and it reads them again when a pending build settles, a timeout included, so the rows always show what OrganizeOS reports, never the route's or the callback's answer; a read that finishes after a newer one is dropped. Publishes can overlap: the dialog disables Publish to selected while a build is pending, but another admin's publish (another tab or person) is not blocked. The workflow runs one publish per org, and a newer one cancels the older run, which reports FAILED when it is cancelled before the flip and PUBLISHED after it. The status row follows `latestBuildVirtual`, so it shows the newest build, and the next read shows what OrganizeOS made live.
-7. **Collections** (OrganizeOS → builder, `POST /internal/collections-sync`, `ORGANIZEOS_PROVISION_TOKEN`, authenticated like provision). Sent by an Inngest job (debounced 30 s per org) whenever the org's public CMS collections change: `{ organizationId, collections }`, every public collection as a full snapshot (`slug` and `name`; `singularName`, `kind`, `id`, `contentUrl` and `fields` are optional, and unknown keys are ignored). The builder adds one catalog Resource per collection to the org's dev build (`shared/db/collections-sync.server.ts`): a GET Resource for `<api base>/collections/<slug>/items`, and no binding. The OrganizeOS data tab lists it, where an admin adds it to a page (§9: data loads only where it is used). Ids derive from the project and the slug, so a rename only updates the name; a platform collection that a static Resource already covers (`events`, `fundraisers`, `stats`) is skipped. Existing entries are replaced where they stand and new ones appended, so the build keeps its order. A sync also removes, where nothing references them, the bindings with a preset's deterministic id: the unscoped ones older syncs wrote next to each Resource and the `:root` Forms binding of the pre-deploy branches (§9). It keeps the rest, and never touches a binding with a fresh id, which is what every use brings now, whatever its scope.
+7. **Collections** (OrganizeOS → builder, `POST /internal/collections-sync`, `ORGANIZEOS_PROVISION_TOKEN`, authenticated like provision). Sent by an Inngest job (debounced 30 s per org) whenever the org's public CMS collections change: `{ organizationId, collections }`, every public collection as a full snapshot (`slug` and `name`; `singularName`, `kind`, `id`, `contentUrl` and `fields` are optional, and unknown keys are ignored). The builder adds one catalog Resource per collection to the org's dev build (`shared/db/collections-sync.server.ts`): a GET Resource for `<api base>/collections/<slug>/items`. For an org `ORGANIZEOS_CATALOG_ROOT_BINDINGS` wants (§4), the same write gives each catalog Resource its `:root` binding (§9, "The catalog in provisioning"), so a new collection is bindable from every element after the reload the CMS overlay asks for; for any other org it adds none and removes the unreferenced ones. The OrganizeOS data tab lists it too (§9: data loads only where it is used). Ids derive from the project and the slug, so a rename only updates the name; a platform collection that a static Resource already covers (`events`, `fundraisers`, `stats`) is skipped. Existing entries are replaced where they stand and new ones appended, so the build keeps its order. A sync also removes, where nothing references them, the bindings with a preset's deterministic id: the unscoped ones older syncs wrote next to each Resource and the `:root` Forms binding of the pre-deploy branches (§9). It keeps the rest, and never touches a binding with a fresh id, which is what every use brings now, whatever its scope.
 
-   The request carries no token: the API base and the `Authorization` header are copied from the static Resources that provisioning seeded. A re-provision rotates the token in every collection Resource itself (new `Authorization` and API base, same name and position), so the old token can be revoked after the next publish without a sync in between; OrganizeOS still fires a sync after provisioning and at builder SSO entry. Idempotent: an unchanged snapshot writes nothing. A write is a compare-and-swap on the build's `version`, which it never bumps (that would make every open builder reload); if a builder save wins the race it re-reads and tries again, three attempts in all.
+   The request carries no token: the API base and the `Authorization` header are copied from the static Resources that provisioning seeded. A re-provision rotates the token in every collection Resource itself (new `Authorization` and API base, same name and position), so the old token can be revoked after the next publish without a sync in between. OrganizeOS sends a sync only when a collection changes (its `manage-collection` action fires the Inngest event); it does not fire one after provisioning or at SSO entry, where the membership re-sync (item 1) is the entry-time writer. Idempotent: an unchanged snapshot writes nothing. A write is a compare-and-swap on the build's `version` and `updatedAt`, which sets `updatedAt` and never bumps the version (that would make every open builder reload); if a builder save, the entry re-sync or a provision wins the race it re-reads and tries again, three attempts in all. The entry re-sync keeps the version too, so matching on the version alone would let the two overwrite each other's change.
 
    Responses: `200 {"ok":true,"collections":n}`; `400` bad JSON or body (slug must match `^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`, at most 500 collections); `401` bad or missing token, or any `Cookie`; `405` not POST; `409` the project has no static Resources to copy from (provision it with a token first); `422` no project for the org (missing or offboarded); `503` the build kept changing, which OrganizeOS retries like any 5xx. Collections missing from the snapshot are not retired yet: a removed collection's Resource stays until a later change.
 
@@ -742,7 +743,10 @@ can be merged with minimal conflict.
     panels' own writes (a block's insert, the CMS page templates, the data
     tab, a site template's apply) go through `executeStagedRuntimeMutation`
     (below), each as one commit, and it refuses a write that changes or
-    deletes a catalog Resource or a catalog `:root` binding.
+    deletes a catalog Resource or a catalog `:root` binding. Its binding
+    rule, predicate and message are the runtime lock's own, imported from
+    `runtime/organizeos-catalog.ts` (`assertCatalogRootBindingsKept`,
+    `catalogChangeMessage`; below).
   - The Background presets section, by one marked entry in
     `features/style-panel/sections/sections.ts`; the Motion tab, by marked
     lines in `builder/inspector.tsx`, with `$activeInspectorPanel` widened to
@@ -850,6 +854,30 @@ can be merged with minimal conflict.
   `deleteResource` in `runtime/data.ts`, the prop and the data source
   branches of `getInstanceDeleteTargets` in `runtime/instances.ts`, and
   `getPropDeletePlan` in `runtime/props.ts`.
+  The catalog lock (§9, "Catalog Resources outlive their bindings"; the
+  data-automatic plan's D8) adds, in `runtime/organizeos-catalog.ts`,
+  `isOrganizeosCatalogRootBinding`, `isCatalogResourceChange` (with
+  `catalogResourceFields`), `assertCatalogRootBindingsKept`,
+  `catalogChangeMessage` and `keepOrganizeosCatalog`, which runs them on an
+  operation's payload; one marked guard at each site in `runtime/data.ts`:
+  `deleteDataVariable`, both returns of `updateDataVariable`,
+  `upsertResource`, `updateResource` and `upsertResourceProp` (each wraps its
+  payload in `keepOrganizeosCatalog`), and one marked `continue` in
+  `replaceResourceText`; one marked skip in the portal branch of
+  `insertWebstudioFragmentCopy` in `runtime/fragment.ts`, with its import.
+  The cases are in `organizeos-catalog.test.ts`. In the builder,
+  `features/settings-panel/variable-menu.tsx` (one marked branch in
+  `canDeleteVariable`, with a marked case in `variable-menu.test.tsx`) and
+  `features/settings-panel/variable-editors/dialog/index.tsx` (one marked
+  `try`/`catch` in `handleSubmit` that shows a runtime refusal and keeps the
+  editor open, with `variable-popover.organizeos.test.tsx`).
+  `features/organizeos-panel/staged-data.ts` imports the rule and the message
+  (above). The server writers of the catalog's `:root` bindings live in the
+  server files listed under "Auth, SSO, provisioning and the agent", behind
+  `ORGANIZEOS_CATALOG_ROOT_BINDINGS` (§4) in `env/env.server.ts` and
+  `apps/builder/.env`; `shared/organizeos-catalog-reach.test.ts` and a marked
+  `describe` in `packages/cli/src/prebuild.test.ts` pin that the catalog loads
+  only where a page uses it.
 - **Published sites (§1, §8).** The CLI's copy of the blocks' build into every
   published site, `packages/cli/src/organizeos-components.ts`, called from
   short marked hooks in `prebuild.ts` and `framework-react-router.ts`, with
@@ -1721,17 +1749,25 @@ collection }` invalidates, through `invalidateResource`, every current
   builder's menu leads too. While the builder does not know the subdomain it
   is the Website area's URL, `manageUrl`.
 - **Data loads only where it is used, never page-wide.** The org's data is a
-  catalog of GET Resources with deterministic ids: Events, Fundraisers and Stats
-  (provisioning), one per public collection (collections-sync), and Forms and
-  Upcoming Events once a block has added them. A Resource loads nowhere by
-  itself: since 0.309.0 Webstudio loads a resource DataSource, in the builder
-  (`$computedResourceRequests`) and on a published page (the CLI's prebuild),
-  only when an expression on the page reads it (`getPageResourceRootIds`): a
-  prop or a child of an instance in the page's tree, or the page's meta. So each
-  use brings its own binding: a resource DataSource with a fresh id, scoped to
-  the instance that uses it, which references the catalog Resource by id.
-  Nothing scopes a binding at `:root`, and provisioning and collections-sync
-  write no binding at all.
+  catalog of GET Resources with deterministic ids: Events, Fundraisers, Stats,
+  Forms and Upcoming Events (provisioning; a build provisioned earlier gets
+  Forms and Upcoming Events from the entry re-sync or a block's insert), one
+  per public collection (collections-sync), and Products where the Shop blocks
+  seeded it. A Resource loads nowhere by itself: since 0.309.0 Webstudio loads
+  a resource DataSource, in the builder (the request plan behind
+  `$computedResourceRequests`) and on a published page (the page's `rootIds`),
+  only when an expression on the page reads it (`getPageResourceRootIds`),
+  whatever the binding's scope: a prop or a child of an instance in the page's
+  tree (a statically hidden one excluded), or the page's meta. Request
+  definitions, with their `Authorization` literals, stay in the page's server
+  module. So a `:root` binding no longer loads on every page, as it did before
+  0.309.0, and the catalog's `:root` bindings (below, "The catalog in
+  provisioning") keep the rule: a page that reads no Events never calls
+  `/v1/events`. A block still brings its own binding, a resource DataSource
+  with a fresh id scoped to its root. `shared/organizeos-catalog-reach.test.ts`
+  (the canvas, and `:root`'s reach into a Slot's content) and the CLI's
+  `prebuild.test.ts` ("OrganizeOS catalog: a page loads only what it uses")
+  fail if an upstream merge loads by scope again.
 - **The data tab's list** (`organizeos-data.ts`): one row per catalog Resource,
   in that order (collections in the build's order, then Forms, then Upcoming
   Events), found by id, never by name. "Add to this page" gives the selected
@@ -2037,6 +2073,48 @@ collection }` invalidates, through `invalidateResource`, every current
   and cannot be deleted." Deleting a Signup Form, or a page that added Events,
   leaves the catalog for every other use. `organizeos-preset-ids.node.test.ts`
   holds the runtime's test to the builder's `isPresetId`.
+
+  **The catalog is locked in the builder** (the data-automatic plan's D8,
+  owner decisions 2026-11-04 and 2026-11-12). A change guard, not an id guard:
+  the runtime refuses an operation only when it would change the catalog, and
+  never writes an existing catalog Resource itself (`keepOrganizeosCatalog` in
+  `runtime/organizeos-catalog.ts`, run on the payload of `variables.delete`,
+  `variables.update`, `resources.upsert`, `resources.update` and
+  `resources.upsertProp`). What is catalog: a Resource with a v5 id, which is
+  the read catalog and the starter signup form's "Newsletter signup" Resource
+  alike (provisioning owns both, and they share the id namespace).
+  - A catalog Resource is not changed: a write whose `method`, `url`,
+    `searchParams`, `headers`, `body`, `bodyFormat`, `control` or `email`
+    differs from the stored Resource is refused (`isCatalogResourceChange`; a
+    missing `searchParams` reads as `[]` and a missing `bodyFormat` as
+    `"auto"`, which is what the resource editor emits, so an unchanged Save,
+    and closing the editor, which saves, pass). On a pass the write carries no
+    patch to the Resource, so the stored Resource stays whole, name included:
+    renaming a variable through its editor never renames the shared Resource.
+    `resources.replaceText` skips catalog Resources and does not count them.
+    Creating a missing one is not a change.
+  - A catalog `:root` binding (a resource binding at `:root` whose id and
+    Resource are v5 ids, `isOrganizeosCatalogRootBinding`) is not deleted,
+    renamed, rescoped, retyped or repointed (`assertCatalogRootBindingsKept`),
+    by any of those operations, whatever their `resourceId`. Where an
+    operation acts on a Resource's first binding and that is a block's or a
+    page-root binding, it acts on that one, as upstream does. A binding counts
+    only while the build holds its Resource, so a foreign one a cross-project
+    paste brought stays deletable. The Data variables menu offers no Delete for
+    one (`canDeleteVariable`). It also matches the legacy pre-deploy `:root`
+    Forms binding, which only dev and test projects have; provisioning and
+    collections-sync still remove that one once unreferenced.
+  - A page paste never replaces a catalog Resource the project holds with the
+    clipboard's copy (`insertWebstudioFragmentCopy`'s portal branch).
+  - One message for every refusal, the runtime's and the panels' ("Staged
+    writes"): "Cannot change your organization's data catalog." The variable
+    editor shows it in a toast and stays open, so the edit can be undone
+    there.
+  - It binds the builder UI, the API and MCP. The patch sync and undo apply
+    raw patches, so it is a builder and API guard, not a security control: an
+    org can harm only its own catalog, and a provision with a token rewrites
+    it. The server writers (provisioning, the entry re-sync, collections-sync)
+    write the build directly and are not bound by it.
 - **Staged writes.** The OrganizeOS panels write through
   `executeStagedRuntimeMutation` (`shared/instance-utils/data.ts`): it stages
   the runtime's operations (an insert, a wrap, a props update) and the panels'
@@ -2047,13 +2125,15 @@ collection }` invalidates, through `invalidateResource`, every current
   and a synchronous stage commits before the call returns. A patch of the
   panels' own passes no runtime guard, so `stageWebstudioDataMutable`
   (`staged-data.ts`) refuses, staging nothing, a write that changes or deletes a
-  catalog Resource or a catalog `:root` binding (a resource binding at `:root`
-  whose id and Resource are v5 ids); adding a missing one is allowed, in
-  provisioning's exact shape, as the block insert and the site-template apply
-  do. Every writer keeps the catalog contract the OrganizeOS repo's builder-data
-  plan set for this merge (with owner decision D8): a catalog Resource is
-  written only when it is missing, in provisioning's shape, and no writer adds a
-  catalog `:root` binding.
+  catalog Resource (any change, name included) or changes a catalog `:root`
+  binding (the runtime lock's own rule and message, imported from
+  `runtime/organizeos-catalog.ts`; see "Catalog Resources outlive their
+  bindings"); adding a missing one is allowed, in provisioning's exact shape,
+  as the block insert and the site-template apply do. Every browser writer
+  keeps the catalog contract the OrganizeOS repo's builder-data plan set for
+  this merge (with owner decision D8): a catalog Resource is written only when
+  it is missing, in provisioning's shape, and no browser writer adds a catalog
+  `:root` binding; only the server writers do ("The catalog in provisioning").
 - **Copies.** Webstudio copies a block's or a page's scoped bindings with it,
   and gives each copied binding its own copy of the Resource, under a nanoid
   id. A copied or duplicated Signup Form therefore reads the same forms
@@ -2082,12 +2162,14 @@ collection }` invalidates, through `invalidateResource`, every current
   `PRODUCT_BINDING_NAME`). `findCatalogResources` lists Products last, after
   Upcoming Events.
 - **The catalog in provisioning** (`shared/db/resource-presets.server.ts`):
-  Events, Fundraisers and Stats are written on every provision, Forms and
-  Upcoming Events (`/events?upcoming=true`, "when-present") are rewritten when
-  the build has their Resource and never created, Products (`/products`,
-  "shop-blocks") is written as Events is while `ORGANIZEOS_SHOP_BLOCKS` is
-  `true` (the provision route passes the switch) and as Forms is otherwise,
-  and every collection Resource gets the new token and API base. Upcoming Events' token rotates like
+  Events, Fundraisers, Stats, Forms and Upcoming Events
+  (`/events?upcoming=true`) are written on every provision (Forms and
+  Upcoming Events for every org since the catalog's `:root` bindings; an
+  unused Resource loads nowhere), Products (`/products`, "shop-blocks") is
+  written as Events is while `ORGANIZEOS_SHOP_BLOCKS` is `true` (the
+  provision route passes the switch) and otherwise rewritten only where the
+  build has it ("when-present"), and every collection Resource gets the new
+  token and API base. Upcoming Events' token rotates like
   the others': the check that finds a copy of a catalog Resource is a prefix
   check on the API base.
   Resources are upserted in place and in order. The unscoped bindings older
@@ -2098,6 +2180,49 @@ collection }` invalidates, through `invalidateResource`, every current
   pages, resources or other data sources) and keeps the rest as they are.
   A binding with a fresh id, which is what every use brings now, is never
   touched.
+
+  **The catalog's `:root` bindings** (the data-automatic plan's D1 to D6,
+  owner decision 2026-11-04: "data should automatically be accessible").
+  Where `catalogRootBindingsWanted` holds (`ORGANIZEOS_CATALOG_ROOT_BINDINGS`
+  exactly `true`, and the org not denied by `ORGANIZEOS_BLOCKS_DENY_ORG_IDS`,
+  which fails closed; `shared/db/organizeos-site.server.ts`), each catalog
+  Resource (`findCatalogResources`: Events, Fundraisers, Stats, the
+  collections, Forms, Upcoming Events, then Products where present) has one
+  resource binding at `:root`, so the Data variables list and the binding
+  popover offer it on every element, inside a Slot's content too, with no
+  "add" step. `planCatalogRootBindings` plans them:
+  - The id is `getCatalogRootBindingId(projectId, key)`,
+    `uuidV5("{projectId}:v1:{key}:root-binding")` (`organizeos-preset-ids.ts`),
+    a family of its own, never the legacy `bindingId`, so every writer
+    converges on one record and `removeUnusedPresetBindings` never touches
+    it.
+  - The name is its Resource's, or `<name> 2`, `<name> 3` and so on when
+    another `:root` data source (anything but these bindings) or an earlier
+    one in catalog order has it; recomputed on every write, so a renamed
+    collection's binding follows it. A kept legacy `:root` Forms binding named
+    "OrganizeOS Forms" makes the new one "OrganizeOS Forms 2". Copies rebind
+    by name, so a pasted element that reads "Events" reads the target
+    project's.
+  - A stored binding keeps its position and is restored in place when it was
+    changed outside the builder (type, scope, name or Resource); a missing one
+    is appended in catalog order. Page-root, block and legacy-id bindings are
+    never rewritten, and a page-root binding of the same name only masks the
+    `:root` one inside its page, reading the same Resource.
+  - Not wanted, a writer adds none and removes each one nothing references
+    (the reference test of `removeUnusedPresetBindings`), keeping the
+    referenced ones, so a page that reads one never changes under an org.
+  - The writers, all on the server, all idempotent: a token provision plans
+    them in its one write; the membership re-sync before every SSO entry
+    (`syncCatalogRootBindings`, §5 item 1), so they exist before the builder
+    loads, adds Forms and Upcoming Events where missing too; collections-sync
+    plans them in its write (§5 item 7). Each matches its write on
+    `{ id, version, updatedAt }` and sets `updatedAt`, so the two that keep the
+    version (the re-sync and collections-sync) fail each other's match instead
+    of overwriting each other's change. The browser writes none, and a block's
+    insert still brings its own binding.
+  - The lock in "Catalog Resources outlive their bindings" keeps the builder
+    from deleting, renaming or retyping them, and from changing their
+    Resources.
 - **The starter signup page** (`shared/db/signup-form-preset.server.tsx`,
   spec decision 8): a provision seeds a "Newsletter" page at `/newsletter`
   with a native Form posting to `/v1/signups`. Not `/signup`: every org host
@@ -3543,11 +3668,17 @@ options, and the limits found since in review):
   prop (`data`); an Event List or Event Card has three (the collection's `data` and the
   `data-ws-show` of the `empty` and `unavailable` boxes). Insert binds by id;
   the re-resolution is upstream behavior, left alone.
-- A catalog Resource is shared: editing it through any binding in the data
-  panel edits it for every use, and a provision rewrites Events, Fundraisers,
-  Stats, Forms, Upcoming Events (where present) and each collection whole. A
-  copy's own Resource (see Copies) is the exception, and a provision only
-  rotates its token.
+- A catalog Resource is shared by every block and page that binds it, so the
+  builder locks it ("Catalog Resources outlive their bindings"): a change to
+  its fields, or to a catalog `:root` binding, is refused with "Cannot change
+  your organization's data catalog.", the starter signup form's Resource
+  included, and a provision rewrites Events, Fundraisers, Stats, Forms,
+  Upcoming Events, Products (where present) and each collection whole. A
+  copy's own Resource (see Copies) is the exception: it can be edited, and a
+  provision only rotates its token. The lock is a builder and API guard, not a
+  security control: the patch sync and undo apply raw patches, which no
+  runtime guard sees, so a hand-made patch can still change an org's own
+  catalog until the next provision with a token.
 - **Events blocks.** The canvas shows no card when the org has no upcoming
   public events, so designing the cards needs one. The Event Card is the next
   event, not a chosen one. The list is unbounded (every upcoming public event; a

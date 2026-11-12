@@ -17,6 +17,7 @@ import type { DataSource } from "@webstudio-is/sdk";
 import {
   findAvailableVariables,
   findUsedVariables,
+  isOrganizeosCatalogRootBinding,
   isRequiredManagedFormVariable,
 } from "@webstudio-is/project-build/runtime";
 import { $selectedInstance, $selectedPage } from "~/shared/nano-states";
@@ -135,6 +136,15 @@ export const canDeleteVariable = (
       instances: $instances.get(),
       props: $props.get(),
     })
+  ) {
+    return false;
+  }
+  // OrganizeOS fork: a catalog :root binding whose Resource the build holds is
+  // locked in the builder (fork doc section 9).
+  if (
+    variable.type === "resource" &&
+    isOrganizeosCatalogRootBinding(variable) &&
+    $resources.get().has(variable.resourceId)
   ) {
     return false;
   }

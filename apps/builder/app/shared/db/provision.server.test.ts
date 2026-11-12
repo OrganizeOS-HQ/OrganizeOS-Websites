@@ -17,7 +17,10 @@ import {
   provisionOrgWorkspace,
 } from "./provision.server";
 import { entitlementProductId } from "./organizeos-plan.server";
-import { seedProjectResourcePresets } from "./resource-presets.server";
+import {
+  seedProjectResourcePresets,
+  syncCatalogRootBindings,
+} from "./resource-presets.server";
 
 const UUID_V5 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -67,6 +70,7 @@ vi.mock("@webstudio-is/project-build/server", async (importOriginal) => ({
 vi.mock("./resource-presets.server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./resource-presets.server")>()),
   seedProjectResourcePresets: vi.fn(async () => {}),
+  syncCatalogRootBindings: vi.fn(async () => {}),
 }));
 
 vi.mock("./signup-form-preset.server", async (importOriginal) => ({
@@ -536,10 +540,109 @@ describe("provisionOrgWorkspace catalog seeding", () => {
           apiBaseUrl: site.apiBaseUrl,
           readToken: site.readToken,
           shopBlocks: true,
+          wanted: false,
         },
       ],
     ]);
     const [[, off]] = await provisionWithSiteData(site);
     expect(off).toMatchObject({ shopBlocks: false });
+  });
+});
+
+// OrganizeOS fork (fork doc section 5.1): the catalog's :root bindings, from
+// a token provision and from the membership re-sync before every entry.
+describe("provisionOrgWorkspace and the catalog's :root bindings", () => {
+  const ORG = "f0e1d2c3-b4a5-4697-8877-665544332211";
+  const on = { switchValue: "true", denyList: undefined };
+
+  const provision = async (options: {
+    siteData?: { readToken: string; apiBaseUrl: string };
+    catalogRootBindings?: { switchValue?: string; denyList?: string };
+  }) => {
+    vi.mocked(seedProjectResourcePresets).mockClear();
+    vi.mocked(syncCatalogRootBindings).mockClear();
+    server.use(
+      db.post("User", () => empty({ status: 201 })),
+      db.post("Workspace", () => empty({ status: 201 })),
+      db.post("Product", () => empty({ status: 201 })),
+      db.post("TransactionLog", () => empty({ status: 201 })),
+      db.delete("TransactionLog", () => empty({ status: 204 })),
+      db.get("Project", () =>
+        json({
+          id: deriveProjectId(ORG),
+          domain: "acme",
+          isDeleted: false,
+          userId: deriveSyntheticUserId(ORG),
+          workspaceId: deriveWorkspaceId(ORG),
+        })
+      )
+    );
+    return provisionOrgWorkspace(testContext as unknown as AppContext, {
+      organizationId: ORG,
+      orgName: "Org",
+      adminEmails: [],
+      ...options,
+    });
+  };
+
+  test("a token provision for an allowed org, switch on, plans them in its catalog write", async () => {
+    await provision({
+      siteData: { readToken: "osk_t", apiBaseUrl: "https://app.example.org" },
+      catalogRootBindings: on,
+    });
+    expect(
+      vi.mocked(seedProjectResourcePresets).mock.calls[0][1]
+    ).toMatchObject({ projectId: deriveProjectId(ORG), wanted: true });
+    // the token provision's own write covers them
+    expect(syncCatalogRootBindings).not.toHaveBeenCalled();
+  });
+
+  test("a token provision for a denied org does not want them", async () => {
+    await provision({
+      siteData: { readToken: "osk_t", apiBaseUrl: "https://app.example.org" },
+      catalogRootBindings: { switchValue: "true", denyList: ORG },
+    });
+    expect(
+      vi.mocked(seedProjectResourcePresets).mock.calls[0][1]
+    ).toMatchObject({ wanted: false });
+  });
+
+  test.each([
+    ["an allowed org, switch on", on, true],
+    [
+      "the switch unset",
+      { switchValue: undefined, denyList: undefined },
+      false,
+    ],
+    ["a denied org", { switchValue: "true", denyList: ORG }, false],
+    ["no values", undefined, false],
+  ])(
+    "the membership re-sync syncs them last: %s",
+    async (_label, catalogRootBindings, wanted) => {
+      await provision({ catalogRootBindings });
+      expect(seedProjectResourcePresets).not.toHaveBeenCalled();
+      expect(vi.mocked(syncCatalogRootBindings).mock.calls).toEqual([
+        [expect.anything(), { projectId: deriveProjectId(ORG), wanted }],
+      ]);
+    }
+  );
+
+  test("a re-sync whose catalog write fails still succeeds, and logs one line with no build content", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(syncCatalogRootBindings).mockImplementationOnce(async () => {
+      throw new Error(`build {"resources":"Bearer osk_secret"} kept changing`);
+    });
+    try {
+      const result = await provision({ catalogRootBindings: on });
+      expect(result.projectId).toBe(deriveProjectId(ORG));
+      expect(error).toHaveBeenCalledTimes(1);
+      const [line, ...rest] = error.mock.calls[0];
+      expect(rest).toEqual([]);
+      expect(String(line)).toContain("CATALOG_ROOT_BINDINGS_SYNC_FAILED");
+      expect(String(line)).toContain(deriveProjectId(ORG));
+      expect(String(line)).not.toContain("osk_secret");
+    } finally {
+      error.mockRestore();
+    }
   });
 });

@@ -1,10 +1,13 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   encodeDataSourceVariable,
   type DataSource,
   type Resource,
 } from "@webstudio-is/sdk";
-import { getResourcePresetIds } from "../organizeos-preset-ids";
+import {
+  getCatalogRootBindingId,
+  getResourcePresetIds,
+} from "../organizeos-preset-ids";
 import { syncOrgCollectionPresets } from "./collections-sync.server";
 import { deriveProjectId } from "./provision.server";
 import {
@@ -22,6 +25,7 @@ const apiBaseUrl = "https://app.example.org/api/public/v1";
 type BuildRow = {
   id: string;
   version: number;
+  updatedAt: string | null;
   instances: string;
   props: string;
   dataSources: string;
@@ -36,18 +40,22 @@ type Write = {
 };
 
 // Stateful fake of the two tables the sync touches. The Build update honours
-// its match on version the way PostgREST does: no row matches, count 0. Each
-// `builderSaves` entry is a builder save that lands just before a write:
-// it bumps the version (and may add to the build), so that write loses.
+// its match on id, version and updatedAt the way PostgREST does: no row
+// matches, count 0. Each `builderSaves` entry is a builder save that lands
+// just before a write: it bumps the version (and may add to the build), so
+// that write loses. Each `versionKeepingWrites` entry is the entry re-sync's
+// write, which changes the build and updatedAt and keeps the version.
 const makeContext = ({
   project = { id: projectId, isDeleted: false },
   build,
   builderSaves = [],
+  versionKeepingWrites = [],
   writeError = null,
 }: {
   project?: { id: string; isDeleted: boolean } | null;
   build: Partial<BuildRow> | null;
   builderSaves?: Array<(row: BuildRow) => void>;
+  versionKeepingWrites?: Array<(row: BuildRow) => void>;
   writeError?: { message: string } | null;
 }) => {
   const row: BuildRow | null =
@@ -56,6 +64,7 @@ const makeContext = ({
       : {
           id: "build-1",
           version: 7,
+          updatedAt: "2026-11-01T00:00:00.000Z",
           instances: "[]",
           props: "[]",
           dataSources: "[]",
@@ -65,6 +74,7 @@ const makeContext = ({
         };
   const state = { row, reads: 0, writes: [] as Write[] };
   const pendingSaves = [...builderSaves];
+  const pendingOtherWrites = [...versionKeepingWrites];
 
   const client = {
     from: (table: string) => {
@@ -91,21 +101,49 @@ const makeContext = ({
           }),
         }),
         update: (payload: Record<string, unknown>, options: unknown) => ({
-          match: async (match: Record<string, unknown>) => {
-            state.writes.push({ payload, options, match });
-            if (writeError !== null) {
-              return { error: writeError, count: null };
-            }
-            const save = pendingSaves.shift();
-            if (save !== undefined && state.row !== null) {
-              save(state.row);
-              state.row.version += 1;
-            }
-            if (state.row === null || state.row.version !== match.version) {
-              return { error: null, count: 0 };
-            }
-            Object.assign(state.row, payload);
-            return { error: null, count: 1 };
+          match: (match: Record<string, unknown>) => {
+            const conditions = { ...match };
+            const run = async () => {
+              state.writes.push({ payload, options, match: conditions });
+              if (writeError !== null) {
+                return { error: writeError, count: null };
+              }
+              const save = pendingSaves.shift();
+              if (save !== undefined && state.row !== null) {
+                save(state.row);
+                state.row.version += 1;
+              }
+              const other = pendingOtherWrites.shift();
+              if (other !== undefined && state.row !== null) {
+                other(state.row);
+              }
+              const current = state.row;
+              if (
+                current === null ||
+                Object.entries(conditions).some(
+                  ([column, value]) =>
+                    current[column as keyof BuildRow] !== value
+                )
+              ) {
+                return { error: null, count: 0 };
+              }
+              Object.assign(current, payload);
+              return { error: null, count: 1 };
+            };
+            const query = {
+              filter: (column: string, _operator: string, value: unknown) => {
+                conditions[column] = value;
+                return query;
+              },
+              then: <Result>(
+                resolve: (value: {
+                  error: { message: string } | null;
+                  count: number | null;
+                }) => Result,
+                reject?: (reason: unknown) => Result
+              ) => run().then(resolve, reject),
+            };
+            return query;
           },
         }),
       };
@@ -114,17 +152,18 @@ const makeContext = ({
   return { context: { postgrest: { client } } as never, state };
 };
 
-// What a provision writes: the "always" catalog Resources, and no binding.
-// Forms is "when-present" (a block's insert adds it when a block first
-// uses it), so a freshly provisioned build does not have it.
+// What a provision wrote before Forms and Upcoming Events were seeded for
+// every org: Events, Fundraisers and Stats, and no binding. (OrganizeOS fork:
+// a provision now writes Forms and Upcoming Events too; the sync copies its
+// seed from any of them alike.)
 const provisionedPresets = async (
   args: Parameters<typeof buildOrgResourcePresets>[0]
 ) => {
   const all = await buildOrgResourcePresets(args);
   const names = new Set(
-    V1_RESOURCE_PRESETS.filter((preset) => preset.seeding === "always").map(
-      (preset) => preset.label
-    )
+    V1_RESOURCE_PRESETS.filter((preset) =>
+      ["events", "fundraisers", "stats"].includes(preset.key)
+    ).map((preset) => preset.label)
   );
   return {
     resources: all.resources.filter((item) => names.has(item.name)),
@@ -315,16 +354,21 @@ describe("syncOrgCollectionPresets", () => {
     ).toBe("Journal");
   });
 
-  test("writes with compare-and-swap on the version it read, without bumping it", async () => {
+  test("writes with compare-and-swap on the version and updatedAt it read, without bumping it", async () => {
     const { context, state } = makeContext({ build: provisionedBuild() });
     await syncOrgCollectionPresets(context, { organizationId, collections });
 
     expect(state.writes).toHaveLength(1);
     expect(state.writes[0].options).toEqual({ count: "exact" });
-    expect(state.writes[0].match).toEqual({ id: "build-1", version: 7 });
+    expect(state.writes[0].match).toEqual({
+      id: "build-1",
+      version: 7,
+      updatedAt: "2026-11-01T00:00:00.000Z",
+    });
     expect(Object.keys(state.writes[0].payload).sort()).toEqual([
       "dataSources",
       "resources",
+      "updatedAt",
     ]);
     expect(state.row?.version).toBe(7);
   });
@@ -577,5 +621,128 @@ describe("syncOrgCollectionPresets", () => {
       `"${apiBaseUrl}/collections/tags/items"`,
     ]);
     expect(dataSources).toEqual([]);
+  });
+});
+
+// OrganizeOS fork (fork doc section 5.7): the sync writes each catalog
+// Resource's :root binding for a wanted org, in the same write.
+describe("syncOrgCollectionPresets and the catalog's :root bindings", () => {
+  const ALLOWED_ORG = "f0e1d2c3-b4a5-4697-8877-665544332211";
+  const allowedProjectId = deriveProjectId(ALLOWED_ORG);
+  const on = { switchValue: "true", denyList: undefined };
+  const now = "2026-11-12T10:00:00.000Z";
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const allowedBuild = async () => {
+    const all = await buildOrgResourcePresets({
+      projectId: allowedProjectId,
+      apiBaseUrl,
+      readToken: "osk_secrettoken",
+    });
+    return {
+      resources: JSON.stringify(
+        all.resources.filter(({ name }) => name !== "Products")
+      ),
+    };
+  };
+  const blogBindingId = () =>
+    getCatalogRootBindingId(allowedProjectId, "collection:blog");
+  const sync = (
+    context: Parameters<typeof syncOrgCollectionPresets>[0],
+    catalogRootBindings?: { switchValue?: string; denyList?: string }
+  ) =>
+    syncOrgCollectionPresets(context, {
+      organizationId: ALLOWED_ORG,
+      collections: [{ slug: "blog", name: "Blog posts", kind: "curated" }],
+      catalogRootBindings,
+    });
+
+  test("a new collection gets its Resource and its :root binding in one write, version unchanged", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(now));
+    const { context, state } = makeContext({
+      project: { id: allowedProjectId, isDeleted: false },
+      build: await allowedBuild(),
+    });
+    expect(await sync(context, on)).toEqual({ status: "ok", collections: 1 });
+
+    expect(state.writes).toHaveLength(1);
+    expect(state.writes[0].match).toEqual({
+      id: "build-1",
+      version: 7,
+      updatedAt: "2026-11-01T00:00:00.000Z",
+    });
+    expect(state.writes[0].payload.updatedAt).toBe(now);
+    expect(state.writes[0].payload).not.toHaveProperty("version");
+    expect(state.row?.version).toBe(7);
+    const { dataSources, resources } = parseRow(state.row);
+    const blog = await getResourcePresetIds(
+      allowedProjectId,
+      "collection:blog"
+    );
+    expect(resources.map(({ id }) => id)).toContain(blog.resourceId);
+    expect(dataSources.map(({ name }) => name)).toEqual([
+      "Events",
+      "Fundraisers",
+      "Stats",
+      "Blog posts",
+      "OrganizeOS Forms",
+      "Upcoming Events",
+    ]);
+    expect(dataSources[3]).toEqual({
+      type: "resource",
+      id: await blogBindingId(),
+      scopeInstanceId: ":root",
+      name: "Blog posts",
+      resourceId: blog.resourceId,
+    });
+  });
+
+  test("a write whose read is stale by updatedAt alone loses and retries, keeping the other write", async () => {
+    const { context, state } = makeContext({
+      project: { id: allowedProjectId, isDeleted: false },
+      build: await allowedBuild(),
+      versionKeepingWrites: [
+        (row) => {
+          row.dataSources = JSON.stringify([userVariable]);
+          row.updatedAt = "2026-11-02T00:00:00.000Z";
+        },
+      ],
+    });
+    expect(await sync(context, on)).toEqual({ status: "ok", collections: 1 });
+    expect(state.writes).toHaveLength(2);
+    expect(state.writes[1].match.updatedAt).toBe("2026-11-02T00:00:00.000Z");
+    const { dataSources } = parseRow(state.row);
+    expect(dataSources[0]).toEqual(userVariable);
+    expect(dataSources).toHaveLength(7);
+    expect(state.row?.version).toBe(7);
+  });
+
+  test.each([
+    ["the switch off", { switchValue: undefined, denyList: undefined }],
+    ["a denied org", { switchValue: "true", denyList: ALLOWED_ORG }],
+  ])("%s: the Resource, no binding", async (_label, catalogRootBindings) => {
+    const { context, state } = makeContext({
+      project: { id: allowedProjectId, isDeleted: false },
+      build: await allowedBuild(),
+    });
+    await sync(context, catalogRootBindings);
+    const { dataSources, resources } = parseRow(state.row);
+    expect(resources.map(({ name }) => name)).toContain("Blog posts");
+    expect(dataSources).toEqual([]);
+  });
+
+  test("an unchanged snapshot with the bindings present writes nothing", async () => {
+    const { context, state } = makeContext({
+      project: { id: allowedProjectId, isDeleted: false },
+      build: await allowedBuild(),
+    });
+    await sync(context, on);
+    expect(state.writes).toHaveLength(1);
+    expect(await sync(context, on)).toEqual({ status: "ok", collections: 1 });
+    expect(state.writes).toHaveLength(1);
   });
 });

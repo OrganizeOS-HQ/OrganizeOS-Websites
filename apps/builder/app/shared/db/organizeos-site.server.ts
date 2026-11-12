@@ -144,6 +144,27 @@ export const parseOrgDenyList = (value: string | undefined): OrgDenyList => {
 const isOrgDenied = (list: OrgDenyList, organizationId: string) =>
   list.all || list.ids.has(organizationId.toLowerCase());
 
+/**
+ * Whether the server writes the org's catalog `:root` bindings: the switch
+ * `ORGANIZEOS_CATALOG_ROOT_BINDINGS` is exactly `true`, the style of
+ * `ORGANIZEOS_CMS_PANEL`, and `ORGANIZEOS_BLOCKS_DENY_ORG_IDS` does not deny
+ * the org (a malformed list denies every org, as for the blocks). When not
+ * wanted, a writer adds none and removes the ones nothing references.
+ */
+export const catalogRootBindingsWanted = ({
+  organizationId,
+  switchValue,
+  denyList,
+}: {
+  organizationId: string;
+  /** The raw `ORGANIZEOS_CATALOG_ROOT_BINDINGS`. */
+  switchValue: string | undefined;
+  /** The raw `ORGANIZEOS_BLOCKS_DENY_ORG_IDS`. */
+  denyList: string | undefined;
+}) =>
+  switchValue === "true" &&
+  isOrgDenied(parseOrgDenyList(denyList), organizationId) === false;
+
 let malformedDenyListReported = false;
 
 /**

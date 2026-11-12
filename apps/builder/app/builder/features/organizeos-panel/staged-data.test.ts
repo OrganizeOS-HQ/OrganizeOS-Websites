@@ -14,7 +14,10 @@ import {
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import * as organizeosMetas from "@organizeos/site-components/metas";
 import { createDefaultPages } from "@webstudio-is/project-build";
-import { BuilderRuntimeError } from "@webstudio-is/project-build/runtime";
+import {
+  BuilderRuntimeError,
+  catalogChangeMessage,
+} from "@webstudio-is/project-build/runtime";
 import {
   $registeredComponentMetas,
   registerComponentLibrary,
@@ -375,6 +378,29 @@ describe("stageWebstudioDataMutable's catalog guard", () => {
 
     expectNothingWritten(before);
   });
+
+  // OrganizeOS fork (the data-automatic plan's D8): the binding loop is the
+  // runtime lock's own rule, with its message.
+  test.each([
+    ["rescopes", { scopeInstanceId: "body" }],
+    ["repoints", { resourceId: ownResource.id }],
+    ["renames", { name: "Renamed" }],
+  ])(
+    "refuses a recipe that %s a catalog :root binding through the shared rule",
+    async (_case, change) => {
+      withCatalog();
+      const before = getStores();
+      const refusal = updateWebstudioDataStaged((data) => {
+        data.dataSources.set(catalogBindingId, {
+          ...catalogBinding,
+          ...change,
+        } as DataSource);
+      });
+      await expect(refusal).rejects.toBeInstanceOf(BuilderRuntimeError);
+      await expect(refusal).rejects.toThrow(catalogChangeMessage);
+      expectNothingWritten(before);
+    }
+  );
 
   test("adds a missing catalog Resource, and changes the project's own", async () => {
     $resources.set(new Map([[ownResource.id, ownResource]]));

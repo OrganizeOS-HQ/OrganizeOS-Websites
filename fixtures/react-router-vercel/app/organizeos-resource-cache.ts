@@ -1,7 +1,7 @@
 /**
  * OrganizeOS fork: an in-memory cache for the resource GETs a published page's
  * loader makes. A page renders on every request (no-store), and each render
- * fetches every resource the page reaches, :root ones included. On Vercel
+ * fetches every resource the page uses, :root ones included. On Vercel
  * nothing else caches those fetches: the CDN skips a request that carries
  * Authorization, and the sdk's cachedFetch needs a Cache API the runtime lacks.
  *
