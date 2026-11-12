@@ -898,6 +898,46 @@ describe("answers that arrive after the screen moved on", () => {
     await settle();
     expect(titleInput()?.value).toBe("Hello");
   });
+
+  test.each([
+    ["Back", () => click(byLabel("Back")), "posts"],
+    [
+      "another collection",
+      () => click(rowOf("people")?.querySelector("button")),
+      "people",
+    ],
+  ] as const)(
+    "a create that answers after %s and Discard leaves the items view open",
+    async (_name, leave, slug) => {
+      mount();
+      await settle();
+      await click(buttonByText("New item"));
+      await act(async () => userEvent.type(titleInput()!, "Fresh"));
+      await settle();
+      const held = deferred<CmsResult<{ item: CmsItem; created?: boolean }>>();
+      fake.createItem.mockReturnValueOnce(held.promise);
+      await click(buttonByText("Save"));
+      expect(fake.createItem).toHaveBeenCalledTimes(1);
+      await leave();
+      await click(buttonByText("Discard"));
+      expect(titleInput()).toBeNull();
+      const reads = fake.getItem.mock.calls.length;
+      await act(async () =>
+        held.resolve({
+          item: itemOf({
+            id: "55555555-5555-4555-8555-555555555555",
+            slug: "fresh",
+            data: { title: "Fresh", summary: null, author: null },
+          }),
+          created: true,
+        })
+      );
+      await settle();
+      expect(document.querySelector("[data-cms-editor]")).toBeNull();
+      expect(fake.getItem).toHaveBeenCalledTimes(reads);
+      expect(currentSlug()).toBe(slug);
+    }
+  );
 });
 
 describe("the builder's colour scheme", () => {

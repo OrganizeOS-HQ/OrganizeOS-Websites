@@ -315,6 +315,15 @@ export const ItemEditor = ({
       });
   }, [refreshKey, source, collection.id, applyItem]);
 
+  // A create answered after this editor closed opens nothing.
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
   // on open only: a later prop change never moves the focus
   const focusBackOnOpen = useRef(focusBack);
   useEffect(() => {
@@ -504,7 +513,9 @@ export const ItemEditor = ({
     setKept(undefined);
     if (from === null) {
       loadedId.current = saved.id;
-      onCreated(saved);
+      if (isMounted.current) {
+        onCreated(saved);
+      }
     }
     const differs =
       replayed &&
