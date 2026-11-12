@@ -881,8 +881,11 @@ can be merged with minimal conflict.
   `src/shared/organizeos-variables.ts` (the registry schema and
   `readVariablesRegistry`, with `organizeos-variables.organizeos.test.ts`),
   exported by one marked line in `src/index.ts`; and the `organizeos` key, one
-  marked line in `src/shared/project-settings.ts`. Pinned by
-  `overlay.wiring.node.test.ts`.
+  marked line in `src/shared/project-settings.ts`; the whole-name rename in
+  `src/runtime/styles.ts` (marked: both name regexes take a left boundary,
+  `rewriteCssVariableReferencesInStyleValue` walks the value instead of its
+  JSON, `getCssVariableUsageCounts` exported), with
+  `styles.organizeos.test.ts`. Pinned by `overlay.wiring.node.test.ts`.
 - **Published sites (§1, §8).** The CLI's copy of the blocks' build into every
   published site, `packages/cli/src/organizeos-components.ts`, called from
   short marked hooks in `prebuild.ts` and `framework-react-router.ts`, with
@@ -999,6 +1002,9 @@ can be merged with minimal conflict.
   failed download's `.tmp` file deleted before its write stream opened) is
   fixed upstream in 0.309.0; the fork keeps its regression case, "leaves no
   temporary file when many downloads fail at once", in `asset-files.test.ts`.
+  `packages/project-build/src/runtime/styles.ts` renames a CSS variable's
+  references by whole name: renaming `--black` leaves `color: black`, and
+  renaming `--large` leaves `var(--spacing--large)` (Variables, above).
 
 **Sitemap page settings.** The builder's sitemap loader
 (`shared/$resources/sitemap.xml.server.ts`, one marked change) and prebuild's

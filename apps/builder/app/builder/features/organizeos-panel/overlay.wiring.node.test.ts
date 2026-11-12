@@ -312,4 +312,12 @@ describe("the Variables edits in project-build", () => {
       /export \* from "\.\/shared\/organizeos-variables";/
     );
   });
+
+  test("styles.ts renames by whole name and exports the usage counts", () => {
+    const styles = projectBuild("runtime/styles.ts");
+    expect(styles).toContain("(?<![\\\\w-])${escapeRegex(name)}(?![\\\\w-])");
+    expect(styles).toMatch(/`\(\?<!\[\\\\w-\]\)\(\?:\$\{Array\.from\(names\)/);
+    expect(styles).not.toContain('("value":")');
+    expect(styles).toMatch(/export const getCssVariableUsageCounts = /);
+  });
 });
