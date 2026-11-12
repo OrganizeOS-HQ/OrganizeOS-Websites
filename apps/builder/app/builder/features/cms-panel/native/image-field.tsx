@@ -76,6 +76,7 @@ export const ImageField = ({
   disabled,
   onChange,
   onError,
+  onBusyChange,
 }: {
   id: string;
   source: CmsSource;
@@ -83,6 +84,8 @@ export const ImageField = ({
   disabled?: boolean;
   onChange: (value: CmsImageValue | null) => void;
   onError: (error: string | undefined) => void;
+  /** True while E9 is in flight: Save and Publish wait for it. */
+  onBusyChange?: (busy: boolean) => void;
 }) => {
   const fileRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -100,11 +103,22 @@ export const ImageField = ({
     }
     onError(undefined);
     setIsUploading(true);
-    const [size, uploaded] = await Promise.all([
-      measure(file),
-      source.uploadImage(file),
-    ]);
-    setIsUploading(false);
+    onBusyChange?.(true);
+    let size: Awaited<ReturnType<typeof measure>>;
+    let uploaded: Awaited<ReturnType<CmsSource["uploadImage"]>>;
+    try {
+      [size, uploaded] = await Promise.all([
+        measure(file),
+        source.uploadImage(file),
+      ]);
+    } catch {
+      // a source that throws reads as a lost answer
+      size = { width: null, height: null };
+      uploaded = { error: "unavailable" };
+    } finally {
+      setIsUploading(false);
+      onBusyChange?.(false);
+    }
     if (isCmsFailure(uploaded)) {
       onError(uploaded.error === "invalid" ? "Not an image" : "Not uploaded");
       return;

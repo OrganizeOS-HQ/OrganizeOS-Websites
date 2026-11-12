@@ -1,13 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Combobox,
+  Box,
+  ComboboxAnchor,
+  ComboboxContent,
+  ComboboxListbox,
+  ComboboxListboxItem,
+  ComboboxRoot,
+  ComboboxScrollArea,
   css,
   cssVar,
   Flex,
   Grid,
+  InputField,
   NestedInputButton,
   SmallIconButton,
   theme,
+  useCombobox,
 } from "@webstudio-is/design-system";
 import { XIcon } from "@webstudio-is/icons";
 import { chunk } from "./cms-logic";
@@ -77,7 +85,15 @@ const useReferenceTitles = (
   return { titles, remember };
 };
 
-/** A `Combobox` over the target collection's titles (E5). */
+/** A chosen or offered item's title, lower case, for the local match. */
+const includesTerm = (item: Option, term: string) =>
+  item.title.toLowerCase().includes(term.toLowerCase());
+
+/**
+ * A combobox over the target collection's titles (4.3.3): before a term,
+ * its first page (E3, read when the field first takes the focus); with one,
+ * E5's matches. Until E5 answers a term, the first page is matched locally.
+ */
 const ReferencePicker = ({
   id,
   source,
@@ -102,77 +118,192 @@ const ReferencePicker = ({
   onSelect: (item: CmsSearchResult) => void;
 }) => {
   const [input, setInput] = useState<Option | undefined>(undefined);
-  const [results, setResults] = useState<CmsSearchResult[]>([]);
+  const [firstPage, setFirstPage] = useState<CmsSearchResult[] | undefined>(
+    undefined
+  );
+  const [found, setFound] = useState<
+    { q: string; items: CmsSearchResult[] } | undefined
+  >(undefined);
+  // An answer arrived: the open list is drawn again from it.
+  const [answers, setAnswers] = useState(0);
+  const [reopen, setReopen] = useState(false);
+  const fieldElement = useRef<HTMLDivElement | null>(null);
+  const firstPageAsked = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Only the newest search's answer lands: an older one never overwrites it.
   const sequence = useRef(0);
-
-  const search = useCallback(
-    (q: string) => {
-      sequence.current += 1;
-      const current = sequence.current;
-      // `q: ""` lists the first 20 (the seam's contract for E5)
-      void source.searchItems(collectionId, { q }).then((result) => {
-        if (current === sequence.current && isCmsFailure(result) === false) {
-          setResults(result.items);
-        }
-      });
-    },
-    [source, collectionId]
-  );
+  const isMounted = useRef(true);
 
   useEffect(() => {
-    search("");
+    isMounted.current = true;
     return () => {
+      isMounted.current = false;
       clearTimeout(timer.current);
-      // an answer after unmount is dropped
       sequence.current += 1;
     };
-  }, [search]);
+  }, []);
 
-  return (
-    <Combobox<Option>
-      // Combobox takes no id; downshift gives the input its own, so the
-      // label's htmlFor is written onto the element. The group's
-      // aria-labelledby names it as well.
-      inputRef={(element) => {
-        if (element !== null && id !== undefined) {
-          element.id = id;
-        }
-      }}
-      value={input ?? selected}
-      disabled={disabled}
-      color={color}
-      placeholder={placeholder}
-      suffix={suffix}
-      itemToString={(item) => item?.title ?? ""}
-      getItems={() =>
-        results.filter(
-          (item) => excludeIds.includes(item.id) === false
-        ) as Option[]
+  // another target collection starts over
+  useEffect(() => {
+    firstPageAsked.current = false;
+    setFirstPage(undefined);
+    setFound(undefined);
+  }, [source, collectionId]);
+
+  const loadFirstPage = () => {
+    if (firstPageAsked.current) {
+      return;
+    }
+    firstPageAsked.current = true;
+    void source.listItems(collectionId, { page: 1 }).then((result) => {
+      if (isMounted.current === false) {
+        return;
       }
-      match={(query, items) =>
-        items.filter((item) =>
-          item.title.toLowerCase().includes(query.trim().toLowerCase())
-        )
+      if (isCmsFailure(result)) {
+        // the next focus asks again
+        firstPageAsked.current = false;
+        return;
       }
-      onChange={(text) => {
-        if (text === undefined) {
-          setInput(undefined);
-          return;
-        }
-        setInput({ title: text });
-        clearTimeout(timer.current);
-        timer.current = setTimeout(() => search(text.trim()), 200);
-      }}
-      onItemSelect={(item) => {
+      setFirstPage(
+        result.items.map(({ id, title, status }) => ({ id, title, status }))
+      );
+      setAnswers((current) => current + 1);
+    });
+  };
+
+  const search = (q: string) => {
+    sequence.current += 1;
+    const current = sequence.current;
+    void source.searchItems(collectionId, { q }).then((result) => {
+      if (current !== sequence.current || isCmsFailure(result)) {
+        return;
+      }
+      setFound({ q, items: result.items });
+      setAnswers((count) => count + 1);
+    });
+  };
+
+  const offered = (items: readonly CmsSearchResult[]) =>
+    items.filter((item) => excludeIds.includes(item.id) === false);
+
+  /** What the list offers for `query`: E5's answer for it, if any. */
+  const itemsFor = (query: string): Option[] => {
+    const term = query.trim();
+    if (term === "") {
+      return offered(firstPage ?? []);
+    }
+    if (found?.q === term) {
+      return offered(found.items);
+    }
+    return offered(firstPage ?? []).filter((item) => includesTerm(item, term));
+  };
+
+  const combobox = useCombobox<Option>({
+    value: input ?? selected,
+    itemToString: (item) => item?.title ?? "",
+    getItems: () => itemsFor(input?.title ?? ""),
+    match: (query) => itemsFor(query),
+    onChange: (text) => {
+      clearTimeout(timer.current);
+      if (text === undefined) {
         setInput(undefined);
-        const match = results.find((result) => result.id === item.id);
-        if (match !== undefined) {
-          onSelect(match);
-        }
-      }}
-    />
+        return;
+      }
+      setInput({ title: text });
+      const term = text.trim();
+      if (term === "") {
+        // a cleared term: any search still in flight is dropped
+        sequence.current += 1;
+        return;
+      }
+      timer.current = setTimeout(() => search(term), 200);
+    },
+    onItemSelect: (item) => {
+      setInput(undefined);
+      const match = [...(firstPage ?? []), ...(found?.items ?? [])].find(
+        (result) => result.id === item.id
+      );
+      if (match !== undefined) {
+        onSelect(match);
+      }
+    },
+  });
+
+  // An answer for the field holding the focus draws the list again: the menu closes
+  // and opens, which reads the items afresh.
+  const menu = useRef(combobox);
+  menu.current = combobox;
+  useEffect(() => {
+    if (
+      answers === 0 ||
+      fieldElement.current?.contains(document.activeElement) !== true
+    ) {
+      return;
+    }
+    if (menu.current.isOpen) {
+      menu.current.closeMenu();
+      setReopen(true);
+    } else {
+      menu.current.openMenu();
+    }
+  }, [answers]);
+  const { isOpen, openMenu } = combobox;
+  useEffect(() => {
+    if (reopen && isOpen === false) {
+      setReopen(false);
+      openMenu();
+    }
+  }, [reopen, isOpen, openMenu]);
+
+  const inputProps = combobox.getInputProps();
+  return (
+    <ComboboxRoot open={combobox.isOpen}>
+      <Box {...combobox.getComboboxProps()}>
+        <ComboboxAnchor>
+          <InputField
+            {...inputProps}
+            // downshift gives the input its own id; the label's htmlFor is
+            // written onto the element, and the group's aria-labelledby
+            // names it as well
+            containerRef={fieldElement}
+            inputRef={(element) => {
+              if (element !== null && id !== undefined) {
+                element.id = id;
+              }
+            }}
+            placeholder={placeholder}
+            color={color}
+            disabled={disabled}
+            onFocus={loadFirstPage}
+            // always a suffix: a field that gained one would mount its
+            // input again and lose the focus
+            suffix={
+              suffix ?? (
+                <Flex>
+                  <NestedInputButton {...combobox.getToggleButtonProps()} />
+                </Flex>
+              )
+            }
+          />
+        </ComboboxAnchor>
+        <ComboboxContent>
+          <ComboboxListbox {...combobox.getMenuProps()}>
+            <ComboboxScrollArea>
+              {combobox.isOpen &&
+                combobox.items.map((item, index) => (
+                  <ComboboxListboxItem
+                    selectable={false}
+                    {...combobox.getItemProps({ item, index })}
+                    key={item.id ?? index}
+                  >
+                    {item.title}
+                  </ComboboxListboxItem>
+                ))}
+            </ComboboxScrollArea>
+          </ComboboxListbox>
+        </ComboboxContent>
+      </Box>
+    </ComboboxRoot>
   );
 };
 

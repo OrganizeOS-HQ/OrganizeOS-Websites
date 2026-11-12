@@ -10,7 +10,6 @@ import {
 } from "react";
 import {
   Button,
-  ColorThumb,
   Flex,
   Grid,
   InputField,
@@ -21,7 +20,6 @@ import {
   Switch,
   Text,
   TextArea,
-  theme,
   Tooltip,
 } from "@webstudio-is/design-system";
 import { ResetIcon } from "@webstudio-is/icons";
@@ -107,7 +105,8 @@ const asText = (value: unknown) =>
 /** "" is unset: text kinds store null, as the platform's `trimOrNull`. */
 const textOrNull = (value: string) => (value === "" ? null : value);
 
-const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+/** A colour is an opaque `#RRGGBB`. */
+const COLOR_PATTERN = "^#[0-9a-fA-F]{6}$";
 
 const inputTypes = {
   text: "text",
@@ -335,6 +334,7 @@ export const FieldControl = ({
   remountKey,
   onChange,
   onError,
+  onBusyChange,
   onOpenClassic,
 }: {
   id: string;
@@ -347,6 +347,8 @@ export const FieldControl = ({
   remountKey: string;
   onChange: (value: unknown) => void;
   onError: (error: string | undefined) => void;
+  /** True while a write of this field's value is in flight (an upload). */
+  onBusyChange?: (busy: boolean) => void;
   onOpenClassic?: () => void;
 }) => {
   const color = invalid ? ("error" as const) : undefined;
@@ -437,43 +439,34 @@ export const FieldControl = ({
           onCheckedChange={(checked) => onChange(checked)}
         />
       );
-    case "color": {
-      // Owner item (spec 13.2): the design-system ColorPicker emits a CSS
-      // StyleValue with alpha, so the value stays an InputField of #RRGGBB.
-      const hex = asText(value);
+    case "color":
+      // Spec 13.2: the design-system ColorPicker emits a CSS StyleValue with
+      // alpha, so the value is an InputField of #RRGGBB.
       return (
         <InputField
           id={id}
-          value={hex}
+          value={asText(value)}
           disabled={disabled}
           color={color}
           text="mono"
           placeholder="#RRGGBB"
+          pattern={COLOR_PATTERN}
           maxLength={7}
           {...aria}
-          prefix={
-            <Flex align="center" css={{ paddingLeft: theme.spacing[2] }}>
-              <ColorThumb color={COLOR_RE.test(hex) ? hex : "transparent"} />
-            </Flex>
-          }
           onChange={(event) =>
             onChange(textOrNull(event.currentTarget.value.trim()))
           }
         />
       );
-    }
     case "option": {
       const options = field.options ?? [];
       const choices = [
         ...(field.required ? [] : [NONE]),
         ...options.map((option) => option.value),
       ];
+      // no value shows the placeholder
       const current =
-        typeof value === "string" && value !== ""
-          ? value
-          : field.required
-            ? undefined
-            : NONE;
+        typeof value === "string" && value !== "" ? value : undefined;
       return (
         <Select
           id={id}
@@ -525,6 +518,7 @@ export const FieldControl = ({
           disabled={disabled}
           onChange={onChange}
           onError={onError}
+          onBusyChange={onBusyChange}
         />
       );
     case "richtext":

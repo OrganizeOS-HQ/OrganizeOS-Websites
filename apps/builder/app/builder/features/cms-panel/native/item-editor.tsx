@@ -148,6 +148,11 @@ export const ItemEditor = ({
     { kind: CmsLineKind; retry?: () => void } | undefined
   >(undefined);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // The fields whose value is still being written (an upload in flight):
+  // Save and Publish wait, so no write leaves a late value out.
+  const [busyFields, setBusyFields] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
   const [loadAttempt, setLoadAttempt] = useState(0);
   // Rich text reads its value once: it remounts when values are replaced.
   const [epoch, setEpoch] = useState(0);
@@ -583,6 +588,7 @@ export const ItemEditor = ({
     hasStagedChanges === false &&
     isDirty === false;
   const disabled = canEdit === false || busy !== undefined;
+  const isFieldBusy = busyFields.size > 0;
   const showConflictLine = conflict || keptDifferences.length > 0;
 
   const actions = (
@@ -632,7 +638,9 @@ export const ItemEditor = ({
         <Button
           color={access.canPublish ? "neutral" : "primary"}
           disabled={
-            (isDirty === false && isNew === false) || busy !== undefined
+            (isDirty === false && isNew === false) ||
+            busy !== undefined ||
+            isFieldBusy
           }
           state={busy === "save" ? "pending" : undefined}
           onClick={() => void save()}
@@ -643,7 +651,7 @@ export const ItemEditor = ({
       {canEdit && access.canPublish && (
         <Button
           color="primary"
-          disabled={nothingToPublish || busy !== undefined}
+          disabled={nothingToPublish || busy !== undefined || isFieldBusy}
           state={busy === "publish" ? "pending" : undefined}
           onClick={() => void publish()}
         >
@@ -733,6 +741,17 @@ export const ItemEditor = ({
                           ? rest
                           : { ...rest, [field.key]: error }
                       )
+                    }
+                    onBusyChange={(isBusy) =>
+                      setBusyFields((current) => {
+                        const next = new Set(current);
+                        if (isBusy) {
+                          next.add(field.key);
+                        } else {
+                          next.delete(field.key);
+                        }
+                        return next;
+                      })
                     }
                     onOpenClassic={onOpenClassic}
                   />

@@ -476,6 +476,61 @@ describe("saving, publishing and discarding", () => {
     expect(fake.createItem).toHaveBeenCalledTimes(1);
   });
 
+  test("Save and Publish wait for an upload in flight", async () => {
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "cover", label: "Cover", kind: "image" },
+    ]);
+    await openItem(
+      itemOf({
+        data: { title: "Hello", summary: null, author: null, cover: null },
+      })
+    );
+    // an edit first, so Save was enabled before the upload
+    await retype(titleInput(), "Hello again");
+    expect(isDisabled("Save")).toBe(false);
+    expect(isDisabled("Publish")).toBe(false);
+    const held = deferred<CmsResult<{ url: string; path: string }>>();
+    fake.uploadImage.mockReturnValueOnce(held.promise);
+    const input = document
+      .querySelector<HTMLElement>('[data-cms-field="cms-field-cover"]')
+      ?.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).toBeTruthy();
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" })
+    );
+    await act(async () => {
+      input!.files = transfer.files;
+      input!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    expect(fake.uploadImage).toHaveBeenCalledTimes(1);
+    expect(isDisabled("Save")).toBe(true);
+    expect(isDisabled("Publish")).toBe(true);
+    await act(async () => {
+      held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
+    });
+    await settle();
+    expect(isDisabled("Save")).toBe(false);
+    expect(isDisabled("Publish")).toBe(false);
+    expect($cmsNativeDirty.get()).toBe(true);
+    await click(buttonByText("Save"));
+    expect(fake.updateItem).toHaveBeenCalledWith(
+      POSTS.id,
+      itemOf().id,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          title: "Hello again",
+          cover: expect.objectContaining({
+            url: "https://cdn.example.org/a.png",
+            path: "a.png",
+          }),
+        }),
+      })
+    );
+  });
+
   test("the fields column is 448 px of controls within 16 px of padding, centred", async () => {
     // the main region is 1200 px: the overlay less the 240 px column
     await openItem(itemOf(), 1440);

@@ -226,6 +226,33 @@ describe("validateItem", () => {
       })
     ).toEqual({ name: "Too long", mail: "Not an email" });
   });
+
+  const colorField: CmsField[] = [
+    { key: "accent", label: "Accent", kind: "color" },
+  ];
+
+  test.each(["#12345", "red", "#GGGGGG"])(
+    "validateItem marks a colour %j Not a color",
+    (accent) =>
+      expect(
+        validateItem({
+          fields: colorField,
+          values: { accent },
+          slug: "item",
+          isNew: false,
+        })
+      ).toEqual({ accent: "Not a color" })
+  );
+
+  test("validateItem takes a #RRGGBB colour", () =>
+    expect(
+      validateItem({
+        fields: colorField,
+        values: { accent: "#a1B2c3" },
+        slug: "item",
+        isNew: false,
+      })
+    ).toEqual({}));
 });
 
 describe("canonical kinds", () => {
