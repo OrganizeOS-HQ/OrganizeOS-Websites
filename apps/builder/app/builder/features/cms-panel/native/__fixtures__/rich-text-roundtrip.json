@@ -5,149 +5,178 @@
     {
       "name": "paragraphs",
       "input": "<p>One</p><p>Two</p>",
-      "editor": "<p><span style=\"white-space: pre-wrap;\">One</span></p><p><span style=\"white-space: pre-wrap;\">Two</span></p>"
+      "editor": "<p><span style=\"white-space: pre-wrap;\">One</span></p><p><span style=\"white-space: pre-wrap;\">Two</span></p>",
+      "stored": "<p>One</p><p>Two</p>"
     },
     {
       "name": "headings 2 to 4",
       "input": "<h2>A</h2><h3>B</h3><h4>C</h4><p>Body</p>",
-      "editor": "<h2><span style=\"white-space: pre-wrap;\">A</span></h2><h3><span style=\"white-space: pre-wrap;\">B</span></h3><h4><span style=\"white-space: pre-wrap;\">C</span></h4><p><span style=\"white-space: pre-wrap;\">Body</span></p>"
+      "editor": "<h2><span style=\"white-space: pre-wrap;\">A</span></h2><h3><span style=\"white-space: pre-wrap;\">B</span></h3><h4><span style=\"white-space: pre-wrap;\">C</span></h4><p><span style=\"white-space: pre-wrap;\">Body</span></p>",
+      "stored": "<h2>A</h2><h3>B</h3><h4>C</h4><p>Body</p>"
     },
     {
       "name": "every mark",
       "input": "<p><strong>bold</strong> <em>italic</em> <u>underline</u> <s>struck</s> <code>code</code></p>",
-      "editor": "<p><b><strong style=\"white-space: pre-wrap;\">bold</strong></b><span style=\"white-space: pre-wrap;\"> </span><i><em style=\"white-space: pre-wrap;\">italic</em></i><span style=\"white-space: pre-wrap;\"> </span><u><span style=\"white-space: pre-wrap;\">underline</span></u><span style=\"white-space: pre-wrap;\"> </span><s><span style=\"white-space: pre-wrap;\">struck</span></s><span style=\"white-space: pre-wrap;\"> </span><code spellcheck=\"false\" style=\"white-space: pre-wrap;\"><span>code</span></code></p>"
+      "editor": "<p><b><strong style=\"white-space: pre-wrap;\">bold</strong></b><span style=\"white-space: pre-wrap;\"> </span><i><em style=\"white-space: pre-wrap;\">italic</em></i><span style=\"white-space: pre-wrap;\"> </span><u><span style=\"white-space: pre-wrap;\">underline</span></u><span style=\"white-space: pre-wrap;\"> </span><s><span style=\"white-space: pre-wrap;\">struck</span></s><span style=\"white-space: pre-wrap;\"> </span><code spellcheck=\"false\" style=\"white-space: pre-wrap;\"><span>code</span></code></p>",
+      "stored": "<p><b><strong>bold</strong></b> <i><em>italic</em></i> <u>underline</u> <s>struck</s> <code>code</code></p>"
     },
     {
       "name": "b, i and nested marks",
       "input": "<p><b>b</b> <i>i</i> <strong><em>both</em></strong></p>",
-      "editor": "<p><b><strong style=\"white-space: pre-wrap;\">b</strong></b><span style=\"white-space: pre-wrap;\"> </span><i><em style=\"white-space: pre-wrap;\">i</em></i><span style=\"white-space: pre-wrap;\"> </span><i><b><strong style=\"white-space: pre-wrap;\">both</strong></b></i></p>"
+      "editor": "<p><b><strong style=\"white-space: pre-wrap;\">b</strong></b><span style=\"white-space: pre-wrap;\"> </span><i><em style=\"white-space: pre-wrap;\">i</em></i><span style=\"white-space: pre-wrap;\"> </span><i><b><strong style=\"white-space: pre-wrap;\">both</strong></b></i></p>",
+      "stored": "<p><b><strong>b</strong></b> <i><em>i</em></i> <i><b><strong>both</strong></b></i></p>"
     },
     {
       "name": "link, new tab",
       "input": "<p>Ask your <a target=\"_blank\" rel=\"noopener noreferrer\" href=\"https://example.org/stewards\">steward</a>.</p>",
-      "editor": "<p><span style=\"white-space: pre-wrap;\">Ask your </span><a href=\"https://example.org/stewards\" target=\"_blank\" rel=\"noopener noreferrer\"><span style=\"white-space: pre-wrap;\">steward</span></a><span style=\"white-space: pre-wrap;\">.</span></p>"
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Ask your </span><a href=\"https://example.org/stewards\" target=\"_blank\" rel=\"noopener noreferrer\"><span style=\"white-space: pre-wrap;\">steward</span></a><span style=\"white-space: pre-wrap;\">.</span></p>",
+      "stored": "<p>Ask your <a href=\"https://example.org/stewards\" target=\"_blank\" rel=\"noopener noreferrer\">steward</a>.</p>"
     },
     {
       "name": "link, same tab, title",
       "input": "<p><a href=\"https://example.org/\" title=\"Home\">Home</a></p>",
-      "editor": "<p><a href=\"https://example.org/\" title=\"Home\"><span style=\"white-space: pre-wrap;\">Home</span></a></p>"
+      "editor": "<p><a href=\"https://example.org/\" title=\"Home\"><span style=\"white-space: pre-wrap;\">Home</span></a></p>",
+      "stored": "<p><a href=\"https://example.org/\" title=\"Home\">Home</a></p>"
     },
     {
       "name": "link schemes and paths",
       "input": "<p><a href=\"mailto:info@example.org\">Mail</a> <a href=\"tel:+15550100\">Call</a> <a href=\"/about\">About</a> <a href=\"#join\">Join</a></p>",
-      "editor": "<p><a href=\"mailto:info@example.org\"><span style=\"white-space: pre-wrap;\">Mail</span></a><span style=\"white-space: pre-wrap;\"> </span><a href=\"tel:+15550100\"><span style=\"white-space: pre-wrap;\">Call</span></a><span style=\"white-space: pre-wrap;\"> </span><a href=\"/about\"><span style=\"white-space: pre-wrap;\">About</span></a><span style=\"white-space: pre-wrap;\"> </span><a href=\"#join\"><span style=\"white-space: pre-wrap;\">Join</span></a></p>"
+      "editor": "<p><a href=\"mailto:info@example.org\"><span style=\"white-space: pre-wrap;\">Mail</span></a><span style=\"white-space: pre-wrap;\"> </span><a href=\"tel:+15550100\"><span style=\"white-space: pre-wrap;\">Call</span></a><span style=\"white-space: pre-wrap;\"> </span><a href=\"/about\"><span style=\"white-space: pre-wrap;\">About</span></a><span style=\"white-space: pre-wrap;\"> </span><a href=\"#join\"><span style=\"white-space: pre-wrap;\">Join</span></a></p>",
+      "stored": "<p><a href=\"mailto:info@example.org\">Mail</a> <a href=\"tel:+15550100\">Call</a> <a href=\"/about\">About</a> <a href=\"#join\">Join</a></p>"
     },
     {
       "name": "protocol-relative link",
       "input": "<p><a href=\"//example.org/\">x</a></p>",
-      "editor": "<p><a href=\"//example.org/\"><span style=\"white-space: pre-wrap;\">x</span></a></p>"
+      "editor": "<p><a href=\"//example.org/\"><span style=\"white-space: pre-wrap;\">x</span></a></p>",
+      "stored": "<p><a href=\"//example.org/\">x</a></p>"
     },
     {
       "name": "lists",
       "input": "<ul><li><p>One</p></li><li><p>Two</p></li></ul><ol><li><p>First</p></li></ol><p></p>",
-      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">One</span></li><li value=\"2\"><span style=\"white-space: pre-wrap;\">Two</span></li></ul><ol><li value=\"1\"><span style=\"white-space: pre-wrap;\">First</span></li></ol><p></p>"
+      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">One</span></li><li value=\"2\"><span style=\"white-space: pre-wrap;\">Two</span></li></ul><ol><li value=\"1\"><span style=\"white-space: pre-wrap;\">First</span></li></ol><p></p>",
+      "stored": "<ul><li>One</li><li>Two</li></ul><ol><li>First</li></ol><p></p>"
     },
     {
       "name": "nested list",
       "input": "<ul><li><p>a</p><ul><li><p>b</p></li></ul></li></ul><p></p>",
-      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">a</span><ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">b</span></li></ul></li></ul><p></p>"
+      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">a</span><ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">b</span></li></ul></li></ul><p></p>",
+      "stored": "<ul><li>a<ul><li>b</li></ul></li></ul><p></p>"
     },
     {
       "name": "quote",
       "input": "<blockquote><p>Quote</p></blockquote><p></p>",
-      "editor": "<blockquote><p><span style=\"white-space: pre-wrap;\">Quote</span></p></blockquote><p></p>"
+      "editor": "<blockquote><p><span style=\"white-space: pre-wrap;\">Quote</span></p></blockquote><p></p>",
+      "stored": "<blockquote><p>Quote</p></blockquote><p></p>"
     },
     {
       "name": "quote with two paragraphs",
       "input": "<blockquote><p>a</p><p>b</p></blockquote><p></p>",
-      "editor": "<blockquote><p><span style=\"white-space: pre-wrap;\">a</span></p><p><span style=\"white-space: pre-wrap;\">b</span></p></blockquote><p></p>"
+      "editor": "<blockquote><p><span style=\"white-space: pre-wrap;\">a</span></p><p><span style=\"white-space: pre-wrap;\">b</span></p></blockquote><p></p>",
+      "stored": "<blockquote><p>a</p><p>b</p></blockquote><p></p>"
     },
     {
       "name": "line break",
       "input": "<p>Every signature<br />is counted.</p>",
-      "editor": "<p><span style=\"white-space: pre-wrap;\">Every signature</span><br><span style=\"white-space: pre-wrap;\">is counted.</span></p>"
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Every signature</span><br><span style=\"white-space: pre-wrap;\">is counted.</span></p>",
+      "stored": "<p>Every signature<br />is counted.</p>"
     },
     {
       "name": "empty paragraph between",
       "input": "<p>a</p><p></p><p>b</p>",
-      "editor": "<p><span style=\"white-space: pre-wrap;\">a</span></p><p></p><p><span style=\"white-space: pre-wrap;\">b</span></p>"
+      "editor": "<p><span style=\"white-space: pre-wrap;\">a</span></p><p></p><p><span style=\"white-space: pre-wrap;\">b</span></p>",
+      "stored": "<p>a</p><p></p><p>b</p>"
     },
     {
       "name": "horizontal rule",
       "input": "<p>Before</p><hr /><p>After</p>",
-      "editor": "<p><span style=\"white-space: pre-wrap;\">Before</span></p><hr><p><span style=\"white-space: pre-wrap;\">After</span></p>"
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Before</span></p><hr><p><span style=\"white-space: pre-wrap;\">After</span></p>",
+      "stored": "<p>Before</p><hr /><p>After</p>"
     },
     {
       "name": "code block, several lines",
       "input": "<pre><code>line 1\nline 2\n  indented &lt;b&gt; &amp;&amp;</code></pre>",
-      "editor": "<pre><code>line 1\nline 2\n  indented &lt;b&gt; &amp;&amp;</code></pre>"
+      "editor": "<pre><code>line 1\nline 2\n  indented &lt;b&gt; &amp;&amp;</code></pre>",
+      "stored": "<pre><code>line 1\nline 2\n  indented &lt;b&gt; &amp;&amp;</code></pre>"
     },
     {
       "name": "inline code across a break",
       "input": "<p><code>x<br />y</code></p>",
-      "editor": "<p><code spellcheck=\"false\" style=\"white-space: pre-wrap;\"><span>x</span></code><br><code spellcheck=\"false\" style=\"white-space: pre-wrap;\"><span>y</span></code></p>"
+      "editor": "<p><code spellcheck=\"false\" style=\"white-space: pre-wrap;\"><span>x</span></code><br><code spellcheck=\"false\" style=\"white-space: pre-wrap;\"><span>y</span></code></p>",
+      "stored": "<p><code>x</code><br /><code>y</code></p>"
     },
     {
       "name": "loose root text",
       "input": "Title<p>Body</p>",
-      "editor": "<p><span style=\"white-space: pre-wrap;\">Title</span></p><p><span style=\"white-space: pre-wrap;\">Body</span></p>"
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Title</span></p><p><span style=\"white-space: pre-wrap;\">Body</span></p>",
+      "stored": "<p>Title</p><p>Body</p>"
     },
     {
       "name": "entities",
       "input": "<p>Fish &amp; chips &lt;3 \"quoted\" it's</p>",
-      "editor": "<p><span style=\"white-space: pre-wrap;\">Fish &amp; chips &lt;3 \"quoted\" it's</span></p>"
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Fish &amp; chips &lt;3 \"quoted\" it's</span></p>",
+      "stored": "<p>Fish &amp; chips &lt;3 \"quoted\" it's</p>"
     },
     {
       "name": "non-breaking space",
       "input": "<p>a\u00a0b</p>",
-      "editor": "<p><span style=\"white-space: pre-wrap;\">a&nbsp;b</span></p>"
+      "editor": "<p><span style=\"white-space: pre-wrap;\">a&nbsp;b</span></p>",
+      "stored": "<p>a\u00a0b</p>"
     },
     {
       "name": "empty",
       "input": "",
-      "editor": "<p></p>"
+      "editor": "<p></p>",
+      "stored": null
     },
     {
       "name": "unsanitized: script, handlers and attributes",
       "input": "<p onclick=\"x()\" class=\"c\" style=\"color: red\">Hi</p><script>alert(1)</script><p>y</p>",
       "unsanitized": true,
-      "editor": "<p><span style=\"white-space: pre-wrap;\">Hi</span></p><p><span style=\"white-space: pre-wrap;\">y</span></p>"
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Hi</span></p><p><span style=\"white-space: pre-wrap;\">y</span></p>",
+      "stored": "<p>Hi</p><p>y</p>"
     },
     {
       "name": "unsanitized: javascript link",
       "input": "<p><a href=\"javascript:alert(1)\">x</a></p>",
       "unsanitized": true,
-      "editor": "<p><span style=\"white-space: pre-wrap;\">x</span></p>"
+      "editor": "<p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<p>x</p>"
     },
     {
       "name": "list inside a quote",
       "input": "<blockquote><ul><li><p>a</p></li></ul></blockquote><p></p>",
-      "editor": "<blockquote><ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">a</span></li></ul></blockquote><p></p>"
+      "editor": "<blockquote><ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">a</span></li></ul></blockquote><p></p>",
+      "stored": "<blockquote><ul><li>a</li></ul></blockquote><p></p>"
     },
     {
       "name": "heading inside a quote",
       "input": "<blockquote><h2>A</h2><p>b</p></blockquote><p></p>",
-      "editor": "<blockquote><h2><span style=\"white-space: pre-wrap;\">A</span></h2><p><span style=\"white-space: pre-wrap;\">b</span></p></blockquote><p></p>"
+      "editor": "<blockquote><h2><span style=\"white-space: pre-wrap;\">A</span></h2><p><span style=\"white-space: pre-wrap;\">b</span></p></blockquote><p></p>",
+      "stored": "<blockquote><h2>A</h2><p>b</p></blockquote><p></p>"
     },
     {
       "name": "quote inside a list item",
       "input": "<ul><li><blockquote><p>a</p></blockquote></li></ul><p></p>",
-      "editor": "<ul><li value=\"1\"><blockquote><p><span style=\"white-space: pre-wrap;\">a</span></p></blockquote></li></ul><p></p>"
+      "editor": "<ul><li value=\"1\"><blockquote><p><span style=\"white-space: pre-wrap;\">a</span></p></blockquote></li></ul><p></p>",
+      "stored": "<ul><li><blockquote><p>a</p></blockquote></li></ul><p></p>"
     },
     {
       "name": "code block inside a list item",
       "input": "<ul><li><pre><code>a</code></pre></li></ul><p></p>",
-      "editor": "<ul><li value=\"1\"><pre><code>a</code></pre></li></ul><p></p>"
+      "editor": "<ul><li value=\"1\"><pre><code>a</code></pre></li></ul><p></p>",
+      "stored": "<ul><li><pre><code>a</code></pre></li></ul><p></p>"
     },
     {
       "name": "heading inside a list item",
       "input": "<ul><li><h3>A</h3></li></ul><p></p>",
-      "editor": "<ul><li value=\"1\"><h3><span style=\"white-space: pre-wrap;\">A</span></h3></li></ul><p></p>"
+      "editor": "<ul><li value=\"1\"><h3><span style=\"white-space: pre-wrap;\">A</span></h3></li></ul><p></p>",
+      "stored": "<ul><li><h3>A</h3></li></ul><p></p>"
     },
     {
       "name": "schemeless link",
       "input": "<p><a href=\"contact\">Contact</a></p>",
-      "editor": "<p><a href=\"contact\"><span style=\"white-space: pre-wrap;\">Contact</span></a></p>"
+      "editor": "<p><a href=\"contact\"><span style=\"white-space: pre-wrap;\">Contact</span></a></p>",
+      "stored": "<p><a href=\"contact\">Contact</a></p>"
     }
   ],
   "readOnly": [

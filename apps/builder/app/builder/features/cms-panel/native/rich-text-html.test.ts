@@ -45,6 +45,21 @@ describe("the round trip (spec 8)", () => {
     expect(getRichTextReadOnlyReason(input)).toBeUndefined();
   });
 
+  test("every case is pinned by the platform", () => {
+    for (const c of fixture.cases) {
+      expect(
+        "stored" in c && (c.stored === null || typeof c.stored === "string")
+      ).toBe(true);
+    }
+  });
+
+  test.each(fixture.cases)(
+    "$name: loading stored and writing again gives editor",
+    ({ stored, editor }) => {
+      expect(roundTrip(stored ?? "")).toBe(editor);
+    }
+  );
+
   test("the editor never writes a tag outside the allowlist but span", () => {
     const allowed = new Set([
       "p",
