@@ -34,6 +34,11 @@ export const NameCell = ({
   const isEditable = readOnly === false && row.locked === false;
   const isEditing = isEditable && (editing ?? ownEditing);
   const setEditing = (next: boolean) => {
+    // An edit that ends (Escape, or a write that landed) drops the reason; a
+    // refusal sets it again after this, and keeps the edit open.
+    if (next === false) {
+      setError(undefined);
+    }
     setOwnEditing(next);
     onEditingChange?.(next);
   };
@@ -62,7 +67,9 @@ export const NameCell = ({
   const label =
     isEditing || showLeaf === false ? row.displayName : leafOf(row.displayName);
   return (
-    <Tooltip content={error} open={error !== undefined} delayDuration={0}>
+    // Always a tooltip, never its child alone: the field must not remount
+    // (and lose its edit) when a reason appears.
+    <Tooltip content={error ?? ""} open={error !== undefined} delayDuration={0}>
       <Box
         ref={ref}
         {...handlers}

@@ -22,6 +22,7 @@ import { setVariableValue } from "./operations";
 import { SIZE_UNITS, validateVariableValue } from "./value-types";
 import { toRgba } from "./color";
 import { LinkMenu } from "./link-menu";
+import { landed } from "./refusal";
 
 const notFonts = new Set(["initial", "inherit", "unset"]);
 
@@ -133,7 +134,7 @@ const ColorValue = ({
           value={value}
           onChange={() => {}}
           onChangeComplete={(next) => {
-            commit(row, next);
+            landed(setVariableValue(row.cssName, next));
           }}
         />
       )}
@@ -172,7 +173,7 @@ const SizeValue = ({
         value={SIZE_UNITS.find((item) => item === unit) ?? "px"}
         onChange={(next) => {
           if (value !== undefined) {
-            typedParse(row, "size")(`${value.value}${next}`);
+            landed(typedParse(row, "size")(`${value.value}${next}`));
           }
         }}
       />
@@ -223,8 +224,9 @@ const FontValue = ({
             submit(item);
           }
         }}
-        onChange={(next) => setText(next ?? "")}
-        onBlur={() => submit(text)}
+        // Only a picked font is written; typed text left unpicked goes back.
+        onChange={(next) => setText(next ?? first)}
+        onBlur={() => setText(first)}
       />
     </InputErrorsTooltip>
   );

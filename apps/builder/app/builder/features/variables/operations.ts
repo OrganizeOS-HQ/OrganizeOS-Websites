@@ -752,6 +752,103 @@ export const reorderVariable = (
   });
 };
 
+/**
+ * Stores a collection's rows in `cssNames`' order, its whole display order
+ * (spec 5.5): the collection's registry entries are taken out and put back,
+ * in that order, where its first one stood. A row the registry does not hold
+ * keeps its place only when registered, so each typed one placed before the
+ * last row that is registered or changed place is registered too; an untyped
+ * one stays unregistered and shows last. A name missing from `cssNames`
+ * keeps its order after the named ones.
+ */
+export const orderVariables = (
+  collectionId: string,
+  cssNames: readonly string[]
+): WriteResult => {
+  if (collectionId === BRAND_COLLECTION_ID) {
+    return commitPrepared(refuse("Can't change this collection"));
+  }
+  const collection = $variableCollections
+    .get()
+    .find((item) => item.id === collectionId);
+  if (collection === undefined) {
+    return commitPrepared(refuse("Collection not found"));
+  }
+  const byName = new Map(collection.rows.map((row) => [row.cssName, row]));
+  if (cssNames.some((cssName) => byName.has(cssName) === false)) {
+    return commitPrepared(refuse("Variable not found"));
+  }
+  const named = new Set(cssNames);
+  const current = collection.rows.map((row) => row.cssName);
+  const order = [
+    ...cssNames,
+    ...current.filter((cssName) => named.has(cssName) === false),
+  ];
+  let last = -1;
+  order.forEach((cssName, index) => {
+    if (byName.get(cssName)?.registered || current[index] !== cssName) {
+      last = index;
+    }
+  });
+  const kept = order.filter((cssName, index) => {
+    const row = byName.get(cssName);
+    return (
+      row !== undefined &&
+      (row.registered || (index <= last && row.type !== undefined))
+    );
+  });
+  const registered = current.filter(
+    (cssName) => byName.get(cssName)?.registered
+  );
+  if (
+    kept.length === registered.length &&
+    kept.every((cssName, index) => registered[index] === cssName)
+  ) {
+    return commitPrepared({ ok: true, result: {}, stage: () => {} });
+  }
+  return commitPrepared({
+    ok: true,
+    result: {},
+    stage: (accumulator) => {
+      stageEnsure(accumulator);
+      stagePrune(accumulator);
+      const registry = readableIn(accumulator);
+      if (registry === undefined) {
+        return;
+      }
+      const stored = new Map(
+        registry.variables.map((entry) => [entry.cssName, entry])
+      );
+      const entries = kept.flatMap((cssName) => {
+        const row = byName.get(cssName);
+        const entry =
+          stored.get(cssName) ??
+          (row?.type === undefined
+            ? undefined
+            : {
+                cssName,
+                collectionId,
+                type: row.type,
+                name: derivedName(row.displayName),
+              });
+        return entry === undefined ? [] : [entry];
+      });
+      const moving = new Set(kept);
+      const first = registry.variables.findIndex((entry) =>
+        moving.has(entry.cssName)
+      );
+      // The removal leaves every entry before the first moving one in place.
+      const insertAt = first === -1 ? registry.variables.length : first;
+      stagePatches(accumulator, "projectSettings", [
+        ...removeVariableEntriesPatches(registry, kept),
+        ...entries.flatMap((entry, index) =>
+          addVariableEntryPatches(registry, entry, insertAt + index)
+        ),
+      ]);
+    },
+  });
+};
+
 /** An untyped variable takes its first type; the value must validate. */
 export const setVariableType = (
   cssName: string,

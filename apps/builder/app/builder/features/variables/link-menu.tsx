@@ -21,6 +21,7 @@ import { resolveRootVariable, type VariableRow } from "./reader";
 import { setVariableType, setVariableValue } from "./operations";
 import { VARIABLE_TYPE_LABELS, validateVariableValue } from "./value-types";
 import { matchesVariableSearch } from "./search";
+import { landed } from "./refusal";
 
 /** Whether `row`'s alias chain reaches `cssName`. */
 const reaches = (
@@ -121,9 +122,11 @@ export const LinkMenu = ({
               {isAlias && (
                 <DropdownMenuItem
                   onSelect={() => {
-                    setVariableValue(
-                      row.cssName,
-                      resolveRootVariable(row.cssName)
+                    landed(
+                      setVariableValue(
+                        row.cssName,
+                        resolveRootVariable(row.cssName)
+                      )
                     );
                   }}
                 >
@@ -134,7 +137,7 @@ export const LinkMenu = ({
                 <DropdownMenuItem
                   key={type}
                   onSelect={() => {
-                    setVariableType(row.cssName, type);
+                    landed(setVariableType(row.cssName, type));
                   }}
                 >
                   {VARIABLE_TYPE_LABELS[type]}
@@ -156,33 +159,44 @@ export const LinkMenu = ({
             onChange={(event) => setSearch(event.target.value)}
             onAbort={() => setSearch("")}
           />
-          {targets.map((target) => (
-            <Text
-              key={target.cssName}
-              as="button"
-              data-link-target
-              truncate
-              onClick={() => {
-                setVariableValue(row.cssName, {
-                  type: "var",
-                  value: target.cssName,
-                });
-                setIsLinking(false);
-              }}
-              css={{
-                textAlign: "left",
-                border: "none",
-                background: "none",
-                padding: theme.spacing[3],
-                borderRadius: theme.borderRadius[3],
-                "&:hover, &:focus-visible": {
-                  background: cssVar("--overlay-interaction-hover"),
-                },
-              }}
-            >
-              {target.displayName}
-            </Text>
-          ))}
+          <Flex
+            direction="column"
+            gap="1"
+            css={{ maxHeight: theme.spacing[34], overflowY: "auto" }}
+          >
+            {targets.map((target) => (
+              <Text
+                key={target.cssName}
+                as="button"
+                data-link-target
+                truncate
+                onClick={() => {
+                  if (
+                    landed(
+                      setVariableValue(row.cssName, {
+                        type: "var",
+                        value: target.cssName,
+                      })
+                    )
+                  ) {
+                    setIsLinking(false);
+                  }
+                }}
+                css={{
+                  textAlign: "left",
+                  border: "none",
+                  background: "none",
+                  padding: theme.spacing[3],
+                  borderRadius: theme.borderRadius[3],
+                  "&:hover, &:focus-visible": {
+                    background: cssVar("--overlay-interaction-hover"),
+                  },
+                }}
+              >
+                {target.displayName}
+              </Text>
+            ))}
+          </Flex>
         </Flex>
       </PopoverContent>
     </Popover>

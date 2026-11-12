@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { atom } from "nanostores";
 import { useStore } from "@nanostores/react";
 import {
   Box,
@@ -45,6 +46,7 @@ import { describeBrandContrast } from "./brand-contrast";
 import { VariablesToolbar } from "./variables-toolbar";
 import { VariablesTable, type Selection } from "./variables-table";
 import { CollectionsColumn } from "./collections-column";
+import { landed } from "./refusal";
 import { DeleteDialog } from "./delete-dialog";
 import {
   readSelectedCollection,
@@ -58,6 +60,22 @@ import {
 const OVERLAY_ALLOWED_COMMANDS = ["undo", "redo"] as const;
 
 const editPermits = new Set(["build", "admin", "own"]);
+
+/** Select mode, where the host's Escape can see it (spec 5.6). */
+const $isSelecting = atom(false);
+
+/**
+ * The host's Escape leaves select mode first and keeps the overlay open,
+ * wherever the focus is. A module function, so the host's listener does not
+ * re-subscribe on every render.
+ */
+const leaveSelectMode = () => {
+  if ($isSelecting.get() === false) {
+    return false;
+  }
+  $isSelecting.set(false);
+  return true;
+};
 
 /** The bulk Group (spec 5.6): a name, and Enter puts the selection under it. */
 const GroupControl = ({
@@ -117,7 +135,8 @@ const GroupControl = ({
 const SelectControl = ({
   collections,
   selectedId,
-  selection,
+  isSelecting,
+  selected,
   rowsByName,
   onStart,
   onEnd,
@@ -125,19 +144,20 @@ const SelectControl = ({
 }: {
   collections: readonly CollectionView[];
   selectedId: string;
-  selection: Selection;
+  isSelecting: boolean;
+  /** the selected rows the search shows: what a bulk action acts on */
+  selected: readonly string[];
   rowsByName: ReadonlyMap<string, { displayName: string }>;
   onStart: () => void;
   onEnd: () => void;
   onClear: () => void;
 }) => {
   const [deleting, setDeleting] = useState<{ uses: number }>();
-  const selected = Array.from(selection.selected);
   const targets = collections.filter(
     (collection) =>
       collection.id !== BRAND_COLLECTION_ID && collection.id !== selectedId
   );
-  if (selection.active === false) {
+  if (isSelecting === false) {
     return (
       <Button color="neutral" onClick={onStart}>
         Select
@@ -150,8 +170,9 @@ const SelectControl = ({
       0
     );
     if (uses === 0) {
-      deleteVariables(selected);
-      onClear();
+      if (landed(deleteVariables(selected))) {
+        onClear();
+      }
       return;
     }
     setDeleting({ uses });
@@ -170,8 +191,10 @@ const SelectControl = ({
                   <DropdownMenuItem
                     key={collection.id}
                     onSelect={() => {
-                      moveVariables(selected, collection.id);
-                      onClear();
+                      // a refusal keeps the selection, to fix and retry
+                      if (landed(moveVariables(selected, collection.id))) {
+                        onClear();
+                      }
                     }}
                   >
                     {collection.name}
@@ -207,8 +230,9 @@ const SelectControl = ({
         }
         uses={deleting?.uses ?? 0}
         onConfirm={() => {
-          deleteVariables(selected);
-          onClear();
+          if (landed(deleteVariables(selected))) {
+            onClear();
+          }
         }}
         onOpenChange={(open) => {
           if (open === false) {
@@ -240,14 +264,20 @@ const VariablesManager = () => {
     SITE_COLLECTION_ID;
   const [search, setSearch] = useState("");
   const [draftType, setDraftType] = useState<VariableType>();
-  const [isSelecting, setIsSelecting] = useState(false);
+  const isSelecting = useStore($isSelecting);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [anchor, setAnchor] = useState<string>();
+  // Leaving select mode, here or by the host's Escape, clears the selection.
+  useEffect(() => {
+    if (isSelecting === false) {
+      setSelected(new Set());
+      setAnchor(undefined);
+    }
+  }, [isSelecting]);
+  useEffect(() => () => $isSelecting.set(false), []);
 
   const endSelect = () => {
-    setIsSelecting(false);
-    setSelected(new Set());
-    setAnchor(undefined);
+    $isSelecting.set(false);
   };
   const select = (id: string) => {
     setChosen(id);
@@ -375,9 +405,12 @@ const VariablesManager = () => {
             <SelectControl
               collections={collections}
               selectedId={selectedId}
-              selection={selection}
+              isSelecting={isSelecting}
+              selected={rows
+                .filter((row) => selected.has(row.cssName))
+                .map((row) => row.cssName)}
               rowsByName={rowsByName}
-              onStart={() => setIsSelecting(true)}
+              onStart={() => $isSelecting.set(true)}
               onEnd={endSelect}
               onClear={() => {
                 setSelected(new Set());
@@ -431,6 +464,7 @@ export const VariablesOverlay = () => {
       name="variables"
       isAvailable={isDesignMode}
       allowCommands={OVERLAY_ALLOWED_COMMANDS}
+      onEscape={leaveSelectMode}
     >
       {isOpen && <VariablesManager />}
     </RailOverlay>

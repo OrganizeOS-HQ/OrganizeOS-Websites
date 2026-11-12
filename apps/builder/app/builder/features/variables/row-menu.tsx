@@ -13,6 +13,7 @@ import { EllipsesIcon } from "@webstudio-is/icons";
 import { BRAND_COLLECTION_ID } from "@webstudio-is/project-build";
 import type { CollectionView, VariableRow } from "./reader";
 import { duplicateVariable, moveVariables } from "./operations";
+import { landed } from "./refusal";
 
 /**
  * A row's actions (spec 5.5): Rename, Duplicate, Copy CSS name, Move to
@@ -66,7 +67,9 @@ export const RowMenu = ({
           </DropdownMenuItem>
         )}
         {isEditable && (
-          <DropdownMenuItem onSelect={() => duplicateVariable(row.cssName)}>
+          <DropdownMenuItem
+            onSelect={() => landed(duplicateVariable(row.cssName))}
+          >
             Duplicate
           </DropdownMenuItem>
         )}
@@ -86,7 +89,9 @@ export const RowMenu = ({
               {targets.map((collection) => (
                 <DropdownMenuItem
                   key={collection.id}
-                  onSelect={() => moveVariables([row.cssName], collection.id)}
+                  onSelect={() =>
+                    landed(moveVariables([row.cssName], collection.id))
+                  }
                 >
                   {collection.name}
                 </DropdownMenuItem>

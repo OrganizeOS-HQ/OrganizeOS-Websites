@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { userEvent } from "@vitest/browser/context";
 import type { CssProperty } from "@webstudio-is/css-engine";
 import type { RegistryVariable } from "@webstudio-is/project-build";
+import { toast } from "@webstudio-is/design-system";
 import { createCommandsEmitter } from "~/shared/commands-emitter";
 import { serverSyncStore } from "~/shared/sync/sync-stores";
 import { $openRailOverlay } from "~/builder/features/rail-overlay/rail-overlay";
@@ -480,4 +481,107 @@ test("an alias to a deleted name and a two-variable cycle render empty swatches,
     ).not.toBeNull();
   }
   expect(allDecls().length).toBeGreaterThan(0);
+});
+
+const searchFor = async (text: string) => {
+  const input = document.querySelector<HTMLInputElement>(
+    'input[placeholder="Search variables"]'
+  )!;
+  await act(async () => userEvent.fill(input, text));
+};
+
+test("a refused bulk Move (an untyped row in it) says why in a toast and keeps the selection", async () => {
+  const toastError = vi.spyOn(toast, "error").mockImplementation(() => "");
+  setupVariables({
+    styles: css({ "--a": "1px", "--flex": "flex" }),
+    registry: registryOf(entry("a", "size", "A")),
+  });
+  renderManager();
+  await startSelect();
+  for (const cssName of ["a", "flex"]) {
+    await act(async () => userEvent.click(checkboxOf(cssName)!));
+  }
+  await act(async () => userEvent.click(toolbarButton("Move to collection")!));
+  await chooseMenuItem("Spacing");
+  expect(toastError).toHaveBeenCalledWith("Set a type first");
+  expect(checked()).toEqual(["a", "flex"]);
+  expect(registry().variables.map((item) => item.collectionId)).toEqual([
+    "site",
+  ]);
+});
+
+test("Escape with the focus outside the manager leaves select mode and keeps the overlay open", async () => {
+  setupVariables(brandBlue);
+  renderManager();
+  await startSelect();
+  act(() => (document.activeElement as HTMLElement | null)?.blur());
+  expect(document.activeElement).toBe(document.body);
+  press("Escape", document.body);
+  expect(checkboxOf("brand-blue")).toBeFalsy();
+  expect($openRailOverlay.get()).toBe("variables");
+  press("Escape", document.body);
+  expect($openRailOverlay.get()).toBe(undefined);
+});
+
+test("bulk Delete deletes only the selected rows the search shows", async () => {
+  setupVariables({
+    styles: css({ "--a": "1px", "--b": "2px" }),
+    registry: registryOf(entry("a", "size", "A"), entry("b", "size", "B")),
+  });
+  renderManager();
+  await startSelect();
+  for (const cssName of ["a", "b"]) {
+    await act(async () => userEvent.click(checkboxOf(cssName)!));
+  }
+  await searchFor("a");
+  expect(rowNames()).toEqual(["a"]);
+  await act(async () => userEvent.click(toolbarButton("Delete")!));
+  await searchFor("");
+  expect(rowNames()).toEqual(["b"]);
+});
+
+test("the header checkbox leaves a collapsed group's rows out", async () => {
+  setupVariables({
+    styles: css({ "--a": "1px", "--space--x": "4px", "--space--y": "5px" }),
+    registry: registryOf(
+      entry("a", "size", "A"),
+      entry("space--x", "size", "Space/X"),
+      entry("space--y", "size", "Space/Y")
+    ),
+  });
+  renderManager();
+  await act(async () =>
+    userEvent.click(
+      document.querySelector<HTMLElement>('[data-variable-group="Space"]')!
+    )
+  );
+  expect(rowNames()).toEqual(["a"]);
+  await startSelect();
+  await act(async () =>
+    userEvent.click(
+      document.querySelector<HTMLElement>(
+        '[data-variables-header] [role="checkbox"]'
+      )!
+    )
+  );
+  await act(async () => userEvent.click(toolbarButton("Delete")!));
+  expect(registry().variables.map((item) => item.cssName)).toEqual([
+    "space--x",
+    "space--y",
+  ]);
+});
+
+test("a Shift range skips a locked row, so a bulk Delete over it deletes the rest", async () => {
+  setupVariables({
+    styles: css({ "--a": "1px", "--focus-ring": "#000000", "--c": "3px" }),
+  });
+  renderManager();
+  expect(rowNames()).toEqual(["a", "focus-ring", "c"]);
+  await startSelect();
+  await act(async () => userEvent.click(checkboxOf("a")!));
+  await act(async () => userEvent.keyboard("{Shift>}"));
+  await act(async () => userEvent.click(checkboxOf("c")!));
+  await act(async () => userEvent.keyboard("{/Shift}"));
+  await act(async () => userEvent.click(toolbarButton("Delete")!));
+  expect(rowNames()).toEqual(["focus-ring"]);
 });

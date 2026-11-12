@@ -75,6 +75,10 @@ let reactRoot: Root | undefined;
 let container: HTMLElement | undefined;
 
 export const renderManager = () => {
+  // The browser runner keeps each finished test file's frame in its page, so
+  // a later file's frame can sit below the page's fold, where an element of
+  // the overlay (position: fixed) cannot be scrolled into view for a click.
+  window.frameElement?.scrollIntoView({ block: "start", inline: "start" });
   container = document.createElement("div");
   document.body.appendChild(container);
   reactRoot = createRoot(container);

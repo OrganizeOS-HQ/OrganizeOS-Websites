@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { flushSync } from "react-dom";
 import {
   Box,
   Checkbox,
@@ -25,8 +26,9 @@ import {
   createVariable,
   deleteVariables,
   getVariableUsage,
-  reorderVariable,
+  orderVariables,
 } from "./operations";
+import { landed } from "./refusal";
 import { DeleteDialog } from "./delete-dialog";
 import { RowMenu } from "./row-menu";
 import { VARIABLE_TYPE_LABELS } from "./value-types";
@@ -50,7 +52,7 @@ const rowCss = {
 export type Selection = {
   active: boolean;
   selected: ReadonlySet<string>;
-  /** `order` is the visible rows' CSS names, for a Shift-click's range */
+  /** `order` is the shown, unlocked rows' CSS names, for a Shift range */
   onToggle: (cssName: string, range: boolean, order: readonly string[]) => void;
   onSetMany: (cssNames: readonly string[], on: boolean) => void;
 };
@@ -131,7 +133,7 @@ const RowView = ({
   const requestDelete = () => {
     const count = getVariableUsage(row.cssName);
     if (count === 0) {
-      deleteVariables([row.cssName]);
+      landed(deleteVariables([row.cssName]));
       return;
     }
     setUses(count);
@@ -140,13 +142,23 @@ const RowView = ({
     if (event.target !== event.currentTarget) {
       return;
     }
+    // Enter on a row renames it (spec 5.5), as a double-click does.
+    if (event.key === "Enter") {
+      if (readOnly === false && row.locked === false) {
+        event.preventDefault();
+        setIsRenaming(true);
+      }
+      return;
+    }
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
       return;
     }
     event.preventDefault();
     const direction = event.key === "ArrowDown" ? 1 : -1;
     if (event.altKey) {
-      onMove(direction);
+      if (canDrag) {
+        onMove(direction);
+      }
       return;
     }
     const all = Array.from(
@@ -183,11 +195,10 @@ const RowView = ({
               />
             )
           : canDrag && (
-              <DragHandleIcon
-                data-id={row.cssName}
-                color={cssVar("--foreground-secondary")}
-                style={{ cursor: "grab" }}
-              />
+              // useSortable reads data-id from an HTML element, not an svg
+              <Flex data-id={row.cssName} css={{ cursor: "grab" }}>
+                <DragHandleIcon color={cssVar("--foreground-secondary")} />
+              </Flex>
             )}
       </Flex>
       <Box role="cell" css={{ minWidth: 0 }}>
@@ -215,7 +226,7 @@ const RowView = ({
           name={row.displayName}
           uses={uses ?? 0}
           onConfirm={() => {
-            deleteVariables([row.cssName]);
+            landed(deleteVariables([row.cssName]));
           }}
           onOpenChange={(open) => {
             if (open === false) {
@@ -230,7 +241,6 @@ const RowView = ({
 
 const SegmentView = ({
   segment,
-  collectionRows,
   allRows,
   collections,
   readOnly,
@@ -239,9 +249,9 @@ const SegmentView = ({
   selection,
   order,
   onToggle,
+  onReorder,
 }: {
   segment: Segment;
-  collectionRows: readonly VariableRow[];
   allRows: readonly VariableRow[];
   collections: readonly CollectionView[];
   readOnly: boolean;
@@ -250,21 +260,17 @@ const SegmentView = ({
   selection: Selection;
   order: readonly string[];
   onToggle: () => void;
+  /** moves the segment's row at `from` to `to`; `keepFocus` refocuses it */
+  onReorder: (from: number, to: number, keepFocus: boolean) => void;
 }) => {
   const canDrag =
     readOnly === false && isSearching === false && selection.active === false;
   const items = segment.rows.map((row) => ({ id: row.cssName }));
-  /** The collection-rows index the contract's reorder takes. */
-  const rowsIndexOf = (row: VariableRow | undefined) =>
-    row === undefined ? collectionRows.length : collectionRows.indexOf(row);
   const { placementIndicator, sortableRefCallback } = useSortable({
     items,
     onSort: (newIndex, oldIndex) => {
       if (canDrag) {
-        reorderVariable(
-          segment.rows[oldIndex].cssName,
-          rowsIndexOf(segment.rows[newIndex])
-        );
+        onReorder(oldIndex, newIndex, false);
       }
     },
   });
@@ -306,13 +312,16 @@ const SegmentView = ({
               collections={collections}
               readOnly={readOnly}
               showLeaf={segment.group !== undefined}
-              canDrag={canDrag && row.locked === false}
+              // an untyped row has no place in the registry to keep
+              canDrag={
+                canDrag && row.locked === false && row.type !== undefined
+              }
               selection={selection}
               order={order}
               onMove={(direction) => {
-                const target = segment.rows[index + direction];
-                if (readOnly === false && target !== undefined) {
-                  reorderVariable(row.cssName, rowsIndexOf(target));
+                const to = index + direction;
+                if (to >= 0 && to < segment.rows.length) {
+                  onReorder(index, to, true);
                 }
               }}
             />
@@ -442,16 +451,52 @@ export const VariablesTable = ({
   onNewVariable: (type: VariableType) => void;
 }) => {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const tableRef = useRef<HTMLDivElement>(null);
   const segments = segmentsOf(rows);
-  // the visible rows in display order, for a Shift-click's range
-  const order = segments.flatMap((segment) =>
-    segment.rows.map((row) => row.cssName)
-  );
-  const selectable = segments.flatMap((segment) =>
-    segment.rows.filter((row) => row.locked === false).map((row) => row.cssName)
-  );
+  const isShown = (segment: Segment) =>
+    segment.group === undefined || collapsed.has(segment.group) === false;
+  // The shown, unlocked rows in display order: what the header checkbox and
+  // a Shift range select. A collapsed group's rows are left out.
+  const selectable = segments
+    .filter(isShown)
+    .flatMap((segment) =>
+      segment.rows
+        .filter((row) => row.locked === false)
+        .map((row) => row.cssName)
+    );
+  /**
+   * Stores the collection's whole display order with one segment's row moved
+   * (a drag or Alt+Arrow, never while searching, so the segments are the
+   * collection's), and keeps the focus on the row when asked.
+   */
+  const reorder = (
+    segment: Segment,
+    from: number,
+    to: number,
+    keepFocus: boolean
+  ) => {
+    const names = segment.rows.map((row) => row.cssName);
+    const [moved] = names.splice(from, 1);
+    names.splice(to, 0, moved);
+    const display = segments.flatMap((item) =>
+      item === segment ? names : item.rows.map((row) => row.cssName)
+    );
+    // Rendered at once, so the moved row can take the focus back.
+    let result: ReturnType<typeof orderVariables> | undefined;
+    flushSync(() => {
+      result = orderVariables(collection.id, display);
+    });
+    if (result !== undefined && landed(result) && keepFocus) {
+      tableRef.current
+        ?.querySelector<HTMLElement>(
+          `[data-variable-row="${CSS.escape(moved)}"]`
+        )
+        ?.focus();
+    }
+  };
   return (
     <Box
+      ref={tableRef}
       role="table"
       aria-label={collection.name}
       css={{ overflowY: "auto", flexGrow: 1, minHeight: 0 }}
@@ -478,13 +523,15 @@ export const VariablesTable = ({
         <SegmentView
           key={segment.group ?? `run-${index}`}
           segment={segment}
-          collectionRows={collection.rows}
           allRows={allRows}
           collections={collections}
           readOnly={readOnly}
           isSearching={isSearching}
           selection={selection}
-          order={order}
+          order={selectable}
+          onReorder={(from, to, keepFocus) =>
+            reorder(segment, from, to, keepFocus)
+          }
           isCollapsed={
             segment.group !== undefined && collapsed.has(segment.group)
           }

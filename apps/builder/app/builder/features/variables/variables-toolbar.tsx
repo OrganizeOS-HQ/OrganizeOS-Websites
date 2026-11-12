@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import {
+  Box,
   Button,
   DropdownMenu,
   DropdownMenuContent,
@@ -84,27 +85,39 @@ export const VariablesToolbar = ({
   /** Select, or the bulk actions while selecting (Task 5) */
   selectControl?: ReactNode;
 }) => (
+  // A narrow overlay wraps the row rather than cutting a label: the title
+  // truncates, the search shrinks to a floor, the buttons keep their width.
   <Flex
     data-variables-toolbar
     align="center"
     gap="2"
+    wrap="wrap"
     css={{
-      height: theme.spacing[15],
+      minHeight: theme.spacing[15],
       flexShrink: 0,
       px: theme.spacing[9],
+      py: theme.spacing[3],
+      "& button": { flexShrink: 0 },
     }}
   >
-    <Text variant="titles" truncate css={{ flexShrink: 1, minWidth: 0 }}>
+    <Text
+      variant="titles"
+      truncate
+      css={{ flex: `1 1 ${theme.spacing[19]}`, minWidth: theme.spacing[19] }}
+    >
       {name}
     </Text>
-    <Flex grow />
-    <SearchField
-      placeholder="Search variables"
-      value={search}
-      onChange={(event) => onSearchChange(event.target.value)}
-      onAbort={() => onSearchChange("")}
-      css={{ width: theme.spacing[31] }}
-    />
+    {/* InputField puts css on its input too, so the box sizes the field */}
+    <Box
+      css={{ flex: `0 1 ${theme.spacing[31]}`, minWidth: theme.spacing[23] }}
+    >
+      <SearchField
+        placeholder="Search variables"
+        value={search}
+        onChange={(event) => onSearchChange(event.target.value)}
+        onAbort={() => onSearchChange("")}
+      />
+    </Box>
     {canAdd && selectControl}
     {canAdd && (
       <NewVariableMenu onNewVariable={onNewVariable}>

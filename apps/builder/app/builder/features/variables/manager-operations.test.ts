@@ -21,9 +21,11 @@ import {
   createCollection,
   deleteCollection,
   groupVariables,
+  orderVariables,
   renameCollection,
   reorderCollection,
 } from "./operations";
+import { $variableCollections } from "./reader";
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
 vi.mock("~/shared/builder-api", () => ({
@@ -255,6 +257,113 @@ test("groupVariables(['base'], 'Spacing') refuses with 'Can't rename this variab
     expect(groupVariables(["base"], "Spacing")).toEqual({
       ok: false,
       error: "Can't rename this variable",
+    });
+  });
+});
+
+const rowsOf = (collectionId: string) =>
+  $variableCollections
+    .get()
+    .find((collection) => collection.id === collectionId)
+    ?.rows.map((row) => row.cssName);
+
+test("orderVariables stores a collection's rows in the asked order: A/X, B, A/Y (shown A/X, A/Y, B) asked as A/Y, A/X, B keeps the group above B, one undo step", () => {
+  project({
+    styles: css({ "--a--x": "1px", "--b": "2px", "--a--y": "3px" }),
+    organizeos: {
+      variables: three(
+        named("a--x", "A/X"),
+        named("b", "B"),
+        named("a--y", "A/Y")
+      ),
+    },
+  });
+  expect(orderVariables("site", ["a--y", "a--x", "b"])).toEqual({ ok: true });
+  expect(registry().variables.map((entry) => entry.cssName)).toEqual([
+    "a--y",
+    "a--x",
+    "b",
+  ]);
+  expect(rowsOf("site")).toEqual(["a--y", "a--x", "b"]);
+  expect(undoDepth()).toBe(1);
+});
+
+test("orderVariables moves only the collection's entries, in place among other collections' entries", () => {
+  project({
+    styles: css({ "--s1": "1px", "--g1": "2px", "--s2": "3px", "--g2": "4px" }),
+    organizeos: {
+      variables: three(
+        size("s1"),
+        size("g1", "c1"),
+        size("s2"),
+        size("g2", "c1")
+      ),
+    },
+  });
+  expect(orderVariables("c1", ["g2", "g1"])).toEqual({ ok: true });
+  expect(registry().variables.map((entry) => entry.cssName)).toEqual([
+    "s1",
+    "g2",
+    "g1",
+    "s2",
+  ]);
+  expect(rowsOf("site")).toEqual(["s1", "s2"]);
+});
+
+test("orderVariables registers the typed unregistered rows placed before the last moved or registered row; an untyped row stays unregistered, at the end", () => {
+  project({
+    styles: css({ "--p": "1px", "--q": "2px", "--r": "3px", "--flex": "flex" }),
+    organizeos: { variables: three(named("p", "P")) },
+  });
+  expect(rowsOf("site")).toEqual(["p", "q", "r", "flex"]);
+  expect(orderVariables("site", ["q", "p", "r", "flex"])).toEqual({ ok: true });
+  expect(
+    registry().variables.map((entry) => [entry.cssName, entry.type])
+  ).toEqual([
+    ["q", "size"],
+    ["p", "size"],
+  ]);
+  expect(rowsOf("site")).toEqual(["q", "p", "r", "flex"]);
+  expect(orderVariables("site", ["flex", "q", "r", "p"])).toEqual({ ok: true });
+  expect(registry().variables.map((entry) => entry.cssName)).toEqual([
+    "q",
+    "r",
+    "p",
+  ]);
+  expect(rowsOf("site")).toEqual(["q", "r", "p", "flex"]);
+});
+
+test("orderVariables on an absent registry writes v1 holding the moved rows; the same order again stages nothing", () => {
+  project({ styles: css({ "--p": "1px", "--q": "2px" }) });
+  expect(orderVariables("site", ["q", "p"])).toEqual({ ok: true });
+  expect(registry().version).toBe(1);
+  expect(registry().variables.map((entry) => entry.cssName)).toEqual([
+    "q",
+    "p",
+  ]);
+  expect(undoDepth()).toBe(1);
+  vi.mocked(executeStagedRuntimeMutation).mockClear();
+  expect(orderVariables("site", ["q", "p"])).toEqual({ ok: true });
+  expect(undoDepth()).toBe(1);
+});
+
+test("orderVariables refuses Brand, an unknown collection and a name not in the collection, staging nothing", () => {
+  project({
+    styles: [...css({ "--p": "1px" }), ...css({ "--base": "#fff" })],
+    organizeos: { variables: three(named("p", "P")) },
+  });
+  expectNothingStaged(() => {
+    expect(orderVariables("brand", ["base"])).toEqual({
+      ok: false,
+      error: "Can't change this collection",
+    });
+    expect(orderVariables("gone", [])).toEqual({
+      ok: false,
+      error: "Collection not found",
+    });
+    expect(orderVariables("site", ["p", "nope"])).toEqual({
+      ok: false,
+      error: "Variable not found",
     });
   });
 });

@@ -141,12 +141,25 @@ const useRailBox = (rail: HTMLElement | null, isShown: boolean) => {
 };
 
 /**
- * While an overlay shows, a clipboard event on a target that is not editable
- * stops at the window, before the builder's document listeners; editable
- * targets are untouched.
+ * Where the builder's clipboard listeners leave an event to the field (its
+ * `isTextEditing`): an input, a textarea, or inside a contenteditable region.
+ * Narrower than `isEditableTarget`: a colour input's field is in its shadow
+ * root, so at the window its event's target is the `<color-input>` host,
+ * which the builder would take for the canvas.
+ */
+const isTextFieldTarget = (target: EventTarget | null): boolean =>
+  target instanceof HTMLInputElement ||
+  target instanceof HTMLTextAreaElement ||
+  (target instanceof HTMLElement &&
+    target.closest("[contenteditable]") !== null);
+
+/**
+ * While an overlay shows, a clipboard event outside a text field stops at the
+ * window, before the builder's document listeners; a text field's is
+ * untouched.
  */
 const onOverlayClipboard = (event: ClipboardEvent) => {
-  if (isEditableTarget(event.target) === false) {
+  if (isTextFieldTarget(event.target) === false) {
     event.stopPropagation();
   }
 };
@@ -185,18 +198,22 @@ const onOverlayPointerDown = (event: PointerEvent) => {
  * capture phase on the document (the canvas is covered), except
  * `allowCommands`. Escape hides it only in the bubble phase on the document,
  * when no layer took it (a design-system layer that dismisses calls
- * `preventDefault`) and not in an editable element. Focus goes to its root on
+ * `preventDefault`), not in an editable element, and when `onEscape` (the
+ * overlay's own state, such as a select mode) does not take it. Focus goes to its root on
  * open, and back to its rail button on hide when it was inside the overlay.
  */
 export const RailOverlay = ({
   name,
   isAvailable,
   allowCommands,
+  onEscape,
   children,
 }: {
   name: RailOverlayName;
   isAvailable: boolean;
   allowCommands?: readonly string[];
+  /** asked first on an Escape that would hide it; true keeps it shown */
+  onEscape?: () => boolean;
   children: ReactNode;
 }) => {
   const isShown = useIsRailOverlayShown(name, isAvailable);
@@ -264,30 +281,34 @@ export const RailOverlay = ({
         allowCommands && { allow: allowCommands }
       );
     };
-    const onEscape = (event: KeyboardEvent) => {
+    const onEscapeKey = (event: KeyboardEvent) => {
       if (
         event.key === "Escape" &&
         event.defaultPrevented === false &&
         isEditableTarget(event.target) === false
       ) {
+        if (onEscape?.() === true) {
+          event.preventDefault();
+          return;
+        }
         hideRailOverlay(name);
       }
     };
     document.addEventListener("keydown", onKeyDown, true);
-    document.addEventListener("keydown", onEscape);
+    document.addEventListener("keydown", onEscapeKey);
     document.addEventListener("pointerdown", onOverlayPointerDown, true);
     for (const type of clipboardEventTypes) {
       window.addEventListener(type, onOverlayClipboard, true);
     }
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
-      document.removeEventListener("keydown", onEscape);
+      document.removeEventListener("keydown", onEscapeKey);
       document.removeEventListener("pointerdown", onOverlayPointerDown, true);
       for (const type of clipboardEventTypes) {
         window.removeEventListener(type, onOverlayClipboard, true);
       }
     };
-  }, [name, isShown, allowCommands]);
+  }, [name, isShown, allowCommands, onEscape]);
 
   // Focus leaves the canvas and the rail for the overlay. A child that wants
   // it (the CMS frame) takes it in its own layout effect, which runs after

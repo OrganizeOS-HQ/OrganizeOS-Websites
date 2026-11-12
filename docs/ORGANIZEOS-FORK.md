@@ -911,8 +911,17 @@ can be merged with minimal conflict.
   `overlay.wiring.node.test.ts`.
 - **The Variables manager (§9, "Variables").** `features/variables/*` (the
   manager: `variables-overlay.tsx`, `variables-rail-button.tsx`,
-  `variables-icon.tsx`, `index.ts`, and the test-only `test-utils.tsx`), on
-  the rail-overlay host; in `sidebar-left/sidebar-left.tsx`, the one
+  `variables-icon.tsx`, `index.ts`; the collections in
+  `collections-column.tsx` and `collection-memory.ts`; the toolbar, the table
+  and its parts in `variables-toolbar.tsx`, `variables-table.tsx`,
+  `name-cell.tsx`, `value-cell.tsx`, `link-menu.tsx`, `row-menu.tsx`,
+  `delete-dialog.tsx`; `search.ts` and `brand-contrast.ts`; the manager's
+  writes in `operations.ts` beside part 1's; with
+  `variables-overlay.test.tsx`, `collections-column.test.tsx`,
+  `collection-memory.test.ts`, `variables-table.test.tsx`,
+  `variables-rows.test.tsx`, `manager-operations.test.ts`,
+  `search.node.test.ts`, `brand-contrast.node.test.ts`, and the test-only
+  `test-utils.tsx`), on the rail-overlay host; in `sidebar-left/sidebar-left.tsx`, the one
   `<VariablesRailButton />` after `<CmsRailButton />`, the one
   `<VariablesOverlay />` after `<CmsOverlay />`, and their marked import; and
   the one marked title in `features/settings-panel/variables-section.tsx`,
@@ -2322,6 +2331,22 @@ arrives in PR B.
   undo an edit made in it. It is read-only for a permit below `build`
   (`view`, `edit`) and while the registry is unreadable, which shows the line
   "Reload to edit variables".
+- **Collections.** Brand (the six canonical variables, locked; a missing one
+  is an empty row that a value restores; a line under it names a text or
+  accent pair below 4.5:1), Site (the designer's variables, and every
+  unregistered declaration), then the designer's own, which can be added,
+  renamed, reordered and deleted (with their variables). The selected one is
+  remembered per project in `localStorage`
+  (`organizeos:variables:collection:<projectId>`).
+- **The table.** One row per variable, grouped by display name
+  (`Group/Name`), with a value editor per type, Link to variable and Unlink,
+  a row menu (Rename, Duplicate, Copy CSS name, Move to collection, Delete),
+  and reorder by drag or Alt+Arrow, which stores the rows' display order.
+  Enter or a double-click renames. A delete asks first when the variable is
+  used. A refused write says why in a toast.
+- **Select mode.** Checkboxes, Shift ranges and a header checkbox over the
+  rows shown; Move to collection, Group and Delete act on the selected rows
+  the search shows. Escape leaves it before it closes the overlay.
 
 - A variable's value is a `--name` declaration on Global Root's local style
   source at the base breakpoint. A bound property stores upstream's

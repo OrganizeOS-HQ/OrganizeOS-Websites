@@ -415,3 +415,128 @@ test("a view permit, or an unreadable registry: no New variable, no Select, ever
     cleanupManager();
   }
 });
+
+test("Alt+ArrowDown on A/X, stored A/X, B, A/Y and shown A/X, A/Y, B, moves it below A/Y with the group still above B, and keeps the focus on it", async () => {
+  setupVariables({
+    styles: css({ "--a--x": "1px", "--b": "2px", "--a--y": "3px" }),
+    registry: siteOf(
+      entry("a--x", "size", "A/X"),
+      entry("b", "size", "B"),
+      entry("a--y", "size", "A/Y")
+    ),
+  });
+  renderManager();
+  expect(rowNames()).toEqual(["a--x", "a--y", "b"]);
+  act(() => rowOf("a--x")!.focus());
+  await act(async () => userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}"));
+  expect(rowNames()).toEqual(["a--y", "a--x", "b"]);
+  expect(document.activeElement).toBe(rowOf("a--x"));
+  expect(undoDepth()).toBe(1);
+});
+
+test("dragging A's handle onto the bottom of C reorders A, B, C to B, C, A", async () => {
+  setupVariables({
+    styles: css({ "--a": "1px", "--b": "2px", "--c": "3px" }),
+    registry: siteOf(
+      entry("a", "size", "A"),
+      entry("b", "size", "B"),
+      entry("c", "size", "C")
+    ),
+  });
+  renderManager();
+  const handle = rowOf("a")!.querySelector<HTMLElement>('[data-id="a"]')!;
+  const target = rowOf("c")!;
+  // Not inside act: the drag's state renders between the pointer events.
+  await userEvent.dragAndDrop(handle, target, {
+    targetPosition: { x: 8, y: target.offsetHeight - 2 },
+  });
+  await vi.waitFor(() => {
+    expect(rowNames()).toEqual(["b", "c", "a"]);
+  });
+  expect(undoDepth()).toBe(1);
+});
+
+test("Enter on a focused row starts renaming it", async () => {
+  setupVariables({
+    styles: css({ "--old-blue": "#0000ff" }),
+    registry: siteOf(entry("old-blue", "color", "Old Blue")),
+  });
+  renderManager();
+  act(() => rowOf("old-blue")!.focus());
+  await act(async () => userEvent.keyboard("{Enter}"));
+  await vi.waitFor(() => {
+    expect(document.activeElement).toBe(nameCell("old-blue"));
+  });
+  expect(nameCell("old-blue")?.hasAttribute("contenteditable")).toBe(true);
+});
+
+test("a refused rename keeps the same edit field focused with its reason; Escape ends it and clears the reason", async () => {
+  setupVariables({
+    styles: css({ "--old-blue": "#0000ff" }),
+    registry: siteOf(entry("old-blue", "color", "Old Blue")),
+  });
+  renderManager();
+  await startRename("old-blue");
+  const cell = nameCell("old-blue")!;
+  // an empty name is refused: Name is required
+  await act(async () => userEvent.keyboard("{Backspace}{Enter}"));
+  expect(nameCell("old-blue")).toBe(cell);
+  expect(cell.getAttribute("aria-invalid")).toBe("true");
+  expect(cell.hasAttribute("contenteditable")).toBe(true);
+  expect(document.activeElement).toBe(cell);
+  await act(async () => userEvent.keyboard("{Escape}"));
+  expect(cell.hasAttribute("aria-invalid")).toBe(false);
+  expect(cell.hasAttribute("contenteditable")).toBe(false);
+  expect(cell.textContent).toBe("Old Blue");
+  expect(rootStyle("--old-blue")).toEqual(valid("color", "#0000ff"));
+});
+
+test("Link to variable's list scrolls when it holds more than fits", async () => {
+  const names = Array.from({ length: 40 }, (_, index) => `c-${index}`);
+  setupVariables({
+    styles: css(
+      Object.fromEntries(names.map((name) => [`--${name}`, "#000000"]))
+    ),
+    registry: siteOf(...names.map((name) => entry(name, "color", name))),
+  });
+  renderManager();
+  await act(async () =>
+    userEvent.click(
+      valueCell("c-0")!.querySelector<HTMLElement>(
+        '[aria-label="Value actions"]'
+      )!
+    )
+  );
+  await chooseMenuItem("Link to variable");
+  const list =
+    document.querySelector<HTMLElement>("[data-link-target]")!.parentElement!;
+  expect(getComputedStyle(list).overflowY).toBe("auto");
+  expect(list.scrollHeight).toBeGreaterThan(list.clientHeight);
+  expect(list.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+    window.innerHeight
+  );
+});
+
+test("typed font text is not written on blur, the field goes back to the value; picking a font writes it, one undo step", async () => {
+  setupVariables({
+    styles: css({ "--face": '"Public Sans"' }),
+    registry: siteOf(entry("face", "fontFamily", "Face")),
+  });
+  renderManager();
+  const before = rootStyle("--face");
+  const shown = valueInput("face")!.value;
+  await act(async () => userEvent.fill(valueInput("face")!, "Comic Neue"));
+  act(() => valueInput("face")!.blur());
+  expect(rootStyle("--face")).toEqual(before);
+  expect(undoDepth()).toBe(0);
+  expect(valueInput("face")!.value).toBe(shown);
+  await act(async () => userEvent.click(valueInput("face")!));
+  await act(async () => userEvent.keyboard("{ArrowDown}"));
+  const option = document.querySelector<HTMLElement>(
+    '[role="listbox"]:not([aria-label="Collections"]) [role="option"]'
+  )!;
+  const picked = option.textContent;
+  await act(async () => userEvent.click(option));
+  expect(rootStyle("--face")).toEqual({ type: "fontFamily", value: [picked] });
+  expect(undoDepth()).toBe(1);
+});

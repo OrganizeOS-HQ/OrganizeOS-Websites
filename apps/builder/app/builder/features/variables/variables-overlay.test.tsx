@@ -168,3 +168,39 @@ test("the manager renders nothing inside the overlay while it is hidden", () => 
   expect(overlay()).not.toBeNull();
   expect(manager()).toBeNull();
 });
+
+test("at a narrow width every toolbar control keeps its label and stays inside the manager", () => {
+  renderManager();
+  const root = manager();
+  if (root === null) {
+    throw new Error("no manager");
+  }
+  // a narrow overlay: the collections column leaves the table little room
+  root.style.width = "414px";
+  const right = root.getBoundingClientRect().right;
+  const toolbar = root.querySelector<HTMLElement>("[data-variables-toolbar]");
+  const buttons = Array.from(
+    toolbar?.querySelectorAll<HTMLElement>("button") ?? []
+  ).filter((button) => button.textContent !== "");
+  expect(buttons.map((button) => button.textContent)).toEqual([
+    "Select",
+    "New variable",
+  ]);
+  for (const control of toolbar?.querySelectorAll<HTMLElement>(
+    "button, input"
+  ) ?? []) {
+    expect(
+      control.getBoundingClientRect().right,
+      control.textContent || control.getAttribute("placeholder") || ""
+    ).toBeLessThanOrEqual(right + 0.5);
+  }
+  for (const button of buttons) {
+    // the label is not cut: no part of the button is narrower than its text
+    for (const part of [button, ...button.querySelectorAll<HTMLElement>("*")]) {
+      expect(part.scrollWidth, button.textContent ?? "").toBeLessThanOrEqual(
+        part.clientWidth + 1
+      );
+    }
+  }
+  expect(toolbar?.scrollWidth).toBeLessThanOrEqual(toolbar?.clientWidth ?? 0);
+});

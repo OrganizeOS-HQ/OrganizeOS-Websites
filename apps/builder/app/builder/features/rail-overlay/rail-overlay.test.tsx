@@ -626,6 +626,42 @@ describe("a rail overlay", () => {
     }
   });
 
+  test("a cut or paste from a colour input's shadow field stops at the window, so the builder never takes it for the canvas; Escape there still keeps the overlay", () => {
+    const reached = vi.fn();
+    const types = ["cut", "paste"] as const;
+    for (const type of types) {
+      document.addEventListener(type, reached, true);
+    }
+    try {
+      render();
+      click("variables");
+      mount(createElement("color-input", { key: "color", "data-color": "" }));
+      const host = document.querySelector<HTMLElement>("[data-color]")!;
+      const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+      const field = document.createElement("input");
+      shadow.appendChild(field);
+      for (const type of types) {
+        act(() => {
+          // at the document the event's target is the host, not the input
+          field.dispatchEvent(
+            new ClipboardEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              composed: true,
+            })
+          );
+        });
+      }
+      expect(reached).not.toHaveBeenCalled();
+      press("Escape", field, { composed: true });
+      expect(isShown("variables")).toBe(true);
+    } finally {
+      for (const type of types) {
+        document.removeEventListener(type, reached, true);
+      }
+    }
+  });
+
   test("a press on a nav hides it; a press inside it or on its rail button does not", () => {
     render();
     const nav = document.createElement("nav");
