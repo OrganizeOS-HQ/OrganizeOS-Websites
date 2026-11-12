@@ -888,8 +888,10 @@ can be merged with minimal conflict.
   `styles.organizeos.test.ts`. In the builder, `features/variables/color.ts`
   and `style-model.ts`, with their tests, moved from
   `features/organizeos-panel/backgrounds/`, and
-  `features/organizeos-panel/test-fixtures.ts` moved up from `backgrounds/`.
-  Pinned by `overlay.wiring.node.test.ts`.
+  `features/organizeos-panel/test-fixtures.ts` moved up from `backgrounds/`;
+  the reader, the registry patches and the staged operations in
+  `features/variables/`; `canCommitWebstudioData` exported by one marked word
+  in `shared/instance-utils/data.ts`. Pinned by `overlay.wiring.node.test.ts`.
 - **Published sites (§1, §8).** The CLI's copy of the blocks' build into every
   published site, `packages/cli/src/organizeos-components.ts`, called from
   short marked hooks in `prebuild.ts` and `framework-react-router.ts`, with

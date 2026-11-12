@@ -321,3 +321,11 @@ describe("the Variables edits in project-build", () => {
     expect(styles).toMatch(/export const getCssVariableUsageCounts = /);
   });
 });
+
+describe("the Variables export in shared/instance-utils/data.ts", () => {
+  test("canCommitWebstudioData is exported", () => {
+    expect(read("../../../shared/instance-utils/data.ts")).toMatch(
+      /export const canCommitWebstudioData = \(\) =>/
+    );
+  });
+});
