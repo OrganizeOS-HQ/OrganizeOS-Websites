@@ -20,6 +20,7 @@ import {
 import {
   createCollection,
   deleteCollection,
+  groupVariables,
   renameCollection,
   reorderCollection,
 } from "./operations";
@@ -193,5 +194,67 @@ test("reorderCollection('c2', 0) puts c2 before c1; Site stays first; brand and 
   expect(reorderCollection("gone", 0)).toEqual({
     ok: false,
     error: "Collection not found",
+  });
+});
+
+const named = (cssName: string, name: string): RegistryVariable => ({
+  cssName,
+  collectionId: "site",
+  type: "size",
+  name,
+});
+
+test("groupVariables(['a--gap', 'b--gap'], 'Spacing'): A/Gap and B/Gap become spacing--gap and spacing--gap-2, both named Spacing/Gap, one undo step", () => {
+  project({
+    styles: css({ "--a--gap": "1px", "--b--gap": "2px" }),
+    organizeos: {
+      variables: three(named("a--gap", "A/Gap"), named("b--gap", "B/Gap")),
+    },
+  });
+  expect(groupVariables(["a--gap", "b--gap"], "Spacing")).toEqual({ ok: true });
+  expect(registry().variables.map((item) => [item.cssName, item.name])).toEqual(
+    [
+      ["spacing--gap", "Spacing/Gap"],
+      ["spacing--gap-2", "Spacing/Gap"],
+    ]
+  );
+  expect(undoDepth()).toBe(1);
+});
+
+test("groupVariables keeps everything after the first /: X/Y/Z grouped into G becomes G/Y/Z (g--y--z)", () => {
+  project({
+    styles: css({ "--x--y--z": "1px" }),
+    organizeos: { variables: three(named("x--y--z", "X/Y/Z")) },
+  });
+  expect(groupVariables(["x--y--z"], "G")).toEqual({ ok: true });
+  expect(registry().variables[0]).toMatchObject({
+    cssName: "g--y--z",
+    name: "G/Y/Z",
+  });
+});
+
+test.each([
+  ["  ", "Name is required"],
+  ["a/b", "Use a name without /"],
+])(
+  "groupVariables refuses the group %j with %s, staging nothing",
+  (group, error) => {
+    project({
+      styles: css({ "--gap": "1px" }),
+      organizeos: { variables: three(named("gap", "Gap")) },
+    });
+    expectNothingStaged(() => {
+      expect(groupVariables(["gap"], group)).toEqual({ ok: false, error });
+    });
+  }
+);
+
+test("groupVariables(['base'], 'Spacing') refuses with 'Can't rename this variable', staging nothing", () => {
+  project({ styles: css({ "--base": "#ffffff", "--text": "#111111" }) });
+  expectNothingStaged(() => {
+    expect(groupVariables(["base"], "Spacing")).toEqual({
+      ok: false,
+      error: "Can't rename this variable",
+    });
   });
 });

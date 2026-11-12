@@ -968,6 +968,52 @@ export const reorderCollection = (id: string, toIndex: number): WriteResult => {
   });
 };
 
+/** The text after the first "/", or the whole name. */
+const leafOf = (displayName: string) => {
+  const slash = displayName.indexOf("/");
+  return slash === -1 ? displayName : displayName.slice(slash + 1);
+};
+
+/**
+ * Puts each variable under `group` (spec 5.6): `Group/leaf`, the leaf being
+ * everything after its first "/". One transaction: each rename derives its
+ * CSS name from the accumulator, so a name taken earlier in the same call is
+ * taken (the second Spacing/Gap becomes spacing--gap-2).
+ */
+export const groupVariables = (
+  cssNames: readonly string[],
+  group: string
+): WriteResult => {
+  const trimmed = group.trim();
+  if (trimmed === "") {
+    return commitPrepared(refuse("Name is required"));
+  }
+  if (trimmed.includes("/")) {
+    return commitPrepared(refuse("Use a name without /"));
+  }
+  const renames = [];
+  for (const cssName of cssNames) {
+    const row = findRow(cssName);
+    const prepared = prepareRenameVariable({
+      from: cssName,
+      displayName: `${trimmed}/${leafOf(row?.displayName ?? cssName)}`,
+    });
+    if (prepared.ok === false) {
+      return commitPrepared(prepared);
+    }
+    renames.push(prepared);
+  }
+  return commitPrepared({
+    ok: true,
+    result: {},
+    stage: (accumulator) => {
+      for (const rename of renames) {
+        rename.stage(accumulator);
+      }
+    },
+  });
+};
+
 // The Cmd+K routing (spec 4.9). Inputs are upstream's "--"-prefixed
 // properties. A name Global Root declares at the base breakpoint goes
 // through the operations above; any other keeps upstream's behaviour.
