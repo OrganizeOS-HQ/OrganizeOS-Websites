@@ -941,7 +941,7 @@ describe("answers that arrive after the screen moved on", () => {
       await click(buttonByText("New item"));
       await act(async () => userEvent.type(titleInput()!, "Fresh"));
       await settle();
-      const held = deferred<CmsResult<{ item: CmsItem; created?: boolean }>>();
+      const held = deferred<CmsResult<{ item: CmsItem; created: boolean }>>();
       fake.createItem.mockReturnValueOnce(held.promise);
       await click(buttonByText("Save"));
       expect(fake.createItem).toHaveBeenCalledTimes(1);

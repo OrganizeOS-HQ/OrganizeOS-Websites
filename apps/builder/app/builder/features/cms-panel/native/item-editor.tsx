@@ -562,7 +562,7 @@ export const ItemEditor = ({
     }
     const afterSave = current === null || isDirty;
     // With unsaved edits it saves, then publishes: two calls, each locked.
-    if (afterSave) {
+    if (current === null || isDirty) {
       const first = await saveFrom(current);
       if (first === undefined) {
         return;
