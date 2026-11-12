@@ -406,15 +406,17 @@ export const styleReplaceInput = z.object({
 const escapeRegex = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// OrganizeOS fork: a left boundary too, so renaming --large leaves --spacing--large alone (builder/features/variables).
 const createCssVariableNameRegex = (name: string) =>
-  new RegExp(`${escapeRegex(name)}(?![\\w-])`, "g");
+  new RegExp(`(?<![\\w-])${escapeRegex(name)}(?![\\w-])`, "g");
 
 export const createCssVariableNamesRegex = (names: Set<string>) => {
   if (names.size === 0) {
     return;
   }
+  // OrganizeOS fork: a left boundary too, so --large never counts var(--spacing--large) (builder/features/variables).
   return new RegExp(
-    `(?:${Array.from(names)
+    `(?<![\\w-])(?:${Array.from(names)
       .sort((left, right) => right.length - left.length)
       .map(escapeRegex)
       .join("|")})(?![\\w-])`,
@@ -434,23 +436,56 @@ export const collectCssVariableReferences = (value: string, regex?: RegExp) => {
   return references;
 };
 
+// OrganizeOS fork: walks the value instead of its JSON, so only a VarValue's
+// name and var() text in unparsed values are renamed, by whole name; a keyword
+// such as `black` stays when --black is renamed (builder/features/variables).
+const rewriteCssVariableReferencesInNode = (
+  node: unknown,
+  replacements: Record<string, string>
+): unknown => {
+  if (Array.isArray(node)) {
+    return node.map((item) =>
+      rewriteCssVariableReferencesInNode(item, replacements)
+    );
+  }
+  if (typeof node !== "object" || node === null) {
+    return node;
+  }
+  const record = node as Record<string, unknown>;
+  if (record.type === "unparsed" && typeof record.value === "string") {
+    return {
+      ...record,
+      value: rewriteCssVariableReferencesInString(record.value, replacements),
+    };
+  }
+  // a font family stack keeps each family as text, var() items included
+  if (record.type === "fontFamily" && Array.isArray(record.value)) {
+    return {
+      ...record,
+      value: record.value.map((family) =>
+        typeof family === "string"
+          ? rewriteCssVariableReferencesInString(family, replacements)
+          : family
+      ),
+    };
+  }
+  const next: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(record)) {
+    next[key] = rewriteCssVariableReferencesInNode(child, replacements);
+  }
+  if (record.type === "var" && typeof record.value === "string") {
+    const toName = replacements[`--${record.value}`];
+    if (toName !== undefined) {
+      next.value = toName.slice(2);
+    }
+  }
+  return next;
+};
+
 export const rewriteCssVariableReferencesInStyleValue = (
   value: StyleValue,
   replacements: Record<string, string>
-) => {
-  let serialized = JSON.stringify(value);
-  for (const [fromName, toName] of Object.entries(replacements)) {
-    serialized = serialized.replace(
-      new RegExp(`("value":")${escapeRegex(fromName.slice(2))}(?![\\w-])`, "g"),
-      `$1${toName.slice(2)}`
-    );
-    serialized = serialized.replace(
-      createCssVariableNameRegex(fromName),
-      toName
-    );
-  }
-  return JSON.parse(serialized) as StyleValue;
-};
+) => rewriteCssVariableReferencesInNode(value, replacements) as StyleValue;
 
 export const rewriteCssVariableReferencesInString = (
   value: string,
@@ -580,7 +615,8 @@ const valuesOf = <Value>(
   value: Iterable<Value> | Map<unknown, Value>
 ): Iterable<Value> => (value instanceof Map ? value.values() : value);
 
-const getCssVariableUsageCounts = ({
+// OrganizeOS fork: exported for the Variables delete count (builder/features/variables).
+export const getCssVariableUsageCounts = ({
   styles,
   props,
 }: {

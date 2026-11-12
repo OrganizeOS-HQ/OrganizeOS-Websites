@@ -1,6 +1,5 @@
 /**
- * Hand-built stores for the style-model and contrast tests. Not used by the
- * app.
+ * Hand-built stores for builder tests that read styles. Not used by the app.
  */
 import type { CssProperty, StyleValue } from "@webstudio-is/css-engine";
 import { camelCaseProperty, parseCssValue } from "@webstudio-is/css-data";

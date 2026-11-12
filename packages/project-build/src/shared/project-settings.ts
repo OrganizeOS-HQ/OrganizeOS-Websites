@@ -4,6 +4,8 @@ import { z } from "zod";
 export const projectSettings = z.object({
   meta: projectMeta,
   compiler: compilerSettings,
+  // OrganizeOS fork: the Variables registry, read on its own by readVariablesRegistry so a bad one never fails a load (builder/features/variables).
+  organizeos: z.unknown().optional(),
 });
 
 export type ProjectSettings = z.infer<typeof projectSettings>;

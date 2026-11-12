@@ -6,7 +6,13 @@ import type {
 import { parseCssValue } from "@webstudio-is/css-data";
 // The names file only, as section-background.tsx imports it.
 import { BAND_VARIABLES } from "@organizeos/site-components/site-templates/canonical-variables";
-import { composite, contrastRatio, luminance, type Rgba } from "./color";
+import {
+  composite,
+  contrastRatio,
+  luminance,
+  type Rgba,
+} from "~/builder/features/variables/color";
+import type { PaletteColor } from "~/builder/features/variables/style-model";
 
 /**
  * Section background presets: recipes from a three-color palette to ordinary
@@ -29,15 +35,7 @@ import { composite, contrastRatio, luminance, type Rgba } from "./color";
  * `background-position` shorthand, which that section does not read.
  */
 
-export type PaletteColor = {
-  rgba: Rgba;
-  /**
-   * The Global Root variable the color came from, without the leading dashes,
-   * as Webstudio's VarValue stores it (`{ type: "var", value: "brand" }`
-   * renders `var(--brand)`).
-   */
-  variable?: string;
-};
+export type { PaletteColor } from "~/builder/features/variables/style-model";
 
 export type Palette = {
   /** the page surface */

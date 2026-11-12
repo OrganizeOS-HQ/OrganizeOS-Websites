@@ -296,3 +296,79 @@ describe("the settings panel's OrganizeOS controls", () => {
     );
   });
 });
+
+const projectBuild = (path: string) =>
+  read(`../../../../../../packages/project-build/src/${path}`);
+
+describe("the Variables edits in project-build", () => {
+  test("projectSettings keeps the organizeos key, unparsed", () => {
+    expect(projectBuild("shared/project-settings.ts")).toMatch(
+      /organizeos:\s*z\.unknown\(\)\.optional\(\),/
+    );
+  });
+
+  test("index.ts exports the registry module", () => {
+    expect(projectBuild("index.ts")).toMatch(
+      /export \* from "\.\/shared\/organizeos-variables";/
+    );
+  });
+
+  test("styles.ts renames by whole name and exports the usage counts", () => {
+    const styles = projectBuild("runtime/styles.ts");
+    expect(styles).toContain("(?<![\\\\w-])${escapeRegex(name)}(?![\\\\w-])");
+    expect(styles).toMatch(/`\(\?<!\[\\\\w-\]\)\(\?:\$\{Array\.from\(names\)/);
+    expect(styles).not.toContain('("value":")');
+    expect(styles).toMatch(
+      /record\.type === "fontFamily" && Array\.isArray\(record\.value\)/
+    );
+    expect(styles).toMatch(/export const getCssVariableUsageCounts = /);
+  });
+});
+
+describe("the Variables export in shared/instance-utils/data.ts", () => {
+  test("canCommitWebstudioData is exported", () => {
+    expect(read("../../../shared/instance-utils/data.ts")).toMatch(
+      /export const canCommitWebstudioData = \(\) =>/
+    );
+  });
+});
+
+describe("the Cmd+K CSS variable guard and routing", () => {
+  const utils = read("../../shared/css-variable-utils.tsx");
+
+  test("imports the routing from the Variables operations", () => {
+    expect(utils).toMatch(
+      /import \{[^}]*routeCssVariableRename[^}]*\} from "~\/builder\/features\/variables\/operations";/
+    );
+  });
+
+  test("Delete unused reads a store that leaves out kept names; Cmd+K's labels keep upstream's", () => {
+    expect(utils).toMatch(
+      /export const \$unusedCssVariables = computed\(\s*\[\$cssVariableDefinitionsByVariable, \$referencedCssVariables\],/
+    );
+    expect(utils).toMatch(
+      /export const \$deletableUnusedCssVariables = computed\(\s*\[\$unusedCssVariables, \$projectSettings\],[\s\S]*?withoutKeptCssVariables\(/
+    );
+    expect(
+      utils.match(
+        /\$deletableUnusedCssVariables\.get\(\)|useStore\(\$deletableUnusedCssVariables\)/g
+      )
+    ).toHaveLength(2);
+  });
+
+  test("rename, delete and delete unused route first", () => {
+    expect(utils).toMatch(
+      /const routed = routeCssVariableRename\(oldProperty, newProperty\);\s*if \(routed !== "upstream"\)/
+    );
+    expect(utils).toMatch(
+      /routeCssVariableDelete\(\[property\]\) !== undefined/
+    );
+    expect(utils).toMatch(
+      /routeCssVariableDelete\(Array\.from\(unusedVariables\)\)/
+    );
+  });
+
+  test("both delete dialogs refuse before they confirm", () => {
+    expect(utils.match(/getCssVariableDeleteRefusal\(/g)).toHaveLength(2);
+  });
+});

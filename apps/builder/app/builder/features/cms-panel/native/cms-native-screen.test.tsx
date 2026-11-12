@@ -41,7 +41,7 @@ import {
   buildCollectionResourcePresets,
   buildOrgResourcePresets,
 } from "~/shared/db/resource-presets.server";
-import { registerTestMetas } from "../../organizeos-panel/backgrounds/test-fixtures";
+import { registerTestMetas } from "../../organizeos-panel/test-fixtures";
 import {
   addCollectionToSitemapMutable,
   createCollectionItemPage,

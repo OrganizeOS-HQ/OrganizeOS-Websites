@@ -18,7 +18,7 @@ import {
   type Node,
   type TestStyle,
   type TestToken,
-} from "./test-fixtures";
+} from "~/builder/features/organizeos-panel/test-fixtures";
 
 enableMapSet();
 

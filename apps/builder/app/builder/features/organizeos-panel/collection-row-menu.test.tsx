@@ -40,7 +40,7 @@ import {
   buildCollectionResourcePresets,
   buildOrgResourcePresets,
 } from "~/shared/db/resource-presets.server";
-import { registerTestMetas } from "./backgrounds/test-fixtures";
+import { registerTestMetas } from "./test-fixtures";
 import { loadCollectionError } from "./collection-schema";
 import {
   addCollectionToSitemapMutable,

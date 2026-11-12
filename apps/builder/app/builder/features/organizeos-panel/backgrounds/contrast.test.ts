@@ -3,7 +3,11 @@ import type { CssProperty, StyleValue } from "@webstudio-is/css-engine";
 import type { Prop } from "@webstudio-is/sdk";
 import { showAttribute } from "@webstudio-is/react-sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
-import { contrastRatio, toRgba, type Rgba } from "./color";
+import {
+  contrastRatio,
+  toRgba,
+  type Rgba,
+} from "~/builder/features/variables/color";
 import {
   checkSectionContrast,
   maxBackgroundColors,
@@ -23,7 +27,7 @@ import {
   toStyleValue,
   type Node,
   type TestStyle,
-} from "./test-fixtures";
+} from "../test-fixtures";
 
 beforeEach(() => {
   registerTestMetas();

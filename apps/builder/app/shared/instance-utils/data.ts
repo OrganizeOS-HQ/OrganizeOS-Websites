@@ -123,7 +123,8 @@ export type WebstudioInstanceData = Pick<
   | "resources"
 >;
 
-const canCommitWebstudioData = () => {
+// OrganizeOS fork: exported so the Variables operations refuse before they stage (builder/features/variables).
+export const canCommitWebstudioData = () => {
   const selectedPage = $selectedPage.get();
   return (
     isPageTemplate(selectedPage) === false ||

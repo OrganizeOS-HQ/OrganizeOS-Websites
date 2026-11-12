@@ -21,6 +21,8 @@ import {
   $styles,
   $styleSourceSelections,
   $props,
+  // OrganizeOS fork: "Delete unused" skips names in project custom code (builder/features/variables).
+  $projectSettings,
 } from "~/shared/sync/data-stores";
 import {
   findCssVariableUsagesByInstance,
@@ -32,6 +34,13 @@ import {
 } from "@webstudio-is/project-build/runtime";
 import { type CssVariableNameError } from "@webstudio-is/project-build/runtime";
 import { executeRuntimeMutation } from "~/shared/instance-utils/data";
+// OrganizeOS fork: Cmd+K rename and delete of a Global Root variable go through the Variables operations; the Brand and band names are protected (builder/features/variables).
+import {
+  getCssVariableDeleteRefusal,
+  routeCssVariableDelete,
+  routeCssVariableRename,
+  withoutKeptCssVariables,
+} from "~/builder/features/variables/operations";
 
 const $isDeleteUnusedCssVariablesDialogOpen = atom(false);
 
@@ -98,6 +107,13 @@ export const $unusedCssVariables = computed(
   }
 );
 
+// OrganizeOS fork: what "Delete unused" offers: never a protected name or one in custom code; the Cmd+K usage labels keep reading $unusedCssVariables (builder/features/variables).
+export const $deletableUnusedCssVariables = computed(
+  [$unusedCssVariables, $projectSettings],
+  (unusedVariables, projectSettings) =>
+    withoutKeptCssVariables(unusedVariables, projectSettings?.meta.code)
+);
+
 export const validateCssVariableName = (
   name: string,
   currentProperty?: string
@@ -112,6 +128,11 @@ export const renameCssVariable = (
   oldProperty: string,
   newProperty: string
 ): CssVariableNameError | undefined => {
+  // OrganizeOS fork: a Global Root variable is renamed by the Variables operations (builder/features/variables).
+  const routed = routeCssVariableRename(oldProperty, newProperty);
+  if (routed !== "upstream") {
+    return routed;
+  }
   const validationError = validateCssVariableName(newProperty, oldProperty);
   if (validationError) {
     return validationError;
@@ -129,6 +150,10 @@ export const renameCssVariable = (
 };
 
 export const deleteCssVariable = (property: string) => {
+  // OrganizeOS fork: a Global Root variable is deleted by the Variables operations (builder/features/variables).
+  if (routeCssVariableDelete([property]) !== undefined) {
+    return;
+  }
   executeRuntimeMutation({
     id: "cssVariables.delete",
     input: {
@@ -138,11 +163,19 @@ export const deleteCssVariable = (property: string) => {
   });
 };
 
-export const deleteUnusedCssVariables = () => {
-  const unusedVariables = $unusedCssVariables.get();
+// OrganizeOS fork: undefined when a routed commit did not land; its error toast already showed (builder/features/variables).
+export const deleteUnusedCssVariables = (): number | undefined => {
+  // OrganizeOS fork: the deletable ones (builder/features/variables).
+  const unusedVariables = $deletableUnusedCssVariables.get();
 
   if (unusedVariables.size === 0) {
     return 0;
+  }
+
+  // OrganizeOS fork: one staged transaction when a Global Root variable is among them (builder/features/variables).
+  const routed = routeCssVariableDelete(Array.from(unusedVariables));
+  if (routed !== undefined) {
+    return routed === 0 ? undefined : routed;
   }
 
   executeRuntimeMutation({
@@ -167,6 +200,11 @@ export const DeleteCssVariableDialog = ({
   onClose,
   onConfirm,
 }: DeleteCssVariableDialogProps) => {
+  // OrganizeOS fork: a refusal shows here and keeps the dialog open, so the caller's success toast never runs (builder/features/variables).
+  const [error, setError] = useState<string>();
+  useEffect(() => {
+    setError(undefined);
+  }, [cssVariable?.property]);
   return (
     <Dialog
       open={cssVariable !== undefined}
@@ -185,12 +223,26 @@ export const DeleteCssVariableDialog = ({
         <DialogTitle>Delete confirmation</DialogTitle>
         <PanelContent as={Flex} gap="3" direction="column">
           <Text>{`Delete CSS variable "${cssVariable?.property}" from the project?`}</Text>
+          {/* OrganizeOS fork: the refusal line (builder/features/variables). */}
+          {error && <Text color="destructive">{error}</Text>}
         </PanelContent>
         <DialogActions>
           <Button
             autoFocus
             color="destructive"
             onClick={() => {
+              // OrganizeOS fork: refuse, or run the routed delete here, before onConfirm toasts success (builder/features/variables).
+              const refusal = getCssVariableDeleteRefusal([
+                cssVariable!.property,
+              ]);
+              if (refusal) {
+                setError(refusal);
+                return;
+              }
+              if (routeCssVariableDelete([cssVariable!.property]) === 0) {
+                setError("Can't delete this variable");
+                return;
+              }
               onConfirm(cssVariable!.property);
               onClose();
             }}
@@ -292,9 +344,12 @@ const DeleteUnusedCssVariablesDialogContent = ({
 }: {
   onClose: () => void;
 }) => {
-  const unusedVariables = useStore($unusedCssVariables);
+  // OrganizeOS fork: the deletable ones (builder/features/variables).
+  const unusedVariables = useStore($deletableUnusedCssVariables);
   // Convert Set to Array for display
   const unusedVariablesArray = Array.from(unusedVariables);
+  // OrganizeOS fork: a refusal shows here instead of deleting (builder/features/variables).
+  const [error, setError] = useState<string>();
 
   return (
     <>
@@ -322,6 +377,8 @@ const DeleteUnusedCssVariablesDialogContent = ({
             </Text>
           </>
         )}
+        {/* OrganizeOS fork: the refusal line (builder/features/variables). */}
+        {error && <Text color="destructive">{error}</Text>}
       </PanelContent>
       <DialogActions>
         {unusedVariablesArray.length > 0 && (
@@ -329,8 +386,17 @@ const DeleteUnusedCssVariablesDialogContent = ({
             color="destructive"
             autoFocus
             onClick={() => {
+              // OrganizeOS fork: refuse in the dialog; a routed commit that did not land toasts only its error (builder/features/variables).
+              const refusal = getCssVariableDeleteRefusal(unusedVariablesArray);
+              if (refusal) {
+                setError(refusal);
+                return;
+              }
               const deletedCount = deleteUnusedCssVariables();
               onClose();
+              if (deletedCount === undefined) {
+                return;
+              }
               if (deletedCount === 0) {
                 toast.info("No unused CSS variables to delete");
               } else {

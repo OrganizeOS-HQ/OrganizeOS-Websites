@@ -22,13 +22,13 @@ import {
   quantize,
   toRgba,
   type Rgba,
-} from "./color";
+} from "~/builder/features/variables/color";
 import {
   buildSectionStyleModel,
   resolveFontSize,
   resolveFontWeight,
   withRoot,
-} from "./style-model";
+} from "~/builder/features/variables/style-model";
 
 /**
  * The contrast check for the Section background area (spec 4.1-4.5): the

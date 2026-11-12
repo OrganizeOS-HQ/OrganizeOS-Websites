@@ -877,6 +877,30 @@ can be merged with minimal conflict.
   `apps/builder/.env`; `shared/organizeos-catalog-reach.test.ts` and a marked
   `describe` in `packages/cli/src/prebuild.test.ts` pin that the catalog loads
   only where a page uses it.
+- **Variables (§9, "Variables").** In project-build:
+  `src/shared/organizeos-variables.ts` (the registry schema and
+  `readVariablesRegistry`, with `organizeos-variables.organizeos.test.ts`),
+  exported by one marked line in `src/index.ts`; and the `organizeos` key, one
+  marked line in `src/shared/project-settings.ts`; the whole-name rename in
+  `src/runtime/styles.ts` (marked: both name regexes take a left boundary,
+  `rewriteCssVariableReferencesInStyleValue` walks the value instead of its
+  JSON, renaming `VarValue`s, unparsed text and font family items,
+  `getCssVariableUsageCounts` exported), with
+  `styles.organizeos.test.ts`. In the builder, `features/variables/color.ts`
+  and `style-model.ts`, with their tests, moved from
+  `features/organizeos-panel/backgrounds/`, and
+  `features/organizeos-panel/test-fixtures.ts` moved up from `backgrounds/`;
+  the reader, the registry patches and the staged operations in
+  `features/variables/`; `canCommitWebstudioData` exported by one marked word
+  in `shared/instance-utils/data.ts`; and the Cmd+K guard and routing in
+  `builder/shared/css-variable-utils.tsx` (marked: the import, the
+  `$deletableUnusedCssVariables` store that "Delete unused" reads instead of
+  `$unusedCssVariables`, so Cmd+K's usage labels stay upstream's, the routing
+  at the top of `renameCssVariable`,
+  `deleteCssVariable` and `deleteUnusedCssVariables`, and the refusal in both
+  delete dialogs), with `css-variable-utils.organizeos.test.tsx`; the test-only
+  store helpers in `features/variables/test-stores.ts`. Pinned by
+  `overlay.wiring.node.test.ts`.
 - **Published sites (§1, §8).** The CLI's copy of the blocks' build into every
   published site, `packages/cli/src/organizeos-components.ts`, called from
   short marked hooks in `prebuild.ts` and `framework-react-router.ts`, with
@@ -993,6 +1017,11 @@ can be merged with minimal conflict.
   failed download's `.tmp` file deleted before its write stream opened) is
   fixed upstream in 0.309.0; the fork keeps its regression case, "leaves no
   temporary file when many downloads fail at once", in `asset-files.test.ts`.
+  `packages/project-build/src/runtime/styles.ts` renames a CSS variable's
+  references by whole name: renaming `--black` leaves `color: black`, and
+  renaming `--large` leaves `var(--spacing--large)` (Variables, above). Its
+  boundaries use lookbehind, which needs Safari 16.4 or later; say so when
+  offering it.
 
 **Sitemap page settings.** The builder's sitemap loader
 (`shared/$resources/sitemap.xml.server.ts`, one marked change) and prebuild's
@@ -2253,6 +2282,41 @@ collection }` invalidates, through `invalidateResource`, every current
   release drops `WebhookForm`. The template still owns the text of its labels
   and its button, which each provision resets. In the builder's Preview a
   submission is refused (§5).
+
+**Variables**, `features/variables/` (design:
+`docs/superpowers/specs/2026-11-11-builder-variables-design.md` in the
+OrganizeOS repo). Part 1's data layer; the manager arrives in PR A2 and the
+Style panel's "+" in PR B.
+
+- A variable's value is a `--name` declaration on Global Root's local style
+  source at the base breakpoint. A bound property stores upstream's
+  `{ type: "var", value: "name" }`. Names are lowercase slugs, unique
+  project-wide, never one of the reserved names outside Brand.
+- The registry at `projectSettings.organizeos.variables` (collections, types,
+  display names, order) only describes those declarations: it holds no
+  values. It reads as absent, readable or unreadable (another version, or an
+  invalid shape); a load never fails on it. It is never transformed by
+  parsing, never written whole and never written when unreadable; every
+  change is a narrow single-index patch, staged in the same transaction as
+  the style change, so one write is one undo step. Unknown keys survive.
+- A rename goes by whole name: only `VarValue`s and `var(--name)` text
+  (unparsed values and font family items included) are rewritten, never a
+  keyword and never a longer name that ends with it, in
+  styles, HTML Embed `code` props and the project's custom code
+  (`projectSettings.meta.code`).
+- A delete removes every declaration of the name, in every style source,
+  breakpoint and state; every reference takes the variable's resolved base
+  value (`unset` when it does not resolve), and a font family stack's
+  `var()` item takes its families. Embed and custom code keep their text and
+  count in the usage.
+- The six canonical names and the two band names are protected: no rename or
+  delete from the Variables operations or Cmd+K, no other variable renamed to
+  one, and "Delete unused" never offers them; Cmd+K still labels them unused
+  when nothing reads them. A missing canonical variable is restored only while another of
+  the six exists, so the template chooser's gate is unchanged.
+- Cmd+K rename and delete of a listed root variable (Global Root's local
+  source, base breakpoint) go through the Variables operations, keeping the
+  registry in step; any other name keeps upstream's behaviour.
 
 **Section backgrounds**, the Style panel's "Background presets" section
 (`features/organizeos-panel/background-presets-section.tsx`, one marked entry
