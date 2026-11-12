@@ -1,0 +1,21 @@
+{
+  "description": "X-OOS-Actor v1 test vector (spec 2026-11-07-native-cms-in-the-builder-design 5.2). target is the canonical target of the platform request: its pathname, then '?' and its query pairs sorted by key (a stable sort in code-unit order) and serialised by URLSearchParams, the '?' and pairs only when there is a pair. p is base64url (no padding) of SHA-256 over the UTF-8 bytes of target; h is base64url (no padding) of SHA-256 over the body bytes (empty for this GET). payloadSegment is base64url (no padding) of the UTF-8 JSON of payload, keys in the order aud, org, sub, sid, m, p, h, jti, iat, exp, ip; mac is base64url (no padding) of HMAC-SHA256 keyed by secret over the ASCII bytes of payloadSegment; header is v1. + payloadSegment + . + mac. iat and exp are Unix seconds. The secret is a test value only; it is never the preview or the site-action secret.",
+  "secret": "oos-cms-actor-fixture-secret-0123456789abcdef",
+  "target": "/api/internal/websites2/cms/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/collections/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee/items?page=2&q=caf%C3%A9%2C+%C3%BCber",
+  "payload": {
+    "aud": "cms",
+    "org": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "sub": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "sid": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+    "m": "GET",
+    "p": "cL5PO1mVrWRlMzuHrlENeQdRkQJaGLZhETtbrgR6LyY",
+    "h": "47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU",
+    "jti": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "iat": 1793016000,
+    "exp": 1793016060,
+    "ip": "203.0.113.7"
+  },
+  "payloadSegment": "eyJhdWQiOiJjbXMiLCJvcmciOiJhYWFhYWFhYS1hYWFhLTRhYWEtOGFhYS1hYWFhYWFhYWFhYWEiLCJzdWIiOiJjY2NjY2NjYy1jY2NjLTRjY2MtOGNjYy1jY2NjY2NjY2NjY2MiLCJzaWQiOiJkZGRkZGRkZC1kZGRkLTRkZGQtOGRkZC1kZGRkZGRkZGRkZGQiLCJtIjoiR0VUIiwicCI6ImNMNVBPMW1WcldSbE16dUhybEVOZVFkUmtRSmFHTFpoRVR0YnJnUjZMeVkiLCJoIjoiNDdERVFwajhIQlNhLV9USW1XLTVKQ2V1UWVSa201Tk1wSldaRzNoU3VGVSIsImp0aSI6ImJiYmJiYmJiLWJiYmItNGJiYi04YmJiLWJiYmJiYmJiYmJiYiIsImlhdCI6MTc5MzAxNjAwMCwiZXhwIjoxNzkzMDE2MDYwLCJpcCI6IjIwMy4wLjExMy43In0",
+  "mac": "_FVcvfkAkNMeX3E39NbhQcz9hS9rSZMN6vqf6i4pyaQ",
+  "header": "v1.eyJhdWQiOiJjbXMiLCJvcmciOiJhYWFhYWFhYS1hYWFhLTRhYWEtOGFhYS1hYWFhYWFhYWFhYWEiLCJzdWIiOiJjY2NjY2NjYy1jY2NjLTRjY2MtOGNjYy1jY2NjY2NjY2NjY2MiLCJzaWQiOiJkZGRkZGRkZC1kZGRkLTRkZGQtOGRkZC1kZGRkZGRkZGRkZGQiLCJtIjoiR0VUIiwicCI6ImNMNVBPMW1WcldSbE16dUhybEVOZVFkUmtRSmFHTFpoRVR0YnJnUjZMeVkiLCJoIjoiNDdERVFwajhIQlNhLV9USW1XLTVKQ2V1UWVSa201Tk1wSldaRzNoU3VGVSIsImp0aSI6ImJiYmJiYmJiLWJiYmItNGJiYi04YmJiLWJiYmJiYmJiYmJiYiIsImlhdCI6MTc5MzAxNjAwMCwiZXhwIjoxNzkzMDE2MDYwLCJpcCI6IjIwMy4wLjExMy43In0._FVcvfkAkNMeX3E39NbhQcz9hS9rSZMN6vqf6i4pyaQ"
+}

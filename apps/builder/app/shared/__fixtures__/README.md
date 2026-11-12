@@ -80,3 +80,38 @@ diff ../OrganizeOS/client/tests/fixtures/site-components/site-action-assertion.j
 ```
 
 and update this note's commit when it changes.
+
+`cms-actor-assertion.json` is a byte-for-byte copy of the OrganizeOS repo's
+`client/tests/fixtures/site-components/cms-actor-assertion.json`, at commit
+`06c7eb46340c3d9f523ff3e589be993c8e886df8` (the merge into `master` that brought
+it; unchanged since `f8019f718d2e30fee7f4802d10b7a690823a9486`).
+It pins the `X-OOS-Actor` v1 byte format and the canonical target that
+`../organizeos-cms.server.ts` mints for the native CMS's door and the
+platform's `/api/internal/websites2/cms/{organizationId}/...` verifies. Before
+each fork PR that touches the assertion or the canonical target, compare it
+with the platform's copy:
+
+```sh
+diff ../OrganizeOS/client/tests/fixtures/site-components/cms-actor-assertion.json \
+  apps/builder/app/shared/__fixtures__/cms-actor-assertion.json
+```
+
+and update this note's commit when it changes.
+
+`cms-door/` holds byte-for-byte copies of the OrganizeOS repo's
+`client/tests/fixtures/cms-door/` (every `.json` file and its README), at
+commit `06c7eb46340c3d9f523ff3e589be993c8e886df8` (the merge into `master` that
+brought them). Each `.json` file is one CMS door endpoint's
+`{ status, body }` as the platform answers it, which
+`../builder/features/cms-panel/native/cms-api.ts` parses
+(`cms-api.test.ts` parses each body through its endpoint's schema). Before
+each fork PR that touches the door's client or its shapes, compare them with
+the platform's copies:
+
+```sh
+for f in ../OrganizeOS/client/tests/fixtures/cms-door/*; do
+  diff "$f" "apps/builder/app/shared/__fixtures__/cms-door/$(basename "$f")"
+done
+```
+
+and update this note's commit when it changes.

@@ -1,0 +1,15 @@
+{
+  "status": 200,
+  "body": {
+    "collections": [
+      {
+        "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        "slug": "posts",
+        "name": "Posts",
+        "singularName": "Post",
+        "isPublic": true,
+        "total": 2
+      }
+    ]
+  }
+}

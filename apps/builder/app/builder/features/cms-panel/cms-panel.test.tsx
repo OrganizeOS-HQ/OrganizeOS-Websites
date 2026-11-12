@@ -5,7 +5,23 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { enableMapSet } from "immer";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { rawTheme, toast, TooltipProvider } from "@webstudio-is/design-system";
+import { userEvent } from "@vitest/browser/context";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Select,
+  rawTheme,
+  toast,
+  TooltipProvider,
+} from "@webstudio-is/design-system";
 import { defaultPlanFeatures } from "@webstudio-is/plans";
 import type { ResourceRequest } from "@webstudio-is/sdk";
 import { createDefaultPages } from "@webstudio-is/project-build";
@@ -31,22 +47,87 @@ import {
   $isUiHidden,
   setActiveSidebarPanel,
 } from "~/builder/shared/nano-states";
+import { setSetting } from "~/builder/shared/client-settings";
+import { IDLE, POTENTIAL } from "~/builder/shared/assets/drag-monitor";
 import { SidebarLeft } from "../../sidebar-left/sidebar-left";
 import { sidebarPanelNames } from "../../sidebar-left/types";
 import {
+  $cmsClassicDeepLink,
   $cmsDirty,
   $cmsFrameMounted,
+  $isClassicCmsShown,
   $isCmsOverlayOpen,
   $isCmsPanelAvailable,
   CMS_FRAME_SANDBOX,
-  CMS_OVERLAY_Z_INDEX,
   COLLECTION_CHANGED_NOTICE,
   getCmsPanelSrc,
+  isEditableTarget,
+  showClassicCms,
+  showNativeCms,
 } from "./cms-panel";
 import { CmsIcon } from "./cms-icon";
 // Read as text through Vite: the suite runs in the browser, without node:fs
 import topbarSource from "../../shared/topbar.tsx?raw";
 import toastSource from "../../../../../../packages/design-system/src/components/toast.tsx?raw";
+
+// A test source for the external drag state and drops. The real monitor
+// never starts in this suite (the canvas API is not initialised). `set` calls
+// each subscriber synchronously, in subscription order.
+const drag = vi.hoisted(() => {
+  const source = {
+    state: 0 as 0 | 1,
+    listeners: [] as Array<(state: 0 | 1) => void>,
+    drops: [] as Array<() => void>,
+    set(state: 0 | 1) {
+      source.state = state;
+      for (const listener of [...source.listeners]) {
+        listener(state);
+      }
+    },
+    drop() {
+      for (const listener of [...source.drops]) {
+        listener();
+      }
+    },
+  };
+  return source;
+});
+
+vi.mock("~/builder/shared/assets/drag-monitor", async (importOriginal) => {
+  const { useEffect, useRef } = await import("react");
+  // As upstream's hooks: the latest callback in a ref, one subscription for
+  // the component's life; the drag state calls back at once.
+  const useExternalDragStateEffect = (callback: (state: 0 | 1) => void) => {
+    const ref = useRef(callback);
+    ref.current = callback;
+    useEffect(() => {
+      const listener = (state: 0 | 1) => ref.current(state);
+      drag.listeners.push(listener);
+      listener(drag.state);
+      return () => {
+        drag.listeners.splice(drag.listeners.indexOf(listener), 1);
+      };
+    }, []);
+  };
+  const useOnDropEffect = (callback: () => void) => {
+    const ref = useRef(callback);
+    ref.current = callback;
+    useEffect(() => {
+      const listener = () => ref.current();
+      drag.drops.push(listener);
+      return () => {
+        drag.drops.splice(drag.drops.indexOf(listener), 1);
+      };
+    }, []);
+  };
+  return {
+    ...(await importOriginal<
+      typeof import("~/builder/shared/assets/drag-monitor")
+    >()),
+    useExternalDragStateEffect,
+    useOnDropEffect,
+  };
+});
 
 vi.mock("~/shared/resources", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/shared/resources")>()),
@@ -172,17 +253,89 @@ describe("CmsIcon", () => {
   });
 });
 
+describe("getCmsPanelSrc", () => {
+  test("without a deep link is today's address", () => {
+    expect(getCmsPanelSrc(site, "light")).toBe(
+      `${platformUrl}/cms-panel/${orgId}?theme=light`
+    );
+  });
+
+  test("adds the collection and the item, encoded", () => {
+    expect(
+      getCmsPanelSrc(site, "light", { collection: "news", item: "a b" })
+    ).toBe(
+      `${platformUrl}/cms-panel/${orgId}?theme=light&collection=news&item=a%20b`
+    );
+  });
+
+  test("adds only what is defined", () => {
+    expect(getCmsPanelSrc(site, "light", { collection: "news" })).toBe(
+      `${platformUrl}/cms-panel/${orgId}?theme=light&collection=news`
+    );
+  });
+});
+
+describe("isEditableTarget", () => {
+  const make = (html: string) => {
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    document.body.appendChild(host);
+    return host;
+  };
+
+  test.each([
+    ["an input", "<input>"],
+    ["a textarea", "<textarea></textarea>"],
+    ["a select", "<select></select>"],
+    ["a contenteditable element", '<div contenteditable="true"></div>'],
+  ])("is true for %s", (_kind, html) => {
+    const host = make(html);
+    try {
+      expect(isEditableTarget(host.firstElementChild)).toBe(true);
+    } finally {
+      host.remove();
+    }
+  });
+
+  test("is true for a child of a contenteditable element", () => {
+    const host = make('<div contenteditable="true"><span>text</span></div>');
+    try {
+      expect(isEditableTarget(host.querySelector("span"))).toBe(true);
+    } finally {
+      host.remove();
+    }
+  });
+
+  test.each([
+    ["a div", "<div></div>"],
+    ["a button", "<button></button>"],
+    [
+      'a contenteditable="false" element',
+      '<div contenteditable="false"></div>',
+    ],
+  ])("is false for %s", (_kind, html) => {
+    const host = make(html);
+    try {
+      expect(isEditableTarget(host.firstElementChild)).toBe(false);
+    } finally {
+      host.remove();
+    }
+  });
+
+  test("is false for the document and for null", () => {
+    expect(isEditableTarget(document)).toBe(false);
+    expect(isEditableTarget(null)).toBe(false);
+  });
+});
+
 describe("the overlay's stacking", () => {
-  test("sits above the top bar and below the toast layer", () => {
+  test("has no z-index, the toast layer above it", () => {
     expect(topbarSource.match(/zIndex: (\d+)/g)).toEqual([
       "zIndex: 1",
       "zIndex: 1",
     ]);
     expect(toastSource).toMatch(/zIndex: theme\.zIndices\.max/);
     expect(rawTheme.zIndices.max).toBe("999");
-    expect(CMS_OVERLAY_Z_INDEX).toBe(2);
-    expect(CMS_OVERLAY_Z_INDEX).toBeGreaterThan(1);
-    expect(CMS_OVERLAY_Z_INDEX).toBeLessThan(Number(rawTheme.zIndices.max));
   });
 });
 
@@ -234,6 +387,26 @@ describe("the CMS overlay in the builder", () => {
 
   const isShown = () => overlay()?.style.display === "block";
 
+  // The suite's viewport is narrow and its rail unstyled: pin the rail's box
+  // as the builder lays it out, so what the overlay holds is in the viewport.
+  const pinRail = (right = 41) => {
+    const rail =
+      railButton()?.closest<HTMLElement>('[role="tablist"]')?.parentElement
+        ?.parentElement;
+    expect(rail).toBeTruthy();
+    vi.spyOn(rail as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      top: 40,
+      bottom: 800,
+      left: right - 41,
+      right,
+      width: 41,
+      height: 760,
+      x: right - 41,
+      y: 40,
+      toJSON: () => ({}),
+    });
+  };
+
   const post = (data: unknown, overrides: Partial<MessageEventInit> = {}) => {
     act(() => {
       window.dispatchEvent(
@@ -257,6 +430,45 @@ describe("the CMS overlay in the builder", () => {
       target.dispatchEvent(event);
     });
     return event;
+  };
+
+  const clip = (type: "copy" | "cut" | "paste", target: Element) => {
+    const event = new ClipboardEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: new DataTransfer(),
+    });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+    return event;
+  };
+
+  // Spies on the document for copy, cut and paste, each in the capture and
+  // the bubble phase, as the builder's handlers listen
+  // (shared/copy-paste/copy-paste.ts). Returns them and their removal.
+  const spyOnDocumentClipboard = () => {
+    const spies = {
+      capture: { copy: vi.fn(), cut: vi.fn(), paste: vi.fn() },
+      bubble: { copy: vi.fn(), cut: vi.fn(), paste: vi.fn() },
+    };
+    const types = ["copy", "cut", "paste"] as const;
+    for (const type of types) {
+      document.addEventListener(type, spies.capture[type], true);
+      document.addEventListener(type, spies.bubble[type]);
+    }
+    const remove = () => {
+      for (const type of types) {
+        document.removeEventListener(type, spies.capture[type], true);
+        document.removeEventListener(type, spies.bubble[type]);
+      }
+    };
+    const calls = (phase: "capture" | "bubble") =>
+      types.reduce(
+        (sum, type) => sum + spies[phase][type].mock.calls.length,
+        0
+      );
+    return { spies, remove, calls };
   };
 
   // jsdom has no PointerEvent constructor; the listener reads only the target.
@@ -302,6 +514,8 @@ describe("the CMS overlay in the builder", () => {
       $builderMode.set("design");
       setActiveSidebarPanel("none");
       root?.unmount();
+      setSetting("navigatorLayout", "undocked");
+      drag.set(IDLE);
     });
     container?.remove();
     root = undefined;
@@ -472,7 +686,7 @@ describe("the CMS overlay in the builder", () => {
       window.history.replaceState(null, "", "/");
     });
 
-    test("covers from the rail's right edge to the viewport's, top to bottom, at z-index 2", () => {
+    test("covers from the rail's right edge to the viewport's, top to bottom, with no z-index", () => {
       render();
       // The rail: the tab list, in its display: contents wrapper, in the
       // bordered column.
@@ -499,7 +713,8 @@ describe("the CMS overlay in the builder", () => {
       expect(element?.style.right).toBe("0px");
       expect(element?.style.top).toBe("0px");
       expect(element?.style.bottom).toBe("0px");
-      expect(element?.style.zIndex).toBe("2");
+      expect(element?.style.zIndex).toBe("");
+      expect(getComputedStyle(element!).zIndex).toBe("auto");
       expect(frame()?.style.width).toBe("100%");
       expect(frame()?.style.height).toBe("100%");
       // The corner below the rail, over the footer's left end.
@@ -613,14 +828,11 @@ describe("the CMS overlay in the builder", () => {
           setActiveSidebarPanel("pages");
         });
         clickRail();
-        // From inside the sidebar's tab content, whose own Escape closes
-        // the open panel.
-        const inPanel = document.querySelector('[role="tabpanel"]');
-        expect(inPanel).not.toBeNull();
-        press("Escape", inPanel ?? document.body);
+        // Opening closed the panel; from inside the overlay.
+        press("Escape", overlay()!);
         expect(isShown()).toBe(false);
         expect(escape).not.toHaveBeenCalled();
-        expect($activeSidebarPanel.get()).toBe("pages");
+        expect($activeSidebarPanel.get()).toBe("none");
 
         // Hidden, Escape is the builder's again.
         press("Escape");
@@ -638,6 +850,38 @@ describe("the CMS overlay in the builder", () => {
       expect($isCmsOverlayOpen.get()).toBe(false);
       expect(isShown()).toBe(false);
       expect(frame()).toBe(iframe);
+    });
+
+    test("Escape in the builder hides it and returns focus to the rail button", () => {
+      render();
+      clickRail();
+      expect(document.activeElement).toBe(frame());
+      press("Escape");
+      expect(isShown()).toBe(false);
+      expect(document.activeElement).toBe(railButton());
+    });
+
+    test("cms.close_requested hides it and returns focus to the rail button", () => {
+      render();
+      clickRail();
+      expect(document.activeElement).toBe(frame());
+      post({ type: "cms.close_requested" });
+      expect(isShown()).toBe(false);
+      expect(document.activeElement).toBe(railButton());
+    });
+
+    test("a paste on the overlay itself reaches no builder handler", () => {
+      const clipboard = spyOnDocumentClipboard();
+      try {
+        render();
+        clickRail();
+        const event = clip("paste", overlay()!);
+        expect(clipboard.calls("capture")).toBe(0);
+        expect(clipboard.calls("bubble")).toBe(0);
+        expect(event.defaultPrevented).toBe(false);
+      } finally {
+        clipboard.remove();
+      }
     });
 
     test("another rail tab hides it and shows its panel", () => {
@@ -673,6 +917,72 @@ describe("the CMS overlay in the builder", () => {
       expect($isCmsOverlayOpen.get()).toBe(false);
       expect(isShown()).toBe(false);
     });
+
+    test.each([
+      ["pages", "undocked"],
+      ["pages", "docked"],
+      ["navigator", "undocked"],
+      ["assets", "docked"],
+    ] as const)(
+      "opening it from %s (%s navigator) sets the sidebar panel to none",
+      (panel, layout) => {
+        act(() => setSetting("navigatorLayout", layout));
+        render();
+        act(() => setActiveSidebarPanel(panel));
+        expect($activeSidebarPanel.get()).toBe(panel);
+        clickRail();
+        expect($activeSidebarPanel.get()).toBe("none");
+        expect(isShown()).toBe(true);
+      }
+    );
+
+    describe.each(["undocked", "docked"] as const)(
+      "an external drag, %s navigator, with Pages open before the overlay",
+      (layout) => {
+        beforeEach(() => {
+          act(() => setSetting("navigatorLayout", layout));
+          render();
+          // The sidebar switches to Assets and keeps a drop only while its
+          // tabs are not covered: lay the rail out at the viewport's left
+          // edge, as the builder does, whichever panel is open.
+          container!.style.width = "max-content";
+          pinRail();
+          act(() => setActiveSidebarPanel("pages"));
+          clickRail();
+        });
+
+        test("does not hide it when the drag starts: the overlay's drag-state subscriber runs before the sidebar's", () => {
+          act(() => drag.set(POTENTIAL));
+          expect($activeSidebarPanel.get()).toBe("assets");
+          expect(isShown()).toBe(true);
+        });
+
+        test("does not hide it when the drag leaves and the sidebar restores its tab", () => {
+          act(() => drag.set(POTENTIAL));
+          act(() => drag.set(IDLE));
+          expect(isShown()).toBe(true);
+        });
+
+        test("does not hide it on a drop; Assets shows once it closes", () => {
+          act(() => drag.set(POTENTIAL));
+          act(() => drag.drop());
+          act(() => drag.set(IDLE));
+          expect(isShown()).toBe(true);
+          expect($activeSidebarPanel.get()).toBe("assets");
+          clickRail();
+          expect(isShown()).toBe(false);
+          expect($activeSidebarPanel.get()).toBe("assets");
+        });
+
+        test("after the drag, a panel activated any other way hides it again", async () => {
+          act(() => drag.set(POTENTIAL));
+          act(() => drag.set(IDLE));
+          await Promise.resolve();
+          act(() => setActiveSidebarPanel("pages"));
+          expect(isShown()).toBe(false);
+        });
+      }
+    );
 
     test("preview mode hides it, and leaving preview keeps it hidden", () => {
       render();
@@ -724,9 +1034,7 @@ describe("the CMS overlay in the builder", () => {
     test("the toast shows above it", () => {
       render();
       clickRail();
-      expect(Number(overlay()?.style.zIndex)).toBeLessThan(
-        Number(rawTheme.zIndices.max)
-      );
+      expect(overlay()?.style.zIndex).toBe("");
     });
   });
 
@@ -845,6 +1153,582 @@ describe("the CMS overlay in the builder", () => {
       press("Escape");
       expect(confirm).not.toHaveBeenCalled();
       expect(frame()).toBe(iframe);
+    });
+  });
+
+  describe("the native screen (ORGANIZEOS_CMS_NATIVE)", () => {
+    const itemId = "33333333-3333-4333-8333-333333333333";
+
+    const nativeScreen = () =>
+      document.querySelector<HTMLElement>("[data-cms-native-screen]");
+
+    const menuItem = (label: string) =>
+      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (item) => item.textContent === label
+      );
+
+    const titleText = () =>
+      [...(nativeScreen()?.querySelectorAll<HTMLElement>("*") ?? [])].find(
+        (element) =>
+          element.childElementCount === 0 && element.textContent === "CMS"
+      );
+
+    // Content rendered by a root of its own into the native screen's main
+    // region, as the screen's regions will be. Returns its unmount.
+    const mounted: Array<() => void> = [];
+    const mountInScreen = (node: ReactElement) => {
+      const main = document.querySelector("[data-cms-native-main]");
+      expect(main).not.toBeNull();
+      const host = document.createElement("div");
+      main!.appendChild(host);
+      const hostRoot = createRoot(host);
+      act(() => {
+        hostRoot.render(createElement(TooltipProvider, null, node));
+      });
+      let isMounted = true;
+      const unmount = () => {
+        if (isMounted === false) {
+          return;
+        }
+        isMounted = false;
+        act(() => {
+          hostRoot.unmount();
+        });
+        host.remove();
+      };
+      mounted.push(unmount);
+      return unmount;
+    };
+
+    beforeEach(() => {
+      $organizeosSite.set({ ...site, cmsNativeEnabled: true });
+      $isClassicCmsShown.set(false);
+      $cmsClassicDeepLink.set(undefined);
+      $cmsFrameMounted.set(false);
+    });
+
+    afterEach(() => {
+      for (const unmount of mounted.splice(0)) {
+        unmount();
+      }
+    });
+
+    test("the overlay shows the native screen and frames nothing", () => {
+      render();
+      clickRail();
+      expect(isShown()).toBe(true);
+      expect(nativeScreen()).not.toBeNull();
+      expect(nativeScreen()?.style.display).toBe("flex");
+      expect(frame()).toBeNull();
+    });
+
+    test("focus moves to the screen on open and on reopen", () => {
+      render();
+      railButton()?.focus();
+      clickRail();
+      expect(document.activeElement).toBe(nativeScreen());
+      clickRail();
+      railButton()?.focus();
+      clickRail();
+      expect(document.activeElement).toBe(nativeScreen());
+    });
+
+    test("its root is a floating-panel container", () => {
+      render();
+      clickRail();
+      expect(
+        nativeScreen()?.hasAttribute("data-floating-panel-container")
+      ).toBe(true);
+      expect(nativeScreen()?.getAttribute("tabindex")).toBe("-1");
+    });
+
+    test("follows the builder's colour scheme", () => {
+      render();
+      clickRail();
+      const title = titleText();
+      expect(title).toBeDefined();
+      const colors: string[] = [];
+      try {
+        for (const scheme of ["light", "dark"]) {
+          document.documentElement.dataset.colorScheme = scheme;
+          const color = getComputedStyle(title!).color;
+          expect(color, scheme).not.toBe("rgba(0, 0, 0, 0)");
+          colors.push(color);
+        }
+      } finally {
+        delete document.documentElement.dataset.colorScheme;
+      }
+      expect(colors[0]).not.toBe(colors[1]);
+    });
+
+    test("Classic CMS mounts the frame once and shows it in place of the screen", async () => {
+      render();
+      // The suite's viewport is narrow and its rail unstyled: pin the rail's
+      // box as the builder lays it out, so the menu is within the viewport.
+      const rail =
+        railButton()?.closest<HTMLElement>('[role="tablist"]')?.parentElement
+          ?.parentElement;
+      vi.spyOn(rail as HTMLElement, "getBoundingClientRect").mockReturnValue({
+        top: 40,
+        bottom: 800,
+        left: 0,
+        right: 41,
+        width: 41,
+        height: 760,
+        x: 0,
+        y: 40,
+        toJSON: () => ({}),
+      });
+      clickRail();
+      await act(async () =>
+        userEvent.click(
+          nativeScreen()!.querySelector<HTMLElement>('[aria-label="CMS menu"]')!
+        )
+      );
+      await act(async () => userEvent.click(menuItem("Classic CMS")!));
+      const iframe = frame();
+      expect(iframe?.getAttribute("src")).toBe(
+        `${platformUrl}/cms-panel/${orgId}?theme=light`
+      );
+      expect(iframe?.style.display).toBe("block");
+      expect(nativeScreen()?.style.display).toBe("none");
+      expect(document.activeElement).toBe(iframe);
+      act(() => showNativeCms());
+      act(() => showClassicCms({ collection: "news", item: itemId }));
+      expect(frame()).toBe(iframe);
+      expect(frame()?.getAttribute("src")).toBe(
+        `${platformUrl}/cms-panel/${orgId}?theme=light`
+      );
+    });
+
+    test("a first Classic CMS with something open carries the deep link", () => {
+      render();
+      clickRail();
+      act(() => showClassicCms({ collection: "news", item: itemId }));
+      expect(frame()?.getAttribute("src")).toBe(
+        `${platformUrl}/cms-panel/${orgId}?theme=light&collection=news&item=${itemId}`
+      );
+    });
+
+    test("cms.close_requested from the frame returns to the native screen, not out of the overlay", () => {
+      render();
+      clickRail();
+      act(() => showClassicCms({}));
+      const iframe = frame();
+      post({ type: "cms.close_requested" });
+      expect(isShown()).toBe(true);
+      expect($isClassicCmsShown.get()).toBe(false);
+      expect(nativeScreen()?.style.display).toBe("flex");
+      expect(iframe?.isConnected).toBe(true);
+      expect(frame()).toBe(iframe);
+      expect(document.activeElement).toBe(nativeScreen());
+    });
+
+    test("the frame's messages still act while it exists", () => {
+      const news: ResourceRequest = {
+        name: "news",
+        method: "get",
+        url: `${platformUrl}/api/public/v1/collections/news/items`,
+        searchParams: [],
+        headers: [],
+      };
+      vi.spyOn($computedResourceRequests, "get").mockReturnValue([news]);
+      render();
+      clickRail();
+      act(() => showClassicCms({}));
+      post({ type: "cms.item_saved", collection: "news" });
+      expect(vi.mocked(invalidateResource).mock.calls).toEqual([[news]]);
+      post({ type: "cms.dirty", dirty: true });
+      expect($cmsDirty.get()).toBe(true);
+    });
+
+    test("reopening shows the screen that was showing", () => {
+      render();
+      clickRail();
+      act(() => showClassicCms({}));
+      const iframe = frame();
+      press("Escape");
+      expect(isShown()).toBe(false);
+      clickRail();
+      expect(isShown()).toBe(true);
+      expect(frame()).toBe(iframe);
+      expect(frame()?.style.display).toBe("block");
+      expect(nativeScreen()?.style.display).toBe("none");
+      expect(document.activeElement).toBe(iframe);
+    });
+
+    const bodyChildOf = (node: Element) => {
+      let current = node;
+      while (current.parentElement !== document.body) {
+        current = current.parentElement!;
+      }
+      return current;
+    };
+
+    const follows = (a: Node, b: Node) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+    test.each([
+      [
+        "Select",
+        <Select
+          key="select"
+          open
+          options={["One", "Two"]}
+          value="One"
+          onChange={() => {}}
+        />,
+        '[role="listbox"]',
+      ],
+      [
+        "DropdownMenu",
+        <DropdownMenu key="menu" open>
+          <DropdownMenuTrigger>t</DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem>i</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>,
+        '[role="menu"]',
+      ],
+      [
+        "Popover",
+        <Popover key="popover" open>
+          <PopoverTrigger>t</PopoverTrigger>
+          <PopoverContent>p</PopoverContent>
+        </Popover>,
+        "[data-radix-popper-content-wrapper]",
+      ],
+      [
+        "Dialog",
+        <Dialog key="dialog" open>
+          <DialogContent>
+            <DialogTitle>d</DialogTitle>
+          </DialogContent>
+        </Dialog>,
+        '[role="dialog"]',
+      ],
+    ])(
+      "a %s opened inside it is a later body child than it",
+      (_kind, node, selector) => {
+        render();
+        clickRail();
+        mountInScreen(node);
+        const popup = document.querySelector(selector);
+        expect(popup).not.toBeNull();
+        expect(follows(overlay()!, bodyChildOf(popup!))).toBe(true);
+      }
+    );
+
+    test("it paints over the builder", () => {
+      // A stand-in for builder.tsx's Main, which isolates its stacking.
+      const main = document.createElement("div");
+      main.style.position = "relative";
+      main.style.isolation = "isolate";
+      main.style.width = "100vw";
+      main.style.height = "100vh";
+      document.body.appendChild(main);
+      try {
+        render();
+        pinRail();
+        clickRail();
+        const { left, top, width, height } = overlay()!.getBoundingClientRect();
+        expect(width).toBeGreaterThan(0);
+        expect(height).toBeGreaterThan(0);
+        expect(
+          overlay()!.contains(
+            document.elementFromPoint(left + width / 2, top + height / 2)
+          )
+        ).toBe(true);
+      } finally {
+        main.remove();
+      }
+    });
+
+    test("an open Select's option inside it paints over it", async () => {
+      render();
+      pinRail();
+      clickRail();
+      mountInScreen(
+        <Select open options={["One", "Two"]} value="One" onChange={() => {}} />
+      );
+      const option = [...document.querySelectorAll('[role="option"]')].at(-1)!;
+      expect(option).toBeDefined();
+      // The popper places its content off screen until it has measured it.
+      await vi.waitFor(() => {
+        const { top, left } = option.getBoundingClientRect();
+        expect(top).toBeGreaterThanOrEqual(0);
+        expect(left).toBeGreaterThanOrEqual(0);
+      });
+      // The open Select turns off pointer events outside it, and hit testing
+      // skips such elements: turn them back on for the overlay, so the
+      // element at the point is the one painted there.
+      expect(getComputedStyle(overlay()!).pointerEvents).toBe("none");
+      overlay()!.style.pointerEvents = "auto";
+      const r = option.getBoundingClientRect();
+      expect(
+        overlay()!.contains(
+          document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+        )
+      ).toBe(false);
+      expect(
+        option.contains(
+          document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+        )
+      ).toBe(true);
+    });
+
+    describe("Escape", () => {
+      const escape = vi.fn();
+      let unsubscribe: (() => void) | undefined;
+
+      beforeEach(() => {
+        escape.mockClear();
+        const { subscribeCommands } = createCommandsEmitter({
+          source: "cms-native-escape-test",
+          commands: [
+            {
+              name: "cmsNativeTestEscape",
+              defaultHotkeys: ["escape"],
+              preventDefault: false,
+              handler: escape,
+            },
+          ],
+        });
+        unsubscribe = subscribeCommands();
+      });
+
+      afterEach(() => {
+        unsubscribe?.();
+        unsubscribe = undefined;
+      });
+
+      test("Escape in an open Select inside it closes only the Select", async () => {
+        render();
+        pinRail();
+        clickRail();
+        mountInScreen(
+          <Select options={["One", "Two"]} value="One" onChange={() => {}} />
+        );
+        await act(async () =>
+          userEvent.click(
+            nativeScreen()!.querySelector<HTMLElement>(
+              "[data-cms-native-main] button"
+            )!
+          )
+        );
+        expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+        await act(async () => userEvent.keyboard("{Escape}"));
+        expect(document.querySelector('[role="listbox"]')).toBeNull();
+        expect(isShown()).toBe(true);
+        expect(escape).not.toHaveBeenCalled();
+      });
+
+      test("Escape in the open CMS menu closes only the menu", async () => {
+        render();
+        pinRail();
+        clickRail();
+        await act(async () =>
+          userEvent.click(
+            nativeScreen()!.querySelector<HTMLElement>(
+              '[aria-label="CMS menu"]'
+            )!
+          )
+        );
+        expect(document.querySelector('[role="menu"]')).not.toBeNull();
+        await act(async () => userEvent.keyboard("{Escape}"));
+        expect(document.querySelector('[role="menu"]')).toBeNull();
+        expect(isShown()).toBe(true);
+        expect(nativeScreen()?.style.display).toBe("flex");
+        expect(escape).not.toHaveBeenCalled();
+      });
+
+      test.each([
+        ["input", <input key="input" data-editable />],
+        ["textarea", <textarea key="textarea" data-editable />],
+        [
+          "select",
+          <select key="select" data-editable>
+            <option>One</option>
+          </select>,
+        ],
+        [
+          "contenteditable",
+          <div
+            key="editable"
+            data-editable
+            contentEditable
+            suppressContentEditableWarning
+          >
+            text
+          </div>,
+        ],
+      ])("Escape in a %s inside it does nothing", (_kind, node) => {
+        render();
+        clickRail();
+        mountInScreen(node);
+        const element = document.querySelector<HTMLElement>("[data-editable]");
+        expect(element).not.toBeNull();
+        press("Escape", element!);
+        expect(isShown()).toBe(true);
+        expect(escape).not.toHaveBeenCalled();
+      });
+
+      test("Escape a layer took is left alone", () => {
+        render();
+        clickRail();
+        mountInScreen(<div data-layer tabIndex={-1} />);
+        const layer = document.querySelector<HTMLElement>("[data-layer]")!;
+        layer.addEventListener("keydown", (event) => event.preventDefault());
+        press("Escape", layer);
+        expect(isShown()).toBe(true);
+        expect(escape).not.toHaveBeenCalled();
+      });
+
+      test("Escape at the top level hides it and returns focus to the rail button", () => {
+        render();
+        clickRail();
+        expect(document.activeElement).toBe(nativeScreen());
+        press("Escape", nativeScreen()!);
+        expect(isShown()).toBe(false);
+        expect(document.activeElement).toBe(railButton());
+        expect(escape).not.toHaveBeenCalled();
+      });
+
+      test("the close button hides it and returns focus to the rail button", () => {
+        render();
+        clickRail();
+        const close = nativeScreen()!.querySelector<HTMLElement>(
+          '[aria-label="Close"]'
+        )!;
+        close.focus();
+        act(() => {
+          close.click();
+        });
+        expect(isShown()).toBe(false);
+        expect(document.activeElement).toBe(railButton());
+      });
+    });
+
+    describe("the clipboard", () => {
+      const commands = { copy: vi.fn(), cut: vi.fn(), paste: vi.fn() };
+      let unsubscribe: (() => void) | undefined;
+      let clipboard: ReturnType<typeof spyOnDocumentClipboard> | undefined;
+
+      const row = () => document.querySelector<HTMLElement>("[data-row]")!;
+      const input = () => document.querySelector<HTMLElement>("[data-input]")!;
+      const editable = () =>
+        document.querySelector<HTMLElement>("[data-editable]")!;
+
+      const pressMeta = (key: string, target: Element) => {
+        const event = new KeyboardEvent("keydown", {
+          key,
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        act(() => {
+          target.dispatchEvent(event);
+        });
+      };
+
+      beforeEach(() => {
+        for (const command of Object.values(commands)) {
+          command.mockClear();
+        }
+        const emitter = createCommandsEmitter({
+          source: "cms-native-clipboard-test",
+          commands: [
+            {
+              name: "cmsTestCopy",
+              defaultHotkeys: ["meta+c"],
+              handler: commands.copy,
+            },
+            {
+              name: "cmsTestCut",
+              defaultHotkeys: ["meta+x"],
+              handler: commands.cut,
+            },
+            {
+              name: "cmsTestPaste",
+              defaultHotkeys: ["meta+v"],
+              handler: commands.paste,
+            },
+          ],
+        });
+        unsubscribe = emitter.subscribeCommands();
+        clipboard = spyOnDocumentClipboard();
+        render();
+        clickRail();
+        mountInScreen(
+          <div>
+            {/* a stand-in CMS row */}
+            <div data-row tabIndex={0}>
+              row
+            </div>
+            <input data-input />
+            {/* a stand-in for the rich-text editor */}
+            <div data-editable contentEditable suppressContentEditableWarning>
+              text
+            </div>
+          </div>
+        );
+      });
+
+      afterEach(() => {
+        unsubscribe?.();
+        unsubscribe = undefined;
+        clipboard?.remove();
+        clipboard = undefined;
+      });
+
+      test("Cmd+C, Cmd+X and Cmd+V on a CMS row reach no builder handler", () => {
+        row().focus();
+        for (const key of ["c", "x", "v"]) {
+          pressMeta(key, row());
+        }
+        const events = (["copy", "cut", "paste"] as const).map((type) =>
+          clip(type, row())
+        );
+        expect(commands.copy).not.toHaveBeenCalled();
+        expect(commands.cut).not.toHaveBeenCalled();
+        expect(commands.paste).not.toHaveBeenCalled();
+        expect(clipboard!.calls("capture")).toBe(0);
+        expect(clipboard!.calls("bubble")).toBe(0);
+        // The browser still copies text the person selected.
+        for (const event of events) {
+          expect(event.defaultPrevented).toBe(false);
+        }
+      });
+
+      test("copy, cut and paste in an input and in a contenteditable still reach their handlers", () => {
+        clip("paste", input());
+        clip("paste", editable());
+        clip("copy", input());
+        clip("cut", editable());
+        expect(clipboard!.calls("capture")).toBe(4);
+        expect(clipboard!.spies.capture.paste).toHaveBeenCalledTimes(2);
+        expect(clipboard!.spies.capture.copy).toHaveBeenCalledTimes(1);
+        expect(clipboard!.spies.capture.cut).toHaveBeenCalledTimes(1);
+      });
+
+      test("closed, the overlay leaves the clipboard alone", () => {
+        clickRail();
+        expect(isShown()).toBe(false);
+        clip("paste", row());
+        expect(clipboard!.spies.capture.paste).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    test("the close button hides the overlay", () => {
+      render();
+      clickRail();
+      act(() => {
+        nativeScreen()
+          ?.querySelector<HTMLElement>('[aria-label="Close"]')
+          ?.click();
+      });
+      expect(isShown()).toBe(false);
+      expect($isCmsOverlayOpen.get()).toBe(false);
     });
   });
 });

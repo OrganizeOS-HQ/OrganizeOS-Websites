@@ -37,6 +37,13 @@ export type OrganizeosSite = {
    * Components panel lists neither and their insert is refused.
    */
   shopBlocksEnabled?: boolean;
+  /**
+   * Whether the CMS overlay shows the native CMS screen in place of the framed
+   * CMS: `ORGANIZEOS_CMS_PANEL` and `ORGANIZEOS_CMS_NATIVE` are exactly
+   * `true`, `WEBSITES2_CMS_SECRET` is set, and `ORGANIZEOS_CMS_NATIVE_ORG_IDS`
+   * lists the org (matched in any case).
+   */
+  cmsNativeEnabled?: boolean;
 };
 
 /**

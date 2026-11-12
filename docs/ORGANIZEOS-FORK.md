@@ -94,6 +94,9 @@ OrganizeOS integration (all optional; each feature ships dark until its variable
 - `WEBSITES2_PREVIEW_SECRET` — shared with OrganizeOS (the same value on both sides): the key that signs the canvas's draft-preview assertion, `X-OOS-Preview` (§5, "Draft preview on the canvas"). Unset or blank: no assertion is minted, and the canvas shows published items only. Rotate it on both sides together; a mismatch only turns preview off.
 - `WEBSITES2_SITE_ACTION_SECRET` — shared with OrganizeOS (the same value on both sides; set in Production only): the key that signs the Publish dialog's Unpublish assertion, `X-OOS-Site-Action` (§5, item 4). Unset or blank: the dialog offers no Unpublish, nothing is minted, and the action route answers 404. Rotate it on both sides together; a mismatch only turns Unpublish off (OrganizeOS refuses the assertion).
 - `ORGANIZEOS_CMS_PANEL` — builder only: the CMS's switch (§9, "The CMS overlay"). Only the exact value `true` offers the CMS rail button; anything else leaves the rail without it. The OrganizeOS data tab does not depend on it.
+- `WEBSITES2_CMS_SECRET` — shared with OrganizeOS (the same value on both sides; never the preview's or the site action's value): the key that signs the CMS door's actor assertion, `X-OOS-Actor` (§5, "The CMS door"). Unset or blank: the native CMS screen is off (the framed CMS shows) and the door's route answers 503 `unavailable`, minting nothing. Rotate it on both sides together; a mismatch makes OrganizeOS refuse every door call.
+- `ORGANIZEOS_CMS_NATIVE` — builder only. Only the exact value `true`, with `ORGANIZEOS_CMS_PANEL=true` and `WEBSITES2_CMS_SECRET` set, shows the native CMS screen in the overlay (§9, "The CMS overlay") to the orgs `ORGANIZEOS_CMS_NATIVE_ORG_IDS` lists; anything else shows the framed CMS. Unset it and redeploy to roll back.
+- `ORGANIZEOS_CMS_NATIVE_ORG_IDS` — builder only. Comma-separated organization ids, each trimmed and matched in any case, that get the native screen while the switch is on; an entry that is not an organization id is ignored, and unset or empty gives it to none. Removing an org is its rollback.
 - `ORGANIZEOS_SHOP_BLOCKS` — builder only: the Shop blocks' switch (§9, "Shop blocks"). Only the exact value `true` lists the Product Grid and the Product Card in the Components panel and lets them be inserted, and makes a token provision write the Products catalog Resource; anything else (unset, empty, `TRUE`, `1`) lists neither, refuses their insert and only rewrites a Products Resource a build already has. Placed blocks keep working when it is turned off. To turn it on or off, set or unset it on the builder's Production scope and redeploy.
 - `PUBLISHER_HOST` — the platform base domain an org's site is served from (`<subdomain>.<PUBLISHER_HOST>`); with the org subdomain mirrored into `Project.domain` (§5) every address the builder shows is the real one. **Defaults to `organizeos.org` in code**, so an unset env is correct rather than dangerous; upstream defaulted it to its own staging domain, which is what made a missing value advertise a Webstudio address. Set it only to point a deployment somewhere else.
 - `TRPC_SERVER_API_TOKEN` — the builder's service token. The publish executor uses it to sync the build **and** to report the outcome to `POST /internal/publish-status` (§5). Never commit a value: `apps/builder/.env` keeps it commented out, where upstream's sets an e2e token.
@@ -266,6 +269,8 @@ How an org admin's session is wired end to end, and which side owns each step. T
 **Old session cookies.** The platform's session used to be `sb-<ref>-auth-token` (and its `.0`, `.1`, ... chunks and `-code-verifier`) with `Domain=.organizeos.org`, so it reached `builder.organizeos.org` and every `p-{projectId}.builder.organizeos.org` canvas, where an org's script could read it. It is now `__Host-oos-auth`, host-only on `app.organizeos.org`, but an old copy can stay in a browser for up to 400 days. With `ORGANIZEOS_EXPIRE_LEGACY_SESSION=true`, every document response the builder serves on `organizeos.org` or a host under it expires each cookie the request carried whose name matches `^sb-[a-z0-9]+-auth-token(?:-code-verifier)?(?:\.(?:0|[1-9]\d*))?$`: two raw `Set-Cookie` appends per name, `<name>=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Max-Age=0; SameSite=Lax; Secure; Domain=.organizeos.org` and the same without `Domain`, after the routes' own headers and before any page script runs. The builder sets no `sb-*` cookie of its own, so the pattern is not narrowed to a project ref. `__Host-oos-auth` and `oos-auth` are never set, read or deleted. Resource routes (assets, `rest.*`, tRPC) and static files are left alone: they never reach the document entry. The code is `services/organizeos-legacy-session.server.ts`, called from `entry.server.tsx` (Remix's default Node entry, which the builder used while it had none, with one marked call; its other differences are for this repository's lint and isbot 5 and change no behaviour). On Vercel the global `Headers` is Remix's polyfill (`@vercel/remix` calls `installGlobals()`), which has `raw()` and no `getSetCookie()`, so the module reads existing cookies through either. Tests in `services/organizeos-legacy-session.server.test.tsx` and `organizeos-legacy-session.polyfill.server.test.tsx` (under the polyfill globals) drive that entry through Remix's request handler, with the server build in `organizeos-legacy-session.fixture.tsx`, including a document Remix renders a second time after an error. Order (OrganizeOS plan `docs/superpowers/plans/2026-11-03-org-sites-d-session-cookie.md`, sections 8 and 10): the flag goes on only after the app host's switch to the host-only cookie is verified in production; before that the domain cookie is the live session and the delete would sign people out of the app. To roll the app back to the domain cookie, turn the flag off first.
 
 **Draft preview on the canvas.** The canvas shows a collection's drafts as well as its published items (OrganizeOS design `docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md`, 4.5). Every canvas Resource fetch runs on the builder's server, in `routes/rest.resources-loader.ts`, and one marked change there, inside upstream's `customFetch` and before `safeResourceFetch` (upstream's check of where a fetch may go), passes each outgoing fetch through `createPreviewAssertion` (`shared/organizeos-preview.server.ts`). It adds `X-OOS-Preview: v1.{payload}.{mac}` only when all of these hold, and otherwise the fetch goes out unchanged: `WEBSITES2_PREVIEW_SECRET` is set; the fetch URL, parsed with `new URL` (never a string prefix), has the origin of `ORGANIZEOS_APP_URL`, no userinfo, no encoded slash, backslash or dot, and a pathname under `/api/public/v1/collections/`; the request carries a builder session whose OrganizeOS binding is `live` (`readBuilderSession`, then `checkOrganizeosBinding`, both cached); that user, signed in as a user and not through a share link's token, has upstream's `view` permit or above on the project of the `p-{projectId}` host (`authorizeProject.hasProjectPermit`); and the project's owner is an org's service account, the organization id resolved as the builder loader resolves it and cached per project for 60 s in-process. The session, permit and org are resolved once per loader request, on its first qualifying fetch; each fetch gets its own assertion. `payload` is base64url (unpadded) of the UTF-8 JSON `{ org, sub, sid, iat, exp }` in that key order: the org id, `organizeosUserId`, `organizeosSid`, and Unix seconds with `exp = iat + 60`. `mac` is base64url (unpadded) of HMAC-SHA256, keyed by `WEBSITES2_PREVIEW_SECRET`, over the ASCII payload segment, and the segment sent is the one signed. The header replaces any stored `X-OOS-Preview` in any casing (`Headers.set`), never appends: a duplicated header arrives comma-joined and the platform refuses it. It is added after the client computed the Resource's cache key (`getResourceKey`), which is unchanged, and never enters build data. A fetch that carries it goes out with `redirect: "manual"`: a redirect is answered, never followed, so the header never reaches the host a redirect names (a collections read the app answers with a redirect reaches the canvas as that 3xx). The byte format is pinned by the platform's `client/tests/fixtures/site-components/preview-assertion.json`, copied to `apps/builder/app/shared/__fixtures__/` (its README names the source commit; `diff` it before a PR that touches the assertion). The platform verifies the MAC, the time window, the org against the read token's, the session's liveness and the user's `pages.view`, and on any failure serves published items as if the header were absent. A published site never carries the header: prebuild fails when any Resource's stored headers name it, in any casing (`packages/cli/src/organizeos-preview-header.ts`, one marked call in `prebuild.ts`). The builder's Form Preview (`routes/rest.preview-form.ts`, upstream's) carries no assertion. It also denies a form's fetch the publisher's registrable domain, so a Signup Form, the starter signup page's included, cannot submit to `app.organizeos.org` from the builder's Preview (owner decisions D11 and D15); it submits on the published site (§8).
+
+**The CMS door.** The native CMS screen (§9, "The CMS overlay") reads and writes the org's collections only through `/rest/organizeos-cms/{projectId}/...` (`routes/rest.organizeos-cms.$projectId.$.ts`, the logic in `services/organizeos-cms-route.server.ts`, the assertion and the forward in `shared/organizeos-cms.server.ts`). Its client, `features/cms-panel/native/cms-api.ts`, calls the route through the builder's own `fetch` with the page's CSRF token and a 20 second client timeout (35 seconds for an image upload). Every call answers the door's success body or `{ error: code, field? }` and never throws; a success body is checked against its endpoint's schema, and a client timeout, a throw or an answer it cannot read is `unavailable`. A search term is trimmed and cut to 200 UTF-16 units, never splitting a surrogate pair. The schemas are pinned against the platform's own answers, copied to `shared/__fixtures__/cms-door/`. The route answers, in order: `GET`, `POST` and `PUT` only (else 405 `invalid`); a fetch with the page's CSRF token; a user signed in as a user (anonymous or no session 401 `unauthorized`; a share link's token, a service call or another user's session 403 `forbidden`) whose builder session has a `live` OrganizeOS binding with `organizeosUserId` and `organizeosSid` (`pass`, `missing` or `dead` 401, a failed check 503 `unavailable`; under `enforce` the session read already ends such a session, so it is 401 too); the project's `view` permit for a `GET`, `edit` for a `POST` or `PUT` (else 403); `WEBSITES2_CMS_SECRET` set (else 503, nothing minted); the org the project owner's, lower-cased (a failed read 503, none 403), never the request's; the path one of the fixed list E0 to E9 with lower-case ids and a strict query, the request's own path ending in that rebuilt path (else, an encoded slash, backslash or dot included, 404 `not_found`, never forwarded); a write's body JSON of at most 2 MB, an upload's one `file` part at most 4 MB in a body of at most 4 MB plus 64 KB (else 400 `invalid`, the read stopped at the cap). It mints `X-OOS-Actor: v1.{payload}.{mac}`: `payload` base64url, unpadded, of the JSON `{ aud: "cms", org, sub, sid, m, p, h, jti, iat, exp, ip }` in that key order (`m` the method; `p` base64url SHA-256 of the canonical target: the path, then `?` and the query's pairs sorted by key with `URLSearchParams` when it has one; `h` base64url SHA-256 of the body bytes; `jti` a random UUID; `exp = iat + 60`; `ip` the address in `x-real-ip`, else the first `x-forwarded-for` entry, when it is an address literal of at most 45 characters, else `null`); `mac` base64url HMAC-SHA256 over the ASCII payload segment keyed by `WEBSITES2_CMS_SECRET`; the byte format is pinned by the platform's fixture, copied to `shared/__fixtures__/cms-actor-assertion.json`. It sends the rebuilt path and query, never the request's, to `{ORGANIZEOS_APP_URL}/api/internal/websites2/cms/{organizationId}/...` with the body bytes untouched, no cookie, `redirect: "error"`, a 15 second timeout (30 for an upload) and no retry, and relays a JSON answer of at most 5 MB as its exact status and bytes, `private, no-store`; a timeout, a redirect, a network error or any other answer is 502 `unavailable`. A failure logs one code. OrganizeOS verifies the assertion, checks the session, the membership and permission and the plan again, the two-step sign-in rule on access and on writes, and records each write's `jti` once.
 
 **Project settings.** Since 0.309.0 a build's project settings (custom code, the contact email, the site's authentication, headers and the rest) live in their own column, `"Build"."projectSettings"`, which a platform migration adds, and the builder and the CLI read it first. A build saved before keeps a copy of its old settings in `pages`, which the builder strips only in memory and writes back on a save, so the column is the live value and that copy goes stale. The platform's `websites2_builder_resync_project_settings` repairs the column from a build the old builder wrote last, and `websites2_builder_restore_legacy_settings` writes the column back into `pages` for a rollback. When they run at the cutover is owner decision D9, still open, in the OrganizeOS plan for this merge (`docs/superpowers/plans/2026-11-01-builder-upstream-merge.md`).
 
@@ -519,6 +524,16 @@ can be merged with minimal conflict.
   `services/rest-organizeos-site.server.test.ts`,
   `features/publish/organizeos-publish-addresses.test.ts` and
   `features/publish/organizeos-publish-targets.test.ts`.
+- **The CMS door (§5).** The route `routes/rest.organizeos-cms.$projectId.$.ts`,
+  with its logic in `services/organizeos-cms-route.server.ts` and tests in
+  `services/rest-organizeos-cms.server.test.ts`; the assertion and the forward
+  `shared/organizeos-cms.server.ts`, with `shared/organizeos-cms.server.test.ts`
+  and the fixture copy `shared/__fixtures__/cms-actor-assertion.json`;
+  `WEBSITES2_CMS_SECRET` in `env/env.server.ts`; the native CMS screen's client
+  `features/cms-panel/native/cms-api.ts`, with
+  `features/cms-panel/native/cms-api.test.ts`, its data seam
+  `features/cms-panel/native/cms-source.ts`, and the copied response fixtures
+  `shared/__fixtures__/cms-door/*.json` with their README.
 - **Asset storage and serving (§4).** `shared/asset-response.server.ts`, with
   `shared/asset-response.server.test.ts` and `shared/cgi-routes.server.test.ts`;
   the three `routes/cgi.*` loaders; the content route's marked block in
@@ -530,7 +545,8 @@ can be merged with minimal conflict.
   `src/clients/s3/s3.test.ts` and `src/clients/s3/object-url.test.ts`.
   `services/staged-upload.server.ts` keeps its local staged uploads in the OS
   temporary folder, since a serverless bundle's folder is read-only.
-- **The CMS overlay (§9, "The CMS overlay").** `features/cms-panel/*`, with its
+- **The CMS overlay (§9, "The CMS overlay").** `features/cms-panel/*` and
+  `features/cms-panel/native/*` (the native CMS screen), with their
   tests (its site fixture is a loopback origin, so the suite frames no live
   platform), among them `cms-icon.tsx`, the database icon; in
   `sidebar-left/sidebar-left.tsx`, the one `<CmsRailButton />` after the tab
@@ -545,7 +561,11 @@ can be merged with minimal conflict.
   pinned by `shared/resources.organizeos.test.ts`; `cmsPanelEnabled` on
   `OrganizeosSite` (`shared/organizeos-site.ts`), set by `resolveOrganizeosSite`
   from `ORGANIZEOS_CMS_PANEL` in `env/env.server.ts`, passed by the loader in
-  `routes/_ui.(builder).tsx`; and the app's origin in that route's `frame-src`,
+  `routes/_ui.(builder).tsx`; `cmsNativeEnabled`, set by `resolveOrganizeosSite`
+  (with `isCmsNativeSwitchOn` and `parseCmsNativeOrgIds`) from
+  `ORGANIZEOS_CMS_NATIVE`, `ORGANIZEOS_CMS_NATIVE_ORG_IDS` and whether
+  `WEBSITES2_CMS_SECRET` is set, passed by the same loader's marked lines; and
+  the app's origin in that route's `frame-src`,
   through `builderFrameSrcPolicy` in `shared/frame-protection.ts`.
 - **Frame protection (§4).** `shared/frame-protection.ts`, with
   `shared/frame-protection.node.test.ts` and
@@ -1577,35 +1597,44 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     viewport's right edge, top to bottom, over the top bar, the sidebar
     panel, the canvas and the inspector, plus a strip from the rail's
     measured bottom edge down, under the rail, where the full-width footer
-    would otherwise show through. Its `z-index` is 2
-    (`CMS_OVERLAY_Z_INDEX`): above the top bar (`zIndex: 1`) and below the
-    toast layer (`theme.zIndices.max`, 999), so the "Reload" notice shows
-    over it. It is portalled because the left sidebar's own box isolates
-    its stacking (`isolation: isolate` on builder.tsx's `SidePanel`), where
-    a z-index would not reach past the inspector. Design-system dialogs and
-    popovers portal with no z-index and so render beneath it; the builder
-    opens none on its behalf.
+    would otherwise show through. It takes no z-index. It is portalled
+    because the left sidebar's own box isolates its stacking
+    (`isolation: isolate` on builder.tsx's `SidePanel`); as a later body
+    child than the builder root, whose `Main` and `SidePanel` isolate their
+    stacking and whose top bar has a z-index only while the UI is hidden, it
+    paints over them. The toast layer keeps `theme.zIndices.max`, so the
+    "Reload" notice shows over it. Design-system popups, menus, tooltips and
+    dialogs portal with no z-index after it, and so open above it.
   - **Close means hide.** The frame is mounted on the first open and stays
     mounted for the life of the builder document. Closing sets
     `display: none`, so reopening shows the screen as it was left, unsaved
     text included; there is no discard and no confirm. It hides on the rail
-    button, on Escape pressed in the builder document, on a press on the
-    top bar (its corner beside the overlay holds the builder's main menu,
-    whose menus and dialogs portal without a z-index and would open beneath
-    the overlay), on
+    button, on Escape pressed in the builder document that no layer took, on
+    a press on the top bar (its corner beside the overlay holds the
+    builder's main menu), on
     `cms.close_requested` (the screen's own close button, or Escape at its
     top level), when another rail tab is clicked (which then shows its
     panel, even the one already open) or a panel becomes active any other
     way, on entering preview mode, on hiding the builder UI, and when the
-    CMS stops being offered. Leaving preview keeps it hidden.
-  - **Focus and shortcuts,** with no upstream edit. Opening calls
-    `iframe.focus()`, so focus leaves the canvas and the rail. While it
-    shows, a capture-phase `keydown` listener on the builder document calls
-    upstream's `suppressCommandsForEvent` for every key. Escape also hides
-    the overlay and stops there: it runs neither the builder's own Escape
-    command (deselect, or leave preview) nor the sidebar's Escape, which
-    would close the open panel. Keys typed inside the frame never reach the
-    builder or the canvas documents.
+    CMS stops being offered. Leaving preview keeps it hidden. Opening the
+    overlay sets the sidebar panel to none, as another rail tab replaces the
+    open panel. A panel change made during an external file drag, or by the
+    sidebar's restore when it ends, does not hide the overlay, so a drag's
+    switch to Assets, its restore and a drop leave it open, and closing it
+    after a drop shows Assets.
+  - **Focus and shortcuts,** with no upstream edit. Opening focuses the
+    native screen's root (`tabIndex={-1}`) or the frame, so focus leaves the
+    canvas and the rail. While it shows, a capture-phase `keydown` listener
+    on the builder document calls upstream's `suppressCommandsForEvent` for
+    every key, so no builder command runs. Escape hides the overlay in the
+    bubble phase, only when nothing took it (a design-system layer that
+    dismisses calls `preventDefault`) and not in an input, a textarea, a
+    select or a contenteditable. A hide by Escape, the close button or the
+    frame's close returns focus to the rail button. While the overlay
+    shows, `copy`, `cut` and `paste` on a target that is not editable stop
+    at the window, so the builder's document handlers never paste into the
+    hidden canvas; inputs and editable regions keep their own handling. Keys
+    typed inside the frame never reach the builder or the canvas documents.
   - **The frame.** `src` is
     `{platformUrl}/cms-panel/{organizationId}?theme=light`, both from
     `$organizeosSite` (the loader's org, never the page URL). The frame stays
@@ -1617,7 +1646,12 @@ allow-same-origin allow-forms allow-popups allow-modals
 allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     own unsaved-changes prompt and confirm dialogs show; its origin is the
     app's, not the builder's). The builder route's `frame-src` carries the
-    origin of `ORGANIZEOS_APP_URL` (`builderFrameSrcPolicy`).
+    origin of `ORGANIZEOS_APP_URL` (`builderFrameSrcPolicy`). With
+    `ORGANIZEOS_CMS_NATIVE` on for the org, the overlay holds the native CMS
+    screen instead, and its header's "..." menu offers "Classic CMS", which
+    mounts the frame on first use with `&collection={slug}&item={id}` for what
+    the native screen has open, then keeps it mounted and hidden; the frame's
+    close (`cms.close_requested`) returns to the native screen.
   - **Messages, frame to builder only** (`cms-messages.ts`). The listener
     accepts a message only when `event.origin` is the platform URL's origin
     and `event.source` is the frame's `contentWindow`, and parses it with
@@ -3741,13 +3775,14 @@ and only when all three hold:
 - the platform session is host-only on `app.organizeos.org` (step D), with the
   old `.organizeos.org` cookies expired, the builder's included, so the canvas,
   which stays under `organizeos.org`, never receives it;
-- the canvas no longer shares an origin with the builder's publish and action
-  routes (upstream's `domain.publish`, `rest.organizeos-publish` and
-  `rest.organizeos-site-action`), or those routes refuse a request that does
-  not come from the builder's top document. Today canvas script could reach
-  any of them with the page's CSRF token, and the pause is what stops it; a
-  publish puts the org's addresses live, a confirmed one replaces its old
-  site, and an Unpublish takes an address down, so lifting the pause must not
+- the canvas no longer shares an origin with the builder's publish, action
+  and CMS routes (upstream's `domain.publish`, `rest.organizeos-publish`,
+  `rest.organizeos-site-action` and `rest.organizeos-cms`), or those routes
+  refuse a request that does not come from the builder's top document. Today
+  canvas script could reach any of them with the page's CSRF token, and the
+  pause is what stops it; a publish puts the org's addresses live, a confirmed
+  one replaces its old site, an Unpublish takes an address down, and a CMS
+  write changes the org's collection items, so lifting the pause must not
   reopen any of that.
 
 The platform unpauses Website Lite custom code at C2 as well, and the two should

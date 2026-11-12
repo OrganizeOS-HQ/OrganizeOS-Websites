@@ -101,6 +101,47 @@ describe("WEBSITES2_SITE_ACTION_SECRET", () => {
   });
 });
 
+describe("WEBSITES2_CMS_SECRET", () => {
+  test("is undefined when unset", async () => {
+    vi.stubEnv("WEBSITES2_CMS_SECRET", undefined);
+    expect((await loadEnv()).WEBSITES2_CMS_SECRET).toBeUndefined();
+  });
+
+  test("reads a blank value as unset", async () => {
+    vi.stubEnv("WEBSITES2_CMS_SECRET", "  ");
+    expect((await loadEnv()).WEBSITES2_CMS_SECRET).toBeUndefined();
+  });
+
+  test("reads the secret from the process environment", async () => {
+    vi.stubEnv("WEBSITES2_CMS_SECRET", "s3cret");
+    expect((await loadEnv()).WEBSITES2_CMS_SECRET).toBe("s3cret");
+  });
+});
+
+describe("ORGANIZEOS_CMS_NATIVE", () => {
+  test("is undefined when unset", async () => {
+    vi.stubEnv("ORGANIZEOS_CMS_NATIVE", undefined);
+    expect((await loadEnv()).ORGANIZEOS_CMS_NATIVE).toBeUndefined();
+  });
+
+  test("passes the raw value through", async () => {
+    vi.stubEnv("ORGANIZEOS_CMS_NATIVE", "TRUE");
+    expect((await loadEnv()).ORGANIZEOS_CMS_NATIVE).toBe("TRUE");
+  });
+});
+
+describe("ORGANIZEOS_CMS_NATIVE_ORG_IDS", () => {
+  test("is undefined when unset", async () => {
+    vi.stubEnv("ORGANIZEOS_CMS_NATIVE_ORG_IDS", undefined);
+    expect((await loadEnv()).ORGANIZEOS_CMS_NATIVE_ORG_IDS).toBeUndefined();
+  });
+
+  test("passes the raw value through", async () => {
+    vi.stubEnv("ORGANIZEOS_CMS_NATIVE_ORG_IDS", " a , b ");
+    expect((await loadEnv()).ORGANIZEOS_CMS_NATIVE_ORG_IDS).toBe(" a , b ");
+  });
+});
+
 describe("ORGANIZEOS_CMS_PANEL", () => {
   test("is undefined when unset", async () => {
     vi.stubEnv("ORGANIZEOS_CMS_PANEL", undefined);

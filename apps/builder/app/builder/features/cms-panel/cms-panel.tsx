@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { atom, computed } from "nanostores";
 import { useStore } from "@nanostores/react";
@@ -21,7 +21,15 @@ import {
 import { invalidateResource } from "~/shared/resources";
 import { suppressCommandsForEvent } from "~/shared/commands-emitter";
 import type { OrganizeosSite } from "~/shared/organizeos-site";
-import { $activeSidebarPanel, $isUiHidden } from "~/builder/shared/nano-states";
+import {
+  $activeSidebarPanel,
+  $isUiHidden,
+  setActiveSidebarPanel,
+} from "~/builder/shared/nano-states";
+import {
+  POTENTIAL,
+  useExternalDragStateEffect,
+} from "~/builder/shared/assets/drag-monitor";
 import { SidebarButton } from "~/builder/sidebar-left/sidebar-tabs";
 import { CmsIcon } from "./cms-icon";
 import {
@@ -29,6 +37,7 @@ import {
   readCmsMessage,
   type CmsMessage,
 } from "./cms-messages";
+import { CmsNativeScreen } from "./native/cms-native-screen";
 
 /**
  * The CMS overlay: the OrganizeOS app's CMS screen, framed over the builder
@@ -53,16 +62,6 @@ export const COLLECTION_CHANGED_NOTICE =
   "Collection changes appear after you reload the builder";
 
 /**
- * Above the top bar (`zIndex: 1`, builder/shared/topbar.tsx) and below the
- * toast layer (`theme.zIndices.max`, 999), so the "Reload" notice for
- * `cms.collection_changed` shows over the CMS. The overlay is portalled to
- * the document's body, because the left sidebar's own box isolates its
- * stacking (builder.tsx `SidePanel`), where a z-index would not reach past
- * the inspector.
- */
-export const CMS_OVERLAY_Z_INDEX = 2;
-
-/**
  * Offered for an OrganizeOS project when the deployment's switch is on
  * (`ORGANIZEOS_CMS_PANEL`), the plan allows dynamic data, and the user is
  * not a viewer (by workspace relation, or by a view-only permit).
@@ -79,11 +78,50 @@ export const $isCmsPanelAvailable = computed(
 /** Whether the overlay shows. */
 export const $isCmsOverlayOpen = atom(false);
 
-/** Whether the frame exists: from the first open, for the document's life. */
+/**
+ * Whether the overlay exists: from the first open, for the document's life.
+ * With the native screen off it holds the frame; with it on it holds the
+ * native screen, and the frame inside it mounts once Classic CMS is first
+ * shown (`$cmsClassicDeepLink`).
+ */
 export const $cmsFrameMounted = atom(false);
 
 /** Whether the frame's editor has unsaved changes (`cms.dirty`). */
 export const $cmsDirty = atom(false);
+
+/** What the native screen has open: a collection's slug, an item's id. */
+export type CmsDeepLink = { collection?: string; item?: string };
+
+/**
+ * Whether the overlay holds the native CMS screen in place of the frame
+ * (`ORGANIZEOS_CMS_NATIVE`, for the org).
+ */
+export const $isCmsNative = computed(
+  $organizeosSite,
+  (site) => site?.cmsNativeEnabled === true
+);
+
+/** Whether the frame shows in place of the native screen. */
+export const $isClassicCmsShown = atom(false);
+
+/**
+ * The deep link the frame first mounted with; undefined until Classic CMS is
+ * first shown. The frame then stays mounted, so later switches keep its state.
+ */
+export const $cmsClassicDeepLink = atom<CmsDeepLink | undefined>(undefined);
+
+/** Show the frame in place of the native screen. */
+export const showClassicCms = (deepLink: CmsDeepLink) => {
+  if ($cmsClassicDeepLink.get() === undefined) {
+    $cmsClassicDeepLink.set(deepLink);
+  }
+  $isClassicCmsShown.set(true);
+};
+
+/** Show the native screen in place of the frame. */
+export const showNativeCms = () => {
+  $isClassicCmsShown.set(false);
+};
 
 /** The left rail, whose right edge the overlay starts at. */
 const $cmsRail = atom<HTMLElement | null>(null);
@@ -93,7 +131,20 @@ export const registerCmsRail = (element: HTMLElement | null) => {
   $cmsRail.set(element);
 };
 
+/**
+ * Opening closes the sidebar panel first, as another rail tab replaces the
+ * open one, so the panel listener never sees an open overlay mid-way. From
+ * another panel, closing opens the undocked navigator, so it takes up to two
+ * calls.
+ */
 export const openCmsOverlay = () => {
+  for (
+    let call = 0;
+    call < 2 && $activeSidebarPanel.get() !== "none";
+    call += 1
+  ) {
+    setActiveSidebarPanel("none");
+  }
   $cmsFrameMounted.set(true);
   $isCmsOverlayOpen.set(true);
 };
@@ -107,6 +158,26 @@ export const hideCmsOverlay = (): boolean => {
   return true;
 };
 
+/** Hide the overlay; when it was open, focus the rail's CMS button. */
+export const closeCmsOverlay = () => {
+  if (hideCmsOverlay()) {
+    $cmsRail
+      .get()
+      ?.querySelector<HTMLElement>("[data-cms-rail-button]")
+      ?.focus();
+  }
+};
+
+/**
+ * An input, a textarea, a select, or an element inside a contenteditable
+ * region.
+ */
+export const isEditableTarget = (target: EventTarget | null): boolean =>
+  target instanceof HTMLInputElement ||
+  target instanceof HTMLTextAreaElement ||
+  target instanceof HTMLSelectElement ||
+  (target instanceof HTMLElement && target.isContentEditable);
+
 export const toggleCmsOverlay = () => {
   if (hideCmsOverlay() === false) {
     openCmsOverlay();
@@ -119,12 +190,24 @@ export const toggleCmsOverlay = () => {
  */
 export const getBuilderColorMode = (): "light" | "dark" => "light";
 
-/** The frame's address, from the loader's org, never from the page URL. */
+/**
+ * The frame's address, from the loader's org, never from the page URL, with
+ * the native screen's deep link when it has one.
+ */
 export const getCmsPanelSrc = (
   site: Pick<OrganizeosSite, "platformUrl" | "organizationId">,
-  theme: "light" | "dark"
-) =>
-  `${site.platformUrl}/cms-panel/${encodeURIComponent(site.organizationId)}?theme=${theme}`;
+  theme: "light" | "dark",
+  deepLink?: CmsDeepLink
+) => {
+  let src = `${site.platformUrl}/cms-panel/${encodeURIComponent(site.organizationId)}?theme=${theme}`;
+  if (deepLink?.collection !== undefined) {
+    src += `&collection=${encodeURIComponent(deepLink.collection)}`;
+  }
+  if (deepLink?.item !== undefined) {
+    src += `&item=${encodeURIComponent(deepLink.item)}`;
+  }
+  return src;
+};
 
 export const showCollectionChangedNotice = () => {
   toast.info(
@@ -162,7 +245,12 @@ export const applyCmsMessage = (message: CmsMessage, platformUrl: string) => {
       $cmsDirty.set(message.dirty);
       return;
     case "cms.close_requested":
-      hideCmsOverlay();
+      // With the native screen, the frame's close returns to it.
+      if ($isCmsNative.get()) {
+        showNativeCms();
+      } else {
+        closeCmsOverlay();
+      }
       return;
   }
 };
@@ -176,21 +264,43 @@ const onBeforeUnload = (event: BeforeUnloadEvent) => {
 };
 
 /**
- * While the overlay shows, no builder shortcut runs from the builder
- * document (the canvas is covered, and keys typed inside the CMS frame never
- * reach the builder). Escape hides the overlay and does nothing else: it
- * neither runs the builder's own Escape command (deselect, or leave preview)
- * nor reaches the sidebar's Escape, which would close the open panel.
- * Capture phase on the document, so it runs before the commands' own
- * document listener and before React's root.
+ * While the overlay shows, every key is kept from the builder's commands in
+ * the capture phase on the document, before the commands' own document
+ * listener (the canvas is covered, and keys typed inside the CMS frame never
+ * reach the builder).
  */
 const onOverlayKeyDown = (event: KeyboardEvent) => {
   suppressCommandsForEvent(event);
-  if (event.key === "Escape") {
-    event.stopPropagation();
-    hideCmsOverlay();
+};
+
+/**
+ * Escape hides the overlay only in the bubble phase on the document, only
+ * when no layer took it (a design-system layer that dismisses calls
+ * `preventDefault`) and not in an editable element. A hide by Escape or a
+ * close button returns focus to the rail button.
+ */
+const onOverlayEscape = (event: KeyboardEvent) => {
+  if (
+    event.key === "Escape" &&
+    event.defaultPrevented === false &&
+    isEditableTarget(event.target) === false
+  ) {
+    closeCmsOverlay();
   }
 };
+
+/**
+ * While the overlay shows, a clipboard event on a target that is not
+ * editable stops at the window, before the builder's document listeners;
+ * editable targets are untouched.
+ */
+const onOverlayClipboard = (event: ClipboardEvent) => {
+  if (isEditableTarget(event.target) === false) {
+    event.stopPropagation();
+  }
+};
+
+const clipboardEventTypes = ["copy", "cut", "paste"] as const;
 
 /**
  * The rail's right and bottom edges in the viewport, measured while the
@@ -228,8 +338,7 @@ const useRailBox = (rail: HTMLElement | null, isShown: boolean) => {
 
 /**
  * A press on the top bar (the builder's main menu sits in its corner beside
- * the overlay) hides the overlay, as another rail tab does. Menus and the
- * dialogs they open portal without a z-index and would open beneath it.
+ * the overlay) hides the overlay, as another rail tab does.
  */
 const onOverlayPointerDown = (event: PointerEvent) => {
   const target = event.target;
@@ -245,8 +354,15 @@ const onOverlayPointerDown = (event: PointerEvent) => {
 };
 
 /**
- * The persistent frame, rendered once by the left sidebar and portalled to
- * the document's body.
+ * The persistent overlay, rendered once by the left sidebar and portalled to
+ * the document's body. It holds the frame, or, with the native screen on, the
+ * native screen and, once Classic CMS is first shown, the frame behind it.
+ *
+ * It takes no z-index. As a later body child than the builder root, whose
+ * `Main` and `SidePanel` isolate their stacking and whose top bar has a
+ * z-index only while the UI is hidden, it paints over them. Design-system
+ * popups portal to the body later still and paint over it; toasts keep
+ * `zIndices.max`.
  */
 export const CmsOverlay = () => {
   const isAvailable = useStore($isCmsPanelAvailable);
@@ -256,22 +372,25 @@ export const CmsOverlay = () => {
   const isPreviewMode = useStore($isPreviewMode);
   const isUiHidden = useStore($isUiHidden);
   const rail = useStore($cmsRail);
+  const isNative = useStore($isCmsNative);
+  const isClassicShown = useStore($isClassicCmsShown);
+  const classicDeepLink = useStore($cmsClassicDeepLink);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const nativeRef = useRef<HTMLDivElement>(null);
 
   const platformUrl = site?.platformUrl;
   const organizationId = site?.organizationId;
-  const src = useMemo(
-    () =>
-      platformUrl === undefined || organizationId === undefined
-        ? undefined
-        : getCmsPanelSrc(
-            { platformUrl, organizationId },
-            getBuilderColorMode()
-          ),
-    [platformUrl, organizationId]
-  );
 
-  const isRendered = isAvailable && isMounted && src !== undefined;
+  const isRendered =
+    isAvailable &&
+    isMounted &&
+    platformUrl !== undefined &&
+    organizationId !== undefined;
+  // The frame exists always without the native screen, and with it from the
+  // first Classic CMS on.
+  const hasFrame =
+    isRendered && (isNative === false || classicDeepLink !== undefined);
+  const isFrameShown = isNative === false || isClassicShown;
   const isShown =
     isRendered && isOpen && isPreviewMode === false && isUiHidden === false;
   const { right: railRight, bottom: railBottom } = useRailBox(rail, isShown);
@@ -284,10 +403,33 @@ export const CmsOverlay = () => {
     }
   }, [isPreviewMode, isUiHidden]);
 
-  // Another rail tab becoming active hides the overlay.
+  // The external file drag's phase. A drag switches the sidebar to Assets,
+  // and its end restores the saved tab (which, for "none", opens the
+  // undocked navigator) in the same notification; "settling" covers that
+  // notification and ends in a microtask. This subscriber is a child's of the
+  // sidebar's, so it runs first.
+  const dragPhase = useRef<"idle" | "dragging" | "settling">("idle");
+  useExternalDragStateEffect((state) => {
+    if (state === POTENTIAL) {
+      dragPhase.current = "dragging";
+      return;
+    }
+    if (dragPhase.current === "dragging") {
+      dragPhase.current = "settling";
+      queueMicrotask(() => {
+        if (dragPhase.current === "settling") {
+          dragPhase.current = "idle";
+        }
+      });
+    }
+  });
+
+  // Another rail tab becoming active hides the overlay, except for a panel
+  // change made by an external drag. A tab clicked during a drag still hides
+  // it, through the sidebar's own hideCmsOverlay().
   useEffect(() => {
     return $activeSidebarPanel.listen((panel) => {
-      if (panel !== "none") {
+      if (panel !== "none" && dragPhase.current === "idle") {
         hideCmsOverlay();
       }
     });
@@ -301,7 +443,7 @@ export const CmsOverlay = () => {
   }, [isAvailable]);
 
   useEffect(() => {
-    if (isRendered === false || platformUrl === undefined) {
+    if (hasFrame === false || platformUrl === undefined) {
       return;
     }
     const onMessage = (event: MessageEvent) => {
@@ -317,7 +459,7 @@ export const CmsOverlay = () => {
     return () => {
       window.removeEventListener("message", onMessage);
     };
-  }, [isRendered, platformUrl]);
+  }, [hasFrame, platformUrl]);
 
   useEffect(() => {
     if (isRendered === false) {
@@ -336,23 +478,62 @@ export const CmsOverlay = () => {
       return;
     }
     document.addEventListener("keydown", onOverlayKeyDown, true);
+    document.addEventListener("keydown", onOverlayEscape);
     document.addEventListener("pointerdown", onOverlayPointerDown, true);
+    for (const type of clipboardEventTypes) {
+      window.addEventListener(type, onOverlayClipboard, true);
+    }
     return () => {
       document.removeEventListener("keydown", onOverlayKeyDown, true);
+      document.removeEventListener("keydown", onOverlayEscape);
       document.removeEventListener("pointerdown", onOverlayPointerDown, true);
+      for (const type of clipboardEventTypes) {
+        window.removeEventListener(type, onOverlayClipboard, true);
+      }
     };
   }, [isShown]);
 
-  // Focus leaves the canvas and the rail for the CMS screen.
+  // Focus leaves the canvas and the rail for the CMS screen that shows.
   useLayoutEffect(() => {
-    if (isShown) {
-      iframeRef.current?.focus();
+    if (isShown === false) {
+      return;
     }
-  }, [isShown]);
+    if (isFrameShown) {
+      iframeRef.current?.focus();
+    } else {
+      nativeRef.current?.focus();
+    }
+  }, [isShown, isNative, isFrameShown]);
 
-  if (isRendered === false || typeof document === "undefined") {
+  if (
+    isRendered === false ||
+    platformUrl === undefined ||
+    organizationId === undefined ||
+    typeof document === "undefined"
+  ) {
     return null;
   }
+
+  const frameElement = hasFrame ? (
+    <iframe
+      ref={iframeRef}
+      data-cms-frame
+      src={getCmsPanelSrc(
+        { platformUrl, organizationId },
+        getBuilderColorMode(),
+        isNative ? classicDeepLink : undefined
+      )}
+      title="CMS"
+      referrerPolicy="no-referrer"
+      sandbox={CMS_FRAME_SANDBOX}
+      style={{
+        display: isFrameShown ? "block" : "none",
+        width: "100%",
+        height: "100%",
+        border: "none",
+      }}
+    />
+  ) : undefined;
 
   return createPortal(
     <div
@@ -363,26 +544,20 @@ export const CmsOverlay = () => {
         bottom: 0,
         left: railRight,
         right: 0,
-        zIndex: CMS_OVERLAY_Z_INDEX,
         background: cssVar("--background-primary"),
         // Hidden, never unmounted: display none keeps the document alive.
         display: isShown ? "block" : "none",
       }}
     >
-      <iframe
-        ref={iframeRef}
-        data-cms-frame
-        src={src}
-        title="CMS"
-        referrerPolicy="no-referrer"
-        sandbox={CMS_FRAME_SANDBOX}
-        style={{
-          display: "block",
-          width: "100%",
-          height: "100%",
-          border: "none",
-        }}
-      />
+      {isNative && (
+        <CmsNativeScreen
+          ref={nativeRef}
+          hidden={isClassicShown}
+          onClose={closeCmsOverlay}
+          onShowClassic={showClassicCms}
+        />
+      )}
+      {frameElement}
       {/* The corner below the rail, where the footer would show through. */}
       <div
         data-cms-overlay-corner
