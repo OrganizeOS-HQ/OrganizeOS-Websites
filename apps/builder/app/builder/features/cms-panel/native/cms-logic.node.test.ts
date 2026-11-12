@@ -250,6 +250,33 @@ describe("validateItem", () => {
     ).toEqual({ name: "Too long", mail: "Not an email" });
   });
 
+  const linkField: CmsField[] = [{ key: "site", label: "Site", kind: "link" }];
+
+  test.each([
+    "mailto:office@example.org",
+    "tel:+15550100",
+    "https://example.org/a",
+  ])("a link takes any URL the platform takes: %s", (site) =>
+    expect(
+      validateItem({
+        fields: linkField,
+        values: { site },
+        slug: "item",
+        isNew: false,
+      })
+    ).toEqual({})
+  );
+
+  test("a link that is no URL is Not a link", () =>
+    expect(
+      validateItem({
+        fields: linkField,
+        values: { site: "not a url" },
+        slug: "item",
+        isNew: false,
+      })
+    ).toEqual({ site: "Not a link" }));
+
   const colorField: CmsField[] = [
     { key: "accent", label: "Accent", kind: "color" },
   ];

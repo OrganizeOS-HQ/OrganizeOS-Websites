@@ -398,10 +398,11 @@ const isBlank = (kind: CmsFieldKind, value: unknown) => {
   );
 };
 
+/** The platform's link rule: any value a URL parse takes. */
 const isUrl = (value: string) => {
   try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
+    new URL(value);
+    return true;
   } catch {
     return false;
   }
