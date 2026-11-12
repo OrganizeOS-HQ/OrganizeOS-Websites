@@ -885,7 +885,11 @@ can be merged with minimal conflict.
   `src/runtime/styles.ts` (marked: both name regexes take a left boundary,
   `rewriteCssVariableReferencesInStyleValue` walks the value instead of its
   JSON, `getCssVariableUsageCounts` exported), with
-  `styles.organizeos.test.ts`. Pinned by `overlay.wiring.node.test.ts`.
+  `styles.organizeos.test.ts`. In the builder, `features/variables/color.ts`
+  and `style-model.ts`, with their tests, moved from
+  `features/organizeos-panel/backgrounds/`, and
+  `features/organizeos-panel/test-fixtures.ts` moved up from `backgrounds/`.
+  Pinned by `overlay.wiring.node.test.ts`.
 - **Published sites (§1, §8).** The CLI's copy of the blocks' build into every
   published site, `packages/cli/src/organizeos-components.ts`, called from
   short marked hooks in `prebuild.ts` and `framework-react-router.ts`, with

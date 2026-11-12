@@ -2,8 +2,8 @@ import { color, type StyleValue } from "@webstudio-is/css-engine";
 import { parseColor } from "@webstudio-is/css-data";
 
 /**
- * Color math for the Section background area: reading Webstudio's color
- * values as sRGB, compositing them, and the WCAG 2.x contrast ratio.
+ * Colour maths for the Variables feature: swatches, colour search and the
+ * Brand contrast line.
  *
  * Every function here is pure. Colors are sRGB with gamma-encoded channels
  * and straight (not premultiplied) alpha, each in 0..1.

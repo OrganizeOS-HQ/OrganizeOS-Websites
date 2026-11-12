@@ -33,7 +33,7 @@ import {
   buildSectionStyleModel,
   listRootColorVariables,
   withRoot,
-} from "./backgrounds/style-model";
+} from "~/builder/features/variables/style-model";
 import {
   el,
   localId,
@@ -43,7 +43,7 @@ import {
   toStyleValue,
   type Node,
   type TestStyle,
-} from "./backgrounds/test-fixtures";
+} from "./test-fixtures";
 import { getDefaultRoles, SectionBackground } from "./section-background";
 
 vi.mock("./backgrounds/apply-preset", async (importOriginal) => {

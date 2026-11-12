@@ -32,7 +32,7 @@ import {
   toStyleValue,
   type Node,
   type TestStyle,
-} from "./backgrounds/test-fixtures";
+} from "./test-fixtures";
 import { Section } from "./background-presets-section";
 
 vi.mock("./backgrounds/contrast", async (importOriginal) => {

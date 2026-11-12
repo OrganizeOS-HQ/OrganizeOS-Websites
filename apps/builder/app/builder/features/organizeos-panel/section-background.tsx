@@ -34,7 +34,7 @@ import type { InstanceSelector } from "@webstudio-is/project-build/runtime";
 import { AssetManager } from "~/builder/shared/asset-manager";
 import { AssetUpload } from "~/builder/shared/assets";
 import { $matchingBreakpoints } from "~/builder/features/style-panel/shared/model";
-import { luminance } from "./backgrounds/color";
+import { luminance } from "~/builder/features/variables/color";
 import {
   builtInPalette,
   getBandVariables,
@@ -49,7 +49,7 @@ import { applyPreset } from "./backgrounds/apply-preset";
 import {
   buildSectionStyleModel,
   listRootColorVariables,
-} from "./backgrounds/style-model";
+} from "~/builder/features/variables/style-model";
 import { useDeferredContrastReport } from "./contrast-schedule";
 
 /**

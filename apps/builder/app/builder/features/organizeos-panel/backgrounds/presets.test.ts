@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { toValue, type StyleValue } from "@webstudio-is/css-engine";
 import { parseCssValue } from "@webstudio-is/css-data";
 import { parseAnyGradient } from "~/builder/features/style-panel/sections/backgrounds/gradient-utils";
-import { composite, contrastRatio, quantize, type Rgba } from "./color";
+import {
+  composite,
+  contrastRatio,
+  quantize,
+  type Rgba,
+} from "~/builder/features/variables/color";
 import {
   builtInPalette,
   getBandVariables,
@@ -21,7 +26,7 @@ import {
   root,
   setupProject,
   type TestStyle,
-} from "./test-fixtures";
+} from "../test-fixtures";
 
 const black: Rgba = { r: 0, g: 0, b: 0, a: 1 };
 const white: Rgba = { r: 1, g: 1, b: 1, a: 1 };

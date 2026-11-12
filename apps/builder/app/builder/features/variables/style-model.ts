@@ -22,8 +22,17 @@ import {
 } from "~/shared/style-object-model";
 import type { InstanceSelector } from "@webstudio-is/project-build/runtime";
 import { $matchingBreakpoints } from "~/builder/features/style-panel/shared/model";
-import { toRgba } from "./color";
-import type { PaletteColor } from "./presets";
+import { toRgba, type Rgba } from "./color";
+
+export type PaletteColor = {
+  rgba: Rgba;
+  /**
+   * The Global Root variable the color came from, without the leading dashes,
+   * as Webstudio's VarValue stores it (`{ type: "var", value: "brand" }`
+   * renders `var(--brand)`).
+   */
+  variable?: string;
+};
 
 /**
  * The contrast check's own style model (spec 4.2).

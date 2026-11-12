@@ -25,7 +25,7 @@ import {
   type CatalogEntry,
 } from "~/shared/organizeos-preset-ids";
 import { buildOrgResourcePresets } from "~/shared/db/resource-presets.server";
-import { registerTestMetas } from "./backgrounds/test-fixtures";
+import { registerTestMetas } from "./test-fixtures";
 import {
   $isOrganizeosPanelAvailable,
   OrganizeosPanel,
