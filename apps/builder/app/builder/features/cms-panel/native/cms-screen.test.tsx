@@ -904,6 +904,48 @@ describe("refusals on the reads that hold the person's values", () => {
     expect($cmsNativeDirty.get()).toBe(true);
   });
 
+  test.each([
+    ["E2 on a refresh", "getCollection", "forbidden", "No access"],
+    ["E3 on a refresh", "listItems", "forbidden", "No access"],
+    ["E2 on a refresh", "getCollection", "plan", "Not in plan"],
+    ["E0 on a reopen", "getAccess", "forbidden", "No access"],
+    ["E1 on a reopen", "listCollections", "plan", "Not in plan"],
+  ] as const)(
+    "with unsaved values, %s (%s) answered %s: the toast %s; the editor and its values stay",
+    async (when, method, error, text) => {
+      const toastError = vi.spyOn(toast, "error");
+      mount({ homeUrl: HOME });
+      await settle();
+      await editTitle();
+      fake[method].mockResolvedValue({ error });
+      if (when.endsWith("reopen")) {
+        await reopen();
+      } else {
+        act(() => refreshCmsNative());
+        await settle();
+      }
+      expect(fake[method]).toHaveBeenCalledTimes(2);
+      expect(toastError.mock.calls.map(([value]) => value)).toContain(text);
+      expect(line()).toBeNull();
+      expect(isEditorShown()).toBe(true);
+      expect(titleInput()?.value).toBe("Mine");
+      expect($cmsNativeDirty.get()).toBe(true);
+    }
+  );
+
+  test("with unsaved values, a refresh whose E2 answers unauthorized shows Signed out of OrganizeOS, and the edits are kept", async () => {
+    mount({ homeUrl: HOME, navigate: vi.fn() });
+    await settle();
+    await editTitle();
+    fake.getCollection.mockResolvedValue({ error: "unauthorized" });
+    act(() => refreshCmsNative());
+    await settle();
+    expect(line()?.textContent).toContain("Signed out of OrganizeOS");
+    expect(isEditorShown()).toBe(false);
+    expect(titleInput()?.value).toBe("Mine");
+    expect($cmsNativeDirty.get()).toBe(true);
+  });
+
   test("opening an item answered forbidden still shows the screen's line", async () => {
     fake.getItem.mockResolvedValue({ error: "forbidden" });
     mount({ homeUrl: HOME });

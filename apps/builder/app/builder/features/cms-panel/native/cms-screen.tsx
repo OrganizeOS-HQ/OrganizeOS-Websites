@@ -32,13 +32,19 @@ import {
   toast,
 } from "@webstudio-is/design-system";
 import type { CmsDeepLink } from "../cms-panel";
-import { getClassicDeepLink, getRefusal, getToastText } from "./cms-logic";
+import {
+  getClassicDeepLink,
+  getRefusal,
+  getToastText,
+  type CmsRefusal,
+} from "./cms-logic";
 import { $cmsNativeDirty, $cmsNativeRefresh } from "./cms-native-stores";
 import {
   isCmsFailure,
   type CmsAccess,
   type CmsCollection,
   type CmsCollectionSummary,
+  type CmsErrorCode,
   type CmsItem,
   type CmsItemsPage,
   type CmsSource,
@@ -116,6 +122,25 @@ const isSameAccess = (left: CmsAccess, right: CmsAccess) =>
   left.canEdit === right.canEdit &&
   left.canPublish === right.canPublish &&
   left.canManageSettings === right.canManageSettings;
+
+/**
+ * A read's failure (4.3.4): a read made while the editor holds unsaved values
+ * maps as a write, so `forbidden` and `plan` are the toast ("toast") and the
+ * editor keeps its values; `unauthorized` and `mfa_required` keep their
+ * lines. Undefined: no refusal.
+ */
+const mapReadFailure = (
+  code: CmsErrorCode
+): CmsRefusal | "toast" | undefined => {
+  const isDirty = $cmsNativeDirty.get();
+  const refusal = getRefusal(code, isDirty ? "write" : "load");
+  if (refusal === undefined && getRefusal(code, "load") !== undefined) {
+    // one toast for the reads of one refetch
+    toast.error(getToastText(code), { id: `cms-read-${code}` });
+    return "toast";
+  }
+  return refusal;
+};
 
 const defaultNavigate = (url: string) => {
   window.location.assign(url);
@@ -218,8 +243,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       const isStale = () => effect.isCurrent === false;
       // A refusal always shows its line; any other failure only on a
       // fetch the person asked for, so a background one changes nothing.
-      const onFailure = (error: Parameters<typeof getRefusal>[0]) => {
-        const refusal = getRefusal(error, "load");
+      const onFailure = (error: CmsErrorCode) => {
+        const refusal = mapReadFailure(error);
+        if (refusal === "toast") {
+          return;
+        }
         if (refusal !== undefined) {
           setLine(refusal);
         } else if (isBackground === false) {
@@ -319,7 +347,10 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           return;
         }
         if (isCmsFailure(result)) {
-          const refusal = getRefusal(result.error, "load");
+          const refusal = mapReadFailure(result.error);
+          if (refusal === "toast") {
+            return;
+          }
           if (refusal !== undefined) {
             setLine(refusal);
           } else if (isBackground === false) {
@@ -377,7 +408,10 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             return;
           }
           if (isCmsFailure(result)) {
-            const refusal = getRefusal(result.error, "load");
+            const refusal = mapReadFailure(result.error);
+            if (refusal === "toast") {
+              return;
+            }
             if (refusal !== undefined) {
               setLine(refusal);
             } else if (isBackground === false) {
@@ -498,8 +532,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
       const result = await source.getCollection(collectionId);
       if (isCmsFailure(result)) {
-        const refusal = getRefusal(result.error, "load");
-        if (refusal !== undefined) {
+        const refusal = mapReadFailure(result.error);
+        if (refusal !== undefined && refusal !== "toast") {
           setLine(refusal);
         }
         return;
