@@ -546,3 +546,236 @@ describe("refusals on a write", () => {
     });
   });
 });
+
+const ID = itemOf().id;
+
+const menuItem = (label: string) =>
+  [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (item) => item.textContent === label
+  );
+
+/** Opens the column's CMS menu and chooses one of its items. */
+const chooseMenuItem = async (menu: string, label: string) => {
+  await click(byLabel(menu));
+  await click(menuItem(label));
+};
+
+const openItem = async () => {
+  await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+  expect(titleInput()?.value).toBe("Hello");
+};
+
+const dialogShown = () => hasText("Discard unsaved changes?");
+
+const waitForNoDialog = () =>
+  vi.waitFor(() => expect(dialogShown()).toBe(false));
+
+describe("the unsaved guard, and Classic CMS's deep link", () => {
+  test.each([
+    [
+      "Back",
+      () => click(byLabel("Back")),
+      () => expect(titleInput()).toBeNull(),
+    ],
+    [
+      "another collection",
+      () => click(rowOf("people")?.querySelector("button")),
+      () => {
+        expect(titleInput()).toBeNull();
+        expect(currentSlug()).toBe("people");
+      },
+    ],
+    [
+      "the open collection's row",
+      () => click(rowOf("posts")?.querySelector("button")),
+      () => {
+        expect(titleInput()).toBeNull();
+        expect(currentSlug()).toBe("posts");
+      },
+    ],
+    [
+      "Classic CMS",
+      () => chooseMenuItem("CMS menu", "Classic CMS"),
+      () => {
+        expect(props.onShowClassic).toHaveBeenCalledTimes(1);
+        expect(props.onShowClassic).toHaveBeenCalledWith({
+          collection: "posts",
+          item: ID,
+        });
+      },
+    ],
+  ] as const)(
+    "%s asks Discard unsaved changes?; Keep editing stays, Discard goes",
+    async (_name, run, ran) => {
+      mount();
+      await settle();
+      await editTitle();
+
+      await run();
+      expect(dialogShown()).toBe(true);
+      await click(buttonByText("Keep editing"));
+      await waitForNoDialog();
+      expect(titleInput()?.value).toBe("Mine");
+      expect($cmsNativeDirty.get()).toBe(true);
+      expect(props.onShowClassic).not.toHaveBeenCalled();
+
+      await run();
+      expect(dialogShown()).toBe(true);
+      await click(buttonByText("Discard"));
+      expect($cmsNativeDirty.get()).toBe(false);
+      // Classic CMS runs once the dialog has closed
+      await vi.waitFor(ran);
+    }
+  );
+
+  test("nothing unsaved: no dialog", async () => {
+    mount();
+    await settle();
+    await openItem();
+    await click(byLabel("Back"));
+    expect(dialogShown()).toBe(false);
+    expect(titleInput()).toBeNull();
+    await openItem();
+    await chooseMenuItem("CMS menu", "Classic CMS");
+    expect(dialogShown()).toBe(false);
+    expect(props.onShowClassic).toHaveBeenCalledTimes(1);
+  });
+
+  test("Classic CMS passes the open collection and item, once the menu has closed", async () => {
+    mount();
+    await settle();
+    // from the table: the open collection only
+    await chooseMenuItem("CMS menu", "Classic CMS");
+    expect(props.onShowClassic).toHaveBeenCalledTimes(1);
+    expect(props.onShowClassic).toHaveBeenLastCalledWith({
+      collection: "posts",
+    });
+    await vi.waitFor(() => expect(menuItem("Classic CMS")).toBeUndefined());
+
+    await openItem();
+    await chooseMenuItem("CMS menu", "Classic CMS");
+    expect(props.onShowClassic).toHaveBeenCalledTimes(2);
+    expect(props.onShowClassic).toHaveBeenLastCalledWith({
+      collection: "posts",
+      item: ID,
+    });
+    await vi.waitFor(() => expect(menuItem("Classic CMS")).toBeUndefined());
+
+    // a new item: the collection only
+    await click(byLabel("Back"));
+    await click(buttonByText("New item"));
+    expect(titleInput()?.value).toBe("");
+    await chooseMenuItem("CMS menu", "Classic CMS");
+    expect(props.onShowClassic).toHaveBeenCalledTimes(3);
+    expect(props.onShowClassic).toHaveBeenLastCalledWith({
+      collection: "posts",
+    });
+  });
+
+  test("hiding never discards: a hidden and reshown screen keeps the edit and $cmsNativeDirty", async () => {
+    mount();
+    await settle();
+    await editTitle();
+    expect(fake.getItem).toHaveBeenCalledTimes(1);
+    draw({ hidden: true, isVisible: false });
+    await settle();
+    expect($cmsNativeDirty.get()).toBe(true);
+    draw({ hidden: false, isVisible: true });
+    await settle();
+    expect(titleInput()?.value).toBe("Mine");
+    expect($cmsNativeDirty.get()).toBe(true);
+    expect(fake.getItem).toHaveBeenCalledTimes(1);
+  });
+
+  test("Discard before Classic CMS resets the editor, so the discarded edit is gone when the screen shows again", async () => {
+    mount();
+    await settle();
+    await editTitle();
+    await chooseMenuItem("CMS menu", "Classic CMS");
+    expect(dialogShown()).toBe(true);
+    await click(buttonByText("Discard"));
+    await vi.waitFor(() =>
+      expect(props.onShowClassic).toHaveBeenCalledTimes(1)
+    );
+    draw({ hidden: true, isVisible: false });
+    await settle();
+    draw({ hidden: false, isVisible: true });
+    await settle();
+    expect(titleInput()?.value).toBe("Hello");
+    expect(buttonByText("Save")?.disabled).toBe(true);
+    expect($cmsNativeDirty.get()).toBe(false);
+    await waitForNoDialog();
+    await click(byLabel("Back"));
+    expect(dialogShown()).toBe(false);
+    expect(titleInput()).toBeNull();
+  });
+
+  test("a clean editor refetches its item when the screen shows again", async () => {
+    mount();
+    await settle();
+    await openItem();
+    expect(fake.getItem).toHaveBeenCalledTimes(1);
+    draw({ hidden: true, isVisible: false });
+    await settle();
+    fake.getItem.mockResolvedValue({
+      item: itemOf({
+        data: { title: "Theirs", summary: null, author: null },
+        status: "published",
+        hasStagedChanges: true,
+        updatedAt: "2026-11-12T10:00:05+00:00",
+      }),
+    });
+    act(() => refreshCmsNative());
+    draw({ hidden: false, isVisible: true });
+    await settle();
+    expect(fake.getItem.mock.calls.length).toBeGreaterThan(1);
+    expect(titleInput()?.value).toBe("Theirs");
+    expect(
+      document.querySelector("[data-cms-editor-header] [data-cms-status]")
+        ?.textContent
+    ).toBe("Staged changes");
+    expect(buttonByText("Publish changes")?.disabled).toBe(false);
+    expect($cmsNativeDirty.get()).toBe(false);
+  });
+
+  test("the read-only rich text's Classic CMS runs the guard and passes the open item", async () => {
+    fake.getCollection.mockResolvedValue({
+      collection: {
+        ...POSTS_DETAIL,
+        fields: [
+          ...POSTS_DETAIL.fields,
+          { key: "body", label: "Body", kind: "richtext" },
+        ],
+      },
+    });
+    fake.getItem.mockResolvedValue({
+      item: itemOf({
+        data: {
+          title: "Hello",
+          summary: null,
+          author: null,
+          body: {
+            html: '<p>Text</p><p><img src="https://example.org/a.png" alt="A" /></p>',
+          },
+        },
+      }),
+    });
+    mount();
+    await settle();
+    await editTitle();
+    await vi.waitFor(() =>
+      expect(hasText("Has images; edit in Classic CMS")).toBe(true)
+    );
+    await click(buttonByText("Classic CMS"));
+    expect(dialogShown()).toBe(true);
+    expect(props.onShowClassic).not.toHaveBeenCalled();
+    await click(buttonByText("Discard"));
+    await vi.waitFor(() =>
+      expect(props.onShowClassic).toHaveBeenCalledTimes(1)
+    );
+    expect(props.onShowClassic).toHaveBeenCalledWith({
+      collection: "posts",
+      item: ID,
+    });
+  });
+});

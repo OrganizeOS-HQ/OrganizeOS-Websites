@@ -101,6 +101,7 @@ export const ItemEditor = ({
   itemId,
   homeUrl,
   focusBack = false,
+  refreshKey,
   onBack,
   onDirtyChange,
   onWritten,
@@ -118,6 +119,11 @@ export const ItemEditor = ({
   homeUrl?: string;
   /** Opened from the list: the Back button takes the focus. */
   focusBack?: boolean;
+  /**
+   * Changes on each reopen and after each write in the classic frame: a
+   * clean editor with no write in flight reads its item again (4.7).
+   */
+  refreshKey: number;
   /** The root runs the unsaved guard before leaving. */
   onBack: () => void;
   onDirtyChange: (dirty: boolean) => void;
@@ -255,6 +261,56 @@ export const ItemEditor = ({
       isCurrent = false;
     };
   }, [source, collection.id, itemId, applyItem, loadAttempt]);
+
+  // What a refetch's answer is checked against when it arrives.
+  const latest = useRef({ item, isDirty, busy });
+  latest.current = { item, isDirty, busy };
+  const lastRefreshKey = useRef(refreshKey);
+  const refreshRequest = useRef(0);
+  useEffect(() => {
+    if (refreshKey === lastRefreshKey.current) {
+      return;
+    }
+    lastRefreshKey.current = refreshKey;
+    const requested = latest.current;
+    // unsaved edits stay (4.7); a new item has nothing to read
+    if (
+      requested.item === undefined ||
+      requested.item === null ||
+      requested.isDirty ||
+      requested.busy !== undefined
+    ) {
+      return;
+    }
+    const itemSent = requested.item;
+    refreshRequest.current += 1;
+    const request = refreshRequest.current;
+    void source
+      .getItem(collection.id, itemSent.id)
+      .catch((): CmsResult<{ item: CmsItem }> => ({ error: "unavailable" }))
+      .then((result) => {
+        const now = latest.current;
+        // a later refetch, a write, or an edit since: this answer is dropped
+        if (
+          request !== refreshRequest.current ||
+          now.item !== itemSent ||
+          now.isDirty ||
+          now.busy !== undefined
+        ) {
+          return;
+        }
+        if (isCmsFailure(result)) {
+          // a failure changes nothing on screen but a refusal's line
+          const refusal = getRefusal(result.error, "load");
+          if (refusal !== undefined) {
+            onRefusalRef.current(refusal);
+          }
+          return;
+        }
+        setKept(undefined);
+        applyItem(result.item);
+      });
+  }, [refreshKey, source, collection.id, applyItem]);
 
   // on open only: a later prop change never moves the focus
   const focusBackOnOpen = useRef(focusBack);

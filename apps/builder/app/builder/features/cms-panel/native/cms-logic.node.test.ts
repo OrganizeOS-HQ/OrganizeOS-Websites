@@ -3,6 +3,7 @@ import {
   chunk,
   emptyItemData,
   formatPageRange,
+  getClassicDeepLink,
   getChangedFieldKeys,
   getKeptDifferences,
   getRefusal,
@@ -19,7 +20,7 @@ import {
   validateItem,
 } from "./cms-logic";
 import type { CmsField } from "./cms-source";
-import { POSTS_DETAIL } from "./fake-cms-source";
+import { itemOf, POSTS, POSTS_DETAIL } from "./fake-cms-source";
 
 describe("getStatusChip", () => {
   test.each([
@@ -473,5 +474,17 @@ describe("getRefusal", () => {
     ["not_found", "write", undefined],
   ] as const)("getRefusal(%s, %s) is %s", (code, on, refusal) =>
     expect(getRefusal(code, on)).toBe(refusal)
+  );
+});
+
+describe("getClassicDeepLink", () => {
+  const ID = itemOf().id;
+  test.each([
+    [undefined, undefined, {}],
+    [POSTS, undefined, { collection: "posts" }],
+    [POSTS, null, { collection: "posts" }],
+    [POSTS, ID, { collection: "posts", item: ID }],
+  ] as const)("getClassicDeepLink(%o, %o) is %o", (collection, itemId, link) =>
+    expect(getClassicDeepLink(collection, itemId)).toEqual(link)
   );
 });

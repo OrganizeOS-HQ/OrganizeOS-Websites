@@ -32,7 +32,7 @@ import {
   toast,
 } from "@webstudio-is/design-system";
 import type { CmsDeepLink } from "../cms-panel";
-import { getRefusal, getToastText } from "./cms-logic";
+import { getClassicDeepLink, getRefusal, getToastText } from "./cms-logic";
 import { $cmsNativeDirty, $cmsNativeRefresh } from "./cms-native-stores";
 import {
   isCmsFailure,
@@ -168,9 +168,12 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const [detailFailed, setDetailFailed] = useState(false);
     const [detailAttempt, setDetailAttempt] = useState(0);
     const [isEditorDirty, setIsEditorDirty] = useState(false);
-    const [pending, setPending] = useState<{ run: () => void } | undefined>(
-      undefined
-    );
+    const [pending, setPending] = useState<
+      { run: () => void; movesFocus: boolean } | undefined
+    >(undefined);
+    // Discard's action that moves the focus, run once the dialog has closed
+    // so the dialog neither keeps nor returns the focus.
+    const runOnDialogClose = useRef<(() => void) | undefined>(undefined);
     const [attempt, setAttempt] = useState(0);
     // A new editor for each item opened; a created item keeps its editor.
     const [editorSession, setEditorSession] = useState(0);
@@ -401,10 +404,14 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     }, [isEditorDirty]);
     useEffect(() => () => $cmsNativeDirty.set(false), []);
 
-    /** The unsaved guard: back, another item or collection, Classic CMS. */
-    const guard = (run: () => void) => {
+    /**
+     * The unsaved guard: back, another item or collection, Classic CMS.
+     * `movesFocus`: after Discard, the action runs once the dialog has
+     * closed.
+     */
+    const guard = (run: () => void, { movesFocus = false } = {}) => {
       if (isEditorDirty) {
-        setPending({ run });
+        setPending({ run, movesFocus });
         return;
       }
       run();
@@ -488,6 +495,15 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
     };
 
+    /**
+     * Classic CMS (4.6), from the column's menu or a read-only rich text:
+     * the guard, then the frame on what is open here.
+     */
+    const showClassic = () =>
+      guard(() => onShowClassic(getClassicDeepLink(collection, itemId)), {
+        movesFocus: true,
+      });
+
     /** `unauthorized` (4.3.4): the guard, then this tab to the home address. */
     const onOpenHome =
       homeUrl === undefined
@@ -527,6 +543,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             itemId={itemId}
             homeUrl={homeUrl}
             focusBack={focusBack}
+            refreshKey={opens + refresh}
             onBack={closeEditor}
             onDirtyChange={onDirtyChange}
             onWritten={onWritten}
@@ -534,7 +551,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             onSchemaStale={refetchFields}
             onRefusal={setLine}
             onOpenHome={onOpenHome}
-            onOpenClassic={() => guard(() => onShowClassic({}))}
+            onOpenClassic={showClassic}
           />
         );
       }
@@ -575,7 +592,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           currentCollectionId={line === undefined ? collectionId : undefined}
           slots={isReady ? catalogSlots?.(collections) : undefined}
           onSelectCollection={selectCollection}
-          onShowClassic={() => onShowClassic({})}
+          onShowClassic={showClassic}
           onClose={onClose}
         />
         {/* without a source, nothing loads and the main region stays empty */}
@@ -618,6 +635,14 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
               event.preventDefault();
               keepEditingRef.current?.focus();
             }}
+            onCloseAutoFocus={(event) => {
+              const run = runOnDialogClose.current;
+              if (run !== undefined) {
+                runOnDialogClose.current = undefined;
+                event.preventDefault();
+                run();
+              }
+            }}
           >
             <DialogActions>
               <Button
@@ -629,7 +654,15 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
                   // cleared before the action runs, so leaving the builder
                   // never meets the unsaved prompt
                   $cmsNativeDirty.set(false);
-                  next?.run();
+                  // the editor reads its item again (or opens empty), so an
+                  // editor only hidden by the action keeps no discarded edit
+                  setFocusBack(false);
+                  setEditorSession((current) => current + 1);
+                  if (next?.movesFocus) {
+                    runOnDialogClose.current = next.run;
+                  } else {
+                    next?.run();
+                  }
                 }}
               >
                 Discard

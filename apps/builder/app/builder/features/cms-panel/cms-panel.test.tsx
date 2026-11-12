@@ -70,7 +70,7 @@ import {
 import { CmsIcon } from "./cms-icon";
 import { invalidateCollectionOnCanvas } from "./native/cms-canvas";
 import { $cmsNativeDirty, $cmsNativeRefresh } from "./native/cms-native-stores";
-import { createFakeCmsSource } from "./native/fake-cms-source";
+import { createFakeCmsSource, itemOf } from "./native/fake-cms-source";
 import { RichTextField } from "./native/rich-text-field";
 // Read as text through Vite: the suite runs in the browser, without node:fs
 import topbarSource from "../../shared/topbar.tsx?raw";
@@ -1447,6 +1447,136 @@ describe("the CMS overlay in the builder", () => {
       expect(frame()?.style.display).toBe("block");
       expect(nativeScreen()?.style.display).toBe("none");
       expect(document.activeElement).toBe(iframe);
+    });
+
+    // The suite's viewport is narrow and its rail unstyled: pin the rail's
+    // box as the builder lays it out, so the menu is within the viewport.
+    const pinRailForMenu = () => {
+      const rail =
+        railButton()?.closest<HTMLElement>('[role="tablist"]')?.parentElement
+          ?.parentElement;
+      vi.spyOn(rail as HTMLElement, "getBoundingClientRect").mockReturnValue({
+        top: 40,
+        bottom: 800,
+        left: 0,
+        right: 41,
+        width: 41,
+        height: 760,
+        x: 0,
+        y: 40,
+        toJSON: () => ({}),
+      });
+    };
+
+    const chooseClassicCms = async () => {
+      await act(async () =>
+        userEvent.click(
+          nativeScreen()!.querySelector<HTMLElement>('[aria-label="CMS menu"]')!
+        )
+      );
+      await act(async () => userEvent.click(menuItem("Classic CMS")!));
+    };
+
+    /** With a project: the native screen on a fake door, its item open. */
+    const openNativeItem = async () => {
+      const fake = createFakeCmsSource();
+      cmsApi.createCmsApi.mockImplementation(() => fake);
+      $project.set({ id: "project-1" } as Project);
+      render();
+      pinRailForMenu();
+      clickRail();
+      await vi.waitFor(() => {
+        expect(
+          nativeScreen()?.querySelector("[data-cms-item-id]")
+        ).not.toBeNull();
+      });
+      await act(async () =>
+        userEvent.click(
+          nativeScreen()!.querySelector<HTMLElement>("[data-cms-item-id]")!
+        )
+      );
+      await vi.waitFor(() => {
+        expect(
+          nativeScreen()?.querySelector<HTMLInputElement>("#cms-field-title")
+            ?.value
+        ).toBe("Hello");
+      });
+      return fake;
+    };
+
+    test("Classic CMS from the native menu mounts the frame once with the open collection and item", async () => {
+      await openNativeItem();
+      await chooseClassicCms();
+      const iframe = frame();
+      expect(iframe?.getAttribute("src")).toBe(
+        `${platformUrl}/cms-panel/${orgId}?theme=light&collection=posts&item=${itemId}`
+      );
+      expect(iframe?.style.display).toBe("block");
+      expect(nativeScreen()?.style.display).toBe("none");
+      post({ type: "cms.close_requested" });
+      expect(isShown()).toBe(true);
+      expect(nativeScreen()?.style.display).toBe("flex");
+      await chooseClassicCms();
+      expect(frame()).toBe(iframe);
+      expect(frame()?.getAttribute("src")).toBe(
+        `${platformUrl}/cms-panel/${orgId}?theme=light&collection=posts&item=${itemId}`
+      );
+      expect(frame()?.style.display).toBe("block");
+    });
+
+    test("with unsaved edits, Classic CMS asks first, and Discard shows the frame with the focus in it", async () => {
+      await openNativeItem();
+      const title =
+        nativeScreen()!.querySelector<HTMLInputElement>("#cms-field-title")!;
+      await act(async () => userEvent.type(title, " again"));
+      expect($cmsNativeDirty.get()).toBe(true);
+      await chooseClassicCms();
+      expect(frame()).toBeNull();
+      const discard = [
+        ...document.querySelectorAll<HTMLButtonElement>("button"),
+      ].find((button) => button.textContent === "Discard");
+      await act(async () => userEvent.click(discard!));
+      expect($cmsNativeDirty.get()).toBe(false);
+      // Classic CMS runs once the dialog has closed
+      await vi.waitFor(() => {
+        expect(frame()?.style.display).toBe("block");
+      });
+      const iframe = frame();
+      expect(iframe?.getAttribute("src")).toBe(
+        `${platformUrl}/cms-panel/${orgId}?theme=light&collection=posts&item=${itemId}`
+      );
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(document.activeElement).toBe(iframe);
+    });
+
+    test("an item saved in the frame shows in the native editor on return", async () => {
+      const fake = await openNativeItem();
+      await chooseClassicCms();
+      expect(frame()?.style.display).toBe("block");
+      const calls = fake.getItem.mock.calls.length;
+      fake.getItem.mockResolvedValue({
+        item: itemOf({
+          data: { title: "From the frame", summary: null, author: null },
+          status: "published",
+          hasStagedChanges: true,
+          updatedAt: "2026-11-12T10:00:05+00:00",
+        }),
+      });
+      post({ type: "cms.item_saved", collection: "posts" });
+      post({ type: "cms.close_requested" });
+      expect(nativeScreen()?.style.display).toBe("flex");
+      await vi.waitFor(() => {
+        expect(
+          nativeScreen()?.querySelector<HTMLInputElement>("#cms-field-title")
+            ?.value
+        ).toBe("From the frame");
+      });
+      expect(fake.getItem.mock.calls.length).toBeGreaterThan(calls);
+      expect(
+        nativeScreen()?.querySelector(
+          "[data-cms-editor-header] [data-cms-status]"
+        )?.textContent
+      ).toBe("Staged changes");
     });
 
     const bodyChildOf = (node: Element) => {

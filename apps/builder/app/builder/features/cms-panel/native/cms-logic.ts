@@ -4,7 +4,9 @@
  * no I/O.
  */
 import { planBadgeLabel } from "~/shared/branding";
+import type { CmsDeepLink } from "../cms-panel";
 import type {
+  CmsCollectionSummary,
   CmsErrorCode,
   CmsField,
   CmsFieldKind,
@@ -517,4 +519,21 @@ export const getRefusal = (
     return code;
   }
   return undefined;
+};
+
+/**
+ * What Classic CMS opens on (4.6): the open collection, and the open item
+ * when it is saved; nothing without a collection.
+ */
+export const getClassicDeepLink = (
+  collection: Pick<CmsCollectionSummary, "slug"> | undefined,
+  itemId: string | null | undefined
+): CmsDeepLink => {
+  if (collection === undefined) {
+    return {};
+  }
+  if (itemId === null || itemId === undefined) {
+    return { collection: collection.slug };
+  }
+  return { collection: collection.slug, item: itemId };
 };
