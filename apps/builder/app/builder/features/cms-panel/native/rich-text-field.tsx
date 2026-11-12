@@ -15,6 +15,7 @@ import {
   $isRangeSelection,
   COMMAND_PRIORITY_LOW,
   FORMAT_TEXT_COMMAND,
+  PASTE_COMMAND,
   SELECTION_CHANGE_COMMAND,
   type LexicalEditor,
   type LexicalNode,
@@ -38,7 +39,11 @@ import {
 } from "@lexical/rich-text";
 import { $createCodeNode, $isCodeNode, CodeHighlightNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
-import { $findMatchingParent, mergeRegister } from "@lexical/utils";
+import {
+  $findMatchingParent,
+  mergeRegister,
+  objectKlassEquals,
+} from "@lexical/utils";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -595,6 +600,117 @@ const Toolbar = ({ id, disabled }: { id: string; disabled: boolean }) => {
   );
 };
 
+/** The clipboard type of Lexical's own copy, whose nodes carry their links. */
+const LEXICAL_CLIPBOARD_TYPE = "application/x-lexical-editor";
+
+/** Whether copied Lexical nodes hold a link the Link control's rule refuses. */
+const hasRefusedLink = (value: unknown): boolean => {
+  if (Array.isArray(value)) {
+    return value.some(hasRefusedLink);
+  }
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const node = value as {
+    type?: unknown;
+    url?: unknown;
+    children?: unknown;
+    nodes?: unknown;
+  };
+  if (
+    (node.type === "link" || node.type === "autolink") &&
+    richTextHref(typeof node.url === "string" ? node.url : undefined) === null
+  ) {
+    return true;
+  }
+  return hasRefusedLink(node.children) || hasRefusedLink(node.nodes);
+};
+
+/**
+ * The pasted data with each link the Link control's rule (`richTextHref`)
+ * refuses unwrapped to its text; undefined when it holds none.
+ */
+const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
+  const html = data.getData("text/html");
+  let cleanHtml: string | undefined;
+  if (html !== "") {
+    const dom = new DOMParser().parseFromString(html, "text/html");
+    const refused = Array.from(dom.querySelectorAll("a")).filter(
+      (anchor) =>
+        richTextHref(anchor.getAttribute("href") ?? undefined) === null
+    );
+    for (const anchor of refused) {
+      anchor.replaceWith(...Array.from(anchor.childNodes));
+    }
+    if (refused.length > 0) {
+      cleanHtml = dom.body.innerHTML;
+    }
+  }
+  let dropsLexical = false;
+  const copied = data.getData(LEXICAL_CLIPBOARD_TYPE);
+  if (copied !== "") {
+    try {
+      dropsLexical = hasRefusedLink(JSON.parse(copied));
+    } catch {
+      // not Lexical's data: the paste never reads it
+    }
+  }
+  if (cleanHtml === undefined && dropsLexical === false) {
+    return;
+  }
+  const next = new DataTransfer();
+  for (const type of data.types) {
+    if (type === "Files" || (type === LEXICAL_CLIPBOARD_TYPE && dropsLexical)) {
+      continue;
+    }
+    next.setData(
+      type,
+      type === "text/html" && cleanHtml !== undefined
+        ? cleanHtml
+        : data.getData(type)
+    );
+  }
+  return next;
+};
+
+/**
+ * A pasted link takes the Link control's rule: one it refuses is pasted as
+ * its text. A stored value's links take the import's rule instead, so this
+ * applies to paste only.
+ */
+const PastedLinkPlugin = () => {
+  const [editor] = useLexicalComposerContext();
+  useEffect(
+    () =>
+      editor.registerCommand(
+        PASTE_COMMAND,
+        (event) => {
+          if (
+            objectKlassEquals(event, ClipboardEvent) === false ||
+            (event as ClipboardEvent).clipboardData === null
+          ) {
+            return false;
+          }
+          const clean = withoutRefusedLinks(
+            (event as ClipboardEvent).clipboardData as DataTransfer
+          );
+          if (clean === undefined) {
+            return false;
+          }
+          event.preventDefault();
+          editor.dispatchCommand(
+            PASTE_COMMAND,
+            new ClipboardEvent("paste", { clipboardData: clean })
+          );
+          return true;
+        },
+        COMMAND_PRIORITY_LOW
+      ),
+    [editor]
+  );
+  return null;
+};
+
 /** A save in flight turns editing off. */
 const EditablePlugin = ({ editable }: { editable: boolean }) => {
   const [editor] = useLexicalComposerContext();
@@ -706,6 +822,7 @@ export const RichTextField = ({
         <HistoryPlugin />
         <ListPlugin />
         <LinkPlugin />
+        <PastedLinkPlugin />
         <HorizontalRulePlugin />
         <HeadingTagPlugin />
         <OnChangePlugin

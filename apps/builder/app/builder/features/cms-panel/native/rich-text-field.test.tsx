@@ -325,6 +325,62 @@ test.each([
   expect(lastHtml(onChange)).not.toContain(`<${tag}`);
 });
 
+test.each([
+  ["a javascript: link", "javascript:alert(1)"],
+  ["a //host link", "//elsewhere.example/page"],
+  ["a schemeless link", "contact"],
+])("%s pasted becomes plain text", async (_name, href) => {
+  const { onChange } = mountField();
+  await focusEditor();
+  paste(editable()!, {
+    "text/html": `<p>Ask <a href="${href}">here</a> or <a href="https://example.org/">there</a></p>`,
+    "text/plain": "Ask here or there",
+  });
+  await settle();
+  expect(lastValue(onChange)?.text).toContain("Ask here or there");
+  const html = lastHtml(onChange);
+  expect(html).not.toContain(`href="${href}"`);
+  expect(html.match(/<a /g)).toHaveLength(1);
+  expect(html).toContain('href="https://example.org/"');
+});
+
+test("a link copied from a Lexical editor takes the same rule when pasted", async () => {
+  const { onChange } = mountField();
+  await focusEditor();
+  const text = {
+    type: "text",
+    version: 1,
+    text: "here",
+    format: 0,
+    style: "",
+    mode: "normal",
+    detail: 0,
+  };
+  paste(editable()!, {
+    "application/x-lexical-editor": JSON.stringify({
+      namespace: "cms-rich-text",
+      nodes: [
+        {
+          type: "link",
+          version: 1,
+          url: "javascript:alert(1)",
+          rel: null,
+          target: null,
+          title: null,
+          direction: null,
+          format: "",
+          indent: 0,
+          children: [text],
+        },
+      ],
+    }),
+    "text/plain": "here",
+  });
+  await settle();
+  expect(lastValue(onChange)?.text).toContain("here");
+  expect(lastHtml(onChange)).not.toContain("<a");
+});
+
 test("a value the editor would not keep whole is read-only with Edit in Classic CMS", async () => {
   const lossy = fixture.readOnly.find((entry) => entry.reason === "lossy");
   expect(lossy, "the fixture's lossy entry").toBeDefined();
