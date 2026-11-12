@@ -2277,6 +2277,38 @@ collection }` invalidates, through `invalidateResource`, every current
   and its button, which each provision resets. In the builder's Preview a
   submission is refused (§5).
 
+**Variables**, `features/variables/` (design:
+`docs/superpowers/specs/2026-11-11-builder-variables-design.md` in the
+OrganizeOS repo). Part 1's data layer; the manager arrives in PR A2 and the
+Style panel's "+" in PR B.
+
+- A variable's value is a `--name` declaration on Global Root's local style
+  source at the base breakpoint. A bound property stores upstream's
+  `{ type: "var", value: "name" }`. Names are lowercase slugs, unique
+  project-wide, never one of the reserved names outside Brand.
+- The registry at `projectSettings.organizeos.variables` (collections, types,
+  display names, order) only describes those declarations: it holds no
+  values. It reads as absent, readable or unreadable (another version, or an
+  invalid shape); a load never fails on it. It is never transformed by
+  parsing, never written whole and never written when unreadable; every
+  change is a narrow single-index patch, staged in the same transaction as
+  the style change, so one write is one undo step. Unknown keys survive.
+- A rename goes by whole name: only `VarValue`s and `var(--name)` text are
+  rewritten, never a keyword and never a longer name that ends with it, in
+  styles, HTML Embed `code` props and the project's custom code
+  (`projectSettings.meta.code`).
+- A delete removes every declaration of the name, in every style source,
+  breakpoint and state; every reference takes the variable's resolved base
+  value (`unset` when it does not resolve). Embed and custom code keep their
+  text and count in the usage.
+- The six canonical names and the two band names are protected: no rename or
+  delete from the Variables operations or Cmd+K, and "Delete unused" never
+  offers them. A missing canonical variable is restored only while another of
+  the six exists, so the template chooser's gate is unchanged.
+- Cmd+K rename and delete of a listed root variable (Global Root's local
+  source, base breakpoint) go through the Variables operations, keeping the
+  registry in step; any other name keeps upstream's behaviour.
+
 **Section backgrounds**, the Style panel's "Background presets" section
 (`features/organizeos-panel/background-presets-section.tsx`, one marked entry
 in upstream's section map, `features/style-panel/sections/sections.ts`,
