@@ -177,6 +177,7 @@ describe("joinCmsCatalog", () => {
         kind: "no_collection",
         key: resourceNamed("Events").id,
         name: "Events",
+        isStale: false,
       },
     ]);
   });
@@ -217,6 +218,31 @@ describe("joinCmsCatalog", () => {
         orphan.kind === "stale_page" ? [orphan.name] : []
       )
     ).toEqual(["Old template"]);
+  });
+
+  test("a catalog collection with no platform row keeps its stale line", async () => {
+    const data = buildData();
+    // the news collection now answers at "fresh", which the platform lacks
+    const { resources: renamed } = await buildCollectionResourcePresets({
+      projectId,
+      apiBase,
+      authHeaderExpression: authorization,
+      collections: [{ slug: "fresh", name: "News" }],
+    });
+    data.resources.delete(resourceNamed("News").id);
+    for (const resource of renamed) {
+      data.resources.set(resource.id, resource);
+    }
+    const catalog = await loadCatalog(data);
+    const { orphans } = joinCmsCatalog([], catalog, data);
+    expect(
+      orphans.flatMap((orphan) =>
+        orphan.kind === "no_collection" ? [[orphan.name, orphan.isStale]] : []
+      )
+    ).toEqual([
+      ["Events", false],
+      ["News", true],
+    ]);
   });
 });
 

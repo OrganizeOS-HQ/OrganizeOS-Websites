@@ -108,7 +108,7 @@ export type CmsCatalogRow = {
 export type CmsCatalogOrphan =
   | { kind: "stale_page"; key: string; name: string }
   | { kind: "sitemap"; key: string; slug: string }
-  | { kind: "no_collection"; key: string; name: string };
+  | { kind: "no_collection"; key: string; name: string; isStale: boolean };
 
 /**
  * The CMS column's join: a row for each platform collection whose catalog
@@ -169,6 +169,8 @@ export const joinCmsCatalog = (
           kind: "no_collection",
           key: resource.id,
           name: resource.name,
+          // its stale item page is no orphan of its own: the line is here
+          isStale: join.isStaleFor(resource),
         })
       ),
   ];

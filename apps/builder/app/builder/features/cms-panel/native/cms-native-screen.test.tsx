@@ -260,7 +260,8 @@ const until = async <T,>(read: () => T): Promise<T> => {
   return vi.waitFor(read, { timeout: 5000, interval: 20 });
 };
 
-const render = async () => {
+/** Draws the host and waits for the `slug` collection's row. */
+const render = async (slug = "news") => {
   container = document.createElement("div");
   container.style.width = "1200px";
   container.style.height = "800px";
@@ -283,7 +284,7 @@ const render = async () => {
   });
   await until(() =>
     expect(
-      document.querySelector('[data-cms-collection="news"]')
+      document.querySelector(`[data-cms-collection="${slug}"]`)
     ).not.toBeNull()
   );
   return container;
@@ -528,6 +529,23 @@ describe("the collection actions in the CMS column", () => {
     ).toBeNull();
     // the line fits the column
     expect(line.scrollWidth).toBeLessThanOrEqual(line.clientWidth);
+  });
+
+  test("a catalog collection with no platform row keeps its stale line in the foot", async () => {
+    // News's item page reads an old address, and the platform lists no news
+    await leaveStaleItemPage("oldnews", "News");
+    platformCollections = [EVENTS, MEMBERS];
+    await render("events");
+    const found = await until(() => {
+      const rows = orphans();
+      expect(rows.map((orphan) => orphan.textContent)).toContain(
+        "NewsItem page uses an old address"
+      );
+      return rows;
+    });
+    expect(found.map((orphan) => orphan.textContent)).toEqual([
+      "NewsItem page uses an old address",
+    ]);
   });
 
   test("the foot holds a stale item page, a sitemap orphan with its menu, and a catalog collection with no platform row with none", async () => {

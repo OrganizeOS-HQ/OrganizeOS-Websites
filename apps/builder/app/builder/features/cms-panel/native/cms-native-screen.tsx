@@ -58,7 +58,7 @@ const renderOrphan = (orphan: CmsCatalogOrphan) => {
         <OrphanRow
           key={orphan.key}
           name={orphan.name}
-          isStale={false}
+          isStale={orphan.isStale}
           removeIn="menu"
         />
       );
