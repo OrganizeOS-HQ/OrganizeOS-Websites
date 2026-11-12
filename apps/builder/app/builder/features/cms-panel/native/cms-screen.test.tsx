@@ -426,6 +426,48 @@ describe("refusals on a load", () => {
     expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
   });
 
+  test.each([
+    ["E2", "getCollection"],
+    ["E3", "listItems"],
+  ] as const)(
+    "a line that %s caused: Retry reads E0, E1, E2 and E3 again, and the line clears once they answer",
+    async (_name, method) => {
+      fake[method].mockResolvedValueOnce({ error: "forbidden" });
+      mount({ homeUrl: HOME });
+      await settle();
+      expect(line()?.textContent).toBe("No access to the CMSRetry");
+      const calls = {
+        getAccess: fake.getAccess.mock.calls.length,
+        listCollections: fake.listCollections.mock.calls.length,
+        getCollection: fake.getCollection.mock.calls.length,
+        listItems: fake.listItems.mock.calls.length,
+      };
+      await click(buttonByText("Retry"));
+      for (const [name, count] of Object.entries(calls)) {
+        expect(fake[name as keyof typeof calls]).toHaveBeenCalledTimes(
+          count + 1
+        );
+      }
+      expect(fake.getCollection).toHaveBeenLastCalledWith(POSTS.id);
+      expect(fake.listItems).toHaveBeenLastCalledWith(POSTS.id, {
+        q: undefined,
+        page: 1,
+      });
+      expect(line()).toBeNull();
+      expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
+    }
+  );
+
+  test("a line that E2 caused stays while Retry's E2 is still refused", async () => {
+    fake.getCollection.mockResolvedValue({ error: "forbidden" });
+    mount({ homeUrl: HOME });
+    await settle();
+    expect(line()?.textContent).toBe("No access to the CMSRetry");
+    await click(buttonByText("Retry"));
+    expect(fake.getCollection).toHaveBeenCalledTimes(2);
+    expect(line()?.textContent).toBe("No access to the CMSRetry");
+  });
+
   test("a page answered unavailable while another page is drawn: the toast, and the drawn page stays", async () => {
     const toastError = vi.spyOn(toast, "error");
     mount({ homeUrl: HOME });

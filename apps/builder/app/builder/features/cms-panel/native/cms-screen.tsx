@@ -142,6 +142,9 @@ const mapReadFailure = (
   return refusal;
 };
 
+/** What showed the screen's line: E0 and E1, the editor, E2 or E3. */
+type LineCause = "load" | "editor" | "detail" | "page";
+
 const defaultNavigate = (url: string) => {
   window.location.assign(url);
 };
@@ -181,6 +184,27 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
   ) => {
     const [access, setAccess] = useState<CmsAccess | undefined>(undefined);
     const [line, setLine] = useState<CmsLineKind | undefined>(undefined);
+    // The read whose refusal shows the line; that read's next answer
+    // clears it. E0 and E1 also clear the editor's.
+    const lineCause = useRef<LineCause | undefined>(undefined);
+    const showLine = useCallback((kind: CmsLineKind, cause: LineCause) => {
+      lineCause.current = cause;
+      setLine(kind);
+    }, []);
+    const clearLine = useCallback((cause: Exclude<LineCause, "editor">) => {
+      const current = lineCause.current;
+      if (
+        current === cause ||
+        (cause === "load" && (current === "editor" || current === undefined))
+      ) {
+        lineCause.current = undefined;
+        setLine(undefined);
+      }
+    }, []);
+    const onEditorRefusal = useCallback(
+      (refusal: CmsRefusal) => showLine(refusal, "editor"),
+      [showLine]
+    );
     const [collections, setCollections] = useState<CmsCollectionSummary[]>([]);
     const [collectionId, setCollectionId] = useState(initialView?.collectionId);
     const [itemId, setItemId] = useState(initialView?.itemId);
@@ -232,7 +256,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
     }, [isVisible]);
 
-    // E0 and E1, on open, on each reopen and on Retry.
+    // E0 and E1, on open, on each reopen and on Retry (which reads E2 and
+    // E3 again too).
     useEffect(() => {
       if (source === undefined || opens === 0) {
         return;
@@ -249,9 +274,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           return;
         }
         if (refusal !== undefined) {
-          setLine(refusal);
+          showLine(refusal, "load");
         } else if (isBackground === false) {
-          setLine("unavailable");
+          showLine("unavailable", "load");
         }
       };
       const load = async () => {
@@ -271,7 +296,12 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           onFailure(listResult.error);
           return;
         }
-        setLine(undefined);
+        clearLine("load");
+        // with no collection, no E2 or E3 is left to clear their line
+        if (listResult.collections.length === 0) {
+          lineCause.current = undefined;
+          setLine(undefined);
+        }
         setAccess((current) =>
           current !== undefined && isSameAccess(current, accessResult)
             ? current
@@ -283,7 +313,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       return () => {
         effect.isCurrent = false;
       };
-    }, [source, attempt, opens, isLoadBackground]);
+    }, [source, attempt, opens, isLoadBackground, showLine, clearLine]);
 
     // E1 alone after each write, here or in the classic frame, silently.
     useEffect(() => {
@@ -336,7 +366,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
       const isBackground = isDetailBackground(
         source,
-        JSON.stringify([collectionId, detailAttempt])
+        JSON.stringify([collectionId, detailAttempt, attempt])
       );
       let isCurrent = true;
       if (isBackground === false) {
@@ -352,12 +382,13 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             return;
           }
           if (refusal !== undefined) {
-            setLine(refusal);
+            showLine(refusal, "detail");
           } else if (isBackground === false) {
             setDetailFailed(true);
           }
           return;
         }
+        clearLine("detail");
         setDetailFailed(false);
         setDetail(result.collection);
       });
@@ -369,9 +400,12 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       collectionId,
       isReady,
       detailAttempt,
+      attempt,
       opens,
       refresh,
       isDetailBackground,
+      showLine,
+      clearLine,
     ]);
 
     // E3: the open page of items.
@@ -389,6 +423,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         query,
         listVersion,
         pageAttempt,
+        attempt,
       ]);
       const isBackground = isPageBackground(source, key);
       // the page E3 answered in place of the one asked for is drawn already
@@ -413,7 +448,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
               return;
             }
             if (refusal !== undefined) {
-              setLine(refusal);
+              showLine(refusal, "page");
             } else if (isBackground === false) {
               // a page on screen stays, with the toast; with none drawn,
               // the line and its Retry (4.3.4)
@@ -425,6 +460,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             }
             return;
           }
+          clearLine("page");
           setPageFailed(false);
           setItemsPage(result);
           // a page past the end answers the last one (A4): the screen
@@ -436,6 +472,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
               query,
               listVersion,
               pageAttempt,
+              attempt,
             ]);
             setPage(result.page);
           }
@@ -451,9 +488,12 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       query,
       listVersion,
       pageAttempt,
+      attempt,
       opens,
       refresh,
       isPageBackground,
+      showLine,
+      clearLine,
     ]);
 
     useEffect(() => {
@@ -534,7 +574,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       if (isCmsFailure(result)) {
         const refusal = mapReadFailure(result.error);
         if (refusal !== undefined && refusal !== "toast") {
-          setLine(refusal);
+          showLine(refusal, "detail");
         }
         return;
       }
@@ -606,7 +646,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             onWritten={onWritten}
             onCreated={(item) => setItemId(item.id)}
             onSchemaStale={refetchFields}
-            onRefusal={setLine}
+            onRefusal={onEditorRefusal}
             onOpenHome={onOpenHome}
             onOpenClassic={showClassic}
           />
