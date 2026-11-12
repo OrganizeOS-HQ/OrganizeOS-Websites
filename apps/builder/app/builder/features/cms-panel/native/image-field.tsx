@@ -9,10 +9,11 @@ import {
   InputField,
   Label,
   theme,
+  toast,
   Tooltip,
 } from "@webstudio-is/design-system";
 import { TrashIcon, UploadIcon } from "@webstudio-is/icons";
-import { getRefusal, type CmsRefusal } from "./cms-logic";
+import { getRefusal, getToastText, type CmsRefusal } from "./cms-logic";
 import {
   CMS_IMAGE_MAX_BYTES,
   CMS_IMAGE_TYPES,
@@ -127,6 +128,11 @@ export const ImageField = ({
       const refusal = getRefusal(uploaded.error, "write");
       if (refusal !== undefined && onRefusal !== undefined) {
         onRefusal(refusal);
+        return;
+      }
+      // a write refused for access or plan: the editor's write toast
+      if (uploaded.error === "forbidden" || uploaded.error === "plan") {
+        toast.error(getToastText(uploaded.error));
         return;
       }
       onError(uploaded.error === "invalid" ? "Not an image" : "Not uploaded");

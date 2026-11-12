@@ -5,7 +5,13 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, expect, test, vi } from "vitest";
 import { userEvent } from "@vitest/browser/context";
-import { $getRoot, type LexicalEditor } from "lexical";
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  type LexicalEditor,
+} from "lexical";
+import { $createLinkNode, $isLinkNode } from "@lexical/link";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { RichTextField, type RichTextFieldProps } from "./rich-text-field";
 import { createLazyRichTextField, FieldControl } from "./field-controls";
@@ -379,6 +385,94 @@ test("a link copied from a Lexical editor takes the same rule when pasted", asyn
   await settle();
   expect(lastValue(onChange)?.text).toContain("here");
   expect(lastHtml(onChange)).not.toContain("<a");
+});
+
+/** A drop's input, as Lexical reads it: `beforeinput`, `insertFromDrop`. */
+const drop = (target: HTMLElement, data: Record<string, string>) => {
+  const dataTransfer = new DataTransfer();
+  for (const [format, text] of Object.entries(data)) {
+    dataTransfer.setData(format, text);
+  }
+  const event = new InputEvent("beforeinput", {
+    bubbles: true,
+    cancelable: true,
+    inputType: "insertFromDrop",
+    dataTransfer,
+  });
+  expect(event.dataTransfer).toBe(dataTransfer);
+  act(() => {
+    target.dispatchEvent(event);
+  });
+};
+
+test.each([
+  ["a javascript: link", "javascript:alert(1)"],
+  ["a //host link", "//elsewhere.example/page"],
+])("%s dropped becomes plain text", async (_name, href) => {
+  const { onChange } = mountField();
+  await focusEditor();
+  drop(editable()!, {
+    "text/html": `<p>Ask <a href="${href}">here</a> or <a href="https://example.org/">there</a></p>`,
+    "text/plain": "Ask here or there",
+  });
+  await settle();
+  expect(lastValue(onChange)?.text).toContain("Ask here or there");
+  const html = lastHtml(onChange);
+  expect(html).not.toContain(`href="${href}"`);
+  expect(html.match(/<a /g)).toHaveLength(1);
+  expect(html).toContain('href="https://example.org/"');
+});
+
+test("a link made in an update with a scheme the import refuses is unwrapped to its text", async () => {
+  const { onChange } = mountField({
+    value: { html: '<p>Go <a href="https://example.org/">there</a></p>' },
+  });
+  await settle();
+  const editor = (
+    editable() as (HTMLElement & { __lexicalEditor?: LexicalEditor }) | null
+  )?.__lexicalEditor;
+  expect(editor).toBeDefined();
+  await act(async () => {
+    editor!.update(() => {
+      const link = $createLinkNode("javascript:alert(1)");
+      link.append($createTextNode("here"));
+      const paragraph = $createParagraphNode();
+      paragraph.append($createTextNode("Ask "), link);
+      $getRoot().append(paragraph);
+    });
+  });
+  await settle();
+  expect(lastValue(onChange)?.text).toContain("Ask here");
+  const html = lastHtml(onChange);
+  expect(html).not.toContain("javascript:");
+  expect(html.match(/<a /g)).toHaveLength(1);
+  expect(html).toContain('href="https://example.org/"');
+  expect(editable()?.innerHTML).not.toContain("javascript:");
+});
+
+test("setting a refused address on a link unwraps it, and an undo never draws that address", async () => {
+  const { onChange } = mountField({
+    value: { html: '<p>Go <a href="https://example.org/">there</a></p>' },
+  });
+  await settle();
+  const editor = (
+    editable() as (HTMLElement & { __lexicalEditor?: LexicalEditor }) | null
+  )?.__lexicalEditor;
+  await act(async () => {
+    editor!.update(() => {
+      const link = $getRoot()
+        .getAllTextNodes()
+        .map((node) => node.getParent())
+        .find($isLinkNode);
+      link?.setURL("javascript:alert(1)");
+    });
+  });
+  await settle();
+  expect(lastHtml(onChange)).not.toContain("<a");
+  expect(editable()?.innerHTML).not.toContain("javascript:");
+  await focusEditor();
+  await type("{Control>}z{/Control}");
+  expect(editable()?.innerHTML).not.toContain("javascript:");
 });
 
 test("a value the editor would not keep whole is read-only with Edit in Classic CMS", async () => {

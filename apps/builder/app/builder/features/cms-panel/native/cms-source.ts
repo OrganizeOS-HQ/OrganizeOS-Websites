@@ -3,8 +3,9 @@
  * docs/superpowers/specs/2026-11-07-native-cms-in-the-builder-design.md,
  * 5.4 and 5.7).
  *
- * One method per door endpoint, returning exactly what the endpoint returns:
- * the success body, or `{ error: code, field? }`. `createCmsApi`
+ * One method per door endpoint, returning what the endpoint returns: the
+ * success body, or `{ error: code, field? }`. E6's success adds `created`,
+ * true on a 201 and false on a 200, a replay. `createCmsApi`
  * (`cms-api.ts`) calls the builder routes under
  * `/rest/organizeos-cms/{projectId}/...`; the storybook preview uses the
  * in-memory `createSampleCmsSource`.

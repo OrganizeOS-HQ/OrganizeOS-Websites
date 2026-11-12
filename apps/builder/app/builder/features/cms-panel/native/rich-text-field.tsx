@@ -14,6 +14,7 @@ import {
   $getSelection,
   $isRangeSelection,
   COMMAND_PRIORITY_LOW,
+  CONTROLLED_TEXT_INSERTION_COMMAND,
   FORMAT_TEXT_COMMAND,
   PASTE_COMMAND,
   SELECTION_CHANGE_COMMAND,
@@ -21,7 +22,7 @@ import {
   type LexicalNode,
   type TextFormatType,
 } from "lexical";
-import { $isLinkNode, TOGGLE_LINK_COMMAND, type LinkNode } from "@lexical/link";
+import { $isLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import {
   $isListNode,
   INSERT_ORDERED_LIST_COMMAND,
@@ -91,6 +92,7 @@ import {
   readRichTextValue,
   richTextHref,
   richTextHtmlConfig,
+  richTextImportHref,
   richTextNodes,
 } from "./rich-text-html";
 
@@ -674,37 +676,71 @@ const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
 };
 
 /**
- * A pasted link takes the Link control's rule: one it refuses is pasted as
- * its text. A stored value's links take the import's rule instead, so this
- * applies to paste only.
+ * A pasted or dropped link takes the Link control's rule: one it refuses is
+ * inserted as its text. A stored value's links take the import's rule
+ * instead, so this applies to paste and drop only. Any link, however it was
+ * made, whose address the import's rule refuses becomes its text.
  */
-const PastedLinkPlugin = () => {
+const LinkRulePlugin = () => {
   const [editor] = useLexicalComposerContext();
   useEffect(
     () =>
-      editor.registerCommand(
-        PASTE_COMMAND,
-        (event) => {
-          if (
-            objectKlassEquals(event, ClipboardEvent) === false ||
-            (event as ClipboardEvent).clipboardData === null
-          ) {
-            return false;
+      mergeRegister(
+        editor.registerNodeTransform(LinkNode, (node) => {
+          if (richTextImportHref(node.getURL()) !== null) {
+            return;
           }
-          const clean = withoutRefusedLinks(
-            (event as ClipboardEvent).clipboardData as DataTransfer
-          );
-          if (clean === undefined) {
-            return false;
+          for (const child of node.getChildren()) {
+            node.insertBefore(child);
           }
-          event.preventDefault();
-          editor.dispatchCommand(
-            PASTE_COMMAND,
-            new ClipboardEvent("paste", { clipboardData: clean })
-          );
-          return true;
-        },
-        COMMAND_PRIORITY_LOW
+          node.remove();
+        }),
+        editor.registerCommand(
+          CONTROLLED_TEXT_INSERTION_COMMAND,
+          (payload) => {
+            if (typeof payload === "string" || payload.dataTransfer === null) {
+              return false;
+            }
+            const clean = withoutRefusedLinks(payload.dataTransfer);
+            if (clean === undefined) {
+              return false;
+            }
+            payload.preventDefault();
+            editor.dispatchCommand(
+              CONTROLLED_TEXT_INSERTION_COMMAND,
+              new InputEvent(payload.type, {
+                inputType: payload.inputType,
+                dataTransfer: clean,
+              })
+            );
+            return true;
+          },
+          COMMAND_PRIORITY_LOW
+        ),
+        editor.registerCommand(
+          PASTE_COMMAND,
+          (event) => {
+            if (
+              objectKlassEquals(event, ClipboardEvent) === false ||
+              (event as ClipboardEvent).clipboardData === null
+            ) {
+              return false;
+            }
+            const clean = withoutRefusedLinks(
+              (event as ClipboardEvent).clipboardData as DataTransfer
+            );
+            if (clean === undefined) {
+              return false;
+            }
+            event.preventDefault();
+            editor.dispatchCommand(
+              PASTE_COMMAND,
+              new ClipboardEvent("paste", { clipboardData: clean })
+            );
+            return true;
+          },
+          COMMAND_PRIORITY_LOW
+        )
       ),
     [editor]
   );
@@ -822,7 +858,7 @@ export const RichTextField = ({
         <HistoryPlugin />
         <ListPlugin />
         <LinkPlugin />
-        <PastedLinkPlugin />
+        <LinkRulePlugin />
         <HorizontalRulePlugin />
         <HeadingTagPlugin />
         <OnChangePlugin

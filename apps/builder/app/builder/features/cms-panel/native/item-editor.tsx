@@ -32,6 +32,7 @@ import {
 import { ChevronLeftIcon, EllipsesIcon } from "@webstudio-is/icons";
 import {
   emptyItemData,
+  differsFromStored,
   emptyValueFor,
   getFieldErrorText,
   getItemTitle,
@@ -180,6 +181,8 @@ export const ItemEditor = ({
   const [clientId, setClientId] = useState(() => crypto.randomUUID());
   const backRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // Per reference field, its chosen ids whose items E5 no longer finds.
+  const unresolved = useRef<Record<string, readonly string[]>>({});
   // Discard changes chosen in the Item menu: its dialog takes the focus.
   const discardChosen = useRef(false);
   const [setHeader, isCompact] = useIsNarrow(COMPACT_HEADER_WIDTH);
@@ -418,6 +421,27 @@ export const ItemEditor = ({
         });
       return;
     }
+    // the door names no field: each reference holding an item E5 no longer
+    // finds is marked, and with none to name it is a toast
+    if (failure.error === "reference_invalid" && failure.field === undefined) {
+      const text = getToastText(failure.error);
+      const keys = fields
+        .filter(
+          (field) =>
+            (field.kind === "reference" || field.kind === "multireference") &&
+            (unresolved.current[field.key]?.length ?? 0) > 0
+        )
+        .map((field) => field.key);
+      if (keys.length === 0) {
+        toast.error(text);
+        return;
+      }
+      setErrors((current) => ({
+        ...current,
+        ...Object.fromEntries(keys.map((key) => [key, text])),
+      }));
+      return;
+    }
     const fieldText = getFieldErrorText(failure.error);
     const fieldKey = failure.field;
     if (fieldText !== undefined && fieldKey !== undefined) {
@@ -538,11 +562,11 @@ export const ItemEditor = ({
     }
     const differs =
       replayed &&
-      isItemDirty({
+      differsFromStored({
         fields,
-        baseline: { ...emptyItemData(fields), ...saved.data },
+        stored: { ...emptyItemData(fields), ...saved.data },
         values,
-        baselineSlug: saved.slug,
+        storedSlug: saved.slug,
         slug,
       });
     return { saved, differs };
@@ -639,7 +663,8 @@ export const ItemEditor = ({
   };
 
   const restoreMine = (key: string) => {
-    if (kept === undefined) {
+    // a write's answer replaces the values: nothing is restored under it
+    if (kept === undefined || busy !== undefined) {
       return;
     }
     if (key === "slug") {
@@ -831,6 +856,7 @@ export const ItemEditor = ({
                       ? () => restoreMine(field.key)
                       : undefined
                   }
+                  useMineDisabled={busy !== undefined}
                 >
                   <FieldControl
                     id={id}
@@ -866,6 +892,9 @@ export const ItemEditor = ({
                     }
                     onRefusal={onRefusal}
                     onOpenClassic={onOpenClassic}
+                    onUnresolvedChange={(ids) => {
+                      unresolved.current[field.key] = ids;
+                    }}
                   />
                 </FieldRow>
               );
@@ -879,6 +908,7 @@ export const ItemEditor = ({
                   ? () => restoreMine("slug")
                   : undefined
               }
+              useMineDisabled={busy !== undefined}
             >
               <InputField
                 id="cms-field-slug"

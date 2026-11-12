@@ -19,7 +19,8 @@ import {
  * door"), through the builder's `rest.organizeos-cms` route with the page's
  * CSRF token. Never throws: every answer is the endpoint's success body or
  * `{ error: code, field? }`, and anything it cannot read, a client timeout
- * included, is `unavailable`.
+ * included, is `unavailable`. E6's success adds `created`, true on a 201
+ * and false on a 200, a replay.
  */
 
 export const CMS_REQUEST_TIMEOUT_MS = 20_000;
