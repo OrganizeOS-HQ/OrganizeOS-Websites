@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import {
   css,
   cssVar,
@@ -118,7 +118,7 @@ export const CollectionsColumn = ({
   renderCollectionActions,
   footer,
   onSelectCollection,
-  onOpenClassic,
+  onShowClassic,
   onClose,
 }: {
   collections: CmsCollectionSummary[];
@@ -133,11 +133,14 @@ export const CollectionsColumn = ({
   /** The orphan rows at the foot (4.5): W2 renders the data tab's. */
   footer?: ReactNode;
   onSelectCollection: (collectionId: string) => void;
-  /** Present while the classic frame exists (4.6). */
-  onOpenClassic?: () => void;
+  /** "Classic CMS" (4.6), run once the menu has closed. */
+  onShowClassic: () => void;
   onClose: () => void;
 }) => {
   const staleSlugs = catalog?.staleSlugs ?? [];
+  // The menu's choice runs once the menu has closed, so the focus it moves
+  // is not taken back by the menu.
+  const classicChosen = useRef(false);
   return (
     <Flex
       direction="column"
@@ -153,22 +156,37 @@ export const CollectionsColumn = ({
       <PanelTitle
         suffix={
           <>
-            {onOpenClassic !== undefined && (
-              <DropdownMenu modal={false}>
-                <Tooltip content="More" side="bottom">
-                  <DropdownMenuTrigger asChild>
-                    <IconButton aria-label="More">
-                      <EllipsesIcon />
-                    </IconButton>
-                  </DropdownMenuTrigger>
-                </Tooltip>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={onOpenClassic}>
-                    Classic CMS
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+            <DropdownMenu
+              onOpenChange={(open) => {
+                if (open === false && classicChosen.current) {
+                  onShowClassic();
+                }
+              }}
+            >
+              <DropdownMenuTrigger asChild>
+                <IconButton aria-label="CMS menu">
+                  <EllipsesIcon />
+                </IconButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                onCloseAutoFocus={(event) => {
+                  // The trigger is hidden behind the frame; focus stays there.
+                  if (classicChosen.current) {
+                    classicChosen.current = false;
+                    event.preventDefault();
+                  }
+                }}
+              >
+                <DropdownMenuItem
+                  onSelect={() => {
+                    classicChosen.current = true;
+                  }}
+                >
+                  Classic CMS
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Tooltip content="Close" side="bottom">
               <IconButton aria-label="Close" onClick={onClose}>
                 <XIcon />

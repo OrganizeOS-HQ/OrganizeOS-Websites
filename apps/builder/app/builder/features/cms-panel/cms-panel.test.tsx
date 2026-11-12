@@ -36,7 +36,8 @@ import {
   $workspaceRole,
 } from "~/shared/nano-states";
 import { $selectedPageId } from "~/shared/nano-states/pages";
-import { $pages } from "~/shared/sync/data-stores";
+import type { Project } from "@webstudio-is/project";
+import { $pages, $project } from "~/shared/sync/data-stores";
 import { registerContainers } from "~/shared/sync/sync-stores";
 import { invalidateResource } from "~/shared/resources";
 import { createCommandsEmitter } from "~/shared/commands-emitter";
@@ -69,6 +70,7 @@ import {
 import { CmsIcon } from "./cms-icon";
 import { invalidateCollectionOnCanvas } from "./native/cms-canvas";
 import { $cmsNativeDirty, $cmsNativeRefresh } from "./native/cms-native-stores";
+import { createFakeCmsSource } from "./native/fake-cms-source";
 // Read as text through Vite: the suite runs in the browser, without node:fs
 import topbarSource from "../../shared/topbar.tsx?raw";
 import toastSource from "../../../../../../packages/design-system/src/components/toast.tsx?raw";
@@ -131,6 +133,13 @@ vi.mock("~/builder/shared/assets/drag-monitor", async (importOriginal) => {
     useOnDropEffect,
   };
 });
+
+// The native screen's door, scripted: a project's screen reads the fake.
+const cmsApi = vi.hoisted(() => ({ createCmsApi: vi.fn() }));
+vi.mock("./native/cms-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./native/cms-api")>()),
+  createCmsApi: cmsApi.createCmsApi,
+}));
 
 vi.mock("~/shared/resources", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/shared/resources")>()),
@@ -1270,12 +1279,29 @@ describe("the CMS overlay in the builder", () => {
       $isClassicCmsShown.set(false);
       $cmsClassicDeepLink.set(undefined);
       $cmsFrameMounted.set(false);
+      cmsApi.createCmsApi.mockReset();
+      cmsApi.createCmsApi.mockImplementation(() => createFakeCmsSource());
     });
 
     afterEach(() => {
       for (const unmount of mounted.splice(0)) {
         unmount();
       }
+      act(() => {
+        $project.set(undefined);
+      });
+    });
+
+    test("with a project, the native screen reads the door through it", async () => {
+      $project.set({ id: "project-1" } as Project);
+      render();
+      clickRail();
+      await vi.waitFor(() => {
+        expect(
+          nativeScreen()?.querySelector('[data-cms-collection="posts"]')
+        ).not.toBeNull();
+      });
+      expect(cmsApi.createCmsApi).toHaveBeenCalledWith("project-1");
     });
 
     test("the overlay shows the native screen and frames nothing", () => {

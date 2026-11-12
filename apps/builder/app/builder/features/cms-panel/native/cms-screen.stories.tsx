@@ -98,8 +98,10 @@ const Overlay = ({
         collectionsFooter={<SampleOrphanRows catalog={catalog} />}
         initialView={view}
         homeUrl="https://app.organizeos.org/dashboard"
+        hidden={false}
+        isVisible
         onClose={() => {}}
-        onOpenClassic={() => {}}
+        onShowClassic={() => {}}
       />
       <Toaster />
     </div>

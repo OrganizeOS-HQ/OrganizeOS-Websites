@@ -553,7 +553,11 @@ export const CmsOverlay = () => {
         <CmsNativeScreen
           ref={nativeRef}
           hidden={isClassicShown}
+          overlayShown={isShown}
           onClose={closeCmsOverlay}
+          onHide={() => {
+            hideCmsOverlay();
+          }}
           onShowClassic={showClassicCms}
         />
       )}
