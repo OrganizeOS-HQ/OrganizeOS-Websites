@@ -13,6 +13,8 @@ import {
   getCssVariableUsageCounts,
   getDefinedCssVariableNames,
   rewriteCssVariableReferencesInString,
+  validateCssVariableNameWithStyles,
+  type CssVariableNameError,
 } from "@webstudio-is/project-build/runtime";
 import {
   canCommitWebstudioData,
@@ -768,3 +770,90 @@ export const setVariableType = (
     },
   });
 };
+
+// The Cmd+K routing (spec 4.9). Inputs are upstream's "--"-prefixed
+// properties. A name Global Root declares at the base breakpoint goes
+// through the operations above; any other keeps upstream's behaviour.
+
+const isListedRoot = (cssName: string) =>
+  $rootVariables.get().some((variable) => variable.cssName === cssName);
+
+const isUnreadable = () =>
+  $variablesRegistryState.get().status === "unreadable";
+
+/** "upstream": not a listed root variable, so upstream's rename runs. */
+export const routeCssVariableRename = (
+  oldProperty: string,
+  newProperty: string
+): CssVariableNameError | undefined | "upstream" => {
+  const from = oldProperty.slice(2);
+  if (isProtectedName(from)) {
+    return { type: "invalid", message: "Can't rename this variable" };
+  }
+  if (isListedRoot(from) === false) {
+    return "upstream";
+  }
+  if (isUnreadable()) {
+    return { type: "invalid", message: "Reload to rename this variable" };
+  }
+  const validationError = validateCssVariableNameWithStyles({
+    name: newProperty,
+    currentProperty: oldProperty,
+    styles: $styles.get().values(),
+  });
+  if (validationError !== undefined) {
+    return validationError;
+  }
+  const result = renameVariable({ from, to: newProperty.slice(2) });
+  return result.ok ? undefined : { type: "invalid", message: result.error };
+};
+
+/**
+ * The number deleted, 0 on a refusal or a commit that did not land, or
+ * undefined when no name is a listed root variable (upstream deletes).
+ */
+export const routeCssVariableDelete = (
+  properties: readonly string[]
+): number | undefined => {
+  const names = properties.map((property) => property.slice(2));
+  if (names.some(isProtectedName)) {
+    return 0;
+  }
+  if (names.some(isListedRoot) === false) {
+    return;
+  }
+  if (isUnreadable()) {
+    return 0;
+  }
+  const result = deleteVariables(names);
+  return result.ok ? result.deleted : 0;
+};
+
+/** The line a delete dialog shows instead of deleting. */
+export const getCssVariableDeleteRefusal = (
+  properties: readonly string[]
+): string | undefined => {
+  const names = properties.map((property) => property.slice(2));
+  if (names.some(isProtectedName)) {
+    return "Can't delete this variable";
+  }
+  if (isUnreadable() && names.some(isListedRoot)) {
+    return "Reload to delete variables";
+  }
+  return;
+};
+
+/** "Delete unused" never offers a protected name or one in custom code. */
+export const withoutKeptCssVariables = (
+  names: Set<string>,
+  code: string | undefined
+) =>
+  new Set(
+    Array.from(names).filter((property) => {
+      const name = property.slice(2);
+      return (
+        isProtectedName(name) === false &&
+        countVariableInText(code ?? "", name) === 0
+      );
+    })
+  );

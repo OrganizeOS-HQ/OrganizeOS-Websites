@@ -891,7 +891,12 @@ can be merged with minimal conflict.
   `features/organizeos-panel/test-fixtures.ts` moved up from `backgrounds/`;
   the reader, the registry patches and the staged operations in
   `features/variables/`; `canCommitWebstudioData` exported by one marked word
-  in `shared/instance-utils/data.ts`. Pinned by `overlay.wiring.node.test.ts`.
+  in `shared/instance-utils/data.ts`; and the Cmd+K guard and routing in
+  `builder/shared/css-variable-utils.tsx` (marked: the import, the
+  `$unusedCssVariables` filter, the routing at the top of `renameCssVariable`,
+  `deleteCssVariable` and `deleteUnusedCssVariables`, and the refusal in both
+  delete dialogs), with `css-variable-utils.organizeos.test.tsx`. Pinned by
+  `overlay.wiring.node.test.ts`.
 - **Published sites (§1, §8).** The CLI's copy of the blocks' build into every
   published site, `packages/cli/src/organizeos-components.ts`, called from
   short marked hooks in `prebuild.ts` and `framework-react-router.ts`, with
