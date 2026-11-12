@@ -1,17 +1,19 @@
+import { useState } from "react";
 import { useStore } from "@nanostores/react";
-import {
-  Flex,
-  PanelTitle,
-  Text,
-  cssVar,
-  theme,
-} from "@webstudio-is/design-system";
+import { Flex, Text, theme } from "@webstudio-is/design-system";
+import { SITE_COLLECTION_ID } from "@webstudio-is/project-build";
 import { $authPermit, $isDesignMode } from "~/shared/nano-states";
+import { $project } from "~/shared/sync/data-stores";
 import {
   $openRailOverlay,
   RailOverlay,
 } from "~/builder/features/rail-overlay/rail-overlay";
-import { $variablesRegistryState } from "./reader";
+import { $variableCollections, $variablesRegistryState } from "./reader";
+import { CollectionsColumn } from "./collections-column";
+import {
+  readSelectedCollection,
+  writeSelectedCollection,
+} from "./collection-memory";
 
 /**
  * The commands that still run while the manager shows. A module constant, so
@@ -27,22 +29,34 @@ const VariablesManager = () => {
   const registryState = useStore($variablesRegistryState);
   const isUnreadable = registryState.status === "unreadable";
   const readOnly = editPermits.has(permit) === false || isUnreadable;
+  const projectId = useStore($project)?.id;
+  const collections = useStore($variableCollections);
+  // The remembered collection while it is listed, else the first.
+  const [chosen, setChosen] = useState(() =>
+    projectId === undefined ? undefined : readSelectedCollection(projectId)
+  );
+  const selectedId =
+    collections.find((collection) => collection.id === chosen)?.id ??
+    collections[0]?.id ??
+    SITE_COLLECTION_ID;
+  const select = (id: string) => {
+    setChosen(id);
+    if (projectId !== undefined) {
+      writeSelectedCollection(projectId, id);
+    }
+  };
   return (
     <Flex
       data-variables-manager
       data-read-only={readOnly || undefined}
       css={{ height: "100%" }}
     >
-      <Flex
-        direction="column"
-        css={{
-          width: theme.spacing[30],
-          flexShrink: 0,
-          borderRight: `1px solid ${cssVar("--border-default")}`,
-        }}
-      >
-        <PanelTitle>Variables</PanelTitle>
-      </Flex>
+      <CollectionsColumn
+        collections={collections}
+        selectedId={selectedId}
+        readOnly={readOnly}
+        onSelect={select}
+      />
       <Flex direction="column" grow css={{ minWidth: 0 }}>
         <Flex
           align="center"

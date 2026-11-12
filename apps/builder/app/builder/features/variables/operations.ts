@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { toValue, type StyleValue } from "@webstudio-is/css-engine";
 import {
   BRAND_COLLECTION_ID,
@@ -43,11 +44,15 @@ import {
   type VariableRow,
 } from "./reader";
 import {
+  addCollectionPatches,
   addVariableEntryPatches,
   ensureRegistryPatches,
+  moveCollectionPatches,
   moveVariableEntryPatches,
   pruneRegistryPatches,
+  removeCollectionPatches,
   removeVariableEntriesPatches,
+  updateCollectionPatches,
   updateVariableEntryPatches,
 } from "./registry-patches";
 
@@ -776,6 +781,182 @@ export const setVariableType = (
           })
         );
       }
+    },
+  });
+};
+
+// The A2 operations: collections (spec 5.3).
+
+/** The registry schema's cap on a collection's name. */
+const MAX_COLLECTION_NAME_LENGTH = 64;
+
+const checkCollectionName = (name: string) => {
+  const trimmed = name.trim();
+  if (trimmed === "") {
+    return "Name is required";
+  }
+  if (trimmed.length > MAX_COLLECTION_NAME_LENGTH) {
+    return "Name is too long";
+  }
+  return;
+};
+
+const collectionRefusal = "Can't change this collection";
+
+const isSystemCollection = (id: string) =>
+  id === BRAND_COLLECTION_ID || id === SITE_COLLECTION_ID;
+
+const findCollection = (id: string) =>
+  $variableCollections.get().find((collection) => collection.id === id);
+
+/** The designer's collections, as the manager lists them. */
+const designerCollections = () =>
+  $variableCollections
+    .get()
+    .filter((collection) => isSystemCollection(collection.id) === false);
+
+export const createCollection = (name: string): WriteResult<{ id: string }> => {
+  const nameError = checkCollectionName(name);
+  if (nameError !== undefined) {
+    return commitPrepared(refuse(nameError));
+  }
+  const collection = { id: nanoid(), name: name.trim() };
+  return commitPrepared({
+    ok: true,
+    result: { id: collection.id },
+    stage: (accumulator) => {
+      stageEnsure(accumulator);
+      stagePrune(accumulator);
+      const registry = readableIn(accumulator);
+      if (registry !== undefined) {
+        stagePatches(
+          accumulator,
+          "projectSettings",
+          addCollectionPatches(registry, collection)
+        );
+      }
+    },
+  });
+};
+
+export const renameCollection = (id: string, name: string): WriteResult => {
+  if (id === BRAND_COLLECTION_ID) {
+    return commitPrepared(refuse(collectionRefusal));
+  }
+  if (findCollection(id) === undefined) {
+    return commitPrepared(refuse("Collection not found"));
+  }
+  const nameError = checkCollectionName(name);
+  if (nameError !== undefined) {
+    return commitPrepared(refuse(nameError));
+  }
+  const trimmed = name.trim();
+  return commitPrepared({
+    ok: true,
+    result: {},
+    stage: (accumulator) => {
+      stageEnsure(accumulator);
+      stagePrune(accumulator);
+      const registry = readableIn(accumulator);
+      if (registry === undefined) {
+        return;
+      }
+      const stored = registry.collections.some(
+        (collection) => collection.id === id
+      );
+      stagePatches(
+        accumulator,
+        "projectSettings",
+        stored
+          ? updateCollectionPatches(registry, id, { name: trimmed })
+          : // Site is listed whether the registry stores it or not
+            addCollectionPatches(registry, {
+              id: SITE_COLLECTION_ID,
+              name: trimmed,
+              system: "site",
+            })
+      );
+    },
+  });
+};
+
+/**
+ * Deletes the collection and every variable it lists, as a delete of each
+ * (spec 4.8), in one transaction.
+ */
+export const deleteCollection = (
+  id: string
+): WriteResult<{ deleted: number }> => {
+  if (isSystemCollection(id)) {
+    return commitPrepared(refuse(collectionRefusal));
+  }
+  const collection = findCollection(id);
+  if (collection === undefined) {
+    return commitPrepared(refuse("Collection not found"));
+  }
+  const cssNames = collection.rows.map((row) => row.cssName);
+  // a delete of no names would refuse inside its stage
+  const deleted =
+    cssNames.length === 0 ? undefined : prepareDeleteVariables(cssNames);
+  if (deleted?.ok === false) {
+    return commitPrepared(deleted);
+  }
+  return commitPrepared({
+    ok: true,
+    result: { deleted: cssNames.length },
+    stage: (accumulator) => {
+      stagePrune(accumulator);
+      deleted?.stage(accumulator);
+      const registry = readableIn(accumulator);
+      if (registry !== undefined) {
+        stagePatches(
+          accumulator,
+          "projectSettings",
+          removeCollectionPatches(registry, id)
+        );
+      }
+    },
+  });
+};
+
+/**
+ * `toIndex` is a position among the designer's collections (Brand and Site
+ * excluded), clamped; the collection moves to the registry index of the one
+ * now at that position.
+ */
+export const reorderCollection = (id: string, toIndex: number): WriteResult => {
+  if (isSystemCollection(id)) {
+    return commitPrepared(refuse(collectionRefusal));
+  }
+  const collections = designerCollections();
+  if (collections.some((collection) => collection.id === id) === false) {
+    return commitPrepared(refuse("Collection not found"));
+  }
+  const position = Math.min(Math.max(toIndex, 0), collections.length - 1);
+  const target = collections[position].id;
+  if (target === id) {
+    return commitPrepared({ ok: true, result: {}, stage: () => {} });
+  }
+  return commitPrepared({
+    ok: true,
+    result: {},
+    stage: (accumulator) => {
+      stagePrune(accumulator);
+      const registry = readableIn(accumulator);
+      if (registry === undefined) {
+        return;
+      }
+      stagePatches(
+        accumulator,
+        "projectSettings",
+        moveCollectionPatches(
+          registry,
+          id,
+          registry.collections.findIndex(
+            (collection) => collection.id === target
+          )
+        )
+      );
     },
   });
 };
