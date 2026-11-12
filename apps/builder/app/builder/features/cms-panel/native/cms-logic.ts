@@ -12,7 +12,7 @@ import type {
 } from "./cms-source";
 
 /** `outline`: a neutral chip with a border and no fill. */
-export type CmsChipColor = "neutral" | "green" | "purple" | "outline";
+export type CmsChipColor = "neutral" | "purple" | "outline";
 
 export type CmsStatusChip = {
   label: "Draft" | "Published" | "Staged changes" | "Archived";
@@ -30,7 +30,7 @@ export const getStatusChip = ({
   if (status === "published") {
     return hasStagedChanges
       ? { label: "Staged changes", color: "purple" }
-      : { label: "Published", color: "green" };
+      : { label: "Published", color: "outline" };
   }
   if (status === "archived") {
     return { label: "Archived", color: "outline" };

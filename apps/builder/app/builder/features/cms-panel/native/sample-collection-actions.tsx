@@ -1,10 +1,11 @@
 /**
- * Storybook stand-ins for W2's collection actions (4.5): a row's "..." menu
- * and the orphan rows at the column's foot, drawn as the data tab draws
- * them (`organizeos-panel/collection-row-menu.tsx`). They act on nothing.
+ * Storybook stand-ins for the build's side of the CMS column (4.5): a row's
+ * "..." menu, its stale line and the orphan rows at the column's foot, drawn
+ * as the data tab draws them (`organizeos-panel/collection-row-menu.tsx`).
+ * They act on nothing.
  */
+import type { ReactNode } from "react";
 import {
-  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -15,20 +16,24 @@ import {
   toast,
 } from "@webstudio-is/design-system";
 import { EllipsesIcon } from "@webstudio-is/icons";
+import type { CmsCatalogSlots } from "./cms-screen";
 import type { CmsCollectionSummary } from "./cms-source";
 import { TruncatedText } from "./truncated-text";
 
 /** The build's side of the sample: which collections have an item page. */
 export type SampleCatalog = {
   /** Public collections with a catalog Resource, by slug. */
-  rows: Record<string, { hasItemPage: boolean; isSitemapOrphan: boolean }>;
+  rows: Record<
+    string,
+    { hasItemPage: boolean; isSitemapOrphan: boolean; isStale?: boolean }
+  >;
   orphans: Array<{ name: string; isStale: boolean; sitemapSlug?: string }>;
 };
 
 export const sampleCatalog: SampleCatalog = {
   rows: {
     news: { hasItemPage: true, isSitemapOrphan: false },
-    campaigns: { hasItemPage: true, isSitemapOrphan: false },
+    campaigns: { hasItemPage: true, isSitemapOrphan: false, isStale: true },
     leadership: { hasItemPage: false, isSitemapOrphan: true },
   },
   orphans: [
@@ -37,39 +42,35 @@ export const sampleCatalog: SampleCatalog = {
   ],
 };
 
-export const renderSampleCollectionActions =
-  (catalog: SampleCatalog) => (collection: CmsCollectionSummary) => {
-    const row = catalog.rows[collection.slug];
-    if (row === undefined) {
-      return null;
-    }
-    return (
-      <DropdownMenu modal={false}>
-        <DropdownMenuTrigger asChild>
-          <SmallIconButton
-            aria-label={`${collection.name} menu`}
-            icon={<EllipsesIcon />}
-          />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          onCloseAutoFocus={(event) => event.preventDefault()}
-        >
-          <DropdownMenuItem>
-            {row.hasItemPage ? "Open item page" : "Create item page"}
-          </DropdownMenuItem>
-          <DropdownMenuItem>Add list</DropdownMenuItem>
-          {row.isSitemapOrphan && (
-            <DropdownMenuItem
-              onSelect={() => toast.success("Removed from sitemap")}
-            >
-              Remove from sitemap
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
-  };
+const removedFromSitemap = () => toast.success("Removed from sitemap");
+
+const SampleMenu = ({
+  name,
+  children,
+}: {
+  name: string;
+  children: ReactNode;
+}) => (
+  <DropdownMenu modal={false}>
+    <DropdownMenuTrigger asChild>
+      <SmallIconButton
+        aria-label={`${name} menu`}
+        icon={<EllipsesIcon />}
+        css={{ flexShrink: 0 }}
+      />
+    </DropdownMenuTrigger>
+    <DropdownMenuContent
+      align="end"
+      onCloseAutoFocus={(event) => event.preventDefault()}
+    >
+      {children}
+    </DropdownMenuContent>
+  </DropdownMenu>
+);
+
+const SampleStaleLine = () => (
+  <Text color="destructive">Item page uses an old address</Text>
+);
 
 const SampleOrphanRow = ({
   name,
@@ -80,23 +81,43 @@ const SampleOrphanRow = ({
     <Flex align="center" justify="between" gap="2">
       <TruncatedText>{name}</TruncatedText>
       {sitemapSlug !== undefined && (
-        <Button
-          color="neutral"
-          css={{ flexShrink: 0 }}
-          onClick={() => toast.success("Removed from sitemap")}
-        >
-          Remove from sitemap
-        </Button>
+        <SampleMenu name={name}>
+          <DropdownMenuItem onSelect={removedFromSitemap}>
+            Remove from sitemap
+          </DropdownMenuItem>
+        </SampleMenu>
       )}
     </Flex>
-    {isStale && <Text color="destructive">Item page uses an old address</Text>}
+    {isStale && <SampleStaleLine />}
   </Flex>
 );
 
-export const SampleOrphanRows = ({ catalog }: { catalog: SampleCatalog }) => (
-  <>
-    {catalog.orphans.map((orphan) => (
+/** The sample's `catalogSlots`, as the host builds them from the build. */
+export const sampleCatalogSlots =
+  (catalog: SampleCatalog) =>
+  (_collections: readonly CmsCollectionSummary[]): CmsCatalogSlots => ({
+    renderActions: (collection) => {
+      const row = catalog.rows[collection.slug];
+      if (row === undefined) {
+        return null;
+      }
+      return (
+        <SampleMenu name={collection.name}>
+          <DropdownMenuItem>
+            {row.hasItemPage ? "Open item page" : "Create item page"}
+          </DropdownMenuItem>
+          <DropdownMenuItem>Add list</DropdownMenuItem>
+          {row.isSitemapOrphan && (
+            <DropdownMenuItem onSelect={removedFromSitemap}>
+              Remove from sitemap
+            </DropdownMenuItem>
+          )}
+        </SampleMenu>
+      );
+    },
+    renderStaleLine: (collection) =>
+      catalog.rows[collection.slug]?.isStale ? <SampleStaleLine /> : null,
+    footer: catalog.orphans.map((orphan) => (
       <SampleOrphanRow key={orphan.name} {...orphan} />
-    ))}
-  </>
-);
+    )),
+  });

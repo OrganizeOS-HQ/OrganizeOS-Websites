@@ -37,7 +37,6 @@ import { $cmsNativeDirty, $cmsNativeRefresh } from "./cms-native-stores";
 import {
   isCmsFailure,
   type CmsAccess,
-  type CmsCatalogView,
   type CmsCollection,
   type CmsCollectionSummary,
   type CmsItem,
@@ -78,12 +77,24 @@ export type CmsScreenProps = {
   onItemWritten?: (collectionSlug: string, item: CmsItem) => void;
   /** Where to open; stories only. */
   initialView?: CmsScreenView;
-  /** What the column draws from the build's catalog (4.5). */
-  catalog?: CmsCatalogView;
-  /** Each row's "..." (4.5), only where the actions are allowed. */
-  renderCollectionActions?: (collection: CmsCollectionSummary) => ReactNode;
-  /** The orphan rows at the column's foot (4.5). */
-  collectionsFooter?: ReactNode;
+  /**
+   * The build's side of the column (4.5), for E1's collections: given only
+   * where the collection actions are allowed; undefined until the build's
+   * catalog has resolved.
+   */
+  catalogSlots?: (
+    collections: readonly CmsCollectionSummary[]
+  ) => CmsCatalogSlots | undefined;
+};
+
+/** What the column draws from the build's catalog (4.5). */
+export type CmsCatalogSlots = {
+  /** A row's "..." menu; null for a collection with no catalog Resource. */
+  renderActions: (collection: CmsCollectionSummary) => ReactNode;
+  /** The line under a row; null when its item page is not stale. */
+  renderStaleLine: (collection: CmsCollectionSummary) => ReactNode;
+  /** The orphan rows at the column's foot. */
+  footer: ReactNode;
 };
 
 const Root = styled("div", {
@@ -139,9 +150,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       navigate = defaultNavigate,
       onItemWritten,
       initialView,
-      catalog,
-      renderCollectionActions,
-      collectionsFooter,
+      catalogSlots,
     },
     ref
   ) => {
@@ -180,6 +189,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const isLoadBackground = useIsBackgroundFetch();
     const isDetailBackground = useIsBackgroundFetch();
     const isPageBackground = useIsBackgroundFetch();
+    // The E3 inputs whose answer is already drawn: a page E3 answered in
+    // place of the one asked for.
+    const adoptedPageKey = useRef<string | undefined>(undefined);
 
     useEffect(() => {
       if (isVisible) {
@@ -332,10 +344,14 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       ) {
         return;
       }
-      const isBackground = isPageBackground(
-        source,
-        JSON.stringify([collectionId, page, query, listVersion])
-      );
+      const key = JSON.stringify([collectionId, page, query, listVersion]);
+      const isBackground = isPageBackground(source, key);
+      // the page E3 answered in place of the one asked for is drawn already
+      if (adoptedPageKey.current === key) {
+        adoptedPageKey.current = undefined;
+        return;
+      }
+      adoptedPageKey.current = undefined;
       let isCurrent = true;
       void source
         .listItems(collectionId, { q: query === "" ? undefined : query, page })
@@ -353,6 +369,17 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             return;
           }
           setItemsPage(result);
+          // a page past the end answers the last one (A4): the screen
+          // keeps that page from here on
+          if (result.page !== page) {
+            adoptedPageKey.current = JSON.stringify([
+              collectionId,
+              result.page,
+              query,
+              listVersion,
+            ]);
+            setPage(result.page);
+          }
         });
       return () => {
         isCurrent = false;
@@ -520,11 +547,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         <CollectionsColumn
           collections={collections}
           currentCollectionId={line === undefined ? collectionId : undefined}
-          catalog={isReady ? catalog : undefined}
-          renderCollectionActions={
-            isReady ? renderCollectionActions : undefined
-          }
-          footer={isReady ? collectionsFooter : undefined}
+          slots={isReady ? catalogSlots?.(collections) : undefined}
           onSelectCollection={selectCollection}
           onShowClassic={() => onShowClassic({})}
           onClose={onClose}

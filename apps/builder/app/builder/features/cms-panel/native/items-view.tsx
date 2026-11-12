@@ -309,6 +309,15 @@ export const ItemsView = ({
       {isEmpty === false && (
         <>
           <ScrollAreaNative css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
+            {page !== undefined && page.total === 0 && query.trim() !== "" && (
+              <Text
+                color="subtle"
+                data-cms-no-matches
+                css={{ padding: theme.panel.padding }}
+              >
+                No matches
+              </Text>
+            )}
             {page !== undefined && (
               <ItemsTable
                 collectionName={collection.name}

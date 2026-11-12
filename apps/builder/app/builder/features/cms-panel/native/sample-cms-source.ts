@@ -15,7 +15,6 @@ import {
   CMS_SEARCH_IDS_MAX,
   type CmsAccess,
   type CmsCollection,
-  type CmsCatalogView,
   type CmsErrorCode,
   type CmsFailure,
   type CmsField,
@@ -635,11 +634,6 @@ const buildCollections = (
         name: longCollectionNames[collection.slug] ?? collection.name,
       }))
     : collections;
-};
-
-/** The catalog side of the sample: one collection's item page is stale. */
-export const sampleCatalogView: CmsCatalogView = {
-  staleSlugs: ["campaigns"],
 };
 
 export const createSampleCmsSource = ({
