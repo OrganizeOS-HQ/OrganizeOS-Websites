@@ -44,6 +44,53 @@ describe("rich text in the stored form", () => {
       )
     ).toBe(true));
 
+  test.each([
+    [
+      '<p><a href="https://a.org" target="_blank">x</a></p>',
+      '<p><a href="https://a.org" target="_blank" rel="noopener noreferrer">x</a></p>',
+    ],
+    [
+      '<p><a href="https://a.org" target="_BLANK" rel="">x</a></p>',
+      '<p><a href="https://a.org" target="_BLANK" rel="noopener noreferrer">x</a></p>',
+    ],
+    [
+      '<p><a href="https://a.org" title="" target="">x</a></p>',
+      '<p><a href="https://a.org">x</a></p>',
+    ],
+  ])("%s equals the stored %s", (left, right) =>
+    expect(isSameStoredValue("richtext", { html: left }, { html: right })).toBe(
+      true
+    )
+  );
+
+  test.each([
+    [
+      '<p><a href="https://a.org" target="_blank">x</a></p>',
+      '<p><a href="https://a.org" target="_blank" rel="nofollow">x</a></p>',
+    ],
+    [
+      '<p><a href="https://a.org" target="_blank" rel="noopener">x</a></p>',
+      '<p><a href="https://a.org" target="_blank" rel="noopener noreferrer">x</a></p>',
+    ],
+    [
+      '<p><a href="https://a.org" target="_blank">x</a></p>',
+      '<p><a href="https://b.org" target="_blank" rel="noopener noreferrer">x</a></p>',
+    ],
+    [
+      '<p><a href="https://a.org" title="">x</a></p>',
+      '<p><a href="https://a.org" title="A">x</a></p>',
+    ],
+    // the platform keeps an empty alt
+    [
+      '<p><img src="https://a.org/a.png" alt=""></p>',
+      '<p><img src="https://a.org/a.png"></p>',
+    ],
+  ])("%s still differs from the stored %s", (left, right) =>
+    expect(isSameStoredValue("richtext", { html: left }, { html: right })).toBe(
+      false
+    )
+  );
+
   test("a rich-text edit the platform stored sanitised is no kept difference", () => {
     const fields: CmsField[] = [
       { key: "body", label: "Body", kind: "richtext" },
