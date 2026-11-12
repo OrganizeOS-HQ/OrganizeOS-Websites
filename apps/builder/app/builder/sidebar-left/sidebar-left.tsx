@@ -55,6 +55,11 @@ import {
 } from "~/builder/features/cms-panel";
 // OrganizeOS fork: a tab clicked over a rail overlay (CMS or Variables) hides it (builder/features/rail-overlay).
 import { hideRailOverlay } from "~/builder/features/rail-overlay/rail-overlay";
+// OrganizeOS fork: the Variables rail button and overlay (builder/features/variables).
+import {
+  VariablesOverlay,
+  VariablesRailButton,
+} from "~/builder/features/variables";
 import { PagesPanel } from "~/builder/features/pages";
 import { NavigatorPanel } from "~/builder/features/navigator";
 import { AssetsPanel } from "~/builder/features/assets";
@@ -323,6 +328,8 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
               {/* OrganizeOS fork: the CMS rail button, which opens the CMS
               overlay (builder/features/cms-panel). */}
               <CmsRailButton />
+              {/* OrganizeOS fork: the Variables rail button, which opens the Variables overlay (builder/features/variables). */}
+              <VariablesRailButton />
             </SidebarTabsList>
           </div>
         </Flex>
@@ -378,6 +385,8 @@ export const SidebarLeft = ({ publish }: SidebarLeftProps) => {
       and portalled to the body, so nothing but the builder document's end
       unmounts it (builder/features/cms-panel). */}
       <CmsOverlay />
+      {/* OrganizeOS fork: the Variables overlay, on the same host as the CMS (builder/features/variables). */}
+      <VariablesOverlay />
     </SidebarTabs>
   );
 };

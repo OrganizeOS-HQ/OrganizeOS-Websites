@@ -550,7 +550,16 @@ describe("the CMS overlay in the builder", () => {
         "Navigator",
         "Assets",
         "CMS",
+        "Variables",
       ]);
+    });
+
+    test("the Variables button shows for an org denied the blocks", () => {
+      $organizeosSite.set({ ...site, blocksEnabled: false });
+      render();
+      expect(
+        document.querySelector('[data-rail-button="variables"]')
+      ).not.toBeNull();
     });
 
     test("keeps its rules: only for an org not denied the blocks", () => {
@@ -843,6 +852,38 @@ describe("the CMS overlay in the builder", () => {
       } finally {
         clipboard.remove();
       }
+    });
+
+    test("the Variables button hides the CMS and the CMS button hides Variables", () => {
+      render();
+      const variablesButton = () =>
+        document.querySelector<HTMLButtonElement>(
+          '[data-rail-button="variables"]'
+        );
+      clickRail();
+      act(() => {
+        variablesButton()?.click();
+      });
+      expect(isShown()).toBe(false);
+      expect($openRailOverlay.get()).toBe("variables");
+      clickRail();
+      expect(isShown()).toBe(true);
+      expect($openRailOverlay.get()).toBe("cms");
+    });
+
+    test("a rail tab hides Variables and shows its panel", () => {
+      render();
+      act(() => {
+        document
+          .querySelector<HTMLButtonElement>('[data-rail-button="variables"]')
+          ?.click();
+      });
+      expect($openRailOverlay.get()).toBe("variables");
+      act(() => {
+        tab("Pages")?.click();
+      });
+      expect($openRailOverlay.get()).toBe(undefined);
+      expect($activeSidebarPanel.get()).toBe("pages");
     });
 
     test("another rail tab hides it and shows its panel", () => {

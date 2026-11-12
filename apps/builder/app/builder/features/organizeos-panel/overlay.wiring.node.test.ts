@@ -210,6 +210,23 @@ describe("the left sidebar", () => {
     expect(sidebarLeft).toMatch(/ref=\{registerCmsRail\}/);
   });
 
+  test("sidebar-left.tsx renders the Variables rail button after the CMS's and the overlay once after the CMS overlay", () => {
+    const cmsButton = sidebarLeft.indexOf("<CmsRailButton />");
+    const button = sidebarLeft.indexOf("<VariablesRailButton />");
+    expect(button).toBeGreaterThan(cmsButton);
+    expect(button).toBeLessThan(sidebarLeft.indexOf("</SidebarTabsList>"));
+    expect(sidebarLeft.match(/<VariablesRailButton \/>/g)).toHaveLength(1);
+
+    const cmsOverlay = sidebarLeft.indexOf("<CmsOverlay />");
+    const overlay = sidebarLeft.indexOf("<VariablesOverlay />");
+    expect(overlay).toBeGreaterThan(cmsOverlay);
+    expect(overlay).toBeLessThan(sidebarLeft.indexOf("</SidebarTabs>"));
+    expect(sidebarLeft.match(/<VariablesOverlay \/>/g)).toHaveLength(1);
+    expect(sidebarLeft).toMatch(
+      /import\s*\{\s*VariablesOverlay,\s*VariablesRailButton,?\s*\}\s*from\s*"~\/builder\/features\/variables";/
+    );
+  });
+
   test("sidebar-left.tsx hides a rail overlay when a rail tab is clicked over it", () => {
     expect(sidebarLeft).toMatch(
       /if \(hideRailOverlay\(\)\) \{\s*setActiveSidebarPanel\(name\);\s*return;\s*\}\s*toggleActiveSidebarPanel\(name\);/

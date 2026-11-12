@@ -909,6 +909,13 @@ can be merged with minimal conflict.
   delete dialogs), with `css-variable-utils.organizeos.test.tsx`; the test-only
   store helpers in `features/variables/test-stores.ts`. Pinned by
   `overlay.wiring.node.test.ts`.
+- **The Variables manager (§9, "Variables").** `features/variables/*` (the
+  manager: `variables-overlay.tsx`, `variables-rail-button.tsx`,
+  `variables-icon.tsx`, `index.ts`, and the test-only `test-utils.tsx`), on
+  the rail-overlay host; in `sidebar-left/sidebar-left.tsx`, the one
+  `<VariablesRailButton />` after `<CmsRailButton />`, the one
+  `<VariablesOverlay />` after `<CmsOverlay />`, and their marked import.
+  Pinned by `overlay.wiring.node.test.ts`.
 - **Published sites (§1, §8).** The CLI's copy of the blocks' build into every
   published site, `packages/cli/src/organizeos-components.ts`, called from
   short marked hooks in `prebuild.ts` and `framework-react-router.ts`, with
@@ -2301,8 +2308,17 @@ collection }` invalidates, through `invalidateResource`, every current
 
 **Variables**, `features/variables/` (design:
 `docs/superpowers/specs/2026-11-11-builder-variables-design.md` in the
-OrganizeOS repo). Part 1's data layer; the manager arrives in PR A2 and the
-Style panel's "+" in PR B.
+OrganizeOS repo). Part 1's data layer and the manager; the Style panel's "+"
+arrives in PR B.
+
+- **The manager.** A rail button, "Variables", after the CMS's, in Design
+  mode only; it opens a full overlay on the rail-overlay host (shared with
+  the CMS; one is open at a time), whose content renders only while it is
+  open. While it shows, the builder's commands are kept from every key but
+  undo and redo (`suppressCommandsForEvent`'s `allow`), so a designer can
+  undo an edit made in it. It is read-only for a permit below `build`
+  (`view`, `edit`) and while the registry is unreadable, which shows the line
+  "Reload to edit variables".
 
 - A variable's value is a `--name` declaration on Global Root's local style
   source at the base breakpoint. A bound property stores upstream's
