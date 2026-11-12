@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Box, Tooltip, cssVar, theme } from "@webstudio-is/design-system";
+import {
+  Box,
+  Tooltip,
+  cssVar,
+  theme,
+  toast,
+} from "@webstudio-is/design-system";
 import { useContentEditable } from "~/shared/dom-hooks";
 import type { VariableRow } from "./reader";
 import { renameVariable } from "./operations";
@@ -60,6 +66,14 @@ export const NameCell = ({
         setError(undefined);
         return;
       }
+      // A refusal on a blur, with the focus gone: the edit has ended, the
+      // name goes back and the reason shows in a toast, so no tooltip stays
+      // open (and takes Escape) over a field nobody is in.
+      if (ref.current !== null && document.activeElement !== ref.current) {
+        ref.current.textContent = row.displayName;
+        toast.error(result.error);
+        return;
+      }
       setError(result.error);
       setEditing(true);
     },
@@ -67,9 +81,7 @@ export const NameCell = ({
   const label =
     isEditing || showLeaf === false ? row.displayName : leafOf(row.displayName);
   return (
-    // Always a tooltip, never its child alone: the field must not remount
-    // (and lose its edit) when a reason appears.
-    <Tooltip content={error ?? ""} open={error !== undefined} delayDuration={0}>
+    <Box css={{ position: "relative", minWidth: 0 }}>
       <Box
         ref={ref}
         {...handlers}
@@ -97,6 +109,14 @@ export const NameCell = ({
       >
         {label}
       </Box>
-    </Tooltip>
+      {/* The reason hangs on a sibling that takes no pointer: the field never
+          remounts when it appears, and hovering a name opens no tooltip. */}
+      <Tooltip content={error} open={error !== undefined} delayDuration={0}>
+        <Box
+          aria-hidden
+          css={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+        />
+      </Tooltip>
+    </Box>
   );
 };

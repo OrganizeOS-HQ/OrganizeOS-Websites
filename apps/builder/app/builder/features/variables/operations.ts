@@ -797,13 +797,13 @@ export const orderVariables = (
       (row.registered || (index <= last && row.type !== undefined))
     );
   });
-  const registered = current.filter(
-    (cssName) => byName.get(cssName)?.registered
-  );
-  if (
-    kept.length === registered.length &&
-    kept.every((cssName, index) => registered[index] === cssName)
-  ) {
+  // What the reader would show: the kept rows, then the rest in their order.
+  // An order that shows the same writes nothing (no registry, no undo step).
+  const shown = [
+    ...kept,
+    ...current.filter((cssName) => kept.includes(cssName) === false),
+  ];
+  if (shown.every((cssName, index) => current[index] === cssName)) {
     return commitPrepared({ ok: true, result: {}, stage: () => {} });
   }
   return commitPrepared({

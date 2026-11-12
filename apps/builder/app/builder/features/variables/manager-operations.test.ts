@@ -367,3 +367,15 @@ test("orderVariables refuses Brand, an unknown collection and a name not in the 
     });
   });
 });
+
+test("orderVariables stages nothing when the asked order would show the same: a typed row asked below an untyped one stays above it", () => {
+  project({ styles: css({ "--radius": "8px", "--shadow": "flex" }) });
+  expect(rowsOf("site")).toEqual(["radius", "shadow"]);
+  const styles = $styles.get();
+  const settings = $projectSettings.get();
+  expect(orderVariables("site", ["shadow", "radius"])).toEqual({ ok: true });
+  expect(undoDepth()).toBe(0);
+  expect($styles.get()).toBe(styles);
+  expect($projectSettings.get()).toBe(settings);
+  expect(rowsOf("site")).toEqual(["radius", "shadow"]);
+});

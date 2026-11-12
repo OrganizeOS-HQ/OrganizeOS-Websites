@@ -68,9 +68,11 @@ const ManyCheckbox = ({
   const all =
     cssNames.length > 0 &&
     cssNames.every((cssName) => selection.selected.has(cssName));
+  // A part selected shows, also for a collapsed group's hidden rows.
+  const some = cssNames.some((cssName) => selection.selected.has(cssName));
   return (
     <Checkbox
-      checked={all}
+      checked={all ? true : some ? "indeterminate" : false}
       onClick={(event) => {
         event.stopPropagation();
         selection.onSetMany(cssNames, all === false);
@@ -357,7 +359,7 @@ const DraftRow = ({
     });
     return () => cancelAnimationFrame(frame);
   }, []);
-  const create = () => {
+  const create = (on: "enter" | "blur") => {
     if (done.current) {
       return;
     }
@@ -373,6 +375,14 @@ const DraftRow = ({
       value: newVariableValue(type, bodyFont),
     });
     if (result.ok === false) {
+      // On a blur the focus has gone: the draft ends and the reason shows in
+      // a toast, so no tooltip stays open (and takes Escape) over it.
+      if (on === "blur") {
+        landed(result);
+        done.current = true;
+        onEnd();
+        return;
+      }
       setError(result.error);
       return;
     }
@@ -400,7 +410,7 @@ const DraftRow = ({
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
-                create();
+                create("enter");
               }
               if (event.key === "Escape") {
                 event.preventDefault();
@@ -408,7 +418,7 @@ const DraftRow = ({
                 onEnd();
               }
             }}
-            onBlur={create}
+            onBlur={() => create("blur")}
           />
         </InputErrorsTooltip>
       </Box>

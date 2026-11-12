@@ -332,6 +332,13 @@ const VariablesManager = () => {
   const rowsByName = new Map(allRows.map((row) => [row.cssName, row]));
   const isBrand = selectedId === BRAND_COLLECTION_ID;
   const canAdd = readOnly === false && isBrand === false;
+  // Select mode ends with its button (Brand, read-only), so no checkboxes
+  // stay with no way out but Escape.
+  useEffect(() => {
+    if (canAdd === false) {
+      $isSelecting.set(false);
+    }
+  }, [canAdd]);
   const isSearching = search.trim() !== "";
   const rows =
     collection === undefined

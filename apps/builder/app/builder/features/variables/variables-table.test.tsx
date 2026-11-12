@@ -5,10 +5,13 @@ import type { CssProperty } from "@webstudio-is/css-engine";
 import type { RegistryVariable } from "@webstudio-is/project-build";
 import { $openRailOverlay } from "~/builder/features/rail-overlay/rail-overlay";
 import { root } from "~/builder/features/organizeos-panel/test-fixtures";
+import { toast } from "@webstudio-is/design-system";
+import { $assets } from "~/shared/sync/data-stores";
 import { boxStyle, css, registry, rootStyle, v } from "./test-stores";
 import {
   BRAND_SIX,
   cleanupManager,
+  press,
   renderManager,
   rowNames,
   rowOf,
@@ -102,6 +105,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanupManager();
+  vi.restoreAllMocks();
 });
 
 test("New variable lists Color, Size, Percentage, Number, Font family; Color adds a draft row, name focused; Enter writes --color #000000 to Global Root and registers it in the selected collection, one undo step", async () => {
@@ -512,6 +516,17 @@ test("Link to variable's list scrolls when it holds more than fits", async () =>
     document.querySelector<HTMLElement>("[data-link-target]")!.parentElement!;
   expect(getComputedStyle(list).overflowY).toBe("auto");
   expect(list.scrollHeight).toBeGreaterThan(list.clientHeight);
+  // each entry keeps its height: the list scrolls, its entries do not shrink
+  for (const target of list.querySelectorAll<HTMLElement>(
+    "[data-link-target]"
+  )) {
+    expect(target.scrollHeight).toBeLessThanOrEqual(target.clientHeight + 1);
+  }
+  const [first, second] =
+    list.querySelectorAll<HTMLElement>("[data-link-target]");
+  expect(
+    second.getBoundingClientRect().top - first.getBoundingClientRect().top
+  ).toBeGreaterThanOrEqual(first.scrollHeight);
   expect(list.getBoundingClientRect().bottom).toBeLessThanOrEqual(
     window.innerHeight
   );
@@ -539,4 +554,107 @@ test("typed font text is not written on blur, the field goes back to the value; 
   await act(async () => userEvent.click(option));
   expect(rootStyle("--face")).toEqual({ type: "fontFamily", value: [picked] });
   expect(undoDepth()).toBe(1);
+});
+
+test("picking an uploaded font named with a digit, Source Sans 3, writes it as a font family", async () => {
+  setupVariables({
+    styles: css({ "--face": '"Public Sans"' }),
+    registry: siteOf(entry("face", "fontFamily", "Face")),
+  });
+  $assets.set(
+    new Map([
+      [
+        "font-1",
+        {
+          id: "font-1",
+          type: "font",
+          format: "woff",
+          name: "source-sans-3.woff",
+          description: "",
+          projectId: "",
+          createdAt: "",
+          size: 0,
+          meta: { style: "normal", family: "Source Sans 3", variationAxes: {} },
+        },
+      ],
+    ])
+  );
+  try {
+    renderManager();
+    await act(async () => userEvent.click(valueInput("face")!));
+    await act(async () => userEvent.keyboard("{ArrowDown}"));
+    const option = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[role="listbox"]:not([aria-label="Collections"]) [role="option"]'
+      )
+    ).find((element) => element.textContent === "Source Sans 3");
+    expect(option).toBeTruthy();
+    await act(async () => userEvent.click(option!));
+    expect(rootStyle("--face")).toEqual({
+      type: "fontFamily",
+      value: ["Source Sans 3"],
+    });
+  } finally {
+    $assets.set(new Map());
+  }
+});
+
+test("a name cell is not a tooltip trigger, so hovering names leaves the builder's tooltips alone", () => {
+  setupVariables({
+    styles: css({ "--old-blue": "#0000ff" }),
+    registry: siteOf(entry("old-blue", "color", "Old Blue")),
+  });
+  renderManager();
+  expect(nameCell("old-blue")?.hasAttribute("data-state")).toBe(false);
+});
+
+test("a rename refused on blur says why in a toast and ends the edit, so Escape still closes the overlay", async () => {
+  const toastError = vi.spyOn(toast, "error").mockImplementation(() => "");
+  setupVariables({
+    styles: css({ "--old-blue": "#0000ff" }),
+    registry: siteOf(entry("old-blue", "color", "Old Blue")),
+  });
+  renderManager();
+  await startRename("old-blue");
+  await act(async () => userEvent.keyboard("{Backspace}"));
+  act(() => nameCell("old-blue")!.blur());
+  expect(toastError).toHaveBeenCalledWith("Name is required");
+  const cell = nameCell("old-blue")!;
+  expect(cell.hasAttribute("contenteditable")).toBe(false);
+  expect(cell.hasAttribute("aria-invalid")).toBe(false);
+  expect(cell.textContent).toBe("Old Blue");
+  press("Escape", document.body);
+  expect($openRailOverlay.get()).toBe(undefined);
+});
+
+test("a value refused on blur says why in a toast and goes back, so Escape still closes the overlay", async () => {
+  const toastError = vi.spyOn(toast, "error").mockImplementation(() => "");
+  setupVariables({
+    styles: css({ "--accent": "#ff0000" }),
+    registry: siteOf(entry("accent", "color", "Accent")),
+  });
+  renderManager();
+  const shown = valueInput("accent")!.value;
+  await act(async () => userEvent.fill(valueInput("accent")!, "nope"));
+  act(() => valueInput("accent")!.blur());
+  expect(toastError).toHaveBeenCalledTimes(1);
+  expect(valueInput("accent")!.value).toBe(shown);
+  press("Escape", document.body);
+  expect($openRailOverlay.get()).toBe(undefined);
+});
+
+test("a new variable's name refused on blur says why in a toast and ends the draft", async () => {
+  const toastError = vi.spyOn(toast, "error").mockImplementation(() => "");
+  setupVariables({ styles: css({ "--a": "1px" }) });
+  renderManager();
+  await newVariable("Color");
+  await vi.waitFor(() => {
+    expect(document.activeElement).toBe(draftInput());
+  });
+  await act(async () => userEvent.fill(draftInput()!, "x".repeat(200)));
+  act(() => draftInput()!.blur());
+  expect(toastError).toHaveBeenCalledWith("Name is too long");
+  expect(draftInput()).toBeNull();
+  press("Escape", document.body);
+  expect($openRailOverlay.get()).toBe(undefined);
 });

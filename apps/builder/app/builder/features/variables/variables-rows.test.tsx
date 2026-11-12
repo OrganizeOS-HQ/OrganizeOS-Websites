@@ -7,6 +7,7 @@ import { toast } from "@webstudio-is/design-system";
 import { createCommandsEmitter } from "~/shared/commands-emitter";
 import { serverSyncStore } from "~/shared/sync/sync-stores";
 import { $openRailOverlay } from "~/builder/features/rail-overlay/rail-overlay";
+import { $authPermit } from "~/shared/nano-states/misc";
 import { root } from "~/builder/features/organizeos-panel/test-fixtures";
 import { allDecls, boxStyle, css, registry, rootStyle, v } from "./test-stores";
 import {
@@ -584,4 +585,44 @@ test("a Shift range skips a locked row, so a bulk Delete over it deletes the res
   await act(async () => userEvent.keyboard("{/Shift}"));
   await act(async () => userEvent.click(toolbarButton("Delete")!));
   expect(rowNames()).toEqual(["focus-ring"]);
+});
+
+test("a group's checkbox shows a part of it selected, also while the group is collapsed", async () => {
+  setupVariables({
+    styles: css({ "--a": "1px", "--space--x": "4px", "--space--y": "5px" }),
+    registry: registryOf(
+      entry("a", "size", "A"),
+      entry("space--x", "size", "Space/X"),
+      entry("space--y", "size", "Space/Y")
+    ),
+  });
+  renderManager();
+  await startSelect();
+  await act(async () => userEvent.click(checkboxOf("space--x")!));
+  const groupBox = () =>
+    document.querySelector<HTMLElement>(
+      '[data-variable-group="Space"] [role="checkbox"]'
+    );
+  expect(groupBox()?.getAttribute("aria-checked")).toBe("mixed");
+  await act(async () =>
+    userEvent.click(
+      document.querySelector<HTMLElement>(
+        '[data-variable-group="Space"] [role="cell"]:nth-child(2)'
+      )!
+    )
+  );
+  expect(rowNames()).toEqual(["a"]);
+  expect(groupBox()?.getAttribute("aria-checked")).toBe("mixed");
+});
+
+test("select mode ends when Select goes away (a view permit), and does not come back with it", async () => {
+  setupVariables(brandBlue);
+  renderManager();
+  await startSelect();
+  expect(checkboxOf("brand-blue")).toBeTruthy();
+  act(() => $authPermit.set("view"));
+  expect(checkboxOf("brand-blue")).toBeFalsy();
+  act(() => $authPermit.set("build"));
+  expect(checkboxOf("brand-blue")).toBeFalsy();
+  expect(toolbarButton("Select")?.getAttribute("aria-pressed")).toBe(null);
 });

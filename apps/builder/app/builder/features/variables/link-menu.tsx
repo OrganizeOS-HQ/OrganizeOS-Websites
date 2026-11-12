@@ -183,6 +183,11 @@ export const LinkMenu = ({
                   }
                 }}
                 css={{
+                  // The list scrolls; its entries never shrink to fit it, and
+                  // drop the truncate variant's negative margins, which made
+                  // neighbours overlap under a 4px padding.
+                  flexShrink: 0,
+                  margin: 0,
                   textAlign: "left",
                   border: "none",
                   background: "none",

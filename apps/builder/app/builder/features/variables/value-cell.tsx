@@ -10,6 +10,7 @@ import {
   Text,
   cssVar,
   theme,
+  toast,
 } from "@webstudio-is/design-system";
 import { toValue, type StyleValue } from "@webstudio-is/css-engine";
 import { keywordValues, parseCssValue } from "@webstudio-is/css-data";
@@ -58,13 +59,22 @@ const CommitField = ({
   useEffect(() => {
     setText(value);
   }, [value]);
-  const submit = () => {
+  const submit = (on: "enter" | "blur") => {
     if (text === value) {
       setError(undefined);
       return;
     }
     const parsed = parse(text);
     if (parsed.ok === false) {
+      // On a blur the focus has gone: the field goes back and the reason
+      // shows in a toast, so no tooltip stays open (and takes Escape) over a
+      // field nobody is in.
+      if (on === "blur") {
+        toast.error(parsed.error);
+        setText(value);
+        setError(undefined);
+        return;
+      }
       setError(parsed.error);
       return;
     }
@@ -88,10 +98,10 @@ const CommitField = ({
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault();
-            submit();
+            submit("enter");
           }
         }}
-        onBlur={submit}
+        onBlur={() => submit("blur")}
       />
     </InputErrorsTooltip>
   );
@@ -200,35 +210,33 @@ const FontValue = ({
       ? (row.value.value[0] ?? "")
       : textOf(row.value);
   const [text, setText] = useState(first);
-  const [error, setError] = useState<string>();
   useEffect(() => {
     setText(first);
   }, [first]);
-  const submit = (next: string) => {
-    if (next === first) {
-      return;
-    }
-    const result = typedParse(row, "fontFamily")(next);
-    setError(result.ok ? undefined : result.error);
-  };
   return (
-    <InputErrorsTooltip errors={error === undefined ? undefined : [error]}>
-      <Combobox<string>
-        value={text}
-        disabled={readOnly}
-        itemToString={(item) => item ?? ""}
-        getItems={() => items}
-        onItemSelect={(item) => {
-          if (item) {
-            setText(item);
-            submit(item);
+    <Combobox<string>
+      value={text}
+      disabled={readOnly}
+      itemToString={(item) => item ?? ""}
+      getItems={() => items}
+      onItemSelect={(item) => {
+        if (item && item !== first) {
+          setText(item);
+          // Written as the Style panel writes a family, not parsed as CSS
+          // text, where an unquoted name such as Source Sans 3 is invalid.
+          const result = setVariableValue(row.cssName, {
+            type: "fontFamily",
+            value: [item],
+          });
+          if (landed(result) === false) {
+            setText(first);
           }
-        }}
-        // Only a picked font is written; typed text left unpicked goes back.
-        onChange={(next) => setText(next ?? first)}
-        onBlur={() => setText(first)}
-      />
-    </InputErrorsTooltip>
+        }
+      }}
+      // Only a picked font is written; typed text left unpicked goes back.
+      onChange={(next) => setText(next ?? first)}
+      onBlur={() => setText(first)}
+    />
   );
 };
 
