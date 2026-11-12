@@ -159,11 +159,13 @@ type Send =
   | { method: "POST" | "PUT"; json: unknown }
   | { method: "POST"; form: FormData };
 
-const request = async <Value>(
+const request = async <Value, Answer = Value>(
   path: string,
   schema: z.ZodType<Value>,
-  send: Send
-): Promise<CmsResult<Value>> => {
+  send: Send,
+  read: (value: Value, status: number) => Answer = (value) =>
+    value as unknown as Answer
+): Promise<CmsResult<Answer>> => {
   try {
     const init: RequestInit = {
       method: send.method,
@@ -182,7 +184,7 @@ const request = async <Value>(
     const body: unknown = await response.json();
     if (response.ok) {
       const parsed = schema.safeParse(body);
-      return parsed.success ? parsed.data : unavailable;
+      return parsed.success ? read(parsed.data, response.status) : unavailable;
     }
     const failure = failureSchema.safeParse(body);
     return failure.success ? failure.data : unavailable;
@@ -227,11 +229,14 @@ export const createCmsApi = (projectId: string): CmsSource => {
         { method: "GET" }
       );
     },
+    // E6 answers 201 when it created the item, 200 when it replayed one
     createItem: (c, body) =>
-      request(path(`${collection(c)}/items`), itemAnswer, {
-        method: "POST",
-        json: body,
-      }),
+      request(
+        path(`${collection(c)}/items`),
+        itemAnswer,
+        { method: "POST", json: body },
+        ({ item }, status) => ({ item, created: status === 201 })
+      ),
     updateItem: (c, i, body) =>
       request(path(item(c, i)), itemAnswer, { method: "PUT", json: body }),
     publishItem: (c, i, body) =>

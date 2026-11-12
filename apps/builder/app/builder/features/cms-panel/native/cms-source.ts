@@ -213,11 +213,12 @@ export type CmsSource = {
    * E6 `POST /collections/{collectionId}/items`. `clientId` is minted once
    * when a new item's editor opens and sent with every attempt until one
    * succeeds: a repeat answers 200 with the item the first one made.
+   * `created` is true on a 201, and false on that 200, a replay.
    */
   createItem: (
     collectionId: string,
     body: { clientId: string; slug?: string; data: CmsItemData }
-  ) => Promise<CmsResult<{ item: CmsItem }>>;
+  ) => Promise<CmsResult<{ item: CmsItem; created: boolean }>>;
   /** E7 `PUT /collections/{collectionId}/items/{itemId}` */
   updateItem: (
     collectionId: string,

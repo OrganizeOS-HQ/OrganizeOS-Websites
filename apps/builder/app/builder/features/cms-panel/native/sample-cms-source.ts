@@ -875,7 +875,7 @@ export const createSampleCmsSource = ({
       const madeId = created.get(`${collectionId}:${clientId}`);
       const made = collection.items.find((sample) => sample.id === madeId);
       if (made !== undefined) {
-        return { item: toItem(made) };
+        return { item: toItem(made), created: false };
       }
       const finalSlug = slug ?? slugify(getItemTitle(data, collection.fields));
       const slugFailure = checkSlug(collection, finalSlug);
@@ -897,7 +897,7 @@ export const createSampleCmsSource = ({
       };
       collection.items.unshift(sample);
       created.set(`${collectionId}:${clientId}`, sample.id);
-      return loseAnswer() ?? { item: toItem(sample) };
+      return loseAnswer() ?? { item: toItem(sample), created: true };
     },
 
     async updateItem(collectionId, itemId, { slug, data, expectedUpdatedAt }) {

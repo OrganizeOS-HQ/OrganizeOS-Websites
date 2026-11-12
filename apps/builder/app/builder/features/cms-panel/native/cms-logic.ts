@@ -93,7 +93,7 @@ export const getItemTitle = (
 };
 
 /** The value an unset field carries: false, [] or null. */
-const emptyValueFor = (kind: CmsFieldKind): unknown => {
+export const emptyValueFor = (kind: CmsFieldKind): unknown => {
   if (kind === "switch") {
     return false;
   }
@@ -107,6 +107,62 @@ const emptyValueFor = (kind: CmsFieldKind): unknown => {
 export const emptyItemData = (fields: readonly CmsField[]): CmsItemData =>
   Object.fromEntries(
     fields.map((field) => [field.key, emptyValueFor(field.kind)])
+  );
+
+/**
+ * A rich-text value's HTML, or null when it holds neither text nor an image,
+ * by the platform's rule for what it stores (`rich-text.ts`). A value is a
+ * string or `{ html, text? }`; anything else is no value.
+ */
+const richTextHtmlOrNull = (value: unknown): string | null => {
+  let html: string;
+  let text: string | undefined;
+  if (typeof value === "string") {
+    html = value;
+  } else if (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { html?: unknown }).html === "string"
+  ) {
+    html = (value as { html: string }).html;
+    const given = (value as { text?: unknown }).text;
+    text = typeof given === "string" ? given : undefined;
+  } else {
+    return null;
+  }
+  const plain =
+    text ??
+    html
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;|&#(?:160|x0*a0);/gi, " ")
+      .replace(/&(?:[a-z]+|#\d+|#x[0-9a-f]+);/gi, "x");
+  if (plain.trim() === "" && /<img\b/i.test(html) === false) {
+    return null;
+  }
+  return html;
+};
+
+/**
+ * The `data` of a write: exactly the schema's keys, in its order, a key the
+ * values lack at its empty value; rich text as `{ html }`, or null when it
+ * holds neither text nor an image.
+ */
+export const toItemData = (
+  fields: readonly CmsField[],
+  values: CmsItemData
+): CmsItemData =>
+  Object.fromEntries(
+    fields.map((field) => {
+      const value = values[field.key];
+      if (field.kind === "richtext") {
+        const html = richTextHtmlOrNull(value);
+        return [field.key, html === null ? null : { html }];
+      }
+      return [
+        field.key,
+        value === undefined ? emptyValueFor(field.kind) : value,
+      ];
+    })
   );
 
 /** Unset and blank compare equal: undefined, null and "" are one value. */
@@ -178,13 +234,18 @@ export const isItemDirty = ({
   slug !== baselineSlug ||
   getChangedFieldKeys(fields, baseline, values).length > 0;
 
-/** The person's values, set aside by Reload (4.3.2). */
-export type CmsKeptValues = { values: CmsItemData; slug: string };
+/**
+ * The person's values, set aside by Reload (4.3.2): only the fields they
+ * changed, and the address when they changed it. A field or an address
+ * absent here has nothing kept.
+ */
+export type CmsKeptValues = { values: CmsItemData; slug: string | undefined };
 
 /**
- * What Reload sets aside: the person's current values, and for a field they
- * have not touched since an earlier Reload, what that one set aside, so a
- * second Reload never drops an edit still waiting for "Use my edit".
+ * What Reload sets aside: each field whose value differs from the baseline
+ * it was edited from, and the address when it differs from its baseline. For
+ * a field untouched since an earlier Reload, that Reload's kept value stays,
+ * so a second Reload never drops an edit still waiting for "Use my edit".
  */
 export const keepAside = ({
   fields,
@@ -201,17 +262,18 @@ export const keepAside = ({
   values: CmsItemData;
   slug: string;
 }): CmsKeptValues => {
-  if (kept === undefined) {
-    return { values: structuredClone(values), slug };
-  }
   const next: CmsItemData = {};
   for (const field of fields) {
-    const untouched = isSameValue(values[field.key], baseline[field.key]);
-    next[field.key] = structuredClone(
-      untouched ? kept.values[field.key] : values[field.key]
-    );
+    if (isSameValue(values[field.key], baseline[field.key]) === false) {
+      next[field.key] = structuredClone(values[field.key]);
+    } else if (kept !== undefined && field.key in kept.values) {
+      next[field.key] = structuredClone(kept.values[field.key]);
+    }
   }
-  return { values: next, slug: slug === baselineSlug ? kept.slug : slug };
+  return {
+    values: next,
+    slug: slug === baselineSlug ? kept?.slug : slug,
+  };
 };
 
 /** The keys, address included as `slug`, whose kept value differs. */
@@ -232,10 +294,13 @@ export const getKeptDifferences = ({
   const keys = fields
     .filter(
       (field) =>
+        field.key in kept.values &&
         isSameValue(kept.values[field.key], values[field.key]) === false
     )
     .map((field) => field.key);
-  return kept.slug === slug ? keys : [...keys, "slug"];
+  return kept.slug === undefined || kept.slug === slug
+    ? keys
+    : [...keys, "slug"];
 };
 
 /** Splits E5's `ids` into calls of at most `size`. */
@@ -303,8 +368,7 @@ const isBlank = (kind: CmsFieldKind, value: unknown) => {
     return Array.isArray(value) === false || value.length === 0;
   }
   if (kind === "richtext") {
-    const text = (value as { text?: unknown } | null)?.text;
-    return typeof text !== "string" || text.trim() === "";
+    return richTextHtmlOrNull(value) === null;
   }
   if (kind === "image") {
     return (

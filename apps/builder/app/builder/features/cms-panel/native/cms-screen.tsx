@@ -457,6 +457,30 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       setIsEditorDirty(dirty);
     }, []);
 
+    /**
+     * A write refused for the shape of its data: the open collection's
+     * fields are read again, in the background, so the next Save sends the
+     * current keys. A failure changes nothing on screen but a refusal's line.
+     */
+    const refetchFields = async () => {
+      if (source === undefined || collectionId === undefined) {
+        return;
+      }
+      const result = await source.getCollection(collectionId);
+      if (isCmsFailure(result)) {
+        const refusal = getRefusal(result.error);
+        if (refusal !== undefined) {
+          setLine(refusal);
+        }
+        return;
+      }
+      setDetail((current) =>
+        current === undefined || current.id === result.collection.id
+          ? result.collection
+          : current
+      );
+    };
+
     const onWritten = (item: CmsItem) => {
       setListVersion((current) => current + 1);
       if (collection !== undefined) {
@@ -507,6 +531,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             onDirtyChange={onDirtyChange}
             onWritten={onWritten}
             onCreated={(item) => setItemId(item.id)}
+            onSchemaStale={refetchFields}
             onOpenHome={onOpenHome}
             onOpenClassic={() => guard(() => onShowClassic({}))}
           />

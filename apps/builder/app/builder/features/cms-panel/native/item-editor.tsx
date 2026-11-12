@@ -15,6 +15,10 @@ import {
   DialogClose,
   DialogContent,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Flex,
   Grid,
   IconButton,
@@ -25,9 +29,10 @@ import {
   toast,
   Tooltip,
 } from "@webstudio-is/design-system";
-import { ChevronLeftIcon, ResetIcon } from "@webstudio-is/icons";
+import { ChevronLeftIcon, EllipsesIcon } from "@webstudio-is/icons";
 import {
   emptyItemData,
+  emptyValueFor,
   getFieldErrorText,
   getItemTitle,
   getKeptDifferences,
@@ -38,6 +43,7 @@ import {
   keepAside,
   slugFollowsTitle,
   slugify,
+  toItemData,
   validateItem,
   type CmsKeptValues,
 } from "./cms-logic";
@@ -62,8 +68,8 @@ import { TruncatedText } from "./truncated-text";
  */
 const editorColumnMaxWidth = `calc(${theme.spacing[35]} + 2 * ${theme.spacing[9]})`;
 
-/** Below this the header's Discard changes becomes an icon. */
-const COMPACT_HEADER_WIDTH = 600;
+/** Below this header width, Discard changes moves into the Item menu. */
+export const COMPACT_HEADER_WIDTH = 600;
 
 type Busy = "save" | "publish" | "discard" | "reload";
 
@@ -98,6 +104,7 @@ export const ItemEditor = ({
   onDirtyChange,
   onWritten,
   onCreated,
+  onSchemaStale,
   onOpenHome,
   onOpenClassic,
 }: {
@@ -115,6 +122,11 @@ export const ItemEditor = ({
   /** After every write: the lists refetch and the canvas invalidates (4.7). */
   onWritten: (item: CmsItem) => void;
   onCreated: (item: CmsItem) => void;
+  /**
+   * A write answered `invalid` with no field: the open collection's fields
+   * are fetched again before the toast.
+   */
+  onSchemaStale: () => Promise<void>;
   /** `unauthorized`: the guard, then this tab home (4.3.4). */
   onOpenHome?: () => void;
   onOpenClassic?: () => void;
@@ -140,10 +152,13 @@ export const ItemEditor = ({
   // Rich text reads its value once: it remounts when values are replaced.
   const [epoch, setEpoch] = useState(0);
   const [fieldEpochs, setFieldEpochs] = useState<Record<string, number>>({});
-  // One per new item's editor, sent with every E6 until one succeeds.
-  const [clientId] = useState(() => crypto.randomUUID());
+  // One per new item's editor, sent with every E6 until one succeeds; a new
+  // one after E6 answers not_found.
+  const [clientId, setClientId] = useState(() => crypto.randomUUID());
   const backRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // Discard changes chosen in the Item menu: its dialog takes the focus.
+  const discardChosen = useRef(false);
   const [setHeader, isCompact] = useIsNarrow(COMPACT_HEADER_WIDTH);
 
   const isNew = item === null;
@@ -277,6 +292,17 @@ export const ItemEditor = ({
       setErrors((current) => ({ ...current, slug: "Address in use" }));
       return;
     }
+    if (failure.error === "invalid" && failure.field === undefined) {
+      // no write until the fields are current
+      setBusy("reload");
+      void onSchemaStale()
+        .catch(() => undefined)
+        .finally(() => {
+          setBusy(undefined);
+          toast.error(getToastText(failure.error));
+        });
+      return;
+    }
     const fieldText = getFieldErrorText(failure.error);
     const fieldKey = failure.field;
     if (fieldText !== undefined && fieldKey !== undefined) {
@@ -295,14 +321,25 @@ export const ItemEditor = ({
     toast.error(getToastText(failure.error));
   };
 
+  /**
+   * E6's replay (200): the item the first attempt made becomes the baseline
+   * and version, and the person's values and address stay, so whatever
+   * differs is saved by the next E7.
+   */
+  const adoptVersion = (next: CmsItem) => {
+    setItem(next);
+    setErrors({});
+    setConflict(false);
+  };
+
   const write = async (
     kind: Busy,
-    run: () => Promise<CmsResult<{ item: CmsItem }>>,
+    run: () => Promise<CmsResult<{ item: CmsItem; created?: boolean }>>,
     retry: () => void,
     settleWith?: Settle
   ) => {
     setBusy(kind);
-    let result: CmsResult<{ item: CmsItem }>;
+    let result: CmsResult<{ item: CmsItem; created?: boolean }>;
     try {
       result = await run();
     } catch {
@@ -316,47 +353,91 @@ export const ItemEditor = ({
       return;
     }
     setLine(undefined);
-    applyItem(result.item);
+    if (result.created === false) {
+      adoptVersion(result.item);
+    } else {
+      applyItem(result.item);
+    }
     onWritten(result.item);
     return result.item;
   };
 
-  const save = async (): Promise<CmsItem | undefined> => {
-    if (item === undefined) {
-      return;
-    }
-    const clientErrors = validateItem({ fields, values, slug, isNew });
+  /**
+   * Saves the person's values over `from` (null: a new item). Answers the
+   * saved item, and whether the values still differ from it, which only an
+   * E6 replay leaves.
+   */
+  const saveFrom = async (
+    from: CmsItem | null
+  ): Promise<{ saved: CmsItem; differs: boolean } | undefined> => {
+    const clientErrors = validateItem({
+      fields,
+      values,
+      slug,
+      isNew: from === null,
+    });
     setErrors(clientErrors);
     if (Object.keys(clientErrors).length > 0) {
       return;
     }
+    const data = toItemData(fields, values);
+    let replayed = false;
     const saved = await write(
       "save",
-      () =>
-        item === null
-          ? source.createItem(collection.id, {
-              clientId,
-              slug: slug === "" ? undefined : slug,
-              data: values,
-            })
-          : source.updateItem(collection.id, item.id, {
-              slug: slug === item.slug ? undefined : slug,
-              data: values,
-              expectedUpdatedAt: item.updatedAt,
-            }),
+      async () => {
+        if (from !== null) {
+          return source.updateItem(collection.id, from.id, {
+            slug: slug === from.slug ? undefined : slug,
+            data,
+            expectedUpdatedAt: from.updatedAt,
+          });
+        }
+        const result = await source.createItem(collection.id, {
+          clientId,
+          slug: slug === "" ? undefined : slug,
+          data,
+        });
+        // the clientId made nothing that still exists: the next Save is a
+        // new create
+        if (isCmsFailure(result)) {
+          if (result.error === "not_found") {
+            setClientId(crypto.randomUUID());
+          }
+        } else {
+          replayed = result.created === false;
+        }
+        return result;
+      },
       () => void save(),
       // E6's repeat is the same clientId; E7 reads the item back
-      item === null ? undefined : { sent: item }
+      from === null ? undefined : { sent: from }
     );
-    if (saved !== undefined) {
-      // the "Use my edit" buttons go on the next Save
-      setKept(undefined);
-      if (item === null) {
-        loadedId.current = saved.id;
-        onCreated(saved);
-      }
+    if (saved === undefined) {
+      return;
     }
-    return saved;
+    // the "Use my edit" buttons go on the next Save
+    setKept(undefined);
+    if (from === null) {
+      loadedId.current = saved.id;
+      onCreated(saved);
+    }
+    const differs =
+      replayed &&
+      isItemDirty({
+        fields,
+        baseline: { ...emptyItemData(fields), ...saved.data },
+        values,
+        baselineSlug: saved.slug,
+        slug,
+      });
+    return { saved, differs };
+  };
+
+  const save = async () => {
+    if (item === undefined) {
+      return;
+    }
+    await saveFrom(item);
   };
 
   const publish = async () => {
@@ -366,9 +447,18 @@ export const ItemEditor = ({
     }
     // With unsaved edits it saves, then publishes: two calls, each locked.
     if (current === null || isDirty) {
-      current = await save();
-      if (current === undefined || current === null) {
+      const first = await saveFrom(current);
+      if (first === undefined) {
         return;
+      }
+      current = first.saved;
+      // an E6 replay of older values: they are saved before publishing
+      if (first.differs) {
+        const second = await saveFrom(current);
+        if (second === undefined) {
+          return;
+        }
+        current = second.saved;
       }
     }
     const target = current;
@@ -437,8 +527,10 @@ export const ItemEditor = ({
       return;
     }
     if (key === "slug") {
-      setSlug(kept.slug);
-      setFollows(false);
+      if (kept.slug !== undefined) {
+        setSlug(kept.slug);
+        setFollows(false);
+      }
       return;
     }
     setValues((current) => ({
@@ -498,15 +590,34 @@ export const ItemEditor = ({
       {canEdit &&
         hasStagedChanges &&
         (isCompact ? (
-          <Tooltip content="Discard changes" side="bottom">
-            <IconButton
-              aria-label="Discard changes"
-              disabled={busy !== undefined}
-              onClick={() => setConfirmDiscard(true)}
+          <DropdownMenu modal={false}>
+            <Tooltip content="Item menu" side="bottom">
+              <DropdownMenuTrigger asChild>
+                <IconButton aria-label="Item menu">
+                  <EllipsesIcon />
+                </IconButton>
+              </DropdownMenuTrigger>
+            </Tooltip>
+            <DropdownMenuContent
+              align="end"
+              onCloseAutoFocus={(event) => {
+                if (discardChosen.current) {
+                  discardChosen.current = false;
+                  event.preventDefault();
+                }
+              }}
             >
-              <ResetIcon fill="currentColor" />
-            </IconButton>
-          </Tooltip>
+              <DropdownMenuItem
+                disabled={busy !== undefined}
+                onSelect={() => {
+                  discardChosen.current = true;
+                  setConfirmDiscard(true);
+                }}
+              >
+                Discard changes
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : (
           <Button
             color="ghost"
@@ -575,6 +686,7 @@ export const ItemEditor = ({
       {refusalLine}
       <ScrollAreaNative css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
         <Box
+          data-cms-editor-fields
           css={{
             maxWidth: editorColumnMaxWidth,
             marginInline: "auto",
@@ -605,7 +717,12 @@ export const ItemEditor = ({
                     id={id}
                     remountKey={`${epoch}:${fieldEpochs[field.key] ?? 0}`}
                     field={field}
-                    value={values[field.key]}
+                    // a field added since the item loaded shows empty
+                    value={
+                      field.key in values
+                        ? values[field.key]
+                        : emptyValueFor(field.kind)
+                    }
                     source={source}
                     disabled={disabled}
                     invalid={errors[field.key] !== undefined}
