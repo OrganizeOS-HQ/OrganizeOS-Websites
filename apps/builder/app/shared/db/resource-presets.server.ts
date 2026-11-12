@@ -5,12 +5,14 @@ import {
 } from "@webstudio-is/sdk";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
 import {
+  FORMS_PRESET_KEY,
   FORMS_PRESET_NAME,
   PRODUCTS_PRESET_KEY,
   PRODUCTS_RESOURCE_NAME,
   UPCOMING_EVENTS_PRESET_KEY,
   UPCOMING_EVENTS_RESOURCE_NAME,
   findCatalogResources,
+  getCatalogRootBindingId,
   getCollectionPresetKey,
   getResourcePresetIds,
   parseCollectionUrl,
@@ -20,14 +22,15 @@ import {
  * OrganizeOS Websites 2.0 Phase 4d: seed a provisioned org's project with its
  * data catalog, GET Resources pointed at the OrganizeOS public read API (/v1).
  *
- * The catalog is Resources only. Webstudio loads a resource DataSource, in the
- * builder and on a published page, only when its scope is an instance on the
- * page or `:root`, and data loads only where it is used: a use brings its own
- * binding, scoped to the instance that uses it (a Signup Form's root, or a
- * page the builder adds the Resource to), which references the
- * catalog Resource by id. Provisioning writes no binding. The unscoped
- * bindings it used to write never loaded; it removes each one nothing
- * references, and leaves the rest (removeUnusedPresetBindings).
+ * Data loads only where it is used: 0.309.0 loads a Resource, in the builder
+ * and on a published page, only where a page's expressions read it. A block
+ * brings its own binding, scoped to its root, which references the catalog
+ * Resource by id. Where the org is wanted (`catalogRootBindingsWanted`:
+ * `ORGANIZEOS_CATALOG_ROOT_BINDINGS` on, the org not denied), each catalog
+ * Resource also gets one binding at `:root`, named like it, so every element
+ * can bind it (planCatalogRootBindings). The unscoped bindings older
+ * provisioning wrote never loaded; it removes each one nothing references,
+ * and leaves the rest (removeUnusedPresetBindings).
  *
  * The per-org read token is inlined as a literal Authorization header
  * expression on each Resource; resource headers are evaluated only in the
@@ -59,7 +62,8 @@ type V1ResourcePreset = {
    * - "always": every org project, on every provision;
    * - "when-present": only a build that already has its Resource, which is
    *   rewritten whole. It is never added: a block's insert creates it when
-   *   a block first uses it.
+   *   a block first uses it. No preset has it now; "shop-blocks" falls back
+   *   to it.
    * - "shop-blocks": "always" while the builder offers the Shop blocks
    *   (`ORGANIZEOS_SHOP_BLOCKS` is exactly `true`), "when-present" otherwise.
    */
@@ -71,10 +75,11 @@ type V1ResourcePreset = {
  * public GET DTOs from Phase 1 (see the OrganizeOS ledger repo). Write surfaces
  * (donate/signup form submission) are a separate mechanism and not seeded here.
  * Forms is the org's published forms, which the OrganizeOS Signup Form block
- * reads through its `data` prop; a block's insert creates it on the first
- * insert. Upcoming Events is Events without the events already over, which the
- * Event List and Event Card blocks read; a block's insert creates it on the
- * first insert, like Forms. Products is the products the org's storefront
+ * reads through its `data` prop. Upcoming Events is Events without the events
+ * already over, which the Event List and Event Card blocks read. Both are
+ * seeded for every org, so their `:root` bindings make them bindable without
+ * a block; a block's insert still creates either when a build lacks it.
+ * Products is the products the org's storefront
  * shows, newest first, at most 100, which the Product Grid reads (a Product
  * Card reads a copy of its own); it is seeded once the Shop blocks are
  * offered.
@@ -89,16 +94,16 @@ export const V1_RESOURCE_PRESETS: readonly V1ResourcePreset[] = [
   },
   { key: "stats", label: "Stats", path: "/stats", seeding: "always" },
   {
-    key: "forms",
+    key: FORMS_PRESET_KEY,
     label: FORMS_PRESET_NAME,
     path: "/forms",
-    seeding: "when-present",
+    seeding: "always",
   },
   {
     key: UPCOMING_EVENTS_PRESET_KEY,
     label: UPCOMING_EVENTS_RESOURCE_NAME,
     path: "/events?upcoming=true",
-    seeding: "when-present",
+    seeding: "always",
   },
   {
     key: PRODUCTS_PRESET_KEY,
@@ -299,6 +304,32 @@ export const upsertById = <Type extends { id: string }>(
 };
 
 /**
+ * Whether a binding is referenced: its id, raw or in its expression form
+ * (`$ws$dataSource$...`), appears in the build's `searchable` text
+ * (instances, props, pages), its resources or its other data sources.
+ */
+export const createBindingReferenceTest = ({
+  dataSources,
+  resources,
+  searchable,
+}: {
+  dataSources: DataSource[];
+  resources: Resource[];
+  searchable: string[];
+}) => {
+  const texts = [...searchable, JSON.stringify(resources)];
+  return (dataSource: DataSource) => {
+    const forms = [dataSource.id, encodeDataSourceVariable(dataSource.id)];
+    const others = JSON.stringify(
+      dataSources.filter((item) => item !== dataSource)
+    );
+    return [...texts, others].some((text) =>
+      forms.some((form) => text.includes(form))
+    );
+  };
+};
+
+/**
  * Remove the bindings older provisioning and collections-sync wrote next to
  * each catalog Resource (unscoped, so they never loaded; the branch before
  * this one scoped Forms' at `:root`), where nothing references them. One is
@@ -328,21 +359,161 @@ export const removeUnusedPresetBindings = async ({
     presetBindingIds.add(entry.bindingId);
   }
 
-  const texts = [...searchable, JSON.stringify(resources)];
-  const isReferenced = (dataSource: DataSource) => {
-    const forms = [dataSource.id, encodeDataSourceVariable(dataSource.id)];
-    const others = JSON.stringify(
-      dataSources.filter((item) => item !== dataSource)
-    );
-    return [...texts, others].some((text) =>
-      forms.some((form) => text.includes(form))
-    );
-  };
+  const isReferenced = createBindingReferenceTest({
+    dataSources,
+    resources,
+    searchable,
+  });
 
   return dataSources.filter(
     (dataSource) =>
       presetBindingIds.has(dataSource.id) === false || isReferenced(dataSource)
   );
+};
+
+/**
+ * Forms and Upcoming Events where the build lacks them, built from the API
+ * base and Authorization of a static preset already in it (readV1PresetSeed),
+ * in exactly provisioning's shape: what buildOrgResourcePresets builds for the
+ * same base and token. None without a usable seed. The membership re-sync
+ * writes them for a wanted org, which carries no token.
+ */
+export const buildMissingCatalogResources = async (
+  projectId: string,
+  resources: Resource[]
+): Promise<Resource[]> => {
+  const seed = await readV1PresetSeed({ projectId, resources });
+  if (seed === undefined) {
+    return [];
+  }
+  const base = seed.apiBase.replace(/\/+$/, "");
+  const existingIds = new Set(resources.map(({ id }) => id));
+  const missing: Resource[] = [];
+  for (const key of [FORMS_PRESET_KEY, UPCOMING_EVENTS_PRESET_KEY]) {
+    const preset = V1_RESOURCE_PRESETS.find((item) => item.key === key);
+    if (preset === undefined) {
+      continue;
+    }
+    const { resourceId } = await getResourcePresetIds(projectId, preset.key);
+    if (existingIds.has(resourceId)) {
+      continue;
+    }
+    missing.push({
+      id: resourceId,
+      name: preset.label,
+      method: "get",
+      url: JSON.stringify(`${base}${preset.path}`),
+      headers: [{ name: "Authorization", value: seed.authHeaderExpression }],
+    });
+  }
+  return missing;
+};
+
+const isSameRootBinding = (stored: DataSource, planned: DataSource) =>
+  stored.type === "resource" &&
+  planned.type === "resource" &&
+  stored.id === planned.id &&
+  stored.scopeInstanceId === planned.scopeInstanceId &&
+  stored.name === planned.name &&
+  stored.resourceId === planned.resourceId;
+
+/**
+ * The build's data sources with its catalog `:root` bindings planned. Pure
+ * apart from the async id derivation.
+ *
+ * Wanted: one resource binding at `:root` per catalog Resource
+ * (findCatalogResources, so Products only where the build has it), with the
+ * id getCatalogRootBindingId derives and its Resource's name, or `<name> 2`,
+ * `<name> 3` and so on when another `:root` data source (anything but these
+ * bindings) or an earlier one in catalog order has it. A stored binding with
+ * the id keeps its position and is restored when it differs (type, scope,
+ * name or Resource changed outside the builder); a missing one is appended
+ * after the existing data sources, in catalog order. Every other data source
+ * comes back as it is.
+ *
+ * Not wanted: nothing is added, and each of these bindings that
+ * `isReferenced` says nothing references is removed. Without `isReferenced`
+ * nothing is removed. A build that holds none comes back as the same array.
+ */
+export const planCatalogRootBindings = async ({
+  projectId,
+  dataSources,
+  resources,
+  wanted,
+  isReferenced,
+}: {
+  projectId: string;
+  dataSources: DataSource[];
+  resources: Resource[];
+  wanted: boolean;
+  isReferenced?: (dataSource: DataSource) => boolean;
+}): Promise<DataSource[]> => {
+  const catalog = await findCatalogResources(projectId, resources);
+  const ids = await Promise.all(
+    catalog.map(({ key }) => getCatalogRootBindingId(projectId, key))
+  );
+  const rootBindingIds = new Set(ids);
+
+  if (wanted === false) {
+    if (isReferenced === undefined) {
+      return dataSources;
+    }
+    const kept = dataSources.filter(
+      (dataSource) =>
+        rootBindingIds.has(dataSource.id) === false || isReferenced(dataSource)
+    );
+    return kept.length === dataSources.length ? dataSources : kept;
+  }
+
+  if (catalog.length === 0) {
+    return dataSources;
+  }
+  const takenNames = new Set<string>();
+  for (const dataSource of dataSources) {
+    if (
+      dataSource.scopeInstanceId === ":root" &&
+      rootBindingIds.has(dataSource.id) === false
+    ) {
+      takenNames.add(dataSource.name);
+    }
+  }
+  const planned = new Map<string, DataSource>();
+  catalog.forEach(({ resource }, index) => {
+    let name = resource.name;
+    for (let suffix = 2; takenNames.has(name); suffix += 1) {
+      name = `${resource.name} ${suffix}`;
+    }
+    takenNames.add(name);
+    planned.set(ids[index], {
+      type: "resource",
+      id: ids[index],
+      scopeInstanceId: ":root",
+      name,
+      resourceId: resource.id,
+    });
+  });
+
+  let changed = false;
+  const placed = new Set<string>();
+  const next = dataSources.map((dataSource) => {
+    const binding = planned.get(dataSource.id);
+    if (binding === undefined) {
+      return dataSource;
+    }
+    placed.add(dataSource.id);
+    if (isSameRootBinding(dataSource, binding)) {
+      return dataSource;
+    }
+    changed = true;
+    return binding;
+  });
+  for (const [id, binding] of planned) {
+    if (placed.has(id) === false) {
+      changed = true;
+      next.push(binding);
+    }
+  }
+  return changed ? next : dataSources;
 };
 
 const findAuthorizationValues = (resource: Resource) =>

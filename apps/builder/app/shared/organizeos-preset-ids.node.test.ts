@@ -16,6 +16,7 @@ import {
   UPCOMING_EVENTS_PRESET_KEY,
   UPCOMING_EVENTS_RESOURCE_NAME,
   findCatalogResources,
+  getCatalogRootBindingId,
   getCollectionPresetKey,
   getResourcePresetIds,
   isPresetId,
@@ -89,6 +90,45 @@ describe("getResourcePresetIds", () => {
       resourceId: nodeUuidV5("project-1:v1:events:resource"),
       bindingId: nodeUuidV5("project-1:v1:events:binding"),
     });
+  });
+});
+
+// OrganizeOS fork (fork doc section 9, "The catalog in provisioning"): each
+// catalog Resource's `:root` binding has an id family of its own.
+describe("getCatalogRootBindingId", () => {
+  const keys = [
+    ...STATIC_PRESET_KEYS,
+    FORMS_PRESET_KEY,
+    UPCOMING_EVENTS_PRESET_KEY,
+    PRODUCTS_PRESET_KEY,
+    getCollectionPresetKey("blog"),
+  ];
+
+  test("is deterministic and a v5 UUID", async () => {
+    for (const key of keys) {
+      const id = await getCatalogRootBindingId("project-1", key);
+      expect(id).toBe(await getCatalogRootBindingId("project-1", key));
+      expect(isPresetId(id), key).toBe(true);
+      expect(id).not.toBe(await getCatalogRootBindingId("project-2", key));
+    }
+  });
+
+  test("differs from the Resource's id and the legacy binding id of every key", async () => {
+    for (const key of keys) {
+      const id = await getCatalogRootBindingId("project-1", key);
+      const { resourceId, bindingId } = await getResourcePresetIds(
+        "project-1",
+        key
+      );
+      expect(id, key).not.toBe(resourceId);
+      expect(id, key).not.toBe(bindingId);
+    }
+  });
+
+  test("is pinned for a fixed project", async () => {
+    expect(await getCatalogRootBindingId("project-1", "events")).toBe(
+      nodeUuidV5("project-1:v1:events:root-binding")
+    );
   });
 });
 

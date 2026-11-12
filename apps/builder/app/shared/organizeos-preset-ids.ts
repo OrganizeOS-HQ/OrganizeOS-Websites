@@ -13,12 +13,15 @@ import type { Resource } from "@webstudio-is/sdk";
  * bindings a block brings live here too, so that both sides give them the same
  * ones.
  *
- * The catalog is GET Resources only. A Resource loads nowhere by itself: a use
- * (a block, or a page the builder adds it to) brings its own resource
- * DataSource, scoped to the instance that uses it, which references the
- * catalog Resource by id. The `bindingId` derived here is the id of the unscoped binding older
- * provisioning wrote next to each Resource, which never loaded; provisioning
- * and collections-sync now only remove it where nothing uses it.
+ * The catalog is GET Resources only. A Resource loads only on a page whose
+ * expressions read it (0.309.0 loads by use). A block brings its own resource
+ * DataSource, scoped to its root, which references the catalog Resource by id.
+ * Where the server writes them (`ORGANIZEOS_CATALOG_ROOT_BINDINGS`), each
+ * catalog Resource also has one binding at `:root`, named like it, so every
+ * element can bind it; its id is `getCatalogRootBindingId`. The `bindingId`
+ * derived here is the id of the unscoped binding older provisioning wrote next
+ * to each Resource, which never loaded; provisioning and collections-sync now
+ * only remove it where nothing uses it.
  *
  * One implementation on WebCrypto (`globalThis.crypto.subtle`), which the
  * browser and Node 22 both provide. It is async because `digest` is.
@@ -39,9 +42,9 @@ import type { Resource } from "@webstudio-is/sdk";
 export const FORMS_PRESET_NAME = "OrganizeOS Forms";
 
 /**
- * The name of the Upcoming Events catalog Resource, in both writers. The first
- * Event List or Event Card creates it (`GET /v1/events?upcoming=true`), and
- * provisioning rewrites it where present, as it does Forms.
+ * The name of the Upcoming Events catalog Resource, in both writers
+ * (`GET /v1/events?upcoming=true`). Provisioning seeds it, as it does Forms,
+ * and the first Event List or Event Card creates it where a build lacks it.
  */
 export const UPCOMING_EVENTS_RESOURCE_NAME = "Upcoming Events";
 
@@ -62,14 +65,14 @@ export const UPCOMING_EVENTS_BINDING_NAME = "OrganizeOS Upcoming Events";
 export const STATIC_PRESET_KEYS = ["events", "fundraisers", "stats"] as const;
 
 /**
- * The key of the Forms catalog Resource, which the builder creates on first
- * use.
+ * The key of the Forms catalog Resource, which provisioning seeds for every
+ * org and a block's insert creates where a build lacks it.
  */
 export const FORMS_PRESET_KEY = "forms";
 
 /**
- * The key of the Upcoming Events catalog Resource, which the builder creates
- * on first use, like Forms.
+ * The key of the Upcoming Events catalog Resource, seeded and created like
+ * Forms.
  */
 export const UPCOMING_EVENTS_PRESET_KEY = "upcoming-events";
 
@@ -150,6 +153,15 @@ export const getResourcePresetIds = async (
   ]);
   return { resourceId, bindingId };
 };
+
+/**
+ * The id of a catalog Resource's one `:root` binding (`key` as for
+ * getResourcePresetIds). A family of its own, never the legacy `bindingId`,
+ * so removeUnusedPresetBindings never touches it and every writer converges
+ * on the same record.
+ */
+export const getCatalogRootBindingId = (projectId: string, key: string) =>
+  uuidV5(`${projectId}:v1:${key}:root-binding`);
 
 const UUID_V5_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
