@@ -7,7 +7,14 @@ import { toast } from "@webstudio-is/design-system";
 import type { CmsCollectionSummary } from "./cms-source";
 import { refreshCmsNative } from "./cms-native-stores";
 import { $cmsNativeDirty } from "./cms-native-stores";
-import { itemOf, PEOPLE, POSTS, POSTS_DETAIL } from "./fake-cms-source";
+import {
+  itemOf,
+  itemsPageOf,
+  PEOPLE,
+  POSTS,
+  POSTS_DETAIL,
+  rowOf as itemRowOf,
+} from "./fake-cms-source";
 import { POSTS_STRUCTURE } from "./fake-cms-structure-source";
 import {
   buttonByText,
@@ -776,5 +783,157 @@ describe("after a structure write", () => {
     expect(harness.structure.getCollectionStructure).toHaveBeenLastCalledWith(
       POSTS.id
     );
+  });
+});
+
+// slice 2's list beside slice 3's structure (slice 3 spec 7.5)
+describe("the list across a structure write", () => {
+  const VENUE = { key: "venue", label: "Venue", kind: "text" as const };
+  const radioItem = (label: string) =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+      (item) => item.textContent === label
+    );
+
+  const removeSummary = async () => {
+    harness.structure.updateSchema.mockImplementation(async (_id, body) => ({
+      fields: body.fields,
+      updatedAt: "2026-11-12T10:05:00.123456+00:00",
+    }));
+    await click(tab("Fields"));
+    await click(fieldRow("summary")!.querySelector("button"));
+    await click(byLabel("Field menu"));
+    await click(menuItem("Remove field"));
+    await click(
+      buttonByText("Remove", document.querySelector('[role="dialog"]')!)
+    );
+  };
+
+  test("a structure write asks E3 again with the list's filter and sort, and adopts the answer's", async () => {
+    // E3 runs what it was asked
+    harness.fake.listItems.mockResolvedValue(
+      itemsPageOf([itemRowOf(itemOf())], 1, 1, {
+        applied: {
+          status: "draft",
+          sort: "name",
+          direction: "desc",
+          optionKey: null,
+          optionValue: null,
+        },
+      })
+    );
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        list: {
+          status: "draft",
+          sort: "name",
+          direction: "desc",
+          option: null,
+        },
+      },
+    });
+    await settle();
+    expect(harness.fake.listItems).toHaveBeenLastCalledWith(POSTS.id, {
+      q: undefined,
+      page: 1,
+      status: "draft",
+      sort: "name",
+      direction: "desc",
+    });
+    // the schema change's E3 answers the manual order: the list adopts it
+    harness.fake.listItems.mockResolvedValue(
+      itemsPageOf([itemRowOf(itemOf())], 1, 1, {
+        applied: {
+          status: "draft",
+          sort: "order",
+          direction: "asc",
+          optionKey: null,
+          optionValue: null,
+        },
+      })
+    );
+    await removeSummary();
+    expect(harness.fake.listItems).toHaveBeenLastCalledWith(POSTS.id, {
+      q: undefined,
+      page: 1,
+      status: "draft",
+      sort: "name",
+      direction: "desc",
+    });
+    await click(tab("Collections"));
+    await reopen();
+    expect(harness.fake.listItems).toHaveBeenLastCalledWith(POSTS.id, {
+      q: undefined,
+      page: 1,
+      status: "draft",
+    });
+  });
+
+  test("opening a structure view clears the list's selection", async () => {
+    mount();
+    await settle();
+    await click(byLabel("Select all on this page"));
+    expect(
+      document.querySelector('[role="toolbar"][aria-label="Bulk actions"]')
+    ).not.toBeNull();
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+    expect(
+      document.querySelector("[data-cms-collection-settings]")
+    ).not.toBeNull();
+    await click(byLabel("Back"));
+    expect(
+      document.querySelector('[role="toolbar"][aria-label="Bulk actions"]')
+    ).toBeNull();
+    expect(
+      byLabel("Select all on this page")?.getAttribute("aria-checked")
+    ).not.toBe("true");
+  });
+
+  test("a field sort whose column no longer shows stays in Sort, checked, and can be cleared", async () => {
+    harness.fake.getCollection.mockResolvedValue({
+      collection: { ...POSTS_DETAIL, fields: [...POSTS_DETAIL.fields, VENUE] },
+    });
+    harness.structure.getCollectionStructure.mockResolvedValue({
+      collection: {
+        ...POSTS_STRUCTURE,
+        fields: [...POSTS_DETAIL.fields, VENUE],
+      },
+    });
+    // E3 sorts by Venue, which is not among the answer's columns
+    harness.fake.listItems.mockResolvedValue(
+      itemsPageOf([itemRowOf(itemOf())], 1, 1, {
+        columns: [],
+        applied: {
+          status: "all",
+          sort: "field:venue",
+          direction: "asc",
+          optionKey: null,
+          optionValue: null,
+        },
+      })
+    );
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        list: {
+          status: "all",
+          sort: "field:venue",
+          direction: "asc",
+          option: null,
+        },
+      },
+    });
+    await settle();
+    await click(buttonByText("Sort"));
+    expect(radioItem("Venue")?.getAttribute("aria-checked")).toBe("true");
+    harness.fake.listItems.mockResolvedValue(
+      itemsPageOf([itemRowOf(itemOf())], 1, 1)
+    );
+    await click(radioItem("Manual order"));
+    expect(harness.fake.listItems).toHaveBeenLastCalledWith(POSTS.id, {
+      q: undefined,
+      page: 1,
+    });
   });
 });

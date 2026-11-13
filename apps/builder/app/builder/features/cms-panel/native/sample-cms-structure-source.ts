@@ -33,8 +33,6 @@ import {
   type CmsTemplate,
 } from "./cms-structure-source";
 import {
-  columnsOf,
-  filterFieldOf,
   SAMPLE_COLLECTION_IDS,
   type SampleCmsSource,
 } from "./sample-cms-source";
@@ -819,22 +817,17 @@ export const createSampleCmsStructure = (
       }
       const result = await base.listItems(collectionId, query);
       if (isCmsFailure(result) && result.error === "not_found") {
-        // a collection made here: no items yet, its columns from its schema
-        const filterField = filterFieldOf(found.fields)?.key ?? null;
-        const sort = query.sort ?? "order";
+        // a collection made here: no items yet
         return {
           items: [],
           total: 0,
           page: 1,
-          columns: columnsOf(found.fields),
-          filterField,
+          columns: [],
+          filterField: null,
           applied: {
-            status: query.status ?? "all",
-            sort: sort.startsWith("field:") ? "order" : sort,
-            direction:
-              sort === "order" || sort.startsWith("field:")
-                ? "asc"
-                : (query.direction ?? (sort === "updated" ? "desc" : "asc")),
+            status: "all",
+            sort: "order",
+            direction: "asc",
             optionKey: null,
             optionValue: null,
           },

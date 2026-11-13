@@ -303,7 +303,22 @@ export const ItemsView = ({
   // E3's field columns, resolved; the Filter's option field and the Sort's
   // sortable fields, whether or not they fit (spec 5.1.2, 5.1.3)
   const columnFields = resolveColumns(fields ?? [], page?.columns ?? []).fields;
-  const sortFields = columnFields.filter(isSortableField);
+  // a field sort whose column no longer shows (a schema change) stays in the
+  // Sort menu, checked, so it can be seen and cleared
+  const sortedKey = list.sort.startsWith("field:")
+    ? list.sort.slice("field:".length)
+    : undefined;
+  const sortedField =
+    sortedKey === undefined ||
+    columnFields.some((field) => field.key === sortedKey)
+      ? undefined
+      : (fields ?? []).find(
+          (field) => field.key === sortedKey && isSortableField(field)
+        );
+  const sortFields = [
+    ...columnFields.filter(isSortableField),
+    ...(sortedField === undefined ? [] : [sortedField]),
+  ];
   const filterField =
     page?.filterField != null
       ? ((fields ?? []).find((field) => field.key === page.filterField) ?? null)

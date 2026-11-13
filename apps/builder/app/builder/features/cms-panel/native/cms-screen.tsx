@@ -241,6 +241,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     );
     const [collections, setCollections] = useState<CmsCollectionSummary[]>([]);
     const [collectionId, setCollectionId] = useState(initialView?.collectionId);
+    // the open collection, for an answer that lands after a switch
+    const collectionIdRef = useRef(collectionId);
+    collectionIdRef.current = collectionId;
     const [itemId, setItemId] = useState(initialView?.itemId);
     const [page, setPage] = useState(initialView?.page ?? 1);
     const [query, setQuery] = useState(initialView?.query ?? "");
@@ -749,13 +752,16 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const selectCollection = (nextId: string) =>
       guard(() => applyCollection(nextId));
 
-    const openItem = (nextId: string | null) => {
-      // Back shows the list selection-free (5.1.5)
+    // Back from an item or a structure view shows the list selection-free (5.1.5)
+    const clearSelection = () =>
       setListState((current) =>
         current.selected.size === 0
           ? current
           : { ...current, selected: new Set<string>() }
       );
+
+    const openItem = (nextId: string | null) => {
+      clearSelection();
       setEditorSession((current) => current + 1);
       setFocusBack(true);
       setReturnFocusItemId(undefined);
@@ -828,6 +834,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       onDirtyChange,
       onWritten: onStructureWritten,
       onOpenCollection: applyCollection,
+      onViewOpen: clearSelection,
       refetchCollections,
       showLine: showStructureLine,
       clearLine: clearStructureLine,
@@ -853,6 +860,10 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         if (refusal !== undefined && refusal !== "toast") {
           showLine(refusal, "detail");
         }
+        return;
+      }
+      // an answer after a collection switch is not the open collection's
+      if (result.collection.id !== collectionIdRef.current) {
         return;
       }
       applyLoadedFields(result.collection);

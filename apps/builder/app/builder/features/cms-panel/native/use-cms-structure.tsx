@@ -144,6 +144,7 @@ export const useCmsStructure = ({
   onDirtyChange,
   onWritten,
   onOpenCollection,
+  onViewOpen,
   refetchCollections,
   showLine: showScreenLine,
   clearLine: clearScreenLine,
@@ -164,6 +165,8 @@ export const useCmsStructure = ({
   onWritten: (effect: CmsStructureEffect) => void;
   /** Opens a collection's items, past the guard. */
   onOpenCollection: (collectionId: string | undefined) => void;
+  /** A structure view opens over the items: the list's selection clears. */
+  onViewOpen: () => void;
   /** E1 again, in the background. */
   refetchCollections: () => void;
   /** The screen's line, under the cause "structure". */
@@ -550,6 +553,7 @@ export const useCmsStructure = ({
   const open = (next: CmsStructureView) =>
     guard(() => {
       clearViewDirty();
+      onViewOpen();
       setSession((current) => current + 1);
       setView(next);
     });
@@ -557,6 +561,7 @@ export const useCmsStructure = ({
   const openSettings = (id: string) =>
     guard(() => {
       clearViewDirty();
+      onViewOpen();
       if (id !== collectionId) {
         onOpenCollection(id);
       }

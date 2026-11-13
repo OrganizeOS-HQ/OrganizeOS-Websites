@@ -642,7 +642,7 @@ const buildCollections = (
 };
 
 /** E3's table columns: the first four non-title fields the table shows. */
-export const columnsOf = (fields: CmsField[]) =>
+const columnsOf = (fields: CmsField[]) =>
   fields
     .filter(
       (field) =>
@@ -655,7 +655,7 @@ export const columnsOf = (fields: CmsField[]) =>
     .map((field) => field.key);
 
 /** E3's Filter field: the first non-title option field with options. */
-export const filterFieldOf = (fields: CmsField[]) =>
+const filterFieldOf = (fields: CmsField[]) =>
   fields.find(
     (field) =>
       field.isTitle !== true &&

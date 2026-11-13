@@ -78,7 +78,22 @@ export const useRowReorder = (input: {
   const [, setPhase] = useState(0);
   const bump = () => setPhase((current) => current + 1);
 
-  useEffect(() => () => clearTimeout(timer.current), []);
+  // leaving the table (a structure view, another screen) sends the moves
+  // still held in their pause rather than dropping them
+  useEffect(
+    () => () => {
+      if (timer.current === undefined) {
+        return;
+      }
+      clearTimeout(timer.current);
+      timer.current = undefined;
+      const ids = pendingRef.current;
+      if (ids !== undefined) {
+        sendRef.current(ids);
+      }
+    },
+    []
+  );
 
   // another collection starts with nothing pending
   const lastCollectionId = useRef(input.collectionId);
@@ -185,6 +200,10 @@ export const useRowReorder = (input: {
         }
       });
   };
+
+  // the latest send, for the unmount cleanup above
+  const sendRef = useRef(send);
+  sendRef.current = send;
 
   /** Runs what waited: an open always; a bulk call only on a drawn page. */
   const runWaiting = (pageDrawn: boolean) => {
