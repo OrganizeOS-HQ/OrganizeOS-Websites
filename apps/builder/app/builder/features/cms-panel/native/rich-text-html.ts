@@ -81,8 +81,10 @@ const exportEmptyBlock = (
       const element = after === undefined ? generated : after(generated);
       if (isHtmlElement(element)) {
         element.replaceChildren();
+        return element;
       }
-      return element;
+      // an export map's after never returns a fragment: anything else stands
+      return element instanceof DocumentFragment ? undefined : element;
     },
   };
 };
