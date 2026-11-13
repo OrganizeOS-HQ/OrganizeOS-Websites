@@ -694,6 +694,15 @@ describe("the table's columns (Task 15)", () => {
     expect(text).not.toBeUndefined();
     expect(text!.textContent).toBe(longKey);
     expect(table.scrollWidth).toBe(table.clientWidth);
+    await act(async () => userEvent.hover(text!));
+    await vi.waitFor(
+      () => {
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+          longKey
+        );
+      },
+      { timeout: 3000 }
+    );
   });
 });
 
@@ -866,8 +875,23 @@ describe("Filter and Sort (Task 16)", () => {
     await click(buttonByText("Sort"));
     const sortMenu = document.querySelector<HTMLElement>('[role="menu"]')!;
     fits(sortMenu);
-    expect(truncated(sortMenu, longKey)).not.toBeUndefined();
+    const sortLabel = truncated(sortMenu, longKey);
+    expect(sortLabel).not.toBeUndefined();
+    await act(async () => userEvent.hover(sortLabel!));
+    await vi.waitFor(
+      () => {
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+          longKey
+        );
+      },
+      { timeout: 3000 }
+    );
+    // the tooltip's Escape, then the menu's
     await act(async () => userEvent.keyboard("{Escape}"));
+    await settle();
+    if (document.querySelector('[role="menu"]') !== null) {
+      await act(async () => userEvent.keyboard("{Escape}"));
+    }
     await settle();
 
     await click(buttonByText("Filter"));
@@ -1468,6 +1492,21 @@ describe("drag reorder (Task 18)", () => {
     expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]]);
   });
 
+  test("the pause runs from the last move, not the first", async () => {
+    reorderWorld();
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    await wait(300);
+    await altMove("ArrowDown");
+    await wait(300);
+    // 600 ms after the first move, 300 ms after the last: nothing yet
+    expect(fake.reorderItems).not.toHaveBeenCalled();
+    await wait(300);
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]]);
+  });
+
   test("Alt+Arrow keeps the focus on the moved row, so a second Alt+Arrow moves it again", async () => {
     reorderWorld();
     mount();
@@ -1687,6 +1726,10 @@ describe("drag reorder (Task 18)", () => {
       expect(error).toHaveBeenCalledWith("Try again in a minute");
       expect(toolbar()?.textContent).toContain("1 selected");
       expect(toolbarButton("Publish")?.disabled).toBe(false);
+      // E13's accepted order stays shown; a refused one goes back
+      expect(itemSlugs()).toEqual(
+        answer === "ok" ? ["b", "a", "c"] : ["a", "b", "c"]
+      );
       focusRow("b");
       await act(async () => userEvent.keyboard("{Enter}"));
       await settle();
@@ -2184,5 +2227,325 @@ describe("drag is offered only on the order the table draws", () => {
     await gate.release();
     await wait(600);
     expect(fake.reorderItems).not.toHaveBeenCalled();
+  });
+});
+
+const PEOPLE_IDS = [
+  "00000000-0000-4000-8000-0000000000f1",
+  "00000000-0000-4000-8000-0000000000f2",
+];
+
+/** People answers rows x and y; Posts is the reorder world's. */
+const withPeople = () => {
+  const base = fake.listItems.getMockImplementation()!;
+  fake.listItems.mockImplementation(async (c, q) =>
+    c === PEOPLE.id
+      ? itemsPageOf(
+          ["x", "y"].map((name, index) =>
+            rowOf(
+              itemOf({
+                id: PEOPLE_IDS[index],
+                slug: name,
+                data: { title: name.toUpperCase() },
+              })
+            )
+          ),
+          2,
+          1
+        )
+      : base(c, q)
+  );
+};
+
+const collectionRow = (slug: string) =>
+  document.querySelector<HTMLElement>(`[data-cms-collection="${slug}"]`);
+
+describe("another collection while a list call is in flight", () => {
+  test("an E13 held in one collection blocks nothing in the next: a reorder, a bulk Publish and a row open run there", async () => {
+    reorderWorld();
+    withPeople();
+    const held = deferred<CmsResult<{ changed: number }>>();
+    const store = fake.reorderItems.getMockImplementation()!;
+    fake.reorderItems.mockImplementationOnce(async (c, body) => {
+      const answer = await held.promise;
+      await store(c, body);
+      return answer;
+    });
+    mount();
+    await settle();
+    await dragBelow("a", "c");
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+
+    await click(collectionRow("people"));
+    expect(itemSlugs()).toEqual(["x", "y"]);
+    // a drop there is sent there (item 7)
+    await dragBelow("x", "y");
+    expect(fake.reorderItems).toHaveBeenCalledTimes(2);
+    expect(fake.reorderItems.mock.calls[1]).toEqual([
+      PEOPLE.id,
+      { ids: [PEOPLE_IDS[1], PEOPLE_IDS[0]] },
+    ]);
+    // an Alt+Arrow there is sent there
+    expect(itemSlugs()).toEqual(["x", "y"]);
+    focusRow("x");
+    await altMove("ArrowDown");
+    await wait(600);
+    expect(fake.reorderItems).toHaveBeenCalledTimes(3);
+    expect(fake.reorderItems.mock.calls[2][0]).toBe(PEOPLE.id);
+
+    // a bulk Publish runs
+    await click(checkbox("Select X"));
+    expect(toolbarButton("Publish")?.disabled).toBe(false);
+    await click(toolbarButton("Publish"));
+    expect(fake.publishItems).toHaveBeenCalledWith(
+      PEOPLE.id,
+      expect.anything()
+    );
+
+    // the Posts answer lands, and a row open still runs
+    await act(async () => held.resolve({ changed: 3 }));
+    await settle();
+    focusRow("y");
+    await act(async () => userEvent.keyboard("{Enter}"));
+    await settle();
+    expect(fake.getItem).toHaveBeenCalledWith(PEOPLE.id, PEOPLE_IDS[1]);
+  });
+
+  test("a row opened while a bulk call is in flight is dropped when another collection opens", async () => {
+    reorderWorld();
+    withPeople();
+    const held = deferred<Awaited<ReturnType<FakeCmsSource["publishItems"]>>>();
+    fake.publishItems.mockImplementation(() => held.promise);
+    mount();
+    await settle();
+    await click(checkbox("Select A"));
+    await click(toolbarButton("Publish"));
+    await click(rowEl("b"));
+    await click(collectionRow("people"));
+    await act(async () =>
+      held.resolve({
+        published: [ROW_IDS[0]],
+        unchanged: [],
+        conflicts: [],
+        failed: [],
+      })
+    );
+    await settle();
+    expect(fake.getItem).not.toHaveBeenCalled();
+    expect(itemSlugs()).toEqual(["x", "y"]);
+  });
+});
+
+describe("the order E13 accepted is provisional", () => {
+  test("after E13 200 and a failed refetch, the next page drawn and another sort show the server's order", async () => {
+    const world = reorderWorld();
+    const base = fake.listItems.getMockImplementation()!;
+    fake.listItems.mockImplementation(async (c, q) => {
+      const answer = await base(c, q);
+      if (q.sort !== "name" || isCmsFailure(answer)) {
+        return answer;
+      }
+      const items = [...answer.items].sort((left, right) =>
+        left.slug.localeCompare(right.slug)
+      );
+      return { ...answer, items };
+    });
+    mount();
+    await settle();
+    fake.listItems.mockResolvedValueOnce({ error: "rate_limited" });
+    await dragBelow("a", "b");
+    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
+    // the refetch failed: the accepted order shows
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    // the next page drawn is the server's order, whatever it holds now
+    world.ids = [ROW_IDS[2], ROW_IDS[0], ROW_IDS[1]];
+    refreshCmsNative();
+    await settle();
+    expect(itemSlugs()).toEqual(["c", "a", "b"]);
+    world.ids = [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]];
+
+    await click(
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[role="columnheader"] button'
+        ),
+      ].find((button) => button.textContent?.startsWith("Name"))
+    );
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    await click(buttonByText("Sort"));
+    await click(menuItemByText("Manual order"));
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+  });
+});
+
+describe("the top bar at 1024 px", () => {
+  test("an 80-character collection name leaves Filter and Sort whole", async () => {
+    const name = "Long name ".repeat(8);
+    fake.listCollections.mockResolvedValue({
+      collections: [{ ...POSTS, name }],
+    });
+    await mountThree();
+    container!.style.width = "1024px";
+    await wait(50);
+    for (const selector of ["[data-cms-filter]", "[data-cms-sort]"]) {
+      const button = document.querySelector<HTMLElement>(selector)!;
+      expect(button).not.toBeNull();
+      expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth);
+      for (const element of button.querySelectorAll<HTMLElement>("*")) {
+        expect(element.scrollWidth).toBeLessThanOrEqual(element.clientWidth);
+      }
+    }
+  });
+});
+
+describe("bulk Publish's partial results", () => {
+  const D_ID = "00000000-0000-4000-8000-00000000000d";
+  const fourRows = () => [
+    ...threeRows(),
+    rowOf(itemOf({ id: D_ID, slug: "d", data: { title: "D" } })),
+  ];
+
+  test("counts several conflicts and failures in one toast each", async () => {
+    const error = vi.spyOn(toast, "error");
+    fake.listItems.mockImplementation(async () =>
+      itemsPageOf(fourRows(), 4, 1)
+    );
+    mount();
+    await settle();
+    fake.publishItems.mockResolvedValue({
+      published: [ROW_IDS[0]],
+      unchanged: [],
+      conflicts: [ROW_IDS[1], ROW_IDS[2]],
+      failed: [D_ID],
+    });
+    await click(checkbox("Select all on this page"));
+    await click(toolbarButton("Publish"));
+    expect(error).toHaveBeenCalledWith("2 changed by someone else");
+    expect(error).toHaveBeenCalledWith("1 not published");
+    expect(error).toHaveBeenCalledTimes(2);
+  });
+
+  test("a clean Publish shows no toast", async () => {
+    const error = vi.spyOn(toast, "error");
+    fake.listItems.mockImplementation(async () =>
+      itemsPageOf(fourRows(), 4, 1)
+    );
+    mount();
+    await settle();
+    fake.publishItems.mockResolvedValue({
+      published: [ROW_IDS[0], ROW_IDS[1], ROW_IDS[2], D_ID],
+      unchanged: [],
+      conflicts: [],
+      failed: [],
+    });
+    await click(checkbox("Select all on this page"));
+    await click(toolbarButton("Publish"));
+    expect(fake.publishItems).toHaveBeenCalledTimes(1);
+    expect(error).not.toHaveBeenCalled();
+  });
+});
+
+describe("a list write answered by a sign-in refusal", () => {
+  test.each(["unauthorized", "mfa_required"] as const)(
+    "a bulk call answered %s shows the line, with no toast",
+    async (code) => {
+      const error = vi.spyOn(toast, "error");
+      await mountThree();
+      fake.publishItems.mockResolvedValue({ error: code });
+      await click(checkbox("Select A"));
+      await click(toolbarButton("Publish"));
+      expect(
+        document.body.textContent?.includes(
+          code === "unauthorized"
+            ? "Signed out of OrganizeOS"
+            : "Two-step sign-in required"
+        )
+      ).toBe(true);
+      expect(error).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each(["unauthorized", "mfa_required"] as const)(
+    "E13 answered %s shows the line, with no toast",
+    async (code) => {
+      const error = vi.spyOn(toast, "error");
+      reorderWorld();
+      fake.reorderItems.mockResolvedValue({ error: code });
+      mount();
+      await settle();
+      await dragBelow("a", "b");
+      expect(
+        document.body.textContent?.includes(
+          code === "unauthorized"
+            ? "Signed out of OrganizeOS"
+            : "Two-step sign-in required"
+        )
+      ).toBe(true);
+      expect(error).not.toHaveBeenCalled();
+    }
+  );
+});
+
+describe("a filter change goes back to page 1", () => {
+  test("from page 2, a status and then an option filter each ask page 1", async () => {
+    await mountEvents(
+      itemsPageOf([eventRow()], 60, 1, {
+        columns: ["kind"],
+        filterField: "kind",
+      })
+    );
+    await click(byLabel("Next"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({ page: 2 });
+    await click(buttonByText("Filter"));
+    await click(menuItemByText("Draft"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({
+      page: 1,
+      status: "draft",
+    });
+
+    await click(byLabel("Next"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({ page: 2 });
+    await click(buttonByText("Filter 1"));
+    await click(menuItemByText("Café"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({
+      page: 1,
+      status: "draft",
+      optionKey: "kind",
+      optionValue: "Café",
+    });
+  });
+});
+
+describe("an option filter whose field is not loaded", () => {
+  test("still shows in the Filter, which can clear it", async () => {
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+    fake.getCollection.mockResolvedValue({ error: "unavailable" });
+    fake.listItems.mockImplementation(async (_c, q) => ({
+      ...itemsPageOf([eventRow()], 1, 1, { filterField: "kind" }),
+      applied: {
+        status: q.status ?? "all",
+        sort: q.sort ?? "order",
+        direction: q.direction ?? "asc",
+        optionKey: q.optionKey ?? null,
+        optionValue: q.optionValue ?? null,
+      },
+    }));
+    mount({
+      initialView: {
+        collectionId: EVENTS.id,
+        list: {
+          status: "all",
+          sort: "order",
+          direction: "asc",
+          option: { key: "kind", value: "Café" },
+        },
+      },
+    });
+    await settle();
+    expect(lastListItemsCall()?.[1]).toMatchObject({ optionKey: "kind" });
+    await click(buttonByText("Filter 1"));
+    await click(menuItemByText("Any kind"));
+    expect(lastListItemsCall()?.[1].optionKey).toBeUndefined();
+    expect(buttonByText("Filter")).not.toBeUndefined();
   });
 });

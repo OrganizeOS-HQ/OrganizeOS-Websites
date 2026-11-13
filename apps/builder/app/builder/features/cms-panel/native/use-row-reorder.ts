@@ -84,8 +84,12 @@ export const useRowReorder = (input: {
   const pageSignature = JSON.stringify([
     input.listKey,
     input.page?.page,
+    input.page?.applied.sort,
     [...pageIds].sort(),
   ]);
+  // Bumped when another collection opens: an E13 sent for the last one
+  // answers into nothing here.
+  const generation = useRef(0);
   // Re-renders when a ref-held phase changes.
   const [, setPhase] = useState(0);
   const bump = () => setPhase((current) => current + 1);
@@ -99,8 +103,10 @@ export const useRowReorder = (input: {
       return;
     }
     lastCollectionId.current = input.collectionId;
+    generation.current += 1;
     clearTimeout(timer.current);
     timer.current = undefined;
+    inFlight.current = false;
     queued.current = undefined;
     awaitingAfter.current = undefined;
     accepted.current = undefined;
@@ -149,6 +155,7 @@ export const useRowReorder = (input: {
     timer.current = undefined;
     queued.current = undefined;
     movedOn.current = undefined;
+    accepted.current = undefined;
     pendingRef.current = undefined;
     setPending(undefined);
     bump();
@@ -192,31 +199,34 @@ export const useRowReorder = (input: {
     inFlight.current = true;
     bump();
     const { collectionId, onReordered, onFailed } = current;
+    const sentIn = generation.current;
     void current.source
       .reorderItems(collectionId, { ids: [...ids] })
       .catch((): CmsResult<{ changed: number }> => ({ error: "unavailable" }))
       .then((result) => {
-        inFlight.current = false;
-        const sameCollection = latest.current.collectionId === collectionId;
-        const next = queued.current;
-        if (sameCollection) {
-          queued.current = undefined;
-          // the next E3 answer after this one settles the reorder
-          awaitingAfter.current = latest.current.pageAnswer.count;
-          if (isCmsFailure(result) === false) {
-            accepted.current = ids;
-          }
-        }
-        bump();
         // the lists and the canvas of the collection written refetch
-        if (isCmsFailure(result)) {
-          onFailed(result.error);
-        } else {
-          onReordered();
-        }
-        if (sameCollection === false) {
+        const report = () => {
+          if (isCmsFailure(result)) {
+            onFailed(result.error);
+          } else {
+            onReordered();
+          }
+        };
+        // another collection opened meanwhile: its reorder state is its own
+        if (sentIn !== generation.current) {
+          report();
           return;
         }
+        inFlight.current = false;
+        const next = queued.current;
+        queued.current = undefined;
+        // the next E3 answer after this one settles the reorder
+        awaitingAfter.current = latest.current.pageAnswer.count;
+        if (isCmsFailure(result) === false) {
+          accepted.current = ids;
+        }
+        bump();
+        report();
         if (isCmsFailure(result) === false && next !== undefined) {
           send(next);
         }
@@ -242,6 +252,19 @@ export const useRowReorder = (input: {
   // E13 answered, then an E3 answer for the current key: settled.
   useEffect(() => {
     trySettle();
+    // the order E13 accepted holds only until a page is drawn after it
+    if (
+      input.pageAnswer.ok &&
+      accepted.current !== undefined &&
+      awaitingAfter.current === undefined &&
+      inFlight.current === false &&
+      timer.current === undefined
+    ) {
+      accepted.current = undefined;
+      movedOn.current = undefined;
+      pendingRef.current = undefined;
+      setPending(undefined);
+    }
   }, [input.pageAnswer]);
 
   // another key, page or set of rows drops the moves made on the last
