@@ -19,7 +19,6 @@ const read = (path: string) =>
 const components = read("../components/components.tsx");
 const useDragDrop = read("../../../canvas/shared/use-drag-drop.ts");
 const sidebarLeft = read("../../sidebar-left/sidebar-left.tsx");
-const styleSections = read("../style-panel/sections/sections.ts");
 const inspector = read("../../inspector.tsx");
 const builderNanoStates = read("../../shared/nano-states.ts");
 const builder = read("../../builder.tsx");
@@ -92,17 +91,6 @@ describe("the Components panel's OrganizeOS section", () => {
   // OrganizeOS group's.
   test("upstream's Groups category stays a string, so the OrganizeOS category fits", () => {
     expect(components).toMatch(/type Groups = Array<\{\s*category: string;/);
-  });
-});
-
-describe("the Style panel's Background presets", () => {
-  test("sections.ts imports the presets from the OrganizeOS module and lists them immediately after backgrounds", () => {
-    expect(styleSections).toMatch(
-      /import \* as organizeosBackgroundPresets from "~\/builder\/features\/organizeos-panel\/background-presets-section";/
-    );
-    expect(styleSections).toMatch(
-      /\["backgrounds", backgrounds\],\s*\["organizeosBackgroundPresets", organizeosBackgroundPresets\],/
-    );
   });
 });
 

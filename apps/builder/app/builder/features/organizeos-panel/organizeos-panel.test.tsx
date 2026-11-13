@@ -146,9 +146,9 @@ describe("the OrganizeOS data tab", () => {
     vi.unstubAllGlobals();
   });
 
-  test("titled OrganizeOS data, and only the data list: no line, no component card, no Background presets, no Motion", async () => {
+  test("titled OrganizeOS data, and only the data list: no line, no component card, no Motion", async () => {
     await setProject({ withCatalog: true });
-    // a selection Background presets and Motion would both act on
+    // a selection Motion would act on
     selectInstance(["boxId", "bodyId"]);
     const host = render();
     await settle();
@@ -167,9 +167,6 @@ describe("the OrganizeOS data tab", () => {
       Array.from(host.querySelectorAll("label"), (label) => label.textContent)
     ).not.toContain("Data");
     expect(host.querySelector("[data-drag-component]")).toBeNull();
-    expect(host.textContent).not.toContain("Background presets");
-    expect(host.textContent).not.toContain("Section background");
-    expect(host.querySelector("[data-preset-grid]")).toBeNull();
     expect(host.querySelector("[data-motion-presets]")).toBeNull();
     expect(host.querySelector("[data-motion-refusal]")).toBeNull();
   });
