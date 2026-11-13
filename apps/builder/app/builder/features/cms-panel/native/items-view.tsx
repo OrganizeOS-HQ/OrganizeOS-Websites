@@ -28,6 +28,7 @@ import {
   getDeleteTitle,
   getListFailureText,
   isSortableField,
+  listKey,
   nextSort,
   resolveColumns,
   type CmsListState,
@@ -209,6 +210,7 @@ export const ItemsView = ({
   collection,
   page,
   query,
+  drawnQueryEmpty,
   canEdit,
   canPublish,
   focusItemId,
@@ -229,6 +231,8 @@ export const ItemsView = ({
   collection: CmsCollectionSummary;
   page: CmsItemsPage | undefined;
   query: string;
+  /** The drawn page answered the open search, filter and sort, with no search. */
+  drawnQueryEmpty: boolean;
   canEdit: boolean;
   canPublish: boolean;
   focusItemId?: string;
@@ -326,6 +330,7 @@ export const ItemsView = ({
   const reorder = useRowReorder({
     source,
     collectionId: collection.id,
+    listKey: JSON.stringify([listKey(list), query]),
     page,
     pageAnswer,
     onReordered: onListWritten,
@@ -340,8 +345,14 @@ export const ItemsView = ({
       toast.error(getListFailureText("order", code));
     },
   });
+  // drag is offered only on a drawn page in Manual order with no search and
+  // no filter, read from the page's own applied filter and sort
   const showHandle =
     page !== undefined &&
+    drawnQueryEmpty &&
+    page.applied.status === "all" &&
+    page.applied.sort === "order" &&
+    page.applied.optionKey === null &&
     canDragRows({ canEdit, state: list, q: query, total: page.total });
   const shownPage: CmsItemsPage | undefined =
     page === undefined

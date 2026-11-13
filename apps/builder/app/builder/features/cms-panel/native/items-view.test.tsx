@@ -8,7 +8,7 @@ import { userEvent } from "@vitest/browser/context";
 import { toast, TooltipProvider } from "@webstudio-is/design-system";
 import { CmsScreen, type CmsScreenProps } from "./cms-screen";
 import { refreshCmsNative } from "./cms-native-stores";
-import type { CmsItemsPage, CmsResult } from "./cms-source";
+import { isCmsFailure, type CmsItemsPage, type CmsResult } from "./cms-source";
 import {
   createFakeCmsSource,
   EVENTS,
@@ -1990,5 +1990,199 @@ describe("the drag handle's click", () => {
       rowEl("b")!.querySelector<HTMLElement>('[aria-label="Drag to reorder"]')
     );
     expect(fake.getItem).toHaveBeenCalledWith(POSTS.id, ROW_IDS[1]);
+  });
+});
+
+/**
+ * Holds the next E3 calls until `release` or `fail`; calls made before
+ * `hold` answer at once.
+ */
+const holdListItems = () => {
+  const base = fake.listItems.getMockImplementation()!;
+  let gate: ReturnType<typeof deferred<boolean>> | undefined;
+  fake.listItems.mockImplementation(async (c, q) => {
+    const current = gate;
+    if (current !== undefined && (await current.promise) === false) {
+      return { error: "unavailable" };
+    }
+    return base(c, q);
+  });
+  return {
+    hold: () => {
+      gate = deferred<boolean>();
+    },
+    release: async () => {
+      const current = gate;
+      gate = undefined;
+      await act(async () => current?.resolve(true));
+      await settle();
+    },
+    fail: async () => {
+      const current = gate;
+      gate = undefined;
+      await act(async () => current?.resolve(false));
+      await settle();
+    },
+  };
+};
+
+describe("drag is offered only on the order the table draws", () => {
+  test("clearing a filter: no handle and no E13 until the unfiltered page answers", async () => {
+    const world = reorderWorld();
+    const base = fake.listItems.getMockImplementation()!;
+    // Draft answers a and c only
+    fake.listItems.mockImplementation(async (c, q) => {
+      const answer = await base(c, q);
+      if (q.status !== "draft" || isCmsFailure(answer)) {
+        return answer;
+      }
+      const items = answer.items.filter((row) => row.slug !== "b");
+      return { ...answer, items, total: items.length };
+    });
+    const gate = holdListItems();
+    mount();
+    await settle();
+    await click(buttonByText("Filter"));
+    await click(menuItemByText("Draft"));
+    expect(itemSlugs()).toEqual(["a", "c"]);
+    expect(handles()).toHaveLength(0);
+
+    gate.hold();
+    await click(buttonByText("Filter 1"));
+    await click(menuItemByText("All items"));
+    // the filtered rows still show, with no handle
+    expect(itemSlugs()).toEqual(["a", "c"]);
+    expect(handles()).toHaveLength(0);
+    focusRow("a");
+    await altMove("ArrowDown");
+    expect(itemSlugs()).toEqual(["a", "c"]);
+    await gate.release();
+    await wait(600);
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    expect(handles()).toHaveLength(3);
+    expect(fake.reorderItems).not.toHaveBeenCalled();
+    expect(world.ids).toEqual(ROW_IDS);
+  });
+
+  test("clearing a search: no handle until the page answers, and none while that answer fails", async () => {
+    reorderWorld();
+    const base = fake.listItems.getMockImplementation()!;
+    // a search for "a" answers a alone
+    fake.listItems.mockImplementation(async (c, q) => {
+      const answer = await base(c, q);
+      if (q.q === undefined || isCmsFailure(answer)) {
+        return answer;
+      }
+      const items = answer.items.filter((row) => row.slug === "a");
+      return { ...answer, items, total: items.length };
+    });
+    const gate = holdListItems();
+    mount();
+    await settle();
+    await act(async () => userEvent.type(searchInput()!, "a"));
+    await wait(300);
+    expect(itemSlugs()).toEqual(["a"]);
+    expect(handles()).toHaveLength(0);
+
+    gate.hold();
+    await act(async () => userEvent.clear(searchInput()!));
+    await wait(300);
+    expect(itemSlugs()).toEqual(["a"]);
+    expect(handles()).toHaveLength(0);
+
+    // the read fails: the searched rows stay, still with no handle
+    await gate.fail();
+    expect(itemSlugs()).toEqual(["a"]);
+    expect(handles()).toHaveLength(0);
+    focusRow("a");
+    await altMove("ArrowDown");
+    await wait(600);
+    expect(fake.reorderItems).not.toHaveBeenCalled();
+  });
+
+  test("Sort > Manual order: the Name order shows no handle, and Alt+Arrow sends nothing", async () => {
+    const world = reorderWorld();
+    // the manual order is c, a, b
+    world.ids = [ROW_IDS[2], ROW_IDS[0], ROW_IDS[1]];
+    const base = fake.listItems.getMockImplementation()!;
+    fake.listItems.mockImplementation(async (c, q) => {
+      const answer = await base(c, q);
+      if (q.sort !== "name" || isCmsFailure(answer)) {
+        return answer;
+      }
+      const items = [...answer.items].sort((left, right) =>
+        left.slug.localeCompare(right.slug)
+      );
+      return { ...answer, items };
+    });
+    const gate = holdListItems();
+    mount();
+    await settle();
+    expect(itemSlugs()).toEqual(["c", "a", "b"]);
+    await click(
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[role="columnheader"] button'
+        ),
+      ].find((button) => button.textContent?.startsWith("Name"))
+    );
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+
+    gate.hold();
+    await click(buttonByText("Sort"));
+    await click(menuItemByText("Manual order"));
+    // the Name order still shows, with no handle
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    expect(handles()).toHaveLength(0);
+    focusRow("a");
+    await altMove("ArrowDown");
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    await gate.release();
+    await wait(600);
+    expect(itemSlugs()).toEqual(["c", "a", "b"]);
+    expect(handles()).toHaveLength(3);
+    expect(fake.reorderItems).not.toHaveBeenCalled();
+  });
+
+  test("a pending keyboard order is dropped when the page's rows change", async () => {
+    const world = reorderWorld();
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    // a refetch draws another set of rows before the order is sent
+    world.ids = [ROW_IDS[0], ROW_IDS[2]];
+    refreshCmsNative();
+    await settle();
+    expect(itemSlugs()).toEqual(["a", "c"]);
+    await wait(600);
+    expect(fake.reorderItems).not.toHaveBeenCalled();
+    expect(itemSlugs()).toEqual(["a", "c"]);
+  });
+
+  test("a pending keyboard order is dropped when the list's key changes", async () => {
+    reorderWorld();
+    const gate = holdListItems();
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    // the sort changes from the keyboard's own Name header, with the focus
+    // kept in the table
+    gate.hold();
+    const name = [
+      ...document.querySelectorAll<HTMLElement>('[role="columnheader"] button'),
+    ].find((button) => button.textContent?.startsWith("Name"))!;
+    act(() => {
+      name.click();
+    });
+    await settle();
+    await wait(600);
+    expect(fake.reorderItems).not.toHaveBeenCalled();
+    await gate.release();
+    await wait(600);
+    expect(fake.reorderItems).not.toHaveBeenCalled();
   });
 });
