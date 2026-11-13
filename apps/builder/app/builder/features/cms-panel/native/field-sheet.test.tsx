@@ -25,6 +25,7 @@ import {
   tab,
   typeInto,
   unmount,
+  keepEditing,
 } from "./structure-test-harness";
 
 beforeEach(resetHarness);
@@ -557,7 +558,7 @@ describe("the field sheet", () => {
       expect($cmsNativeDirty.get()).toBe(true);
       await leave();
       expect(hasText("Discard unsaved changes?")).toBe(true);
-      await click(buttonByText("Keep editing"));
+      await keepEditing();
       expect(control("label")?.value).toBe("Teaser");
     }
     expect(harness.props.onShowClassic).not.toHaveBeenCalled();

@@ -27,6 +27,8 @@ import {
   tab,
   typeInto,
   unmount,
+  keepEditing,
+  discardChanges,
 } from "./structure-test-harness";
 
 beforeEach(resetHarness);
@@ -125,10 +127,10 @@ describe("the Fields tab", () => {
     await click(tab("Fields"));
     await click(fieldRow("summary")!.querySelector("button"));
     expect(hasText("Discard unsaved changes?")).toBe(true);
-    await click(buttonByText("Keep editing"));
+    await keepEditing();
     expect(sheet()).toBeNull();
     await click(fieldRow("summary")!.querySelector("button"));
-    await click(buttonByText("Discard"));
+    await discardChanges();
     expect(sheet()).not.toBeNull();
     expect(
       document.querySelector<HTMLInputElement>("#cms-field-sheet-label")?.value
@@ -190,7 +192,7 @@ describe("the Fields tab", () => {
     await click(byLabel("Add field"));
     await click(menuItem("Number"));
     expect(hasText("Discard unsaved changes?")).toBe(true);
-    await click(buttonByText("Keep editing"));
+    await keepEditing();
     expect(sheet()).toBeNull();
     await click(tab("Collections"));
     expect(
@@ -199,7 +201,7 @@ describe("the Fields tab", () => {
     await click(tab("Fields"));
     await click(byLabel("Add field"));
     await click(menuItem("Number"));
-    await click(buttonByText("Discard"));
+    await discardChanges();
     await vi.waitFor(() => expect(sheet()).not.toBeNull());
   });
 

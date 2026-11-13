@@ -134,6 +134,23 @@ export const click = async (element: Element | null | undefined) => {
   await settle();
 };
 
+/**
+ * Closes the unsaved guard and waits for it to go. The design system's Dialog
+ * reports its close a frame later, so a click sent before that frame lands
+ * inside act() and waits on an overlay act itself holds open.
+ */
+const closeGuard = async (label: "Keep editing" | "Discard") => {
+  await click(buttonByText(label));
+  await vi.waitFor(() =>
+    expect(hasText("Discard unsaved changes?")).toBe(false)
+  );
+  await settle();
+};
+
+export const keepEditing = () => closeGuard("Keep editing");
+
+export const discardChanges = () => closeGuard("Discard");
+
 export const menuItems = () =>
   [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(
     (item) => item.textContent

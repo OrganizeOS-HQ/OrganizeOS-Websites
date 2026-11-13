@@ -36,6 +36,8 @@ import {
   settle,
   tab,
   unmount,
+  keepEditing,
+  discardChanges,
 } from "./structure-test-harness";
 
 beforeEach(resetHarness);
@@ -213,14 +215,14 @@ describe("the row menu", () => {
     await click(byLabel("People menu"));
     await click(menuItem("Settings"));
     expect(hasText("Discard unsaved changes?")).toBe(true);
-    await click(buttonByText("Keep editing"));
+    await keepEditing();
     expect(document.querySelector("[data-cms-collection-settings]")).toBeNull();
     expect(
       document.querySelector<HTMLInputElement>("#cms-field-title")?.value
     ).toBe("Mine");
     await click(byLabel("People menu"));
     await click(menuItem("Settings"));
-    await click(buttonByText("Discard"));
+    await discardChanges();
     expect($cmsNativeDirty.get()).toBe(false);
     expect(currentSlug()).toBe("people");
     expect(
@@ -343,13 +345,13 @@ describe("New collection and the first run", () => {
     await editItemTitle();
     await click(byLabel("New collection"));
     expect(hasText("Discard unsaved changes?")).toBe(true);
-    await click(buttonByText("Keep editing"));
+    await keepEditing();
     expect(hasText("New collection")).toBe(false);
     expect(
       document.querySelector<HTMLInputElement>("#cms-field-title")?.value
     ).toBe("Mine");
     await click(byLabel("New collection"));
-    await click(buttonByText("Discard"));
+    await discardChanges();
     await vi.waitFor(() =>
       expect(dialog()?.textContent).toContain("New collection")
     );
