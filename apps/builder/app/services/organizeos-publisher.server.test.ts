@@ -47,8 +47,83 @@ const makeClient = (
 });
 
 const ORG_ID = "f0e1d2c3-b4a5-4697-8877-665544332211";
+const pagesOf = (rootInstanceId: string) =>
+  JSON.stringify({
+    meta: {},
+    homePage: {
+      id: "home",
+      name: "Home",
+      path: "",
+      title: '"Home"',
+      rootInstanceId,
+      meta: {},
+    },
+    pages: [],
+    folders: [{ id: "root", name: "Root", slug: "", children: ["home"] }],
+  });
+
+/** A build's form columns: a body holding one Signup Form with an Email Field. */
+const formBuild = ({ marked }: { marked: boolean }) => ({
+  instances: JSON.stringify([
+    {
+      type: "instance",
+      id: "body",
+      component: "Body",
+      children: [{ type: "id", value: "root" }],
+    },
+    {
+      type: "instance",
+      id: "root",
+      component: "@organizeos/site-components:SignupForm",
+      children: [{ type: "id", value: "email" }],
+    },
+    {
+      type: "instance",
+      id: "email",
+      component: "@organizeos/site-components:Field",
+      children: [],
+    },
+  ]),
+  props: JSON.stringify([
+    ...(marked
+      ? [
+          {
+            id: "p0",
+            instanceId: "root",
+            name: "siteForm",
+            type: "string",
+            value: "contact-signup",
+          },
+        ]
+      : []),
+    {
+      id: "p1",
+      instanceId: "root",
+      name: "record",
+      type: "string",
+      value: "51000000-0000-4000-8000-000000000001",
+    },
+    {
+      id: "p2",
+      instanceId: "email",
+      name: "field",
+      type: "string",
+      value: "email",
+    },
+  ]),
+  pages: pagesOf("body"),
+});
+
 const HAPPY_ROWS = {
-  Build: { projectId: "proj-1" },
+  // An empty build: a body and nothing in it.
+  Build: {
+    projectId: "proj-1",
+    instances: JSON.stringify([
+      { type: "instance", id: "body", component: "Body", children: [] },
+    ]),
+    props: "[]",
+    pages: pagesOf("body"),
+  },
   Project: { userId: "svc-user-1" },
   User: { email: `org+${ORG_ID}@svc.organizeos.internal` },
 };
@@ -430,5 +505,90 @@ describe("getOrganizeosPublisher", () => {
       const get = await load(repo, token);
       expect(get(), `${repo} ${token}`).toBeUndefined();
     }
+  });
+});
+
+// OrganizeOS fork: an older builder tab still reaches `domain.publish`, which
+// dispatches with no targets and so skips the Publish dialog's forms step.
+// It refuses a build holding a marked site-form root (builder forms spec
+// 7.4.6; plan 2026-11-13-builder-forms-fork-p2, Task 4).
+describe("createOrganizeosPublisher: a build with site forms", () => {
+  const RELOAD = "Reload the builder to publish.";
+  const publishWith = async (
+    build: Record<string, unknown>,
+    input: { buildId: string; targets?: string[] }
+  ) => {
+    const statusUpdates: StatusUpdate[] = [];
+    const selected: string[] = [];
+    const base = makeClient({ ...HAPPY_ROWS, Build: build }, statusUpdates);
+    const client = {
+      from: (table: string) => {
+        const chain = base.from(table);
+        return {
+          ...chain,
+          select: (columns: string) => {
+            selected.push(`${table}:${columns}`);
+            return chain.select();
+          },
+        };
+      },
+    };
+    const fetcher = vi.fn(async () => new Response(null, { status: 204 }));
+    const publisher = createOrganizeosPublisher({
+      client,
+      repo: "OrganizeOS-HQ/OrganizeOS-Websites",
+      githubToken: "gh-token",
+      fetcher,
+    });
+    const result = await (
+      publisher.publish.mutate as (input: {
+        buildId: string;
+        targets?: string[];
+      }) => Promise<{ success: boolean; error?: string }>
+    )(input);
+    return { result, fetcher, statusUpdates, selected };
+  };
+
+  test("an untargeted publish of a build with a marked root refuses and marks the build failed", async () => {
+    const { result, fetcher, statusUpdates } = await publishWith(
+      { projectId: "proj-1", ...formBuild({ marked: true }) },
+      { buildId: "build-1" }
+    );
+    expect(result).toEqual({ success: false, error: RELOAD });
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(statusUpdates).toEqual([
+      {
+        table: "Build",
+        values: { publishStatus: "FAILED" },
+        buildId: "build-1",
+      },
+    ]);
+  });
+
+  test("a build whose roots are all unmarked dispatches as before", async () => {
+    const { result, fetcher } = await publishWith(
+      { projectId: "proj-1", ...formBuild({ marked: false }) },
+      { buildId: "build-1" }
+    );
+    expect(result).toEqual({ success: true });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  test("a targeted publish (the dialog's route) never reads the build's instances", async () => {
+    const { result, selected } = await publishWith(
+      { projectId: "proj-1", ...formBuild({ marked: true }) },
+      { buildId: "build-1", targets: ["builtin"] }
+    );
+    expect(result).toEqual({ success: true });
+    expect(selected.some((entry) => entry.includes("instances"))).toBe(false);
+  });
+
+  test("a failed read of the build refuses with the same line", async () => {
+    const { result, fetcher } = await publishWith(
+      { projectId: "proj-1", instances: "{", props: "[]", pages: "{}" },
+      { buildId: "build-1" }
+    );
+    expect(result).toEqual({ success: false, error: RELOAD });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });
