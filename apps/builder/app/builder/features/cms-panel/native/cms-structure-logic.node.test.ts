@@ -12,6 +12,7 @@ import {
   keyFromLabel,
   moveField,
   newDraft,
+  rebaseFieldDraft,
   rebaseSettings,
   newOption,
   schemaWithDraft,
@@ -435,4 +436,61 @@ test("rebaseSettings: the controls the person left take the fresh values", () =>
     slug: "my-posts",
     isPublic: false,
   });
+});
+
+test("rebaseFieldDraft: per property; the option list is one property", () => {
+  const saved: CmsStructureField = {
+    key: "stage",
+    label: "Stage",
+    kind: "option",
+    help: "Old help",
+    options: [{ value: "won", label: "Won" }],
+  };
+  const fresh: CmsStructureField = {
+    ...saved,
+    label: "Phase",
+    required: true,
+    options: [
+      { value: "won", label: "Won" },
+      { value: "lost", label: "Lost" },
+    ],
+  };
+  const draft = { ...draftFromField(saved), help: "Mine" };
+  const rebased = rebaseFieldDraft(saved, fresh, draft);
+  expect(rebased.label).toBe("Phase");
+  expect(rebased.required).toBe(true);
+  expect(rebased.help).toBe("Mine");
+  expect(rebased.options.map((option) => option.value)).toEqual([
+    "won",
+    "lost",
+  ]);
+  const edited = {
+    ...draftFromField(saved),
+    options: [...draftFromField(saved).options, newOption("Paused")],
+  };
+  expect(
+    rebaseFieldDraft(saved, fresh, edited).options.map((option) => option.label)
+  ).toEqual(["Won", "Paused"]);
+});
+
+test("the errors the sheet's input caps keep out of reach", () => {
+  const draft = {
+    ...newDraft("option"),
+    label: "x".repeat(81),
+    key: "k".repeat(41),
+    keyTouched: true,
+    options: Array.from({ length: 51 }, (_, n) => newOption(`o${n}`)),
+  };
+  expect(getFieldDraftErrors(fields, draft, undefined)).toEqual({
+    label: "At most 80 characters",
+    key: "At most 40 characters",
+    options: "At most 50 options",
+  });
+  expect(
+    getFieldDraftErrors(
+      fields,
+      { ...newDraft("reference"), label: "A", key: "a" },
+      undefined
+    ).reference
+  ).toBe("Choose a collection");
 });

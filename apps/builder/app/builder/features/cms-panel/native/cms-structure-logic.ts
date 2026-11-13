@@ -511,6 +511,49 @@ export const canShowInTable = (
   return others < TABLE_FIELDS_MAX;
 };
 
+const sameOptions = (left: OptionDraft[], right: OptionDraft[]) =>
+  left.length === right.length &&
+  left.every(
+    (option, index) =>
+      option.value === right[index].value && option.label === right[index].label
+  );
+
+/**
+ * After a fresh read replaced the saved field (Reload after a conflict, the
+ * reread after an unknown outcome): each property the draft still holds as
+ * saved takes the fresh value; the ones the person changed keep theirs. The
+ * option list counts as one property.
+ */
+export const rebaseFieldDraft = (
+  saved: CmsStructureField,
+  fresh: CmsStructureField,
+  draft: FieldDraft
+): FieldDraft => {
+  const before = draftFromField(saved);
+  const after = draftFromField(fresh);
+  const take = <Key extends keyof FieldDraft>(key: Key) =>
+    draft[key] === before[key] ? after[key] : draft[key];
+  const required = take("required");
+  return {
+    ...draft,
+    label: take("label"),
+    required,
+    isTitle: take("isTitle"),
+    help: take("help"),
+    referenceId: take("referenceId"),
+    maxLength: take("maxLength"),
+    showInTable: take("showInTable"),
+    locked: after.locked,
+    options: sameOptions(draft.options, before.options)
+      ? after.options
+      : draft.options,
+    requiredBeforeTitle:
+      draft.required === before.required
+        ? after.requiredBeforeTitle
+        : draft.requiredBeforeTitle,
+  };
+};
+
 /** A field the sheet may remove: not from a template, not the title. */
 export const canRemoveField = (field: CmsStructureField) =>
   field.locked !== true && field.isTitle !== true;

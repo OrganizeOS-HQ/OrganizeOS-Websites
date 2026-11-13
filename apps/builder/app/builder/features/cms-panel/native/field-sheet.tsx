@@ -1,21 +1,29 @@
 /**
- * The field sheet (slice 3), in the main area as the item editor is: one
- * field's name, key, kind, the kind's own settings, help text, Required,
- * the title switch and the table column. A saved field's key and kind are
- * fixed; a template field's reference keeps its target. "..." holds Remove
- * field, confirmed with the count of items it is removed from.
+ * The field sheet, in the main area as the item editor is: one field's
+ * name, key, kind, the kind's own settings, help text, Required, Title and
+ * Table column. A saved field's key and kind are fixed; a template field's
+ * reference keeps its target. "..." holds Remove field, confirmed with the
+ * count of items it is removed from.
  *
  * Each save sends the whole schema with this one change, checked first by
- * the platform's rules (`cms-structure-logic.ts`).
+ * the platform's rules (`cms-structure-logic.ts`), through the collection's
+ * queue (E24). A conflict shows its line with Reload, which rebases each
+ * property the person did not change on the fresh read.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import {
   Button,
+  css,
   Dialog,
   DialogActions,
   DialogClose,
   DialogContent,
-  DialogTitle,
   DropdownMenuItem,
   Flex,
   Grid,
@@ -23,30 +31,39 @@ import {
   Select,
   SmallIconButton,
   Switch,
+  Text,
   TextArea,
+  theme,
   toast,
-  Tooltip,
+  useSortable,
 } from "@webstudio-is/design-system";
-import { PlusIcon, XIcon } from "@webstudio-is/icons";
-import { getRefusal } from "./cms-logic";
-import { isCmsFailure, type CmsFieldKind } from "./cms-source";
+import { DragHandleIcon, PlusIcon, XIcon } from "@webstudio-is/icons";
+import { getRefusal, getToastText } from "./cms-logic";
+import {
+  isCmsFailure,
+  type CmsErrorCode,
+  type CmsFieldKind,
+} from "./cms-source";
 import {
   canRemoveField,
+  canShowInTable,
   draftFromField,
+  draftToField,
   FIELD_HELP_MAX,
   FIELD_KEY_MAX,
   FIELD_KINDS,
   FIELD_KIND_LABELS,
   FIELD_LABEL_MAX,
-  canShowInTable,
   getFieldDraftErrors,
   getStructureToastText,
   isFieldDraftDirty,
   isReferenceKind,
+  isSameField,
   newDraft,
   newOption,
   OPTIONS_MAX,
   OPTION_VALUE_MAX,
+  rebaseFieldDraft,
   schemaWithDraft,
   schemaWithout,
   takesMaxLength,
@@ -64,10 +81,17 @@ import type {
 import type { CmsStructureEnqueue } from "./collection-settings";
 import { FieldRow, fieldIds } from "./field-controls";
 import { FieldKindLabel } from "./fields-view";
-import type { CmsLineKind } from "./refusal-line";
-import { StructureBody, StructureHeader } from "./structure-header";
+import { LineRow, type CmsLineKind } from "./refusal-line";
+import {
+  StructureBody,
+  StructureHeader,
+  WrappingDialogTitle,
+} from "./structure-header";
 
 export type FieldSheetTarget = { key: string } | { kind: CmsFieldKind };
+
+/** What the hook reads again after a write's answer. */
+export type FieldSheetStale = "structure" | "collections" | "limits";
 
 const ids = {
   label: "cms-field-sheet-label",
@@ -111,6 +135,23 @@ const SwitchRow = ({
   </FieldRow>
 );
 
+const gripStyle = css({
+  display: "flex",
+  flexShrink: 0,
+  cursor: "grab",
+  opacity: 0.7,
+  "&[data-disabled]": { visibility: "hidden" },
+});
+
+const optionRowStyle = css({
+  display: "flex",
+  alignItems: "center",
+  gap: theme.spacing[3],
+  minWidth: 0,
+  "&[data-dragging]": { opacity: 0.5 },
+});
+
+/** The options by label; each row moves by its grip or Alt+Arrow. */
 const OptionsEditor = ({
   draft,
   error,
@@ -122,14 +163,34 @@ const OptionsEditor = ({
   disabled: boolean;
   onChange: (options: FieldDraft["options"]) => void;
 }) => {
-  const lastRef = useRef<HTMLInputElement>(null);
-  const [focusLast, setFocusLast] = useState(false);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [focusId, setFocusId] = useState<string | undefined>(undefined);
   useEffect(() => {
-    if (focusLast) {
-      lastRef.current?.focus();
-      setFocusLast(false);
+    if (focusId !== undefined) {
+      listRef.current
+        ?.querySelector<HTMLInputElement>(`[data-id="${focusId}"] input`)
+        ?.focus();
+      setFocusId(undefined);
     }
-  }, [focusLast]);
+  }, [focusId]);
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= draft.options.length || from === to) {
+      return;
+    }
+    const next = [...draft.options];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    onChange(next);
+    setFocusId(moved.id);
+  };
+  const { dragItemId, placementIndicator, sortableRefCallback } = useSortable({
+    items: draft.options,
+    onSort: (newIndex, oldIndex) => {
+      if (disabled === false) {
+        move(oldIndex, newIndex);
+      }
+    },
+  });
   return (
     <FieldRow id={ids.options} label="Options" error={error}>
       <Grid
@@ -137,16 +198,37 @@ const OptionsEditor = ({
         id={ids.options}
         role="list"
         css={{ gridTemplateColumns: "minmax(0, 1fr)" }}
+        ref={(element: HTMLDivElement | null) => {
+          listRef.current = element;
+          if (disabled === false) {
+            sortableRefCallback(element);
+          }
+        }}
       >
         {draft.options.map((option, index) => (
-          <Flex key={option.id} role="listitem" align="center" gap="1">
+          <div
+            key={option.id}
+            role="listitem"
+            data-id={option.id}
+            data-cms-option-row
+            data-dragging={dragItemId === option.id || undefined}
+            className={optionRowStyle()}
+          >
+            <span
+              className={gripStyle()}
+              data-grip
+              data-disabled={disabled || undefined}
+              aria-hidden
+            >
+              <DragHandleIcon size={16} />
+            </span>
             <InputField
-              ref={index === draft.options.length - 1 ? lastRef : undefined}
               aria-label={`Option ${index + 1}`}
+              aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
               value={option.label}
               disabled={disabled}
               maxLength={OPTION_VALUE_MAX}
-              css={{ flexGrow: 1 }}
+              css={{ flexGrow: 1, minWidth: 0 }}
               onChange={(event) => {
                 const label = event.currentTarget.value;
                 onChange(
@@ -155,43 +237,49 @@ const OptionsEditor = ({
                   )
                 );
               }}
-              onKeyDown={(event) => {
+              onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+                if (
+                  event.altKey &&
+                  (event.key === "ArrowUp" || event.key === "ArrowDown")
+                ) {
+                  event.preventDefault();
+                  move(index, index + (event.key === "ArrowUp" ? -1 : 1));
+                  return;
+                }
                 if (
                   event.key === "Enter" &&
+                  index === draft.options.length - 1 &&
                   draft.options.length < OPTIONS_MAX
                 ) {
                   event.preventDefault();
-                  onChange([
-                    ...draft.options.slice(0, index + 1),
-                    newOption(),
-                    ...draft.options.slice(index + 1),
-                  ]);
-                  setFocusLast(index === draft.options.length - 1);
+                  const added = newOption();
+                  onChange([...draft.options, added]);
+                  setFocusId(added.id);
                 }
               }}
             />
-            <Tooltip content="Remove">
-              <SmallIconButton
-                aria-label={`Remove ${option.label || `option ${index + 1}`}`}
-                disabled={disabled || draft.options.length === 1}
-                icon={<XIcon />}
-                onClick={() =>
-                  onChange(
-                    draft.options.filter((entry) => entry.id !== option.id)
-                  )
-                }
-              />
-            </Tooltip>
-          </Flex>
+            <SmallIconButton
+              aria-label={`Remove ${option.label || `option ${index + 1}`}`}
+              disabled={disabled || draft.options.length === 1}
+              icon={<XIcon />}
+              onClick={() =>
+                onChange(
+                  draft.options.filter((entry) => entry.id !== option.id)
+                )
+              }
+            />
+          </div>
         ))}
+        {placementIndicator}
         <Flex>
           <Button
             color="ghost"
             prefix={<PlusIcon />}
             disabled={disabled || draft.options.length >= OPTIONS_MAX}
             onClick={() => {
-              onChange([...draft.options, newOption()]);
-              setFocusLast(true);
+              const added = newOption();
+              onChange([...draft.options, added]);
+              setFocusId(added.id);
             }}
           >
             Add option
@@ -209,11 +297,14 @@ export const FieldSheet = ({
   targets,
   canManage,
   enqueue,
+  reread,
   onBack,
+  onClose,
   onDirtyChange,
   onSaved,
   onRemoved,
   onRefusal,
+  onStale,
 }: {
   structure: CmsStructureSource;
   collection: CmsStructureCollection;
@@ -223,62 +314,162 @@ export const FieldSheet = ({
   canManage: boolean;
   /** The collection's queue: a Save carries a pending reorder. */
   enqueue: CmsStructureEnqueue;
+  /** E21 again: the fresh collection, or undefined. */
+  reread: () => Promise<CmsStructureCollection | undefined>;
+  /** Back, behind the unsaved guard. */
   onBack: () => void;
+  /** Closes the sheet at once: its field is gone. */
+  onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
-  /** After a save, with the schema now in force and the saved key. */
-  onSaved: (fields: CmsStructureField[], key: string) => void;
-  onRemoved: (fields: CmsStructureField[]) => void;
+  /** After a save, with the schema now in force, its version and the key. */
+  onSaved: (
+    fields: CmsStructureField[],
+    updatedAt: string,
+    key: string
+  ) => void;
+  onRemoved: (fields: CmsStructureField[], updatedAt: string) => void;
   onRefusal: (line: CmsLineKind) => void;
+  onStale: (stale: FieldSheetStale) => void;
 }) => {
-  const original =
+  const [saved, setSaved] = useState<CmsStructureField | undefined>(() =>
     "key" in target
       ? collection.fields.find((field) => field.key === target.key)
-      : undefined;
-  const originalKey = original?.key;
+      : undefined
+  );
+  const originalKey = saved?.key;
   const [draft, setDraft] = useState<FieldDraft>(() =>
-    original === undefined
+    saved === undefined
       ? newDraft("kind" in target ? target.kind : "text", targets[0]?.id ?? "")
-      : draftFromField(original)
+      : draftFromField(saved)
   );
   const [errors, setErrors] = useState<FieldDraftErrors>({});
+  const [line, setLine] = useState<"conflict" | "invalid" | undefined>(
+    undefined
+  );
   const [busy, setBusy] = useState<"save" | "remove" | undefined>(undefined);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const labelRef = useRef<HTMLInputElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
-  const isDirty = isFieldDraftDirty(original, draft);
+  const isDirty = isFieldDraftDirty(saved, draft);
   useEffect(() => {
     onDirtyChange(isDirty);
   }, [isDirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
-  const isNew = original === undefined;
+  const isNew = saved === undefined;
   useEffect(() => {
-    if (isNew) {
-      labelRef.current?.focus();
+    if (isNew === false) {
+      return;
     }
-  }, [isNew]);
+    // after the menu that opened the sheet has closed
+    const frame = requestAnimationFrame(() => labelRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+    // the first focus only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const update = (next: FieldDraft) => {
     setDraft(next);
     setErrors({});
+    if (line === "invalid") {
+      setLine(undefined);
+    }
   };
 
-  const fail = (code: Parameters<typeof getRefusal>[0], field?: string) => {
+  /** A fresh read: the draft rebases on it, or the sheet closes. */
+  const rebase = async () => {
+    const fresh = await reread();
+    if (fresh === undefined) {
+      return;
+    }
+    if (originalKey === undefined) {
+      return;
+    }
+    const freshField = fresh.fields.find((field) => field.key === originalKey);
+    if (freshField === undefined) {
+      toast.error("Field not found");
+      onClose();
+      return;
+    }
+    if (saved !== undefined) {
+      setDraft((current) => rebaseFieldDraft(saved, freshField, current));
+    }
+    setSaved(freshField);
+  };
+
+  /** After an unknown outcome: the write landed when E21 holds the draft. */
+  const settleUnknown = async () => {
+    const fresh = await reread();
+    if (fresh === undefined) {
+      return;
+    }
+    const key = draft.key.trim();
+    const freshField = fresh.fields.find((field) => field.key === key);
+    if (
+      freshField !== undefined &&
+      isSameField(draftToField(draftFromField(freshField)), draftToField(draft))
+    ) {
+      onSaved(fresh.fields, fresh.updatedAt, key);
+      return;
+    }
+    if (saved !== undefined && freshField !== undefined) {
+      setDraft((current) => rebaseFieldDraft(saved, freshField, current));
+      setSaved(freshField);
+    } else if (saved !== undefined) {
+      toast.error("Field not found");
+      onClose();
+    }
+  };
+
+  const fail = async (code: CmsErrorCode, field: string | undefined) => {
     const refusal = getRefusal(code, "write");
     if (refusal !== undefined) {
       onRefusal(refusal);
       return;
     }
-    if (code === "invalid" && field === draft.key.trim() && isNew) {
-      setErrors({ key: "Key in use" });
-      return;
+    const openKey = originalKey ?? draft.key.trim();
+    switch (code) {
+      case "conflict":
+        setLine("conflict");
+        return;
+      case "invalid": {
+        if (field === undefined || field !== openKey) {
+          toast.error(getToastText(code));
+          onStale("structure");
+          return;
+        }
+        if (isNew) {
+          const fresh = await reread();
+          const lower = openKey.toLowerCase();
+          if (
+            fresh?.fields.some((entry) => entry.key.toLowerCase() === lower)
+          ) {
+            setErrors({ key: "Key in use" });
+            return;
+          }
+        }
+        setLine("invalid");
+        return;
+      }
+      case "reference_invalid":
+        setErrors({ reference: "Collection not found" });
+        onStale("collections");
+        return;
+      case "limit":
+        toast.error(getStructureToastText(code, "field"));
+        onStale("limits");
+        return;
+      case "not_found":
+        toast.error(getStructureToastText(code, "collection"));
+        onStale("collections");
+        return;
+      default:
+        toast.error(getToastText(code));
+        if (code === "unavailable" || code === "updating") {
+          await settleUnknown();
+        }
     }
-    if (code === "reference_invalid") {
-      setErrors({ reference: "Collection not found" });
-      return;
-    }
-    toast.error(getStructureToastText(code, "field"));
   };
 
   const save = async () => {
@@ -294,11 +485,11 @@ export const FieldSheet = ({
     );
     setBusy(undefined);
     if (isCmsFailure(result)) {
-      fail(result.error, result.field);
+      await fail(result.error, result.field);
       return;
     }
-    onDirtyChange(false);
-    onSaved(result.fields, draft.key.trim());
+    setLine(undefined);
+    onSaved(result.fields, result.updatedAt, draft.key.trim());
   };
 
   const remove = async () => {
@@ -316,11 +507,10 @@ export const FieldSheet = ({
     setBusy(undefined);
     setConfirmRemove(false);
     if (isCmsFailure(result)) {
-      fail(result.error, result.field);
+      await fail(result.error, result.field);
       return;
     }
-    onDirtyChange(false);
-    onRemoved(result.fields);
+    onRemoved(result.fields, result.updatedAt);
   };
 
   const referenceTargets = useMemo(
@@ -332,12 +522,13 @@ export const FieldSheet = ({
 
   const disabled = canManage === false || busy !== undefined;
   const columnEnabled = canShowInTable(collection.fields, draft, originalKey);
-  const isCurrentTitle = original?.isTitle === true;
-  const removable = original !== undefined && canRemoveField(original);
+  const isCurrentTitle = saved?.isTitle === true;
+  const removable = saved !== undefined && canRemoveField(saved);
   const name =
     draft.label.trim() ||
-    original?.label ||
+    saved?.label ||
     `New ${FIELD_KIND_LABELS[draft.kind].toLowerCase()} field`;
+  const removeLabel = saved?.label ?? "";
 
   return (
     <Flex
@@ -376,10 +567,29 @@ export const FieldSheet = ({
           )
         }
       />
+      {line === "conflict" && (
+        <LineRow data-cms-structure-conflict>
+          <Text>Changed by someone else</Text>
+          <Button
+            color="ghost"
+            onClick={() => {
+              setLine(undefined);
+              void rebase();
+            }}
+          >
+            Reload
+          </Button>
+        </LineRow>
+      )}
+      {line === "invalid" && (
+        <LineRow data-cms-structure-invalid>
+          <Text color="destructive">Not valid</Text>
+        </LineRow>
+      )}
       <StructureBody>
         <FieldRow id={ids.label} label="Name" required error={errors.label}>
           <InputField
-            ref={labelRef}
+            inputRef={labelRef}
             id={ids.label}
             value={draft.label}
             disabled={disabled}
@@ -454,9 +664,8 @@ export const FieldSheet = ({
           >
             <InputField
               id={ids.maxLength}
-              type="number"
-              min={1}
               value={draft.maxLength}
+              inputMode="numeric"
               disabled={disabled}
               {...errorProps(ids.maxLength, errors.maxLength)}
               onChange={(event) =>
@@ -526,13 +735,13 @@ export const FieldSheet = ({
               </Button>
             </DialogClose>
           </DialogActions>
-          <DialogTitle>
+          <WrappingDialogTitle>
             {collection.total > 0
-              ? `Remove ${original?.label ?? "this field"} from ${collection.total} ${
+              ? `Remove ${removeLabel} from ${collection.total} ${
                   collection.total === 1 ? "item" : "items"
                 }?`
-              : `Remove ${original?.label ?? "this field"}?`}
-          </DialogTitle>
+              : `Remove ${removeLabel}?`}
+          </WrappingDialogTitle>
         </DialogContent>
       </Dialog>
     </Flex>

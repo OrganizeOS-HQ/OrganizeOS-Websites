@@ -747,20 +747,41 @@ export const useCmsStructure = ({
         targets={targets}
         canManage={canManage}
         enqueue={enqueueSchema}
+        reread={() => fetchStructure(openDetail.id)}
         onBack={() => guard(closeView)}
+        onClose={closeView}
         onDirtyChange={reportViewDirty}
         onRefusal={showLine}
-        onSaved={(fields, key) => {
-          setDetail({ ...openDetail, fields });
+        onStale={(stale) => {
+          if (stale === "structure") {
+            setDetailVersion((current) => current + 1);
+          } else if (stale === "collections") {
+            refetchCollections();
+          } else {
+            setStructureVersion((current) => current + 1);
+          }
+        }}
+        onSaved={(fields, updatedAt, key) => {
+          acceptedOrder.current.set(openDetail.id, fields);
+          setDetail((current) =>
+            current?.id === openDetail.id
+              ? { ...current, fields, updatedAt }
+              : current
+          );
           setSession((current) => current + 1);
           setView({ type: "field", target: { key } });
           onWritten({ kind: "schema", slug: openDetail.slug, removed: [] });
         }}
-        onRemoved={(fields) => {
+        onRemoved={(fields, updatedAt) => {
           const removed = openDetail.fields
             .filter((field) => fields.every((kept) => kept.key !== field.key))
             .map((field) => field.key);
-          setDetail({ ...openDetail, fields });
+          acceptedOrder.current.set(openDetail.id, fields);
+          setDetail((current) =>
+            current?.id === openDetail.id
+              ? { ...current, fields, updatedAt }
+              : current
+          );
           closeView();
           onWritten({ kind: "schema", slug: openDetail.slug, removed });
         }}

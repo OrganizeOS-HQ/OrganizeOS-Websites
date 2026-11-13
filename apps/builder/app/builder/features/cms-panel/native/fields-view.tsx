@@ -4,7 +4,7 @@
  * marked; dragged, or moved with Alt+Arrow, to reorder. "Add field" is a
  * menu of kinds, names with icons, grouped as the classic menu is.
  */
-import type { KeyboardEvent, ReactNode } from "react";
+import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import {
   Chip,
   css,
@@ -122,35 +122,51 @@ export const AddFieldMenu = ({
 }: {
   disabled: boolean;
   onAdd: (kind: CmsFieldKind) => void;
-}) => (
-  <DropdownMenu modal={false}>
-    <Tooltip content="Add field" side="bottom">
-      <DropdownMenuTrigger asChild disabled={disabled}>
-        <IconButton aria-label="Add field" disabled={disabled}>
-          <PlusIcon />
-        </IconButton>
-      </DropdownMenuTrigger>
-    </Tooltip>
-    <DropdownMenuContent align="end" css={{ minWidth: theme.spacing[28] }}>
-      {FIELD_KIND_GROUPS.map((group, index) => (
-        <DropdownMenuGroup key={group.label}>
-          {index > 0 && <DropdownMenuSeparator />}
-          <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
-          {group.kinds.map((kind) => (
-            <DropdownMenuItem
-              key={kind}
-              data-kind={kind}
-              icon={<FieldKindIcon kind={kind} />}
-              onSelect={() => onAdd(kind)}
-            >
-              {FIELD_KIND_LABELS[kind]}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuGroup>
-      ))}
-    </DropdownMenuContent>
-  </DropdownMenu>
-);
+}) => {
+  // a kind chosen opens a sheet whose Name takes the focus
+  const chosen = useRef(false);
+  return (
+    <DropdownMenu modal={false}>
+      <Tooltip content="Add field" side="bottom">
+        <DropdownMenuTrigger asChild disabled={disabled}>
+          <IconButton aria-label="Add field" disabled={disabled}>
+            <PlusIcon />
+          </IconButton>
+        </DropdownMenuTrigger>
+      </Tooltip>
+      <DropdownMenuContent
+        align="end"
+        css={{ minWidth: theme.spacing[28] }}
+        onCloseAutoFocus={(event) => {
+          if (chosen.current) {
+            chosen.current = false;
+            event.preventDefault();
+          }
+        }}
+      >
+        {FIELD_KIND_GROUPS.map((group, index) => (
+          <DropdownMenuGroup key={group.label}>
+            {index > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
+            {group.kinds.map((kind) => (
+              <DropdownMenuItem
+                key={kind}
+                data-kind={kind}
+                icon={<FieldKindIcon kind={kind} />}
+                onSelect={() => {
+                  chosen.current = true;
+                  onAdd(kind);
+                }}
+              >
+                {FIELD_KIND_LABELS[kind]}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
 
 const FieldRow = ({
   index,
