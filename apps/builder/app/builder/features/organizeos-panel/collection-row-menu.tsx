@@ -212,6 +212,7 @@ export const CollectionActionsMenu = ({
   isSitemapOrphan,
   leadingItems,
   trailingItems,
+  beforeAction,
   onShowCanvas,
   onRemovedFromSitemap,
 }: {
@@ -223,6 +224,11 @@ export const CollectionActionsMenu = ({
   isSitemapOrphan: boolean;
   leadingItems?: ReactNode;
   trailingItems?: ReactNode;
+  /**
+   * Awaited before Create item page and Add list; false runs neither (the
+   * native CMS adds a missing catalog Resource here).
+   */
+  beforeAction?: () => Promise<boolean>;
   onShowCanvas?: () => void;
   onRemovedFromSitemap?: () => void;
 }) => {
@@ -231,8 +237,15 @@ export const CollectionActionsMenu = ({
   const [isBusy, setIsBusy] = useState(false);
   const gated = allowDynamicData === false;
 
+  const isReady = async () =>
+    beforeAction === undefined ? true : await beforeAction();
+
   const createItemPage = async () => {
     setIsBusy(true);
+    if ((await isReady()) === false) {
+      setIsBusy(false);
+      return;
+    }
     const result = await createCollectionItemPage(slug);
     setIsBusy(false);
     if ("error" in result) {
@@ -294,7 +307,19 @@ export const CollectionActionsMenu = ({
           )}
           <DropdownMenuItem
             disabled={gated}
-            onSelect={() => setIsListOpen(true)}
+            onSelect={() => {
+              if (beforeAction === undefined) {
+                setIsListOpen(true);
+                return;
+              }
+              setIsBusy(true);
+              void isReady().then((ready) => {
+                setIsBusy(false);
+                if (ready) {
+                  setIsListOpen(true);
+                }
+              });
+            }}
           >
             <GatedLabel gated={gated}>Add list</GatedLabel>
           </DropdownMenuItem>

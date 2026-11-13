@@ -810,3 +810,130 @@ describe("one row menu (slice 3)", () => {
     expect(byLabel("Members menu")).toBeNull();
   });
 });
+
+describe("the catalog add on use (slice 3)", () => {
+  const PROGRAMS: CmsCollectionSummary = {
+    id: "77777777-7777-4777-8777-777777777777",
+    slug: "programs",
+    name: "Programs",
+    singularName: "Program",
+    isPublic: true,
+    total: 1,
+  };
+
+  const programsResource = async () =>
+    (await collectionCatalog([{ slug: "programs", name: "Programs" }]))[0];
+
+  const rootBindings = () =>
+    [...$dataSources.get().values()].filter(
+      (dataSource) => dataSource.type === "resource"
+    );
+
+  const programsSchema = {
+    slug: "programs",
+    name: "Programs",
+    singularName: "Program",
+    fields: [{ key: "title", label: "Title", kind: "text", isTitle: true }],
+  };
+
+  beforeEach(() => {
+    platformCollections = [NEWS, EVENTS, MEMBERS, PROGRAMS];
+    schemas.push(programsSchema);
+  });
+
+  afterEach(() => {
+    schemas.splice(schemas.indexOf(programsSchema), 1);
+  });
+
+  test("a public collection with no catalog Resource and a seed gets the actions; Create item page adds the Resource, then runs", async () => {
+    const resource = await programsResource();
+    expect($resources.get().has(resource.id)).toBe(false);
+    await render("programs");
+    const items = await openMenu("Programs menu");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Create item page",
+      "Add list",
+    ]);
+    await choose(menuItem(items, "Create item page"));
+    await until(() => expect(findCollectionItemPage("programs")).toBeDefined());
+    expect($resources.get().get(resource.id)).toEqual(resource);
+  });
+
+  test("without a seed, in Content mode or for a denied org, nothing is added and no actions show", async () => {
+    // no static /v1 preset to copy from
+    $resources.set(
+      new Map(newsAndEvents.map((resource) => [resource.id, resource]))
+    );
+    await render("programs");
+    await until(() => expect(byLabel("News menu")).not.toBeNull());
+    expect(byLabel("Programs menu")).toBeNull();
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+    setProject();
+    for (const gate of [
+      () => $builderMode.set("content"),
+      () => $organizeosSite.set({ ...site, blocksEnabled: false }),
+    ]) {
+      act(() => {
+        gate();
+      });
+      await render("programs");
+      await settle();
+      expect(byLabel("Programs menu")).toBeNull();
+      act(() => {
+        root?.unmount();
+      });
+      container?.remove();
+      $builderMode.set("design");
+      $organizeosSite.set(site);
+    }
+    expect($resources.get().has((await programsResource()).id)).toBe(false);
+  });
+
+  test("a staged refusal toasts and runs nothing", async () => {
+    const error = vi.spyOn(toast, "error");
+    // a page template selected without build access: the runtime refuses
+    const pages = $pages.get()!;
+    $pages.set({
+      ...pages,
+      pageTemplates: new Map([
+        [
+          "template",
+          {
+            id: "template",
+            name: "Template",
+            title: "Template",
+            rootInstanceId: "bodyId",
+            meta: {},
+          },
+        ],
+      ]),
+    });
+    $selectedPageId.set("template");
+    $authPermit.set("view");
+    await render("programs");
+    await choose(menuItem(await openMenu("Programs menu"), "Create item page"));
+    await until(() => expect(error).toHaveBeenCalled());
+    expect(findCollectionItemPage("programs")).toBeUndefined();
+    expect($resources.get().has((await programsResource()).id)).toBe(false);
+  });
+
+  test("no :root binding is ever added", async () => {
+    const before = rootBindings().length;
+    await render("programs");
+    await choose(menuItem(await openMenu("Programs menu"), "Create item page"));
+    await until(() => expect(findCollectionItemPage("programs")).toBeDefined());
+    const resource = await programsResource();
+    expect(
+      rootBindings().filter(
+        (dataSource) =>
+          dataSource.type === "resource" &&
+          dataSource.resourceId === resource.id &&
+          dataSource.scopeInstanceId === ":root"
+      )
+    ).toEqual([]);
+    expect(rootBindings().length).toBeGreaterThanOrEqual(before);
+  });
+});

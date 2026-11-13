@@ -1,8 +1,12 @@
-import { forwardRef, useMemo, useRef } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@nanostores/react";
 import { toast } from "@webstudio-is/design-system";
 import { $isDesignMode, $organizeosSite } from "~/shared/nano-states";
 import { organizeosHomeUrl } from "~/shared/organizeos-site";
+import {
+  readV1PresetSeed,
+  type V1PresetSeed,
+} from "~/shared/organizeos-collection-resource";
 import {
   $dataSources,
   $instances,
@@ -23,6 +27,7 @@ import {
 } from "../../organizeos-panel/collection-row-menu";
 import type { CmsDeepLink } from "../cms-panel";
 import { createCmsApi } from "./cms-api";
+import { addCollectionCatalogResource } from "./cms-catalog-add";
 import { invalidateCollectionOnCanvas } from "./cms-canvas";
 import { CmsScreen, type CmsCatalogSlots } from "./cms-screen";
 import { createCmsStructureApi } from "./cms-structure-api";
@@ -81,7 +86,32 @@ const useCatalogSlots = (onHide: () => void) => {
   const props = useStore($props);
   const dataSources = useStore($dataSources);
   const resources = useStore($resources);
+  const project = useStore($project);
+  const projectId = project?.id;
   const isAllowed = isDesignMode && site?.blocksEnabled === true;
+  // what a public collection's missing catalog Resource copies (4.7)
+  const [seed, setSeed] = useState<V1PresetSeed | undefined>(undefined);
+  useEffect(() => {
+    if (projectId === undefined) {
+      setSeed(undefined);
+      return;
+    }
+    let isCurrent = true;
+    void readV1PresetSeed({ projectId, resources: [...resources.values()] })
+      .then((found) => {
+        if (isCurrent) {
+          setSeed(found);
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setSeed(undefined);
+        }
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [projectId, resources]);
   // the latest callback, so a new one each render keeps the slots
   const onHideRef = useRef(onHide);
   onHideRef.current = onHide;
@@ -117,7 +147,25 @@ const useCatalogSlots = (onHide: () => void) => {
           }
           const row = rows.get(collection.slug);
           if (row === undefined) {
-            return null;
+            // no catalog Resource in this tab: added on first use
+            if (seed === undefined || projectId === undefined) {
+              return null;
+            }
+            return (
+              <CollectionActionsMenu
+                slug={collection.slug}
+                name={collection.name}
+                itemPage={undefined}
+                isSitemapOrphan={false}
+                leadingItems={leading}
+                trailingItems={trailing}
+                beforeAction={() =>
+                  addCollectionCatalogResource({ projectId, seed, collection })
+                }
+                onShowCanvas={showCanvas}
+                onRemovedFromSitemap={onRemovedFromSitemap}
+              />
+            );
           }
           return (
             <CollectionActionsMenu
@@ -139,7 +187,17 @@ const useCatalogSlots = (onHide: () => void) => {
       last = { collections, slots };
       return slots;
     };
-  }, [isAllowed, catalog, pages, instances, props, dataSources, resources]);
+  }, [
+    isAllowed,
+    catalog,
+    pages,
+    instances,
+    props,
+    dataSources,
+    resources,
+    seed,
+    projectId,
+  ]);
 };
 
 /**

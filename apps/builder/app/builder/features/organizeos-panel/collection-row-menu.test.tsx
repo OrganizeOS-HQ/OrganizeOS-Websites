@@ -772,6 +772,32 @@ describe("the split for the CMS column", () => {
     expect(onRemovedFromSitemap).toHaveBeenCalledTimes(1);
   });
 
+  test("beforeAction false runs neither Create item page nor Add list", async () => {
+    const onShowCanvas = vi.fn();
+    const beforeAction = vi.fn(async () => false);
+    renderElement(() => (
+      <CollectionActionsMenu
+        slug="blog"
+        name="Blog posts"
+        itemPage={undefined}
+        isSitemapOrphan={false}
+        beforeAction={beforeAction}
+        onShowCanvas={onShowCanvas}
+      />
+    ));
+    await choose(
+      menuItem(await openTrigger("Blog posts menu"), "Create item page")
+    );
+    await settle();
+    expect(beforeAction).toHaveBeenCalledTimes(1);
+    expect(findCollectionItemPage("blog")).toBeUndefined();
+    await choose(menuItem(await openTrigger("Blog posts menu"), "Add list"));
+    await settle();
+    expect(beforeAction).toHaveBeenCalledTimes(2);
+    expect(addListForm()).toBeNull();
+    expect(onShowCanvas).not.toHaveBeenCalled();
+  });
+
   test("CollectionActionsMenu puts leadingItems before its items and trailingItems after, in one menu", async () => {
     renderElement(() => (
       <CollectionActionsMenu

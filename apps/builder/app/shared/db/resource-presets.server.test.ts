@@ -2187,3 +2187,45 @@ describe("the catalog's :root bindings, written", () => {
     });
   });
 });
+
+describe("the browser's collection Resource", async () => {
+  const projectId = "project-1";
+  const staticPresets = await buildOrgResourcePresets({
+    projectId,
+    apiBaseUrl: "https://app.example.org/api/public/v1/",
+    readToken: "osk_secrettoken",
+  });
+
+  test("the browser builder's Resource equals the server's for the same snapshot and seed", async () => {
+    const seed = await readV1PresetSeed({
+      projectId,
+      resources: staticPresets.resources,
+    });
+    expect(seed).toBeDefined();
+    // CMS collections, as the sync sends them: kind unset; one whose slug is
+    // a static preset's key
+    const collections = [
+      { slug: "news", name: "News" },
+      { slug: "events", name: "Our events" },
+      { slug: "board-members", name: "Board members" },
+    ];
+    const server = await buildCollectionResourcePresets({
+      projectId,
+      apiBase: seed!.apiBase,
+      authHeaderExpression: seed!.authHeaderExpression,
+      collections,
+    });
+    const { buildCollectionResource } =
+      await import("../organizeos-collection-resource");
+    const browser = await Promise.all(
+      collections.map((collection) =>
+        buildCollectionResource({ projectId, seed: seed!, collection })
+      )
+    );
+    expect(browser).toEqual(server.resources);
+    expect(browser.map((resource) => resource?.id)).toEqual(
+      server.resources.map((resource) => resource.id)
+    );
+    expect(browser).toHaveLength(3);
+  });
+});
