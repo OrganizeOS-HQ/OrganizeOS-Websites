@@ -210,3 +210,49 @@ test("two Fields in one fragment share their tokens and no instance, prop or loc
       .sort()
   ).toEqual(["OS Field", "OS Input", "OS Message"]);
 });
+
+// A site form's Field carries its definition as props, so the canvas can
+// render a field the live definition does not have yet (builder forms spec 9;
+// plan 2026-11-13-builder-forms-fork-p2, Task 5).
+test("a site form's Field template carries fieldType, options and required", () => {
+  const { root, propsOf } = render(
+    fieldTemplate({
+      name: "cf_d4c3b2a1-f6e5-4b7a-9c8d-5d4c3b2a1f0e",
+      label: "Team",
+      type: "select",
+      options: ["North", "South"],
+      required: true,
+      siteForm: true,
+    })
+  );
+  expect(propsOf(root)).toEqual({
+    field: "cf_d4c3b2a1-f6e5-4b7a-9c8d-5d4c3b2a1f0e",
+    fieldType: "select",
+    options: ["North", "South"],
+    required: true,
+  });
+});
+
+test("a CRM form's Field template carries the field name only", () => {
+  const { root, propsOf } = render(
+    fieldTemplate({ name: "email", label: "Email", type: "email" })
+  );
+  expect(propsOf(root)).toEqual({ field: "email" });
+});
+
+test("a site form's Field without options carries none", () => {
+  const { root, propsOf } = render(
+    fieldTemplate({
+      name: "email",
+      label: "Email",
+      type: "email",
+      required: true,
+      siteForm: true,
+    })
+  );
+  expect(propsOf(root)).toEqual({
+    field: "email",
+    fieldType: "email",
+    required: true,
+  });
+});

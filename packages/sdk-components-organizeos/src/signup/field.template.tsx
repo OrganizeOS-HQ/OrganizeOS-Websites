@@ -55,7 +55,28 @@ export const getFieldNavigatorLabel = ({
  * Template-only: nothing a published site's copy of the package reaches
  * imports this file.
  */
-export const fieldTemplate = (field: FieldTemplateField) => {
+/**
+ * A site form's Field also carries its definition as props (builder forms
+ * spec 9): the type, whether it is required and a select's options, which the
+ * canvas and the preview render from until the publish that makes them live.
+ */
+export type SiteFieldTemplateField = FieldTemplateField & {
+  required?: boolean;
+  options?: string[];
+  /** Write the definition props: the Field is a site form's. */
+  siteForm?: boolean;
+};
+
+const siteFieldProps = (field: SiteFieldTemplateField) =>
+  field.siteForm === true
+    ? {
+        fieldType: field.type,
+        required: field.required === true,
+        ...(field.options === undefined ? {} : { options: field.options }),
+      }
+    : {};
+
+export const fieldTemplate = (field: SiteFieldTemplateField) => {
   const label = getFieldNavigatorLabel(field);
   const isConsent = field.consent !== undefined;
   if (field.type === "checkbox" || isConsent) {
@@ -63,6 +84,7 @@ export const fieldTemplate = (field: FieldTemplateField) => {
       <organizeos.Field
         ws:label={label}
         field={field.name}
+        {...siteFieldProps(field)}
         ws:tokens={[fieldToken]}
         ws:style={css`
           flex-direction: row;
@@ -95,6 +117,7 @@ export const fieldTemplate = (field: FieldTemplateField) => {
     <organizeos.Field
       ws:label={label}
       field={field.name}
+      {...siteFieldProps(field)}
       ws:tokens={[fieldToken]}
     >
       <organizeos.FieldLabel>

@@ -228,6 +228,15 @@ describe("getOrganizeosControl", () => {
     expect(kind(signupForm, "id")).toBeUndefined();
   });
 
+  test("a root's siteForm and a Field's fieldType, options and required have no row", () => {
+    expect(kind(signupForm, "siteForm")).toBe("hidden");
+    for (const propName of ["fieldType", "options", "required"]) {
+      expect(kind(`${ns}:Field`, propName), propName).toBe("hidden");
+    }
+    // the Field's own row is untouched outside a form
+    expect(kind(`${ns}:Field`, "field")).toBeUndefined();
+  });
+
   test("the RSVP Form keeps its record picker and upstream's other controls", () => {
     expect(kind(`${ns}:RsvpForm`, "record")).toBe("record");
     for (const propName of ["data", "state", "action", "actionPage"]) {

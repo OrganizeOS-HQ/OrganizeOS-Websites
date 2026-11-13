@@ -33,6 +33,37 @@ const FieldContext = createContext<FieldContextValue | undefined>(undefined);
 type FieldProps = ComponentProps<"div"> & {
   /** The form field's name, as the form names it (email, first_name, ...). */
   field?: string;
+  /**
+   * A site form's Field carries its definition (builder forms spec 9): the
+   * type, the options and whether it is required. They win on the canvas and
+   * in the preview, so a field added in the builder shows before the publish
+   * that adds it to the live definition; a published page and a CRM form
+   * read the form's own definition.
+   */
+  fieldType?: string;
+  options?: unknown;
+  required?: boolean;
+};
+
+/** A Field's own definition, from its props, or undefined without a type. */
+const ownConfig = (
+  name: string,
+  fieldType: unknown,
+  options: unknown,
+  required: unknown
+): FormFieldConfig | undefined => {
+  if (typeof fieldType !== "string" || fieldType.trim() === "") {
+    return;
+  }
+  return {
+    name,
+    label: name,
+    type: fieldType,
+    required: required === true,
+    options: Array.isArray(options)
+      ? options.filter((option): option is string => typeof option === "string")
+      : null,
+  };
 };
 
 /**
@@ -43,13 +74,22 @@ type FieldProps = ComponentProps<"div"> & {
  * shows it, and its root's canvas check names it.
  */
 export const Field = forwardRef<ElementRef<"div">, FieldProps>(
-  ({ field, children, ...props }, ref) => {
+  ({ field, fieldType, options, required, children, ...props }, ref) => {
     const root = useContext(FormRootContext);
     const { renderer } = useContext(ReactSdkContext);
     const id = useId();
     const name = typeof field === "string" ? field.trim() : "";
     useRegisterPart({ kind: "field", name });
-    const config = root?.fields?.find((item) => item.name === name);
+    const definition = root?.fields?.find((item) => item.name === name);
+    const own = useMemo(
+      () => ownConfig(name, fieldType, options, required),
+      [name, fieldType, options, required]
+    );
+    const ownWins =
+      own !== undefined &&
+      root?.site === true &&
+      (renderer === "canvas" || renderer === "preview");
+    const config = ownWins ? own : definition;
     const error = root?.fieldErrors.get(name);
     const value = useMemo(
       () => ({
@@ -62,9 +102,10 @@ export const Field = forwardRef<ElementRef<"div">, FieldProps>(
       [name, config, id, error]
     );
     if (
+      ownWins === false &&
       renderer !== "canvas" &&
       root?.fields !== undefined &&
-      config === undefined
+      definition === undefined
     ) {
       return null;
     }
@@ -248,8 +289,8 @@ export const FieldInput = forwardRef<InputElement, FieldInputProps>(
       );
     }
     const inputType =
-      type === "email"
-        ? "email"
+      type === "email" || type === "number" || type === "date" || type === "url"
+        ? type
         : type === "phone" || type === "tel"
           ? "tel"
           : "text";

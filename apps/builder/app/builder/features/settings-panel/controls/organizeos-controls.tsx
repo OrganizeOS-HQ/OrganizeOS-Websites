@@ -120,9 +120,20 @@ export const getOrganizeosControl = ({
       case "action":
         return "signup-after-submit";
       case "actionPage":
+      // the site form's mark (docs/ORGANIZEOS-FORK.md section 9, "Site forms")
+      case "siteForm":
         return "hidden";
     }
     return;
+  }
+  // A site form's Field definition: the forms panel writes it, no row draws it.
+  if (
+    component === fieldComponent &&
+    (propName === "fieldType" ||
+      propName === "options" ||
+      propName === "required")
+  ) {
+    return "hidden";
   }
   if (component === productGridComponent && propName === "show") {
     return "product-show";

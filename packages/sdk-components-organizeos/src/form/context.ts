@@ -71,6 +71,11 @@ export type FormRoot = {
   register: (part: FormPart) => () => void;
   /** The fields of the root's record, undefined while the record is unknown. */
   fields: readonly FormFieldConfig[] | undefined;
+  /**
+   * The root's form is a site form (builder forms spec 9): a Field carrying
+   * its own definition renders from it on the canvas and in the preview.
+   */
+  site?: boolean;
   /** A generic message per field name, from an `invalid_field` answer. */
   fieldErrors: ReadonlyMap<string, string>;
   /** The root's current state, in the family's own state names. */

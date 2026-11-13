@@ -232,6 +232,17 @@ const getProblems = ({
   if (hasSubmit === false) {
     problems.push("Add a Submit Button.");
   }
+  // A site form's live definition follows the site's publish (builder forms
+  // spec D6): a Field added or removed since is the normal state, not a
+  // problem, until the next publish brings the definition in step.
+  if (resolution.site) {
+    for (const name of fieldNames) {
+      if (name === "") {
+        problems.push("A Field has no form field. Set one in its settings.");
+      }
+    }
+    return problems;
+  }
   for (const field of missing) {
     if (field.name !== "email") {
       problems.push(
@@ -410,10 +421,11 @@ export const SignupForm = forwardRef<ElementRef<"form">, SignupFormProps>(
       () => ({
         register,
         fields: resolution.fields,
+        site: resolution.site,
         fieldErrors,
         state: current,
       }),
-      [register, resolution.fields, fieldErrors, current]
+      [register, resolution.fields, resolution.site, fieldErrors, current]
     );
 
     return (

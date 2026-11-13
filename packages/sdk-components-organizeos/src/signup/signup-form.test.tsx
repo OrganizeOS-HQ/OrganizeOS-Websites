@@ -1207,3 +1207,188 @@ describe("canvas check", () => {
     expect(button.hasAttribute("disabled")).toBe(false);
   });
 });
+
+// Builder forms spec 9, "Which definition a Field renders from" (plan
+// 2026-11-13-builder-forms-fork-p2, Task 5). A site form's Field carries its
+// definition as props: on the canvas and in the preview they win, so a field
+// added in the builder shows before its publish; on a published page the
+// live definition wins and a field it lacks renders nothing. A CRM form's
+// Field ignores the props everywhere.
+describe("a site form's Fields", () => {
+  const siteFormId = "5a9e3c71-2f4b-4d8a-b6c0-7e1f9d2a3b45";
+  const numberKey = "cf_3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b";
+
+  const SiteBlock = ({
+    renderer,
+    record,
+    name,
+    withProps = true,
+  }: {
+    renderer: Renderer;
+    record: string;
+    name: string;
+    withProps?: boolean;
+  }) => (
+    <Sdk renderer={renderer}>
+      <SignupForm record={record} data={forms}>
+        <Field field="email">
+          <FieldLabel>Email</FieldLabel>
+          <FieldInput />
+        </Field>
+        <Field
+          field={name}
+          data-testid="site-field"
+          {...(withProps ? { fieldType: "text", required: true } : {})}
+        >
+          <FieldLabel>Own</FieldLabel>
+          <FieldInput />
+        </Field>
+        <SubmitButton>Sign up</SubmitButton>
+      </SignupForm>
+    </Sdk>
+  );
+
+  const inputOf = (container: HTMLElement, name: string) =>
+    container.querySelector<HTMLInputElement>(`[name="${name}"]`);
+
+  test.each([
+    ["canvas", "first_name", true, true],
+    ["preview", "first_name", true, true],
+    [undefined, "first_name", false, false],
+  ] as const)(
+    "%s, site form, a Field with props the definition lacks: renders %s, required %s",
+    (renderer, name, renders, required) => {
+      const { container } = render(
+        <SiteBlock renderer={renderer} record={siteFormId} name={name} />
+      );
+      const input = inputOf(container, name);
+      expect(input !== null).toBe(renders);
+      if (input !== null) {
+        expect(input.required).toBe(required);
+      }
+    }
+  );
+
+  test("published, site form, the definition has it optional: renders and is not required", () => {
+    const { container } = render(
+      <SiteBlock renderer={undefined} record={siteFormId} name={numberKey} />
+    );
+    const input = inputOf(container, numberKey);
+    expect(input).not.toBeNull();
+    expect(input?.required).toBe(false);
+    // the definition's type, not the props'
+    expect(input?.type).toBe("number");
+  });
+
+  test("canvas, site form, a Field without props the definition lacks: renders (the shipped canvas rule)", () => {
+    const { container } = render(
+      <SiteBlock
+        renderer="canvas"
+        record={siteFormId}
+        name="first_name"
+        withProps={false}
+      />
+    );
+    expect(inputOf(container, "first_name")).not.toBeNull();
+    expect(inputOf(container, "first_name")?.required).toBe(false);
+  });
+
+  test("preview, site form, a Field without props the definition lacks: renders nothing", () => {
+    const { container } = render(
+      <SiteBlock
+        renderer="preview"
+        record={siteFormId}
+        name="first_name"
+        withProps={false}
+      />
+    );
+    expect(inputOf(container, "first_name")).toBeNull();
+  });
+
+  test("canvas, a form not yet in the data: the shipped behaviour, props ignored", () => {
+    const { container } = render(
+      <SiteBlock renderer="canvas" record={missingFormId} name="first_name" />
+    );
+    expect(inputOf(container, "first_name")).not.toBeNull();
+    expect(inputOf(container, "first_name")?.required).toBe(false);
+  });
+
+  test("canvas, CRM form, the definition lacks it: renders and is not required (props ignored)", () => {
+    const { container } = render(
+      <SiteBlock renderer="canvas" record={newsletterId} name="phone" />
+    );
+    expect(inputOf(container, "phone")).not.toBeNull();
+    expect(inputOf(container, "phone")?.required).toBe(false);
+  });
+
+  test("preview, CRM form, the definition lacks it: renders nothing", () => {
+    const { container } = render(
+      <SiteBlock renderer="preview" record={newsletterId} name="phone" />
+    );
+    expect(inputOf(container, "phone")).toBeNull();
+  });
+
+  test("none of fieldType, options or required reaches the DOM", () => {
+    const { getByTestId } = render(
+      <Sdk renderer="canvas">
+        <SignupForm record={siteFormId} data={forms}>
+          <Field
+            field="first_name"
+            data-testid="site-field"
+            fieldType="select"
+            options={["North"]}
+            required
+          >
+            <FieldInput />
+          </Field>
+        </SignupForm>
+      </Sdk>
+    );
+    const names = getByTestId("site-field").getAttributeNames();
+    expect(names).not.toContain("fieldtype");
+    expect(names).not.toContain("options");
+    expect(names).not.toContain("required");
+  });
+
+  test("the canvas check of a site form names no missing or extra field", () => {
+    const { container } = render(
+      <SiteBlock renderer="canvas" record={siteFormId} name="first_name" />
+    );
+    expect(getCanvasCheck(container)).toBeNull();
+  });
+
+  test("the canvas check of a site form still asks for email and a Submit Button", () => {
+    const { container } = render(
+      <Sdk renderer="canvas">
+        <SignupForm record={siteFormId} data={forms}>
+          <Field field="first_name" fieldType="text">
+            <FieldInput />
+          </Field>
+        </SignupForm>
+      </Sdk>
+    );
+    const text = getCanvasCheck(container)?.textContent ?? "";
+    expect(text).toContain("Add a Field for email: the form requires it.");
+    expect(text).toContain("Add a Submit Button.");
+  });
+
+  test.each(["number", "date", "url"])(
+    "a %s field renders an input of its type",
+    (type) => {
+      const key = {
+        number: "cf_3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+        date: "cf_7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e",
+        url: "cf_a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      }[type] as string;
+      const { container } = render(
+        <SiteBlock
+          renderer={undefined}
+          record={siteFormId}
+          name={key}
+          withProps={false}
+        />
+      );
+      expect(inputOf(container, key)?.type).toBe(type);
+    }
+  );
+});

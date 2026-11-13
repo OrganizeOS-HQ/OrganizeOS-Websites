@@ -50,6 +50,8 @@ export const orgDefaultFields: readonly FormFieldConfig[] = [
 type FormRecord = {
   id: string;
   kind: string;
+  /** A form a site created (the DTO's `site: true`), builder forms spec 6.3. */
+  site: boolean;
   fields: FormFieldConfig[];
 };
 
@@ -104,6 +106,7 @@ const parseForm = (value: unknown): FormRecord | undefined => {
   return {
     id: value.id,
     kind: typeof value.kind === "string" ? value.kind : "",
+    site: value.site === true,
     fields,
   };
 };
@@ -141,6 +144,11 @@ export type SignupFormResolution = {
    *   refuses; it belongs to the Join Form.
    */
   unavailable: undefined | "data" | "record" | "kind";
+  /**
+   * Whether the block's form is a site form: its Fields may carry their own
+   * definition, which wins on the canvas and in the preview (spec 9).
+   */
+  site: boolean;
 };
 
 /** Finds the block's form in the Forms data by `record`, or uses the org defaults. */
@@ -159,19 +167,21 @@ export const resolveSignupForm = (
       formId: undefined,
       fields: orgDefaultFields,
       unavailable: undefined,
+      site: false,
     };
   }
   const forms = parseFormsData(data);
   if (forms === undefined) {
-    return { formId, fields: undefined, unavailable: "data" };
+    return { formId, fields: undefined, unavailable: "data", site: false };
   }
   const form = forms.find((item) => item.id === formId);
   if (form === undefined) {
-    return { formId, fields: undefined, unavailable: "record" };
+    return { formId, fields: undefined, unavailable: "record", site: false };
   }
   return {
     formId,
     fields: form.fields,
     unavailable: form.kind === "membership" ? "kind" : undefined,
+    site: form.site,
   };
 };
