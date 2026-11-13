@@ -21,12 +21,15 @@ import {
   PlusIcon,
 } from "@webstudio-is/icons";
 import { RelativeTime } from "~/builder/shared/relative-time";
-import { formatPageRange, getPageCount } from "./cms-logic";
+import { formatPageRange, getPageCount, type CmsRefusal } from "./cms-logic";
+import type { CmsListState } from "./cms-list-logic";
 import {
   CMS_PAGE_SIZE,
   type CmsCollectionSummary,
+  type CmsField,
   type CmsItemRow,
   type CmsItemsPage,
+  type CmsSource,
 } from "./cms-source";
 import { StatusChip } from "./status-chip";
 import { TruncatedText } from "./truncated-text";
@@ -289,6 +292,20 @@ export const ItemsView = ({
   query: string;
   canEdit: boolean;
   focusItemId?: string;
+  /** The door, for the bulk and reorder calls (Tasks 16 to 18). */
+  source: CmsSource;
+  /** The cached E2 fields of the open collection, for the table (Task 15). */
+  fields: CmsField[] | undefined;
+  /** The open collection's filter, sort and selection (Task 14). */
+  list: CmsListState;
+  /** The last E3 answer's counter, for the reorder wait (Task 18). */
+  pageAnswer: { count: number; ok: boolean };
+  /** A filter, sort or selection change (Tasks 16 to 18). */
+  onListChange: (next: CmsListState) => void;
+  /** After a bulk or reorder write: the lists and canvas refetch (Task 17). */
+  onListWritten: () => void;
+  /** A refusal that replaces the view with one line (Tasks 16 to 18). */
+  onRefusal: (refusal: CmsRefusal) => void;
   onQueryChange: (query: string) => void;
   onPageChange: (page: number) => void;
   onOpenItem: (itemId: string) => void;

@@ -133,7 +133,9 @@ export const ItemEditor = ({
   onBack: () => void;
   onDirtyChange: (dirty: boolean) => void;
   /** After every write: the lists refetch and the canvas invalidates (4.7). */
-  onWritten: (item: CmsItem) => void;
+  onWritten: (item?: CmsItem) => void;
+  /** After the editor's Delete (Task 19): the editor closes, the lists refetch. */
+  onDeleted: () => void;
   onCreated: (item: CmsItem) => void;
   /**
    * A write answered `invalid` with no field: the open collection's fields
