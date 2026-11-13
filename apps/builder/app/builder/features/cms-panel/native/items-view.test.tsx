@@ -444,7 +444,7 @@ const eventRow = (
 });
 
 const eventsPage = (columns: string[], rows = [eventRow()]) =>
-  itemsPageOf(rows, rows.length, 1, { columns });
+  itemsPageOf(rows, rows.length, 1, { columns, filterField: "kind" });
 
 const headerTexts = () =>
   [...document.querySelectorAll('[role="columnheader"]')].map(
@@ -633,5 +633,153 @@ describe("the table's columns (Task 15)", () => {
     expect(text).not.toBeUndefined();
     expect(text!.textContent).toBe(longKey);
     expect(table.scrollWidth).toBe(table.clientWidth);
+  });
+});
+
+const menuItemByText = (text: string) =>
+  [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+    (item) => item.textContent === text
+  );
+
+describe("Filter and Sort (Task 16)", () => {
+  test("Filter shows Status's five items and the option group, and sets the E3 query", async () => {
+    await mountEvents();
+    fake.listItems.mockClear();
+    const filterButton = () =>
+      [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+        (button) => button.textContent?.startsWith("Filter")
+      );
+    await click(filterButton());
+    for (const label of [
+      "All items",
+      "Draft",
+      "Published",
+      "Staged changes",
+      "Archived",
+    ]) {
+      expect(menuItemByText(label)).not.toBeUndefined();
+    }
+    await click(menuItemByText("Staged changes"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({
+      status: "staged",
+      page: 1,
+    });
+
+    await click(filterButton());
+    // the option group is headed by the field's label with its options
+    expect(menuItemByText("Any kind")).not.toBeUndefined();
+    await click(menuItemByText("Café"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({
+      optionKey: "kind",
+      optionValue: "Café",
+    });
+  });
+
+  test("Filter shows its count: 1, then 2", async () => {
+    await mountEvents();
+    const filterButton = () =>
+      [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+        (button) => button.textContent?.startsWith("Filter")
+      );
+    expect(filterButton()?.textContent).toBe("Filter");
+    await click(filterButton());
+    await click(menuItemByText("Draft"));
+    expect(filterButton()?.textContent).toBe("Filter1");
+    await click(filterButton());
+    await click(menuItemByText("Café"));
+    expect(filterButton()?.textContent).toBe("Filter2");
+  });
+
+  test("no option group without a filterField", async () => {
+    await mountEvents(
+      itemsPageOf([eventRow()], 1, 1, {
+        columns: ["kind"],
+        filterField: null,
+      })
+    );
+    await click(buttonByText("Filter"));
+    expect(menuItemByText("Any kind")).toBeUndefined();
+    expect(menuItemByText("Café")).toBeUndefined();
+    expect(menuItemByText("All items")).not.toBeUndefined();
+  });
+
+  test("Sort lists Manual order, Name, Status, Modified and the sortable fields, and hides the direction for Manual order", async () => {
+    await mountEvents();
+    await click(buttonByText("Sort"));
+    for (const label of [
+      "Manual order",
+      "Name",
+      "Status",
+      "Modified",
+      "Kind",
+    ]) {
+      expect(menuItemByText(label)).not.toBeUndefined();
+    }
+    // Seats is a number: not sortable
+    expect(menuItemByText("Seats")).toBeUndefined();
+    // Manual order hides Ascending/Descending
+    expect(menuItemByText("Ascending")).toBeUndefined();
+  });
+
+  test("choosing Modified sorts descending; Ascending flips it", async () => {
+    await mountEvents();
+    fake.listItems.mockClear();
+    await click(buttonByText("Sort"));
+    await click(menuItemByText("Modified"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({ sort: "updated" });
+    expect(lastListItemsCall()?.[1].direction).toBeUndefined();
+
+    await click(buttonByText("Sort"));
+    expect(menuItemByText("Ascending")).not.toBeUndefined();
+    await click(menuItemByText("Ascending"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({
+      sort: "updated",
+      direction: "asc",
+    });
+  });
+
+  test("an 80-character option field label and sort label truncate with a tooltip, and the menus fit the main area", async () => {
+    const longKey = "a".repeat(80);
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+    fake.getCollection.mockResolvedValue({
+      collection: {
+        id: EVENTS.id,
+        slug: EVENTS.slug,
+        name: EVENTS.name,
+        singularName: EVENTS.singularName,
+        isPublic: true,
+        fields: [
+          { key: "title", label: "Title", kind: "text", isTitle: true },
+          {
+            key: "kind",
+            label: longKey,
+            kind: "option",
+            options: [{ value: "x", label: longKey }],
+          },
+        ],
+      },
+    });
+    fake.listItems.mockImplementation(async (_c, q) => ({
+      ...itemsPageOf([eventRow({ values: { kind: "x" } })], 1, 1, {
+        columns: ["kind"],
+        filterField: "kind",
+      }),
+      applied: {
+        status: q.status ?? "all",
+        sort: q.sort ?? "order",
+        direction: q.direction ?? "asc",
+        optionKey: q.optionKey ?? null,
+        optionValue: q.optionValue ?? null,
+      },
+    }));
+    mount({ initialView: { collectionId: EVENTS.id } });
+    await settle();
+    const main =
+      document.querySelector<HTMLElement>("[data-cms-top-bar]")!.parentElement!;
+    await click(buttonByText("Sort"));
+    const sortMenu = document.querySelector<HTMLElement>('[role="menu"]')!;
+    expect(sortMenu.getBoundingClientRect().width).toBeLessThanOrEqual(
+      main.getBoundingClientRect().width + 1
+    );
   });
 });

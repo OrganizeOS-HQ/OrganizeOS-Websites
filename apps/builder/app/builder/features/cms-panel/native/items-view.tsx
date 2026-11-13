@@ -16,7 +16,12 @@ import {
   PlusIcon,
 } from "@webstudio-is/icons";
 import { formatPageRange, getPageCount, type CmsRefusal } from "./cms-logic";
-import { filterCount, nextSort, type CmsListState } from "./cms-list-logic";
+import {
+  filterCount,
+  nextSort,
+  resolveColumns,
+  type CmsListState,
+} from "./cms-list-logic";
 import {
   CMS_PAGE_SIZE,
   type CmsCollectionSummary,
@@ -25,14 +30,28 @@ import {
   type CmsSortKey,
   type CmsSource,
 } from "./cms-source";
+import { FilterMenu, SortMenu } from "./items-menus";
 import { ItemsTable } from "./items-table";
 import { TruncatedText } from "./truncated-text";
+
+/** The field kinds the list can sort on (spec 5.1.3). */
+const SORTABLE_KINDS: ReadonlySet<string> = new Set([
+  "text",
+  "date",
+  "switch",
+  "option",
+]);
 
 const TopBar = ({
   collection,
   query,
   canEdit,
   showSearch,
+  list,
+  filterField,
+  sortFields,
+  maxMenuWidth,
+  onListChange,
   onQueryChange,
   onNewItem,
 }: {
@@ -40,6 +59,11 @@ const TopBar = ({
   query: string;
   canEdit: boolean;
   showSearch: boolean;
+  list: CmsListState;
+  filterField: CmsField | null;
+  sortFields: CmsField[];
+  maxMenuWidth: number | undefined;
+  onListChange: (next: CmsListState) => void;
   onQueryChange: (query: string) => void;
   onNewItem: () => void;
 }) => {
@@ -86,6 +110,22 @@ const TopBar = ({
           }}
           onChange={(event) => change(event.currentTarget.value, 250)}
           onAbort={() => change("", 0)}
+        />
+      )}
+      {showSearch && (
+        <FilterMenu
+          list={list}
+          filterField={filterField}
+          maxWidth={maxMenuWidth}
+          onChange={onListChange}
+        />
+      )}
+      {showSearch && (
+        <SortMenu
+          list={list}
+          sortFields={sortFields}
+          maxWidth={maxMenuWidth}
+          onChange={onListChange}
         />
       )}
       {canEdit && (
@@ -234,8 +274,38 @@ export const ItemsView = ({
     onListChange({ ...list, selected });
   };
 
+  // E3's field columns, resolved; the Filter's option field and the Sort's
+  // sortable fields, whether or not they fit (spec 5.1.2, 5.1.3)
+  const columnFields = resolveColumns(fields ?? [], page?.columns ?? []).fields;
+  const sortFields = columnFields.filter((field) =>
+    SORTABLE_KINDS.has(field.kind)
+  );
+  const filterField =
+    page?.filterField != null
+      ? ((fields ?? []).find((field) => field.key === page.filterField) ?? null)
+      : null;
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [mainWidth, setMainWidth] = useState(0);
+  useEffect(() => {
+    const element = rootRef.current;
+    if (element === null) {
+      return;
+    }
+    setMainWidth(element.clientWidth);
+    const observer = new ResizeObserver(() => {
+      setMainWidth(element.clientWidth);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <Flex direction="column" css={{ height: "100%", minWidth: 0 }}>
+    <Flex
+      ref={rootRef}
+      direction="column"
+      css={{ height: "100%", minWidth: 0 }}
+    >
       <TopBar
         // a new collection starts with an empty search and no pending one
         key={collection.id}
@@ -243,6 +313,11 @@ export const ItemsView = ({
         query={query}
         canEdit={canEdit}
         showSearch={emptyNew === false}
+        list={list}
+        filterField={filterField}
+        sortFields={sortFields}
+        maxMenuWidth={mainWidth > 0 ? mainWidth : undefined}
+        onListChange={onListChange}
         onQueryChange={onQueryChange}
         onNewItem={onNewItem}
       />
