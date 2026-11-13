@@ -23,7 +23,12 @@ import {
 } from "lexical";
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
 import { $isLinkNode, LinkNode } from "@lexical/link";
-import { ListItemNode, ListNode } from "@lexical/list";
+import {
+  $isListItemNode,
+  $isListNode,
+  ListItemNode,
+  ListNode,
+} from "@lexical/list";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
@@ -61,26 +66,46 @@ const holdsOnlyBreaks = (node: LexicalNode): boolean =>
   ($isElementNode(node) && node.getChildren().every(holdsOnlyBreaks));
 
 /**
- * An empty paragraph, heading or quote, or one holding only line breaks,
- * writes `<p></p>` (or its tag): the editor's import drops a break-only
- * block's breaks, so it never writes one and never locks a value it saved.
+ * A paragraph, heading, quote or list item. One empty or holding only line
+ * breaks writes `<p></p>` (or its tag): the editor's import drops a
+ * break-only block's breaks, so it never writes one and never locks a value
+ * it saved. One ending in a line break writes one break more: the import
+ * drops a block's last break (a browser shows none for it), so the value
+ * reloads as it was and shows its blank line on the page as in the editor.
  */
-const exportEmptyBlock = (
+const exportBlock = (
   editor: LexicalEditor,
   node: LexicalNode
 ): DOMExportOutput => {
   const output = node.exportDOM(editor);
-  if ($isElementNode(node) === false || holdsOnlyBreaks(node) === false) {
+  if ($isElementNode(node) === false) {
     return output;
   }
-  // the children are written after this export: cleared once they are in
+  const empty = holdsOnlyBreaks(node);
+  // a list item's nested list is written into it after its break, so that
+  // break is not its last and the import keeps it
+  const next = node.getNextSibling();
+  const nestedNext = $isListItemNode(next) && $isListNode(next.getFirstChild());
+  const endsInBreak =
+    empty === false &&
+    nestedNext === false &&
+    $isLineBreakNode(node.getLastChild());
+  if (empty === false && endsInBreak === false) {
+    return output;
+  }
+  // the children are written after this export: changed once they are in
   const after = output.after;
   return {
     ...output,
     after: (generated) => {
-      const element = after === undefined ? generated : after(generated);
+      const element =
+        after === undefined ? generated : after.call(node, generated);
       if (isHtmlElement(element)) {
-        element.replaceChildren();
+        if (empty) {
+          element.replaceChildren();
+        } else {
+          element.appendChild(element.ownerDocument.createElement("br"));
+        }
         return element;
       }
       // an export map's after never returns a fragment: anything else stands
@@ -223,9 +248,10 @@ export const richTextHtmlConfig: HTMLConfig = {
     Klass<LexicalNode>,
     (editor: LexicalEditor, target: LexicalNode) => DOMExportOutput
   >([
-    [ParagraphNode, exportEmptyBlock],
-    [HeadingNode, exportEmptyBlock],
-    [QuoteNode, exportEmptyBlock],
+    [ParagraphNode, exportBlock],
+    [HeadingNode, exportBlock],
+    [QuoteNode, exportBlock],
+    [ListItemNode, exportBlock],
     [CodeNode, exportCode],
     [ListNode, exportList],
   ]),
@@ -345,10 +371,37 @@ const countListItemParagraphs = (item: Element) => {
   return count;
 };
 
-/** The line breaks a list item holds itself, outside its nested lists. */
+const isBlankText = (node: ChildNode | null) =>
+  node !== null &&
+  node.nodeType === Node.TEXT_NODE &&
+  /^( |\t|\r?\n)+$/.test(node.textContent ?? "");
+
+/**
+ * A break the editor's import drops: its block's last child (blank text
+ * after it aside) and not its first. A browser shows none for it.
+ */
+const isDroppedBreak = (br: Element) => {
+  const parent = br.parentElement;
+  if (parent === null) {
+    return false;
+  }
+  const first = parent.firstChild;
+  if (first === br || (first?.nextSibling === br && isBlankText(first))) {
+    return false;
+  }
+  const last = parent.lastChild;
+  return last === br || (last?.previousSibling === br && isBlankText(last));
+};
+
+/**
+ * The line breaks a list item holds itself, outside its nested lists, but
+ * for a last one the editor's import drops (it shows nothing).
+ */
 const countOwnBreaks = (item: Element) =>
   Array.from(item.querySelectorAll("br")).filter(
-    (br) => br.parentElement?.closest("li") === item
+    (br) =>
+      br.parentElement?.closest("li") === item &&
+      (br.parentElement !== item || isDroppedBreak(br) === false)
   ).length;
 
 /**
@@ -458,6 +511,66 @@ const parsedPaths = (body: HTMLElement) =>
     return path.join(">");
   });
 
+const INLINE_BLOCK_TAGS = new Set([
+  "P",
+  "H2",
+  "H3",
+  "H4",
+  "LI",
+  "BLOCKQUOTE",
+  "FIGCAPTION",
+]);
+
+/** Nothing shows after it: blank text, or an inline holding nothing. */
+const showsNothing = (node: ChildNode): boolean =>
+  node.nodeType === Node.TEXT_NODE
+    ? (node.textContent ?? "").trim() === ""
+    : node instanceof Element &&
+      node.tagName !== "BR" &&
+      node.tagName !== "IMG" &&
+      Array.from(node.childNodes).every(showsNothing);
+
+/**
+ * A break inside a link or mark with nothing shown after it up to the end of
+ * its paragraph, heading, quote, list item or caption.
+ */
+const endsBlockInInline = (br: Element) => {
+  let node: Element = br;
+  let parent = br.parentElement;
+  if (parent === null || INLINE_BLOCK_TAGS.has(parent.tagName)) {
+    return false;
+  }
+  while (parent !== null && INLINE_BLOCK_TAGS.has(parent.tagName) === false) {
+    if (BLOCK_TAGS.has(parent.tagName.toLowerCase())) {
+      return false;
+    }
+    for (
+      let after = node.nextSibling;
+      after !== null;
+      after = after.nextSibling
+    ) {
+      if (showsNothing(after) === false) {
+        return false;
+      }
+    }
+    node = parent;
+    parent = parent.parentElement;
+  }
+  if (parent === null) {
+    return false;
+  }
+  for (
+    let after = node.nextSibling;
+    after !== null;
+    after = after.nextSibling
+  ) {
+    if (showsNothing(after) === false) {
+      return false;
+    }
+  }
+  return true;
+};
+
 /**
  * A value the editor cannot read as the platform does: the parser moved an
  * element, a block sits inside a link or a mark, or a paragraph holds only
@@ -473,6 +586,11 @@ const isRestructured = (html: string, body: HTMLElement) => {
     paths.length !== parsed.length ||
     paths.some((path, index) => path !== parsed[index])
   ) {
+    return true;
+  }
+  // a break ending its block inside a link or mark: the editor keeps and
+  // shows it, the page shows nothing for it
+  if (Array.from(body.querySelectorAll("br")).some(endsBlockInInline)) {
     return true;
   }
   // a block holding only line breaks: the editor's import drops them

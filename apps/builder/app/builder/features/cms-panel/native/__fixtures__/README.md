@@ -2,8 +2,8 @@
 
 `rich-text-roundtrip.json` is a byte-for-byte copy of the OrganizeOS repo's
 `client/tests/fixtures/site-components/rich-text-roundtrip.json`, at commit
-`5aef1ea493d230f57c920927e3c6adba1a560f41`, sha256
-`53e7b3c690abd5b9fd35941bc82f33ad2d67870f865e62ac55f59bd558444e29`. It pins
+`a5b0924881eb2f990e6600d0230c6c04ede677fa` (PR RT5), sha256
+`5d5a6bb7110c6badbb2bc655198bca84237c0cd2524d50f822f3e187aa8bfac8`. It pins
 the native CMS editor's rich-text output (`../rich-text-html.ts`) against the
 platform's sanitiser (OrganizeOS spec 4.3.3.1 and 8): each case's `editor` is
 what the editor writes for its `input`, and `stored` what the platform keeps

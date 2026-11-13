@@ -936,6 +936,38 @@ test("Shift+Enter in an empty paragraph saves a value that still opens editable"
   expect(getRichTextReadOnlyReason(html)).toBeUndefined();
 });
 
+const textOf = (html: string) =>
+  html.replace(/<span[^>]*>/g, "").replace(/<\/span>/g, "");
+
+test("Shift+Enter in an empty bullet saves a value that still opens editable", async () => {
+  const { onChange } = mountField({ value: { html: "<ul><li>x</li></ul>" } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("li"));
+  await type("{End}{Enter}");
+  await type("{Shift>}{Enter}{/Shift}");
+  const html = lastHtml(onChange);
+  expect(html).not.toMatch(/<li[^>]*>(<br>)+<\/li>/);
+  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+});
+
+test.each([
+  ["a bullet", "<ul><li>one</li></ul>", "li"],
+  ["a paragraph", "<p>one</p>", "p"],
+])(
+  "Shift+Enter at the end of %s writes its blank line so that it reloads, still editable",
+  async (_name, value, tag) => {
+    const { onChange } = mountField({ value: { html: value } });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>(tag));
+    await type("{End}");
+    await type("{Shift>}{Enter}{/Shift}");
+    const html = lastHtml(onChange);
+    // the import drops a block's last break, so the blank line takes two
+    expect(textOf(html)).toMatch(new RegExp(`one<br><br></${tag}>`));
+    expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+  }
+);
+
 test("pasting a link around an article moves the link into its blocks", async () => {
   const { onChange } = mountField({ value: { html: "<p>x</p>" } });
   await settle();

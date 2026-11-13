@@ -430,3 +430,46 @@ describe("what the editor cannot read as the platform does (W4 verification)", (
     expect(roundTrip(html)).not.toContain("<br");
   });
 });
+
+describe("a block's last line break", () => {
+  const plain = (html: string) =>
+    roundTrip(html)
+      .replace(/<span[^>]*>/g, "")
+      .replace(/<\/span>/g, "")
+      .replace(/ value="\d+"/g, "");
+
+  test.each([
+    "<p>one<br><br></p>",
+    "<p>one<br><br><br></p>",
+    "<ul><li>one<br><br></li></ul>",
+    "<ul><li>one<br><ul><li>two</li></ul></li></ul>",
+  ])("%s reloads as it was, editable", (html) => {
+    expect(plain(html)).toBe(html);
+    expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+  });
+
+  // a single last break shows nothing on the page: dropped, still editable
+  test.each([
+    ["<p>one<br></p>", "<p>one</p>"],
+    ["<h2>one<br></h2>", "<h2>one</h2>"],
+    ["<ul><li>one<br></li></ul>", "<ul><li>one</li></ul>"],
+    ["<ol><li>a<br>b<br></li></ol>", "<ol><li>a<br>b</li></ol>"],
+  ])("%s writes %s, editable", (html, written) => {
+    expect(plain(html)).toBe(written);
+    expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+  });
+
+  test.each([
+    "<ul><li><br></li></ul>",
+    "<p><strong>one<br></strong></p>",
+    '<p><a href="https://example.org/">one<br></a></p>',
+  ])("%s reads lossy", (html) => {
+    expect(getRichTextReadOnlyReason(html)).toBe("lossy");
+  });
+
+  test("a break inside a mark with text after it stays editable", () => {
+    expect(
+      getRichTextReadOnlyReason("<p><strong>one<br></strong>two</p>")
+    ).toBeUndefined();
+  });
+});

@@ -285,6 +285,24 @@
       "input": "<h2></h2><p>x</p>",
       "editor": "<h2></h2><p><span style=\"white-space: pre-wrap;\">x</span></p>",
       "stored": "<h2></h2><p>x</p>"
+    },
+    {
+      "name": "paragraph ending in a blank line",
+      "input": "<p>Last line<br /><br /></p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Last line</span><br><br></p>",
+      "stored": "<p>Last line<br /><br /></p>"
+    },
+    {
+      "name": "list item ending in a blank line",
+      "input": "<ul><li>Last item<br /><br /></li></ul><p>x</p>",
+      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">Last item</span><br><br></li></ul><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<ul><li>Last item<br /><br /></li></ul><p>x</p>"
+    },
+    {
+      "name": "line break before a nested list",
+      "input": "<ul><li>Parent<br /><ul><li>Child</li></ul></li></ul><p>x</p>",
+      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">Parent</span><br><ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">Child</span></li></ul></li></ul><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<ul><li>Parent<br /><ul><li>Child</li></ul></li></ul><p>x</p>"
     }
   ],
   "readOnly": [
@@ -356,6 +374,16 @@
     {
       "name": "heading holding only a line break",
       "input": "<h2><br /></h2><p>x</p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "line break ending its paragraph inside a mark",
+      "input": "<p><strong>Bold end<br /></strong></p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "list item holding only a line break",
+      "input": "<ul><li><br /></li></ul><p>x</p>",
       "reason": "lossy"
     }
   ]

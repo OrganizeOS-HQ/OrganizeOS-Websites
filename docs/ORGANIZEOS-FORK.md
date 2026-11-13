@@ -1809,10 +1809,13 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     read-only. A value whose tags a browser would rearrange, with a block
     inside a link or a mark, or with a paragraph, heading, quote or list item
     holding only line breaks, opens read-only; a paste moves a link or mark
-    inside the blocks it wraps. A paragraph, heading or quote that is empty
-    or holds only line breaks saves empty. A load and save
-    may move collapsible whitespace at a link or mark boundary; the page and
-    its text are unchanged. A link never holds an image the Link control
+    inside the blocks it wraps, and a line break ending its block inside a
+    link or mark opens read-only. A paragraph, heading, quote or list item
+    that is empty or holds only line breaks saves empty, and one ending in a
+    line break saves one break more, so a blank line at its end reloads
+    whole. A load and save may move collapsible whitespace at a link or
+    mark boundary, and drops a block's single last line break, which shows
+    nothing; the page and its text are unchanged. A link never holds an image the Link control
     adds, and Code moves a line's images to a paragraph after the block. A refusal is one line each, with the "Not in
     plan" chip for the plan. The unsaved guard stands before Back, another
     collection, Classic CMS and "Open OrganizeOS". Every open reads the
