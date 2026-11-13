@@ -578,12 +578,16 @@ describe("choosing", () => {
       serverSyncStore.undo();
       return { ...result, unboundBlocks: ["Event List"], missingImages: 1 };
     });
+    // a page other than Home is open, so opening Home would show
+    const notFoundPageId = findNotFoundPageId();
+    $selectedPageId.set(notFoundPageId);
     render();
     await choose("union");
     expect($isTemplateChooserOffered.get()).toBe(true);
     expect(dialog()).not.toBeNull();
     expect(toastError).not.toHaveBeenCalled();
     expect(setBuilderMode).not.toHaveBeenCalled();
+    expect($selectedPageId.get()).toBe(notFoundPageId);
   });
 
   test.each([
