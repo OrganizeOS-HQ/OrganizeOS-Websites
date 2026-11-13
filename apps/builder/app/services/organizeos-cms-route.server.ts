@@ -44,8 +44,8 @@ import {
  * 6. The org is the project owner's, never the request's, lower-cased: a
  *    failed owner read is 503 `unavailable`, a project no org owns 403
  *    `forbidden`.
- * 7. The request's path must match one of a fixed list of endpoints, E0 to
- *    E9, with the platform's base path removed; anything else is 404. The
+ * 7. The request's path must match one of a fixed list of endpoints
+ *    (`patterns`), with the platform's base path removed; anything else is 404. The
  *    path is matched segment by segment: fixed words exactly, ids as
  *    lower-case UUIDs, so a dot segment, an encoded segment, an empty
  *    segment or a trailing slash matches nothing. The query is parsed with
@@ -59,7 +59,7 @@ import {
  *    backslash, and must end in the rebuilt path.
  * 8. A body, else 400 `invalid`, with no log. A declared `Content-Length`
  *    over the endpoint's cap is refused before reading, and a read stops
- *    at the cap. A write's (E6 to E8b) is `application/json`, at most 2 MB,
+ *    at the cap. A JSON write's is `application/json`, at most 2 MB,
  *    well-formed UTF-8 JSON, and is forwarded as `application/json`. An
  *    upload's (E9) is `multipart/form-data` with a boundary, at most 4 MB
  *    plus 64 KB, holding exactly one entry, named `file`, a file of at most
@@ -87,7 +87,13 @@ export type CmsEndpoint =
   | "E7"
   | "E8a"
   | "E8b"
-  | "E9";
+  | "E9"
+  | "E20"
+  | "E21"
+  | "E22"
+  | "E23"
+  | "E24"
+  | "E25";
 
 export type CmsPathMatch = {
   endpoint: CmsEndpoint;
@@ -220,6 +226,48 @@ const patterns: Pattern[] = [
     segments: ["uploads", "image"],
     query: noQuery,
     body: "multipart",
+  },
+  {
+    endpoint: "E20",
+    method: "GET",
+    segments: ["structure"],
+    query: noQuery,
+    body: "none",
+  },
+  {
+    endpoint: "E21",
+    method: "GET",
+    segments: ["collections", "{c}", "structure"],
+    query: noQuery,
+    body: "none",
+  },
+  {
+    endpoint: "E22",
+    method: "POST",
+    segments: ["collections"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E23",
+    method: "PUT",
+    segments: ["collections", "{c}"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E24",
+    method: "PUT",
+    segments: ["collections", "{c}", "schema"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E25",
+    method: "POST",
+    segments: ["collections", "{c}", "delete"],
+    query: noQuery,
+    body: "json",
   },
 ];
 

@@ -27,3 +27,16 @@ builder calls under `/api/internal/websites2/cms/{organizationId}`. Spec:
 | `search.json`      | E5, `GET /collections/{collectionId}/items/search?ids=…`: another org's id dropped         |
 | `item-write.json`  | E6, `POST /collections/{collectionId}/items`: 201, a new draft                             |
 | `upload.json`      | E9, `POST /uploads/image`: a stored PNG (tests compare its shape)                          |
+
+The structure endpoints (slice 3,
+`docs/superpowers/specs/2026-11-13-native-cms-slice-3-design.md` 5.5):
+
+| File                                | Endpoint                                           |
+| ----------------------------------- | -------------------------------------------------- |
+| `structure.json`                    | E20, `GET /structure`: templates and limits        |
+| `collection-structure.json`         | E21, `GET /collections/{collectionId}/structure`   |
+| `collection-create.json`            | E22, `POST /collections`: 201, a Custom collection |
+| `collection-settings.json`          | E23, `PUT /collections/{collectionId}`             |
+| `collection-schema.json`            | E24, `PUT /collections/{collectionId}/schema`      |
+| `collection-delete.json`            | E25, `POST /collections/{collectionId}/delete`     |
+| `collection-delete-referenced.json` | E25: 409 `referenced`                              |
