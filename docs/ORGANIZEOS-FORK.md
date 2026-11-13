@@ -899,9 +899,9 @@ can be merged with minimal conflict.
   JSON, renaming `VarValue`s, unparsed text and font family items,
   `getCssVariableUsageCounts` exported), with
   `styles.organizeos.test.ts`. In the builder, `features/variables/color.ts`
-  and `style-model.ts`, with their tests, moved from
-  `features/organizeos-panel/backgrounds/`, and
-  `features/organizeos-panel/test-fixtures.ts` moved up from `backgrounds/`;
+  and `style-model.ts`, with their tests (`style-model.ts` has no builder
+  caller yet: it is kept as the reader of the agent's `website_set_colours`,
+  builder variables spec 7.2), and `features/organizeos-panel/test-fixtures.ts`;
   the reader, the registry patches and the staged operations in
   `features/variables/`; `canCommitWebstudioData` exported by one marked word
   in `shared/instance-utils/data.ts`; and the Cmd+K guard and routing in
@@ -3125,16 +3125,21 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   columns, not styles, and its seeds re-sync on every provision call). The file
   holds the names, the values, `contrastRatio` and `firstFontFamily` (the family
   a font value names first: `"Source Serif 4", Georgia, serif` reads
-  `Source Serif 4`), and imports nothing from the catalog: the builder
-  imports it alone, so the templates and their images stay out of its
-  chunks. The Variables manager's Brand collection takes the six by these
+  `Source Serif 4`), and imports nothing from the catalog: the Variables
+  feature (`names.ts`, `variables-toolbar.tsx`) and the server's
+  canonical-fonts reader (`organizeos-canonical-fonts.server.ts`) import it
+  alone, so they never load the templates and their images (the builder's
+  client bundle carries the catalog anyway, through the template chooser).
+  The Variables manager's Brand collection takes the six by these
   names. It also names the two band
   variables (`BAND_VARIABLES`), which a band sets for what sits inside it, each
   to its text colour: `--focus-ring`, the colour of a focus ring, and
   `--accent-text`, the colour of a template's accent-2 text; unset, on the base,
   both are `--accent-2`, which the check holds against the base alone. The kit's
   `section()` sets both to `var(--base)` on an accent-1 or text band, and a
-  section made dark by hand sets them in Advanced; a base-coloured panel inside a
+  section made dark by hand is a band only when the designer sets both in
+  Advanced (nothing sets them for it until part 2's Dark mode); a base-coloured
+  panel inside a
   band sets them back to `var(--accent-2)` (the check holds a template to that).
   The kit's `focusRing()` reads `var(--focus-ring, var(--accent-2))` and
   `ACCENT_TEXT` is `var(--accent-text, var(--accent-2))`, which a template's

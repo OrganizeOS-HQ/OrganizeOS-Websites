@@ -33,20 +33,23 @@ export type PaletteColor = {
 };
 
 /**
- * A style model for one element's subtree and its ancestors, from the builder's stores.
+ * A style model for one element's subtree and its ancestors, from the
+ * builder's stores.
  *
  * The style panel's `$styleObjectModel` knows tags and components only for
  * the selected instance and its ancestors, and takes the selected element's
- * live states, so it would drop an `h1`'s default size and weight and a
- * link's default color for the text inside a section. This model is built
- * from the same stores (`$styles`, `$styleSourceSelections`,
- * `$matchingBreakpoints`, and the components' preset styles, rebuilt from
- * `$registeredComponentMetas` as `style-panel/shared/model.tsx` does, since
- * upstream's `$presetStyles` is module-private), with tags and components for
- * the section's ancestors and its whole subtree, base state only.
+ * live states, so it would drop a link's default color inside an element.
+ * This model is built from the same stores (`$styles`,
+ * `$styleSourceSelections`, `$matchingBreakpoints`, and the components'
+ * preset styles, rebuilt from `$registeredComponentMetas` as
+ * `style-panel/shared/model.tsx` does, since upstream's `$presetStyles` is
+ * module-private), with tags and components for the element's ancestors and
+ * its whole subtree, base state only.
  *
  * Values are read only through `getComputedStyleDecl`; nothing here keeps a
- * cascade of its own.
+ * cascade of its own. No builder code calls it yet: with
+ * `listRootColorVariables` it is kept as the reader of the agent's
+ * `website_set_colours` (builder variables spec 7.2).
  */
 export const buildSectionStyleModel = (
   sectionSelector: InstanceSelector
@@ -131,7 +134,8 @@ export const buildSectionStyleModel = (
 };
 
 /**
- * The color variables defined on Global Root itself (spec 3.3): the `--*`
+ * The color variables defined on Global Root itself (builder variables spec
+ * 7.2 keeps this meaning for the agent's `website_set_colours`): the `--*`
  * decls of the root's own style sources at a matching breakpoint, base state,
  * each resolved through `getComputedStyleDecl` on `[ROOT_INSTANCE_ID]` so
  * variable-to-variable chains resolve. Kept when the resolved value reads as
