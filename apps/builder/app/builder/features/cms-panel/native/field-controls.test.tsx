@@ -10,7 +10,10 @@ import { FieldControl, FieldRow } from "./field-controls";
 import type { CmsField, CmsResult, CmsSearchResult } from "./cms-source";
 import {
   createFakeCmsSource,
+  itemOf,
+  itemsPageOf,
   PEOPLE,
+  rowOf,
   type FakeCmsSource,
 } from "./fake-cms-source";
 
@@ -182,14 +185,16 @@ const pngOf = async (width: number, height: number) => {
   return new File([blob], "a.png", { type: "image/png" });
 };
 
-const peopleRow = (id: string, title: string) => ({
-  id,
-  slug: title.toLowerCase(),
-  title,
-  status: "published" as const,
-  hasStagedChanges: false,
-  updatedAt: "2026-11-12T10:00:00+00:00",
-});
+const peopleRow = (id: string, title: string) =>
+  rowOf(
+    itemOf({
+      id,
+      slug: title.toLowerCase(),
+      status: "published",
+      data: { title },
+      updatedAt: "2026-11-12T10:00:00+00:00",
+    })
+  );
 
 const ANN = "55555555-5555-4555-8555-555555555555";
 const BOB = "66666666-6666-4666-8666-666666666666";
@@ -213,11 +218,9 @@ const imageField: CmsField = { key: "cover", label: "Cover", kind: "image" };
 
 beforeEach(() => {
   fake = createFakeCmsSource();
-  fake.listItems.mockResolvedValue({
-    items: [peopleRow(ANN, "Ann"), peopleRow(BOB, "Bob")],
-    total: 2,
-    page: 1,
-  });
+  fake.listItems.mockResolvedValue(
+    itemsPageOf([peopleRow(ANN, "Ann"), peopleRow(BOB, "Bob")], 2, 1)
+  );
   fake.searchItems.mockImplementation(async (_collectionId, query) => {
     const everyone: CmsSearchResult[] = [
       { id: ANN, title: "Ann", status: "published" },

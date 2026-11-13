@@ -12,6 +12,7 @@ import type { CmsItemsPage, CmsResult } from "./cms-source";
 import {
   createFakeCmsSource,
   itemOf,
+  itemsPageOf,
   PEOPLE,
   POSTS,
   rowOf,
@@ -99,8 +100,8 @@ const lastListItemsCall = () => fake.listItems.mock.calls.at(-1);
 const pageOf = (page: number, total: number): CmsItemsPage => {
   const first = (page - 1) * 50;
   const count = Math.max(0, Math.min(50, total - first));
-  return {
-    items: Array.from({ length: count }, (_, index) =>
+  return itemsPageOf(
+    Array.from({ length: count }, (_, index) =>
       rowOf(
         itemOf({
           id: `00000000-0000-4000-8000-${String(first + index).padStart(12, "0")}`,
@@ -110,8 +111,8 @@ const pageOf = (page: number, total: number): CmsItemsPage => {
       )
     ),
     total,
-    page,
-  };
+    page
+  );
 };
 
 const crumbParts = () => {
@@ -325,7 +326,7 @@ describe("the items view", () => {
 
   test("a search with no match shows one line, No matches; an empty collection shows New item and no line", async () => {
     fake.listItems.mockImplementation(async (_, { q }) =>
-      q === undefined ? pageOf(1, 1) : { items: [], total: 0, page: 1 }
+      q === undefined ? pageOf(1, 1) : itemsPageOf([], 0, 1)
     );
     mount();
     await settle();
@@ -345,11 +346,7 @@ describe("the items view", () => {
     fake.listCollections.mockImplementation(async () => ({
       collections: [{ ...POSTS, total: 0 }, PEOPLE],
     }));
-    fake.listItems.mockImplementation(async () => ({
-      items: [],
-      total: 0,
-      page: 1,
-    }));
+    fake.listItems.mockImplementation(async () => itemsPageOf([], 0, 1));
     mount();
     await settle();
     const emptyMain = document.querySelector<HTMLElement>(
@@ -384,11 +381,9 @@ describe("the items view", () => {
       q: undefined,
       page: 1,
     });
-    peopleAnswer.resolve({
-      items: [rowOf(itemOf({ id: PEOPLE.id, slug: "ada" }))],
-      total: 1,
-      page: 1,
-    });
+    peopleAnswer.resolve(
+      itemsPageOf([rowOf(itemOf({ id: PEOPLE.id, slug: "ada" }))], 1, 1)
+    );
     await settle();
     postsAnswer.resolve(pageOf(1, 3));
     await settle();

@@ -18,6 +18,7 @@ import type {
 import {
   createFakeCmsSource,
   itemOf,
+  itemsPageOf,
   PEOPLE,
   POSTS,
   POSTS_DETAIL,
@@ -149,11 +150,7 @@ const retype = async (
 
 /** Mounts the screen with `item` listed and opens it. */
 const openItem = async (item: CmsItem = itemOf(), width?: number) => {
-  fake.listItems.mockResolvedValue({
-    items: [rowOf(item)],
-    total: 1,
-    page: 1,
-  });
+  fake.listItems.mockResolvedValue(itemsPageOf([rowOf(item)], 1, 1));
   fake.getItem.mockResolvedValue({ item });
   mount(width);
   await settle();

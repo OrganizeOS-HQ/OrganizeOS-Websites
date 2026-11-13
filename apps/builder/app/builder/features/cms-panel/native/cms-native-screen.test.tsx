@@ -53,6 +53,7 @@ import type { CmsCollectionSummary } from "./cms-source";
 import {
   createFakeCmsSource,
   itemOf,
+  itemsPageOf,
   POSTS_DETAIL,
   rowOf,
   type FakeCmsSource,
@@ -674,11 +675,7 @@ describe("the canvas after a write", () => {
             singularName: NEWS.singularName,
           },
         });
-        fake.listItems.mockResolvedValue({
-          items: [rowOf(item)],
-          total: 1,
-          page: 1,
-        });
+        fake.listItems.mockResolvedValue(itemsPageOf([rowOf(item)], 1, 1));
         fake.getItem.mockResolvedValue({ item });
         fake.createItem.mockResolvedValue({ item: written, created: true });
         fake.updateItem.mockResolvedValue({ item: written });

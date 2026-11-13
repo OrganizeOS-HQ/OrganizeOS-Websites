@@ -9,7 +9,8 @@
       "data": { "title": "New post", "body": null, "cover": null },
       "updatedAt": "2026-11-07T10:05:00.654321+00:00",
       "createdAt": "2026-11-07T10:05:00.654321+00:00",
-      "publishedAt": null
+      "publishedAt": null,
+      "modifiedByName": "Robin Example"
     }
   }
 }
