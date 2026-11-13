@@ -273,6 +273,18 @@
       "input": "<p>x<a href=\"https://example.org/\"></a>y</p>",
       "editor": "<p><span style=\"white-space: pre-wrap;\">xy</span></p>",
       "stored": "<p>xy</p>"
+    },
+    {
+      "name": "link holding an empty mark",
+      "input": "<p>x<a href=\"https://example.org/\"><strong></strong></a>y</p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">xy</span></p>",
+      "stored": "<p>xy</p>"
+    },
+    {
+      "name": "empty heading",
+      "input": "<h2></h2><p>x</p>",
+      "editor": "<h2></h2><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<h2></h2><p>x</p>"
     }
   ],
   "readOnly": [
@@ -309,6 +321,41 @@
     {
       "name": "image beside a whitespace-only link",
       "input": "<p>x<img src=\"https://example.org/a.png\" alt=\"A\" /><a href=\"https://example.org/\"> </a></p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "heading in a link",
+      "input": "<p><a href=\"https://example.org/\"><h2>Title</h2></a></p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "heading in a link after its text",
+      "input": "<p><a href=\"https://example.org/\">News<h3>Title</h3></a></p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "rule in a link between words",
+      "input": "<p>x<a href=\"https://example.org/\">t<hr /></a>y</p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "heading in a mark",
+      "input": "<p><em><h2>Title</h2></em></p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "paragraph in a mark",
+      "input": "<strong><p>Bold</p></strong>",
+      "reason": "lossy"
+    },
+    {
+      "name": "paragraph holding only a line break",
+      "input": "<p><br /></p><p>x</p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "heading holding only a line break",
+      "input": "<h2><br /></h2><p>x</p>",
       "reason": "lossy"
     }
   ]
