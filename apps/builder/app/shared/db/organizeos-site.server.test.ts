@@ -16,7 +16,6 @@ import {
   isOrgSubdomain,
   isShopBlocksSwitchOn,
   organizeosWebsiteAreaUrl,
-  parseCmsNativeOrgIds,
   parseOrgDenyList,
   resolveOrganizeosDashboardExit,
   resolveOrgProjectDomain,
@@ -179,24 +178,6 @@ describe("isCmsNativeSwitchOn", () => {
   });
 });
 
-describe("parseCmsNativeOrgIds", () => {
-  test("trims and lower-cases each organization id", () => {
-    expect([
-      ...parseCmsNativeOrgIds(` ${ORG_ID.toUpperCase()} , ${OTHER_ORG_ID} `),
-    ]).toEqual([ORG_ID, OTHER_ORG_ID]);
-  });
-
-  test("ignores an entry that is not an organization id", () => {
-    expect([...parseCmsNativeOrgIds(`not-an-id, ${ORG_ID}, *`)]).toEqual([
-      ORG_ID,
-    ]);
-  });
-
-  test.each([undefined, "", " , "])("%j lists no org", (value) => {
-    expect(parseCmsNativeOrgIds(value).size).toBe(0);
-  });
-});
-
 describe("resolveOrganizeosSite", () => {
   const base = {
     platformUrl: "https://app.example.org",
@@ -309,24 +290,15 @@ describe("resolveOrganizeosSite", () => {
     cmsPanel: "true",
     cmsNative: "true",
     cmsSecretSet: true,
-    cmsNativeOrgIds: ORG_ID,
   };
 
   test.each([
     ["everything set", {}, true],
-    [
-      "the org listed in upper case",
-      { cmsNativeOrgIds: ORG_ID.toUpperCase() },
-      true,
-    ],
     ["the CMS panel off", { cmsPanel: undefined }, false],
     ["the switch TRUE", { cmsNative: "TRUE" }, false],
     ["the switch unset", { cmsNative: undefined }, false],
     ["no secret", { cmsSecretSet: false }, false],
     ["the secret not reported", { cmsSecretSet: undefined }, false],
-    ["another org listed", { cmsNativeOrgIds: OTHER_ORG_ID }, false],
-    ["an empty list", { cmsNativeOrgIds: "" }, false],
-    ["a list of garbage", { cmsNativeOrgIds: "garbage" }, false],
   ])("cmsNativeEnabled with %s: %s", (_case, change, expected) => {
     expect(
       resolveOrganizeosSite({
@@ -339,19 +311,33 @@ describe("resolveOrganizeosSite", () => {
     ).toBe(expected);
   });
 
-  test("the builder loader passes the switch, the list and whether the secret is set, never its value", () => {
+  test("every org gets it once the switch is on", () => {
+    for (const organizationId of [ORG_ID, OTHER_ORG_ID]) {
+      expect(
+        resolveOrganizeosSite({
+          ...base,
+          owner: {
+            ...SERVICE_OWNER,
+            email: `org+${organizationId}@svc.organizeos.internal`,
+          },
+          projectDomain: "acme",
+          ...native,
+        })?.cmsNativeEnabled
+      ).toBe(true);
+    }
+  });
+
+  test("the builder loader passes the switch and whether the secret is set, never its value, and no org list", () => {
     const loader = readFileSync(
       fileURLToPath(new URL("../../routes/_ui.(builder).tsx", import.meta.url)),
       "utf8"
     );
     expect(loader).toContain("cmsNative: env.ORGANIZEOS_CMS_NATIVE,");
     expect(loader).toContain(
-      "cmsNativeOrgIds: env.ORGANIZEOS_CMS_NATIVE_ORG_IDS,"
-    );
-    expect(loader).toContain(
       "cmsSecretSet: env.WEBSITES2_CMS_SECRET !== undefined,"
     );
     expect(loader).not.toMatch(/:\s*env\.WEBSITES2_CMS_SECRET\s*[,}]/);
+    expect(loader).not.toContain("ORGANIZEOS_CMS_NATIVE_ORG_IDS");
   });
 
   test("an org project still on the placeholder has no subdomain", () => {
