@@ -237,6 +237,24 @@
       "input": "<p><a href=\"https://example.org/\">More <img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>",
       "editor": "<p><a href=\"https://example.org/\"><span style=\"white-space: pre-wrap;\">More </span><img src=\"https://example.org/a.png\" alt=\"A\"></a><span style=\"white-space: pre-wrap;\"> after</span></p>",
       "stored": "<p><a href=\"https://example.org/\">More <img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>"
+    },
+    {
+      "name": "linked image between words",
+      "input": "<p>See <a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a> here</p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">See </span><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\"></a><span style=\"white-space: pre-wrap;\"> here</span></p>",
+      "stored": "<p>See <a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a> here</p>"
+    },
+    {
+      "name": "linked image at the end of a line",
+      "input": "<p>Hi <a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a></p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Hi </span><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\"></a></p>",
+      "stored": "<p>Hi <a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a></p>"
+    },
+    {
+      "name": "linked image at the start of a line",
+      "input": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>",
+      "editor": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\"></a><span style=\"white-space: pre-wrap;\"> after</span></p>",
+      "stored": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>"
     }
   ],
   "readOnly": [

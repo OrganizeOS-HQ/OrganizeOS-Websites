@@ -100,12 +100,28 @@ describe("the round trip (spec 8)", () => {
     }
   );
 
-  test("a compact figure at the top level stays editable; a pretty-printed one reads lossy", () => {
-    const [captioned, blankCaption, prettyPrinted, bare] = figures;
-    for (const figure of [captioned, blankCaption, bare]) {
-      expect(getRichTextReadOnlyReason(`<p>a</p>${figure}`)).toBeUndefined();
-    }
-    expect(getRichTextReadOnlyReason(`<p>a</p>${prettyPrinted}`)).toBe("lossy");
+  test.each([
+    ...figures,
+    `<figure>${IMG} <figcaption>c</figcaption></figure>`,
+    `<figure>${IMG}<figcaption> c</figcaption></figure>`,
+  ])("a figure at the top level stays editable: %s", (figure) => {
+    expect(getRichTextReadOnlyReason(`<p>a</p>${figure}`)).toBeUndefined();
+  });
+
+  // the import's edge mark (U+E000) never reaches what the editor writes
+  test.each([
+    ...fixture.cases.map(({ input }) => input),
+    ...nestings.flatMap((nest) => figures.map((figure) => nest(figure))),
+    `<p>a</p><figure>${IMG}<figcaption> c</figcaption></figure>`,
+    `<p>See <a href="https://example.org/">${IMG}</a> here</p>`,
+    `<p><strong>Bold </strong>${IMG}<em> after</em></p>`,
+  ])("no mark in the export: %s", (html) => {
+    expect(roundTrip(html)).not.toContain("\uE000");
+  });
+
+  // such a value is not marked, so the import trims as Lexical does
+  test("a value already holding the mark keeps it", () => {
+    expect(roundTrip(`<p>a\uE000 ${IMG} b</p>`)).toContain("a\uE000");
   });
 
   test("the editor never writes a tag outside the allowlist but span", () => {

@@ -363,25 +363,68 @@ export const getRichTextReadOnlyReason = (
  */
 const IMAGE_EDGE = "\uE000";
 
-const textAtEdge = (node: Node | null, last: boolean): Text | undefined => {
-  let current = node;
+/** The inline wrappers an image's neighbouring text may sit in. */
+const INLINE_TAGS = new Set([
+  "A",
+  "B",
+  "STRONG",
+  "I",
+  "EM",
+  "U",
+  "S",
+  "CODE",
+  "SPAN",
+  "SUB",
+  "SUP",
+]);
+
+const isInlineElement = (node: Node) =>
+  node.nodeType === Node.ELEMENT_NODE &&
+  INLINE_TAGS.has((node as Element).tagName);
+
+/** The nearest text beside `node` in its line, through inline wrappers only. */
+const textBeside = (node: Node, forward: boolean): Text | undefined => {
+  let from: Node = node;
+  let sibling = forward ? from.nextSibling : from.previousSibling;
+  // an image first or last in a link or a mark: its line goes on outside it
+  while (sibling === null) {
+    const parent = from.parentNode;
+    if (parent === null || isInlineElement(parent) === false) {
+      return;
+    }
+    from = parent;
+    sibling = forward ? from.nextSibling : from.previousSibling;
+  }
+  let current: Node | null = sibling;
   while (current !== null && current.nodeType === Node.ELEMENT_NODE) {
-    current = last ? current.lastChild : current.firstChild;
+    if (isInlineElement(current) === false) {
+      return;
+    }
+    current = forward ? current.firstChild : current.lastChild;
   }
   return current?.nodeType === Node.TEXT_NODE ? (current as Text) : undefined;
 };
 
 const markImageEdges = (body: HTMLElement) => {
+  // a value already holding the mark is left as it is
+  if (body.textContent?.includes(IMAGE_EDGE)) {
+    return false;
+  }
   for (const image of Array.from(body.querySelectorAll("img"))) {
-    const before = textAtEdge(image.previousSibling, true);
+    // a figure's image is kept with its caption by the figure node
+    if (image.parentElement?.tagName === "FIGURE") {
+      continue;
+    }
+    const before = textBeside(image, false);
     if (before !== undefined && /\s$/.test(before.data)) {
       before.data = `${before.data}${IMAGE_EDGE}`;
     }
-    const after = textAtEdge(image.nextSibling, false);
+    const after = textBeside(image, true);
     if (after !== undefined && /^\s/.test(after.data)) {
       after.data = `${IMAGE_EDGE}${after.data}`;
     }
   }
+  return true;
 };
 
 const unmarkImageEdges = (nodes: LexicalNode[]): LexicalNode[] =>
@@ -427,12 +470,11 @@ export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
       anchor.setAttribute("href", href);
     }
   }
-  markImageEdges(dom.body);
+  const marked = markImageEdges(dom.body);
+  const imported = importStoredImages(() => $generateNodesFromDOM(editor, dom));
   const nodes: LexicalNode[] = [];
   let run: ParagraphNode | undefined;
-  for (const node of unmarkImageEdges(
-    importStoredImages(() => $generateNodesFromDOM(editor, dom))
-  )) {
+  for (const node of marked ? unmarkImageEdges(imported) : imported) {
     if (isInlineNode(node)) {
       if (run === undefined) {
         run = $createParagraphNode();
