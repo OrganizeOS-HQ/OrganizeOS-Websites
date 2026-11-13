@@ -1802,7 +1802,12 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     lossy). Its Image button uploads one through E9 with the
     image field's checks; pasted HTML brings no image. It is read-only when
     the editor would not keep the value's blocks or links whole: "Read only"
-    for a value with images, else with "Edit in Classic CMS". A load and save
+    for a value with images, else with "Edit in Classic CMS". A link with no
+    text and no image is dropped on save; one holding only a space opens
+    read-only. A value whose tags a browser would rearrange, with a block
+    inside a link or a mark, or with a paragraph holding only a line break,
+    opens read-only; a paste moves a link or mark inside the blocks it wraps.
+    An empty heading or quote saves without a line break. A load and save
     may move collapsible whitespace at a link or mark boundary; the page and
     its text are unchanged. A link never holds an image the Link control
     adds, and Code moves a line's images to a paragraph after the block. A refusal is one line each, with the "Not in

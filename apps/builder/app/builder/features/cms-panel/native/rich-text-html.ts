@@ -53,18 +53,17 @@ const parseHtml = (html: string) =>
 const isHtmlElement = (node: unknown): node is HTMLElement =>
   node instanceof HTMLElement;
 
-/** An empty paragraph writes `<p></p>`, not `<p><br></p>`. */
-const exportParagraph = (
+/**
+ * An empty paragraph, heading or quote writes `<p></p>` (or its tag), not
+ * with a `<br>`, which the site would draw as a blank line.
+ */
+const exportEmptyBlock = (
   editor: LexicalEditor,
   node: LexicalNode
 ): DOMExportOutput => {
   const output = node.exportDOM(editor);
   const { element } = output;
-  if (
-    node instanceof ParagraphNode &&
-    node.isEmpty() &&
-    isHtmlElement(element)
-  ) {
+  if ($isElementNode(node) && node.isEmpty() && isHtmlElement(element)) {
     element.replaceChildren();
   }
   return output;
@@ -204,7 +203,9 @@ export const richTextHtmlConfig: HTMLConfig = {
     Klass<LexicalNode>,
     (editor: LexicalEditor, target: LexicalNode) => DOMExportOutput
   >([
-    [ParagraphNode, exportParagraph],
+    [ParagraphNode, exportEmptyBlock],
+    [HeadingNode, exportEmptyBlock],
+    [QuoteNode, exportEmptyBlock],
     [CodeNode, exportCode],
     [ListNode, exportList],
   ]),
@@ -375,6 +376,93 @@ export const richTextBlockSignature = (html: string) => {
 
 export type RichTextReadOnlyReason = "lossy";
 
+const VOID_TAGS = new Set(["img", "br", "hr"]);
+const BLOCK_TAGS = new Set([
+  "p",
+  "h2",
+  "h3",
+  "h4",
+  "ul",
+  "ol",
+  "li",
+  "blockquote",
+  "pre",
+  "hr",
+  "figure",
+  "figcaption",
+]);
+const MARK_TAGS = new Set(["a", "b", "strong", "i", "em", "u", "s", "code"]);
+// a tag, its attributes read whole, so a `>` inside a quoted value is no end
+const TAG_RE =
+  /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:\s+[^\s=>/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*)\s*(\/?)>/g;
+
+/**
+ * The stored HTML's element paths as its tags nest, and whether a block
+ * opens inside a link or a mark. The platform reads the value as written;
+ * the browser's parser may move elements, so the two are compared.
+ */
+const scanStoredTags = (html: string) => {
+  const stack: string[] = [];
+  const paths: string[] = [];
+  let blockInMark = false;
+  for (const match of html.matchAll(TAG_RE)) {
+    const tag = match[2].toLowerCase();
+    if (match[1] === "/") {
+      const at = stack.lastIndexOf(tag);
+      if (at !== -1) {
+        stack.length = at;
+      }
+      continue;
+    }
+    if (BLOCK_TAGS.has(tag) && stack.some((open) => MARK_TAGS.has(open))) {
+      blockInMark = true;
+    }
+    paths.push([...stack, tag].join(">"));
+    if (VOID_TAGS.has(tag) === false && match[4] !== "/") {
+      stack.push(tag);
+    }
+  }
+  return { paths, blockInMark };
+};
+
+const parsedPaths = (body: HTMLElement) =>
+  Array.from(body.querySelectorAll("*")).map((element) => {
+    const path: string[] = [];
+    for (
+      let at: Element | null = element;
+      at !== null && at !== body;
+      at = at.parentElement
+    ) {
+      path.unshift(at.tagName.toLowerCase());
+    }
+    return path.join(">");
+  });
+
+/**
+ * A value the editor cannot read as the platform does: the parser moved an
+ * element, a block sits inside a link or a mark, or a paragraph holds only
+ * a line break (which the editor's import drops).
+ */
+const isRestructured = (html: string, body: HTMLElement) => {
+  const { paths, blockInMark } = scanStoredTags(html);
+  if (blockInMark) {
+    return true;
+  }
+  const parsed = parsedPaths(body);
+  if (
+    paths.length !== parsed.length ||
+    paths.some((path, index) => path !== parsed[index])
+  ) {
+    return true;
+  }
+  return Array.from(body.querySelectorAll("p")).some(
+    (paragraph) =>
+      paragraph.childNodes.length === 1 &&
+      paragraph.firstChild instanceof Element &&
+      paragraph.firstChild.tagName === "BR"
+  );
+};
+
 const writeHeadless = (html: string) => {
   const editor = createEditor({
     namespace: "cms-rich-text-check",
@@ -405,6 +493,9 @@ export const getRichTextReadOnlyReason = (
     return;
   }
   const body = parseHtml(html).body;
+  if (isRestructured(html, body)) {
+    return "lossy";
+  }
   if (body.querySelector("img") !== null) {
     // no free mark: the spaces beside its images would not be kept
     if (pickImageEdgeMark(body.textContent ?? "") === undefined) {

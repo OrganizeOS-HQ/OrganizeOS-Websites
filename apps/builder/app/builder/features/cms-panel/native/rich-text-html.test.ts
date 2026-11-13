@@ -379,3 +379,49 @@ test("a copy reaching partway into a code block writes only its selected text", 
   expect(copied).toContain("<code>first</code>");
   expect(saved).toContain("<code>first line\nsecond line</code>");
 });
+
+describe("what the editor cannot read as the platform does (W4 verification)", () => {
+  test.each(fixture.cases.filter((c) => c.stored !== null))(
+    "a pinned case's stored value stays editable: $name",
+    ({ stored }) => {
+      expect(getRichTextReadOnlyReason(stored as string)).toBeUndefined();
+    }
+  );
+
+  test.each([
+    ['<p><a href="https://e.org/"><h2>Title</h2></a></p>', "heading in a link"],
+    ['<p>x<a href="https://e.org/"><hr /></a>y</p>', "rule in a link"],
+    [
+      '<a href="https://e.org/"><h2>Title</h2></a><p>b</p>',
+      "top-level link around a heading",
+    ],
+    ["<p><em><h2>Title</h2></em></p>", "heading in a mark"],
+    ["<strong><p>Bold</p></strong>", "paragraph in a mark"],
+    [
+      '<p><a href="https://example.org/">News<h3>Title</h3></a></p>',
+      "heading in a link after its text",
+    ],
+    ["<p><li>x</li></p>", "list item the parser moves"],
+    ["<p>x<em><h2>u</h2></em>y</p>", "heading in a mark between words"],
+    ["<p>x<strong>a<ul><li>u</li></ul>b</strong>y</p>", "list in a mark"],
+    ["<p><br /></p><p>x</p>", "paragraph holding only a line break"],
+  ])("%s reads lossy (%s)", (html) => {
+    expect(getRichTextReadOnlyReason(html)).toBe("lossy");
+  });
+
+  test("a > inside an attribute does not end the tag", () => {
+    expect(
+      getRichTextReadOnlyReason(
+        '<p><a href="https://e.org/" title="a>b">x</a></p>'
+      )
+    ).toBeUndefined();
+  });
+
+  test.each([
+    "<h2></h2><p>x</p>",
+    "<h3></h3><p>x</p>",
+    "<blockquote></blockquote><p>x</p>",
+  ])("an empty heading or quote writes no line break: %s", (html) => {
+    expect(roundTrip(html)).not.toContain("<br");
+  });
+});

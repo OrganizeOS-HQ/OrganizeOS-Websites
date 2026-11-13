@@ -833,15 +833,54 @@ const hasRefusedNode = (value: unknown): boolean => {
   return hasRefusedNode(node.children) || hasRefusedNode(node.nodes);
 };
 
+const PASTE_BLOCKS =
+  "p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, hr, figure, figcaption, div";
+const PASTE_MARKS = "a, b, strong, i, em, u, s, code, span";
+
+/**
+ * A link or mark around blocks moves inside them: each run of its inline
+ * content, block by block, gets its own copy, so a value never holds a
+ * block inside a link or mark (which the site reads differently).
+ */
+const pushMarksIntoBlocks = (body: HTMLElement) => {
+  let moved = false;
+  for (const mark of Array.from(body.querySelectorAll(PASTE_MARKS)).reverse()) {
+    if (mark.querySelector(PASTE_BLOCKS) === null) {
+      continue;
+    }
+    const wrapRuns = (parent: Element) => {
+      let run: Element | null = null;
+      for (const child of Array.from(parent.childNodes)) {
+        if (child instanceof Element && child.matches(PASTE_BLOCKS)) {
+          run = null;
+          wrapRuns(child);
+          continue;
+        }
+        if (run === null) {
+          run = mark.cloneNode(false) as Element;
+          parent.insertBefore(run, child);
+        }
+        run.appendChild(child);
+      }
+    };
+    wrapRuns(mark);
+    mark.replaceWith(...Array.from(mark.childNodes));
+    moved = true;
+  }
+  return moved;
+};
+
 /**
  * The pasted data with each link the Link control's rule (`richTextHref`)
- * refuses unwrapped to its text; undefined when it holds none.
+ * refuses unwrapped to its text, and links and marks moved inside the
+ * blocks they wrap; undefined when it needs neither.
  */
 const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
   const html = data.getData("text/html");
   let cleanHtml: string | undefined;
   if (html !== "") {
     const dom = new DOMParser().parseFromString(html, "text/html");
+    const movedMarks = pushMarksIntoBlocks(dom.body);
     // an image enters a value only from stored HTML or an upload: dropped
     // here, before the import, so the words around it keep their space
     const images = Array.from(dom.querySelectorAll("img")).filter(
@@ -864,7 +903,12 @@ const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
     for (const anchor of emptied) {
       anchor.replaceWith(...Array.from(anchor.childNodes));
     }
-    if (images.length > 0 || refused.length > 0 || emptied.length > 0) {
+    if (
+      movedMarks ||
+      images.length > 0 ||
+      refused.length > 0 ||
+      emptied.length > 0
+    ) {
       cleanHtml = dom.body.innerHTML;
     }
   }

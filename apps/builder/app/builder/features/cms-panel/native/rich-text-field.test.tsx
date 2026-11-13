@@ -898,3 +898,28 @@ test("Remove over a linked line with an image keeps the image and drops the link
   expect(html).not.toContain("<a");
   expect(html).toContain("<img");
 });
+
+test("pasting a link around a heading writes the link inside the heading, and the value stays editable", async () => {
+  const { onChange } = mountField({ value: { html: "<p>x</p>" } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await type("{End}");
+  paste(editable()!, {
+    "text/html": '<a href="https://example.org/post"><h2>Post title</h2></a>',
+    "text/plain": "Post title",
+  });
+  await settle();
+  const html = lastHtml(onChange);
+  expect(html).not.toMatch(/<a\b[^>]*>\s*<h2/);
+  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+});
+
+test.each(fixture.readOnly.map((entry) => [entry.name, entry] as const))(
+  "the live field opens the fixture's read-only entry %s read-only, writing nothing",
+  async (_name, entry) => {
+    const { onChange } = mountField({ value: { html: entry.input } });
+    await settle();
+    expect(editable()).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  }
+);
