@@ -159,10 +159,15 @@ export const CollectionsColumn = ({
                 staleLine={slots?.renderStaleLine(collection)}
                 actions={
                   renderRowMenu === undefined
-                    ? slots?.renderActions(collection)
+                    ? slots?.renderActions(collection, {
+                        leading: null,
+                        trailing: null,
+                      })
                     : renderRowMenu(collection)
                 }
-                reserveMenu={slots !== undefined}
+                reserveMenu={
+                  slots !== undefined || structure?.canManage === true
+                }
                 onSelect={() => onSelectCollection(collection.id)}
               />
             ))}

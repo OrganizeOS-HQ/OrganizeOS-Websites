@@ -2,10 +2,17 @@
 import "@webstudio-is/design-system/global.css";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { refreshCmsNative } from "./cms-native-stores";
-import { POSTS } from "./fake-cms-source";
+import { $cmsNativeDirty } from "./cms-native-stores";
+import { PEOPLE, POSTS } from "./fake-cms-source";
+import { POSTS_STRUCTURE } from "./fake-cms-structure-source";
 import {
+  buttonByText,
   byLabel,
   click,
+  currentSlug,
+  editItemTitle,
+  menuItem,
+  menuItems,
   harness,
   hasText,
   mount,
@@ -146,5 +153,80 @@ describe("the tabs and the structure reads", () => {
     expect(list?.parentElement?.scrollWidth).toBeLessThanOrEqual(240);
     await click(tab("Fields"));
     expect(column()?.getBoundingClientRect().width).toBe(240);
+  });
+});
+
+const PEOPLE_STRUCTURE = {
+  ...POSTS_STRUCTURE,
+  id: PEOPLE.id,
+  slug: PEOPLE.slug,
+  name: PEOPLE.name,
+  singularName: PEOPLE.singularName,
+  isPublic: PEOPLE.isPublic,
+  total: 1,
+  fields: [
+    {
+      key: "name",
+      label: "Name",
+      kind: "text" as const,
+      isTitle: true,
+      required: true,
+    },
+  ],
+};
+
+const answerBoth = () =>
+  harness.structure.getCollectionStructure.mockImplementation(async (id) =>
+    id === PEOPLE.id
+      ? { collection: structuredClone(PEOPLE_STRUCTURE) }
+      : { collection: structuredClone(POSTS_STRUCTURE) }
+  );
+
+describe("the row menu", () => {
+  test("Settings and Delete, for a manager, with no collection actions", async () => {
+    mount();
+    await settle();
+    await click(byLabel("People menu"));
+    expect(menuItems()).toEqual(["Settings", "Delete"]);
+  });
+
+  test("Settings opens the settings view behind the guard, opening that collection first", async () => {
+    answerBoth();
+    mount();
+    await settle();
+    await editItemTitle();
+    await click(byLabel("People menu"));
+    await click(menuItem("Settings"));
+    expect(hasText("Discard unsaved changes?")).toBe(true);
+    await click(buttonByText("Keep editing"));
+    expect(document.querySelector("[data-cms-collection-settings]")).toBeNull();
+    expect(
+      document.querySelector<HTMLInputElement>("#cms-field-title")?.value
+    ).toBe("Mine");
+    await click(byLabel("People menu"));
+    await click(menuItem("Settings"));
+    await click(buttonByText("Discard"));
+    expect($cmsNativeDirty.get()).toBe(false);
+    expect(currentSlug()).toBe("people");
+    expect(
+      document.querySelector("[data-cms-collection-settings]")
+    ).not.toBeNull();
+    expect(
+      document.querySelector<HTMLInputElement>("#cms-settings-name")?.value
+    ).toBe("People");
+  });
+
+  test("Delete opens the delete dialog for that collection", async () => {
+    answerBoth();
+    mount();
+    await settle();
+    await click(byLabel("People menu"));
+    await click(menuItem("Delete"));
+    expect(harness.structure.getCollectionStructure).toHaveBeenLastCalledWith(
+      PEOPLE.id
+    );
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      "Delete People and its 1 item?"
+    );
   });
 });

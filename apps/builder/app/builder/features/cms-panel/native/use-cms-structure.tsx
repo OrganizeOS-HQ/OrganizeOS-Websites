@@ -18,6 +18,8 @@ import {
   type ReactNode,
 } from "react";
 import {
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   Flex,
   IconButton,
   Text,
@@ -54,6 +56,7 @@ import { FieldSheet, type FieldSheetTarget } from "./field-sheet";
 import { AddFieldMenu, FieldsList } from "./fields-view";
 import { NewCollectionDialog, NewCollectionPage } from "./new-collection";
 import { LineRow, RefusalLine, type CmsLineKind } from "./refusal-line";
+import { StructureRowMenu } from "./structure-row-menu";
 
 export type CmsStructureTab = "collections" | "fields";
 
@@ -352,6 +355,23 @@ export const useCmsStructure = ({
       setView(next);
     });
 
+  const openSettings = (id: string) =>
+    guard(() => {
+      onDirtyChange(false);
+      if (id !== collectionId) {
+        onOpenCollection(id);
+      }
+      setSession((current) => current + 1);
+      setView({ type: "settings" });
+    });
+
+  const requestDelete = async (id: string) => {
+    const found = id === detail?.id ? detail : await fetchStructure(id);
+    if (found !== undefined) {
+      setDeleteTarget(found);
+    }
+  };
+
   const reorder = async (key: string, toIndex: number) => {
     if (structure === undefined || detail === undefined) {
       return;
@@ -597,11 +617,42 @@ export const useCmsStructure = ({
   );
 
   const renderRowMenu = (collection: CmsCollectionSummary): ReactNode => {
-    const actions = renderRowActions?.(collection, {
-      leading: null,
-      trailing: null,
-    });
-    return actions ?? null;
+    const onSettings = () => openSettings(collection.id);
+    const onDelete = () => void requestDelete(collection.id);
+    const items = canManage
+      ? {
+          leading: (
+            <>
+              <DropdownMenuItem onSelect={onSettings}>
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ),
+          trailing: (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem destructive onSelect={onDelete}>
+                Delete
+              </DropdownMenuItem>
+            </>
+          ),
+        }
+      : { leading: null, trailing: null };
+    const actions = renderRowActions?.(collection, items);
+    if (actions !== undefined && actions !== null) {
+      return actions;
+    }
+    if (canManage === false) {
+      return null;
+    }
+    return (
+      <StructureRowMenu
+        collection={collection}
+        onSettings={onSettings}
+        onDelete={onDelete}
+      />
+    );
   };
 
   return {

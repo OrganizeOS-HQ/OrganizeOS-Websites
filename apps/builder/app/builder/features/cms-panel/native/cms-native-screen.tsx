@@ -109,7 +109,12 @@ const useCatalogSlots = (onHide: () => void) => {
         { pages, instances, props, dataSources, resources }
       );
       const slots: CmsCatalogSlots = {
-        renderActions: (collection) => {
+        renderActions: (collection, { leading, trailing }) => {
+          // a private collection has no collection actions, its catalog
+          // Resource or not
+          if (collection.isPublic === false) {
+            return null;
+          }
           const row = rows.get(collection.slug);
           if (row === undefined) {
             return null;
@@ -120,6 +125,8 @@ const useCatalogSlots = (onHide: () => void) => {
               name={collection.name}
               itemPage={row.itemPage}
               isSitemapOrphan={row.isSitemapOrphan}
+              leadingItems={leading}
+              trailingItems={trailing}
               onShowCanvas={showCanvas}
               onRemovedFromSitemap={onRemovedFromSitemap}
             />

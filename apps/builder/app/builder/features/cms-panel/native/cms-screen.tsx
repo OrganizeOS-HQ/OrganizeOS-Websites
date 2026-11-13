@@ -110,8 +110,14 @@ export type CmsScreenProps = {
 
 /** What the column draws from the build's catalog (4.5). */
 export type CmsCatalogSlots = {
-  /** A row's "..." menu; null for a collection with no catalog Resource. */
-  renderActions: (collection: CmsCollectionSummary) => ReactNode;
+  /**
+   * A row's "..." menu, holding the given items first and last; null for a
+   * private collection or one with no catalog Resource.
+   */
+  renderActions: (
+    collection: CmsCollectionSummary,
+    items: { leading: ReactNode; trailing: ReactNode }
+  ) => ReactNode;
   /** The line under a row; null when its item page is not stale. */
   renderStaleLine: (collection: CmsCollectionSummary) => ReactNode;
   /** The orphan rows at the column's foot. */
@@ -659,7 +665,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       clearLine: clearStructureLine,
       renderRowActions:
         isReady && catalogSlots?.(collections) !== undefined
-          ? (entry) => catalogSlots(collections)?.renderActions(entry)
+          ? (entry, items) =>
+              catalogSlots(collections)?.renderActions(entry, items)
           : undefined,
     });
 

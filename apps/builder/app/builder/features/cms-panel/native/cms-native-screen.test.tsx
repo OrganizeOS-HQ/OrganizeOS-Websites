@@ -188,6 +188,8 @@ const site = {
 let root: Root | undefined;
 let container: HTMLElement | undefined;
 let platformCollections: CmsCollectionSummary[];
+// slice 1's tests read the collection actions alone; slice 3's set it
+let canManageSettings: boolean;
 const onClose = vi.fn();
 const onHide = vi.fn();
 const onShowClassic = vi.fn();
@@ -350,9 +352,15 @@ beforeEach(() => {
   loaderFetch.mockReset();
   loaderFetch.mockImplementation(answerLoader);
   platformCollections = [NEWS, EVENTS, MEMBERS];
+  canManageSettings = false;
   cmsApi.createCmsApi.mockReset();
   cmsApi.createCmsApi.mockImplementation(() => {
     const fake = createFakeCmsSource();
+    fake.getAccess.mockImplementation(async () => ({
+      canEdit: true,
+      canPublish: true,
+      canManageSettings,
+    }));
     fake.listCollections.mockImplementation(async () => ({
       collections: platformCollections,
     }));
@@ -721,4 +729,84 @@ describe("the canvas after a write", () => {
       expect(vi.mocked(invalidateResource).mock.calls).toEqual([[news]]);
     }
   );
+});
+
+describe("one row menu (slice 3)", () => {
+  const menuTexts = (items: HTMLElement[]) =>
+    items.map((item) => item.textContent);
+
+  beforeEach(() => {
+    canManageSettings = true;
+  });
+
+  test("one menu: Settings, Create item page, Add list, Delete", async () => {
+    await render();
+    expect(menuTexts(await openMenu("News menu"))).toEqual([
+      "Settings",
+      "Create item page",
+      "Add list",
+      "Delete",
+    ]);
+  });
+
+  test("a sitemap orphan keeps Remove from sitemap after Delete", async () => {
+    await addToSitemap("news", "News");
+    await render();
+    expect(menuTexts(await openMenu("News menu"))).toEqual([
+      "Settings",
+      "Create item page",
+      "Add list",
+      "Delete",
+      "Remove from sitemap",
+    ]);
+  });
+
+  test("a private collection whose catalog Resource exists gets Settings and Delete only", async () => {
+    setProject(
+      await collectionCatalog([
+        { slug: "news", name: "News" },
+        { slug: "events", name: "Events" },
+        { slug: "members", name: "Members" },
+      ])
+    );
+    await render("members");
+    await until(() => expect(byLabel("News menu")).not.toBeNull());
+    expect(menuTexts(await openMenu("Members menu"))).toEqual([
+      "Settings",
+      "Delete",
+    ]);
+    expect(
+      row("members")?.querySelector("[data-organizeos-collection-menu]")
+    ).toBeNull();
+  });
+
+  test.each([
+    ["Content mode", () => $builderMode.set("content")],
+    [
+      "a denied org",
+      () => $organizeosSite.set({ ...site, blocksEnabled: false }),
+    ],
+  ])("%s: Settings and Delete", async (_, gate) => {
+    act(() => {
+      gate();
+    });
+    await render();
+    expect(menuTexts(await openMenu("News menu"))).toEqual([
+      "Settings",
+      "Delete",
+    ]);
+    expect(
+      document.querySelectorAll("[data-organizeos-collection-menu]")
+    ).toHaveLength(0);
+  });
+
+  test("without canManageSettings: the actions alone, and no menu where there are none", async () => {
+    canManageSettings = false;
+    await render();
+    expect(menuTexts(await openMenu("News menu"))).toEqual([
+      "Create item page",
+      "Add list",
+    ]);
+    expect(byLabel("Members menu")).toBeNull();
+  });
 });
