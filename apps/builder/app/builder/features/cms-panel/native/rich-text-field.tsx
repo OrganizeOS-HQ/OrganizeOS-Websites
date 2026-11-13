@@ -851,7 +851,18 @@ const pushMarksIntoBlocks = (body: HTMLElement) => {
     const wrapRuns = (parent: Element) => {
       let run: Element | null = null;
       for (const child of Array.from(parent.childNodes)) {
-        if (child instanceof Element && child.matches(PASTE_BLOCKS)) {
+        // a figure stays whole; a block, or a wrapper holding blocks
+        // (article, section, table), takes the mark inside
+        if (child instanceof Element && child.matches("figure")) {
+          run = null;
+          continue;
+        }
+        if (
+          child instanceof Element &&
+          (child.matches(PASTE_BLOCKS) ||
+            (child.matches(PASTE_MARKS) === false &&
+              child.querySelector(PASTE_BLOCKS) !== null))
+        ) {
           run = null;
           wrapRuns(child);
           continue;

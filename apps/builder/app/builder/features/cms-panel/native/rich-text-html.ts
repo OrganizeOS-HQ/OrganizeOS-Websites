@@ -8,6 +8,7 @@ import {
   $getRoot,
   $isDecoratorNode,
   $isElementNode,
+  $isLineBreakNode,
   $isRangeSelection,
   $isTextNode,
   createEditor,
@@ -53,20 +54,37 @@ const parseHtml = (html: string) =>
 const isHtmlElement = (node: unknown): node is HTMLElement =>
   node instanceof HTMLElement;
 
+/** Nothing but line breaks and blank text. */
+const holdsOnlyBreaks = (node: LexicalNode): boolean =>
+  $isLineBreakNode(node) ||
+  ($isTextNode(node) && node.getTextContent().trim() === "") ||
+  ($isElementNode(node) && node.getChildren().every(holdsOnlyBreaks));
+
 /**
- * An empty paragraph, heading or quote writes `<p></p>` (or its tag), not
- * with a `<br>`, which the site would draw as a blank line.
+ * An empty paragraph, heading or quote, or one holding only line breaks,
+ * writes `<p></p>` (or its tag): the editor's import drops a break-only
+ * block's breaks, so it never writes one and never locks a value it saved.
  */
 const exportEmptyBlock = (
   editor: LexicalEditor,
   node: LexicalNode
 ): DOMExportOutput => {
   const output = node.exportDOM(editor);
-  const { element } = output;
-  if ($isElementNode(node) && node.isEmpty() && isHtmlElement(element)) {
-    element.replaceChildren();
+  if ($isElementNode(node) === false || holdsOnlyBreaks(node) === false) {
+    return output;
   }
-  return output;
+  // the children are written after this export: cleared once they are in
+  const after = output.after;
+  return {
+    ...output,
+    after: (generated) => {
+      const element = after === undefined ? generated : after(generated);
+      if (isHtmlElement(element)) {
+        element.replaceChildren();
+      }
+      return element;
+    },
+  };
 };
 
 /**
@@ -455,11 +473,15 @@ const isRestructured = (html: string, body: HTMLElement) => {
   ) {
     return true;
   }
-  return Array.from(body.querySelectorAll("p")).some(
-    (paragraph) =>
-      paragraph.childNodes.length === 1 &&
-      paragraph.firstChild instanceof Element &&
-      paragraph.firstChild.tagName === "BR"
+  // a block holding only line breaks: the editor's import drops them
+  return Array.from(
+    body.querySelectorAll("p, h2, h3, h4, blockquote, li")
+  ).some(
+    (block) =>
+      block.querySelector("br") !== null &&
+      (block.textContent ?? "").trim() === "" &&
+      block.querySelector("img, ul, ol, p, pre, hr, figure, blockquote") ===
+        null
   );
 };
 

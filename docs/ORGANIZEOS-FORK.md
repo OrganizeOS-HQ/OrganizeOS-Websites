@@ -1805,9 +1805,10 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     for a value with images, else with "Edit in Classic CMS". A link with no
     text and no image is dropped on save; one holding only a space opens
     read-only. A value whose tags a browser would rearrange, with a block
-    inside a link or a mark, or with a paragraph holding only a line break,
-    opens read-only; a paste moves a link or mark inside the blocks it wraps.
-    An empty heading or quote saves without a line break. A load and save
+    inside a link or a mark, or with a paragraph, heading, quote or list item
+    holding only line breaks, opens read-only; a paste moves a link or mark
+    inside the blocks it wraps. A paragraph, heading or quote that is empty
+    or holds only line breaks saves empty. A load and save
     may move collapsible whitespace at a link or mark boundary; the page and
     its text are unchanged. A link never holds an image the Link control
     adds, and Code moves a line's images to a paragraph after the block. A refusal is one line each, with the "Not in

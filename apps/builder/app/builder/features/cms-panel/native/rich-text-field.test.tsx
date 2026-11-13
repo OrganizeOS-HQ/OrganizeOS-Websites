@@ -923,3 +923,42 @@ test.each(fixture.readOnly.map((entry) => [entry.name, entry] as const))(
     expect(onChange).not.toHaveBeenCalled();
   }
 );
+
+test("Shift+Enter in an empty paragraph saves a value that still opens editable", async () => {
+  const { onChange } = mountField({ value: { html: "<p>x</p>" } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await type("{End}{Enter}");
+  await type("{Shift>}{Enter}{/Shift}");
+  const html = lastHtml(onChange);
+  expect(html).not.toContain("<br");
+  expect(html).not.toBe("");
+  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+});
+
+test("pasting a link around an article moves the link into its blocks", async () => {
+  const { onChange } = mountField({ value: { html: "<p>x</p>" } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await type("{End}");
+  paste(editable()!, {
+    "text/html":
+      '<a href="https://example.org/"><article><h3>Title</h3><p>Desc</p></article></a>',
+    "text/plain": "Title Desc",
+  });
+  await settle();
+  const html = lastHtml(onChange);
+  expect(html).not.toMatch(/<a\b[^>]*>\s*<(h3|p|article)/);
+  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+});
+
+test.each([
+  '<p><a href="https://e.org/"><h2>Title</h2></a></p>',
+  "<strong><p>Bold</p></strong>",
+  "<p><br /></p><p>x</p>",
+])("the live field opens %s read-only, writing nothing", async (html) => {
+  const { onChange } = mountField({ value: { html } });
+  await settle();
+  expect(editable()).toBeNull();
+  expect(onChange).not.toHaveBeenCalled();
+});

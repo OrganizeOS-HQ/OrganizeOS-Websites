@@ -405,6 +405,11 @@ describe("what the editor cannot read as the platform does (W4 verification)", (
     ["<p>x<em><h2>u</h2></em>y</p>", "heading in a mark between words"],
     ["<p>x<strong>a<ul><li>u</li></ul>b</strong>y</p>", "list in a mark"],
     ["<p><br /></p><p>x</p>", "paragraph holding only a line break"],
+    ["<p><br /><br /></p><p>x</p>", "paragraph holding two line breaks"],
+    ["<p><strong><br /></strong></p><p>x</p>", "a marked line break alone"],
+    ["<p> <br /> </p><p>x</p>", "a line break between spaces"],
+    ["<h2><br /></h2><p>x</p>", "heading holding only a line break"],
+    ["<blockquote><br /></blockquote>", "quote holding only a line break"],
   ])("%s reads lossy (%s)", (html) => {
     expect(getRichTextReadOnlyReason(html)).toBe("lossy");
   });
@@ -412,7 +417,7 @@ describe("what the editor cannot read as the platform does (W4 verification)", (
   test("a > inside an attribute does not end the tag", () => {
     expect(
       getRichTextReadOnlyReason(
-        '<p><a href="https://e.org/" title="a>b">x</a></p>'
+        '<p><a href="https://e.org/" title="x><h2>">x</a></p>'
       )
     ).toBeUndefined();
   });
