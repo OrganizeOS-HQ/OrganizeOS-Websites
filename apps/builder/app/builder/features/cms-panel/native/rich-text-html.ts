@@ -358,9 +358,13 @@ export const richTextBlockSignature = (html: string) => {
           : token
       );
     }
+    // a link with nothing in it (no text, no image) shows nothing and is
+    // dropped on load, on both sides alike; one holding only a space counts
     if (
       element.tagName === "A" &&
-      richTextImportHref(element.getAttribute("href") ?? undefined) !== null
+      richTextImportHref(element.getAttribute("href") ?? undefined) !== null &&
+      ((element.textContent ?? "") !== "" ||
+        element.querySelector("img") !== null)
     ) {
       links += 1;
     }

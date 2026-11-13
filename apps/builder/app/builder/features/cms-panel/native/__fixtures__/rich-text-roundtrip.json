@@ -267,6 +267,12 @@
       "input": "<p>before <em></em><img src=\"https://example.org/a.png\" alt=\"A\" /> after</p>",
       "editor": "<p><span style=\"white-space: pre-wrap;\">before </span><img src=\"https://example.org/a.png\" alt=\"A\"><span style=\"white-space: pre-wrap;\"> after</span></p>",
       "stored": "<p>before <img src=\"https://example.org/a.png\" alt=\"A\" /> after</p>"
+    },
+    {
+      "name": "link with nothing in it",
+      "input": "<p>x<a href=\"https://example.org/\"></a>y</p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">xy</span></p>",
+      "stored": "<p>xy</p>"
     }
   ],
   "readOnly": [

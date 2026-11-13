@@ -144,7 +144,13 @@ describe("the round trip (spec 8)", () => {
     );
   });
 
-  test("a link the import leaves with nothing in it reads lossy, with an image or without", () => {
+  test("a link with nothing in it stays editable and is dropped on save", () => {
+    const html = `<p>x<a href="https://example.org/"></a>y</p>`;
+    expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+    expect(roundTrip(html)).not.toContain("<a");
+  });
+
+  test("a link holding only a space reads lossy, with an image or without", () => {
     expect(
       getRichTextReadOnlyReason(
         `<p>x${IMG}<a href="https://example.org/"> </a></p>`
