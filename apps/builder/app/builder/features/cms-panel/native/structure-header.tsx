@@ -6,7 +6,9 @@
 import type { ReactNode, RefObject } from "react";
 import {
   Box,
+  css,
   cssVar,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
@@ -113,4 +115,25 @@ export const StructureBody = ({ children }: { children: ReactNode }) => (
       {children}
     </Box>
   </ScrollAreaNative>
+);
+
+const wrappingTitleStyle = css({
+  whiteSpace: "normal",
+  overflowWrap: "anywhere",
+  minWidth: 0,
+});
+
+/** A dialog's title that wraps rather than truncates: it holds a name. */
+export const WrappingDialogTitle = ({ children }: { children: string }) => (
+  <DialogTitle
+    css={{
+      height: "auto",
+      minHeight: theme.spacing[15],
+      paddingBlock: theme.spacing[3],
+    }}
+  >
+    <span className={wrappingTitleStyle()} data-cms-dialog-title>
+      {children}
+    </span>
+  </DialogTitle>
 );

@@ -1,9 +1,13 @@
 /**
- * Collection settings (slice 3), in the main area: name, singular name,
- * address and public, with Delete collection in "...". The delete
- * confirmation is shared with the row's "...": it names the items it
- * removes, and while another collection references this one it says which
- * and offers no Delete.
+ * Collection settings, in the main area: name, singular name, address and
+ * public, with Delete collection in "...". Save sends all four with the
+ * collection's version through its queue (E23); a conflict shows its line
+ * with Reload, which rebases the controls the person did not change on the
+ * fresh read.
+ *
+ * The delete confirmation is shared with the row's "...": it names the
+ * items it removes, and while another collection references this one it
+ * says which and offers no Delete.
  */
 import { useEffect, useRef, useState } from "react";
 import {
@@ -12,7 +16,6 @@ import {
   DialogActions,
   DialogClose,
   DialogContent,
-  DialogTitle,
   DropdownMenuItem,
   Flex,
   InputField,
@@ -21,12 +24,16 @@ import {
   theme,
   toast,
 } from "@webstudio-is/design-system";
-import { getRefusal, isSlug, slugify } from "./cms-logic";
-import { isCmsFailure } from "./cms-source";
+import { getRefusal, getToastText } from "./cms-logic";
+import { isCmsFailure, type CmsResult } from "./cms-source";
 import {
+  COLLECTION_NAME_MAX,
+  COLLECTION_SLUG_MAX,
   getSettingsErrors,
   getStructureToastText,
   isSameSettings,
+  rebaseSettings,
+  toSettingsToSave,
   type SettingsErrors,
 } from "./cms-structure-logic";
 import type {
@@ -35,8 +42,18 @@ import type {
   CmsStructureSource,
 } from "./cms-structure-source";
 import { FieldRow, fieldIds } from "./field-controls";
-import type { CmsLineKind } from "./refusal-line";
-import { StructureBody, StructureHeader } from "./structure-header";
+import { LineRow, type CmsLineKind } from "./refusal-line";
+import {
+  StructureBody,
+  StructureHeader,
+  WrappingDialogTitle,
+} from "./structure-header";
+
+/** The hook's per-collection queue (4.4): each write gets the version. */
+export type CmsStructureEnqueue = <Answer extends { updatedAt: string }>(
+  collectionId: string,
+  write: (expectedUpdatedAt: string) => Promise<CmsResult<Answer>>
+) => Promise<CmsResult<Answer>>;
 
 const ids = {
   name: "cms-settings-name",
@@ -45,8 +62,8 @@ const ids = {
   isPublic: "cms-settings-public",
 };
 
-const settingsOf = (
-  collection: CmsStructureCollection
+export const settingsOf = (
+  collection: CmsCollectionSettings
 ): CmsCollectionSettings => ({
   name: collection.name,
   singularName: collection.singularName,
@@ -66,19 +83,27 @@ export const DeleteCollectionDialog = ({
   onDeleted,
   onRefusal,
   onRefresh,
+  onNotFound,
 }: {
   structure: CmsStructureSource;
-  /** Refetches the collection, for its current references. */
-  onRefresh: (collectionId: string) => void;
   /** The collection to delete; undefined closes the dialog. */
   collection: CmsStructureCollection | undefined;
   onOpenChange: (open: boolean) => void;
   onDeleted: (collectionId: string) => void;
   onRefusal: (line: CmsLineKind) => void;
+  /** Rereads the collection, for its current references. */
+  onRefresh: (collectionId: string) => void;
+  /** The collection is gone: E1 again. */
+  onNotFound: () => void;
 }) => {
   const [busy, setBusy] = useState(false);
+  // a Delete whose outcome is unknown: a later not_found is that delete
+  const unknownOutcome = useRef(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const blockedBy = collection?.referencedBy ?? [];
+  useEffect(() => {
+    unknownOutcome.current = false;
+  }, [collection?.id]);
   const remove = async () => {
     if (collection === undefined) {
       return;
@@ -90,11 +115,25 @@ export const DeleteCollectionDialog = ({
       const refusal = getRefusal(result.error, "write");
       if (refusal !== undefined) {
         onRefusal(refusal);
-      } else if (result.error === "referenced") {
+        return;
+      }
+      if (result.error === "referenced") {
         // a reference made since the dialog opened: show who uses it
         onRefresh(collection.id);
-      } else {
-        toast.error(getStructureToastText(result.error, "collection"));
+        return;
+      }
+      if (result.error === "not_found" && unknownOutcome.current) {
+        onOpenChange(false);
+        onDeleted(collection.id);
+        return;
+      }
+      toast.error(getStructureToastText(result.error, "collection"));
+      if (result.error === "unavailable" || result.error === "updating") {
+        unknownOutcome.current = true;
+      }
+      if (result.error === "not_found") {
+        onOpenChange(false);
+        onNotFound();
       }
       return;
     }
@@ -150,7 +189,7 @@ export const DeleteCollectionDialog = ({
             </Button>
           </DialogClose>
         </DialogActions>
-        <DialogTitle>{title}</DialogTitle>
+        <WrappingDialogTitle>{title}</WrappingDialogTitle>
       </DialogContent>
     </Dialog>
   );
@@ -160,25 +199,38 @@ export const CollectionSettings = ({
   structure,
   collection,
   canManage,
+  enqueue,
+  reread,
   onBack,
   onDirtyChange,
   onSaved,
   onDelete,
   onRefusal,
+  onNotFound,
 }: {
   structure: CmsStructureSource;
   collection: CmsStructureCollection;
   canManage: boolean;
+  enqueue: CmsStructureEnqueue;
+  /** E21 again: the fresh collection, or undefined. */
+  reread: () => Promise<CmsStructureCollection | undefined>;
   onBack: () => void;
   onDirtyChange: (dirty: boolean) => void;
-  onSaved: () => void;
+  /** After E23: the settings before and as saved. */
+  onSaved: (
+    before: CmsCollectionSettings,
+    after: CmsCollectionSettings & { updatedAt: string }
+  ) => void;
   onDelete: () => void;
   onRefusal: (line: CmsLineKind) => void;
+  /** The collection is gone: E1 again. */
+  onNotFound: () => void;
 }) => {
   const [baseline, setBaseline] = useState(() => settingsOf(collection));
   const [values, setValues] = useState(baseline);
   const [errors, setErrors] = useState<SettingsErrors>({});
   const [busy, setBusy] = useState(false);
+  const [isConflict, setIsConflict] = useState(false);
 
   const isDirty = isSameSettings(baseline, values) === false;
   useEffect(() => {
@@ -191,40 +243,73 @@ export const CollectionSettings = ({
     setErrors({});
   };
 
+  /** A fresh read in place of the baseline: rebase what the person left. */
+  const rebase = async (sent?: CmsCollectionSettings) => {
+    const fresh = await reread();
+    if (fresh === undefined) {
+      return;
+    }
+    const freshSettings = settingsOf(fresh);
+    // the write landed: the view is clean
+    if (sent !== undefined && isSameSettings(freshSettings, sent)) {
+      setBaseline(freshSettings);
+      setValues(freshSettings);
+      return;
+    }
+    setValues((current) => rebaseSettings(baseline, freshSettings, current));
+    setBaseline(freshSettings);
+  };
+
   const save = async () => {
-    const next = {
-      ...values,
-      name: values.name.trim(),
-      singularName: values.singularName.trim(),
-    };
+    const next = toSettingsToSave(values);
+    setValues(next);
     const found = getSettingsErrors(next);
     if (Object.keys(found).length > 0) {
       setErrors(found);
       return;
     }
     setBusy(true);
-    const result = await structure.updateCollection(collection.id, {
-      ...next,
-      expectedUpdatedAt: collection.updatedAt,
+    const result = await enqueue(collection.id, async (expectedUpdatedAt) => {
+      const answer = await structure.updateCollection(collection.id, {
+        ...next,
+        expectedUpdatedAt,
+      });
+      return isCmsFailure(answer)
+        ? answer
+        : { ...answer, updatedAt: answer.collection.updatedAt };
     });
     setBusy(false);
     if (isCmsFailure(result)) {
       const refusal = getRefusal(result.error, "write");
       if (refusal !== undefined) {
         onRefusal(refusal);
+      } else if (result.error === "conflict") {
+        setIsConflict(true);
       } else if (result.error === "slug_taken") {
         setErrors({ slug: "Address in use" });
       } else if (result.error === "invalid" && result.field === "slug") {
         setErrors({ slug: "Lower-case letters, digits, hyphens" });
-      } else {
+      } else if (
+        result.error === "invalid" &&
+        (result.field === "name" || result.field === "singularName")
+      ) {
+        setErrors({ [result.field]: "Required" });
+      } else if (result.error === "not_found") {
         toast.error(getStructureToastText(result.error, "collection"));
+        onNotFound();
+      } else {
+        toast.error(getToastText(result.error));
+        if (result.error === "unavailable" || result.error === "updating") {
+          await rebase(next);
+        }
       }
       return;
     }
-    setBaseline(next);
-    setValues(next);
-    onDirtyChange(false);
-    onSaved();
+    const saved = settingsOf(result.collection);
+    setBaseline(saved);
+    setValues(saved);
+    setIsConflict(false);
+    onSaved(baseline, { ...saved, updatedAt: result.collection.updatedAt });
   };
 
   const disabled = canManage === false || busy;
@@ -233,6 +318,7 @@ export const CollectionSettings = ({
     "aria-invalid": error !== undefined || undefined,
     "aria-describedby": error === undefined ? undefined : fieldIds(id).error,
   });
+  const slugifyAddress = () => set({ slug: toSettingsToSave(values).slug });
 
   return (
     <Flex
@@ -265,13 +351,27 @@ export const CollectionSettings = ({
           )
         }
       />
+      {isConflict && (
+        <LineRow data-cms-structure-conflict>
+          <Text>Changed by someone else</Text>
+          <Button
+            color="ghost"
+            onClick={() => {
+              setIsConflict(false);
+              void rebase();
+            }}
+          >
+            Reload
+          </Button>
+        </LineRow>
+      )}
       <StructureBody>
         <FieldRow id={ids.name} label="Name" required error={errors.name}>
           <InputField
             id={ids.name}
             value={values.name}
             disabled={disabled}
-            maxLength={120}
+            maxLength={COLLECTION_NAME_MAX}
             {...errorProps(ids.name, errors.name)}
             onChange={(event) => set({ name: event.currentTarget.value })}
           />
@@ -286,7 +386,7 @@ export const CollectionSettings = ({
             id={ids.singularName}
             value={values.singularName}
             disabled={disabled}
-            maxLength={120}
+            maxLength={COLLECTION_NAME_MAX}
             {...errorProps(ids.singularName, errors.singularName)}
             onChange={(event) =>
               set({ singularName: event.currentTarget.value })
@@ -298,17 +398,17 @@ export const CollectionSettings = ({
             id={ids.slug}
             value={values.slug}
             disabled={disabled}
-            maxLength={63}
+            maxLength={COLLECTION_SLUG_MAX}
             spellCheck={false}
             {...errorProps(ids.slug, errors.slug)}
             onChange={(event) => set({ slug: event.currentTarget.value })}
-            onBlur={() =>
-              set({
-                slug: isSlug(values.slug)
-                  ? values.slug
-                  : slugify(values.slug, slugify(values.name, "collection")),
-              })
-            }
+            onBlur={slugifyAddress}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && isDirty && busy === false) {
+                event.preventDefault();
+                void save();
+              }
+            }}
           />
         </FieldRow>
         <FieldRow id={ids.isPublic} label="Public" inline>

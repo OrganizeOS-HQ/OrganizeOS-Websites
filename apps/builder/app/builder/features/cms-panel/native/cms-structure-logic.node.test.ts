@@ -12,6 +12,7 @@ import {
   keyFromLabel,
   moveField,
   newDraft,
+  rebaseSettings,
   newOption,
   schemaWithDraft,
   toSettingsToSave,
@@ -417,4 +418,21 @@ test("canShowInTable: off for the title, Rich text, Image, Multi-reference and a
 test("getFieldCap: min(plan, 60)", () => {
   expect(getFieldCap(30)).toBe(30);
   expect(getFieldCap(90)).toBe(60);
+});
+
+test("rebaseSettings: the controls the person left take the fresh values", () => {
+  const baseline = {
+    name: "Posts",
+    singularName: "Post",
+    slug: "posts",
+    isPublic: true,
+  };
+  const fresh = { ...baseline, name: "Articles", isPublic: false };
+  const values = { ...baseline, slug: "my-posts" };
+  expect(rebaseSettings(baseline, fresh, values)).toEqual({
+    name: "Articles",
+    singularName: "Post",
+    slug: "my-posts",
+    isPublic: false,
+  });
 });

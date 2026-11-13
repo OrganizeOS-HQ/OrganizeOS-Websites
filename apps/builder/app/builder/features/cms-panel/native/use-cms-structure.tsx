@@ -51,6 +51,7 @@ import {
 import {
   CollectionSettings,
   DeleteCollectionDialog,
+  type CmsStructureEnqueue,
 } from "./collection-settings";
 import { FieldSheet, type FieldSheetTarget } from "./field-sheet";
 import { AddFieldMenu, FieldsList } from "./fields-view";
@@ -194,6 +195,38 @@ export const useCmsStructure = ({
     CmsStructureCollection | undefined
   >();
   const isDetailBackground = useIsBackground();
+
+  // One queue per collection (4.4, W4-D4): its E23 and E24 run one at a
+  // time, each with the version the last answer, or E21, gave.
+  const queues = useRef(new Map<string, Promise<unknown>>());
+  const versions = useRef(new Map<string, string>());
+  const inFlight = useRef(new Map<string, number>());
+  const enqueue: CmsStructureEnqueue = useCallback((id, write) => {
+    const run = async () => {
+      inFlight.current.set(id, (inFlight.current.get(id) ?? 0) + 1);
+      try {
+        const result = await write(versions.current.get(id) ?? "");
+        if (isCmsFailure(result) === false) {
+          versions.current.set(id, result.updatedAt);
+        }
+        return result;
+      } finally {
+        inFlight.current.set(id, (inFlight.current.get(id) ?? 1) - 1);
+      }
+    };
+    const next = (queues.current.get(id) ?? Promise.resolve()).then(run, run);
+    queues.current.set(
+      id,
+      next.catch(() => undefined)
+    );
+    return next;
+  }, []);
+  /** A read's version, unless a write of that collection is under way. */
+  const takeVersion = useCallback((collection: CmsStructureCollection) => {
+    if ((inFlight.current.get(collection.id) ?? 0) === 0) {
+      versions.current.set(collection.id, collection.updatedAt);
+    }
+  }, []);
   // Which read, or a write, showed the line: that read's next answer, or
   // either read's after a write, clears it.
   const lineFrom = useRef<"e20" | "e21" | "write" | undefined>(undefined);
@@ -300,6 +333,7 @@ export const useCmsStructure = ({
       }
       clearLineFrom("e21");
       setDetailFailed(undefined);
+      takeVersion(result.collection);
       setDetail(result.collection);
     });
     return () => {
@@ -314,6 +348,7 @@ export const useCmsStructure = ({
     detailAttempt,
     detailVersion,
     isDetailBackground,
+    takeVersion,
     showLineFrom,
     clearLineFrom,
     refetchCollections,
@@ -391,6 +426,10 @@ export const useCmsStructure = ({
         showLine(refusal);
       }
       return undefined;
+    }
+    takeVersion(result.collection);
+    if (result.collection.id === collectionId) {
+      setDetail(result.collection);
     }
     return result.collection;
   };
@@ -589,18 +628,24 @@ export const useCmsStructure = ({
           structure={structure}
           collection={openDetail}
           canManage={canManage}
+          enqueue={enqueue}
+          reread={() => fetchStructure(openDetail.id)}
           onBack={() => guard(closeView)}
           onDirtyChange={reportViewDirty}
-          onSaved={() => {
+          onSaved={(before, after) => {
+            setDetail((current) =>
+              current?.id === openDetail.id ? { ...current, ...after } : current
+            );
             setDetailVersion((current) => current + 1);
             onWritten({
               kind: "settings",
-              before: { slug: openDetail.slug, isPublic: openDetail.isPublic },
-              after: { slug: openDetail.slug, isPublic: openDetail.isPublic },
+              before: { slug: before.slug, isPublic: before.isPublic },
+              after: { slug: after.slug, isPublic: after.isPublic },
             });
           }}
           onDelete={() => setDeleteTarget(openDetail)}
           onRefusal={showLine}
+          onNotFound={refetchCollections}
         />
       );
     }
@@ -654,6 +699,7 @@ export const useCmsStructure = ({
             setDeleteTarget(found);
           }
         }}
+        onNotFound={refetchCollections}
         onOpenChange={(isOpen) => {
           if (isOpen === false) {
             setDeleteTarget(undefined);
@@ -662,7 +708,9 @@ export const useCmsStructure = ({
         onDeleted={(id) => {
           const deleted = collections.find((entry) => entry.id === id);
           if (id === collectionId) {
+            // its view and editor close; the screen opens the first listed
             closeView();
+            onOpenCollection(undefined);
           }
           setStructureVersion((current) => current + 1);
           onWritten({

@@ -557,6 +557,26 @@ export const toSettingsToSave = (
   };
 };
 
+/**
+ * After a fresh read replaced the baseline (Reload after a conflict, or the
+ * reread after an unknown outcome): each control still equal to the old
+ * baseline takes the fresh value; the ones the person changed keep theirs.
+ */
+export const rebaseSettings = (
+  baseline: CmsCollectionSettings,
+  fresh: CmsCollectionSettings,
+  values: CmsCollectionSettings
+): CmsCollectionSettings => ({
+  name: values.name === baseline.name ? fresh.name : values.name,
+  singularName:
+    values.singularName === baseline.singularName
+      ? fresh.singularName
+      : values.singularName,
+  slug: values.slug === baseline.slug ? fresh.slug : values.slug,
+  isPublic:
+    values.isPublic === baseline.isPublic ? fresh.isPublic : values.isPublic,
+});
+
 export const isSameSettings = (
   left: CmsCollectionSettings,
   right: CmsCollectionSettings

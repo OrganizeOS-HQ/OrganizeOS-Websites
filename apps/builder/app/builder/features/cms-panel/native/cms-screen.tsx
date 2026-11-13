@@ -647,6 +647,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           list.some((entry) => entry.id === made.id) ? list : [...list, made]
         );
       }
+      if (effect.kind === "deleted") {
+        setCollections((list) =>
+          list.filter((entry) => entry.id !== effect.collectionId)
+        );
+      }
     };
     const structureScreens = useCmsStructure({
       structure,
