@@ -535,21 +535,23 @@ test("the toolbar wraps within 240 px", async () => {
   expect(toolbar.scrollWidth).toBeLessThanOrEqual(toolbar.clientWidth);
 });
 
-test("a value with images is read-only, with its text, its line and Classic CMS", async () => {
+test("a value with images is read-only, with its text and Read only, and no Classic CMS", async () => {
   const image = fixture.readOnly.find((entry) => entry.name === "image")!;
   const { onChange, onOpenClassic } = mountField({
     value: { html: image.input },
   });
   await settle();
   expect(document.querySelector('[contenteditable="true"]')).toBeNull();
+  const readOnly = document.querySelector("[data-cms-rich-text-read-only]");
+  expect(readOnly?.textContent).toContain("Text");
+  expect(readOnly?.textContent).toContain("Read only");
+  expect(document.body.textContent).not.toContain("Classic CMS");
   expect(
-    document.querySelector("[data-cms-rich-text-read-only]")?.textContent
-  ).toContain("Text");
-  expect(document.body.textContent).toContain(
-    "Has images; edit in Classic CMS"
-  );
-  await click(buttonByText("Classic CMS"));
-  expect(onOpenClassic).toHaveBeenCalledTimes(1);
+    [...document.querySelectorAll("button")].some(
+      (button) => button.textContent === "Classic CMS"
+    )
+  ).toBe(false);
+  expect(onOpenClassic).not.toHaveBeenCalled();
   expect(onChange).not.toHaveBeenCalled();
 });
 

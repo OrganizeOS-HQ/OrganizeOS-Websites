@@ -804,11 +804,9 @@ export const RichTextField = ({
         </div>
         <Flex align="center" gap="2" css={{ flexWrap: "wrap" }}>
           <Text color="destructive">
-            {readOnlyReason === "images"
-              ? "Has images; edit in Classic CMS"
-              : "Edit in Classic CMS"}
+            {readOnlyReason === "images" ? "Read only" : "Edit in Classic CMS"}
           </Text>
-          {onOpenClassic !== undefined && (
+          {readOnlyReason === "lossy" && onOpenClassic !== undefined && (
             <Button color="neutral" onClick={onOpenClassic}>
               Classic CMS
             </Button>
