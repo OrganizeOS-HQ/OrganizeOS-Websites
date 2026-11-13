@@ -1795,7 +1795,7 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     edit" on each field the person changed. Below 600 px of header, Discard
     changes moves into the item's "..." menu. Each field type has its control.
     Rich text is a Lexical editor, loaded with the first rich-text field. It
-    is read-only for a value with images ("Has images; edit in Classic CMS")
+    is read-only for a value with images ("Read only", with no Classic CMS button)
     and when the editor would not keep the value's blocks or links whole
     ("Edit in Classic CMS"). A refusal is one line each, with the "Not in
     plan" chip for the plan. The unsaved guard stands before Back, another
