@@ -669,7 +669,7 @@ export const FieldSheet = ({
               options={referenceTargets}
               value={draft.referenceId === "" ? undefined : draft.referenceId}
               placeholder="Choose"
-              disabled={disabled || draft.locked}
+              disabled={disabled || draft.locked || isNew === false}
               getLabel={targetName}
               onChange={(referenceId) => update({ ...draft, referenceId })}
             />

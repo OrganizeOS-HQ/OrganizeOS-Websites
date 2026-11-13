@@ -250,7 +250,7 @@ describe("the field sheet", () => {
     );
   });
 
-  test("a template reference: Collection disabled", async () => {
+  test("Collection: disabled for a template reference and for any saved reference, as Kind is; enabled for a new one", async () => {
     withFields();
     await openField("team");
     expect(control<HTMLButtonElement>("reference")?.disabled).toBe(true);
@@ -258,6 +258,11 @@ describe("the field sheet", () => {
     resetHarness();
     withFields();
     await openField("author");
+    expect(control<HTMLButtonElement>("reference")?.disabled).toBe(true);
+    unmount();
+    resetHarness();
+    withFields();
+    await openNew("reference");
     expect(control<HTMLButtonElement>("reference")?.disabled).toBe(false);
   });
 

@@ -1823,7 +1823,8 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     reordered by drag or Alt+Arrow, the writes queued per collection; the
     field sheet edits one field under the platform's schema rules (the plan's
     field cap, at most 60), and on a conflict rebases the edit on the
-    collection's current schema. A template's field cannot be removed and its
+    collection's current schema. A saved field keeps its kind and, for a
+    reference, its collection. A template's field cannot be removed and its
     reference keeps its collection. Removing a field asks first, with a fresh
     count. An open sheet or settings view saves against the version it was
     built from, so another person's change in between answers a conflict. After a
