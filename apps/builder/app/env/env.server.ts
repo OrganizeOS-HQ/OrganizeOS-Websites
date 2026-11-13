@@ -115,6 +115,14 @@ const environment = z.object({
   // Grid and Product Card and seeds the Products catalog Resource.
   ORGANIZEOS_SHOP_BLOCKS: z.string().optional(),
 
+  // The site forms' switch (docs/ORGANIZEOS-FORK.md section 9, "Site forms"):
+  // only the exact value `true`, with WEBSITES2_CMS_SECRET set, opens the
+  // forms relay, lists the forms cards and Contact us, lets an insert or a
+  // template create its site form, and draws the forms panel rows. Turn it on
+  // after OrganizeOS's WEBSITES2_FORMS_DOOR. The publish step does not read
+  // it: a block marked as a site form is staged whatever its value.
+  ORGANIZEOS_SITE_FORMS: z.string().optional(),
+
   // The catalog's :root bindings' switch: only the exact value `true` makes
   // provisioning, the entry re-sync and collections-sync write one :root
   // binding per catalog Resource for every org ORGANIZEOS_BLOCKS_DENY_ORG_IDS
@@ -212,6 +220,7 @@ const rawEnv = {
   WEBSITES2_CMS_SECRET: process.env.WEBSITES2_CMS_SECRET,
   ORGANIZEOS_CMS_NATIVE: process.env.ORGANIZEOS_CMS_NATIVE,
   ORGANIZEOS_SHOP_BLOCKS: process.env.ORGANIZEOS_SHOP_BLOCKS,
+  ORGANIZEOS_SITE_FORMS: process.env.ORGANIZEOS_SITE_FORMS,
   ORGANIZEOS_CATALOG_ROOT_BINDINGS:
     process.env.ORGANIZEOS_CATALOG_ROOT_BINDINGS,
   PORT: process.env.PORT,

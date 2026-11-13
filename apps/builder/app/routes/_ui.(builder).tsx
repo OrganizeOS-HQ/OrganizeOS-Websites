@@ -277,6 +277,7 @@ export const loader = async (loaderArgs: LoaderFunctionArgs) => {
             // OrganizeOS fork: the native CMS screen's switch; only whether the secret is set reaches the client.
             cmsNative: env.ORGANIZEOS_CMS_NATIVE,
             cmsSecretSet: env.WEBSITES2_CMS_SECRET !== undefined,
+            siteForms: env.ORGANIZEOS_SITE_FORMS,
           });
 
     const headers = createPrivateNoStoreHeaders();

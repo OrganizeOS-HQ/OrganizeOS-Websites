@@ -373,6 +373,20 @@ describe("rest.organizeos-cms", () => {
     expect(claimsOf(sent[0].header).p).toBe(hashCmsBytes(expected));
   });
 
+  test("answers 404 for the forms door's paths and still mints aud cms", async () => {
+    for (const [splat, search] of [
+      ["forms", "?kind=contact-signup"],
+      ["catalog", "?kind=membership"],
+    ]) {
+      const response = await call({ splat, search });
+      expect(response.status, splat).toBe(404);
+    }
+    expect(sent).toEqual([]);
+    await call();
+    expect(claimsOf(sent[0].header).aud).toBe("cms");
+    expect(sent[0].target.startsWith(`${CMS_PLATFORM_BASE_PATH}/`)).toBe(true);
+  });
+
   test("takes the org from the project's owner, whatever the request says", async () => {
     await call({ headers: { "x-organization-id": c } });
     expect(sent[0].target).toBe(`${base}/access`);

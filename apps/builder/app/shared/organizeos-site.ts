@@ -43,6 +43,14 @@ export type OrganizeosSite = {
    * `true` and `WEBSITES2_CMS_SECRET` is set, for every org.
    */
   cmsNativeEnabled?: boolean;
+  /**
+   * Whether the site forms UI is on (docs/ORGANIZEOS-FORK.md section 9, "Site
+   * forms"): `ORGANIZEOS_SITE_FORMS` is exactly `true`, the org's blocks are
+   * enabled and `WEBSITES2_CMS_SECRET` is set. It lists the forms cards and
+   * Contact us, lets an insert or a template create its site form, and draws
+   * the forms panel rows. The publish step does not read it.
+   */
+  siteFormsEnabled?: boolean;
 };
 
 /**
