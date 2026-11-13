@@ -48,6 +48,7 @@ export const PLATFORM_SERVED_PATHS: readonly RegExp[] = [
   // public-route-allowlist.ts
   /^\/unsubscribe$/,
   /^\/confirm-subscription$/,
+  /^\/giving\/manage$/,
   /^\/giving\/manage\/[^/]+$/,
   /^\/donate(\/[^/]+)?$/,
   /^\/fundraise\/[^/]+$/,
