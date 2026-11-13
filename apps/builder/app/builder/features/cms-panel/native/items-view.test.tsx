@@ -11,6 +11,7 @@ import { refreshCmsNative } from "./cms-native-stores";
 import type { CmsItemsPage, CmsResult } from "./cms-source";
 import {
   createFakeCmsSource,
+  EVENTS,
   itemOf,
   itemsPageOf,
   PEOPLE,
@@ -18,6 +19,8 @@ import {
   rowOf,
   type FakeCmsSource,
 } from "./fake-cms-source";
+import { fitFieldColumns } from "./cms-list-logic";
+import type { CmsItemRow } from "./cms-source";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -139,7 +142,7 @@ afterEach(() => {
 });
 
 describe("the items view", () => {
-  test("the table has Name, Status and Modified, 32 px rows", async () => {
+  test("the table has the checkbox, Name, Status, Modified and Published, 32 px rows", async () => {
     fake.listItems.mockImplementation(async () => pageOf(1, 3));
     mount();
     await settle();
@@ -147,7 +150,7 @@ describe("the items view", () => {
       [...document.querySelectorAll('[role="columnheader"]')].map(
         (header) => header.textContent
       )
-    ).toEqual(["Name", "Status", "Modified"]);
+    ).toEqual(["", "Name", "Status", "Modified", "Published"]);
     expect(itemRows()).toHaveLength(3);
     for (const row of itemRows()) {
       expect(row.getBoundingClientRect().height).toBe(32);
@@ -424,5 +427,211 @@ describe("the items view", () => {
     await settle();
     expect(lastListItemsCall()).toEqual([POSTS.id, { q: undefined, page: 1 }]);
     expect(pagerText()).toBe("1-50 of 60");
+  });
+});
+
+// An EVENTS row with values for the column cells.
+const eventRow = (
+  overrides: Partial<CmsItemRow> & { values?: Record<string, unknown> } = {}
+): CmsItemRow => ({
+  ...rowOf(
+    itemOf({ id: overrides.id ?? EVENTS.id, data: { title: "Launch" } })
+  ),
+  status: "published",
+  publishedAt: "2026-11-05T09:00:00+00:00",
+  ...overrides,
+  values: { kind: "Q&A night", online: true, seats: 1200, ...overrides.values },
+});
+
+const eventsPage = (columns: string[], rows = [eventRow()]) =>
+  itemsPageOf(rows, rows.length, 1, { columns });
+
+const headerTexts = () =>
+  [...document.querySelectorAll('[role="columnheader"]')].map(
+    (header) => header.textContent
+  );
+
+const click = async (element: HTMLElement | null | undefined) => {
+  expect(element).toBeTruthy();
+  await act(async () => userEvent.click(element!));
+  await settle();
+};
+
+const mountEvents = async (
+  page = eventsPage(["kind", "online", "seats"]),
+  width = "1600px"
+) => {
+  fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+  // echo the query's sort and page in applied, so a header click sticks
+  fake.listItems.mockImplementation(async (_c, q) => ({
+    ...page,
+    page: q.page ?? 1,
+    applied: {
+      status: q.status ?? "all",
+      sort: q.sort ?? "order",
+      direction: q.direction ?? (q.sort === "updated" ? "desc" : "asc"),
+      optionKey: q.optionKey ?? null,
+      optionValue: q.optionValue ?? null,
+    },
+  }));
+  mount({ initialView: { collectionId: EVENTS.id } });
+  await settle();
+  container!.style.width = width;
+  await wait(50);
+};
+
+const tableWidth = () =>
+  document.querySelector<HTMLElement>('[role="table"]')?.clientWidth ?? 0;
+
+const fieldColumnCount = () =>
+  document.querySelectorAll("[data-cms-column-key]").length;
+
+describe("the table's columns (Task 15)", () => {
+  test("the columns are Name, Status, E3's fields, Modified and Published, with cells per kind", async () => {
+    await mountEvents();
+    expect(headerTexts()).toEqual([
+      "",
+      "Name",
+      "Status",
+      "Kind",
+      "Online",
+      "Seats",
+      "Modified",
+      "Published",
+    ]);
+    const cells = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[role="row"] [data-cms-column-key]'
+      ),
+    ].map((cell) => cell.textContent);
+    expect(cells).toEqual(["Q&A night", "Yes", "1,200"]);
+    const published = document.querySelector<HTMLElement>(
+      '[data-cms-item] [role="cell"]:last-child'
+    );
+    expect(published?.textContent).not.toBe("");
+  });
+
+  test("field columns drop as the main area narrows, and nothing scrolls sideways", async () => {
+    await mountEvents();
+    const table = document.querySelector<HTMLElement>('[role="table"]')!;
+    const wide = fitFieldColumns({
+      width: tableWidth(),
+      wanted: 3,
+      checkbox: true,
+      handle: false,
+    });
+    expect(fieldColumnCount()).toBe(wide);
+    expect(table.scrollWidth).toBe(table.clientWidth);
+
+    container!.style.width = "640px";
+    await wait(50);
+    const narrow = fitFieldColumns({
+      width: tableWidth(),
+      wanted: 3,
+      checkbox: true,
+      handle: false,
+    });
+    expect(narrow).toBeLessThan(wide);
+    expect(fieldColumnCount()).toBe(narrow);
+    expect(table.scrollWidth).toBe(table.clientWidth);
+  });
+
+  test("Name, Status, Modified and sortable field headers are buttons; Published and number columns are text", async () => {
+    await mountEvents();
+    const header = (label: string) =>
+      [...document.querySelectorAll<HTMLElement>('[role="columnheader"]')].find(
+        (cell) => cell.textContent === label
+      );
+    for (const label of ["Name", "Status", "Modified", "Kind", "Online"]) {
+      expect(header(label)?.querySelector("button")).not.toBeNull();
+    }
+    // Published and the number field "Seats" are not sortable
+    expect(header("Published")?.querySelector("button")).toBeNull();
+    expect(header("Seats")?.querySelector("button")).toBeNull();
+  });
+
+  test("a header click sets its first direction, a second flips it, and aria-sort follows, and the page goes to 1", async () => {
+    await mountEvents();
+    fake.listItems.mockClear();
+    const modified = () =>
+      [...document.querySelectorAll<HTMLElement>('[role="columnheader"]')].find(
+        (cell) => cell.textContent?.startsWith("Modified")
+      );
+    await click(modified()?.querySelector("button"));
+    expect(modified()?.getAttribute("aria-sort")).toBe("descending");
+    expect(lastListItemsCall()?.[1]).toMatchObject({
+      sort: "updated",
+      page: 1,
+    });
+
+    await click(modified()?.querySelector("button"));
+    expect(modified()?.getAttribute("aria-sort")).toBe("ascending");
+    expect(lastListItemsCall()?.[1]).toMatchObject({
+      sort: "updated",
+      direction: "asc",
+    });
+  });
+
+  test("an empty collection shows New item alone; a filtered list with no rows shows No matches", async () => {
+    await mountEvents(eventsPage(["kind"], []));
+    expect(buttonByText("New item")).not.toBeUndefined();
+    expect(document.querySelector("[data-cms-no-matches]")).toBeNull();
+    expect(document.querySelector('[role="table"]')).toBeNull();
+  });
+
+  test("E1 reading 0 for a collection whose E3 has rows shows the rows", async () => {
+    fake.listCollections.mockResolvedValue({
+      collections: [{ ...EVENTS, total: 0 }],
+    });
+    fake.listItems.mockImplementation(async () =>
+      eventsPage(["kind"], [eventRow()])
+    );
+    mount({ initialView: { collectionId: EVENTS.id } });
+    await settle();
+    expect(itemRows()).toHaveLength(1);
+    expect(document.querySelector("[data-cms-no-matches]")).toBeNull();
+  });
+
+  test("an 80-character label truncates in its header with a tooltip, and the table fits", async () => {
+    const longKey = "a".repeat(80);
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+    fake.getCollection.mockResolvedValue({
+      collection: {
+        id: EVENTS.id,
+        slug: EVENTS.slug,
+        name: EVENTS.name,
+        singularName: EVENTS.singularName,
+        isPublic: true,
+        fields: [
+          { key: "title", label: "Title", kind: "text", isTitle: true },
+          { key: "kind", label: "Kind", kind: "text" },
+          { key: "online", label: "Online", kind: "switch" },
+          { key: "note", label: longKey, kind: "text" },
+        ],
+      },
+    });
+    fake.listItems.mockImplementation(async () =>
+      eventsPage(
+        ["kind", "online", "note"],
+        [eventRow({ values: { note: "hi" } })]
+      )
+    );
+    mount({ initialView: { collectionId: EVENTS.id } });
+    await settle();
+    container!.style.width = "1600px";
+    await wait(50);
+    const table = document.querySelector<HTMLElement>('[role="table"]')!;
+    const header = [
+      ...document.querySelectorAll<HTMLElement>('[role="columnheader"]'),
+    ].find((cell) => cell.textContent === longKey);
+    expect(header).not.toBeUndefined();
+    // the label is set to truncate, with its full text still in the DOM for
+    // the tooltip, and the table does not scroll sideways
+    const text = [...header!.querySelectorAll<HTMLElement>("*")].find(
+      (element) => getComputedStyle(element).textOverflow === "ellipsis"
+    );
+    expect(text).not.toBeUndefined();
+    expect(text!.textContent).toBe(longKey);
+    expect(table.scrollWidth).toBe(table.clientWidth);
   });
 });

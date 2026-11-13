@@ -1,14 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Button,
-  css,
   cssVar,
   Flex,
   IconButton,
-  InsetList,
-  InsetListItem,
-  List,
-  ListItem,
   ScrollAreaNative,
   SearchField,
   Text,
@@ -20,51 +15,18 @@ import {
   ChevronRightIcon,
   PlusIcon,
 } from "@webstudio-is/icons";
-import { RelativeTime } from "~/builder/shared/relative-time";
 import { formatPageRange, getPageCount, type CmsRefusal } from "./cms-logic";
-import type { CmsListState } from "./cms-list-logic";
+import { filterCount, nextSort, type CmsListState } from "./cms-list-logic";
 import {
   CMS_PAGE_SIZE,
   type CmsCollectionSummary,
   type CmsField,
-  type CmsItemRow,
   type CmsItemsPage,
+  type CmsSortKey,
   type CmsSource,
 } from "./cms-source";
-import { StatusChip } from "./status-chip";
+import { ItemsTable } from "./items-table";
 import { TruncatedText } from "./truncated-text";
-
-/** Proportional, as the dashboard's `projects-list.tsx`: 3 to 1 to 1. */
-const columns = "minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1fr)";
-
-const tableStyle = css({
-  display: "grid",
-  alignContent: "start",
-  width: "100%",
-  '& [role="row"]': {
-    display: "grid",
-    gridTemplateColumns: columns,
-    alignItems: "center",
-    columnGap: theme.spacing[5],
-    minHeight: theme.spacing[13],
-    paddingBlock: 0,
-    paddingInline: theme.spacing[5],
-  },
-  '& [role="columnheader"], & [role="cell"]': {
-    minWidth: 0,
-    display: "flex",
-    alignItems: "center",
-  },
-});
-
-const headerRowStyle = css({
-  position: "sticky",
-  top: 0,
-  zIndex: 1,
-  marginInline: theme.spacing[3],
-  background: cssVar("--background-primary"),
-  borderBottom: `1px solid ${cssVar("--border-default")}`,
-});
 
 const TopBar = ({
   collection,
@@ -140,93 +102,6 @@ const TopBar = ({
   );
 };
 
-const ItemRow = ({
-  index,
-  item,
-  onOpen,
-}: {
-  index: number;
-  item: CmsItemRow;
-  onOpen: () => void;
-}) => (
-  <ListItem index={index} asChild onSelect={onOpen}>
-    <InsetListItem asChild>
-      <div role="row" data-cms-item={item.slug} data-cms-item-id={item.id}>
-        <div role="cell">
-          <TruncatedText>{item.title}</TruncatedText>
-        </div>
-        <div role="cell">
-          <StatusChip {...item} />
-        </div>
-        <div role="cell">
-          <Text color="subtle" truncate>
-            <RelativeTime time={new Date(item.updatedAt)} />
-          </Text>
-        </div>
-      </div>
-    </InsetListItem>
-  </ListItem>
-);
-
-const ItemsTable = ({
-  collectionName,
-  page,
-  focusItemId,
-  onOpenItem,
-}: {
-  collectionName: string;
-  page: CmsItemsPage;
-  /** The item whose editor just closed: its row takes the focus back. */
-  focusItemId: string | undefined;
-  onOpenItem: (itemId: string) => void;
-}) => {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (focusItemId === undefined) {
-      return;
-    }
-    ref.current
-      ?.querySelector<HTMLElement>(
-        `[data-cms-item-id="${CSS.escape(focusItemId)}"]`
-      )
-      ?.focus();
-  }, [focusItemId]);
-  return (
-    <div
-      ref={ref}
-      className={tableStyle()}
-      role="table"
-      aria-label={collectionName}
-    >
-      {page.items.length > 0 && (
-        <div role="rowgroup">
-          <div role="row" className={headerRowStyle()}>
-            {["Name", "Status", "Modified"].map((label) => (
-              <div role="columnheader" key={label}>
-                <Text variant="labels" color="subtle">
-                  {label}
-                </Text>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      <List asChild>
-        <InsetList role="rowgroup" css={{ gap: 0, paddingTop: 0 }}>
-          {page.items.map((item, index) => (
-            <ItemRow
-              key={item.id}
-              index={index}
-              item={item}
-              onOpen={() => onOpenItem(item.id)}
-            />
-          ))}
-        </InsetList>
-      </List>
-    </div>
-  );
-};
-
 const Pager = ({
   page,
   total,
@@ -282,6 +157,9 @@ export const ItemsView = ({
   query,
   canEdit,
   focusItemId,
+  fields,
+  list,
+  onListChange,
   onQueryChange,
   onPageChange,
   onOpenItem,
@@ -311,8 +189,51 @@ export const ItemsView = ({
   onOpenItem: (itemId: string) => void;
   onNewItem: () => void;
 }) => {
-  // "No items yet" is the New item button alone (4.1 inventory), in its place
-  const isEmpty = collection.total === 0 && query === "";
+  // The empty collection (New item alone) reads E3, not E1: no search, no
+  // filter and a total of 0 (spec 5.1.8). Any other empty page is "No matches".
+  const emptyNew =
+    page !== undefined &&
+    page.total === 0 &&
+    query.trim() === "" &&
+    filterCount(list) === 0;
+  const noMatches =
+    page !== undefined && page.total === 0 && emptyNew === false;
+
+  const onSortChange = (clicked: CmsSortKey) => {
+    const next = nextSort(
+      { sort: list.sort, direction: list.direction },
+      clicked
+    );
+    onListChange({ ...list, sort: next.sort, direction: next.direction });
+  };
+
+  const onToggle = (id: string) => {
+    const selected = new Set(list.selected);
+    if (selected.has(id)) {
+      selected.delete(id);
+    } else {
+      selected.add(id);
+    }
+    onListChange({ ...list, selected });
+  };
+
+  const onToggleAll = () => {
+    if (page === undefined) {
+      return;
+    }
+    const selected = new Set(list.selected);
+    const ids = page.items.map((row) => row.id);
+    const allSelected = ids.every((id) => selected.has(id));
+    for (const id of ids) {
+      if (allSelected) {
+        selected.delete(id);
+      } else {
+        selected.add(id);
+      }
+    }
+    onListChange({ ...list, selected });
+  };
+
   return (
     <Flex direction="column" css={{ height: "100%", minWidth: 0 }}>
       <TopBar
@@ -321,14 +242,14 @@ export const ItemsView = ({
         collection={collection}
         query={query}
         canEdit={canEdit}
-        showSearch={isEmpty === false}
+        showSearch={emptyNew === false}
         onQueryChange={onQueryChange}
         onNewItem={onNewItem}
       />
-      {isEmpty === false && (
+      {emptyNew === false && (
         <>
           <ScrollAreaNative css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
-            {page !== undefined && page.total === 0 && query.trim() !== "" && (
+            {noMatches && (
               <Text
                 color="subtle"
                 data-cms-no-matches
@@ -337,12 +258,19 @@ export const ItemsView = ({
                 No matches
               </Text>
             )}
-            {page !== undefined && (
+            {page !== undefined && page.total > 0 && (
               <ItemsTable
                 collectionName={collection.name}
                 page={page}
+                fields={fields ?? []}
+                list={list}
+                canEdit={canEdit}
+                showHandle={false}
                 focusItemId={focusItemId}
                 onOpenItem={onOpenItem}
+                onSortChange={onSortChange}
+                onToggle={onToggle}
+                onToggleAll={onToggleAll}
               />
             )}
           </ScrollAreaNative>
