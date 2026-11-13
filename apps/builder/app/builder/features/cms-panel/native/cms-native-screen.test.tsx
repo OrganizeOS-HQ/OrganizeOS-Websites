@@ -57,6 +57,7 @@ import {
   rowOf,
   type FakeCmsSource,
 } from "./fake-cms-source";
+import { createFakeCmsStructureSource } from "./fake-cms-structure-source";
 import { CmsNativeScreen } from "./cms-native-screen";
 import hostSource from "./cms-native-screen.tsx?raw";
 
@@ -67,6 +68,10 @@ const cmsApi = vi.hoisted(() => ({ createCmsApi: vi.fn() }));
 vi.mock("./cms-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./cms-api")>()),
   createCmsApi: cmsApi.createCmsApi,
+}));
+
+vi.mock("./cms-structure-api", () => ({
+  createCmsStructureApi: () => createFakeCmsStructureSource(),
 }));
 
 vi.mock("~/shared/resources", async (importOriginal) => ({

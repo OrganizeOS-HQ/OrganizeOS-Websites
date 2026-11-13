@@ -1,8 +1,14 @@
 /**
- * The structure screens' state (slice 3), for `CmsScreen`: the column's tab,
- * the open field sheet or collection settings, the open collection's
- * schema, the plan's caps and the templates, and the New collection and
- * Delete dialogs. Absent a `CmsStructureSource`, it adds nothing.
+ * The structure screens' state (OrganizeOS design
+ * docs/superpowers/specs/2026-11-13-native-cms-slice-3-design.md, section
+ * 4), for `CmsScreen`: the column's tab, the open field sheet or collection
+ * settings, the open collection's structure (E21), the plan's caps and the
+ * templates (E20), and the New collection and Delete dialogs. Without a
+ * `CmsStructureSource` it adds nothing.
+ *
+ * Its reads follow the screen's rules: E20 and E21 read on open and again on
+ * each reopen and refresh; a background read that fails changes nothing on
+ * screen; a read made while a view holds unsaved values maps as a write.
  */
 import {
   useCallback,
@@ -11,13 +17,21 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { IconButton, toast, Tooltip } from "@webstudio-is/design-system";
+import {
+  Flex,
+  IconButton,
+  Text,
+  toast,
+  Tooltip,
+} from "@webstudio-is/design-system";
 import { PlusIcon } from "@webstudio-is/icons";
-import { getRefusal } from "./cms-logic";
+import { getRefusal, getToastText, type CmsRefusal } from "./cms-logic";
+import { $cmsNativeDirty } from "./cms-native-stores";
 import {
   isCmsFailure,
   type CmsAccess,
   type CmsCollectionSummary,
+  type CmsErrorCode,
   type CmsFieldKind,
 } from "./cms-source";
 import {
@@ -39,8 +53,7 @@ import {
 import { FieldSheet, type FieldSheetTarget } from "./field-sheet";
 import { AddFieldMenu, FieldsList } from "./fields-view";
 import { NewCollectionDialog, NewCollectionPage } from "./new-collection";
-import type { CmsLineKind } from "./refusal-line";
-import { StructureRowMenu } from "./structure-row-menu";
+import { LineRow, RefusalLine, type CmsLineKind } from "./refusal-line";
 
 export type CmsStructureTab = "collections" | "fields";
 
@@ -65,6 +78,47 @@ export type CmsStructureColumn = {
   /** The tab row's "+": New collection, or the Add field menu. */
   add: ReactNode;
   fields: ReactNode;
+  /** The person can manage the CMS's settings: rows reserve their menu. */
+  canManage: boolean;
+};
+
+/** What a structure write changed, for the screen's refetches (4.7). */
+export type CmsStructureEffect =
+  | { kind: "created"; collection: CmsCollectionSummary }
+  | {
+      kind: "settings";
+      before: { slug: string; isPublic: boolean };
+      after: { slug: string; isPublic: boolean };
+    }
+  | { kind: "schema"; slug: string; removed: string[] }
+  | { kind: "deleted"; collectionId: string; slug: string };
+
+/**
+ * A read's failure, as the screen maps its own (4.3.4): while a view holds
+ * unsaved values, `forbidden` and `plan` are a toast and the view stays.
+ */
+const mapStructureRead = (
+  code: CmsErrorCode
+): CmsRefusal | "toast" | undefined => {
+  const refusal = getRefusal(code, $cmsNativeDirty.get() ? "write" : "load");
+  if (refusal === undefined && getRefusal(code, "load") !== undefined) {
+    toast.error(getToastText(code), { id: `cms-read-${code}` });
+    return "toast";
+  }
+  return refusal;
+};
+
+/** A read whose foreground inputs are the last read's was asked by a reopen. */
+const useIsBackground = () => {
+  const last = useRef<{ source: CmsStructureSource; key: string } | undefined>(
+    undefined
+  );
+  return useCallback((source: CmsStructureSource, key: string) => {
+    const isBackground =
+      last.current?.source === source && last.current.key === key;
+    last.current = { source, key };
+    return isBackground;
+  }, []);
 };
 
 export const useCmsStructure = ({
@@ -72,26 +126,43 @@ export const useCmsStructure = ({
   access,
   collections,
   collectionId,
+  opens,
+  refresh,
   initial,
   guard,
   onDirtyChange,
-  onChanged,
+  onWritten,
   onOpenCollection,
-  onRefusal,
+  refetchCollections,
+  showLine: showScreenLine,
+  clearLine: clearScreenLine,
+  renderRowActions,
 }: {
   structure: CmsStructureSource | undefined;
   access: CmsAccess | undefined;
   collections: CmsCollectionSummary[];
   collectionId: string | undefined;
-  initial: CmsStructureInitial | undefined;
+  /** The screen's reopen count and `$cmsNativeRefresh`: E20 and E21 read again. */
+  opens: number;
+  refresh: number;
+  initial?: CmsStructureInitial;
   /** The unsaved guard. */
   guard: (run: () => void) => void;
   onDirtyChange: (dirty: boolean) => void;
-  /** After a write: the screen refetches E1 and E2. */
-  onChanged: () => void;
-  /** Opens a collection, past the guard. */
+  /** After a structure write: the screen's refetches (4.7). */
+  onWritten: (effect: CmsStructureEffect) => void;
+  /** Opens a collection's items, past the guard. */
   onOpenCollection: (collectionId: string | undefined) => void;
-  onRefusal: (line: CmsLineKind) => void;
+  /** E1 again, in the background. */
+  refetchCollections: () => void;
+  /** The screen's line, under the cause "structure". */
+  showLine: (kind: CmsLineKind) => void;
+  clearLine: () => void;
+  /** The collection actions, given the menu's own items; null without. */
+  renderRowActions?: (
+    collection: CmsCollectionSummary,
+    items: { leading: ReactNode; trailing: ReactNode }
+  ) => ReactNode;
 }) => {
   const canManage = access?.canManageSettings === true;
   const isReady = structure !== undefined && access !== undefined;
@@ -100,69 +171,153 @@ export const useCmsStructure = ({
   );
   const [view, setView] = useState<CmsStructureView | undefined>(initial?.view);
   const [session, setSession] = useState(0);
-  const [version, setVersion] = useState(0);
   const [detail, setDetail] = useState<CmsStructureCollection | undefined>();
+  const [detailFailed, setDetailFailed] = useState<
+    "unavailable" | "not_found" | undefined
+  >(undefined);
+  const [detailAttempt, setDetailAttempt] = useState(0);
+  const [detailVersion, setDetailVersion] = useState(0);
   const [limits, setLimits] = useState<CmsStructureLimits | undefined>();
-  const [templates, setTemplates] = useState<CmsTemplate[]>([]);
+  const [templates, setTemplates] = useState<CmsTemplate[] | undefined>();
+  const [structureVersion, setStructureVersion] = useState(0);
   const [isNewOpen, setIsNewOpen] = useState(
     initial?.dialog === "new-collection"
   );
   const [deleteTarget, setDeleteTarget] = useState<
     CmsStructureCollection | undefined
   >();
+  const isDetailBackground = useIsBackground();
+  // Which read, or a write, showed the line: that read's next answer, or
+  // either read's after a write, clears it.
+  const lineFrom = useRef<"e20" | "e21" | "write" | undefined>(undefined);
+  const showLineFrom = useCallback(
+    (from: "e20" | "e21" | "write", kind: CmsLineKind) => {
+      lineFrom.current = from;
+      showScreenLine(kind);
+    },
+    [showScreenLine]
+  );
+  const clearLineFrom = useCallback(
+    (from: "e20" | "e21") => {
+      if (lineFrom.current === from || lineFrom.current === "write") {
+        lineFrom.current = undefined;
+        clearScreenLine();
+      }
+    },
+    [clearScreenLine]
+  );
+  const showLine = useCallback(
+    (kind: CmsLineKind) => showLineFrom("write", kind),
+    [showLineFrom]
+  );
 
-  // The caps and templates, on open and after a collection is made or deleted.
+  // E20: the templates and the plan's caps, for a person who can manage.
   useEffect(() => {
-    if (structure === undefined || isReady === false) {
+    if (structure === undefined || isReady === false || opens === 0) {
+      return;
+    }
+    if (canManage === false) {
       return;
     }
     let isCurrent = true;
     void structure.getStructure().then((result) => {
-      if (isCurrent === false || isCmsFailure(result)) {
+      if (isCurrent === false) {
         return;
       }
+      if (isCmsFailure(result)) {
+        const refusal = mapStructureRead(result.error);
+        if (refusal !== undefined && refusal !== "toast") {
+          showLineFrom("e20", refusal);
+        }
+        return;
+      }
+      clearLineFrom("e20");
       setLimits(result.limits);
       setTemplates(result.templates);
     });
     return () => {
       isCurrent = false;
     };
-  }, [structure, isReady, version]);
+  }, [
+    structure,
+    isReady,
+    canManage,
+    opens,
+    refresh,
+    structureVersion,
+    showLineFrom,
+    clearLineFrom,
+  ]);
 
-  const fetchStructure = useCallback(
-    async (id: string) => {
-      if (structure === undefined) {
-        return undefined;
-      }
-      const result = await structure.getCollectionStructure(id);
-      if (isCmsFailure(result)) {
-        const refusal = getRefusal(result.error, "load");
-        if (refusal !== undefined) {
-          onRefusal(refusal);
-        }
-        return undefined;
-      }
-      return result.collection;
-    },
-    [structure, onRefusal]
-  );
-
-  // The open collection's schema.
+  // E21: the open collection's structure.
   useEffect(() => {
-    if (collectionId === undefined || isReady === false) {
-      setDetail(undefined);
+    if (
+      structure === undefined ||
+      isReady === false ||
+      opens === 0 ||
+      collectionId === undefined
+    ) {
       return;
     }
+    const isBackground = isDetailBackground(
+      structure,
+      JSON.stringify([collectionId, detailAttempt])
+    );
     let isCurrent = true;
-    void fetchStructure(collectionId).then((found) => {
-      if (isCurrent) {
-        setDetail(found);
+    if (isBackground === false) {
+      setDetailFailed(undefined);
+    }
+    void structure.getCollectionStructure(collectionId).then((result) => {
+      if (isCurrent === false) {
+        return;
       }
+      if (isCmsFailure(result)) {
+        const refusal = mapStructureRead(result.error);
+        if (refusal === "toast") {
+          return;
+        }
+        if (refusal !== undefined) {
+          showLineFrom("e21", refusal);
+          return;
+        }
+        if (isBackground) {
+          return;
+        }
+        if (result.error === "not_found") {
+          setDetailFailed("not_found");
+          refetchCollections();
+        } else {
+          setDetailFailed("unavailable");
+        }
+        return;
+      }
+      clearLineFrom("e21");
+      setDetailFailed(undefined);
+      setDetail(result.collection);
     });
     return () => {
       isCurrent = false;
     };
-  }, [collectionId, isReady, version, fetchStructure]);
+  }, [
+    structure,
+    isReady,
+    opens,
+    refresh,
+    collectionId,
+    detailAttempt,
+    detailVersion,
+    isDetailBackground,
+    showLineFrom,
+    clearLineFrom,
+    refetchCollections,
+  ]);
+
+  // A tab with nothing to show goes back to the list.
+  useEffect(() => {
+    if (collectionId === undefined && tab === "fields") {
+      setTab("collections");
+    }
+  }, [collectionId, tab]);
 
   // A story may open the Delete dialog.
   const pendingDialogRef = useRef(initial?.dialog);
@@ -175,34 +330,27 @@ export const useCmsStructure = ({
 
   const closeView = useCallback(() => setView(undefined), []);
 
+  const fetchStructure = async (id: string) => {
+    if (structure === undefined) {
+      return undefined;
+    }
+    const result = await structure.getCollectionStructure(id);
+    if (isCmsFailure(result)) {
+      const refusal = mapStructureRead(result.error);
+      if (refusal !== undefined && refusal !== "toast") {
+        showLine(refusal);
+      }
+      return undefined;
+    }
+    return result.collection;
+  };
+
   const open = (next: CmsStructureView) =>
     guard(() => {
       onDirtyChange(false);
       setSession((current) => current + 1);
       setView(next);
     });
-
-  const openSettings = (id: string) =>
-    guard(() => {
-      onDirtyChange(false);
-      if (id !== collectionId) {
-        onOpenCollection(id);
-      }
-      setSession((current) => current + 1);
-      setView({ type: "settings" });
-    });
-
-  const requestDelete = async (id: string) => {
-    const found = id === detail?.id ? detail : await fetchStructure(id);
-    if (found !== undefined) {
-      setDeleteTarget(found);
-    }
-  };
-
-  const changed = () => {
-    setVersion((current) => current + 1);
-    onChanged();
-  };
 
   const reorder = async (key: string, toIndex: number) => {
     if (structure === undefined || detail === undefined) {
@@ -215,12 +363,6 @@ export const useCmsStructure = ({
     }
     const fields = moveField(before.fields, key, toIndex);
     setDetail({ ...before, fields });
-    // the moved row keeps the focus, for the next Alt+Arrow
-    requestAnimationFrame(() => {
-      document
-        .querySelector<HTMLElement>(`[data-cms-field-row="${key}"] button`)
-        ?.focus();
-    });
     const result = await structure.updateSchema(before.id, {
       fields,
       expectedUpdatedAt: before.updatedAt,
@@ -235,7 +377,7 @@ export const useCmsStructure = ({
       if (refusal === undefined) {
         toast.error(getStructureToastText(result.error, "field"));
       } else {
-        onRefusal(refusal);
+        showLine(refusal);
       }
       return;
     }
@@ -244,8 +386,7 @@ export const useCmsStructure = ({
         ? { ...current, updatedAt: result.updatedAt }
         : current
     );
-    // the screen's E2 only: a refetch here could undo a later move
-    onChanged();
+    onWritten({ kind: "schema", slug: before.slug, removed: [] });
   };
 
   if (structure === undefined) {
@@ -258,6 +399,8 @@ export const useCmsStructure = ({
     };
   }
 
+  const openDetail =
+    detail !== undefined && detail.id === collectionId ? detail : undefined;
   const cap = getFieldCap(limits?.fields ?? Number.POSITIVE_INFINITY);
   const targets = collections.map(({ id, name }) => ({ id, name }));
   const openFieldKey =
@@ -265,10 +408,46 @@ export const useCmsStructure = ({
       ? view.target.key
       : undefined;
 
+  const renderFields = (): ReactNode => {
+    if (detailFailed === "not_found") {
+      return (
+        <LineRow data-cms-structure-not-found>
+          <Text>Collection not found</Text>
+        </LineRow>
+      );
+    }
+    if (detailFailed === "unavailable") {
+      return (
+        <RefusalLine
+          kind="unavailable"
+          onRetry={() => setDetailAttempt((current) => current + 1)}
+        />
+      );
+    }
+    if (openDetail === undefined) {
+      return null;
+    }
+    return (
+      <FieldsList
+        fields={openDetail.fields}
+        currentKey={openFieldKey}
+        cap={cap}
+        canManage={canManage}
+        onSelect={(key) => {
+          if (key !== openFieldKey) {
+            open({ type: "field", target: { key } });
+          }
+        }}
+        onReorder={(key, toIndex) => void reorder(key, toIndex)}
+      />
+    );
+  };
+
   const column: CmsStructureColumn = {
     tab,
     onTabChange: setTab,
     hasFields: collectionId !== undefined,
+    canManage,
     add:
       canManage === false ? null : tab === "collections" ? (
         <Tooltip content="New collection" side="bottom">
@@ -281,93 +460,90 @@ export const useCmsStructure = ({
         </Tooltip>
       ) : (
         <AddFieldMenu
-          disabled={detail === undefined || detail.fields.length >= cap}
+          disabled={openDetail === undefined || openDetail.fields.length >= cap}
           onAdd={(kind: CmsFieldKind) =>
             open({ type: "field", target: { kind } })
           }
         />
       ),
-    fields:
-      detail === undefined || detail.id !== collectionId ? null : (
-        <FieldsList
-          fields={detail.fields}
-          currentKey={openFieldKey}
-          cap={cap}
-          canManage={canManage}
-          onSelect={(key) => {
-            if (key !== openFieldKey) {
-              open({ type: "field", target: { key } });
-            }
-          }}
-          onReorder={(key, toIndex) => void reorder(key, toIndex)}
-        />
-      ),
+    fields: <Flex css={{ flexGrow: 1, minHeight: 0 }}>{renderFields()}</Flex>,
+  };
+
+  const onCreated = (created: CmsCollectionSummary, type: string) => {
+    onWritten({ kind: "created", collection: created });
+    setView(undefined);
+    onOpenCollection(created.id);
+    // a custom collection starts with Name alone: its fields come next
+    if (type === CUSTOM_COLLECTION_TYPE) {
+      setTab("fields");
+    }
+    setStructureVersion((current) => current + 1);
   };
 
   const renderMain = (): ReactNode => {
     if (isReady === false) {
       return undefined;
     }
-    if (collections.length === 0 && canManage) {
+    if (collections.length === 0 && canManage && templates !== undefined) {
       return (
         <NewCollectionPage
           structure={structure}
           templates={templates}
           limits={limits}
-          onRefusal={onRefusal}
-          onCreated={(created, type) => {
-            changed();
-            onOpenCollection(created.id);
-            if (type === CUSTOM_COLLECTION_TYPE) {
-              setTab("fields");
-            }
-          }}
+          onRefusal={showLine}
+          onCreated={onCreated}
         />
       );
     }
-    if (
-      view === undefined ||
-      detail === undefined ||
-      detail.id !== collectionId
-    ) {
+    if (view === undefined || openDetail === undefined) {
       return undefined;
     }
     if (view.type === "settings") {
       return (
         <CollectionSettings
-          key={`${detail.id}:${session}`}
+          key={`${openDetail.id}:${session}`}
           structure={structure}
-          collection={detail}
+          collection={openDetail}
           canManage={canManage}
           onBack={() => guard(closeView)}
           onDirtyChange={onDirtyChange}
-          onSaved={changed}
-          onDelete={() => setDeleteTarget(detail)}
-          onRefusal={onRefusal}
+          onSaved={() => {
+            setDetailVersion((current) => current + 1);
+            onWritten({
+              kind: "settings",
+              before: { slug: openDetail.slug, isPublic: openDetail.isPublic },
+              after: { slug: openDetail.slug, isPublic: openDetail.isPublic },
+            });
+          }}
+          onDelete={() => setDeleteTarget(openDetail)}
+          onRefusal={showLine}
         />
       );
     }
     return (
       <FieldSheet
-        key={`${detail.id}:${session}`}
+        key={`${openDetail.id}:${session}`}
         structure={structure}
-        collection={detail}
+        collection={openDetail}
         target={view.target}
         targets={targets}
         canManage={canManage}
         onBack={() => guard(closeView)}
         onDirtyChange={onDirtyChange}
-        onRefusal={onRefusal}
+        onRefusal={showLine}
         onSaved={(fields, key) => {
-          setDetail({ ...detail, fields });
+          setDetail({ ...openDetail, fields });
           setSession((current) => current + 1);
           setView({ type: "field", target: { key } });
-          changed();
+          onWritten({ kind: "schema", slug: openDetail.slug, removed: [] });
         }}
         onRemoved={(fields) => {
-          setDetail({ ...detail, fields });
+          const removed = openDetail.fields
+            .filter((field) => fields.every((kept) => kept.key !== field.key))
+            .map((field) => field.key);
+          setDetail({ ...openDetail, fields });
           closeView();
-          changed();
+          onWritten({ kind: "schema", slug: openDetail.slug, removed });
         }}
       />
     );
@@ -379,25 +555,19 @@ export const useCmsStructure = ({
         open={isNewOpen}
         onOpenChange={setIsNewOpen}
         structure={structure}
-        templates={templates}
+        templates={templates ?? []}
         limits={limits}
         initialType={initial?.newCollectionType}
-        onRefusal={onRefusal}
+        onRefusal={showLine}
         onCreated={(created, type) => {
-          changed();
           onDirtyChange(false);
-          setView(undefined);
-          onOpenCollection(created.id);
-          // a custom collection starts with Name alone: its fields come next
-          if (type === CUSTOM_COLLECTION_TYPE) {
-            setTab("fields");
-          }
+          onCreated(created, type);
         }}
       />
       <DeleteCollectionDialog
         structure={structure}
         collection={deleteTarget}
-        onRefusal={onRefusal}
+        onRefusal={showLine}
         onRefresh={async (id) => {
           const found = await fetchStructure(id);
           if (found !== undefined) {
@@ -410,28 +580,34 @@ export const useCmsStructure = ({
           }
         }}
         onDeleted={(id) => {
-          changed();
+          const deleted = collections.find((entry) => entry.id === id);
           if (id === collectionId) {
             onDirtyChange(false);
             setView(undefined);
-            onOpenCollection(collections.find((entry) => entry.id !== id)?.id);
           }
+          setStructureVersion((current) => current + 1);
+          onWritten({
+            kind: "deleted",
+            collectionId: id,
+            slug: deleted?.slug ?? deleteTarget?.slug ?? "",
+          });
         }}
       />
     </>
   );
 
+  const renderRowMenu = (collection: CmsCollectionSummary): ReactNode => {
+    const actions = renderRowActions?.(collection, {
+      leading: null,
+      trailing: null,
+    });
+    return actions ?? null;
+  };
+
   return {
     column,
     mainView: renderMain(),
-    renderRowMenu: (collection: CmsCollectionSummary) =>
-      canManage && (
-        <StructureRowMenu
-          collection={collection}
-          onSettings={() => openSettings(collection.id)}
-          onDelete={() => void requestDelete(collection.id)}
-        />
-      ),
+    renderRowMenu,
     dialogs,
     closeView,
   };

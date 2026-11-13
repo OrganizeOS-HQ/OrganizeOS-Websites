@@ -10,7 +10,6 @@ import {
   SAMPLE_STRUCTURE_IDS,
   type SampleStructureOptions,
 } from "./sample-cms-structure-source";
-import type { CmsStructureInitial } from "./use-cms-structure";
 
 type Loaded = { source: CmsSource; structure: CmsStructureSource };
 
@@ -21,9 +20,7 @@ const meta: Meta = {
 };
 export default meta;
 
-type StructureView = CmsScreenView & { structure?: CmsStructureInitial };
-
-type Story = StoryObj<{ view?: StructureView }>;
+type Story = StoryObj<{ view?: CmsScreenView }>;
 
 const loadSource =
   ({
@@ -49,7 +46,7 @@ const loadSource =
     );
 
 const render: Story["render"] = (args, { loaded }) => {
-  const { source } = loaded as Loaded;
+  const { source, structure } = loaded as Loaded;
   return (
     <div
       style={{
@@ -60,6 +57,7 @@ const render: Story["render"] = (args, { loaded }) => {
     >
       <CmsScreen
         source={source}
+        structure={structure}
         catalogSlots={sampleCatalogSlots(sampleCatalog)}
         initialView={args.view}
         homeUrl="https://app.organizeos.org/dashboard"

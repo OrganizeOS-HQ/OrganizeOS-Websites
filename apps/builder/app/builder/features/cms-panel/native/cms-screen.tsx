@@ -53,6 +53,12 @@ import { CollectionsColumn } from "./collections-column";
 import { ItemEditor } from "./item-editor";
 import { ItemsView } from "./items-view";
 import { RefusalLine, type CmsLineKind } from "./refusal-line";
+import type { CmsStructureSource } from "./cms-structure-source";
+import {
+  useCmsStructure,
+  type CmsStructureEffect,
+  type CmsStructureInitial,
+} from "./use-cms-structure";
 
 export type CmsScreenView = {
   collectionId?: string;
@@ -60,6 +66,8 @@ export type CmsScreenView = {
   itemId?: string | null;
   page?: number;
   query?: string;
+  /** Slice 3: a tab, a view, a dialog. */
+  structure?: CmsStructureInitial;
 };
 
 export type CmsScreenProps = {
@@ -91,6 +99,13 @@ export type CmsScreenProps = {
   catalogSlots?: (
     collections: readonly CmsCollectionSummary[]
   ) => CmsCatalogSlots | undefined;
+  /** Slice 3: the structure screens' door (E20 to E25). */
+  structure?: CmsStructureSource;
+  /**
+   * After a structure write that changes values the canvas shows: its
+   * requests for the collection's old address are invalidated (4.7).
+   */
+  onCollectionCanvasStale?: (slug: string) => void;
 };
 
 /** What the column draws from the build's catalog (4.5). */
@@ -143,7 +158,7 @@ const mapReadFailure = (
 };
 
 /** What showed the screen's line: E0 and E1, the editor, E2 or E3. */
-type LineCause = "load" | "editor" | "detail" | "page";
+type LineCause = "load" | "editor" | "detail" | "page" | "structure";
 
 const defaultNavigate = (url: string) => {
   window.location.assign(url);
@@ -179,6 +194,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       onItemWritten,
       initialView,
       catalogSlots,
+      structure,
     },
     ref
   ) => {
@@ -568,19 +584,23 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         ? lastCollection.current
         : undefined);
 
+    /** Opens a collection's items, past the guard, closing a structure view. */
+    const applyCollection = (nextId: string | undefined) => {
+      setIsEditorDirty(false);
+      if (nextId !== collectionId) {
+        setItemsPage(undefined);
+        setDetail(undefined);
+      }
+      setCollectionId(nextId);
+      setItemId(undefined);
+      setPage(1);
+      setQuery("");
+      setReturnFocusItemId(undefined);
+      structureScreens.closeView();
+    };
+
     const selectCollection = (nextId: string) =>
-      guard(() => {
-        setIsEditorDirty(false);
-        if (nextId !== collectionId) {
-          setItemsPage(undefined);
-          setDetail(undefined);
-        }
-        setCollectionId(nextId);
-        setItemId(undefined);
-        setPage(1);
-        setQuery("");
-        setReturnFocusItemId(undefined);
-      });
+      guard(() => applyCollection(nextId));
 
     const openItem = (nextId: string | null) => {
       setEditorSession((current) => current + 1);
@@ -599,6 +619,49 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const onDirtyChange = useCallback((dirty: boolean) => {
       setIsEditorDirty(dirty);
     }, []);
+
+    // Slice 3's structure screens, after `onDirtyChange`, which they read.
+    const showStructureLine = useCallback(
+      (kind: CmsLineKind) => showLine(kind, "structure"),
+      [showLine]
+    );
+    const clearStructureLine = useCallback(
+      () => clearLine("structure"),
+      [clearLine]
+    );
+    const refetchCollections = useCallback(
+      () => setListVersion((current) => current + 1),
+      []
+    );
+    const onStructureWritten = (effect: CmsStructureEffect) => {
+      refetchCollections();
+      if (effect.kind === "created") {
+        const made = effect.collection;
+        setCollections((list) =>
+          list.some((entry) => entry.id === made.id) ? list : [...list, made]
+        );
+      }
+    };
+    const structureScreens = useCmsStructure({
+      structure,
+      access,
+      collections,
+      collectionId,
+      opens,
+      refresh,
+      initial: initialView?.structure,
+      guard: (run) => guard(run),
+      onDirtyChange,
+      onWritten: onStructureWritten,
+      onOpenCollection: applyCollection,
+      refetchCollections,
+      showLine: showStructureLine,
+      clearLine: clearStructureLine,
+      renderRowActions:
+        isReady && catalogSlots?.(collections) !== undefined
+          ? (entry) => catalogSlots(collections)?.renderActions(entry)
+          : undefined,
+    });
 
     /**
      * A write refused for the shape of its data: the open collection's
@@ -740,6 +803,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           collections={collections}
           currentCollectionId={line === undefined ? collectionId : undefined}
           slots={isReady ? catalogSlots?.(collections) : undefined}
+          structure={isReady ? structureScreens.column : undefined}
+          renderRowMenu={isReady ? structureScreens.renderRowMenu : undefined}
           onSelectCollection={selectCollection}
           onShowClassic={showClassic}
           onClose={onClose}
@@ -764,10 +829,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
                 minHeight: 0,
               }}
             >
-              {renderView()}
+              {structureScreens.mainView ?? renderView()}
             </Box>
           )}
         </Main>
+        {structureScreens.dialogs}
         <Dialog
           open={pending !== undefined}
           onOpenChange={(open) => {

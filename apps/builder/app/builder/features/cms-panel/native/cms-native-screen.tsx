@@ -25,6 +25,7 @@ import type { CmsDeepLink } from "../cms-panel";
 import { createCmsApi } from "./cms-api";
 import { invalidateCollectionOnCanvas } from "./cms-canvas";
 import { CmsScreen, type CmsCatalogSlots } from "./cms-screen";
+import { createCmsStructureApi } from "./cms-structure-api";
 import type { CmsCollectionSummary } from "./cms-source";
 
 const onRemovedFromSitemap = () => {
@@ -164,11 +165,25 @@ export const CmsNativeScreen = forwardRef<
     () => (projectId === undefined ? undefined : createCmsApi(projectId)),
     [projectId]
   );
+  const structure = useMemo(
+    () =>
+      projectId === undefined ? undefined : createCmsStructureApi(projectId),
+    [projectId]
+  );
   const catalogSlots = useCatalogSlots(onHide);
   const platformUrl = site?.platformUrl;
   // 4.7: after a create, save, publish or discard, the canvas refetches the
   // collection's requests
   const onItemWritten = useMemo(
+    () =>
+      platformUrl === undefined
+        ? undefined
+        : (slug: string) => invalidateCollectionOnCanvas(slug, platformUrl),
+    [platformUrl]
+  );
+  // 4.7: after a field removal, an address change, a switch to private or a
+  // delete, by the address the canvas requests use
+  const onCollectionCanvasStale = useMemo(
     () =>
       platformUrl === undefined
         ? undefined
@@ -186,6 +201,8 @@ export const CmsNativeScreen = forwardRef<
       onShowClassic={onShowClassic}
       onItemWritten={onItemWritten}
       catalogSlots={catalogSlots}
+      structure={structure}
+      onCollectionCanvasStale={onCollectionCanvasStale}
     />
   );
 });
