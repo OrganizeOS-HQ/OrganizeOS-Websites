@@ -8,7 +8,9 @@
         "title": "Hello again",
         "status": "published",
         "hasStagedChanges": true,
-        "updatedAt": "2026-11-07T10:00:00.123456+00:00"
+        "updatedAt": "2026-11-07T10:00:00.123456+00:00",
+        "publishedAt": "2026-11-05T09:00:00+00:00",
+        "values": {}
       },
       {
         "id": "22222222-2222-4222-8222-222222222222",
@@ -16,10 +18,21 @@
         "title": "Old notes",
         "status": "draft",
         "hasStagedChanges": false,
-        "updatedAt": "2026-11-07T10:00:00.123456+00:00"
+        "updatedAt": "2026-11-07T10:00:00.123456+00:00",
+        "publishedAt": null,
+        "values": {}
       }
     ],
     "total": 2,
-    "page": 1
+    "page": 1,
+    "columns": [],
+    "filterField": null,
+    "applied": {
+      "status": "all",
+      "sort": "order",
+      "direction": "asc",
+      "optionKey": null,
+      "optionValue": null
+    }
   }
 }

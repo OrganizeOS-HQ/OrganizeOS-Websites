@@ -11,7 +11,10 @@ import type { CmsField, CmsResult, CmsSearchResult } from "./cms-source";
 import type { CmsRefusal } from "./cms-logic";
 import {
   createFakeCmsSource,
+  itemOf,
+  itemsPageOf,
   PEOPLE,
+  rowOf,
   type FakeCmsSource,
 } from "./fake-cms-source";
 
@@ -186,14 +189,16 @@ const pngOf = async (width: number, height: number) => {
   return new File([blob], "a.png", { type: "image/png" });
 };
 
-const peopleRow = (id: string, title: string) => ({
-  id,
-  slug: title.toLowerCase(),
-  title,
-  status: "published" as const,
-  hasStagedChanges: false,
-  updatedAt: "2026-11-12T10:00:00+00:00",
-});
+const peopleRow = (id: string, title: string) =>
+  rowOf(
+    itemOf({
+      id,
+      slug: title.toLowerCase(),
+      status: "published",
+      data: { title },
+      updatedAt: "2026-11-12T10:00:00+00:00",
+    })
+  );
 
 const ANN = "55555555-5555-4555-8555-555555555555";
 const BOB = "66666666-6666-4666-8666-666666666666";
@@ -217,11 +222,9 @@ const imageField: CmsField = { key: "cover", label: "Cover", kind: "image" };
 
 beforeEach(() => {
   fake = createFakeCmsSource();
-  fake.listItems.mockResolvedValue({
-    items: [peopleRow(ANN, "Ann"), peopleRow(BOB, "Bob")],
-    total: 2,
-    page: 1,
-  });
+  fake.listItems.mockResolvedValue(
+    itemsPageOf([peopleRow(ANN, "Ann"), peopleRow(BOB, "Bob")], 2, 1)
+  );
   fake.searchItems.mockImplementation(async (_collectionId, query) => {
     const everyone: CmsSearchResult[] = [
       { id: ANN, title: "Ann", status: "published" },
@@ -679,5 +682,164 @@ describe("labels", () => {
     mountField({ key: "f", label: "Summary", kind: "text" });
     const label = row()?.querySelector<HTMLLabelElement>("label");
     expect(label?.textContent).toBe("Summary");
+  });
+});
+
+describe("the changed-since-publish dot (Task 20)", () => {
+  const mountRow = (changed: boolean | undefined, help?: string) => {
+    container = document.createElement("div");
+    container.style.width = "448px";
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        createElement(
+          TooltipProvider,
+          null,
+          createElement(FieldRow, {
+            id: ID,
+            label: "Title",
+            help,
+            changed,
+            children: createElement("input", { id: ID }),
+          })
+        )
+      );
+    });
+  };
+
+  test("FieldRow with changed draws the dot with its name and tooltip", async () => {
+    mountRow(true);
+    const dot = row()?.querySelector<HTMLElement>(
+      '[role="img"][aria-label="Changed since publish"]'
+    );
+    expect(dot).not.toBeNull();
+    const box = dot!.getBoundingClientRect();
+    expect([box.width, box.height]).toEqual([6, 6]);
+    expect(getComputedStyle(dot!).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+    await act(async () => userEvent.hover(dot!));
+    await vi.waitFor(
+      () => {
+        const tooltip = document.querySelector('[role="tooltip"]');
+        expect(tooltip?.textContent).toContain("Changed since publish");
+      },
+      { timeout: 3000 }
+    );
+  });
+
+  test.each([false, undefined])(
+    "FieldRow with changed %s draws none",
+    (changed) => {
+      mountRow(changed);
+      expect(
+        row()?.querySelector('[aria-label="Changed since publish"]')
+      ).toBeNull();
+    }
+  );
+});
+
+describe("multireference reordering (Task 21)", () => {
+  const referenceRow = (id: string) =>
+    document.querySelector<HTMLElement>(`[data-cms-reference="${id}"]`)!;
+  const handleOf = (id: string) =>
+    referenceRow(id).querySelector<HTMLElement>(
+      '[aria-label="Drag to reorder"]'
+    );
+  const pointer = (target: EventTarget, type: string, x: number, y: number) =>
+    target.dispatchEvent(
+      new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: type === "pointerup" ? 0 : 1,
+        pointerId: 1,
+        isPrimary: true,
+        clientX: x,
+        clientY: y,
+      })
+    );
+
+  test("a multireference item moves by drop and by Alt+Arrow", async () => {
+    let spies = mountField(multiReferenceField, [ANN, BOB, ANNABEL]);
+    await vi.waitFor(() => expect(byLabel("Remove Annabel")).not.toBeNull());
+    // Alt+Arrow from the handle; the focus stays on the moved row's handle
+    act(() => {
+      handleOf(ANN)!.focus();
+    });
+    await act(async () => userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}"));
+    await settle();
+    expect(lastValue(spies)).toEqual([BOB, ANN, ANNABEL]);
+    expect(document.activeElement).toBe(handleOf(ANN));
+    // and from the remove button
+    act(() => {
+      byLabel("Remove Annabel")!.focus();
+    });
+    await act(async () => userEvent.keyboard("{Alt>}{ArrowUp}{/Alt}"));
+    await settle();
+    expect(lastValue(spies)).toEqual([BOB, ANNABEL, ANN]);
+    expect(document.activeElement).toBe(byLabel("Remove Annabel"));
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+
+    // a pointer drop of Ann below Bob
+    spies = mountField(multiReferenceField, [ANN, BOB, ANNABEL]);
+    await vi.waitFor(() => expect(byLabel("Remove Annabel")).not.toBeNull());
+    const handle = handleOf(ANN)!;
+    const start = handle.getBoundingClientRect();
+    const x = start.left + start.width / 2;
+    const target = referenceRow(BOB).getBoundingClientRect();
+    act(() => {
+      pointer(handle, "pointerdown", x, start.top + start.height / 2);
+    });
+    for (const y of [
+      start.top + start.height / 2 + 6,
+      target.top + target.height * 0.5,
+      target.top + target.height * 0.9,
+    ]) {
+      act(() => {
+        pointer(window, "pointermove", x, y);
+      });
+      await settle();
+    }
+    act(() => {
+      pointer(window, "pointerup", x, target.top + target.height * 0.9);
+      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+    expect(lastValue(spies)).toEqual([BOB, ANN, ANNABEL]);
+  });
+
+  test("no handles when read-only", async () => {
+    container = document.createElement("div");
+    container.style.width = "448px";
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        createElement(
+          TooltipProvider,
+          null,
+          createElement(FieldControl, {
+            id: ID,
+            field: multiReferenceField,
+            value: [ANN, BOB],
+            source: fake,
+            disabled: true,
+            invalid: false,
+            remountKey: "1",
+            onChange: vi.fn(),
+            onError: vi.fn(),
+            onBusyChange: vi.fn(),
+          })
+        )
+      );
+    });
+    await settle();
+    expect(
+      document.querySelector(`[data-cms-reference="${ANN}"]`)
+    ).not.toBeNull();
+    expect(document.querySelector('[aria-label="Drag to reorder"]')).toBeNull();
   });
 });

@@ -88,6 +88,10 @@ export type CmsEndpoint =
   | "E8a"
   | "E8b"
   | "E9"
+  | "E10"
+  | "E11"
+  | "E12"
+  | "E13"
   | "E20"
   | "E21"
   | "E22"
@@ -123,8 +127,26 @@ const itemsQuery = z
       .regex(/^[1-9][0-9]{0,4}$/)
       .refine((page) => Number(page) <= MAX_PAGE)
       .optional(),
+    status: z
+      .enum(["all", "draft", "published", "archived", "staged"])
+      .optional(),
+    sort: z
+      .string()
+      .regex(/^(order|updated|name|status|field:[a-zA-Z][a-zA-Z0-9]{0,39})$/)
+      .optional(),
+    direction: z.enum(["asc", "desc"]).optional(),
+    optionKey: z
+      .string()
+      .regex(/^[a-zA-Z][a-zA-Z0-9]{0,39}$/)
+      .optional(),
+    optionValue: z.string().min(1).max(80).optional(),
   })
-  .strict();
+  .strict()
+  // An option filter names both its field and its value, or neither.
+  .refine(
+    (query) =>
+      (query.optionKey === undefined) === (query.optionValue === undefined)
+  );
 
 const searchQuery = z
   .object({
@@ -217,6 +239,34 @@ const patterns: Pattern[] = [
     endpoint: "E8b",
     method: "POST",
     segments: ["collections", "{c}", "items", "{i}", "discard"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E10",
+    method: "POST",
+    segments: ["collections", "{c}", "items", "publish"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E11",
+    method: "POST",
+    segments: ["collections", "{c}", "items", "status"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E12",
+    method: "POST",
+    segments: ["collections", "{c}", "items", "delete"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E13",
+    method: "POST",
+    segments: ["collections", "{c}", "items", "order"],
     query: noQuery,
     body: "json",
   },

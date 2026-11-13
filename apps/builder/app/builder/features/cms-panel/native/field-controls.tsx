@@ -9,7 +9,9 @@ import {
   type ReactNode,
 } from "react";
 import {
+  Box,
   Button,
+  cssVar,
   Flex,
   Grid,
   InputField,
@@ -21,6 +23,7 @@ import {
   Text,
   TextArea,
   Tooltip,
+  rotateBoundedBackgroundHue,
 } from "@webstudio-is/design-system";
 import { ResetIcon } from "@webstudio-is/icons";
 import {
@@ -172,6 +175,30 @@ const TruncatedLabel = ({
  * an image's Choose and Remove, or a list's remove buttons, say whose they
  * are.
  */
+/** The Staged changes chip's colour (`Chip color="purple"`). */
+const stagedColor = rotateBoundedBackgroundHue(
+  cssVar("--background-accent"),
+  72
+);
+
+/** A value changed since publish: a 6 px dot after the label (5.2.3). */
+const ChangedDot = () => (
+  <Tooltip content="Changed since publish">
+    <Box
+      role="img"
+      aria-label="Changed since publish"
+      data-cms-changed
+      css={{
+        width: 6,
+        height: 6,
+        flexShrink: 0,
+        borderRadius: "50%",
+        backgroundColor: stagedColor,
+      }}
+    />
+  </Tooltip>
+);
+
 export const FieldRow = ({
   id,
   label,
@@ -181,6 +208,7 @@ export const FieldRow = ({
   error,
   onUseMine,
   useMineDisabled = false,
+  changed = false,
   children,
 }: {
   id: string;
@@ -193,6 +221,8 @@ export const FieldRow = ({
   onUseMine?: () => void;
   /** A write is in flight: its answer replaces the values. */
   useMineDisabled?: boolean;
+  /** The value differs from the published copy's (5.2.3). */
+  changed?: boolean;
   children: ReactNode;
 }) => {
   const ids = fieldIds(id);
@@ -220,7 +250,15 @@ export const FieldRow = ({
     );
   const head = (
     <Flex align="center" gap="1" css={{ minWidth: 0 }}>
-      {labelElement}
+      {changed ? (
+        // the dot right after the label, which would otherwise grow past it
+        <Flex align="center" gap="1" css={{ minWidth: 0, flex: "0 1 auto" }}>
+          {labelElement}
+          <ChangedDot />
+        </Flex>
+      ) : (
+        labelElement
+      )}
       {onUseMine !== undefined && (
         <Tooltip content={`Use my edit: ${label}`}>
           <SmallIconButton

@@ -274,6 +274,8 @@ How an org admin's session is wired end to end, and which side owns each step. T
 
 **The CMS door.** The native CMS screen (§9, "The CMS overlay") reads and writes the org's collections only through `/rest/organizeos-cms/{projectId}/...` (`routes/rest.organizeos-cms.$projectId.$.ts`, the logic in `services/organizeos-cms-route.server.ts`, the assertion and the forward in `shared/organizeos-cms.server.ts`). Its client, `features/cms-panel/native/cms-api.ts`, calls the route through the builder's own `fetch` with the page's CSRF token and a 20 second client timeout (35 seconds for an image upload). Every call answers the door's success body or `{ error: code, field? }` and never throws; E6's (create an item) adds `created`, true on a 201 and false on a 200, a replay of an earlier create; a success body is checked against its endpoint's schema, and a client timeout, a throw or an answer it cannot read is `unavailable`. A search term is trimmed and cut to 200 UTF-16 units, never splitting a surrogate pair. The schemas are pinned against the platform's own answers, copied to `shared/__fixtures__/cms-door/`. The route answers, in order: `GET`, `POST` and `PUT` only (else 405 `invalid`); a fetch with the page's CSRF token; a user signed in as a user (anonymous or no session 401 `unauthorized`; a share link's token, a service call or another user's session 403 `forbidden`) whose builder session has a `live` OrganizeOS binding with `organizeosUserId` and `organizeosSid` (`pass`, `missing` or `dead` 401, a failed check 503 `unavailable`; under `enforce` the session read already ends such a session, so it is 401 too); the project's `view` permit for a `GET`, `edit` for a `POST` or `PUT` (else 403); `WEBSITES2_CMS_SECRET` set (else 503, nothing minted); the org the project owner's, lower-cased (a failed read 503, none 403), never the request's; the path one of the fixed endpoints (`patterns`) with lower-case ids and a strict query, the request's own path ending in that rebuilt path (else, an encoded slash, backslash or dot included, 404 `not_found`, never forwarded); a write's body JSON of at most 2 MB, an upload's one `file` part at most 4 MB in a body of at most 4 MB plus 64 KB (else 400 `invalid`, the read stopped at the cap). It mints `X-OOS-Actor: v1.{payload}.{mac}`: `payload` base64url, unpadded, of the JSON `{ aud: "cms", org, sub, sid, m, p, h, jti, iat, exp, ip }` in that key order (`m` the method; `p` base64url SHA-256 of the canonical target: the path, then `?` and the query's pairs sorted by key with `URLSearchParams` when it has one; `h` base64url SHA-256 of the body bytes; `jti` a random UUID; `exp = iat + 60`; `ip` the address in `x-real-ip`, else the first `x-forwarded-for` entry, when it is an address literal of at most 45 characters, else `null`); `mac` base64url HMAC-SHA256 over the ASCII payload segment keyed by `WEBSITES2_CMS_SECRET`; the byte format is pinned by the platform's fixture, copied to `shared/__fixtures__/cms-actor-assertion.json`. It sends the rebuilt path and query, never the request's, to `{ORGANIZEOS_APP_URL}/api/internal/websites2/cms/{organizationId}/...` with the body bytes untouched, no cookie, `redirect: "error"`, a 15 second timeout (30 for an upload) and no retry, and relays a JSON answer of at most 5 MB as its exact status and bytes, `private, no-store`; a timeout, a redirect, a network error or any other answer is 502 `unavailable`. A failure logs one code. OrganizeOS verifies the assertion, checks the session, the membership and permission and the plan again, the two-step sign-in rule on access and on writes, and records each write's `jti` once.
 
+**The CMS door's list actions.** E10 to E13 are each a `POST` to `collections/{collectionId}/items/publish`, `/status`, `/delete` and `/order`, with a JSON body of 1 to 50 ids (E10 each with its version), under the same route, permit (`edit`) and 2 MB cap. E3 (`GET collections/{collectionId}/items`) also takes `status`, `sort`, `direction`, `optionKey` and `optionValue`, each optional, parsed with the endpoint's strict schema (`sort` `order`, `updated`, `name`, `status` or `field:{key}`; `optionKey` and `optionValue` together or not at all) and rebuilt with the other keys in sorted key order. The client sends a filter or sort key only when it differs from its default, and reads every answer key the platform added for these actions as optional, with a default.
+
 **The CMS door's structure endpoints.** The structure screens (§9) add E20 to E25 to the same route, with the same checks and the same forward: E20 `GET structure` (the org's limits and templates), E21 `GET collections/{c}/structure` (one collection's schema, settings and the collections that reference it), E22 `POST collections` (create, with a `clientId` so a repeat answers the collection already made: 201 when made, 200 for a repeat, `created` true or false), E23 `PUT collections/{c}` (settings, with `expectedUpdatedAt`), E24 `PUT collections/{c}/schema` (the fields, with `expectedUpdatedAt` and the keys removed named in `removeKeys`) and E25 `POST collections/{c}/delete`. Each write is a `POST` or `PUT`, so it needs the project's `edit` permit, and OrganizeOS checks `pages.manage_settings` again. A delete of a collection another references answers 409 `referenced`. The client is `features/cms-panel/native/cms-structure-api.ts`, through `cms-api.ts`'s `request`; its schemas are pinned against the platform's fixtures beside the door's.
 
 **Project settings.** Since 0.309.0 a build's project settings (custom code, the contact email, the site's authentication, headers and the rest) live in their own column, `"Build"."projectSettings"`, which a platform migration adds, and the builder and the CLI read it first. A build saved before keeps a copy of its old settings in `pages`, which the builder strips only in memory and writes back on a save, so the column is the live value and that copy goes stale. The platform's `websites2_builder_resync_project_settings` repairs the column from a build the old builder wrote last, and `websites2_builder_restore_legacy_settings` writes the column back into `pages` for a rollback. When they run at the cutover is owner decision D9, still open, in the OrganizeOS plan for this merge (`docs/superpowers/plans/2026-11-01-builder-upstream-merge.md`).
@@ -1788,13 +1790,13 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     has a "..." menu of the collection's actions, a collection with a stale
     item page shows the stale line under its row, and the orphan rows sit at
     the column's foot. The items view has a title search, 50 items a page with
-    the range ("1-50 of 120") and a pager, and the columns Name, Status and
-    Modified. The editor opens beside the column: 448 px of fields in schema
+    the range ("1-50 of 120") and a pager, and the columns Name, Status, the field
+    columns that fit, Modified and Published. The editor opens beside the column: 448 px of fields in schema
     order, then Address, derived from the title until it is edited; the status
     chip; Save, Publish (Publish changes once published) and Discard changes;
     on a conflict the line "Changed by someone else" with Reload, and "Use my
-    edit" on each field the person changed. Below 600 px of header, Discard
-    changes moves into the item's "..." menu. Each field type has its control.
+    edit" on each field the person changed. The item's "..." menu holds Discard
+    changes below 600 px of header, and the item actions. Each field type has its control.
     Rich text is a Lexical editor, loaded with the first rich-text field. It
     keeps a value's images whole: an `img` (its `src`, `alt`, `width`,
     `height` and `title`) in its place in the line with the spaces beside it,
@@ -1820,6 +1822,29 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     canvas's requests for the collection are invalidated. "Classic CMS", behind
     the guard, mounts the frame with `&collection={slug}&item={id}` for what is
     open.
+  - **The native screen's list and item actions.** The items view has
+    Filter (status: All items, Draft, Published, Staged changes, Archived;
+    and the option field the door names) and Sort (Manual order, Name,
+    Status, Modified and the sortable field columns, each ascending or
+    descending), and the Name, Status, Modified and sortable field headers
+    sort too. The table shows as many of the door's field columns as fit,
+    each at least 96 px and Name at least 160 px, then Published; nothing
+    scrolls sideways. With edit rights each row has a checkbox, select all
+    covers the page, and a selection replaces the top bar with the bulk bar:
+    Publish and Unpublish (with publish rights), Archive, Delete (confirmed)
+    and Clear; Escape clears a selection and keeps the overlay. In Manual
+    order, with no search and no filter and the whole collection on one page,
+    rows move by drag or Alt+Arrow; keyboard moves are sent together 500 ms
+    after the last, and an open or a bulk call waits until the reorder and
+    its refetch have landed. The editor's "..." menu holds Unpublish (with
+    publish rights), Archive, Restore and Delete; each status change saves
+    unsaved edits first, and Delete closes the editor without the unsaved
+    guard. Beside the fields from 720 px of editor body, else after Address,
+    the item shows Published, Modified, Modified by and Created. While an
+    item has staged changes, a dot marks each field and the address that
+    differ from the live copy. A multireference's chosen items move by drag
+    or Alt+Arrow. Every list write refetches the lists and invalidates the
+    canvas's requests for the collection.
   - **The structure screens** (`features/cms-panel/native/`). The column has
     Collections and Fields tabs. Without `pages.manage_settings` (E0's
     `canManageSettings`) they are read-only: no "+", no Settings, Delete,

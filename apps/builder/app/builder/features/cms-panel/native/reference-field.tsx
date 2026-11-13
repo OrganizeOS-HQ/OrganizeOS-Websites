@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Box,
   ComboboxAnchor,
@@ -11,14 +17,17 @@ import {
   cssVar,
   Flex,
   Grid,
+  IconButton,
   InputField,
   NestedInputButton,
   SmallIconButton,
   theme,
   useCombobox,
+  useSortable,
 } from "@webstudio-is/design-system";
-import { XIcon } from "@webstudio-is/icons";
+import { DragHandleIcon, XIcon } from "@webstudio-is/icons";
 import { chunk } from "./cms-logic";
+import { moveRow } from "./cms-list-logic";
 import {
   CMS_SEARCH_IDS_MAX,
   isCmsFailure,
@@ -391,8 +400,9 @@ export const ReferenceField = ({
 };
 
 /**
- * The chosen titles in order, each with a remove button, then a picker to
- * add one. Reordering waits for slice 2.
+ * The chosen titles in order, each with a drag handle and a remove button,
+ * then a picker to add one. A drag or Alt+Arrow on a chosen row moves it,
+ * a local edit Save stores (5.3).
  */
 export const MultiReferenceField = ({
   id,
@@ -423,26 +433,100 @@ export const MultiReferenceField = ({
     ids,
     onUnresolvedChange
   );
+  const canMove = disabled !== true;
+  const { sortableRefCallback, dragItemId, placementIndicator } = useSortable({
+    items: canMove ? ids.map((itemId) => ({ id: itemId })) : [],
+    onSort: (newIndex, oldIndex) => {
+      if (canMove) {
+        onChange(moveRow(ids, oldIndex, newIndex));
+      }
+    },
+  });
+  // The control an Alt+Arrow came from keeps the focus in the moved row:
+  // moving its node in the DOM can drop it.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const moved = useRef<{ id: string; control: string } | undefined>(undefined);
+  useLayoutEffect(() => {
+    const target = moved.current;
+    moved.current = undefined;
+    if (target === undefined) {
+      return;
+    }
+    const element = listRef.current?.querySelector<HTMLElement>(
+      `[data-cms-reference="${CSS.escape(target.id)}"] [data-cms-reference-control="${target.control}"]`
+    );
+    if (element !== null && element !== undefined) {
+      if (document.activeElement !== element) {
+        element.focus();
+      }
+    }
+  });
   return (
     <Grid gap="1">
-      {ids.map((itemId) => (
-        <div
-          key={itemId}
-          className={chosenRowStyle()}
-          data-cms-reference={itemId}
-        >
-          <TruncatedText css={{ flexGrow: 1 }}>
-            {titles[itemId] ?? ""}
-          </TruncatedText>
-          {disabled !== true && (
-            <SmallIconButton
-              aria-label={`Remove ${titles[itemId] ?? "item"}`}
-              icon={<XIcon />}
-              onClick={() => onChange(ids.filter((entry) => entry !== itemId))}
-            />
-          )}
-        </div>
-      ))}
+      <Grid
+        gap="1"
+        ref={(element: HTMLDivElement | null) => {
+          listRef.current = element;
+          sortableRefCallback(element);
+        }}
+      >
+        {ids.map((itemId, index) => (
+          <div
+            key={itemId}
+            className={chosenRowStyle()}
+            data-cms-reference={itemId}
+            style={dragItemId === itemId ? { opacity: 0.5 } : undefined}
+            onKeyDown={(event) => {
+              if (
+                canMove === false ||
+                event.altKey === false ||
+                (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+              ) {
+                return;
+              }
+              event.preventDefault();
+              const to = index + (event.key === "ArrowUp" ? -1 : 1);
+              if (to < 0 || to >= ids.length) {
+                return;
+              }
+              const control =
+                event.target instanceof HTMLElement
+                  ? event.target.dataset.cmsReferenceControl
+                  : undefined;
+              if (control !== undefined) {
+                moved.current = { id: itemId, control };
+              }
+              onChange(moveRow(ids, index, to));
+            }}
+          >
+            {canMove && (
+              <IconButton
+                aria-label="Drag to reorder"
+                // useSortable reads the dragged item's id from data-id
+                data-id={itemId}
+                data-cms-reference-control="handle"
+                css={{ cursor: "grab", flexShrink: 0 }}
+              >
+                <DragHandleIcon color={cssVar("--foreground-secondary")} />
+              </IconButton>
+            )}
+            <TruncatedText css={{ flexGrow: 1 }}>
+              {titles[itemId] ?? ""}
+            </TruncatedText>
+            {canMove && (
+              <SmallIconButton
+                aria-label={`Remove ${titles[itemId] ?? "item"}`}
+                data-cms-reference-control="remove"
+                icon={<XIcon />}
+                onClick={() =>
+                  onChange(ids.filter((entry) => entry !== itemId))
+                }
+              />
+            )}
+          </div>
+        ))}
+      </Grid>
+      {placementIndicator}
       {disabled !== true && (
         <ReferencePicker
           id={id}
