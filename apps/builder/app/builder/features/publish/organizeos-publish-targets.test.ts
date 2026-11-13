@@ -161,6 +161,21 @@ describe("the line for a failed publish", () => {
   });
 });
 
+describe("the line for a publish the forms step refused", () => {
+  test("shows the route's line, or the generic forms line without one", () => {
+    expect(
+      publishErrorLine({
+        ok: false,
+        error: "forms",
+        message: "Pick a form for Newsletter on Home.",
+      })
+    ).toBe("Pick a form for Newsletter on Home.");
+    expect(publishErrorLine({ ok: false, error: "forms" })).toBe(
+      "Forms could not be saved. Try again."
+    );
+  });
+});
+
 describe("serving, the old site and the replace", () => {
   test("serving drives the ticks and the word; without it, live does", () => {
     const staged = { ...builtin, live: true, serving: true };

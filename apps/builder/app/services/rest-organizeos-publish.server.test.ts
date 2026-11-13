@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { AppContext } from "@webstudio-is/trpc-interface/index.server";
-import type { Deployment } from "@webstudio-is/sdk";
+import type { Deployment, Instance, Pages, Prop } from "@webstudio-is/sdk";
+import formsVector from "~/shared/__fixtures__/forms-actor-assertion.json";
 import targetsFixture from "~/shared/__fixtures__/site-addresses-targets.json";
 import oldSiteFixture from "~/shared/__fixtures__/site-addresses-old-site.json";
 import type { SessionData } from "~/services/auth.server.utils";
@@ -11,6 +12,12 @@ import type {
 } from "~/services/organizeos-publisher.server";
 import type { SiteAddressesRow } from "~/shared/db/organizeos-site-addresses.server";
 import type { ProjectOrganization } from "~/shared/db/organizeos-project-org.server";
+import type { BuildForms } from "~/shared/db/organizeos-build-forms.server";
+import {
+  hashCmsBytes,
+  type CmsForwardAnswer,
+  type CmsForwardRequest,
+} from "~/shared/organizeos-cms.server";
 import {
   handlePublishRequest,
   type PublishRouteDeps,
@@ -39,12 +46,114 @@ type State = {
   buildError: Error | undefined;
   publisher: boolean;
   publishResult: OrganizeosPublishResult | Error;
+  buildForms: BuildForms | undefined;
+  formsSecret: string | undefined;
+  stageAnswer: CmsForwardAnswer;
 };
+
+const ns = "@organizeos/site-components";
+const FORM_A = "51000000-0000-4000-8000-000000000001";
+const FORM_B = "52000000-0000-4000-8000-000000000002";
+
+type RootSpec = {
+  id: string;
+  page?: number;
+  label?: string;
+  marked?: boolean;
+  record?: [Prop["type"], unknown];
+  fields: Array<[string, Prop["type"], unknown, boolean?]>;
+};
+
+/** A build whose pages each hold their roots, each root its Fields. */
+const formsBuild = (
+  roots: RootSpec[],
+  pageNames: string[] = ["Home", "Events"]
+): BuildForms => {
+  const instances = new Map<string, Instance>();
+  const props = new Map<string, Prop>();
+  const addProp = (
+    instanceId: string,
+    name: string,
+    type: Prop["type"],
+    value: unknown
+  ) =>
+    props.set(`${instanceId}:${name}`, {
+      id: `${instanceId}:${name}`,
+      instanceId,
+      name,
+      type,
+      value,
+    } as Prop);
+  pageNames.forEach((_, index) =>
+    instances.set(`body${index}`, {
+      type: "instance",
+      id: `body${index}`,
+      component: "Body",
+      children: roots
+        .filter((root) => (root.page ?? 0) === index)
+        .map((root) => ({ type: "id", value: root.id })),
+    })
+  );
+  for (const root of roots) {
+    instances.set(root.id, {
+      type: "instance",
+      id: root.id,
+      component: `${ns}:SignupForm`,
+      ...(root.label === undefined ? {} : { label: root.label }),
+      children: root.fields.map((_, index) => ({
+        type: "id",
+        value: `${root.id}-f${index}`,
+      })),
+    });
+    if (root.marked !== false) {
+      addProp(root.id, "siteForm", "string", "contact-signup");
+    }
+    const [recordType, recordValue] = root.record ?? ["string", FORM_A];
+    addProp(root.id, "record", recordType, recordValue);
+    root.fields.forEach(([key, type, value, required], index) => {
+      const id = `${root.id}-f${index}`;
+      instances.set(id, {
+        type: "instance",
+        id,
+        component: `${ns}:Field`,
+        children: [],
+      });
+      addProp(id, "field", type, value ?? key);
+      if (required !== undefined) {
+        addProp(id, "required", "boolean", required);
+      }
+    });
+  }
+  const pages = {
+    homePageId: "page0",
+    rootFolderId: "root",
+    folders: new Map(),
+    pages: new Map(
+      pageNames.map((name, index) => [
+        `page${index}`,
+        {
+          id: `page${index}`,
+          name,
+          path: index === 0 ? "" : `/p${index}`,
+          title: `"${name}"`,
+          rootInstanceId: `body${index}`,
+          meta: {},
+        },
+      ])
+    ),
+  } as unknown as Pages;
+  return { instances, props, pages };
+};
+
+const emptyBuild = () => formsBuild([]);
 
 let state: State;
 let builds: Array<{ projectId: string; deployment: Deployment }>;
 let dispatches: OrganizeosPublishInput[];
 let addressReads: string[];
+let staged: CmsForwardRequest[];
+let failedBuilds: string[];
+let order: string[];
 let logged: ReturnType<typeof vi.spyOn>;
 
 const deps = (): PublishRouteDeps => ({
@@ -72,6 +181,7 @@ const deps = (): PublishRouteDeps => ({
       ? {
           publish: {
             mutate: async (input) => {
+              order.push("dispatch");
               dispatches.push(input);
               if (state.publishResult instanceof Error) {
                 throw state.publishResult;
@@ -86,6 +196,21 @@ const deps = (): PublishRouteDeps => ({
       : undefined,
   publisherHost: "organizeos.org",
   platformUrl: "https://app.organizeos.org",
+  loadBuildForms: async () => {
+    order.push("load");
+    return state.buildForms;
+  },
+  markBuildFailed: async (buildId) => {
+    failedBuilds.push(buildId);
+  },
+  formsSecret: state.formsSecret,
+  now: () => formsVector.payload.iat * 1000,
+  randomId: () => formsVector.payload.jti,
+  stageForms: async (request) => {
+    order.push("stage");
+    staged.push(request);
+    return state.stageAnswer;
+  },
 });
 
 const call = async ({
@@ -131,10 +256,20 @@ beforeEach(() => {
     buildError: undefined,
     publisher: true,
     publishResult: { success: true },
+    buildForms: emptyBuild(),
+    formsSecret: formsVector.secret,
+    stageAnswer: {
+      kind: "answer",
+      status: 200,
+      bytes: new TextEncoder().encode('{"forms":[]}'),
+    },
   };
   builds = [];
   dispatches = [];
   addressReads = [];
+  staged = [];
+  failedBuilds = [];
+  order = [];
   logged = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -546,5 +681,372 @@ describe("rest.organizeos-publish: replacing the old site", () => {
         .status
     ).toBe(400);
     expectNothingWritten();
+  });
+});
+
+// OrganizeOS fork: the publish step (builder forms spec 7.4; plan
+// 2026-11-13-builder-forms-fork-p2, Task 3, P2, P3, P6, P7). After the build
+// row is written and before the dispatch, the build's marked site-form roots
+// are staged with the forms door's F5; an unmarked root publishes as today.
+describe("rest.organizeos-publish: staging site forms", () => {
+  const org = formsVector.payload.org;
+  const target = `/api/internal/websites2/forms/${org}/builds/build-1/fields`;
+  const liveSession: SessionData = {
+    userId,
+    createdAt: 1,
+    organizeosUserId: formsVector.payload.sub,
+    organizeosSid: formsVector.payload.sid,
+  };
+  const twoForms = () =>
+    formsBuild([
+      {
+        id: "a",
+        label: "Email & SMS updates",
+        fields: [
+          ["email", "string", undefined, true],
+          ["first_name", "string", undefined],
+        ],
+      },
+      {
+        id: "b",
+        page: 1,
+        label: "Contact us",
+        record: ["string", FORM_B],
+        fields: [["email", "string", undefined, true]],
+      },
+    ]);
+  const refusal = async (response: Response) => ({
+    status: response.status,
+    body: (await response.json()) as {
+      ok: boolean;
+      error?: string;
+      message?: string;
+    },
+  });
+  const answerOf = (status: number, body: unknown): CmsForwardAnswer => ({
+    kind: "answer",
+    status,
+    bytes: new TextEncoder().encode(JSON.stringify(body)),
+  });
+  const claimsOf = (header: string) =>
+    JSON.parse(Buffer.from(header.split(".")[1], "base64url").toString("utf8"));
+
+  beforeEach(() => {
+    state.owner = { organizationId: org };
+    state.session = liveSession;
+    state.buildForms = twoForms();
+  });
+
+  const expectRefused = (failed = true) => {
+    expect(dispatches).toEqual([]);
+    expect(failedBuilds).toEqual(failed ? ["build-1"] : []);
+  };
+
+  test("unmarked roots publish as today: two on one CRM form with different Fields, a bound record, a pass session", async () => {
+    state.session = { userId, createdAt: 1 };
+    state.outcome = "pass";
+    state.buildForms = formsBuild([
+      {
+        id: "a",
+        marked: false,
+        fields: [["email", "string", undefined, true]],
+      },
+      {
+        id: "b",
+        marked: false,
+        fields: [["phone", "expression", "$ws$x"]],
+      },
+      {
+        id: "c",
+        marked: false,
+        record: ["expression", "$ws$dataSource$y"],
+        fields: [["email", "string", undefined]],
+      },
+    ]);
+    const response = await call();
+    expect(response.status).toBe(200);
+    expect(staged).toEqual([]);
+    expect(dispatches).toHaveLength(1);
+    expect(failedBuilds).toEqual([]);
+  });
+
+  test("a build with no marked roots dispatches without staging", async () => {
+    state.buildForms = emptyBuild();
+    expect((await call()).status).toBe(200);
+    expect(staged).toEqual([]);
+    expect(dispatches).toHaveLength(1);
+  });
+
+  test("stages before it dispatches, once, with the forms assertion", async () => {
+    const response = await call();
+    expect(response.status).toBe(200);
+    expect(order).toEqual(["load", "stage", "dispatch"]);
+    expect(staged).toHaveLength(1);
+    const [request] = staged;
+    const body = JSON.stringify({
+      forms: [
+        {
+          formId: FORM_A,
+          fields: [
+            { key: "email", required: true },
+            { key: "first_name", required: false },
+          ],
+        },
+        { formId: FORM_B, fields: [{ key: "email", required: true }] },
+      ],
+    });
+    expect(request.method).toBe("PUT");
+    expect(request.target).toBe(target);
+    expect(new TextDecoder().decode(request.body)).toBe(body);
+    expect(request.contentType).toBe("application/json");
+    expect(request.timeoutMs).toBe(8_000);
+    const claims = claimsOf(request.header);
+    expect(claims).toMatchObject({
+      aud: "forms",
+      org,
+      sub: formsVector.payload.sub,
+      sid: formsVector.payload.sid,
+      m: "PUT",
+      p: hashCmsBytes(target),
+      h: hashCmsBytes(body),
+      jti: formsVector.payload.jti,
+      iat: formsVector.payload.iat,
+      exp: formsVector.payload.iat + 60,
+    });
+  });
+
+  test("lower-cases the org in the target and the claim", async () => {
+    state.owner = { organizationId: org.toUpperCase() };
+    await call();
+    expect(staged[0].target).toBe(target);
+    expect(claimsOf(staged[0].header).org).toBe(org);
+  });
+
+  test("F5's 200 with not_site_form for a marked root dispatches", async () => {
+    state.stageAnswer = answerOf(200, {
+      forms: [{ formId: FORM_A, outcome: "not_site_form" }],
+    });
+    expect((await call()).status).toBe(200);
+    expect(dispatches).toHaveLength(1);
+  });
+
+  test.each([
+    [
+      "a record bound to an expression",
+      { record: ["expression", "$ws$x"] as [Prop["type"], unknown] },
+      "Pick a form for Newsletter on Home.",
+    ],
+    [
+      "a blank record",
+      { record: ["string", " "] as [Prop["type"], unknown] },
+      "Pick a form for Newsletter on Home.",
+    ],
+    [
+      "a Field bound to an expression",
+      { fields: [["email", "expression", "$ws$y"]] as RootSpec["fields"] },
+      "Pick a field in Newsletter on Home.",
+    ],
+    [
+      "no Field with a key",
+      { fields: [] as RootSpec["fields"] },
+      "Pick a field in Newsletter on Home.",
+    ],
+  ])("%s refuses naming the block and page", async (_case, change, line) => {
+    state.buildForms = formsBuild([
+      {
+        id: "a",
+        label: "Newsletter",
+        fields: [["email", "string", undefined, true]],
+        ...change,
+      },
+    ]);
+    expect(await refusal(await call())).toEqual({
+      status: 409,
+      body: { ok: false, error: "forms", message: line },
+    });
+    expect(staged).toEqual([]);
+    expectRefused();
+  });
+
+  test("two roots on one site form that differ refuse, naming both blocks and pages", async () => {
+    state.buildForms = formsBuild([
+      {
+        id: "a",
+        label: "Email & SMS updates",
+        fields: [["email", "string", undefined, true]],
+      },
+      {
+        id: "b",
+        page: 1,
+        label: "Email & SMS updates",
+        fields: [
+          ["email", "string", undefined, true],
+          ["phone", "string", undefined],
+        ],
+      },
+    ]);
+    expect(await refusal(await call())).toEqual({
+      status: 409,
+      body: {
+        ok: false,
+        error: "forms",
+        message:
+          "Email & SMS updates on Home and Email & SMS updates on Events share a form. Make their fields match or give one a new form.",
+      },
+    });
+    expectRefused();
+  });
+
+  test("names are cut to 60 characters, so the message stays under 500", async () => {
+    const long = "N".repeat(200);
+    state.buildForms = formsBuild(
+      [
+        { id: "a", label: long, fields: [["email", "string", undefined]] },
+        {
+          id: "b",
+          label: long,
+          fields: [["email", "string", undefined, true]],
+        },
+      ],
+      [long]
+    );
+    const { body } = await refusal(await call());
+    expect(body.message).toBe(
+      `${"N".repeat(60)} on ${"N".repeat(60)} and ${"N".repeat(60)} on ${"N".repeat(60)} share a form. Make their fields match or give one a new form.`
+    );
+    expect((body.message ?? "").length).toBeLessThan(500);
+  });
+
+  test("too many forms refuses with its own line", async () => {
+    state.buildForms = formsBuild([
+      {
+        id: "a",
+        fields: Array.from(
+          { length: 51 },
+          (_, i) => [`k${i}`, "string", undefined] as RootSpec["fields"][number]
+        ),
+      },
+    ]);
+    expect(await refusal(await call())).toEqual({
+      status: 409,
+      body: {
+        ok: false,
+        error: "forms",
+        message: "Too many forms on this site to publish.",
+      },
+    });
+    expectRefused();
+  });
+
+  test.each([
+    ["a pass binding", { outcome: "pass" as const }],
+    [
+      "a live binding without the OrganizeOS session",
+      { session: { userId, createdAt: 1, organizeosUserId: "u" } },
+    ],
+  ])(
+    "%s refuses with the sign-in line, staging nothing",
+    async (_case, change) => {
+      Object.assign(state, change);
+      expect(await refusal(await call())).toEqual({
+        status: 403,
+        body: {
+          ok: false,
+          error: "forms",
+          message: "Sign in through OrganizeOS to publish forms.",
+        },
+      });
+      expect(staged).toEqual([]);
+      expectRefused();
+    }
+  );
+
+  test.each([
+    [
+      "mfa_required",
+      403,
+      403,
+      "Turn on two-step verification to publish forms.",
+    ],
+    ["forbidden", 403, 403, "You can't publish forms."],
+    ["unauthorized", 401, 403, "You can't publish forms."],
+    ["plan", 403, 403, "Your plan doesn't include forms."],
+    ["rate_limited", 429, 429, "Too many publishes. Try again in a minute."],
+    ["replayed", 409, 502, "Forms could not be saved. Try again."],
+    ["unavailable", 503, 502, "Forms could not be saved. Try again."],
+    ["refused", 401, 502, "Forms could not be saved. Try again."],
+  ])("F5 %s answers its line", async (code, status, ours, line) => {
+    state.stageAnswer = answerOf(status, { error: code });
+    expect(await refusal(await call())).toEqual({
+      status: ours,
+      body: { ok: false, error: "forms", message: line },
+    });
+    expectRefused();
+  });
+
+  test.each(["invalid_field", "conflict"])(
+    "F5 %s with a formId names the first block on that form",
+    async (code) => {
+      state.stageAnswer = answerOf(code === "conflict" ? 409 : 422, {
+        error: code,
+        formId: FORM_B.toUpperCase(),
+        field: "favourite",
+      });
+      expect(await refusal(await call())).toEqual({
+        status: 409,
+        body: {
+          ok: false,
+          error: "forms",
+          message: "Forms could not be saved: Contact us on Events.",
+        },
+      });
+      expectRefused();
+    }
+  );
+
+  test.each([
+    [
+      "the door dark (404, empty body)",
+      { kind: "not_json" } as CmsForwardAnswer,
+    ],
+    ["a timeout", { kind: "timeout" } as CmsForwardAnswer],
+    ["a failed send", { kind: "failed" } as CmsForwardAnswer],
+    ["an unknown code", answerOf(400, { error: "invalid_request" })],
+  ])("%s answers the generic line", async (_case, answer) => {
+    state.stageAnswer = answer;
+    expect(await refusal(await call())).toEqual({
+      status: 502,
+      body: {
+        ok: false,
+        error: "forms",
+        message: "Forms could not be saved. Try again.",
+      },
+    });
+    expectRefused();
+  });
+
+  test("no forms secret answers the generic line, sending nothing", async () => {
+    state.formsSecret = " ";
+    const { body } = await refusal(await call());
+    expect(body.message).toBe("Forms could not be saved. Try again.");
+    expect(staged).toEqual([]);
+    expectRefused();
+  });
+
+  test("a failed build read answers the generic line", async () => {
+    state.buildForms = undefined;
+    const { status, body } = await refusal(await call());
+    expect(status).toBe(502);
+    expect(body.message).toBe("Forms could not be saved. Try again.");
+    expect(staged).toEqual([]);
+    expectRefused();
+  });
+
+  test("logs a refusal's code, never its line", async () => {
+    state.stageAnswer = answerOf(403, { error: "plan" });
+    await call();
+    const lines = logged.mock.calls.map((args) => args.join(" "));
+    expect(lines).toContain("[organizeos-publish] forms_refused plan");
+    expect(lines.join("\n")).not.toContain("include forms");
   });
 });

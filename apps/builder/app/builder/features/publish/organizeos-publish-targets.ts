@@ -93,6 +93,9 @@ export const publishErrorLine = (
       return (
         outcome.message ?? "Publishing could not be started. Please try again."
       );
+    case "forms":
+      // The publish step's own line: a block and its page, or a reason.
+      return outcome.message ?? "Forms could not be saved. Try again.";
     case "forbidden":
       return "You can't publish this site.";
     case "timeout":
