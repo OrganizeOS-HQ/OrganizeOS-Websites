@@ -549,9 +549,14 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
               // a page on screen stays, with the toast; with none drawn,
               // the line and its Retry (4.3.4)
               if (hasItemsPage.current) {
-                toast.error(getToastText(result.error), {
-                  id: `cms-read-${result.error}`,
-                });
+                // a filter or sort a platform without slice 2's keys refuses
+                // as invalid is a passing state, not the person's input
+                const text =
+                  result.error === "invalid" &&
+                  currentListKey !== listKey(defaultListState(collectionId))
+                    ? getToastText("unavailable")
+                    : getToastText(result.error);
+                toast.error(text, { id: `cms-read-${result.error}` });
                 // a failed page, filter or sort change goes back to the
                 // drawn page number and list state, unread, so the pager and
                 // the menus show what the rows on screen are (6.1); a failed

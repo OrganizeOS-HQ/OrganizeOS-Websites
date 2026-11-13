@@ -181,11 +181,11 @@ const isEmptyCell = (value: unknown): boolean =>
 
 /** A field column's cell text (5.1.4). */
 export const getCellText = (field: CmsField, value: unknown): string => {
-  if (field.kind === "switch") {
-    return value ? "Yes" : "No";
-  }
   if (isEmptyCell(value)) {
     return "";
+  }
+  if (field.kind === "switch") {
+    return value === true ? "Yes" : "No";
   }
   if (field.kind === "option") {
     const option = field.options?.find((entry) => entry.value === value);

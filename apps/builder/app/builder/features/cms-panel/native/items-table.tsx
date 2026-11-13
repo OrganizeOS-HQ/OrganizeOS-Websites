@@ -21,6 +21,7 @@ import {
   InsetListItem,
   List,
   ListItem,
+  rawTheme,
   Text,
   theme,
   useSortable,
@@ -48,7 +49,12 @@ import type {
 import { StatusChip } from "./status-chip";
 import { TruncatedText } from "./truncated-text";
 
-const LEAD = theme.spacing[11];
+/**
+ * The lead columns (checkbox, handle): 24 px, `theme.spacing[11]` as a CSS
+ * length, since it goes into a grid template and inline styles that stitches
+ * does not resolve tokens in.
+ */
+const LEAD = rawTheme.spacing[11];
 
 const tableStyle = css({
   display: "grid",
@@ -236,10 +242,15 @@ const ItemRow = ({
               data-id={item.id}
               tabIndex={-1}
               css={{ cursor: "grab" }}
-              // a press on the handle drags; it never opens the row
+              // a press on the handle drags, and the row's own press never
+              // starts; a click with no drag opens the row as a click
+              // elsewhere on it does (the drag swallows its own click)
               onPointerDown={(event) => event.stopPropagation()}
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpen();
+              }}
             >
               <DragHandleIcon color={cssVar("--foreground-secondary")} />
             </IconButton>
@@ -486,7 +497,11 @@ export const ItemsTable = ({
               onOpen={() => onOpenItem(item.id)}
               onToggle={onToggle}
               onMove={(id, direction) => {
-                movedId.current = id;
+                const to = index + direction;
+                // only a move that happens marks the row to keep the focus
+                if (to >= 0 && to < rows.length) {
+                  movedId.current = id;
+                }
                 onMove(id, direction);
               }}
             />

@@ -637,7 +637,7 @@ describe("the table's columns (Task 15)", () => {
     expect(document.querySelector("[data-cms-no-matches]")?.textContent).toBe(
       "No matches"
     );
-    expect(buttonByText("Filter1")).not.toBeUndefined();
+    expect(buttonByText("Filter 1")).not.toBeUndefined();
   });
 
   test("E1 reading 0 for a collection whose E3 has rows shows the rows", async () => {
@@ -745,10 +745,17 @@ describe("Filter and Sort (Task 16)", () => {
     expect(filterButton()?.textContent).toBe("Filter");
     await click(filterButton());
     await click(menuItemByText("Draft"));
-    expect(filterButton()?.textContent).toBe("Filter1");
+    expect(filterButton()?.textContent).toBe("Filter 1");
     await click(filterButton());
     await click(menuItemByText("Café"));
-    expect(filterButton()?.textContent).toBe("Filter2");
+    expect(filterButton()?.textContent).toBe("Filter 2");
+    // the count sits beside the word, inside the button's one line
+    const box = filterButton()!.getBoundingClientRect();
+    const countBox = filterButton()!
+      .querySelector<HTMLElement>("[data-cms-filter-count]")!
+      .getBoundingClientRect();
+    expect(countBox.top).toBeGreaterThanOrEqual(box.top);
+    expect(countBox.bottom).toBeLessThanOrEqual(box.bottom);
   });
 
   test("no option group without a filterField", async () => {
@@ -1398,7 +1405,7 @@ describe("drag reorder (Task 18)", () => {
     await click(buttonByText("Filter"));
     await click(menuItemByText("Draft"));
     expect(handles()).toHaveLength(0);
-    await click(buttonByText("Filter1"));
+    await click(buttonByText("Filter 1"));
     await click(menuItemByText("All items"));
     expect(handles()).toHaveLength(3);
 
@@ -1820,5 +1827,168 @@ describe("the reorder settles on the order it sent", () => {
       world.ids.map((id) => ({ id, updatedAt: world.versions[id] }))
     );
     expect(world.versions[ROW_IDS[0]]).toBe(versionOf(ROW_IDS[0], 2));
+  });
+});
+
+describe("the list's review findings", () => {
+  test("a bulk call answered after another collection opened invalidates the collection it wrote", async () => {
+    const onItemWritten = vi.fn();
+    const answer = deferred<
+      CmsResult<{
+        published: string[];
+        unchanged: string[];
+        conflicts: string[];
+        failed: string[];
+      }>
+    >();
+    fake.publishItems.mockImplementation(() => answer.promise);
+    await mountThree({ onItemWritten });
+    await click(checkbox("Select A"));
+    await click(toolbarButton("Publish"));
+    await click(
+      document
+        .querySelector<HTMLElement>('[data-cms-collection="people"]')
+        ?.querySelector<HTMLElement>("button")
+    );
+    onItemWritten.mockClear();
+    answer.resolve({
+      published: [ROW_IDS[0]],
+      unchanged: [],
+      conflicts: [],
+      failed: [],
+    });
+    await settle();
+    expect(onItemWritten.mock.calls).toEqual([["posts", undefined]]);
+  });
+
+  test("Clear and a successful bulk call put the focus on the table's first row", async () => {
+    fake.publishItems.mockResolvedValue({
+      published: [ROW_IDS[1]],
+      unchanged: [],
+      conflicts: [],
+      failed: [],
+    });
+    await mountThree();
+    await click(checkbox("Select B"));
+    await click(toolbarButton("Clear"));
+    expect(document.activeElement).toBe(rowEl("a"));
+    await click(checkbox("Select B"));
+    await click(toolbarButton("Publish"));
+    expect(document.activeElement).toBe(rowEl("a"));
+  });
+
+  test("a confirmed bulk Delete of every row puts the focus on New item", async () => {
+    let rows = threeRows();
+    fake.listItems.mockImplementation(async () =>
+      itemsPageOf(rows, rows.length, 1)
+    );
+    fake.deleteItems.mockImplementation(async (_c, { ids }) => {
+      rows = [];
+      return { deleted: ids };
+    });
+    mount();
+    await settle();
+    await click(checkbox("Select all on this page"));
+    await click(toolbarButton("Delete"));
+    await click(dialogButton("Delete"));
+    await wait(100);
+    expect(document.activeElement?.textContent).toBe("New item");
+  });
+
+  test("the bulk Delete dialog closes when its waiting call is dropped", async () => {
+    reorderWorld();
+    const held = deferred<CmsResult<{ changed: number }>>();
+    fake.reorderItems.mockImplementation(() => held.promise);
+    mount();
+    await settle();
+    await click(checkbox("Select C"));
+    focusRow("a");
+    await altMove("ArrowDown");
+    await click(toolbarButton("Delete"));
+    await click(dialogButton("Delete"));
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+    fake.listItems.mockResolvedValueOnce({ error: "rate_limited" });
+    held.resolve({ changed: 2 });
+    await wait(100);
+    expect(fake.deleteItems).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(toolbar()?.textContent).toContain("1 selected");
+  });
+
+  test("a row opened while a bulk call is in flight opens after it", async () => {
+    const answer = deferred<CmsResult<{ changed: string[] }>>();
+    fake.setItemsStatus.mockImplementation(() => answer.promise);
+    await mountThree();
+    await click(checkbox("Select A"));
+    await click(toolbarButton("Archive"));
+    focusRow("b");
+    await act(async () => userEvent.keyboard("{Enter}"));
+    await settle();
+    expect(fake.getItem).not.toHaveBeenCalled();
+    answer.resolve({ changed: [ROW_IDS[0]] });
+    await settle();
+    expect(fake.getItem).toHaveBeenCalledWith(POSTS.id, ROW_IDS[1]);
+  });
+
+  test("a move past the end leaves no mark, so leaving the table still sends pending moves", async () => {
+    reorderWorld();
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    await altMove("ArrowDown");
+    // a is last: one more does nothing
+    await altMove("ArrowDown");
+    expect(fake.reorderItems).not.toHaveBeenCalled();
+    act(() => {
+      searchInput()!.focus();
+    });
+    await settle();
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]]);
+  });
+});
+
+describe("the table's grid", () => {
+  test("the header and the rows share one grid: lead columns of 24 px, headers on one line above their cells", async () => {
+    await mountEvents();
+    const header = document.querySelector<HTMLElement>(
+      '[role="table"] [role="row"]'
+    )!;
+    const row = itemRows()[0];
+    for (const element of [header, row]) {
+      const columns = getComputedStyle(element).gridTemplateColumns.split(" ");
+      expect(columns[0]).toBe("24px");
+    }
+    const headers = [
+      ...header.querySelectorAll<HTMLElement>('[role="columnheader"]'),
+    ];
+    // one line: every header centred on the same height
+    const middles = headers.map((cell) => {
+      const box = cell.getBoundingClientRect();
+      return box.top + box.height / 2;
+    });
+    expect(Math.max(...middles) - Math.min(...middles)).toBeLessThanOrEqual(1);
+    const cells = [...row.querySelectorAll<HTMLElement>('[role="cell"]')];
+    expect(cells).toHaveLength(headers.length);
+    cells.forEach((cell, index) => {
+      expect(
+        Math.abs(
+          cell.getBoundingClientRect().left -
+            headers[index].getBoundingClientRect().left
+        )
+      ).toBeLessThanOrEqual(1);
+    });
+  });
+});
+
+describe("the drag handle's click", () => {
+  test("a click on the handle with no drag opens the row, as a click elsewhere on it does", async () => {
+    reorderWorld();
+    mount();
+    await settle();
+    await click(
+      rowEl("b")!.querySelector<HTMLElement>('[aria-label="Drag to reorder"]')
+    );
+    expect(fake.getItem).toHaveBeenCalledWith(POSTS.id, ROW_IDS[1]);
   });
 });

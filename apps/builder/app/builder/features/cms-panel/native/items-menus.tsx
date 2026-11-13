@@ -65,10 +65,13 @@ export const FilterMenu = ({
           Filter
           {count > 0 && (
             <Text
+              as="span"
               variant="labels"
-              css={{ marginInlineStart: theme.spacing[2] }}
+              data-cms-filter-count
+              css={{ display: "inline", whiteSpace: "pre" }}
             >
-              {count}
+              {/* a leading space, so the name reads "Filter 1" */}
+              {` ${count}`}
             </Text>
           )}
         </Button>

@@ -582,7 +582,7 @@ describe("labels", () => {
 });
 
 describe("the changed-since-publish dot (Task 20)", () => {
-  const mountRow = (changed: boolean | undefined) => {
+  const mountRow = (changed: boolean | undefined, help?: string) => {
     container = document.createElement("div");
     container.style.width = "448px";
     document.body.appendChild(container);
@@ -595,6 +595,7 @@ describe("the changed-since-publish dot (Task 20)", () => {
           createElement(FieldRow, {
             id: ID,
             label: "Title",
+            help,
             changed,
             children: createElement("input", { id: ID }),
           })

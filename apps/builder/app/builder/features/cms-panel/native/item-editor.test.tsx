@@ -1874,3 +1874,39 @@ describe("multireference reordering in the editor (Task 21)", () => {
     expect(fake.updateItem.mock.calls[0][2].data.tags).toEqual([BEA, ANN, CY]);
   });
 });
+
+describe("the Item menu waits for an upload (review)", () => {
+  test("Unpublish, Archive and Restore are disabled while an upload is in flight", async () => {
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "cover", label: "Cover", kind: "image" },
+    ]);
+    await openItem(
+      itemOf({
+        status: "published",
+        data: { title: "Hello", summary: null, author: null, cover: null },
+      })
+    );
+    const held = deferred<CmsResult<{ url: string; path: string }>>();
+    fake.uploadImage.mockReturnValueOnce(held.promise);
+    const file = document
+      .querySelector<HTMLElement>('[data-cms-field="cms-field-cover"]')
+      ?.querySelector<HTMLInputElement>('input[type="file"]');
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" })
+    );
+    await act(async () => {
+      file!.files = transfer.files;
+      file!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    await click(byLabel("Item menu"));
+    for (const label of ["Unpublish", "Archive"]) {
+      expect(menuItem(label)?.hasAttribute("data-disabled")).toBe(true);
+    }
+    await act(async () => {
+      held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
+    });
+  });
+});

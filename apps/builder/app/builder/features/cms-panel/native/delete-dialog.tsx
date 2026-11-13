@@ -19,12 +19,15 @@ export const DeleteDialog = ({
   busy,
   onConfirm,
   onCancel,
+  onFocusLost,
 }: {
   open: boolean;
   title: string;
   busy: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** The element that opened the dialog is gone when it closes. */
+  onFocusLost?: () => void;
 }) => {
   const cancelRef = useRef<HTMLButtonElement>(null);
   // the element focused when the dialog opened takes the focus back
@@ -53,6 +56,9 @@ export const DeleteDialog = ({
           if (element instanceof HTMLElement && element.isConnected) {
             event.preventDefault();
             element.focus();
+          } else if (onFocusLost !== undefined) {
+            event.preventDefault();
+            onFocusLost();
           }
         }}
       >

@@ -250,8 +250,15 @@ export const FieldRow = ({
     );
   const head = (
     <Flex align="center" gap="1" css={{ minWidth: 0 }}>
-      {labelElement}
-      {changed && <ChangedDot />}
+      {changed ? (
+        // the dot right after the label, which would otherwise grow past it
+        <Flex align="center" gap="1" css={{ minWidth: 0, flex: "0 1 auto" }}>
+          {labelElement}
+          <ChangedDot />
+        </Flex>
+      ) : (
+        labelElement
+      )}
       {onUseMine !== undefined && (
         <Tooltip content={`Use my edit: ${label}`}>
           <SmallIconButton

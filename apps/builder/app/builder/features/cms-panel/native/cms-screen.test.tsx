@@ -1439,7 +1439,7 @@ describe("the list state per collection (Task 14)", () => {
       [...document.querySelectorAll("button")].find((button) =>
         button.textContent?.startsWith("Filter")
       )?.textContent
-    ).toBe("Filter1");
+    ).toBe("Filter 1");
     expect(
       nameHeader()?.closest('[role="columnheader"]')?.getAttribute("aria-sort")
     ).toBe("descending");
@@ -1511,6 +1511,23 @@ describe("the list state per collection (Task 14)", () => {
       POSTS.id,
       { q: undefined, page: 1, status: "archived", sort: "name" },
     ]);
+  });
+
+  test("a filter the door refuses as invalid reads Try again in a minute", async () => {
+    const error = vi.spyOn(toast, "error");
+    fake.listItems.mockImplementation(async (_c, q) =>
+      q.status === "staged"
+        ? { error: "invalid" }
+        : echoPage(q, [itemRowOf(itemOf())], 1)
+    );
+    mount({ initialView: { collectionId: POSTS.id } });
+    await settle();
+    await click(buttonByText("Filter"));
+    await click(menuRadio("Staged changes"));
+    await settle();
+    expect(error).toHaveBeenCalledWith("Try again in a minute", {
+      id: "cms-read-invalid",
+    });
   });
 
   test("a failed refetch for the current key keeps the drawn rows", async () => {

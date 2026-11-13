@@ -55,6 +55,9 @@ export const useBulkActions = (input: {
       return;
     }
     const collectionId = latest.current.collection.id;
+    // the lists and canvas of the collection written refetch, even when
+    // another collection opened meanwhile
+    const { onListWritten } = latest.current;
     inFlight.current = true;
     setBusy(true);
     let result: CmsResult<Value>;
@@ -69,7 +72,7 @@ export const useBulkActions = (input: {
     }
     const current = latest.current;
     // every answer refetches: items before a stop may have changed
-    current.onListWritten();
+    onListWritten();
     if (isCmsFailure(result)) {
       const refusal = getRefusal(result.error, "write");
       if (refusal !== undefined) {

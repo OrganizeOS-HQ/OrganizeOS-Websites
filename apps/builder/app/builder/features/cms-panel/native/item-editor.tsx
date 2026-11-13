@@ -981,7 +981,7 @@ export const ItemEditor = ({
             )}
             {menuItems.includes("unpublish") && (
               <DropdownMenuItem
-                disabled={isBusy}
+                disabled={isBusy || isFieldBusy}
                 onSelect={() => void changeStatus("draft")}
               >
                 Unpublish
@@ -989,7 +989,7 @@ export const ItemEditor = ({
             )}
             {menuItems.includes("archive") && (
               <DropdownMenuItem
-                disabled={isBusy}
+                disabled={isBusy || isFieldBusy}
                 onSelect={() => void changeStatus("archived")}
               >
                 Archive
@@ -997,7 +997,7 @@ export const ItemEditor = ({
             )}
             {menuItems.includes("restore") && (
               <DropdownMenuItem
-                disabled={isBusy}
+                disabled={isBusy || isFieldBusy}
                 onSelect={() => void changeStatus("draft")}
               >
                 Restore

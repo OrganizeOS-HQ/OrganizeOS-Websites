@@ -171,6 +171,8 @@ describe("getCellText", () => {
   test.each([
     [online, true, "Yes"],
     [online, false, "No"],
+    [online, null, ""],
+    [online, "yes", "No"],
     [kind, "Q&A night", "Q&A night"],
     [kind, "gone", "gone"],
     [reference, "11111111-1111-4111-8111-111111111111", "Linked"],

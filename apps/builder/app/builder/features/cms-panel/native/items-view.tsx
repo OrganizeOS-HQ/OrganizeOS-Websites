@@ -353,8 +353,59 @@ export const ItemsView = ({
             .filter((row): row is CmsItemRow => row !== undefined),
         };
   const bulkBusy = bulk.busy || reorder.bulkWaiting;
-  const runBulk = (run: () => Promise<void>) =>
-    reorder.whenSettled(() => void run(), "bulk");
+  const runBulk = (run: () => Promise<void>, onDropped?: () => void) =>
+    reorder.whenSettled(() => void run(), "bulk", onDropped);
+
+  // A row opened while a bulk call is in flight opens once it has answered.
+  const waitingOpen = useRef<string | undefined>(undefined);
+  const openNow = useRef((itemId: string) =>
+    reorder.whenSettled(() => onOpenItem(itemId), "open")
+  );
+  openNow.current = (itemId: string) =>
+    reorder.whenSettled(() => onOpenItem(itemId), "open");
+  const openRow = (itemId: string) => {
+    if (bulk.busy) {
+      waitingOpen.current = itemId;
+      return;
+    }
+    openNow.current(itemId);
+  };
+  useEffect(() => {
+    const itemId = waitingOpen.current;
+    if (bulk.busy || itemId === undefined) {
+      return;
+    }
+    waitingOpen.current = undefined;
+    openNow.current(itemId);
+  }, [bulk.busy]);
+
+  // The focus left with the bulk bar or its Delete dialog: the table's first
+  // row takes it, else New item, again until the next page answer has landed.
+  const pageAnswers = useRef(pageAnswer.count);
+  pageAnswers.current = pageAnswer.count;
+  const refocus = useRef<number | undefined>(undefined);
+  const [refocusTick, setRefocusTick] = useState(0);
+  const requestRefocus = () => {
+    refocus.current = pageAnswers.current;
+    setRefocusTick((current) => current + 1);
+  };
+  useEffect(() => {
+    const since = refocus.current;
+    const root = rootRef.current;
+    if (since === undefined || root === null) {
+      return;
+    }
+    const active = document.activeElement;
+    if (active === null || active === document.body) {
+      const target =
+        root.querySelector<HTMLElement>("[data-cms-item-id]") ??
+        root.querySelector<HTMLElement>("[data-cms-new-item]");
+      target?.focus();
+    }
+    if (pageAnswer.count > since) {
+      refocus.current = undefined;
+    }
+  }, [refocusTick, page, pageAnswer.count]);
   const selectedCount =
     page?.items.filter((row) => list.selected.has(row.id)).length ?? 0;
   const bulkBar =
@@ -368,6 +419,7 @@ export const ItemsView = ({
         onArchive={() => runBulk(() => bulk.setStatus("archived"))}
         onDelete={() => setConfirmDelete(selectedCount)}
         onClear={() => onListChange({ ...list, selected: new Set() })}
+        onFocusLost={requestRefocus}
       />
     ) : undefined;
 
@@ -470,9 +522,7 @@ export const ItemsView = ({
                 canEdit={canEdit}
                 showHandle={showHandle}
                 focusItemId={focusItemId}
-                onOpenItem={(itemId) =>
-                  reorder.whenSettled(() => onOpenItem(itemId), "open")
-                }
+                onOpenItem={openRow}
                 onMove={reorder.move}
                 onDrop={reorder.drop}
                 onLeave={reorder.flush}
@@ -496,9 +546,12 @@ export const ItemsView = ({
         title={getDeleteTitle(confirmDelete ?? selectedCount, collection)}
         busy={bulkBusy}
         onCancel={() => setConfirmDelete(undefined)}
+        onFocusLost={requestRefocus}
         onConfirm={() =>
-          runBulk(() =>
-            bulk.remove().finally(() => setConfirmDelete(undefined))
+          runBulk(
+            () => bulk.remove().finally(() => setConfirmDelete(undefined)),
+            // a dropped call closes the dialog; the selection stays
+            () => setConfirmDelete(undefined)
           )
         }
       />

@@ -406,9 +406,13 @@ export const PlanRefusal: Story = {
   loaders: [loadSource({ flags: { refuse: "plan" } })],
 };
 
+/** The story's first render can be replaced: act on the settled screen. */
+const settled = () => new Promise((resolve) => setTimeout(resolve, 1000));
+
 /** Clicks the first `count` row checkboxes of the items table. */
 const selectRows = async (root: HTMLElement, count: number) => {
   await waitFor(root, "[data-cms-item-id]");
+  await settled();
   const boxes = Array.from(
     root.ownerDocument.querySelectorAll<HTMLButtonElement>(
       '[data-cms-item-id] [aria-label^="Select "]'
@@ -416,7 +420,26 @@ const selectRows = async (root: HTMLElement, count: number) => {
   ).slice(0, count);
   for (const box of boxes) {
     box.click();
+    // each toggle lands before the next
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
+};
+
+/** Opens a Radix menu trigger, which opens on pointer down. */
+const openMenu = async (root: HTMLElement, label: string) => {
+  await settled();
+  const trigger = await waitFor<HTMLButtonElement>(
+    root,
+    `[aria-label="${label}"]`
+  );
+  trigger.dispatchEvent(
+    new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      pointerType: "mouse",
+    })
+  );
 };
 
 /** Two rows selected: ticked checkboxes and selected rows. */
@@ -436,6 +459,7 @@ export const BulkBar: Story = {
   args: { view: { collectionId: SAMPLE_COLLECTION_IDS.news } },
   play: async ({ canvasElement }) => {
     await waitFor(canvasElement, "[data-cms-item-id]");
+    await settled();
     await clickButton(canvasElement, "Select all on this page");
   },
 };
@@ -490,7 +514,7 @@ export const ItemMenu: Story = {
   args: { view: safeStaffing },
   play: async ({ canvasElement }) => {
     await waitFor(canvasElement, "#cms-field-name");
-    await clickButton(canvasElement, "Item menu");
+    await openMenu(canvasElement, "Item menu");
     await waitFor(canvasElement, '[role="menu"]');
   },
 };
@@ -502,12 +526,14 @@ export const SideDetails: Story = {
   args: { view: fairContract },
 };
 
-/** The changed-since-publish dots, one more after an edit. */
+/** The changed-since-publish dots, following an edit of Summary. */
 export const ChangedDots: Story = {
   render,
   loaders: [loadSource()],
   args: { view: safeStaffing },
   play: async ({ canvasElement }) => {
+    await waitFor(canvasElement, "#cms-field-summary");
+    await settled();
     await editSummary(canvasElement);
   },
 };
