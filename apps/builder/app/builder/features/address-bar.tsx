@@ -38,10 +38,12 @@ import {
   $selectedPagePath,
   $stagingPassword,
   $stagingUsername,
+  $organizeosSite,
 } from "~/shared/nano-states";
 import { $currentSystem, updateCurrentSystem } from "~/shared/system";
 import { $project, $publisherHost } from "~/shared/sync/data-stores";
 import { getPublishUrl } from "./publish/publish-url";
+import { useSiteOrigin } from "./publish/organizeos-site-origin";
 
 const $selectedPageHistory = computed($selectedPage, (page): string[] =>
   page !== undefined && "history" in page && Array.isArray(page.history)
@@ -67,6 +69,10 @@ const useCopyUrl = (pageUrl: string) => {
     copyIcon = <CheckMarkIcon />;
   }
   const onClick = () => {
+    // OrganizeOS fork: no address yet (read pending or failed), copy nothing
+    if (pageUrl === "") {
+      return;
+    }
     navigator.clipboard.writeText(pageUrl);
     setCopyState("copied");
   };
@@ -74,10 +80,17 @@ const useCopyUrl = (pageUrl: string) => {
     tooltipProps: {
       // keep tooltip open when user just copied
       open: copyState === "copied" ? true : undefined,
-      content: copyState === "copied" ? "Copied" : `Copy ${pageUrl}`,
+      content:
+        copyState === "copied"
+          ? "Copied"
+          : pageUrl === ""
+            ? "Address unavailable"
+            : `Copy ${pageUrl}`,
     } satisfies Partial<ComponentProps<typeof Tooltip>>,
     buttonProps: {
       onClick,
+      // OrganizeOS fork: nothing to copy until the site's address is known
+      disabled: pageUrl === "",
       children: copyIcon,
     } satisfies Partial<ComponentProps<"button">>,
   };
@@ -88,9 +101,22 @@ const usePublishedPageUrl = (pathname: string) => {
   const publisherHost = useStore($publisherHost);
   const stagingUsername = useStore($stagingUsername);
   const stagingPassword = useStore($stagingPassword);
+  // OrganizeOS fork: an org site's address is its main host, read once per
+  // project from OrganizeOS; it has no staging credentials
+  const isOrganizeosSite = useStore($organizeosSite) !== undefined;
+  const siteOrigin = useSiteOrigin(isOrganizeosSite ? project?.id : undefined);
 
   if (project === undefined) {
     return "";
+  }
+
+  if (isOrganizeosSite) {
+    if (siteOrigin === undefined) {
+      return "";
+    }
+    const url = new URL(siteOrigin);
+    url.pathname = pathname || "/";
+    return url.toString();
   }
 
   return getPublishUrl({
