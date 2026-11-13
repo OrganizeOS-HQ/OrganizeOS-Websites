@@ -207,6 +207,27 @@ test("the toolbar holds the block type, the four marks, the two lists, Link and 
   ]);
 });
 
+test("with an image source, the toolbar holds Image after Link", async () => {
+  mountField({ source: createFakeCmsSource() });
+  const toolbar = document.querySelector<HTMLElement>('[role="toolbar"]')!;
+  expect(
+    [...toolbar.querySelectorAll("button")].map((button) =>
+      button.getAttribute("aria-label")
+    )
+  ).toEqual([
+    "Block type",
+    "Bold",
+    "Italic",
+    "Underline",
+    "Strikethrough",
+    "Bulleted list",
+    "Numbered list",
+    "Link",
+    "Image",
+    "Divider",
+  ]);
+});
+
 test.each([
   ["Heading 2", "<h2"],
   ["Quote", "<blockquote"],

@@ -547,6 +547,10 @@ export const FieldControl = ({
           invalid={invalid}
           onChange={onChange}
           onOpenClassic={onOpenClassic}
+          source={source}
+          onError={onError}
+          onBusyChange={onBusyChange}
+          onRefusal={onRefusal}
         />
       );
     default: {
