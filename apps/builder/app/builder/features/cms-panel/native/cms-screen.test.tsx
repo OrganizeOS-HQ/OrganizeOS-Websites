@@ -1553,3 +1553,303 @@ describe("the list state per collection (Task 14)", () => {
     expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
   });
 });
+
+/**
+ * A Posts world of `count` items, all of `status`: E3 filters by status,
+ * sorts by name and pages 50 at a time (a page past the end answers the
+ * last); E11 and E12 change it.
+ */
+const listWorld = (count: number, status: CmsItem["status"]) => {
+  const world = {
+    items: Array.from({ length: count }, (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      title: `Row ${String(index + 1).padStart(3, "0")}`,
+      status,
+    })),
+  };
+  const toItem = (entry: (typeof world.items)[number]) =>
+    itemOf({
+      id: entry.id,
+      slug: entry.title.toLowerCase().replace(" ", "-"),
+      status: entry.status,
+      data: { title: entry.title, summary: null, author: null },
+    });
+  fake.listItems.mockImplementation(async (_c, q) => {
+    let items = world.items.filter(
+      (entry) =>
+        q.status === undefined ||
+        q.status === "all" ||
+        entry.status === q.status
+    );
+    if (q.sort === "name") {
+      items = [...items].sort((left, right) =>
+        q.direction === "desc"
+          ? right.title.localeCompare(left.title)
+          : left.title.localeCompare(right.title)
+      );
+    }
+    const pages = Math.max(1, Math.ceil(items.length / 50));
+    const page = Math.min(q.page ?? 1, pages);
+    return echoPage(
+      { ...q, page },
+      items
+        .slice((page - 1) * 50, page * 50)
+        .map((entry) => itemRowOf(toItem(entry))),
+      items.length
+    );
+  });
+  fake.getItem.mockImplementation(async (_c, id) => {
+    const entry = world.items.find((candidate) => candidate.id === id);
+    return entry === undefined
+      ? { error: "not_found" }
+      : { item: toItem(entry) };
+  });
+  fake.setItemsStatus.mockImplementation(async (_c, body) => {
+    for (const entry of world.items) {
+      if (body.ids.includes(entry.id)) {
+        entry.status = body.status;
+      }
+    }
+    return { changed: body.ids };
+  });
+  fake.deleteItems.mockImplementation(async (_c, body) => {
+    world.items = world.items.filter(
+      (entry) => body.ids.includes(entry.id) === false
+    );
+    return { deleted: body.ids };
+  });
+  return world;
+};
+
+describe("the focus after Back (Review Focus 2)", () => {
+  const lastListItems = () =>
+    fake.listItems.mock.calls.at(-1) as [string, CmsItemsQuery] | undefined;
+  const pager = () =>
+    document.querySelector<HTMLElement>("[data-cms-pager]")?.textContent;
+  const firstRow = () =>
+    document.querySelector<HTMLElement>("[data-cms-item-id]");
+  const filterLabel = () =>
+    [...document.querySelectorAll("button")].find((button) =>
+      button.textContent?.startsWith("Filter")
+    )?.textContent;
+  const runFromMenu = async (label: string) => {
+    await click(byLabel("Item menu"));
+    await click(menuRadioOrItem(label));
+    await settle();
+  };
+  const menuRadioOrItem = (text: string) =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (item) => item.textContent === text
+    );
+
+  test.each([
+    ["Archive", "published"],
+    ["Unpublish", "published"],
+    ["Restore", "archived"],
+  ] as const)(
+    "%s of the only row on page 2 under the %s filter, then Back: the filter stays, the last page shows and its first row has the focus",
+    async (label, status) => {
+      listWorld(51, status);
+      mount({
+        initialView: {
+          collectionId: POSTS.id,
+          page: 2,
+          list: listView({ status }),
+        },
+      });
+      await settle();
+      expect(pager()).toBe("51-51 of 51");
+      await click(firstRow());
+      await runFromMenu(label);
+      await click(byLabel("Back"));
+      await settle();
+      expect(lastListItems()?.[1]).toMatchObject({ status });
+      expect(filterLabel()).toBe("Filter 1");
+      expect(pager()).toBe("1-50 of 50");
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement).toBe(firstRow());
+    }
+  );
+
+  test("Archive on a filtered, sorted page 2, then Back: page 2 under the filter and sort, the focus on its first row", async () => {
+    listWorld(61, "draft");
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        page: 2,
+        list: listView({ status: "draft", sort: "name", direction: "desc" }),
+      },
+    });
+    await settle();
+    expect(pager()).toBe("51-61 of 61");
+    await click(firstRow());
+    await runFromMenu("Archive");
+    await click(byLabel("Back"));
+    await settle();
+    expect(lastListItems()).toEqual([
+      POSTS.id,
+      {
+        q: undefined,
+        page: 2,
+        status: "draft",
+        sort: "name",
+        direction: "desc",
+      },
+    ]);
+    expect(pager()).toBe("51-60 of 60");
+    expect(document.activeElement).toBe(firstRow());
+  });
+
+  test("Delete on a filtered, sorted page 2: page 2 under the filter and sort, the focus on its first row", async () => {
+    listWorld(61, "draft");
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        page: 2,
+        list: listView({ status: "draft", sort: "name", direction: "desc" }),
+      },
+    });
+    await settle();
+    await click(firstRow());
+    await click(byLabel("Item menu"));
+    await click(menuRadioOrItem("Delete"));
+    await click(
+      [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          '[role="dialog"] button'
+        ),
+      ].find((button) => button.textContent === "Delete")
+    );
+    await settle();
+    expect(lastListItems()).toEqual([
+      POSTS.id,
+      {
+        q: undefined,
+        page: 2,
+        status: "draft",
+        sort: "name",
+        direction: "desc",
+      },
+    ]);
+    expect(pager()).toBe("51-60 of 60");
+    expect(document.activeElement).toBe(firstRow());
+  });
+
+  test("Back before the refetch after Archive answers: the focus moves to the first row once the row leaves", async () => {
+    const world = listWorld(3, "published");
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        list: listView({ status: "published" }),
+      },
+    });
+    await settle();
+    const archivedId = world.items[0].id;
+    await click(firstRow());
+    // the refetch after the write is held
+    const held = deferred<void>();
+    const answer = fake.listItems.getMockImplementation()!;
+    fake.listItems.mockImplementation(async (c, q) => {
+      await held.promise;
+      return answer(c, q);
+    });
+    await runFromMenu("Archive");
+    await click(byLabel("Back"));
+    await settle();
+    // the drawn page is the one before the write: its row has the focus
+    expect(document.activeElement).toBe(
+      document.querySelector(`[data-cms-item-id="${archivedId}"]`)
+    );
+    await act(async () => held.resolve());
+    await settle();
+    expect(
+      document.querySelector(`[data-cms-item-id="${archivedId}"]`)
+    ).toBeNull();
+    expect(document.activeElement).toBe(firstRow());
+  });
+});
+
+describe("a failed E2 (verification)", () => {
+  test("E2 unavailable on the list: the toast, no field columns, then one refresh on E3's answer draws them", async () => {
+    const error = vi.spyOn(toast, "error");
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+    const base = fake.getCollection.getMockImplementation()!;
+    const refresh = deferred<void>();
+    let calls = 0;
+    fake.getCollection.mockImplementation(async (id) => {
+      calls += 1;
+      if (calls === 1) {
+        return { error: "unavailable" };
+      }
+      await refresh.promise;
+      return base(id);
+    });
+    fake.listItems.mockImplementation(async (_c, q) =>
+      itemsPageOf([itemRowOf(itemOf())], 1, 1, {
+        ...echoPage(q),
+        columns: ["online"],
+      })
+    );
+    mount({ initialView: { collectionId: EVENTS.id } });
+    await settle();
+    expect(error).toHaveBeenCalledWith("Try again in a minute", {
+      id: "cms-read-unavailable",
+    });
+    expect(document.querySelector('[data-cms-column-key="online"]')).toBeNull();
+    expect(fake.getCollection).toHaveBeenCalledTimes(2);
+    await act(async () => refresh.resolve());
+    await settle();
+    expect(fake.getCollection).toHaveBeenCalledTimes(2);
+    expect(
+      document.querySelector('[data-cms-column-key="online"]')
+    ).not.toBeNull();
+    // the refresh clears the failure: the item opens in the editor
+    await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+    expect(titleInput()).not.toBeNull();
+    expect(hasText("Try again in a minute")).toBe(false);
+  });
+
+  test("a schema refresh answering after another collection opened leaves that collection's fields", async () => {
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS, POSTS] });
+    const base = fake.getCollection.getMockImplementation()!;
+    const held = deferred<void>();
+    let eventsCalls = 0;
+    fake.getCollection.mockImplementation(async (id) => {
+      if (id === EVENTS.id) {
+        eventsCalls += 1;
+        if (eventsCalls === 2) {
+          await held.promise;
+        }
+      }
+      return base(id);
+    });
+    let postsMissing = false;
+    // E3 answers after E2, so the fields are loaded when it lands
+    fake.listItems.mockImplementation(async (c, q) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return itemsPageOf([itemRowOf(itemOf())], 1, 1, {
+        ...echoPage(q),
+        columns:
+          c === EVENTS.id ? ["added"] : postsMissing ? ["gone"] : ["title"],
+      });
+    });
+    mount({ initialView: { collectionId: EVENTS.id } });
+    await settle();
+    // the missing "added" asked the Events refresh, held
+    expect(eventsCalls).toBe(2);
+    await click(rowOf(POSTS.slug));
+    const postsCalls = () =>
+      fake.getCollection.mock.calls.filter(([id]) => id === POSTS.id).length;
+    expect(postsCalls()).toBe(1);
+    await act(async () => held.resolve());
+    await settle();
+    // a Posts answer naming a key its fields lack still refreshes Posts
+    postsMissing = true;
+    await act(async () => userEvent.type(byLabel("Search Posts")!, "a"));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+    await settle();
+    expect(postsCalls()).toBe(2);
+  });
+});

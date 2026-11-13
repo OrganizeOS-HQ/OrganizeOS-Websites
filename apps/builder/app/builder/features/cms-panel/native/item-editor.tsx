@@ -121,6 +121,7 @@ export const ItemEditor = ({
   onDeleted,
   onCreated,
   onSchemaStale,
+  onBusyChange,
   onRefusal,
   onOpenHome,
   onOpenClassic,
@@ -151,6 +152,8 @@ export const ItemEditor = ({
    * are fetched again before the toast.
    */
   onSchemaStale: () => Promise<void>;
+  /** Unpublish, Archive or Restore runs: its save, E11 and the read after. */
+  onBusyChange?: (busy: boolean) => void;
   /**
    * A call answered `unauthorized` or `mfa_required` (any call), or
    * `forbidden` or `plan` on the item's load: the screen shows the line
@@ -196,6 +199,9 @@ export const ItemEditor = ({
   // one after E6 answers not_found.
   const [clientId, setClientId] = useState(() => crypto.randomUUID());
   const backRef = useRef<HTMLButtonElement>(null);
+  const itemMenuRef = useRef<HTMLButtonElement>(null);
+  // Unpublish, Archive or Restore from its first call to its last answer
+  const [isStatusRunning, setIsStatusRunning] = useState(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
   // Per reference field, its chosen ids whose items E5 no longer finds.
   const unresolved = useRef<Record<string, readonly string[]>>({});
@@ -362,6 +368,10 @@ export const ItemEditor = ({
   useEffect(() => {
     onDirtyChange(isDirty);
   }, [isDirty, onDirtyChange]);
+  useEffect(() => {
+    onBusyChange?.(isStatusRunning);
+  }, [isStatusRunning, onBusyChange]);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   /**
@@ -685,12 +695,16 @@ export const ItemEditor = ({
         onRefusal(refusal);
         return;
       }
+      // Retry reads the item as Reload does: an edit made meanwhile is
+      // kept aside
       setLine({
         kind: "unavailable",
         retry: () => {
-          loadedId.current = undefined;
-          setLine(undefined);
-          setLoadAttempt((current) => current + 1);
+          void reloadRef.current().then((read) => {
+            if (read && isMounted.current) {
+              setLine(undefined);
+            }
+          });
         },
       });
       return;
@@ -706,10 +720,21 @@ export const ItemEditor = ({
    * stopping on its failure; then E11; then the item is read.
    */
   const changeStatus = async (status: "draft" | "archived") => {
-    let current = item;
-    if (current === undefined || current === null) {
+    if (item === undefined || item === null) {
       return;
     }
+    setIsStatusRunning(true);
+    try {
+      await runStatus(status, item);
+    } finally {
+      if (isMounted.current) {
+        setIsStatusRunning(false);
+      }
+    }
+  };
+
+  const runStatus = async (status: "draft" | "archived", from: CmsItem) => {
+    let current = from;
     if (isDirty) {
       const first = await saveFrom(current);
       if (first === undefined) {
@@ -743,6 +768,10 @@ export const ItemEditor = ({
         return;
       }
       if (result.error === "slug_taken") {
+        if (isMounted.current === false) {
+          toast.error(getListFailureText("status", result.error));
+          return;
+        }
         setErrors((current) => ({ ...current, slug: "Address in use" }));
         return;
       }
@@ -802,10 +831,13 @@ export const ItemEditor = ({
     );
   };
 
-  /** Reload keeps the person's unsaved values aside (4.3.2). */
-  const reload = async () => {
+  /**
+   * Reload keeps the person's unsaved values aside (4.3.2). Answers whether
+   * the item was read.
+   */
+  const reload = async (): Promise<boolean> => {
     if (item === undefined || item === null) {
-      return;
+      return false;
     }
     setBusy("reload");
     let result: CmsResult<{ item: CmsItem }>;
@@ -820,12 +852,15 @@ export const ItemEditor = ({
       // the editor holds the person's values: refused as a write is, so the
       // view and the conflict line with its Reload stay
       fail(result);
-      return;
+      return false;
     }
     setKept(keepAside({ fields, kept, baseline, baselineSlug, values, slug }));
     applyItem(result.item);
     setLive(result.item.live);
+    return true;
   };
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
 
   const setField = (key: string, value: unknown) => {
     setValues((current) => ({ ...current, [key]: value }));
@@ -954,7 +989,7 @@ export const ItemEditor = ({
         <DropdownMenu modal={false}>
           <Tooltip content="Item menu" side="bottom">
             <DropdownMenuTrigger asChild>
-              <IconButton aria-label="Item menu">
+              <IconButton ref={itemMenuRef} aria-label="Item menu">
                 <EllipsesIcon />
               </IconButton>
             </DropdownMenuTrigger>
@@ -1219,6 +1254,7 @@ export const ItemEditor = ({
         title={getDeleteTitle(1, collection)}
         busy={busy === "delete"}
         onCancel={() => setConfirmDelete(false)}
+        onFocusLost={() => itemMenuRef.current?.focus()}
         onConfirm={() => void remove()}
       />
     </Flex>

@@ -1641,10 +1641,14 @@ describe("the side details and the changed dots (Task 20)", () => {
       )
     );
     expect(details()?.textContent).toContain("Modified");
+    // Modified reads the version's time, with or without Modified by
+    expect(detail("modified")).toBeTruthy();
+    expect(detail("modified")).not.toContain("Robin Example");
     act(() => root?.unmount());
     container?.remove();
 
     await openItem(itemOf());
+    expect(detail("modified")).toBeTruthy();
     expect(detail("published")).toBe("Not live");
     expect(detail("modified-by")).toBeUndefined();
     expect(details()?.textContent).not.toContain("Modified by");
@@ -1908,5 +1912,252 @@ describe("the Item menu waits for an upload (review)", () => {
     await act(async () => {
       held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
     });
+  });
+
+  test("Restore is disabled while an upload is in flight", async () => {
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "cover", label: "Cover", kind: "image" },
+    ]);
+    await openItem(
+      itemOf({
+        status: "archived",
+        data: { title: "Hello", summary: null, author: null, cover: null },
+      })
+    );
+    const held = deferred<CmsResult<{ url: string; path: string }>>();
+    fake.uploadImage.mockReturnValueOnce(held.promise);
+    const file = document
+      .querySelector<HTMLElement>('[data-cms-field="cms-field-cover"]')
+      ?.querySelector<HTMLInputElement>('input[type="file"]');
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" })
+    );
+    await act(async () => {
+      file!.files = transfer.files;
+      file!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    await click(byLabel("Item menu"));
+    expect(menuItem("Restore")?.hasAttribute("data-disabled")).toBe(true);
+    await act(async () => {
+      held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
+    });
+  });
+});
+
+describe("the Item menu's actions (verification)", () => {
+  const PUBLISHED = itemOf({ status: "published", updatedAt: VERSION });
+
+  test("an edit typed after a failed read is kept by Retry, offered as Use my edit", async () => {
+    fake.setItemsStatus.mockResolvedValue({ changed: [PUBLISHED.id] });
+    await openItem(PUBLISHED);
+    fake.getItem.mockResolvedValueOnce({ error: "unavailable" });
+    await click(byLabel("Item menu"));
+    await click(menuItem("Unpublish"));
+    expect(hasText("Try again in a minute")).toBe(true);
+    await retype(titleInput(), "Typed meanwhile");
+    fake.getItem.mockResolvedValue({
+      item: { ...PUBLISHED, status: "draft", updatedAt: V2 },
+    });
+    await click(buttonByText("Retry"));
+    expect(hasText("Try again in a minute")).toBe(false);
+    expect(chipText()).toBe("Draft");
+    expect(byLabel("Use my edit: Title")).not.toBeNull();
+    await click(byLabel("Use my edit: Title"));
+    expect(titleInput()?.value).toBe("Typed meanwhile");
+    expect($cmsNativeDirty.get()).toBe(true);
+  });
+
+  test("Cancel in the Delete dialog returns the focus to the Item menu", async () => {
+    await openItem(PUBLISHED);
+    await click(byLabel("Item menu"));
+    await click(menuItem("Delete"));
+    await click(dialogButton("Cancel"));
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(byLabel("Item menu"));
+    });
+  });
+
+  test("a failed Delete returns the focus to the Item menu", async () => {
+    fake.deleteItems.mockResolvedValue({ error: "forbidden" });
+    await openItem(PUBLISHED);
+    await click(byLabel("Item menu"));
+    await click(menuItem("Delete"));
+    await click(dialogButton("Delete"));
+    expect(titleInput()).not.toBeNull();
+    expect(document.activeElement).toBe(byLabel("Item menu"));
+  });
+
+  test("Delete answered 200 without the id closes the editor, clean", async () => {
+    fake.deleteItems.mockResolvedValue({ deleted: [] });
+    await openItem(PUBLISHED);
+    await retype(titleInput(), "Edited");
+    expect($cmsNativeDirty.get()).toBe(true);
+    await click(byLabel("Item menu"));
+    await click(menuItem("Delete"));
+    await click(dialogButton("Delete"));
+    expect(titleInput()).toBeNull();
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+    expect($cmsNativeDirty.get()).toBe(false);
+  });
+
+  test.each([
+    ["Archive", "unauthorized", "Signed out of OrganizeOS"],
+    ["Archive", "mfa_required", "Two-step sign-in required"],
+    ["Delete", "unauthorized", "Signed out of OrganizeOS"],
+    ["Delete", "mfa_required", "Two-step sign-in required"],
+  ] as const)(
+    "%s answered %s shows the line, with no toast",
+    async (label, code, text) => {
+      const error = vi.spyOn(toast, "error");
+      fake.setItemsStatus.mockResolvedValue({ error: code });
+      fake.deleteItems.mockResolvedValue({ error: code });
+      await openItem(PUBLISHED);
+      await click(byLabel("Item menu"));
+      await click(menuItem(label));
+      if (label === "Delete") {
+        await click(dialogButton("Delete"));
+      }
+      expect(hasText(text)).toBe(true);
+      expect(error).not.toHaveBeenCalled();
+    }
+  );
+
+  test("Back while Archive's E11 is in flight waits for it and the read after, then closes", async () => {
+    const held = deferred<CmsResult<{ changed: string[] }>>();
+    fake.setItemsStatus.mockReturnValue(held.promise);
+    await openItem(PUBLISHED);
+    await click(byLabel("Item menu"));
+    await click(menuItem("Archive"));
+    const reads = fake.getItem.mock.calls.length;
+    fake.getItem.mockResolvedValue({
+      item: { ...PUBLISHED, status: "archived", updatedAt: V2 },
+    });
+    await click(byLabel("Back"));
+    // the editor stays while the status runs
+    expect(titleInput()).not.toBeNull();
+    await act(async () => held.resolve({ changed: [PUBLISHED.id] }));
+    await settle();
+    expect(fake.getItem.mock.calls.length).toBe(reads + 1);
+    expect(titleInput()).toBeNull();
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+    // opening the item again reads the version E11 left
+    await click(
+      document.querySelector<HTMLElement>(
+        `[data-cms-item-id="${PUBLISHED.id}"]`
+      )
+    );
+    expect(chipText()).toBe("Archived");
+  });
+
+  test("another collection chosen while Restore runs opens once it has ended", async () => {
+    const held = deferred<CmsResult<{ changed: string[] }>>();
+    fake.setItemsStatus.mockReturnValue(held.promise);
+    const archived = itemOf({ status: "archived" });
+    await openItem(archived);
+    await click(byLabel("Item menu"));
+    await click(menuItem("Restore"));
+    await click(
+      document.querySelector<HTMLElement>(
+        `[data-cms-collection="${PEOPLE.slug}"]`
+      )
+    );
+    expect(titleInput()).not.toBeNull();
+    await act(async () => held.resolve({ changed: [archived.id] }));
+    await settle();
+    expect(titleInput()).toBeNull();
+    expect(document.querySelector("[data-cms-collection][data-current]")).toBe(
+      document.querySelector(`[data-cms-collection="${PEOPLE.slug}"]`)
+    );
+  });
+
+  test("Back during Unpublish's save first asks nothing, and closes once the save, E11 and the read have landed", async () => {
+    const saved = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.updateItem.mockReturnValue(saved.promise);
+    fake.setItemsStatus.mockResolvedValue({ changed: [PUBLISHED.id] });
+    await openItem(PUBLISHED);
+    await retype(titleInput(), "Edited");
+    await click(byLabel("Item menu"));
+    await click(menuItem("Unpublish"));
+    await click(byLabel("Back"));
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+    expect(titleInput()).not.toBeNull();
+    fake.getItem.mockResolvedValue({
+      item: {
+        ...PUBLISHED,
+        status: "draft",
+        data: { ...PUBLISHED.data, title: "Edited" },
+        updatedAt: V3,
+      },
+    });
+    await act(async () =>
+      saved.resolve({
+        item: {
+          ...PUBLISHED,
+          data: { ...PUBLISHED.data, title: "Edited" },
+          updatedAt: V2,
+        },
+      })
+    );
+    await settle();
+    expect(fake.setItemsStatus).toHaveBeenCalledTimes(1);
+    expect(titleInput()).toBeNull();
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+    expect($cmsNativeDirty.get()).toBe(false);
+  });
+
+  test("E11 answered slug_taken after the editor has gone toasts Address in use", async () => {
+    const error = vi.spyOn(toast, "error");
+    const held = deferred<CmsResult<{ changed: string[] }>>();
+    fake.setItemsStatus.mockReturnValue(held.promise);
+    await openItem(itemOf({ status: "archived" }));
+    await click(byLabel("Item menu"));
+    await click(menuItem("Restore"));
+    act(() => root?.unmount());
+    root = undefined;
+    await act(async () => held.resolve({ error: "slug_taken" }));
+    await settle();
+    expect(error).toHaveBeenCalledWith("Address in use");
+  });
+
+  test("after Delete and a failed refetch, the focus stays where the person puts it", async () => {
+    const other = itemOf({
+      id: NEW_ID,
+      slug: "other",
+      data: { title: "Other", summary: null, author: null },
+    });
+    let answers = 0;
+    fake.listItems.mockImplementation(async () => {
+      answers += 1;
+      return answers === 1
+        ? itemsPageOf([rowOf(PUBLISHED), rowOf(other)], 2, 1)
+        : { error: "rate_limited" };
+    });
+    fake.deleteItems.mockResolvedValue({ deleted: [PUBLISHED.id] });
+    fake.getItem.mockResolvedValue({ item: PUBLISHED });
+    mount();
+    await settle();
+    await click(
+      document.querySelector<HTMLElement>(
+        `[data-cms-item-id="${PUBLISHED.id}"]`
+      )
+    );
+    await click(byLabel("Item menu"));
+    await click(menuItem("Delete"));
+    await click(dialogButton("Delete"));
+    expect(document.activeElement).toBe(
+      document.querySelector(`[data-cms-item-id="${NEW_ID}"]`)
+    );
+    const search = byLabel("Search Posts")!;
+    const field = search.querySelector("input") ?? (search as HTMLElement);
+    await act(async () => userEvent.click(field));
+    await act(async () => userEvent.type(field, "x"));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+    await settle();
+    expect(document.activeElement).toBe(field);
   });
 });

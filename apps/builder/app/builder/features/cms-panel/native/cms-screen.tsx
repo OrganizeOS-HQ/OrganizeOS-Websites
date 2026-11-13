@@ -297,6 +297,15 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const refetchFieldsRef = useRef<(() => Promise<void>) | undefined>(
       undefined
     );
+    // The collection whose foreground E2 failed with no fields drawn: its
+    // next E3 answer asks for the fields once more.
+    const detailFailedFor = useRef<string | undefined>(undefined);
+    // read when a schema refresh answers: the collection open now
+    const openCollectionId = useRef(collectionId);
+    openCollectionId.current = collectionId;
+    // read when E2 fails: whether the editor shows, so its line is the one
+    const isItemOpen = useRef(false);
+    isItemOpen.current = itemId !== undefined;
     const applyLoadedFields = (loaded: CmsCollection) => {
       if (loadedFields.current?.id !== loaded.id) {
         refreshedMissing.current = new Set();
@@ -465,12 +474,22 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
               });
             } else {
               setDetailFailed(true);
+              detailFailedFor.current = collectionId;
+              refreshedMissing.current = new Set();
+              // the list has no line for it: the toast, and its next E3
+              // answer asks for the fields again
+              if (isItemOpen.current === false) {
+                toast.error(getToastText(result.error), {
+                  id: `cms-read-${result.error}`,
+                });
+              }
             }
           }
           return;
         }
         clearLine("detail");
         setDetailFailed(false);
+        detailFailedFor.current = undefined;
         applyLoadedFields(result.collection);
         setDetail(result.collection);
       });
@@ -633,9 +652,13 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           // a columns, filterField or option key the cached fields lack
           // refreshes the schema once (6.1), only while this collection's
           // fields are loaded
-          if (loadedFields.current?.id === collectionId) {
+          // a collection whose E2 failed has none: every key is missing
+          const fieldsLoaded = loadedFields.current?.id === collectionId;
+          if (fieldsLoaded || detailFailedFor.current === collectionId) {
             const have = new Set(
-              loadedFields.current.fields.map((field) => field.key)
+              fieldsLoaded
+                ? (loadedFields.current?.fields ?? []).map((field) => field.key)
+                : []
             );
             const wanted = [
               ...result.columns,
@@ -708,7 +731,33 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         ? lastCollection.current
         : undefined);
 
-    const selectCollection = (nextId: string) =>
+    // While the editor's Unpublish, Archive or Restore runs (its save, E11
+    // and the read after), Back, another collection and Classic CMS wait for
+    // it to end, then run the guard on what it left.
+    const [isEditorBusy, setIsEditorBusy] = useState(false);
+    const isEditorBusyRef = useRef(false);
+    isEditorBusyRef.current = isEditorBusy;
+    const afterEditorBusy = useRef<(() => void) | undefined>(undefined);
+    const whenEditorIdle = (run: () => void) => {
+      if (isEditorBusyRef.current) {
+        afterEditorBusy.current = run;
+        return;
+      }
+      run();
+    };
+    useEffect(() => {
+      const run = afterEditorBusy.current;
+      if (isEditorBusy || run === undefined) {
+        return;
+      }
+      afterEditorBusy.current = undefined;
+      run();
+    }, [isEditorBusy]);
+    const onEditorBusyChange = useCallback((busy: boolean) => {
+      setIsEditorBusy(busy);
+    }, []);
+
+    const selectCollectionNow = (nextId: string) =>
       guard(() => {
         setIsEditorDirty(false);
         if (nextId !== collectionId) {
@@ -720,6 +769,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         setPage(1);
         setQuery("");
         setReturnFocusItemId(undefined);
+        setDeletedItemId(undefined);
       });
 
     const openItem = (nextId: string | null) => {
@@ -736,7 +786,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       setItemId(nextId);
     };
 
-    const closeEditor = () =>
+    const closeEditorNow = () =>
       guard(() => {
         setIsEditorDirty(false);
         setReturnFocusItemId(itemId ?? undefined);
@@ -745,6 +795,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
 
     const onDirtyChange = useCallback((dirty: boolean) => {
       setIsEditorDirty(dirty);
+    }, []);
+    const onDeletedFocused = useCallback(() => {
+      setDeletedItemId(undefined);
     }, []);
 
     /**
@@ -757,6 +810,10 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         return;
       }
       const result = await source.getCollection(collectionId);
+      // another collection opened meanwhile: this answer is not its
+      if (openCollectionId.current !== collectionId) {
+        return;
+      }
       if (isCmsFailure(result)) {
         const refusal = mapReadFailure(result.error);
         if (refusal !== undefined && refusal !== "toast") {
@@ -764,6 +821,12 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         }
         return;
       }
+      if (result.collection.id !== collectionId) {
+        return;
+      }
+      clearLine("detail");
+      setDetailFailed(false);
+      detailFailedFor.current = undefined;
       applyLoadedFields(result.collection);
       setDetail((current) =>
         current === undefined || current.id === result.collection.id
@@ -814,10 +877,28 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
      * Classic CMS (4.6), from the column's menu or a read-only rich text:
      * the guard, then the frame on what is open here.
      */
-    const showClassic = () =>
+    const showClassicNow = () =>
       guard(() => onShowClassic(getClassicDeepLink(collection, itemId)), {
         movesFocus: true,
       });
+
+    // the latest of each, for a run that waited on the editor
+    const nowActions = useRef({
+      selectCollectionNow,
+      closeEditorNow,
+      showClassicNow,
+    });
+    nowActions.current = {
+      selectCollectionNow,
+      closeEditorNow,
+      showClassicNow,
+    };
+    const selectCollection = (nextId: string) =>
+      whenEditorIdle(() => nowActions.current.selectCollectionNow(nextId));
+    const closeEditor = () =>
+      whenEditorIdle(() => nowActions.current.closeEditorNow());
+    const showClassic = () =>
+      whenEditorIdle(() => nowActions.current.showClassicNow());
 
     /** `unauthorized` (4.3.4): the guard, then this tab to the home address. */
     const onOpenHome =
@@ -861,6 +942,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             refreshKey={opens + refresh}
             onBack={closeEditor}
             onDirtyChange={onDirtyChange}
+            onBusyChange={onEditorBusyChange}
             onWritten={onWritten}
             onDeleted={onDeleted}
             onCreated={(item) => setItemId(item.id)}
@@ -898,7 +980,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           canPublish={access.canPublish}
           focusItemId={returnFocusItemId}
           deletedItemId={deletedItemId}
-          onDeletedFocused={() => setDeletedItemId(undefined)}
+          onDeletedFocused={onDeletedFocused}
           source={source}
           fields={detail?.id === collection.id ? detail.fields : undefined}
           list={list}
