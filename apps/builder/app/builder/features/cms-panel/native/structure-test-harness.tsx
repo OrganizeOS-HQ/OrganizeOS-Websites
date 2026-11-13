@@ -83,8 +83,20 @@ export const unmount = () => {
   vi.restoreAllMocks();
 };
 
-/** Lets the fakes' answers, and what they set, land. */
+/**
+ * Lets the fakes' answers, and what they set, land. It first waits a frame:
+ * the design system's Dialog reports its close a frame later, and that update
+ * must land here, not inside the next click's act(), which would wait on an
+ * overlay act itself holds open.
+ */
 export const settle = async () => {
+  await act(async () => {
+    if (vi.isFakeTimers()) {
+      await vi.advanceTimersByTimeAsync(16);
+    } else {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+  });
   for (let round = 0; round < 5; round += 1) {
     await act(async () => {
       if (vi.isFakeTimers()) {

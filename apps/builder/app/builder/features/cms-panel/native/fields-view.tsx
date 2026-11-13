@@ -4,7 +4,13 @@
  * marked; dragged, or moved with Alt+Arrow, to reorder. "Add field" is a
  * menu of kinds, names with icons, grouped as the classic menu is.
  */
-import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import {
   Chip,
   css,
@@ -267,6 +273,26 @@ export const FieldsList = ({
   onReorder: (key: string, toIndex: number) => void;
 }) => {
   const items = fields.map((field) => ({ id: field.key }));
+  // a row moved by Alt+Arrow keeps the focus: moving its node in the DOM can
+  // blur it, so it is focused again once the new order is drawn
+  const listRef = useRef<HTMLElement | null>(null);
+  const refocusKey = useRef<string | undefined>(undefined);
+  const order = fields.map((field) => field.key).join("\n");
+  useLayoutEffect(() => {
+    const key = refocusKey.current;
+    if (key === undefined) {
+      return;
+    }
+    const button = listRef.current?.querySelector<HTMLElement>(
+      `[data-cms-field-row="${CSS.escape(key)}"] button`
+    );
+    if (button !== null && button !== undefined) {
+      refocusKey.current = undefined;
+      if (document.activeElement !== button) {
+        button.focus();
+      }
+    }
+  }, [order]);
   const { dragItemId, placementIndicator, sortableRefCallback } = useSortable({
     items,
     onSort: (newIndex, oldIndex) => {
@@ -275,12 +301,22 @@ export const FieldsList = ({
       }
     },
   });
+  // the list's node for the refocus, and the sortable's while it can sort
+  const listRefCallback = useCallback(
+    (element: HTMLElement | null) => {
+      listRef.current = element;
+      if (canManage) {
+        sortableRefCallback(element as HTMLDivElement | null);
+      }
+    },
+    [canManage, sortableRefCallback]
+  );
   return (
     <Flex direction="column" css={{ minHeight: 0, height: "100%" }}>
       <ScrollAreaNative css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
         <List asChild>
           <InsetList
-            ref={canManage ? sortableRefCallback : undefined}
+            ref={listRefCallback}
             role="list"
             aria-label="Fields"
             css={{ gap: theme.spacing[1] }}
@@ -295,8 +331,10 @@ export const FieldsList = ({
                 isMovable={canManage && fields.length > 1}
                 onSelect={() => onSelect(field.key)}
                 onMove={(offset) => {
-                  if (canManage) {
-                    onReorder(field.key, index + offset);
+                  const to = index + offset;
+                  if (canManage && to >= 0 && to < fields.length) {
+                    refocusKey.current = field.key;
+                    onReorder(field.key, to);
                   }
                 }}
               />
