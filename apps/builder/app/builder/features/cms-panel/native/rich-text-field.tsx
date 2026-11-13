@@ -4,8 +4,8 @@
  * `rich-text-html.ts`'s; `field-controls.tsx` loads this module lazily, so
  * Lexical stays out of the builder's first load.
  *
- * A value the editor would not keep whole (images, or a block shape its
- * export does not reproduce) opens read-only, so nothing is lost silently.
+ * A value the editor would not keep whole (a block shape its export does
+ * not reproduce) opens read-only, so nothing is lost silently.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import {
@@ -90,6 +90,7 @@ import {
   getRichTextReadOnlyReason,
   importRichTextHtml,
   readRichTextValue,
+  richTextHasImage,
   richTextHref,
   richTextHtmlConfig,
   richTextImportHref,
@@ -605,10 +606,16 @@ const Toolbar = ({ id, disabled }: { id: string; disabled: boolean }) => {
 /** The clipboard type of Lexical's own copy, whose nodes carry their links. */
 const LEXICAL_CLIPBOARD_TYPE = "application/x-lexical-editor";
 
-/** Whether copied Lexical nodes hold a link the Link control's rule refuses. */
-const hasRefusedLink = (value: unknown): boolean => {
+const imageNodeTypes = new Set(["cms-image", "cms-figure"]);
+
+/**
+ * Whether copied Lexical nodes hold a link the Link control's rule refuses,
+ * or an image: an image enters a value only from its stored HTML or an
+ * upload.
+ */
+const hasRefusedNode = (value: unknown): boolean => {
   if (Array.isArray(value)) {
-    return value.some(hasRefusedLink);
+    return value.some(hasRefusedNode);
   }
   if (typeof value !== "object" || value === null) {
     return false;
@@ -619,13 +626,16 @@ const hasRefusedLink = (value: unknown): boolean => {
     children?: unknown;
     nodes?: unknown;
   };
+  if (typeof node.type === "string" && imageNodeTypes.has(node.type)) {
+    return true;
+  }
   if (
     (node.type === "link" || node.type === "autolink") &&
     richTextHref(typeof node.url === "string" ? node.url : undefined) === null
   ) {
     return true;
   }
-  return hasRefusedLink(node.children) || hasRefusedLink(node.nodes);
+  return hasRefusedNode(node.children) || hasRefusedNode(node.nodes);
 };
 
 /**
@@ -652,7 +662,7 @@ const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
   const copied = data.getData(LEXICAL_CLIPBOARD_TYPE);
   if (copied !== "") {
     try {
-      dropsLexical = hasRefusedLink(JSON.parse(copied));
+      dropsLexical = hasRefusedNode(JSON.parse(copied));
     } catch {
       // not Lexical's data: the paste never reads it
     }
@@ -789,6 +799,8 @@ export const RichTextField = ({
   const [readOnlyReason] = useState(() =>
     getRichTextReadOnlyReason(initial?.html ?? "")
   );
+  // Classic CMS opens a value with images read-only too: no button
+  const [hasImage] = useState(() => richTextHasImage(initial?.html ?? ""));
 
   if (readOnlyReason !== undefined) {
     return (
@@ -804,9 +816,9 @@ export const RichTextField = ({
         </div>
         <Flex align="center" gap="2" css={{ flexWrap: "wrap" }}>
           <Text color="destructive">
-            {readOnlyReason === "images" ? "Read only" : "Edit in Classic CMS"}
+            {hasImage ? "Read only" : "Edit in Classic CMS"}
           </Text>
-          {readOnlyReason === "lossy" && onOpenClassic !== undefined && (
+          {hasImage === false && onOpenClassic !== undefined && (
             <Button color="neutral" onClick={onOpenClassic}>
               Classic CMS
             </Button>
@@ -866,8 +878,12 @@ export const RichTextField = ({
             const html = exportRichTextHtml(editor);
             editorState.read(() => {
               const text = $getRoot().getTextContent();
-              // an editable value holds no image: blank text is no value
-              onChange(text.trim() === "" ? null : { html, text });
+              // no value only with neither text nor an image
+              onChange(
+                text.trim() === "" && /<img\b/i.test(html) === false
+                  ? null
+                  : { html, text }
+              );
             });
           }}
         />

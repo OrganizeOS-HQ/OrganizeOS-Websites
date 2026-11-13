@@ -475,7 +475,7 @@ test("setting a refused address on a link unwraps it, and an undo never draws th
   expect(editable()?.innerHTML).not.toContain("javascript:");
 });
 
-test("a value the editor would not keep whole is read-only with Edit in Classic CMS", async () => {
+test("a lossy value without an image keeps Edit in Classic CMS and its button", async () => {
   const lossy = fixture.readOnly.find((entry) => entry.reason === "lossy");
   expect(lossy, "the fixture's lossy entry").toBeDefined();
   const { onOpenClassic } = mountField({ value: { html: lossy!.input } });
@@ -535,22 +535,128 @@ test("the toolbar wraps within 240 px", async () => {
   expect(toolbar.scrollWidth).toBeLessThanOrEqual(toolbar.clientWidth);
 });
 
-test("a value with images is read-only, with its text and Read only, and no Classic CMS", async () => {
-  const image = fixture.readOnly.find((entry) => entry.name === "image")!;
-  const { onChange, onOpenClassic } = mountField({
-    value: { html: image.input },
+const fixtureCase = (name: string) => {
+  const entry = fixture.cases.find((candidate) => candidate.name === name);
+  expect(entry, `the fixture's ${name} case`).toBeDefined();
+  return entry!;
+};
+
+const editorOf = () =>
+  (editable() as (HTMLElement & { __lexicalEditor?: LexicalEditor }) | null)
+    ?.__lexicalEditor;
+
+/** A change that alters no content: the field writes what it holds. */
+const rewrite = async () => {
+  await act(async () => {
+    editorOf()!.update(() => {
+      $getRoot().markDirty();
+    });
   });
   await settle();
-  expect(document.querySelector('[contenteditable="true"]')).toBeNull();
+};
+
+const inputByLabel = (text: string) => {
+  const label = [...document.querySelectorAll("label")].find(
+    (element) => element.textContent === text
+  );
+  return label === undefined
+    ? null
+    : (document.getElementById(label.htmlFor) as HTMLInputElement | null);
+};
+
+test("an image-bearing value opens editable, and Save sends it whole", async () => {
+  const image = fixtureCase("image");
+  const { onChange } = mountField({ value: { html: image.input } });
+  await settle();
+  expect(editable()).not.toBeNull();
+  expect(document.querySelector("[data-cms-rich-text-read-only]")).toBeNull();
+  expect(editable()!.querySelector("img")?.getAttribute("src")).toBe(
+    "https://example.org/a.png"
+  );
+  const text = [...editable()!.querySelectorAll<HTMLElement>("p")].find(
+    (paragraph) => paragraph.textContent === "Text"
+  );
+  await click(text);
+  await type("{End}s");
+  expect(lastValue(onChange)?.text).toContain("Texts");
+  expect(lastHtml(onChange)).toContain(
+    '<img src="https://example.org/a.png" alt="A" width="640" height="480">'
+  );
+});
+
+test("an image-only value is never null", async () => {
+  const image = fixtureCase("image only");
+  const { onChange } = mountField({ value: { html: image.input } });
+  await settle();
+  await rewrite();
+  expect(onChange).toHaveBeenCalled();
+  expect(lastValue(onChange)).not.toBeNull();
+  expect(withoutClassAndDir(lastHtml(onChange))).toBe(image.editor);
+});
+
+test("selecting an image opens Alt, Caption for a figure, and Remove; Remove takes it out", async () => {
+  const { onChange } = mountField({
+    value: { html: fixtureCase("image").input },
+  });
+  await settle();
+  await click(editable()!.querySelector("img"));
+  expect(inputByLabel("Alt")?.value).toBe("A");
+  expect(inputByLabel("Caption")).toBeNull();
+  await userEvent.fill(inputByLabel("Alt")!, "A lake");
+  await settle();
+  expect(lastHtml(onChange)).toContain('alt="A lake"');
+  await click(buttonByText("Remove"));
+  expect(lastHtml(onChange)).not.toContain("<img");
+  expect(lastValue(onChange)?.text.trim()).toBe("Text");
+
+  act(() => {
+    root?.unmount();
+  });
+  container?.remove();
+  const figure = mountField({
+    value: { html: fixtureCase("figure with a caption").input },
+  });
+  await settle();
+  await click(editable()!.querySelector("img"));
+  expect(inputByLabel("Alt")?.value).toBe("A");
+  expect(inputByLabel("Caption")?.value).toBe("Caption");
+  await userEvent.fill(inputByLabel("Caption")!, "A lake at dawn");
+  await settle();
+  expect(lastHtml(figure.onChange)).toContain(
+    "<figcaption>A lake at dawn</figcaption>"
+  );
+  await click(buttonByText("Remove"));
+  expect(lastHtml(figure.onChange)).not.toContain("<figure");
+  expect(lastHtml(figure.onChange)).not.toContain("<img");
+});
+
+test("pasted HTML with an img keeps no image", async () => {
+  const { onChange } = mountField();
+  await focusEditor();
+  paste(editable()!, {
+    "text/html":
+      '<p>Hi <img src="https://example.org/a.png" alt="A"></p><figure><img src="https://example.org/b.png"><figcaption>Cap</figcaption></figure>',
+    "text/plain": "Hi Cap",
+  });
+  await settle();
+  expect(lastValue(onChange)?.text).toContain("Hi");
+  expect(lastHtml(onChange)).not.toMatch(/<(img|figure|figcaption)/);
+  expect(editable()!.querySelector("img")).toBeNull();
+});
+
+test("a lossy value with an image shows Read only and no button", async () => {
+  const { onChange, onOpenClassic } = mountField({
+    value: {
+      html: '<figure><img src="https://example.org/a.png" alt="A" /><figcaption><b>Bold</b> caption</figcaption></figure>',
+    },
+  });
+  await settle();
+  expect(editable()).toBeNull();
   const readOnly = document.querySelector("[data-cms-rich-text-read-only]");
-  expect(readOnly?.textContent).toContain("Text");
+  expect(readOnly?.textContent).toContain("Bold caption");
   expect(readOnly?.textContent).toContain("Read only");
   expect(document.body.textContent).not.toContain("Classic CMS");
-  expect(
-    [...document.querySelectorAll("button")].some(
-      (button) => button.textContent === "Classic CMS"
-    )
-  ).toBe(false);
+  expect(buttonByText("Classic CMS")).toBeUndefined();
   expect(onOpenClassic).not.toHaveBeenCalled();
   expect(onChange).not.toHaveBeenCalled();
 });

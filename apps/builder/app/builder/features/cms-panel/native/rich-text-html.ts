@@ -25,8 +25,13 @@ import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import type { CmsRichTextValue } from "./cms-source";
+import {
+  CmsFigureNode,
+  CmsImageNode,
+  importStoredImages,
+} from "./rich-text-image-node";
 
-/** One node for each tag of the platform's allowlist but the image tags. */
+/** One node for each tag of the platform's allowlist. */
 export const richTextNodes: ReadonlyArray<Klass<LexicalNode>> = [
   HeadingNode,
   QuoteNode,
@@ -35,6 +40,8 @@ export const richTextNodes: ReadonlyArray<Klass<LexicalNode>> = [
   LinkNode,
   CodeNode,
   HorizontalRuleNode,
+  CmsImageNode,
+  CmsFigureNode,
 ];
 
 const parseHtml = (html: string) =>
@@ -213,6 +220,8 @@ const signatureTags = new Set([
   "LI",
   "PRE",
   "HR",
+  "IMG",
+  "FIGURE",
 ]);
 
 /** Elements that end the paragraph they stand in, as the site reads them. */
@@ -237,27 +246,36 @@ const hasContent = (node: Node): boolean =>
 const countListItemParagraphs = (item: Element) => {
   let count = 0;
   let inRun = false;
-  for (const child of Array.from(item.childNodes)) {
-    if (child instanceof Element && paragraphBreakTags.has(child.tagName)) {
-      if (inRun) {
-        count += 1;
-        inRun = false;
-      }
-      if (child.tagName === "P" && hasContent(child)) {
-        count += 1;
-      }
-      continue;
+  const endRun = () => {
+    if (inRun) {
+      count += 1;
+      inRun = false;
     }
-    if (hasContent(child)) {
-      inRun = true;
+  };
+  const walk = (parent: Element) => {
+    for (const child of Array.from(parent.childNodes)) {
+      if (child instanceof Element && paragraphBreakTags.has(child.tagName)) {
+        endRun();
+        if (child.tagName === "P") {
+          // a paragraph's images end the runs within it
+          walk(child);
+          endRun();
+        }
+        continue;
+      }
+      if (hasContent(child)) {
+        inRun = true;
+      }
     }
-  }
-  return inRun ? count + 1 : count;
+  };
+  walk(item);
+  endRun();
+  return count;
 };
 
 /**
  * The nesting of the value's headings, quotes, lists, list items (each with
- * its count of paragraphs), code blocks and rules, in document order, and
+ * its count of paragraphs), code blocks, rules, images and figures, in document order, and
  * the number of its kept links.
  */
 export const richTextBlockSignature = (html: string) => {
@@ -294,7 +312,7 @@ export const richTextBlockSignature = (html: string) => {
   return tokens.join(" ");
 };
 
-export type RichTextReadOnlyReason = "images" | "lossy";
+export type RichTextReadOnlyReason = "lossy";
 
 const writeHeadless = (html: string) => {
   const editor = createEditor({
@@ -309,18 +327,21 @@ const writeHeadless = (html: string) => {
   return exportRichTextHtml(editor);
 };
 
+/** Whether the value holds an image tag. */
+export const richTextHasImage = (html: string) =>
+  html !== "" &&
+  typeof DOMParser !== "undefined" &&
+  parseHtml(html).body.querySelector("img, figure, figcaption") !== null;
+
 /**
- * "images" for a value with an image, "lossy" for one whose block signature
- * the editor's own export of it does not reproduce.
+ * "lossy" for a value whose block signature the editor's own export of it
+ * does not reproduce.
  */
 export const getRichTextReadOnlyReason = (
   html: string
 ): RichTextReadOnlyReason | undefined => {
   if (html === "" || typeof DOMParser === "undefined") {
     return;
-  }
-  if (parseHtml(html).body.querySelector("img, figure, figcaption") !== null) {
-    return "images";
   }
   if (
     richTextBlockSignature(html) !== richTextBlockSignature(writeHeadless(html))
@@ -349,7 +370,9 @@ export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
   }
   const nodes: LexicalNode[] = [];
   let run: ParagraphNode | undefined;
-  for (const node of $generateNodesFromDOM(editor, dom)) {
+  for (const node of importStoredImages(() =>
+    $generateNodesFromDOM(editor, dom)
+  )) {
     if (isInlineNode(node)) {
       if (run === undefined) {
         run = $createParagraphNode();
