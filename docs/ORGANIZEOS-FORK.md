@@ -915,7 +915,8 @@ can be merged with minimal conflict.
   `collections-column.tsx` and `collection-memory.ts`; the toolbar, the table
   and its parts in `variables-toolbar.tsx`, `variables-table.tsx`,
   `name-cell.tsx`, `value-cell.tsx`, `link-menu.tsx`, `row-menu.tsx`,
-  `delete-dialog.tsx`; `search.ts` and `brand-contrast.ts`; the manager's
+  `delete-dialog.tsx`; `search.ts`, `brand-contrast.ts` and `segments.ts` (the
+  grouping the table and the bind picker share); the manager's
   writes in `operations.ts` beside part 1's; with
   `variables-overlay.test.tsx`, `collections-column.test.tsx`,
   `collection-memory.test.ts`, `variables-table.test.tsx`,
@@ -2332,8 +2333,7 @@ collection }` invalidates, through `invalidateResource`, every current
 
 **Variables**, `features/variables/` (design:
 `docs/superpowers/specs/2026-11-11-builder-variables-design.md` in the
-OrganizeOS repo). Part 1's data layer and the manager; the Style panel's "+"
-arrives in PR B.
+OrganizeOS repo). Part 1's data layer, the manager and the Style panel's "+".
 
 - **The manager.** A rail button, "Variables", after the CMS's, in Design
   mode only; it opens a full overlay on the rail-overlay host (shared with
@@ -2369,8 +2369,12 @@ arrives in PR B.
   never a locked token, as one undo step; hovering an option previews it.
   New variable from this value creates a Site variable and binds it in one
   transaction. A bound row shows a dot, named in its tooltip, with Edit
-  variable and Detach (Detach writes the computed value). Inside the
-  per-side Space and Position popovers the picker centres on screen.
+  variable and Detach (Detach writes the computed value); a variable the
+  element only inherits from an ancestor is not bound there. The "+" sits on
+  the label's top-left corner, as the Settings panel's binding button does,
+  so it never covers a value field. Inside a portalled popover or nested panel
+  (the per-side Space and Position popovers, Order's and flex Sizing's
+  panels, Advanced transform) the picker centres on screen.
 
 - A variable's value is a `--name` declaration on Global Root's local style
   source at the base breakpoint. A bound property stores upstream's

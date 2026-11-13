@@ -9,7 +9,9 @@ import { getBindableTypes } from "./property-types";
 /**
  * Every PropertyLabel call site in the Style panel, classified (spec 10): the
  * "+" shows exactly where spec 6.2 says and nowhere 6.3 excludes. A new or
- * moved upstream row fails here until it is classified.
+ * moved PropertyLabel call site fails here until it is classified. A new array
+ * passed through a site already listed as dynamic (another SizeProperty,
+ * BorderProperty or InputPopover use) is decided by getBindableTypes alone.
  */
 
 const typesOf = (properties: readonly CssProperty[]) => {

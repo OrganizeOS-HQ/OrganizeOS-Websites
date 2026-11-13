@@ -33,6 +33,7 @@ import { matchesVariableSearch } from "./search";
 import { NameCell } from "./name-cell";
 import { ValueCell } from "./value-cell";
 import { NewVariableForm } from "./new-variable-form";
+import { segmentsOf } from "./segments";
 
 const isWholeNumber = (value: StyleValue) =>
   value.type === "unit" &&
@@ -177,57 +178,67 @@ export const BindPicker = ({
       items.push(
         <Heading key={`collection-${collection.id}`}>{collection.name}</Heading>
       );
-      let group: string | undefined;
-      for (const row of rows) {
-        if (row.group !== undefined && row.group !== group) {
+      // The manager's grouping: each group once, where it first appears;
+      // an ungrouped run has no heading.
+      segmentsOf(rows).forEach((segment, segmentIndex) => {
+        if (segment.group !== undefined) {
           items.push(
-            <Heading key={`group-${collection.id}-${row.group}`}>
-              {row.group}
+            <Heading key={`group-${collection.id}-${segmentIndex}`}>
+              {segment.group}
             </Heading>
           );
         }
-        group = row.group;
-        items.push(
-          <ListItem
-            key={row.cssName}
-            asChild
-            index={index}
-            state={row.cssName === bound?.cssName ? "selected" : undefined}
-            onSelect={() => {
-              bind(row.cssName);
-              onClose();
-            }}
-          >
-            <Flex
-              data-variable-option={row.cssName}
-              align="center"
-              gap="2"
-              onPointerEnter={() => bind(row.cssName, true)}
-              onPointerLeave={resetEphemeralStyles}
-              onFocus={() => bind(row.cssName, true)}
-              onBlur={resetEphemeralStyles}
-              css={{
-                minWidth: 0,
-                px: theme.spacing[3],
-                py: theme.spacing[2],
-                borderRadius: theme.borderRadius[3],
-                cursor: "default",
-                outline: "none",
-                "&:hover, &:focus-visible": {
-                  background: cssVar("--overlay-interaction-hover"),
-                },
-                "&[data-state=selected]": {
-                  background: selectedItemBackground,
-                },
+        for (const row of segment.rows) {
+          items.push(
+            <ListItem
+              key={row.cssName}
+              asChild
+              index={index}
+              state={row.cssName === bound?.cssName ? "selected" : undefined}
+              onSelect={() => {
+                bind(row.cssName);
+                onClose();
               }}
             >
-              <Swatch row={row} />
-              <Text truncate>{row.displayName}</Text>
-            </Flex>
-          </ListItem>
-        );
-        index += 1;
-      }
+              <Flex
+                data-variable-option={row.cssName}
+                data-variable-group={segment.group}
+                align="center"
+                gap="2"
+                onPointerEnter={() => bind(row.cssName, true)}
+                onPointerLeave={resetEphemeralStyles}
+                onFocus={() => bind(row.cssName, true)}
+                onBlur={resetEphemeralStyles}
+                css={{
+                  minWidth: 0,
+                  px: theme.spacing[3],
+                  // a group's variables sit under its heading
+                  "&[data-variable-group]": { pl: theme.spacing[7] },
+                  py: theme.spacing[2],
+                  borderRadius: theme.borderRadius[3],
+                  cursor: "default",
+                  outline: "none",
+                  "&:hover, &:focus-visible": {
+                    background: cssVar("--overlay-interaction-hover"),
+                  },
+                  "&[data-state=selected]": {
+                    background: selectedItemBackground,
+                  },
+                }}
+              >
+                <Swatch row={row} />
+                <Text truncate>
+                  {/* under its group's heading, the leaf, as the manager shows it */}
+                  {segment.group === undefined
+                    ? row.displayName
+                    : row.displayName.slice(row.displayName.indexOf("/") + 1)}
+                </Text>
+              </Flex>
+            </ListItem>
+          );
+          index += 1;
+        }
+      });
     }
     content = (
       <Flex direction="column" gap="1" css={{ padding: theme.spacing[5] }}>
@@ -235,14 +246,33 @@ export const BindPicker = ({
           autoFocus
           placeholder="Search variables"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onAbort={() => setQuery("")}
+          onChange={(event) => {
+            // a preview never outlives the option that set it
+            resetEphemeralStyles();
+            setQuery(event.target.value);
+          }}
+          onAbort={() => {
+            resetEphemeralStyles();
+            setQuery("");
+          }}
         />
-        <Button color="ghost" onClick={() => setView("new")}>
+        <Button
+          color="ghost"
+          onClick={() => {
+            resetEphemeralStyles();
+            setView("new");
+          }}
+        >
           New variable from this value
         </Button>
         {boundRow !== undefined && (
-          <Button color="ghost" onClick={() => setView("edit")}>
+          <Button
+            color="ghost"
+            onClick={() => {
+              resetEphemeralStyles();
+              setView("edit");
+            }}
+          >
             Edit variable
           </Button>
         )}

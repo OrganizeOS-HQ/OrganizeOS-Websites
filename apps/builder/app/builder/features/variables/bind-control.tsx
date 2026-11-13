@@ -16,8 +16,9 @@ import {
 } from "@webstudio-is/design-system";
 import { DotIcon, PlusIcon } from "@webstudio-is/icons";
 import type { CssProperty } from "@webstudio-is/css-engine";
+import type { VariableType } from "@webstudio-is/project-build";
 import { isStyleSourceLocked } from "@webstudio-is/project-build/runtime";
-import { $selectedStyleSource } from "~/shared/nano-states";
+import { $selectedInstance, $selectedStyleSource } from "~/shared/nano-states";
 import type { ComputedStyleDecl } from "~/shared/style-object-model";
 import { useComputedStyles } from "~/builder/features/style-panel/shared/model";
 import { useReadonly } from "~/builder/features/style-panel/shared/readonly";
@@ -28,14 +29,23 @@ import { BindPicker } from "./bind-picker";
 // Its own name, so an ancestor BindingControl's hover cannot reveal it.
 const opacityVar = declareCssVar("--variable-bind-opacity");
 
-/** The shared variable name when every property of the row uses it. */
-const boundNameOf = (styles: readonly ComputedStyleDecl[]) => {
+/**
+ * The shared variable name when every property of the row is bound on this
+ * element (spec 6.6): its own declaration, from any of its sources. A value
+ * it only inherits from an ancestor is no binding of its own, so a template's
+ * body colour does not mark every element's Color row.
+ */
+const boundNameOf = (
+  styles: readonly ComputedStyleDecl[],
+  instanceId: string | undefined
+) => {
   const first = styles[0]?.cascadedValue;
-  if (first?.type !== "var") {
+  if (first?.type !== "var" || instanceId === undefined) {
     return;
   }
   return styles.every(
     (decl) =>
+      decl.source.instanceId === instanceId &&
       decl.cascadedValue.type === "var" &&
       decl.cascadedValue.value === first.value
   )
@@ -43,17 +53,23 @@ const boundNameOf = (styles: readonly ComputedStyleDecl[]) => {
     : undefined;
 };
 
+/** The bound variable's name; it reads the names only while it shows. */
+const BoundName = ({ cssName }: { cssName: string }) => {
+  const displayNames = useStore($variableDisplayNames);
+  return <>{displayNames.get(cssName) ?? `--${cssName}`}</>;
+};
+
 /**
  * The "+", or the dot of a bound row: copies the Settings panel's binding
- * button (builder/shared/binding-popover.tsx), placed past the label's end
- * so the label never reflows.
+ * button (builder/shared/binding-popover.tsx), on the label's top-left
+ * corner, so the label never reflows.
  */
 const VariableBindButton = forwardRef<
   HTMLButtonElement,
   ButtonHTMLAttributes<HTMLButtonElement> & {
     properties: readonly CssProperty[];
     isBound: boolean;
-    tooltip: string | undefined;
+    tooltip: ReactNode | undefined;
   }
 >(({ properties, isBound, tooltip, ...props }, ref) => (
   <Tooltip content={tooltip} delayDuration={0}>
@@ -65,20 +81,22 @@ const VariableBindButton = forwardRef<
       bleed={false}
       css={{
         opacity: cssVar(opacityVar, "0"),
+        // on the label's top-left corner, as the Settings panel's binding
+        // button sits: never over the value field beside the label
         position: "absolute",
-        top: "50%",
-        right: 0,
+        top: 0,
+        left: 0,
         zIndex: 1,
         boxSizing: "border-box",
         padding: 2,
-        transform: "translate(100%, -50%) scale(1)",
+        transform: "translate(-50%, -50%) scale(1)",
         transition: "transform 60ms, opacity 0ms 60ms",
         // https://easings.net/#easeInOutSine
         transitionTimingFunction: "cubic-bezier(0.37, 0, 0.63, 1)",
         "&[data-variant=bound]": { opacity: 1 },
         "&:hover, &:focus-visible, &[aria-expanded=true]": {
           opacity: 1,
-          transform: "translate(100%, -50%) scale(1.5)",
+          transform: "translate(-50%, -50%) scale(1.5)",
         },
       }}
       {...props}
@@ -122,19 +140,32 @@ export const VariableBindControl = ({
 }) => {
   const readonly = useReadonly();
   const styleSource = useStore($selectedStyleSource);
-  const styles = useComputedStyles([...properties]);
-  const displayNames = useStore($variableDisplayNames);
-  const [open, setOpen] = useState(false);
   // cheap, and a memo keyed on the array would trip exhaustive-deps
   const types = getBindableTypes(properties);
   if (readonly || isStyleSourceLocked(styleSource) || types === undefined) {
     return <>{children}</>;
   }
-  const boundName = boundNameOf(styles);
-  const tooltip =
-    boundName === undefined || open
-      ? undefined
-      : (displayNames.get(boundName) ?? `--${boundName}`);
+  return (
+    <BindableRow properties={properties} types={types}>
+      {children}
+    </BindableRow>
+  );
+};
+
+/** A row that takes a variable: only these compute their styles here. */
+const BindableRow = ({
+  properties,
+  types,
+  children,
+}: {
+  properties: readonly CssProperty[];
+  types: ReadonlySet<VariableType>;
+  children: ReactNode;
+}) => {
+  const styles = useComputedStyles([...properties]);
+  const instanceId = useStore($selectedInstance)?.id;
+  const [open, setOpen] = useState(false);
+  const boundName = boundNameOf(styles, instanceId);
   return (
     <Flex
       align="center"
@@ -165,7 +196,11 @@ export const VariableBindControl = ({
         <VariableBindButton
           properties={properties}
           isBound={boundName !== undefined}
-          tooltip={tooltip}
+          tooltip={
+            boundName === undefined || open ? undefined : (
+              <BoundName cssName={boundName} />
+            )
+          }
         />
       </FloatingPanel>
     </Flex>

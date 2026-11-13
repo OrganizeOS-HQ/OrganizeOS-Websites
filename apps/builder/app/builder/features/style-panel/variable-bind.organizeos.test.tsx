@@ -34,6 +34,7 @@ import {
   project,
   undoDepth,
 } from "~/builder/features/variables/test-stores";
+import { $variableDisplayNames } from "~/builder/features/variables/reader";
 import { $styleObjectModel } from "./shared/model";
 import { ReadonlyProvider } from "./shared/readonly";
 import { PropertyLabel } from "./property-label";
@@ -332,15 +333,21 @@ test("the picker offers the row's types and only integer Numbers on z-index and 
 test("a per-side popover binds its one side, and the picker survives inside it", async () => {
   setup();
   const onClose = vi.fn();
+  // room from the frame's edge, as the panel has in the builder: the "+" sits
+  // half outside the label's top-left corner
   render(
-    createElement(InputPopover, {
-      styleSource: "default",
-      property: "margin-top",
-      value: { type: "unit", unit: "px", value: 0 },
-      getActiveProperties: (): CssProperty[] => ["margin-top"],
-      isOpen: true,
-      onClose,
-    })
+    createElement(
+      "div",
+      { style: { padding: "120px" } },
+      createElement(InputPopover, {
+        styleSource: "default",
+        property: "margin-top",
+        value: { type: "unit", unit: "px", value: 0 },
+        getActiveProperties: (): CssProperty[] => ["margin-top"],
+        isOpen: true,
+        onClose,
+      })
+    )
   );
   await openPicker(["margin-top"]);
   const search = dialog()!.querySelector<HTMLInputElement>(
@@ -533,4 +540,168 @@ test("nothing renders when read-only, on a locked token, or on a row with no typ
   const display = render(label("Display", ["display"]));
   expect(display.textContent).toContain("Display");
   expect(display.querySelector("[data-variable-bind]")).toBeNull();
+});
+
+const overlaps = (a: DOMRect, b: DOMRect) =>
+  a.right > b.left && a.left < b.right && a.bottom > b.top && a.top < b.bottom;
+
+test("a variable the element only inherits is no binding: the row shows the '+', with no Detach or Edit variable", async () => {
+  setup({
+    styles: [{ on: "body", property: "color", value: "var(--brand)" }],
+  });
+  render(label("Color", ["color"]));
+  expect(trigger(["color"])?.dataset.variant).toBe("default");
+  await openPicker(["color"]);
+  expect(button("Detach")).toBe(undefined);
+  expect(button("Edit variable")).toBe(undefined);
+});
+
+test("the '+' never sits on a value field, in the panel or a per-side popover", () => {
+  setup({
+    styles: [{ on: "box", property: "outline-style", value: "solid" }],
+  });
+  $selectedInstanceRenderState.set("mounted");
+  setSetting("stylePanelMode", "default");
+  render(createElement(StylePanel));
+  const fields = Array.from(document.querySelectorAll("input"), (input) =>
+    input.getBoundingClientRect()
+  );
+  const triggers = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-variable-bind]")
+  );
+  expect(triggers.length).toBeGreaterThan(10);
+  for (const item of triggers) {
+    const rect = item.getBoundingClientRect();
+    expect(
+      fields.some((field) => overlaps(rect, field)),
+      item.dataset.variableBind
+    ).toBe(false);
+  }
+  act(() => {
+    reactRoot?.unmount();
+  });
+  container?.remove();
+
+  // room from the frame's edge, as the panel has in the builder: the "+" sits
+  // half outside the label's top-left corner
+  render(
+    createElement(
+      "div",
+      { style: { padding: "120px" } },
+      createElement(InputPopover, {
+        styleSource: "default",
+        property: "margin-top",
+        value: { type: "unit", unit: "px", value: 0 },
+        getActiveProperties: (): CssProperty[] => ["margin-top"],
+        isOpen: true,
+        onClose: vi.fn(),
+      })
+    )
+  );
+  const plus = trigger(["margin-top"])!;
+  const field = plus
+    .closest("[data-radix-popper-content-wrapper]")!
+    .querySelector("input")!;
+  expect(
+    overlaps(plus.getBoundingClientRect(), field.getBoundingClientRect())
+  ).toBe(false);
+});
+
+test("the picker groups like the manager: each group once under its heading, an ungrouped variable under none", async () => {
+  setup({
+    styles: [
+      {
+        on: ROOT_INSTANCE_ID,
+        property: "--spacing--small" as CssProperty,
+        value: "4px",
+      },
+      {
+        on: ROOT_INSTANCE_ID,
+        property: "--radius" as CssProperty,
+        value: "2px",
+      },
+      {
+        on: ROOT_INSTANCE_ID,
+        property: "--spacing--large" as CssProperty,
+        value: "32px",
+      },
+    ],
+  });
+  $projectSettings.set({
+    meta: {},
+    compiler: {},
+    organizeos: {
+      variables: {
+        version: 1,
+        collections: [{ id: "site", name: "Site", system: "site" }],
+        variables: [
+          {
+            cssName: "brand",
+            collectionId: "site",
+            type: "color",
+            name: "Brand",
+          },
+          {
+            cssName: "spacing--small",
+            collectionId: "site",
+            type: "size",
+            name: "Spacing/Small",
+          },
+          {
+            cssName: "radius",
+            collectionId: "site",
+            type: "size",
+            name: "Radius",
+          },
+          {
+            cssName: "spacing--large",
+            collectionId: "site",
+            type: "size",
+            name: "Spacing/Large",
+          },
+        ],
+      },
+    },
+  });
+  render(label("Width", ["width"]));
+  await openPicker(["width"]);
+  const sequence = Array.from(
+    dialog()!.querySelectorAll<HTMLElement>(
+      '[role="presentation"], [data-variable-option]'
+    ),
+    (item) =>
+      item.dataset.variableOption === undefined
+        ? `# ${item.textContent}`
+        : `${item.dataset.variableOption}${item.dataset.variableGroup === undefined ? "" : ` in ${item.dataset.variableGroup}`}`
+  );
+  expect(sequence).toEqual([
+    "# Site",
+    "# Spacing",
+    "spacing--small in Spacing",
+    "spacing--large in Spacing",
+    "radius",
+    "gap",
+    "half",
+  ]);
+});
+
+test("a preview never outlives its option: a search that hides the hovered option clears it", async () => {
+  setup();
+  render(label("Color", ["color"]));
+  await openPicker(["color"]);
+  await act(async () => userEvent.hover(option("brand")!));
+  expect($ephemeralStyles.get()).toHaveLength(1);
+  const search = dialog()!.querySelector<HTMLInputElement>(
+    'input[placeholder="Search variables"]'
+  )!;
+  await act(async () => userEvent.fill(search, "zzz"));
+  expect(option("brand")).toBeNull();
+  expect($ephemeralStyles.get()).toEqual([]);
+});
+
+test("a row that is not bound does not follow the variables' display names", () => {
+  setup();
+  render(label("Color", ["color"]));
+  expect(trigger(["color"])).not.toBeNull();
+  expect($variableDisplayNames.lc).toBe(0);
 });

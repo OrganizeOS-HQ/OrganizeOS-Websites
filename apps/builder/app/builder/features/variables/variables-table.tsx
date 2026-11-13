@@ -35,6 +35,7 @@ import { VARIABLE_TYPE_LABELS } from "./value-types";
 import { NameCell } from "./name-cell";
 import { ValueCell } from "./value-cell";
 import { NewVariableMenu, newVariableValue } from "./variables-toolbar";
+import { segmentsOf, type Segment } from "./segments";
 
 /** The table's columns: handle, Name, Base mode, actions (spec 5.5). */
 const columns = `${theme.spacing[9]} minmax(0, 1fr) minmax(0, 1fr) ${theme.spacing[9]}`;
@@ -79,34 +80,6 @@ const ManyCheckbox = ({
       }}
     />
   );
-};
-
-/** A group's rows, or a run of rows with no group, in collection order. */
-type Segment = { group?: string; rows: VariableRow[] };
-
-const segmentsOf = (rows: readonly VariableRow[]) => {
-  const segments: Segment[] = [];
-  const groups = new Map<string, Segment>();
-  for (const row of rows) {
-    if (row.group === undefined) {
-      const last = segments.at(-1);
-      if (last !== undefined && last.group === undefined) {
-        last.rows.push(row);
-      } else {
-        segments.push({ rows: [row] });
-      }
-      continue;
-    }
-    const segment = groups.get(row.group);
-    if (segment !== undefined) {
-      segment.rows.push(row);
-      continue;
-    }
-    const created = { group: row.group, rows: [row] };
-    groups.set(row.group, created);
-    segments.push(created);
-  }
-  return segments;
 };
 
 const RowView = ({
