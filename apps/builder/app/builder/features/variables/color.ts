@@ -26,20 +26,16 @@ const isCurrentColor = (value: string) =>
 /**
  * Reads a style value as an sRGB color, or undefined when it is not one this
  * module can read (a variable, an alpha bound to a variable, `color-mix()`,
- * relative color syntax, a system color). The caller reports "Can't check".
+ * relative color syntax, a system color, `currentcolor`). Callers treat it as
+ * no colour.
  *
  * - `{ type: "color" }` in any color space; spaces other than sRGB are
  *   converted and gamut-mapped to sRGB through colorjs.io;
  * - legacy `{ type: "rgb" }` with 0..255 channels;
  * - `keyword` and `unparsed` strings that upstream's `parseColor` reads
- *   (named colors, `transparent`, hex and color functions);
- * - `currentcolor` as `currentColor`, the instance's resolved `color`,
- *   checked before `parseColor`, which does not read it as a color.
+ *   (named colors, `transparent`, hex and color functions).
  */
-export const toRgba = (
-  value: StyleValue,
-  currentColor?: Rgba
-): Rgba | undefined => {
+export const toRgba = (value: StyleValue): Rgba | undefined => {
   if (value.type === "color") {
     if (typeof value.alpha !== "number") {
       return;
@@ -66,27 +62,11 @@ export const toRgba = (
   }
   if (value.type === "keyword" || value.type === "unparsed") {
     if (isCurrentColor(value.value)) {
-      return currentColor;
+      return;
     }
     const parsed = parseColor(value.value.trim());
     return parsed === undefined ? undefined : toRgba(parsed);
   }
-};
-
-/** `top` painted over `bottom` (source-over), computed premultiplied. */
-export const composite = (top: Rgba, bottom: Rgba): Rgba => {
-  const a = top.a + bottom.a * (1 - top.a);
-  if (a === 0) {
-    return { r: 0, g: 0, b: 0, a: 0 };
-  }
-  const channel = (t: number, b: number) =>
-    (t * top.a + b * bottom.a * (1 - top.a)) / a;
-  return {
-    r: channel(top.r, bottom.r),
-    g: channel(top.g, bottom.g),
-    b: channel(top.b, bottom.b),
-    a,
-  };
 };
 
 const linearize = (channel: number) =>
@@ -108,22 +88,3 @@ const to8bit = (channel: number) => Math.round(clamp01(channel) * 255);
 /** An 8-bit-per-channel key, so near-identical colors deduplicate. */
 export const quantize = (c: Rgba): string =>
   `${to8bit(c.r)},${to8bit(c.g)},${to8bit(c.b)},${to8bit(c.a)}`;
-
-/**
- * The color at `t` (0..1) between `a` and `b`, interpolated in gamma-encoded
- * sRGB with premultiplied alpha, the CSS default for gradients.
- */
-export const interpolate = (a: Rgba, b: Rgba, t: number): Rgba => {
-  const alpha = a.a * (1 - t) + b.a * t;
-  if (alpha === 0) {
-    return { r: 0, g: 0, b: 0, a: 0 };
-  }
-  const channel = (ca: number, cb: number) =>
-    (ca * a.a * (1 - t) + cb * b.a * t) / alpha;
-  return {
-    r: channel(a.r, b.r),
-    g: channel(a.g, b.g),
-    b: channel(a.b, b.b),
-    a: alpha,
-  };
-};

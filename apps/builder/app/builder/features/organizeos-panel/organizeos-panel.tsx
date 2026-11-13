@@ -35,9 +35,8 @@ import {
  * The OrganizeOS data tab of the left sidebar: the org's data catalog, which a
  * page can add (organizeos-data.ts), until the CMS tab takes this slot. The
  * blocks are listed in the Components panel's OrganizeOS section
- * (components-section.tsx), Section background is the Style panel's
- * Background presets section (background-presets-section.tsx), and Motion is
- * the Inspector's Motion tab (motion-tab.tsx).
+ * (components-section.tsx), and Motion is the Inspector's Motion tab
+ * (motion-tab.tsx).
  *
  * Offered only to orgs the deny list does not deny: the sidebar hides the tab
  * otherwise ($isOrganizeosPanelAvailable).
