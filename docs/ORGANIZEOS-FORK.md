@@ -1797,8 +1797,9 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     changes moves into the item's "..." menu. Each field type has its control.
     Rich text is a Lexical editor, loaded with the first rich-text field. It
     keeps a value's images whole: an `img` (its `src`, `alt`, `width`,
-    `height` and `title`) in its place in the line, or a `figure` with a
-    plain-text `figcaption`. Its Image button uploads one through E9 with the
+    `height` and `title`) in its place in the line with the spaces beside it,
+    or a top-level `figure` with a plain-text `figcaption` (a nested one reads
+    lossy). Its Image button uploads one through E9 with the
     image field's checks; pasted HTML brings no image. It is read-only when
     the editor would not keep the value's blocks or links whole: "Read only"
     for a value with images, else with "Edit in Classic CMS". A refusal is one line each, with the "Not in

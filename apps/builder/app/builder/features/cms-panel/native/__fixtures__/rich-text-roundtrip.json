@@ -205,32 +205,59 @@
     {
       "name": "image in a list item",
       "input": "<ul><li><p>Item <img src=\"https://example.org/a.png\" alt=\"A\" /></p></li></ul><p></p>",
-      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">Item</span><img src=\"https://example.org/a.png\" alt=\"A\"></li></ul><p></p>",
-      "stored": "<ul><li>Item<img src=\"https://example.org/a.png\" alt=\"A\" /></li></ul><p></p>"
+      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">Item </span><img src=\"https://example.org/a.png\" alt=\"A\"></li></ul><p></p>",
+      "stored": "<ul><li>Item <img src=\"https://example.org/a.png\" alt=\"A\" /></li></ul><p></p>"
     },
     {
       "name": "image in a quote",
       "input": "<blockquote><p>Quote <img src=\"https://example.org/a.png\" alt=\"A\" /></p></blockquote><p></p>",
-      "editor": "<blockquote><p><span style=\"white-space: pre-wrap;\">Quote</span><img src=\"https://example.org/a.png\" alt=\"A\"></p></blockquote><p></p>",
-      "stored": "<blockquote><p>Quote<img src=\"https://example.org/a.png\" alt=\"A\" /></p></blockquote><p></p>"
+      "editor": "<blockquote><p><span style=\"white-space: pre-wrap;\">Quote </span><img src=\"https://example.org/a.png\" alt=\"A\"></p></blockquote><p></p>",
+      "stored": "<blockquote><p>Quote <img src=\"https://example.org/a.png\" alt=\"A\" /></p></blockquote><p></p>"
     },
     {
       "name": "image in a heading",
       "input": "<h2>Title <img src=\"https://example.org/a.png\" alt=\"A\" /></h2><p>Body</p>",
-      "editor": "<h2><span style=\"white-space: pre-wrap;\">Title</span><img src=\"https://example.org/a.png\" alt=\"A\"></h2><p><span style=\"white-space: pre-wrap;\">Body</span></p>",
-      "stored": "<h2>Title<img src=\"https://example.org/a.png\" alt=\"A\" /></h2><p>Body</p>"
+      "editor": "<h2><span style=\"white-space: pre-wrap;\">Title </span><img src=\"https://example.org/a.png\" alt=\"A\"></h2><p><span style=\"white-space: pre-wrap;\">Body</span></p>",
+      "stored": "<h2>Title <img src=\"https://example.org/a.png\" alt=\"A\" /></h2><p>Body</p>"
     },
     {
       "name": "http image",
       "input": "<p><img src=\"http://example.org/a.png\" alt=\"A\" /></p>",
       "editor": "<p><img src=\"http://example.org/a.png\" alt=\"A\"></p>",
       "stored": "<p><img src=\"http://example.org/a.png\" alt=\"A\" /></p>"
+    },
+    {
+      "name": "image between words",
+      "input": "<p>Join us <img src=\"https://example.org/a.png\" alt=\"A\" /> today</p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Join us </span><img src=\"https://example.org/a.png\" alt=\"A\"><span style=\"white-space: pre-wrap;\"> today</span></p>",
+      "stored": "<p>Join us <img src=\"https://example.org/a.png\" alt=\"A\" /> today</p>"
+    },
+    {
+      "name": "image in a link with text after",
+      "input": "<p><a href=\"https://example.org/\">More <img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>",
+      "editor": "<p><a href=\"https://example.org/\"><span style=\"white-space: pre-wrap;\">More </span><img src=\"https://example.org/a.png\" alt=\"A\"></a><span style=\"white-space: pre-wrap;\"> after</span></p>",
+      "stored": "<p><a href=\"https://example.org/\">More <img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>"
     }
   ],
   "readOnly": [
     {
       "name": "list item with two paragraphs",
       "input": "<ul><li><p>a</p><p>b</p></li></ul><p></p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "captioned figure in a quote",
+      "input": "<blockquote><figure><img src=\"https://example.org/a.png\" alt=\"A\" /><figcaption>c</figcaption></figure></blockquote>",
+      "reason": "lossy"
+    },
+    {
+      "name": "captioned figure in a list item",
+      "input": "<ul><li><figure><img src=\"https://example.org/a.png\" alt=\"A\" /><figcaption>c</figcaption></figure></li></ul><p></p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "list item with a paragraph and a figure",
+      "input": "<ul><li><p>a</p><figure><img src=\"https://example.org/a.png\" alt=\"A\" /></figure></li></ul><p></p>",
       "reason": "lossy"
     }
   ]

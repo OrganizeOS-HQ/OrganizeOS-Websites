@@ -343,12 +343,71 @@ export const getRichTextReadOnlyReason = (
   if (html === "" || typeof DOMParser === "undefined") {
     return;
   }
-  if (
-    richTextBlockSignature(html) !== richTextBlockSignature(writeHeadless(html))
-  ) {
+  let written: string;
+  try {
+    written = writeHeadless(html);
+  } catch {
+    // a value the editor cannot load opens read-only, never as a failure
+    return "lossy";
+  }
+  if (richTextBlockSignature(html) !== richTextBlockSignature(written)) {
     return "lossy";
   }
 };
+
+/**
+ * Lexical's import trims a space at a line's edge, and an image ends the
+ * line for it, so "Join us <img> today" would lose both spaces. Before the
+ * import, each text edge touching an image gets this mark, which keeps its
+ * space; the imported text then drops the mark.
+ */
+const IMAGE_EDGE = "\uE000";
+
+const textAtEdge = (node: Node | null, last: boolean): Text | undefined => {
+  let current = node;
+  while (current !== null && current.nodeType === Node.ELEMENT_NODE) {
+    current = last ? current.lastChild : current.firstChild;
+  }
+  return current?.nodeType === Node.TEXT_NODE ? (current as Text) : undefined;
+};
+
+const markImageEdges = (body: HTMLElement) => {
+  for (const image of Array.from(body.querySelectorAll("img"))) {
+    const before = textAtEdge(image.previousSibling, true);
+    if (before !== undefined && /\s$/.test(before.data)) {
+      before.data = `${before.data}${IMAGE_EDGE}`;
+    }
+    const after = textAtEdge(image.nextSibling, false);
+    if (after !== undefined && /^\s/.test(after.data)) {
+      after.data = `${IMAGE_EDGE}${after.data}`;
+    }
+  }
+};
+
+const unmarkImageEdges = (nodes: LexicalNode[]): LexicalNode[] =>
+  nodes.flatMap((node) => {
+    if ($isTextNode(node)) {
+      const text = node.getTextContent();
+      if (text.includes(IMAGE_EDGE)) {
+        const kept = text.split(IMAGE_EDGE).join("");
+        if (kept === "") {
+          return [];
+        }
+        node.setTextContent(kept);
+      }
+      return [node];
+    }
+    if ($isElementNode(node)) {
+      const children = node.getChildren();
+      const kept = unmarkImageEdges(children);
+      for (const child of children) {
+        if (kept.includes(child) === false) {
+          child.remove();
+        }
+      }
+    }
+    return [node];
+  });
 
 /** Text, line breaks and inline elements; blocks stand at the root. */
 const isInlineNode = (node: LexicalNode) =>
@@ -368,10 +427,11 @@ export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
       anchor.setAttribute("href", href);
     }
   }
+  markImageEdges(dom.body);
   const nodes: LexicalNode[] = [];
   let run: ParagraphNode | undefined;
-  for (const node of importStoredImages(() =>
-    $generateNodesFromDOM(editor, dom)
+  for (const node of unmarkImageEdges(
+    importStoredImages(() => $generateNodesFromDOM(editor, dom))
   )) {
     if (isInlineNode(node)) {
       if (run === undefined) {

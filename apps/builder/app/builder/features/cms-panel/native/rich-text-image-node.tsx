@@ -371,7 +371,12 @@ export class CmsFigureNode extends DecoratorNode<JSX.Element> {
   static importDOM(): DOMConversionMap | null {
     return {
       figure: (element) => {
-        if (isImportingStoredValue === false) {
+        // only a figure at the value's top level is kept whole: a nested
+        // one imports through the other rules and reads as lossy
+        if (
+          isImportingStoredValue === false ||
+          element.parentElement?.tagName !== "BODY"
+        ) {
           return null;
         }
         const figure = readFigure(element);

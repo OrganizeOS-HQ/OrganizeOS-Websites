@@ -61,7 +61,51 @@ describe("the round trip (spec 8)", () => {
   );
 
   test("only a value the editor would not keep whole is read-only", () => {
-    expect(fixture.readOnly.map(({ reason }) => reason)).toEqual(["lossy"]);
+    expect(new Set(fixture.readOnly.map(({ reason }) => reason))).toEqual(
+      new Set(["lossy"])
+    );
+  });
+
+  // a figure is kept whole only at the value's top level; a nested one loads
+  // through the other rules and reads lossy, whatever its caption holds
+  const IMG = '<img src="https://example.org/a.png" alt="A" />';
+  const figures = [
+    `<figure>${IMG}<figcaption>c</figcaption></figure>`,
+    `<figure>${IMG}<figcaption>\u00a0</figcaption></figure>`,
+    `<figure>\n  ${IMG}\n  <figcaption>\n    c\n  </figcaption>\n</figure>`,
+    `<figure>${IMG}</figure>`,
+  ];
+  const nestings = [
+    (inner: string) => `<blockquote>${inner}</blockquote>`,
+    (inner: string) =>
+      `<blockquote><blockquote>${inner}</blockquote></blockquote>`,
+    (inner: string) => `<ul><li>${inner}</li></ul><p></p>`,
+    (inner: string) => `<ol><li>${inner}</li></ol><p></p>`,
+    (inner: string) => `<ul><li><ul><li>${inner}</li></ul></li></ul><p></p>`,
+    (inner: string) => `<ul><li><p>a</p>${inner}</li></ul><p></p>`,
+    (inner: string) => `<ul><li>${inner}<p>a</p></li></ul><p></p>`,
+    (inner: string) => `<h2>${inner}</h2>`,
+    (inner: string) => `<h3>${inner}</h3>`,
+    (inner: string) => `<pre>${inner}</pre>`,
+    (inner: string) => `<pre><code>${inner}</code></pre>`,
+    (inner: string) => `<ul><li><h3>${inner}</h3></li></ul><p></p>`,
+    (inner: string) =>
+      `<blockquote><a href="https://example.org/">${inner}</a></blockquote>`,
+  ];
+  test.each(nestings.flatMap((nest) => figures.map((figure) => nest(figure))))(
+    "a nested figure loads without failing and reads lossy: %s",
+    (html) => {
+      expect(() => roundTrip(html)).not.toThrow();
+      expect(getRichTextReadOnlyReason(html)).toBe("lossy");
+    }
+  );
+
+  test("a compact figure at the top level stays editable; a pretty-printed one reads lossy", () => {
+    const [captioned, blankCaption, prettyPrinted, bare] = figures;
+    for (const figure of [captioned, blankCaption, bare]) {
+      expect(getRichTextReadOnlyReason(`<p>a</p>${figure}`)).toBeUndefined();
+    }
+    expect(getRichTextReadOnlyReason(`<p>a</p>${prettyPrinted}`)).toBe("lossy");
   });
 
   test("the editor never writes a tag outside the allowlist but span", () => {
