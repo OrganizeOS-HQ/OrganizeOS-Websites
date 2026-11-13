@@ -255,6 +255,18 @@
       "input": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>",
       "editor": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\"></a><span style=\"white-space: pre-wrap;\"> after</span></p>",
       "stored": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>"
+    },
+    {
+      "name": "empty mark beside an image in a link",
+      "input": "<p><a href=\"https://example.org/\">x<img src=\"https://example.org/a.png\" alt=\"A\" /><strong></strong></a> after</p>",
+      "editor": "<p><a href=\"https://example.org/\"><span style=\"white-space: pre-wrap;\">x</span><img src=\"https://example.org/a.png\" alt=\"A\"></a><span style=\"white-space: pre-wrap;\"> after</span></p>",
+      "stored": "<p><a href=\"https://example.org/\">x<img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>"
+    },
+    {
+      "name": "empty mark beside an image",
+      "input": "<p>before <em></em><img src=\"https://example.org/a.png\" alt=\"A\" /> after</p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">before </span><img src=\"https://example.org/a.png\" alt=\"A\"><span style=\"white-space: pre-wrap;\"> after</span></p>",
+      "stored": "<p>before <img src=\"https://example.org/a.png\" alt=\"A\" /> after</p>"
     }
   ],
   "readOnly": [
@@ -276,6 +288,21 @@
     {
       "name": "list item with a paragraph and a figure",
       "input": "<ul><li><p>a</p><figure><img src=\"https://example.org/a.png\" alt=\"A\" /></figure></li></ul><p></p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "list item with a paragraph and an image",
+      "input": "<ul><li><img src=\"https://example.org/a.png\" alt=\"A\" /><p>b</p></li></ul><p></p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "image in a link with no address",
+      "input": "<p>More <a><img src=\"https://example.org/a.png\" alt=\"A\" /></a> after</p>",
+      "reason": "lossy"
+    },
+    {
+      "name": "image beside a whitespace-only link",
+      "input": "<p>x<img src=\"https://example.org/a.png\" alt=\"A\" /><a href=\"https://example.org/\"> </a></p>",
       "reason": "lossy"
     }
   ]
