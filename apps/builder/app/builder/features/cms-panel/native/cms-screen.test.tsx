@@ -1468,6 +1468,51 @@ describe("the list state per collection (Task 14)", () => {
     expect(menuRadio("Draft")?.getAttribute("aria-checked")).toBe("false");
   });
 
+  test("the editor's Delete closes it without the guard, and the list refetches under the filter", async () => {
+    const item = itemOf({ status: "archived" });
+    fake.listItems.mockImplementation(async (_c, q) =>
+      echoPage(q, [itemRowOf(item)], 1)
+    );
+    fake.getItem.mockResolvedValue({ item });
+    fake.deleteItems.mockResolvedValue({ deleted: [item.id] });
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        list: listView({ status: "archived", sort: "name" }),
+      },
+    });
+    await settle();
+    await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+    await settle();
+    // unsaved edits go with the item
+    await act(async () => userEvent.type(titleInput()!, "x"));
+    await settle();
+    expect($cmsNativeDirty.get()).toBe(true);
+    const calls = fake.listItems.mock.calls.length;
+    await click(byLabel("Item menu"));
+    await click(
+      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (element) => element.textContent === "Delete"
+      )
+    );
+    await click(
+      [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          '[role="dialog"] button'
+        ),
+      ].find((button) => button.textContent === "Delete")
+    );
+    await settle();
+    expect(titleInput()).toBeNull();
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+    expect($cmsNativeDirty.get()).toBe(false);
+    expect(fake.listItems.mock.calls.length).toBeGreaterThan(calls);
+    expect(lastListItems()).toEqual([
+      POSTS.id,
+      { q: undefined, page: 1, status: "archived", sort: "name" },
+    ]);
+  });
+
   test("a failed refetch for the current key keeps the drawn rows", async () => {
     let answers = 0;
     fake.listItems.mockImplementation(async (_c, q) => {

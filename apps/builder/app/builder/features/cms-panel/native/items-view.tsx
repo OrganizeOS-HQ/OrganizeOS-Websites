@@ -145,6 +145,7 @@ const TopBar = ({
         <Button
           color="primary"
           prefix={<PlusIcon />}
+          data-cms-new-item
           css={{ flexShrink: 0 }}
           onClick={onNewItem}
         >
@@ -211,6 +212,8 @@ export const ItemsView = ({
   canEdit,
   canPublish,
   focusItemId,
+  deletedItemId,
+  onDeletedFocused,
   source,
   fields,
   list,
@@ -229,6 +232,10 @@ export const ItemsView = ({
   canEdit: boolean;
   canPublish: boolean;
   focusItemId?: string;
+  /** The item the editor's Delete removed: the first other row takes the focus. */
+  deletedItemId?: string;
+  /** The focus has settled after the delete: the deleted row is gone. */
+  onDeletedFocused?: () => void;
   /** The door, for the bulk and reorder calls (Tasks 16 to 18). */
   source: CmsSource;
   /** The cached E2 fields of the open collection, for the table (Task 15). */
@@ -366,6 +373,29 @@ export const ItemsView = ({
 
   const rootRef = useRef<HTMLDivElement>(null);
   const [mainWidth, setMainWidth] = useState(0);
+
+  // After the editor's Delete: the table's first row, else New item, takes
+  // the focus, again on each page until the refetch has dropped the row.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (deletedItemId === undefined || root === null) {
+      return;
+    }
+    const firstRow = [
+      ...root.querySelectorAll<HTMLElement>("[data-cms-item-id]"),
+    ].find((row) => row.dataset.cmsItemId !== deletedItemId);
+    const target =
+      firstRow ?? root.querySelector<HTMLElement>("[data-cms-new-item]");
+    if (target !== null && document.activeElement !== target) {
+      target.focus();
+    }
+    if (
+      page !== undefined &&
+      page.items.every((row) => row.id !== deletedItemId)
+    ) {
+      onDeletedFocused?.();
+    }
+  }, [deletedItemId, page, onDeletedFocused]);
   useEffect(() => {
     const element = rootRef.current;
     if (element === null) {

@@ -18,6 +18,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Flex,
   Grid,
@@ -49,6 +50,8 @@ import {
   type CmsKeptValues,
   type CmsRefusal,
 } from "./cms-logic";
+import { getDeleteTitle, getListFailureText } from "./cms-list-logic";
+import { DeleteDialog } from "./delete-dialog";
 import {
   isCmsFailure,
   type CmsAccess,
@@ -73,7 +76,7 @@ const editorColumnMaxWidth = `calc(${theme.spacing[35]} + 2 * ${theme.spacing[9]
 /** Below this header width, Discard changes moves into the Item menu. */
 export const COMPACT_HEADER_WIDTH = 600;
 
-type Busy = "save" | "publish" | "discard" | "reload";
+type Busy = "save" | "publish" | "discard" | "reload" | "status" | "delete";
 
 /**
  * A write whose answer was lost may have landed (4.3.2). `afterSave`: the
@@ -110,6 +113,7 @@ export const ItemEditor = ({
   onBack,
   onDirtyChange,
   onWritten,
+  onDeleted,
   onCreated,
   onSchemaStale,
   onRefusal,
@@ -169,6 +173,7 @@ export const ItemEditor = ({
     { kind: CmsLineKind; retry?: () => void } | undefined
   >(undefined);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   // The fields whose value is still being written (an upload in flight):
   // Save and Publish wait, so no write leaves a late value out.
   const [busyFields, setBusyFields] = useState<ReadonlySet<string>>(
@@ -185,8 +190,9 @@ export const ItemEditor = ({
   const cancelRef = useRef<HTMLButtonElement>(null);
   // Per reference field, its chosen ids whose items E5 no longer finds.
   const unresolved = useRef<Record<string, readonly string[]>>({});
-  // Discard changes chosen in the Item menu: its dialog takes the focus.
-  const discardChosen = useRef(false);
+  // Discard changes or Delete chosen in the Item menu: its dialog takes the
+  // focus.
+  const dialogChosen = useRef(false);
   const [setHeader, isCompact] = useIsNarrow(COMPACT_HEADER_WIDTH);
 
   const isNew = item === null;
@@ -637,6 +643,143 @@ export const ItemEditor = ({
     }
   };
 
+  /**
+   * After a status change: the item is read, and becomes the baseline and
+   * version with nothing kept aside, since the person's values were saved.
+   * A failed read shows the load line and its Retry.
+   */
+  const readAfterStatus = async (target: CmsItem) => {
+    setBusy("reload");
+    let result: CmsResult<{ item: CmsItem }>;
+    try {
+      result = await source.getItem(collection.id, target.id);
+    } catch {
+      result = { error: "unavailable" };
+    } finally {
+      setBusy(undefined);
+    }
+    if (isCmsFailure(result)) {
+      const refusal = getRefusal(result.error, "write");
+      if (refusal !== undefined) {
+        onRefusal(refusal);
+        return;
+      }
+      setLine({
+        kind: "unavailable",
+        retry: () => {
+          loadedId.current = undefined;
+          setLine(undefined);
+          setLoadAttempt((current) => current + 1);
+        },
+      });
+      return;
+    }
+    setLine(undefined);
+    setKept(undefined);
+    applyItem(result.item);
+  };
+
+  /**
+   * Unpublish, Archive and Restore (5.2.1): Save first with unsaved edits,
+   * stopping on its failure; then E11; then the item is read.
+   */
+  const changeStatus = async (status: "draft" | "archived") => {
+    let current = item;
+    if (current === undefined || current === null) {
+      return;
+    }
+    if (isDirty) {
+      const first = await saveFrom(current);
+      if (first === undefined) {
+        return;
+      }
+      current = first.saved;
+    }
+    const target = current;
+    setBusy("status");
+    let result: CmsResult<{ changed: string[] }>;
+    try {
+      result = await source.setItemsStatus(collection.id, {
+        ids: [target.id],
+        status,
+      });
+    } catch {
+      result = { error: "unavailable" };
+    } finally {
+      setBusy(undefined);
+    }
+    if (isCmsFailure(result)) {
+      const refusal = getRefusal(result.error, "write");
+      if (refusal !== undefined) {
+        onRefusal(refusal);
+        return;
+      }
+      if (result.error === "unavailable") {
+        // the outcome is unknown: what the item reads is the truth
+        onWritten();
+        await readAfterStatus(target);
+        return;
+      }
+      if (result.error === "slug_taken") {
+        setErrors((current) => ({ ...current, slug: "Address in use" }));
+        return;
+      }
+      toast.error(
+        result.error === "not_found"
+          ? "Item not found"
+          : getListFailureText("status", result.error)
+      );
+      return;
+    }
+    onWritten();
+    await readAfterStatus(target);
+  };
+
+  /** Delete (5.2.1): E12; the editor closes without the unsaved guard. */
+  const remove = async () => {
+    if (item === undefined || item === null) {
+      return;
+    }
+    const target = item;
+    setBusy("delete");
+    let result: CmsResult<{ deleted: string[] }>;
+    try {
+      result = await source.deleteItems(collection.id, { ids: [target.id] });
+    } catch {
+      result = { error: "unavailable" };
+    }
+    if (isCmsFailure(result) && result.error === "unavailable") {
+      // the outcome is unknown: an item that is gone was deleted
+      let read: CmsResult<{ item: CmsItem }>;
+      try {
+        read = await source.getItem(collection.id, target.id);
+      } catch {
+        read = { error: "unavailable" };
+      }
+      result =
+        isCmsFailure(read) && read.error === "not_found"
+          ? { deleted: [target.id] }
+          : result;
+    }
+    setBusy(undefined);
+    setConfirmDelete(false);
+    if (isCmsFailure(result) === false) {
+      // a 200 without the id: it was already gone, so the editor closes too
+      onDeleted();
+      return;
+    }
+    const refusal = getRefusal(result.error, "write");
+    if (refusal !== undefined) {
+      onRefusal(refusal);
+      return;
+    }
+    toast.error(
+      result.error === "not_found"
+        ? "Item not found"
+        : getListFailureText("delete", result.error)
+    );
+  };
+
   /** Reload keeps the person's unsaved values aside (4.3.2). */
   const reload = async () => {
     if (item === undefined || item === null) {
@@ -734,49 +877,25 @@ export const ItemEditor = ({
   const isFieldBusy = busyFields.size > 0;
   const showConflictLine = conflict || keptDifferences.length > 0;
 
+  const isBusy = busy !== undefined;
+  const menuItems = [
+    isCompact && hasStagedChanges ? "discard" : undefined,
+    access.canPublish && status === "published" ? "unpublish" : undefined,
+    status !== "archived" ? "archive" : undefined,
+    status === "archived" ? "restore" : undefined,
+  ].filter((entry) => entry !== undefined);
   const actions = (
     <Flex align="center" gap="2" css={{ flexShrink: 0 }}>
-      {canEdit &&
-        hasStagedChanges &&
-        (isCompact ? (
-          <DropdownMenu modal={false}>
-            <Tooltip content="Item menu" side="bottom">
-              <DropdownMenuTrigger asChild>
-                <IconButton aria-label="Item menu">
-                  <EllipsesIcon />
-                </IconButton>
-              </DropdownMenuTrigger>
-            </Tooltip>
-            <DropdownMenuContent
-              align="end"
-              onCloseAutoFocus={(event) => {
-                if (discardChosen.current) {
-                  discardChosen.current = false;
-                  event.preventDefault();
-                }
-              }}
-            >
-              <DropdownMenuItem
-                disabled={busy !== undefined}
-                onSelect={() => {
-                  discardChosen.current = true;
-                  setConfirmDiscard(true);
-                }}
-              >
-                Discard changes
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : (
-          <Button
-            color="ghost"
-            disabled={busy !== undefined}
-            state={busy === "discard" ? "pending" : undefined}
-            onClick={() => setConfirmDiscard(true)}
-          >
-            Discard changes
-          </Button>
-        ))}
+      {canEdit && hasStagedChanges && isCompact === false && (
+        <Button
+          color="ghost"
+          disabled={isBusy}
+          state={busy === "discard" ? "pending" : undefined}
+          onClick={() => setConfirmDiscard(true)}
+        >
+          Discard changes
+        </Button>
+      )}
       {canEdit && (
         <Button
           color={access.canPublish ? "neutral" : "primary"}
@@ -800,6 +919,73 @@ export const ItemEditor = ({
         >
           {isPublishLabel ? "Publish" : "Publish changes"}
         </Button>
+      )}
+      {canEdit && isNew === false && (
+        <DropdownMenu modal={false}>
+          <Tooltip content="Item menu" side="bottom">
+            <DropdownMenuTrigger asChild>
+              <IconButton aria-label="Item menu">
+                <EllipsesIcon />
+              </IconButton>
+            </DropdownMenuTrigger>
+          </Tooltip>
+          <DropdownMenuContent
+            align="end"
+            onCloseAutoFocus={(event) => {
+              if (dialogChosen.current) {
+                dialogChosen.current = false;
+                event.preventDefault();
+              }
+            }}
+          >
+            {menuItems.includes("discard") && (
+              <DropdownMenuItem
+                disabled={isBusy}
+                onSelect={() => {
+                  dialogChosen.current = true;
+                  setConfirmDiscard(true);
+                }}
+              >
+                Discard changes
+              </DropdownMenuItem>
+            )}
+            {menuItems.includes("unpublish") && (
+              <DropdownMenuItem
+                disabled={isBusy}
+                onSelect={() => void changeStatus("draft")}
+              >
+                Unpublish
+              </DropdownMenuItem>
+            )}
+            {menuItems.includes("archive") && (
+              <DropdownMenuItem
+                disabled={isBusy}
+                onSelect={() => void changeStatus("archived")}
+              >
+                Archive
+              </DropdownMenuItem>
+            )}
+            {menuItems.includes("restore") && (
+              <DropdownMenuItem
+                disabled={isBusy}
+                onSelect={() => void changeStatus("draft")}
+              >
+                Restore
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              destructive
+              disabled={isBusy}
+              onSelect={() => {
+                dialogChosen.current = true;
+                setConfirmDelete(true);
+              }}
+            >
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </Flex>
   );
@@ -963,6 +1149,13 @@ export const ItemEditor = ({
           <DialogTitle>Discard staged changes?</DialogTitle>
         </DialogContent>
       </Dialog>
+      <DeleteDialog
+        open={confirmDelete}
+        title={getDeleteTitle(1, collection)}
+        busy={busy === "delete"}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => void remove()}
+      />
     </Flex>
   );
 };

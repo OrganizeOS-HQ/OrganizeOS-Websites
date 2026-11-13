@@ -263,6 +263,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const [returnFocusItemId, setReturnFocusItemId] = useState<
       string | undefined
     >(undefined);
+    // The item the editor's Delete removed: the list focuses its first other
+    // row, else New item (W3-D6).
+    const [deletedItemId, setDeletedItemId] = useState<string | undefined>(
+      undefined
+    );
     // The times the screen has been shown: the first is the open, each
     // later one a reopen.
     const [opens, setOpens] = useState(0);
@@ -722,6 +727,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       setEditorSession((current) => current + 1);
       setFocusBack(true);
       setReturnFocusItemId(undefined);
+      setDeletedItemId(undefined);
       setItemId(nextId);
     };
 
@@ -771,12 +777,14 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
     };
 
-    // The editor's Delete (Task 19): the editor closes without the guard,
-    // the lists refetch under the open filter, and the canvas invalidates.
+    // The editor's Delete: the editor closes without the guard, the lists
+    // refetch under the open filter, and the canvas invalidates. The deleted
+    // row no longer takes the focus back: the table's first row does.
     const onDeleted = () => {
       setIsEditorDirty(false);
       $cmsNativeDirty.set(false);
-      setReturnFocusItemId(itemId ?? undefined);
+      setReturnFocusItemId(undefined);
+      setDeletedItemId(itemId ?? undefined);
       setItemId(undefined);
       onWritten();
     };
@@ -874,6 +882,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           canEdit={access.canEdit}
           canPublish={access.canPublish}
           focusItemId={returnFocusItemId}
+          deletedItemId={deletedItemId}
+          onDeletedFocused={() => setDeletedItemId(undefined)}
           source={source}
           fields={detail?.id === collection.id ? detail.fields : undefined}
           list={list}
