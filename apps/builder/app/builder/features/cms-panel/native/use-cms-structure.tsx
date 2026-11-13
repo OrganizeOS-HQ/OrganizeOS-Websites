@@ -54,7 +54,11 @@ import {
 } from "./collection-settings";
 import { FieldSheet, type FieldSheetTarget } from "./field-sheet";
 import { AddFieldMenu, FieldsList } from "./fields-view";
-import { NewCollectionDialog, NewCollectionPage } from "./new-collection";
+import {
+  NewCollectionDialog,
+  NewCollectionPage,
+  type CmsPendingCreate,
+} from "./new-collection";
 import { LineRow, RefusalLine, type CmsLineKind } from "./refusal-line";
 import { StructureRowMenu } from "./structure-row-menu";
 
@@ -331,7 +335,50 @@ export const useCmsStructure = ({
     }
   }, [detail]);
 
-  const closeView = useCallback(() => setView(undefined), []);
+  // Whether the settings view or the field sheet reported unsaved values:
+  // only then does closing it clear the screen's flag, which the item
+  // editor shares.
+  const viewDirty = useRef(false);
+  const reportViewDirty = useCallback(
+    (dirty: boolean) => {
+      viewDirty.current = dirty;
+      onDirtyChange(dirty);
+    },
+    [onDirtyChange]
+  );
+  const clearViewDirty = useCallback(() => {
+    if (viewDirty.current) {
+      viewDirty.current = false;
+      onDirtyChange(false);
+    }
+  }, [onDirtyChange]);
+
+  const closeView = useCallback(() => {
+    clearViewDirty();
+    setView(undefined);
+  }, [clearViewDirty]);
+
+  // A Create whose outcome is unknown: the next E1 holding a new collection
+  // of that name is the one it made.
+  const pendingCreate = useRef<
+    (CmsPendingCreate & { knownIds: Set<string> }) | undefined
+  >(undefined);
+  const foundCreated = useRef<
+    ((collection: CmsCollectionSummary, type: string) => void) | undefined
+  >(undefined);
+  useEffect(() => {
+    const pending = pendingCreate.current;
+    if (pending === undefined) {
+      return;
+    }
+    const found = collections.find(
+      (entry) =>
+        pending.knownIds.has(entry.id) === false && entry.name === pending.name
+    );
+    if (found !== undefined) {
+      foundCreated.current?.(found, pending.type);
+    }
+  }, [collections]);
 
   const fetchStructure = async (id: string) => {
     if (structure === undefined) {
@@ -350,14 +397,14 @@ export const useCmsStructure = ({
 
   const open = (next: CmsStructureView) =>
     guard(() => {
-      onDirtyChange(false);
+      clearViewDirty();
       setSession((current) => current + 1);
       setView(next);
     });
 
   const openSettings = (id: string) =>
     guard(() => {
-      onDirtyChange(false);
+      clearViewDirty();
       if (id !== collectionId) {
         onOpenCollection(id);
       }
@@ -473,7 +520,7 @@ export const useCmsStructure = ({
         <Tooltip content="New collection" side="bottom">
           <IconButton
             aria-label="New collection"
-            onClick={() => setIsNewOpen(true)}
+            onClick={() => guard(() => setIsNewOpen(true))}
           >
             <PlusIcon />
           </IconButton>
@@ -490,7 +537,10 @@ export const useCmsStructure = ({
   };
 
   const onCreated = (created: CmsCollectionSummary, type: string) => {
+    pendingCreate.current = undefined;
+    setIsNewOpen(false);
     onWritten({ kind: "created", collection: created });
+    clearViewDirty();
     setView(undefined);
     onOpenCollection(created.id);
     // a custom collection starts with Name alone: its fields come next
@@ -498,6 +548,21 @@ export const useCmsStructure = ({
       setTab("fields");
     }
     setStructureVersion((current) => current + 1);
+  };
+
+  foundCreated.current = onCreated;
+
+  const createCallbacks = {
+    onCreated,
+    onRefusal: showLine,
+    onUnknownOutcome: (pending: CmsPendingCreate) => {
+      pendingCreate.current = {
+        ...pending,
+        knownIds: new Set(collections.map((entry) => entry.id)),
+      };
+      refetchCollections();
+    },
+    onLimit: () => setStructureVersion((current) => current + 1),
   };
 
   const renderMain = (): ReactNode => {
@@ -510,8 +575,7 @@ export const useCmsStructure = ({
           structure={structure}
           templates={templates}
           limits={limits}
-          onRefusal={showLine}
-          onCreated={onCreated}
+          {...createCallbacks}
         />
       );
     }
@@ -526,7 +590,7 @@ export const useCmsStructure = ({
           collection={openDetail}
           canManage={canManage}
           onBack={() => guard(closeView)}
-          onDirtyChange={onDirtyChange}
+          onDirtyChange={reportViewDirty}
           onSaved={() => {
             setDetailVersion((current) => current + 1);
             onWritten({
@@ -549,7 +613,7 @@ export const useCmsStructure = ({
         targets={targets}
         canManage={canManage}
         onBack={() => guard(closeView)}
-        onDirtyChange={onDirtyChange}
+        onDirtyChange={reportViewDirty}
         onRefusal={showLine}
         onSaved={(fields, key) => {
           setDetail({ ...openDetail, fields });
@@ -578,11 +642,7 @@ export const useCmsStructure = ({
         templates={templates ?? []}
         limits={limits}
         initialType={initial?.newCollectionType}
-        onRefusal={showLine}
-        onCreated={(created, type) => {
-          onDirtyChange(false);
-          onCreated(created, type);
-        }}
+        {...createCallbacks}
       />
       <DeleteCollectionDialog
         structure={structure}
@@ -602,8 +662,7 @@ export const useCmsStructure = ({
         onDeleted={(id) => {
           const deleted = collections.find((entry) => entry.id === id);
           if (id === collectionId) {
-            onDirtyChange(false);
-            setView(undefined);
+            closeView();
           }
           setStructureVersion((current) => current + 1);
           onWritten({

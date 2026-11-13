@@ -1,11 +1,13 @@
 /**
- * New collection (slice 3): the platform's templates and Custom as options,
+ * New collection: the platform's templates (E20) and Custom as options,
  * then the name (a template's own until typed) and, for Custom, the
- * singular name. Custom past the plan's cap is offered disabled with the
- * plan chip. The same form is the first run's page, with no other text,
- * and the column's "+" dialog.
+ * singular name. Custom at the plan's cap is offered disabled with the plan
+ * chip. The same form is the first run's page and the column's "+" dialog.
+ *
+ * Create once: the form holds a `clientId`, minted when it opens and again
+ * after it resets, and sends it with every Create until one succeeds.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Button,
   Chip,
@@ -29,7 +31,10 @@ import {
 import { planBadgeLabel } from "~/shared/branding";
 import { getRefusal } from "./cms-logic";
 import { isCmsFailure, type CmsCollectionSummary } from "./cms-source";
-import { getStructureToastText } from "./cms-structure-logic";
+import {
+  COLLECTION_NAME_MAX,
+  getStructureToastText,
+} from "./cms-structure-logic";
 import {
   CUSTOM_COLLECTION_TYPE,
   type CmsStructureLimits,
@@ -39,6 +44,19 @@ import {
 import { FieldRow } from "./field-controls";
 import type { CmsLineKind } from "./refusal-line";
 import { StructureBody } from "./structure-header";
+import { TruncatedText } from "./truncated-text";
+
+/** What the form tells the hook after a Create whose outcome is unknown. */
+export type CmsPendingCreate = { type: string; name: string };
+
+export type NewCollectionCallbacks = {
+  onCreated: (collection: CmsCollectionSummary, type: string) => void;
+  onRefusal: (line: CmsLineKind) => void;
+  /** `replayed`, a timeout or `unavailable`: the hook rereads E1. */
+  onUnknownOutcome: (pending: CmsPendingCreate) => void;
+  /** `limit`: the hook rereads E20. */
+  onLimit: () => void;
+};
 
 type Values = { type: string; name: string; singularName: string };
 
@@ -90,6 +108,7 @@ const NewCollectionFields = ({
       >
         <Grid
           gap="2"
+          data-cms-template-options
           css={{
             gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
             columnGap: theme.spacing[9],
@@ -98,8 +117,11 @@ const NewCollectionFields = ({
           {templates.map((template) => (
             <RadioAndLabel key={template.type}>
               <Radio value={template.type} id={optionId(template.type)} />
-              <Label htmlFor={optionId(template.type)} truncate>
-                {template.label}
+              <Label
+                htmlFor={optionId(template.type)}
+                css={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}
+              >
+                <TruncatedText>{template.label}</TruncatedText>
               </Label>
             </RadioAndLabel>
           ))}
@@ -124,7 +146,7 @@ const NewCollectionFields = ({
           id={`${idPrefix}-name`}
           value={values.name}
           disabled={disabled || values.type === ""}
-          maxLength={120}
+          maxLength={COLLECTION_NAME_MAX}
           onChange={(event) =>
             onChange({ ...values, name: event.currentTarget.value })
           }
@@ -141,7 +163,7 @@ const NewCollectionFields = ({
             id={`${idPrefix}-singular`}
             value={values.singularName}
             disabled={disabled}
-            maxLength={120}
+            maxLength={COLLECTION_NAME_MAX}
             placeholder={values.name}
             onChange={(event) =>
               onChange({ ...values, singularName: event.currentTarget.value })
@@ -157,44 +179,60 @@ const useCreate = ({
   structure,
   onCreated,
   onRefusal,
-}: {
-  structure: CmsStructureSource;
-  onCreated: (collection: CmsCollectionSummary, type: string) => void;
-  onRefusal: (line: CmsLineKind) => void;
-}) => {
+  onUnknownOutcome,
+  onLimit,
+}: NewCollectionCallbacks & { structure: CmsStructureSource }) => {
   const [values, setValues] = useState<Values>(emptyValues);
   const [busy, setBusy] = useState(false);
+  // one id for every Create of this form until one succeeds
+  const clientId = useRef(crypto.randomUUID());
+  const reset = () => {
+    clientId.current = crypto.randomUUID();
+    setValues(emptyValues);
+  };
   const canCreate = values.type !== "" && values.name.trim() !== "" && !busy;
   const create = async () => {
     if (canCreate === false) {
       return false;
     }
+    const type = values.type;
+    const name = values.name.trim();
     setBusy(true);
     const result = await structure.createCollection({
-      clientId: crypto.randomUUID(),
-      type: values.type,
-      name: values.name.trim(),
-      ...(values.type === CUSTOM_COLLECTION_TYPE &&
-      values.singularName.trim() !== ""
+      clientId: clientId.current,
+      type,
+      name,
+      ...(type === CUSTOM_COLLECTION_TYPE && values.singularName.trim() !== ""
         ? { singularName: values.singularName.trim() }
         : {}),
     });
     setBusy(false);
     if (isCmsFailure(result)) {
       const refusal = getRefusal(result.error, "write");
-      if (refusal === undefined) {
-        toast.error(getStructureToastText(result.error, "collection"));
-      } else {
+      if (refusal !== undefined) {
         onRefusal(refusal);
+        return false;
+      }
+      toast.error(getStructureToastText(result.error, "collection"));
+      if (
+        result.error === "replayed" ||
+        result.error === "unavailable" ||
+        result.error === "updating"
+      ) {
+        onUnknownOutcome({ type, name });
+      } else if (result.error === "not_found") {
+        // the collection this clientId made is gone: a new create
+        reset();
+      } else if (result.error === "limit") {
+        onLimit();
       }
       return false;
     }
-    const { type } = values;
-    setValues(emptyValues);
+    reset();
     onCreated(result.collection, type);
     return true;
   };
-  return { values, setValues, busy, canCreate, create };
+  return { values, setValues, busy, canCreate, create, reset };
 };
 
 export const NewCollectionDialog = ({
@@ -204,9 +242,8 @@ export const NewCollectionDialog = ({
   templates,
   limits,
   initialType,
-  onCreated,
-  onRefusal,
-}: {
+  ...callbacks
+}: NewCollectionCallbacks & {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   structure: CmsStructureSource;
@@ -214,17 +251,14 @@ export const NewCollectionDialog = ({
   limits: CmsStructureLimits | undefined;
   /** A story's preselection. */
   initialType?: string;
-  onCreated: (collection: CmsCollectionSummary, type: string) => void;
-  onRefusal: (line: CmsLineKind) => void;
 }) => {
-  const { values, setValues, busy, canCreate, create } = useCreate({
+  const { values, setValues, busy, canCreate, create, reset } = useCreate({
     structure,
-    onCreated,
-    onRefusal,
+    ...callbacks,
   });
   useEffect(() => {
     if (open === false) {
-      setValues(emptyValues);
+      reset();
     } else if (initialType !== undefined) {
       const template = templates.find((entry) => entry.type === initialType);
       setValues({
@@ -235,7 +269,7 @@ export const NewCollectionDialog = ({
     }
     // templates refetch after each write; a story's preselection is once
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialType, setValues]);
+  }, [open, initialType]);
   const submit = async () => {
     if (await create()) {
       onOpenChange(false);
@@ -301,19 +335,15 @@ export const NewCollectionPage = ({
   structure,
   templates,
   limits,
-  onCreated,
-  onRefusal,
-}: {
+  ...callbacks
+}: NewCollectionCallbacks & {
   structure: CmsStructureSource;
   templates: CmsTemplate[];
   limits: CmsStructureLimits | undefined;
-  onCreated: (collection: CmsCollectionSummary, type: string) => void;
-  onRefusal: (line: CmsLineKind) => void;
 }) => {
   const { values, setValues, busy, canCreate, create } = useCreate({
     structure,
-    onCreated,
-    onRefusal,
+    ...callbacks,
   });
   return (
     <Flex

@@ -101,7 +101,10 @@ export const reopen = async () => {
 export const byLabel = (label: string) =>
   document.querySelector<HTMLElement>(`[aria-label="${label}"]`);
 
-export const buttonByText = (text: string, scope: ParentNode = document) =>
+export const buttonByText = (
+  text: string,
+  scope: Element | Document = document
+) =>
   [...scope.querySelectorAll<HTMLButtonElement>("button")].find(
     (button) => button.textContent === text
   );
