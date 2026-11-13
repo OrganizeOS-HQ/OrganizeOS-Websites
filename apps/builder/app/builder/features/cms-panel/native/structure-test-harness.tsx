@@ -87,7 +87,11 @@ export const unmount = () => {
 export const settle = async () => {
   for (let round = 0; round < 5; round += 1) {
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (vi.isFakeTimers()) {
+        await vi.advanceTimersByTimeAsync(0);
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
     });
   }
 };

@@ -61,6 +61,7 @@ import type {
   CmsStructureField,
   CmsStructureSource,
 } from "./cms-structure-source";
+import type { CmsStructureEnqueue } from "./collection-settings";
 import { FieldRow, fieldIds } from "./field-controls";
 import { FieldKindLabel } from "./fields-view";
 import type { CmsLineKind } from "./refusal-line";
@@ -207,6 +208,7 @@ export const FieldSheet = ({
   target,
   targets,
   canManage,
+  enqueue,
   onBack,
   onDirtyChange,
   onSaved,
@@ -219,6 +221,8 @@ export const FieldSheet = ({
   /** Collections a reference may target, this one included. */
   targets: Array<{ id: string; name: string }>;
   canManage: boolean;
+  /** The collection's queue: a Save carries a pending reorder. */
+  enqueue: CmsStructureEnqueue;
   onBack: () => void;
   onDirtyChange: (dirty: boolean) => void;
   /** After a save, with the schema now in force and the saved key. */
@@ -285,10 +289,9 @@ export const FieldSheet = ({
     }
     setBusy("save");
     const fields = schemaWithDraft(collection.fields, draft, originalKey);
-    const result = await structure.updateSchema(collection.id, {
-      fields,
-      expectedUpdatedAt: collection.updatedAt,
-    });
+    const result = await enqueue(collection.id, (expectedUpdatedAt) =>
+      structure.updateSchema(collection.id, { fields, expectedUpdatedAt })
+    );
     setBusy(undefined);
     if (isCmsFailure(result)) {
       fail(result.error, result.field);
@@ -303,11 +306,13 @@ export const FieldSheet = ({
       return;
     }
     setBusy("remove");
-    const result = await structure.updateSchema(collection.id, {
-      fields: schemaWithout(collection.fields, originalKey),
-      removeKeys: [originalKey],
-      expectedUpdatedAt: collection.updatedAt,
-    });
+    const result = await enqueue(collection.id, (expectedUpdatedAt) =>
+      structure.updateSchema(collection.id, {
+        fields: schemaWithout(collection.fields, originalKey),
+        removeKeys: [originalKey],
+        expectedUpdatedAt,
+      })
+    );
     setBusy(undefined);
     setConfirmRemove(false);
     if (isCmsFailure(result)) {
