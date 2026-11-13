@@ -19,7 +19,7 @@ import {
   type LexicalNode,
 } from "lexical";
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
-import { LinkNode } from "@lexical/link";
+import { $isLinkNode, LinkNode } from "@lexical/link";
 import { ListItemNode, ListNode } from "@lexical/list";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { CodeNode } from "@lexical/code";
@@ -273,6 +273,12 @@ const countListItemParagraphs = (item: Element) => {
   return count;
 };
 
+/** The line breaks a list item holds itself, outside its nested lists. */
+const countOwnBreaks = (item: Element) =>
+  Array.from(item.querySelectorAll("br")).filter(
+    (br) => br.parentElement?.closest("li") === item
+  ).length;
+
 /**
  * The nesting of the value's headings, quotes, lists, list items (each with
  * its count of paragraphs), code blocks, rules, images and figures, in document order, and
@@ -297,7 +303,7 @@ export const richTextBlockSignature = (html: string) => {
       const token = `${element.tagName.toLowerCase()}@${depth}`;
       tokens.push(
         element.tagName === "LI"
-          ? `${token}:p${countListItemParagraphs(element)}`
+          ? `${token}:p${countListItemParagraphs(element)}:br${countOwnBreaks(element)}`
           : token
       );
     }
@@ -342,6 +348,22 @@ export const getRichTextReadOnlyReason = (
 ): RichTextReadOnlyReason | undefined => {
   if (html === "" || typeof DOMParser === "undefined") {
     return;
+  }
+  const body = parseHtml(html).body;
+  if (body.querySelector("img") !== null) {
+    // no free mark: the spaces beside its images would not be kept
+    if (pickImageEdgeMark(body.textContent ?? "") === undefined) {
+      return "lossy";
+    }
+    // an image in a link the editor unwraps would join the line it hides from
+    for (const anchor of Array.from(body.querySelectorAll("a"))) {
+      if (
+        richTextImportHref(anchor.getAttribute("href") ?? undefined) === null &&
+        anchor.querySelector("img") !== null
+      ) {
+        return "lossy";
+      }
+    }
   }
   let written: string;
   try {
@@ -390,27 +412,42 @@ const isInlineElement = (node: Node) =>
   node.nodeType === Node.ELEMENT_NODE &&
   INLINE_TAGS.has((node as Element).tagName);
 
-/** The nearest text beside `node` in its line, through inline wrappers only. */
-const textBeside = (node: Node, forward: boolean): Text | undefined => {
+/** The next node in `node`'s line, climbing out of inline wrappers only. */
+const stepInLine = (node: Node, forward: boolean): Node | null => {
   let from: Node = node;
   let sibling = forward ? from.nextSibling : from.previousSibling;
   // an image first or last in a link or a mark: its line goes on outside it
   while (sibling === null) {
     const parent = from.parentNode;
     if (parent === null || isInlineElement(parent) === false) {
-      return;
+      return null;
     }
     from = parent;
     sibling = forward ? from.nextSibling : from.previousSibling;
   }
-  let current: Node | null = sibling;
-  while (current !== null && current.nodeType === Node.ELEMENT_NODE) {
+  return sibling;
+};
+
+/**
+ * The nearest text beside `node` in its line, through inline wrappers only;
+ * an empty wrapper or text is passed over, as Lexical's own import does.
+ */
+const textBeside = (node: Node, forward: boolean): Text | undefined => {
+  let current = stepInLine(node, forward);
+  while (current !== null) {
+    if (current.nodeType === Node.TEXT_NODE) {
+      if ((current as Text).data !== "") {
+        return current as Text;
+      }
+      current = stepInLine(current, forward);
+      continue;
+    }
     if (isInlineElement(current) === false) {
       return;
     }
-    current = forward ? current.firstChild : current.lastChild;
+    const child: Node | null = forward ? current.firstChild : current.lastChild;
+    current = child ?? stepInLine(current, forward);
   }
-  return current?.nodeType === Node.TEXT_NODE ? (current as Text) : undefined;
 };
 
 const markImageEdges = (body: HTMLElement) => {
@@ -435,11 +472,19 @@ const markImageEdges = (body: HTMLElement) => {
   return mark;
 };
 
-const unmarkImageEdges = (nodes: LexicalNode[], mark: string): LexicalNode[] =>
+/**
+ * After the import: drops the edge mark from the text, and drops a link left
+ * with no children, which Lexical would not load again (so such a value
+ * reads lossy rather than locking itself after a save).
+ */
+const tidyImported = (
+  nodes: LexicalNode[],
+  mark: string | undefined
+): LexicalNode[] =>
   nodes.flatMap((node) => {
     if ($isTextNode(node)) {
       const text = node.getTextContent();
-      if (text.includes(mark)) {
+      if (mark !== undefined && text.includes(mark)) {
         const kept = text.split(mark).join("");
         if (kept === "") {
           return [];
@@ -450,12 +495,14 @@ const unmarkImageEdges = (nodes: LexicalNode[], mark: string): LexicalNode[] =>
     }
     if ($isElementNode(node)) {
       const children = node.getChildren();
-      const kept = unmarkImageEdges(children, mark);
+      const kept = tidyImported(children, mark);
       for (const child of children) {
         if (kept.includes(child) === false) {
-          // a parent it empties stays, as it would with no image beside it
           child.remove(true);
         }
+      }
+      if ($isLinkNode(node) && node.getChildrenSize() === 0) {
+        return [];
       }
     }
     return [node];
@@ -483,9 +530,7 @@ export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
   const imported = importStoredImages(() => $generateNodesFromDOM(editor, dom));
   const nodes: LexicalNode[] = [];
   let run: ParagraphNode | undefined;
-  for (const node of mark === undefined
-    ? imported
-    : unmarkImageEdges(imported, mark)) {
+  for (const node of tidyImported(imported, mark)) {
     if (isInlineNode(node)) {
       if (run === undefined) {
         run = $createParagraphNode();

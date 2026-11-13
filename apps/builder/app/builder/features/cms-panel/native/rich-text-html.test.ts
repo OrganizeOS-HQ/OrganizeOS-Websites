@@ -142,12 +142,60 @@ describe("the round trip (spec 8)", () => {
     );
   });
 
-  test("a whitespace-only link beside an image stays editable", () => {
+  test("a link the import leaves with nothing in it reads lossy, with an image or without", () => {
     expect(
       getRichTextReadOnlyReason(
         `<p>x${IMG}<a href="https://example.org/"> </a></p>`
       )
-    ).toBeUndefined();
+    ).toBe("lossy");
+    expect(
+      getRichTextReadOnlyReason(`<p>x<a href="https://example.org/"> </a></p>`)
+    ).toBe("lossy");
+  });
+
+  test.each([
+    `<ul><li>${IMG}<p>b</p></li></ul><p></p>`,
+    `<ul><li><p>Step one</p>${IMG}</li><li><p>Step two</p></li></ul><p></p>`,
+    `<ul><li><p>a</p>${IMG}<p>b</p></li></ul><p></p>`,
+    `<ol><li>${IMG}<p>b</p></li></ol><p></p>`,
+    `<blockquote><ul><li>${IMG}<p>b</p></li></ul></blockquote>`,
+    `<ul><li><strong>${IMG}</strong><p>b</p></li></ul><p></p>`,
+  ])(
+    "a list item holding a paragraph beside an image reads lossy: %s",
+    (html) => {
+      expect(getRichTextReadOnlyReason(html)).toBe("lossy");
+    }
+  );
+
+  test("an empty mark beside an image does not cost the space", () => {
+    const linkAfter = roundTrip(
+      `<p><a href="https://example.org/">x${IMG}<strong></strong></a> after</p>`
+    );
+    expect(linkAfter).toContain(
+      '<span style="white-space: pre-wrap;"> after</span>'
+    );
+    const linkBefore = roundTrip(
+      `<p>before <a href="https://example.org/"><em></em>${IMG}y</a></p>`
+    );
+    expect(linkBefore).toContain(
+      '<span style="white-space: pre-wrap;">before </span>'
+    );
+  });
+
+  test("a value with an image and no private-use character free reads lossy", () => {
+    let every = "";
+    for (let code = 0xe000; code <= 0xf8ff; code += 1) {
+      every += String.fromCharCode(code);
+    }
+    expect(
+      getRichTextReadOnlyReason(`<p>${every}</p><p>Join us ${IMG} today</p>`)
+    ).toBe("lossy");
+  });
+
+  test("an image in a link the editor unwraps reads lossy", () => {
+    expect(getRichTextReadOnlyReason(`<p>More <a>${IMG}</a> after</p>`)).toBe(
+      "lossy"
+    );
   });
 
   test("the editor never writes a tag outside the allowlist but span", () => {
@@ -224,30 +272,30 @@ describe("the block signature", () => {
     ["<p>a</p><p></p>", "links=0"],
     [
       '<ul><li><p>a</p><ul><li><p>b</p></li></ul></li></ul><p><a href="/x">x</a></p>',
-      "ul@0 li@1:p1 ul@2 li@3:p1 links=1",
+      "ul@0 li@1:p1:br0 ul@2 li@3:p1:br0 links=1",
     ],
-    ["<ul><li><p>a</p><p>b</p></li></ul>", "ul@0 li@1:p2 links=0"],
-    ["<ul><li>a<br>b</li></ul>", "ul@0 li@1:p1 links=0"],
+    ["<ul><li><p>a</p><p>b</p></li></ul>", "ul@0 li@1:p2:br0 links=0"],
+    ["<ul><li>a<br>b</li></ul>", "ul@0 li@1:p1:br1 links=0"],
     [
       "<ul><li><p>One</p></li><li>Two</li></ul>",
-      "ul@0 li@1:p1 li@1:p1 links=0",
+      "ul@0 li@1:p1:br0 li@1:p1:br0 links=0",
     ],
     [
       "<ul><li>a<ul><li>b</li></ul>c</li></ul>",
-      "ul@0 li@1:p2 ul@2 li@3:p1 links=0",
+      "ul@0 li@1:p2:br0 ul@2 li@3:p1:br0 links=0",
     ],
-    ["<ul><li><p></p></li></ul>", "ul@0 li@1:p0 links=0"],
+    ["<ul><li><p></p></li></ul>", "ul@0 li@1:p0:br0 links=0"],
     [
       '<blockquote><h2>A</h2></blockquote><p><a href="javascript:x">y</a></p>',
       "blockquote@0 h2@1 links=0",
     ],
     [
       '<ul><li><p>a<img src="https://a.org/x.png" />b</p></li></ul>',
-      "ul@0 li@1:p2 img@2 links=0",
+      "ul@0 li@1:p2:br0 img@2 links=0",
     ],
     [
       '<ul><li>a<img src="https://a.org/x.png">b</li></ul>',
-      "ul@0 li@1:p2 img@2 links=0",
+      "ul@0 li@1:p2:br0 img@2 links=0",
     ],
     [
       '<figure><img src="https://a.org/x.png" /><figcaption>c</figcaption></figure>',
