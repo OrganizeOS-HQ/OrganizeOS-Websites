@@ -77,12 +77,18 @@ const pass = async (ms: number) => {
   await settle();
 };
 
-/** E24 answers with what it was sent. */
+/** E24 answers with what it was sent; E21 holds it from then on. */
 const answerSchema = (version = NEXT) =>
-  harness.structure.updateSchema.mockImplementation(async (_id, body) => ({
-    fields: body.fields,
-    updatedAt: version,
-  }));
+  harness.structure.updateSchema.mockImplementation(async (_id, body) => {
+    harness.structure.getCollectionStructure.mockResolvedValue({
+      collection: {
+        ...POSTS_STRUCTURE,
+        fields: body.fields,
+        updatedAt: version,
+      },
+    });
+    return { fields: body.fields, updatedAt: version };
+  });
 
 const manyFields = (count: number): CmsStructureField[] => [
   { key: "title", label: "Title", kind: "text", isTitle: true, required: true },

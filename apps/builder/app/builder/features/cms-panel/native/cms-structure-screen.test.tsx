@@ -1,11 +1,13 @@
 // The design system's colours, so that var() resolves in computed styles
 import "@webstudio-is/design-system/global.css";
+import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { userEvent } from "@vitest/browser/context";
 import { toast } from "@webstudio-is/design-system";
 import type { CmsCollectionSummary } from "./cms-source";
 import { refreshCmsNative } from "./cms-native-stores";
 import { $cmsNativeDirty } from "./cms-native-stores";
-import { PEOPLE, POSTS } from "./fake-cms-source";
+import { itemOf, PEOPLE, POSTS, POSTS_DETAIL } from "./fake-cms-source";
 import { POSTS_STRUCTURE } from "./fake-cms-structure-source";
 import {
   buttonByText,
@@ -16,6 +18,7 @@ import {
   rowOf,
   typeInto,
   editItemTitle,
+  fieldRow,
   menuItem,
   menuItems,
   harness,
@@ -598,5 +601,180 @@ describe("New collection and the first run", () => {
       dialog()!.getBoundingClientRect().right
     );
     expect(dialog()!.scrollWidth).toBeLessThanOrEqual(dialog()!.clientWidth);
+  });
+});
+
+describe("after a structure write", () => {
+  const NEXT = "2026-11-12T10:05:00.123456+00:00";
+  const header = () =>
+    document.querySelector<HTMLElement>("[data-cms-structure-header]");
+
+  const answerSchema = () =>
+    harness.structure.updateSchema.mockImplementation(async (_id, body) => ({
+      fields: body.fields,
+      updatedAt: NEXT,
+    }));
+
+  /** E23 lands: E1 and E21 answer the saved settings from then on. */
+  const answerSettings = () =>
+    harness.structure.updateCollection.mockImplementation(
+      async (id, { expectedUpdatedAt: _, ...settings }) => {
+        harness.fake.listCollections.mockResolvedValue({
+          collections: [{ ...POSTS, ...settings }, PEOPLE],
+        });
+        harness.structure.getCollectionStructure.mockResolvedValue({
+          collection: { ...POSTS_STRUCTURE, ...settings, updatedAt: NEXT },
+        });
+        return { collection: { id, ...settings, updatedAt: NEXT } };
+      }
+    );
+
+  const removeSummary = async () => {
+    await click(tab("Fields"));
+    await click(fieldRow("summary")!.querySelector("button"));
+    await click(byLabel("Field menu"));
+    await click(menuItem("Remove field"));
+    await click(
+      buttonByText("Remove", document.querySelector('[role="dialog"]')!)
+    );
+  };
+
+  const openSettings = async () => {
+    await click(tab("Collections"));
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+  };
+
+  const settingsInput = (id: string) =>
+    document.querySelector<HTMLInputElement>(`#cms-settings-${id}`);
+
+  // the review focus line on removals
+  test("after a field removal an open item editor saves without the removed key", async () => {
+    answerSchema();
+    harness.structure.updateSchema.mockImplementation(async (_id, body) => {
+      harness.fake.getCollection.mockResolvedValue({
+        collection: {
+          ...POSTS_DETAIL,
+          fields: POSTS_DETAIL.fields.filter(
+            (field) => field.key !== "summary"
+          ),
+        },
+      });
+      return { fields: body.fields, updatedAt: NEXT };
+    });
+    harness.fake.updateItem.mockImplementation(async () => ({
+      item: itemOf({ updatedAt: NEXT }),
+    }));
+    const stale = vi.fn();
+    mount({ onCollectionCanvasStale: stale });
+    await settle();
+    await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+    await removeSummary();
+    await click(tab("Collections"));
+    const title = document.querySelector<HTMLInputElement>("#cms-field-title");
+    expect(title).not.toBeNull();
+    await typeInto(title, "Mine");
+    await click(buttonByText("Save"));
+    expect(harness.fake.updateItem).toHaveBeenCalledTimes(1);
+    const [, , body] = harness.fake.updateItem.mock.calls[0];
+    expect(Object.keys(body.data)).not.toContain("summary");
+  });
+
+  test("the canvas is invalidated by the old slug after a removal, an address change, a switch to private and a delete", async () => {
+    answerSchema();
+    answerSettings();
+    const stale = vi.fn();
+    mount({ onCollectionCanvasStale: stale });
+    await settle();
+    await removeSummary();
+    expect(stale).toHaveBeenLastCalledWith("posts");
+    expect(stale).toHaveBeenCalledTimes(1);
+    await openSettings();
+    await typeInto(settingsInput("slug"), "articles");
+    await click(buttonByText("Save", header()!));
+    expect(stale).toHaveBeenLastCalledWith("posts");
+    expect(stale).toHaveBeenCalledTimes(2);
+    await click(settingsInput("public"));
+    await click(buttonByText("Save", header()!));
+    expect(stale).toHaveBeenLastCalledWith("articles");
+    expect(stale).toHaveBeenCalledTimes(3);
+    harness.structure.deleteCollection.mockResolvedValue({});
+    await click(byLabel("Collection menu"));
+    await click(menuItem("Delete collection"));
+    await click(
+      buttonByText("Delete", document.querySelector('[role="dialog"]')!)
+    );
+    expect(stale).toHaveBeenLastCalledWith("articles");
+    expect(stale).toHaveBeenCalledTimes(4);
+  });
+
+  test("a rename, a reorder and a new field invalidate nothing on the canvas", async () => {
+    answerSchema();
+    answerSettings();
+    const stale = vi.fn();
+    mount({ onCollectionCanvasStale: stale });
+    await settle();
+    await openSettings();
+    await typeInto(settingsInput("name"), "Articles");
+    await click(buttonByText("Save", header()!));
+    await click(tab("Fields"));
+    const button = fieldRow("title")!.querySelector("button")!;
+    button.focus();
+    await act(async () => userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}"));
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    await settle();
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
+    await click(byLabel("Add field"));
+    await click(menuItem("Email"));
+    await typeInto(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+      "Contact"
+    );
+    await click(buttonByText("Add field", header()!));
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(2);
+    expect(stale).not.toHaveBeenCalled();
+  });
+
+  test("no reload toast after any native structure write", async () => {
+    const calls = [
+      vi.spyOn(toast, "success"),
+      vi.spyOn(toast, "info"),
+      vi.spyOn(toast, "error"),
+      vi.spyOn(toast, "warn"),
+    ];
+    answerSchema();
+    answerSettings();
+    createSpeakers();
+    mount();
+    await settle();
+    await openNewCollection();
+    await click(radio("cms-new-collection", "custom"));
+    await typeInto(nameInput(), "Speakers");
+    await click(createButton());
+    await openSettings();
+    await typeInto(settingsInput("name"), "Articles");
+    await click(buttonByText("Save", header()!));
+    await removeSummary();
+    for (const call of calls) {
+      expect(call).not.toHaveBeenCalled();
+    }
+  });
+
+  test("the frame's cms.collection_changed refetches E20 and the open E21", async () => {
+    mount();
+    await settle();
+    const structures = harness.structure.getStructure.mock.calls.length;
+    const details = harness.structure.getCollectionStructure.mock.calls.length;
+    refreshCmsNative();
+    await settle();
+    expect(harness.structure.getStructure).toHaveBeenCalledTimes(
+      structures + 1
+    );
+    expect(harness.structure.getCollectionStructure).toHaveBeenCalledTimes(
+      details + 1
+    );
+    expect(harness.structure.getCollectionStructure).toHaveBeenLastCalledWith(
+      POSTS.id
+    );
   });
 });

@@ -198,12 +198,22 @@ export const useCmsStructure = ({
     CmsStructureCollection | undefined
   >();
   const isDetailBackground = useIsBackground();
+  /** After a write: the screen's refetches, and E21 again for the open one. */
+  const written = (effect: CmsStructureEffect) => {
+    onWritten(effect);
+    if (effect.kind === "schema" || effect.kind === "settings") {
+      setDetailVersion((current) => current + 1);
+    }
+  };
 
   // One queue per collection (4.4, W4-D4): its E23 and E24 run one at a
   // time, each with the version the last answer, or E21, gave.
   const queues = useRef(new Map<string, Promise<unknown>>());
   const versions = useRef(new Map<string, string>());
   const inFlight = useRef(new Map<string, number>());
+  // writes answered per collection: a read sent before one answered carries
+  // an older version than the queue holds
+  const answered = useRef(new Map<string, number>());
   const enqueue: CmsStructureEnqueue = useCallback((id, write) => {
     const run = async () => {
       inFlight.current.set(id, (inFlight.current.get(id) ?? 0) + 1);
@@ -212,6 +222,7 @@ export const useCmsStructure = ({
         if (isCmsFailure(result) === false) {
           versions.current.set(id, result.updatedAt);
         }
+        answered.current.set(id, (answered.current.get(id) ?? 0) + 1);
         return result;
       } finally {
         inFlight.current.set(id, (inFlight.current.get(id) ?? 1) - 1);
@@ -224,12 +235,26 @@ export const useCmsStructure = ({
     );
     return next;
   }, []);
-  /** A read's version, unless a write of that collection is under way. */
-  const takeVersion = useCallback((collection: CmsStructureCollection) => {
-    if ((inFlight.current.get(collection.id) ?? 0) === 0) {
-      versions.current.set(collection.id, collection.updatedAt);
-    }
-  }, []);
+  /** The count of a collection's answered writes, when a read is sent. */
+  const readMark = useCallback(
+    (id: string) => answered.current.get(id) ?? 0,
+    []
+  );
+  /**
+   * A read's version, unless a write of that collection is under way or
+   * answered since the read was sent.
+   */
+  const takeVersion = useCallback(
+    (collection: CmsStructureCollection, mark: number) => {
+      if (
+        (inFlight.current.get(collection.id) ?? 0) === 0 &&
+        (answered.current.get(collection.id) ?? 0) === mark
+      ) {
+        versions.current.set(collection.id, collection.updatedAt);
+      }
+    },
+    []
+  );
   // Which read, or a write, showed the line: that read's next answer, or
   // either read's after a write, clears it.
   const lineFrom = useRef<"e20" | "e21" | "write" | undefined>(undefined);
@@ -339,6 +364,7 @@ export const useCmsStructure = ({
     if (isBackground === false) {
       setDetailFailed(undefined);
     }
+    const mark = readMark(collectionId);
     void structure.getCollectionStructure(collectionId).then((result) => {
       if (isCurrent === false) {
         return;
@@ -365,7 +391,7 @@ export const useCmsStructure = ({
       }
       clearLineFrom("e21");
       setDetailFailed(undefined);
-      takeVersion(result.collection);
+      takeVersion(result.collection, mark);
       setDetail((current) => withLocalOrder(current, result.collection));
     });
     return () => {
@@ -380,6 +406,7 @@ export const useCmsStructure = ({
     detailAttempt,
     detailVersion,
     isDetailBackground,
+    readMark,
     takeVersion,
     showLineFrom,
     clearLineFrom,
@@ -451,6 +478,7 @@ export const useCmsStructure = ({
     if (structure === undefined) {
       return undefined;
     }
+    const mark = readMark(id);
     const result = await structure.getCollectionStructure(id);
     if (isCmsFailure(result)) {
       const refusal = mapStructureRead(result.error);
@@ -459,7 +487,7 @@ export const useCmsStructure = ({
       }
       return undefined;
     }
-    takeVersion(result.collection);
+    takeVersion(result.collection, mark);
     if (result.collection.id === collectionId) {
       setDetail((current) => withLocalOrder(current, result.collection));
     }
@@ -541,7 +569,7 @@ export const useCmsStructure = ({
     setDetail((latest) =>
       latest?.id === id ? { ...latest, updatedAt: result.updatedAt } : latest
     );
-    onWritten({ kind: "schema", slug: current.slug, removed: [] });
+    written({ kind: "schema", slug: current.slug, removed: [] });
   };
 
   /** A move shows at once; E24 goes after a pause, with the latest order. */
@@ -667,7 +695,7 @@ export const useCmsStructure = ({
   const onCreated = (created: CmsCollectionSummary, type: string) => {
     pendingCreate.current = undefined;
     setIsNewOpen(false);
-    onWritten({ kind: "created", collection: created });
+    written({ kind: "created", collection: created });
     clearViewDirty();
     setView(undefined);
     onOpenCollection(created.id);
@@ -725,8 +753,7 @@ export const useCmsStructure = ({
             setDetail((current) =>
               current?.id === openDetail.id ? { ...current, ...after } : current
             );
-            setDetailVersion((current) => current + 1);
-            onWritten({
+            written({
               kind: "settings",
               before: { slug: before.slug, isPublic: before.isPublic },
               after: { slug: after.slug, isPublic: after.isPublic },
@@ -770,7 +797,7 @@ export const useCmsStructure = ({
           );
           setSession((current) => current + 1);
           setView({ type: "field", target: { key } });
-          onWritten({ kind: "schema", slug: openDetail.slug, removed: [] });
+          written({ kind: "schema", slug: openDetail.slug, removed: [] });
         }}
         onRemoved={(fields, updatedAt) => {
           const removed = openDetail.fields
@@ -783,7 +810,7 @@ export const useCmsStructure = ({
               : current
           );
           closeView();
-          onWritten({ kind: "schema", slug: openDetail.slug, removed });
+          written({ kind: "schema", slug: openDetail.slug, removed });
         }}
       />
     );
@@ -824,7 +851,7 @@ export const useCmsStructure = ({
             onOpenCollection(undefined);
           }
           setStructureVersion((current) => current + 1);
-          onWritten({
+          written({
             kind: "deleted",
             collectionId: id,
             slug: deleted?.slug ?? deleteTarget?.slug ?? "",

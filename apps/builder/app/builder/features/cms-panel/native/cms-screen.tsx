@@ -201,6 +201,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       initialView,
       catalogSlots,
       structure,
+      onCollectionCanvasStale,
     },
     ref
   ) => {
@@ -651,6 +652,21 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         setCollections((list) =>
           list.filter((entry) => entry.id !== effect.collectionId)
         );
+        onCollectionCanvasStale?.(effect.slug);
+      }
+      if (effect.kind === "schema") {
+        // an open editor never sends a removed key
+        void refetchFields();
+        if (effect.removed.length > 0) {
+          onCollectionCanvasStale?.(effect.slug);
+        }
+      }
+      if (
+        effect.kind === "settings" &&
+        (effect.before.slug !== effect.after.slug ||
+          effect.before.isPublic !== effect.after.isPublic)
+      ) {
+        onCollectionCanvasStale?.(effect.before.slug);
       }
     };
     const structureScreens = useCmsStructure({
