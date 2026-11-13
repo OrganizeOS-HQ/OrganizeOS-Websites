@@ -841,7 +841,7 @@ describe("the unsaved guard, and Classic CMS's deep link", () => {
     expect($cmsNativeDirty.get()).toBe(false);
   });
 
-  test("the read-only rich text's Classic CMS runs the guard and passes the open item", async () => {
+  test("the read-only (lossy) rich text's Classic CMS runs the guard and passes the open item", async () => {
     fake.getCollection.mockResolvedValue({
       collection: {
         ...POSTS_DETAIL,
@@ -858,7 +858,7 @@ describe("the unsaved guard, and Classic CMS's deep link", () => {
           summary: null,
           author: null,
           body: {
-            html: '<p>Text</p><p><img src="https://example.org/a.png" alt="A" /></p>',
+            html: "<ul><li><p>a</p><p>b</p></li></ul><p></p>",
           },
         },
       }),
@@ -866,9 +866,7 @@ describe("the unsaved guard, and Classic CMS's deep link", () => {
     mount();
     await settle();
     await editTitle();
-    await vi.waitFor(() =>
-      expect(hasText("Has images; edit in Classic CMS")).toBe(true)
-    );
+    await vi.waitFor(() => expect(hasText("Edit in Classic CMS")).toBe(true));
     await click(buttonByText("Classic CMS"));
     expect(dialogShown()).toBe(true);
     expect(props.onShowClassic).not.toHaveBeenCalled();
