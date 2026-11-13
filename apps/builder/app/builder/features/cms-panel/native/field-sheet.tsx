@@ -298,6 +298,7 @@ export const FieldSheet = ({
   canManage,
   enqueue,
   reread,
+  readCount,
   onBack,
   onClose,
   onDirtyChange,
@@ -316,6 +317,8 @@ export const FieldSheet = ({
   enqueue: CmsStructureEnqueue;
   /** E21 again: the fresh collection, or undefined. */
   reread: () => Promise<CmsStructureCollection | undefined>;
+  /** E21 for the Remove dialog's count; the view keeps its version. */
+  readCount: () => Promise<CmsStructureCollection | undefined>;
   /** Back, behind the unsaved guard. */
   onBack: () => void;
   /** Closes the sheet at once: its field is gone. */
@@ -348,6 +351,12 @@ export const FieldSheet = ({
   );
   const [busy, setBusy] = useState<"save" | "remove" | undefined>(undefined);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removeTotal, setRemoveTotal] = useState(collection.total);
+  const askRemove = async () => {
+    const fresh = await readCount();
+    setRemoveTotal(fresh?.total ?? collection.total);
+    setConfirmRemove(true);
+  };
   const labelRef = useRef<HTMLInputElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
@@ -398,10 +407,19 @@ export const FieldSheet = ({
     setSaved(freshField);
   };
 
-  /** After an unknown outcome: the write landed when E21 holds the draft. */
-  const settleUnknown = async () => {
+  /**
+   * After an unknown outcome: the write landed when E21 holds the draft, or,
+   * for a removal, no longer holds the field.
+   */
+  const settleUnknown = async (removing: boolean) => {
     const fresh = await reread();
     if (fresh === undefined) {
+      return;
+    }
+    if (removing) {
+      if (fresh.fields.every((field) => field.key !== originalKey)) {
+        onRemoved(fresh.fields, fresh.updatedAt);
+      }
       return;
     }
     const key = draft.key.trim();
@@ -422,7 +440,11 @@ export const FieldSheet = ({
     }
   };
 
-  const fail = async (code: CmsErrorCode, field: string | undefined) => {
+  const fail = async (
+    code: CmsErrorCode,
+    field: string | undefined,
+    removing = false
+  ) => {
     const refusal = getRefusal(code, "write");
     if (refusal !== undefined) {
       onRefusal(refusal);
@@ -467,7 +489,7 @@ export const FieldSheet = ({
       default:
         toast.error(getToastText(code));
         if (code === "unavailable" || code === "updating") {
-          await settleUnknown();
+          await settleUnknown(removing);
         }
     }
   };
@@ -507,7 +529,7 @@ export const FieldSheet = ({
     setBusy(undefined);
     setConfirmRemove(false);
     if (isCmsFailure(result)) {
-      await fail(result.error, result.field);
+      await fail(result.error, result.field, true);
       return;
     }
     onRemoved(result.fields, result.updatedAt);
@@ -544,10 +566,7 @@ export const FieldSheet = ({
         menu={
           canManage &&
           removable && (
-            <DropdownMenuItem
-              destructive
-              onSelect={() => setConfirmRemove(true)}
-            >
+            <DropdownMenuItem destructive onSelect={() => void askRemove()}>
               Remove field
             </DropdownMenuItem>
           )
@@ -725,6 +744,7 @@ export const FieldSheet = ({
             <Button
               color="destructive"
               state={busy === "remove" ? "pending" : undefined}
+              disabled={busy !== undefined}
               onClick={() => void remove()}
             >
               Remove
@@ -736,9 +756,9 @@ export const FieldSheet = ({
             </DialogClose>
           </DialogActions>
           <WrappingDialogTitle>
-            {collection.total > 0
-              ? `Remove ${removeLabel} from ${collection.total} ${
-                  collection.total === 1 ? "item" : "items"
+            {removeTotal > 0
+              ? `Remove ${removeLabel} from ${removeTotal} ${
+                  removeTotal === 1 ? "item" : "items"
                 }?`
               : `Remove ${removeLabel}?`}
           </WrappingDialogTitle>

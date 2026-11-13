@@ -240,21 +240,56 @@ export const useCmsStructure = ({
     (id: string) => answered.current.get(id) ?? 0,
     []
   );
+  // An open settings view or field sheet holds its collection's version:
+  // its form was built from that version, so a save over another person's
+  // change answers `conflict` and rebases. A read meanwhile waits here.
+  const holds = useRef(new Map<string, number>());
+  const deferred = useRef(
+    new Map<string, { updatedAt: string; mark: number }>()
+  );
+  const isCurrentMark = (id: string, mark: number) =>
+    (inFlight.current.get(id) ?? 0) === 0 &&
+    (answered.current.get(id) ?? 0) === mark;
   /**
    * A read's version, unless a write of that collection is under way or
-   * answered since the read was sent.
+   * answered since the read was sent. `forView`: the open view's own reread,
+   * which rebases the view on it.
    */
   const takeVersion = useCallback(
-    (collection: CmsStructureCollection, mark: number) => {
-      if (
-        (inFlight.current.get(collection.id) ?? 0) === 0 &&
-        (answered.current.get(collection.id) ?? 0) === mark
-      ) {
-        versions.current.set(collection.id, collection.updatedAt);
+    (collection: CmsStructureCollection, mark: number, forView = false) => {
+      if (isCurrentMark(collection.id, mark) === false) {
+        return;
       }
+      if (forView === false && (holds.current.get(collection.id) ?? 0) > 0) {
+        deferred.current.set(collection.id, {
+          updatedAt: collection.updatedAt,
+          mark,
+        });
+        return;
+      }
+      deferred.current.delete(collection.id);
+      versions.current.set(collection.id, collection.updatedAt);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
+  /** Holds a collection's version until the returned release. */
+  const holdVersion = useCallback((id: string) => {
+    holds.current.set(id, (holds.current.get(id) ?? 0) + 1);
+    return () => {
+      const left = (holds.current.get(id) ?? 1) - 1;
+      holds.current.set(id, left);
+      const waiting = deferred.current.get(id);
+      if (left > 0 || waiting === undefined) {
+        return;
+      }
+      deferred.current.delete(id);
+      if (isCurrentMark(id, waiting.mark)) {
+        versions.current.set(id, waiting.updatedAt);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Which read, or a write, showed the line: that read's next answer, or
   // either read's after a write, clears it.
   const lineFrom = useRef<"e20" | "e21" | "write" | undefined>(undefined);
@@ -289,23 +324,39 @@ export const useCmsStructure = ({
   const acceptedOrder = useRef(new Map<string, CmsStructureField[]>());
   const latestDetail = useRef<CmsStructureCollection | undefined>(undefined);
   latestDetail.current = detail;
-  const withLocalOrder = (
-    current: CmsStructureCollection | undefined,
-    fresh: CmsStructureCollection
-  ): CmsStructureCollection => {
-    if (reorderPending.current !== fresh.id) {
-      acceptedOrder.current.set(fresh.id, fresh.fields);
-    }
-    return reorderPending.current === fresh.id && current?.id === fresh.id
-      ? { ...fresh, fields: current.fields }
-      : fresh;
-  };
   const cancelReorderTimer = useCallback(() => {
     if (reorderTimer.current !== undefined) {
       clearTimeout(reorderTimer.current);
       reorderTimer.current = undefined;
     }
   }, []);
+  /**
+   * A read while a reorder waits: the read's fields in the person's order.
+   * When the read adds or removes a field, the reorder is dropped and the
+   * read stands as it is.
+   */
+  const withLocalOrder = useCallback(
+    (
+      current: CmsStructureCollection | undefined,
+      fresh: CmsStructureCollection
+    ): CmsStructureCollection => {
+      if (reorderPending.current === fresh.id && current?.id === fresh.id) {
+        const byKey = new Map(fresh.fields.map((field) => [field.key, field]));
+        const ordered = current.fields.flatMap((field) => {
+          const found = byKey.get(field.key);
+          return found === undefined ? [] : [found];
+        });
+        if (ordered.length === fresh.fields.length) {
+          return { ...fresh, fields: ordered };
+        }
+        cancelReorderTimer();
+        reorderPending.current = undefined;
+      }
+      acceptedOrder.current.set(fresh.id, fresh.fields);
+      return fresh;
+    },
+    [cancelReorderTimer]
+  );
   useEffect(() => cancelReorderTimer, [cancelReorderTimer]);
 
   // E20: the templates and the plan's caps, for a person who can manage.
@@ -408,6 +459,7 @@ export const useCmsStructure = ({
     isDetailBackground,
     readMark,
     takeVersion,
+    withLocalOrder,
     showLineFrom,
     clearLineFrom,
     refetchCollections,
@@ -474,7 +526,8 @@ export const useCmsStructure = ({
     }
   }, [collections]);
 
-  const fetchStructure = async (id: string) => {
+  /** E21 now; `forView`: the open view's reread, which takes the version. */
+  const fetchStructure = async (id: string, forView = false) => {
     if (structure === undefined) {
       return undefined;
     }
@@ -487,7 +540,7 @@ export const useCmsStructure = ({
       }
       return undefined;
     }
-    takeVersion(result.collection, mark);
+    takeVersion(result.collection, mark, forView);
     if (result.collection.id === collectionId) {
       setDetail((current) => withLocalOrder(current, result.collection));
     }
@@ -511,8 +564,9 @@ export const useCmsStructure = ({
       setView({ type: "settings" });
     });
 
+  // always read again: the count and the references change with item writes
   const requestDelete = async (id: string) => {
-    const found = id === detail?.id ? detail : await fetchStructure(id);
+    const found = await fetchStructure(id);
     if (found !== undefined) {
       setDeleteTarget(found);
     }
@@ -558,10 +612,11 @@ export const useCmsStructure = ({
         showLine(refusal);
       } else if (result.error === "conflict") {
         toast.error("Changed by someone else");
-        setDetailVersion((version) => version + 1);
       } else {
         toast.error(getStructureToastText(result.error, "field"));
       }
+      // the order put back is the last accepted: E21 again for the rest
+      setDetailVersion((version) => version + 1);
       return;
     }
     reorderPending.current = undefined;
@@ -611,6 +666,17 @@ export const useCmsStructure = ({
       return result;
     });
   };
+
+  // an open view holds its collection's version (see `holdVersion`); each
+  // view session holds afresh, so a read that waited applies between them
+  const heldId =
+    view !== undefined && detail?.id === collectionId
+      ? collectionId
+      : undefined;
+  useEffect(
+    () => (heldId === undefined ? undefined : holdVersion(heldId)),
+    [heldId, session, holdVersion]
+  );
 
   if (structure === undefined) {
     return {
@@ -746,7 +812,7 @@ export const useCmsStructure = ({
           collection={openDetail}
           canManage={canManage}
           enqueue={enqueue}
-          reread={() => fetchStructure(openDetail.id)}
+          reread={() => fetchStructure(openDetail.id, true)}
           onBack={() => guard(closeView)}
           onDirtyChange={reportViewDirty}
           onSaved={(before, after) => {
@@ -759,7 +825,7 @@ export const useCmsStructure = ({
               after: { slug: after.slug, isPublic: after.isPublic },
             });
           }}
-          onDelete={() => setDeleteTarget(openDetail)}
+          onDelete={() => void requestDelete(openDetail.id)}
           onRefusal={showLine}
           onNotFound={refetchCollections}
         />
@@ -774,7 +840,8 @@ export const useCmsStructure = ({
         targets={targets}
         canManage={canManage}
         enqueue={enqueueSchema}
-        reread={() => fetchStructure(openDetail.id)}
+        reread={() => fetchStructure(openDetail.id, true)}
+        readCount={() => fetchStructure(openDetail.id)}
         onBack={() => guard(closeView)}
         onClose={closeView}
         onDirtyChange={reportViewDirty}
@@ -820,7 +887,13 @@ export const useCmsStructure = ({
     <>
       <NewCollectionDialog
         open={isNewOpen}
-        onOpenChange={setIsNewOpen}
+        onOpenChange={(isOpen) => {
+          // a create of unknown outcome is adopted only while its form is open
+          if (isOpen === false) {
+            pendingCreate.current = undefined;
+          }
+          setIsNewOpen(isOpen);
+        }}
         structure={structure}
         templates={templates ?? []}
         limits={limits}

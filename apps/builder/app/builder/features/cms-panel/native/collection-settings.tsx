@@ -178,6 +178,7 @@ export const DeleteCollectionDialog = ({
             <Button
               color="destructive"
               state={busy ? "pending" : undefined}
+              disabled={busy}
               onClick={() => void remove()}
             >
               Delete
@@ -250,10 +251,14 @@ export const CollectionSettings = ({
       return;
     }
     const freshSettings = settingsOf(fresh);
-    // the write landed: the view is clean
+    // the write landed: the view is clean, and the write's effects follow
     if (sent !== undefined && isSameSettings(freshSettings, sent)) {
       setBaseline(freshSettings);
       setValues(freshSettings);
+      setIsConflict(false);
+      if (isSameSettings(freshSettings, baseline) === false) {
+        onSaved(baseline, { ...freshSettings, updatedAt: fresh.updatedAt });
+      }
       return;
     }
     setValues((current) => rebaseSettings(baseline, freshSettings, current));

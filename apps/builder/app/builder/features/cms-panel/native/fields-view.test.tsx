@@ -21,6 +21,7 @@ import {
   menuItem,
   menuItems,
   mount,
+  reopen,
   resetHarness,
   settle,
   tab,
@@ -325,7 +326,117 @@ describe("the Fields tab", () => {
     expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
   });
 
-  test("a refused reorder puts back the last accepted order; conflict also rereads E21 and toasts", async () => {
+  test("a read during the pause keeps the person's order over the read's fields; E24 sends both with the read's version", async () => {
+    answerSchema(LATER);
+    await openFields();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await moveRow("title", "ArrowDown");
+    // another person renamed Summary meanwhile
+    harness.structure.getCollectionStructure.mockResolvedValue({
+      collection: {
+        ...POSTS_STRUCTURE,
+        updatedAt: NEXT,
+        fields: POSTS_STRUCTURE.fields.map((field) =>
+          field.key === "summary" ? { ...field, label: "Excerpt" } : field
+        ),
+      },
+    });
+    await reopen();
+    expect(fieldKeys()).toEqual(["summary", "title", "author"]);
+    await pass(600);
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
+    const [, body] = harness.structure.updateSchema.mock.calls[0];
+    expect(body.fields.map((field) => `${field.key}:${field.label}`)).toEqual([
+      "summary:Excerpt",
+      "title:Title",
+      "author:Author",
+    ]);
+    expect(body.expectedUpdatedAt).toBe(NEXT);
+  });
+
+  test("a read during the pause that adds a field drops the reorder: nothing is sent and the read's order stands", async () => {
+    answerSchema();
+    await openFields();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await moveRow("title", "ArrowDown");
+    harness.structure.getCollectionStructure.mockResolvedValue({
+      collection: {
+        ...POSTS_STRUCTURE,
+        updatedAt: NEXT,
+        fields: [
+          ...POSTS_STRUCTURE.fields,
+          { key: "extra", label: "Extra", kind: "text" },
+        ],
+      },
+    });
+    await reopen();
+    await pass(1000);
+    expect(harness.structure.updateSchema).not.toHaveBeenCalled();
+    expect(fieldKeys()).toEqual(["title", "summary", "author", "extra"]);
+  });
+
+  test("an open sheet keeps the version it was built from: a read meanwhile makes its Save a conflict, and the read's version applies once it closes", async () => {
+    harness.structure.updateSchema.mockResolvedValue({ error: "conflict" });
+    await openFields();
+    await click(fieldRow("summary")!.querySelector("button"));
+    harness.structure.getCollectionStructure.mockResolvedValue({
+      collection: {
+        ...POSTS_STRUCTURE,
+        updatedAt: NEXT,
+        fields: POSTS_STRUCTURE.fields.map((field) =>
+          field.key === "summary" ? { ...field, label: "Excerpt" } : field
+        ),
+      },
+    });
+    await reopen();
+    await typeInto(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+      "Teaser"
+    );
+    await click(
+      buttonByText(
+        "Save",
+        document.querySelector("[data-cms-structure-header]")!
+      )
+    );
+    expect(
+      harness.structure.updateSchema.mock.calls[0][1].expectedUpdatedAt
+    ).toBe(VERSION);
+    expect(
+      document.querySelector("[data-cms-structure-conflict]")?.textContent
+    ).toContain("Changed by someone else");
+    // Reload rebases the sheet on the read, and its Save sends that version
+    await click(buttonByText("Reload"));
+    await click(
+      buttonByText(
+        "Save",
+        document.querySelector("[data-cms-structure-header]")!
+      )
+    );
+    expect(
+      harness.structure.updateSchema.mock.lastCall?.[1].expectedUpdatedAt
+    ).toBe(NEXT);
+  });
+
+  test("a read while a sheet is open applies once it closes: a reorder then sends the read's version", async () => {
+    answerSchema(LATER);
+    await openFields();
+    await click(fieldRow("summary")!.querySelector("button"));
+    harness.structure.getCollectionStructure.mockResolvedValue({
+      collection: { ...POSTS_STRUCTURE, updatedAt: NEXT },
+    });
+    await reopen();
+    await click(byLabel("Back"));
+    expect(sheet()).toBeNull();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await moveRow("title", "ArrowDown");
+    await pass(600);
+    expect(
+      harness.structure.updateSchema.mock.calls[0][1].expectedUpdatedAt
+    ).toBe(NEXT);
+  });
+
+  test("a refused reorder puts back the last accepted order and rereads E21; conflict also toasts", async () => {
     const error = vi.spyOn(toast, "error");
     await openFields();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
