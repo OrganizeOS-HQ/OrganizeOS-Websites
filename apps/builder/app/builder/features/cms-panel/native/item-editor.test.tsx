@@ -1830,3 +1830,47 @@ describe("the side details and the changed dots (Task 20)", () => {
     expect(dotOn("cms-field-summary")).toBe(false);
   });
 });
+
+describe("multireference reordering in the editor (Task 21)", () => {
+  test("a reorder makes the editor dirty and Save sends the new order", async () => {
+    const BEA = "66666666-6666-4666-8666-666666666666";
+    const CY = "77777777-7777-4777-8777-777777777777";
+    setFields([
+      POSTS_DETAIL.fields[0],
+      {
+        key: "tags",
+        label: "Tags",
+        kind: "multireference",
+        reference: { collectionId: PEOPLE.id, multiple: true },
+      },
+    ]);
+    fake.searchItems.mockImplementation(async (_c, query) => ({
+      items: (query.ids ?? []).map((id) => ({
+        id,
+        title: { [ANN]: "Ann", [BEA]: "Bea", [CY]: "Cy" }[id] ?? "",
+        status: "published" as const,
+      })),
+    }));
+    const item = itemOf({ data: { title: "Hello", tags: [ANN, BEA, CY] } });
+    fake.updateItem.mockImplementation(async (_c, id, body) => ({
+      item: { ...item, id, data: body.data, updatedAt: V2 },
+    }));
+    await openItem(item);
+    await vi.waitFor(() => expect(byLabel("Remove Cy")).not.toBeNull());
+    expect(isDisabled("Save")).toBe(true);
+    act(() => {
+      document
+        .querySelector<HTMLElement>(
+          `[data-cms-reference="${ANN}"] [aria-label="Drag to reorder"]`
+        )!
+        .focus();
+    });
+    await act(async () => userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}"));
+    await settle();
+    expect($cmsNativeDirty.get()).toBe(true);
+    expect(isDisabled("Save")).toBe(false);
+    await click(buttonByText("Save"));
+    expect(fake.updateItem).toHaveBeenCalledTimes(1);
+    expect(fake.updateItem.mock.calls[0][2].data.tags).toEqual([BEA, ANN, CY]);
+  });
+});
