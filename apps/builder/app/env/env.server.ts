@@ -108,12 +108,8 @@ const environment = z.object({
 
   // The native CMS screen's switch: only the exact value `true`, with
   // ORGANIZEOS_CMS_PANEL=true and WEBSITES2_CMS_SECRET set, shows it in the
-  // CMS overlay, to the orgs ORGANIZEOS_CMS_NATIVE_ORG_IDS lists.
+  // CMS overlay, for every org.
   ORGANIZEOS_CMS_NATIVE: z.string().optional(),
-
-  // The orgs that get the native CMS screen: comma-separated organization
-  // ids; anything else is ignored.
-  ORGANIZEOS_CMS_NATIVE_ORG_IDS: z.string().optional(),
 
   // The Shop blocks' switch: only the exact value `true` lists the Product
   // Grid and Product Card and seeds the Products catalog Resource.
@@ -215,7 +211,6 @@ const rawEnv = {
   ORGANIZEOS_CMS_PANEL: process.env.ORGANIZEOS_CMS_PANEL,
   WEBSITES2_CMS_SECRET: process.env.WEBSITES2_CMS_SECRET,
   ORGANIZEOS_CMS_NATIVE: process.env.ORGANIZEOS_CMS_NATIVE,
-  ORGANIZEOS_CMS_NATIVE_ORG_IDS: process.env.ORGANIZEOS_CMS_NATIVE_ORG_IDS,
   ORGANIZEOS_SHOP_BLOCKS: process.env.ORGANIZEOS_SHOP_BLOCKS,
   ORGANIZEOS_CATALOG_ROOT_BINDINGS:
     process.env.ORGANIZEOS_CATALOG_ROOT_BINDINGS,

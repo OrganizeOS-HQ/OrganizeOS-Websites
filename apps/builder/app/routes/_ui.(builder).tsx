@@ -276,7 +276,6 @@ export const loader = async (loaderArgs: LoaderFunctionArgs) => {
             shopBlocks: env.ORGANIZEOS_SHOP_BLOCKS,
             // OrganizeOS fork: the native CMS screen's switch; only whether the secret is set reaches the client.
             cmsNative: env.ORGANIZEOS_CMS_NATIVE,
-            cmsNativeOrgIds: env.ORGANIZEOS_CMS_NATIVE_ORG_IDS,
             cmsSecretSet: env.WEBSITES2_CMS_SECRET !== undefined,
           });
 

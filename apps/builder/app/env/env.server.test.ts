@@ -131,14 +131,14 @@ describe("ORGANIZEOS_CMS_NATIVE", () => {
 });
 
 describe("ORGANIZEOS_CMS_NATIVE_ORG_IDS", () => {
-  test("is undefined when unset", async () => {
-    vi.stubEnv("ORGANIZEOS_CMS_NATIVE_ORG_IDS", undefined);
-    expect((await loadEnv()).ORGANIZEOS_CMS_NATIVE_ORG_IDS).toBeUndefined();
-  });
-
-  test("passes the raw value through", async () => {
-    vi.stubEnv("ORGANIZEOS_CMS_NATIVE_ORG_IDS", " a , b ");
-    expect((await loadEnv()).ORGANIZEOS_CMS_NATIVE_ORG_IDS).toBe(" a , b ");
+  // The native CMS screen goes to every org once its switch is on, so a list
+  // left behind in a deployment is never read
+  test("is left out of env even when it is set", async () => {
+    vi.stubEnv(
+      "ORGANIZEOS_CMS_NATIVE_ORG_IDS",
+      "f0e1d2c3-b4a5-4697-8877-665544332211"
+    );
+    expect("ORGANIZEOS_CMS_NATIVE_ORG_IDS" in (await loadEnv())).toBe(false);
   });
 });
 

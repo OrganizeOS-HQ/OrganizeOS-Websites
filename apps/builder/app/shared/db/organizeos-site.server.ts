@@ -200,23 +200,6 @@ export const isCmsNativeSwitchOn = (value: string | undefined) =>
   value === "true";
 
 /**
- * `ORGANIZEOS_CMS_NATIVE_ORG_IDS`: comma-separated organization ids, each
- * trimmed and lower-cased; an entry that is not an organization id is dropped.
- * Unset, empty or only separators lists no org. `parseOrgDenyList` is not
- * reused: its malformed-entry rule (`{ all: true }`) would open an allow list
- * to every org.
- */
-export const parseCmsNativeOrgIds = (
-  value: string | undefined
-): ReadonlySet<string> =>
-  new Set(
-    (value ?? "")
-      .split(",")
-      .map((item) => item.trim().toLowerCase())
-      .filter((item) => ORGANIZATION_ID_PATTERN.test(item))
-  );
-
-/**
  * Describe the OrganizeOS org behind a project, or undefined for a project a
  * human owns (which is not an OrganizeOS site and gets upstream behavior).
  * Pure: the caller supplies the project's owner row, the deployment's
@@ -232,7 +215,6 @@ export const resolveOrganizeosSite = ({
   cmsPanel,
   shopBlocks,
   cmsNative,
-  cmsNativeOrgIds,
   cmsSecretSet,
 }: {
   owner: { provider: string | null; email: string | null };
@@ -246,8 +228,6 @@ export const resolveOrganizeosSite = ({
   shopBlocks?: string;
   /** The raw `ORGANIZEOS_CMS_NATIVE`: only `true` turns the native CMS screen on. */
   cmsNative?: string;
-  /** The raw `ORGANIZEOS_CMS_NATIVE_ORG_IDS`: the orgs that get the native CMS screen. */
-  cmsNativeOrgIds?: string;
   /** Whether `WEBSITES2_CMS_SECRET` is set; never its value. */
   cmsSecretSet?: boolean;
 }): OrganizeosSite | undefined => {
@@ -278,8 +258,7 @@ export const resolveOrganizeosSite = ({
     cmsNativeEnabled:
       cmsPanel === "true" &&
       isCmsNativeSwitchOn(cmsNative) &&
-      cmsSecretSet === true &&
-      parseCmsNativeOrgIds(cmsNativeOrgIds).has(organizationId.toLowerCase()),
+      cmsSecretSet === true,
   };
 };
 
