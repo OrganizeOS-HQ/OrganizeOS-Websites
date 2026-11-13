@@ -783,3 +783,381 @@ describe("Filter and Sort (Task 16)", () => {
     );
   });
 });
+
+const ROW_IDS = [
+  "00000000-0000-4000-8000-00000000000a",
+  "00000000-0000-4000-8000-00000000000b",
+  "00000000-0000-4000-8000-00000000000c",
+];
+
+/** Three POSTS rows a, b and c, each with its own version. */
+const threeRows = () =>
+  ["a", "b", "c"].map((name, index) =>
+    rowOf(
+      itemOf({
+        id: ROW_IDS[index],
+        slug: name,
+        data: { title: name.toUpperCase() },
+        updatedAt: `2026-11-12T10:00:0${index}.000000+00:00`,
+      })
+    )
+  );
+
+const mountThree = async (overrides: Partial<CmsScreenProps> = {}) => {
+  fake.listItems.mockImplementation(async () => itemsPageOf(threeRows(), 3, 1));
+  mount(overrides);
+  await settle();
+};
+
+const checkbox = (label: string) => byLabel(label) as HTMLButtonElement | null;
+
+const toolbar = () =>
+  document.querySelector<HTMLElement>(
+    '[role="toolbar"][aria-label="Bulk actions"]'
+  );
+
+const toolbarButton = (text: string) =>
+  [...(toolbar()?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
+    (button) => button.textContent === text
+  );
+
+const dialogButton = (text: string) =>
+  [
+    ...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'),
+  ].find((button) => button.textContent === text);
+
+/** Records, per Escape that reaches the document, whether it was handled. */
+const watchEscapes = () => {
+  const handled: boolean[] = [];
+  const listener = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      handled.push(event.defaultPrevented);
+    }
+  };
+  document.addEventListener("keydown", listener);
+  return {
+    handled,
+    stop: () => document.removeEventListener("keydown", listener),
+  };
+};
+
+describe("selection and the bulk bar (Task 17)", () => {
+  test.each(["click", "Space"])(
+    "a row checkbox toggles by %s and opens nothing",
+    async (how) => {
+      await mountThree();
+      const box = checkbox("Select A")!;
+      if (how === "click") {
+        await click(box);
+      } else {
+        act(() => {
+          box.focus();
+        });
+        await act(async () => userEvent.keyboard(" "));
+        await settle();
+      }
+      expect(box.getAttribute("data-state")).toBe("checked");
+      expect(box.closest("[data-cms-item]")?.getAttribute("data-state")).toBe(
+        "selected"
+      );
+      expect(fake.getItem).not.toHaveBeenCalled();
+      expect(toolbar()?.textContent).toContain("1 selected");
+    }
+  );
+
+  test("select all on the page, and its indeterminate state", async () => {
+    await mountThree();
+    const all = () => checkbox("Select all on this page")!;
+    await click(checkbox("Select B"));
+    expect(all().getAttribute("data-state")).toBe("indeterminate");
+    await click(all());
+    expect(all().getAttribute("data-state")).toBe("checked");
+    for (const name of ["A", "B", "C"]) {
+      expect(checkbox(`Select ${name}`)?.getAttribute("data-state")).toBe(
+        "checked"
+      );
+    }
+    await click(all());
+    expect(all().getAttribute("data-state")).toBe("unchecked");
+    expect(toolbar()).toBeNull();
+  });
+
+  test("the bulk bar replaces the search, Filter, Sort and New item, and Clear brings them back", async () => {
+    await mountThree();
+    expect(searchInput()).not.toBeNull();
+    await click(checkbox("Select A"));
+    await click(checkbox("Select C"));
+    expect(toolbar()?.textContent).toContain("2 selected");
+    expect(searchInput()).toBeNull();
+    expect(buttonByText("Filter")).toBeUndefined();
+    expect(buttonByText("Sort")).toBeUndefined();
+    expect(buttonByText("New item")).toBeUndefined();
+    for (const text of ["Publish", "Unpublish", "Archive", "Delete", "Clear"]) {
+      expect(toolbarButton(text)).not.toBeUndefined();
+    }
+    await click(toolbarButton("Clear"));
+    expect(toolbar()).toBeNull();
+    expect(searchInput()).not.toBeNull();
+    expect(buttonByText("Filter")).not.toBeUndefined();
+    expect(buttonByText("Sort")).not.toBeUndefined();
+    expect(buttonByText("New item")).not.toBeUndefined();
+  });
+
+  test("no checkboxes without canEdit; Publish and Unpublish only with canPublish", async () => {
+    fake.getAccess.mockImplementation(async () => ({
+      canEdit: false,
+      canPublish: false,
+      canManageSettings: false,
+    }));
+    await mountThree();
+    expect(itemRows()).toHaveLength(3);
+    expect(checkbox("Select A")).toBeNull();
+    expect(checkbox("Select all on this page")).toBeNull();
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+
+    fake = createFakeCmsSource();
+    fake.getAccess.mockImplementation(async () => ({
+      canEdit: true,
+      canPublish: false,
+      canManageSettings: false,
+    }));
+    await mountThree();
+    await click(checkbox("Select A"));
+    expect(toolbarButton("Publish")).toBeUndefined();
+    expect(toolbarButton("Unpublish")).toBeUndefined();
+    for (const text of ["Archive", "Delete", "Clear"]) {
+      expect(toolbarButton(text)).not.toBeUndefined();
+    }
+  });
+
+  test("Publish sends E10 with each row's version, refetches, clears, and toasts conflicts and failures", async () => {
+    const error = vi.spyOn(toast, "error");
+    const onItemWritten = vi.fn();
+    await mountThree({ onItemWritten });
+    const rows = threeRows();
+    fake.publishItems.mockResolvedValue({
+      published: [ROW_IDS[0]],
+      unchanged: [],
+      conflicts: [ROW_IDS[1]],
+      failed: [ROW_IDS[2]],
+    });
+    await click(checkbox("Select all on this page"));
+    const calls = fake.listItems.mock.calls.length;
+    await click(toolbarButton("Publish"));
+    expect(fake.publishItems).toHaveBeenCalledWith(POSTS.id, {
+      items: rows.map((row) => ({ id: row.id, updatedAt: row.updatedAt })),
+    });
+    expect(fake.listItems.mock.calls.length).toBeGreaterThan(calls);
+    expect(onItemWritten).toHaveBeenCalledWith("posts", undefined);
+    expect(toolbar()).toBeNull();
+    expect(error).toHaveBeenCalledWith("1 changed by someone else");
+    expect(error).toHaveBeenCalledWith("1 not published");
+  });
+
+  test("a stopped Publish refetches and keeps the selection still shown", async () => {
+    const error = vi.spyOn(toast, "error");
+    await mountThree();
+    fake.publishItems.mockResolvedValue({ error: "forbidden" });
+    await click(checkbox("Select A"));
+    await click(checkbox("Select B"));
+    const calls = fake.listItems.mock.calls.length;
+    await click(toolbarButton("Publish"));
+    expect(error).toHaveBeenCalledWith("No access");
+    expect(fake.listItems.mock.calls.length).toBeGreaterThan(calls);
+    expect(toolbar()?.textContent).toContain("2 selected");
+  });
+
+  test("Unpublish and Archive send E11; slug_taken toasts Address in use", async () => {
+    const error = vi.spyOn(toast, "error");
+    await mountThree();
+    fake.setItemsStatus.mockResolvedValueOnce({ changed: [ROW_IDS[0]] });
+    await click(checkbox("Select A"));
+    await click(toolbarButton("Unpublish"));
+    expect(fake.setItemsStatus).toHaveBeenLastCalledWith(POSTS.id, {
+      ids: [ROW_IDS[0]],
+      status: "draft",
+    });
+    expect(toolbar()).toBeNull();
+
+    fake.setItemsStatus.mockResolvedValueOnce({ error: "slug_taken" });
+    await click(checkbox("Select B"));
+    await click(toolbarButton("Archive"));
+    expect(fake.setItemsStatus).toHaveBeenLastCalledWith(POSTS.id, {
+      ids: [ROW_IDS[1]],
+      status: "archived",
+    });
+    expect(error).toHaveBeenCalledWith("Address in use");
+    expect(toolbar()?.textContent).toContain("1 selected");
+  });
+
+  test("Delete asks Delete 2 events?, Cancel is focused, Delete sends E12", async () => {
+    const rows = [
+      eventRow({ id: ROW_IDS[0], title: "One" }),
+      eventRow({ id: ROW_IDS[1], title: "Two" }),
+    ];
+    await mountEvents(eventsPage(["kind"], rows));
+    fake.deleteItems.mockResolvedValue({ deleted: [ROW_IDS[0], ROW_IDS[1]] });
+    await click(checkbox("Select all on this page"));
+    await click(toolbarButton("Delete"));
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+    expect(dialog?.textContent).toContain("Delete 2 events?");
+    expect(document.activeElement?.textContent).toBe("Cancel");
+    expect(fake.deleteItems).not.toHaveBeenCalled();
+    await click(dialogButton("Delete"));
+    expect(fake.deleteItems).toHaveBeenCalledWith(EVENTS.id, {
+      ids: [ROW_IDS[0], ROW_IDS[1]],
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(toolbar()).toBeNull();
+  });
+
+  test("Escape clears a selection and keeps the overlay; a second Escape is the overlay's", async () => {
+    await mountThree();
+    await click(checkbox("Select A"));
+    const escapes = watchEscapes();
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await settle();
+    expect(toolbar()).toBeNull();
+    expect(checkbox("Select A")?.getAttribute("data-state")).toBe("unchecked");
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await settle();
+    escapes.stop();
+    expect(escapes.handled).toEqual([true, false]);
+  });
+
+  // Review Focus 5
+  test("deleting every row of the last page of a filtered list shows the new last page", async () => {
+    let total = 120;
+    fake.listItems.mockImplementation(async (_c, query) => {
+      const last = Math.max(1, Math.ceil(total / 50));
+      return {
+        ...pageOf(Math.min(query.page ?? 1, last), total),
+        applied: {
+          status: query.status ?? "all",
+          sort: "order",
+          direction: "asc",
+          optionKey: null,
+          optionValue: null,
+        },
+      };
+    });
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        page: 3,
+        list: {
+          status: "draft",
+          sort: "order",
+          direction: "asc",
+          option: null,
+        },
+      },
+    });
+    await settle();
+    expect(pagerText()).toBe("101-120 of 120");
+    fake.deleteItems.mockImplementation(async (_c, { ids }) => {
+      total -= ids.length;
+      return { deleted: ids };
+    });
+    await click(checkbox("Select all on this page"));
+    await click(toolbarButton("Delete"));
+    await click(dialogButton("Delete"));
+    expect(fake.deleteItems.mock.calls[0][1].ids).toHaveLength(20);
+    expect(lastListItemsCall()?.[1]).toMatchObject({ status: "draft" });
+    expect(pagerText()).toBe("51-100 of 100");
+    expect(itemRows()).toHaveLength(50);
+    expect(toolbar()).toBeNull();
+    expect(document.querySelector("[data-cms-no-matches]")).toBeNull();
+  });
+
+  test("Escape in the bulk Delete dialog closes the dialog only: the selection and the overlay stay", async () => {
+    await mountThree();
+    await click(checkbox("Select A"));
+    await click(checkbox("Select B"));
+    await click(toolbarButton("Delete"));
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    const escapes = watchEscapes();
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await wait(100);
+    escapes.stop();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(toolbar()?.textContent).toContain("2 selected");
+    // no Escape reaches the overlay unhandled
+    expect(escapes.handled).not.toContain(false);
+    // the focus goes back to the bulk bar's Delete
+    expect(document.activeElement).toBe(toolbarButton("Delete"));
+    expect(fake.deleteItems).not.toHaveBeenCalled();
+  });
+
+  test("Escape in an open Filter menu with no selection closes the menu only, and the overlay stays", async () => {
+    await mountThree();
+    await click(buttonByText("Filter"));
+    expect(document.querySelector('[role="menu"]')).not.toBeNull();
+    const escapes = watchEscapes();
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await settle();
+    escapes.stop();
+    expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(escapes.handled).toEqual([true]);
+  });
+
+  test("every bulk button is disabled while a call is in flight", async () => {
+    await mountThree();
+    const answer = deferred<
+      CmsResult<{
+        published: string[];
+        unchanged: string[];
+        conflicts: string[];
+        failed: string[];
+      }>
+    >();
+    fake.publishItems.mockImplementation(() => answer.promise);
+    await click(checkbox("Select A"));
+    await click(toolbarButton("Publish"));
+    for (const text of ["Publish", "Unpublish", "Archive", "Delete", "Clear"]) {
+      expect(toolbarButton(text)?.disabled).toBe(true);
+    }
+    answer.resolve({
+      published: [ROW_IDS[0]],
+      unchanged: [],
+      conflicts: [],
+      failed: [],
+    });
+    await settle();
+    expect(toolbar()).toBeNull();
+  });
+
+  test("a selection change asks E3 nothing and counts no page answer", async () => {
+    await mountThree();
+    const answers = () =>
+      document.querySelector<HTMLElement>("[data-cms-page-answers]")?.dataset;
+    const calls = fake.listItems.mock.calls.length;
+    const count = answers()?.cmsPageAnswers;
+    await click(checkbox("Select A"));
+    await click(toolbarButton("Clear"));
+    expect(fake.listItems.mock.calls.length).toBe(calls);
+    expect(answers()?.cmsPageAnswers).toBe(count);
+
+    // a failed refetch counts one answer, not ok
+    fake.listItems.mockResolvedValueOnce({ error: "rate_limited" });
+    act(() => {
+      refreshCmsNative();
+    });
+    await settle();
+    expect(Number(answers()?.cmsPageAnswers)).toBe(Number(count) + 1);
+    expect(answers()?.cmsPageAnswerOk).toBe("false");
+  });
+
+  test("Enter on a row checkbox opens nothing", async () => {
+    await mountThree();
+    act(() => {
+      checkbox("Select A")!.focus();
+    });
+    await act(async () => userEvent.keyboard("{Enter}"));
+    await settle();
+    expect(fake.getItem).not.toHaveBeenCalled();
+  });
+});

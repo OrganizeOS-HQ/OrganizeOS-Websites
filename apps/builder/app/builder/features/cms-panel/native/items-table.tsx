@@ -1,7 +1,7 @@
 /**
  * The native CMS items table (spec 5.1.4): the checkbox, Name, Status, the
- * field columns that fit, Modified and Published, with sortable headers. The
- * drag handle and the bulk selection arrive in later tasks.
+ * field columns that fit, Modified and Published, with sortable headers, and
+ * the selection's checkboxes. The drag handle arrives in a later task.
  */
 import {
   useEffect,
@@ -200,7 +200,16 @@ const ItemRow = ({
               aria-label={`Select ${item.title}`}
               checked={selected}
               css={selected ? tickedCheckboxCss : undefined}
+              // a press on the checkbox toggles it and never opens the row;
+              // its mouse down is its own too, so it takes the focus
+              onPointerDown={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                if (event.key === " " || event.key === "Enter") {
+                  event.stopPropagation();
+                }
+              }}
               onCheckedChange={() => onToggle(item.id)}
             />
           </div>

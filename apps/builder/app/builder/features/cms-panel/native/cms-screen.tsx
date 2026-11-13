@@ -232,6 +232,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       listState.collectionId === collectionId
         ? listState
         : defaultListState(collectionId);
+    // The latest list state, for E3's effect, which reruns on the list's key
+    // only: a selection change asks E3 nothing.
+    const listStateRef = useRef(listState);
+    listStateRef.current = listState;
+    const openListKey = listKey(list);
     // Bumped on every E3 answer for the current key, success or failure; a
     // reorder's wait reads it (Task 18).
     const [pageAnswer, setPageAnswer] = useState({ count: 0, ok: true });
@@ -484,8 +489,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
       // the open collection's list state, or the defaults for any other
       const effectList =
-        listState.collectionId === collectionId
-          ? listState
+        listStateRef.current.collectionId === collectionId
+          ? listStateRef.current
           : defaultListState(collectionId);
       const currentListKey = listKey(effectList);
       const keyFor = (pageNumber: number, forListKey: string) =>
@@ -566,25 +571,27 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           };
           // the answer's applied filter and sort are adopted without a
           // second E3; the selection keeps only the rows still shown
-          const adopted = adoptApplied(effectList, result.applied);
-          const keptSelected = keepSelection(adopted.selected, result.items);
-          const selectionChanged =
-            keptSelected.size !== adopted.selected.size ||
-            [...keptSelected].some((id) => adopted.selected.has(id) === false);
-          const nextList = selectionChanged
-            ? { ...adopted, selected: keptSelected }
-            : adopted;
-          const nextListKey = listKey(nextList);
+          const nextListKey = listKey(adoptApplied(effectList, result.applied));
           // adopting the answer's page (a page past the end answers the last
-          // one, A4), its applied filter and sort, or a pruned selection moves
-          // the state the effect reads, so the next run is skipped: its data is
-          // already drawn and no second E3 is asked
-          if (nextList !== listState || result.page !== page) {
+          // one, A4) or its applied filter and sort moves the key the effect
+          // reads, so the next run is skipped: its data is already drawn and
+          // no second E3 is asked
+          if (nextListKey !== currentListKey || result.page !== page) {
             adoptedPageKey.current = keyFor(result.page, nextListKey);
           }
-          if (nextList !== listState) {
-            setListState(nextList);
-          }
+          setListState((current) => {
+            const base =
+              current.collectionId === collectionId ? current : effectList;
+            const adopted = adoptApplied(base, result.applied);
+            const kept = keepSelection(adopted.selected, result.items);
+            const next =
+              kept.size === adopted.selected.size
+                ? adopted
+                : { ...adopted, selected: kept };
+            // the state now belongs to this collection, so another's is
+            // never kept for when it opens again
+            return next === current ? current : next;
+          });
           if (result.page !== page) {
             setPage(result.page);
           }
@@ -622,7 +629,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       isReady,
       page,
       query,
-      listState,
+      openListKey,
       listVersion,
       pageAttempt,
       attempt,
@@ -834,6 +841,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           page={itemsPage}
           query={query}
           canEdit={access.canEdit}
+          canPublish={access.canPublish}
           focusItemId={returnFocusItemId}
           source={source}
           fields={detail?.id === collection.id ? detail.fields : undefined}

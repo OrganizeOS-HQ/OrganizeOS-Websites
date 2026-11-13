@@ -18,6 +18,7 @@ import {
 import { formatPageRange, getPageCount, type CmsRefusal } from "./cms-logic";
 import {
   filterCount,
+  getDeleteTitle,
   nextSort,
   resolveColumns,
   type CmsListState,
@@ -30,9 +31,12 @@ import {
   type CmsSortKey,
   type CmsSource,
 } from "./cms-source";
+import { BulkBar } from "./bulk-bar";
+import { DeleteDialog } from "./delete-dialog";
 import { FilterMenu, SortMenu } from "./items-menus";
 import { ItemsTable } from "./items-table";
 import { TruncatedText } from "./truncated-text";
+import { useBulkActions } from "./use-bulk-actions";
 
 /** The field kinds the list can sort on (spec 5.1.3). */
 const SORTABLE_KINDS: ReadonlySet<string> = new Set([
@@ -51,6 +55,7 @@ const TopBar = ({
   filterField,
   sortFields,
   maxMenuWidth,
+  bulkBar,
   onListChange,
   onQueryChange,
   onNewItem,
@@ -59,6 +64,8 @@ const TopBar = ({
   query: string;
   canEdit: boolean;
   showSearch: boolean;
+  /** While rows are selected: the bulk bar, in place of the search, Filter, Sort and New item. */
+  bulkBar: JSX.Element | undefined;
   list: CmsListState;
   filterField: CmsField | null;
   sortFields: CmsField[];
@@ -83,10 +90,12 @@ const TopBar = ({
     <Flex
       align="center"
       gap="2"
+      wrap={bulkBar === undefined ? undefined : "wrap"}
       data-cms-top-bar
       css={{
-        height: theme.spacing[15],
+        minHeight: theme.spacing[15],
         flexShrink: 0,
+        paddingBlock: bulkBar === undefined ? undefined : theme.spacing[3],
         paddingInline: theme.panel.paddingInline,
         borderBottom: `1px solid ${cssVar("--border-default")}`,
       }}
@@ -97,7 +106,8 @@ const TopBar = ({
           {collection.total}
         </Text>
       </Flex>
-      {showSearch && (
+      {bulkBar}
+      {showSearch && bulkBar === undefined && (
         <SearchField
           aria-label={`Search ${collection.name}`}
           placeholder="Search"
@@ -112,7 +122,7 @@ const TopBar = ({
           onAbort={() => change("", 0)}
         />
       )}
-      {showSearch && (
+      {showSearch && bulkBar === undefined && (
         <FilterMenu
           list={list}
           filterField={filterField}
@@ -120,7 +130,7 @@ const TopBar = ({
           onChange={onListChange}
         />
       )}
-      {showSearch && (
+      {showSearch && bulkBar === undefined && (
         <SortMenu
           list={list}
           sortFields={sortFields}
@@ -128,7 +138,7 @@ const TopBar = ({
           onChange={onListChange}
         />
       )}
-      {canEdit && (
+      {canEdit && bulkBar === undefined && (
         <Button
           color="primary"
           prefix={<PlusIcon />}
@@ -196,10 +206,15 @@ export const ItemsView = ({
   page,
   query,
   canEdit,
+  canPublish,
   focusItemId,
+  source,
   fields,
   list,
+  pageAnswer,
   onListChange,
+  onListWritten,
+  onRefusal,
   onQueryChange,
   onPageChange,
   onOpenItem,
@@ -209,6 +224,7 @@ export const ItemsView = ({
   page: CmsItemsPage | undefined;
   query: string;
   canEdit: boolean;
+  canPublish: boolean;
   focusItemId?: string;
   /** The door, for the bulk and reorder calls (Tasks 16 to 18). */
   source: CmsSource;
@@ -285,6 +301,35 @@ export const ItemsView = ({
       ? ((fields ?? []).find((field) => field.key === page.filterField) ?? null)
       : null;
 
+  const bulk = useBulkActions({
+    source,
+    collection,
+    page,
+    list,
+    onListChange,
+    onListWritten,
+    onRefusal,
+  });
+  // the count the delete dialog was opened for, so its title holds while it closes
+  const [confirmDelete, setConfirmDelete] = useState<number | undefined>(
+    undefined
+  );
+  const selectedCount =
+    page?.items.filter((row) => list.selected.has(row.id)).length ?? 0;
+  const bulkBar =
+    canEdit && selectedCount > 0 ? (
+      <BulkBar
+        count={selectedCount}
+        canPublish={canPublish}
+        busy={bulk.busy}
+        onPublish={() => void bulk.publish()}
+        onUnpublish={() => void bulk.setStatus("draft")}
+        onArchive={() => void bulk.setStatus("archived")}
+        onDelete={() => setConfirmDelete(selectedCount)}
+        onClear={() => onListChange({ ...list, selected: new Set() })}
+      />
+    ) : undefined;
+
   const rootRef = useRef<HTMLDivElement>(null);
   const [mainWidth, setMainWidth] = useState(0);
   useEffect(() => {
@@ -305,6 +350,24 @@ export const ItemsView = ({
       ref={rootRef}
       direction="column"
       css={{ height: "100%", minWidth: 0 }}
+      data-cms-page-answers={pageAnswer.count}
+      data-cms-page-answer-ok={pageAnswer.ok}
+      onKeyDown={(event) => {
+        // Escape with a selection clears it, and the overlay stays (5.1.5).
+        // A dialog's or menu's Escape (portalled, so outside this element's
+        // DOM, or already handled) is theirs.
+        if (
+          event.key !== "Escape" ||
+          event.defaultPrevented ||
+          list.selected.size === 0 ||
+          rootRef.current === null ||
+          rootRef.current.contains(event.target as Node) === false
+        ) {
+          return;
+        }
+        event.preventDefault();
+        onListChange({ ...list, selected: new Set() });
+      }}
     >
       <TopBar
         // a new collection starts with an empty search and no pending one
@@ -313,6 +376,7 @@ export const ItemsView = ({
         query={query}
         canEdit={canEdit}
         showSearch={emptyNew === false}
+        bulkBar={bulkBar}
         list={list}
         filterField={filterField}
         sortFields={sortFields}
@@ -358,6 +422,15 @@ export const ItemsView = ({
           )}
         </>
       )}
+      <DeleteDialog
+        open={confirmDelete !== undefined}
+        title={getDeleteTitle(confirmDelete ?? selectedCount, collection)}
+        busy={bulk.busy}
+        onCancel={() => setConfirmDelete(undefined)}
+        onConfirm={() => {
+          void bulk.remove().finally(() => setConfirmDelete(undefined));
+        }}
+      />
     </Flex>
   );
 };
