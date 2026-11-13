@@ -42,6 +42,7 @@ import {
   $instances,
   $pages,
   $project,
+  $projectSettings,
   $props,
   $resources,
   $styleSourceSelections,
@@ -212,7 +213,6 @@ const context = {
   projectId,
   presetIds,
   variables,
-  ignoreAssetIds: new Set<string>(),
   blockTokens: undefined,
 };
 
@@ -402,17 +402,91 @@ describe("isProjectUntouched", () => {
     expect(isProjectUntouched(data)).toBe(false);
   });
 
-  test("an asset makes it touched unless ignored", async () => {
+  // An asset counts only when something uses it (calculateUsagesByAssetId),
+  // which never checks the instance a prop sits on: a prop adds no child.
+  const addStyle = (
+    data: WebstudioData,
+    decl: Omit<StyleDecl, "breakpointId">
+  ) => {
+    const styleDecl = { ...decl, breakpointId: findBaseBreakpoint(data).id };
+    data.styles.set(getStyleDeclKey(styleDecl), styleDecl);
+  };
+
+  test("an asset nothing uses leaves the project untouched", async () => {
     const data = await createProvisionedProject(provisioning);
     data.assets.set("asset-hero", imageAsset("asset-hero"));
 
+    expect(isProjectUntouched(data)).toBe(true);
+  });
+
+  test("an asset an Image shows touches the project", async () => {
+    const data = await createProvisionedProject(provisioning);
+    data.assets.set("asset-hero", imageAsset("asset-hero"));
+    data.props.set("p", {
+      id: "p",
+      instanceId: "any",
+      name: "src",
+      type: "asset",
+      value: "asset-hero",
+    });
+
     expect(isProjectUntouched(data)).toBe(false);
+  });
+
+  test("an asset a style shows touches the project", async () => {
+    const data = await createProvisionedProject(provisioning);
+    data.assets.set("asset-hero", imageAsset("asset-hero"));
+    addStyle(data, {
+      styleSourceId: "any",
+      property: "backgroundImage",
+      value: {
+        type: "layers",
+        value: [
+          { type: "image", value: { type: "asset", value: "asset-hero" } },
+        ],
+      },
+    });
+
+    expect(isProjectUntouched(data)).toBe(false);
+  });
+
+  test("an asset used as the favicon touches the project", async () => {
+    const data = await createProvisionedProject(provisioning);
+    data.assets.set("asset-hero", imageAsset("asset-hero"));
+
     expect(
-      isProjectUntouched(data, { ignoreAssetIds: new Set(["asset-hero"]) })
-    ).toBe(true);
-    expect(
-      isProjectUntouched(data, { ignoreAssetIds: new Set(["asset-team"]) })
+      isProjectUntouched({
+        ...data,
+        projectSettings: {
+          meta: { faviconAssetId: "asset-hero" },
+          compiler: {},
+        },
+      })
     ).toBe(false);
+  });
+
+  test("a font a style names touches the project, one no style names does not", async () => {
+    const data = await createProvisionedProject(provisioning);
+    data.assets.set("font-brand", {
+      id: "font-brand",
+      projectId,
+      type: "font",
+      name: "brand.woff2",
+      format: "woff2",
+      size: 1,
+      createdAt: "2026-10-30T00:00:00.000Z",
+      meta: { family: "Brand", style: "normal", weight: 400 },
+    });
+
+    expect(isProjectUntouched(data)).toBe(true);
+
+    addStyle(data, {
+      styleSourceId: "any",
+      property: "fontFamily",
+      value: { type: "fontFamily", value: ["Brand"] },
+    });
+
+    expect(isProjectUntouched(data)).toBe(false);
   });
 });
 
@@ -726,14 +800,11 @@ describe("applySiteTemplateMutable", () => {
     expect(data.styles.has(getStyleDeclKey(decl))).toBe(false);
   });
 
-  test("an asset of the template's own images does not refuse it", async () => {
+  test("an image asset nothing uses does not refuse it", async () => {
     const data = await createProvisionedProject(provisioning);
     data.assets.set("asset-hero", imageAsset("asset-hero"));
 
-    const result = applySiteTemplateMutable(data, renderPages(), {
-      ...context,
-      ignoreAssetIds: new Set(["asset-hero", "asset-team"]),
-    });
+    const result = applySiteTemplateMutable(data, renderPages(), context);
 
     expect(result).toEqual({ status: "applied", unboundBlocks: [] });
   });
@@ -1119,6 +1190,7 @@ describe("applySiteTemplate", () => {
     $styleSources.set(data.styleSources);
     $styles.set(data.styles);
     $assets.set(data.assets);
+    $projectSettings.set(undefined);
     $selectedPageId.set(data.pages.homePageId);
     $builderMode.set("design");
     $authPermit.set("build");
@@ -1336,9 +1408,9 @@ describe("applySiteTemplate", () => {
     consoleError.mockRestore();
   });
 
-  // As an image's: an upload of the same font, landing while this apply
-  // awaits (another admin's apply of the template), does not refuse it.
-  test("an asset of the template's own fonts does not refuse it", async () => {
+  // An upload of the same font, landing unused while this apply awaits
+  // (another admin's apply of the template), does not refuse it.
+  test("an asset nothing uses does not refuse it", async () => {
     setStores(await createProvisionedProject(provisioning));
     const fontId = await sha256(fontBytes.get(urlOf(sourceSans.url))!);
     fetchFont.mockImplementationOnce(async (input: string | URL) => {
@@ -1365,6 +1437,25 @@ describe("applySiteTemplate", () => {
     expect(await applySiteTemplate(withFonts)).toEqual({
       status: "applied",
       unboundBlocks: [],
+    });
+  });
+
+  // The staged recipe's data carries the project settings: a favicon set
+  // after the pre-check, while the fonts are fetched, refuses the apply.
+  test("a favicon set while the apply awaits refuses it", async () => {
+    setStores(await createProvisionedProject(provisioning));
+    fetchFont.mockImplementationOnce(async (input: string | URL) => {
+      $assets.set(new Map([["asset-icon", imageAsset("asset-icon")]]));
+      $projectSettings.set({
+        meta: { faviconAssetId: "asset-icon" },
+        compiler: {},
+      });
+      return new Response(fontBytes.get(String(input)));
+    });
+
+    expect(await applySiteTemplate(withFonts)).toEqual({
+      status: "refused",
+      reason: "touched",
     });
   });
 
@@ -1616,6 +1707,13 @@ describe("applySiteTemplate", () => {
   test("refuses a touched project before uploading anything", async () => {
     const data = await createProvisionedProject(provisioning);
     data.assets.set("asset-1", imageAsset("asset-1"));
+    data.props.set("p", {
+      id: "p",
+      instanceId: "any",
+      name: "src",
+      type: "asset",
+      value: "asset-1",
+    });
     setStores(data);
 
     expect(await applySiteTemplate(withFonts)).toEqual({

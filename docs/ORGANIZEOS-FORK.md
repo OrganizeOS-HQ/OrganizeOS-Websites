@@ -3304,7 +3304,15 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   an untouched project with none of the six variables on Global Root: Home's
   body has no children, the only other pages are the 404 page (`/*`, which every
   project is created with) and the seeded sign-up page (`SIGNUP_PAGE_PATH`,
-  `/newsletter`), and the project has no assets. The chooser checks this before
+  `/newsletter`), and no asset is used: an asset counts only when
+  `calculateUsagesByAssetId` reports a use of it (a prop, a style, a font by the
+  family a style names, a page's social image, the favicon), so images an
+  interrupted or undone apply left behind, and uploads never placed, keep the
+  project untouched (the offer reads `$props` and `$projectSettings` for this,
+  and the staged recipe's data carries the project settings). Re-applying after
+  an undo uploads the images again by URL, with no content hash, so each cycle
+  leaves another unused copy; fonts deduplicate, with an "Asset already exists"
+  toast each. The chooser checks this before
   it opens and the routine decides it again inside the transaction, since two
   admins can apply at once and a chooser left open goes stale (colours set after
   "Start blank" are never overwritten); it also refuses, writing nothing, when a

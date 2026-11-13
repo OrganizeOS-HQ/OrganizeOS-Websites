@@ -15,6 +15,7 @@ import { createPages } from "../../../../../../../packages/project-build/src/tem
 import { registerContainers } from "~/shared/sync/sync-stores";
 import {
   $assets,
+  $projectSettings,
   $breakpoints,
   $dataSources,
   $instances,
@@ -130,6 +131,7 @@ const setProject = (change?: (data: WebstudioData) => void) => {
   $styleSources.set(data.styleSources);
   $styles.set(data.styles);
   $assets.set(data.assets);
+  $projectSettings.set(undefined);
   return data;
 };
 
@@ -321,6 +323,54 @@ describe("the offer", () => {
     });
     render();
     expect($isTemplateChooserOffered.get()).toBe(false);
+  });
+
+  const imageAsset = (id: string) => ({
+    id,
+    projectId: "project-1",
+    type: "image" as const,
+    name: `${id}.jpg`,
+    format: "jpg",
+    size: 1,
+    createdAt: "2026-11-13T00:00:00.000Z",
+    meta: { width: 1, height: 1 },
+  });
+
+  test("offered with an asset nothing uses", () => {
+    setProject((data) => {
+      data.assets.set("asset-hero", imageAsset("asset-hero"));
+    });
+    render();
+    expect($isTemplateChooserOffered.get()).toBe(true);
+    expect(dialog()).not.toBeNull();
+  });
+
+  test("not offered with an asset a prop uses", () => {
+    setProject((data) => {
+      data.assets.set("asset-hero", imageAsset("asset-hero"));
+      data.props.set("p", {
+        id: "p",
+        instanceId: "any",
+        name: "src",
+        type: "asset",
+        value: "asset-hero",
+      });
+    });
+    render();
+    expect($isTemplateChooserOffered.get()).toBe(false);
+  });
+
+  test("not offered with an asset the favicon uses", () => {
+    setProject((data) => {
+      data.assets.set("asset-hero", imageAsset("asset-hero"));
+    });
+    $projectSettings.set({
+      meta: { faviconAssetId: "asset-hero" },
+      compiler: {},
+    });
+    render();
+    expect($isTemplateChooserOffered.get()).toBe(false);
+    $projectSettings.set(undefined);
   });
 
   test("not offered once Global Root declares a canonical variable", async () => {

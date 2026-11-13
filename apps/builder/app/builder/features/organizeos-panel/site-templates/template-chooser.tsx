@@ -35,6 +35,8 @@ import {
   $assets,
   $instances,
   $pages,
+  $projectSettings,
+  $props,
   $styleSourceSelections,
   $styles,
 } from "~/shared/sync/data-stores";
@@ -91,6 +93,8 @@ export const $isTemplateChooserOffered = computed(
     $pages,
     $instances,
     $assets,
+    $props,
+    $projectSettings,
     $styles,
     $styleSourceSelections,
   ],
@@ -102,6 +106,8 @@ export const $isTemplateChooserOffered = computed(
     pages,
     instances,
     assets,
+    props,
+    projectSettings,
     styles,
     styleSourceSelections
   ) =>
@@ -110,7 +116,14 @@ export const $isTemplateChooserOffered = computed(
     // the blocks deny list, read from $organizeosSite
     isOrganizeosBlocksEnabled() &&
     pages !== undefined &&
-    isProjectUntouched({ pages, instances, assets }) &&
+    isProjectUntouched({
+      pages,
+      instances,
+      assets,
+      props,
+      styles,
+      projectSettings,
+    }) &&
     hasCanonicalVariables({ styles, styleSourceSelections }) === false &&
     getOfferedTemplates(showDrafts).length > 0
 );

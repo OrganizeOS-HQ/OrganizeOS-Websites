@@ -25,7 +25,9 @@ import {
   isCanonicalName,
   renderSiteTemplate,
 } from "@organizeos/site-components/site-templates";
+import type { ProjectSettings } from "@webstudio-is/project-build";
 import {
+  calculateUsagesByAssetId,
   deleteLocalStyleSourcesMutable,
   findLocalStyleSourcesWithinInstances,
   insertWebstudioFragmentCopy,
@@ -68,14 +70,18 @@ const NOT_FOUND_PAGE_PATH = "/*";
 
 /**
  * Whether a project is as provisioning left it: Home's body has no children,
- * the only other pages are the 404 page and the seeded sign-up page, and it
- * has no assets but `ignoreAssetIds` (an apply's own images, which an earlier
- * upload of the same files can have added). Reads only what it is given, so
- * the chooser can pass the raw stores.
+ * the only other pages are the 404 page and the seeded sign-up page, and no
+ * asset is used. An asset counts only when `calculateUsagesByAssetId` reports
+ * a use of it (a prop, a style, a font by the family a style names, a page's
+ * social image, the favicon), so images an interrupted or undone apply left
+ * behind, and uploads never placed, keep the project untouched. Reads only
+ * what it is given, so the chooser can pass the raw stores.
  */
 export const isProjectUntouched = (
-  data: Pick<WebstudioData, "pages" | "instances" | "assets">,
-  { ignoreAssetIds = new Set() }: { ignoreAssetIds?: Set<string> } = {}
+  data: Pick<
+    WebstudioData,
+    "pages" | "instances" | "assets" | "props" | "styles"
+  > & { projectSettings?: ProjectSettings }
 ): boolean => {
   const { pages } = data;
   const home = pages.pages.get(pages.homePageId);
@@ -93,8 +99,15 @@ export const isProjectUntouched = (
       return false;
     }
   }
+  const usages = calculateUsagesByAssetId({
+    pages,
+    projectSettings: data.projectSettings,
+    props: data.props,
+    styles: data.styles,
+    assets: data.assets,
+  });
   for (const assetId of data.assets.keys()) {
-    if (ignoreAssetIds.has(assetId) === false) {
+    if ((usages.get(assetId)?.length ?? 0) > 0) {
       return false;
     }
   }
@@ -350,13 +363,11 @@ export const applySiteTemplateMutable = (
     projectId,
     presetIds,
     variables,
-    ignoreAssetIds,
     blockTokens,
   }: {
     projectId: string;
     presetIds: OrganizeosPresetIds;
     variables: CanonicalValues;
-    ignoreAssetIds: Set<string>;
     /** The template's, which the pages were rendered with. */
     blockTokens: SiteTemplate["blockTokens"];
   }
@@ -364,7 +375,8 @@ export const applySiteTemplateMutable = (
   const homePage = data.pages.pages.get(data.pages.homePageId);
   if (
     homePage === undefined ||
-    isProjectUntouched(data, { ignoreAssetIds }) === false ||
+    // the recipe's data carries the project settings (getWebstudioData)
+    isProjectUntouched(data) === false ||
     hasCanonicalVariables(data)
   ) {
     return { status: "refused", reason: "touched" };
@@ -523,10 +535,6 @@ export const applySiteTemplate = async (
         projectId: project.id,
         presetIds,
         variables: template.variables,
-        ignoreAssetIds: new Set([
-          ...assetIds.values(),
-          ...fonts.map(({ assetId }) => assetId),
-        ]),
         blockTokens: template.blockTokens,
       });
     });
