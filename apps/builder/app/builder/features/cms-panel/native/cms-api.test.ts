@@ -5,6 +5,10 @@ import collectionsFixture from "~/shared/__fixtures__/cms-door/collections.json"
 import itemFixture from "~/shared/__fixtures__/cms-door/item.json";
 import itemWriteFixture from "~/shared/__fixtures__/cms-door/item-write.json";
 import itemsFixture from "~/shared/__fixtures__/cms-door/items.json";
+import itemsDeleteFixture from "~/shared/__fixtures__/cms-door/items-delete.json";
+import itemsOrderFixture from "~/shared/__fixtures__/cms-door/items-order.json";
+import itemsPublishFixture from "~/shared/__fixtures__/cms-door/items-publish.json";
+import itemsStatusFixture from "~/shared/__fixtures__/cms-door/items-status.json";
 import searchFixture from "~/shared/__fixtures__/cms-door/search.json";
 import uploadFixture from "~/shared/__fixtures__/cms-door/upload.json";
 import {
@@ -43,6 +47,8 @@ const item = {
   updatedAt: "2026-11-07T10:00:00.123456+00:00",
   createdAt: "2026-11-07T10:00:00.123456+00:00",
   publishedAt: null,
+  live: null,
+  modifiedByName: null,
 };
 
 const lastCall = () => {
@@ -162,6 +168,35 @@ describe("createCmsApi", () => {
     );
   });
 
+  test("E10 to E13 POST their JSON to their paths", async () => {
+    const calls = [
+      [
+        () => api.publishItems(c, { items: [{ id: i, updatedAt: "x" }] }),
+        "publish",
+        { items: [{ id: i, updatedAt: "x" }] },
+      ],
+      [
+        () => api.setItemsStatus(c, { ids: [i], status: "archived" }),
+        "status",
+        { ids: [i], status: "archived" },
+      ],
+      [() => api.deleteItems(c, { ids: [i] }), "delete", { ids: [i] }],
+      [() => api.reorderItems(c, { ids: [i, c] }), "order", { ids: [i, c] }],
+    ] as const;
+    for (const [run, action, body] of calls) {
+      routeFetch.mockReset();
+      routeFetch.mockResolvedValueOnce(ok({ error: "not_found" }, 404));
+      expect(await run()).toEqual({ error: "not_found" });
+      const { path, init } = lastCall();
+      expect(path).toBe(`${base}/collections/${c}/items/${action}`);
+      expect(init.method).toBe("POST");
+      expect(init.body).toBe(JSON.stringify(body));
+      expect(new Headers(init.headers).get("Content-Type")).toBe(
+        "application/json"
+      );
+    }
+  });
+
   test("searchItems with neither q nor ids answers no items without a request", async () => {
     expect(await api.searchItems(c, {})).toEqual({ items: [] });
     expect(await api.searchItems(c, { q: "  ", ids: [] })).toEqual({
@@ -222,11 +257,11 @@ describe("createCmsApi", () => {
     routeFetch.mockResolvedValueOnce(ok(body, 201));
     expect(
       await api.createItem(c, { clientId: i, data: { title: "New post" } })
-    ).toEqual({ item: body.item, created: true });
+    ).toEqual({ item: { ...body.item, live: null }, created: true });
     routeFetch.mockResolvedValueOnce(ok(body, 200));
     expect(
       await api.createItem(c, { clientId: i, data: { title: "New post" } })
-    ).toEqual({ item: body.item, created: false });
+    ).toEqual({ item: { ...body.item, live: null }, created: false });
   });
 
   test("returns the door's error code, and its field", async () => {
@@ -299,6 +334,115 @@ describe("createCmsApi", () => {
     );
     expect(queries[0].get("q")).toBe("a".repeat(200));
     expect(queries[1].get("q")).toBe("a".repeat(200));
+  });
+
+  test("an unfiltered E3 sends only q and page, as slice 1", async () => {
+    routeFetch.mockResolvedValue(ok({ error: "not_found" }, 404));
+    await api.listItems(c, {
+      page: 1,
+      status: "all",
+      sort: "order",
+      direction: "asc",
+    });
+    expect(lastCall().path).toBe(`${base}/collections/${c}/items?page=1`);
+  });
+
+  test("E3 sends a key only when it differs from its default", async () => {
+    routeFetch.mockResolvedValue(ok({ error: "not_found" }, 404));
+    await api.listItems(c, { page: 1, sort: "updated", direction: "desc" });
+    await api.listItems(c, { page: 1, sort: "name", direction: "desc" });
+    await api.listItems(c, {
+      q: "x",
+      page: 2,
+      status: "staged",
+      sort: "field:online",
+      direction: "asc",
+      optionKey: "kind",
+      optionValue: "Q",
+    });
+    const paths = (routeFetch.mock.calls as [string][]).map(([path]) => path);
+    expect(paths).toEqual([
+      `${base}/collections/${c}/items?page=1&sort=updated`,
+      `${base}/collections/${c}/items?page=1&direction=desc&sort=name`,
+      `${base}/collections/${c}/items?q=x&page=2&optionKey=kind&optionValue=Q&sort=field%3Aonline&status=staged`,
+    ]);
+  });
+
+  test.each(["Q&A night", "Café", "a+b %2F c"])(
+    "E3 sends optionValue %j once, and the URL parses back to it",
+    async (value) => {
+      routeFetch.mockResolvedValueOnce(ok({ error: "not_found" }, 404));
+      await api.listItems(c, { optionKey: "kind", optionValue: value });
+      const params = new URL(lastCall().path, "https://builder.example")
+        .searchParams;
+      expect(params.getAll("optionValue")).toHaveLength(1);
+      expect(params.get("optionValue")).toBe(value);
+      expect(params.get("optionKey")).toBe("kind");
+    }
+  );
+
+  test("slice 1's answers parse with the defaults", async () => {
+    const {
+      columns: _columns,
+      filterField: _filterField,
+      applied: _applied,
+      ...page
+    } = itemsFixture.body;
+    const rows = page.items.map(
+      ({ publishedAt: _publishedAt, values: _values, ...row }) => row
+    );
+    routeFetch.mockResolvedValueOnce(ok({ ...page, items: rows }));
+    expect(
+      await api.listItems(c, {
+        page: 1,
+        status: "archived",
+        sort: "name",
+        optionKey: "kind",
+        optionValue: "Café",
+      })
+    ).toEqual({
+      ...page,
+      items: rows.map((row) => ({ ...row, publishedAt: null, values: {} })),
+      columns: [],
+      filterField: null,
+      applied: {
+        status: "archived",
+        sort: "name",
+        direction: "asc",
+        optionKey: "kind",
+        optionValue: "Café",
+      },
+    });
+
+    routeFetch.mockResolvedValueOnce(ok({ ...page, items: rows }));
+    expect(await api.listItems(c, { sort: "updated" })).toMatchObject({
+      applied: {
+        status: "all",
+        sort: "updated",
+        direction: "desc",
+        optionKey: null,
+        optionValue: null,
+      },
+    });
+
+    const {
+      live: _live,
+      modifiedByName: _name,
+      ...staged
+    } = itemFixture.body.item;
+    routeFetch.mockResolvedValueOnce(ok({ item: staged }));
+    expect(await api.getItem(c, i)).toEqual({
+      item: { ...staged, live: null, modifiedByName: null },
+    });
+
+    const { modifiedByName: _written, ...written } = itemWriteFixture.body.item;
+    routeFetch.mockResolvedValueOnce(ok({ item: written }, 201));
+    expect(
+      await api.createItem(c, { clientId: i, data: { title: "New post" } })
+    ).toEqual({
+      item: { ...written, live: null, modifiedByName: null },
+      created: true,
+    });
   });
 
   // The platform sends canonical kinds and editor-only keys
@@ -382,12 +526,40 @@ describe("createCmsApi", () => {
     ["search", searchFixture, () => api.searchItems(c, { ids: [i] })],
     [
       "item-write",
-      // E6's 201: a created item
+      // E6's 201: a created item; a write answer carries no live copy
       {
         ...itemWriteFixture,
-        expected: { ...itemWriteFixture.body, created: true },
+        expected: {
+          item: { ...itemWriteFixture.body.item, live: null },
+          created: true,
+        },
       },
       () => api.createItem(c, { clientId: i, data: { title: "New post" } }),
+    ],
+    [
+      "items-publish",
+      itemsPublishFixture,
+      () =>
+        api.publishItems(c, {
+          items: [
+            { id: "22222222-2222-4222-8222-222222222222", updatedAt: "x" },
+          ],
+        }),
+    ],
+    [
+      "items-status",
+      itemsStatusFixture,
+      () => api.setItemsStatus(c, { ids: [i], status: "archived" }),
+    ],
+    [
+      "items-delete",
+      itemsDeleteFixture,
+      () => api.deleteItems(c, { ids: [i] }),
+    ],
+    [
+      "items-order",
+      itemsOrderFixture,
+      () => api.reorderItems(c, { ids: [i, c] }),
     ],
     [
       "upload",

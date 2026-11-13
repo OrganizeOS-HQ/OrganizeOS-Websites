@@ -18,6 +18,7 @@ import type {
 import {
   createFakeCmsSource,
   itemOf,
+  itemsPageOf,
   PEOPLE,
   POSTS,
   POSTS_DETAIL,
@@ -149,11 +150,7 @@ const retype = async (
 
 /** Mounts the screen with `item` listed and opens it. */
 const openItem = async (item: CmsItem = itemOf(), width?: number) => {
-  fake.listItems.mockResolvedValue({
-    items: [rowOf(item)],
-    total: 1,
-    page: 1,
-  });
+  fake.listItems.mockResolvedValue(itemsPageOf([rowOf(item)], 1, 1));
   fake.getItem.mockResolvedValue({ item });
   mount(width);
   await settle();
@@ -162,6 +159,28 @@ const openItem = async (item: CmsItem = itemOf(), width?: number) => {
   );
   expect(titleInput()).not.toBeNull();
 };
+
+const menuTexts = () =>
+  [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(
+    (element) => element.textContent
+  );
+
+const menuItem = (text: string) =>
+  [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (element) => element.textContent === text
+  );
+
+const dialogButton = (text: string) =>
+  [
+    ...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'),
+  ].find((button) => button.textContent === text);
+
+const access = (overrides: Partial<CmsAccess>): CmsAccess => ({
+  canEdit: true,
+  canPublish: true,
+  canManageSettings: false,
+  ...overrides,
+});
 
 const openNewItem = async () => {
   mount();
@@ -1249,38 +1268,645 @@ describe("conflicts, unknown outcomes and field errors", () => {
     expect(titleInput()?.value).toBe("Mine");
   });
 
-  test("below 600 px of header, Discard changes is in the Item menu", async () => {
-    const staged = itemOf({ status: "published", hasStagedChanges: true });
-    // a 560 px main
-    await openItem(staged, 800);
-    expect(header()!.getBoundingClientRect().width).toBeLessThan(600);
-    expect(buttonByText("Discard changes")).toBeUndefined();
-    const trigger = byLabel("Item menu");
-    expect(trigger).not.toBeNull();
-    await click(trigger);
-    const item = [
-      ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
-    ].find((element) => element.textContent === "Discard changes");
-    expect(item).toBeDefined();
-    await click(item);
-    expect(hasText("Discard staged changes?")).toBe(true);
-    act(() => root?.unmount());
-    container?.remove();
+  test.each([
+    ["a draft, full width", "draft", false, 1040, ["Archive", "Delete"]],
+    [
+      "a published item, canPublish",
+      "published",
+      false,
+      1040,
+      ["Unpublish", "Archive", "Delete"],
+    ],
+    ["an archived item", "archived", false, 1040, ["Restore", "Delete"]],
+    [
+      "a staged item, compact",
+      "published",
+      true,
+      800,
+      ["Discard changes", "Unpublish", "Archive", "Delete"],
+    ],
+  ] as const)(
+    "the Item menu of %s holds %o",
+    async (_name, status, staged, width, items) => {
+      await openItem(itemOf({ status, hasStagedChanges: staged }), width);
+      if (width === 800) {
+        // the 800 px editor gives a header under 600 px
+        expect(header()!.getBoundingClientRect().width).toBeLessThan(600);
+        expect(buttonByText("Discard changes")).toBeUndefined();
+      }
+      await click(byLabel("Item menu"));
+      expect(menuTexts()).toEqual(items);
+      expect(
+        document.querySelector('[role="menu"] [role="separator"]')
+      ).not.toBeNull();
+      if (staged) {
+        await click(menuItem("Discard changes"));
+        expect(hasText("Discard staged changes?")).toBe(true);
+      }
+    }
+  );
 
-    // an 800 px main
-    await openItem(staged, 1040);
-    expect(buttonByText("Discard changes")).toBeDefined();
+  test("no Item menu for a new item or without canEdit; no Unpublish without canPublish", async () => {
+    await openNewItem();
     expect(byLabel("Item menu")).toBeNull();
     act(() => root?.unmount());
     container?.remove();
 
-    // a draft has neither, at either width
-    for (const width of [800, 1040]) {
-      await openItem(itemOf(), width);
-      expect(buttonByText("Discard changes")).toBeUndefined();
-      expect(byLabel("Item menu")).toBeNull();
-      act(() => root?.unmount());
-      container?.remove();
+    fake = createFakeCmsSource();
+    fake.getAccess.mockResolvedValue(
+      access({ canEdit: false, canPublish: false })
+    );
+    await openItem(itemOf({ status: "published" }));
+    expect(byLabel("Item menu")).toBeNull();
+    act(() => root?.unmount());
+    container?.remove();
+
+    fake = createFakeCmsSource();
+    fake.getAccess.mockResolvedValue(
+      access({ canEdit: true, canPublish: false })
+    );
+    await openItem(itemOf({ status: "published" }));
+    await click(byLabel("Item menu"));
+    expect(menuTexts()).toEqual(["Archive", "Delete"]);
+  });
+});
+
+describe("the Item menu's actions (Task 19)", () => {
+  const PUBLISHED = itemOf({ status: "published", updatedAt: VERSION });
+
+  test.each([
+    ["Unpublish", PUBLISHED, "draft", "Draft"],
+    ["Archive", PUBLISHED, "archived", "Archived"],
+    ["Restore", itemOf({ status: "archived" }), "draft", "Draft"],
+  ] as const)(
+    "%s with unsaved edits saves, then changes the status, then reads the item",
+    async (label, item, status, chip) => {
+      fake.updateItem.mockImplementation(async (_c, id, body) => ({
+        item: { ...item, id, data: body.data, updatedAt: V2 },
+      }));
+      fake.setItemsStatus.mockResolvedValue({ changed: [item.id] });
+      await openItem(item);
+      await retype(titleInput(), "Edited");
+      fake.getItem.mockResolvedValue({
+        item: {
+          ...item,
+          status,
+          hasStagedChanges: false,
+          data: { ...item.data, title: "Edited" },
+          updatedAt: V3,
+        },
+      });
+      await click(byLabel("Item menu"));
+      await click(menuItem(label));
+      expect(fake.updateItem).toHaveBeenCalledTimes(1);
+      expect(fake.setItemsStatus).toHaveBeenCalledWith(POSTS.id, {
+        ids: [item.id],
+        status,
+      });
+      const order = [
+        fake.updateItem.mock.invocationCallOrder[0],
+        fake.setItemsStatus.mock.invocationCallOrder[0],
+        fake.getItem.mock.invocationCallOrder.at(-1)!,
+      ];
+      expect([...order].sort((a, b) => a - b)).toEqual(order);
+      expect(chipText()).toBe(chip);
+      expect(isDisabled("Save")).toBe(true);
+      expect(titleInput()?.value).toBe("Edited");
     }
+  );
+
+  test("a save that conflicts stops: no status call", async () => {
+    fake.updateItem.mockResolvedValue({ error: "conflict" });
+    await openItem(PUBLISHED);
+    await retype(titleInput(), "Edited");
+    await click(byLabel("Item menu"));
+    await click(menuItem("Archive"));
+    expect(fake.updateItem).toHaveBeenCalledTimes(1);
+    expect(fake.setItemsStatus).not.toHaveBeenCalled();
+    expect(conflictLine()).not.toBeNull();
+  });
+
+  test("Restore answered slug_taken marks Address", async () => {
+    fake.setItemsStatus.mockResolvedValue({ error: "slug_taken" });
+    await openItem(itemOf({ status: "archived" }));
+    await click(byLabel("Item menu"));
+    await click(menuItem("Restore"));
+    expect(fieldError("cms-field-slug")).toBe("Address in use");
+  });
+
+  test("Archive answered unavailable reads E4 and shows what it finds", async () => {
+    const error = vi.spyOn(toast, "error");
+    fake.setItemsStatus.mockResolvedValue({ error: "unavailable" });
+    await openItem(PUBLISHED);
+    const reads = fake.getItem.mock.calls.length;
+    fake.getItem.mockResolvedValue({
+      item: { ...PUBLISHED, status: "archived", updatedAt: V2 },
+    });
+    await click(byLabel("Item menu"));
+    await click(menuItem("Archive"));
+    expect(fake.getItem.mock.calls.length).toBe(reads + 1);
+    expect(chipText()).toBe("Archived");
+    expect(error).not.toHaveBeenCalled();
+    act(() => root?.unmount());
+    container?.remove();
+
+    // it still reads published: the chip stays
+    fake = createFakeCmsSource();
+    fake.setItemsStatus.mockResolvedValue({ error: "unavailable" });
+    await openItem(PUBLISHED);
+    await click(byLabel("Item menu"));
+    await click(menuItem("Archive"));
+    expect(chipText()).toBe("Published");
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  test("a failed read after Unpublish shows Try again in a minute with Retry", async () => {
+    fake.setItemsStatus.mockResolvedValue({ changed: [PUBLISHED.id] });
+    await openItem(PUBLISHED);
+    fake.getItem.mockResolvedValueOnce({ error: "unavailable" });
+    await click(byLabel("Item menu"));
+    await click(menuItem("Unpublish"));
+    expect(hasText("Try again in a minute")).toBe(true);
+    fake.getItem.mockResolvedValue({
+      item: { ...PUBLISHED, status: "draft", updatedAt: V2 },
+    });
+    await click(buttonByText("Retry"));
+    expect(hasText("Try again in a minute")).toBe(false);
+    expect(chipText()).toBe("Draft");
+  });
+
+  test("Delete asks Delete 1 post?, then closes the editor without the guard", async () => {
+    const onItemWritten = vi.fn();
+    fake.deleteItems.mockResolvedValue({ deleted: [PUBLISHED.id] });
+    fake.listItems.mockResolvedValue(itemsPageOf([rowOf(PUBLISHED)], 1, 1));
+    fake.getItem.mockResolvedValue({ item: PUBLISHED });
+    mount(1200, { onItemWritten });
+    await settle();
+    await click(
+      document.querySelector<HTMLElement>(
+        `[data-cms-item-id="${PUBLISHED.id}"]`
+      )
+    );
+    await retype(titleInput(), "Unsaved");
+    await click(byLabel("Item menu"));
+    await click(menuItem("Delete"));
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+      "Delete 1 post?"
+    );
+    expect(document.activeElement?.textContent).toBe("Cancel");
+    const listCalls = fake.listItems.mock.calls.length;
+    await click(dialogButton("Delete"));
+    expect(fake.deleteItems).toHaveBeenCalledWith(POSTS.id, {
+      ids: [PUBLISHED.id],
+    });
+    expect(titleInput()).toBeNull();
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+    expect($cmsNativeDirty.get()).toBe(false);
+    expect(fake.listItems.mock.calls.length).toBeGreaterThan(listCalls);
+    expect(onItemWritten).toHaveBeenCalledWith("posts", undefined);
+  });
+
+  test("Delete answered unavailable closes when E4 is not_found, and stays with a toast when it is found", async () => {
+    const error = vi.spyOn(toast, "error");
+    fake.deleteItems.mockResolvedValue({ error: "unavailable" });
+    await openItem(PUBLISHED);
+    fake.getItem.mockResolvedValue({ error: "not_found" });
+    await click(byLabel("Item menu"));
+    await click(menuItem("Delete"));
+    await click(dialogButton("Delete"));
+    expect(titleInput()).toBeNull();
+    act(() => root?.unmount());
+    container?.remove();
+
+    fake = createFakeCmsSource();
+    fake.deleteItems.mockResolvedValue({ error: "unavailable" });
+    await openItem(PUBLISHED);
+    await click(byLabel("Item menu"));
+    await click(menuItem("Delete"));
+    await click(dialogButton("Delete"));
+    expect(titleInput()).not.toBeNull();
+    expect(error).toHaveBeenCalledWith("Try again in a minute");
+  });
+
+  test.each([
+    ["Archive", "setItemsStatus"],
+    ["Delete", "deleteItems"],
+  ] as const)(
+    "%s answered not_found toasts Item not found",
+    async (label, method) => {
+      const error = vi.spyOn(toast, "error");
+      fake[method].mockResolvedValue({ error: "not_found" });
+      await openItem(PUBLISHED);
+      await click(byLabel("Item menu"));
+      await click(menuItem(label));
+      if (label === "Delete") {
+        await click(dialogButton("Delete"));
+      }
+      expect(error).toHaveBeenCalledWith("Item not found");
+      expect(titleInput()).not.toBeNull();
+    }
+  );
+
+  test("after Delete the focus is on the table's first row", async () => {
+    const other = itemOf({
+      id: NEW_ID,
+      slug: "other",
+      data: { title: "Other", summary: null, author: null },
+    });
+    let rows = [rowOf(PUBLISHED), rowOf(other)];
+    fake.listItems.mockImplementation(async () =>
+      itemsPageOf(rows, rows.length, 1)
+    );
+    fake.deleteItems.mockImplementation(async () => {
+      rows = [rowOf(other)];
+      return { deleted: [PUBLISHED.id] };
+    });
+    fake.getItem.mockResolvedValue({ item: PUBLISHED });
+    mount();
+    await settle();
+    await click(
+      document.querySelector<HTMLElement>(
+        `[data-cms-item-id="${PUBLISHED.id}"]`
+      )
+    );
+    await click(byLabel("Item menu"));
+    await click(menuItem("Delete"));
+    await click(dialogButton("Delete"));
+    expect(document.activeElement).toBe(
+      document.querySelector(`[data-cms-item-id="${NEW_ID}"]`)
+    );
+    expect(document.activeElement).not.toBe(document.body);
+    act(() => root?.unmount());
+    container?.remove();
+
+    // the last item deleted: New item takes the focus
+    fake = createFakeCmsSource();
+    rows = [rowOf(PUBLISHED)];
+    fake.listItems.mockImplementation(async () =>
+      itemsPageOf(rows, rows.length, 1)
+    );
+    fake.deleteItems.mockImplementation(async () => {
+      rows = [];
+      return { deleted: [PUBLISHED.id] };
+    });
+    fake.getItem.mockResolvedValue({ item: PUBLISHED });
+    mount();
+    await settle();
+    await click(
+      document.querySelector<HTMLElement>(
+        `[data-cms-item-id="${PUBLISHED.id}"]`
+      )
+    );
+    await click(byLabel("Item menu"));
+    await click(menuItem("Delete"));
+    await click(dialogButton("Delete"));
+    expect(document.activeElement?.textContent).toBe("New item");
+  });
+});
+
+const dotOn = (id: string) =>
+  document.querySelector(
+    `[data-cms-field="${id}"] [aria-label="Changed since publish"]`
+  ) !== null;
+
+const details = () =>
+  document.querySelector<HTMLElement>("[data-cms-item-details]");
+
+const detail = (name: string) =>
+  document.querySelector<HTMLElement>(`[data-cms-detail="${name}"]`)
+    ?.textContent;
+
+/** A published item with staged changes: its title and address differ from the live copy. */
+const STAGED = itemOf({
+  status: "published",
+  hasStagedChanges: true,
+  slug: "hello-again",
+  data: { title: "Hello again", summary: "Same", author: null },
+  publishedAt: "2026-11-05T09:00:00+00:00",
+  createdAt: "2026-11-01T09:00:00+00:00",
+  modifiedByName: "Robin Example",
+  live: {
+    slug: "hello",
+    data: { title: "Hello", summary: "Same", author: null },
+  },
+});
+
+describe("the side details and the changed dots (Task 20)", () => {
+  test("the side details sit beside the fields at 1040 px and after Address at 600 px", async () => {
+    // the column takes 240 px of the overlay's box
+    await openItem(STAGED, 1280);
+    const fields = document.querySelector<HTMLElement>(
+      "[data-cms-editor-fields]"
+    )!;
+    expect(fields.contains(details())).toBe(false);
+    const fieldsBox = fields.getBoundingClientRect();
+    const detailsBox = details()!.getBoundingClientRect();
+    expect(detailsBox.left).toBeGreaterThanOrEqual(fieldsBox.right - 1);
+    // top-aligned with the first field
+    const firstRow = fields
+      .querySelector<HTMLElement>("[data-cms-field]")!
+      .getBoundingClientRect();
+    expect(Math.abs(detailsBox.top - firstRow.top)).toBeLessThanOrEqual(1);
+    act(() => root?.unmount());
+    container?.remove();
+
+    await openItem(STAGED, 840);
+    await settle();
+    const narrowFields = document.querySelector<HTMLElement>(
+      "[data-cms-editor-fields]"
+    )!;
+    expect(narrowFields.contains(details())).toBe(true);
+    const address = document.querySelector<HTMLElement>(
+      '[data-cms-field="cms-field-slug"]'
+    )!;
+    expect(
+      address.compareDocumentPosition(details()!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    const body = document.querySelector<HTMLElement>("[data-cms-editor-body]")!;
+    expect(body.scrollWidth).toBeLessThanOrEqual(body.clientWidth);
+  });
+
+  test("Modified by is absent when null; Published reads Not live for a draft", async () => {
+    await openItem(STAGED);
+    expect(detail("published")).toBe(
+      new Intl.DateTimeFormat(undefined, { dateStyle: "short" }).format(
+        new Date(STAGED.publishedAt!)
+      )
+    );
+    expect(detail("modified-by")).toBe("Robin Example");
+    expect(detail("created")).toBe(
+      new Intl.DateTimeFormat(undefined, { dateStyle: "short" }).format(
+        new Date(STAGED.createdAt)
+      )
+    );
+    expect(details()?.textContent).toContain("Modified");
+    act(() => root?.unmount());
+    container?.remove();
+
+    await openItem(itemOf());
+    expect(detail("published")).toBe("Not live");
+    expect(detail("modified-by")).toBeUndefined();
+    expect(details()?.textContent).not.toContain("Modified by");
+  });
+
+  test("a read-only editor (no canEdit) shows the details and the dots; a new item shows no details", async () => {
+    fake.getAccess.mockResolvedValue(
+      access({ canEdit: false, canPublish: false })
+    );
+    await openItem(STAGED);
+    expect(details()).not.toBeNull();
+    expect(dotOn("cms-field-title")).toBe(true);
+    act(() => root?.unmount());
+    container?.remove();
+
+    fake = createFakeCmsSource();
+    await openNewItem();
+    expect(details()).toBeNull();
+  });
+
+  test("a staged item shows a dot on each changed field and on Address, and it follows typing", async () => {
+    await openItem(STAGED);
+    expect(dotOn("cms-field-title")).toBe(true);
+    expect(dotOn("cms-field-slug")).toBe(true);
+    expect(dotOn("cms-field-summary")).toBe(false);
+    await retype(input("cms-field-summary"), "Other");
+    expect(dotOn("cms-field-summary")).toBe(true);
+    await retype(titleInput(), "Hello");
+    expect(dotOn("cms-field-title")).toBe(false);
+    await retype(addressInput(), "hello");
+    expect(dotOn("cms-field-slug")).toBe(false);
+  });
+
+  test("no dots on a draft, and none after Publish or Discard", async () => {
+    await openItem(itemOf({ live: { slug: "x", data: { title: "Other" } } }));
+    expect(
+      document.querySelector('[aria-label="Changed since publish"]')
+    ).toBeNull();
+    act(() => root?.unmount());
+    container?.remove();
+
+    fake = createFakeCmsSource();
+    fake.publishItem.mockResolvedValue({
+      item: { ...STAGED, hasStagedChanges: false, live: null, updatedAt: V2 },
+    });
+    await openItem(STAGED);
+    await click(buttonByText("Publish changes"));
+    expect(
+      document.querySelector('[aria-label="Changed since publish"]')
+    ).toBeNull();
+    act(() => root?.unmount());
+    container?.remove();
+
+    fake = createFakeCmsSource();
+    fake.discardItemChanges.mockResolvedValue({
+      item: {
+        ...STAGED,
+        ...STAGED.live!,
+        hasStagedChanges: false,
+        live: null,
+        updatedAt: V2,
+      },
+    });
+    await openItem(STAGED);
+    await click(buttonByText("Discard changes"));
+    await click(
+      [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          '[role="dialog"] button'
+        ),
+      ].find((button) => button.textContent === "Discard")
+    );
+    expect(
+      document.querySelector('[aria-label="Changed since publish"]')
+    ).toBeNull();
+  });
+
+  test("the first staged save sets the dots from the values it replaced", async () => {
+    const published = itemOf({
+      status: "published",
+      data: { title: "Hello", summary: "Same", author: null },
+      publishedAt: "2026-11-05T09:00:00+00:00",
+    });
+    fake.updateItem.mockImplementation(async (_c, id, body) => ({
+      item: {
+        ...published,
+        id,
+        data: body.data,
+        hasStagedChanges: true,
+        updatedAt: V2,
+      },
+    }));
+    await openItem(published);
+    expect(
+      document.querySelector('[aria-label="Changed since publish"]')
+    ).toBeNull();
+    await retype(titleInput(), "Hello there");
+    await click(buttonByText("Save"));
+    expect(dotOn("cms-field-title")).toBe(true);
+    expect(dotOn("cms-field-summary")).toBe(false);
+    expect(dotOn("cms-field-slug")).toBe(false);
+  });
+
+  // Review Focus 3
+  const KINDS: Record<
+    string,
+    { field: CmsCollection["fields"][number]; value: unknown }
+  > = {
+    richtext: {
+      field: { key: "body", label: "Body", kind: "richtext" },
+      value: { html: "<p>Hi</p>", text: "Hi" },
+    },
+    image: {
+      field: { key: "cover", label: "Cover", kind: "image" },
+      value: {
+        url: "https://example.com/a.png",
+        alt: "A",
+        width: 10,
+        height: 10,
+      },
+    },
+    multireference: {
+      field: {
+        key: "tags",
+        label: "Tags",
+        kind: "multireference",
+        reference: { collectionId: PEOPLE.id, multiple: true },
+      },
+      value: [ANN],
+    },
+    datetime: {
+      field: { key: "starts", label: "Starts", kind: "datetime" },
+      value: "2026-11-13T10:00:00.000Z",
+    },
+    switch: {
+      field: { key: "online", label: "Online", kind: "switch" },
+      value: true,
+    },
+    number: {
+      field: { key: "seats", label: "Seats", kind: "number" },
+      value: 3,
+    },
+  };
+
+  test.each(Object.keys(KINDS))(
+    "an untouched %s field equal to the live copy has no dot, on load and after a save of another field",
+    async (kind) => {
+      const { field, value } = KINDS[kind];
+      setFields([POSTS_DETAIL.fields[0], field]);
+      fake.searchItems.mockResolvedValue({
+        items: [{ id: ANN, title: "Ann", status: "published" }],
+      });
+      const item = itemOf({
+        status: "published",
+        hasStagedChanges: true,
+        data: { title: "Hello again", [field.key]: structuredClone(value) },
+        live: {
+          slug: "hello",
+          data: { title: "Hello", [field.key]: structuredClone(value) },
+        },
+      });
+      fake.updateItem.mockImplementation(async (_c, id, body) => ({
+        item: { ...item, id, data: body.data, live: null, updatedAt: V2 },
+      }));
+      await openItem(item);
+      const id = `cms-field-${field.key}`;
+      expect(dotOn("cms-field-title")).toBe(true);
+      expect(dotOn(id)).toBe(false);
+      await retype(titleInput(), "Hello again!");
+      await click(buttonByText("Save"));
+      expect(fake.updateItem).toHaveBeenCalledTimes(1);
+      expect(dotOn("cms-field-title")).toBe(true);
+      expect(dotOn(id)).toBe(false);
+    }
+  );
+
+  test("an edit, then an edit back to the live value, removes the dot", async () => {
+    await openItem(STAGED);
+    expect(dotOn("cms-field-summary")).toBe(false);
+    await retype(input("cms-field-summary"), "Changed");
+    expect(dotOn("cms-field-summary")).toBe(true);
+    await retype(input("cms-field-summary"), "Same");
+    expect(dotOn("cms-field-summary")).toBe(false);
+  });
+});
+
+describe("multireference reordering in the editor (Task 21)", () => {
+  test("a reorder makes the editor dirty and Save sends the new order", async () => {
+    const BEA = "66666666-6666-4666-8666-666666666666";
+    const CY = "77777777-7777-4777-8777-777777777777";
+    setFields([
+      POSTS_DETAIL.fields[0],
+      {
+        key: "tags",
+        label: "Tags",
+        kind: "multireference",
+        reference: { collectionId: PEOPLE.id, multiple: true },
+      },
+    ]);
+    fake.searchItems.mockImplementation(async (_c, query) => ({
+      items: (query.ids ?? []).map((id) => ({
+        id,
+        title: { [ANN]: "Ann", [BEA]: "Bea", [CY]: "Cy" }[id] ?? "",
+        status: "published" as const,
+      })),
+    }));
+    const item = itemOf({ data: { title: "Hello", tags: [ANN, BEA, CY] } });
+    fake.updateItem.mockImplementation(async (_c, id, body) => ({
+      item: { ...item, id, data: body.data, updatedAt: V2 },
+    }));
+    await openItem(item);
+    await vi.waitFor(() => expect(byLabel("Remove Cy")).not.toBeNull());
+    expect(isDisabled("Save")).toBe(true);
+    act(() => {
+      document
+        .querySelector<HTMLElement>(
+          `[data-cms-reference="${ANN}"] [aria-label="Drag to reorder"]`
+        )!
+        .focus();
+    });
+    await act(async () => userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}"));
+    await settle();
+    expect($cmsNativeDirty.get()).toBe(true);
+    expect(isDisabled("Save")).toBe(false);
+    await click(buttonByText("Save"));
+    expect(fake.updateItem).toHaveBeenCalledTimes(1);
+    expect(fake.updateItem.mock.calls[0][2].data.tags).toEqual([BEA, ANN, CY]);
+  });
+});
+
+describe("the Item menu waits for an upload (review)", () => {
+  test("Unpublish, Archive and Restore are disabled while an upload is in flight", async () => {
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "cover", label: "Cover", kind: "image" },
+    ]);
+    await openItem(
+      itemOf({
+        status: "published",
+        data: { title: "Hello", summary: null, author: null, cover: null },
+      })
+    );
+    const held = deferred<CmsResult<{ url: string; path: string }>>();
+    fake.uploadImage.mockReturnValueOnce(held.promise);
+    const file = document
+      .querySelector<HTMLElement>('[data-cms-field="cms-field-cover"]')
+      ?.querySelector<HTMLInputElement>('input[type="file"]');
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" })
+    );
+    await act(async () => {
+      file!.files = transfer.files;
+      file!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    await click(byLabel("Item menu"));
+    for (const label of ["Unpublish", "Archive"]) {
+      expect(menuItem(label)?.hasAttribute("data-disabled")).toBe(true);
+    }
+    await act(async () => {
+      held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { fetch } from "~/shared/fetch.client";
+import { defaultDirection } from "./cms-list-logic";
 import {
   cmsErrorCodes,
   cmsFieldKinds,
@@ -8,7 +9,9 @@ import {
   type CmsCollectionSummary,
   type CmsFailure,
   type CmsItem,
+  type CmsItemsApplied,
   type CmsItemsPage,
+  type CmsItemsQuery,
   type CmsResult,
   type CmsSearchResult,
   type CmsSource,
@@ -68,6 +71,46 @@ export const cmsDoorPath = (
 
 const statusSchema = z.enum(["draft", "published", "archived"]);
 
+/**
+ * E3's query as the door takes it: `q` and `page` as slice 1 sends them,
+ * then each filter and sort key only when it differs from its default.
+ */
+const itemsQueryOf = ({
+  q,
+  page,
+  status = "all",
+  sort = "order",
+  direction,
+  optionKey,
+  optionValue,
+}: CmsItemsQuery): Record<string, string | undefined> => ({
+  q: cmsSearchTerm(q),
+  page: page === undefined ? undefined : String(page),
+  direction:
+    direction === undefined || direction === defaultDirection(sort)
+      ? undefined
+      : direction,
+  optionKey,
+  optionValue,
+  sort: sort === "order" ? undefined : sort,
+  status: status === "all" ? undefined : status,
+});
+
+/** What the door ran by default for a query: the query sent, its defaults filled. */
+const appliedOf = ({
+  status = "all",
+  sort = "order",
+  direction,
+  optionKey,
+  optionValue,
+}: CmsItemsQuery): CmsItemsApplied => ({
+  status,
+  sort,
+  direction: direction ?? defaultDirection(sort),
+  optionKey: optionKey ?? null,
+  optionValue: optionValue ?? null,
+});
+
 const accessSchema: z.ZodType<CmsAccess> = z.object({
   canEdit: z.boolean(),
   canPublish: z.boolean(),
@@ -108,7 +151,16 @@ const collectionSchema: z.ZodType<CmsCollection> = z.object({
   fields: z.array(fieldSchema),
 });
 
-const itemsPageSchema: z.ZodType<CmsItemsPage> = z.object({
+const dataSchema = z.record(z.string(), z.unknown());
+
+const sortKeySchema = z.union([
+  z.enum(["order", "updated", "name", "status"]),
+  z.templateLiteral(["field:", z.string()]),
+]);
+
+// Every key slice 2 adds to E3, E4 and the write answers is optional, with
+// its default filled when read, so the client runs on a platform without them
+const itemsPageSchema = z.object({
   items: z.array(
     z.object({
       id: z.string(),
@@ -117,21 +169,71 @@ const itemsPageSchema: z.ZodType<CmsItemsPage> = z.object({
       status: statusSchema,
       hasStagedChanges: z.boolean(),
       updatedAt: z.string(),
+      publishedAt: z.string().nullable().optional(),
+      values: dataSchema.optional(),
     })
   ),
   total: z.number(),
   page: z.number(),
+  columns: z.array(z.string()).optional(),
+  filterField: z.string().nullable().optional(),
+  applied: z
+    .object({
+      status: z.enum(["all", "draft", "published", "archived", "staged"]),
+      sort: sortKeySchema,
+      direction: z.enum(["asc", "desc"]),
+      optionKey: z.string().nullable(),
+      optionValue: z.string().nullable(),
+    })
+    .optional(),
 });
 
-const itemSchema: z.ZodType<CmsItem> = z.object({
+const readItemsPage = (
+  {
+    items,
+    columns,
+    filterField,
+    applied,
+    ...page
+  }: z.infer<typeof itemsPageSchema>,
+  query: CmsItemsQuery
+): CmsItemsPage => ({
+  ...page,
+  items: items.map(({ publishedAt, values, ...row }) => ({
+    ...row,
+    publishedAt: publishedAt ?? null,
+    values: values ?? {},
+  })),
+  columns: columns ?? [],
+  filterField: filterField ?? null,
+  applied: applied ?? appliedOf(query),
+});
+
+const itemSchema = z.object({
   id: z.string(),
   slug: z.string(),
   status: statusSchema,
   hasStagedChanges: z.boolean(),
-  data: z.record(z.string(), z.unknown()),
+  data: dataSchema,
   updatedAt: z.string(),
   createdAt: z.string(),
   publishedAt: z.string().nullable(),
+  live: z.object({ slug: z.string(), data: dataSchema }).nullable().optional(),
+  modifiedByName: z.string().nullable().optional(),
+});
+
+const readItem = ({
+  live,
+  modifiedByName,
+  ...item
+}: z.infer<typeof itemSchema>): CmsItem => ({
+  ...item,
+  live: live ?? null,
+  modifiedByName: modifiedByName ?? null,
+});
+
+const readItemAnswer = ({ item }: { item: z.infer<typeof itemSchema> }) => ({
+  item: readItem(item),
 });
 
 const searchResultSchema: z.ZodType<CmsSearchResult> = z.object({
@@ -147,6 +249,16 @@ const collectionAnswer = z.object({ collection: collectionSchema });
 const itemAnswer = z.object({ item: itemSchema });
 const searchAnswer = z.object({ items: z.array(searchResultSchema) });
 const uploadAnswer = z.object({ url: z.string(), path: z.string() });
+const idsSchema = z.array(z.string());
+const publishItemsAnswer = z.object({
+  published: idsSchema,
+  unchanged: idsSchema,
+  conflicts: idsSchema,
+  failed: idsSchema,
+});
+const itemsStatusAnswer = z.object({ changed: idsSchema });
+const itemsDeleteAnswer = z.object({ deleted: idsSchema });
+const itemsOrderAnswer = z.object({ changed: z.number() });
 
 const failureSchema: z.ZodType<CmsFailure> = z.object({
   error: z.enum(cmsErrorCodes),
@@ -207,16 +319,15 @@ export const createCmsApi = (projectId: string): CmsSource => {
       request(path("collections"), collectionsAnswer, { method: "GET" }),
     getCollection: (c) =>
       request(path(collection(c)), collectionAnswer, { method: "GET" }),
-    listItems: (c, { q, page }) =>
+    listItems: (c, query) =>
       request(
-        path(`${collection(c)}/items`, {
-          q: cmsSearchTerm(q),
-          page: page === undefined ? undefined : String(page),
-        }),
+        path(`${collection(c)}/items`, itemsQueryOf(query)),
         itemsPageSchema,
-        { method: "GET" }
+        { method: "GET" },
+        (page) => readItemsPage(page, query)
       ),
-    getItem: (c, i) => request(path(item(c, i)), itemAnswer, { method: "GET" }),
+    getItem: (c, i) =>
+      request(path(item(c, i)), itemAnswer, { method: "GET" }, readItemAnswer),
     searchItems: async (c, { q, ids }) => {
       const term = cmsSearchTerm(q);
       const joined =
@@ -236,17 +347,49 @@ export const createCmsApi = (projectId: string): CmsSource => {
         path(`${collection(c)}/items`),
         itemAnswer,
         { method: "POST", json: body },
-        ({ item }, status) => ({ item, created: status === 201 })
+        ({ item }, status) => ({
+          item: readItem(item),
+          created: status === 201,
+        })
       ),
     updateItem: (c, i, body) =>
-      request(path(item(c, i)), itemAnswer, { method: "PUT", json: body }),
+      request(
+        path(item(c, i)),
+        itemAnswer,
+        { method: "PUT", json: body },
+        readItemAnswer
+      ),
     publishItem: (c, i, body) =>
-      request(path(`${item(c, i)}/publish`), itemAnswer, {
+      request(
+        path(`${item(c, i)}/publish`),
+        itemAnswer,
+        { method: "POST", json: body },
+        readItemAnswer
+      ),
+    discardItemChanges: (c, i, body) =>
+      request(
+        path(`${item(c, i)}/discard`),
+        itemAnswer,
+        { method: "POST", json: body },
+        readItemAnswer
+      ),
+    publishItems: (c, body) =>
+      request(path(`${collection(c)}/items/publish`), publishItemsAnswer, {
         method: "POST",
         json: body,
       }),
-    discardItemChanges: (c, i, body) =>
-      request(path(`${item(c, i)}/discard`), itemAnswer, {
+    setItemsStatus: (c, body) =>
+      request(path(`${collection(c)}/items/status`), itemsStatusAnswer, {
+        method: "POST",
+        json: body,
+      }),
+    deleteItems: (c, body) =>
+      request(path(`${collection(c)}/items/delete`), itemsDeleteAnswer, {
+        method: "POST",
+        json: body,
+      }),
+    reorderItems: (c, body) =>
+      request(path(`${collection(c)}/items/order`), itemsOrderAnswer, {
         method: "POST",
         json: body,
       }),

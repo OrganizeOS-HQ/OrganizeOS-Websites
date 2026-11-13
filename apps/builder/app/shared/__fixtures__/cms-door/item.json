@@ -12,7 +12,15 @@
       },
       "updatedAt": "2026-11-07T10:00:00.123456+00:00",
       "createdAt": "2026-11-01T09:00:00+00:00",
-      "publishedAt": "2026-11-05T09:00:00+00:00"
+      "publishedAt": "2026-11-05T09:00:00+00:00",
+      "modifiedByName": "Robin Example",
+      "live": {
+        "slug": "hello-world",
+        "data": {
+          "title": "Hello world",
+          "body": { "html": "<p>Hello</p>", "text": "Hello" }
+        }
+      }
     }
   }
 }

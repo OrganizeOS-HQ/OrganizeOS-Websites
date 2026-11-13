@@ -122,6 +122,38 @@ describe("matchCmsPath", () => {
       `collections/${c}/items/${i}/discard`,
       [],
     ],
+    [
+      "POST",
+      `collections/${c}/items/publish`,
+      "",
+      "E10",
+      `collections/${c}/items/publish`,
+      [],
+    ],
+    [
+      "POST",
+      `collections/${c}/items/status`,
+      "",
+      "E11",
+      `collections/${c}/items/status`,
+      [],
+    ],
+    [
+      "POST",
+      `collections/${c}/items/delete`,
+      "",
+      "E12",
+      `collections/${c}/items/delete`,
+      [],
+    ],
+    [
+      "POST",
+      `collections/${c}/items/order`,
+      "",
+      "E13",
+      `collections/${c}/items/order`,
+      [],
+    ],
     ["POST", "uploads/image", "", "E9", "uploads/image", []],
   ])("%s %s%s is %s", (method, splat, search, endpoint, path, query) =>
     expect(match(method, splat, search)).toMatchObject({
@@ -143,6 +175,10 @@ describe("matchCmsPath", () => {
       match("PUT", `collections/${c}/items/${i}`),
       match("POST", `collections/${c}/items/${i}/publish`),
       match("POST", `collections/${c}/items/${i}/discard`),
+      match("POST", `collections/${c}/items/publish`),
+      match("POST", `collections/${c}/items/status`),
+      match("POST", `collections/${c}/items/delete`),
+      match("POST", `collections/${c}/items/order`),
       match("POST", "uploads/image"),
     ].map((matched) => [matched?.endpoint, matched?.method, matched?.body]);
     expect(bodies).toEqual([
@@ -156,9 +192,72 @@ describe("matchCmsPath", () => {
       ["E7", "PUT", "json"],
       ["E8a", "POST", "json"],
       ["E8b", "POST", "json"],
+      ["E10", "POST", "json"],
+      ["E11", "POST", "json"],
+      ["E12", "POST", "json"],
+      ["E13", "POST", "json"],
       ["E9", "POST", "multipart"],
     ]);
   });
+
+  test.each([
+    ["GET", `collections/${c}/items/publish`],
+    ["PUT", `collections/${c}/items/publish`],
+    ["GET", `collections/${c}/items/status`],
+    ["GET", `collections/${c}/items/delete`],
+    ["GET", `collections/${c}/items/order`],
+  ])("%s %s is no match (the action paths take POST only)", (method, splat) =>
+    expect(match(method, splat)).toBeUndefined()
+  );
+
+  test("E3's keys parse strictly and rebuild in sorted key order", () => {
+    expect(
+      match(
+        "GET",
+        `collections/${c}/items`,
+        "?status=staged&sort=field:online&page=2"
+      )
+    ).toMatchObject({
+      endpoint: "E3",
+      query: [
+        ["page", "2"],
+        ["sort", "field:online"],
+        ["status", "staged"],
+      ],
+    });
+  });
+
+  test.each(["optionKey=kind", "status=live", "sort=field:Bad-key", "zz=1"])(
+    "E3 with %s is no match",
+    (search) =>
+      expect(
+        match("GET", `collections/${c}/items`, `?${search}`)
+      ).toBeUndefined()
+  );
+
+  test.each(["Q&A night", "Café", "a+b %2F c"])(
+    "E3's optionValue %j round-trips through the rebuilt query",
+    (value) => {
+      const search = new URLSearchParams();
+      search.append("optionKey", "kind");
+      search.append("optionValue", value);
+      const matched = match("GET", `collections/${c}/items`, `?${search}`);
+      expect(matched?.query).toEqual([
+        ["optionKey", "kind"],
+        ["optionValue", value],
+      ]);
+      // The forwarded query parses back to the sent value, and so does the
+      // canonical target the assertion signs
+      const forwarded = new URLSearchParams(matched?.query);
+      expect(forwarded.get("optionValue")).toBe(value);
+      const target = cmsCanonicalTarget(`/collections/${c}/items`, forwarded);
+      expect(
+        new URL(target, "https://app.organizeos.org").searchParams.get(
+          "optionValue"
+        )
+      ).toBe(value);
+    }
+  );
 
   test.each([
     ["POST", "access", ""],

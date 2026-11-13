@@ -13,7 +13,7 @@ import { CMS_PLATFORM_BASE_PATH } from "~/shared/organizeos-cms.server";
  * OrganizeOS fork: the native CMS screen's door to OrganizeOS
  * (docs/ORGANIZEOS-FORK.md section 5, "The CMS door"). Its steps are the
  * builder door's (organizeos-door-route.server.ts); this is its config: the
- * `cms` audience, the platform's CMS base path, the endpoints E0 to E9, a
+ * `cms` audience, the platform's CMS base path, the endpoints E0 to E13, a
  * write's JSON body of at most 2 MB and an upload (E9) of one file of at most
  * 4 MB in a body of at most 4 MB plus 64 KB, sent with a 30 second timeout.
  * The query schemas: `q` is 1 to 200 characters, `page` is its canonical
@@ -32,6 +32,10 @@ export type CmsEndpoint =
   | "E7"
   | "E8a"
   | "E8b"
+  | "E10"
+  | "E11"
+  | "E12"
+  | "E13"
   | "E9";
 
 export type CmsPathMatch = {
@@ -71,8 +75,26 @@ const itemsQuery = z
       .regex(/^[1-9][0-9]{0,4}$/)
       .refine((page) => Number(page) <= MAX_PAGE)
       .optional(),
+    status: z
+      .enum(["all", "draft", "published", "archived", "staged"])
+      .optional(),
+    sort: z
+      .string()
+      .regex(/^(order|updated|name|status|field:[a-zA-Z][a-zA-Z0-9]{0,39})$/)
+      .optional(),
+    direction: z.enum(["asc", "desc"]).optional(),
+    optionKey: z
+      .string()
+      .regex(/^[a-zA-Z][a-zA-Z0-9]{0,39}$/)
+      .optional(),
+    optionValue: z.string().min(1).max(80).optional(),
   })
-  .strict();
+  .strict()
+  // An option filter names both its field and its value, or neither.
+  .refine(
+    (query) =>
+      (query.optionKey === undefined) === (query.optionValue === undefined)
+  );
 
 const searchQuery = z
   .object({
@@ -154,6 +176,34 @@ const patterns: DoorPattern<CmsEndpoint>[] = [
     endpoint: "E8b",
     method: "POST",
     segments: ["collections", "{c}", "items", "{i}", "discard"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E10",
+    method: "POST",
+    segments: ["collections", "{c}", "items", "publish"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E11",
+    method: "POST",
+    segments: ["collections", "{c}", "items", "status"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E12",
+    method: "POST",
+    segments: ["collections", "{c}", "items", "delete"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E13",
+    method: "POST",
+    segments: ["collections", "{c}", "items", "order"],
     query: noQuery,
     body: "json",
   },

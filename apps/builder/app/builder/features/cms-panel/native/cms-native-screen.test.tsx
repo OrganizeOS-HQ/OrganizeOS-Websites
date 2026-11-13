@@ -53,6 +53,7 @@ import type { CmsCollectionSummary } from "./cms-source";
 import {
   createFakeCmsSource,
   itemOf,
+  itemsPageOf,
   POSTS_DETAIL,
   rowOf,
   type FakeCmsSource,
@@ -674,11 +675,7 @@ describe("the canvas after a write", () => {
             singularName: NEWS.singularName,
           },
         });
-        fake.listItems.mockResolvedValue({
-          items: [rowOf(item)],
-          total: 1,
-          page: 1,
-        });
+        fake.listItems.mockResolvedValue(itemsPageOf([rowOf(item)], 1, 1));
         fake.getItem.mockResolvedValue({ item });
         fake.createItem.mockResolvedValue({ item: written, created: true });
         fake.updateItem.mockResolvedValue({ item: written });
@@ -713,6 +710,161 @@ describe("the canvas after a write", () => {
           expect(fake?.discardItemChanges).toHaveBeenCalledTimes(1);
           break;
       }
+      expect(vi.mocked(invalidateResource).mock.calls).toEqual([[news]]);
+    }
+  );
+
+  /** Draws the host on two News items whose list calls answer `answer`. */
+  const renderList = async (answer: "ok" | "forbidden" | "unavailable") => {
+    const news = request(
+      `${site.platformUrl}/api/public/v1/collections/news?limit=6`
+    );
+    const events = request(
+      `${site.platformUrl}/api/public/v1/collections/events`
+    );
+    vi.spyOn($computedResourceRequests, "get").mockReturnValue([news, events]);
+    const first = itemOf({ status: "published" });
+    const second = itemOf({
+      id: NEW_ID,
+      slug: "second",
+      data: { title: "Second", summary: null, author: null },
+    });
+    let fake: FakeCmsSource | undefined;
+    cmsApi.createCmsApi.mockImplementation(() => {
+      fake = createFakeCmsSource();
+      fake.listCollections.mockResolvedValue({
+        collections: platformCollections,
+      });
+      fake.getCollection.mockResolvedValue({
+        collection: {
+          ...POSTS_DETAIL,
+          id: NEWS.id,
+          slug: NEWS.slug,
+          name: NEWS.name,
+          singularName: NEWS.singularName,
+        },
+      });
+      fake.listItems.mockResolvedValue(
+        itemsPageOf([rowOf(first), rowOf(second)], 2, 1)
+      );
+      fake.getItem.mockResolvedValue({ item: first });
+      const failure =
+        answer === "ok" ? undefined : ({ error: answer } as const);
+      fake.publishItems.mockResolvedValue(
+        failure ?? {
+          published: [first.id],
+          unchanged: [],
+          conflicts: [],
+          failed: [],
+        }
+      );
+      fake.setItemsStatus.mockResolvedValue(failure ?? { changed: [first.id] });
+      fake.deleteItems.mockResolvedValue(failure ?? { deleted: [first.id] });
+      fake.reorderItems.mockResolvedValue(failure ?? { changed: 2 });
+      return fake;
+    });
+    await render();
+    return { news, fake: () => fake! };
+  };
+
+  const selectFirst = async () =>
+    click(
+      await until(() => {
+        const box = document.querySelector<HTMLElement>(
+          '[aria-label="Select Hello"]'
+        );
+        expect(box).not.toBeNull();
+        return box!;
+      })
+    );
+
+  const toolbarButton = (text: string) =>
+    [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        '[role="toolbar"] button'
+      ),
+    ].find((button) => button.textContent === text);
+
+  const dialogButton = (text: string) =>
+    [
+      ...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'),
+    ].find((button) => button.textContent === text);
+
+  const menuItem = (text: string) =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (element) => element.textContent === text
+    );
+
+  test.each([
+    ["E10", "ok"],
+    ["E10", "forbidden"],
+    ["E10", "unavailable"],
+    ["E11", "ok"],
+    ["E11", "forbidden"],
+    ["E11", "unavailable"],
+    ["E12", "ok"],
+    ["E12", "forbidden"],
+    ["E12", "unavailable"],
+    ["E13", "ok"],
+    ["E13", "forbidden"],
+    ["E13", "unavailable"],
+    ["editor archive", "ok"],
+    ["editor archive", "unavailable"],
+    ["editor delete", "ok"],
+  ] as const)(
+    "after %s answered %s the canvas refetches that collection's requests once",
+    async (call, answer) => {
+      const { news, fake } = await renderList(answer);
+      await until(() =>
+        expect(document.querySelector("[data-cms-item-id]")).not.toBeNull()
+      );
+      vi.mocked(invalidateResource).mockClear();
+      switch (call) {
+        case "E10":
+          await selectFirst();
+          await click(toolbarButton("Publish"));
+          expect(fake().publishItems).toHaveBeenCalledTimes(1);
+          break;
+        case "E11":
+          await selectFirst();
+          await click(toolbarButton("Archive"));
+          expect(fake().setItemsStatus).toHaveBeenCalledTimes(1);
+          break;
+        case "E12":
+          await selectFirst();
+          await click(toolbarButton("Delete"));
+          await click(dialogButton("Delete"));
+          expect(fake().deleteItems).toHaveBeenCalledTimes(1);
+          break;
+        case "E13": {
+          const row =
+            document.querySelector<HTMLElement>("[data-cms-item-id]")!;
+          act(() => {
+            row.focus();
+          });
+          await act(async () => userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}"));
+          await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 600));
+          });
+          await settle();
+          expect(fake().reorderItems).toHaveBeenCalledTimes(1);
+          break;
+        }
+        case "editor archive":
+          await openFirstItem();
+          await click(byLabel("Item menu"));
+          await click(menuItem("Archive"));
+          expect(fake().setItemsStatus).toHaveBeenCalledTimes(1);
+          break;
+        case "editor delete":
+          await openFirstItem();
+          await click(byLabel("Item menu"));
+          await click(menuItem("Delete"));
+          await click(dialogButton("Delete"));
+          expect(fake().deleteItems).toHaveBeenCalledTimes(1);
+          break;
+      }
+      await settle();
       expect(vi.mocked(invalidateResource).mock.calls).toEqual([[news]]);
     }
   );

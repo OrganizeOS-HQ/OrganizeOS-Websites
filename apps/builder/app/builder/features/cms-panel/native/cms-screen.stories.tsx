@@ -405,3 +405,135 @@ export const PlanRefusal: Story = {
   render,
   loaders: [loadSource({ flags: { refuse: "plan" } })],
 };
+
+/** The story's first render can be replaced: act on the settled screen. */
+const settled = () => new Promise((resolve) => setTimeout(resolve, 1000));
+
+/** Clicks the first `count` row checkboxes of the items table. */
+const selectRows = async (root: HTMLElement, count: number) => {
+  await waitFor(root, "[data-cms-item-id]");
+  await settled();
+  const boxes = Array.from(
+    root.ownerDocument.querySelectorAll<HTMLButtonElement>(
+      '[data-cms-item-id] [aria-label^="Select "]'
+    )
+  ).slice(0, count);
+  for (const box of boxes) {
+    box.click();
+    // each toggle lands before the next
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+};
+
+/** Opens a Radix menu trigger, which opens on pointer down. */
+const openMenu = async (root: HTMLElement, label: string) => {
+  await settled();
+  const trigger = await waitFor<HTMLButtonElement>(
+    root,
+    `[aria-label="${label}"]`
+  );
+  trigger.dispatchEvent(
+    new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      pointerType: "mouse",
+    })
+  );
+};
+
+/** Two rows selected: ticked checkboxes and selected rows. */
+export const Selection: Story = {
+  render,
+  loaders: [loadSource()],
+  args: { view: { collectionId: SAMPLE_COLLECTION_IDS.news } },
+  play: async ({ canvasElement }) => {
+    await selectRows(canvasElement, 2);
+  },
+};
+
+/** The whole page selected: the bulk bar in the top bar's place. */
+export const BulkBar: Story = {
+  render,
+  loaders: [loadSource()],
+  args: { view: { collectionId: SAMPLE_COLLECTION_IDS.news } },
+  play: async ({ canvasElement }) => {
+    await waitFor(canvasElement, "[data-cms-item-id]");
+    await settled();
+    await clickButton(canvasElement, "Select all on this page");
+  },
+};
+
+/** Published items of one category: the Filter's count reads 2. */
+export const Filtered: Story = {
+  render,
+  loaders: [loadSource()],
+  args: {
+    view: {
+      collectionId: SAMPLE_COLLECTION_IDS.news,
+      list: {
+        status: "published",
+        sort: "order",
+        direction: "asc",
+        option: { key: "category", value: "bargaining" },
+      },
+    },
+  },
+};
+
+/** Sorted by Name, descending: the header's arrow. */
+export const Sorted: Story = {
+  render,
+  loaders: [loadSource()],
+  args: {
+    view: {
+      collectionId: SAMPLE_COLLECTION_IDS.news,
+      list: { status: "all", sort: "name", direction: "desc", option: null },
+    },
+  },
+};
+
+/** Campaigns: as many field columns as fit the main area. */
+export const FieldColumns: Story = {
+  render,
+  loaders: [loadSource()],
+  args: { view: { collectionId: SAMPLE_COLLECTION_IDS.campaigns } },
+};
+
+/** One page holds the whole collection in Manual order: the drag handles. */
+export const DragReorder: Story = {
+  render,
+  loaders: [loadSource()],
+  args: { view: { collectionId: SAMPLE_COLLECTION_IDS.leadership } },
+};
+
+/** The editor's Item menu on a published item with staged changes. */
+export const ItemMenu: Story = {
+  render,
+  loaders: [loadSource()],
+  args: { view: safeStaffing },
+  play: async ({ canvasElement }) => {
+    await waitFor(canvasElement, "#cms-field-name");
+    await openMenu(canvasElement, "Item menu");
+    await waitFor(canvasElement, '[role="menu"]');
+  },
+};
+
+/** Published, Modified, Modified by and Created beside the fields. */
+export const SideDetails: Story = {
+  render,
+  loaders: [loadSource()],
+  args: { view: fairContract },
+};
+
+/** The changed-since-publish dots, following an edit of Summary. */
+export const ChangedDots: Story = {
+  render,
+  loaders: [loadSource()],
+  args: { view: safeStaffing },
+  play: async ({ canvasElement }) => {
+    await waitFor(canvasElement, "#cms-field-summary");
+    await settled();
+    await editSummary(canvasElement);
+  },
+};
