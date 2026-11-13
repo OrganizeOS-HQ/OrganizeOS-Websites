@@ -1563,3 +1563,270 @@ describe("the Item menu's actions (Task 19)", () => {
     expect(document.activeElement?.textContent).toBe("New item");
   });
 });
+
+const dotOn = (id: string) =>
+  document.querySelector(
+    `[data-cms-field="${id}"] [aria-label="Changed since publish"]`
+  ) !== null;
+
+const details = () =>
+  document.querySelector<HTMLElement>("[data-cms-item-details]");
+
+const detail = (name: string) =>
+  document.querySelector<HTMLElement>(`[data-cms-detail="${name}"]`)
+    ?.textContent;
+
+/** A published item with staged changes: its title and address differ from the live copy. */
+const STAGED = itemOf({
+  status: "published",
+  hasStagedChanges: true,
+  slug: "hello-again",
+  data: { title: "Hello again", summary: "Same", author: null },
+  publishedAt: "2026-11-05T09:00:00+00:00",
+  createdAt: "2026-11-01T09:00:00+00:00",
+  modifiedByName: "Robin Example",
+  live: {
+    slug: "hello",
+    data: { title: "Hello", summary: "Same", author: null },
+  },
+});
+
+describe("the side details and the changed dots (Task 20)", () => {
+  test("the side details sit beside the fields at 1040 px and after Address at 600 px", async () => {
+    // the column takes 240 px of the overlay's box
+    await openItem(STAGED, 1280);
+    const fields = document.querySelector<HTMLElement>(
+      "[data-cms-editor-fields]"
+    )!;
+    expect(fields.contains(details())).toBe(false);
+    const fieldsBox = fields.getBoundingClientRect();
+    const detailsBox = details()!.getBoundingClientRect();
+    expect(detailsBox.left).toBeGreaterThanOrEqual(fieldsBox.right - 1);
+    // top-aligned with the first field
+    const firstRow = fields
+      .querySelector<HTMLElement>("[data-cms-field]")!
+      .getBoundingClientRect();
+    expect(Math.abs(detailsBox.top - firstRow.top)).toBeLessThanOrEqual(1);
+    act(() => root?.unmount());
+    container?.remove();
+
+    await openItem(STAGED, 840);
+    await settle();
+    const narrowFields = document.querySelector<HTMLElement>(
+      "[data-cms-editor-fields]"
+    )!;
+    expect(narrowFields.contains(details())).toBe(true);
+    const address = document.querySelector<HTMLElement>(
+      '[data-cms-field="cms-field-slug"]'
+    )!;
+    expect(
+      address.compareDocumentPosition(details()!) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    const body = document.querySelector<HTMLElement>("[data-cms-editor-body]")!;
+    expect(body.scrollWidth).toBeLessThanOrEqual(body.clientWidth);
+  });
+
+  test("Modified by is absent when null; Published reads Not live for a draft", async () => {
+    await openItem(STAGED);
+    expect(detail("published")).toBe(
+      new Intl.DateTimeFormat(undefined, { dateStyle: "short" }).format(
+        new Date(STAGED.publishedAt!)
+      )
+    );
+    expect(detail("modified-by")).toBe("Robin Example");
+    expect(detail("created")).toBe(
+      new Intl.DateTimeFormat(undefined, { dateStyle: "short" }).format(
+        new Date(STAGED.createdAt)
+      )
+    );
+    expect(details()?.textContent).toContain("Modified");
+    act(() => root?.unmount());
+    container?.remove();
+
+    await openItem(itemOf());
+    expect(detail("published")).toBe("Not live");
+    expect(detail("modified-by")).toBeUndefined();
+    expect(details()?.textContent).not.toContain("Modified by");
+  });
+
+  test("a read-only editor (no canEdit) shows the details and the dots; a new item shows no details", async () => {
+    fake.getAccess.mockResolvedValue(
+      access({ canEdit: false, canPublish: false })
+    );
+    await openItem(STAGED);
+    expect(details()).not.toBeNull();
+    expect(dotOn("cms-field-title")).toBe(true);
+    act(() => root?.unmount());
+    container?.remove();
+
+    fake = createFakeCmsSource();
+    await openNewItem();
+    expect(details()).toBeNull();
+  });
+
+  test("a staged item shows a dot on each changed field and on Address, and it follows typing", async () => {
+    await openItem(STAGED);
+    expect(dotOn("cms-field-title")).toBe(true);
+    expect(dotOn("cms-field-slug")).toBe(true);
+    expect(dotOn("cms-field-summary")).toBe(false);
+    await retype(input("cms-field-summary"), "Other");
+    expect(dotOn("cms-field-summary")).toBe(true);
+    await retype(titleInput(), "Hello");
+    expect(dotOn("cms-field-title")).toBe(false);
+    await retype(addressInput(), "hello");
+    expect(dotOn("cms-field-slug")).toBe(false);
+  });
+
+  test("no dots on a draft, and none after Publish or Discard", async () => {
+    await openItem(itemOf({ live: { slug: "x", data: { title: "Other" } } }));
+    expect(
+      document.querySelector('[aria-label="Changed since publish"]')
+    ).toBeNull();
+    act(() => root?.unmount());
+    container?.remove();
+
+    fake = createFakeCmsSource();
+    fake.publishItem.mockResolvedValue({
+      item: { ...STAGED, hasStagedChanges: false, live: null, updatedAt: V2 },
+    });
+    await openItem(STAGED);
+    await click(buttonByText("Publish changes"));
+    expect(
+      document.querySelector('[aria-label="Changed since publish"]')
+    ).toBeNull();
+    act(() => root?.unmount());
+    container?.remove();
+
+    fake = createFakeCmsSource();
+    fake.discardItemChanges.mockResolvedValue({
+      item: {
+        ...STAGED,
+        ...STAGED.live!,
+        hasStagedChanges: false,
+        live: null,
+        updatedAt: V2,
+      },
+    });
+    await openItem(STAGED);
+    await click(buttonByText("Discard changes"));
+    await click(
+      [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          '[role="dialog"] button'
+        ),
+      ].find((button) => button.textContent === "Discard")
+    );
+    expect(
+      document.querySelector('[aria-label="Changed since publish"]')
+    ).toBeNull();
+  });
+
+  test("the first staged save sets the dots from the values it replaced", async () => {
+    const published = itemOf({
+      status: "published",
+      data: { title: "Hello", summary: "Same", author: null },
+      publishedAt: "2026-11-05T09:00:00+00:00",
+    });
+    fake.updateItem.mockImplementation(async (_c, id, body) => ({
+      item: {
+        ...published,
+        id,
+        data: body.data,
+        hasStagedChanges: true,
+        updatedAt: V2,
+      },
+    }));
+    await openItem(published);
+    expect(
+      document.querySelector('[aria-label="Changed since publish"]')
+    ).toBeNull();
+    await retype(titleInput(), "Hello there");
+    await click(buttonByText("Save"));
+    expect(dotOn("cms-field-title")).toBe(true);
+    expect(dotOn("cms-field-summary")).toBe(false);
+    expect(dotOn("cms-field-slug")).toBe(false);
+  });
+
+  // Review Focus 3
+  const KINDS: Record<
+    string,
+    { field: CmsCollection["fields"][number]; value: unknown }
+  > = {
+    richtext: {
+      field: { key: "body", label: "Body", kind: "richtext" },
+      value: { html: "<p>Hi</p>", text: "Hi" },
+    },
+    image: {
+      field: { key: "cover", label: "Cover", kind: "image" },
+      value: {
+        url: "https://example.com/a.png",
+        alt: "A",
+        width: 10,
+        height: 10,
+      },
+    },
+    multireference: {
+      field: {
+        key: "tags",
+        label: "Tags",
+        kind: "multireference",
+        reference: { collectionId: PEOPLE.id, multiple: true },
+      },
+      value: [ANN],
+    },
+    datetime: {
+      field: { key: "starts", label: "Starts", kind: "datetime" },
+      value: "2026-11-13T10:00:00.000Z",
+    },
+    switch: {
+      field: { key: "online", label: "Online", kind: "switch" },
+      value: true,
+    },
+    number: {
+      field: { key: "seats", label: "Seats", kind: "number" },
+      value: 3,
+    },
+  };
+
+  test.each(Object.keys(KINDS))(
+    "an untouched %s field equal to the live copy has no dot, on load and after a save of another field",
+    async (kind) => {
+      const { field, value } = KINDS[kind];
+      setFields([POSTS_DETAIL.fields[0], field]);
+      fake.searchItems.mockResolvedValue({
+        items: [{ id: ANN, title: "Ann", status: "published" }],
+      });
+      const item = itemOf({
+        status: "published",
+        hasStagedChanges: true,
+        data: { title: "Hello again", [field.key]: structuredClone(value) },
+        live: {
+          slug: "hello",
+          data: { title: "Hello", [field.key]: structuredClone(value) },
+        },
+      });
+      fake.updateItem.mockImplementation(async (_c, id, body) => ({
+        item: { ...item, id, data: body.data, live: null, updatedAt: V2 },
+      }));
+      await openItem(item);
+      const id = `cms-field-${field.key}`;
+      expect(dotOn("cms-field-title")).toBe(true);
+      expect(dotOn(id)).toBe(false);
+      await retype(titleInput(), "Hello again!");
+      await click(buttonByText("Save"));
+      expect(fake.updateItem).toHaveBeenCalledTimes(1);
+      expect(dotOn("cms-field-title")).toBe(true);
+      expect(dotOn(id)).toBe(false);
+    }
+  );
+
+  test("an edit, then an edit back to the live value, removes the dot", async () => {
+    await openItem(STAGED);
+    expect(dotOn("cms-field-summary")).toBe(false);
+    await retype(input("cms-field-summary"), "Changed");
+    expect(dotOn("cms-field-summary")).toBe(true);
+    await retype(input("cms-field-summary"), "Same");
+    expect(dotOn("cms-field-summary")).toBe(false);
+  });
+});

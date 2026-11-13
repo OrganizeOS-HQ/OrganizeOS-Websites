@@ -580,3 +580,55 @@ describe("labels", () => {
     expect(label?.textContent).toBe("Summary");
   });
 });
+
+describe("the changed-since-publish dot (Task 20)", () => {
+  const mountRow = (changed: boolean | undefined) => {
+    container = document.createElement("div");
+    container.style.width = "448px";
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        createElement(
+          TooltipProvider,
+          null,
+          createElement(FieldRow, {
+            id: ID,
+            label: "Title",
+            changed,
+            children: createElement("input", { id: ID }),
+          })
+        )
+      );
+    });
+  };
+
+  test("FieldRow with changed draws the dot with its name and tooltip", async () => {
+    mountRow(true);
+    const dot = row()?.querySelector<HTMLElement>(
+      '[role="img"][aria-label="Changed since publish"]'
+    );
+    expect(dot).not.toBeNull();
+    const box = dot!.getBoundingClientRect();
+    expect([box.width, box.height]).toEqual([6, 6]);
+    expect(getComputedStyle(dot!).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+    await act(async () => userEvent.hover(dot!));
+    await vi.waitFor(
+      () => {
+        const tooltip = document.querySelector('[role="tooltip"]');
+        expect(tooltip?.textContent).toContain("Changed since publish");
+      },
+      { timeout: 3000 }
+    );
+  });
+
+  test.each([false, undefined])(
+    "FieldRow with changed %s draws none",
+    (changed) => {
+      mountRow(changed);
+      expect(
+        row()?.querySelector('[aria-label="Changed since publish"]')
+      ).toBeNull();
+    }
+  );
+});

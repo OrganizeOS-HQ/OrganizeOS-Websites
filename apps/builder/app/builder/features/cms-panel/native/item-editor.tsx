@@ -50,7 +50,11 @@ import {
   type CmsKeptValues,
   type CmsRefusal,
 } from "./cms-logic";
-import { getDeleteTitle, getListFailureText } from "./cms-list-logic";
+import {
+  getChangedSincePublish,
+  getDeleteTitle,
+  getListFailureText,
+} from "./cms-list-logic";
 import { DeleteDialog } from "./delete-dialog";
 import {
   isCmsFailure,
@@ -63,6 +67,7 @@ import {
   type CmsSource,
 } from "./cms-source";
 import { FieldControl, FieldRow, fieldIds } from "./field-controls";
+import { ItemDetails, SIDE_DETAILS_WIDTH } from "./item-details";
 import { LineRow, RefusalLine, type CmsLineKind } from "./refusal-line";
 import { StatusChip } from "./status-chip";
 import { TruncatedText } from "./truncated-text";
@@ -161,6 +166,10 @@ export const ItemEditor = ({
   const canEdit = access.canEdit;
 
   const [item, setItem] = useState<CmsItem | null | undefined>(undefined);
+  // The published copy while the item has staged changes (W3-D5): from E4,
+  // or the baseline a first staged save replaced; null after any answer
+  // with nothing staged. Write answers carry none.
+  const [live, setLive] = useState<CmsItem["live"]>(null);
   const [values, setValues] = useState<CmsItemData>({});
   const [slug, setSlug] = useState("");
   const [follows, setFollows] = useState(true);
@@ -194,6 +203,7 @@ export const ItemEditor = ({
   // focus.
   const dialogChosen = useRef(false);
   const [setHeader, isCompact] = useIsNarrow(COMPACT_HEADER_WIDTH);
+  const [setBody, isBodyNarrow] = useIsNarrow(SIDE_DETAILS_WIDTH);
 
   const isNew = item === null;
   const baseline = useMemo(
@@ -274,6 +284,7 @@ export const ItemEditor = ({
         return;
       }
       applyItemRef.current(result.item);
+      setLive(result.item.live);
     });
     return () => {
       isCurrent = false;
@@ -327,6 +338,7 @@ export const ItemEditor = ({
         }
         setKept(undefined);
         applyItem(result.item);
+        setLive(result.item.live);
       });
   }, [refreshKey, source, collection.id, applyItem]);
 
@@ -397,6 +409,7 @@ export const ItemEditor = ({
         : keepAside({ fields, kept, baseline, baselineSlug, values, slug })
     );
     applyItem(result.item);
+    setLive(result.item.live);
     onWritten(result.item);
   };
 
@@ -484,6 +497,9 @@ export const ItemEditor = ({
     run: () => Promise<CmsResult<{ item: CmsItem; created?: boolean }>>,
     settleWith?: Settle
   ) => {
+    // the copy a first staged save replaces is the live one
+    const wasStaged = item?.hasStagedChanges ?? false;
+    const replaced = { slug: baselineSlug, data: baseline };
     setBusy(kind);
     let result: CmsResult<{ item: CmsItem; created?: boolean }>;
     try {
@@ -499,6 +515,11 @@ export const ItemEditor = ({
       return;
     }
     setLine(undefined);
+    if (result.item.hasStagedChanges === false) {
+      setLive(null);
+    } else if (wasStaged === false) {
+      setLive(replaced);
+    }
     if (result.created === false) {
       adoptVersion(result.item);
     } else {
@@ -677,6 +698,7 @@ export const ItemEditor = ({
     setLine(undefined);
     setKept(undefined);
     applyItem(result.item);
+    setLive(result.item.live);
   };
 
   /**
@@ -802,6 +824,7 @@ export const ItemEditor = ({
     }
     setKept(keepAside({ fields, kept, baseline, baselineSlug, values, slug }));
     applyItem(result.item);
+    setLive(result.item.live);
   };
 
   const setField = (key: string, value: unknown) => {
@@ -876,6 +899,13 @@ export const ItemEditor = ({
   const disabled = canEdit === false || busy !== undefined;
   const isFieldBusy = busyFields.size > 0;
   const showConflictLine = conflict || keptDifferences.length > 0;
+  // the dots show only while the item has staged changes (5.2.3)
+  const changedSince =
+    item !== null && item.hasStagedChanges
+      ? getChangedSincePublish({ fields, live, values, slug })
+      : { keys: new Set<string>(), address: false };
+  const details = item === null ? null : <ItemDetails item={item} />;
+  const detailsBeside = details !== null && isBodyNarrow === false;
 
   const isBusy = busy !== undefined;
   const menuItems = [
@@ -1023,106 +1053,141 @@ export const ItemEditor = ({
       {refusalLine}
       <ScrollAreaNative css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
         <Box
-          data-cms-editor-fields
-          css={{
-            maxWidth: editorColumnMaxWidth,
-            marginInline: "auto",
-            paddingInline: theme.spacing[9],
-            paddingBlock: theme.spacing[11],
-          }}
-        >
-          {/* one column that never grows past the box for a long value */}
-          <Grid gap="2" css={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
-            {fields.map((field) => {
-              const id = `cms-field-${field.key}`;
-              return (
-                <FieldRow
-                  key={field.key}
-                  id={id}
-                  label={field.label}
-                  help={field.help}
-                  required={field.required}
-                  inline={field.kind === "switch"}
-                  error={errors[field.key]}
-                  onUseMine={
-                    canEdit && keptDifferences.includes(field.key)
-                      ? () => restoreMine(field.key)
-                      : undefined
-                  }
-                  useMineDisabled={busy !== undefined}
-                >
-                  <FieldControl
-                    id={id}
-                    remountKey={`${epoch}:${fieldEpochs[field.key] ?? 0}`}
-                    field={field}
-                    // a field added since the item loaded shows empty
-                    value={
-                      field.key in values
-                        ? values[field.key]
-                        : emptyValueFor(field.kind)
-                    }
-                    source={source}
-                    disabled={disabled}
-                    invalid={errors[field.key] !== undefined}
-                    onChange={(value) => setField(field.key, value)}
-                    onError={(error) =>
-                      setErrors(({ [field.key]: _, ...rest }) =>
-                        error === undefined
-                          ? rest
-                          : { ...rest, [field.key]: error }
-                      )
-                    }
-                    onBusyChange={(isBusy) =>
-                      setBusyFields((current) => {
-                        const next = new Set(current);
-                        if (isBusy) {
-                          next.add(field.key);
-                        } else {
-                          next.delete(field.key);
-                        }
-                        return next;
-                      })
-                    }
-                    onRefusal={onRefusal}
-                    onOpenClassic={onOpenClassic}
-                    onUnresolvedChange={(ids) => {
-                      unresolved.current[field.key] = ids;
-                    }}
-                  />
-                </FieldRow>
-              );
-            })}
-            <FieldRow
-              id="cms-field-slug"
-              label="Address"
-              error={errors.slug}
-              onUseMine={
-                canEdit && keptDifferences.includes("slug")
-                  ? () => restoreMine("slug")
-                  : undefined
-              }
-              useMineDisabled={busy !== undefined}
-            >
-              <InputField
-                id="cms-field-slug"
-                value={slug}
-                disabled={disabled}
-                color={errors.slug === undefined ? undefined : "error"}
-                aria-invalid={errors.slug !== undefined || undefined}
-                aria-describedby={
-                  errors.slug === undefined
-                    ? undefined
-                    : fieldIds("cms-field-slug").error
+          ref={setBody}
+          data-cms-editor-body
+          css={
+            detailsBeside
+              ? {
+                  display: "grid",
+                  // the fields column stays centred while the details,
+                  // top-aligned beside it, have their width; narrower, the
+                  // fields move left to make room
+                  gridTemplateColumns: `minmax(0, 1fr) ${editorColumnMaxWidth} minmax(${theme.spacing[30]}, 1fr)`,
+                  alignItems: "start",
                 }
-                maxLength={63}
-                onChange={(event) => {
-                  setSlug(event.currentTarget.value);
-                  setFollows(false);
-                  setErrors(({ slug: _, ...rest }) => rest);
-                }}
-              />
-            </FieldRow>
-          </Grid>
+              : undefined
+          }
+        >
+          <Box
+            data-cms-editor-fields
+            css={{
+              maxWidth: editorColumnMaxWidth,
+              marginInline: "auto",
+              gridColumn: detailsBeside ? 2 : undefined,
+              width: detailsBeside ? "100%" : undefined,
+              paddingInline: theme.spacing[9],
+              paddingBlock: theme.spacing[11],
+            }}
+          >
+            {/* one column that never grows past the box for a long value */}
+            <Grid gap="2" css={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
+              {fields.map((field) => {
+                const id = `cms-field-${field.key}`;
+                return (
+                  <FieldRow
+                    key={field.key}
+                    id={id}
+                    label={field.label}
+                    help={field.help}
+                    required={field.required}
+                    inline={field.kind === "switch"}
+                    error={errors[field.key]}
+                    changed={changedSince.keys.has(field.key)}
+                    onUseMine={
+                      canEdit && keptDifferences.includes(field.key)
+                        ? () => restoreMine(field.key)
+                        : undefined
+                    }
+                    useMineDisabled={busy !== undefined}
+                  >
+                    <FieldControl
+                      id={id}
+                      remountKey={`${epoch}:${fieldEpochs[field.key] ?? 0}`}
+                      field={field}
+                      // a field added since the item loaded shows empty
+                      value={
+                        field.key in values
+                          ? values[field.key]
+                          : emptyValueFor(field.kind)
+                      }
+                      source={source}
+                      disabled={disabled}
+                      invalid={errors[field.key] !== undefined}
+                      onChange={(value) => setField(field.key, value)}
+                      onError={(error) =>
+                        setErrors(({ [field.key]: _, ...rest }) =>
+                          error === undefined
+                            ? rest
+                            : { ...rest, [field.key]: error }
+                        )
+                      }
+                      onBusyChange={(isBusy) =>
+                        setBusyFields((current) => {
+                          const next = new Set(current);
+                          if (isBusy) {
+                            next.add(field.key);
+                          } else {
+                            next.delete(field.key);
+                          }
+                          return next;
+                        })
+                      }
+                      onRefusal={onRefusal}
+                      onOpenClassic={onOpenClassic}
+                      onUnresolvedChange={(ids) => {
+                        unresolved.current[field.key] = ids;
+                      }}
+                    />
+                  </FieldRow>
+                );
+              })}
+              <FieldRow
+                id="cms-field-slug"
+                label="Address"
+                error={errors.slug}
+                changed={changedSince.address}
+                onUseMine={
+                  canEdit && keptDifferences.includes("slug")
+                    ? () => restoreMine("slug")
+                    : undefined
+                }
+                useMineDisabled={busy !== undefined}
+              >
+                <InputField
+                  id="cms-field-slug"
+                  value={slug}
+                  disabled={disabled}
+                  color={errors.slug === undefined ? undefined : "error"}
+                  aria-invalid={errors.slug !== undefined || undefined}
+                  aria-describedby={
+                    errors.slug === undefined
+                      ? undefined
+                      : fieldIds("cms-field-slug").error
+                  }
+                  maxLength={63}
+                  onChange={(event) => {
+                    setSlug(event.currentTarget.value);
+                    setFollows(false);
+                    setErrors(({ slug: _, ...rest }) => rest);
+                  }}
+                />
+              </FieldRow>
+              {details !== null && detailsBeside === false && details}
+            </Grid>
+          </Box>
+          {detailsBeside && (
+            <Box
+              css={{
+                gridColumn: 3,
+                maxWidth: theme.spacing[30],
+                minWidth: 0,
+                paddingBlock: theme.spacing[11],
+                paddingInlineEnd: theme.spacing[9],
+              }}
+            >
+              {details}
+            </Box>
+          )}
         </Box>
       </ScrollAreaNative>
       <Dialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
