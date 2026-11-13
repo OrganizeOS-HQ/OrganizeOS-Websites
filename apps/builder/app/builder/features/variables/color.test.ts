@@ -1,19 +1,10 @@
 import { describe, expect, test } from "vitest";
 import { parseColor } from "@webstudio-is/css-data";
-import {
-  composite,
-  contrastRatio,
-  interpolate,
-  luminance,
-  quantize,
-  toRgba,
-  type Rgba,
-} from "./color";
+import { contrastRatio, quantize, toRgba, type Rgba } from "./color";
 
 const black: Rgba = { r: 0, g: 0, b: 0, a: 1 };
 const white: Rgba = { r: 1, g: 1, b: 1, a: 1 };
 const red: Rgba = { r: 1, g: 0, b: 0, a: 1 };
-const blue: Rgba = { r: 0, g: 0, b: 1, a: 1 };
 
 const expectInGamut = (c: Rgba | undefined) => {
   expect(c).toBeDefined();
@@ -99,19 +90,7 @@ describe("toRgba", () => {
     ).toBe("21,151,176,128");
   });
 
-  test("currentcolor resolves to the currentColor argument", () => {
-    expect(toRgba({ type: "keyword", value: "currentcolor" }, red)).toEqual(
-      red
-    );
-    expect(toRgba({ type: "keyword", value: "currentColor" }, blue)).toEqual(
-      blue
-    );
-    expect(toRgba({ type: "unparsed", value: "currentcolor" }, red)).toEqual(
-      red
-    );
-  });
-
-  test("currentcolor without the currentColor argument is unreadable", () => {
+  test("currentcolor is unreadable", () => {
     expect(toRgba({ type: "keyword", value: "currentcolor" })).toBeUndefined();
     expect(toRgba({ type: "unparsed", value: "currentColor" })).toBeUndefined();
   });
@@ -154,49 +133,6 @@ describe("toRgba", () => {
         alpha: { type: "var", value: "opacity" },
       })
     ).toBeUndefined();
-  });
-});
-
-describe("composite", () => {
-  test("50% black over white is mid gray", () => {
-    expect(composite({ ...black, a: 0.5 }, white)).toEqual({
-      r: 0.5,
-      g: 0.5,
-      b: 0.5,
-      a: 1,
-    });
-  });
-
-  test("an opaque top hides the bottom, a transparent one shows it", () => {
-    expect(composite(red, white)).toEqual(red);
-    expect(composite({ ...red, a: 0 }, blue)).toEqual(blue);
-  });
-
-  test("two translucent layers stay translucent", () => {
-    const c = composite({ ...red, a: 0.5 }, { ...blue, a: 0.5 });
-    expect(c.a).toBeCloseTo(0.75, 10);
-    expect(c.r).toBeCloseTo(2 / 3, 10);
-    expect(c.b).toBeCloseTo(1 / 3, 10);
-  });
-});
-
-describe("interpolate", () => {
-  test("the red to blue midpoint is darker than both ends", () => {
-    const mid = interpolate(red, blue, 0.5);
-    expect(mid).toEqual({ r: 0.5, g: 0, b: 0.5, a: 1 });
-    expect(luminance(mid)).toBeCloseTo(0.061, 3);
-    expect(luminance(mid)).toBeLessThan(luminance(red));
-    expect(luminance(mid)).toBeLessThan(luminance(blue));
-  });
-
-  test("premultiplied alpha keeps the hue when fading to transparent", () => {
-    const mid = interpolate(red, { r: 0, g: 0, b: 0, a: 0 }, 0.5);
-    expect(mid).toEqual({ r: 1, g: 0, b: 0, a: 0.5 });
-  });
-
-  test("the ends are the stops", () => {
-    expect(interpolate(red, blue, 0)).toEqual(red);
-    expect(interpolate(red, blue, 1)).toEqual(blue);
   });
 });
 

@@ -145,9 +145,8 @@ const panels: PanelConfig[] = [
   // CMS is not a panel: it is a rail button that opens an overlay
   // (builder/features/cms-panel). The blocks are in the Components panel's
   // OrganizeOS section, which binds each to the project's data as it inserts
-  // it; Background presets are in the Style panel and Motion in the
-  // Inspector. Offered only to orgs not denied the blocks (see
-  // getAvailablePanels).
+  // it, and Motion is in the Inspector. Offered only to orgs not denied
+  // the blocks (see getAvailablePanels).
   {
     name: "organizeos",
     label: "OrganizeOS data",

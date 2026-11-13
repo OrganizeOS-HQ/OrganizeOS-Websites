@@ -762,9 +762,8 @@ can be merged with minimal conflict.
     rule, predicate and message are the runtime lock's own, imported from
     `runtime/organizeos-catalog.ts` (`assertCatalogRootBindingsKept`,
     `catalogChangeMessage`; below).
-  - The Background presets section, by one marked entry in
-    `features/style-panel/sections/sections.ts`; the Motion tab, by marked
-    lines in `builder/inspector.tsx`, with `$activeInspectorPanel` widened to
+  - The Motion tab, by marked lines in `builder/inspector.tsx`, with
+    `$activeInspectorPanel` widened to
     take `"motion"` in `builder/shared/nano-states.ts`; the OrganizeOS data
     tab in `sidebar-left/sidebar-left.tsx` (shown only for an org the deny
     list does not deny) and `sidebar-left/types.ts`; the panel's controls,
@@ -848,12 +847,9 @@ can be merged with minimal conflict.
     `<TemplateChooser />` mount in `builder/builder.tsx`, pinned by
     `overlay.wiring.node.test.ts`; the `instanceIdPrefix` option of
     `completeOrganizeosFragment` in `insert-organizeos-block.ts`;
-    `getDefaultRoles` in `section-background.tsx` taking the roles by name
-    (importing `site-templates/canonical-variables` alone);
     `deleteSubtreeMutable` exported from `collection-pages.ts`; and
     `SIGNUP_PAGE_PATH` in `shared/organizeos-preset-ids.ts`, so the browser
-    can read it; with cases in `insert-organizeos-block.test.tsx`,
-    `section-background.test.tsx` and
+    can read it; with cases in `insert-organizeos-block.test.tsx` and
     `shared/db/signup-form-preset.merge.server.test.tsx`.
   - The canvas's play flag needs no builder change: the players' metas set
     upstream's `selectionReveal`, pinned by
@@ -903,9 +899,9 @@ can be merged with minimal conflict.
   JSON, renaming `VarValue`s, unparsed text and font family items,
   `getCssVariableUsageCounts` exported), with
   `styles.organizeos.test.ts`. In the builder, `features/variables/color.ts`
-  and `style-model.ts`, with their tests, moved from
-  `features/organizeos-panel/backgrounds/`, and
-  `features/organizeos-panel/test-fixtures.ts` moved up from `backgrounds/`;
+  and `style-model.ts`, with their tests (`style-model.ts` has no builder
+  caller yet: it is kept as the reader of the agent's `website_set_colours`,
+  builder variables spec 7.2), and `features/organizeos-panel/test-fixtures.ts`;
   the reader, the registry patches and the staged operations in
   `features/variables/`; `canCommitWebstudioData` exported by one marked word
   in `shared/instance-utils/data.ts`; and the Cmd+K guard and routing in
@@ -1564,9 +1560,8 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
 **In the builder**, `apps/builder/app/builder/features/organizeos-panel/`:
 
 - **Offered to every org not on `ORGANIZEOS_BLOCKS_DENY_ORG_IDS`** (§4): the
-  Components panel's OrganizeOS section (the blocks), the Style panel's
-  Background presets section, the Inspector's Motion tab and the OrganizeOS
-  data tab. The builder
+  Components panel's OrganizeOS section (the blocks), the Inspector's Motion
+  tab and the OrganizeOS data tab. The builder
   loader resolves the project's org and sets `organizeosSite.blocksEnabled`;
   for a denied org none is offered and `insertOrganizeosBlock` refuses with a
   toast ("OrganizeOS blocks are not available for this site yet") and writes
@@ -2414,87 +2409,6 @@ OrganizeOS repo). Part 1's data layer, the manager and the Style panel's "+".
   source, base breakpoint) go through the Variables operations, keeping the
   registry in step; any other name keeps upstream's behaviour.
 
-**Section backgrounds**, the Style panel's "Background presets" section
-(`features/organizeos-panel/background-presets-section.tsx`, one marked entry
-in upstream's section map, `features/style-panel/sections/sections.ts`,
-directly after Backgrounds; its content is
-`features/organizeos-panel/section-background.tsx`, with its modules in
-`features/organizeos-panel/backgrounds/`). For the selected element (not the
-Body, the page root or Global Root) it shows one wrapping row of small square
-thumbnails, one for each of the nine presets ("Bloom", "Bloom, strong",
-"Bloom, dark", "Wash", "Wash, dark", "Solid tint", "Solid tint, dark", "Image
-with scrim" and "Image with scrim, dark"), each named by its `aria-label` and
-in a tooltip that opens on hover and on keyboard focus, with no caption. A
-click applies the preset; an Image with scrim preset opens the image picker
-(the asset manager and its upload) and applies with the image chosen there,
-closing it. With one picker open, a click or tap on the other scrim preset
-opens that one's picker. The presets take their colors from Global Root's
-color variables: by name when `--base`, `--accent-1`, `--accent-2` and `--text`
-are all there (Site templates, below), and otherwise the lightest as the base,
-the darkest as the text and the others as the accents in the order they are
-defined (`getDefaultRoles`), or from a built-in palette when Global Root
-defines none. Under the row, one line
-of plain text in the destructive color, "Text below AA contrast", appears only
-when text inside fails WCAG AA. That is all it shows, by the owner's rule in
-`CLAUDE.md` ("Builder UI: options, not explanations"): no palette menus, help
-text, notices or report, since people learn the presets by trying them on the
-canvas.
-
-- It is offered as the Style tab is: for a selection whose meta has a preset
-  style, on an HTML page, in design mode, and mounted on the canvas. Slot,
-  Fragment, Collection and Content Block have no preset style, so they do not
-  get it; they render as `display: contents` or as their children only, so a
-  background there never painted. For the Body, the page root and Global Root
-  the section renders nothing (a Body background is set in Backgrounds). It
-  joins focus mode's accordion and default mode's all-open, the Style panel
-  hides it in advanced mode, and a locked token leaves it enabled: the presets
-  write the Local source, never the token.
-- The contrast report is computed only while the section is open (Radix
-  mounts a collapsible's content only then) and off the input path
-  (`contrast-schedule.ts`): a change of its inputs schedules one run, through
-  `requestIdleCallback` with a 150 ms timeout where it exists and
-  `setTimeout(run, 150)` where it does not (Safari), and a newer change
-  replaces a pending run. A report is shown only for the selection it was
-  computed for: after a style edit the last line stays until the new run
-  lands, and after a change of selection nothing shows until the run for the
-  new one lands, so the previous element's line is never shown for the new
-  one. No line shows while a run is pending, or when no text fails: all of
-  it passes, there is none, or some can't be checked.
-- A preset writes ordinary styles only, to the element's **local** style source
-  at the current breakpoint, base state, in one undo step: `background-color`
-  and the nine layer longhands upstream's Backgrounds section reads, and the
-  band variables `--focus-ring` and `--accent-text` (`BAND_VARIABLES`, Site
-  templates, below), and in the same batch it clears whichever of those it does
-  not write (0.309.0 runs a batch's deletes after its sets, so clearing
-  everything first would wipe the preset), then selects the local source the
-  runtime made. It writes those two only when the palette is the four canonical
-  variables (a site template's site, the only one that reads them), and on any
-  other site neither. A dark preset makes the element a band, as a template's
-  kit band is: it sets both to whichever of the base and the text is lighter
-  (`--base` on a light palette, `--text` on a dark one), so focus rings and a
-  template's accent text inside it read on the dark surface. A light preset,
-  whose surface is the base's, sets both to `var(--accent-2)`, the reset a
-  template's base panel inside a band makes and what they are on the base unset:
-  so a light surface nested in a band, or a light preset at 767 on a section
-  that is a dark band at the base breakpoint, rings focus and sets accent text
-  in accent-2 again. Clearing a background in upstream's Backgrounds section
-  leaves them as they are. It never writes to a token, adds no component, prop
-  or script, and keeps no link to the element; tinted stops are literal colors,
-  so re-applying a preset picks up a palette change. A background the element
-  takes from a token or another breakpoint is overridden here, by the local
-  style, without a notice.
-- The contrast check is advisory: it never blocks publish, and it never
-  reports Pass for what it cannot compute (unreadable values, an image with
-  no layer above it, blending, filters, opacity, interpolation methods and
-  color hints are "Can't check", which the line does not count). It reads
-  styles through `getComputedStyleDecl` over its own model, not the rendered
-  canvas, so it does not see positioned text, text inside an embed, or where
-  on a gradient the text sits (it takes the gradient's lowest point). The
-  section shows none of this, so it is recorded here.
-- Nothing changes in the published-site runtime, the CLI or the templates.
-  Design: `docs/superpowers/specs/2026-10-25-builder-section-backgrounds-design.md`
-  in the OrganizeOS repo.
-
 **Rotating Tabs**, the first block of the Components panel's OrganizeOS
 section: upstream's Radix Tabs that
 show each panel in turn behind a Pause button (Track 2 phase 2). Design:
@@ -2556,8 +2470,7 @@ OrganizeOS repo, plan `docs/superpowers/plans/2026-10-25-builder-rotating-tabs.m
   `react/jsx-runtime` and `@webstudio-is/react-sdk/runtime`.
   `@webstudio-is/sdk-components-react-radix` is a devDependency for the
   template test only, which renders the template through upstream's real Tabs.
-  The builder's contrast check classifies the control as rendering its own
-  text. Nothing changes in the published-site runtime, the CLI or the
+  Nothing changes in the published-site runtime, the CLI or the
   templates.
 
 **Marquee**, the second block of the Components panel's OrganizeOS section: a
@@ -2631,9 +2544,7 @@ OrganizeOS repo (its section 12 amends the earlier sections), plan
   breaks the measurement, which the structure check does not catch, since it
   reads no styling.
 - The package gains no runtime dependency (the closure is the control's
-  three). The builder's contrast check classifies the Pause button as
-  rendering its own text and Marquee and the track as rendering the
-  designer's children only. The paused-script publish fixture covers Marquee
+  three). The paused-script publish fixture covers Marquee
   through the Components panel's OrganizeOS section. Nothing changes in the
   published-site runtime,
   the CLI or the templates.
@@ -2750,8 +2661,7 @@ timelines gets the static page.
   one through the API or MCP, is the runtime's alone, which checks the content
   model against upstream's registry, so there an animation group fits
   anywhere, an `li` included; only the Motion tab checks the builder's metas.
-- The builder's contrast check classifies the animation group as rendering no
-  text of its own. Nothing changes in the published-site runtime packages,
+- Nothing changes in the published-site runtime packages,
   the CLI or the templates.
 
 **Convergence Field**, the third block of the Components panel's OrganizeOS
@@ -2881,17 +2791,10 @@ slice"`, so it covers the element and is cropped on its narrower axis.
   browser recomputes the two groups' rotation each frame and re-renders the
   `use` instances. The PR's manual pass measures frame time at density 24 on
   a 4x CPU throttle; if it is over budget, Settle floors the density.
-- **Contrast.** The builder's contrast check classifies the root as rendering
-  the designer's children only and, through `rendersBackgroundLayer` in
-  `backgrounds/contrast.ts`, pushes an image layer above the root's own
-  layers even when it has no color or image of its own. So the check can't
-  measure text over a Convergence Field, and that text raises no warning in
-  Background presets, while text on a child with an opaque background (a
-  scrim) is still checked.
 - The package gains no runtime dependency, and the shipped closure no bare
   specifier (the field uses `react` and `@webstudio-is/react-sdk/runtime`, as
-  an animation group does). The paused-script and contrast coverage fixtures
-  cover it through the Components panel's OrganizeOS section. Nothing changes
+  an animation group does). The paused-script fixture covers it
+  through the Components panel's OrganizeOS section. Nothing changes
   in the
   published-site runtime packages, the CLI or the templates.
 
@@ -2960,9 +2863,7 @@ no class fallback.
   spike's caveats hold: styles on the root itself draw no box, and a
   descendant outlines nothing on the canvas), and the icon `DescriptionIcon`,
   which no upstream component uses.
-- The section background contrast check (`backgrounds/contrast.ts`) counts it
-  among the components that render their own text, each descendant a text
-  group of its own. Content mode does not edit its text: the CMS does.
+- Content mode does not edit its text: the CMS does.
 - **Shipping.** `components.ts` exports it; its closure reaches
   `rich-text/rich-text.js`, `rich-text/sample.js` and `shared/safe-href.js`,
   and imports nothing beyond `react` and `@webstudio-is/react-sdk/runtime`
@@ -3090,9 +2991,7 @@ code in the page's address only, never in a cookie or storage.
   hidden `div` that passes every prop through, takes any children and has no
   props of its own, the root for blocks that are templates over native
   elements. It renders the same markup on the server and the client and acts
-  only on a click, so it cannot cause a hydration mismatch. The builder's
-  contrast check classifies it as rendering the designer's children only
-  (`rendersDesignerChildrenOnly` in `backgrounds/contrast.ts`).
+  only on a click, so it cannot cause a hydration mismatch.
 - **The Shop blocks' roots**, `ProductGrid` and `ProductCard`, carry the code
   as the Share Code Carrier does (`useShareCodeCarrier`), so a card's link to
   `/shop/{slug}` and "Shop all" to `/shop` keep `?r=`; both paths, and
@@ -3146,8 +3045,7 @@ there.
   code (Share codes, below). `ProductGrid` sets `--os-product-columns` to its
   `columns` (`"2"`, `"3"` or `"4"`; anything else reads as 3), merged into any
   style it is given. Both drop a stored `show` or `product`, which no row
-  writes. The contrast check classifies both as rendering the designer's
-  children only, and Price as a named text component, as upstream's Time.
+  writes.
 - **The rows** (`organizeos-product-control.tsx`, logic in
   `features/organizeos-panel/product-blocks.ts`, through `getOrganizeosControl`):
   - **Show** (Product Grid): 3, 4, 6, 8, 12 or All. It reads the collection's
@@ -3227,16 +3125,21 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   columns, not styles, and its seeds re-sync on every provision call). The file
   holds the names, the values, `contrastRatio` and `firstFontFamily` (the family
   a font value names first: `"Source Serif 4", Georgia, serif` reads
-  `Source Serif 4`), and imports nothing from the catalog: the Style panel
-  imports it alone, so the templates and their images stay out of the panel's
-  chunk. The Background presets take their roles by these names when all four
-  colours are there (Section backgrounds, above). It also names the two band
+  `Source Serif 4`), and imports nothing from the catalog: the Variables
+  feature (`names.ts`, `variables-toolbar.tsx`) and the server's
+  canonical-fonts reader (`organizeos-canonical-fonts.server.ts`) import it
+  alone, so they never load the templates and their images (the builder's
+  client bundle carries the catalog anyway, through the template chooser).
+  The Variables manager's Brand collection takes the six by these
+  names. It also names the two band
   variables (`BAND_VARIABLES`), which a band sets for what sits inside it, each
   to its text colour: `--focus-ring`, the colour of a focus ring, and
   `--accent-text`, the colour of a template's accent-2 text; unset, on the base,
   both are `--accent-2`, which the check holds against the base alone. The kit's
-  `section()` sets both to `var(--base)` on an accent-1 or text band, and the
-  Background presets' dark presets set them too; a base-coloured panel inside a
+  `section()` sets both to `var(--base)` on an accent-1 or text band, and a
+  section made dark by hand is a band only when the designer sets both in
+  Advanced (nothing sets them for it until part 2's Dark mode); a base-coloured
+  panel inside a
   band sets them back to `var(--accent-2)` (the check holds a template to that).
   The kit's `focusRing()` reads `var(--focus-ring, var(--accent-2))` and
   `ACCENT_TEXT` is `var(--accent-text, var(--accent-2))`, which a template's
@@ -3366,8 +3269,8 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   `platform-paths.ts`, `/donate`), or to one without `reloadDocument` (the
   published site's router has no route there; the kit's `linkProps` sets it), a
   panel with the base background inside a band (an element that sets a band
-  variable to anything but `var(--accent-2)`, as the kit's band and a dark
-  Background preset do) that does not set both band variables back to
+  variable to anything but `var(--accent-2)`, as the kit's band does) that
+  does not set both band variables back to
   `var(--accent-2)` at the base breakpoint or at the one where it turns base (a
   link or a button is no panel: its own ring is drawn outside it, on the band),
   a Resource, a repeated instance id, a count of `h1` other than one, a Signup

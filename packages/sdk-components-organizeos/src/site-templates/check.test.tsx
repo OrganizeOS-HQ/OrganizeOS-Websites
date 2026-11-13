@@ -659,7 +659,8 @@ describe("checkSiteTemplate", () => {
   });
 
   // A band sets the band variables to its text colour for what sits inside
-  // it (the kit's section() on accent-1 or text, a dark Background preset).
+  // it (the kit's section() on accent-1 or text, or a section painted dark
+  // by hand).
   // A base panel inside one sets them back to accent-2, or a focus ring and
   // accent text inside it are the base on the base.
   describe("bands", () => {
@@ -708,7 +709,7 @@ describe("checkSiteTemplate", () => {
       }
     );
 
-    test("a base panel inside a band a preset's variables make is a violation", () => {
+    test("a base panel inside a band painted by hand is a violation", () => {
       expectOneViolation(
         checkAboutBody(() => (
           <ws.element

@@ -1,8 +1,9 @@
 // The site-template module: the format, renderer, check and catalog, grown
 // by the tasks that add them. Imported only by the chooser and the apply
 // routine, never by components.ts or metas.ts, so no published site carries
-// a template. The Style panel imports ./canonical-variables directly, which
-// keeps the catalog and its images out of its chunk. The spike in
+// a template. The builder's Variables feature and its server-side
+// canonical-fonts reader import ./canonical-variables directly, so they never
+// load the catalog and its images. The spike in
 // __fixtures__ is not exported: it is not in the catalog, and exporting it
 // would bring its image into the catalog's chunk.
 

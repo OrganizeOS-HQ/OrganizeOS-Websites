@@ -3,8 +3,9 @@
 // them as `var(--base)` and so on, so changing one value in the Style panel
 // restyles the whole site.
 //
-// Small on purpose: the builder's Style panel imports this file for the
-// names and the contrast check, so it must not reach the template catalog
+// Small on purpose: the builder's Variables feature and its server-side
+// canonical-fonts reader import this file alone, for the names, the band
+// variables and firstFontFamily, so it must not reach the template catalog
 // (see site-templates/index.ts).
 
 export const CANONICAL_COLOR_NAMES = [
@@ -53,8 +54,8 @@ export const isCanonicalName = (name: string): name is CanonicalName =>
  * on a band it can all but vanish; a band rings focus in its text colour,
  * `--base`, which the check holds against accent-1, as it holds the text
  * colour against the base. Unset, on the base, the ring is `--accent-2`. A
- * band is the kit's `section()` on accent-1 or text, or a section the
- * builder's dark Background presets paint.
+ * band is the kit's `section()` on accent-1 or text, or a section made dark
+ * by hand whose designer sets both band variables in Advanced.
  */
 export const FOCUS_RING_VARIABLE = "focus-ring";
 
@@ -70,8 +71,7 @@ export const ACCENT_TEXT_VARIABLE = "accent-text";
 /**
  * The variables a band sets for what sits inside it, each a canonical
  * colour; a base-coloured panel inside a band sets them back to
- * `var(--accent-2)`, as the builder's light Background presets do on a
- * site of the canonical variables.
+ * `var(--accent-2)`.
  */
 export const BAND_VARIABLES = [
   FOCUS_RING_VARIABLE,
