@@ -1802,7 +1802,10 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     lossy). Its Image button uploads one through E9 with the
     image field's checks; pasted HTML brings no image. It is read-only when
     the editor would not keep the value's blocks or links whole: "Read only"
-    for a value with images, else with "Edit in Classic CMS". A refusal is one line each, with the "Not in
+    for a value with images, else with "Edit in Classic CMS". A load and save
+    may move collapsible whitespace at a link or mark boundary; the page and
+    its text are unchanged. A link never holds an image the Link control
+    adds, and Code moves a line's images to a paragraph after the block. A refusal is one line each, with the "Not in
     plan" chip for the plan. The unsaved guard stands before Back, another
     collection, Classic CMS and "Open OrganizeOS". Every open reads the
     access (E0) again. The lists refetch after each write, on reopen and on

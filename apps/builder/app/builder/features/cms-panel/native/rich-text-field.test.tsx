@@ -17,6 +17,7 @@ import { RichTextField, type RichTextFieldProps } from "./rich-text-field";
 import { createLazyRichTextField, FieldControl } from "./field-controls";
 import { createFakeCmsSource } from "./fake-cms-source";
 import fixture from "./__fixtures__/rich-text-roundtrip.json";
+import { getRichTextReadOnlyReason } from "./rich-text-html";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -757,4 +758,118 @@ test("a failed chunk load draws the field's line, and the fields around it keep 
   } finally {
     window.removeEventListener("error", swallow);
   }
+});
+
+const IMAGE = '<img src="https://example.org/a.png" alt="A">';
+
+/** Each image in the saved HTML, with whether a link holds it. */
+const imagesInLinks = (html: string) =>
+  [
+    ...new DOMParser()
+      .parseFromString(html, "text/html")
+      .querySelectorAll("img"),
+  ].map((image) => image.closest("a") !== null);
+
+const applyLink = async (href: string) => {
+  await click(byLabel("Link"));
+  await userEvent.fill(byLabel("URL") as HTMLInputElement, href);
+  await click(buttonByText("Apply"));
+};
+
+test("Link over a selection reaching a figure leaves no link around it", async () => {
+  const { onChange } = mountField({
+    value: {
+      html: `<p>before</p><figure>${IMAGE}<figcaption>c</figcaption></figure><p>after</p>`,
+    },
+  });
+  await settle();
+  await click(
+    [...editable()!.querySelectorAll<HTMLElement>("p")].find(
+      (paragraph) => paragraph.textContent === "before"
+    )
+  );
+  await selectAll();
+  await applyLink("https://example.org/");
+  const html = lastHtml(onChange);
+  expect(html).toContain("<figure>");
+  expect(html).not.toMatch(/<a\b[^>]*>\s*<figure/);
+  expect(imagesInLinks(html)).toEqual([false]);
+  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+});
+
+test("Link over a line holding an image links its text and leaves the image outside", async () => {
+  const { onChange } = mountField({
+    value: { html: `<p>See ${IMAGE} here</p>` },
+  });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await selectAll();
+  await applyLink("https://example.org/");
+  const html = lastHtml(onChange);
+  expect(imagesInLinks(html)).toEqual([false]);
+  expect(html.match(/<a /g)?.length).toBeGreaterThan(0);
+});
+
+test("Code over a line holding an image keeps the image, after the code block", async () => {
+  const { onChange } = mountField({
+    value: { html: `<p>Join us ${IMAGE} today</p>` },
+  });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await chooseBlock("Code");
+  const html = lastHtml(onChange);
+  expect(html.match(/<img/g)).toHaveLength(1);
+  const dom = new DOMParser().parseFromString(html, "text/html");
+  expect(dom.querySelector("pre img")).toBeNull();
+  expect(dom.querySelector("pre")?.textContent).toContain("Join us");
+});
+
+test("a block type chosen with the selection at the root before a first figure changes nothing, and the next change applies", async () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  const { onChange } = mountField({
+    value: {
+      html: `<figure>${IMAGE}<figcaption>c</figcaption></figure><p>after</p>`,
+    },
+  });
+  await settle();
+  await focusEditor();
+  await selectAll();
+  await chooseBlock("Quote");
+  // nothing changed and nothing failed
+  expect(onChange).not.toHaveBeenCalled();
+  expect(error).not.toHaveBeenCalledWith(expect.any(Error));
+  // the editor still takes the next change, with the figure kept
+  const after = [...editable()!.querySelectorAll<HTMLElement>("p")].find(
+    (paragraph) => paragraph.textContent === "after"
+  );
+  await userEvent.dblClick(after!);
+  await settle();
+  await chooseBlock("Quote");
+  const html = lastHtml(onChange);
+  expect(html).toContain("<figure>");
+  expect(html).toMatch(/<blockquote[^>]*>.*after/);
+  error.mockRestore();
+});
+
+test("pasting a linked image keeps the words around it and leaves no empty link", async () => {
+  const { onChange } = mountField();
+  await focusEditor();
+  paste(editable()!, {
+    "text/html": `<p>I love <a href="https://example.org/">${IMAGE}</a> this</p>`,
+    "text/plain": "I love  this",
+  });
+  await settle();
+  const html = lastHtml(onChange);
+  expect(lastValue(onChange)?.text).toContain("I love this");
+  expect(html).not.toContain("<a");
+  expect(html).not.toContain("<img");
+  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+});
+
+test("select all over an image keeps the keyboard in the text", async () => {
+  mountField({ value: { html: `<p>See ${IMAGE} here</p>` } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await selectAll();
+  expect(document.activeElement).toBe(editable());
 });

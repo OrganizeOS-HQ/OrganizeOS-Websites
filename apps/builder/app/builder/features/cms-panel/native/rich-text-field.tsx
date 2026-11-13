@@ -15,8 +15,13 @@ import {
   $getSelection,
   $isRangeSelection,
   $setSelection,
+  $isElementNode,
+  COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_LOW,
+  COMMAND_PRIORITY_NORMAL,
   CONTROLLED_TEXT_INSERTION_COMMAND,
+  COPY_COMMAND,
+  CUT_COMMAND,
   FORMAT_TEXT_COMMAND,
   PASTE_COMMAND,
   SELECTION_CHANGE_COMMAND,
@@ -25,7 +30,13 @@ import {
   type RangeSelection,
   type TextFormatType,
 } from "lexical";
-import { $isLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
+import {
+  $createLinkNode,
+  $isLinkNode,
+  $toggleLink,
+  LinkNode,
+  TOGGLE_LINK_COMMAND,
+} from "@lexical/link";
 import {
   $isListNode,
   INSERT_ORDERED_LIST_COMMAND,
@@ -98,12 +109,15 @@ import {
 } from "./cms-image-upload";
 import {
   $createCmsImageNode,
+  $isCmsFigureNode,
+  $isCmsImageNode,
   type CmsImageAttributes,
 } from "./rich-text-image-node";
 import {
   exportRichTextHtml,
   getRichTextReadOnlyReason,
   importRichTextHtml,
+  markRichTextCopy,
   readRichTextValue,
   richTextHasImage,
   richTextHref,
@@ -350,10 +364,36 @@ const useToolbarState = (editor: LexicalEditor) => {
   return state;
 };
 
+/**
+ * A code block keeps text only: an image in a block made code moves to a
+ * paragraph right after it, so the value keeps what the editor shows.
+ */
+const $moveImagesOutOfCode = () => {
+  const visit = (node: LexicalNode) => {
+    if ($isCodeNode(node)) {
+      const images = node.getChildren().filter($isCmsImageNode);
+      if (images.length > 0) {
+        const paragraph = $createParagraphNode();
+        paragraph.append(...images);
+        node.insertAfter(paragraph);
+      }
+      return;
+    }
+    if ($isElementNode(node)) {
+      node.getChildren().forEach(visit);
+    }
+  };
+  visit($getRoot());
+};
+
 const setBlockType = (editor: LexicalEditor, block: BlockType) => {
   editor.update(() => {
     const selection = $getSelection();
     if ($isRangeSelection(selection) === false) {
+      return;
+    }
+    // a caret at the root (before a first figure or rule) is in no block
+    if (selection.anchor.key === "root" || selection.focus.key === "root") {
       return;
     }
     $setBlocksType(selection, () => {
@@ -368,6 +408,9 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
           return $createHeadingNode(block);
       }
     });
+    if (block === "code") {
+      $moveImagesOutOfCode();
+    }
   });
   editor.focus();
 };
@@ -557,7 +600,8 @@ const insertImage = (
     if (
       caret !== null &&
       isAttached &&
-      $findMatchingParent(caret.anchor.getNode(), $isCodeNode) === null
+      $findMatchingParent(caret.anchor.getNode(), $isCodeNode) === null &&
+      $findMatchingParent(caret.focus.getNode(), $isCodeNode) === null
     ) {
       const selection = caret.clone();
       $setSelection(selection);
@@ -796,6 +840,14 @@ const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
   let cleanHtml: string | undefined;
   if (html !== "") {
     const dom = new DOMParser().parseFromString(html, "text/html");
+    // an image enters a value only from stored HTML or an upload: dropped
+    // here, before the import, so the words around it keep their space
+    const images = Array.from(dom.querySelectorAll("img")).filter(
+      (image) => image.parentElement?.tagName !== "FIGURE"
+    );
+    for (const image of images) {
+      image.remove();
+    }
     const refused = Array.from(dom.querySelectorAll("a")).filter(
       (anchor) =>
         richTextHref(anchor.getAttribute("href") ?? undefined) === null
@@ -803,7 +855,14 @@ const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
     for (const anchor of refused) {
       anchor.replaceWith(...Array.from(anchor.childNodes));
     }
-    if (refused.length > 0) {
+    // a link that held only an image is left with nothing to link
+    const emptied = Array.from(dom.querySelectorAll("a")).filter(
+      (anchor) => (anchor.textContent ?? "").trim() === ""
+    );
+    for (const anchor of emptied) {
+      anchor.replaceWith(...Array.from(anchor.childNodes));
+    }
+    if (images.length > 0 || refused.length > 0 || emptied.length > 0) {
       cleanHtml = dom.body.innerHTML;
     }
   }
@@ -840,12 +899,144 @@ const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
  * instead, so this applies to paste and drop only. Any link, however it was
  * made, whose address the import's rule refuses becomes its text.
  */
+/** A link's attributes, for the links a split makes. */
+const linkAttributes = (link: LinkNode) => ({
+  target: link.getTarget(),
+  rel: link.getRel(),
+  title: link.getTitle(),
+});
+
+/**
+ * The site never shows an image inside a link, so a link the Link control
+ * makes or extends never holds one: a link at the root (around a figure) is
+ * unwrapped, and a link is split around each image it holds.
+ */
+const $keepImagesOutOfLinks = (links: Set<LinkNode>) => {
+  for (const link of links) {
+    if (link.isAttached() === false) {
+      continue;
+    }
+    if (link.getParent()?.getKey() === "root") {
+      for (const child of link.getChildren()) {
+        link.insertBefore(child);
+      }
+      link.remove();
+      continue;
+    }
+    const children = link.getChildren();
+    if (children.some($isCmsImageNode) === false) {
+      continue;
+    }
+    let run: LinkNode | null = null;
+    for (const child of children) {
+      if ($isCmsImageNode(child)) {
+        link.insertBefore(child);
+        run = null;
+        continue;
+      }
+      if (run === null) {
+        run = $createLinkNode(link.getURL(), linkAttributes(link));
+        link.insertBefore(run);
+      }
+      run.append(child);
+    }
+    link.remove();
+  }
+};
+
+const ImageEditingPlugin = () => {
+  const [editor] = useLexicalComposerContext();
+  useEffect(
+    () =>
+      mergeRegister(
+        // above LinkPlugin's own handler, for a selection holding an image
+        editor.registerCommand(
+          TOGGLE_LINK_COMMAND,
+          (payload) => {
+            const selection = $getSelection();
+            if ($isRangeSelection(selection) === false) {
+              return false;
+            }
+            const holdsImage = selection
+              .getNodes()
+              .some(
+                (node) =>
+                  $isCmsImageNode(node) ||
+                  $isCmsFigureNode(node) ||
+                  ($isElementNode(node) &&
+                    node
+                      .getChildren()
+                      .some(
+                        (child) =>
+                          $isCmsImageNode(child) || $isCmsFigureNode(child)
+                      ))
+              );
+            if (holdsImage === false) {
+              return false;
+            }
+            if (payload === null) {
+              $toggleLink(null);
+              return true;
+            }
+            const { url, ...attributes } =
+              typeof payload === "string" ? { url: payload } : payload;
+            $toggleLink(url, attributes);
+            const after = $getSelection();
+            const links = new Set<LinkNode>();
+            for (const node of $getRoot().getChildren()) {
+              if ($isLinkNode(node)) {
+                links.add(node);
+              }
+            }
+            if (after !== null) {
+              for (const node of after.getNodes()) {
+                const link = $isLinkNode(node)
+                  ? node
+                  : $findMatchingParent(node, $isLinkNode);
+                if ($isLinkNode(link)) {
+                  links.add(link);
+                }
+              }
+            }
+            $keepImagesOutOfLinks(links);
+            return true;
+          },
+          COMMAND_PRIORITY_NORMAL
+        ),
+        // a copy or cut marks its selection, for the code block's export
+        editor.registerCommand(
+          COPY_COMMAND,
+          () => {
+            markRichTextCopy($getSelection());
+            return false;
+          },
+          COMMAND_PRIORITY_CRITICAL
+        ),
+        editor.registerCommand(
+          CUT_COMMAND,
+          () => {
+            markRichTextCopy($getSelection());
+            return false;
+          },
+          COMMAND_PRIORITY_CRITICAL
+        )
+      ),
+    [editor]
+  );
+  return null;
+};
+
 const LinkRulePlugin = () => {
   const [editor] = useLexicalComposerContext();
   useEffect(
     () =>
       mergeRegister(
         editor.registerNodeTransform(LinkNode, (node) => {
+          // a link with nothing in it is not kept: the next load drops it
+          if (node.isEmpty()) {
+            node.remove();
+            return;
+          }
           if (richTextImportHref(node.getURL()) !== null) {
             return;
           }
@@ -994,8 +1185,10 @@ export const RichTextField = ({
         nodes: editorNodes,
         html: richTextHtmlConfig,
         editable: disabled === false,
+        // reported, not rethrown: Lexical then keeps the state before the
+        // failed update, so nothing half-applied is saved
         onError: (error) => {
-          throw error;
+          console.error(error);
         },
         // The composer tags this update "history-merge", which the change
         // plugin skips: loading writes nothing.
@@ -1035,6 +1228,7 @@ export const RichTextField = ({
         <ListPlugin />
         <LinkPlugin />
         <LinkRulePlugin />
+        <ImageEditingPlugin />
         <HorizontalRulePlugin />
         <HeadingTagPlugin />
         <OnChangePlugin

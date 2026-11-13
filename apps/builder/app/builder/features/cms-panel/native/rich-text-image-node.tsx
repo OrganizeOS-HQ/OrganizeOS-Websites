@@ -14,6 +14,8 @@ import { useEffect, useId, useState } from "react";
 import {
   $applyNodeReplacement,
   $getNodeByKey,
+  $getSelection,
+  $isNodeSelection,
   DecoratorNode,
   type DOMConversionMap,
   type DOMConversionOutput,
@@ -161,11 +163,17 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
   const altId = useId();
   const captionId = useId();
 
+  // the image's own selection opens its settings; a text selection that
+  // runs over it (select all, a drag) does not take the keyboard from the text
   useEffect(() => {
-    if (isSelected && isEditable) {
+    if (
+      isSelected &&
+      isEditable &&
+      editor.getEditorState().read(() => $isNodeSelection($getSelection()))
+    ) {
       setIsOpen(true);
     }
-  }, [isSelected, isEditable]);
+  }, [editor, isSelected, isEditable]);
 
   const edit = (change: (node: CmsImageNode | CmsFigureNode) => void) => {
     editor.update(() => {

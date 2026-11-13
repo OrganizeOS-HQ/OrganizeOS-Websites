@@ -8,9 +8,11 @@ import {
   $getRoot,
   $isDecoratorNode,
   $isElementNode,
+  $isRangeSelection,
   $isTextNode,
   createEditor,
   ParagraphNode,
+  type BaseSelection,
   type DOMConversionMap,
   type DOMExportOutput,
   type HTMLConfig,
@@ -68,12 +70,61 @@ const exportParagraph = (
   return output;
 };
 
+/**
+ * The selection a copy or cut is writing, while it writes: a code block it
+ * reaches partway writes only its selected text. Cleared once the copy is done.
+ */
+let copying: BaseSelection | null = null;
+
+export const markRichTextCopy = (selection: BaseSelection | null) => {
+  copying = selection;
+  queueMicrotask(() => {
+    copying = null;
+  });
+};
+
+const selectedText = (node: LexicalNode) => {
+  const selection = copying;
+  if (
+    $isRangeSelection(selection) === false ||
+    selection.isCollapsed() ||
+    $isElementNode(node) === false
+  ) {
+    return node.getTextContent();
+  }
+  const [start, end] = selection.isBackward()
+    ? [selection.focus, selection.anchor]
+    : [selection.anchor, selection.focus];
+  const selected = new Set(selection.getNodes().map((each) => each.getKey()));
+  // a code block may hold a code node: its text is read down to the leaves
+  const textOf = (parent: LexicalNode): string =>
+    $isElementNode(parent) === false
+      ? ""
+      : parent
+          .getChildren()
+          .filter((child) => selected.has(child.getKey()))
+          .map((child) => {
+            if ($isElementNode(child)) {
+              return textOf(child);
+            }
+            const text = child.getTextContent();
+            if ($isTextNode(child) === false) {
+              return text;
+            }
+            const from = child.getKey() === start.key ? start.offset : 0;
+            const to = child.getKey() === end.key ? end.offset : text.length;
+            return text.slice(from, to);
+          })
+          .join("");
+  return textOf(node);
+};
+
 /** A code block writes `<pre><code>`, its line breaks as "\n". */
 const exportCode = (
   _editor: LexicalEditor,
   node: LexicalNode
 ): DOMExportOutput => {
-  const text = node.getTextContent();
+  const text = selectedText(node);
   return {
     element: document.createElement("pre"),
     after: () => {

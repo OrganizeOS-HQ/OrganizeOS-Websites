@@ -1,10 +1,12 @@
 import { describe, expect, test } from "vitest";
-import { createEditor } from "lexical";
+import { $createRangeSelection, $getRoot, createEditor } from "lexical";
+import { $generateHtmlFromNodes } from "@lexical/html";
 import fixture from "./__fixtures__/rich-text-roundtrip.json";
 import {
   exportRichTextHtml,
   getRichTextReadOnlyReason,
   importRichTextHtml,
+  markRichTextCopy,
   readRichTextValue,
   richTextBlockSignature,
   richTextHref,
@@ -328,4 +330,46 @@ describe("readRichTextValue", () => {
       text: "kept",
     });
   });
+});
+
+test("a copy reaching partway into a code block writes only its selected text", () => {
+  const editor = createEditor({
+    nodes: [...richTextNodes],
+    html: richTextHtmlConfig,
+    onError: (error) => {
+      throw error;
+    },
+  });
+  editor.update(
+    () =>
+      importRichTextHtml(
+        editor,
+        "<p>before</p><pre><code>first line\nsecond line</code></pre>"
+      ),
+    { discrete: true }
+  );
+  let copied = "";
+  let saved = "";
+  editor.update(
+    () => {
+      const before = $getRoot().getFirstDescendant();
+      const firstLine = $getRoot()
+        .getAllTextNodes()
+        .find((node) => node.getTextContent().startsWith("first"));
+      if (before === null || firstLine === undefined) {
+        throw new Error("not loaded");
+      }
+      const selection = $createRangeSelection();
+      selection.anchor.set(before.getKey(), 0, "text");
+      selection.focus.set(firstLine.getKey(), 5, "text");
+      markRichTextCopy(selection);
+      copied = $generateHtmlFromNodes(editor, selection);
+      // the mark clears once the copy is done; a save after it writes all
+      markRichTextCopy(null);
+      saved = $generateHtmlFromNodes(editor, null);
+    },
+    { discrete: true }
+  );
+  expect(copied).toContain("<code>first</code>");
+  expect(saved).toContain("<code>first line\nsecond line</code>");
 });
