@@ -30,6 +30,8 @@ import { StyleSourceBadge } from "./style-source";
 import { createBatchUpdate } from "./shared/use-style-data";
 import { $virtualInstances } from "~/shared/nano-states";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
+// OrganizeOS fork: the variable "+" beside a property's label (builder/features/variables).
+import { VariableBindControl } from "~/builder/features/variables";
 
 const $isAltPressed = atom(false);
 if (typeof window !== "undefined") {
@@ -251,30 +253,33 @@ export const PropertyLabel = ({
     batch.publish();
   };
 
+  // OrganizeOS fork: VariableBindControl adds the variable "+" (builder/features/variables).
   return (
-    <ResettableLabel
-      disabled={disabled}
-      color={styleValueSourceColor}
-      onReset={
-        styles.some(
-          ({ source }) =>
-            source.name === "local" || source.name === "overwritten"
-        )
-          ? resetProperty
-          : undefined
-      }
-      resetDisabled={readonly}
-      content={
-        <PropertyInfo
-          title={label}
-          description={description}
-          styles={styles}
-          link={propertiesData[properties[0]]?.mdnUrl}
-        />
-      }
-    >
-      {label}
-    </ResettableLabel>
+    <VariableBindControl properties={properties}>
+      <ResettableLabel
+        disabled={disabled}
+        color={styleValueSourceColor}
+        onReset={
+          styles.some(
+            ({ source }) =>
+              source.name === "local" || source.name === "overwritten"
+          )
+            ? resetProperty
+            : undefined
+        }
+        resetDisabled={readonly}
+        content={
+          <PropertyInfo
+            title={label}
+            description={description}
+            styles={styles}
+            link={propertiesData[properties[0]]?.mdnUrl}
+          />
+        }
+      >
+        {label}
+      </ResettableLabel>
+    </VariableBindControl>
   );
 };
 

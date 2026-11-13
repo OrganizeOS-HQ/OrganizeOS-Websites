@@ -1,5 +1,10 @@
 import { nanoid } from "nanoid";
-import { toValue, type StyleValue } from "@webstudio-is/css-engine";
+import { camelCaseProperty } from "@webstudio-is/css-data";
+import {
+  toValue,
+  type CssProperty,
+  type StyleValue,
+} from "@webstudio-is/css-engine";
 import {
   BRAND_COLLECTION_ID,
   readVariablesRegistry,
@@ -34,6 +39,8 @@ import {
   uniqueCssName,
 } from "./names";
 import { validateVariableValue } from "./value-types";
+import { INTEGER_PROPERTIES } from "./property-types";
+import { resolveBindTarget } from "./bind-target";
 import { countVariableInText, replaceVariableReferences } from "./references";
 import {
   $rootVariables,
@@ -530,6 +537,73 @@ export const createVariable = (input: {
   index?: number;
 }): WriteResult<{ cssName: string }> =>
   commitPrepared(prepareCreateVariable(input));
+
+const isWholeNumber = (value: StyleValue) =>
+  value.type === "unit" &&
+  value.unit === "number" &&
+  Number.isInteger(value.value);
+
+/**
+ * New variable from this value (spec 6.5, 4.10): the variable, at the end of
+ * Site, and its bind to every property of the row, in one transaction and one
+ * undo step. The bind writes where publishUpdates writes, through the styles
+ * operations it uses (features/style-panel/shared/use-style-data.ts).
+ */
+export const createAndBindVariable = (input: {
+  type: VariableType;
+  displayName: string;
+  value: StyleValue;
+  properties: readonly CssProperty[];
+}): WriteResult<{ cssName: string }> => {
+  const target = resolveBindTarget();
+  if (target === undefined) {
+    // internal: the "+" never renders without a target
+    return refuse("No bind target");
+  }
+  if (
+    input.properties.every((property) => INTEGER_PROPERTIES.has(property)) &&
+    isWholeNumber(input.value) === false
+  ) {
+    return refuse("Use a whole number");
+  }
+  const prepared = prepareCreateVariable({
+    collectionId: SITE_COLLECTION_ID,
+    type: input.type,
+    displayName: input.displayName,
+    value: input.value,
+  });
+  if (prepared.ok === false) {
+    return commitPrepared(prepared);
+  }
+  const { instanceId, breakpointId, state, styleSource } = target;
+  return commitPrepared({
+    ...prepared,
+    stage: (accumulator) => {
+      prepared.stage(accumulator);
+      // built after the stage, which names the variable
+      const updates = input.properties.map((property) => ({
+        instanceId,
+        breakpoint: breakpointId,
+        state,
+        property: camelCaseProperty(property),
+        value: { type: "var" as const, value: prepared.result.cssName },
+      }));
+      accumulator.execute(
+        styleSource.type === "local"
+          ? { id: "styles.updateDeclarations", input: { updates } }
+          : {
+              id: "styles.updateSelectedDeclarations",
+              input: {
+                updates: updates.map((update) => ({
+                  ...update,
+                  styleSourceId: styleSource.id,
+                })),
+              },
+            }
+      );
+    },
+  });
+};
 
 /**
  * Writes a non-var value as given (callers validate typed values); a var

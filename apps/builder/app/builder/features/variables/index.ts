@@ -1,4 +1,6 @@
-// What other features import from Variables. The Cmd+K routing is imported
-// from ./operations directly, so builder/shared never pulls the UI in.
+// What other features import from Variables. The Style panel's label imports
+// VariableBindControl from here; the Cmd+K routing in builder/shared imports
+// ./operations directly.
 export { VariablesOverlay } from "./variables-overlay";
 export { VariablesRailButton } from "./variables-rail-button";
+export { VariableBindControl } from "./bind-control";
