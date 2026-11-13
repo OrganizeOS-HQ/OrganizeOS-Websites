@@ -150,7 +150,8 @@ describe("the items view", () => {
       [...document.querySelectorAll('[role="columnheader"]')].map(
         (header) => header.textContent
       )
-    ).toEqual(["", "Name", "Status", "Modified", "Published"]);
+      // the checkbox, then the drag handle: the whole collection is one page
+    ).toEqual(["", "", "Name", "Status", "Modified", "Published"]);
     expect(itemRows()).toHaveLength(3);
     for (const row of itemRows()) {
       expect(row.getBoundingClientRect().height).toBe(32);
@@ -491,6 +492,7 @@ describe("the table's columns (Task 15)", () => {
     await mountEvents();
     expect(headerTexts()).toEqual([
       "",
+      "",
       "Name",
       "Status",
       "Kind",
@@ -533,7 +535,7 @@ describe("the table's columns (Task 15)", () => {
       width: tableWidth(),
       wanted: 3,
       checkbox: true,
-      handle: false,
+      handle: true,
     });
     expect(fieldColumnCount()).toBe(wide);
     expect(table.scrollWidth).toBe(table.clientWidth);
@@ -544,7 +546,7 @@ describe("the table's columns (Task 15)", () => {
       width: tableWidth(),
       wanted: 3,
       checkbox: true,
-      handle: false,
+      handle: true,
     });
     expect(narrow).toBeLessThan(wide);
     expect(fieldColumnCount()).toBe(narrow);
@@ -1255,4 +1257,428 @@ describe("selection and the bulk bar (Task 17)", () => {
     await settle();
     expect(fake.getItem).not.toHaveBeenCalled();
   });
+});
+
+/**
+ * A collection of three rows a, b and c whose door keeps their order: E13
+ * stores the order and renews the version of every row it moves.
+ */
+/** A row's version after `n` renewals: a valid timestamp, one second per renewal. */
+const versionOf = (id: string, n: number) =>
+  `2026-11-12T10:0${ROW_IDS.indexOf(id)}:0${n}.000000+00:00`;
+const renewals = (version: string) => Number(version.slice(18, 19));
+
+const reorderWorld = () => {
+  const names: Record<string, string> = {
+    [ROW_IDS[0]]: "a",
+    [ROW_IDS[1]]: "b",
+    [ROW_IDS[2]]: "c",
+  };
+  const world = {
+    ids: [...ROW_IDS],
+    versions: Object.fromEntries(ROW_IDS.map((id) => [id, versionOf(id, 0)])),
+    rows: () =>
+      world.ids.map((id) =>
+        rowOf(
+          itemOf({
+            id,
+            slug: names[id],
+            data: { title: names[id].toUpperCase() },
+            updatedAt: world.versions[id],
+          })
+        )
+      ),
+  };
+  fake.listItems.mockImplementation(async (_c, q) => ({
+    ...itemsPageOf(world.rows(), world.ids.length, 1),
+    applied: {
+      status: q.status ?? "all",
+      sort: q.sort ?? "order",
+      direction: q.direction ?? (q.sort === "updated" ? "desc" : "asc"),
+      optionKey: q.optionKey ?? null,
+      optionValue: q.optionValue ?? null,
+    },
+  }));
+  fake.reorderItems.mockImplementation(async (_c, { ids }) => {
+    ids.forEach((id, index) => {
+      if (world.ids[index] !== id) {
+        world.versions[id] = versionOf(id, renewals(world.versions[id]) + 1);
+      }
+    });
+    world.ids = [...ids];
+    return { changed: ids.length };
+  });
+  return world;
+};
+
+const handles = () => [
+  ...document.querySelectorAll<HTMLElement>('[aria-label="Drag to reorder"]'),
+];
+
+const rowEl = (slug: string) =>
+  document.querySelector<HTMLElement>(`[data-cms-item="${slug}"]`);
+
+const altMove = async (key: "ArrowUp" | "ArrowDown") => {
+  await act(async () => userEvent.keyboard(`{Alt>}{${key}}{/Alt}`));
+};
+
+const focusRow = (slug: string) => {
+  act(() => {
+    rowEl(slug)!.focus();
+  });
+};
+
+const pointer = (target: EventTarget, type: string, x: number, y: number) =>
+  target.dispatchEvent(
+    new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      buttons: type === "pointerup" ? 0 : 1,
+      pointerId: 1,
+      isPrimary: true,
+      clientX: x,
+      clientY: y,
+    })
+  );
+
+/** Drags a row's handle to below the row `toSlug`. */
+const dragBelow = async (fromSlug: string, toSlug: string) => {
+  const handle = rowEl(fromSlug)!.querySelector<HTMLElement>(
+    '[aria-label="Drag to reorder"]'
+  )!;
+  const start = handle.getBoundingClientRect();
+  const x = start.left + start.width / 2;
+  const target = rowEl(toSlug)!.getBoundingClientRect();
+  act(() => {
+    pointer(handle, "pointerdown", x, start.top + start.height / 2);
+  });
+  for (const y of [
+    start.top + start.height / 2 + 6,
+    target.top + target.height * 0.5,
+    target.top + target.height * 0.9,
+  ]) {
+    act(() => {
+      pointer(window, "pointermove", x, y);
+    });
+    await settle();
+  }
+  act(() => {
+    pointer(window, "pointerup", x, target.top + target.height * 0.9);
+    // the click a browser fires after the drag's pointer up
+    document.body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle();
+};
+
+const reorderCalls = () =>
+  fake.reorderItems.mock.calls.map(([, body]) => body.ids);
+
+describe("drag reorder (Task 18)", () => {
+  test("the handle shows only with canEdit, Manual order, no search, no filter and E3's total at most 50", async () => {
+    reorderWorld();
+    mount();
+    await settle();
+    expect(handles()).toHaveLength(3);
+
+    // a sort other than Manual order
+    await click(
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[role="columnheader"] button'
+        ),
+      ].find((button) => button.textContent?.startsWith("Name"))
+    );
+    expect(handles()).toHaveLength(0);
+    await click(buttonByText("Sort"));
+    await click(menuItemByText("Manual order"));
+    expect(handles()).toHaveLength(3);
+
+    // a filter
+    await click(buttonByText("Filter"));
+    await click(menuItemByText("Draft"));
+    expect(handles()).toHaveLength(0);
+    await click(buttonByText("Filter1"));
+    await click(menuItemByText("All items"));
+    expect(handles()).toHaveLength(3);
+
+    // a search
+    await act(async () => userEvent.type(searchInput()!, "a"));
+    await wait(300);
+    expect(handles()).toHaveLength(0);
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+
+    // more than 50 items
+    fake = createFakeCmsSource();
+    fake.listItems.mockImplementation(async () => pageOf(1, 51));
+    mount();
+    await settle();
+    expect(itemRows()).toHaveLength(50);
+    expect(handles()).toHaveLength(0);
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+
+    // no canEdit
+    fake = createFakeCmsSource();
+    reorderWorld();
+    fake.getAccess.mockImplementation(async () => ({
+      canEdit: false,
+      canPublish: false,
+      canManageSettings: false,
+    }));
+    mount();
+    await settle();
+    expect(itemRows()).toHaveLength(3);
+    expect(handles()).toHaveLength(0);
+  });
+
+  test("a pointer drop sends E13 with the page's ids in the new order", async () => {
+    reorderWorld();
+    mount();
+    await settle();
+    await dragBelow("a", "c");
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]]);
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+    expect(fake.getItem).not.toHaveBeenCalled();
+  });
+
+  test("Alt+Arrow moves are batched and sent 500 ms after the last", async () => {
+    reorderWorld();
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    await altMove("ArrowDown");
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+    await wait(300);
+    expect(fake.reorderItems).not.toHaveBeenCalled();
+    await wait(400);
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]]);
+  });
+
+  test("Alt+Arrow keeps the focus on the moved row, so a second Alt+Arrow moves it again", async () => {
+    reorderWorld();
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    expect(document.activeElement).toBe(rowEl("a"));
+    await altMove("ArrowDown");
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+    expect(document.activeElement).toBe(rowEl("a"));
+  });
+
+  test("Alt+Arrow, then Enter, sends E13 at once and opens the editor after E13 and its refetch; Save then succeeds", async () => {
+    const world = reorderWorld();
+    fake.getItem.mockImplementation(async (_c, id) => ({
+      item: itemOf({
+        id,
+        slug: "a",
+        data: { title: "A", summary: null, author: null },
+        updatedAt: world.versions[id],
+      }),
+    }));
+    fake.updateItem.mockImplementation(async (_c, id, body) => ({
+      item: itemOf({ id, slug: "a", data: body.data, updatedAt: "saved" }),
+    }));
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    await act(async () => userEvent.keyboard("{Enter}"));
+    await settle();
+    // sent at once, not after 500 ms
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]]);
+    expect(fake.getItem).toHaveBeenCalledTimes(1);
+    const refetch = fake.listItems.mock.invocationCallOrder.at(-1)!;
+    expect(fake.reorderItems.mock.invocationCallOrder[0]).toBeLessThan(refetch);
+    expect(fake.getItem.mock.invocationCallOrder[0]).toBeGreaterThan(refetch);
+
+    const title = document.querySelector<HTMLInputElement>("#cms-field-title")!;
+    await act(async () => userEvent.type(title, "!"));
+    await click(buttonByText("Save"));
+    expect(fake.updateItem).toHaveBeenCalledTimes(1);
+    expect(fake.updateItem.mock.calls[0][2].expectedUpdatedAt).toBe(
+      world.versions[ROW_IDS[0]]
+    );
+    expect(world.versions[ROW_IDS[0]]).toBe(versionOf(ROW_IDS[0], 1));
+  });
+
+  test("a bulk Publish pressed right after a drop sends the refetched versions", async () => {
+    const world = reorderWorld();
+    const held = deferred<CmsResult<{ changed: number }>>();
+    const store = fake.reorderItems.getMockImplementation()!;
+    fake.reorderItems.mockImplementation(async (c, body) => {
+      const answer = await held.promise;
+      await store(c, body);
+      return answer;
+    });
+    fake.publishItems.mockImplementation(async (_c, { items }) => ({
+      published: items.map((item) => item.id),
+      unchanged: [],
+      conflicts: [],
+      failed: [],
+    }));
+    mount();
+    await settle();
+    await click(checkbox("Select all on this page"));
+    await dragBelow("a", "c");
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+    await click(toolbarButton("Publish"));
+    expect(fake.publishItems).not.toHaveBeenCalled();
+    expect(toolbarButton("Publish")?.disabled).toBe(true);
+    held.resolve({ changed: 3 });
+    await settle();
+    expect(fake.publishItems).toHaveBeenCalledTimes(1);
+    expect(fake.publishItems.mock.calls[0][1].items).toEqual(
+      world.ids.map((id) => ({ id, updatedAt: world.versions[id] }))
+    );
+    expect(world.versions[ROW_IDS[0]]).toBe(versionOf(ROW_IDS[0], 1));
+  });
+
+  test.each([
+    ["conflict", "Not moved"],
+    ["rate_limited", "Try again in a minute"],
+  ] as const)(
+    "a failed E13 (%s) restores the server's order and toasts %s",
+    async (code, text) => {
+      const error = vi.spyOn(toast, "error");
+      reorderWorld();
+      fake.reorderItems.mockResolvedValue({ error: code });
+      mount();
+      await settle();
+      const calls = fake.listItems.mock.calls.length;
+      await dragBelow("a", "c");
+      expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+      expect(fake.listItems.mock.calls.length).toBeGreaterThan(calls);
+      expect(itemSlugs()).toEqual(["a", "b", "c"]);
+      expect(error).toHaveBeenCalledWith(text);
+    }
+  );
+
+  test("Alt+Down then Alt+Up sends nothing; Alt+Up on the first row does nothing", async () => {
+    reorderWorld();
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    await altMove("ArrowUp");
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    await altMove("ArrowUp");
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    await wait(700);
+    expect(fake.reorderItems).not.toHaveBeenCalled();
+  });
+
+  test("a further move while E13 is in flight sends only the latest order after it", async () => {
+    const world = reorderWorld();
+    const held = deferred<CmsResult<{ changed: number }>>();
+    const store = fake.reorderItems.getMockImplementation()!;
+    fake.reorderItems
+      .mockImplementationOnce(async (c, body) => {
+        const answer = await held.promise;
+        await store(c, body);
+        return answer;
+      })
+      .mockImplementation(store);
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    await wait(600);
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+    // b, a, c is in flight: two more moves of c, each past the pause
+    focusRow("c");
+    await altMove("ArrowUp");
+    await wait(600);
+    await altMove("ArrowUp");
+    await wait(600);
+    expect(itemSlugs()).toEqual(["c", "b", "a"]);
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+    held.resolve({ changed: 2 });
+    await settle();
+    expect(reorderCalls()).toEqual([
+      [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]],
+      [ROW_IDS[2], ROW_IDS[1], ROW_IDS[0]],
+    ]);
+    expect(world.ids).toEqual([ROW_IDS[2], ROW_IDS[1], ROW_IDS[0]]);
+  });
+
+  test("pending keyboard moves are sent when focus leaves the table", async () => {
+    reorderWorld();
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    expect(fake.reorderItems).not.toHaveBeenCalled();
+    act(() => {
+      searchInput()!.focus();
+    });
+    await settle();
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]]);
+  });
+
+  test("a second open asked for during the wait replaces the first", async () => {
+    reorderWorld();
+    const held = deferred<CmsResult<{ changed: number }>>();
+    const store = fake.reorderItems.getMockImplementation()!;
+    fake.reorderItems.mockImplementation(async (c, body) => {
+      const answer = await held.promise;
+      await store(c, body);
+      return answer;
+    });
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    await act(async () => userEvent.keyboard("{Enter}"));
+    focusRow("b");
+    await act(async () => userEvent.keyboard("{Enter}"));
+    await settle();
+    expect(fake.getItem).not.toHaveBeenCalled();
+    held.resolve({ changed: 2 });
+    await settle();
+    expect(fake.getItem).toHaveBeenCalledTimes(1);
+    expect(fake.getItem).toHaveBeenCalledWith(POSTS.id, ROW_IDS[1]);
+  });
+
+  test.each([
+    ["E13 200", "ok"],
+    ["E13 failed", "unavailable"],
+  ] as const)(
+    "%s, then a failed refetch: rows open again and the bulk bar is enabled",
+    async (_name, answer) => {
+      const error = vi.spyOn(toast, "error");
+      reorderWorld();
+      const held = deferred<CmsResult<{ changed: number }>>();
+      fake.reorderItems.mockImplementation(() => held.promise);
+      mount();
+      await settle();
+      await click(checkbox("Select C"));
+      focusRow("a");
+      await altMove("ArrowDown");
+      // a bulk Publish waits on the reorder
+      await click(toolbarButton("Publish"));
+      expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+      expect(toolbarButton("Publish")?.disabled).toBe(true);
+      // the refetch after E13 fails
+      fake.listItems.mockResolvedValueOnce({ error: "rate_limited" });
+      held.resolve(answer === "ok" ? { changed: 2 } : { error: "unavailable" });
+      await settle();
+      expect(fake.publishItems).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledWith("Try again in a minute");
+      expect(toolbar()?.textContent).toContain("1 selected");
+      expect(toolbarButton("Publish")?.disabled).toBe(false);
+      focusRow("b");
+      await act(async () => userEvent.keyboard("{Enter}"));
+      await settle();
+      expect(fake.getItem).toHaveBeenCalledTimes(1);
+    }
+  );
 });

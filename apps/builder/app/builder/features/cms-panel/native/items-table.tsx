@@ -1,10 +1,12 @@
 /**
  * The native CMS items table (spec 5.1.4): the checkbox, Name, Status, the
  * field columns that fit, Modified and Published, with sortable headers, and
- * the selection's checkboxes. The drag handle arrives in a later task.
+ * the selection's checkboxes, and the drag handle with Alt+Arrow moves
+ * (5.1.7).
  */
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -15,13 +17,19 @@ import {
   css,
   cssVar,
   InsetList,
+  IconButton,
   InsetListItem,
   List,
   ListItem,
   Text,
   theme,
+  useSortable,
 } from "@webstudio-is/design-system";
-import { ChevronDownIcon, ChevronUpIcon } from "@webstudio-is/icons";
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  DragHandleIcon,
+} from "@webstudio-is/icons";
 import { RelativeTime } from "~/builder/shared/relative-time";
 import { tickedCheckboxCss } from "../../publish/organizeos-publish-checkbox";
 import {
@@ -159,27 +167,47 @@ const ItemRow = ({
   fields,
   canEdit,
   selected,
-  leadCount,
+  showHandle,
+  dragging,
   onOpen,
   onToggle,
+  onMove,
 }: {
   index: number;
   item: CmsItemRow;
   fields: CmsField[];
   canEdit: boolean;
   selected: boolean;
-  leadCount: number;
+  showHandle: boolean;
+  dragging: boolean;
   onOpen: () => void;
   onToggle: (id: string) => void;
+  onMove: (id: string, direction: -1 | 1) => void;
 }) => (
   <ListItem
     index={index}
     asChild
     onSelect={onOpen}
     state={selected ? "selected" : undefined}
+    onKeyDown={(event) => {
+      // Alt+Arrow moves the row; the list's own arrow keys leave it alone
+      if (
+        showHandle &&
+        event.altKey &&
+        (event.key === "ArrowUp" || event.key === "ArrowDown")
+      ) {
+        event.preventDefault();
+        onMove(item.id, event.key === "ArrowUp" ? -1 : 1);
+      }
+    }}
   >
     <InsetListItem asChild>
-      <div role="row" data-cms-item={item.slug} data-cms-item-id={item.id}>
+      <div
+        role="row"
+        data-cms-item={item.slug}
+        data-cms-item-id={item.id}
+        style={dragging ? { opacity: 0.5 } : undefined}
+      >
         {canEdit && (
           <div role="cell" style={{ width: LEAD }}>
             <Checkbox
@@ -200,9 +228,23 @@ const ItemRow = ({
             />
           </div>
         )}
-        {Array.from({ length: leadCount - (canEdit ? 1 : 0) }).map((_, i) => (
-          <div role="cell" key={`lead-${i}`} style={{ width: LEAD }} />
-        ))}
+        {showHandle && (
+          <div role="cell" style={{ width: LEAD }}>
+            <IconButton
+              aria-label="Drag to reorder"
+              // useSortable reads the dragged row's id from data-id
+              data-id={item.id}
+              tabIndex={-1}
+              css={{ cursor: "grab" }}
+              // a press on the handle drags; it never opens the row
+              onPointerDown={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <DragHandleIcon color={cssVar("--foreground-secondary")} />
+            </IconButton>
+          </div>
+        )}
         <div role="cell">
           <TruncatedText>{item.title}</TruncatedText>
         </div>
@@ -243,6 +285,9 @@ export const ItemsTable = ({
   onSortChange,
   onToggle,
   onToggleAll,
+  onMove,
+  onDrop,
+  onLeave,
 }: {
   collectionName: string;
   page: CmsItemsPage;
@@ -258,6 +303,12 @@ export const ItemsTable = ({
   onSortChange: (clicked: CmsSortKey) => void;
   onToggle: (id: string) => void;
   onToggleAll: () => void;
+  /** Alt+Arrow on a row: one place up or down. */
+  onMove: (id: string, direction: -1 | 1) => void;
+  /** A pointer drop of the row at `oldIndex` at `newIndex`. */
+  onDrop: (oldIndex: number, newIndex: number) => void;
+  /** The focus left the table. */
+  onLeave: () => void;
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -310,6 +361,34 @@ export const ItemsTable = ({
   ].join(" ");
 
   const rows = page.items;
+
+  const { sortableRefCallback, dragItemId, placementIndicator } = useSortable({
+    items: showHandle ? rows : [],
+    onSort: (newIndex, oldIndex) => {
+      if (showHandle) {
+        onDrop(oldIndex, newIndex);
+      }
+    },
+  });
+
+  // The row an Alt+Arrow moved keeps the focus once it is at its new place:
+  // moving its node in the DOM can drop it.
+  const movedId = useRef<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    const id = movedId.current;
+    movedId.current = undefined;
+    if (id === undefined) {
+      return;
+    }
+    const element = ref.current?.querySelector<HTMLElement>(
+      `[data-cms-item-id="${CSS.escape(id)}"]`
+    );
+    if (element !== null && element !== undefined) {
+      if (document.activeElement !== element) {
+        element.focus();
+      }
+    }
+  }, [rows]);
   const allSelected =
     rows.length > 0 && rows.every((row) => list.selected.has(row.id));
   const someSelected = rows.some((row) => list.selected.has(row.id));
@@ -320,6 +399,18 @@ export const ItemsTable = ({
       className={tableStyle()}
       role="table"
       aria-label={collectionName}
+      onBlur={(event) => {
+        // a moved row's node leaving the DOM for a moment is no leave
+        if (movedId.current !== undefined) {
+          return;
+        }
+        if (
+          event.relatedTarget === null ||
+          event.currentTarget.contains(event.relatedTarget as Node) === false
+        ) {
+          onLeave();
+        }
+      }}
       style={{ "--cms-grid": template } as CSSProperties}
     >
       {rows.length > 0 && (
@@ -377,7 +468,11 @@ export const ItemsTable = ({
         </div>
       )}
       <List asChild>
-        <InsetList role="rowgroup" css={{ gap: 0, paddingTop: 0 }}>
+        <InsetList
+          ref={sortableRefCallback}
+          role="rowgroup"
+          css={{ gap: 0, paddingTop: 0 }}
+        >
           {rows.map((item, index) => (
             <ItemRow
               key={item.id}
@@ -386,11 +481,17 @@ export const ItemsTable = ({
               fields={shown}
               canEdit={canEdit}
               selected={list.selected.has(item.id)}
-              leadCount={leadCount}
+              showHandle={showHandle}
+              dragging={dragItemId === item.id}
               onOpen={() => onOpenItem(item.id)}
               onToggle={onToggle}
+              onMove={(id, direction) => {
+                movedId.current = id;
+                onMove(id, direction);
+              }}
             />
           ))}
+          {placementIndicator}
         </InsetList>
       </List>
     </div>

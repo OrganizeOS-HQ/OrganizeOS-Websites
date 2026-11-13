@@ -8,6 +8,7 @@ import {
   SearchField,
   Text,
   theme,
+  toast,
   Tooltip,
 } from "@webstudio-is/design-system";
 import {
@@ -15,10 +16,17 @@ import {
   ChevronRightIcon,
   PlusIcon,
 } from "@webstudio-is/icons";
-import { formatPageRange, getPageCount, type CmsRefusal } from "./cms-logic";
 import {
+  formatPageRange,
+  getPageCount,
+  getRefusal,
+  type CmsRefusal,
+} from "./cms-logic";
+import {
+  canDragRows,
   filterCount,
   getDeleteTitle,
+  getListFailureText,
   isSortableField,
   nextSort,
   resolveColumns,
@@ -28,6 +36,7 @@ import {
   CMS_PAGE_SIZE,
   type CmsCollectionSummary,
   type CmsField,
+  type CmsItemRow,
   type CmsItemsPage,
   type CmsSortKey,
   type CmsSource,
@@ -38,6 +47,7 @@ import { FilterMenu, SortMenu } from "./items-menus";
 import { ItemsTable } from "./items-table";
 import { TruncatedText } from "./truncated-text";
 import { useBulkActions } from "./use-bulk-actions";
+import { useRowReorder } from "./use-row-reorder";
 
 const TopBar = ({
   collection,
@@ -305,6 +315,39 @@ export const ItemsView = ({
   const [confirmDelete, setConfirmDelete] = useState<number | undefined>(
     undefined
   );
+  // drag reorder (5.1.7): an open and a bulk call wait until it settles
+  const reorder = useRowReorder({
+    source,
+    collectionId: collection.id,
+    page,
+    pageAnswer,
+    onReordered: onListWritten,
+    onFailed: (code) => {
+      // the refetch shows the server's order
+      onListWritten();
+      const refusal = getRefusal(code, "write");
+      if (refusal !== undefined) {
+        onRefusal(refusal);
+        return;
+      }
+      toast.error(getListFailureText("order", code));
+    },
+  });
+  const showHandle =
+    page !== undefined &&
+    canDragRows({ canEdit, state: list, q: query, total: page.total });
+  const shownPage: CmsItemsPage | undefined =
+    page === undefined
+      ? undefined
+      : {
+          ...page,
+          items: reorder.order
+            .map((id) => page.items.find((row) => row.id === id))
+            .filter((row): row is CmsItemRow => row !== undefined),
+        };
+  const bulkBusy = bulk.busy || reorder.bulkWaiting;
+  const runBulk = (run: () => Promise<void>) =>
+    reorder.whenSettled(() => void run(), "bulk");
   const selectedCount =
     page?.items.filter((row) => list.selected.has(row.id)).length ?? 0;
   const bulkBar =
@@ -312,10 +355,10 @@ export const ItemsView = ({
       <BulkBar
         count={selectedCount}
         canPublish={canPublish}
-        busy={bulk.busy}
-        onPublish={() => void bulk.publish()}
-        onUnpublish={() => void bulk.setStatus("draft")}
-        onArchive={() => void bulk.setStatus("archived")}
+        busy={bulkBusy}
+        onPublish={() => runBulk(bulk.publish)}
+        onUnpublish={() => runBulk(() => bulk.setStatus("draft"))}
+        onArchive={() => runBulk(() => bulk.setStatus("archived"))}
         onDelete={() => setConfirmDelete(selectedCount)}
         onClear={() => onListChange({ ...list, selected: new Set() })}
       />
@@ -391,13 +434,18 @@ export const ItemsView = ({
             {page !== undefined && page.total > 0 && (
               <ItemsTable
                 collectionName={collection.name}
-                page={page}
+                page={shownPage ?? page}
                 fields={fields ?? []}
                 list={list}
                 canEdit={canEdit}
-                showHandle={false}
+                showHandle={showHandle}
                 focusItemId={focusItemId}
-                onOpenItem={onOpenItem}
+                onOpenItem={(itemId) =>
+                  reorder.whenSettled(() => onOpenItem(itemId), "open")
+                }
+                onMove={reorder.move}
+                onDrop={reorder.drop}
+                onLeave={reorder.flush}
                 onSortChange={onSortChange}
                 onToggle={onToggle}
                 onToggleAll={onToggleAll}
@@ -416,11 +464,13 @@ export const ItemsView = ({
       <DeleteDialog
         open={confirmDelete !== undefined}
         title={getDeleteTitle(confirmDelete ?? selectedCount, collection)}
-        busy={bulk.busy}
+        busy={bulkBusy}
         onCancel={() => setConfirmDelete(undefined)}
-        onConfirm={() => {
-          void bulk.remove().finally(() => setConfirmDelete(undefined));
-        }}
+        onConfirm={() =>
+          runBulk(() =>
+            bulk.remove().finally(() => setConfirmDelete(undefined))
+          )
+        }
       />
     </Flex>
   );
