@@ -45,8 +45,8 @@ import {
  *    failed owner read is 503 `unavailable`, a project no org owns 403
  *    `forbidden`.
  * 7. The request's path must match one of a fixed list of endpoints
- *    (`patterns`), with the platform's base path removed; anything else is 404. The
- *    path is matched segment by segment: fixed words exactly, ids as
+ *    (`patterns`), with the platform's base path removed; anything else is
+ *    404. The path is matched segment by segment: fixed words exactly, ids as
  *    lower-case UUIDs, so a dot segment, an encoded segment, an empty
  *    segment or a trailing slash matches nothing. The query is parsed with
  *    the endpoint's strict schema: an unknown or repeated key matches

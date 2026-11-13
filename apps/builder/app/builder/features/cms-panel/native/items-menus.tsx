@@ -110,7 +110,7 @@ export const FilterMenu = ({
               }
             >
               <DropdownMenuRadioItem value="" icon={<MenuCheckedIcon />}>
-                Any {filterField.label.toLowerCase()}
+                <RadioLabel>{`Any ${filterField.label.toLowerCase()}`}</RadioLabel>
               </DropdownMenuRadioItem>
               {(filterField.options ?? []).map((option) => (
                 <DropdownMenuRadioItem

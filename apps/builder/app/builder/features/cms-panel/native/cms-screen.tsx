@@ -301,9 +301,16 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         refreshedMissing.current.delete(field.key);
       }
     };
-    // The collection, search, page number and list key of the page drawn.
+    // The collection, search, page number, list key and filter and sort of
+    // the page drawn.
     const drawnPage = useRef<
-      | { collectionId: string; query: string; page: number; listKey: string }
+      | {
+          collectionId: string;
+          query: string;
+          page: number;
+          listKey: string;
+          list: Pick<CmsListState, "status" | "sort" | "direction" | "option">;
+        }
       | undefined
     >(undefined);
     // The E3 inputs whose answer is already drawn: a page E3 answered in
@@ -540,19 +547,28 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
                 toast.error(getToastText(result.error), {
                   id: `cms-read-${result.error}`,
                 });
-                // a failed page change goes back to the drawn page number,
-                // unread, so the pager asks from the rows on screen; a
-                // failed search keeps the page it asked for
+                // a failed page, filter or sort change goes back to the
+                // drawn page number and list state, unread, so the pager and
+                // the menus show what the rows on screen are (6.1); a failed
+                // search keeps the page it asked for
                 const drawn = drawnPage.current;
                 if (
                   drawn !== undefined &&
                   drawn.collectionId === collectionId &&
                   drawn.query === query &&
-                  drawn.listKey === currentListKey &&
-                  drawn.page !== page
+                  (drawn.listKey !== currentListKey || drawn.page !== page)
                 ) {
-                  adoptedPageKey.current = keyFor(drawn.page, currentListKey);
-                  setPage(drawn.page);
+                  adoptedPageKey.current = keyFor(drawn.page, drawn.listKey);
+                  if (drawn.listKey !== currentListKey) {
+                    setListState((current) =>
+                      current.collectionId === collectionId
+                        ? { ...current, ...drawn.list }
+                        : current
+                    );
+                  }
+                  if (drawn.page !== page) {
+                    setPage(drawn.page);
+                  }
                 }
               } else {
                 setPageFailed(true);
@@ -563,12 +579,21 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           clearLine("page");
           setPageFailed(false);
           setItemsPage(result);
-          drawnPage.current = {
-            collectionId,
-            query,
-            page: result.page,
-            listKey: currentListKey,
-          };
+          {
+            const drawnList = adoptApplied(effectList, result.applied);
+            drawnPage.current = {
+              collectionId,
+              query,
+              page: result.page,
+              listKey: listKey(drawnList),
+              list: {
+                status: drawnList.status,
+                sort: drawnList.sort,
+                direction: drawnList.direction,
+                option: drawnList.option,
+              },
+            };
+          }
           // the answer's applied filter and sort are adopted without a
           // second E3; the selection keeps only the rows still shown
           const nextListKey = listKey(adoptApplied(effectList, result.applied));
@@ -688,6 +713,12 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       });
 
     const openItem = (nextId: string | null) => {
+      // Back shows the list selection-free (5.1.5)
+      setListState((current) =>
+        current.selected.size === 0
+          ? current
+          : { ...current, selected: new Set<string>() }
+      );
       setEditorSession((current) => current + 1);
       setFocusBack(true);
       setReturnFocusItemId(undefined);

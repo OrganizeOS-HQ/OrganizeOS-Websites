@@ -1274,6 +1274,16 @@ const echoPage = (
   });
 };
 
+const menuRadio = (text: string) =>
+  [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+    (item) => item.textContent === text
+  );
+
+const nameHeader = () =>
+  [
+    ...document.querySelectorAll<HTMLElement>('[role="columnheader"] button'),
+  ].find((button) => button.textContent?.startsWith("Name"));
+
 describe("the list state per collection (Task 14)", () => {
   const lastListItems = () =>
     fake.listItems.mock.calls.at(-1) as [string, CmsItemsQuery] | undefined;
@@ -1338,6 +1348,12 @@ describe("the list state per collection (Task 14)", () => {
     await settle();
     expect(fake.listItems).toHaveBeenCalledTimes(1);
     expect(lastListItems()?.[1]).toMatchObject({ sort: "field:gone" });
+    // the Sort menu reads what the door ran
+    await click(buttonByText("Sort"));
+    expect(menuRadio("Manual order")?.getAttribute("aria-checked")).toBe(
+      "true"
+    );
+    expect(fake.listItems).toHaveBeenCalledTimes(1);
   });
 
   test("a columns key the cached fields lack is skipped and refreshes the fields once", async () => {
@@ -1363,17 +1379,30 @@ describe("the list state per collection (Task 14)", () => {
     expect(fake.getCollection).toHaveBeenCalledTimes(2);
   });
 
+  // Review Focus 2
   test("a filtered, sorted page 2 is kept across opening an item and Back", async () => {
+    // 60 items: page 1 holds one row, page 2 another
+    const rows = (q: CmsItemsQuery) => [
+      itemRowOf(
+        itemOf({
+          id: `00000000-0000-4000-8000-00000000000${q.page ?? 1}`,
+          slug: `p${q.page ?? 1}`,
+          data: { title: `Row ${q.page ?? 1}` },
+        })
+      ),
+    ];
     fake.listItems.mockImplementation(async (_c, q) =>
-      echoPage(q, [itemRowOf(itemOf())], 60)
+      echoPage(q, rows(q), 60)
     );
-    mount({
-      initialView: {
-        collectionId: POSTS.id,
-        list: listView({ status: "archived", sort: "name", direction: "desc" }),
-        page: 2,
-      },
-    });
+    mount({ initialView: { collectionId: POSTS.id } });
+    await settle();
+
+    // through the UI: the Archived filter, Name descending, then page 2
+    await click(buttonByText("Filter"));
+    await click(menuRadio("Archived"));
+    await click(nameHeader());
+    await click(nameHeader());
+    await click(byLabel("Next"));
     await settle();
     expect(lastListItems()).toEqual([
       POSTS.id,
@@ -1385,8 +1414,11 @@ describe("the list state per collection (Task 14)", () => {
         direction: "desc",
       },
     ]);
+    // a selection before opening the item
+    await click(byLabel("Select Row 2"));
+    expect(byLabel("Select Row 2")?.getAttribute("data-state")).toBe("checked");
 
-    await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+    await click(document.querySelector<HTMLElement>('[data-cms-item="p2"]'));
     await settle();
     await click(byLabel("Back"));
     await settle();
@@ -1400,6 +1432,40 @@ describe("the list state per collection (Task 14)", () => {
         direction: "desc",
       },
     ]);
+    expect(
+      document.querySelector<HTMLElement>("[data-cms-pager]")?.textContent
+    ).toBe("51-60 of 60");
+    expect(
+      [...document.querySelectorAll("button")].find((button) =>
+        button.textContent?.startsWith("Filter")
+      )?.textContent
+    ).toBe("Filter1");
+    expect(
+      nameHeader()?.closest('[role="columnheader"]')?.getAttribute("aria-sort")
+    ).toBe("descending");
+    // the table is selection-free
+    expect(
+      document.querySelector('[role="row"] [data-state="checked"]')
+    ).toBeNull();
+    expect(document.querySelector('[role="toolbar"]')).toBeNull();
+  });
+
+  test("a failed filter change keeps the drawn filter, so the Filter shows what the rows are", async () => {
+    fake.listItems.mockImplementation(async (_c, q) =>
+      q.status === "draft"
+        ? { error: "unavailable" }
+        : echoPage(q, [itemRowOf(itemOf())], 1)
+    );
+    mount({ initialView: { collectionId: POSTS.id } });
+    await settle();
+    await click(buttonByText("Filter"));
+    await click(menuRadio("Draft"));
+    await settle();
+    expect(lastListItems()?.[1]).toMatchObject({ status: "draft" });
+    expect(buttonByText("Filter")).not.toBeUndefined();
+    await click(buttonByText("Filter"));
+    expect(menuRadio("All items")?.getAttribute("aria-checked")).toBe("true");
+    expect(menuRadio("Draft")?.getAttribute("aria-checked")).toBe("false");
   });
 
   test("a failed refetch for the current key keeps the drawn rows", async () => {

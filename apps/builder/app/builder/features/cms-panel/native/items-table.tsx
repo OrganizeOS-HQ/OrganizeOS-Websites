@@ -27,6 +27,7 @@ import { tickedCheckboxCss } from "../../publish/organizeos-publish-checkbox";
 import {
   fitFieldColumns,
   getCellText,
+  isSortableField,
   resolveColumns,
   type CmsListState,
 } from "./cms-list-logic";
@@ -38,17 +39,6 @@ import type {
 } from "./cms-source";
 import { StatusChip } from "./status-chip";
 import { TruncatedText } from "./truncated-text";
-
-/** The kinds the list can sort on (spec 5.1.3). */
-const SORTABLE_KINDS: ReadonlySet<string> = new Set([
-  "text",
-  "date",
-  "switch",
-  "option",
-]);
-
-const isSortableField = (field: CmsField) =>
-  field.isTitle !== true && SORTABLE_KINDS.has(field.kind);
 
 const LEAD = theme.spacing[11];
 
@@ -94,12 +84,12 @@ const sortButtonStyle = css({
   },
 });
 
-/** A medium date for the Published column, in the browser's locale. */
-const publishedDate = (value: string): string => {
+/** A short date for the Published column, in the browser's locale. */
+export const publishedDate = (value: string): string => {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? ""
-    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+    : new Intl.DateTimeFormat(undefined, { dateStyle: "short" }).format(date);
 };
 
 const HeaderLabel = ({ label }: { label: string }) => (
@@ -155,13 +145,9 @@ const FieldCell = ({ field, value }: { field: CmsField; value: unknown }) => {
   const text = getCellText(field, value);
   if (field.kind === "number") {
     return (
-      <Text
-        color="subtle"
-        truncate
-        css={{ fontVariantNumeric: "tabular-nums" }}
-      >
+      <TruncatedText css={{ fontVariantNumeric: "tabular-nums" }}>
         {text}
-      </Text>
+      </TruncatedText>
     );
   }
   return <TruncatedText>{text}</TruncatedText>;

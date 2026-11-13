@@ -508,7 +508,22 @@ describe("the table's columns (Task 15)", () => {
     const published = document.querySelector<HTMLElement>(
       '[data-cms-item] [role="cell"]:last-child'
     );
-    expect(published?.textContent).not.toBe("");
+    // a short date in the browser's locale
+    expect(published?.textContent).toBe(
+      new Intl.DateTimeFormat(undefined, { dateStyle: "short" }).format(
+        new Date("2026-11-05T09:00:00+00:00")
+      )
+    );
+  });
+
+  test("a draft's Published cell is empty", async () => {
+    await mountEvents(
+      eventsPage(["kind"], [eventRow({ status: "draft", publishedAt: null })])
+    );
+    const published = document.querySelector<HTMLElement>(
+      '[data-cms-item] [role="cell"]:last-child'
+    );
+    expect(published?.textContent).toBe("");
   });
 
   test("field columns drop as the main area narrows, and nothing scrolls sideways", async () => {
@@ -551,7 +566,14 @@ describe("the table's columns (Task 15)", () => {
   });
 
   test("a header click sets its first direction, a second flips it, and aria-sort follows, and the page goes to 1", async () => {
-    await mountEvents();
+    await mountEvents(
+      itemsPageOf([eventRow()], 60, 1, {
+        columns: ["kind"],
+        filterField: "kind",
+      })
+    );
+    await click(byLabel("Next"));
+    expect(lastListItemsCall()?.[1]).toMatchObject({ page: 2 });
     fake.listItems.mockClear();
     const modified = () =>
       [...document.querySelectorAll<HTMLElement>('[role="columnheader"]')].find(
@@ -577,6 +599,43 @@ describe("the table's columns (Task 15)", () => {
     expect(buttonByText("New item")).not.toBeUndefined();
     expect(document.querySelector("[data-cms-no-matches]")).toBeNull();
     expect(document.querySelector('[role="table"]')).toBeNull();
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+
+    // a filter on and no rows: one line, and the top bar keeps its controls
+    fake = createFakeCmsSource();
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+    fake.listItems.mockImplementation(async (_c, q) =>
+      itemsPageOf([], 0, 1, {
+        columns: ["kind"],
+        filterField: "kind",
+        applied: {
+          status: q.status ?? "all",
+          sort: "order",
+          direction: "asc",
+          optionKey: null,
+          optionValue: null,
+        },
+      })
+    );
+    mount({
+      initialView: {
+        collectionId: EVENTS.id,
+        list: {
+          status: "draft",
+          sort: "order",
+          direction: "asc",
+          option: null,
+        },
+      },
+    });
+    await settle();
+    expect(document.querySelector("[data-cms-no-matches]")?.textContent).toBe(
+      "No matches"
+    );
+    expect(buttonByText("Filter1")).not.toBeUndefined();
   });
 
   test("E1 reading 0 for a collection whose E3 has rows shows the rows", async () => {
@@ -776,11 +835,47 @@ describe("Filter and Sort (Task 16)", () => {
     await settle();
     const main =
       document.querySelector<HTMLElement>("[data-cms-top-bar]")!.parentElement!;
+    const fits = (menu: HTMLElement) => {
+      expect(menu.getBoundingClientRect().width).toBeLessThanOrEqual(
+        main.getBoundingClientRect().width + 1
+      );
+      expect(menu.scrollWidth).toBeLessThanOrEqual(menu.clientWidth);
+      for (const item of menu.querySelectorAll<HTMLElement>(
+        '[role="menuitemradio"]'
+      )) {
+        expect(item.scrollWidth).toBeLessThanOrEqual(item.clientWidth);
+      }
+    };
+    /** The element holding `text` set to truncate, so its tooltip carries it. */
+    const truncated = (menu: HTMLElement, text: string) =>
+      [...menu.querySelectorAll<HTMLElement>("*")].find(
+        (element) =>
+          element.textContent === text &&
+          getComputedStyle(element).textOverflow === "ellipsis"
+      );
+
     await click(buttonByText("Sort"));
     const sortMenu = document.querySelector<HTMLElement>('[role="menu"]')!;
-    expect(sortMenu.getBoundingClientRect().width).toBeLessThanOrEqual(
-      main.getBoundingClientRect().width + 1
+    fits(sortMenu);
+    expect(truncated(sortMenu, longKey)).not.toBeUndefined();
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await settle();
+
+    await click(buttonByText("Filter"));
+    const filterMenu = document.querySelector<HTMLElement>('[role="menu"]')!;
+    fits(filterMenu);
+    // the group heading, the option and Any {label} each truncate
+    const heading = [
+      ...filterMenu.querySelectorAll<HTMLElement>('[role="group"], *'),
+    ].find(
+      (element) =>
+        element.getAttribute("role") !== "menuitemradio" &&
+        element.closest('[role="menuitemradio"]') === null &&
+        element.textContent === longKey &&
+        getComputedStyle(element).textOverflow === "ellipsis"
     );
+    expect(heading).not.toBeUndefined();
+    expect(truncated(filterMenu, `Any ${longKey}`)).not.toBeUndefined();
   });
 });
 

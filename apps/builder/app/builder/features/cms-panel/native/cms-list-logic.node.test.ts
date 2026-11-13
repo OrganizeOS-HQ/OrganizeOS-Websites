@@ -11,6 +11,7 @@ import {
   getChangedSincePublish,
   getDeleteTitle,
   getListFailureText,
+  isSortableField,
   keepSelection,
   moveRow,
   nextSort,
@@ -343,5 +344,22 @@ describe("getListFailureText", () => {
     ["status", "plan", "Not in plan"],
   ] as const)("getListFailureText(%s, %s) is %s", (action, code, expected) => {
     expect(getListFailureText(action, code)).toBe(expected);
+  });
+});
+
+describe("isSortableField", () => {
+  test.each([
+    ["text", false, true],
+    ["date", false, true],
+    ["switch", false, true],
+    ["option", false, true],
+    ["number", false, false],
+    ["datetime", false, false],
+    ["reference", false, false],
+    ["text", true, false],
+  ] as const)("a %s field (title %s) sorts: %s", (kind, isTitle, sorts) => {
+    expect(isSortableField({ key: "k", label: "K", kind, isTitle })).toBe(
+      sorts
+    );
   });
 });

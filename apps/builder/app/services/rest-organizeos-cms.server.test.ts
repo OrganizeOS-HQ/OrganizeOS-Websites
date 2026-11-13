@@ -246,9 +246,16 @@ describe("matchCmsPath", () => {
         ["optionKey", "kind"],
         ["optionValue", value],
       ]);
-      // The forwarded query parses back to the sent value
+      // The forwarded query parses back to the sent value, and so does the
+      // canonical target the assertion signs
       const forwarded = new URLSearchParams(matched?.query);
       expect(forwarded.get("optionValue")).toBe(value);
+      const target = cmsCanonicalTarget(`/collections/${c}/items`, forwarded);
+      expect(
+        new URL(target, "https://app.organizeos.org").searchParams.get(
+          "optionValue"
+        )
+      ).toBe(value);
     }
   );
 

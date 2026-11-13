@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { fetch } from "~/shared/fetch.client";
+import { defaultDirection } from "./cms-list-logic";
 import {
   cmsErrorCodes,
   cmsFieldKinds,
@@ -12,8 +13,6 @@ import {
   type CmsItemsPage,
   type CmsItemsQuery,
   type CmsResult,
-  type CmsSortDirection,
-  type CmsSortKey,
   type CmsSearchResult,
   type CmsSource,
 } from "./cms-source";
@@ -72,10 +71,6 @@ export const cmsDoorPath = (
 
 const statusSchema = z.enum(["draft", "published", "archived"]);
 
-/** E3's sort and direction defaults: Modified sorts newest first. */
-const defaultDirectionOf = (sort: CmsSortKey): CmsSortDirection =>
-  sort === "updated" ? "desc" : "asc";
-
 /**
  * E3's query as the door takes it: `q` and `page` as slice 1 sends them,
  * then each filter and sort key only when it differs from its default.
@@ -92,7 +87,7 @@ const itemsQueryOf = ({
   q: cmsSearchTerm(q),
   page: page === undefined ? undefined : String(page),
   direction:
-    direction === undefined || direction === defaultDirectionOf(sort)
+    direction === undefined || direction === defaultDirection(sort)
       ? undefined
       : direction,
   optionKey,
@@ -111,7 +106,7 @@ const appliedOf = ({
 }: CmsItemsQuery): CmsItemsApplied => ({
   status,
   sort,
-  direction: direction ?? defaultDirectionOf(sort),
+  direction: direction ?? defaultDirection(sort),
   optionKey: optionKey ?? null,
   optionValue: optionValue ?? null,
 });

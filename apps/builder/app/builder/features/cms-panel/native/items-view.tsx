@@ -19,6 +19,7 @@ import { formatPageRange, getPageCount, type CmsRefusal } from "./cms-logic";
 import {
   filterCount,
   getDeleteTitle,
+  isSortableField,
   nextSort,
   resolveColumns,
   type CmsListState,
@@ -37,14 +38,6 @@ import { FilterMenu, SortMenu } from "./items-menus";
 import { ItemsTable } from "./items-table";
 import { TruncatedText } from "./truncated-text";
 import { useBulkActions } from "./use-bulk-actions";
-
-/** The field kinds the list can sort on (spec 5.1.3). */
-const SORTABLE_KINDS: ReadonlySet<string> = new Set([
-  "text",
-  "date",
-  "switch",
-  "option",
-]);
 
 const TopBar = ({
   collection,
@@ -293,9 +286,7 @@ export const ItemsView = ({
   // E3's field columns, resolved; the Filter's option field and the Sort's
   // sortable fields, whether or not they fit (spec 5.1.2, 5.1.3)
   const columnFields = resolveColumns(fields ?? [], page?.columns ?? []).fields;
-  const sortFields = columnFields.filter((field) =>
-    SORTABLE_KINDS.has(field.kind)
-  );
+  const sortFields = columnFields.filter(isSortableField);
   const filterField =
     page?.filterField != null
       ? ((fields ?? []).find((field) => field.key === page.filterField) ?? null)

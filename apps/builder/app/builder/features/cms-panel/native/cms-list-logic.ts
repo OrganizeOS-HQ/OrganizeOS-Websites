@@ -108,6 +108,18 @@ export const adoptApplied = (
   };
 };
 
+/** The field kinds the list sorts on (spec 5.1.3). */
+const SORTABLE_KINDS: ReadonlySet<string> = new Set([
+  "text",
+  "date",
+  "switch",
+  "option",
+]);
+
+/** Whether a field column sorts: a sortable kind, never the title (Name sorts it). */
+export const isSortableField = (field: CmsField): boolean =>
+  field.isTitle !== true && SORTABLE_KINDS.has(field.kind);
+
 /** The fields for E3's column keys, in order, skipping a key the fields lack. */
 export const resolveColumns = (
   fields: readonly CmsField[],
