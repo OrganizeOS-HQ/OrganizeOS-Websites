@@ -548,8 +548,8 @@ const isFocusable = (instance: Instance) =>
   focusableTags.has(instance.tag ?? "") ||
   focusableComponents.has(instance.component);
 
-// A band (the kit's section() on accent-1 or text, or a section a dark
-// Background preset paints) sets the band variables to its text colour for
+// A band (the kit's section() on accent-1 or text, or a section painted
+// dark by hand) sets the band variables to its text colour for
 // what sits inside it; setting them is what makes an element a band here. A
 // panel with the base background inside a band sets both back to
 // var(--accent-2), at the base breakpoint or at the one where it turns base,

@@ -762,9 +762,8 @@ can be merged with minimal conflict.
     rule, predicate and message are the runtime lock's own, imported from
     `runtime/organizeos-catalog.ts` (`assertCatalogRootBindingsKept`,
     `catalogChangeMessage`; below).
-  - The Background presets section, by one marked entry in
-    `features/style-panel/sections/sections.ts`; the Motion tab, by marked
-    lines in `builder/inspector.tsx`, with `$activeInspectorPanel` widened to
+  - The Motion tab, by marked lines in `builder/inspector.tsx`, with
+    `$activeInspectorPanel` widened to
     take `"motion"` in `builder/shared/nano-states.ts`; the OrganizeOS data
     tab in `sidebar-left/sidebar-left.tsx` (shown only for an org the deny
     list does not deny) and `sidebar-left/types.ts`; the panel's controls,
@@ -848,12 +847,9 @@ can be merged with minimal conflict.
     `<TemplateChooser />` mount in `builder/builder.tsx`, pinned by
     `overlay.wiring.node.test.ts`; the `instanceIdPrefix` option of
     `completeOrganizeosFragment` in `insert-organizeos-block.ts`;
-    `getDefaultRoles` in `section-background.tsx` taking the roles by name
-    (importing `site-templates/canonical-variables` alone);
     `deleteSubtreeMutable` exported from `collection-pages.ts`; and
     `SIGNUP_PAGE_PATH` in `shared/organizeos-preset-ids.ts`, so the browser
-    can read it; with cases in `insert-organizeos-block.test.tsx`,
-    `section-background.test.tsx` and
+    can read it; with cases in `insert-organizeos-block.test.tsx` and
     `shared/db/signup-form-preset.merge.server.test.tsx`.
   - The canvas's play flag needs no builder change: the players' metas set
     upstream's `selectionReveal`, pinned by

@@ -18,8 +18,6 @@ import * as textShadows from "./text-shadows/text-shadows";
 import * as backdropFilter from "./backdrop-filter/backdrop-filter";
 import * as transforms from "./transforms/transforms";
 import type { CssProperty } from "@webstudio-is/css-engine";
-// OrganizeOS fork: Background presets, after Backgrounds (organizeos-panel/background-presets-section.tsx)
-import * as organizeosBackgroundPresets from "~/builder/features/organizeos-panel/background-presets-section";
 
 export const sections = new Map<
   string,
@@ -38,8 +36,6 @@ export const sections = new Map<
   ["typography", typography],
   ["textShadows", textShadows],
   ["backgrounds", backgrounds],
-  // OrganizeOS fork: Background presets, for orgs not denied the blocks
-  ["organizeosBackgroundPresets", organizeosBackgroundPresets],
   ["borders", borders],
   ["boxShadows", boxShadows],
   ["filter", filter],
