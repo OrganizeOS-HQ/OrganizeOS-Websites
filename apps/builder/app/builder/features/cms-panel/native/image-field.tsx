@@ -13,16 +13,13 @@ import {
   Tooltip,
 } from "@webstudio-is/design-system";
 import { TrashIcon, UploadIcon } from "@webstudio-is/icons";
-import { getRefusal, getToastText, type CmsRefusal } from "./cms-logic";
+import { getToastText, type CmsRefusal } from "./cms-logic";
+import type { CmsImageValue, CmsSource } from "./cms-source";
 import {
-  CMS_IMAGE_MAX_BYTES,
-  CMS_IMAGE_TYPES,
-  isCmsFailure,
-  type CmsImageValue,
-  type CmsSource,
-} from "./cms-source";
-
-const IMAGE_ACCEPT = Object.keys(CMS_IMAGE_TYPES).join(",");
+  CMS_IMAGE_ACCEPT,
+  checkCmsImageFile,
+  uploadCmsImage,
+} from "./cms-image-upload";
 
 /** The picture itself, left-aligned, at most 192 px tall: no frame around it. */
 const frameStyle = css({
@@ -55,22 +52,6 @@ const readImage = (value: unknown): CmsImageValue | string | undefined => {
   return undefined;
 };
 
-/** Width and height, measured in the browser from the chosen file. */
-const measure = (file: File) =>
-  new Promise<{ width: number | null; height: number | null }>((resolve) => {
-    const url = URL.createObjectURL(file);
-    const image = new Image();
-    image.onload = () => {
-      resolve({ width: image.naturalWidth, height: image.naturalHeight });
-      URL.revokeObjectURL(url);
-    };
-    image.onerror = () => {
-      resolve({ width: null, height: null });
-      URL.revokeObjectURL(url);
-    };
-    image.src = url;
-  });
-
 export const ImageField = ({
   id,
   source,
@@ -98,51 +79,39 @@ export const ImageField = ({
   const url = typeof image === "string" ? image : image?.url;
 
   const choose = async (file: File) => {
-    if (CMS_IMAGE_TYPES[file.type] === undefined) {
-      onError("Not an image");
-      return;
-    }
-    if (file.size > CMS_IMAGE_MAX_BYTES) {
-      onError("Over 4 MB");
+    const refused = checkCmsImageFile(file);
+    if (refused !== undefined) {
+      onError(refused);
       return;
     }
     onError(undefined);
     setIsUploading(true);
     onBusyChange?.(true);
-    let size: Awaited<ReturnType<typeof measure>>;
-    let uploaded: Awaited<ReturnType<CmsSource["uploadImage"]>>;
-    try {
-      [size, uploaded] = await Promise.all([
-        measure(file),
-        source.uploadImage(file),
-      ]);
-    } catch {
-      // a source that throws reads as a lost answer
-      size = { width: null, height: null };
-      uploaded = { error: "unavailable" };
-    } finally {
-      setIsUploading(false);
-      onBusyChange?.(false);
-    }
-    if (isCmsFailure(uploaded)) {
-      const refusal = getRefusal(uploaded.error, "write");
-      if (refusal !== undefined && onRefusal !== undefined) {
-        onRefusal(refusal);
+    const uploaded = await uploadCmsImage(source, file);
+    setIsUploading(false);
+    onBusyChange?.(false);
+    if (uploaded.ok === false) {
+      if ("refusal" in uploaded) {
+        if (onRefusal !== undefined) {
+          onRefusal(uploaded.refusal);
+          return;
+        }
+        onError("Not uploaded");
         return;
       }
-      // a write refused for access or plan: the editor's write toast
-      if (uploaded.error === "forbidden" || uploaded.error === "plan") {
-        toast.error(getToastText(uploaded.error));
+      if ("toast" in uploaded) {
+        toast.error(getToastText(uploaded.toast));
         return;
       }
-      onError(uploaded.error === "invalid" ? "Not an image" : "Not uploaded");
+      onError(uploaded.error);
       return;
     }
     onChange({
       url: uploaded.url,
       path: uploaded.path,
       alt: typeof image === "object" ? image.alt : "",
-      ...size,
+      width: uploaded.width,
+      height: uploaded.height,
     });
   };
 
@@ -164,7 +133,7 @@ export const ImageField = ({
         ref={fileRef}
         id={url === undefined ? id : undefined}
         type="file"
-        accept={IMAGE_ACCEPT}
+        accept={CMS_IMAGE_ACCEPT}
         hidden
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];

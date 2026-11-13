@@ -60,6 +60,10 @@ describe("the round trip (spec 8)", () => {
     }
   );
 
+  test("only a value the editor would not keep whole is read-only", () => {
+    expect(fixture.readOnly.map(({ reason }) => reason)).toEqual(["lossy"]);
+  });
+
   test("the editor never writes a tag outside the allowlist but span", () => {
     const allowed = new Set([
       "p",
@@ -81,6 +85,9 @@ describe("the round trip (spec 8)", () => {
       "code",
       "pre",
       "hr",
+      "img",
+      "figure",
+      "figcaption",
       "span",
     ]);
     for (const { editor } of fixture.cases) {
@@ -147,6 +154,18 @@ describe("the block signature", () => {
     [
       '<blockquote><h2>A</h2></blockquote><p><a href="javascript:x">y</a></p>',
       "blockquote@0 h2@1 links=0",
+    ],
+    [
+      '<ul><li><p>a<img src="https://a.org/x.png" />b</p></li></ul>',
+      "ul@0 li@1:p2 img@2 links=0",
+    ],
+    [
+      '<ul><li>a<img src="https://a.org/x.png">b</li></ul>',
+      "ul@0 li@1:p2 img@2 links=0",
+    ],
+    [
+      '<figure><img src="https://a.org/x.png" /><figcaption>c</figcaption></figure>',
+      "figure@0 img@1 links=0",
     ],
   ])("richTextBlockSignature(%j) is %j", (html, signature) => {
     expect(richTextBlockSignature(html)).toBe(signature);

@@ -1,6 +1,6 @@
 {
   "format": "OrganizeOS rich-text round trip, version 1",
-  "about": "Each case is a stored rich-text value (input), the HTML the builder's native CMS editor writes after loading it (editor, pinned by the fork's test), and that HTML after the platform's normalizeRichText (stored, pinned by this repository's test; null when nothing is left). readOnly holds stored values the editor must open read-only, with the reason: images, or lossy for a shape it would not keep whole. The builder fork copies this file unchanged. Spec: docs/superpowers/specs/2026-11-07-native-cms-in-the-builder-design.md, 4.3.3.1 and 8.",
+  "about": "Each case is a stored rich-text value (input), the HTML the builder's native CMS editor writes after loading it (editor, pinned by the fork's test), and that HTML after the platform's normalizeRichText (stored, pinned by this repository's test; null when nothing is left). readOnly holds stored values the editor must open read-only, with the reason: lossy, for a shape it would not keep whole. The builder fork copies this file unchanged. Spec: docs/superpowers/specs/2026-11-07-native-cms-in-the-builder-design.md, 4.3.3.1 and 8.",
   "cases": [
     {
       "name": "paragraphs",
@@ -177,19 +177,57 @@
       "input": "<p><a href=\"contact\">Contact</a></p>",
       "editor": "<p><a href=\"contact\"><span style=\"white-space: pre-wrap;\">Contact</span></a></p>",
       "stored": "<p><a href=\"contact\">Contact</a></p>"
-    }
-  ],
-  "readOnly": [
+    },
     {
       "name": "image",
       "input": "<p>Text</p><p><img src=\"https://example.org/a.png\" alt=\"A\" width=\"640\" height=\"480\" /></p>",
-      "reason": "images"
+      "editor": "<p><span style=\"white-space: pre-wrap;\">Text</span></p><p><img src=\"https://example.org/a.png\" alt=\"A\" width=\"640\" height=\"480\"></p>",
+      "stored": "<p>Text</p><p><img src=\"https://example.org/a.png\" alt=\"A\" width=\"640\" height=\"480\" /></p>"
     },
     {
       "name": "figure with a caption",
       "input": "<figure><img src=\"https://example.org/a.png\" alt=\"A\" /><figcaption>Caption</figcaption></figure>",
-      "reason": "images"
+      "editor": "<figure><img src=\"https://example.org/a.png\" alt=\"A\"><figcaption>Caption</figcaption></figure>",
+      "stored": "<figure><img src=\"https://example.org/a.png\" alt=\"A\" /><figcaption>Caption</figcaption></figure>"
     },
+    {
+      "name": "image only",
+      "input": "<p><img src=\"https://example.org/a.png\" alt=\"A picture\" title=\"Picture\" /></p>",
+      "editor": "<p><img src=\"https://example.org/a.png\" alt=\"A picture\" title=\"Picture\"></p>",
+      "stored": "<p><img src=\"https://example.org/a.png\" alt=\"A picture\" title=\"Picture\" /></p>"
+    },
+    {
+      "name": "image in a link",
+      "input": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a></p>",
+      "editor": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\"></a></p>",
+      "stored": "<p><a href=\"https://example.org/\"><img src=\"https://example.org/a.png\" alt=\"A\" /></a></p>"
+    },
+    {
+      "name": "image in a list item",
+      "input": "<ul><li><p>Item <img src=\"https://example.org/a.png\" alt=\"A\" /></p></li></ul><p></p>",
+      "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">Item</span><img src=\"https://example.org/a.png\" alt=\"A\"></li></ul><p></p>",
+      "stored": "<ul><li>Item<img src=\"https://example.org/a.png\" alt=\"A\" /></li></ul><p></p>"
+    },
+    {
+      "name": "image in a quote",
+      "input": "<blockquote><p>Quote <img src=\"https://example.org/a.png\" alt=\"A\" /></p></blockquote><p></p>",
+      "editor": "<blockquote><p><span style=\"white-space: pre-wrap;\">Quote</span><img src=\"https://example.org/a.png\" alt=\"A\"></p></blockquote><p></p>",
+      "stored": "<blockquote><p>Quote<img src=\"https://example.org/a.png\" alt=\"A\" /></p></blockquote><p></p>"
+    },
+    {
+      "name": "image in a heading",
+      "input": "<h2>Title <img src=\"https://example.org/a.png\" alt=\"A\" /></h2><p>Body</p>",
+      "editor": "<h2><span style=\"white-space: pre-wrap;\">Title</span><img src=\"https://example.org/a.png\" alt=\"A\"></h2><p><span style=\"white-space: pre-wrap;\">Body</span></p>",
+      "stored": "<h2>Title<img src=\"https://example.org/a.png\" alt=\"A\" /></h2><p>Body</p>"
+    },
+    {
+      "name": "http image",
+      "input": "<p><img src=\"http://example.org/a.png\" alt=\"A\" /></p>",
+      "editor": "<p><img src=\"http://example.org/a.png\" alt=\"A\"></p>",
+      "stored": "<p><img src=\"http://example.org/a.png\" alt=\"A\" /></p>"
+    }
+  ],
+  "readOnly": [
     {
       "name": "list item with two paragraphs",
       "input": "<ul><li><p>a</p><p>b</p></li></ul><p></p>",

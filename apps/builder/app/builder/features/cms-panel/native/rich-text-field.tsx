@@ -4,15 +4,17 @@
  * `rich-text-html.ts`'s; `field-controls.tsx` loads this module lazily, so
  * Lexical stays out of the builder's first load.
  *
- * A value the editor would not keep whole (images, or a block shape its
- * export does not reproduce) opens read-only, so nothing is lost silently.
+ * A value the editor would not keep whole (a block shape its export does
+ * not reproduce) opens read-only, so nothing is lost silently.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   $createParagraphNode,
   $getRoot,
+  $getNodeByKey,
   $getSelection,
   $isRangeSelection,
+  $setSelection,
   COMMAND_PRIORITY_LOW,
   CONTROLLED_TEXT_INSERTION_COMMAND,
   FORMAT_TEXT_COMMAND,
@@ -20,6 +22,7 @@ import {
   SELECTION_CHANGE_COMMAND,
   type LexicalEditor,
   type LexicalNode,
+  type RangeSelection,
   type TextFormatType,
 } from "lexical";
 import { $isLinkNode, LinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
@@ -73,10 +76,12 @@ import {
   Text,
   textVariants,
   theme,
+  toast,
   Tooltip,
 } from "@webstudio-is/design-system";
 import {
   BoldIcon,
+  ImageIcon,
   LinkIcon,
   ListIcon,
   MinusIcon,
@@ -84,12 +89,23 @@ import {
   TextStrikethroughIcon,
   TextUnderlineIcon,
 } from "@webstudio-is/icons";
-import type { CmsRichTextValue } from "./cms-source";
+import type { CmsRichTextValue, CmsSource } from "./cms-source";
+import { getToastText, type CmsRefusal } from "./cms-logic";
+import {
+  CMS_IMAGE_ACCEPT,
+  checkCmsImageFile,
+  uploadCmsImage,
+} from "./cms-image-upload";
+import {
+  $createCmsImageNode,
+  type CmsImageAttributes,
+} from "./rich-text-image-node";
 import {
   exportRichTextHtml,
   getRichTextReadOnlyReason,
   importRichTextHtml,
   readRichTextValue,
+  richTextHasImage,
   richTextHref,
   richTextHtmlConfig,
   richTextImportHref,
@@ -512,8 +528,139 @@ const LinkButton = ({
   );
 };
 
+/** What the toolbar's Image needs: E9, and where its failures go. */
+type ImageUpload = {
+  source: Pick<CmsSource, "uploadImage">;
+  /** "Not an image", "Over 4 MB" or "Not uploaded", under the field. */
+  onError?: (error: string | undefined) => void;
+  /** True while E9 is in flight: Save and Publish wait for it. */
+  onBusyChange?: (busy: boolean) => void;
+  /** E9 answered `unauthorized` or `mfa_required`: the screen's line. */
+  onRefusal?: (refusal: CmsRefusal) => void;
+};
+
+/**
+ * Inserts the image where the caret was when Image was chosen, or in a new
+ * paragraph at the end when that place is gone or is a code block.
+ */
+const insertImage = (
+  editor: LexicalEditor,
+  caret: RangeSelection | null,
+  attributes: CmsImageAttributes
+) => {
+  editor.update(() => {
+    const image = $createCmsImageNode(attributes);
+    const isAttached =
+      caret !== null &&
+      $getNodeByKey(caret.anchor.key) !== null &&
+      $getNodeByKey(caret.focus.key) !== null;
+    if (
+      caret !== null &&
+      isAttached &&
+      $findMatchingParent(caret.anchor.getNode(), $isCodeNode) === null
+    ) {
+      const selection = caret.clone();
+      $setSelection(selection);
+      selection.insertNodes([image]);
+      return;
+    }
+    const paragraph = $createParagraphNode();
+    paragraph.append(image);
+    $getRoot().append(paragraph);
+  });
+};
+
+const ImageButton = ({
+  disabled,
+  upload,
+}: {
+  disabled: boolean;
+  upload: ImageUpload;
+}) => {
+  const [editor] = useLexicalComposerContext();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const caretRef = useRef<RangeSelection | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const choose = async (file: File) => {
+    const refused = checkCmsImageFile(file);
+    if (refused !== undefined) {
+      upload.onError?.(refused);
+      return;
+    }
+    upload.onError?.(undefined);
+    setIsUploading(true);
+    upload.onBusyChange?.(true);
+    const uploaded = await uploadCmsImage(upload.source, file);
+    setIsUploading(false);
+    upload.onBusyChange?.(false);
+    if (uploaded.ok === false) {
+      if ("refusal" in uploaded) {
+        if (upload.onRefusal !== undefined) {
+          upload.onRefusal(uploaded.refusal);
+          return;
+        }
+        upload.onError?.("Not uploaded");
+        return;
+      }
+      if ("toast" in uploaded) {
+        toast.error(getToastText(uploaded.toast));
+        return;
+      }
+      upload.onError?.(uploaded.error);
+      return;
+    }
+    insertImage(editor, caretRef.current, {
+      src: uploaded.url,
+      alt: "",
+      width: uploaded.width === null ? null : String(uploaded.width),
+      height: uploaded.height === null ? null : String(uploaded.height),
+      title: null,
+    });
+  };
+
+  return (
+    <>
+      <input
+        ref={fileRef}
+        type="file"
+        accept={CMS_IMAGE_ACCEPT}
+        hidden
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (file !== undefined) {
+            void choose(file);
+          }
+        }}
+      />
+      <ToolbarButton
+        label="Image"
+        disabled={disabled || isUploading}
+        onClick={() => {
+          caretRef.current = editor.getEditorState().read(() => {
+            const selection = $getSelection();
+            return $isRangeSelection(selection) ? selection.clone() : null;
+          });
+          fileRef.current?.click();
+        }}
+      >
+        <ImageIcon />
+      </ToolbarButton>
+    </>
+  );
+};
+
 /** One `role="toolbar"` row, on upstream's `MarkdownToolbar` pattern. */
-const Toolbar = ({ id, disabled }: { id: string; disabled: boolean }) => {
+const Toolbar = ({
+  id,
+  disabled,
+  upload,
+}: {
+  id: string;
+  disabled: boolean;
+  upload?: ImageUpload;
+}) => {
   const [editor] = useLexicalComposerContext();
   const state = useToolbarState(editor);
   const format = (type: TextFormatType) =>
@@ -589,6 +736,9 @@ const Toolbar = ({ id, disabled }: { id: string; disabled: boolean }) => {
         <NumberedListIcon />
       </ToolbarButton>
       <LinkButton id={id} active={state.link} disabled={disabled} />
+      {upload !== undefined && (
+        <ImageButton disabled={disabled} upload={upload} />
+      )}
       <ToolbarButton
         label="Divider"
         disabled={disabled}
@@ -605,10 +755,16 @@ const Toolbar = ({ id, disabled }: { id: string; disabled: boolean }) => {
 /** The clipboard type of Lexical's own copy, whose nodes carry their links. */
 const LEXICAL_CLIPBOARD_TYPE = "application/x-lexical-editor";
 
-/** Whether copied Lexical nodes hold a link the Link control's rule refuses. */
-const hasRefusedLink = (value: unknown): boolean => {
+const imageNodeTypes = new Set(["cms-image", "cms-figure"]);
+
+/**
+ * Whether copied Lexical nodes hold a link the Link control's rule refuses,
+ * or an image: an image enters a value only from its stored HTML or an
+ * upload.
+ */
+const hasRefusedNode = (value: unknown): boolean => {
   if (Array.isArray(value)) {
-    return value.some(hasRefusedLink);
+    return value.some(hasRefusedNode);
   }
   if (typeof value !== "object" || value === null) {
     return false;
@@ -619,13 +775,16 @@ const hasRefusedLink = (value: unknown): boolean => {
     children?: unknown;
     nodes?: unknown;
   };
+  if (typeof node.type === "string" && imageNodeTypes.has(node.type)) {
+    return true;
+  }
   if (
     (node.type === "link" || node.type === "autolink") &&
     richTextHref(typeof node.url === "string" ? node.url : undefined) === null
   ) {
     return true;
   }
-  return hasRefusedLink(node.children) || hasRefusedLink(node.nodes);
+  return hasRefusedNode(node.children) || hasRefusedNode(node.nodes);
 };
 
 /**
@@ -652,7 +811,7 @@ const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
   const copied = data.getData(LEXICAL_CLIPBOARD_TYPE);
   if (copied !== "") {
     try {
-      dropsLexical = hasRefusedLink(JSON.parse(copied));
+      dropsLexical = hasRefusedNode(JSON.parse(copied));
     } catch {
       // not Lexical's data: the paste never reads it
     }
@@ -766,6 +925,11 @@ export type RichTextFieldProps = {
   invalid?: boolean;
   onChange: (value: CmsRichTextValue | null) => void;
   onOpenClassic?: () => void;
+  /** E9, for the toolbar's Image; without it the toolbar has no Image. */
+  source?: Pick<CmsSource, "uploadImage">;
+  onError?: (error: string | undefined) => void;
+  onBusyChange?: (busy: boolean) => void;
+  onRefusal?: (refusal: CmsRefusal) => void;
 };
 
 /**
@@ -783,12 +947,18 @@ export const RichTextField = ({
   invalid,
   onChange,
   onOpenClassic,
+  source,
+  onError,
+  onBusyChange,
+  onRefusal,
 }: RichTextFieldProps) => {
   // read once: a new value remounts the field (FieldControl's remountKey)
   const [initial] = useState(() => readRichTextValue(value));
   const [readOnlyReason] = useState(() =>
     getRichTextReadOnlyReason(initial?.html ?? "")
   );
+  // Classic CMS opens a value with images read-only too: no button
+  const [hasImage] = useState(() => richTextHasImage(initial?.html ?? ""));
 
   if (readOnlyReason !== undefined) {
     return (
@@ -804,9 +974,9 @@ export const RichTextField = ({
         </div>
         <Flex align="center" gap="2" css={{ flexWrap: "wrap" }}>
           <Text color="destructive">
-            {readOnlyReason === "images" ? "Read only" : "Edit in Classic CMS"}
+            {hasImage ? "Read only" : "Edit in Classic CMS"}
           </Text>
-          {readOnlyReason === "lossy" && onOpenClassic !== undefined && (
+          {hasImage === false && onOpenClassic !== undefined && (
             <Button color="neutral" onClick={onOpenClassic}>
               Classic CMS
             </Button>
@@ -839,7 +1009,15 @@ export const RichTextField = ({
         data-disabled={disabled || undefined}
         data-cms-rich-text
       >
-        <Toolbar id={id} disabled={disabled} />
+        <Toolbar
+          id={id}
+          disabled={disabled}
+          upload={
+            source === undefined
+              ? undefined
+              : { source, onError, onBusyChange, onRefusal }
+          }
+        />
         <RichTextPlugin
           contentEditable={
             <ContentEditable
@@ -866,8 +1044,12 @@ export const RichTextField = ({
             const html = exportRichTextHtml(editor);
             editorState.read(() => {
               const text = $getRoot().getTextContent();
-              // an editable value holds no image: blank text is no value
-              onChange(text.trim() === "" ? null : { html, text });
+              // no value only with neither text nor an image
+              onChange(
+                text.trim() === "" && /<img\b/i.test(html) === false
+                  ? null
+                  : { html, text }
+              );
             });
           }}
         />

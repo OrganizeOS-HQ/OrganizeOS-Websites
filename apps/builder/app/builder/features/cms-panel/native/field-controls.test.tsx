@@ -8,6 +8,7 @@ import { userEvent } from "@vitest/browser/context";
 import { toast, TooltipProvider } from "@webstudio-is/design-system";
 import { FieldControl, FieldRow } from "./field-controls";
 import type { CmsField, CmsResult, CmsSearchResult } from "./cms-source";
+import type { CmsRefusal } from "./cms-logic";
 import {
   createFakeCmsSource,
   PEOPLE,
@@ -27,6 +28,7 @@ const ID = "cms-field-f";
 type Spies = {
   onChange: ReturnType<typeof vi.fn<(value: unknown) => void>>;
   onBusyChange: ReturnType<typeof vi.fn<(busy: boolean) => void>>;
+  onRefusal: ReturnType<typeof vi.fn<(refusal: CmsRefusal) => void>>;
 };
 
 /**
@@ -65,6 +67,7 @@ const Harness = ({
       },
       onError: setError,
       onBusyChange: spies.onBusyChange,
+      onRefusal: spies.onRefusal,
     }),
   });
 };
@@ -73,6 +76,7 @@ const mountField = (field: CmsField, initial: unknown = null): Spies => {
   const spies: Spies = {
     onChange: vi.fn<(value: unknown) => void>(),
     onBusyChange: vi.fn<(busy: boolean) => void>(),
+    onRefusal: vi.fn<(refusal: CmsRefusal) => void>(),
   };
   container = document.createElement("div");
   container.style.width = "448px";
@@ -544,6 +548,106 @@ describe("the image", () => {
       "https://x/a.png"
     );
     expect(spies.onChange).not.toHaveBeenCalled();
+  });
+});
+
+const richField: CmsField = { key: "body", label: "Body", kind: "richtext" };
+
+/** The rich-text field, its editor loaded, the caret in its first paragraph. */
+const mountRichField = async () => {
+  const spies = mountField(richField, { html: "<p>Lake</p>", text: "Lake" });
+  await vi.waitFor(() =>
+    expect(row()?.querySelector('[contenteditable="true"]')?.textContent).toBe(
+      "Lake"
+    )
+  );
+  await click(row()!.querySelector<HTMLElement>('[contenteditable="true"] p'));
+  return spies;
+};
+
+const richHtml = (spies: Spies) =>
+  (lastValue(spies) as { html: string } | null | undefined)?.html ?? "";
+
+describe("rich text images", () => {
+  test("Image inserts an uploaded image, and Save sends its src, width and height", async () => {
+    fake.uploadImage.mockResolvedValue({
+      url: "https://cdn.example.org/a.png",
+      path: "org/a.png",
+    });
+    const spies = await mountRichField();
+    const button = byLabel("Image");
+    expect(button?.tagName).toBe("BUTTON");
+    expect(
+      row()?.querySelector<HTMLInputElement>('input[type="file"]')?.accept
+    ).toBe("image/jpeg,image/png,image/gif,image/webp");
+    const file = await pngOf(2, 3);
+    await chooseFile(file);
+    expect(fake.uploadImage).toHaveBeenCalledWith(file);
+    await vi.waitFor(() =>
+      expect(richHtml(spies)).toContain(
+        '<img src="https://cdn.example.org/a.png" alt="" width="2" height="3">'
+      )
+    );
+    expect(richHtml(spies)).toContain("Lake");
+    expect(fieldError()).toBeUndefined();
+  });
+
+  test.each([
+    [
+      "a GIF over 4 MB",
+      () =>
+        new File([new Uint8Array(4 * 1024 * 1024 + 1)], "a.gif", {
+          type: "image/gif",
+        }),
+      "Over 4 MB",
+    ],
+    [
+      "a text file",
+      () => new File(["hello"], "a.txt", { type: "text/plain" }),
+      "Not an image",
+    ],
+  ])("Image refuses %s before uploading: %s", async (_name, make, text) => {
+    const spies = await mountRichField();
+    await chooseFile(make());
+    expect(fieldError()).toBe(text);
+    expect(fake.uploadImage).not.toHaveBeenCalled();
+    expect(spies.onBusyChange).not.toHaveBeenCalled();
+    expect(richHtml(spies)).not.toContain("<img");
+  });
+
+  test("an image whose upload is answered unavailable shows Not uploaded and inserts nothing", async () => {
+    fake.uploadImage.mockResolvedValue({ error: "unavailable" });
+    const spies = await mountRichField();
+    await chooseFile(await pngOf(2, 3));
+    await vi.waitFor(() => expect(fieldError()).toBe("Not uploaded"));
+    expect(richHtml(spies)).not.toContain("<img");
+  });
+
+  test("Save waits while the upload is held", async () => {
+    const held = deferred<CmsResult<{ url: string; path: string }>>();
+    fake.uploadImage.mockReturnValue(held.promise);
+    const spies = await mountRichField();
+    await chooseFile(await pngOf(2, 3));
+    expect(spies.onBusyChange.mock.calls).toEqual([[true]]);
+    expect((byLabel("Image") as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => {
+      held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
+    });
+    await vi.waitFor(() =>
+      expect(spies.onBusyChange.mock.calls).toEqual([[true], [false]])
+    );
+    await vi.waitFor(() => expect(richHtml(spies)).toContain("<img"));
+  });
+
+  test("an image whose upload is answered unauthorized shows the screen's line", async () => {
+    fake.uploadImage.mockResolvedValue({ error: "unauthorized" });
+    const spies = await mountRichField();
+    await chooseFile(await pngOf(2, 3));
+    await vi.waitFor(() =>
+      expect(spies.onRefusal).toHaveBeenCalledWith("unauthorized")
+    );
+    expect(fieldError()).toBeUndefined();
+    expect(richHtml(spies)).not.toContain("<img");
   });
 });
 
