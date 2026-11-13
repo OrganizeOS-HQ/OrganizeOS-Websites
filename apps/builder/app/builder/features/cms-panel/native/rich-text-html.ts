@@ -602,8 +602,13 @@ export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
 };
 
 /** The editor's HTML, under its current state. */
-export const exportRichTextHtml = (editor: LexicalEditor) =>
-  editor.getEditorState().read(() => $generateHtmlFromNodes(editor, null));
+export const exportRichTextHtml = (editor: LexicalEditor) => {
+  // a save writes every code block whole, whatever a copy left marked
+  copying = null;
+  return editor
+    .getEditorState()
+    .read(() => $generateHtmlFromNodes(editor, null));
+};
 
 const blockEnds = new Set([
   "P",

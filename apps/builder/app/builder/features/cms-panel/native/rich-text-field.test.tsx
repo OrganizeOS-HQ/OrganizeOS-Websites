@@ -873,3 +873,28 @@ test("select all over an image keeps the keyboard in the text", async () => {
   await selectAll();
   expect(document.activeElement).toBe(editable());
 });
+
+test("Link over a rule leaves no link around it", async () => {
+  const { onChange } = mountField({ value: { html: "<p>a</p><hr><p>b</p>" } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await selectAll();
+  await applyLink("https://example.org/");
+  expect(lastHtml(onChange)).not.toMatch(/<a\b[^>]*>\s*<hr/);
+});
+
+test("Remove over a linked line with an image keeps the image and drops the link", async () => {
+  const { onChange } = mountField({
+    value: {
+      html: `<p><a href="https://example.org/">See</a> ${IMAGE} here</p>`,
+    },
+  });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await selectAll();
+  await click(byLabel("Link"));
+  await click(buttonByText("Remove"));
+  const html = lastHtml(onChange);
+  expect(html).not.toContain("<a");
+  expect(html).toContain("<img");
+});

@@ -376,6 +376,8 @@ const $moveImagesOutOfCode = () => {
         const paragraph = $createParagraphNode();
         paragraph.append(...images);
         node.insertAfter(paragraph);
+        // the caret's offset counted the images: it goes to the block's end
+        node.selectEnd();
       }
       return;
     }
@@ -957,23 +959,22 @@ const ImageEditingPlugin = () => {
             if ($isRangeSelection(selection) === false) {
               return false;
             }
-            const holdsImage = selection
+            // the images the selection reaches, found before the toggle
+            // moves the selection's offsets past a link it inserts
+            const images = selection
               .getNodes()
-              .some(
-                (node) =>
-                  $isCmsImageNode(node) ||
-                  $isCmsFigureNode(node) ||
-                  ($isElementNode(node) &&
-                    node
-                      .getChildren()
-                      .some(
-                        (child) =>
-                          $isCmsImageNode(child) || $isCmsFigureNode(child)
-                      ))
+              .flatMap((node) =>
+                $isCmsImageNode(node) || $isCmsFigureNode(node)
+                  ? [node]
+                  : $isElementNode(node)
+                    ? node
+                        .getChildren()
+                        .filter(
+                          (child) =>
+                            $isCmsImageNode(child) || $isCmsFigureNode(child)
+                        )
+                    : []
               );
-            if (holdsImage === false) {
-              return false;
-            }
             if (payload === null) {
               $toggleLink(null);
               return true;
@@ -981,21 +982,17 @@ const ImageEditingPlugin = () => {
             const { url, ...attributes } =
               typeof payload === "string" ? { url: payload } : payload;
             $toggleLink(url, attributes);
-            const after = $getSelection();
             const links = new Set<LinkNode>();
+            // a link at the root (around a figure or a rule) is unwrapped
             for (const node of $getRoot().getChildren()) {
               if ($isLinkNode(node)) {
                 links.add(node);
               }
             }
-            if (after !== null) {
-              for (const node of after.getNodes()) {
-                const link = $isLinkNode(node)
-                  ? node
-                  : $findMatchingParent(node, $isLinkNode);
-                if ($isLinkNode(link)) {
-                  links.add(link);
-                }
+            for (const image of images) {
+              const link = $findMatchingParent(image, $isLinkNode);
+              if ($isLinkNode(link)) {
+                links.add(link);
               }
             }
             $keepImagesOutOfLinks(links);
@@ -1150,6 +1147,11 @@ export const RichTextField = ({
   );
   // Classic CMS opens a value with images read-only too: no button
   const [hasImage] = useState(() => richTextHasImage(initial?.html ?? ""));
+  // the load is the composer's first update; once mounted, editing follows
+  const isLoading = useRef(true);
+  useEffect(() => {
+    isLoading.current = false;
+  }, []);
 
   if (readOnlyReason !== undefined) {
     return (
@@ -1185,9 +1187,13 @@ export const RichTextField = ({
         nodes: editorNodes,
         html: richTextHtmlConfig,
         editable: disabled === false,
-        // reported, not rethrown: Lexical then keeps the state before the
-        // failed update, so nothing half-applied is saved
+        // while the value loads, a failure reaches the load boundary; after
+        // it, one is reported, not rethrown, so Lexical keeps the state
+        // before the failed update and nothing half-applied is saved
         onError: (error) => {
+          if (isLoading.current) {
+            throw error;
+          }
           console.error(error);
         },
         // The composer tags this update "history-merge", which the change
