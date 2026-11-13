@@ -1485,7 +1485,12 @@ describe("drag reorder (Task 18)", () => {
       }),
     }));
     fake.updateItem.mockImplementation(async (_c, id, body) => ({
-      item: itemOf({ id, slug: "a", data: body.data, updatedAt: "saved" }),
+      item: itemOf({
+        id,
+        slug: "a",
+        data: body.data,
+        updatedAt: versionOf(id, 9),
+      }),
     }));
     mount();
     await settle();
@@ -1681,4 +1686,139 @@ describe("drag reorder (Task 18)", () => {
       expect(fake.getItem).toHaveBeenCalledTimes(1);
     }
   );
+});
+
+describe("the reorder settles on the order it sent", () => {
+  /** E13 calls held one by one; each stores its order once released. */
+  const holdReorders = () => {
+    const store = fake.reorderItems.getMockImplementation()!;
+    const held: Array<() => void> = [];
+    fake.reorderItems.mockImplementation(
+      (c, body) =>
+        new Promise((resolve) => {
+          held.push(() => void store(c, body).then(resolve));
+        })
+    );
+    return {
+      release: async () => {
+        held.shift()?.();
+        await settle();
+      },
+      count: () => held.length,
+    };
+  };
+
+  test("a move back while E13 is in flight is sent, and the list ends in the server's order", async () => {
+    const world = reorderWorld();
+    const reorders = holdReorders();
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    await wait(600);
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]]);
+    // back to a, b, c while the first is in flight
+    focusRow("a");
+    await altMove("ArrowUp");
+    await wait(600);
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+    const reads = fake.listItems.mock.calls.length;
+    await reorders.release();
+    await reorders.release();
+    await settle();
+    expect(reorderCalls()).toEqual([
+      [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]],
+      [ROW_IDS[0], ROW_IDS[1], ROW_IDS[2]],
+    ]);
+    expect(world.ids).toEqual(ROW_IDS);
+    expect(fake.listItems.mock.calls.length).toBeGreaterThan(reads);
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
+  });
+
+  test("a move while the refetch after E13 is in flight is sent, never lost", async () => {
+    const world = reorderWorld();
+    mount();
+    await settle();
+    const echo = fake.listItems.getMockImplementation()!;
+    const heldRead = deferred<void>();
+    let holdNext = false;
+    fake.listItems.mockImplementation(async (c, q) => {
+      if (holdNext) {
+        holdNext = false;
+        await heldRead.promise;
+      }
+      return echo(c, q);
+    });
+    focusRow("a");
+    await altMove("ArrowDown");
+    holdNext = true;
+    await wait(600);
+    expect(reorderCalls()).toHaveLength(1);
+    // the refetch is held: a further move
+    focusRow("a");
+    await altMove("ArrowDown");
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+    heldRead.resolve();
+    await settle();
+    await wait(600);
+    expect(reorderCalls()).toEqual([
+      [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]],
+      [ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]],
+    ]);
+    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]);
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+  });
+
+  test("Alt+Arrow moves around fast E13 answers and refetches keep the screen on the server's order", async () => {
+    const world = reorderWorld();
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    await wait(550);
+    focusRow("a");
+    await altMove("ArrowDown");
+    await wait(30);
+    focusRow("c");
+    await altMove("ArrowUp");
+    await wait(700);
+    expect(itemSlugs().map((slug) => slug)).toEqual(
+      world.ids.map(
+        (id) =>
+          ({ [ROW_IDS[0]]: "a", [ROW_IDS[1]]: "b", [ROW_IDS[2]]: "c" })[id]
+      )
+    );
+  });
+
+  test("a bulk Publish waiting across two reorders sends the second refetch's versions", async () => {
+    const world = reorderWorld();
+    const reorders = holdReorders();
+    fake.publishItems.mockImplementation(async (_c, { items }) => ({
+      published: items.map((item) => item.id),
+      unchanged: [],
+      conflicts: [],
+      failed: [],
+    }));
+    mount();
+    await settle();
+    await click(checkbox("Select all on this page"));
+    focusRow("a");
+    await altMove("ArrowDown");
+    await wait(600);
+    focusRow("a");
+    await altMove("ArrowDown");
+    await click(toolbarButton("Publish"));
+    expect(fake.publishItems).not.toHaveBeenCalled();
+    await reorders.release();
+    // the first refetch lands while the second E13 is in flight
+    expect(reorderCalls()).toHaveLength(2);
+    expect(fake.publishItems).not.toHaveBeenCalled();
+    await reorders.release();
+    await settle();
+    expect(fake.publishItems).toHaveBeenCalledTimes(1);
+    expect(fake.publishItems.mock.calls[0][1].items).toEqual(
+      world.ids.map((id) => ({ id, updatedAt: world.versions[id] }))
+    );
+    expect(world.versions[ROW_IDS[0]]).toBe(versionOf(ROW_IDS[0], 2));
+  });
 });

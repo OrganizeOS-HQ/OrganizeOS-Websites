@@ -23,7 +23,12 @@ import {
 /** The pause after the last keyboard move; slice 3's Fields list uses it too. */
 export const REORDER_SEND_DELAY_MS = 500;
 
-type Waiting = { open?: () => void; bulk?: () => void };
+type Waiting = {
+  open?: () => void;
+  bulk?: () => void;
+  /** The waiting bulk call was dropped. */
+  bulkDropped?: () => void;
+};
 
 const sameOrder = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&
@@ -44,7 +49,11 @@ export const useRowReorder = (input: {
   move: (id: string, direction: -1 | 1) => void;
   drop: (oldIndex: number, newIndex: number) => void;
   flush: () => void;
-  whenSettled: (run: () => void, kind: "open" | "bulk") => void;
+  whenSettled: (
+    run: () => void,
+    kind: "open" | "bulk",
+    onDropped?: () => void
+  ) => void;
 } => {
   const latest = useRef(input);
   latest.current = input;
@@ -63,6 +72,8 @@ export const useRowReorder = (input: {
   // The page-answer count when the last E13 answered: settled past it.
   const awaitingAfter = useRef<number | undefined>(undefined);
   const waiting = useRef<Waiting>({});
+  // The order the last successful E13 sent, until a drawn page shows it.
+  const accepted = useRef<readonly string[] | undefined>(undefined);
   // Re-renders when a ref-held phase changes.
   const [, setPhase] = useState(0);
   const bump = () => setPhase((current) => current + 1);
@@ -80,6 +91,7 @@ export const useRowReorder = (input: {
     timer.current = undefined;
     queued.current = undefined;
     awaitingAfter.current = undefined;
+    accepted.current = undefined;
     waiting.current = {};
     setPending(undefined);
   }, [input.collectionId]);
@@ -89,59 +101,94 @@ export const useRowReorder = (input: {
     inFlight.current ||
     awaitingAfter.current !== undefined;
 
-  const settle = () => {
+  /**
+   * Settled: nothing pending to send, nothing in flight, and an E3 answer
+   * after the last E13's. A drawn page is the server's order; a failed
+   * refetch keeps showing the order E13 last accepted.
+   */
+  const trySettle = () => {
+    const after = awaitingAfter.current;
+    const { count, ok } = latest.current.pageAnswer;
+    if (
+      after === undefined ||
+      count <= after ||
+      inFlight.current ||
+      timer.current !== undefined
+    ) {
+      return;
+    }
     awaitingAfter.current = undefined;
-    setPending(undefined);
+    if (ok || accepted.current === undefined) {
+      accepted.current = undefined;
+      pendingRef.current = undefined;
+      setPending(undefined);
+    } else {
+      pendingRef.current = accepted.current;
+      setPending(accepted.current);
+    }
     bump();
+    runWaiting(ok);
   };
 
   const send = (ids: readonly string[]) => {
     const current = latest.current;
-    const shown = (current.page?.items ?? []).map((row) => row.id);
     if (inFlight.current) {
       queued.current = ids;
       return;
     }
-    if (sameOrder(ids, shown)) {
+    // the order the server holds: the one E13 last accepted, else the page's
+    const held =
+      accepted.current ?? (current.page?.items ?? []).map((row) => row.id);
+    if (sameOrder(ids, held)) {
       // the moves cancel out: nothing to send
-      setPending(undefined);
-      bump();
-      runWaiting(true);
+      if (awaitingAfter.current === undefined) {
+        pendingRef.current = undefined;
+        setPending(undefined);
+        bump();
+        runWaiting(true);
+      } else {
+        bump();
+        trySettle();
+      }
       return;
     }
     inFlight.current = true;
     bump();
-    const collectionId = current.collectionId;
+    const { collectionId, onReordered, onFailed } = current;
     void current.source
       .reorderItems(collectionId, { ids: [...ids] })
       .catch((): CmsResult<{ changed: number }> => ({ error: "unavailable" }))
       .then((result) => {
         inFlight.current = false;
-        if (latest.current.collectionId !== collectionId) {
-          // another collection opened meanwhile: nothing here waits on it
-          bump();
+        const sameCollection = latest.current.collectionId === collectionId;
+        const next = queued.current;
+        if (sameCollection) {
+          queued.current = undefined;
+          // the next E3 answer after this one settles the reorder
+          awaitingAfter.current = latest.current.pageAnswer.count;
+          if (isCmsFailure(result) === false) {
+            accepted.current = ids;
+          }
+        }
+        bump();
+        // the lists and the canvas of the collection written refetch
+        if (isCmsFailure(result)) {
+          onFailed(result.error);
+        } else {
+          onReordered();
+        }
+        if (sameCollection === false) {
           return;
         }
-        const next = queued.current;
-        queued.current = undefined;
         if (isCmsFailure(result) === false && next !== undefined) {
           send(next);
-          return;
-        }
-        // the next E3 answer after this one settles the reorder
-        awaitingAfter.current = latest.current.pageAnswer.count;
-        bump();
-        if (isCmsFailure(result)) {
-          latest.current.onFailed(result.error);
-        } else {
-          latest.current.onReordered();
         }
       });
   };
 
   /** Runs what waited: an open always; a bulk call only on a drawn page. */
   const runWaiting = (pageDrawn: boolean) => {
-    const { open, bulk } = waiting.current;
+    const { open, bulk, bulkDropped } = waiting.current;
     waiting.current = {};
     if (bulk !== undefined) {
       if (pageDrawn) {
@@ -149,6 +196,7 @@ export const useRowReorder = (input: {
       } else {
         // its versions are stale; the selection stays
         toast.error(getToastText("unavailable"));
+        bulkDropped?.();
       }
     }
     open?.();
@@ -156,12 +204,7 @@ export const useRowReorder = (input: {
 
   // E13 answered, then an E3 answer for the current key: settled.
   useEffect(() => {
-    const after = awaitingAfter.current;
-    if (after === undefined || input.pageAnswer.count <= after) {
-      return;
-    }
-    settle();
-    runWaiting(input.pageAnswer.ok);
+    trySettle();
   }, [input.pageAnswer]);
 
   const flush = () => {
@@ -173,7 +216,11 @@ export const useRowReorder = (input: {
     const ids = pendingRef.current;
     if (ids === undefined) {
       bump();
-      runWaiting(true);
+      if (awaitingAfter.current === undefined) {
+        runWaiting(true);
+      } else {
+        trySettle();
+      }
       return;
     }
     send(ids);
@@ -216,12 +263,19 @@ export const useRowReorder = (input: {
     send(next);
   };
 
-  const whenSettled = (run: () => void, kind: "open" | "bulk") => {
+  const whenSettled = (
+    run: () => void,
+    kind: "open" | "bulk",
+    onDropped?: () => void
+  ) => {
     if (isBusy() === false) {
       run();
       return;
     }
-    waiting.current = { ...waiting.current, [kind]: run };
+    waiting.current =
+      kind === "open"
+        ? { ...waiting.current, open: run }
+        : { ...waiting.current, bulk: run, bulkDropped: onDropped };
     bump();
     // pending moves are sent at once
     flush();
