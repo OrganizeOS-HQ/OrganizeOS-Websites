@@ -18,6 +18,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Flex,
   Grid,
@@ -50,6 +51,12 @@ import {
   type CmsRefusal,
 } from "./cms-logic";
 import {
+  getChangedSincePublish,
+  getDeleteTitle,
+  getListFailureText,
+} from "./cms-list-logic";
+import { DeleteDialog } from "./delete-dialog";
+import {
   isCmsFailure,
   type CmsAccess,
   type CmsCollection,
@@ -60,6 +67,7 @@ import {
   type CmsSource,
 } from "./cms-source";
 import { FieldControl, FieldRow, fieldIds } from "./field-controls";
+import { ItemDetails, SIDE_DETAILS_WIDTH } from "./item-details";
 import { LineRow, RefusalLine, type CmsLineKind } from "./refusal-line";
 import { StatusChip } from "./status-chip";
 import { TruncatedText } from "./truncated-text";
@@ -73,7 +81,7 @@ const editorColumnMaxWidth = `calc(${theme.spacing[35]} + 2 * ${theme.spacing[9]
 /** Below this header width, Discard changes moves into the Item menu. */
 export const COMPACT_HEADER_WIDTH = 600;
 
-type Busy = "save" | "publish" | "discard" | "reload";
+type Busy = "save" | "publish" | "discard" | "reload" | "status" | "delete";
 
 /**
  * A write whose answer was lost may have landed (4.3.2). `afterSave`: the
@@ -110,6 +118,7 @@ export const ItemEditor = ({
   onBack,
   onDirtyChange,
   onWritten,
+  onDeleted,
   onCreated,
   onSchemaStale,
   onRefusal,
@@ -133,7 +142,9 @@ export const ItemEditor = ({
   onBack: () => void;
   onDirtyChange: (dirty: boolean) => void;
   /** After every write: the lists refetch and the canvas invalidates (4.7). */
-  onWritten: (item: CmsItem) => void;
+  onWritten: (item?: CmsItem) => void;
+  /** After the editor's Delete (Task 19): the editor closes, the lists refetch. */
+  onDeleted: () => void;
   onCreated: (item: CmsItem) => void;
   /**
    * A write answered `invalid` with no field: the open collection's fields
@@ -155,6 +166,10 @@ export const ItemEditor = ({
   const canEdit = access.canEdit;
 
   const [item, setItem] = useState<CmsItem | null | undefined>(undefined);
+  // The published copy while the item has staged changes (W3-D5): from E4,
+  // or the baseline a first staged save replaced; null after any answer
+  // with nothing staged. Write answers carry none.
+  const [live, setLive] = useState<CmsItem["live"]>(null);
   const [values, setValues] = useState<CmsItemData>({});
   const [slug, setSlug] = useState("");
   const [follows, setFollows] = useState(true);
@@ -167,6 +182,7 @@ export const ItemEditor = ({
     { kind: CmsLineKind; retry?: () => void } | undefined
   >(undefined);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   // The fields whose value is still being written (an upload in flight):
   // Save and Publish wait, so no write leaves a late value out.
   const [busyFields, setBusyFields] = useState<ReadonlySet<string>>(
@@ -183,9 +199,11 @@ export const ItemEditor = ({
   const cancelRef = useRef<HTMLButtonElement>(null);
   // Per reference field, its chosen ids whose items E5 no longer finds.
   const unresolved = useRef<Record<string, readonly string[]>>({});
-  // Discard changes chosen in the Item menu: its dialog takes the focus.
-  const discardChosen = useRef(false);
+  // Discard changes or Delete chosen in the Item menu: its dialog takes the
+  // focus.
+  const dialogChosen = useRef(false);
   const [setHeader, isCompact] = useIsNarrow(COMPACT_HEADER_WIDTH);
+  const [setBody, isBodyNarrow] = useIsNarrow(SIDE_DETAILS_WIDTH);
 
   const isNew = item === null;
   const baseline = useMemo(
@@ -266,6 +284,7 @@ export const ItemEditor = ({
         return;
       }
       applyItemRef.current(result.item);
+      setLive(result.item.live);
     });
     return () => {
       isCurrent = false;
@@ -319,6 +338,7 @@ export const ItemEditor = ({
         }
         setKept(undefined);
         applyItem(result.item);
+        setLive(result.item.live);
       });
   }, [refreshKey, source, collection.id, applyItem]);
 
@@ -389,6 +409,7 @@ export const ItemEditor = ({
         : keepAside({ fields, kept, baseline, baselineSlug, values, slug })
     );
     applyItem(result.item);
+    setLive(result.item.live);
     onWritten(result.item);
   };
 
@@ -476,6 +497,9 @@ export const ItemEditor = ({
     run: () => Promise<CmsResult<{ item: CmsItem; created?: boolean }>>,
     settleWith?: Settle
   ) => {
+    // the copy a first staged save replaces is the live one
+    const wasStaged = item?.hasStagedChanges ?? false;
+    const replaced = { slug: baselineSlug, data: baseline };
     setBusy(kind);
     let result: CmsResult<{ item: CmsItem; created?: boolean }>;
     try {
@@ -491,6 +515,11 @@ export const ItemEditor = ({
       return;
     }
     setLine(undefined);
+    if (result.item.hasStagedChanges === false) {
+      setLive(null);
+    } else if (wasStaged === false) {
+      setLive(replaced);
+    }
     if (result.created === false) {
       adoptVersion(result.item);
     } else {
@@ -635,6 +664,144 @@ export const ItemEditor = ({
     }
   };
 
+  /**
+   * After a status change: the item is read, and becomes the baseline and
+   * version with nothing kept aside, since the person's values were saved.
+   * A failed read shows the load line and its Retry.
+   */
+  const readAfterStatus = async (target: CmsItem) => {
+    setBusy("reload");
+    let result: CmsResult<{ item: CmsItem }>;
+    try {
+      result = await source.getItem(collection.id, target.id);
+    } catch {
+      result = { error: "unavailable" };
+    } finally {
+      setBusy(undefined);
+    }
+    if (isCmsFailure(result)) {
+      const refusal = getRefusal(result.error, "write");
+      if (refusal !== undefined) {
+        onRefusal(refusal);
+        return;
+      }
+      setLine({
+        kind: "unavailable",
+        retry: () => {
+          loadedId.current = undefined;
+          setLine(undefined);
+          setLoadAttempt((current) => current + 1);
+        },
+      });
+      return;
+    }
+    setLine(undefined);
+    setKept(undefined);
+    applyItem(result.item);
+    setLive(result.item.live);
+  };
+
+  /**
+   * Unpublish, Archive and Restore (5.2.1): Save first with unsaved edits,
+   * stopping on its failure; then E11; then the item is read.
+   */
+  const changeStatus = async (status: "draft" | "archived") => {
+    let current = item;
+    if (current === undefined || current === null) {
+      return;
+    }
+    if (isDirty) {
+      const first = await saveFrom(current);
+      if (first === undefined) {
+        return;
+      }
+      current = first.saved;
+    }
+    const target = current;
+    setBusy("status");
+    let result: CmsResult<{ changed: string[] }>;
+    try {
+      result = await source.setItemsStatus(collection.id, {
+        ids: [target.id],
+        status,
+      });
+    } catch {
+      result = { error: "unavailable" };
+    } finally {
+      setBusy(undefined);
+    }
+    if (isCmsFailure(result)) {
+      const refusal = getRefusal(result.error, "write");
+      if (refusal !== undefined) {
+        onRefusal(refusal);
+        return;
+      }
+      if (result.error === "unavailable") {
+        // the outcome is unknown: what the item reads is the truth
+        onWritten();
+        await readAfterStatus(target);
+        return;
+      }
+      if (result.error === "slug_taken") {
+        setErrors((current) => ({ ...current, slug: "Address in use" }));
+        return;
+      }
+      toast.error(
+        result.error === "not_found"
+          ? "Item not found"
+          : getListFailureText("status", result.error)
+      );
+      return;
+    }
+    onWritten();
+    await readAfterStatus(target);
+  };
+
+  /** Delete (5.2.1): E12; the editor closes without the unsaved guard. */
+  const remove = async () => {
+    if (item === undefined || item === null) {
+      return;
+    }
+    const target = item;
+    setBusy("delete");
+    let result: CmsResult<{ deleted: string[] }>;
+    try {
+      result = await source.deleteItems(collection.id, { ids: [target.id] });
+    } catch {
+      result = { error: "unavailable" };
+    }
+    if (isCmsFailure(result) && result.error === "unavailable") {
+      // the outcome is unknown: an item that is gone was deleted
+      let read: CmsResult<{ item: CmsItem }>;
+      try {
+        read = await source.getItem(collection.id, target.id);
+      } catch {
+        read = { error: "unavailable" };
+      }
+      result =
+        isCmsFailure(read) && read.error === "not_found"
+          ? { deleted: [target.id] }
+          : result;
+    }
+    setBusy(undefined);
+    setConfirmDelete(false);
+    if (isCmsFailure(result) === false) {
+      // a 200 without the id: it was already gone, so the editor closes too
+      onDeleted();
+      return;
+    }
+    const refusal = getRefusal(result.error, "write");
+    if (refusal !== undefined) {
+      onRefusal(refusal);
+      return;
+    }
+    toast.error(
+      result.error === "not_found"
+        ? "Item not found"
+        : getListFailureText("delete", result.error)
+    );
+  };
+
   /** Reload keeps the person's unsaved values aside (4.3.2). */
   const reload = async () => {
     if (item === undefined || item === null) {
@@ -657,6 +824,7 @@ export const ItemEditor = ({
     }
     setKept(keepAside({ fields, kept, baseline, baselineSlug, values, slug }));
     applyItem(result.item);
+    setLive(result.item.live);
   };
 
   const setField = (key: string, value: unknown) => {
@@ -731,50 +899,33 @@ export const ItemEditor = ({
   const disabled = canEdit === false || busy !== undefined;
   const isFieldBusy = busyFields.size > 0;
   const showConflictLine = conflict || keptDifferences.length > 0;
+  // the dots show only while the item has staged changes (5.2.3)
+  const changedSince =
+    item !== null && item.hasStagedChanges
+      ? getChangedSincePublish({ fields, live, values, slug })
+      : { keys: new Set<string>(), address: false };
+  const details = item === null ? null : <ItemDetails item={item} />;
+  const detailsBeside = details !== null && isBodyNarrow === false;
 
+  const isBusy = busy !== undefined;
+  const menuItems = [
+    isCompact && hasStagedChanges ? "discard" : undefined,
+    access.canPublish && status === "published" ? "unpublish" : undefined,
+    status !== "archived" ? "archive" : undefined,
+    status === "archived" ? "restore" : undefined,
+  ].filter((entry) => entry !== undefined);
   const actions = (
     <Flex align="center" gap="2" css={{ flexShrink: 0 }}>
-      {canEdit &&
-        hasStagedChanges &&
-        (isCompact ? (
-          <DropdownMenu modal={false}>
-            <Tooltip content="Item menu" side="bottom">
-              <DropdownMenuTrigger asChild>
-                <IconButton aria-label="Item menu">
-                  <EllipsesIcon />
-                </IconButton>
-              </DropdownMenuTrigger>
-            </Tooltip>
-            <DropdownMenuContent
-              align="end"
-              onCloseAutoFocus={(event) => {
-                if (discardChosen.current) {
-                  discardChosen.current = false;
-                  event.preventDefault();
-                }
-              }}
-            >
-              <DropdownMenuItem
-                disabled={busy !== undefined}
-                onSelect={() => {
-                  discardChosen.current = true;
-                  setConfirmDiscard(true);
-                }}
-              >
-                Discard changes
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : (
-          <Button
-            color="ghost"
-            disabled={busy !== undefined}
-            state={busy === "discard" ? "pending" : undefined}
-            onClick={() => setConfirmDiscard(true)}
-          >
-            Discard changes
-          </Button>
-        ))}
+      {canEdit && hasStagedChanges && isCompact === false && (
+        <Button
+          color="ghost"
+          disabled={isBusy}
+          state={busy === "discard" ? "pending" : undefined}
+          onClick={() => setConfirmDiscard(true)}
+        >
+          Discard changes
+        </Button>
+      )}
       {canEdit && (
         <Button
           color={access.canPublish ? "neutral" : "primary"}
@@ -798,6 +949,73 @@ export const ItemEditor = ({
         >
           {isPublishLabel ? "Publish" : "Publish changes"}
         </Button>
+      )}
+      {canEdit && isNew === false && (
+        <DropdownMenu modal={false}>
+          <Tooltip content="Item menu" side="bottom">
+            <DropdownMenuTrigger asChild>
+              <IconButton aria-label="Item menu">
+                <EllipsesIcon />
+              </IconButton>
+            </DropdownMenuTrigger>
+          </Tooltip>
+          <DropdownMenuContent
+            align="end"
+            onCloseAutoFocus={(event) => {
+              if (dialogChosen.current) {
+                dialogChosen.current = false;
+                event.preventDefault();
+              }
+            }}
+          >
+            {menuItems.includes("discard") && (
+              <DropdownMenuItem
+                disabled={isBusy}
+                onSelect={() => {
+                  dialogChosen.current = true;
+                  setConfirmDiscard(true);
+                }}
+              >
+                Discard changes
+              </DropdownMenuItem>
+            )}
+            {menuItems.includes("unpublish") && (
+              <DropdownMenuItem
+                disabled={isBusy || isFieldBusy}
+                onSelect={() => void changeStatus("draft")}
+              >
+                Unpublish
+              </DropdownMenuItem>
+            )}
+            {menuItems.includes("archive") && (
+              <DropdownMenuItem
+                disabled={isBusy || isFieldBusy}
+                onSelect={() => void changeStatus("archived")}
+              >
+                Archive
+              </DropdownMenuItem>
+            )}
+            {menuItems.includes("restore") && (
+              <DropdownMenuItem
+                disabled={isBusy || isFieldBusy}
+                onSelect={() => void changeStatus("draft")}
+              >
+                Restore
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              destructive
+              disabled={isBusy}
+              onSelect={() => {
+                dialogChosen.current = true;
+                setConfirmDelete(true);
+              }}
+            >
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </Flex>
   );
@@ -835,106 +1053,141 @@ export const ItemEditor = ({
       {refusalLine}
       <ScrollAreaNative css={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}>
         <Box
-          data-cms-editor-fields
-          css={{
-            maxWidth: editorColumnMaxWidth,
-            marginInline: "auto",
-            paddingInline: theme.spacing[9],
-            paddingBlock: theme.spacing[11],
-          }}
-        >
-          {/* one column that never grows past the box for a long value */}
-          <Grid gap="2" css={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
-            {fields.map((field) => {
-              const id = `cms-field-${field.key}`;
-              return (
-                <FieldRow
-                  key={field.key}
-                  id={id}
-                  label={field.label}
-                  help={field.help}
-                  required={field.required}
-                  inline={field.kind === "switch"}
-                  error={errors[field.key]}
-                  onUseMine={
-                    canEdit && keptDifferences.includes(field.key)
-                      ? () => restoreMine(field.key)
-                      : undefined
-                  }
-                  useMineDisabled={busy !== undefined}
-                >
-                  <FieldControl
-                    id={id}
-                    remountKey={`${epoch}:${fieldEpochs[field.key] ?? 0}`}
-                    field={field}
-                    // a field added since the item loaded shows empty
-                    value={
-                      field.key in values
-                        ? values[field.key]
-                        : emptyValueFor(field.kind)
-                    }
-                    source={source}
-                    disabled={disabled}
-                    invalid={errors[field.key] !== undefined}
-                    onChange={(value) => setField(field.key, value)}
-                    onError={(error) =>
-                      setErrors(({ [field.key]: _, ...rest }) =>
-                        error === undefined
-                          ? rest
-                          : { ...rest, [field.key]: error }
-                      )
-                    }
-                    onBusyChange={(isBusy) =>
-                      setBusyFields((current) => {
-                        const next = new Set(current);
-                        if (isBusy) {
-                          next.add(field.key);
-                        } else {
-                          next.delete(field.key);
-                        }
-                        return next;
-                      })
-                    }
-                    onRefusal={onRefusal}
-                    onOpenClassic={onOpenClassic}
-                    onUnresolvedChange={(ids) => {
-                      unresolved.current[field.key] = ids;
-                    }}
-                  />
-                </FieldRow>
-              );
-            })}
-            <FieldRow
-              id="cms-field-slug"
-              label="Address"
-              error={errors.slug}
-              onUseMine={
-                canEdit && keptDifferences.includes("slug")
-                  ? () => restoreMine("slug")
-                  : undefined
-              }
-              useMineDisabled={busy !== undefined}
-            >
-              <InputField
-                id="cms-field-slug"
-                value={slug}
-                disabled={disabled}
-                color={errors.slug === undefined ? undefined : "error"}
-                aria-invalid={errors.slug !== undefined || undefined}
-                aria-describedby={
-                  errors.slug === undefined
-                    ? undefined
-                    : fieldIds("cms-field-slug").error
+          ref={setBody}
+          data-cms-editor-body
+          css={
+            detailsBeside
+              ? {
+                  display: "grid",
+                  // the fields column stays centred while the details,
+                  // top-aligned beside it, have their width; narrower, the
+                  // fields move left to make room
+                  gridTemplateColumns: `minmax(0, 1fr) ${editorColumnMaxWidth} minmax(${theme.spacing[30]}, 1fr)`,
+                  alignItems: "start",
                 }
-                maxLength={63}
-                onChange={(event) => {
-                  setSlug(event.currentTarget.value);
-                  setFollows(false);
-                  setErrors(({ slug: _, ...rest }) => rest);
-                }}
-              />
-            </FieldRow>
-          </Grid>
+              : undefined
+          }
+        >
+          <Box
+            data-cms-editor-fields
+            css={{
+              maxWidth: editorColumnMaxWidth,
+              marginInline: "auto",
+              gridColumn: detailsBeside ? 2 : undefined,
+              width: detailsBeside ? "100%" : undefined,
+              paddingInline: theme.spacing[9],
+              paddingBlock: theme.spacing[11],
+            }}
+          >
+            {/* one column that never grows past the box for a long value */}
+            <Grid gap="2" css={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
+              {fields.map((field) => {
+                const id = `cms-field-${field.key}`;
+                return (
+                  <FieldRow
+                    key={field.key}
+                    id={id}
+                    label={field.label}
+                    help={field.help}
+                    required={field.required}
+                    inline={field.kind === "switch"}
+                    error={errors[field.key]}
+                    changed={changedSince.keys.has(field.key)}
+                    onUseMine={
+                      canEdit && keptDifferences.includes(field.key)
+                        ? () => restoreMine(field.key)
+                        : undefined
+                    }
+                    useMineDisabled={busy !== undefined}
+                  >
+                    <FieldControl
+                      id={id}
+                      remountKey={`${epoch}:${fieldEpochs[field.key] ?? 0}`}
+                      field={field}
+                      // a field added since the item loaded shows empty
+                      value={
+                        field.key in values
+                          ? values[field.key]
+                          : emptyValueFor(field.kind)
+                      }
+                      source={source}
+                      disabled={disabled}
+                      invalid={errors[field.key] !== undefined}
+                      onChange={(value) => setField(field.key, value)}
+                      onError={(error) =>
+                        setErrors(({ [field.key]: _, ...rest }) =>
+                          error === undefined
+                            ? rest
+                            : { ...rest, [field.key]: error }
+                        )
+                      }
+                      onBusyChange={(isBusy) =>
+                        setBusyFields((current) => {
+                          const next = new Set(current);
+                          if (isBusy) {
+                            next.add(field.key);
+                          } else {
+                            next.delete(field.key);
+                          }
+                          return next;
+                        })
+                      }
+                      onRefusal={onRefusal}
+                      onOpenClassic={onOpenClassic}
+                      onUnresolvedChange={(ids) => {
+                        unresolved.current[field.key] = ids;
+                      }}
+                    />
+                  </FieldRow>
+                );
+              })}
+              <FieldRow
+                id="cms-field-slug"
+                label="Address"
+                error={errors.slug}
+                changed={changedSince.address}
+                onUseMine={
+                  canEdit && keptDifferences.includes("slug")
+                    ? () => restoreMine("slug")
+                    : undefined
+                }
+                useMineDisabled={busy !== undefined}
+              >
+                <InputField
+                  id="cms-field-slug"
+                  value={slug}
+                  disabled={disabled}
+                  color={errors.slug === undefined ? undefined : "error"}
+                  aria-invalid={errors.slug !== undefined || undefined}
+                  aria-describedby={
+                    errors.slug === undefined
+                      ? undefined
+                      : fieldIds("cms-field-slug").error
+                  }
+                  maxLength={63}
+                  onChange={(event) => {
+                    setSlug(event.currentTarget.value);
+                    setFollows(false);
+                    setErrors(({ slug: _, ...rest }) => rest);
+                  }}
+                />
+              </FieldRow>
+              {details !== null && detailsBeside === false && details}
+            </Grid>
+          </Box>
+          {detailsBeside && (
+            <Box
+              css={{
+                gridColumn: 3,
+                maxWidth: theme.spacing[30],
+                minWidth: 0,
+                paddingBlock: theme.spacing[11],
+                paddingInlineEnd: theme.spacing[9],
+              }}
+            >
+              {details}
+            </Box>
+          )}
         </Box>
       </ScrollAreaNative>
       <Dialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
@@ -961,6 +1214,13 @@ export const ItemEditor = ({
           <DialogTitle>Discard staged changes?</DialogTitle>
         </DialogContent>
       </Dialog>
+      <DeleteDialog
+        open={confirmDelete}
+        title={getDeleteTitle(1, collection)}
+        busy={busy === "delete"}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => void remove()}
+      />
     </Flex>
   );
 };

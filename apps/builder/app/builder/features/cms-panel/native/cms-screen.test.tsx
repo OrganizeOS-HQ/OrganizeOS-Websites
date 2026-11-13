@@ -11,12 +11,17 @@ import { $cmsNativeDirty, refreshCmsNative } from "./cms-native-stores";
 import type { CmsErrorCode, CmsItem, CmsResult } from "./cms-source";
 import {
   createFakeCmsSource,
+  EVENTS,
   itemOf,
+  itemsPageOf,
   PEOPLE,
   POSTS,
   POSTS_DETAIL,
+  rowOf as itemRowOf,
   type FakeCmsSource,
 } from "./fake-cms-source";
+import type { CmsItemsPage, CmsItemsQuery } from "./cms-source";
+import type { CmsListState } from "./cms-list-logic";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -1233,5 +1238,318 @@ describe("the builder's colour scheme", () => {
         }
       });
     }
+  });
+});
+
+/** A full list view for `initialView`, its defaults filled. */
+const listView = (
+  over: Partial<Pick<CmsListState, "status" | "sort" | "direction" | "option">>
+): Pick<CmsListState, "status" | "sort" | "direction" | "option"> => ({
+  status: "all",
+  sort: "order",
+  direction: "asc",
+  option: null,
+  ...over,
+});
+
+// Echoes the query back as the door's answer: the page and applied the query
+// asked for, so the screen keeps the filter, sort and page it sent.
+const echoPage = (
+  q: CmsItemsQuery,
+  rows = [itemRowOf(itemOf())],
+  total = rows.length
+): CmsItemsPage => {
+  const sort = q.sort ?? "order";
+  const page = q.page ?? 1;
+  return itemsPageOf(rows, total, page, {
+    applied: {
+      status: q.status ?? "all",
+      sort,
+      direction: q.direction ?? (sort === "updated" ? "desc" : "asc"),
+      optionKey: q.optionKey ?? null,
+      optionValue: q.optionValue ?? null,
+    },
+  });
+};
+
+const menuRadio = (text: string) =>
+  [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(
+    (item) => item.textContent === text
+  );
+
+const nameHeader = () =>
+  [
+    ...document.querySelectorAll<HTMLElement>('[role="columnheader"] button'),
+  ].find((button) => button.textContent?.startsWith("Name"));
+
+describe("the list state per collection (Task 14)", () => {
+  const lastListItems = () =>
+    fake.listItems.mock.calls.at(-1) as [string, CmsItemsQuery] | undefined;
+
+  test("another collection opens with the default list state, and coming back keeps none", async () => {
+    fake.listItems.mockImplementation(async (_c, q) => echoPage(q));
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        list: listView({ status: "archived" }),
+      },
+    });
+    await settle();
+    expect(lastListItems()).toEqual([
+      POSTS.id,
+      { q: undefined, page: 1, status: "archived" },
+    ]);
+
+    await click(rowOf(PEOPLE.slug));
+    await settle();
+    expect(lastListItems()).toEqual([PEOPLE.id, { q: undefined, page: 1 }]);
+
+    await click(rowOf(POSTS.slug));
+    await settle();
+    expect(lastListItems()).toEqual([POSTS.id, { q: undefined, page: 1 }]);
+  });
+
+  test("a failed page change under a filter keeps the drawn page", async () => {
+    const held = deferred<CmsResult<CmsItemsPage>>();
+    fake.listItems.mockImplementation(async (_c, q) =>
+      q.page === 2 ? held.promise : echoPage(q, [itemRowOf(itemOf())], 60)
+    );
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        list: listView({ status: "draft" }),
+      },
+    });
+    await settle();
+    expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
+
+    expect(byLabel("Previous")?.hasAttribute("disabled")).toBe(true);
+    await click(byLabel("Next"));
+    await act(async () => held.resolve({ error: "unavailable" }));
+    await settle();
+    // the drawn page 1 and its rows stay: Previous is disabled again
+    expect(byLabel("Previous")?.hasAttribute("disabled")).toBe(true);
+    expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
+  });
+
+  test("an answer's applied is adopted with no second E3", async () => {
+    // field:gone is not a Posts field, so the door runs Manual order
+    fake.listItems.mockImplementation(async (_c, _q) =>
+      echoPage({ sort: "order", direction: "asc" })
+    );
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        list: listView({ sort: "field:gone", direction: "desc" }),
+      },
+    });
+    await settle();
+    expect(fake.listItems).toHaveBeenCalledTimes(1);
+    expect(lastListItems()?.[1]).toMatchObject({ sort: "field:gone" });
+    // the Sort menu reads what the door ran
+    await click(buttonByText("Sort"));
+    expect(menuRadio("Manual order")?.getAttribute("aria-checked")).toBe(
+      "true"
+    );
+    expect(fake.listItems).toHaveBeenCalledTimes(1);
+  });
+
+  test("a columns key the cached fields lack is skipped and refreshes the fields once", async () => {
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+    fake.listItems.mockImplementation(async (_c, q) =>
+      itemsPageOf([itemRowOf(itemOf())], 1, 1, {
+        ...echoPage(q),
+        columns: ["online", "added"],
+      })
+    );
+    mount({ initialView: { collectionId: EVENTS.id } });
+    await settle();
+    // E2 once on open, once for the refresh the missing "added" asked
+    expect(fake.getCollection).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('[data-cms-column-key="added"]')).toBeNull();
+
+    // a later E3 answer with the same columns asks for no further refresh
+    await act(async () => userEvent.type(byLabel("Search Events")!, "a"));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+    await settle();
+    expect(fake.getCollection).toHaveBeenCalledTimes(2);
+  });
+
+  // Review Focus 2
+  test("a filtered, sorted page 2 is kept across opening an item and Back", async () => {
+    // 60 items: page 1 holds one row, page 2 another
+    const rows = (q: CmsItemsQuery) => [
+      itemRowOf(
+        itemOf({
+          id: `00000000-0000-4000-8000-00000000000${q.page ?? 1}`,
+          slug: `p${q.page ?? 1}`,
+          data: { title: `Row ${q.page ?? 1}` },
+        })
+      ),
+    ];
+    fake.listItems.mockImplementation(async (_c, q) =>
+      echoPage(q, rows(q), 60)
+    );
+    mount({ initialView: { collectionId: POSTS.id } });
+    await settle();
+
+    // through the UI: the Archived filter, Name descending, then page 2
+    await click(buttonByText("Filter"));
+    await click(menuRadio("Archived"));
+    await click(nameHeader());
+    await click(nameHeader());
+    await click(byLabel("Next"));
+    await settle();
+    expect(lastListItems()).toEqual([
+      POSTS.id,
+      {
+        q: undefined,
+        page: 2,
+        status: "archived",
+        sort: "name",
+        direction: "desc",
+      },
+    ]);
+    // a selection before opening the item
+    await click(byLabel("Select Row 2"));
+    expect(byLabel("Select Row 2")?.getAttribute("data-state")).toBe("checked");
+
+    await click(document.querySelector<HTMLElement>('[data-cms-item="p2"]'));
+    await settle();
+    await click(byLabel("Back"));
+    await settle();
+    expect(lastListItems()).toEqual([
+      POSTS.id,
+      {
+        q: undefined,
+        page: 2,
+        status: "archived",
+        sort: "name",
+        direction: "desc",
+      },
+    ]);
+    expect(
+      document.querySelector<HTMLElement>("[data-cms-pager]")?.textContent
+    ).toBe("51-60 of 60");
+    expect(
+      [...document.querySelectorAll("button")].find((button) =>
+        button.textContent?.startsWith("Filter")
+      )?.textContent
+    ).toBe("Filter 1");
+    expect(
+      nameHeader()?.closest('[role="columnheader"]')?.getAttribute("aria-sort")
+    ).toBe("descending");
+    // the table is selection-free
+    expect(
+      document.querySelector('[role="row"] [data-state="checked"]')
+    ).toBeNull();
+    expect(document.querySelector('[role="toolbar"]')).toBeNull();
+  });
+
+  test("a failed filter change keeps the drawn filter, so the Filter shows what the rows are", async () => {
+    fake.listItems.mockImplementation(async (_c, q) =>
+      q.status === "draft"
+        ? { error: "unavailable" }
+        : echoPage(q, [itemRowOf(itemOf())], 1)
+    );
+    mount({ initialView: { collectionId: POSTS.id } });
+    await settle();
+    await click(buttonByText("Filter"));
+    await click(menuRadio("Draft"));
+    await settle();
+    expect(lastListItems()?.[1]).toMatchObject({ status: "draft" });
+    expect(buttonByText("Filter")).not.toBeUndefined();
+    await click(buttonByText("Filter"));
+    expect(menuRadio("All items")?.getAttribute("aria-checked")).toBe("true");
+    expect(menuRadio("Draft")?.getAttribute("aria-checked")).toBe("false");
+  });
+
+  test("the editor's Delete closes it without the guard, and the list refetches under the filter", async () => {
+    const item = itemOf({ status: "archived" });
+    fake.listItems.mockImplementation(async (_c, q) =>
+      echoPage(q, [itemRowOf(item)], 1)
+    );
+    fake.getItem.mockResolvedValue({ item });
+    fake.deleteItems.mockResolvedValue({ deleted: [item.id] });
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        list: listView({ status: "archived", sort: "name" }),
+      },
+    });
+    await settle();
+    await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+    await settle();
+    // unsaved edits go with the item
+    await act(async () => userEvent.type(titleInput()!, "x"));
+    await settle();
+    expect($cmsNativeDirty.get()).toBe(true);
+    const calls = fake.listItems.mock.calls.length;
+    await click(byLabel("Item menu"));
+    await click(
+      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (element) => element.textContent === "Delete"
+      )
+    );
+    await click(
+      [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          '[role="dialog"] button'
+        ),
+      ].find((button) => button.textContent === "Delete")
+    );
+    await settle();
+    expect(titleInput()).toBeNull();
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+    expect($cmsNativeDirty.get()).toBe(false);
+    expect(fake.listItems.mock.calls.length).toBeGreaterThan(calls);
+    expect(lastListItems()).toEqual([
+      POSTS.id,
+      { q: undefined, page: 1, status: "archived", sort: "name" },
+    ]);
+  });
+
+  test("a filter the door refuses as invalid reads Try again in a minute", async () => {
+    const error = vi.spyOn(toast, "error");
+    fake.listItems.mockImplementation(async (_c, q) =>
+      q.status === "staged"
+        ? { error: "invalid" }
+        : echoPage(q, [itemRowOf(itemOf())], 1)
+    );
+    mount({ initialView: { collectionId: POSTS.id } });
+    await settle();
+    await click(buttonByText("Filter"));
+    await click(menuRadio("Staged changes"));
+    await settle();
+    expect(error).toHaveBeenCalledWith("Try again in a minute", {
+      id: "cms-read-invalid",
+    });
+  });
+
+  test("a failed refetch for the current key keeps the drawn rows", async () => {
+    let answers = 0;
+    fake.listItems.mockImplementation(async (_c, q) => {
+      answers += 1;
+      return answers === 1
+        ? echoPage(q, [itemRowOf(itemOf())], 1)
+        : { error: "rate_limited" };
+    });
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        list: listView({ status: "draft" }),
+      },
+    });
+    await settle();
+    const calls = fake.listItems.mock.calls.length;
+    expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
+
+    // a background refetch for the same key that fails changes no drawn page
+    refreshCmsNative();
+    await settle();
+    expect(fake.listItems.mock.calls.length).toBeGreaterThan(calls);
+    expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
   });
 });

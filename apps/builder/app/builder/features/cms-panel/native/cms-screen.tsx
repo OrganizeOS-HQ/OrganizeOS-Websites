@@ -38,6 +38,14 @@ import {
   getToastText,
   type CmsRefusal,
 } from "./cms-logic";
+import {
+  adoptApplied,
+  defaultListState,
+  keepSelection,
+  listKey,
+  toItemsQuery,
+  type CmsListState,
+} from "./cms-list-logic";
 import { $cmsNativeDirty, $cmsNativeRefresh } from "./cms-native-stores";
 import {
   isCmsFailure,
@@ -45,6 +53,7 @@ import {
   type CmsCollection,
   type CmsCollectionSummary,
   type CmsErrorCode,
+  type CmsField,
   type CmsItem,
   type CmsItemsPage,
   type CmsSource,
@@ -60,6 +69,8 @@ export type CmsScreenView = {
   itemId?: string | null;
   page?: number;
   query?: string;
+  /** The list's filter and sort; the selection always starts empty. */
+  list?: Pick<CmsListState, "status" | "sort" | "direction" | "option">;
 };
 
 export type CmsScreenProps = {
@@ -80,7 +91,7 @@ export type CmsScreenProps = {
   /** Leaves the builder for `homeUrl`. */
   navigate?: (url: string) => void;
   /** After a write: the collection's canvas requests are invalidated (4.7). */
-  onItemWritten?: (collectionSlug: string, item: CmsItem) => void;
+  onItemWritten?: (collectionSlug: string, item?: CmsItem) => void;
   /** Where to open; stories only. */
   initialView?: CmsScreenView;
   /**
@@ -210,6 +221,25 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const [itemId, setItemId] = useState(initialView?.itemId);
     const [page, setPage] = useState(initialView?.page ?? 1);
     const [query, setQuery] = useState(initialView?.query ?? "");
+    // The filter, sort and selection of the open collection: one value,
+    // keyed by the collection id and read as the defaults for any other
+    // (W3-D1). `selectCollection` and the reset effect are not edited.
+    const [listState, setListState] = useState<CmsListState>(() => ({
+      ...defaultListState(initialView?.collectionId),
+      ...(initialView?.list ?? {}),
+    }));
+    const list =
+      listState.collectionId === collectionId
+        ? listState
+        : defaultListState(collectionId);
+    // The latest list state, for E3's effect, which reruns on the list's key
+    // only: a selection change asks E3 nothing.
+    const listStateRef = useRef(listState);
+    listStateRef.current = listState;
+    const openListKey = listKey(list);
+    // Bumped on every E3 answer for the current key, success or failure; a
+    // reorder's wait reads it (Task 18).
+    const [pageAnswer, setPageAnswer] = useState({ count: 0, ok: true });
     const [itemsPage, setItemsPage] = useState<CmsItemsPage | undefined>(
       undefined
     );
@@ -233,6 +263,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     const [returnFocusItemId, setReturnFocusItemId] = useState<
       string | undefined
     >(undefined);
+    // The item the editor's Delete removed: the list focuses its first other
+    // row, else New item (W3-D6).
+    const [deletedItemId, setDeletedItemId] = useState<string | undefined>(
+      undefined
+    );
     // The times the screen has been shown: the first is the open, each
     // later one a reopen.
     const [opens, setOpens] = useState(0);
@@ -249,9 +284,39 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     // read at E2's answer: the collection whose fields are drawn
     const drawnDetailId = useRef<string | undefined>(undefined);
     drawnDetailId.current = detail?.id;
-    // The collection, search and page number of the page drawn.
+    // set when E2 (or the schema refresh) answers, read at E3's answer: the
+    // fields loaded for a collection, so a missing-column check does not race
+    // E2's own answer on the first load
+    const loadedFields = useRef<{ id: string; fields: CmsField[] } | undefined>(
+      undefined
+    );
+    // The column keys an E3 answer asked the schema refresh for and that the
+    // refresh did not supply, so the same still-missing key is not asked
+    // again. A key the fields now carry, or another collection, clears it.
+    const refreshedMissing = useRef<Set<string>>(new Set());
+    const refetchFieldsRef = useRef<(() => Promise<void>) | undefined>(
+      undefined
+    );
+    const applyLoadedFields = (loaded: CmsCollection) => {
+      if (loadedFields.current?.id !== loaded.id) {
+        refreshedMissing.current = new Set();
+      }
+      loadedFields.current = { id: loaded.id, fields: loaded.fields };
+      for (const field of loaded.fields) {
+        refreshedMissing.current.delete(field.key);
+      }
+    };
+    // The collection, search, page number, list key and filter and sort of
+    // the page drawn.
     const drawnPage = useRef<
-      { collectionId: string; query: string; page: number } | undefined
+      | {
+          collectionId: string;
+          query: string;
+          page: number;
+          listKey: string;
+          list: Pick<CmsListState, "status" | "sort" | "direction" | "option">;
+        }
+      | undefined
     >(undefined);
     // The E3 inputs whose answer is already drawn: a page E3 answered in
     // place of the one asked for.
@@ -406,6 +471,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         }
         clearLine("detail");
         setDetailFailed(false);
+        applyLoadedFields(result.collection);
         setDetail(result.collection);
       });
       return () => {
@@ -433,14 +499,23 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       ) {
         return;
       }
-      const key = JSON.stringify([
-        collectionId,
-        page,
-        query,
-        listVersion,
-        pageAttempt,
-        attempt,
-      ]);
+      // the open collection's list state, or the defaults for any other
+      const effectList =
+        listStateRef.current.collectionId === collectionId
+          ? listStateRef.current
+          : defaultListState(collectionId);
+      const currentListKey = listKey(effectList);
+      const keyFor = (pageNumber: number, forListKey: string) =>
+        JSON.stringify([
+          collectionId,
+          pageNumber,
+          query,
+          listVersion,
+          pageAttempt,
+          attempt,
+          forListKey,
+        ]);
+      const key = keyFor(page, currentListKey);
       const isBackground = isPageBackground(source, key);
       // the page E3 answered in place of the one asked for is drawn already
       if (adoptedPageKey.current === key) {
@@ -453,11 +528,16 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         setPageFailed(false);
       }
       void source
-        .listItems(collectionId, { q: query === "" ? undefined : query, page })
+        .listItems(collectionId, toItemsQuery(effectList, query, page))
         .then((result) => {
           if (isCurrent === false) {
             return;
           }
+          // every answer for the current key is counted, success or failure
+          setPageAnswer((current) => ({
+            count: current.count + 1,
+            ok: isCmsFailure(result) === false,
+          }));
           if (isCmsFailure(result)) {
             const refusal = mapReadFailure(result.error);
             if (refusal === "toast") {
@@ -469,28 +549,36 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
               // a page on screen stays, with the toast; with none drawn,
               // the line and its Retry (4.3.4)
               if (hasItemsPage.current) {
-                toast.error(getToastText(result.error), {
-                  id: `cms-read-${result.error}`,
-                });
-                // a failed page change goes back to the drawn page number,
-                // unread, so the pager asks from the rows on screen; a
-                // failed search keeps the page it asked for
+                // a filter or sort a platform without slice 2's keys refuses
+                // as invalid is a passing state, not the person's input
+                const text =
+                  result.error === "invalid" &&
+                  currentListKey !== listKey(defaultListState(collectionId))
+                    ? getToastText("unavailable")
+                    : getToastText(result.error);
+                toast.error(text, { id: `cms-read-${result.error}` });
+                // a failed page, filter or sort change goes back to the
+                // drawn page number and list state, unread, so the pager and
+                // the menus show what the rows on screen are (6.1); a failed
+                // search keeps the page it asked for
                 const drawn = drawnPage.current;
                 if (
                   drawn !== undefined &&
                   drawn.collectionId === collectionId &&
                   drawn.query === query &&
-                  drawn.page !== page
+                  (drawn.listKey !== currentListKey || drawn.page !== page)
                 ) {
-                  adoptedPageKey.current = JSON.stringify([
-                    collectionId,
-                    drawn.page,
-                    query,
-                    listVersion,
-                    pageAttempt,
-                    attempt,
-                  ]);
-                  setPage(drawn.page);
+                  adoptedPageKey.current = keyFor(drawn.page, drawn.listKey);
+                  if (drawn.listKey !== currentListKey) {
+                    setListState((current) =>
+                      current.collectionId === collectionId
+                        ? { ...current, ...drawn.list }
+                        : current
+                    );
+                  }
+                  if (drawn.page !== page) {
+                    setPage(drawn.page);
+                  }
                 }
               } else {
                 setPageFailed(true);
@@ -501,19 +589,70 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           clearLine("page");
           setPageFailed(false);
           setItemsPage(result);
-          drawnPage.current = { collectionId, query, page: result.page };
-          // a page past the end answers the last one (A4): the screen
-          // keeps that page from here on
-          if (result.page !== page) {
-            adoptedPageKey.current = JSON.stringify([
+          {
+            const drawnList = adoptApplied(effectList, result.applied);
+            drawnPage.current = {
               collectionId,
-              result.page,
               query,
-              listVersion,
-              pageAttempt,
-              attempt,
-            ]);
+              page: result.page,
+              listKey: listKey(drawnList),
+              list: {
+                status: drawnList.status,
+                sort: drawnList.sort,
+                direction: drawnList.direction,
+                option: drawnList.option,
+              },
+            };
+          }
+          // the answer's applied filter and sort are adopted without a
+          // second E3; the selection keeps only the rows still shown
+          const nextListKey = listKey(adoptApplied(effectList, result.applied));
+          // adopting the answer's page (a page past the end answers the last
+          // one, A4) or its applied filter and sort moves the key the effect
+          // reads, so the next run is skipped: its data is already drawn and
+          // no second E3 is asked
+          if (nextListKey !== currentListKey || result.page !== page) {
+            adoptedPageKey.current = keyFor(result.page, nextListKey);
+          }
+          setListState((current) => {
+            const base =
+              current.collectionId === collectionId ? current : effectList;
+            const adopted = adoptApplied(base, result.applied);
+            const kept = keepSelection(adopted.selected, result.items);
+            const next =
+              kept.size === adopted.selected.size
+                ? adopted
+                : { ...adopted, selected: kept };
+            // the state now belongs to this collection, so another's is
+            // never kept for when it opens again
+            return next === current ? current : next;
+          });
+          if (result.page !== page) {
             setPage(result.page);
+          }
+          // a columns, filterField or option key the cached fields lack
+          // refreshes the schema once (6.1), only while this collection's
+          // fields are loaded
+          if (loadedFields.current?.id === collectionId) {
+            const have = new Set(
+              loadedFields.current.fields.map((field) => field.key)
+            );
+            const wanted = [
+              ...result.columns,
+              result.filterField,
+              result.applied.optionKey,
+            ].filter((entry): entry is string => typeof entry === "string");
+            const missing = wanted.filter((entry) => have.has(entry) === false);
+            if (
+              missing.some(
+                (entry) => refreshedMissing.current.has(entry) === false
+              )
+            ) {
+              for (const entry of missing) {
+                refreshedMissing.current.add(entry);
+              }
+              void refetchFieldsRef.current?.();
+            }
           }
         });
       return () => {
@@ -525,6 +664,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       isReady,
       page,
       query,
+      openListKey,
       listVersion,
       pageAttempt,
       attempt,
@@ -583,9 +723,16 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       });
 
     const openItem = (nextId: string | null) => {
+      // Back shows the list selection-free (5.1.5)
+      setListState((current) =>
+        current.selected.size === 0
+          ? current
+          : { ...current, selected: new Set<string>() }
+      );
       setEditorSession((current) => current + 1);
       setFocusBack(true);
       setReturnFocusItemId(undefined);
+      setDeletedItemId(undefined);
       setItemId(nextId);
     };
 
@@ -617,17 +764,49 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         }
         return;
       }
+      applyLoadedFields(result.collection);
       setDetail((current) =>
         current === undefined || current.id === result.collection.id
           ? result.collection
           : current
       );
     };
+    // the latest refetchFields, so the E3 effect can run it without taking it
+    // as a dependency (it is rebuilt each render)
+    refetchFieldsRef.current = refetchFields;
 
-    const onWritten = (item: CmsItem) => {
+    const onWritten = (item?: CmsItem) => {
       setListVersion((current) => current + 1);
       if (collection !== undefined) {
         onItemWritten?.(collection.slug, item);
+      }
+    };
+
+    // The editor's Delete: the editor closes without the guard, the lists
+    // refetch under the open filter, and the canvas invalidates. The deleted
+    // row no longer takes the focus back: the table's first row does.
+    const onDeleted = () => {
+      setIsEditorDirty(false);
+      $cmsNativeDirty.set(false);
+      setReturnFocusItemId(undefined);
+      setDeletedItemId(itemId ?? undefined);
+      setItemId(undefined);
+      onWritten();
+    };
+
+    // The list's filter, sort or selection changed (Tasks 16 to 18): a filter
+    // or sort change goes back to page 1; the E3 effect refetches.
+    const onListChange = (next: CmsListState) => {
+      const sortChanged =
+        next.status !== list.status ||
+        next.sort !== list.sort ||
+        next.direction !== list.direction ||
+        (next.option?.key ?? null) !== (list.option?.key ?? null) ||
+        (next.option?.value ?? null) !== (list.option?.value ?? null);
+      setListState(next);
+      if (sortChanged) {
+        setPage(1);
+        setReturnFocusItemId(undefined);
       }
     };
 
@@ -683,6 +862,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             onBack={closeEditor}
             onDirtyChange={onDirtyChange}
             onWritten={onWritten}
+            onDeleted={onDeleted}
             onCreated={(item) => setItemId(item.id)}
             onSchemaStale={refetchFields}
             onRefusal={onEditorRefusal}
@@ -705,7 +885,17 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           page={itemsPage}
           query={query}
           canEdit={access.canEdit}
+          canPublish={access.canPublish}
           focusItemId={returnFocusItemId}
+          deletedItemId={deletedItemId}
+          onDeletedFocused={() => setDeletedItemId(undefined)}
+          source={source}
+          fields={detail?.id === collection.id ? detail.fields : undefined}
+          list={list}
+          pageAnswer={pageAnswer}
+          onListChange={onListChange}
+          onListWritten={onWritten}
+          onRefusal={onEditorRefusal}
           onQueryChange={(next) => {
             setQuery(next);
             setPage(1);
