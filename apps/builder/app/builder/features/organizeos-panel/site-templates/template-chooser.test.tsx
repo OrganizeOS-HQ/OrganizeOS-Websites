@@ -12,7 +12,7 @@ import {
   CANONICAL_FONT_NAMES,
 } from "@organizeos/site-components/site-templates";
 import { createPages } from "../../../../../../../packages/project-build/src/template";
-import { registerContainers } from "~/shared/sync/sync-stores";
+import { registerContainers, serverSyncStore } from "~/shared/sync/sync-stores";
 import {
   $assets,
   $projectSettings,
@@ -37,7 +37,7 @@ import { $builderMode } from "~/shared/nano-states/misc";
 import { $dataLoadingState } from "~/builder/shared/nano-states";
 import { updateWebstudioDataStaged } from "../staged-data";
 import {
-  type ApplyResult,
+  type ApplyOutcome,
   applySiteTemplate,
   writeCanonicalVariablesMutable,
 } from "./apply-site-template";
@@ -212,11 +212,11 @@ const rootVariables = () => {
     .sort();
 };
 
-const applied = async (template: SiteTemplate): Promise<ApplyResult> => {
+const applied = async (template: SiteTemplate): Promise<ApplyOutcome> => {
   await updateWebstudioDataStaged((data) => {
     writeCanonicalVariablesMutable(data, template.variables, "overwrite");
   });
-  return { status: "applied", unboundBlocks: [] };
+  return { status: "applied", unboundBlocks: [], missingImages: 0 };
 };
 
 beforeEach(() => {
@@ -553,6 +553,40 @@ describe("choosing", () => {
   });
 
   test.each([
+    { missingImages: 1, message: "1 photo could not be added." },
+    { missingImages: 2, message: "2 photos could not be added." },
+  ])(
+    "photos that could not be added are counted in one error ($missingImages)",
+    async ({ missingImages, message }) => {
+      vi.mocked(applySiteTemplate).mockImplementation(async (template) => ({
+        ...(await applied(template)),
+        missingImages,
+      }));
+      render();
+      await choose("union");
+      expect(dialog()).toBeNull();
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(toastError).toHaveBeenCalledWith(message);
+    }
+  );
+
+  // Undone while its images uploaded: the project is empty again, the chooser
+  // offered again, and nothing more is done for the undone apply.
+  test("skips the steps after an apply that was undone", async () => {
+    vi.mocked(applySiteTemplate).mockImplementation(async (template) => {
+      const result = await applied(template);
+      serverSyncStore.undo();
+      return { ...result, unboundBlocks: ["Event List"], missingImages: 1 };
+    });
+    render();
+    await choose("union");
+    expect($isTemplateChooserOffered.get()).toBe(true);
+    expect(dialog()).not.toBeNull();
+    expect(toastError).not.toHaveBeenCalled();
+    expect(setBuilderMode).not.toHaveBeenCalled();
+  });
+
+  test.each([
     { reason: "touched", message: "This site already has content." },
     {
       reason: "path-taken",
@@ -609,7 +643,7 @@ describe("choosing", () => {
   });
 
   test("cards are disabled while applying", async () => {
-    let finish: (result: ApplyResult) => void = () => {};
+    let finish: (result: ApplyOutcome) => void = () => {};
     vi.mocked(applySiteTemplate).mockImplementation(
       (template) =>
         new Promise((resolve) => {
@@ -628,7 +662,7 @@ describe("choosing", () => {
     expect(applySiteTemplate).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      finish({ status: "applied", unboundBlocks: [] });
+      finish({ status: "applied", unboundBlocks: [], missingImages: 0 });
     });
     await settle();
     expect(dialog()).toBeNull();

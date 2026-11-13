@@ -44,6 +44,7 @@ import { $dataLoadingState } from "~/builder/shared/nano-states";
 import { isOrganizeosBlocksEnabled } from "../insert-organizeos-block";
 import { updateWebstudioDataStaged } from "../staged-data";
 import {
+  type ApplyOutcome,
   type ApplyResult,
   applySiteTemplate,
   hasCanonicalVariables,
@@ -165,10 +166,12 @@ const startBlank = () => {
 
 /**
  * Apply a template, then open Home, in Simple mode when the plan allows it.
- * The dialog closes by itself: an applied template ends the offer.
+ * The dialog closes by itself: an applied template ends the offer. An apply
+ * undone while its images uploaded leaves the project empty and the chooser
+ * offered again, so nothing more is done for it.
  */
 const chooseTemplate = async (template: SiteTemplate) => {
-  let result: ApplyResult;
+  let result: ApplyOutcome;
   try {
     result = await applySiteTemplate(template);
   } catch (error) {
@@ -184,6 +187,9 @@ const chooseTemplate = async (template: SiteTemplate) => {
     );
     return;
   }
+  if ($isTemplateChooserOffered.get()) {
+    return;
+  }
   const homePageId = $pages.get()?.homePageId;
   if (homePageId !== undefined) {
     selectPage(homePageId);
@@ -195,6 +201,13 @@ const chooseTemplate = async (template: SiteTemplate) => {
     const blocks = Array.from(new Set(result.unboundBlocks)).join(", ");
     builderApi.toast.error(
       `Not linked to your organization's data: ${blocks}. Contact ${platformName} support to restore the link.`
+    );
+  }
+  if (result.missingImages > 0) {
+    builderApi.toast.error(
+      result.missingImages === 1
+        ? "1 photo could not be added."
+        : `${result.missingImages} photos could not be added.`
     );
   }
 };
