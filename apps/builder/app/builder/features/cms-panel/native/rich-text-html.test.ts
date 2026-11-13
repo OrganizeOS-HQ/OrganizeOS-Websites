@@ -119,9 +119,35 @@ describe("the round trip (spec 8)", () => {
     expect(roundTrip(html)).not.toContain("\uE000");
   });
 
-  // such a value is not marked, so the import trims as Lexical does
-  test("a value already holding the mark keeps it", () => {
-    expect(roundTrip(`<p>a\uE000 ${IMG} b</p>`)).toContain("a\uE000");
+  test("a value already holding U+E000 keeps it, and the spaces beside its image", () => {
+    const written = roundTrip(`<p>a\uE000 ${IMG} b</p>`);
+    expect(written).toContain("a\uE000 </span><img");
+    expect(written).toContain(
+      'alt="A"><span style="white-space: pre-wrap;"> b'
+    );
+  });
+
+  const WRITTEN_IMG = '<img src="https://example.org/a.png" alt="A">';
+  test("the space beside an image survives a mark around its neighbour", () => {
+    expect(
+      roundTrip(`<p><strong>Bold </strong>${IMG}<em> after</em></p>`)
+    ).toBe(
+      `<p><b><strong style="white-space: pre-wrap;">Bold </strong></b>${WRITTEN_IMG}<i><em style="white-space: pre-wrap;"> after</em></i></p>`
+    );
+  });
+
+  test("a line break stops the search for an image's neighbour", () => {
+    expect(roundTrip(`<p>a <br>${IMG}<br> b</p>`)).toBe(
+      `<p><span style="white-space: pre-wrap;">a</span><br>${WRITTEN_IMG}<br><span style="white-space: pre-wrap;">b</span></p>`
+    );
+  });
+
+  test("a whitespace-only link beside an image stays editable", () => {
+    expect(
+      getRichTextReadOnlyReason(
+        `<p>x${IMG}<a href="https://example.org/"> </a></p>`
+      )
+    ).toBeUndefined();
   });
 
   test("the editor never writes a tag outside the allowlist but span", () => {

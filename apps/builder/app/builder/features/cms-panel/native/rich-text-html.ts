@@ -361,7 +361,15 @@ export const getRichTextReadOnlyReason = (
  * import, each text edge touching an image gets this mark, which keeps its
  * space; the imported text then drops the mark.
  */
-const IMAGE_EDGE = "\uE000";
+const pickImageEdgeMark = (text: string) => {
+  // the first private-use character the value does not already hold
+  for (let code = 0xe000; code <= 0xf8ff; code += 1) {
+    const mark = String.fromCharCode(code);
+    if (text.includes(mark) === false) {
+      return mark;
+    }
+  }
+};
 
 /** The inline wrappers an image's neighbouring text may sit in. */
 const INLINE_TAGS = new Set([
@@ -406,9 +414,9 @@ const textBeside = (node: Node, forward: boolean): Text | undefined => {
 };
 
 const markImageEdges = (body: HTMLElement) => {
-  // a value already holding the mark is left as it is
-  if (body.textContent?.includes(IMAGE_EDGE)) {
-    return false;
+  const mark = pickImageEdgeMark(body.textContent ?? "");
+  if (mark === undefined) {
+    return;
   }
   for (const image of Array.from(body.querySelectorAll("img"))) {
     // a figure's image is kept with its caption by the figure node
@@ -417,22 +425,22 @@ const markImageEdges = (body: HTMLElement) => {
     }
     const before = textBeside(image, false);
     if (before !== undefined && /\s$/.test(before.data)) {
-      before.data = `${before.data}${IMAGE_EDGE}`;
+      before.data = `${before.data}${mark}`;
     }
     const after = textBeside(image, true);
     if (after !== undefined && /^\s/.test(after.data)) {
-      after.data = `${IMAGE_EDGE}${after.data}`;
+      after.data = `${mark}${after.data}`;
     }
   }
-  return true;
+  return mark;
 };
 
-const unmarkImageEdges = (nodes: LexicalNode[]): LexicalNode[] =>
+const unmarkImageEdges = (nodes: LexicalNode[], mark: string): LexicalNode[] =>
   nodes.flatMap((node) => {
     if ($isTextNode(node)) {
       const text = node.getTextContent();
-      if (text.includes(IMAGE_EDGE)) {
-        const kept = text.split(IMAGE_EDGE).join("");
+      if (text.includes(mark)) {
+        const kept = text.split(mark).join("");
         if (kept === "") {
           return [];
         }
@@ -442,10 +450,11 @@ const unmarkImageEdges = (nodes: LexicalNode[]): LexicalNode[] =>
     }
     if ($isElementNode(node)) {
       const children = node.getChildren();
-      const kept = unmarkImageEdges(children);
+      const kept = unmarkImageEdges(children, mark);
       for (const child of children) {
         if (kept.includes(child) === false) {
-          child.remove();
+          // a parent it empties stays, as it would with no image beside it
+          child.remove(true);
         }
       }
     }
@@ -470,11 +479,13 @@ export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
       anchor.setAttribute("href", href);
     }
   }
-  const marked = markImageEdges(dom.body);
+  const mark = markImageEdges(dom.body);
   const imported = importStoredImages(() => $generateNodesFromDOM(editor, dom));
   const nodes: LexicalNode[] = [];
   let run: ParagraphNode | undefined;
-  for (const node of marked ? unmarkImageEdges(imported) : imported) {
+  for (const node of mark === undefined
+    ? imported
+    : unmarkImageEdges(imported, mark)) {
     if (isInlineNode(node)) {
       if (run === undefined) {
         run = $createParagraphNode();
