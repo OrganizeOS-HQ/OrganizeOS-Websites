@@ -642,3 +642,18 @@ describe("Up, Down, Home and End with an image selected (R5-8)", () => {
     }
   );
 });
+
+describe("an edit after Shift+End ends the extension (K11)", () => {
+  test("Home, Shift+End, then typing with Shift held keeps every character", async () => {
+    const onChange = await caretAfter(`<p>Some text ${A}</p>`, "Some text ");
+    await type("{Home}{Shift>}{End}{/Shift}{Shift>}H{/Shift}ello");
+    expect(editable()!.textContent).toBe("Hello");
+    expect(lastHtml(onChange)).toMatch(/>Hello</);
+  });
+
+  test("Home, Shift+End, Shift+Enter, then typing keeps the line break", async () => {
+    const onChange = await caretAfter(`<p>Some text ${A}</p>`, "Some text ");
+    await type("{Home}{Shift>}{End}{Enter}{/Shift}xy");
+    expect(lastHtml(onChange)).toMatch(/<br>(<[^>]+>)*xy/);
+  });
+});

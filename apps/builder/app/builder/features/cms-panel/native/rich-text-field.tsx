@@ -2156,16 +2156,18 @@ const ImageEditingPlugin = () => {
       editor.registerCommand(
         KEY_DOWN_COMMAND,
         (event) => {
-          if (event.shiftKey === false) {
-            if (event.key !== "Shift") {
-              pinnedAnchor.current = undefined;
-            }
+          if (event.key === "Shift") {
+            return false;
+          }
+          const isExtending =
+            event.shiftKey && /^(Arrow|Home$|End$|Page)/.test(event.key);
+          if (isExtending === false) {
+            pinnedAnchor.current = undefined;
             return false;
           }
           const selection = $getSelection();
           if (
             pinnedAnchor.current === undefined &&
-            /^(Arrow|Home$|End$|Page)/.test(event.key) &&
             $isRangeSelection(selection) &&
             $isAfterLineBreak(selection.anchor)
           ) {
@@ -2207,6 +2209,12 @@ const ImageEditingPlugin = () => {
         },
         COMMAND_PRIORITY_CRITICAL
       ),
+      // an edit ends the extension
+      editor.registerUpdateListener(({ dirtyElements, dirtyLeaves }) => {
+        if (dirtyLeaves.size > 0 || dirtyElements.size > 0) {
+          unpin();
+        }
+      }),
       editor.registerRootListener((rootElement, previous) => {
         previous?.removeEventListener("pointerdown", unpin);
         rootElement?.addEventListener("pointerdown", unpin);
