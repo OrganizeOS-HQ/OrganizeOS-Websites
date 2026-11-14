@@ -29,13 +29,26 @@ import {
   getResourcePresetIds,
 } from "~/shared/organizeos-preset-ids";
 import { $organizeosSite } from "~/shared/nano-states";
+import { $selectedPage } from "~/shared/nano-states/pages";
 import { $project, $resources } from "~/shared/sync/data-stores";
 import {
   type Insertable,
+  findClosestInsertable,
   getComponentTemplateData,
 } from "~/shared/instance-utils/insert";
+import { computeResourceRequest, invalidateResource } from "~/shared/resources";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { insertCompletedFragment } from "./staged-data";
+import { getFormsAccess } from "./forms-api";
+import {
+  SITE_FORM_CREATE_FAILED,
+  SITE_FORM_TITLE_MAX,
+  createSiteFormOnce,
+  fillOrgName,
+  markSiteForm,
+  siteFormFieldsOf,
+  siteFormInserts,
+} from "./site-form-insert";
 
 /**
  * Inserting an OrganizeOS block (spec section 4.3). A template cannot know a
@@ -219,6 +232,9 @@ const productCardBlockData: BlockData = {
 export const organizeosBlockData = new Map<string, BlockData>([
   [`${organizeosNamespace}:SignupForm`, signupFormBlockData],
   [`${organizeosNamespace}:SignupFormInline`, signupFormBlockData],
+  // the forms cards (fork doc section 9, "Site forms")
+  [`${organizeosNamespace}:SignupFormCard`, signupFormBlockData],
+  [`${organizeosNamespace}:ContactFormCard`, signupFormBlockData],
   [
     `${organizeosNamespace}:RsvpForm`,
     {
@@ -573,10 +589,34 @@ const shopBlockComponents = new Set([
  * also needs the deployment's switch (`ORGANIZEOS_SHOP_BLOCKS`), so a stale
  * panel cannot insert one.
  */
+const siteFormCards = new Set([
+  `${organizeosNamespace}:SignupFormCard`,
+  `${organizeosNamespace}:ContactFormCard`,
+]);
+
+/** The site forms switch (`ORGANIZEOS_SITE_FORMS`), as the loader resolved it. */
+export const isSiteFormsEnabled = () =>
+  $organizeosSite.get()?.siteFormsEnabled === true;
+
 const isBlockOffered = (component: string) =>
   isOrganizeosBlocksEnabled() &&
   (shopBlockComponents.has(component) === false ||
-    $organizeosSite.get()?.shopBlocksEnabled === true);
+    $organizeosSite.get()?.shopBlocksEnabled === true) &&
+  // the forms cards only with the site forms switch on
+  (siteFormCards.has(component) === false || isSiteFormsEnabled());
+
+/**
+ * Reload the Forms catalog Resource's request, so the canvas's Forms data
+ * holds a site form the insert just created (spec 5.1). Its URL and its
+ * Authorization are literals (provisioning writes them so), so its request
+ * reads no variable and is the one the canvas loads.
+ */
+const invalidateFormsResource = async (resourceId: string) => {
+  const resource = $resources.get().get(resourceId);
+  if (resource !== undefined) {
+    invalidateResource(await computeResourceRequest(resource, new Map()));
+  }
+};
 
 /**
  * Insert a block at the selection, or at `insertable` (a drop), the way the
@@ -628,6 +668,46 @@ export const insertOrganizeosBlock = async (
     return false;
   }
 
+  // A forms insert with the site forms switch on (fork doc section 9, "Site
+  // forms"; builder forms spec 5.1): every local check above has passed, and
+  // the block has a place, before its site form is created (F3 last before
+  // the write, P11); F0's org name fills the intro, asked at the same time.
+  // A failed create writes nothing.
+  let fragment = completion.fragment;
+  const siteForm = siteFormInserts.get(component);
+  if (siteForm !== undefined && isSiteFormsEnabled()) {
+    const rootId = fragment.children.find(
+      (child) => child.type === "id"
+    )?.value;
+    if (
+      rootId === undefined ||
+      findClosestInsertable(fragment, insertable, {
+        allowContentModelWarnings: true,
+      }) === undefined
+    ) {
+      return false;
+    }
+    const pageName = $selectedPage.get()?.name ?? "Page";
+    const [access, created] = await Promise.all([
+      getFormsAccess(project.id),
+      createSiteFormOnce(project.id, {
+        kind: siteForm.kind,
+        title: `${pageName}: ${siteForm.name}`.slice(0, SITE_FORM_TITLE_MAX),
+        fields: siteFormFieldsOf(fragment, rootId),
+        clientId: crypto.randomUUID(),
+      }),
+    ]);
+    if (created.ok === false) {
+      builderApi.toast.error(SITE_FORM_CREATE_FAILED);
+      return false;
+    }
+    fragment = markSiteForm(
+      fillOrgName(fragment, access.ok ? access.value.orgName : undefined),
+      rootId,
+      { formId: created.value.id, kind: siteForm.kind, label: siteForm.name }
+    );
+  }
+
   // The insert and its completion in one transaction, so it syncs and undoes
   // as one step, and writes nothing when the block has no place to go. The
   // binding is written after the insert, by the mapped ids: the insert gives
@@ -635,8 +715,8 @@ export const insertOrganizeosBlock = async (
   // catalog binding pointing at no Resource. "ours": a token the project
   // already has (the designer may have restyled "OS Input") is reused as it
   // stands, never added again as "OS Input-1".
-  return insertCompletedFragment({
-    fragment: completion.fragment,
+  const inserted = await insertCompletedFragment({
+    fragment,
     insertable,
     conflictResolution: "ours",
     // the runtime's registry has no OrganizeOS metas (ruling data OQ1)
@@ -649,4 +729,8 @@ export const insertOrganizeosBlock = async (
       completeOrganizeosInsertMutable(data, completion, newInstanceIds);
     },
   });
+  if (inserted && siteForm !== undefined && isSiteFormsEnabled()) {
+    await invalidateFormsResource(presetIds.forms.resourceId);
+  }
+  return inserted;
 };
