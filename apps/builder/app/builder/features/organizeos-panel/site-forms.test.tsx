@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { enableMapSet } from "immer";
 import type { Project } from "@webstudio-is/project";
 import { createDefaultPages } from "@webstudio-is/project-build";
-import { renderData } from "@webstudio-is/template";
+import { renderData, ws } from "@webstudio-is/template";
 import * as defaultMetas from "@webstudio-is/sdk-components-react/metas";
 import { type Instance, coreMetas } from "@webstudio-is/sdk";
 import * as organizeosMetas from "@organizeos/site-components/metas";
@@ -51,11 +51,19 @@ vi.mock("./forms-api", () => ({ createSiteForm, getFormsAccess: vi.fn() }));
 import {
   changeSignupForm,
   listRootFields,
+  removeSignupField,
   signupFormComponent,
 } from "./signup-fields";
 import {
   NEW_SITE_FORM,
+  SITE_FORM_FIELD_LIMIT,
+  addCatalogField,
+  catalogAddOptions,
   crmFormUrl,
+  fieldsDifferElsewhere,
+  moveSiteField,
+  setSiteFieldRequired,
+  siteFieldRows,
   formKindOf,
   formStatesFor,
   matchFieldsToSiteForm,
@@ -331,5 +339,206 @@ describe("formStatesFor", () => {
   test("a contact form has no Check email state (spec 9)", () => {
     expect(formStatesFor("contact-form")).not.toContain("confirm-email");
     expect(formStatesFor("contact-signup")).toContain("confirm-email");
+  });
+});
+
+// Builder forms spec 9, the Fields list for a site form (plan
+// 2026-11-13-builder-forms-fork-p2, Task 10).
+const catalog = {
+  fields: [
+    {
+      key: "email",
+      label: "Email",
+      type: "email",
+      locked: true,
+      custom: false,
+    },
+    {
+      key: "first_name",
+      label: "First name",
+      type: "text",
+      locked: false,
+      custom: false,
+    },
+    {
+      key: "phone",
+      label: "Phone",
+      type: "phone",
+      locked: false,
+      custom: false,
+    },
+    {
+      key: "sms_opt_in",
+      label: "SMS opt-in",
+      type: "checkbox",
+      locked: false,
+      custom: false,
+      consent: "sms",
+    },
+    {
+      key: "cf_a",
+      label: "Team",
+      type: "select",
+      locked: false,
+      custom: true,
+      options: ["North", "South"],
+    },
+    {
+      key: "cf_b",
+      label: "Huge",
+      type: "select",
+      locked: false,
+      custom: true,
+      options: Array.from({ length: 21 }, (_, i) => `o${i}`),
+    },
+    {
+      key: "cf_c",
+      label: "Long",
+      type: "select",
+      locked: false,
+      custom: true,
+      options: ["x".repeat(101)],
+    },
+    {
+      key: "cf_d",
+      label: "Notes",
+      type: "textarea",
+      locked: false,
+      custom: true,
+    },
+  ],
+  lists: [],
+};
+
+describe("siteFieldRows", () => {
+  test("one row per key in tree order, its catalog label, required from its Fields, locked from the catalog", () => {
+    const rootId = setSignupForm();
+    expect(siteFieldRows(rootId, catalog)).toEqual([
+      { key: "email", label: "Email", required: false, locked: true },
+      {
+        key: "first_name",
+        label: "First name",
+        required: false,
+        locked: false,
+      },
+    ]);
+  });
+
+  test("without the catalog, Email is still locked", () => {
+    const rootId = setSignupForm();
+    expect(siteFieldRows(rootId, undefined).map((row) => row.locked)).toEqual([
+      true,
+      false,
+    ]);
+  });
+});
+
+describe("the Fields list's writes", () => {
+  test("required writes every Field of the key, in one undo", async () => {
+    const rootId = setSignupForm();
+    const before = structuredClone($props.get());
+    expect(await setSiteFieldRequired(rootId, "first_name", true)).toBe(true);
+    expect(fieldProps(rootId)).toEqual([
+      ["email", undefined, undefined],
+      ["first_name", undefined, true],
+    ]);
+    emitCommand("undo");
+    expect($props.get()).toEqual(before);
+  });
+
+  test("a drag moves the key's Field to its new place, in one undo", async () => {
+    const rootId = setSignupForm();
+    const before = structuredClone($instances.get());
+    expect(await moveSiteField(rootId, "first_name", 0)).toBe(true);
+    expect(fieldProps(rootId).map(([key]) => key)).toEqual([
+      "first_name",
+      "email",
+    ]);
+    expect(await moveSiteField(rootId, "first_name", 1)).toBe(true);
+    expect(fieldProps(rootId).map(([key]) => key)).toEqual([
+      "email",
+      "first_name",
+    ]);
+    emitCommand("undo");
+    emitCommand("undo");
+    expect($instances.get()).toEqual(before);
+  });
+
+  test("Add inserts a Field with the catalog's type and options, not required", async () => {
+    const rootId = setSignupForm();
+    expect(await addCatalogField(rootId, catalog.fields[4])).toBe(true);
+    expect(fieldProps(rootId)).toEqual([
+      ["email", undefined, undefined],
+      ["first_name", undefined, undefined],
+      ["cf_a", "select", false],
+    ]);
+  });
+});
+
+describe("catalogAddOptions", () => {
+  test("the fields the root lacks, standard first, then Custom; no consent field without SMS, no select past the limits", () => {
+    expect(
+      catalogAddOptions(catalog, ["email"], { smsAvailable: false })
+    ).toEqual({
+      standard: [catalog.fields[1], catalog.fields[2]],
+      custom: [catalog.fields[4], catalog.fields[7]],
+      full: false,
+    });
+    expect(
+      catalogAddOptions(catalog, ["email"], { smsAvailable: true }).standard
+    ).toContain(catalog.fields[3]);
+  });
+
+  test("full at 20 Fields", () => {
+    const keys = Array.from(
+      { length: SITE_FORM_FIELD_LIMIT },
+      (_, i) => `k${i}`
+    );
+    expect(catalogAddOptions(catalog, keys, { smsAvailable: false }).full).toBe(
+      true
+    );
+  });
+});
+
+describe("fieldsDifferElsewhere", () => {
+  const twoBlocks = () =>
+    setSignupForm(
+      <ws.element ws:tag="div">
+        {organizeosTemplates.SignupForm.template}
+        {organizeosTemplates.SignupFormInline.template}
+      </ws.element>
+    );
+  const roots = () =>
+    [...$instances.get().values()].filter(
+      (instance) => instance.component === signupFormComponent
+    );
+  const mark = (rootId: string, record = SITE_FORM.id) => {
+    writeProp(rootId, "siteForm", "contact-signup");
+    writeProp(rootId, "record", record);
+  };
+
+  // the stacked form collects email and first_name, the Email bar email
+  test("another marked root on the same form with another list, until they agree", async () => {
+    twoBlocks();
+    const [stacked, bar] = roots();
+    mark(stacked.id);
+    mark(bar.id);
+    expect(fieldsDifferElsewhere(stacked.id)).toBe(true);
+    expect(fieldsDifferElsewhere(bar.id)).toBe(true);
+    await removeSignupField(stacked.id, "first_name");
+    expect(fieldsDifferElsewhere(stacked.id)).toBe(false);
+    await setSiteFieldRequired(bar.id, "email", true);
+    expect(fieldsDifferElsewhere(stacked.id)).toBe(true);
+  });
+
+  test("never for an unmarked root, or a root on another form", () => {
+    twoBlocks();
+    const [stacked, bar] = roots();
+    mark(stacked.id);
+    mark(bar.id, NEWSLETTER.id);
+    expect(fieldsDifferElsewhere(stacked.id)).toBe(false);
+    mark(bar.id);
+    writeProp(stacked.id, "siteForm", "");
+    expect(fieldsDifferElsewhere(stacked.id)).toBe(false);
   });
 });

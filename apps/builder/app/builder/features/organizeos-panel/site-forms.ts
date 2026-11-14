@@ -5,8 +5,16 @@ import { $selectedPage } from "~/shared/nano-states/pages";
 import { $instances, $project, $props } from "~/shared/sync/data-stores";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
 import { builderApi } from "~/shared/builder-api";
-import { SITE_FORM_PROP } from "~/shared/organizeos-site-forms";
-import type { DoorFormField, FormsKind } from "./forms-api";
+import {
+  SITE_FORM_PROP,
+  formRootComponents,
+} from "~/shared/organizeos-site-forms";
+import type {
+  CatalogField,
+  DoorFormField,
+  FormsCatalog,
+  FormsKind,
+} from "./forms-api";
 import { reloadFormsResource } from "./insert-organizeos-block";
 import {
   getState,
@@ -277,3 +285,240 @@ export const formStatesFor = (kind: FormsKind): readonly string[] =>
   kind === "contact-form"
     ? signupFormStates.filter((state) => state !== "confirm-email")
     : signupFormStates;
+
+/** A site form's field limit (the CRM editor's, `SITE_FORM_MAX_FIELDS`). */
+export const SITE_FORM_FIELD_LIMIT = 20;
+
+/** A select the CRM editor can save: at most 20 options of 100 characters. */
+const isSaveableSelect = (field: CatalogField) =>
+  field.options === undefined ||
+  (field.options.length <= 20 &&
+    field.options.every((option) => option.length <= 100));
+
+export type SiteFieldRow = {
+  key: string;
+  label: string;
+  required: boolean;
+  locked: boolean;
+};
+
+const isRequiredFieldOf = (fieldId: Instance["id"]) =>
+  [...$props.get().values()].some(
+    (prop) =>
+      prop.instanceId === fieldId &&
+      prop.name === "required" &&
+      prop.type === "boolean" &&
+      prop.value
+  );
+
+/**
+ * The Fields list of a site form (spec 9): one row per key under the root,
+ * in tree order, its catalog label (else its key), required when any of its
+ * Fields is, locked as the catalog says (Email always).
+ */
+export const siteFieldRows = (
+  rootId: Instance["id"],
+  catalog: FormsCatalog | undefined
+): SiteFieldRow[] => {
+  const { byName, order } = listRootFields(
+    rootId,
+    $instances.get(),
+    $props.get()
+  );
+  return order
+    .filter((key) => key !== "")
+    .map((key) => {
+      const entry = catalog?.fields.find((field) => field.key === key);
+      return {
+        key,
+        label: entry?.label ?? key,
+        required: (byName.get(key) ?? []).some(isRequiredFieldOf),
+        locked: entry?.locked ?? key === "email",
+      };
+    });
+};
+
+/** The required toggle: `required` on every Field of the key, one undo. */
+export const setSiteFieldRequired = (
+  rootId: Instance["id"],
+  key: string,
+  required: boolean
+) =>
+  runStaged("Cannot change the field.", (accumulator) => {
+    const { instances, props } = getState(accumulator);
+    const ids = listRootFields(rootId, instances, props).byName.get(key) ?? [];
+    if (ids.length === 0) {
+      return;
+    }
+    accumulator.execute({
+      id: "instances.updateProps",
+      input: {
+        updates: ids.map((instanceId) => ({
+          instanceId,
+          name: "required",
+          type: "boolean" as const,
+          value: required,
+        })),
+      },
+    });
+  });
+
+/**
+ * A drag: the key's first Field moved to the place of the Field now at
+ * `toIndex` in the list, before it when moving up, after it when moving
+ * down, in that Field's parent. One undo.
+ */
+export const moveSiteField = (
+  rootId: Instance["id"],
+  key: string,
+  toIndex: number
+) =>
+  runStaged("Cannot move the field.", (accumulator) => {
+    const { instances, props } = getState(accumulator);
+    const { byName, order } = listRootFields(rootId, instances, props);
+    const from = order.indexOf(key);
+    const targetKey = order[toIndex];
+    if (from === -1 || targetKey === undefined || from === toIndex) {
+      return;
+    }
+    const movingId = byName.get(key)?.[0];
+    const targetId = byName.get(targetKey)?.[0];
+    const parent = [...(instances.values() as Iterable<Instance>)].find(
+      (instance) =>
+        instance.children.some(
+          (child: Instance["children"][number]) =>
+            child.type === "id" && child.value === targetId
+        )
+    );
+    if (movingId === undefined || parent === undefined) {
+      return;
+    }
+    const at = parent.children.findIndex(
+      (child: Instance["children"][number]) =>
+        child.type === "id" && child.value === targetId
+    );
+    accumulator.execute({
+      id: "instances.move",
+      input: {
+        moves: [
+          {
+            instanceId: movingId,
+            parentInstanceId: parent.id,
+            insertIndex: from < toIndex ? at + 1 : at,
+          },
+        ],
+      },
+    });
+  });
+
+/** Add: a Field for the catalog field, defined by it, not required. */
+export const addCatalogField = (rootId: Instance["id"], field: CatalogField) =>
+  runStaged(`Cannot add ${field.label}.`, (accumulator) => {
+    insertFieldsMutable(accumulator, rootId, [
+      {
+        name: field.key,
+        label: field.label,
+        type: field.type,
+        required: false,
+        options: field.options ?? null,
+        ...(field.consent === undefined ? {} : { consent: field.consent }),
+      },
+    ]);
+    const { instances, props } = getState(accumulator);
+    const ids =
+      listRootFields(rootId, instances, props).byName.get(field.key) ?? [];
+    accumulator.execute({
+      id: "instances.updateProps",
+      input: {
+        updates: ids.flatMap((instanceId) => [
+          {
+            instanceId,
+            name: "fieldType",
+            type: "string" as const,
+            value: field.type,
+          },
+          {
+            instanceId,
+            name: "required",
+            type: "boolean" as const,
+            value: false,
+          },
+          ...(field.options === undefined
+            ? []
+            : [
+                {
+                  instanceId,
+                  name: "options",
+                  type: "json" as const,
+                  value: field.options,
+                },
+              ]),
+        ]),
+      },
+    });
+  });
+
+/**
+ * The Add menu: the catalog's fields the root has none of, standard first,
+ * then Custom; a consent field only when the org can text; a select only
+ * when the CRM editor can save it; and nothing once the root holds 20.
+ */
+export const catalogAddOptions = (
+  catalog: FormsCatalog,
+  rootKeys: readonly string[],
+  { smsAvailable }: { smsAvailable: boolean }
+) => {
+  const held = new Set(rootKeys);
+  const offered = catalog.fields.filter(
+    (field) =>
+      held.has(field.key) === false &&
+      (field.consent === undefined || smsAvailable) &&
+      isSaveableSelect(field)
+  );
+  return {
+    standard: offered.filter((field) => field.custom === false),
+    custom: offered.filter((field) => field.custom),
+    full: rootKeys.length >= SITE_FORM_FIELD_LIMIT,
+  };
+};
+
+/** A root's list as the publish sends it: keys in order, with required. */
+const rootListOf = (rootId: Instance["id"]) =>
+  siteFieldRows(rootId, undefined)
+    .map(({ key, required }) => `${key}:${required}`)
+    .join(",");
+
+/**
+ * Another root marked as a site form on the same form sends another list
+ * (spec 9's "Fields differ on another page"); never for an unmarked root.
+ */
+/** The root carries a site form mark of a known kind (fork doc section 9). */
+export const isMarkedSiteForm = (rootId: Instance["id"]) => {
+  const mark = rootProp(rootId, SITE_FORM_PROP);
+  return mark?.type === "string" && KINDS.has(mark.value);
+};
+
+export const fieldsDifferElsewhere = (rootId: Instance["id"]) => {
+  const isMarked = isMarkedSiteForm;
+  const recordOf = (id: Instance["id"]) => {
+    const record = rootProp(id, "record");
+    return record?.type === "string" ? record.value.trim().toLowerCase() : "";
+  };
+  if (isMarked(rootId) === false || recordOf(rootId) === "") {
+    return false;
+  }
+  const own = rootListOf(rootId);
+  const record = recordOf(rootId);
+  for (const instance of $instances.get().values()) {
+    if (
+      instance.id !== rootId &&
+      formRootComponents.has(instance.component) &&
+      isMarked(instance.id) &&
+      recordOf(instance.id) === record &&
+      rootListOf(instance.id) !== own
+    ) {
+      return true;
+    }
+  }
+  return false;
+};

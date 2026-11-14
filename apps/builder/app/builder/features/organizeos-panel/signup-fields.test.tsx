@@ -1232,3 +1232,56 @@ describe("getSignupWarning", () => {
     ).toBeUndefined();
   });
 });
+
+// Builder forms spec 9 (plan 2026-11-13-builder-forms-fork-p2, Task 10): a
+// site form's live definition follows the publish, so its pending Fields are
+// no problem; another block on the same form with another list is.
+describe("getSignupWarning for a site form", () => {
+  const warnFor = (
+    fields: FormField[],
+    names: string[],
+    extra: Partial<Parameters<typeof getSignupWarning>[0]> = {}
+  ) =>
+    getSignupWarning({
+      nested: false,
+      dataBound: true,
+      data: {},
+      resolution: {
+        formId: "f",
+        fields,
+        unavailable: undefined,
+        site: true,
+      },
+      rootFields: {
+        byName: new Map(names.map((name) => [name, [name]])),
+        order: names,
+        hasSubmit: true,
+      } as unknown as ReturnType<typeof listRootFields>,
+      failedLoads: false,
+      siteForm: true,
+      ...extra,
+    });
+
+  test("no Missing or Not in form line for a field the live form lacks or requires", () => {
+    const fields = [
+      field("email", "Email", { type: "email", required: true }),
+      field("company", "Company", { required: true }),
+    ];
+    expect(warnFor(fields, ["email", "phone"])).toBeUndefined();
+  });
+
+  test("still Missing: Email, and the shipped lines", () => {
+    const fields = [field("email", "Email", { type: "email", required: true })];
+    expect(warnFor(fields, ["first_name"])).toBe("Missing: Email");
+    expect(warnFor(fields, ["email"], { nested: true })).toBe(
+      "Nested in a form"
+    );
+  });
+
+  test("Fields differ on another page, last", () => {
+    const fields = [field("email", "Email", { type: "email", required: true })];
+    expect(warnFor(fields, ["email"], { differsElsewhere: true })).toBe(
+      "Fields differ on another page"
+    );
+  });
+});

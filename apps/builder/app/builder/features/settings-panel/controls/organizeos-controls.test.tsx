@@ -47,6 +47,19 @@ import {
   $styles,
 } from "~/shared/sync/data-stores";
 import { PropsSectionContainer } from "../props-section/props-section";
+
+// the forms door client: the site form rows read the catalog (Task 10)
+const { getFormsCatalog, getFormsAccess } = vi.hoisted(() => ({
+  getFormsCatalog: vi.fn(),
+  getFormsAccess: vi.fn(),
+}));
+vi.mock("~/builder/features/organizeos-panel/forms-api", () => ({
+  getFormsCatalog,
+  getFormsAccess,
+  createSiteForm: vi.fn(),
+  listDoorForms: vi.fn(),
+  saveFormSettings: vi.fn(),
+}));
 import { renderControl } from "./combined";
 import {
   getOrganizeosControl,
@@ -401,6 +414,84 @@ describe("the Signup Form's Settings", () => {
     const host = await renderPanel(setProject());
     expect(host.querySelector('a[aria-label="Open in CRM"]')).toBeNull();
     expect(stateLabels(host)).toHaveLength(6);
+  });
+
+  test("a site form's Fields: one row per key, a lock on Email, a required toggle and a remove", async () => {
+    getFormsCatalog.mockResolvedValue({
+      ok: true,
+      value: {
+        fields: [
+          {
+            key: "email",
+            label: "Email",
+            type: "email",
+            locked: true,
+            custom: false,
+          },
+          {
+            key: "first_name",
+            label: "First name",
+            type: "text",
+            locked: false,
+            custom: false,
+          },
+          {
+            key: "phone",
+            label: "Phone",
+            type: "phone",
+            locked: false,
+            custom: false,
+          },
+        ],
+        lists: [],
+      },
+    });
+    getFormsAccess.mockResolvedValue({
+      ok: true,
+      value: { orgName: "Org", canEditPrivate: true, smsAvailable: false },
+    });
+    const rootId = withSiteForms();
+    const props = new Map($props.get());
+    props.set("mark", {
+      id: "mark",
+      instanceId: rootId,
+      name: "siteForm",
+      type: "string",
+      value: "contact-signup",
+    });
+    $props.set(props);
+    const host = await renderPanel(rootId);
+    const rows = Array.from(host.querySelectorAll("[data-site-field]"));
+    expect(rows.map((row) => row.getAttribute("data-site-field"))).toEqual([
+      "email",
+      "first_name",
+    ]);
+    const [email, first] = rows;
+    expect(email.querySelector('[aria-label="Locked"]')).not.toBeNull();
+    expect(email.querySelector('[aria-label="Remove"]')).toBeNull();
+    const toggle = first.querySelector<HTMLButtonElement>(
+      'button[aria-label="Required"]'
+    );
+    expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => toggle?.click());
+    await settle();
+    expect(
+      [...$props.get().values()].some(
+        (prop) => prop.name === "required" && prop.value === true
+      )
+    ).toBe(true);
+    const remove = first.querySelector<HTMLButtonElement>(
+      'button[aria-label="Remove"]'
+    );
+    await act(async () => remove?.click());
+    await settle();
+    expect(fieldNames()).toEqual(["email"]);
+    expect(host.querySelector('button[aria-label="Add field"]')).not.toBeNull();
+  });
+
+  test("an unmarked root keeps the shipped Fields list", async () => {
+    const host = await renderPanel(withSiteForms());
+    expect(host.querySelectorAll("[data-site-field]")).toHaveLength(0);
   });
 
   test("State shows six buttons, Submitting among them", async () => {

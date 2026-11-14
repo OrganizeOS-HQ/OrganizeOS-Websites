@@ -42,7 +42,9 @@ import {
 import {
   NEW_SITE_FORM,
   crmFormUrl,
+  fieldsDifferElsewhere,
   formKindOf,
+  isMarkedSiteForm,
   formStatesFor,
   matchFieldsToSiteForm,
   pointAtNewSiteForm,
@@ -77,6 +79,7 @@ import {
 } from "./organizeos-record";
 import { BasePage } from "./url";
 import { FieldNameControl } from "./organizeos-field-control";
+import { SiteFieldsControl } from "./organizeos-site-fields";
 import {
   ProductCardControl,
   ProductShowControl,
@@ -507,6 +510,9 @@ const SignupFieldsControl = ({
     resolution.fields === undefined
       ? []
       : getFieldRows(resolution.fields, rootFields.byName);
+  // a block marked as a site form draws its own list (fork doc section 9)
+  const site = useStore($organizeosSite);
+  const marked = site?.siteFormsEnabled === true && isMarkedSiteForm(rootId);
   const warning = getSignupWarning({
     nested: isNestedInForm(rootSelector, instanceTags),
     dataBound,
@@ -514,7 +520,27 @@ const SignupFieldsControl = ({
     resolution,
     rootFields,
     failedLoads: failedLoads.length > 0,
+    siteForm: marked,
+    differsElsewhere: marked && fieldsDifferElsewhere(rootId),
   });
+  if (marked) {
+    return (
+      <SiteFieldsControl
+        rootId={rootId}
+        warning={
+          warning === undefined ? undefined : (
+            <Text
+              truncate
+              css={{ color: cssVar("--foreground-warning") }}
+              data-signup-warning
+            >
+              {warning}
+            </Text>
+          )
+        }
+      />
+    );
+  }
 
   return (
     <VerticalLayout label={<BaseLabel>Fields</BaseLabel>}>

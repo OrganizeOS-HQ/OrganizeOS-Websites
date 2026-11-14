@@ -309,6 +309,8 @@ export const getSignupWarning = ({
   resolution,
   rootFields,
   failedLoads,
+  siteForm = false,
+  differsElsewhere = false,
 }: {
   nested: boolean;
   /** Whether the root's `data` is bound (isSignupDataBound). */
@@ -319,6 +321,14 @@ export const getSignupWarning = ({
   rootFields: ReturnType<typeof listRootFields>;
   /** A load the root's `data` reads failed: the record picker says so. */
   failedLoads: boolean;
+  /**
+   * The root is marked as a site form (fork doc section 9, "Site forms"): its
+   * live definition follows the publish, so a field it lacks or requires is
+   * not named (Email excepted, which every form has).
+   */
+  siteForm?: boolean;
+  /** Another site-form root on the same form sends another list. */
+  differsElsewhere?: boolean;
 }): undefined | string => {
   // nothing while the forms load
   if (dataBound && data === undefined) {
@@ -336,7 +346,10 @@ export const getSignupWarning = ({
     return failedLoads ? undefined : "Form not found";
   }
   const missing = fields.find(
-    (field) => isRequiredField(field) && byName.has(field.name) === false
+    (field) =>
+      isRequiredField(field) &&
+      byName.has(field.name) === false &&
+      (siteForm === false || field.name === "email")
   );
   if (missing !== undefined) {
     return `Missing: ${missing.label}`;
@@ -351,9 +364,14 @@ export const getSignupWarning = ({
     return "No Submit Button";
   }
   const known = new Set(fields.map((field) => field.name));
-  const unknown = order.find((name) => known.has(name) === false);
+  const unknown = order.find(
+    (name) => known.has(name) === false && (siteForm === false || name === "")
+  );
   if (unknown !== undefined) {
     return `Not in form: ${unknown === "" ? "(blank)" : unknown}`;
+  }
+  if (differsElsewhere) {
+    return "Fields differ on another page";
   }
 };
 
