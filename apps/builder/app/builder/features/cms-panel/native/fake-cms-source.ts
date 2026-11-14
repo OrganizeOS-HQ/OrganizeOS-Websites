@@ -8,6 +8,7 @@ import type {
   CmsCollectionSummary,
   CmsItem,
   CmsItemRow,
+  CmsItemsPage,
   CmsSource,
 } from "./cms-source";
 
@@ -55,6 +56,49 @@ export const POSTS_DETAIL: CmsCollection = {
   ],
 };
 
+/** A collection with a field of each kind the table shows. */
+export const EVENTS: CmsCollectionSummary = {
+  id: "44444444-4444-4444-8444-444444444444",
+  slug: "events",
+  name: "Events",
+  singularName: "Event",
+  isPublic: true,
+  total: 3,
+};
+
+export const EVENTS_DETAIL: CmsCollection = {
+  ...withoutTotal(EVENTS),
+  fields: [
+    { key: "title", label: "Title", kind: "text", isTitle: true },
+    {
+      key: "kind",
+      label: "Kind",
+      kind: "option",
+      options: [
+        { value: "Q&A night", label: "Q&A night" },
+        { value: "Café", label: "Café" },
+      ],
+    },
+    { key: "online", label: "Online", kind: "switch" },
+    { key: "day", label: "Day", kind: "date" },
+    { key: "seats", label: "Seats", kind: "number" },
+    { key: "starts", label: "Starts", kind: "datetime" },
+    {
+      key: "host",
+      label: "Host",
+      kind: "reference",
+      reference: { collectionId: PEOPLE.id, multiple: false },
+    },
+    {
+      key: "tags",
+      label: "Tags",
+      kind: "multireference",
+      reference: { collectionId: EVENTS.id, multiple: true },
+    },
+    { key: "body", label: "Body", kind: "richtext" },
+  ],
+};
+
 const PEOPLE_DETAIL: CmsCollection = {
   ...withoutTotal(PEOPLE),
   fields: [
@@ -73,6 +117,8 @@ export const itemOf = (overrides: Partial<CmsItem> = {}): CmsItem => ({
   updatedAt: VERSION,
   createdAt: VERSION,
   publishedAt: null,
+  live: null,
+  modifiedByName: null,
   ...overrides,
 });
 
@@ -83,6 +129,30 @@ export const rowOf = (item: CmsItem): CmsItemRow => ({
   status: item.status,
   hasStagedChanges: item.hasStagedChanges,
   updatedAt: item.updatedAt,
+  publishedAt: item.publishedAt,
+  values: {},
+});
+
+/** An E3 page, the slice 2 keys at their defaults unless `extra` sets them. */
+export const itemsPageOf = (
+  items: CmsItemRow[],
+  total: number,
+  page: number,
+  extra: Partial<CmsItemsPage> = {}
+): CmsItemsPage => ({
+  items,
+  total,
+  page,
+  columns: [],
+  filterField: null,
+  applied: {
+    status: "all",
+    sort: "order",
+    direction: "asc",
+    optionKey: null,
+    optionValue: null,
+  },
+  ...extra,
 });
 
 export type FakeCmsSource = { [M in keyof CmsSource]: Mock<CmsSource[M]> };
@@ -104,13 +174,14 @@ export const createFakeCmsSource = (): FakeCmsSource => ({
     if (collectionId === PEOPLE.id) {
       return { collection: structuredClone(PEOPLE_DETAIL) };
     }
+    if (collectionId === EVENTS.id) {
+      return { collection: structuredClone(EVENTS_DETAIL) };
+    }
     return { error: "not_found" };
   }),
-  listItems: vi.fn<CmsSource["listItems"]>(async () => ({
-    items: [rowOf(itemOf())],
-    total: 1,
-    page: 1,
-  })),
+  listItems: vi.fn<CmsSource["listItems"]>(async () =>
+    itemsPageOf([rowOf(itemOf())], 1, 1)
+  ),
   getItem: vi.fn<CmsSource["getItem"]>(async () => ({ item: itemOf() })),
   searchItems: vi.fn<CmsSource["searchItems"]>(async () => ({ items: [] })),
   createItem: vi.fn<CmsSource["createItem"]>(async () => ({
@@ -123,6 +194,18 @@ export const createFakeCmsSource = (): FakeCmsSource => ({
     error: "unavailable",
   })),
   discardItemChanges: vi.fn<CmsSource["discardItemChanges"]>(async () => ({
+    error: "unavailable",
+  })),
+  publishItems: vi.fn<CmsSource["publishItems"]>(async () => ({
+    error: "unavailable",
+  })),
+  setItemsStatus: vi.fn<CmsSource["setItemsStatus"]>(async () => ({
+    error: "unavailable",
+  })),
+  deleteItems: vi.fn<CmsSource["deleteItems"]>(async () => ({
+    error: "unavailable",
+  })),
+  reorderItems: vi.fn<CmsSource["reorderItems"]>(async () => ({
     error: "unavailable",
   })),
   uploadImage: vi.fn<CmsSource["uploadImage"]>(async () => ({

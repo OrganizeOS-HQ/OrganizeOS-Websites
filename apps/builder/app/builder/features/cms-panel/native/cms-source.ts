@@ -112,6 +112,48 @@ export type CmsItemRow = {
   hasStagedChanges: boolean;
   /** The raw PostgREST string: the edit lock. Never parsed for writes. */
   updatedAt: string;
+  /** The date of first publish; null before it. */
+  publishedAt: string | null;
+  /** The stored values of the page's `columns` keys only; a missing key reads as null. */
+  values: Record<string, unknown>;
+};
+
+/** E3's status filter; `staged` is published items with staged changes. */
+export type CmsStatusFilter =
+  | "all"
+  | "draft"
+  | "published"
+  | "archived"
+  | "staged";
+
+export type CmsSortKey =
+  | "order"
+  | "updated"
+  | "name"
+  | "status"
+  | `field:${string}`;
+
+export type CmsSortDirection = "asc" | "desc";
+
+/** E3's query: every key optional, each with the door's default. */
+export type CmsItemsQuery = {
+  q?: string;
+  page?: number;
+  status?: CmsStatusFilter;
+  sort?: CmsSortKey;
+  direction?: CmsSortDirection;
+  /** Both option keys, or neither. */
+  optionKey?: string;
+  optionValue?: string;
+};
+
+/** What E3 ran: a sort or option filter the schema does not allow is dropped. */
+export type CmsItemsApplied = {
+  status: CmsStatusFilter;
+  sort: CmsSortKey;
+  direction: CmsSortDirection;
+  optionKey: string | null;
+  optionValue: string | null;
 };
 
 /** E3 */
@@ -119,6 +161,11 @@ export type CmsItemsPage = {
   items: CmsItemRow[];
   total: number;
   page: number;
+  /** The table's field columns, in order, at most 4. */
+  columns: string[];
+  /** The option field the Filter offers, or null. */
+  filterField: string | null;
+  applied: CmsItemsApplied;
 };
 
 /** E4 */
@@ -131,6 +178,10 @@ export type CmsItem = {
   updatedAt: string;
   createdAt: string;
   publishedAt: string | null;
+  /** The published copy, only while the item has staged changes (E4 only). */
+  live: { slug: string; data: CmsItemData } | null;
+  /** The last editor's name, while both people are active members. */
+  modifiedByName: string | null;
 };
 
 /** E5, one row */
@@ -179,6 +230,9 @@ export const isCmsFailure = <Value>(
 /** 50 rows a page (E3). */
 export const CMS_PAGE_SIZE = 50;
 
+/** E10 to E13 take at most this many ids a call. */
+export const CMS_BULK_MAX = 50;
+
 export type CmsSource = {
   /** E0 `GET /access` */
   getAccess: () => Promise<CmsResult<CmsAccess>>;
@@ -193,7 +247,7 @@ export type CmsSource = {
   /** E3 `GET /collections/{collectionId}/items` */
   listItems: (
     collectionId: string,
-    query: { q?: string; page?: number }
+    query: CmsItemsQuery
   ) => Promise<CmsResult<CmsItemsPage>>;
   /** E4 `GET /collections/{collectionId}/items/{itemId}` */
   getItem: (
@@ -238,6 +292,36 @@ export type CmsSource = {
     itemId: string,
     body: { expectedUpdatedAt: string }
   ) => Promise<CmsResult<{ item: CmsItem }>>;
+  /**
+   * E10 `POST /collections/{collectionId}/items/publish`: each item with its
+   * version, at most `CMS_BULK_MAX`. Every id sent is in exactly one list.
+   */
+  publishItems: (
+    collectionId: string,
+    body: { items: Array<{ id: string; updatedAt: string }> }
+  ) => Promise<
+    CmsResult<{
+      published: string[];
+      unchanged: string[];
+      conflicts: string[];
+      failed: string[];
+    }>
+  >;
+  /** E11 `POST /collections/{collectionId}/items/status` */
+  setItemsStatus: (
+    collectionId: string,
+    body: { ids: string[]; status: "draft" | "archived" }
+  ) => Promise<CmsResult<{ changed: string[] }>>;
+  /** E12 `POST /collections/{collectionId}/items/delete` */
+  deleteItems: (
+    collectionId: string,
+    body: { ids: string[] }
+  ) => Promise<CmsResult<{ deleted: string[] }>>;
+  /** E13 `POST /collections/{collectionId}/items/order`: the page's ids in their new order. */
+  reorderItems: (
+    collectionId: string,
+    body: { ids: string[] }
+  ) => Promise<CmsResult<{ changed: number }>>;
   /** E9 `POST /uploads/image`: `CMS_IMAGE_TYPES`, at most 4 MB. */
   uploadImage: (
     file: File

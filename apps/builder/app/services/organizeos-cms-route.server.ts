@@ -44,8 +44,8 @@ import {
  * 6. The org is the project owner's, never the request's, lower-cased: a
  *    failed owner read is 503 `unavailable`, a project no org owns 403
  *    `forbidden`.
- * 7. The request's path must match one of a fixed list of endpoints, E0 to
- *    E9, with the platform's base path removed; anything else is 404. The
+ * 7. The request's path must match one of a fixed list of endpoints
+ *    (`patterns`), with the platform's base path removed; anything else is 404. The
  *    path is matched segment by segment: fixed words exactly, ids as
  *    lower-case UUIDs, so a dot segment, an encoded segment, an empty
  *    segment or a trailing slash matches nothing. The query is parsed with
@@ -59,7 +59,7 @@ import {
  *    backslash, and must end in the rebuilt path.
  * 8. A body, else 400 `invalid`, with no log. A declared `Content-Length`
  *    over the endpoint's cap is refused before reading, and a read stops
- *    at the cap. A write's (E6 to E8b) is `application/json`, at most 2 MB,
+ *    at the cap. A JSON write's is `application/json`, at most 2 MB,
  *    well-formed UTF-8 JSON, and is forwarded as `application/json`. An
  *    upload's (E9) is `multipart/form-data` with a boundary, at most 4 MB
  *    plus 64 KB, holding exactly one entry, named `file`, a file of at most
@@ -87,6 +87,10 @@ export type CmsEndpoint =
   | "E7"
   | "E8a"
   | "E8b"
+  | "E10"
+  | "E11"
+  | "E12"
+  | "E13"
   | "E9";
 
 export type CmsPathMatch = {
@@ -117,8 +121,26 @@ const itemsQuery = z
       .regex(/^[1-9][0-9]{0,4}$/)
       .refine((page) => Number(page) <= MAX_PAGE)
       .optional(),
+    status: z
+      .enum(["all", "draft", "published", "archived", "staged"])
+      .optional(),
+    sort: z
+      .string()
+      .regex(/^(order|updated|name|status|field:[a-zA-Z][a-zA-Z0-9]{0,39})$/)
+      .optional(),
+    direction: z.enum(["asc", "desc"]).optional(),
+    optionKey: z
+      .string()
+      .regex(/^[a-zA-Z][a-zA-Z0-9]{0,39}$/)
+      .optional(),
+    optionValue: z.string().min(1).max(80).optional(),
   })
-  .strict();
+  .strict()
+  // An option filter names both its field and its value, or neither.
+  .refine(
+    (query) =>
+      (query.optionKey === undefined) === (query.optionValue === undefined)
+  );
 
 const searchQuery = z
   .object({
@@ -211,6 +233,34 @@ const patterns: Pattern[] = [
     endpoint: "E8b",
     method: "POST",
     segments: ["collections", "{c}", "items", "{i}", "discard"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E10",
+    method: "POST",
+    segments: ["collections", "{c}", "items", "publish"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E11",
+    method: "POST",
+    segments: ["collections", "{c}", "items", "status"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E12",
+    method: "POST",
+    segments: ["collections", "{c}", "items", "delete"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E13",
+    method: "POST",
+    segments: ["collections", "{c}", "items", "order"],
     query: noQuery,
     body: "json",
   },

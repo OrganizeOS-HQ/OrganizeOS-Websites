@@ -9,6 +9,7 @@
  */
 import { getItemTitle, isSameValue, isSlug, slugify } from "./cms-logic";
 import {
+  CMS_BULK_MAX,
   CMS_IMAGE_MAX_BYTES,
   CMS_IMAGE_TYPES,
   CMS_PAGE_SIZE,
@@ -21,7 +22,9 @@ import {
   type CmsImageValue,
   type CmsItem,
   type CmsItemData,
+  type CmsItemRow,
   type CmsItemStatus,
+  type CmsSortKey,
   type CmsRichTextValue,
   type CmsSource,
 } from "./cms-source";
@@ -303,6 +306,8 @@ type SampleItem = {
   updatedAt: string;
   createdAt: string;
   publishedAt: string | null;
+  /** Who made the last change. */
+  modifiedByName?: string;
 };
 
 type SampleCollection = CmsCollection & {
@@ -636,6 +641,49 @@ const buildCollections = (
     : collections;
 };
 
+/** E3's table columns: the first four non-title fields the table shows. */
+const columnsOf = (fields: CmsField[]) =>
+  fields
+    .filter(
+      (field) =>
+        field.isTitle !== true &&
+        field.kind !== "richtext" &&
+        field.kind !== "image" &&
+        field.kind !== "multireference"
+    )
+    .slice(0, 4)
+    .map((field) => field.key);
+
+/** E3's Filter field: the first non-title option field with options. */
+const filterFieldOf = (fields: CmsField[]) =>
+  fields.find(
+    (field) =>
+      field.isTitle !== true &&
+      field.kind === "option" &&
+      (field.options?.length ?? 0) > 0
+  );
+
+const sortableKinds = new Set(["text", "date", "switch", "option"]);
+
+/** A sort the schema allows, else the manual order (E3's rule). */
+const sortOf = (sort: CmsSortKey, fields: CmsField[]): CmsSortKey => {
+  if (!sort.startsWith("field:")) {
+    return sort;
+  }
+  const field = fields.find((candidate) => `field:${candidate.key}` === sort);
+  return field !== undefined &&
+    field.isTitle !== true &&
+    sortableKinds.has(field.kind)
+    ? sort
+    : "order";
+};
+
+const statusRank: Record<CmsItemStatus, number> = {
+  draft: 0,
+  published: 1,
+  archived: 2,
+};
+
 export const createSampleCmsSource = ({
   now = Date.now(),
   flags = {},
@@ -685,6 +733,20 @@ export const createSampleCmsSource = ({
     updatedAt: sample.updatedAt,
     createdAt: sample.createdAt,
     publishedAt: sample.publishedAt,
+    live:
+      sample.hasStagedChanges && sample.liveData !== null
+        ? {
+            slug: sample.liveSlug ?? sample.slug,
+            data: structuredClone(sample.liveData),
+          }
+        : null,
+    modifiedByName: sample.modifiedByName ?? "Dana Reyes",
+  });
+
+  /** A write answer: no live copy (E6 to E8b). */
+  const toWritten = (sample: SampleItem): CmsItem => ({
+    ...toItem(sample),
+    live: null,
   });
 
   const titleOf = (collection: SampleCollection, sample: SampleItem) =>
@@ -776,7 +838,18 @@ export const createSampleCmsSource = ({
       return { collection: structuredClone(rest) };
     },
 
-    async listItems(collectionId, { q, page = 1 }) {
+    async listItems(
+      collectionId,
+      {
+        q,
+        page = 1,
+        status = "all",
+        sort = "order",
+        direction,
+        optionKey,
+        optionValue,
+      }
+    ) {
       const failure = await refusal(false);
       if (failure) {
         return failure;
@@ -785,25 +858,92 @@ export const createSampleCmsSource = ({
       if (collection === undefined) {
         return { error: "not_found" };
       }
+      const { fields } = collection;
+      const columns = columnsOf(fields);
+      const filterField = filterFieldOf(fields);
+      const appliedSort = sortOf(sort, fields);
+      const appliedDirection =
+        appliedSort === "order"
+          ? "asc"
+          : (direction ?? (appliedSort === "updated" ? "desc" : "asc"));
+      // An option filter runs only on the Filter's field, for a listed value
+      const option =
+        filterField !== undefined &&
+        optionKey === filterField.key &&
+        filterField.options?.some((entry) => entry.value === optionValue)
+          ? { key: optionKey, value: optionValue }
+          : undefined;
       const query = q?.trim().toLowerCase() ?? "";
-      const matched = collection.items.filter((sample) =>
-        titleOf(collection, sample).toLowerCase().includes(query)
+      const matched = collection.items.filter(
+        (sample) =>
+          titleOf(collection, sample).toLowerCase().includes(query) &&
+          (status === "all" ||
+            (status === "staged"
+              ? sample.hasStagedChanges
+              : sample.status === status)) &&
+          (option === undefined || sample.data[option.key] === option.value)
       );
+      const keyOf = (sample: SampleItem): string | number => {
+        if (appliedSort === "name") {
+          return titleOf(collection, sample).toLowerCase();
+        }
+        if (appliedSort === "status") {
+          return statusRank[sample.status];
+        }
+        if (appliedSort === "updated") {
+          return sample.updatedAt;
+        }
+        if (appliedSort.startsWith("field:")) {
+          return String(sample.data[appliedSort.slice(6)] ?? "");
+        }
+        return 0;
+      };
+      const sorted =
+        appliedSort === "order"
+          ? matched
+          : [...matched].sort((left, right) => {
+              const a = keyOf(left);
+              const b = keyOf(right);
+              const order = a < b ? -1 : a > b ? 1 : 0;
+              return appliedDirection === "desc" ? -order : order;
+            });
       // A page past the last answers the last page, as E3 does
-      const lastPage = Math.max(1, Math.ceil(matched.length / CMS_PAGE_SIZE));
+      const lastPage = Math.max(1, Math.ceil(sorted.length / CMS_PAGE_SIZE));
       const answered = Math.min(Math.max(1, page), lastPage);
       const start = (answered - 1) * CMS_PAGE_SIZE;
       return {
-        items: matched.slice(start, start + CMS_PAGE_SIZE).map((sample) => ({
-          id: sample.id,
-          slug: sample.slug,
-          title: titleOf(collection, sample),
-          status: sample.status,
-          hasStagedChanges: sample.hasStagedChanges,
-          updatedAt: sample.updatedAt,
-        })),
-        total: matched.length,
+        items: sorted
+          .slice(start, start + CMS_PAGE_SIZE)
+          .map((sample): CmsItemRow => {
+            const values: Record<string, unknown> = {};
+            for (const key of columns) {
+              if (key in sample.data) {
+                values[key] = sample.data[key];
+              }
+            }
+            return {
+              id: sample.id,
+              slug: sample.slug,
+              title: titleOf(collection, sample),
+              status: sample.status,
+              hasStagedChanges: sample.hasStagedChanges,
+              updatedAt: sample.updatedAt,
+              publishedAt:
+                sample.status === "published" ? sample.publishedAt : null,
+              values,
+            };
+          }),
+        total: sorted.length,
         page: answered,
+        columns,
+        filterField: filterField?.key ?? null,
+        applied: {
+          status,
+          sort: appliedSort,
+          direction: appliedDirection,
+          optionKey: option?.key ?? null,
+          optionValue: option?.value ?? null,
+        },
       };
     },
 
@@ -875,7 +1015,7 @@ export const createSampleCmsSource = ({
       const madeId = created.get(`${collectionId}:${clientId}`);
       const made = collection.items.find((sample) => sample.id === madeId);
       if (made !== undefined) {
-        return { item: toItem(made), created: false };
+        return { item: toWritten(made), created: false };
       }
       const finalSlug = slug ?? slugify(getItemTitle(data, collection.fields));
       const slugFailure = checkSlug(collection, finalSlug);
@@ -897,7 +1037,7 @@ export const createSampleCmsSource = ({
       };
       collection.items.unshift(sample);
       created.set(`${collectionId}:${clientId}`, sample.id);
-      return loseAnswer() ?? { item: toItem(sample), created: true };
+      return loseAnswer() ?? { item: toWritten(sample), created: true };
     },
 
     async updateItem(collectionId, itemId, { slug, data, expectedUpdatedAt }) {
@@ -929,7 +1069,7 @@ export const createSampleCmsSource = ({
           sample.liveSlug !== sample.slug;
       }
       sample.updatedAt = toPostgrestTimestamp(tick());
-      return loseAnswer() ?? { item: toItem(sample) };
+      return loseAnswer() ?? { item: toWritten(sample) };
     },
 
     async publishItem(collectionId, itemId, { expectedUpdatedAt }) {
@@ -955,7 +1095,7 @@ export const createSampleCmsSource = ({
       sample.hasStagedChanges = false;
       sample.publishedAt = toPostgrestTimestamp(time);
       sample.updatedAt = toPostgrestTimestamp(time);
-      return loseAnswer() ?? { item: toItem(sample) };
+      return loseAnswer() ?? { item: toWritten(sample) };
     },
 
     async discardItemChanges(collectionId, itemId, { expectedUpdatedAt }) {
@@ -980,7 +1120,135 @@ export const createSampleCmsSource = ({
         sample.hasStagedChanges = false;
         sample.updatedAt = toPostgrestTimestamp(tick());
       }
-      return loseAnswer() ?? { item: toItem(sample) };
+      return loseAnswer() ?? { item: toWritten(sample) };
+    },
+
+    async publishItems(collectionId, { items }) {
+      const failure = await refusal(true);
+      if (failure) {
+        return failure;
+      }
+      const collection = findCollection(collectionId);
+      if (collection === undefined) {
+        return { error: "not_found" };
+      }
+      if (items.length === 0 || items.length > CMS_BULK_MAX) {
+        return { error: "invalid" };
+      }
+      const answer = {
+        published: [] as string[],
+        unchanged: [] as string[],
+        conflicts: [] as string[],
+        failed: [] as string[],
+      };
+      for (const { id, updatedAt } of items) {
+        const sample = collection.items.find(
+          (candidate) => candidate.id === id
+        );
+        if (sample === undefined) {
+          answer.failed.push(id);
+        } else if (sample.updatedAt !== updatedAt) {
+          answer.conflicts.push(id);
+        } else if (
+          sample.status === "published" &&
+          sample.hasStagedChanges === false
+        ) {
+          answer.unchanged.push(id);
+        } else {
+          const time = toPostgrestTimestamp(tick());
+          sample.status = "published";
+          sample.liveData = structuredClone(sample.data);
+          sample.liveSlug = sample.slug;
+          sample.hasStagedChanges = false;
+          sample.publishedAt = sample.publishedAt ?? time;
+          sample.updatedAt = time;
+          answer.published.push(id);
+        }
+      }
+      return answer;
+    },
+
+    async setItemsStatus(collectionId, { ids, status }) {
+      const failure = await refusal(true);
+      if (failure) {
+        return failure;
+      }
+      const collection = findCollection(collectionId);
+      if (collection === undefined) {
+        return { error: "not_found" };
+      }
+      if (ids.length === 0 || ids.length > CMS_BULK_MAX) {
+        return { error: "invalid" };
+      }
+      const changed: string[] = [];
+      for (const sample of collection.items) {
+        if (ids.includes(sample.id) === false || sample.status === status) {
+          continue;
+        }
+        if (status === "draft") {
+          // the staged copy folds into the draft
+          sample.liveData = null;
+          sample.liveSlug = null;
+          sample.hasStagedChanges = false;
+        }
+        sample.status = status;
+        sample.updatedAt = toPostgrestTimestamp(tick());
+        changed.push(sample.id);
+      }
+      return { changed };
+    },
+
+    async deleteItems(collectionId, { ids }) {
+      const failure = await refusal(true);
+      if (failure) {
+        return failure;
+      }
+      const collection = findCollection(collectionId);
+      if (collection === undefined) {
+        return { error: "not_found" };
+      }
+      if (ids.length === 0 || ids.length > CMS_BULK_MAX) {
+        return { error: "invalid" };
+      }
+      const deleted = collection.items
+        .filter((sample) => ids.includes(sample.id))
+        .map((sample) => sample.id);
+      collection.items = collection.items.filter(
+        (sample) => deleted.includes(sample.id) === false
+      );
+      return { deleted };
+    },
+
+    async reorderItems(collectionId, { ids }) {
+      const failure = await refusal(true);
+      if (failure) {
+        return failure;
+      }
+      const collection = findCollection(collectionId);
+      if (collection === undefined) {
+        return { error: "not_found" };
+      }
+      if (ids.length === 0 || ids.length > CMS_BULK_MAX) {
+        return { error: "invalid" };
+      }
+      // The ids sent take the places they held, in their new order
+      const sent = collection.items.filter((sample) => ids.includes(sample.id));
+      const places = collection.items
+        .map((sample, index) => (ids.includes(sample.id) ? index : -1))
+        .filter((index) => index !== -1);
+      const ordered = ids.flatMap((id) => {
+        const sample = sent.find((candidate) => candidate.id === id);
+        return sample === undefined ? [] : [sample];
+      });
+      let changed = 0;
+      places.forEach((place, index) => {
+        if (collection.items[place] !== ordered[index]) {
+          changed += 1;
+          ordered[index].updatedAt = toPostgrestTimestamp(tick());
+        }
+        collection.items[place] = ordered[index];
+      });
+      return { changed };
     },
 
     async uploadImage(file) {
