@@ -1608,6 +1608,7 @@ describe("checkSiteTemplate", () => {
       "/donate",
       "/events/spring-meeting",
       "/unsubscribe",
+      "/giving/manage",
       "/giving/manage/abc",
       "/checkout/success",
       "/auth",

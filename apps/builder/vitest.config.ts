@@ -63,12 +63,18 @@ const projects = [
   browserProject("core", "builder-settings", [
     "app/builder/features/{settings-panel,style-panel}/**/*.{test,spec}.{ts,tsx}",
   ]),
+  // OrganizeOS fork: the CMS panels run as a project of their own, so each
+  // builder leg stays inside its step limit (fork doc section 7).
+  browserProject("core", "builder-cms", [
+    "app/builder/features/{cms-panel,organizeos-panel}/**/*.{test,spec}.{ts,tsx}",
+  ]),
   browserProject(
     "core",
     "builder-features",
     ["app/builder/features/**/*.{test,spec}.{ts,tsx}"],
     [
       "app/builder/features/{settings-panel,style-panel}/**/*.{test,spec}.{ts,tsx}",
+      "app/builder/features/{cms-panel,organizeos-panel}/**/*.{test,spec}.{ts,tsx}",
     ]
   ),
   browserProject("app", "builder-shared", [

@@ -48,6 +48,7 @@ import { FilterMenu, SortMenu } from "./items-menus";
 import { ItemsTable } from "./items-table";
 import { TruncatedText } from "./truncated-text";
 import { useBulkActions } from "./use-bulk-actions";
+import type { ReorderState } from "./reorder-state";
 import { useRowReorder } from "./use-row-reorder";
 
 const TopBar = ({
@@ -80,15 +81,26 @@ const TopBar = ({
 }) => {
   const [draft, setDraft] = useState(query);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // The last query this field sent: its echo never rewrites the field, so a
+  // key typed before the echo arrives is kept, and so is a trailing space.
+  const sent = useRef(query);
   useEffect(() => {
-    // the trimmed query comes back: keep what the person typed
-    setDraft((current) => (current.trim() === query ? current : query));
+    if (query === sent.current) {
+      return;
+    }
+    // a query set from elsewhere replaces what is typed
+    sent.current = query;
+    clearTimeout(timer.current);
+    setDraft(query);
   }, [query]);
   useEffect(() => () => clearTimeout(timer.current), []);
   const change = (value: string, delay: number) => {
     setDraft(value);
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => onQueryChange(value.trim()), delay);
+    timer.current = setTimeout(() => {
+      sent.current = value.trim();
+      onQueryChange(value.trim());
+    }, delay);
   };
   return (
     <Flex
@@ -220,6 +232,7 @@ export const ItemsView = ({
   fields,
   list,
   pageAnswer,
+  reorderState,
   onListChange,
   onListWritten,
   onRefusal,
@@ -248,6 +261,8 @@ export const ItemsView = ({
   list: CmsListState;
   /** The last E3 answer's counter, for the reorder wait (Task 18). */
   pageAnswer: { count: number; ok: boolean };
+  /** The screen's reorder state, kept while this view remounts. */
+  reorderState: ReorderState;
   /** A filter, sort or selection change (Tasks 16 to 18). */
   onListChange: (next: CmsListState) => void;
   /** After a bulk or reorder write: the lists and canvas refetch (Task 17). */
@@ -259,22 +274,34 @@ export const ItemsView = ({
   onOpenItem: (itemId: string) => void;
   onNewItem: () => void;
 }) => {
-  // The empty collection (New item alone) reads E3, not E1: no search, no
-  // filter and a total of 0 (spec 5.1.8). Any other empty page is "No matches".
+  // The empty collection (New item alone) reads E3, not E1: a total of 0
+  // drawn for no search and no filter (spec 5.1.8). Any other empty page is
+  // "No matches", until the page for the open search and filter is drawn.
   const emptyNew =
     page !== undefined &&
     page.total === 0 &&
-    query.trim() === "" &&
+    drawnQueryEmpty &&
     filterCount(list) === 0;
   const noMatches =
     page !== undefined && page.total === 0 && emptyNew === false;
+
+  // A list change made inside the table (a header, a checkbox) keeps the
+  // focus there: moves made on the drawn page are sent first.
+  const changeListInTable = (next: CmsListState) => {
+    reorder.flush();
+    onListChange(next);
+  };
 
   const onSortChange = (clicked: CmsSortKey) => {
     const next = nextSort(
       { sort: list.sort, direction: list.direction },
       clicked
     );
-    onListChange({ ...list, sort: next.sort, direction: next.direction });
+    changeListInTable({
+      ...list,
+      sort: next.sort,
+      direction: next.direction,
+    });
   };
 
   const onToggle = (id: string) => {
@@ -284,7 +311,7 @@ export const ItemsView = ({
     } else {
       selected.add(id);
     }
-    onListChange({ ...list, selected });
+    changeListInTable({ ...list, selected });
   };
 
   const onToggleAll = () => {
@@ -301,13 +328,28 @@ export const ItemsView = ({
         selected.add(id);
       }
     }
-    onListChange({ ...list, selected });
+    changeListInTable({ ...list, selected });
   };
 
   // E3's field columns, resolved; the Filter's option field and the Sort's
   // sortable fields, whether or not they fit (spec 5.1.2, 5.1.3)
   const columnFields = resolveColumns(fields ?? [], page?.columns ?? []).fields;
-  const sortFields = columnFields.filter(isSortableField);
+  // a field sort whose column no longer shows (a schema change) stays in the
+  // Sort menu, checked, so it can be seen and cleared
+  const sortedKey = list.sort.startsWith("field:")
+    ? list.sort.slice("field:".length)
+    : undefined;
+  const sortedField =
+    sortedKey === undefined ||
+    columnFields.some((field) => field.key === sortedKey)
+      ? undefined
+      : (fields ?? []).find(
+          (field) => field.key === sortedKey && isSortableField(field)
+        );
+  const sortFields = [
+    ...columnFields.filter(isSortableField),
+    ...(sortedField === undefined ? [] : [sortedField]),
+  ];
   const filterField =
     page?.filterField != null
       ? ((fields ?? []).find((field) => field.key === page.filterField) ?? null)
@@ -333,6 +375,7 @@ export const ItemsView = ({
     listKey: JSON.stringify([listKey(list), query]),
     page,
     pageAnswer,
+    state: reorderState,
     onReordered: onListWritten,
     onFailed: (code) => {
       // the refetch shows the server's order
@@ -367,8 +410,13 @@ export const ItemsView = ({
   const runBulk = (run: () => Promise<void>, onDropped?: () => void) =>
     reorder.whenSettled(() => void run(), "bulk", onDropped);
 
-  // A row opened while a bulk call is in flight opens once it has answered.
-  const waitingOpen = useRef<string | undefined>(undefined);
+  // A row opened while a bulk call is in flight opens once it has answered,
+  // in the collection it was opened in.
+  const waitingOpen = useRef<
+    { itemId: string; collectionId: string } | undefined
+  >(undefined);
+  const openCollectionId = useRef(collection.id);
+  openCollectionId.current = collection.id;
   const openNow = useRef((itemId: string) =>
     reorder.whenSettled(() => onOpenItem(itemId), "open")
   );
@@ -376,18 +424,25 @@ export const ItemsView = ({
     reorder.whenSettled(() => onOpenItem(itemId), "open");
   const openRow = (itemId: string) => {
     if (bulk.busy) {
-      waitingOpen.current = itemId;
+      waitingOpen.current = { itemId, collectionId: collection.id };
       return;
     }
     openNow.current(itemId);
   };
   useEffect(() => {
-    const itemId = waitingOpen.current;
-    if (bulk.busy || itemId === undefined) {
+    if (waitingOpen.current?.collectionId !== collection.id) {
+      waitingOpen.current = undefined;
+    }
+  }, [collection.id]);
+  useEffect(() => {
+    const waiting = waitingOpen.current;
+    if (bulk.busy || waiting === undefined) {
       return;
     }
     waitingOpen.current = undefined;
-    openNow.current(itemId);
+    if (waiting.collectionId === openCollectionId.current) {
+      openNow.current(waiting.itemId);
+    }
   }, [bulk.busy]);
 
   // The focus left with the bulk bar or its Delete dialog: the table's first
@@ -437,28 +492,57 @@ export const ItemsView = ({
   const rootRef = useRef<HTMLDivElement>(null);
   const [mainWidth, setMainWidth] = useState(0);
 
-  // After the editor's Delete: the table's first row, else New item, takes
-  // the focus, again on each page until the refetch has dropped the row.
+  // After the editor closes (W3-D6): the returned item's row takes the
+  // focus, else the table's first row (never the deleted item's), else New
+  // item. Again on each page while the focus is lost or on a row no longer
+  // listed, until a page answered after the list showed has landed.
+  const answersAtShow = useRef(pageAnswer.count);
+  const [returning, setReturning] = useState(true);
+  // New item, focused for want of a row: a row drawn later takes the focus
+  const fallbackFocus = useRef<HTMLElement | undefined>(undefined);
+  const onDeletedFocusedRef = useRef(onDeletedFocused);
+  onDeletedFocusedRef.current = onDeletedFocused;
   useEffect(() => {
     const root = rootRef.current;
-    if (deletedItemId === undefined || root === null) {
+    if (
+      returning === false ||
+      root === null ||
+      (focusItemId === undefined && deletedItemId === undefined)
+    ) {
       return;
     }
-    const firstRow = [
+    const active = document.activeElement;
+    const listed = new Set((page?.items ?? []).map((row) => row.id));
+    const activeRowId =
+      active instanceof HTMLElement && root.contains(active)
+        ? active.dataset.cmsItemId
+        : undefined;
+    const rows = [
       ...root.querySelectorAll<HTMLElement>("[data-cms-item-id]"),
-    ].find((row) => row.dataset.cmsItemId !== deletedItemId);
-    const target =
-      firstRow ?? root.querySelector<HTMLElement>("[data-cms-new-item]");
-    if (target !== null && document.activeElement !== target) {
-      target.focus();
+    ].filter((row) => row.dataset.cmsItemId !== deletedItemId);
+    const isLost =
+      active === null ||
+      active === document.body ||
+      (active === fallbackFocus.current && rows.length > 0) ||
+      (activeRowId !== undefined &&
+        (activeRowId === deletedItemId || listed.has(activeRowId) === false));
+    if (isLost) {
+      const row =
+        rows.find((entry) => entry.dataset.cmsItemId === focusItemId) ??
+        rows[0];
+      const target =
+        row ?? root.querySelector<HTMLElement>("[data-cms-new-item]");
+      fallbackFocus.current =
+        row === undefined && target !== null ? target : undefined;
+      target?.focus();
     }
-    if (
-      page !== undefined &&
-      page.items.every((row) => row.id !== deletedItemId)
-    ) {
-      onDeletedFocused?.();
+    if (pageAnswer.count > answersAtShow.current) {
+      setReturning(false);
+      if (deletedItemId !== undefined) {
+        onDeletedFocusedRef.current?.();
+      }
     }
-  }, [deletedItemId, page, onDeletedFocused]);
+  }, [returning, focusItemId, deletedItemId, page, pageAnswer.count]);
   useEffect(() => {
     const element = rootRef.current;
     if (element === null) {

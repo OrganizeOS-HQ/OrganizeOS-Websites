@@ -1,0 +1,13 @@
+{
+  "status": 201,
+  "body": {
+    "collection": {
+      "id": "66666666-6666-4666-8666-000000000001",
+      "slug": "speakers",
+      "name": "Speakers",
+      "singularName": "Speakers",
+      "isPublic": true,
+      "total": 0
+    }
+  }
+}

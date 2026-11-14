@@ -1,0 +1,13 @@
+{
+  "status": 200,
+  "body": {
+    "collection": {
+      "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      "slug": "articles",
+      "name": "Articles",
+      "singularName": "Article",
+      "isPublic": false,
+      "updatedAt": "2026-11-07T10:05:00.654321+00:00"
+    }
+  }
+}

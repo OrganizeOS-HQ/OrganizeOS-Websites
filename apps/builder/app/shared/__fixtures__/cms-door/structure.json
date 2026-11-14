@@ -1,0 +1,40 @@
+{
+  "status": 200,
+  "body": {
+    "templates": [
+      {
+        "type": "blog",
+        "label": "Blog posts"
+      },
+      {
+        "type": "team",
+        "label": "Team Members"
+      },
+      {
+        "type": "endorsements",
+        "label": "Endorsements"
+      },
+      {
+        "type": "issues",
+        "label": "Issues"
+      },
+      {
+        "type": "faq",
+        "label": "FAQ"
+      },
+      {
+        "type": "testimonials",
+        "label": "Testimonials"
+      },
+      {
+        "type": "categories",
+        "label": "Categories"
+      }
+    ],
+    "limits": {
+      "fields": 30,
+      "customCollections": 5,
+      "customCount": 1
+    }
+  }
+}

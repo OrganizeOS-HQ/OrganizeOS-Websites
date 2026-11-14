@@ -42,6 +42,7 @@ import {
   $instances,
   $pages,
   $project,
+  $projectSettings,
   $props,
   $resources,
   $styleSourceSelections,
@@ -79,14 +80,17 @@ import {
   writeCanonicalVariablesMutable,
 } from "./apply-site-template";
 
-const { uploadAssets } = vi.hoisted(() => ({ uploadAssets: vi.fn() }));
+const { uploadAssets, waitForAssetUpload } = vi.hoisted(() => ({
+  uploadAssets: vi.fn(),
+  waitForAssetUpload: vi.fn(),
+}));
 // every name the builder's modules import from it (builder-api.ts imports
 // importAssets), so the suite links
 vi.mock("~/builder/shared/assets/upload-assets", () => ({
   uploadAssets,
   importAssets: vi.fn(),
   uploadSingleAsset: vi.fn(),
-  waitForAssetUpload: vi.fn(),
+  waitForAssetUpload,
 }));
 
 // The db half of project-build builds a tRPC router as it loads, which a
@@ -219,7 +223,6 @@ const context = {
   projectId,
   presetIds,
   variables,
-  ignoreAssetIds: new Set<string>(),
   blockTokens: undefined,
 };
 
@@ -409,17 +412,91 @@ describe("isProjectUntouched", () => {
     expect(isProjectUntouched(data)).toBe(false);
   });
 
-  test("an asset makes it touched unless ignored", async () => {
+  // An asset counts only when something uses it (calculateUsagesByAssetId),
+  // which never checks the instance a prop sits on: a prop adds no child.
+  const addStyle = (
+    data: WebstudioData,
+    decl: Omit<StyleDecl, "breakpointId">
+  ) => {
+    const styleDecl = { ...decl, breakpointId: findBaseBreakpoint(data).id };
+    data.styles.set(getStyleDeclKey(styleDecl), styleDecl);
+  };
+
+  test("an asset nothing uses leaves the project untouched", async () => {
     const data = await createProvisionedProject(provisioning);
     data.assets.set("asset-hero", imageAsset("asset-hero"));
 
+    expect(isProjectUntouched(data)).toBe(true);
+  });
+
+  test("an asset an Image shows touches the project", async () => {
+    const data = await createProvisionedProject(provisioning);
+    data.assets.set("asset-hero", imageAsset("asset-hero"));
+    data.props.set("p", {
+      id: "p",
+      instanceId: "any",
+      name: "src",
+      type: "asset",
+      value: "asset-hero",
+    });
+
     expect(isProjectUntouched(data)).toBe(false);
+  });
+
+  test("an asset a style shows touches the project", async () => {
+    const data = await createProvisionedProject(provisioning);
+    data.assets.set("asset-hero", imageAsset("asset-hero"));
+    addStyle(data, {
+      styleSourceId: "any",
+      property: "backgroundImage",
+      value: {
+        type: "layers",
+        value: [
+          { type: "image", value: { type: "asset", value: "asset-hero" } },
+        ],
+      },
+    });
+
+    expect(isProjectUntouched(data)).toBe(false);
+  });
+
+  test("an asset used as the favicon touches the project", async () => {
+    const data = await createProvisionedProject(provisioning);
+    data.assets.set("asset-hero", imageAsset("asset-hero"));
+
     expect(
-      isProjectUntouched(data, { ignoreAssetIds: new Set(["asset-hero"]) })
-    ).toBe(true);
-    expect(
-      isProjectUntouched(data, { ignoreAssetIds: new Set(["asset-team"]) })
+      isProjectUntouched({
+        ...data,
+        projectSettings: {
+          meta: { faviconAssetId: "asset-hero" },
+          compiler: {},
+        },
+      })
     ).toBe(false);
+  });
+
+  test("a font a style names touches the project, one no style names does not", async () => {
+    const data = await createProvisionedProject(provisioning);
+    data.assets.set("font-brand", {
+      id: "font-brand",
+      projectId,
+      type: "font",
+      name: "brand.woff2",
+      format: "woff2",
+      size: 1,
+      createdAt: "2026-10-30T00:00:00.000Z",
+      meta: { family: "Brand", style: "normal", weight: 400 },
+    });
+
+    expect(isProjectUntouched(data)).toBe(true);
+
+    addStyle(data, {
+      styleSourceId: "any",
+      property: "fontFamily",
+      value: { type: "fontFamily", value: ["Brand"] },
+    });
+
+    expect(isProjectUntouched(data)).toBe(false);
   });
 });
 
@@ -733,14 +810,11 @@ describe("applySiteTemplateMutable", () => {
     expect(data.styles.has(getStyleDeclKey(decl))).toBe(false);
   });
 
-  test("an asset of the template's own images does not refuse it", async () => {
+  test("an image asset nothing uses does not refuse it", async () => {
     const data = await createProvisionedProject(provisioning);
     data.assets.set("asset-hero", imageAsset("asset-hero"));
 
-    const result = applySiteTemplateMutable(data, renderPages(), {
-      ...context,
-      ignoreAssetIds: new Set(["asset-hero", "asset-team"]),
-    });
+    const result = applySiteTemplateMutable(data, renderPages(), context);
 
     expect(result).toEqual({ status: "applied", unboundBlocks: [] });
   });
@@ -1126,6 +1200,7 @@ describe("applySiteTemplate", () => {
     $styleSources.set(data.styleSources);
     $styles.set(data.styles);
     $assets.set(data.assets);
+    $projectSettings.set(undefined);
     $selectedPageId.set(data.pages.homePageId);
     $builderMode.set("design");
     $authPermit.set("build");
@@ -1136,22 +1211,60 @@ describe("applySiteTemplate", () => {
 
   const urlOf = (path: string) => new URL(path, location.origin).href;
 
-  // As the builder's: ids keyed by the URLs or files passed, by its own rule,
-  // returned before the uploads finish. Here the uploads never land.
-  const uploadedIds = async (_type: string, filesOrUrls: (File | URL)[]) =>
-    new Map(
-      await Promise.all(
-        filesOrUrls.map(
-          async (fileOrUrl) =>
-            [
-              fileOrUrl,
-              fileOrUrl instanceof File
-                ? await getSha256HashOfFile(fileOrUrl)
-                : await getSha256Hash(fileOrUrl.href),
-            ] as const
-        )
-      )
+  /** The asset id of the first Image directly in a page's body. */
+  const imageSrcOf = (data: WebstudioData, page: undefined | Page) => {
+    const image = childrenOf(data, page?.rootInstanceId ?? "").find(
+      (instance) => instance.component === "Image"
     );
+    return [...data.props.values()].find(
+      (prop) => prop.instanceId === image?.id && prop.name === "src"
+    )?.value;
+  };
+
+  // As the builder's since the 0.309.0 merge: the server mints each upload's
+  // id (createUploadTicket), unrelated to the URL, numbered here per distinct
+  // URL or file in first-upload order; the map is keyed by what was passed.
+  // Each image lands as a step of its own, through the builder's own
+  // safeSetAsset, as a finished upload does.
+  let serverIds = new Map<string, string>();
+  const serverIdOf = (key: string) => {
+    let id = serverIds.get(key);
+    if (id === undefined) {
+      id = `server-${serverIds.size + 1}`;
+      serverIds.set(key, id);
+    }
+    return id;
+  };
+  const landImage = async (id: string, url: URL) => {
+    const { __testing__ } = await vi.importActual<
+      typeof import("~/builder/shared/assets/upload-assets")
+    >("~/builder/shared/assets/upload-assets");
+    __testing__.safeSetAsset(
+      { ...imageAsset(id), name: url.pathname.split("/").pop() ?? id },
+      projectId
+    );
+  };
+  const uploadedIds = async (type: string, filesOrUrls: (File | URL)[]) => {
+    const ids = new Map<File | URL, string>();
+    for (const fileOrUrl of filesOrUrls) {
+      const id = serverIdOf(
+        fileOrUrl instanceof File ? `file:${fileOrUrl.name}` : fileOrUrl.href
+      );
+      ids.set(fileOrUrl, id);
+      if (type === "image" && fileOrUrl instanceof URL) {
+        await landImage(id, fileOrUrl);
+      }
+    }
+    return ids;
+  };
+  // As the builder's: an asset in $assets, or a rejection once it is not
+  const confirmUpload = async (assetId: string) => {
+    const asset = $assets.get().get(assetId);
+    if (asset === undefined) {
+      throw new Error("Failed to upload asset");
+    }
+    return asset;
+  };
 
   // Two font files, served by the builder at their URLs.
   const sourceSans: FontEntry = {
@@ -1192,8 +1305,11 @@ describe("applySiteTemplate", () => {
   };
 
   beforeEach(() => {
+    serverIds = new Map();
     uploadAssets.mockReset();
     uploadAssets.mockImplementation(uploadedIds);
+    waitForAssetUpload.mockReset();
+    waitForAssetUpload.mockImplementation(confirmUpload);
     fetchFont.mockClear();
     vi.stubGlobal("fetch", fetchFont);
   });
@@ -1202,17 +1318,24 @@ describe("applySiteTemplate", () => {
     vi.unstubAllGlobals();
   });
 
-  test("renders each image with the asset id its URL uploads as, and uploads once applied", async () => {
+  test("renders each image with its URL's hash as a placeholder, uploads once applied, then points it at the upload", async () => {
     setStores(await createProvisionedProject(provisioning));
     let aboutAtUpload: undefined | Page;
+    let homeSrcAtUpload: unknown;
     uploadAssets.mockImplementationOnce(async (type: string, urls: URL[]) => {
-      aboutAtUpload = findPage(getWebstudioData(), "/about");
+      const atUpload = getWebstudioData();
+      aboutAtUpload = findPage(atUpload, "/about");
+      homeSrcAtUpload = imageSrcOf(atUpload, findPage(atUpload, ""));
       return uploadedIds(type, urls);
     });
 
     const result = await applySiteTemplate(template);
 
-    expect(result).toEqual({ status: "applied", unboundBlocks: [] });
+    expect(result).toEqual({
+      status: "applied",
+      unboundBlocks: [],
+      missingImages: 0,
+    });
     expect(uploadAssets).toHaveBeenCalledTimes(1);
     const [type, urls] = uploadAssets.mock.calls[0] as [string, URL[]];
     expect(type).toBe("image");
@@ -1221,30 +1344,21 @@ describe("applySiteTemplate", () => {
       urlOf("/site-templates/fixture/team.jpg"),
     ]);
     expect(aboutAtUpload).toBeDefined();
+    expect(homeSrcAtUpload).toBe(
+      await getSha256Hash(urlOf("/site-templates/fixture/hero.jpg"))
+    );
 
-    const heroId = await getSha256Hash(
-      urlOf("/site-templates/fixture/hero.jpg")
-    );
-    const teamId = await getSha256Hash(
-      urlOf("/site-templates/fixture/team.jpg")
-    );
     const data = getWebstudioData();
-    const imageSrc = (page: undefined | Page) => {
-      const image = childrenOf(data, page?.rootInstanceId ?? "").find(
-        (instance) => instance.component === "Image"
-      );
-      return [...data.props.values()].find(
-        (prop) => prop.instanceId === image?.id && prop.name === "src"
-      )?.value;
-    };
-    expect(imageSrc(findPage(data, ""))).toBe(heroId);
-    expect(imageSrc(findPage(data, "/about"))).toBe(teamId);
+    expect(imageSrcOf(data, findPage(data, ""))).toBe("server-1");
+    expect(imageSrcOf(data, findPage(data, "/about"))).toBe("server-2");
     expect(stylesOf(data, findPage(data, "/about")!.rootInstanceId)).toEqual([
       expect.objectContaining({
         property: "backgroundImage",
         value: {
           type: "layers",
-          value: [{ type: "image", value: { type: "asset", value: heroId } }],
+          value: [
+            { type: "image", value: { type: "asset", value: "server-1" } },
+          ],
         },
       }),
     ]);
@@ -1272,7 +1386,11 @@ describe("applySiteTemplate", () => {
       },
     });
 
-    expect(result).toEqual({ status: "applied", unboundBlocks: [] });
+    expect(result).toEqual({
+      status: "applied",
+      unboundBlocks: [],
+      missingImages: 0,
+    });
     expect(uploadAssets).toHaveBeenCalledTimes(1);
     const [type, urls] = uploadAssets.mock.calls[0] as [string, URL[]];
     expect(type).toBe("image");
@@ -1296,7 +1414,11 @@ describe("applySiteTemplate", () => {
 
     const result = await applySiteTemplate(withFonts);
 
-    expect(result).toEqual({ status: "applied", unboundBlocks: [] });
+    expect(result).toEqual({
+      status: "applied",
+      unboundBlocks: [],
+      missingImages: 0,
+    });
     expect(fetchFont.mock.calls.map(([input]) => String(input))).toEqual([
       urlOf(sourceSans.url),
       urlOf(sourceSansItalic.url),
@@ -1319,33 +1441,7 @@ describe("applySiteTemplate", () => {
     expect(aboutAtUpload).toBeDefined();
   });
 
-  test("a font upload whose id is not the file's hash is logged", async () => {
-    setStores(await createProvisionedProject(provisioning));
-    uploadAssets.mockImplementation(
-      async (type: string, filesOrUrls: (File | URL)[]) =>
-        type === "font"
-          ? new Map(filesOrUrls.map((file) => [file, "other"]))
-          : uploadedIds(type, filesOrUrls)
-    );
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-
-    expect(await applySiteTemplate(withFonts)).toEqual({
-      status: "applied",
-      unboundBlocks: [],
-    });
-
-    expect(consoleError.mock.calls.map(([message]) => message)).toEqual([
-      expect.stringContaining('"source-sans-3-latin-wght-normal.woff2"'),
-      expect.stringContaining('"source-sans-3-latin-wght-italic.woff2"'),
-    ]);
-    consoleError.mockRestore();
-  });
-
-  // As an image's: an upload of the same font, landing while this apply
-  // awaits (another admin's apply of the template), does not refuse it.
-  test("an asset of the template's own fonts does not refuse it", async () => {
+  test("an asset nothing uses does not refuse it", async () => {
     setStores(await createProvisionedProject(provisioning));
     const fontId = await sha256(fontBytes.get(urlOf(sourceSans.url))!);
     fetchFont.mockImplementationOnce(async (input: string | URL) => {
@@ -1372,6 +1468,26 @@ describe("applySiteTemplate", () => {
     expect(await applySiteTemplate(withFonts)).toEqual({
       status: "applied",
       unboundBlocks: [],
+      missingImages: 0,
+    });
+  });
+
+  // The staged recipe's data carries the project settings: a favicon set
+  // after the pre-check, while the fonts are fetched, refuses the apply.
+  test("a favicon set while the apply awaits refuses it", async () => {
+    setStores(await createProvisionedProject(provisioning));
+    fetchFont.mockImplementationOnce(async (input: string | URL) => {
+      $assets.set(new Map([["asset-icon", imageAsset("asset-icon")]]));
+      $projectSettings.set({
+        meta: { faviconAssetId: "asset-icon" },
+        compiler: {},
+      });
+      return new Response(fontBytes.get(String(input)));
+    });
+
+    expect(await applySiteTemplate(withFonts)).toEqual({
+      status: "refused",
+      reason: "touched",
     });
   });
 
@@ -1463,35 +1579,13 @@ describe("applySiteTemplate", () => {
     }
   );
 
-  test("an upload whose id is not the rendered one is logged", async () => {
-    setStores(await createProvisionedProject(provisioning));
-    uploadAssets.mockImplementationOnce(
-      async (_type: string, urls: URL[]) =>
-        new Map(urls.map((url) => [url, `other${url.pathname}`]))
-    );
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-
-    expect(await applySiteTemplate(template)).toEqual({
-      status: "applied",
-      unboundBlocks: [],
-    });
-
-    expect(consoleError).toHaveBeenCalledTimes(2);
-    expect(consoleError.mock.calls.map(([message]) => message)).toEqual([
-      expect.stringContaining('"hero.jpg"'),
-      expect.stringContaining('"team.jpg"'),
-    ]);
-    consoleError.mockRestore();
-  });
-
   test("writes the template's block tokens over a token the project holds", async () => {
     setStores(await withOldCardToken());
 
     expect(await applySiteTemplate(datedTemplate)).toEqual({
       status: "applied",
       unboundBlocks: [],
+      missingImages: 0,
     });
 
     const data = getWebstudioData();
@@ -1502,19 +1596,22 @@ describe("applySiteTemplate", () => {
     ).toEqual({ type: "var", value: "accent-1" });
   });
 
-  test("applying a template is one undo step", async () => {
+  test("the apply, each landed image and the rewrite are undo steps of their own", async () => {
     setStores(await createProvisionedProject(provisioning));
     const before = getWebstudioData();
 
     expect(await applySiteTemplate(template)).toEqual({
       status: "applied",
       unboundBlocks: [],
+      missingImages: 0,
     });
 
     expect(getWebstudioData().pages.pages.size).toBeGreaterThan(3);
-    // the upload is mocked: a real one writes its assets in a step of its own
-    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(1);
-    serverSyncStore.undo();
+    // the apply, hero.jpg's upload, team.jpg's upload, the rewrite
+    expect(serverSyncStore.transactionManager.currentStack).toHaveLength(4);
+    for (let step = 0; step < 4; step += 1) {
+      serverSyncStore.undo();
+    }
     expect(getWebstudioData()).toEqual(before);
   });
 
@@ -1623,6 +1720,13 @@ describe("applySiteTemplate", () => {
   test("refuses a touched project before uploading anything", async () => {
     const data = await createProvisionedProject(provisioning);
     data.assets.set("asset-1", imageAsset("asset-1"));
+    data.props.set("p", {
+      id: "p",
+      instanceId: "any",
+      name: "src",
+      type: "asset",
+      value: "asset-1",
+    });
     setStores(data);
 
     expect(await applySiteTemplate(withFonts)).toEqual({
@@ -1632,6 +1736,212 @@ describe("applySiteTemplate", () => {
     expect(fetchFont).not.toHaveBeenCalled();
     expect(uploadAssets).not.toHaveBeenCalled();
     expect(getWebstudioData().pages.pages.size).toBe(3);
+  });
+
+  // The fixture's hero.jpg is an Image on Home and a background on /about;
+  // team.jpg is an Image on /about.
+  describe("the photos", () => {
+    /** Every asset id a prop or a style of the project names. */
+    const referencedAssetIds = (data: WebstudioData) => {
+      const ids = new Set<string>();
+      const collect = (value: unknown) => {
+        if (Array.isArray(value)) {
+          value.forEach(collect);
+          return;
+        }
+        if (typeof value !== "object" || value === null) {
+          return;
+        }
+        const record = value as Record<string, unknown>;
+        if (record.type === "asset" && typeof record.value === "string") {
+          ids.add(record.value);
+          return;
+        }
+        Object.values(record).forEach(collect);
+      };
+      collect([...data.props.values()]);
+      collect([...data.styles.values()]);
+      return ids;
+    };
+    const placeholderOf = (file: string) =>
+      getSha256Hash(urlOf(`/site-templates/fixture/${file}`));
+
+    test("rewrites every reference to an image", async () => {
+      setStores(await createProvisionedProject(provisioning));
+
+      expect(await applySiteTemplate(template)).toEqual({
+        status: "applied",
+        unboundBlocks: [],
+        missingImages: 0,
+      });
+
+      const data = getWebstudioData();
+      expect([...referencedAssetIds(data)].sort()).toEqual([
+        "server-1",
+        "server-2",
+      ]);
+      expect(data.assets.has("server-1")).toBe(true);
+      expect(data.assets.has("server-2")).toBe(true);
+      // the rewrite is the top step, directly above the two image uploads
+      expect(serverSyncStore.transactionManager.currentStack).toHaveLength(4);
+      serverSyncStore.undo();
+      expect([...referencedAssetIds(getWebstudioData())].sort()).toEqual(
+        [
+          await placeholderOf("hero.jpg"),
+          await placeholderOf("team.jpg"),
+        ].sort()
+      );
+      expect(getWebstudioData().assets.size).toBe(2);
+    });
+
+    test("counts an image whose upload is not confirmed", async () => {
+      setStores(await createProvisionedProject(provisioning));
+      uploadAssets.mockImplementationOnce(async (type: string, urls: URL[]) => {
+        const ids = await uploadedIds(type, urls.slice(0, 1));
+        // returned with the ticket, but its upload never landed
+        ids.set(urls[1], serverIdOf(urls[1].href));
+        return ids;
+      });
+
+      expect(await applySiteTemplate(template)).toEqual({
+        status: "applied",
+        unboundBlocks: [],
+        missingImages: 1,
+      });
+
+      expect([...referencedAssetIds(getWebstudioData())].sort()).toEqual(
+        [await placeholderOf("team.jpg"), "server-1"].sort()
+      );
+    });
+
+    test("counts an image the upload returns no id for", async () => {
+      setStores(await createProvisionedProject(provisioning));
+      uploadAssets.mockImplementationOnce(async (type: string, urls: URL[]) =>
+        uploadedIds(type, urls.slice(0, 1))
+      );
+
+      expect(await applySiteTemplate(template)).toEqual({
+        status: "applied",
+        unboundBlocks: [],
+        missingImages: 1,
+      });
+
+      expect([...referencedAssetIds(getWebstudioData())].sort()).toEqual(
+        [await placeholderOf("team.jpg"), "server-1"].sort()
+      );
+    });
+
+    test("counts an image whose asset is gone by the rewrite", async () => {
+      setStores(await createProvisionedProject(provisioning));
+      waitForAssetUpload.mockImplementation(async (assetId: string) => {
+        const asset = await confirmUpload(assetId);
+        if (assetId === "server-2") {
+          // the admin undoes team.jpg's upload once it is confirmed
+          serverSyncStore.undo();
+        }
+        return asset;
+      });
+
+      expect(await applySiteTemplate(template)).toEqual({
+        status: "applied",
+        unboundBlocks: [],
+        missingImages: 1,
+      });
+
+      const data = getWebstudioData();
+      expect(data.assets.has("server-2")).toBe(false);
+      expect([...referencedAssetIds(data)].sort()).toEqual(
+        [await placeholderOf("team.jpg"), "server-1"].sort()
+      );
+    });
+
+    test("an apply undone while its images upload leaves the site empty", async () => {
+      setStores(await createProvisionedProject(provisioning));
+      uploadAssets.mockImplementationOnce(async (type: string, urls: URL[]) => {
+        serverSyncStore.undo();
+        return uploadedIds(type, urls);
+      });
+
+      expect(await applySiteTemplate(template)).toEqual({
+        status: "applied",
+        unboundBlocks: [],
+        missingImages: 0,
+      });
+
+      // the two image uploads, and no rewrite above them
+      expect(serverSyncStore.transactionManager.currentStack).toHaveLength(2);
+      expect(isProjectUntouched(getWebstudioData())).toBe(true);
+    });
+
+    test("counts every image when the rewrite is refused", async () => {
+      const provisioned = await createProvisionedProject(provisioning);
+      setStores(provisioned);
+      uploadAssets.mockImplementationOnce(async (type: string, urls: URL[]) => {
+        const ids = await uploadedIds(type, urls);
+        // a page template selected without build access: the runtime layer
+        // refuses the next commit
+        $pages.set({
+          ...$pages.get()!,
+          pageTemplates: new Map([
+            [
+              "template",
+              {
+                id: "template",
+                name: "Template",
+                title: "Template",
+                rootInstanceId: provisioned.pages.pages.get(
+                  provisioned.pages.homePageId
+                )!.rootInstanceId,
+                meta: {},
+              },
+            ],
+          ]),
+        });
+        $selectedPageId.set("template");
+        $authPermit.set("view");
+        return ids;
+      });
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      expect(await applySiteTemplate(template)).toEqual({
+        status: "applied",
+        unboundBlocks: [],
+        missingImages: 2,
+      });
+      consoleError.mockRestore();
+    });
+
+    test("uploads fonts after the rewrite, by file, and logs nothing", async () => {
+      setStores(await createProvisionedProject(provisioning));
+      let homeSrcAtFontUpload: unknown;
+      uploadAssets.mockImplementation(
+        async (type: string, filesOrUrls: (File | URL)[]) => {
+          if (type === "font") {
+            const atFontUpload = getWebstudioData();
+            homeSrcAtFontUpload = imageSrcOf(
+              atFontUpload,
+              findPage(atFontUpload, "")
+            );
+          }
+          return uploadedIds(type, filesOrUrls);
+        }
+      );
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      expect(await applySiteTemplate(withFonts)).toEqual({
+        status: "applied",
+        unboundBlocks: [],
+        missingImages: 0,
+      });
+
+      expect(homeSrcAtFontUpload).toBe("server-1");
+      expect(consoleError).not.toHaveBeenCalled();
+      consoleError.mockRestore();
+    });
   });
 });
 

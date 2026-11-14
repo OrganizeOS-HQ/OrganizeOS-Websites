@@ -400,6 +400,11 @@ export const FieldControl = ({
   /** A reference's chosen ids whose items E5 no longer finds. */
   onUnresolvedChange?: (ids: string[]) => void;
 }) => {
+  // the rich-text field's own clipboard data, kept across its remounts (a
+  // Save, Reload or "Use my edit"), so a cut or copy before one pastes back
+  const [clipboardNamespace] = useState(
+    () => `cms-rich-text-${crypto.randomUUID()}`
+  );
   const color = invalid ? ("error" as const) : undefined;
   const ids = fieldIds(id);
   const describedBy = invalid ? ids.error : undefined;
@@ -577,6 +582,7 @@ export const FieldControl = ({
       return (
         <RichTextField
           key={remountKey}
+          namespace={clipboardNamespace}
           id={id}
           labelId={ids.label}
           describedBy={describedBy}
@@ -585,6 +591,10 @@ export const FieldControl = ({
           invalid={invalid}
           onChange={onChange}
           onOpenClassic={onOpenClassic}
+          source={source}
+          onError={onError}
+          onBusyChange={onBusyChange}
+          onRefusal={onRefusal}
         />
       );
     default: {

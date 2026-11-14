@@ -123,6 +123,9 @@ jobs:
           - leg: builder core-browser-builder-features
             project: core-browser-builder-features
             browser: true
+          - leg: builder core-browser-builder-cms
+            project: core-browser-builder-cms
+            browser: true
           - leg: builder app-browser-builder-shared
             project: app-browser-builder-shared
             browser: true

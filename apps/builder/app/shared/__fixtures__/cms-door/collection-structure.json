@@ -1,0 +1,34 @@
+{
+  "status": 200,
+  "body": {
+    "collection": {
+      "id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      "slug": "posts",
+      "name": "Posts",
+      "singularName": "Post",
+      "isPublic": true,
+      "updatedAt": "2026-11-01T09:00:00+00:00",
+      "total": 2,
+      "fields": [
+        {
+          "key": "title",
+          "label": "Title",
+          "kind": "text",
+          "required": true,
+          "isTitle": true
+        },
+        {
+          "key": "body",
+          "label": "Body",
+          "kind": "richtext"
+        },
+        {
+          "key": "cover",
+          "label": "Cover",
+          "kind": "image"
+        }
+      ],
+      "referencedBy": []
+    }
+  }
+}

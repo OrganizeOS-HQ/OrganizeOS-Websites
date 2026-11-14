@@ -36,7 +36,13 @@ export type CmsEndpoint =
   | "E11"
   | "E12"
   | "E13"
-  | "E9";
+  | "E9"
+  | "E20"
+  | "E21"
+  | "E22"
+  | "E23"
+  | "E24"
+  | "E25";
 
 export type CmsPathMatch = {
   endpoint: CmsEndpoint;
@@ -213,6 +219,48 @@ const patterns: DoorPattern<CmsEndpoint>[] = [
     segments: ["uploads", "image"],
     query: noQuery,
     body: "multipart",
+  },
+  {
+    endpoint: "E20",
+    method: "GET",
+    segments: ["structure"],
+    query: noQuery,
+    body: "none",
+  },
+  {
+    endpoint: "E21",
+    method: "GET",
+    segments: ["collections", "{c}", "structure"],
+    query: noQuery,
+    body: "none",
+  },
+  {
+    endpoint: "E22",
+    method: "POST",
+    segments: ["collections"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E23",
+    method: "PUT",
+    segments: ["collections", "{c}"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E24",
+    method: "PUT",
+    segments: ["collections", "{c}", "schema"],
+    query: noQuery,
+    body: "json",
+  },
+  {
+    endpoint: "E25",
+    method: "POST",
+    segments: ["collections", "{c}", "delete"],
+    query: noQuery,
+    body: "json",
   },
 ];
 
