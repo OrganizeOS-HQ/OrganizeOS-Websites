@@ -24,6 +24,37 @@ export const holdFocusKeeper = () => {
   return release;
 };
 
+/**
+ * A write started from the focused control: the keeper stands back while it
+ * runs, and the returned done gives that control the focus again, a frame
+ * later, when the focus was lost meanwhile and the control is still drawn
+ * and enabled.
+ */
+export const keepFocusThrough = () => {
+  const control = document.activeElement;
+  const release = holdFocusKeeper();
+  return () => {
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      const lost =
+        active === null ||
+        active === document.body ||
+        active.isConnected === false ||
+        active.matches(":disabled");
+      if (
+        lost &&
+        control instanceof HTMLElement &&
+        control !== document.body &&
+        control.isConnected &&
+        control.matches(":disabled") === false
+      ) {
+        control.focus();
+      }
+      release();
+    });
+  };
+};
+
 /** Runs `run` two frames from now; answers its cancel. */
 export const afterTwoFrames = (run: () => void) => {
   let frame = requestAnimationFrame(() => {

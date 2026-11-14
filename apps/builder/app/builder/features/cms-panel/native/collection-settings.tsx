@@ -43,6 +43,7 @@ import type {
   CmsStructureSource,
 } from "./cms-structure-source";
 import { FieldRow, fieldIds } from "./field-controls";
+import { keepFocusThrough } from "./focus-keeper";
 import { LineRow, type CmsLineKind } from "./refusal-line";
 import {
   StructureBody,
@@ -321,6 +322,15 @@ export const CollectionSettings = ({
       setErrors(found);
       return;
     }
+    const done = keepFocusThrough();
+    try {
+      await saveNow(next);
+    } finally {
+      done();
+    }
+  };
+
+  const saveNow = async (next: CmsCollectionSettings) => {
     setBusy(true);
     const result = await enqueue(collection.id, async (expectedUpdatedAt) => {
       const answer = await structure.updateCollection(collection.id, {

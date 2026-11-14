@@ -1699,6 +1699,40 @@ describe("the focus after an item's Back, then a structure view (round 4)", () =
   });
 });
 
+/**
+ * Clicks Save while its write is held, drops the focus to the page as a
+ * browser may for a control that disables itself, lets the keeper's frames
+ * pass, then answers the write with `answer`.
+ */
+const saveLosingFocus = async (
+  write: { mockImplementationOnce: (...args: never[]) => unknown },
+  answer: unknown
+) => {
+  let resolve: (value: unknown) => void = () => undefined;
+  (write.mockImplementationOnce as (run: () => Promise<unknown>) => unknown)(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      })
+  );
+  await click(
+    buttonByText(
+      "Save",
+      document.querySelector<HTMLElement>("[data-cms-structure-header]")!
+    )
+  );
+  act(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
+  for (let frame = 0; frame < 4; frame += 1) {
+    await act(
+      () => new Promise((done) => requestAnimationFrame(() => done(undefined)))
+    );
+  }
+  await act(async () => resolve(answer));
+  await settle();
+};
+
 // round 5, item 5: one focus keeper for the screen; R5-10: each case's
 // exact target
 describe("a focus lost to the page comes back to the screen (round 5)", () => {
@@ -1812,10 +1846,9 @@ describe("a focus lost to the page comes back to the screen (round 5)", () => {
           document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
           "Teaser"
         );
-        harness.structure.updateSchema.mockResolvedValueOnce({
+        await saveLosingFocus(harness.structure.updateSchema, {
           error: "unavailable",
         });
-        await click(buttonByText("Save", header()));
       },
       () => buttonByText("Save", header()),
     ],
@@ -1827,10 +1860,9 @@ describe("a focus lost to the page comes back to the screen (round 5)", () => {
           document.querySelector<HTMLInputElement>("#cms-settings-name"),
           "Articles"
         );
-        harness.structure.updateCollection.mockResolvedValueOnce({
+        await saveLosingFocus(harness.structure.updateCollection, {
           error: "unavailable",
         });
-        await click(buttonByText("Save", header()));
       },
       () => buttonByText("Save", header()),
     ],

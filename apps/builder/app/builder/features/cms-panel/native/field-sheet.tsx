@@ -85,6 +85,7 @@ import { FieldRow, fieldIds } from "./field-controls";
 import { FieldKindLabel } from "./fields-view";
 import { LineRow, type CmsLineKind } from "./refusal-line";
 import { TruncatedText } from "./truncated-text";
+import { keepFocusThrough } from "./focus-keeper";
 import {
   StructureBody,
   StructureHeader,
@@ -600,6 +601,15 @@ export const FieldSheet = ({
       setErrors(found);
       return;
     }
+    const done = keepFocusThrough();
+    try {
+      await saveNow();
+    } finally {
+      done();
+    }
+  };
+
+  const saveNow = async () => {
     setBusy("save");
     const fields = schemaWithDraft(collection.fields, draft, originalKey);
     const result = await enqueue(collection.id, (expectedUpdatedAt) =>
