@@ -16,6 +16,7 @@ import {
   COMMAND_PRIORITY_LOW,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
+  KEY_ENTER_COMMAND,
   $getNodeByKey,
   $getSelection,
   $isNodeSelection,
@@ -167,12 +168,29 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
   const altId = useId();
   const captionId = useId();
 
-  // the settings open on a click only: a keyboard selection of the image
-  // (an arrow key, Backspace beside it) keeps the keyboard in the text
-  // With the image selected, Backspace and Delete remove it.
+  // the settings open on a click, or on Enter with the image selected; a
+  // keyboard selection alone keeps the keyboard in the text. With the image
+  // selected, Backspace and Delete remove it.
   useEffect(
     () =>
       mergeRegister(
+        editor.registerCommand(
+          KEY_ENTER_COMMAND,
+          (event: KeyboardEvent | null) => {
+            const selection = $getSelection();
+            if (
+              isSelected === false ||
+              $isNodeSelection(selection) === false ||
+              selection.has(nodeKey) === false
+            ) {
+              return false;
+            }
+            event?.preventDefault();
+            setIsOpen(true);
+            return true;
+          },
+          COMMAND_PRIORITY_LOW
+        ),
         ...[KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND].map((command) =>
           editor.registerCommand(
             command,

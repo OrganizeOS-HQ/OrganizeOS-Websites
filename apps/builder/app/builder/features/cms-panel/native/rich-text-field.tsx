@@ -20,6 +20,8 @@ import {
   $isLineBreakNode,
   COMMAND_PRIORITY_CRITICAL,
   DRAGSTART_COMMAND,
+  KEY_ARROW_LEFT_COMMAND,
+  KEY_ARROW_RIGHT_COMMAND,
   KEY_DOWN_COMMAND,
   type ElementNode,
   COMMAND_PRIORITY_LOW,
@@ -32,6 +34,7 @@ import {
   SELECTION_CHANGE_COMMAND,
   type LexicalEditor,
   type LexicalNode,
+  type PointType,
   type RangeSelection,
   type TextFormatType,
 } from "lexical";
@@ -1003,8 +1006,22 @@ const $keepImagesOutOfLinks = (links: Set<LinkNode>) => {
  */
 const $imageEndingLine = (
   editor: LexicalEditor,
-  focus: LexicalNode
+  point: PointType
 ): LexicalNode | undefined => {
+  // the node the caret sits after: a text caret's own node, an element
+  // caret's child before it (its first child at the element's start)
+  let focus: LexicalNode = point.getNode();
+  let fromEnd = false;
+  if (point.type === "element" && $isElementNode(focus)) {
+    const children = focus.getChildren();
+    const before = children[point.offset - 1];
+    if (before !== undefined) {
+      focus = before;
+      fromEnd = true;
+    } else if (children[0] !== undefined) {
+      focus = children[0];
+    }
+  }
   const block = $findMatchingParent(
     focus,
     (node) => $isElementNode(node) && node.isInline() === false
@@ -1026,10 +1043,16 @@ const $imageEndingLine = (
     }
   };
   collect(block);
-  const start = leaves.findIndex(
-    (leaf) => leaf.is(focus) || leaf.isParentOf(focus) || focus.isParentOf(leaf)
-  );
-  let last: LexicalNode | undefined;
+  const inFocus = (leaf: LexicalNode) =>
+    leaf.is(focus) || leaf.isParentOf(focus) || focus.isParentOf(leaf);
+  // an element caret's line goes on from after the node it follows
+  const start = fromEnd
+    ? leaves.findLastIndex(inFocus) + 1
+    : leaves.findIndex(inFocus);
+  // a caret already ending its line just after an image stays there: the
+  // browser's own End would leave the image's side
+  let last: LexicalNode | undefined =
+    fromEnd && $isCmsImageNode(focus) ? focus : undefined;
   for (const leaf of leaves.slice(Math.max(start, 0))) {
     if ($isLineBreakNode(leaf)) {
       break;
@@ -1039,11 +1062,16 @@ const $imageEndingLine = (
   if (last === undefined || $isCmsImageNode(last) === false) {
     return;
   }
-  // a line the browser wraps ends where the browser says
+  // a line the browser wraps ends where the browser says; a caret with no
+  // box of its own (an element caret) is measured by the node it follows
   const image = editor.getElementByKey(last.getKey());
-  const range = window.getSelection()?.rangeCount
+  const caret = window.getSelection()?.rangeCount
     ? window.getSelection()!.getRangeAt(0).getBoundingClientRect()
     : undefined;
+  const range =
+    caret !== undefined && caret.height > 0
+      ? caret
+      : editor.getElementByKey(focus.getKey())?.getBoundingClientRect();
   if (image !== null && range !== undefined && range.height > 0) {
     const box = image.getBoundingClientRect();
     if (range.top >= box.bottom || range.bottom <= box.top) {
@@ -1051,6 +1079,58 @@ const $imageEndingLine = (
     }
   }
   return last;
+};
+
+/**
+ * The inline image right beside a collapsed caret in an arrow's direction:
+ * the caret steps past it as a text caret, never onto it as a selection.
+ */
+const $inlineImageBeside = (
+  selection: RangeSelection,
+  isBackward: boolean
+): LexicalNode | undefined => {
+  const focus = selection.focus;
+  const node = focus.getNode();
+  let beside: LexicalNode | null = null;
+  if (focus.type === "text") {
+    const size = node.getTextContentSize();
+    if (isBackward ? focus.offset !== 0 : focus.offset !== size) {
+      return;
+    }
+    beside = isBackward ? node.getPreviousSibling() : node.getNextSibling();
+  } else if ($isElementNode(node)) {
+    beside = node.getChildAtIndex(isBackward ? focus.offset - 1 : focus.offset);
+  }
+  return $isCmsImageNode(beside) ? beside : undefined;
+};
+
+/** Moves the selection's focus (and, without Shift, its anchor) past `image`. */
+const $stepPast = (
+  selection: RangeSelection,
+  image: LexicalNode,
+  isBackward: boolean,
+  extend: boolean
+) => {
+  const parent = image.getParentOrThrow();
+  const index = image.getIndexWithinParent();
+  const neighbour = isBackward
+    ? image.getPreviousSibling()
+    : image.getNextSibling();
+  const point = $isTextNode(neighbour)
+    ? {
+        key: neighbour.getKey(),
+        offset: isBackward ? neighbour.getTextContentSize() : 0,
+        type: "text" as const,
+      }
+    : {
+        key: parent.getKey(),
+        offset: isBackward ? index : index + 1,
+        type: "element" as const,
+      };
+  selection.focus.set(point.key, point.offset, point.type);
+  if (extend === false) {
+    selection.anchor.set(point.key, point.offset, point.type);
+  }
 };
 
 const ImageEditingPlugin = () => {
@@ -1107,6 +1187,38 @@ const ImageEditingPlugin = () => {
           },
           COMMAND_PRIORITY_NORMAL
         ),
+        // an arrow beside an inline image steps past it, keeping a text
+        // caret, so typing lands beside the image
+        ...(
+          [
+            [KEY_ARROW_LEFT_COMMAND, true],
+            [KEY_ARROW_RIGHT_COMMAND, false],
+          ] as const
+        ).map(([command, isBackward]) =>
+          editor.registerCommand(
+            command,
+            (event: KeyboardEvent) => {
+              const selection = $getSelection();
+              if (
+                $isRangeSelection(selection) === false ||
+                event.altKey ||
+                event.ctrlKey ||
+                event.metaKey ||
+                (selection.isCollapsed() === false && event.shiftKey === false)
+              ) {
+                return false;
+              }
+              const image = $inlineImageBeside(selection, isBackward);
+              if (image === undefined) {
+                return false;
+              }
+              event.preventDefault();
+              $stepPast(selection, image, isBackward, event.shiftKey);
+              return true;
+            },
+            COMMAND_PRIORITY_LOW
+          )
+        ),
         // End and Shift+End on a line ending in an image go past it
         editor.registerCommand(
           KEY_DOWN_COMMAND,
@@ -1123,7 +1235,7 @@ const ImageEditingPlugin = () => {
             if ($isRangeSelection(selection) === false) {
               return false;
             }
-            const image = $imageEndingLine(editor, selection.focus.getNode());
+            const image = $imageEndingLine(editor, selection.focus);
             if (image === undefined) {
               return false;
             }

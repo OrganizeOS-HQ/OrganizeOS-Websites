@@ -1462,3 +1462,99 @@ describe("every toolbar command over a corpus value reopens editable", () => {
     600_000
   );
 });
+
+// Round 4: the keyboard beside an inline image
+describe("the keyboard beside an inline image (round 4)", () => {
+  const caretAtEndOf = async (html: string) => {
+    mountField({ value: { html } });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>("p"));
+    await act(async () => {
+      editorOf()!.update(() => {
+        const paragraph = $getRoot().getFirstChild() as ElementNode;
+        paragraph.select(
+          paragraph.getChildrenSize(),
+          paragraph.getChildrenSize()
+        );
+      });
+    });
+    await settle();
+  };
+
+  test("End, ArrowLeft, then typing lands beside the image, and Alt never opens (item 5)", async () => {
+    const { onChange } = mountField({
+      value: { html: `<p>Alpha ${IMAGE}</p>` },
+    });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>("p"));
+    await act(async () => {
+      editorOf()!.update(() => {
+        ($getRoot().getFirstDescendant() as TextNode).select(0, 0);
+      });
+    });
+    await settle();
+    await type("{End}{ArrowLeft}xy");
+    expect(inputByLabel("Alt")).toBeNull();
+    expect(lastHtml(onChange)).toMatch(/Alpha xy(<[^>]+>)*<img/);
+    expect(editable()!.textContent).toBe("Alpha xy");
+  });
+
+  test("ArrowRight before an image steps past it, and typing lands after it (item 5)", async () => {
+    const { onChange } = mountField({
+      value: { html: `<p>Alpha ${IMAGE}</p>` },
+    });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>("p"));
+    await act(async () => {
+      editorOf()!.update(() => {
+        const text = $getRoot().getFirstDescendant() as TextNode;
+        text.select(text.getTextContentSize(), text.getTextContentSize());
+      });
+    });
+    await settle();
+    await type("{ArrowRight}z");
+    expect(inputByLabel("Alt")).toBeNull();
+    expect(lastHtml(onChange)).toMatch(/<img[^>]*>(<[^>]+>)*z/);
+  });
+
+  test("End at the end of a line after a break stays on that line; typing keeps both images (item 6)", async () => {
+    await caretAtEndOf(`<p>${IMAGE}<br>${IMAGE}</p>`);
+    await type("{End}x");
+    const html = editable()!.innerHTML;
+    expect(html.match(/<img/g)?.length).toBe(2);
+    expect(html).toMatch(/<br>(<[^>]+>)*<img[^>]*>(<[^>]+>)*x/);
+  });
+
+  test("Shift+End at the end of a line after a break, then typing, keeps the break and both images (item 6)", async () => {
+    await caretAtEndOf(`<p>${IMAGE}<br>${IMAGE}</p>`);
+    await type("{Shift>}{End}{/Shift}x");
+    const html = editable()!.innerHTML;
+    expect(html.match(/<img/g)?.length).toBe(2);
+    expect(html).toContain("<br>");
+    expect(html).toMatch(/<img[^>]*>(<[^>]+>)*x/);
+  });
+
+  test("Enter on a selected image opens its settings, with the focus in Alt (item 7)", async () => {
+    const { onChange } = mountField({
+      value: { html: `<p>See ${IMAGE}here</p>` },
+    });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>("p"));
+    await act(async () => {
+      editorOf()!.update(() => {
+        const paragraph = $getRoot().getFirstChild() as ElementNode;
+        const selection = $createNodeSelection();
+        selection.add(paragraph.getChildAtIndex(1)!.getKey());
+        $setSelection(selection);
+      });
+    });
+    await settle();
+    await type("{Enter}");
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(inputByLabel("Alt"))
+    );
+    await type("Z");
+    expect(lastHtml(onChange)).toContain('alt="AZ"');
+    expect(editable()!.textContent).toBe("See here");
+  });
+});
