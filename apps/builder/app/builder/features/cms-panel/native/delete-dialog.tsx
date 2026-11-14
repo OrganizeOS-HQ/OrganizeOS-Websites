@@ -53,7 +53,13 @@ export const DeleteDialog = ({
         onCloseAutoFocus={(event) => {
           const element = opener.current;
           opener.current = null;
-          if (element instanceof HTMLElement && element.isConnected) {
+          // the page itself is no opener: a menu item that opened the
+          // dialog leaves the focus there
+          if (
+            element instanceof HTMLElement &&
+            element !== document.body &&
+            element.isConnected
+          ) {
             event.preventDefault();
             element.focus();
           } else if (onFocusLost !== undefined) {

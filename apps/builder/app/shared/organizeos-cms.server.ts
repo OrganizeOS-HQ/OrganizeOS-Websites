@@ -27,9 +27,16 @@ import { isIP } from "node:net";
 export const CMS_ACTOR_HEADER = "X-OOS-Actor";
 export const CMS_ACTOR_LIFETIME_SECONDS = 60;
 export const CMS_PLATFORM_BASE_PATH = "/api/internal/websites2/cms";
+/**
+ * The forms door's base path (builder forms spec 7.1): the same assertion
+ * with `aud: "forms"`, so a CMS assertion never passes the forms door and
+ * the reverse.
+ */
+export const FORMS_PLATFORM_BASE_PATH = "/api/internal/websites2/forms";
 
 export type CmsActorPayload = {
-  aud: "cms";
+  /** The door: `cms`, or `forms` (fixture `forms-actor-assertion.json`). */
+  aud: "cms" | "forms";
   org: string;
   sub: string;
   sid: string;

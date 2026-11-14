@@ -63,5 +63,14 @@ export const meta: WsComponentMeta = {
       required: false,
       label: "Page",
     },
+    // Builder-only: marks a block that uses a site form, with its form's kind
+    // (builder forms spec 7.4; docs/ORGANIZEOS-FORK.md section 9, "Site
+    // forms"). Only a marked block is staged at publish. Drawn by no row.
+    siteForm: {
+      type: "string",
+      control: "text",
+      required: false,
+      label: "Site form",
+    },
   },
 };

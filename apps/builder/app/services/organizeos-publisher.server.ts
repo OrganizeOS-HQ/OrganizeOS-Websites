@@ -2,6 +2,8 @@ import type { TrpcInterfaceClient } from "@webstudio-is/trpc-interface/index.ser
 import { createClient } from "@webstudio-is/postgrest/index.server";
 import env from "~/env/env.server";
 import { platformName } from "~/shared/branding";
+import { loadBuildForms } from "~/shared/db/organizeos-build-forms.server";
+import { collectFormRoots } from "~/shared/organizeos-site-forms";
 import {
   markBuildPublishStatus,
   type BuildStatusClient,
@@ -105,6 +107,25 @@ export const resolveOrganizationIdForBuild = async (
   }
 
   return parseOrganizationIdFromServiceEmail(email);
+};
+
+/**
+ * An older builder tab still reaches upstream's `domain.publish`, which
+ * dispatches with no targets and so skips the Publish dialog's forms step
+ * (organizeos-publish-route.server.ts). A build holding a marked site-form
+ * root (shared/organizeos-site-forms.ts), or one that cannot be read to tell,
+ * is refused there with this line (docs/ORGANIZEOS-FORK.md section 9, "Site
+ * forms"; builder forms spec 7.4.6).
+ */
+const RELOAD_MESSAGE = "Reload the builder to publish.";
+
+const holdsSiteForms = async (client: PostgrestLike, buildId: string) => {
+  const build = await loadBuildForms(client, buildId);
+  if (build === undefined) {
+    return true;
+  }
+  const collected = collectFormRoots(build);
+  return collected.ok === false || collected.roots.length > 0;
 };
 
 const RETRY_MESSAGE = "Publishing could not be started. Please try again.";
@@ -211,6 +232,13 @@ export const createOrganizeosPublisherClient = (
             error: CANNOT_PUBLISH_MESSAGE,
             organizationMismatch: true as const,
           };
+        }
+        if (
+          input.targets === undefined &&
+          (await holdsSiteForms(deps.client, input.buildId))
+        ) {
+          await markFailed(deps.client, input.buildId);
+          return { success: false as const, error: RELOAD_MESSAGE };
         }
 
         const workflowUrl = `https://api.github.com/repos/${deps.repo}/actions/workflows/${WORKFLOW_FILE}/dispatches`;

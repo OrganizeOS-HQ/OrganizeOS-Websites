@@ -1,4 +1,6 @@
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { randomUUID } from "node:crypto";
+import { createClient } from "@webstudio-is/postgrest/index.server";
 import { authorizeProject } from "@webstudio-is/trpc-interface/index.server";
 import { createProductionBuild } from "@webstudio-is/project-build/server";
 import env from "~/env/env.server";
@@ -22,6 +24,15 @@ import {
   fetchSiteAddresses,
   getSiteAddressesClient,
 } from "~/shared/db/organizeos-site-addresses.server";
+import {
+  loadBuildForms,
+  type BuildFormsClient,
+} from "~/shared/db/organizeos-build-forms.server";
+import {
+  markBuildPublishStatus,
+  type BuildStatusClient,
+} from "~/shared/db/publish-status.server";
+import { forwardCmsRequest } from "~/shared/organizeos-cms.server";
 
 /**
  * OrganizeOS fork: the Publish dialog's publish to the ticked addresses
@@ -61,6 +72,32 @@ const deps = (): PublishRouteDeps => ({
   getPublisher: getOrganizeosPublisher,
   publisherHost: env.PUBLISHER_HOST,
   platformUrl: env.ORGANIZEOS_APP_URL,
+  // The publish step (docs/ORGANIZEOS-FORK.md section 9, "Site forms"): the
+  // build the person just wrote, read on their own context; a refused build
+  // is marked FAILED with the service client, as the publisher marks one.
+  loadBuildForms: (buildId, context) =>
+    loadBuildForms(
+      context.postgrest.client as unknown as BuildFormsClient,
+      buildId
+    ),
+  markBuildFailed: async (buildId) => {
+    try {
+      await markBuildPublishStatus(
+        createClient(
+          env.POSTGREST_URL,
+          env.POSTGREST_API_KEY
+        ) as unknown as BuildStatusClient,
+        { buildId, status: "FAILED" }
+      );
+    } catch {
+      console.error("[organizeos-publish] could not mark build failed");
+    }
+  },
+  formsSecret: env.WEBSITES2_CMS_SECRET,
+  now: Date.now,
+  randomId: randomUUID,
+  stageForms: (outgoing) =>
+    forwardCmsRequest({ appUrl: env.ORGANIZEOS_APP_URL, ...outgoing }),
 });
 
 export const action = ({ request, params }: ActionFunctionArgs) =>

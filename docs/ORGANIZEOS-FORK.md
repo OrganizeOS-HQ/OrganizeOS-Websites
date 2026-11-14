@@ -97,6 +97,7 @@ OrganizeOS integration (all optional; each feature ships dark until its variable
 - `WEBSITES2_CMS_SECRET` — shared with OrganizeOS (the same value on both sides; never the preview's or the site action's value): the key that signs the CMS door's actor assertion, `X-OOS-Actor` (§5, "The CMS door"). Unset or blank: the native CMS screen is off (the framed CMS shows) and the door's route answers 503 `unavailable`, minting nothing. Rotate it on both sides together; a mismatch makes OrganizeOS refuse every door call.
 - `ORGANIZEOS_CMS_NATIVE` — builder only. Only the exact value `true`, with `ORGANIZEOS_CMS_PANEL=true` and `WEBSITES2_CMS_SECRET` set, shows the native CMS screen in the overlay (§9, "The CMS overlay") to every org; anything else shows the framed CMS. Unset it and redeploy to roll back, for every org at once.
 - `ORGANIZEOS_SHOP_BLOCKS` — builder only: the Shop blocks' switch (§9, "Shop blocks"). Only the exact value `true` lists the Product Grid and the Product Card in the Components panel and lets them be inserted, and makes a token provision write the Products catalog Resource; anything else (unset, empty, `TRUE`, `1`) lists neither, refuses their insert and only rewrites a Products Resource a build already has. Placed blocks keep working when it is turned off. To turn it on or off, set or unset it on the builder's Production scope and redeploy.
+- `ORGANIZEOS_SITE_FORMS` — builder only: the site forms' switch (§9, "Site forms"). Only the exact value `true` opens the forms relay (`/rest/organizeos-forms/...`, §5, "The forms door"; it still answers 503 without `WEBSITES2_CMS_SECRET`, and OrganizeOS checks the person's `pages.edit` and plan on every call) and, with `WEBSITES2_CMS_SECRET` set and the org not denied the blocks, the site forms UI; anything else answers 404 at the relay and offers today's Signup Form. Turn it on after OrganizeOS's `WEBSITES2_FORMS_DOOR=on`. The publish step does not read it: a block marked as a site form is staged whatever its value, so turning it off after site forms exist never stops their staging.
 - `ORGANIZEOS_CATALOG_ROOT_BINDINGS` — builder only: the switch for the catalog's `:root` bindings (§9, "The catalog in provisioning"). Only the exact value `true` makes a token provision, the membership re-sync before every SSO entry, and collections-sync give each catalog Resource one resource binding at `:root`, named like it, for every org `ORGANIZEOS_BLOCKS_DENY_ORG_IDS` allows, so every element can bind the catalog; anything else (unset, empty, `TRUE`, `1`) adds none, and each writer removes the ones nothing references. Ships unset. To turn it off, unset it and redeploy (an env change reaches functions only on a new deployment): each allowed org's next entry or collections sync, or a support restore, removes its unreferenced bindings; referenced ones stay as ordinary data sources. The catalog lock (§9, "Catalog Resources outlive their bindings") does not depend on it.
 - `PUBLISHER_HOST` — the platform base domain an org's site is served from (`<subdomain>.<PUBLISHER_HOST>`); with the org subdomain mirrored into `Project.domain` (§5) every address the builder shows is the real one. **Defaults to `organizeos.org` in code**, so an unset env is correct rather than dangerous; upstream defaulted it to its own staging domain, which is what made a missing value advertise a Webstudio address. Set it only to point a deployment somewhere else.
 - `TRPC_SERVER_API_TOKEN` — the builder's service token. The publish executor uses it to sync the build **and** to report the outcome to `POST /internal/publish-status` (§5). Never commit a value: `apps/builder/.env` keeps it commented out, where upstream's sets an e2e token.
@@ -272,9 +273,15 @@ How an org admin's session is wired end to end, and which side owns each step. T
 
 **Draft preview on the canvas.** The canvas shows a collection's drafts as well as its published items (OrganizeOS design `docs/superpowers/specs/2026-10-26-cms-in-the-builder-design.md`, 4.5). Every canvas Resource fetch runs on the builder's server, in `routes/rest.resources-loader.ts`, and one marked change there, inside upstream's `customFetch` and before `safeResourceFetch` (upstream's check of where a fetch may go), passes each outgoing fetch through `createPreviewAssertion` (`shared/organizeos-preview.server.ts`). It adds `X-OOS-Preview: v1.{payload}.{mac}` only when all of these hold, and otherwise the fetch goes out unchanged: `WEBSITES2_PREVIEW_SECRET` is set; the fetch URL, parsed with `new URL` (never a string prefix), has the origin of `ORGANIZEOS_APP_URL`, no userinfo, no encoded slash, backslash or dot, and a pathname under `/api/public/v1/collections/`; the request carries a builder session whose OrganizeOS binding is `live` (`readBuilderSession`, then `checkOrganizeosBinding`, both cached); that user, signed in as a user and not through a share link's token, has upstream's `view` permit or above on the project of the `p-{projectId}` host (`authorizeProject.hasProjectPermit`); and the project's owner is an org's service account, the organization id resolved as the builder loader resolves it and cached per project for 60 s in-process. The session, permit and org are resolved once per loader request, on its first qualifying fetch; each fetch gets its own assertion. `payload` is base64url (unpadded) of the UTF-8 JSON `{ org, sub, sid, iat, exp }` in that key order: the org id, `organizeosUserId`, `organizeosSid`, and Unix seconds with `exp = iat + 60`. `mac` is base64url (unpadded) of HMAC-SHA256, keyed by `WEBSITES2_PREVIEW_SECRET`, over the ASCII payload segment, and the segment sent is the one signed. The header replaces any stored `X-OOS-Preview` in any casing (`Headers.set`), never appends: a duplicated header arrives comma-joined and the platform refuses it. It is added after the client computed the Resource's cache key (`getResourceKey`), which is unchanged, and never enters build data. A fetch that carries it goes out with `redirect: "manual"`: a redirect is answered, never followed, so the header never reaches the host a redirect names (a collections read the app answers with a redirect reaches the canvas as that 3xx). The byte format is pinned by the platform's `client/tests/fixtures/site-components/preview-assertion.json`, copied to `apps/builder/app/shared/__fixtures__/` (its README names the source commit; `diff` it before a PR that touches the assertion). The platform verifies the MAC, the time window, the org against the read token's, the session's liveness and the user's `pages.view`, and on any failure serves published items as if the header were absent. A published site never carries the header: prebuild fails when any Resource's stored headers name it, in any casing (`packages/cli/src/organizeos-preview-header.ts`, one marked call in `prebuild.ts`). The builder's Form Preview (`routes/rest.preview-form.ts`, upstream's) carries no assertion. It also denies a form's fetch the publisher's registrable domain, so a Signup Form, the starter signup page's included, cannot submit to `app.organizeos.org` from the builder's Preview (owner decisions D11 and D15); it submits on the published site (§8).
 
+**The forms door.** The Settings panel's forms calls reach OrganizeOS's forms door (builder forms spec `docs/superpowers/specs/2026-11-11-builder-forms-design.md` 7.1 and 7.3, in the OrganizeOS repo) through `/rest/organizeos-forms/{projectId}/...` (`routes/rest.organizeos-forms.$projectId.$.ts`, the config in `services/organizeos-forms-route.server.ts`). The CMS door's steps are shared, in `services/organizeos-door-route.server.ts`, as a door config: its audience, its platform base path, its fixed endpoints, its JSON body cap and its log tag, so the two doors cannot drift; `services/organizeos-cms-route.server.ts` is the CMS door's config over them, unchanged in behaviour. The forms door differs only in these: the assertion's `aud` is `forms` (pinned by the platform's `forms-actor-assertion.json`, copied to `shared/__fixtures__/`), so neither door's assertion passes the other; the base path is `/api/internal/websites2/forms`; the endpoints are F0 `GET access`, F1 `GET catalog?kind=`, F2 `GET forms?kind=`, F3 `POST forms` and F4 `PUT forms/{formId}/settings`, `kind` one of `contact-signup`, `contact-form` and `membership`; a JSON body is at most 64 KB; logs are `[organizeos-forms] code`; and the whole route answers 404 `not_found`, reading nothing, unless `ORGANIZEOS_SITE_FORMS` is exactly `true`. F5 (`PUT builds/{buildId}/fields`) is never relayed: only the publish route stages a build's forms.
+
+**Site forms at publish.** The Publish dialog's route stages the build's site forms before it dispatches (builder forms spec 7.4). After `createProductionBuild` it reads the new build's instances, props and pages (`shared/db/organizeos-build-forms.server.ts`) and collects its site-form roots (`shared/organizeos-site-forms.ts`): only a Signup Form root marked with the builder-only `siteForm` prop (§9, "Site forms") counts, so a site whose blocks use CRM forms or the org defaults is never sent, checked or refused, whatever its sessions or bindings. For a marked root (its `siteForm` one of `contact-signup`, `contact-form` or `membership`; any other value marks nothing) on a published page (a draft page's or a page template's body is not collected): its `record`, a string RFC 4122 UUID sent lower-cased, else "Pick a form for {block} on {page}."; its Fields' `field` keys in tree order, not entering a nested form root or RSVP Form, a key on several Fields sent once at its first place and required when any is, a key over 60 characters dropped, an expression `field` or no keyed Field "Pick a field in {block} on {page}."; more than 50 keys or 50 forms "Too many forms on this site to publish.". Two marked roots on one form must send the same list, in order and with the same required, else "{block} on {page} and {block} on {page} share a form. Make their fields match or give one a new form." Names are cut to 60 characters. Then, with a `live` binding carrying `organizeosUserId` and `organizeosSid` (else "Sign in through OrganizeOS to publish forms.") and `WEBSITES2_CMS_SECRET` set, it sends one `PUT /api/internal/websites2/forms/{org}/builds/{buildId}/fields` with `{ forms: [{ formId, fields: [{ key, required }] }] }` under an `aud: "forms"` assertion, 8 seconds, never retried. A 2xx goes on to the dispatch, `not_site_form` outcomes included (a form deleted in the CRM never blocks a publish). A refusal: `mfa_required` "Turn on two-step verification to publish forms.", `forbidden` "You can't publish forms.", `unauthorized` (a dead OrganizeOS session) "Sign in through OrganizeOS to publish forms.", `plan` "Your plan doesn't include forms.", `rate_limited` "Too many publishes. Try again in a minute.", `invalid_field` or `conflict` naming a form "Forms could not be saved: {block} on {page}.", anything else, a timeout, a failed send, a dark door's empty 404 or an unreadable build "Forms could not be saved. Try again.". Every refusal marks the build FAILED, dispatches nothing and answers `{ ok: false, error: "forms", message }` (409 for the build's own lines, 403 for permission and sign-in, 429, else 502), and the dialog shows the message; the log carries `forms_refused <code>` only. Upstream's `domain.publish`, from an older tab, dispatches without targets and so skips this step: the publisher refuses such a dispatch when the build holds a marked root, or cannot be read to tell, with "Reload the builder to publish." and marks it FAILED (`services/organizeos-publisher.server.ts`).
+
 **The CMS door.** The native CMS screen (§9, "The CMS overlay") reads and writes the org's collections only through `/rest/organizeos-cms/{projectId}/...` (`routes/rest.organizeos-cms.$projectId.$.ts`, the logic in `services/organizeos-cms-route.server.ts`, the assertion and the forward in `shared/organizeos-cms.server.ts`). Its client, `features/cms-panel/native/cms-api.ts`, calls the route through the builder's own `fetch` with the page's CSRF token and a 20 second client timeout (35 seconds for an image upload). Every call answers the door's success body or `{ error: code, field? }` and never throws; E6's (create an item) adds `created`, true on a 201 and false on a 200, a replay of an earlier create; a success body is checked against its endpoint's schema, and a client timeout, a throw or an answer it cannot read is `unavailable`. A search term is trimmed and cut to 200 UTF-16 units, never splitting a surrogate pair. The schemas are pinned against the platform's own answers, copied to `shared/__fixtures__/cms-door/`. The route answers, in order: `GET`, `POST` and `PUT` only (else 405 `invalid`); a fetch with the page's CSRF token; a user signed in as a user (anonymous or no session 401 `unauthorized`; a share link's token, a service call or another user's session 403 `forbidden`) whose builder session has a `live` OrganizeOS binding with `organizeosUserId` and `organizeosSid` (`pass`, `missing` or `dead` 401, a failed check 503 `unavailable`; under `enforce` the session read already ends such a session, so it is 401 too); the project's `view` permit for a `GET`, `edit` for a `POST` or `PUT` (else 403); `WEBSITES2_CMS_SECRET` set (else 503, nothing minted); the org the project owner's, lower-cased (a failed read 503, none 403), never the request's; the path one of the fixed endpoints (`patterns`) with lower-case ids and a strict query, the request's own path ending in that rebuilt path (else, an encoded slash, backslash or dot included, 404 `not_found`, never forwarded); a write's body JSON of at most 2 MB, an upload's one `file` part at most 4 MB in a body of at most 4 MB plus 64 KB (else 400 `invalid`, the read stopped at the cap). It mints `X-OOS-Actor: v1.{payload}.{mac}`: `payload` base64url, unpadded, of the JSON `{ aud: "cms", org, sub, sid, m, p, h, jti, iat, exp, ip }` in that key order (`m` the method; `p` base64url SHA-256 of the canonical target: the path, then `?` and the query's pairs sorted by key with `URLSearchParams` when it has one; `h` base64url SHA-256 of the body bytes; `jti` a random UUID; `exp = iat + 60`; `ip` the address in `x-real-ip`, else the first `x-forwarded-for` entry, when it is an address literal of at most 45 characters, else `null`); `mac` base64url HMAC-SHA256 over the ASCII payload segment keyed by `WEBSITES2_CMS_SECRET`; the byte format is pinned by the platform's fixture, copied to `shared/__fixtures__/cms-actor-assertion.json`. It sends the rebuilt path and query, never the request's, to `{ORGANIZEOS_APP_URL}/api/internal/websites2/cms/{organizationId}/...` with the body bytes untouched, no cookie, `redirect: "error"`, a 15 second timeout (30 for an upload) and no retry, and relays a JSON answer of at most 5 MB as its exact status and bytes, `private, no-store`; a timeout, a redirect, a network error or any other answer is 502 `unavailable`. A failure logs one code. OrganizeOS verifies the assertion, checks the session, the membership and permission and the plan again, the two-step sign-in rule on access and on writes, and records each write's `jti` once.
 
 **The CMS door's list actions.** E10 to E13 are each a `POST` to `collections/{collectionId}/items/publish`, `/status`, `/delete` and `/order`, with a JSON body of 1 to 50 ids (E10 each with its version), under the same route, permit (`edit`) and 2 MB cap. E3 (`GET collections/{collectionId}/items`) also takes `status`, `sort`, `direction`, `optionKey` and `optionValue`, each optional, parsed with the endpoint's strict schema (`sort` `order`, `updated`, `name`, `status` or `field:{key}`; `optionKey` and `optionValue` together or not at all) and rebuilt with the other keys in sorted key order. The client sends a filter or sort key only when it differs from its default, and reads every answer key the platform added for these actions as optional, with a default.
+
+**The CMS door's structure endpoints.** The structure screens (§9) add E20 to E25 to the same route, with the same checks and the same forward: E20 `GET structure` (the org's limits and templates), E21 `GET collections/{c}/structure` (one collection's schema, settings and the collections that reference it), E22 `POST collections` (create, with a `clientId` so a repeat answers the collection already made: 201 when made, 200 for a repeat, `created` true or false), E23 `PUT collections/{c}` (settings, with `expectedUpdatedAt`), E24 `PUT collections/{c}/schema` (the fields, with `expectedUpdatedAt` and the keys removed named in `removeKeys`) and E25 `POST collections/{c}/delete`. Each write is a `POST` or `PUT`, so it needs the project's `edit` permit, and OrganizeOS checks `pages.manage_settings` again. A delete of a collection another references answers 409 `referenced`. The client is `features/cms-panel/native/cms-structure-api.ts`, through `cms-api.ts`'s `request`; its schemas are pinned against the platform's fixtures beside the door's.
 
 **Project settings.** Since 0.309.0 a build's project settings (custom code, the contact email, the site's authentication, headers and the rest) live in their own column, `"Build"."projectSettings"`, which a platform migration adds, and the builder and the CLI read it first. A build saved before keeps a copy of its old settings in `pages`, which the builder strips only in memory and writes back on a save, so the column is the live value and that copy goes stale. The platform's `websites2_builder_resync_project_settings` repairs the column from a build the old builder wrote last, and `websites2_builder_restore_legacy_settings` writes the column back into `pages` for a rollback. When they run at the cutover is owner decision D9, still open, in the OrganizeOS plan for this merge (`docs/superpowers/plans/2026-11-01-builder-upstream-merge.md`).
 
@@ -335,7 +342,8 @@ can be merged with minimal conflict.
   nano-staged's `oxfmt --no-error-on-unmatched-pattern`, so a commit that stages
   only files the formatter ignores (this doc, under `docs/**`) passes the hook.
   `.github/workflows/main.yml`: one workflow, a `checks` job and a `tests` job
-  of nine legs (the packages, the CLI, and one per builder Vitest project), with
+  of ten legs (the packages, the CLI, and one per builder Vitest project, the
+  CMS panels' `core-browser-builder-cms` among them), with
   no secret, environment or checkout ref, and checkouts that keep no token in
   the clone (`persist-credentials: false`); only its cli leg builds the blocks
   package. The typecheck covers every package and fixture but two fixtures the
@@ -545,6 +553,27 @@ can be merged with minimal conflict.
   `features/cms-panel/native/cms-api.test.ts`, its data seam
   `features/cms-panel/native/cms-source.ts`, and the copied response fixtures
   `shared/__fixtures__/cms-door/*.json` with their README.
+- **Site forms (§5, §9).** The builder door's shared steps
+  `services/organizeos-door-route.server.ts`; the forms door's config
+  `services/organizeos-forms-route.server.ts` and route
+  `routes/rest.organizeos-forms.$projectId.$.ts`, with
+  `services/rest-organizeos-forms.server.test.ts` and the fixture copy
+  `shared/__fixtures__/forms-actor-assertion.json`; the collector
+  `shared/organizeos-site-forms.ts`, with
+  `shared/organizeos-site-forms.node.test.ts`, and the build reader
+  `shared/db/organizeos-build-forms.server.ts`, with its test; the publish
+  step in `services/organizeos-publish-route.server.ts` and the route's
+  deps, the `forms` line in `features/publish/organizeos-publish-targets.ts`,
+  and the older tab's refusal in `services/organizeos-publisher.server.ts`;
+  `ORGANIZEOS_SITE_FORMS` in `env/env.server.ts`, carried as
+  `siteFormsEnabled` by `shared/db/organizeos-site.server.ts` and the
+  builder loader; the hidden rows in
+  `settings-panel/controls/organizeos-controls.tsx`. In the package: the
+  Field's `fieldType`, `options` and `required` props and their precedence
+  (`signup/field.tsx`, `signup/field.ws.ts`, `signup/field.template.tsx`),
+  the root's `siteForm` prop (`signup/signup-form.ws.ts`), `site` in
+  `signup/forms-data.ts` and `form/context.ts`, and the canvas check's site
+  form rule in `signup/signup-form.tsx`.
 - **Asset storage and serving (§4).** `shared/asset-response.server.ts`, with
   `shared/asset-response.server.test.ts` and `shared/cgi-routes.server.test.ts`;
   the three `routes/cgi.*` loaders; the content route's marked block in
@@ -586,16 +615,29 @@ can be merged with minimal conflict.
   marked lines; and
   the app's origin in that route's `frame-src`,
   through `builderFrameSrcPolicy` in `shared/frame-protection.ts`. The native
-  screen also adds the four `@lexical/*` packages `code`, `html`, `list` and
-  `rich-text` as direct dependencies in `apps/builder/package.json`, and so in
-  `pnpm-lock.yaml` (neither can carry a mark); the rich-text
-  round-trip fixture
-  `features/cms-panel/native/__fixtures__/rich-text-roundtrip.json`, a byte
-  copy of the platform's at a recorded commit and hash, with its README
-  beside it; `$cmsFrameDirty` and `$cmsDirty`, computed from it and
+  screen also adds the five `@lexical/*` packages `clipboard`, `code`, `html`,
+  `list` and `rich-text` as direct dependencies in `apps/builder/package.json`, and so in
+  `pnpm-lock.yaml` (neither can carry a mark), and `htmlparser2` (12.0.0) and
+  `sanitize-html` (2.17.7, with `@types/sanitize-html`) for the rich-text
+  read-only check (about 150 kB minified, 57 kB gzipped, with what they pull
+  in, postcss and dayjs among it, all in the rich-text field's lazy chunk,
+  loaded only once a rich-text field shows); `native/rich-text-nodes.ts` and `native/rich-text-sanitize.ts`,
+  copies of the platform's `client/lib/collections/rich-text-nodes.ts` and of
+  its sanitiser (`rich-text.ts`, comment lines left out; owner approval
+  2026-11-14), kept exact by the round-trip fixture's pins
+  (`native/rich-text-pins.node.test.ts`) and listed in `.oxfmtrc.json` and
+  `.oxlintrc.json` so neither tool rewrites them; the rich-text
+  round-trip fixture and corpus
+  `features/cms-panel/native/__fixtures__/rich-text-roundtrip.json` and
+  `rich-text-corpus.json`, byte copies of the platform's at a recorded commit
+  and hash, with their README beside them; `$cmsFrameDirty` and `$cmsDirty`, computed from it and
   `$cmsNativeDirty` (`native/cms-native-stores.ts`); the stories and the
   sample data they run on, `native/cms-screen.stories.tsx`,
-  `native/sample-cms-source.ts` and `native/sample-collection-actions.tsx`;
+  `native/sample-cms-source.ts` and `native/sample-collection-actions.tsx`,
+  and the structure screens' `native/cms-structure.stories.tsx` and
+  `native/sample-cms-structure-source.ts`; the catalog Resource's shape,
+  `shared/organizeos-collection-resource.ts`, shared by provisioning
+  (`shared/db/resource-presets.server.ts`) and the add on first use;
   and, in `apps/builder/vitest.config.ts`, the `OrganizeOS fork:` line above
   the `@lexical/react/LexicalListPlugin` and `@lexical/selection` entries of
   `optimizeDeps.include`.
@@ -742,6 +784,16 @@ can be merged with minimal conflict.
   `features/publish/organizeos-publish-targets.ts` for both. The Recipients
   validation error is the contract message above, with no pointer sentence. Upstream's e2e spec `project-settings-runtime.[shard-8].e2e.ts`
   still names "Project settings"; it is not run (D14).
+- **Sections closed by default (2026-11-14).** The Navigator's "CSS
+  preview" and the style panel's "Advanced" section start closed; the person
+  opens them when needed. Marked: `defaultOpen` in
+  `builder/shared/collapsible-section.tsx` (a section that starts closed keeps
+  its own state when the style panel opens every section), with
+  `builder/shared/collapsible-section.organizeos.test.tsx`; one prop in
+  `features/navigator/css-preview.tsx`; in
+  `features/style-panel/sections/advanced/advanced.tsx`, open by default only
+  in Advanced mode; and `features/style-panel/style-panel.tsx`, whose Advanced
+  mode opens the Advanced section.
 - **The OrganizeOS blocks (§9).** The `packages/sdk-components-organizeos`
   package, `@organizeos/site-components`, a `workspace:*` dependency in
   `apps/builder/package.json` and `packages/cli/package.json`, and so in
@@ -1391,6 +1443,21 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     `@organizeos/site-components/forms-data` (`parseFormsData`,
     `resolveSignupForm`, `orgDefaultFields`), so the builder reads a form
     exactly as the block does. No component imports the field template.
+  - **Site forms** (builder forms spec 9). A block that uses a site form, one
+    an insert, a template or the Form row created in the CRM from the
+    builder, carries the builder-only root prop `siteForm` (its form's kind);
+    only a marked block is staged at publish (§5, "Site forms at publish").
+    Its Fields carry their definition as props, `fieldType`, `options` and
+    `required`, drawn by no Settings row. On the canvas and in the preview a
+    site form's Field with props renders from them, whether or not the live
+    definition has the field yet; on a published page the definition wins and
+    a Field it lacks renders nothing (the shipped rule); a CRM form's Field
+    ignores the props everywhere. The Forms data's `site: true` marks a site
+    form (`resolveSignupForm` returns `site`). A site form's canvas check
+    leaves out "Add a Field for ..." (except email) and "A Field is set to
+    ...": its live definition follows the publish, so a Field added or
+    removed since is the normal state. A field of type `number`, `date` or
+    `url` renders an input of that type.
 - **Event List** and **Event Card** are templates over native elements and a
   collection under a Share Code Carrier root, with no component of their own
   (the package registers no component for them, and `components.ts` never
@@ -1792,9 +1859,66 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     edit" on each field the person changed. The item's "..." menu holds Discard
     changes below 600 px of header, and the item actions. Each field type has its control.
     Rich text is a Lexical editor, loaded with the first rich-text field. It
-    is read-only for a value with images ("Read only", with no Classic CMS button)
-    and when the editor would not keep the value's blocks or links whole
-    ("Edit in Classic CMS"). A refusal is one line each, with the "Not in
+    keeps a value's images whole: an `img` (its `src`, `alt`, `width`,
+    `height` and `title`) in its place in the line with the spaces beside it,
+    or a top-level `figure` with a plain-text `figcaption` (a figure inside
+    another block keeps its image, and is read-only where the page would
+    change). A click on an image, or Enter with it selected, opens its
+    settings (Alt, Caption for a figure, Remove); an arrow onto an image
+    selects it; typing, a composition, a paste or a drop then lands beside
+    it, on the side the arrow was moving toward (after it when no arrow
+    selected it). Closing the settings by Escape, or with the focus lost,
+    puts a text caret right after the image (the start of the next block,
+    for a figure) and gives the editor the focus; a click elsewhere keeps
+    the focus where it went. Its Image button uploads one through E9 with the
+    image field's checks; pasted HTML brings no image, and a cut, copy or
+    drag inside the same field keeps its images. It is read-only when
+    the editor would change the value on a load and save: the stored value,
+    run through the platform's sanitiser, against the editor's own write of
+    it, through the same sanitiser, by the platform's /v1 nodes, by each link
+    with every attribute and by each image with every attribute; a value the
+    platform cuts at its node limit or flattens at its depth limit, one the
+    editor cannot load (a list item with no list around it among them), and
+    any value where no DOM parser exists are read-only too. "Read only" for a
+    value with images, else with "Edit in Classic CMS". The live editor and
+    this check load with the same nodes and node rules
+    (`registerRichTextTransforms`). A stored value's load keeps every line
+    break and its save writes them back as they were, so a block ending in a
+    line break shows one more blank line in the editor than on the page
+    (owner decision, 2026-11-14); a block that holds nothing saves empty; a
+    paste moves a link or mark inside the blocks it wraps, and so does a
+    stored value's load. A stored link keeps its address as stored, and an
+    emptied parent bullet keeps its sub-bullets, with no item added on a
+    load and save. Of two collapsible spaces meeting at a link's edge the
+    second goes, and so does a link's last space before a line break or its
+    line's end. A list made over part of a quote takes out only the blocks
+    from the one holding the selection's start to the one holding its end,
+    each its own item, at every level of nested quotes, in one undo step; a
+    quote inside a list item is left alone. These hold on every update,
+    from typing, a command or a paste of any source (HTML, plain text or the
+    field's own clipboard): no list or quote nests past the depth limit (one
+    past it moves up a level); a list item is always in a list; a figure is
+    never in a quote; blocks pasted into a nested item keep every untouched
+    item in its order and at its level; and Code holds plain text (its
+    images and figures move to a paragraph after the block, its paragraphs
+    become lines, no format or link applies inside it, a paste into it
+    inserts plain text, and the marks and Link are disabled there). A paste
+    or drop that starts in code inserts plain text, its images after the
+    block; blocks pasted at a heading's start go before it. A figure pasted
+    into a nested list item splits every list level, each keeping its type.
+    A paragraph or heading never holds a block. A list type change inside a
+    quote stays in the quote. An edit from a caret on a link first moves the
+    caret into the text. Newlines sent as text (dictation, an input method)
+    become line breaks, and a delete from a soft keyboard with an image
+    selected removes the image. A link never holds an image the Link control
+    adds. Save sends each changed
+    rich-text value as written, unless it would reopen read-only: then it
+    sends the editor's own write of it, only when that write reopens
+    editable and differs from the value only by collapsible whitespace,
+    paragraphs holding nothing visible and no line break, links or marks
+    holding only spaces, or a list item's paragraphs becoming line breaks
+    (`settleRichTextHtml`); any other value is sent as written. "Use my
+    edit" restores a rich-text value the same way. A refusal is one line each, with the "Not in
     plan" chip for the plan. The unsaved guard stands before Back, another
     collection, Classic CMS and "Open OrganizeOS". Every open reads the
     access (E0) again. The lists refetch after each write, on reopen and on
@@ -1826,6 +1950,35 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     differ from the live copy. A multireference's chosen items move by drag
     or Alt+Arrow. Every list write refetches the lists and invalidates the
     canvas's requests for the collection.
+  - **The structure screens** (`features/cms-panel/native/`). The column has
+    Collections and Fields tabs. Without `pages.manage_settings` (E0's
+    `canManageSettings`) they are read-only: no "+", no Settings, Delete,
+    Save or Remove. A row's one "..." menu puts Settings and Delete with the
+    build's actions; a private collection has no collection actions. New collection offers the platform's templates and a custom
+    collection, created once (`clientId`); an org with no collection opens on
+    the same options (the first run). Settings edits Name, Singular name,
+    Address and Public, and on a conflict rebases the edit on the current
+    settings; Delete asks first, with a fresh count, and is refused while
+    another collection references this one. The Fields tab lists the fields in order,
+    reordered by drag or Alt+Arrow, the writes queued per collection; the
+    field sheet edits one field under the platform's schema rules (the plan's
+    field cap, at most 60), and on a conflict rebases the edit on the
+    collection's current schema. A saved field keeps its kind and, for a
+    reference, its collection. A template's field cannot be removed and its
+    reference keeps its collection. Removing a field asks first, with a fresh
+    count. An open sheet or settings view saves against the version it was
+    built from, so another person's change in between answers a conflict. After a
+    structure write the lists refetch, with no reload; a field removal, a
+    change to a field's options or to the title field, an Address or Public
+    change and a delete also invalidate the canvas's requests for the
+    collection. Opening a structure view clears the list's
+    selection, and keyboard moves still in their pause are sent. A structure view, Settings and New collection wait for the
+    editor's running write, then the guard.
+  - **The catalog Resource on first use** (`native/cms-catalog-add.ts`). A
+    public collection with no catalog Resource gets one, in provisioning's
+    shape (`shared/organizeos-collection-resource.ts`), the first time its
+    row menu creates an item page or adds a list, in a staged transaction of
+    its own before the action.
   - **Messages, frame to builder only** (`cms-messages.ts`). The listener
     accepts a message only when `event.origin` is the platform URL's origin
     and `event.source` is the frame's `contentWindow`, and parses it with

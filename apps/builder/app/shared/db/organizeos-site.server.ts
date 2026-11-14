@@ -216,6 +216,7 @@ export const resolveOrganizeosSite = ({
   shopBlocks,
   cmsNative,
   cmsSecretSet,
+  siteForms,
 }: {
   owner: { provider: string | null; email: string | null };
   projectDomain: string;
@@ -230,6 +231,8 @@ export const resolveOrganizeosSite = ({
   cmsNative?: string;
   /** Whether `WEBSITES2_CMS_SECRET` is set; never its value. */
   cmsSecretSet?: boolean;
+  /** The raw `ORGANIZEOS_SITE_FORMS`: only `true` turns the site forms UI on. */
+  siteForms?: string;
 }): OrganizeosSite | undefined => {
   if (owner.provider !== ORGANIZEOS_SERVICE_PROVIDER || owner.email === null) {
     return undefined;
@@ -246,19 +249,24 @@ export const resolveOrganizeosSite = ({
       ? projectDomain
       : undefined;
 
+  const blocksEnabled =
+    isOrgDenied(parseOrgDenyList(blocksDenyOrgIds), organizationId) === false;
+
   return {
     organizationId,
     subdomain,
     manageUrl: organizeosWebsiteAreaUrl(platformUrl, subdomain),
     platformUrl: platformUrl.replace(/\/+$/, ""),
-    blocksEnabled:
-      isOrgDenied(parseOrgDenyList(blocksDenyOrgIds), organizationId) === false,
+    blocksEnabled,
     cmsPanelEnabled: cmsPanel === "true",
     shopBlocksEnabled: isShopBlocksSwitchOn(shopBlocks),
     cmsNativeEnabled:
       cmsPanel === "true" &&
       isCmsNativeSwitchOn(cmsNative) &&
       cmsSecretSet === true,
+    // The forms relay signs with the builder door secret, so the UI needs it.
+    siteFormsEnabled:
+      blocksEnabled && siteForms === "true" && cmsSecretSet === true,
   };
 };
 

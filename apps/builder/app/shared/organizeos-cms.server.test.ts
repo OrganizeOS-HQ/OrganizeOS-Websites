@@ -10,11 +10,13 @@ import {
   vi,
 } from "vitest";
 import vector from "./__fixtures__/cms-actor-assertion.json";
+import formsVector from "./__fixtures__/forms-actor-assertion.json";
 import {
   CMS_ACTOR_HEADER,
   CMS_ACTOR_LIFETIME_SECONDS,
   CMS_ANSWER_MAX_BYTES,
   CMS_PLATFORM_BASE_PATH,
+  FORMS_PLATFORM_BASE_PATH,
   cmsCanonicalTarget,
   forwardCmsRequest,
   hashCmsBytes,
@@ -67,6 +69,19 @@ describe("mintCmsActorAssertion", () => {
     const header = mintCmsActorAssertion(payload, vector.secret);
     expect(header).toBe(vector.header);
     expect(header).toBe(`v1.${vector.payloadSegment}.${vector.mac}`);
+  });
+
+  test("mints the forms door's fixture header", () => {
+    const forms = formsVector.payload as CmsActorPayload;
+    expect(forms.aud).toBe("forms");
+    expect(mintCmsActorAssertion(forms, formsVector.secret)).toBe(
+      formsVector.header
+    );
+    expect(hashCmsBytes(formsVector.target)).toBe(forms.p);
+    expect(FORMS_PLATFORM_BASE_PATH).toBe("/api/internal/websites2/forms");
+    expect(formsVector.target.startsWith(`${FORMS_PLATFORM_BASE_PATH}/`)).toBe(
+      true
+    );
   });
 
   test("keeps the key order aud, org, sub, sid, m, p, h, jti, iat, exp, ip whatever order the payload is built in", () => {

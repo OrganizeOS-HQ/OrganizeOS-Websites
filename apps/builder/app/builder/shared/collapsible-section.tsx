@@ -30,9 +30,15 @@ type State = {
 // Preserves the open/close state even when component gets unmounted
 const $state = atom<State>({});
 
+// OrganizeOS fork: sections that start closed (CSS preview, the style panel's
+// Advanced); opening every section ("*") leaves them as the person left them
+const defaultClosed = new Set<Label>();
+
 type HandleOpenState = (
   label: Label,
-  isOpenForced?: boolean
+  isOpenForced?: boolean,
+  // OrganizeOS fork: the state before the person opens or closes the section
+  defaultOpen?: boolean
 ) => [boolean, (value: boolean) => void];
 
 const CollapsibleSectionContext = createContext<
@@ -57,6 +63,10 @@ export const CollapsibleProvider = ({
 
     if (initialOpen === "*") {
       for (const key in nextState) {
+        // OrganizeOS fork: a section that starts closed keeps its own state
+        if (defaultClosed.has(key)) {
+          continue;
+        }
         nextState[key] = true;
       }
       $state.set(nextState);
@@ -76,10 +86,11 @@ export const CollapsibleProvider = ({
   }, [accordion, initialOpen]);
 
   const handleOpenState: HandleOpenState = useCallback(
-    (label, isOpenForced) => {
+    (label, isOpenForced, defaultOpen) => {
       const nextState = { ...state };
       if (nextState[label] === undefined) {
-        nextState[label] = accordion ? false : true;
+        // OrganizeOS fork: defaultOpen
+        nextState[label] = accordion ? false : (defaultOpen ?? true);
       }
 
       const setIsOpen = (isOpen: boolean) => {
@@ -104,13 +115,19 @@ export const CollapsibleProvider = ({
   );
 };
 
-export const useOpenState: HandleOpenState = (label, isOpen) => {
+export const useOpenState: HandleOpenState = (label, isOpen, defaultOpen) => {
   const context = useContext(CollapsibleSectionContext);
-  const localState = useState(isOpen ?? true);
+  // OrganizeOS fork: defaultOpen
+  if (defaultOpen === false) {
+    defaultClosed.add(label);
+  } else if (defaultOpen === true) {
+    defaultClosed.delete(label);
+  }
+  const localState = useState(isOpen ?? defaultOpen ?? true);
   if (context === undefined) {
     return localState;
   }
-  return context.handleOpenState(label, isOpen);
+  return context.handleOpenState(label, isOpen, defaultOpen);
 };
 
 type CollapsibleSectionBaseProps = {
@@ -164,12 +181,18 @@ export const CollapsibleSectionRoot = ({
 type CollapsibleSectionProps = Simplify<
   Omit<CollapsibleSectionBaseProps, "onOpenChange"> & {
     label: Label;
+    // OrganizeOS fork: the state before the person opens or closes it
+    defaultOpen?: boolean;
   }
 >;
 
 export const CollapsibleSection = (props: CollapsibleSectionProps) => {
   const { label, trigger, children, fullWidth, showSeparator } = props;
-  const [isOpen, setIsOpen] = useOpenState(label, props.isOpen);
+  const [isOpen, setIsOpen] = useOpenState(
+    label,
+    props.isOpen,
+    props.defaultOpen
+  );
   return (
     <CollapsibleSectionRoot
       label={label}

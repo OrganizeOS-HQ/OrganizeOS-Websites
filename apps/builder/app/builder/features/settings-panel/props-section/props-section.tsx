@@ -51,6 +51,8 @@ import {
   getInstanceKey,
 } from "~/shared/nano-states";
 import { renderControl } from "../controls/combined";
+// OrganizeOS fork: the + menu leaves out the props no OrganizeOS row draws
+import { isOrganizeosHiddenProp } from "../controls/organizeos-controls";
 import { FormActionControl } from "../controls/form-action";
 import { usePropsLogic, type PropAndMeta } from "./use-props-logic";
 import { AnimationSection } from "./animation/animation-section";
@@ -291,6 +293,10 @@ const $availableProps = computed(
     const availableProps = new Map<Item["name"], Item>();
     for (const [name, { label, description }] of propsMetas) {
       if (name === showAttribute) {
+        continue;
+      }
+      // OrganizeOS fork: a prop an OrganizeOS row hides is never offered
+      if (isOrganizeosHiddenProp(instance?.component, name)) {
         continue;
       }
       availableProps.set(name, { name, label, description });

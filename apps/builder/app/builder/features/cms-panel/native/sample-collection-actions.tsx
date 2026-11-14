@@ -96,17 +96,19 @@ const SampleOrphanRow = ({
 export const sampleCatalogSlots =
   (catalog: SampleCatalog) =>
   (_collections: readonly CmsCollectionSummary[]): CmsCatalogSlots => ({
-    renderActions: (collection) => {
+    renderActions: (collection, { leading, trailing }) => {
       const row = catalog.rows[collection.slug];
-      if (row === undefined) {
+      if (row === undefined || collection.isPublic === false) {
         return null;
       }
       return (
         <SampleMenu name={collection.name}>
+          {leading}
           <DropdownMenuItem>
             {row.hasItemPage ? "Open item page" : "Create item page"}
           </DropdownMenuItem>
           <DropdownMenuItem>Add list</DropdownMenuItem>
+          {trailing}
           {row.isSitemapOrphan && (
             <DropdownMenuItem onSelect={removedFromSitemap}>
               Remove from sitemap

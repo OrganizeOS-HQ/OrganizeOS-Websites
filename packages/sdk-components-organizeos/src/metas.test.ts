@@ -177,14 +177,24 @@ test("states and prop controls", () => {
         prop.control,
       ])
     );
+  // siteForm marks a site form's block and fieldType, options and required
+  // carry a site form's Field definition (builder forms spec 9): the builder
+  // draws no row for any of them, and none is an initial prop
   expect(controls(metas.SignupForm)).toEqual({
     record: "text",
     data: "json",
     state: "select",
     action: "radio",
     actionPage: "url",
+    siteForm: "text",
   });
-  expect(controls(metas.Field)).toEqual({ field: "text" });
+  expect(controls(metas.Field)).toEqual({
+    field: "text",
+    fieldType: "text",
+    options: "json",
+    required: "boolean",
+  });
+  expect(metas.Field.initialProps).toEqual(["id", "class", "field"]);
   // the builder's rows read Form, State, Fields (the data prop's row) and
   // After submit, with the Page row drawn by After submit
   expect(metas.SignupForm.initialProps).toEqual([

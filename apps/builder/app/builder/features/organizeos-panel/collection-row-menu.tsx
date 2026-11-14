@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { useStore } from "@nanostores/react";
 import {
   theme,
@@ -212,6 +212,7 @@ export const CollectionActionsMenu = ({
   isSitemapOrphan,
   leadingItems,
   trailingItems,
+  beforeAction,
   onShowCanvas,
   onRemovedFromSitemap,
 }: {
@@ -223,16 +224,30 @@ export const CollectionActionsMenu = ({
   isSitemapOrphan: boolean;
   leadingItems?: ReactNode;
   trailingItems?: ReactNode;
+  /**
+   * Awaited before Create item page and Add list; false runs neither (the
+   * native CMS adds a missing catalog Resource here).
+   */
+  beforeAction?: () => Promise<boolean>;
   onShowCanvas?: () => void;
   onRemovedFromSitemap?: () => void;
 }) => {
   const { allowDynamicData } = useStore($permissions);
   const [isListOpen, setIsListOpen] = useState(false);
+  // Escape gives the focus back to "..."; a chosen item places it itself
+  const escaped = useRef(false);
   const [isBusy, setIsBusy] = useState(false);
   const gated = allowDynamicData === false;
 
+  const isReady = async () =>
+    beforeAction === undefined ? true : await beforeAction();
+
   const createItemPage = async () => {
     setIsBusy(true);
+    if ((await isReady()) === false) {
+      setIsBusy(false);
+      return;
+    }
     const result = await createCollectionItemPage(slug);
     setIsBusy(false);
     if ("error" in result) {
@@ -275,7 +290,15 @@ export const CollectionActionsMenu = ({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          onCloseAutoFocus={(event) => event.preventDefault()}
+          onEscapeKeyDown={() => {
+            escaped.current = true;
+          }}
+          onCloseAutoFocus={(event) => {
+            if (escaped.current === false) {
+              event.preventDefault();
+            }
+            escaped.current = false;
+          }}
         >
           {leadingItems}
           {itemPage === undefined ? (
@@ -294,7 +317,19 @@ export const CollectionActionsMenu = ({
           )}
           <DropdownMenuItem
             disabled={gated}
-            onSelect={() => setIsListOpen(true)}
+            onSelect={() => {
+              if (beforeAction === undefined) {
+                setIsListOpen(true);
+                return;
+              }
+              setIsBusy(true);
+              void isReady().then((ready) => {
+                setIsBusy(false);
+                if (ready) {
+                  setIsListOpen(true);
+                }
+              });
+            }}
           >
             <GatedLabel gated={gated}>Add list</GatedLabel>
           </DropdownMenuItem>

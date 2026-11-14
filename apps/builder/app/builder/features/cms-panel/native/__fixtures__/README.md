@@ -1,20 +1,33 @@
 # Test fixtures shared with OrganizeOS
 
-`rich-text-roundtrip.json` is a byte-for-byte copy of the OrganizeOS repo's
-`client/tests/fixtures/site-components/rich-text-roundtrip.json`, at commit
-`4b95252882ac0fee19444eaa492f87b8673c1b4a`, sha256
-`e4282cb449c7015a6bf9402c669dd337e4bba44158dbc7476cd93bb8a121e149`. It pins
-the native CMS editor's rich-text output (`../rich-text-html.ts`) against the
-platform's sanitiser (OrganizeOS spec 4.3.3.1 and 8): each case's `editor` is
-what the editor writes for its `input`, and `stored` what the platform keeps
-of it; `readOnly` lists the stored values the editor opens read-only, each
-with its `reason`. Before each fork PR that touches the editor's import or
-export, compare it with the platform's copy, from the fork's root with an
-OrganizeOS checkout at `<platform>`:
+`rich-text-roundtrip.json` and `rich-text-corpus.json` are byte-for-byte
+copies of the OrganizeOS repo's files of the same names in
+`client/tests/fixtures/site-components/`, at `master` commit
+`100de6a1e935c42fb4c9273ba8a127c491f270e2` (the merge of PR #2382), sha256
+`17e70497d3a8a4cded3276ec11db1c9c06a910c0736f4f07931e94116db9a031` and
+`aedf52df2ba90f76cd260cedf7dcf17566e3a6e6f4470a484c8913529829202d`.
+
+The round-trip fixture pins the native CMS editor's rich-text output
+(`../rich-text-html.ts`) against the platform's sanitiser (OrganizeOS spec
+4.3.3.1 and 8): each case's `editor` is what the editor writes for its
+`input`, `stored` what the platform keeps of it, and `nodes` the platform's
+/v1 nodes of that; `readOnly` lists the stored values the editor opens
+read-only, each with its `reason` and `nodes`. Its `pins` hold the resolved
+sanitize-html, htmlparser2, entities, domhandler and launder versions and the sha256 of the
+platform's `rich-text-nodes.ts` and sanitiser, of which `../rich-text-nodes.ts`
+and `../rich-text-sanitize.ts` are copies (`../rich-text-pins.node.test.ts`).
+The corpus holds 916 stored values with their platform nodes and the
+read-only result this editor gives each (`../rich-text-corpus.test.ts`).
+
+Before each fork PR that touches the editor's import or export, compare both
+with the platform's copies, from the fork's root with an OrganizeOS checkout
+at `<platform>`:
 
 ```sh
-diff <platform>/client/tests/fixtures/site-components/rich-text-roundtrip.json \
-  apps/builder/app/builder/features/cms-panel/native/__fixtures__/rich-text-roundtrip.json
+for f in rich-text-roundtrip.json rich-text-corpus.json; do
+  diff <platform>/client/tests/fixtures/site-components/$f \
+    apps/builder/app/builder/features/cms-panel/native/__fixtures__/$f
+done
 ```
 
 A change to the editor's output is a platform PR first; update this note's
