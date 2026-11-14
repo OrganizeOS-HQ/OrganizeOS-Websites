@@ -1370,3 +1370,48 @@ describe("structure entries wait for the editor's running write (merge round)", 
     }
   );
 });
+
+// Round 4, item 4: an entry that waited for the editor opens on the
+// collection it was asked for in, or not at all
+test("Add field during a held Publish, then Posts deleted: no sheet opens when the Publish answers", async () => {
+  mount();
+  await settle();
+  await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+  const held = deferred<Awaited<ReturnType<typeof harness.fake.publishItem>>>();
+  harness.fake.publishItem.mockReturnValueOnce(held.promise);
+  await click(buttonByText("Publish"));
+  await click(tab("Fields"));
+  await click(byLabel("Add field"));
+  await click(menuItem("Email"));
+  expect(document.querySelector("[data-cms-field-sheet]")).toBeNull();
+  // Posts is deleted while the Publish runs
+  harness.structure.deleteCollection.mockImplementation(async () => {
+    harness.fake.listCollections.mockResolvedValue({ collections: [PEOPLE] });
+    return {};
+  });
+  await click(tab("Collections"));
+  await click(byLabel("Posts menu"));
+  await click(menuItem("Delete"));
+  await click(
+    buttonByText(
+      "Delete",
+      document.querySelector<HTMLElement>('[role="dialog"]')!
+    )
+  );
+  await settle();
+  await act(async () =>
+    held.resolve({
+      item: itemOf({
+        status: "published",
+        updatedAt: "2026-11-14T05:00:00.000000+00:00",
+      }),
+    })
+  );
+  await settle();
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  await settle();
+  expect(document.querySelector("[data-cms-field-sheet]")).toBeNull();
+  expect(harness.structure.updateSchema).not.toHaveBeenCalled();
+});

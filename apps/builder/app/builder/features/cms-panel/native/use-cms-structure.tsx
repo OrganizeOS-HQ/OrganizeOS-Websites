@@ -693,17 +693,35 @@ export const useCmsStructure = ({
     return result.collection;
   };
 
-  const open = (next: CmsStructureView) =>
+  // A view opens on the collection it was asked for in: an entry that
+  // waited for the editor opens nothing if another collection is open by
+  // then, or that one is gone.
+  const listedIds = useRef(new Set<string>());
+  listedIds.current = new Set(collections.map((entry) => entry.id));
+
+  const open = (next: CmsStructureView) => {
+    const id = collectionIdRef.current;
     guard(() => {
+      if (
+        id === undefined ||
+        collectionIdRef.current !== id ||
+        listedIds.current.has(id) === false
+      ) {
+        return;
+      }
       clearViewDirty();
       onViewOpen();
       setSession((current) => current + 1);
-      setViewCollectionId(collectionIdRef.current);
+      setViewCollectionId(id);
       setView(next);
     });
+  };
 
   const openSettings = (id: string) =>
     guard(() => {
+      if (listedIds.current.has(id) === false) {
+        return;
+      }
       clearViewDirty();
       onViewOpen();
       if (id !== collectionId) {
