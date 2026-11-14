@@ -589,6 +589,67 @@ test.each([
   }
 );
 
+test("deleting a nested bullet's text keeps it nested, and the value reopens editable", async () => {
+  const { onChange } = mountField({
+    value: { html: "<ul><li>a<ul><li>b</li></ul></li></ul><p>x</p>" },
+  });
+  await settle();
+  const nested = editable()!.querySelector<HTMLElement>("li li")!;
+  await click(nested);
+  await type("{End}{Backspace}");
+  const html = withoutClassAndDir(lastHtml(onChange));
+  expect(html).toMatch(/<ul><li[^>]*>.*a.*<ul><li[^>]*><\/li><\/ul>/);
+  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+});
+
+// B5: what the editor writes after ordinary edits always reopens editable
+test.each([
+  ["typing", "<p>x</p>", "p", "{End} more words"],
+  [
+    "Shift+Enter twice",
+    "<p>x</p>",
+    "p",
+    "{End}{Shift>}{Enter}{Enter}{/Shift}y",
+  ],
+  ["Enter in a bullet", "<ul><li>a</li></ul>", "li", "{End}{Enter}b"],
+  [
+    "Shift+Enter in a quote",
+    "<blockquote>q</blockquote>",
+    "blockquote",
+    "{End}{Shift>}{Enter}{/Shift}",
+  ],
+  ["typing in a heading", "<h2>T</h2><p>x</p>", "h2", "{End}itle"],
+  [
+    "typing in a code block",
+    "<pre><code>a</code></pre><p>x</p>",
+    "code",
+    "{End}{Enter}b",
+  ],
+  [
+    "typing beside an image",
+    '<p>a <img src="https://e.org/a.png" alt="A" /> b</p>',
+    "p",
+    "{End}{Shift>}{Enter}{/Shift}c",
+  ],
+  [
+    "typing in a link",
+    '<p><a href="https://e.org/">link</a></p>',
+    "a",
+    "{End}s",
+  ],
+])(
+  "after %s the saved value reopens editable",
+  async (_name, html, tag, keys) => {
+    const { onChange } = mountField({ value: { html } });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>(tag));
+    await type(keys);
+    const written = lastHtml(onChange);
+    expect(written).not.toBe("");
+    expect(getRichTextReadOnlyReason(written)).toBeUndefined();
+  }
+);
+
 test("the toolbar wraps within 240 px", async () => {
   mountField({ id: "narrow" });
   await settle();

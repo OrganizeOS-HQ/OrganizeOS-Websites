@@ -443,6 +443,12 @@ describe("a block's last line break", () => {
     "<p><strong>one<br></strong>two</p>",
     "<p>one<br><strong></strong></p>",
     '<p><a href="https://example.org/">one<br></a></p>',
+    '<p>x<a href="https://e.org/">Read more<br /></a></p>',
+    '<p><img src="https://e.org/a.png" alt="A" /><br /></p>',
+    '<p><img src="https://e.org/a.png" alt="A" /><br /><br /></p>',
+    '<p>a<img src="https://e.org/a.png" alt="A" /><br />b</p>',
+    "<ul><li><p>one<br /></p></li></ul>",
+    "<ul><li><p>one<br /><br /></p></li></ul>",
   ])("%s keeps its nodes, editable", (html) => {
     expect(getRichTextReadOnlyReason(html)).toBeUndefined();
     expectStableIfEditable(html);

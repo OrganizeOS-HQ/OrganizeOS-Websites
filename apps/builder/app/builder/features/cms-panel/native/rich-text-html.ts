@@ -23,7 +23,7 @@ import {
 } from "lexical";
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
 import { $isLinkNode, LinkNode } from "@lexical/link";
-import { ListItemNode, ListNode } from "@lexical/list";
+import { $isListNode, ListItemNode, ListNode } from "@lexical/list";
 import {
   $createHeadingNode,
   HeadingNode,
@@ -79,10 +79,15 @@ const isHtmlElement = (node: unknown): node is HTMLElement =>
 const COLLAPSIBLE_RE = /^[ \t\n\r\f]*$/;
 const isCollapsible = (text: string) => COLLAPSIBLE_RE.test(text);
 
-/** Nothing but collapsible whitespace: no text, no line break. */
+/**
+ * Nothing but collapsible whitespace: no text, no line break, no image and
+ * no list (a list item's nested list, even an empty one, is its indent).
+ */
 const holdsNothing = (node: LexicalNode): boolean =>
   ($isTextNode(node) && isCollapsible(node.getTextContent())) ||
-  ($isElementNode(node) && node.getChildren().every(holdsNothing));
+  ($isElementNode(node) &&
+    $isListNode(node) === false &&
+    node.getChildren().every(holdsNothing));
 
 /**
  * A paragraph, heading, quote or list item holding nothing writes `<p></p>`
