@@ -174,12 +174,12 @@ const findMediaQueryProblem = (
     : findBreakpointProblem(media);
 };
 
-const pageName = (key: string) => `Page "${key}"`;
+export const pageName = (key: string) => `Page "${key}"`;
 
 // "@organizeos/site-components:SignupForm" reads as "SignupForm".
-const componentName = (component: string) => component.split(":").pop();
+export const componentName = (component: string) => component.split(":").pop();
 
-const describeInstance = (instance: Instance) => {
+export const describeInstance = (instance: Instance) => {
   if (instance.label) {
     return `"${instance.label}"`;
   }
@@ -190,7 +190,7 @@ const describeInstance = (instance: Instance) => {
 };
 
 /** The instance a prop is on, or its id when the fragment lacks it. */
-const describePropOwner = (
+export const describePropOwner = (
   fragment: WebstudioFragment,
   instanceId: Instance["id"]
 ) => {
@@ -416,7 +416,7 @@ const placedBlockIds = (page: RenderedPage) =>
   );
 
 /** The page's body: the fragment's one root, when it is a <body>. */
-const bodyOf = (fragment: WebstudioFragment) => {
+export const bodyOf = (fragment: WebstudioFragment) => {
   const [root, ...otherRoots] = fragment.children;
   const instance =
     root?.type === "id" && otherRoots.length === 0

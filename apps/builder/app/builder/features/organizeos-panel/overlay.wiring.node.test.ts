@@ -391,6 +391,40 @@ describe("the path guard in project-build", () => {
   });
 });
 
+const siteComponents = (path: string) =>
+  read(`../../../../../../packages/sdk-components-organizeos/src/${path}`);
+
+describe("the starter pages stay out of published sites", () => {
+  test("components.ts and metas.ts import neither site-templates nor starter-pages", () => {
+    for (const file of ["components.ts", "metas.ts"]) {
+      expect(siteComponents(file)).not.toMatch(/site-templates|starter-pages/);
+    }
+  });
+
+  test("starter-pages imports the site-templates folder only by module, never its barrel or catalog", () => {
+    const root = fileURLToPath(
+      new URL(
+        "../../../../../../packages/sdk-components-organizeos/src/starter-pages/",
+        import.meta.url
+      )
+    );
+    const files = readdirSync(root, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.tsx?$/.test(file))
+      .filter((file) => /\.test\.tsx?$/.test(file) === false);
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const source = readFileSync(`${root}${file}`, "utf8");
+      for (const barrel of [
+        'from "../site-templates"',
+        'from "../site-templates/index"',
+        'from "../site-templates/catalog"',
+      ]) {
+        expect(source, file).not.toContain(barrel);
+      }
+    }
+  });
+});
+
 describe("the Variables export in shared/instance-utils/data.ts", () => {
   test("canCommitWebstudioData is exported", () => {
     expect(read("../../../shared/instance-utils/data.ts")).toMatch(
