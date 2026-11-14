@@ -34,6 +34,7 @@ import {
   SELECTION_CHANGE_COMMAND,
   type LexicalEditor,
   type LexicalNode,
+  type NodeKey,
   type PointType,
   type RangeSelection,
   type TextFormatType,
@@ -703,46 +704,90 @@ const ImageButton = ({
   );
 };
 
-/** One `role="toolbar"` row, on upstream's `MarkdownToolbar` pattern. */
-/** Each selected quote that holds blocks is replaced by those blocks. */
+/**
+ * A quote holding blocks gives up the blocks the selection covers (and any
+ * between them), in place: the blocks before them stay a quote, and those
+ * after them make another.
+ */
 const $unwrapQuotedBlocks = () => {
   const selection = $getSelection();
   if ($isRangeSelection(selection) === false) {
     return;
   }
-  const quotes = new Set<QuoteNode>();
+  const covered = new Map<QuoteNode, Set<NodeKey>>();
   for (const node of selection.getNodes()) {
     const quote = $isQuoteNode(node)
       ? node
       : $findMatchingParent(node, $isQuoteNode);
     if (
-      $isQuoteNode(quote) &&
+      $isQuoteNode(quote) === false ||
       quote
         .getChildren()
-        .some((child) => $isElementNode(child) && child.isInline() === false)
+        .some(
+          (child) => $isElementNode(child) && child.isInline() === false
+        ) === false
     ) {
-      quotes.add(quote);
+      continue;
+    }
+    const keys = covered.get(quote) ?? new Set<NodeKey>();
+    covered.set(quote, keys);
+    if (node.is(quote)) {
+      // the whole quote is in the selection
+      for (const child of quote.getChildren()) {
+        keys.add(child.getKey());
+      }
+      continue;
+    }
+    const child = node.getParent()?.is(quote)
+      ? node
+      : $findMatchingParent(
+          node,
+          (parent) => parent.getParent()?.is(quote) === true
+        );
+    if (child !== null) {
+      keys.add(child.getKey());
     }
   }
-  for (const quote of quotes) {
+  for (const [quote, keys] of covered) {
+    const children = quote.getChildren();
+    const indexes = children
+      .map((child, index) => (keys.has(child.getKey()) ? index : -1))
+      .filter((index) => index !== -1);
+    if (indexes.length === 0) {
+      continue;
+    }
+    const first = Math.min(...indexes);
+    const last = Math.max(...indexes);
+    let anchor: LexicalNode = quote;
     // inline content between blocks keeps one paragraph per run
     let run: ElementNode | undefined;
-    for (const child of quote.getChildren()) {
+    for (const child of children.slice(first, last + 1)) {
       if ($isElementNode(child) && child.isInline() === false) {
         run = undefined;
-        quote.insertBefore(child);
+        anchor.insertAfter(child);
+        anchor = child;
       } else {
         if (run === undefined) {
           run = $createParagraphNode();
-          quote.insertBefore(run);
+          anchor.insertAfter(run);
+          anchor = run;
         }
         run.append(child);
       }
     }
-    quote.remove();
+    const after = children.slice(last + 1);
+    if (after.length > 0) {
+      const rest = $createQuoteNode();
+      anchor.insertAfter(rest);
+      rest.append(...after);
+    }
+    if (first === 0) {
+      quote.remove();
+    }
   }
 };
 
+/** One `role="toolbar"` row, on upstream's `MarkdownToolbar` pattern. */
 const Toolbar = ({
   id,
   disabled,
@@ -761,16 +806,18 @@ const Toolbar = ({
       editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
       return;
     }
-    // a quote holding paragraphs gives them up first, so each becomes its
-    // own item: one item holding several paragraphs is no list the editor
-    // can write back
-    editor.update(() => $unwrapQuotedBlocks(), { discrete: true });
-    editor.dispatchCommand(
-      type === "bullet"
-        ? INSERT_UNORDERED_LIST_COMMAND
-        : INSERT_ORDERED_LIST_COMMAND,
-      undefined
-    );
+    // a quote holding paragraphs gives up the ones the list covers first,
+    // so each becomes its own item: one item holding several paragraphs is
+    // no list the editor can write back. One update: one undo step
+    editor.update(() => {
+      $unwrapQuotedBlocks();
+      editor.dispatchCommand(
+        type === "bullet"
+          ? INSERT_UNORDERED_LIST_COMMAND
+          : INSERT_ORDERED_LIST_COMMAND,
+        undefined
+      );
+    });
   };
   return (
     <div className={toolbarStyle()} role="toolbar" aria-label="Formatting">

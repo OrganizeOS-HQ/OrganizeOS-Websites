@@ -799,6 +799,41 @@ test.each(["Bulleted list", "Numbered list"])(
   }
 );
 
+// part 3, item 5: only the blocks the list covers leave the quote, in one
+// undo step
+test("a list made with the caret in one paragraph of a quote leaves the other paragraphs quoted, and one undo puts it all back", async () => {
+  const html =
+    "<blockquote><p>one</p><p>two</p><p>three</p></blockquote><p>after</p>";
+  const { onChange } = mountField({ value: { html } });
+  // the blocks, without spans and attributes
+  const blocks = () =>
+    (lastHtml(onChange) ?? "")
+      .replace(/<\/?span[^>]*>/g, "")
+      .replace(/ [a-z-]+="[^"]*"/g, "");
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("blockquote"));
+  await act(async () => {
+    editorOf()!.update(() => {
+      const two = $getRoot()
+        .getAllTextNodes()
+        .find((node) => node.getTextContent() === "two")!;
+      two.select(1, 1);
+    });
+  });
+  await settle();
+  await click(byLabel("Bulleted list"));
+  expect(blocks()).toBe(
+    "<blockquote><p>one</p></blockquote><ul><li>two</li></ul><blockquote><p>three</p></blockquote><p>after</p>"
+  );
+  expect(reopenReason(lastHtml(onChange) ?? "")).toBeUndefined();
+  editable()!.focus();
+  await type("{Control>}z{/Control}");
+  await settle();
+  expect(blocks()).toBe(
+    "<blockquote><p>one</p><p>two</p><p>three</p></blockquote><p>after</p>"
+  );
+});
+
 // exact-guard round, item 8: a code block holds plain text
 test("Code over a line with a link and formatting shows plain text, and saves what it shows", async () => {
   const { onChange } = mountField({
