@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -90,14 +91,25 @@ type Busy = "save" | "publish" | "discard" | "reload" | "status" | "delete";
  */
 type Settle = { sent: CmsItem; afterSave?: boolean };
 
-/** Whether an element is narrower than `width`, kept current on resize. */
+/**
+ * Whether an element is narrower than `width`, kept current on resize. The
+ * width is measured as the element is attached, so the first layout drawn
+ * is already right; the observer follows later resizes.
+ */
 const useIsNarrow = (width: number) => {
   const [element, setElement] = useState<HTMLElement | null>(null);
   const [isNarrow, setIsNarrow] = useState(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (element === null) {
       return;
     }
+    // the content box, as the observer's contentRect measures it
+    const style = getComputedStyle(element);
+    const contentWidth =
+      element.clientWidth -
+      parseFloat(style.paddingLeft) -
+      parseFloat(style.paddingRight);
+    setIsNarrow(contentWidth < width);
     const observer = new ResizeObserver(([entry]) => {
       setIsNarrow(entry.contentRect.width < width);
     });

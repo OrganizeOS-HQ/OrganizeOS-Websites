@@ -1591,6 +1591,28 @@ const STAGED = itemOf({
   },
 });
 
+describe("the editor's width-dependent layout", () => {
+  test("is right before any resize observation: compact header and side details after Address at 800 px", async () => {
+    // a frame with no rendering update delivers no observation
+    class SilentObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", SilentObserver);
+    try {
+      await openItem(STAGED, 800);
+      expect(buttonByText("Discard changes")).toBeUndefined();
+      const fields = document.querySelector<HTMLElement>(
+        "[data-cms-editor-fields]"
+      )!;
+      expect(fields.contains(details())).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe("the side details and the changed dots (Task 20)", () => {
   test("the side details sit beside the fields at 1040 px and after Address at 600 px", async () => {
     // the column takes 240 px of the overlay's box
