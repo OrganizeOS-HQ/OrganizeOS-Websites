@@ -6,11 +6,12 @@
 import { basename, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-// the chooser's picture of a template, in a module of its own (thumbnail.mjs)
-export { THUMBNAIL } from "./thumbnail.mjs";
+// the pictures of a template and its pages, in a module of its own
+// (thumbnail.mjs)
+export { PAGE_PICTURE, THUMBNAIL, pagePictureFile } from "./thumbnail.mjs";
 
 export const usage =
-  "Usage: corepack pnpm preview:template <template-id> [--palette <file>] [--no-events] [--thumbnail]";
+  "Usage: corepack pnpm preview:template <template-id> [--palette <file>] [--no-events] [--thumbnail] [--pages]";
 
 /**
  * A template id, and a palette's run name: lowercase letters, digits and
@@ -26,6 +27,7 @@ const namePattern = /^[a-z0-9-]+$/;
  *   runName: string,
  *   events: "sample" | "none",
  *   thumbnail: boolean,
+ *   pages: boolean,
  * }} PreviewArguments
  */
 
@@ -35,7 +37,9 @@ const namePattern = /^[a-z0-9-]+$/;
  * without `.json` names the run ("default" without one); `--no-events`, the
  * blocks' empty state, which adds ".no-events" to the run's name; and
  * `--thumbnail`, which writes the template's thumbnail in place of a run
- * and so takes neither of the other two. The run's folder is removed before
+ * and so takes neither of the other two; and `--pages`, which writes a
+ * picture of every page but Home in place of a run, alone or with
+ * `--thumbnail`, and likewise takes neither. The run's folder is removed before
  * a run writes it, so a run name is held to `namePattern`: a file named
  * `..json` would name the template's whole folder, and `...json` previews/
  * itself. Throws with the usage, or with what is wrong.
@@ -52,6 +56,7 @@ export const parsePreviewArguments = (args, cwd) => {
       palette: { type: "string" },
       "no-events": { type: "boolean", default: false },
       thumbnail: { type: "boolean", default: false },
+      pages: { type: "boolean", default: false },
     },
   });
   if (positionals.length !== 1 || namePattern.test(positionals[0]) === false) {
@@ -72,6 +77,11 @@ export const parsePreviewArguments = (args, cwd) => {
       `--thumbnail takes the template's own palette and the sample events, so neither --palette nor --no-events. ${usage}`
     );
   }
+  if (values.pages && (paletteFile !== undefined || events === "none")) {
+    throw new Error(
+      `--pages takes the template's own palette and the sample events, so neither --palette nor --no-events. ${usage}`
+    );
+  }
   return {
     templateId: positionals[0],
     paletteFile,
@@ -79,6 +89,7 @@ export const parsePreviewArguments = (args, cwd) => {
     runName: events === "none" ? `${paletteName}.no-events` : paletteName,
     events,
     thumbnail: values.thumbnail ?? false,
+    pages: values.pages ?? false,
   };
 };
 

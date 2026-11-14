@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
+  PAGE_PICTURE,
   THUMBNAIL,
+  pagePictureFile,
   parsePreviewArguments,
   readJpegSize,
 } from "./preview-arguments.mjs";
@@ -19,6 +21,7 @@ describe("parsePreviewArguments", () => {
       runName: "default",
       events: "sample",
       thumbnail: false,
+      pages: false,
     });
   });
 
@@ -35,6 +38,7 @@ describe("parsePreviewArguments", () => {
       runName: "night.no-events",
       events: "none",
       thumbnail: false,
+      pages: false,
     });
   });
 
@@ -69,6 +73,7 @@ describe("parsePreviewArguments", () => {
       runName: "default",
       events: "sample",
       thumbnail: true,
+      pages: false,
     });
     expect(() =>
       parsePreviewArguments(
@@ -79,6 +84,33 @@ describe("parsePreviewArguments", () => {
     expect(() =>
       parsePreviewArguments(["spike", "--thumbnail", "--no-events"], cwd)
     ).toThrow(/--thumbnail/);
+  });
+
+  test("--pages draws the page pictures, alone or with the thumbnail", () => {
+    expect(parsePreviewArguments(["spike", "--pages"], cwd)).toEqual({
+      templateId: "spike",
+      paletteFile: undefined,
+      paletteName: "default",
+      runName: "default",
+      events: "sample",
+      thumbnail: false,
+      pages: true,
+    });
+    expect(
+      parsePreviewArguments(["spike", "--thumbnail", "--pages"], cwd)
+    ).toMatchObject({ thumbnail: true, pages: true });
+  });
+
+  test("--pages takes the template's own palette and the sample events", () => {
+    expect(() =>
+      parsePreviewArguments(
+        ["spike", "--pages", "--palette", "night.json"],
+        cwd
+      )
+    ).toThrow(/--pages/);
+    expect(() =>
+      parsePreviewArguments(["spike", "--pages", "--no-events"], cwd)
+    ).toThrow(/--pages/);
   });
 
   test("an option it does not know is refused", () => {
@@ -96,7 +128,29 @@ describe("the thumbnail", () => {
     expect(THUMBNAIL.file).toBe("thumbnail.jpg");
     expect(THUMBNAIL.maxBytes).toBe(400_000);
   });
+});
 
+describe("the page pictures", () => {
+  test("are the same 16:10 frame of a page at 1440 wide, 1200 by 750, under 150 KB", () => {
+    expect(PAGE_PICTURE.width / PAGE_PICTURE.height).toBe(16 / 10);
+    expect(PAGE_PICTURE.viewport.width).toBe(1440);
+    expect(PAGE_PICTURE.viewport.width * PAGE_PICTURE.deviceScaleFactor).toBe(
+      1200
+    );
+    expect(PAGE_PICTURE.viewport.height * PAGE_PICTURE.deviceScaleFactor).toBe(
+      750
+    );
+    expect(PAGE_PICTURE.maxBytes).toBe(150_000);
+  });
+
+  test("a page's picture is page-<key>.jpg, for a key that names a file", () => {
+    expect(pagePictureFile("get-involved")).toBe("page-get-involved.jpg");
+    expect(() => pagePictureFile("../x")).toThrow();
+    expect(() => pagePictureFile("About")).toThrow();
+  });
+});
+
+describe("the JPEG reader", () => {
   // A JPEG's size is in its start-of-frame segment, after any others.
   test("readJpegSize reads a JPEG's width and height from its frame header", () => {
     const jpeg = new Uint8Array([

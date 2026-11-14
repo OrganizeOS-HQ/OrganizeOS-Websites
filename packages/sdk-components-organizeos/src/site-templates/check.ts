@@ -982,6 +982,54 @@ const checkFragmentText = (page: RenderedPage): string[] => {
  * empty list when it passes, otherwise one readable line per violation.
  * Renders every page with stand-in asset and page ids.
  */
+/**
+ * The kit choices every template's look sets (`CompleteKitStyle`); the
+ * starter pages' check holds their looks to the same list.
+ */
+export const LOOK_FIELDS = [
+  "buttonRadius",
+  "buttonWeight",
+  "headingWeight",
+  "navNameSize",
+  "footerNameSize",
+] as const;
+
+/**
+ * Every page but Home (path "", as the apply finds it) has a picture in
+ * `pagePictures` that is one of the template's images, and every picture is
+ * of such a page.
+ */
+const checkPagePictures = (template: SiteTemplate): string[] => {
+  const pictures = template.pagePictures ?? {};
+  const otherKeys = new Set(
+    template.pages.filter((page) => page.path !== "").map((page) => page.key)
+  );
+  return [
+    ...Array.from(otherKeys).flatMap((key) => {
+      const file = pictures[key];
+      if (file === undefined) {
+        return [`${pageName(key)} has no picture in pagePictures`];
+      }
+      return Object.hasOwn(template.images, file)
+        ? []
+        : [
+            `The picture "${file}" of ${pageName(key)} is not one of the template's images`,
+          ];
+    }),
+    ...Object.keys(pictures)
+      .filter((key) => otherKeys.has(key) === false)
+      .map(
+        (key) =>
+          `pagePictures names "${key}", which is not a page of the template other than Home`
+      ),
+  ];
+};
+
+const checkLook = (template: SiteTemplate): string[] =>
+  LOOK_FIELDS.flatMap((field) =>
+    template.look?.[field] === undefined ? [`Look: ${field} is not set`] : []
+  );
+
 export const checkSiteTemplate = (template: SiteTemplate): string[] => {
   const violations = [
     ...checkPagePaths(template),
@@ -991,6 +1039,8 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
     ...checkContrast(template),
     ...checkFontVariables(template),
     ...checkBlockTokenStyles(template),
+    ...checkLook(template),
+    ...checkPagePictures(template),
   ];
   let pages: RenderedPage[];
   const mediaQueryViolations: string[] = [];

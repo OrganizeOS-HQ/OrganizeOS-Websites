@@ -158,14 +158,15 @@ describe("the block insert's imports", () => {
   });
 });
 
-describe("the site-template chooser", () => {
-  test("builder.tsx imports TemplateChooser from the OrganizeOS module and mounts it once, after the other dialogs and before the Toaster", () => {
+describe("the Templates screen", () => {
+  test("builder.tsx imports TemplatesScreen from the OrganizeOS module and mounts it once, after the other dialogs and before the Toaster", () => {
     expect(builder).toMatch(
-      /import\s*\{\s*TemplateChooser\s*\}\s*from\s*"\.\/features\/organizeos-panel\/site-templates\/template-chooser";/
+      /import\s*\{\s*TemplatesScreen\s*\}\s*from\s*"\.\/features\/organizeos-panel\/site-templates\/templates-screen";/
     );
-    expect(builder.match(/<TemplateChooser \/>/g)).toHaveLength(1);
+    expect(builder).not.toMatch(/TemplateChooser/);
+    expect(builder.match(/<TemplatesScreen \/>/g)).toHaveLength(1);
     const dialogs = builder.indexOf("<TokenConflictDialog />");
-    const mount = builder.indexOf("<TemplateChooser />");
+    const mount = builder.indexOf("<TemplatesScreen />");
     const toaster = builder.indexOf("<Toaster />");
     expect(dialogs).toBeGreaterThan(-1);
     expect(mount).toBeGreaterThan(dialogs);

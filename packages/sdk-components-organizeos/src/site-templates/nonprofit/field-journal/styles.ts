@@ -15,11 +15,11 @@ import {
 // of card chrome. The styles every piece and page draws with.
 
 /** The template's corners and weights, for the kit's nav, footer and buttons. */
-export const LOOK: KitStyle = {
+export const LOOK = {
   buttonRadius: "3px",
   buttonWeight: 600,
   headingWeight: 600,
-};
+} satisfies KitStyle;
 
 /** The page's own type and colours, which every section inherits. */
 export const bodyStyles = (): TemplateStyleDecl[] => css`

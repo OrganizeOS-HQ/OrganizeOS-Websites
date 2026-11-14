@@ -14,11 +14,12 @@ import {
   type CanonicalValues,
   BLANK_CANONICAL_VALUES,
 } from "./canonical-variables";
-import { NEUTRALITY_DENY_LIST, checkSiteTemplate } from "./check";
+import { LOOK_FIELDS, NEUTRALITY_DENY_LIST, checkSiteTemplate } from "./check";
 import { section } from "./kit";
 import { PLATFORM_PATHS, isPlatformServedPath } from "./platform-paths";
 import type { BlockKey } from "./place-block";
 import type {
+  CompleteKitStyle,
   FontEntry,
   PageContext,
   SiteTemplate,
@@ -129,11 +130,24 @@ const fixture = (overrides: Partial<SiteTemplate> = {}): SiteTemplate => ({
       sourceUrl: "https://example.org/cover",
       alt: "Replace with a photo of one of your events",
     },
+    "page-about.jpg": {
+      url: "/site-templates/fixture/page-about.jpg",
+      sourceUrl: "https://example.org/page-about",
+      alt: "A picture of the template's About page",
+    },
   },
+  pagePictures: { about: "page-about.jpg" },
   // Home places the cover card, and shows hero.jpg
   previewEventCover: "cover.jpg",
   fonts: {},
   pages: [home, aboutPage()],
+  look: {
+    buttonRadius: "6px",
+    buttonWeight: 600,
+    headingWeight: 700,
+    navNameSize: "20px",
+    footerNameSize: "20px",
+  },
   ...overrides,
 });
 
@@ -1582,6 +1596,7 @@ describe("checkSiteTemplate", () => {
         checkSiteTemplate(
           fixture({
             pages: [home, aboutPage(), { ...aboutPage(), key: "team" }],
+            pagePictures: { about: "page-about.jpg", team: "page-about.jpg" },
           })
         ),
         '"about"',
@@ -1689,7 +1704,10 @@ describe("checkSiteTemplate", () => {
     test("no Home page is a violation", () => {
       expectOneViolation(
         checkSiteTemplate(
-          fixture({ pages: [{ ...home, path: "/home" }, aboutPage()] })
+          fixture({
+            pages: [{ ...home, path: "/home" }, aboutPage()],
+            pagePictures: { home: "hero.jpg", about: "page-about.jpg" },
+          })
         ),
         "Home"
       );
@@ -1843,6 +1861,58 @@ describe("checkSiteTemplate", () => {
         checkAbout(({ image, imageAlt }) => (
           <$.Image src={image("cover.jpg")} alt={imageAlt("cover.jpg")} />
         ))
+      ).toEqual([]);
+    });
+
+    test.each(LOOK_FIELDS)("a look without %s is a violation", (field) => {
+      const look: Record<string, unknown> = { ...fixture().look };
+      delete look[field];
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({ look: look as unknown as CompleteKitStyle })
+        ),
+        `Look: ${field} is not set`
+      );
+    });
+
+    test("a look without headingCase is fine", () => {
+      expect(
+        checkSiteTemplate(fixture()).filter((violation) =>
+          violation.includes("headingCase")
+        )
+      ).toEqual([]);
+    });
+
+    test("a page other than Home with no picture is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ pagePictures: {} })),
+        'Page "about" has no picture'
+      );
+    });
+
+    test("a picture that is not one of the images is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(fixture({ pagePictures: { about: "x.jpg" } })),
+        'The picture "x.jpg" of Page "about" is not one of the template\'s images'
+      );
+    });
+
+    test("a picture of a page the template lacks is a violation", () => {
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({
+            pagePictures: { about: "page-about.jpg", gone: "page-about.jpg" },
+          })
+        ),
+        'pagePictures names "gone", which is not a page of the template other than Home'
+      );
+    });
+
+    test("Home needs no picture", () => {
+      expect(
+        checkSiteTemplate(fixture()).filter((violation) =>
+          violation.includes("picture")
+        )
       ).toEqual([]);
     });
 
