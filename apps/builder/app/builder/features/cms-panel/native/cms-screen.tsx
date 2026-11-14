@@ -241,9 +241,6 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     );
     const [collections, setCollections] = useState<CmsCollectionSummary[]>([]);
     const [collectionId, setCollectionId] = useState(initialView?.collectionId);
-    // the open collection, for an answer that lands after a switch
-    const collectionIdRef = useRef(collectionId);
-    collectionIdRef.current = collectionId;
     const [itemId, setItemId] = useState(initialView?.itemId);
     const [page, setPage] = useState(initialView?.page ?? 1);
     const [query, setQuery] = useState(initialView?.query ?? "");
@@ -338,6 +335,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     // The collection whose foreground E2 failed with no fields drawn: its
     // next E3 answer asks for the fields once more.
     const detailFailedFor = useRef<string | undefined>(undefined);
+    // read when a schema refresh answers: the collection open now
+    const openCollectionId = useRef(collectionId);
+    openCollectionId.current = collectionId;
     // read when E2 fails: whether the editor shows, so its line is the one
     const isItemOpen = useRef(false);
     isItemOpen.current = itemId !== undefined;
@@ -968,7 +968,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
       const result = await source.getCollection(collectionId);
       // another collection opened meanwhile: this answer is not its
-      if (collectionIdRef.current !== collectionId) {
+      if (openCollectionId.current !== collectionId) {
         return;
       }
       if (isCmsFailure(result)) {
@@ -976,6 +976,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         if (refusal !== undefined && refusal !== "toast") {
           showLine(refusal, "detail");
         }
+        return;
+      }
+      if (result.collection.id !== collectionId) {
         return;
       }
       clearLine("detail");
