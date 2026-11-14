@@ -978,6 +978,8 @@ export const useCmsStructure = ({
   const enqueueSchema: CmsStructureEnqueue = (id, write) => {
     const carried =
       reorderPending.current.has(id) && reorderTimers.current.has(id);
+    // the moved order the Save carries: a later move replaces it
+    const carriedOrder = carried ? pendingOrder.current.get(id) : undefined;
     if (carried) {
       cancelReorderTimer(id);
     }
@@ -986,7 +988,8 @@ export const useCmsStructure = ({
       if (
         carried &&
         reorderPending.current.has(id) &&
-        !reorderTimers.current.has(id)
+        !reorderTimers.current.has(id) &&
+        pendingOrder.current.get(id) === carriedOrder
       ) {
         if (isCmsFailure(result)) {
           // the Save that carried the moved order was refused: send it alone

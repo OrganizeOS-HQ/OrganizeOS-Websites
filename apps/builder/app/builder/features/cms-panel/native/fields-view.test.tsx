@@ -729,6 +729,52 @@ test("a move made while a sheet's Save is in flight stays drawn when the Save an
   expect(harness.structure.updateSchema).toHaveBeenCalledTimes(2);
 });
 
+// Round 5, item 7: a Save that carried an earlier move leaves a later move
+// pending, drawn until its own answer
+test("a move made after a Save that carried an earlier one stays drawn when the Save answers (round 5)", async () => {
+  const saveAnswer =
+    deferred<CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>>();
+  const moveAnswer =
+    deferred<CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>>();
+  let saved: CmsStructureField[] = [];
+  harness.structure.updateSchema
+    .mockImplementationOnce(async (_id, body) => {
+      saved = body.fields;
+      return saveAnswer.promise;
+    })
+    .mockImplementationOnce(async () => moveAnswer.promise);
+  await openFields();
+  await click(fieldRow("summary")!.querySelector("button"));
+  await typeInto(
+    document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+    "Teaser"
+  );
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  // the first move, still in its pause: the Save carries it
+  await moveRow("title", "ArrowDown");
+  vi.useRealTimers();
+  await click(
+    [...sheet()!.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "Save"
+    )
+  );
+  expect(saved.map((field) => field.key)).toEqual([
+    "summary",
+    "title",
+    "author",
+  ]);
+  // a later move, sent once its pause ends, behind the Save
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await moveRow("title", "ArrowDown");
+  await pass(600);
+  vi.useRealTimers();
+  expect(fieldKeys()).toEqual(["summary", "author", "title"]);
+  await act(async () => saveAnswer.resolve({ fields: saved, updatedAt: NEXT }));
+  await settle();
+  expect(fieldKeys()).toEqual(["summary", "author", "title"]);
+  expect(harness.structure.updateSchema).toHaveBeenCalledTimes(2);
+});
+
 // Round 4, item 1: a reorder's conflict retry never takes the version from
 // under a view with unsaved values; a clean view is drawn again from the
 // fresh read, so its next Save keeps another person's change
