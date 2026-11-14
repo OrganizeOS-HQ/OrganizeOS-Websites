@@ -304,5 +304,8 @@ describe("Save's rich-text backstop", () => {
       (fake.createItem.mock.lastCall?.[1].data.body as { html: string }).html
     ).toBe(SETTLED);
     expect(fake.updateItem).not.toHaveBeenCalled();
+    // the replay stored the settled values: nothing is left to save
+    expect($cmsNativeDirty.get()).toBe(false);
+    expect(buttonByText("Save")?.disabled).toBe(true);
   });
 });
