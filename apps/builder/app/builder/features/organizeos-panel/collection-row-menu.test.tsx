@@ -484,7 +484,7 @@ describe("the Add list popover", () => {
         : []
     );
     expect(directions).toEqual([{ type: "keyword", value: "column" }]);
-    expect(addListForm()).toBeNull();
+    await until(() => expect(addListForm()).toBeNull());
   });
 
   test("Add with a failed read says 'Could not load the collection'", async () => {

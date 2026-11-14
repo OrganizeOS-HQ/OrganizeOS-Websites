@@ -304,5 +304,31 @@ describe("Save's rich-text backstop", () => {
       (fake.createItem.mock.lastCall?.[1].data.body as { html: string }).html
     ).toBe(SETTLED);
     expect(fake.updateItem).not.toHaveBeenCalled();
+    // the replay stored the settled values: nothing is left to save
+    expect($cmsNativeDirty.get()).toBe(false);
+    expect(buttonByText("Save")?.disabled).toBe(true);
+  });
+
+  test("Use my edit after a conflict restores a rich-text draft as a Save would send it", async () => {
+    await openWithBody();
+    await typeBody("Two");
+    settles();
+    fake.updateItem.mockResolvedValueOnce({ error: "conflict" });
+    await click(buttonByText("Save"));
+    expect(conflictLine()).not.toBeNull();
+    fake.getItem.mockResolvedValueOnce({
+      item: itemOf({
+        data: dataWith({ html: "<p>Theirs</p>", text: "Theirs" }),
+        updatedAt: V2,
+      }),
+    });
+    await click(buttonByText("Reload"));
+    expect((await bodyEditable()).textContent).toBe("Theirs");
+    await click(byLabel("Use my edit: Body"));
+    await vi.waitFor(async () => {
+      expect((await bodyEditable()).textContent).toBe(
+        "Two, as the editor writes it"
+      );
+    });
   });
 });
