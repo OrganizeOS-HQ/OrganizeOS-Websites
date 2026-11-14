@@ -1097,6 +1097,29 @@ describe("the structure reads and views, from W4's review", () => {
     expect(radio("cms-new-collection", "blog")).not.toBeNull();
   });
 
+  test("while Retry's E20 is in flight, New collection shows no options and Create stays disabled (round 4)", async () => {
+    harness.structure.getStructure.mockResolvedValueOnce({
+      error: "unavailable",
+    });
+    mount();
+    await settle();
+    await openNewCollection();
+    const answer =
+      deferred<Awaited<ReturnType<typeof harness.structure.getStructure>>>();
+    harness.structure.getStructure.mockReturnValueOnce(answer.promise);
+    await click(buttonByText("Retry", dialog()!));
+    expect(radio("cms-new-collection", "custom")).toBeNull();
+    expect(createButton()?.disabled).toBe(true);
+    await act(async () =>
+      answer.resolve({
+        templates: [],
+        limits: { fields: 30, customCollections: 5, customCount: 0 },
+      })
+    );
+    await settle();
+    expect(radio("cms-new-collection", "custom")).not.toBeNull();
+  });
+
   test("Discard before another action shows the open settings view's saved values again, and nothing stays unsaved", async () => {
     answerBoth();
     mount();

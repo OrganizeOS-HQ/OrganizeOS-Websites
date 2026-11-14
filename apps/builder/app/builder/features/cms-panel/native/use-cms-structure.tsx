@@ -1215,6 +1215,7 @@ export const useCmsStructure = ({
         templates={templates ?? []}
         limits={limits}
         initialType={initial?.newCollectionType}
+        templatesPending={templates === undefined && structureFailed === false}
         onRetryTemplates={
           templates === undefined && structureFailed
             ? retryStructure

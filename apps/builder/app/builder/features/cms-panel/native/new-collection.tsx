@@ -243,6 +243,7 @@ export const NewCollectionDialog = ({
   limits,
   initialType,
   onRetryTemplates,
+  templatesPending,
   ...callbacks
 }: NewCollectionCallbacks & {
   open: boolean;
@@ -254,6 +255,8 @@ export const NewCollectionDialog = ({
   initialType?: string;
   /** E20 failed: the options give way to its line and Retry. */
   onRetryTemplates?: () => void;
+  /** E20 has not answered yet: no options until it does. */
+  templatesPending?: boolean;
 }) => {
   const { values, setValues, busy, canCreate, create, reset } = useCreate({
     structure,
@@ -304,7 +307,7 @@ export const NewCollectionDialog = ({
             gridTemplateColumns: "minmax(0, 1fr)",
           }}
         >
-          {onRetryTemplates === undefined ? (
+          {templatesPending ? null : onRetryTemplates === undefined ? (
             <NewCollectionFields
               idPrefix="cms-new-collection"
               templates={templates}
@@ -321,7 +324,11 @@ export const NewCollectionDialog = ({
         <DialogActions>
           <Button
             color="primary"
-            disabled={canCreate === false || onRetryTemplates !== undefined}
+            disabled={
+              canCreate === false ||
+              onRetryTemplates !== undefined ||
+              templatesPending === true
+            }
             state={busy ? "pending" : undefined}
             onClick={() => void submit()}
           >
