@@ -1558,6 +1558,21 @@ describe("structure entries wait for the editor's running write (merge round)", 
 // Round 4, item 4: an entry that waited for the editor opens on the
 // collection it was asked for in, or not at all
 test("Add field during a held Publish, then Posts deleted: no sheet opens when the Publish answers", async () => {
+  // People answers its own E21, so a sheet could open there
+  const read =
+    harness.structure.getCollectionStructure.getMockImplementation()!;
+  harness.structure.getCollectionStructure.mockImplementation(async (id) =>
+    id === PEOPLE.id
+      ? {
+          collection: {
+            ...POSTS_STRUCTURE,
+            id: PEOPLE.id,
+            slug: PEOPLE.slug,
+            name: PEOPLE.name,
+          },
+        }
+      : read(id)
+  );
   mount();
   await settle();
   await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
