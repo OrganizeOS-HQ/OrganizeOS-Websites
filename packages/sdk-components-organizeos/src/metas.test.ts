@@ -260,6 +260,8 @@ test("templates", () => {
   expect(Object.keys(templates)).toEqual([
     "SignupForm",
     "SignupFormInline",
+    "SignupFormCard",
+    "ContactFormCard",
     "EventList",
     "EventCard",
     "RsvpForm",
@@ -275,6 +277,14 @@ test("templates", () => {
   }
   expect(templates.SignupForm.label).toBe("Signup Form");
   expect(templates.SignupFormInline.label).toBe("Signup Form, inline");
+  // the forms cards (builder forms spec 5.1): the panel shows them as Email &
+  // SMS updates and Contact us, the navigator names of their roots
+  expect(templates.SignupFormCard.label).toBe("Signup Form, card");
+  expect(templates.ContactFormCard.label).toBe("Signup Form, contact");
+  expect(templates.SignupFormCard.description).toBe("Email updates, in a card");
+  expect(templates.ContactFormCard.description).toBe(
+    "Name, email and message, in a card"
+  );
   expect(templates.EventList.label).toBe("Event List");
   expect(templates.EventCard.label).toBe("Event Card");
   expect(templates.RsvpForm.label).toBe("RSVP Form");

@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import { decodeDataVariableId } from "@webstudio-is/sdk";
@@ -456,18 +456,30 @@ export const OrganizeosRecordControl = ({
   computedValue,
   onChange,
   onChangeRecord,
+  transformOptions,
+  after,
 }: ControlProps<"text"> & {
   /** With it, choosing an option calls it instead of writing `record`. */
   onChangeRecord?: (value: string) => void;
+  /** The Signup Form's site forms reorder and extend the options. */
+  transformOptions?: (
+    options: OrganizeosRecordOption[]
+  ) => OrganizeosRecordOption[];
+  /** Drawn under the select, e.g. the Form row's Open in CRM link. */
+  after?: ReactNode;
 }) => {
   const id = useId();
   const component = useStore($instances).get(instanceId)?.component;
   const data = useStore($selectedInstanceDataProp);
-  const { options, selected } = getOrganizeosRecordOptions(
+  const { options: recordOptions, selected } = getOrganizeosRecordOptions(
     component,
     data,
     computedValue
   );
+  const options =
+    transformOptions === undefined
+      ? recordOptions
+      : transformOptions(recordOptions);
   const picker = getOrganizeosRecordPicker(component);
   const failedLoads = useStore($selectedInstanceFailedLoads);
   // The failed loads Reload was clicked for. The line hides while those are
@@ -530,6 +542,7 @@ export const OrganizeosRecordControl = ({
             />
           )}
         />
+        {after}
         {failedLoads.length > 0 && isReloading === false && (
           <Text color="subtle" data-record-load-failed>
             {picker.loadFailed}{" "}

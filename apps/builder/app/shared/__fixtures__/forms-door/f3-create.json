@@ -1,0 +1,43 @@
+{
+  "description": "F3: a new site form (201; a repeat clientId answers 200 with the same body). {form id} is the new id. Paths are relative to /api/internal/websites2/forms/{organizationId}.",
+  "request": {
+    "method": "POST",
+    "path": "/forms",
+    "body": {
+      "kind": "contact-signup",
+      "title": "Home: Email updates",
+      "fields": [
+        {
+          "key": "first_name",
+          "required": true
+        },
+        {
+          "key": "email",
+          "required": true
+        }
+      ],
+      "clientId": "0c000000-0000-4000-8000-000000000001"
+    }
+  },
+  "status": 201,
+  "answer": {
+    "form": {
+      "id": "{form id}",
+      "title": "Home: Email updates",
+      "fields": [
+        {
+          "name": "first_name",
+          "label": "First name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "email",
+          "label": "Email",
+          "type": "email",
+          "required": true
+        }
+      ]
+    }
+  }
+}

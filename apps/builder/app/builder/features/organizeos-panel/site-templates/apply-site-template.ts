@@ -46,11 +46,22 @@ import {
 import { getSha256Hash } from "~/builder/shared/assets/asset-utils";
 import { deleteSubtreeMutable } from "../collection-pages";
 import { addToFolderMutable, updateWebstudioDataStaged } from "../staged-data";
+import type { CreatedSiteForm, FormsKind } from "../forms-api";
+import {
+  createSiteFormsForPlacements,
+  markPlacementMutable,
+  placementClientId,
+  siteFormFieldsOf,
+  SITE_FORM_TITLE_MAX,
+  type SiteFormPlacement,
+} from "../site-form-insert";
+import { formRootComponents } from "~/shared/organizeos-site-forms";
 import {
   type OrganizeosPresetIds,
   completeOrganizeosFragment,
   completeOrganizeosInsertMutable,
   getOrganizeosPresetIds,
+  isSiteFormsEnabled,
 } from "../insert-organizeos-block";
 
 /**
@@ -206,7 +217,8 @@ export type ApplyResult =
   | { status: "applied"; unboundBlocks: string[] }
   | {
       status: "refused";
-      reason: "touched" | "path-taken" | "resources" | "no-project";
+      // "form": a Signup Form placement's site form could not be created
+      reason: "touched" | "path-taken" | "resources" | "no-project" | "form";
     }
   // the runtime layer refused the write, and says why
   | { status: "refused"; reason: "runtime"; message: string };
@@ -457,6 +469,48 @@ const deleteBodyMutable = (data: WebstudioData, bodyId: Instance["id"]) => {
  * `unboundBlocks`. The tokens the template restyles are written whole over
  * the project's tokens of their names last (writeBlockTokensMutable).
  */
+/** A placement's key among a template's pages: its page's path and its root. */
+export const siteFormPlacementKey = (
+  page: Pick<RenderedPage, "path">,
+  rootId: string
+) => `${page.path}#${rootId}`;
+
+/**
+ * The site forms a template's Signup Form placements need (P10, P11): one
+ * per placement, a newsletter form of the fields it collects, titled
+ * "{page name}: Signup Form", with a client id stable for the project, the
+ * template and the placement.
+ */
+export const siteFormPlacementsOf = async (
+  pages: readonly RenderedPage[],
+  projectId: string,
+  templateId: string
+): Promise<SiteFormPlacement[]> =>
+  Promise.all(
+    pages.flatMap((page) =>
+      page.placements
+        .filter(({ key }) => formRootComponents.has(key))
+        .map(async ({ key, rootId }) => {
+          const placementKey = siteFormPlacementKey(page, rootId);
+          return {
+            rootId: placementKey,
+            kind: "contact-signup" as const,
+            title:
+              `${page.name}: ${getInstanceLabel({ component: key })}`.slice(
+                0,
+                SITE_FORM_TITLE_MAX
+              ),
+            fields: siteFormFieldsOf(page.fragment, rootId),
+            clientId: await placementClientId(
+              projectId,
+              templateId,
+              placementKey
+            ),
+          };
+        })
+    )
+  );
+
 export const applySiteTemplateMutable = (
   data: WebstudioData,
   pages: RenderedPage[],
@@ -465,12 +519,18 @@ export const applySiteTemplateMutable = (
     presetIds,
     variables,
     blockTokens,
+    siteForms,
   }: {
     projectId: string;
     presetIds: OrganizeosPresetIds;
     variables: CanonicalValues;
     /** The template's, which the pages were rendered with. */
     blockTokens: SiteTemplate["blockTokens"];
+    /**
+     * The site forms created for the Signup Form placements, by
+     * `siteFormPlacementKey` (P10); none with the site forms switch off.
+     */
+    siteForms?: ReadonlyMap<string, CreatedSiteForm & { kind: FormsKind }>;
   }
 ): ApplyResult => {
   const homePage = data.pages.pages.get(data.pages.homePageId);
@@ -550,6 +610,14 @@ export const applySiteTemplateMutable = (
         continue;
       }
       completeOrganizeosInsertMutable(data, completion, newInstanceIds);
+      const siteForm = siteForms?.get(siteFormPlacementKey(page, rootId));
+      if (siteForm !== undefined) {
+        markPlacementMutable(
+          data,
+          newInstanceIds.get(rootId) ?? rootId,
+          siteForm
+        );
+      }
     }
   }
   if (blockTokens !== undefined) {
@@ -631,6 +699,36 @@ export const applySiteTemplate = async (
   });
   const fonts = await fetchFontFiles(template);
 
+  // With the site forms switch on, each Signup Form placement gets its own
+  // site form before the write (fork doc section 9, "Site forms"; P10); one
+  // that cannot be created refuses the whole apply, writing nothing.
+  let siteForms: Map<string, CreatedSiteForm & { kind: FormsKind }> | undefined;
+  if (isSiteFormsEnabled()) {
+    const placements = await siteFormPlacementsOf(
+      pages,
+      project.id,
+      template.id
+    );
+    if (placements.length > 0) {
+      const created = await createSiteFormsForPlacements(
+        project.id,
+        placements
+      );
+      if (created.ok === false) {
+        return { status: "refused", reason: "form" };
+      }
+      const kinds = new Map(
+        placements.map((placement) => [placement.rootId, placement.kind])
+      );
+      siteForms = new Map(
+        [...created.forms].map(([key, form]) => [
+          key,
+          { ...form, kind: kinds.get(key) ?? "contact-signup" },
+        ])
+      );
+    }
+  }
+
   let staged = false;
   let result: ApplyResult;
   try {
@@ -644,6 +742,7 @@ export const applySiteTemplate = async (
         presetIds,
         variables: template.variables,
         blockTokens: template.blockTokens,
+        siteForms,
       });
       // in the apply's own step: the patch's projectSettings namespace
       // (createBuilderPatchPayloadFromImmerPatches splits by namespace)

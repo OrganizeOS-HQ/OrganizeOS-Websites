@@ -934,6 +934,8 @@ describe("choosing", () => {
     },
     { reason: "resources", message: "This template cannot be applied." },
     { reason: "no-project", message: "This template cannot be applied." },
+    // a Signup Form placement whose site form was not made (builder forms)
+    { reason: "form", message: "Couldn't create the form. Try again." },
   ] as const)(
     "a refused apply ($reason) says why in one error",
     async ({ reason, message }) => {

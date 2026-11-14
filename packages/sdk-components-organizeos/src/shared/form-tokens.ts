@@ -171,3 +171,61 @@ export const errorMessageToken = token(
     );
   `
 );
+
+// Look A's card (builder forms spec 5.2): a form lands as a card on the site's
+// base, with its text, so a section's own colours do not reach the fields. The
+// edge is decorative, --text mixed 15% into --base (a longhand per side: the
+// `border` shorthand would resolve the variables to their fallbacks), 12px
+// round, its padding 32px or 7% of the card, whichever is smaller, so a narrow
+// card keeps room for its fields. Restyling the token restyles every card on
+// the site; removing it from one root gives that form the plain look.
+export const formCardToken = token(
+  "OS Form Card",
+  css`
+    max-width: 32rem;
+    width: 100%;
+    padding: min(32px, 7%);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-style: solid;
+    border-right-style: solid;
+    border-bottom-style: solid;
+    border-left-style: solid;
+    border-top-color: color-mix(
+      in srgb,
+      var(--text, #18181b) 15%,
+      var(--base, #ffffff)
+    );
+    border-right-color: color-mix(
+      in srgb,
+      var(--text, #18181b) 15%,
+      var(--base, #ffffff)
+    );
+    border-bottom-color: color-mix(
+      in srgb,
+      var(--text, #18181b) 15%,
+      var(--base, #ffffff)
+    );
+    border-left-color: color-mix(
+      in srgb,
+      var(--text, #18181b) 15%,
+      var(--base, #ffffff)
+    );
+    border-radius: 12px;
+    background-color: var(--base, #ffffff);
+    color: var(--text, #18181b);
+  `
+);
+
+// The card's one line of intro under its heading: the site's body font.
+export const formIntroToken = token(
+  "OS Form Intro",
+  css`
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--text, #18181b);
+  `
+);
