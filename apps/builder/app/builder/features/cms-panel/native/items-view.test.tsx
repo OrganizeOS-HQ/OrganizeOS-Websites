@@ -162,9 +162,23 @@ describe("the items view", () => {
     mount();
     await settle();
     fake.listItems.mockClear();
-    await act(async () => userEvent.type(searchInput()!, "new"));
-    expect(fake.listItems).not.toHaveBeenCalled();
-    await wait(300);
+    // the debounce runs on a clock the test moves, so a slow keystroke
+    // never lets an earlier one's timer fire
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => userEvent.type(searchInput()!, "new"));
+      expect(fake.listItems).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(249);
+      });
+      expect(fake.listItems).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
     expect(fake.listItems.mock.calls).toEqual([
       [POSTS.id, { q: "new", page: 1 }],
     ]);
