@@ -1415,3 +1415,49 @@ test("Add field during a held Publish, then Posts deleted: no sheet opens when t
   expect(document.querySelector("[data-cms-field-sheet]")).toBeNull();
   expect(harness.structure.updateSchema).not.toHaveBeenCalled();
 });
+
+// Round 4, item 9: a structure view's Back returns the focus to its own row
+// even after an item's Back marked an item row
+describe("the focus after an item's Back, then a structure view (round 4)", () => {
+  const settleFrame = async () => {
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    await settle();
+  };
+  const itemBack = async () => {
+    await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+    await click(byLabel("Back"));
+    await settleFrame();
+  };
+
+  test("a field view's Back focuses that field's row", async () => {
+    mount();
+    await settle();
+    await itemBack();
+    await click(tab("Fields"));
+    await click(fieldRow("summary")!.querySelector("button"));
+    await settleFrame();
+    await click(byLabel("Back"));
+    await settleFrame();
+    await settleFrame();
+    expect(document.activeElement).toBe(
+      fieldRow("summary")!.querySelector("button")
+    );
+  });
+
+  test("the settings' Back focuses the collection's row", async () => {
+    mount();
+    await settle();
+    await itemBack();
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+    await settleFrame();
+    await click(byLabel("Back"));
+    await settleFrame();
+    await settleFrame();
+    expect(document.activeElement).toBe(
+      document.querySelector('[data-cms-collection="posts"] button')
+    );
+  });
+});

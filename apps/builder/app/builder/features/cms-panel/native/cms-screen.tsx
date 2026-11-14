@@ -809,6 +809,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       setPage(1);
       setQuery("");
       setReturnFocusItemId(undefined);
+      setDeletedItemId(undefined);
       structureScreens.closeView();
     };
     // While the editor's Save, Publish, Discard changes, Unpublish, Archive
@@ -939,7 +940,13 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       onDirtyChange,
       onWritten: onStructureWritten,
       onOpenCollection: applyCollection,
-      onViewOpen: clearSelection,
+      // a structure view's Back returns the focus to its own row, never to
+      // the item row an earlier Back left marked
+      onViewOpen: () => {
+        clearSelection();
+        setReturnFocusItemId(undefined);
+        setDeletedItemId(undefined);
+      },
       refetchCollections,
       showLine: showStructureLine,
       clearLine: clearStructureLine,
