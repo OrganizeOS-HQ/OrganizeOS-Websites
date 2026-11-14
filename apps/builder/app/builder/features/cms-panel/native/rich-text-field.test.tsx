@@ -924,15 +924,14 @@ test.each(fixture.readOnly.map((entry) => [entry.name, entry] as const))(
   }
 );
 
-test("Shift+Enter in an empty paragraph saves a value that still opens editable", async () => {
+test("Shift+Enter in an empty paragraph saves its line break, and the value still opens editable", async () => {
   const { onChange } = mountField({ value: { html: "<p>x</p>" } });
   await settle();
   await click(editable()!.querySelector<HTMLElement>("p"));
   await type("{End}{Enter}");
   await type("{Shift>}{Enter}{/Shift}");
   const html = lastHtml(onChange);
-  expect(html).not.toContain("<br");
-  expect(html).not.toBe("");
+  expect(withoutClassAndDir(html)).toMatch(/<p><br><\/p>$/);
   expect(getRichTextReadOnlyReason(html)).toBeUndefined();
 });
 
@@ -946,7 +945,7 @@ test("Shift+Enter in an empty bullet saves a value that still opens editable", a
   await type("{End}{Enter}");
   await type("{Shift>}{Enter}{/Shift}");
   const html = lastHtml(onChange);
-  expect(html).not.toMatch(/<li[^>]*>(<br>)+<\/li>/);
+  expect(withoutClassAndDir(html)).toMatch(/<li[^>]*><br><\/li><\/ul>/);
   expect(getRichTextReadOnlyReason(html)).toBeUndefined();
 });
 
@@ -987,7 +986,7 @@ test("pasting a link around an article moves the link into its blocks", async ()
 test.each([
   '<p><a href="https://e.org/"><h2>Title</h2></a></p>',
   "<strong><p>Bold</p></strong>",
-  "<p><br /></p><p>x</p>",
+  "<p>one<br /><strong></strong></p>",
 ])("the live field opens %s read-only, writing nothing", async (html) => {
   const { onChange } = mountField({ value: { html } });
   await settle();

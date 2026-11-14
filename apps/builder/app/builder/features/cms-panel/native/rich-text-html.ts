@@ -14,6 +14,7 @@ import {
   createEditor,
   ParagraphNode,
   type BaseSelection,
+  $createLineBreakNode,
   type DOMConversionMap,
   type DOMExportOutput,
   type HTMLConfig,
@@ -59,19 +60,33 @@ const parseHtml = (html: string) =>
 const isHtmlElement = (node: unknown): node is HTMLElement =>
   node instanceof HTMLElement;
 
-/** Nothing but line breaks and blank text. */
+/**
+ * Only the whitespace a browser collapses: a non-breaking space or an em
+ * space shows, and the editor's import keeps it.
+ */
+const COLLAPSIBLE_RE = /^[ \t\n\r\f]*$/;
+const isCollapsible = (text: string) => COLLAPSIBLE_RE.test(text);
+
+/** Nothing but collapsible whitespace: no text, no line break. */
+const holdsNothing = (node: LexicalNode): boolean =>
+  ($isTextNode(node) && isCollapsible(node.getTextContent())) ||
+  ($isElementNode(node) && node.getChildren().every(holdsNothing));
+
+/** Line breaks and collapsible whitespace only, with a break among them. */
 const holdsOnlyBreaks = (node: LexicalNode): boolean =>
-  $isLineBreakNode(node) ||
-  ($isTextNode(node) && node.getTextContent().trim() === "") ||
-  ($isElementNode(node) && node.getChildren().every(holdsOnlyBreaks));
+  $isElementNode(node) &&
+  node.getChildren().some($isLineBreakNode) &&
+  node
+    .getChildren()
+    .every((child) => $isLineBreakNode(child) || holdsNothing(child));
 
 /**
- * A paragraph, heading, quote or list item. One empty or holding only line
- * breaks writes `<p></p>` (or its tag): the editor's import drops a
- * break-only block's breaks, so it never writes one and never locks a value
- * it saved. One ending in a line break writes one break more: the import
- * drops a block's last break (a browser shows none for it), so the value
- * reloads as it was and shows its blank line on the page as in the editor.
+ * A paragraph, heading, quote or list item. One holding nothing writes
+ * `<p></p>` (or its tag). One holding only line breaks writes them as they
+ * are: its import keeps them (`keepBreakOnlyBreaks`). One ending in a line
+ * break after other content writes one break more: the import drops a
+ * block's last break (a browser shows none for it), so the value reloads as
+ * it was and shows its blank line on the page as in the editor.
  */
 const exportBlock = (
   editor: LexicalEditor,
@@ -81,13 +96,14 @@ const exportBlock = (
   if ($isElementNode(node) === false) {
     return output;
   }
-  const empty = holdsOnlyBreaks(node);
+  const empty = holdsNothing(node);
   // a list item's nested list is written into it after its break, so that
   // break is not its last and the import keeps it
   const next = node.getNextSibling();
   const nestedNext = $isListItemNode(next) && $isListNode(next.getFirstChild());
   const endsInBreak =
     empty === false &&
+    holdsOnlyBreaks(node) === false &&
     nestedNext === false &&
     $isLineBreakNode(node.getLastChild());
   if (empty === false && endsInBreak === false) {
@@ -225,7 +241,28 @@ const exportList = (
  * A `code` element outside a `pre` is the inline code format, even across a
  * line break; `CodeNode` would read that one as a code block.
  */
+const BREAK_BLOCK_TAGS = new Set(["P", "H2", "H3", "H4", "BLOCKQUOTE", "LI"]);
+
+/** A block holding only line breaks and collapsible whitespace. */
+const isBreakOnlyBlock = (element: Element) =>
+  BREAK_BLOCK_TAGS.has(element.tagName) &&
+  Array.from(element.childNodes).every(
+    (child) =>
+      (child instanceof Element && child.tagName === "BR") ||
+      (child.nodeType === Node.TEXT_NODE &&
+        isCollapsible(child.textContent ?? ""))
+  );
+
 const inlineCodeImport: DOMConversionMap = {
+  // Lexical drops a block's only or last line break; one holding only
+  // breaks keeps them all, as the page shows them (a blank line)
+  br: (domNode) =>
+    domNode.parentElement !== null && isBreakOnlyBlock(domNode.parentElement)
+      ? {
+          conversion: () => ({ node: $createLineBreakNode() }),
+          priority: 1,
+        }
+      : null,
   code: (domNode) =>
     domNode.parentElement?.tagName === "PRE"
       ? null
@@ -333,7 +370,7 @@ const paragraphBreakTags = new Set([
 
 const hasContent = (node: Node): boolean =>
   node.nodeType === Node.TEXT_NODE
-    ? (node.textContent ?? "").trim() !== ""
+    ? isCollapsible(node.textContent ?? "") === false
     : node instanceof Element &&
       (node.tagName === "BR" || Array.from(node.childNodes).some(hasContent));
 
@@ -524,7 +561,7 @@ const INLINE_BLOCK_TAGS = new Set([
 /** Nothing shows after it: blank text, or an inline holding nothing. */
 const showsNothing = (node: ChildNode): boolean =>
   node.nodeType === Node.TEXT_NODE
-    ? (node.textContent ?? "").trim() === ""
+    ? isCollapsible(node.textContent ?? "")
     : node instanceof Element &&
       node.tagName !== "BR" &&
       node.tagName !== "IMG" &&
@@ -572,11 +609,56 @@ const endsBlockInInline = (br: Element) => {
 };
 
 /**
- * A value the editor cannot read as the platform does: the parser moved an
- * element, a block sits inside a link or a mark, or a paragraph holds only
- * a line break (which the editor's import drops).
+ * A line break in its block after content, followed by an element that shows
+ * nothing (an empty mark or link): the editor's import keeps the break (it is
+ * not the block's last node) and drops the element, so its export would add
+ * a break for a blank line the page never showed.
+ */
+const endsBlockBeforeEmptyInline = (br: Element) => {
+  const parent = br.parentElement;
+  if (parent === null || INLINE_BLOCK_TAGS.has(parent.tagName) === false) {
+    return false;
+  }
+  const after: ChildNode[] = [];
+  for (let node = br.nextSibling; node !== null; node = node.nextSibling) {
+    after.push(node);
+  }
+  if (
+    after.some((node) => node instanceof Element) === false ||
+    after.every(showsNothing) === false
+  ) {
+    return false;
+  }
+  for (
+    let node = br.previousSibling;
+    node !== null;
+    node = node.previousSibling
+  ) {
+    if (showsNothing(node) === false) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/**
+ * A value the editor cannot read as the platform does: the parser rewrote
+ * it (a carriage return, a NUL, a line break outside any block, an element
+ * moved), a block sits inside a link or a mark, or a line break ends its
+ * block where the editor would keep and show it and the page shows nothing.
  */
 const isRestructured = (html: string, body: HTMLElement) => {
+  // eslint-disable-next-line no-control-regex
+  if (/[\r\u0000]/.test(html)) {
+    return true;
+  }
+  if (
+    Array.from(body.childNodes).some(
+      (node) => node instanceof Element && node.tagName === "BR"
+    )
+  ) {
+    return true;
+  }
   const { paths, blockInMark } = scanStoredTags(html);
   if (blockInMark) {
     return true;
@@ -588,20 +670,10 @@ const isRestructured = (html: string, body: HTMLElement) => {
   ) {
     return true;
   }
-  // a break ending its block inside a link or mark: the editor keeps and
-  // shows it, the page shows nothing for it
-  if (Array.from(body.querySelectorAll("br")).some(endsBlockInInline)) {
-    return true;
-  }
-  // a block holding only line breaks: the editor's import drops them
-  return Array.from(
-    body.querySelectorAll("p, h2, h3, h4, blockquote, li")
-  ).some(
-    (block) =>
-      block.querySelector("br") !== null &&
-      (block.textContent ?? "").trim() === "" &&
-      block.querySelector("img, ul, ol, p, pre, hr, figure, blockquote") ===
-        null
+  // a break ending its block inside a link or mark, or before one that
+  // shows nothing: the editor keeps and shows it, the page shows nothing
+  return Array.from(body.querySelectorAll("br")).some(
+    (br) => endsBlockInInline(br) || endsBlockBeforeEmptyInline(br)
   );
 };
 

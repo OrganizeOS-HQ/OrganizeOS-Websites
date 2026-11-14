@@ -1806,12 +1806,15 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     the editor would not keep the value's blocks or links whole: "Read only"
     for a value with images, else with "Edit in Classic CMS". A link with no
     text and no image is dropped on save; one holding only a space opens
-    read-only. A value whose tags a browser would rearrange, with a block
-    inside a link or a mark, or with a paragraph, heading, quote or list item
-    holding only line breaks, opens read-only; a paste moves a link or mark
-    inside the blocks it wraps, and a line break ending its block inside a
-    link or mark opens read-only. A paragraph, heading, quote or list item
-    that is empty or holds only line breaks saves empty, and one ending in a
+    read-only where the editor would drop that space (at a line's edge or
+    beside another space). A value whose tags a browser would rearrange, or
+    with a block inside a link or a mark, opens read-only; a paste moves a
+    link or mark inside the blocks it wraps. A line break ending its block
+    inside a link or mark, or before an empty mark or link at its block's
+    end, opens read-only, as does a carriage return, a NUL or a line break
+    outside any block. A paragraph, heading, quote or list item that holds
+    nothing saves empty; one holding only line breaks, or only a space that
+    shows (a non-breaking space), saves them as they are; one ending in a
     line break saves one break more, so a blank line at its end reloads
     whole. A load and save may move collapsible whitespace at a link or
     mark boundary, and drops a block's single last line break, which shows

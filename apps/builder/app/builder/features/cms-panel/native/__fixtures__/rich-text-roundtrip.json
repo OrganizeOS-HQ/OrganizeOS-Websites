@@ -303,6 +303,36 @@
       "input": "<ul><li>Parent<br /><ul><li>Child</li></ul></li></ul><p>x</p>",
       "editor": "<ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">Parent</span><br><ul><li value=\"1\"><span style=\"white-space: pre-wrap;\">Child</span></li></ul></li></ul><p><span style=\"white-space: pre-wrap;\">x</span></p>",
       "stored": "<ul><li>Parent<br /><ul><li>Child</li></ul></li></ul><p>x</p>"
+    },
+    {
+      "name": "paragraph holding only a line break",
+      "input": "<p><br /></p><p>x</p>",
+      "editor": "<p><br></p><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<p><br /></p><p>x</p>"
+    },
+    {
+      "name": "heading holding only a line break",
+      "input": "<h2><br /></h2><p>x</p>",
+      "editor": "<h2><br></h2><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<h2><br /></h2><p>x</p>"
+    },
+    {
+      "name": "list item holding only a line break",
+      "input": "<ul><li><br /></li></ul><p>x</p>",
+      "editor": "<ul><li value=\"1\"><br></li></ul><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<ul><li><br /></li></ul><p>x</p>"
+    },
+    {
+      "name": "blank line of a non-breaking space",
+      "input": "<p>a</p><p>\u00a0</p><p>b</p>",
+      "editor": "<p><span style=\"white-space: pre-wrap;\">a</span></p><p><span style=\"white-space: pre-wrap;\">&nbsp;</span></p><p><span style=\"white-space: pre-wrap;\">b</span></p>",
+      "stored": "<p>a</p><p>\u00a0</p><p>b</p>"
+    },
+    {
+      "name": "heading holding only a non-breaking space",
+      "input": "<h2>\u00a0</h2><p>x</p>",
+      "editor": "<h2><span style=\"white-space: pre-wrap;\">&nbsp;</span></h2><p><span style=\"white-space: pre-wrap;\">x</span></p>",
+      "stored": "<h2>\u00a0</h2><p>x</p>"
     }
   ],
   "readOnly": [
@@ -367,23 +397,13 @@
       "reason": "lossy"
     },
     {
-      "name": "paragraph holding only a line break",
-      "input": "<p><br /></p><p>x</p>",
-      "reason": "lossy"
-    },
-    {
-      "name": "heading holding only a line break",
-      "input": "<h2><br /></h2><p>x</p>",
-      "reason": "lossy"
-    },
-    {
       "name": "line break ending its paragraph inside a mark",
       "input": "<p><strong>Bold end<br /></strong></p>",
       "reason": "lossy"
     },
     {
-      "name": "list item holding only a line break",
-      "input": "<ul><li><br /></li></ul><p>x</p>",
+      "name": "line break before an empty mark at its block's end",
+      "input": "<p>one<br /><strong></strong></p>",
       "reason": "lossy"
     }
   ]

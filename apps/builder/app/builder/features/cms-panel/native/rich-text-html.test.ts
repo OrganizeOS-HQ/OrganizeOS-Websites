@@ -404,12 +404,17 @@ describe("what the editor cannot read as the platform does (W4 verification)", (
     ["<p><li>x</li></p>", "list item the parser moves"],
     ["<p>x<em><h2>u</h2></em>y</p>", "heading in a mark between words"],
     ["<p>x<strong>a<ul><li>u</li></ul>b</strong>y</p>", "list in a mark"],
-    ["<p><br /></p><p>x</p>", "paragraph holding only a line break"],
-    ["<p><br /><br /></p><p>x</p>", "paragraph holding two line breaks"],
     ["<p><strong><br /></strong></p><p>x</p>", "a marked line break alone"],
-    ["<p> <br /> </p><p>x</p>", "a line break between spaces"],
-    ["<h2><br /></h2><p>x</p>", "heading holding only a line break"],
-    ["<blockquote><br /></blockquote>", "quote holding only a line break"],
+    ["<p>one<br /><strong></strong></p>", "a last break before an empty mark"],
+    ["<p>one<br /><br /><em></em></p>", "two last breaks before an empty mark"],
+    [
+      '<p>one<br /><a href="https://e.org/"></a></p>',
+      "a last break before an empty link",
+    ],
+    ["<ul><li>one<br /><u></u></li></ul>", "in a list item"],
+    ["<pre><code>a\r\nb</code></pre>", "a carriage return"],
+    ["<p>a\u0000b</p>", "a NUL"],
+    ["x<br />y", "a line break outside any block"],
   ])("%s reads lossy (%s)", (html) => {
     expect(getRichTextReadOnlyReason(html)).toBe("lossy");
   });
@@ -460,7 +465,6 @@ describe("a block's last line break", () => {
   });
 
   test.each([
-    "<ul><li><br></li></ul>",
     "<p><strong>one<br></strong></p>",
     '<p><a href="https://example.org/">one<br></a></p>',
   ])("%s reads lossy", (html) => {
@@ -471,5 +475,33 @@ describe("a block's last line break", () => {
     expect(
       getRichTextReadOnlyReason("<p><strong>one<br></strong>two</p>")
     ).toBeUndefined();
+  });
+});
+
+// a blank line kept as the page shows it (P4g verification, items 1 and 3)
+describe("a block holding only line breaks, or only a space that shows", () => {
+  const plain = (html: string) =>
+    roundTrip(html)
+      .replace(/<span[^>]*>/g, "")
+      .replace(/<\/span>/g, "")
+      .replace(/ value="\d+"/g, "")
+      .replace(/&nbsp;/g, "\u00a0");
+
+  test.each([
+    ["<p><br></p><p>x</p>", "<p><br></p><p>x</p>"],
+    ["<p><br><br></p><p>x</p>", "<p><br><br></p><p>x</p>"],
+    ["<p> <br> </p><p>x</p>", "<p><br></p><p>x</p>"],
+    ["<h2><br></h2><p>x</p>", "<h2><br></h2><p>x</p>"],
+    [
+      "<blockquote><br></blockquote><p>x</p>",
+      "<blockquote><br></blockquote><p>x</p>",
+    ],
+    ["<ul><li><br></li></ul><p>x</p>", "<ul><li><br></li></ul><p>x</p>"],
+    ["<p>a</p><p>\u00a0</p><p>b</p>", "<p>a</p><p>\u00a0</p><p>b</p>"],
+    ["<h2>\u00a0</h2><p>x</p>", "<h2>\u00a0</h2><p>x</p>"],
+    ["<p>\u2003</p><p>x</p>", "<p>\u2003</p><p>x</p>"],
+  ])("%s writes %s, editable", (html, written) => {
+    expect(plain(html)).toBe(written);
+    expect(getRichTextReadOnlyReason(html)).toBeUndefined();
   });
 });
