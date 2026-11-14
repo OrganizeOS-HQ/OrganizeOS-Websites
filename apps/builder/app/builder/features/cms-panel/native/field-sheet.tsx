@@ -475,6 +475,13 @@ export const FieldSheet = ({
         return;
       }
       case "reference_invalid":
+        // another field's reference: not this sheet's control, so a toast
+        // and the schema again (spec 9)
+        if (field !== undefined && field !== (originalKey ?? draft.key)) {
+          toast.error("Not saved");
+          onStale("structure");
+          return;
+        }
         setErrors({ reference: "Collection not found" });
         onStale("collections");
         return;

@@ -245,10 +245,11 @@ export const CollectionSettings = ({
   };
 
   /** A fresh read in place of the baseline: rebase what the person left. */
+  /** Rebases on E21; false when the reread failed. */
   const rebase = async (sent?: CmsCollectionSettings) => {
     const fresh = await reread();
     if (fresh === undefined) {
-      return;
+      return false;
     }
     const freshSettings = settingsOf(fresh);
     // the write landed: the view is clean, and the write's effects follow
@@ -259,10 +260,11 @@ export const CollectionSettings = ({
       if (isSameSettings(freshSettings, baseline) === false) {
         onSaved(baseline, { ...freshSettings, updatedAt: fresh.updatedAt });
       }
-      return;
+      return true;
     }
     setValues((current) => rebaseSettings(baseline, freshSettings, current));
     setBaseline(freshSettings);
+    return true;
   };
 
   const save = async () => {
@@ -361,10 +363,14 @@ export const CollectionSettings = ({
           <Text>Changed by someone else</Text>
           <Button
             color="ghost"
-            onClick={() => {
-              setIsConflict(false);
-              void rebase();
-            }}
+            // the line stays until the reread has landed
+            onClick={() =>
+              void rebase().then((rebased) => {
+                if (rebased) {
+                  setIsConflict(false);
+                }
+              })
+            }
           >
             Reload
           </Button>
