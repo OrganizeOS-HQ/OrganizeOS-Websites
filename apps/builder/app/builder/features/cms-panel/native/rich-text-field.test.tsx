@@ -1135,6 +1135,25 @@ test("pasted HTML with an img keeps no image", async () => {
   expect(editable()!.querySelector("img")).toBeNull();
 });
 
+test("a list pasted 8 levels deep saves a value that reopens editable, every item kept (part 3, item 4)", async () => {
+  const { onChange } = mountField();
+  await focusEditor();
+  let html = "<li>level 8</li>";
+  for (let level = 7; level >= 1; level -= 1) {
+    html = `<li>level ${level}<ul>${html}</ul></li>`;
+  }
+  paste(editable()!, {
+    "text/html": `<ul>${html}</ul>`,
+    "text/plain": "levels",
+  });
+  await settle();
+  const saved = lastHtml(onChange) ?? "";
+  for (let level = 1; level <= 8; level += 1) {
+    expect(saved).toContain(`level ${level}`);
+  }
+  expect(reopenReason(saved)).toBeUndefined();
+});
+
 test("a lossy value with an image shows Read only and no button", async () => {
   const { onChange, onOpenClassic } = mountField({
     value: {

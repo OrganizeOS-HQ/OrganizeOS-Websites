@@ -134,6 +134,7 @@ import {
   registerRichTextTransforms,
   richTextNodes,
 } from "./rich-text-html";
+import { RICH_TEXT_MAX_DEPTH } from "./rich-text-nodes";
 
 const blockSpacing = { margin: 0, marginBottom: theme.spacing[5] };
 
@@ -927,6 +928,42 @@ const hasRefusedNode = (value: unknown): boolean => {
  * refuses unwrapped to its text, and links and marks moved inside the
  * blocks they wrap; undefined when it needs neither.
  */
+/** How many lists and quotes hold an element. */
+const listDepthOf = (element: Element) => {
+  let around = 0;
+  for (
+    let parent = element.parentElement;
+    parent !== null;
+    parent = parent.parentElement
+  ) {
+    if (/^(UL|OL|BLOCKQUOTE)$/.test(parent.tagName)) {
+      around += 1;
+    }
+  }
+  return around;
+};
+
+/**
+ * A pasted list nested past the platform's depth limit moves up a level, its
+ * items beside the item that held it, until every list is within the limit.
+ */
+const liftListsPastDepthLimit = (body: HTMLElement) => {
+  let lifted = false;
+  for (;;) {
+    const list = Array.from(body.querySelectorAll("ul, ol")).find(
+      (element) =>
+        listDepthOf(element) >= RICH_TEXT_MAX_DEPTH - 1 &&
+        element.parentElement?.tagName === "LI"
+    );
+    if (list === undefined) {
+      return lifted;
+    }
+    list.parentElement!.after(...Array.from(list.children));
+    list.remove();
+    lifted = true;
+  }
+};
+
 const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
   const html = data.getData("text/html");
   let cleanHtml: string | undefined;
@@ -956,7 +993,9 @@ const withoutRefusedLinks = (data: DataTransfer): DataTransfer | undefined => {
     for (const anchor of emptied) {
       anchor.replaceWith(...Array.from(anchor.childNodes));
     }
+    const lifted = liftListsPastDepthLimit(dom.body);
     if (
+      lifted ||
       movedMarks ||
       images.length > 0 ||
       refused.length > 0 ||
