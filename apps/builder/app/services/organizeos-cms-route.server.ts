@@ -213,7 +213,6 @@ const patterns: DoorPattern<CmsEndpoint>[] = [
     segments: ["uploads", "image"],
     query: noQuery,
     body: "multipart",
-    timeoutMs: UPLOAD_TIMEOUT_MS,
   },
 ];
 
@@ -238,7 +237,14 @@ export type CmsDoorErrorCode = DoorErrorCode;
 export const cmsDoor: DoorConfig = {
   audience: "cms",
   basePath: CMS_PLATFORM_BASE_PATH,
-  patterns,
+  // An upload (E9) waits 30 seconds; every other call the door's 15. Kept
+  // here rather than on E9's entry, so the endpoint list reads as upstream's
+  // CMS door branches write it.
+  patterns: patterns.map((pattern) =>
+    pattern.endpoint === "E9"
+      ? { ...pattern, timeoutMs: UPLOAD_TIMEOUT_MS }
+      : pattern
+  ),
   jsonBodyMaxBytes: CMS_JSON_BODY_MAX_BYTES,
   upload: {
     bodyMaxBytes: CMS_UPLOAD_BODY_MAX_BYTES,
