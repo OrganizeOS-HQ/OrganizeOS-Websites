@@ -34,8 +34,11 @@ import {
   KEY_DELETE_COMMAND,
   REMOVE_TEXT_COMMAND,
   type LexicalCommand,
+  DROP_COMMAND,
+  KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_LEFT_COMMAND,
   KEY_ARROW_RIGHT_COMMAND,
+  KEY_ARROW_UP_COMMAND,
   KEY_DOWN_COMMAND,
   type BaseSelection,
   type ElementNode,
@@ -49,9 +52,11 @@ import {
   SELECTION_CHANGE_COMMAND,
   type LexicalEditor,
   type LexicalNode,
+  type NodeKey,
   type PointType,
   type RangeSelection,
   type TextFormatType,
+  type TextNode,
 } from "lexical";
 import {
   $createLinkNode,
@@ -1453,6 +1458,26 @@ const $imageBeside = (
   return $isCmsFigureNode(sibling) ? sibling : undefined;
 };
 
+/** Whether a point is an element caret right after a line break. */
+const $isAfterLineBreak = (point: PointType) => {
+  if (point.type !== "element" || point.offset === 0) {
+    return false;
+  }
+  const parent = point.getNode();
+  return (
+    $isElementNode(parent) &&
+    $isLineBreakNode(parent.getChildAtIndex(point.offset - 1))
+  );
+};
+
+/** A key that inserts text: a printable one, or one an IME or dead key sends. */
+const isTextInputKey = (event: KeyboardEvent) =>
+  event.key.length === 1 ||
+  event.key === "Process" ||
+  event.key === "Dead" ||
+  event.key === "Unidentified" ||
+  event.keyCode === 229;
+
 const $caretBesideSelectedImage = (lastArrow: {
   current: "back" | "forward" | undefined;
 }) => {
@@ -1463,253 +1488,663 @@ const $caretBesideSelectedImage = (lastArrow: {
   }
 };
 
-/**
- * Where End takes an element caret: the end of its line, which runs from
- * the child at the caret to the next line break, or, where that run wraps,
- * to the last node on the caret's own visual line (measured from the node
- * after the caret).
- */
-const $elementCaretLineEnd = (
-  editor: LexicalEditor,
-  focus: PointType
-): { key: string; offset: number; type: "text" | "element" } | undefined => {
-  const parent = focus.getNode();
-  if ($isElementNode(parent) === false) {
+type CaretPoint = { key: NodeKey; offset: number; type: "text" | "element" };
+
+/** A block's leaves in order, inside its inline elements, not its blocks. */
+const $lineLeaves = (block: ElementNode) => {
+  const leaves: LexicalNode[] = [];
+  const collect = (element: ElementNode) => {
+    for (const child of element.getChildren()) {
+      if ($isElementNode(child)) {
+        if (child.isInline()) {
+          collect(child);
+        }
+      } else {
+        leaves.push(child);
+      }
+    }
+  };
+  collect(block);
+  return leaves;
+};
+
+/** The box of one character of a text node, as the browser lays it out. */
+const charBox = (editor: LexicalEditor, node: TextNode, offset: number) => {
+  const element = editor.getElementByKey(node.getKey());
+  if (element === null) {
     return;
   }
-  const line: LexicalNode[] = [];
-  for (const child of parent.getChildren().slice(focus.offset)) {
-    if ($isLineBreakNode(child)) {
-      break;
-    }
-    line.push(child);
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  const text = walker.nextNode() as Text | null;
+  if (text === null || offset < 0 || offset >= text.data.length) {
+    return;
   }
-  if (line.length === 0) {
-    return { key: parent.getKey(), offset: focus.offset, type: "element" };
-  }
-  const boxOf = (node: LexicalNode) =>
-    editor.getElementByKey(node.getKey())?.getBoundingClientRect();
-  const first = boxOf(line[0]);
-  let last = line[0];
-  for (const node of line.slice(1)) {
-    const box = boxOf(node);
-    if (
-      first !== undefined &&
-      box !== undefined &&
-      first.height > 0 &&
-      box.top >= first.bottom
-    ) {
-      break;
-    }
-    last = node;
-  }
-  if ($isTextNode(last)) {
+  const range = document.createRange();
+  range.setStart(text, offset);
+  range.setEnd(text, offset + 1);
+  const box = range.getClientRects()[0] ?? range.getBoundingClientRect();
+  return box.height > 0 ? box : undefined;
+};
+
+/** A node's first or last line box. */
+const lineBox = (editor: LexicalEditor, node: LexicalNode, last: boolean) => {
+  const boxes = editor.getElementByKey(node.getKey())?.getClientRects();
+  const box =
+    boxes === undefined ? undefined : boxes[last ? boxes.length - 1 : 0];
+  return box !== undefined && box.height > 0 ? box : undefined;
+};
+
+const isBelow = (box: DOMRect, line: DOMRect) => box.top >= line.bottom - 1;
+const isAbove = (box: DOMRect, line: DOMRect) => box.bottom <= line.top + 1;
+
+/** A point before a block's leaf, or after it. */
+const pointBeside = (leaf: LexicalNode, after: boolean): CaretPoint => {
+  if ($isTextNode(leaf)) {
     return {
-      key: last.getKey(),
-      offset: last.getTextContentSize(),
+      key: leaf.getKey(),
+      offset: after ? leaf.getTextContentSize() : 0,
       type: "text",
     };
   }
   return {
-    key: parent.getKey(),
-    offset: last.getIndexWithinParent() + 1,
+    key: leaf.getParentOrThrow().getKey(),
+    offset: leaf.getIndexWithinParent() + (after ? 1 : 0),
     type: "element",
   };
+};
+
+/**
+ * A caret as a place in its block's leaves: before character `offset` of
+ * leaf `index` (a leaf past the last is the block's end).
+ */
+const $caretInLeaves = (point: PointType) => {
+  const node = point.getNode();
+  const block = $findMatchingParent(
+    node,
+    (parent) => $isElementNode(parent) && parent.isInline() === false
+  );
+  if ($isElementNode(block) === false) {
+    return;
+  }
+  const leaves = $lineLeaves(block);
+  if (point.type === "text") {
+    const index = leaves.findIndex((leaf) => leaf.is(node));
+    return index === -1 ? undefined : { leaves, index, offset: point.offset };
+  }
+  if ($isElementNode(node) === false) {
+    return;
+  }
+  // the first leaf at or after the child at the caret
+  const after = node.getChildAtIndex(point.offset);
+  const following =
+    after === null
+      ? undefined
+      : $isElementNode(after)
+        ? after.getFirstDescendant()
+        : after;
+  if (following !== null && following !== undefined) {
+    const index = leaves.findIndex((leaf) => leaf.is(following));
+    if (index !== -1) {
+      return { leaves, index, offset: 0 };
+    }
+  }
+  const before =
+    point.offset > 0 ? node.getChildAtIndex(point.offset - 1) : null;
+  const preceding = $isElementNode(before)
+    ? before.getLastDescendant()
+    : before;
+  const index =
+    preceding === null ? -1 : leaves.findIndex((leaf) => leaf.is(preceding));
+  return { leaves, index: index + 1, offset: 0 };
+};
+
+/**
+ * The box of the caret's visual line: what follows the caret, or, with
+ * nothing after it on its line, what precedes it.
+ */
+const caretLineBox = (
+  editor: LexicalEditor,
+  leaves: LexicalNode[],
+  index: number,
+  offset: number
+) => {
+  const at = leaves[index];
+  if (at !== undefined && $isLineBreakNode(at) === false) {
+    const box = $isTextNode(at)
+      ? (charBox(editor, at, offset) ?? charBox(editor, at, offset - 1))
+      : lineBox(editor, at, false);
+    if (box !== undefined) {
+      return box;
+    }
+  }
+  if (offset > 0 && $isTextNode(at)) {
+    return charBox(editor, at, offset - 1);
+  }
+  const before = leaves[index - 1];
+  if (before === undefined || $isLineBreakNode(before)) {
+    return;
+  }
+  return $isTextNode(before)
+    ? charBox(editor, before, before.getTextContentSize() - 1)
+    : lineBox(editor, before, true);
+};
+
+/**
+ * Where End takes a caret: the end of its visual line, which stops at the
+ * next line break, or where the line wraps.
+ */
+const $caretLineEnd = (
+  editor: LexicalEditor,
+  point: PointType
+): CaretPoint | undefined => {
+  const caret = $caretInLeaves(point);
+  if (caret === undefined) {
+    return;
+  }
+  const { leaves, index, offset } = caret;
+  const line = caretLineBox(editor, leaves, index, offset);
+  let end: CaretPoint | undefined;
+  for (let at = index; at < leaves.length; at += 1) {
+    const leaf = leaves[at];
+    if ($isLineBreakNode(leaf)) {
+      return end ?? pointBeside(leaf, false);
+    }
+    if ($isTextNode(leaf)) {
+      const size = leaf.getTextContentSize();
+      const lastBox = charBox(editor, leaf, size - 1);
+      if (
+        line !== undefined &&
+        lastBox !== undefined &&
+        isBelow(lastBox, line)
+      ) {
+        for (let char = at === index ? offset : 0; char < size; char += 1) {
+          const box = charBox(editor, leaf, char);
+          if (box !== undefined && isBelow(box, line)) {
+            return char === 0 && end !== undefined
+              ? end
+              : { key: leaf.getKey(), offset: char, type: "text" };
+          }
+        }
+      }
+      end = pointBeside(leaf, true);
+      continue;
+    }
+    const box = lineBox(editor, leaf, false);
+    if (line !== undefined && box !== undefined && isBelow(box, line)) {
+      return end ?? pointBeside(leaf, false);
+    }
+    end = pointBeside(leaf, true);
+  }
+  if (end !== undefined) {
+    return end;
+  }
+  return point.type === "text"
+    ? { key: point.key, offset: point.offset, type: "text" }
+    : { key: point.key, offset: point.offset, type: "element" };
+};
+
+/**
+ * Where Home takes a caret: the start of its visual line, which begins
+ * after the line break before it, or where the line wraps. Undefined for a
+ * text caret on its block's first line, which the browser's Home handles,
+ * unless `always`.
+ */
+const $caretLineStart = (
+  editor: LexicalEditor,
+  point: PointType,
+  always = false
+): CaretPoint | undefined => {
+  const caret = $caretInLeaves(point);
+  if (caret === undefined) {
+    return;
+  }
+  const { leaves, index, offset } = caret;
+  if (
+    always === false &&
+    point.type === "text" &&
+    leaves.slice(0, index).some($isLineBreakNode) === false
+  ) {
+    return;
+  }
+  const line = caretLineBox(editor, leaves, index, offset);
+  let start: CaretPoint =
+    point.type === "text"
+      ? { key: point.key, offset: point.offset, type: "text" }
+      : { key: point.key, offset: point.offset, type: "element" };
+  for (let at = offset > 0 ? index : index - 1; at >= 0; at -= 1) {
+    const leaf = leaves[at];
+    if ($isLineBreakNode(leaf)) {
+      return pointBeside(leaf, true);
+    }
+    if ($isTextNode(leaf)) {
+      const from = at === index ? offset - 1 : leaf.getTextContentSize() - 1;
+      for (let char = from; char >= 0; char -= 1) {
+        const box = charBox(editor, leaf, char);
+        if (line !== undefined && box !== undefined && isAbove(box, line)) {
+          return char + 1 === leaf.getTextContentSize()
+            ? start
+            : { key: leaf.getKey(), offset: char + 1, type: "text" };
+        }
+      }
+      start = pointBeside(leaf, false);
+      continue;
+    }
+    const box = lineBox(editor, leaf, true);
+    if (line !== undefined && box !== undefined && isAbove(box, line)) {
+      return start;
+    }
+    start = pointBeside(leaf, false);
+  }
+  return start;
 };
 
 const ImageEditingPlugin = () => {
   const [editor] = useLexicalComposerContext();
   const lastArrow = useRef<"back" | "forward" | undefined>(undefined);
-  useEffect(
-    () =>
-      mergeRegister(
-        // above LinkPlugin's own handler, for a selection holding an image
+  // the anchor of a selection Home or End extended
+  const pinnedAnchor = useRef<CaretPoint | undefined>(undefined);
+  useEffect(() => {
+    const unpin = () => {
+      pinnedAnchor.current = undefined;
+    };
+    // text input with an image selected, or at an element caret right
+    // after a line break (where the browser's target range is the line
+    // above), is inserted at Lexical's own selection
+    const beforeTextInput = (event: Event) => {
+      const where = editor.getEditorState().read(() => {
+        const selection = $getSelection();
+        if ($selectedImage(selection) !== undefined) {
+          return "image";
+        }
+        if (
+          $isRangeSelection(selection) &&
+          selection.isCollapsed() &&
+          $isAfterLineBreak(selection.anchor)
+        ) {
+          return "after break";
+        }
+      });
+      const text =
+        event instanceof InputEvent &&
+        (event.inputType === "insertText" ||
+          event.inputType === "insertReplacementText") &&
+        typeof event.data === "string"
+          ? event.data
+          : undefined;
+      if (
+        where === undefined ||
+        (where === "after break" && text === undefined)
+      ) {
+        return;
+      }
+      if (text !== undefined) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+      editor.update(
+        () => {
+          $caretBesideSelectedImage(lastArrow);
+          const selection = $getSelection();
+          if (text !== undefined && $isRangeSelection(selection)) {
+            selection.insertText(text);
+          }
+        },
+        { discrete: true }
+      );
+    };
+    return mergeRegister(
+      // above LinkPlugin's own handler, for a selection holding an image
+      editor.registerCommand(
+        TOGGLE_LINK_COMMAND,
+        (payload) => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection) === false) {
+            return false;
+          }
+          // the images the selection reaches, found before the toggle
+          // moves the selection's offsets past a link it inserts
+          const images = selection
+            .getNodes()
+            .flatMap((node) =>
+              $isCmsImageNode(node) || $isCmsFigureNode(node)
+                ? [node]
+                : $isElementNode(node)
+                  ? node
+                      .getChildren()
+                      .filter(
+                        (child) =>
+                          $isCmsImageNode(child) || $isCmsFigureNode(child)
+                      )
+                  : []
+            );
+          if (payload === null) {
+            $toggleLink(null);
+            return true;
+          }
+          const { url, ...attributes } =
+            typeof payload === "string" ? { url: payload } : payload;
+          $toggleLink(url, attributes);
+          const links = new Set<LinkNode>();
+          // a link at the root (around a figure or a rule) is unwrapped
+          for (const node of $getRoot().getChildren()) {
+            if ($isLinkNode(node)) {
+              links.add(node);
+            }
+          }
+          for (const image of images) {
+            const link = $findMatchingParent(image, $isLinkNode);
+            if ($isLinkNode(link)) {
+              links.add(link);
+            }
+          }
+          $keepImagesOutOfLinks(links);
+          return true;
+        },
+        COMMAND_PRIORITY_NORMAL
+      ),
+      // an arrow onto an image selects it (an inline image beside the
+      // caret, or a figure beside the block's edge); the next arrow moves
+      // past it as a text caret
+      ...(
+        [
+          [KEY_ARROW_LEFT_COMMAND, true],
+          [KEY_ARROW_RIGHT_COMMAND, false],
+        ] as const
+      ).map(([command, isBackward]) =>
         editor.registerCommand(
-          TOGGLE_LINK_COMMAND,
-          (payload) => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection) === false) {
+          command,
+          (event: KeyboardEvent) => {
+            if (event.altKey || event.ctrlKey || event.metaKey) {
               return false;
             }
-            // the images the selection reaches, found before the toggle
-            // moves the selection's offsets past a link it inserts
-            const images = selection
-              .getNodes()
-              .flatMap((node) =>
-                $isCmsImageNode(node) || $isCmsFigureNode(node)
-                  ? [node]
-                  : $isElementNode(node)
-                    ? node
-                        .getChildren()
-                        .filter(
-                          (child) =>
-                            $isCmsImageNode(child) || $isCmsFigureNode(child)
-                        )
-                    : []
-              );
-            if (payload === null) {
-              $toggleLink(null);
-              return true;
-            }
-            const { url, ...attributes } =
-              typeof payload === "string" ? { url: payload } : payload;
-            $toggleLink(url, attributes);
-            const links = new Set<LinkNode>();
-            // a link at the root (around a figure or a rule) is unwrapped
-            for (const node of $getRoot().getChildren()) {
-              if ($isLinkNode(node)) {
-                links.add(node);
-              }
-            }
-            for (const image of images) {
-              const link = $findMatchingParent(image, $isLinkNode);
-              if ($isLinkNode(link)) {
-                links.add(link);
-              }
-            }
-            $keepImagesOutOfLinks(links);
-            return true;
-          },
-          COMMAND_PRIORITY_NORMAL
-        ),
-        // an arrow onto an image selects it (an inline image beside the
-        // caret, or a figure beside the block's edge); the next arrow moves
-        // past it as a text caret
-        ...(
-          [
-            [KEY_ARROW_LEFT_COMMAND, true],
-            [KEY_ARROW_RIGHT_COMMAND, false],
-          ] as const
-        ).map(([command, isBackward]) =>
-          editor.registerCommand(
-            command,
-            (event: KeyboardEvent) => {
-              if (event.altKey || event.ctrlKey || event.metaKey) {
-                return false;
-              }
-              const selection = $getSelection();
-              if ($isNodeSelection(selection)) {
-                const image = $selectedImage(selection);
-                if (image === undefined || event.shiftKey) {
-                  return false;
-                }
-                event.preventDefault();
-                $caretBeside(image, isBackward);
-                lastArrow.current = undefined;
-                return true;
-              }
-              if (
-                $isRangeSelection(selection) === false ||
-                selection.isCollapsed() === false ||
-                event.shiftKey
-              ) {
-                return false;
-              }
-              const image = $imageBeside(selection, isBackward);
-              if (image === undefined) {
+            const selection = $getSelection();
+            if ($isNodeSelection(selection)) {
+              const image = $selectedImage(selection);
+              if (image === undefined || event.shiftKey) {
                 return false;
               }
               event.preventDefault();
-              const next = $createNodeSelection();
-              next.add(image.getKey());
-              $setSelection(next);
-              lastArrow.current = isBackward ? "back" : "forward";
+              $caretBeside(image, isBackward);
+              lastArrow.current = undefined;
               return true;
-            },
-            COMMAND_PRIORITY_LOW
-          )
-        ),
-        // typing with an image selected first puts a caret beside it: on
-        // the side the arrow came from, else after it
-        editor.registerCommand(
-          KEY_DOWN_COMMAND,
-          (event) => {
-            if (
-              event.key.length !== 1 ||
-              event.ctrlKey ||
-              event.metaKey ||
-              event.altKey
-            ) {
+            }
+            if ($isRangeSelection(selection) === false || event.shiftKey) {
               return false;
             }
-            $caretBesideSelectedImage(lastArrow);
-            return false;
-          },
-          COMMAND_PRIORITY_CRITICAL
-        ),
-        editor.registerCommand(
-          CONTROLLED_TEXT_INSERTION_COMMAND,
-          () => {
-            $caretBesideSelectedImage(lastArrow);
-            return false;
-          },
-          COMMAND_PRIORITY_CRITICAL
-        ),
-        // End and Shift+End on a line ending in an image go past it
-        editor.registerCommand(
-          KEY_DOWN_COMMAND,
-          (event) => {
-            if (
-              event.key !== "End" ||
-              event.ctrlKey ||
-              event.metaKey ||
-              event.altKey
-            ) {
-              return false;
+            // a range with a plain arrow collapses toward the arrow
+            if (selection.isCollapsed() === false) {
+              event.preventDefault();
+              const [start, end] = selection.isBackward()
+                ? [selection.focus, selection.anchor]
+                : [selection.anchor, selection.focus];
+              const to = isBackward ? start : end;
+              const point = { key: to.key, offset: to.offset, type: to.type };
+              selection.anchor.set(point.key, point.offset, point.type);
+              selection.focus.set(point.key, point.offset, point.type);
+              lastArrow.current = undefined;
+              return true;
             }
-            const selection = $getSelection();
-            if ($isRangeSelection(selection) === false) {
-              return false;
-            }
-            // an element caret is never handed to the browser, which
-            // measures it by the node before it (a line break's box is on
-            // the line above)
-            if (selection.focus.type === "element") {
-              const end = $elementCaretLineEnd(editor, selection.focus);
-              if (end !== undefined) {
-                event.preventDefault();
-                selection.focus.set(end.key, end.offset, end.type);
-                if (event.shiftKey === false) {
-                  selection.anchor.set(end.key, end.offset, end.type);
-                }
-                return true;
-              }
-            }
-            const image = $imageEndingLine(editor, selection.focus);
+            const image = $imageBeside(selection, isBackward);
             if (image === undefined) {
               return false;
             }
             event.preventDefault();
-            const parent = image.getParentOrThrow();
-            const offset = image.getIndexWithinParent() + 1;
-            selection.focus.set(parent.getKey(), offset, "element");
-            if (event.shiftKey === false) {
-              selection.anchor.set(parent.getKey(), offset, "element");
-            }
+            const next = $createNodeSelection();
+            next.add(image.getKey());
+            $setSelection(next);
+            lastArrow.current = isBackward ? "back" : "forward";
             return true;
           },
-          COMMAND_PRIORITY_NORMAL
-        ),
-        // a copy or cut marks its selection, for the code block's export
-        editor.registerCommand(
-          COPY_COMMAND,
-          () => {
-            markRichTextCopy($getSelection());
+          COMMAND_PRIORITY_LOW
+        )
+      ),
+      // typing with an image selected first puts a caret beside it: on
+      // the side the arrow was moving toward (after it when no arrow
+      // selected it)
+      editor.registerCommand(
+        KEY_DOWN_COMMAND,
+        (event) => {
+          if (
+            isTextInputKey(event) === false ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.altKey
+          ) {
             return false;
-          },
-          COMMAND_PRIORITY_CRITICAL
-        ),
+          }
+          $caretBesideSelectedImage(lastArrow);
+          return false;
+        },
+        COMMAND_PRIORITY_CRITICAL
+      ),
+      // text input with no key of its own (an IME, dictation, an emoji
+      // picker) does the same, before the browser inserts it
+      editor.registerRootListener((rootElement, previous) => {
+        for (const type of ["beforeinput", "compositionstart"]) {
+          previous?.removeEventListener(type, beforeTextInput, true);
+          rootElement?.addEventListener(type, beforeTextInput, true);
+        }
+      }),
+      editor.registerCommand(
+        CONTROLLED_TEXT_INSERTION_COMMAND,
+        () => {
+          $caretBesideSelectedImage(lastArrow);
+          return false;
+        },
+        COMMAND_PRIORITY_CRITICAL
+      ),
+      // a paste or drop with an image selected works as typing does: from
+      // a caret beside it
+      ...[PASTE_COMMAND, DROP_COMMAND].map((command) =>
         editor.registerCommand(
-          CUT_COMMAND,
+          command as LexicalCommand<unknown>,
           () => {
-            markRichTextCopy($getSelection());
+            $caretBesideSelectedImage(lastArrow);
             return false;
           },
           COMMAND_PRIORITY_CRITICAL
         )
       ),
-    [editor]
-  );
+      // Up and Down from a selected figure go to the end of the block
+      // before it, or the start of the block after it
+      ...(
+        [
+          [KEY_ARROW_UP_COMMAND, true],
+          [KEY_ARROW_DOWN_COMMAND, false],
+        ] as const
+      ).map(([command, isBackward]) =>
+        editor.registerCommand(
+          command,
+          (event: KeyboardEvent) => {
+            const figure = $selectedImage($getSelection());
+            if ($isCmsFigureNode(figure) === false || event.shiftKey) {
+              return false;
+            }
+            const sibling = isBackward
+              ? figure.getPreviousSibling()
+              : figure.getNextSibling();
+            if ($isElementNode(sibling) === false) {
+              return false;
+            }
+            event.preventDefault();
+            if (isBackward) {
+              sibling.selectEnd();
+            } else {
+              sibling.selectStart();
+            }
+            lastArrow.current = undefined;
+            return true;
+          },
+          COMMAND_PRIORITY_LOW
+        )
+      ),
+      // Home and End (with Shift too) from a caret beside a line break or
+      // an image, or with an image selected, stay on the caret's own line
+      editor.registerCommand(
+        KEY_DOWN_COMMAND,
+        (event) => {
+          const isEnd = event.key === "End";
+          if (
+            (isEnd === false && event.key !== "Home") ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.altKey
+          ) {
+            return false;
+          }
+          let selection = $getSelection();
+          const image = $selectedImage(selection);
+          if (image !== undefined) {
+            $caretBeside(image, lastArrow.current === "back");
+            lastArrow.current = undefined;
+            selection = $getSelection();
+          }
+          if ($isRangeSelection(selection) === false) {
+            return false;
+          }
+          const { focus } = selection;
+          // an element caret is never handed to the browser, which
+          // measures it by the node before it (a line break's box is on
+          // the line above)
+          let target: CaretPoint | undefined;
+          if (isEnd) {
+            if (image !== undefined || focus.type === "element") {
+              target = $caretLineEnd(editor, focus);
+            } else {
+              const ending = $imageEndingLine(editor, focus);
+              target =
+                ending === undefined ? undefined : pointBeside(ending, true);
+            }
+          } else {
+            target = $caretLineStart(editor, focus, image !== undefined);
+          }
+          if (target === undefined) {
+            if (image === undefined) {
+              return false;
+            }
+            target = { key: focus.key, offset: focus.offset, type: focus.type };
+          }
+          event.preventDefault();
+          const anchor = {
+            key: selection.anchor.key,
+            offset: selection.anchor.offset,
+            type: selection.anchor.type,
+          };
+          selection.focus.set(target.key, target.offset, target.type);
+          if (event.shiftKey) {
+            selection.anchor.set(anchor.key, anchor.offset, anchor.type);
+            pinnedAnchor.current = anchor;
+          } else {
+            selection.anchor.set(target.key, target.offset, target.type);
+            pinnedAnchor.current = undefined;
+          }
+          return true;
+        },
+        COMMAND_PRIORITY_NORMAL
+      ),
+      // Backspace at an element caret right after a line break takes the
+      // line break (the browser reads that caret as one before it)
+      editor.registerCommand(
+        DELETE_CHARACTER_COMMAND,
+        (isBackward) => {
+          const selection = $getSelection();
+          if (
+            isBackward === false ||
+            $isRangeSelection(selection) === false ||
+            selection.isCollapsed() === false ||
+            $isAfterLineBreak(selection.anchor) === false
+          ) {
+            return false;
+          }
+          const parent = selection.anchor.getNode() as ElementNode;
+          const offset = selection.anchor.offset - 1;
+          parent.getChildAtIndex(offset)?.remove();
+          selection.anchor.set(parent.getKey(), offset, "element");
+          selection.focus.set(parent.getKey(), offset, "element");
+          return true;
+        },
+        COMMAND_PRIORITY_NORMAL
+      ),
+      // a selection Home or End extended keeps its anchor while it is
+      // extended further: the browser reads an anchor right after a line
+      // break as one before it
+      editor.registerCommand(
+        KEY_DOWN_COMMAND,
+        (event) => {
+          if (event.shiftKey === false) {
+            if (event.key !== "Shift") {
+              pinnedAnchor.current = undefined;
+            }
+            return false;
+          }
+          const selection = $getSelection();
+          if (
+            pinnedAnchor.current === undefined &&
+            /^(Arrow|Home$|End$|Page)/.test(event.key) &&
+            $isRangeSelection(selection) &&
+            $isAfterLineBreak(selection.anchor)
+          ) {
+            const { anchor } = selection;
+            pinnedAnchor.current = {
+              key: anchor.key,
+              offset: anchor.offset,
+              type: anchor.type,
+            };
+          }
+          return false;
+        },
+        COMMAND_PRIORITY_CRITICAL
+      ),
+      editor.registerCommand(
+        SELECTION_CHANGE_COMMAND,
+        () => {
+          const pinned = pinnedAnchor.current;
+          if (pinned === undefined) {
+            return false;
+          }
+          const selection = $getSelection();
+          if (
+            $isRangeSelection(selection) === false ||
+            $getNodeByKey(pinned.key) === null
+          ) {
+            pinnedAnchor.current = undefined;
+            return false;
+          }
+          const { anchor } = selection;
+          if (
+            anchor.key !== pinned.key ||
+            anchor.offset !== pinned.offset ||
+            anchor.type !== pinned.type
+          ) {
+            anchor.set(pinned.key, pinned.offset, pinned.type);
+          }
+          return false;
+        },
+        COMMAND_PRIORITY_CRITICAL
+      ),
+      editor.registerRootListener((rootElement, previous) => {
+        previous?.removeEventListener("pointerdown", unpin);
+        rootElement?.addEventListener("pointerdown", unpin);
+      }),
+      // a copy or cut marks its selection, for the code block's export
+      editor.registerCommand(
+        COPY_COMMAND,
+        () => {
+          markRichTextCopy($getSelection());
+          return false;
+        },
+        COMMAND_PRIORITY_CRITICAL
+      ),
+      editor.registerCommand(
+        CUT_COMMAND,
+        () => {
+          markRichTextCopy($getSelection());
+          return false;
+        },
+        COMMAND_PRIORITY_CRITICAL
+      )
+    );
+  }, [editor]);
   return null;
 };
 
