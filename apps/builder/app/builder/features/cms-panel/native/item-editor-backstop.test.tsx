@@ -261,6 +261,26 @@ describe("Save's rich-text backstop", () => {
     expect(conflictLine()).toBeNull();
   });
 
+  test("Publish with edits whose publish answer is lost after a settled Save leaves the editor clean", async () => {
+    await openWithBody();
+    await typeBody("Two");
+    settles();
+    fake.updateItem.mockImplementationOnce(async (_c, id, body) => ({
+      item: itemOf({ id, data: body.data, updatedAt: V2 }),
+    }));
+    fake.publishItem.mockResolvedValueOnce({ error: "unavailable" });
+    const published = itemOf({
+      data: dataWith({ html: SETTLED, text: "Two, as the editor writes it" }),
+      updatedAt: "2026-11-12T10:00:03.5+00:00",
+    });
+    fake.getItem.mockResolvedValueOnce({ item: published });
+    await click(buttonByText("Publish"));
+    expect(fake.publishItem).toHaveBeenCalledTimes(1);
+    expect(byLabel("Use my edit: Body")).toBeNull();
+    expect(conflictLine()).toBeNull();
+    expect($cmsNativeDirty.get()).toBe(false);
+  });
+
   test("an E6 replay that differs from the draft only by the settling makes one create call", async () => {
     setFields(WITH_BODY);
     mount();

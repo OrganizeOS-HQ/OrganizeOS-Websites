@@ -729,6 +729,8 @@ export const ItemEditor = ({
       return;
     }
     const afterSave = current === null || isDirty;
+    // the values the last save sent, rich text as settled
+    let saved: CmsItemData | undefined;
     // With unsaved edits it saves, then publishes: two calls, each locked.
     if (current === null || isDirty) {
       const first = await saveFrom(current);
@@ -736,6 +738,7 @@ export const ItemEditor = ({
         return;
       }
       current = first.saved;
+      saved = first.values;
       // an E6 replay of older values: they are saved before publishing
       if (first.differs) {
         const second = await saveFrom(current, first.values);
@@ -743,6 +746,7 @@ export const ItemEditor = ({
           return;
         }
         current = second.saved;
+        saved = second.values;
       }
     }
     const target = current;
@@ -752,7 +756,7 @@ export const ItemEditor = ({
         source.publishItem(collection.id, target.id, {
           expectedUpdatedAt: target.updatedAt,
         }),
-      { sent: target, afterSave }
+      { sent: target, afterSave, values: saved }
     );
   };
 
