@@ -448,7 +448,7 @@ describe("the Fields tab", () => {
     ).toBe(NEXT);
   });
 
-  test("a refused reorder puts back the last accepted order and rereads E21; conflict also toasts", async () => {
+  test("a refused reorder puts back the last accepted order and rereads E21; a conflict rereads and retries once, and a second conflict puts it back and toasts", async () => {
     const error = vi.spyOn(toast, "error");
     await openFields();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
