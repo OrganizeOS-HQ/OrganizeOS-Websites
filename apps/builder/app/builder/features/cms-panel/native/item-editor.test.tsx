@@ -2280,3 +2280,122 @@ describe("the Item menu's actions (verification)", () => {
     expect(document.activeElement).toBe(field);
   });
 });
+
+describe("the editor's exits wait on what it shows (W3g)", () => {
+  const STAGED = itemOf({
+    status: "published",
+    hasStagedChanges: true,
+    updatedAt: VERSION,
+  });
+
+  test.each([
+    ["Publish changes", "slug_taken", "Address in use"],
+    ["Publish changes", "conflict", "Changed by someone else"],
+    ["Discard changes", "conflict", "Changed by someone else"],
+  ] as const)(
+    "Back during %s answered %s keeps the editor with %s",
+    async (action, code, text) => {
+      const held = deferred<CmsResult<{ item: CmsItem }>>();
+      fake.publishItem.mockReturnValue(held.promise);
+      fake.discardItemChanges.mockReturnValue(held.promise);
+      await openItem(STAGED);
+      await click(buttonByText(action));
+      if (action === "Discard changes") {
+        await click(dialogButton("Discard"));
+      }
+      await click(byLabel("Back"));
+      expect(titleInput()).not.toBeNull();
+      await act(async () => held.resolve({ error: code }));
+      await settle();
+      expect(titleInput()).not.toBeNull();
+      expect(hasText(text)).toBe(true);
+    }
+  );
+
+  test("Back waiting on Publish is dropped when the overlay is hidden", async () => {
+    const held = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.publishItem.mockReturnValue(held.promise);
+    const draft = itemOf({ updatedAt: VERSION });
+    await openItem(draft);
+    await click(buttonByText("Publish"));
+    await click(byLabel("Back"));
+    expect(titleInput()).not.toBeNull();
+    act(() => {
+      root?.render(
+        createElement(
+          TooltipProvider,
+          null,
+          createElement(CmsScreen, {
+            source: fake,
+            hidden: true,
+            isVisible: false,
+            onClose: vi.fn(),
+            onShowClassic: vi.fn(),
+          })
+        )
+      );
+    });
+    await act(async () =>
+      held.resolve({
+        item: { ...draft, status: "published", updatedAt: V2 },
+      })
+    );
+    await settle();
+    expect(titleInput()).not.toBeNull();
+  });
+
+  test("Discard confirmed from the wide header puts the focus on the Item menu while E10 runs", async () => {
+    const held = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.discardItemChanges.mockReturnValue(held.promise);
+    await openItem(STAGED);
+    await click(buttonByText("Discard changes"));
+    expect(hasText("Discard staged changes?")).toBe(true);
+    await click(dialogButton("Discard"));
+    await vi.waitFor(() =>
+      expect(hasText("Discard staged changes?")).toBe(false)
+    );
+    expect(document.activeElement).toBe(byLabel("Item menu"));
+    await act(async () =>
+      held.resolve({ item: { ...STAGED, hasStagedChanges: false } })
+    );
+    await settle();
+    expect(document.activeElement).toBe(byLabel("Item menu"));
+  });
+
+  test("Back during an upload waits for it, then asks to discard the uploaded image", async () => {
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "cover", label: "Cover", kind: "image" },
+    ]);
+    await openItem(
+      itemOf({
+        data: { title: "Hello", summary: null, author: null, cover: null },
+      })
+    );
+    const held = deferred<CmsResult<{ url: string; path: string }>>();
+    fake.uploadImage.mockReturnValueOnce(held.promise);
+    const input = document
+      .querySelector<HTMLElement>('[data-cms-field="cms-field-cover"]')
+      ?.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).toBeTruthy();
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" })
+    );
+    await act(async () => {
+      input!.files = transfer.files;
+      input!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    expect(fake.uploadImage).toHaveBeenCalledTimes(1);
+    await click(byLabel("Back"));
+    expect(titleInput()).not.toBeNull();
+    await act(async () => {
+      held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
+    });
+    await vi.waitFor(() =>
+      expect(hasText("Discard unsaved changes?")).toBe(true)
+    );
+    expect(titleInput()).not.toBeNull();
+  });
+});

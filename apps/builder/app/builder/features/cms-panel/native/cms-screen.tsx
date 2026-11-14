@@ -781,9 +781,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         : undefined);
 
     // While the editor's Save, Publish, Discard changes, Unpublish, Archive
-    // or Restore runs (every call and the read after), Back, another
-    // collection and Classic CMS wait for it to end, then run the guard on
-    // what it left.
+    // or Restore runs (every call and the read after), or a field's upload
+    // is in flight, Back, another collection and Classic CMS wait for it to
+    // end, then run the guard on what it left.
     const [isEditorBusy, setIsEditorBusy] = useState(false);
     const isEditorBusyRef = useRef(false);
     isEditorBusyRef.current = isEditorBusy;
@@ -803,6 +803,13 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       afterEditorBusy.current = undefined;
       run();
     }, [isEditorBusy]);
+    // a hidden overlay runs no exit that waited: its guard would open over
+    // the canvas
+    useEffect(() => {
+      if (isVisible === false) {
+        afterEditorBusy.current = undefined;
+      }
+    }, [isVisible]);
     const onEditorBusyChange = useCallback((busy: boolean, stay?: boolean) => {
       // an error the editor shows keeps it open: what waited is dropped
       if (busy === false && stay === true) {

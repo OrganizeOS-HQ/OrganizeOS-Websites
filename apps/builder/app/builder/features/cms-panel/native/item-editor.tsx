@@ -165,9 +165,10 @@ export const ItemEditor = ({
    */
   onSchemaStale: () => Promise<void>;
   /**
-   * Save, Publish, Discard changes, Unpublish, Archive or Restore runs:
-   * every call it makes and the read after. `stay`: it ended with an error
-   * the editor shows, so what waited on it is dropped.
+   * Save, Publish, Discard changes, Unpublish, Archive or Restore runs
+   * (every call it makes and the read after), or a field's upload is in
+   * flight. `stay`: it ended with an error the editor shows, so what waited
+   * on it is dropped.
    */
   onBusyChange?: (busy: boolean, stay?: boolean) => void;
   /**
@@ -389,12 +390,23 @@ export const ItemEditor = ({
   useEffect(() => {
     onDirtyChange(isDirty);
   }, [isDirty, onDirtyChange]);
+  // an upload's value lands after it answers: what waits sees it
+  const isEditorBusy = isChainRunning || busyFields.size > 0;
   useEffect(() => {
-    onBusyChange?.(isChainRunning, chainStays.current);
-    chainStays.current = false;
-  }, [isChainRunning, onBusyChange]);
+    onBusyChange?.(isEditorBusy, chainStays.current);
+    if (isEditorBusy === false) {
+      chainStays.current = false;
+    }
+  }, [isEditorBusy, onBusyChange]);
   useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+
+  /** An error shows in the editor: what waited on the chain is dropped. */
+  const showsInPlace = () => {
+    if (isMounted.current) {
+      chainStays.current = true;
+    }
+  };
 
   /**
    * An unknown outcome (4.3.2): read the item before the buttons enable
@@ -416,6 +428,7 @@ export const ItemEditor = ({
       // Reload is the way on; a refusal is answered as on a write, so the
       // view stays unless the session itself needs the person
       setConflict(true);
+      showsInPlace();
       const refusal = getRefusal(result.error, "write");
       if (refusal !== undefined) {
         onRefusal(refusal);
@@ -453,11 +466,13 @@ export const ItemEditor = ({
   ): Promise<void> | undefined => {
     if (failure.error === "conflict") {
       setConflict(true);
+      showsInPlace();
       return;
     }
     // the address clash never carries a field (5.7)
     if (failure.error === "slug_taken") {
       setErrors((current) => ({ ...current, slug: "Address in use" }));
+      showsInPlace();
       return;
     }
     // a field the editor draws, or the address, shows its error in place
@@ -494,12 +509,14 @@ export const ItemEditor = ({
         ...current,
         ...Object.fromEntries(keys.map((key) => [key, text])),
       }));
+      showsInPlace();
       return;
     }
     const fieldText = getFieldErrorText(failure.error);
     const fieldKey = failure.field;
     if (fieldText !== undefined && fieldKey !== undefined) {
       setErrors((current) => ({ ...current, [fieldKey]: fieldText }));
+      showsInPlace();
       return;
     }
     const refusal = getRefusal(failure.error, on);
@@ -1270,7 +1287,8 @@ export const ItemEditor = ({
             discardOpener.current = document.activeElement;
             cancelRef.current?.focus();
           }}
-          // the focus goes back to its opener, else to the Item menu
+          // the focus goes back to its opener, else (gone, or disabled
+          // while Discard runs) to the Item menu
           onCloseAutoFocus={(event) => {
             const element = discardOpener.current;
             discardOpener.current = null;
@@ -1281,7 +1299,12 @@ export const ItemEditor = ({
               element.isConnected
             ) {
               element.focus();
-            } else {
+            }
+            if (
+              element === null ||
+              element === document.body ||
+              document.activeElement !== element
+            ) {
               itemMenuRef.current?.focus();
             }
           }}
