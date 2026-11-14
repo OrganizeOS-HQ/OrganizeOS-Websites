@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  $copyNode,
   $createNodeSelection,
   $createParagraphNode,
   $getAdjacentNode,
@@ -48,8 +49,10 @@ import {
   COPY_COMMAND,
   CUT_COMMAND,
   FORMAT_TEXT_COMMAND,
+  ParagraphNode,
   PASTE_COMMAND,
   SELECTION_CHANGE_COMMAND,
+  SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
   type LexicalEditor,
   type LexicalNode,
   type NodeKey,
@@ -81,6 +84,7 @@ import {
   $createQuoteNode,
   $isHeadingNode,
   $isQuoteNode,
+  HeadingNode,
   QuoteNode,
 } from "@lexical/rich-text";
 import {
@@ -504,8 +508,12 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
         child.remove();
         continue;
       }
+      // a nested list stands in its own item, after the last item made
       if (anchor !== item && $isListItemNode(anchor)) {
-        anchor.append(child);
+        const holder = $createListItemNode();
+        holder.append(child);
+        anchor.insertAfter(holder);
+        anchor = holder;
         continue;
       }
       const before = child.getPreviousSibling();
@@ -579,6 +587,45 @@ const $nestingOf = (node: LexicalNode) => {
 };
 
 /**
+ * A quote at the depth limit in a list item gives way to items at that
+ * item's level, in order: each block's content becomes an item after it, a
+ * list's items join that level, and what followed the quote in its item
+ * follows them.
+ */
+const $liftQuoteOutOfItem = (quote: QuoteNode, item: ListItemNode) => {
+  const rest = quote.getNextSiblings();
+  let at: LexicalNode = item;
+  for (const child of quote.getChildren()) {
+    if ($isListNode(child)) {
+      for (const entry of child.getChildren()) {
+        at.insertAfter(entry);
+        at = entry;
+      }
+      child.remove();
+      continue;
+    }
+    const next = $createListItemNode();
+    if ($isElementNode(child) && child.isInline() === false) {
+      next.append(...child.getChildren());
+      child.remove();
+    } else {
+      next.append(child);
+    }
+    at.insertAfter(next);
+    at = next;
+  }
+  quote.remove();
+  if (rest.length > 0) {
+    const tail = $createListItemNode();
+    tail.append(...rest);
+    at.insertAfter(tail);
+  }
+  if (item.getChildrenSize() === 0) {
+    item.remove();
+  }
+};
+
+/**
  * No list or quote nests past the platform's depth limit, whatever made the
  * nesting (a paste from any source, at any depth): one past it moves up a
  * level, keeping the reading order, until it is within the limit. A list in
@@ -593,6 +640,10 @@ const $liftPastDepthLimit = (node: ListNode | QuoteNode) => {
     return;
   }
   const parent = node.getParent();
+  if ($isQuoteNode(node) && $isListItemNode(parent)) {
+    $liftQuoteOutOfItem(node, parent);
+    return;
+  }
   if ($isQuoteNode(node)) {
     for (const child of node.getChildren()) {
       node.insertBefore(child);
@@ -626,6 +677,34 @@ const $liftPastDepthLimit = (node: ListNode | QuoteNode) => {
   }
 };
 
+/**
+ * A paragraph or heading holds no block: one inside it (a list, a quote, a
+ * paragraph) splits it, standing between its two parts, and a part left
+ * empty goes.
+ */
+const $liftBlocksOutOfTextBlock = (block: ElementNode) => {
+  const inner = block
+    .getChildren()
+    .find(
+      (child) =>
+        ($isElementNode(child) || $isDecoratorNode(child)) &&
+        child.isInline() === false
+    );
+  if (inner === undefined) {
+    return;
+  }
+  const rest = inner.getNextSiblings();
+  block.insertAfter(inner);
+  if (rest.length > 0) {
+    const tail = $copyNode(block);
+    inner.insertAfter(tail);
+    tail.append(...rest);
+  }
+  if (block.getChildrenSize() === 0) {
+    block.remove();
+  }
+};
+
 /** The node rules the read-only check runs too (`registerRichTextTransforms`). */
 const TransformsPlugin = () => {
   const [editor] = useLexicalComposerContext();
@@ -636,7 +715,9 @@ const TransformsPlugin = () => {
         // the live editor's alone: a stored value of these shapes reads lossy
         editor.registerNodeTransform(ListItemNode, $liftBlocksAfterNestedList),
         editor.registerNodeTransform(ListNode, $liftPastDepthLimit),
-        editor.registerNodeTransform(QuoteNode, $liftPastDepthLimit)
+        editor.registerNodeTransform(QuoteNode, $liftPastDepthLimit),
+        editor.registerNodeTransform(ParagraphNode, $liftBlocksOutOfTextBlock),
+        editor.registerNodeTransform(HeadingNode, $liftBlocksOutOfTextBlock)
       ),
     [editor]
   );
@@ -956,6 +1037,10 @@ const $unwrapQuotedBlocks = () => {
     const first = childAt(quote, start) ?? 0;
     const last = childAt(quote, end) ?? children.length - 1;
     if (last < first) {
+      continue;
+    }
+    // a list the selection is in changes its type in place
+    if (children.slice(first, last + 1).every($isListNode)) {
       continue;
     }
     let anchor: LexicalNode = quote;
@@ -1470,13 +1555,13 @@ const $isAfterLineBreak = (point: PointType) => {
   );
 };
 
-/** A key that inserts text: a printable one, or one an IME or dead key sends. */
+/**
+ * A key that inserts text: a printable one, an IME's or a dead key's. A
+ * soft keyboard's key (Unidentified) may delete instead: its beforeinput
+ * says which.
+ */
 const isTextInputKey = (event: KeyboardEvent) =>
-  event.key.length === 1 ||
-  event.key === "Process" ||
-  event.key === "Dead" ||
-  event.key === "Unidentified" ||
-  event.keyCode === 229;
+  event.key.length === 1 || event.key === "Process" || event.key === "Dead";
 
 const $caretBesideSelectedImage = (lastArrow: {
   current: "back" | "forward" | undefined;
@@ -1771,8 +1856,27 @@ const ImageEditingPlugin = () => {
         typeof event.data === "string"
           ? event.data
           : undefined;
+      const deletes =
+        event instanceof InputEvent && event.inputType.startsWith("delete");
+      if (deletes && where === "image") {
+        // a delete with an image selected takes the image
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        editor.update(
+          () => {
+            const image = $selectedImage($getSelection());
+            if (image !== undefined) {
+              $caretBeside(image, false, true);
+              image.remove();
+            }
+          },
+          { discrete: true }
+        );
+        return;
+      }
       if (
         where === undefined ||
+        deletes ||
         (where === "after break" && text === undefined)
       ) {
         return;
@@ -1785,8 +1889,18 @@ const ImageEditingPlugin = () => {
         () => {
           $caretBesideSelectedImage(lastArrow);
           const selection = $getSelection();
-          if (text !== undefined && $isRangeSelection(selection)) {
-            selection.insertText(text);
+          if (text === undefined || $isRangeSelection(selection) === false) {
+            return;
+          }
+          // a newline sent as text is a line break, two a new paragraph
+          for (const part of text.split(/(\r?\n\r?\n|\r?\n)/)) {
+            if (/^(\r?\n){2}$/.test(part)) {
+              selection.insertParagraph();
+            } else if (/^\r?\n$/.test(part)) {
+              selection.insertLineBreak();
+            } else if (part !== "") {
+              selection.insertText(part);
+            }
           }
         },
         { discrete: true }
@@ -1881,6 +1995,19 @@ const ImageEditingPlugin = () => {
               const point = { key: to.key, offset: to.offset, type: to.type };
               selection.anchor.set(point.key, point.offset, point.type);
               selection.focus.set(point.key, point.offset, point.type);
+              lastArrow.current = undefined;
+              return true;
+            }
+            // a line break beside the caret: the caret steps just past it,
+            // so the next arrow reaches what starts the next line
+            const beside = $getAdjacentNode(selection.focus, isBackward);
+            if ($isLineBreakNode(beside)) {
+              event.preventDefault();
+              const parent = beside.getParentOrThrow().getKey();
+              const offset =
+                beside.getIndexWithinParent() + (isBackward ? 0 : 1);
+              selection.anchor.set(parent, offset, "element");
+              selection.focus.set(parent, offset, "element");
               lastArrow.current = undefined;
               return true;
             }
@@ -2071,16 +2198,18 @@ const ImageEditingPlugin = () => {
       editor.registerCommand(
         KEY_DOWN_COMMAND,
         (event) => {
-          if (event.shiftKey === false) {
-            if (event.key !== "Shift") {
-              pinnedAnchor.current = undefined;
-            }
+          if (event.key === "Shift") {
+            return false;
+          }
+          const isExtending =
+            event.shiftKey && /^(Arrow|Home$|End$|Page)/.test(event.key);
+          if (isExtending === false) {
+            pinnedAnchor.current = undefined;
             return false;
           }
           const selection = $getSelection();
           if (
             pinnedAnchor.current === undefined &&
-            /^(Arrow|Home$|End$|Page)/.test(event.key) &&
             $isRangeSelection(selection) &&
             $isAfterLineBreak(selection.anchor)
           ) {
@@ -2122,6 +2251,12 @@ const ImageEditingPlugin = () => {
         },
         COMMAND_PRIORITY_CRITICAL
       ),
+      // an edit ends the extension
+      editor.registerUpdateListener(({ dirtyElements, dirtyLeaves }) => {
+        if (dirtyLeaves.size > 0 || dirtyElements.size > 0) {
+          unpin();
+        }
+      }),
       editor.registerRootListener((rootElement, previous) => {
         previous?.removeEventListener("pointerdown", unpin);
         rootElement?.addEventListener("pointerdown", unpin);
@@ -2332,7 +2467,133 @@ const $codeTextOf = (nodes: LexicalNode[], images: LexicalNode[]) => {
   if (open) {
     lines.push(line);
   }
+  return lines.filter((each) => each !== "").join("\n");
+};
+
+/** Pasted HTML as a code block's text: each block its own line. */
+const htmlCodeText = (html: string) => {
+  const body = new DOMParser().parseFromString(html, "text/html").body;
+  const lines: string[] = [];
+  let line = "";
+  const walk = (node: Node) => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child instanceof Element) {
+        if (child.tagName === "BR") {
+          lines.push(line);
+          line = "";
+          continue;
+        }
+        const isBlock =
+          /^(P|DIV|H[1-6]|LI|UL|OL|BLOCKQUOTE|PRE|FIGURE|FIGCAPTION|TABLE|TR|SECTION|ARTICLE)$/.test(
+            child.tagName
+          );
+        if (isBlock && line !== "") {
+          lines.push(line);
+          line = "";
+        }
+        walk(child);
+        if (isBlock && line !== "") {
+          lines.push(line);
+          line = "";
+        }
+        continue;
+      }
+      line += child.textContent ?? "";
+    }
+  };
+  walk(body);
+  if (line !== "") {
+    lines.push(line);
+  }
   return lines.join("\n");
+};
+
+/** Images and figures after a code block, an image run in a paragraph. */
+const $placeAfterCode = (code: LexicalNode, images: LexicalNode[]) => {
+  let after: LexicalNode = code;
+  let run: ElementNode | undefined;
+  for (const image of images) {
+    if ($isCmsImageNode(image)) {
+      if (run === undefined) {
+        run = $createParagraphNode();
+        after.insertAfter(run);
+        after = run;
+      }
+      run.append(image);
+      continue;
+    }
+    run = undefined;
+    after.insertAfter(image);
+    after = image;
+  }
+};
+
+/**
+ * Nodes a paste or drop inserts (`SELECTION_INSERT_CLIPBOARD_NODES_COMMAND`)
+ * where the selection starts in a code block: the selected content goes,
+ * the nodes' text goes into the block, and their images and figures after
+ * it. Where it starts at a heading's start, blocks go before the heading.
+ */
+const $insertClipboardNodes = (
+  nodes: LexicalNode[],
+  selection: BaseSelection
+) => {
+  if ($isRangeSelection(selection) === false) {
+    return false;
+  }
+  const start = selection.isBackward() ? selection.focus : selection.anchor;
+  const code = $findMatchingParent(start.getNode(), $isCodeNode);
+  if (code !== null) {
+    selection.removeText();
+    const images: LexicalNode[] = [];
+    selection.insertRawText($codeTextOf(nodes, images));
+    const block =
+      $findMatchingParent(selection.anchor.getNode(), $isCodeNode) ?? code;
+    $placeAfterCode(block, images);
+    return true;
+  }
+  const heading = $findMatchingParent(start.getNode(), $isHeadingNode);
+  const first = $isHeadingNode(heading) ? heading.getFirstDescendant() : null;
+  const atStart =
+    $isHeadingNode(heading) &&
+    start.offset === 0 &&
+    (start.key === heading.getKey() ||
+      (first !== null && start.key === first.getKey()));
+  if (
+    atStart === false ||
+    nodes.some(
+      (node) =>
+        ($isElementNode(node) || $isDecoratorNode(node)) &&
+        node.isInline() === false
+    ) === false
+  ) {
+    return false;
+  }
+  selection.removeText();
+  const target = $findMatchingParent(
+    selection.anchor.getNode(),
+    $isHeadingNode
+  );
+  if ($isHeadingNode(target) === false) {
+    return false;
+  }
+  let run: ElementNode | undefined;
+  for (const node of nodes) {
+    if (
+      ($isElementNode(node) || $isDecoratorNode(node)) &&
+      node.isInline() === false
+    ) {
+      run = undefined;
+      target.insertBefore(node);
+      continue;
+    }
+    if (run === undefined) {
+      run = $createParagraphNode();
+      target.insertBefore(run);
+    }
+    run.append(node);
+  }
+  return true;
 };
 
 /**
@@ -2360,27 +2621,10 @@ const $pasteIntoCode = (editor: LexicalEditor, data: DataTransfer) => {
       ? clean.getData("text/plain")
       : $codeTextOf(nodes, images);
   if (nodes === undefined && text === "") {
-    const html = clean.getData("text/html");
-    text =
-      new DOMParser().parseFromString(html, "text/html").body.textContent ?? "";
+    text = htmlCodeText(clean.getData("text/html"));
   }
   selection.insertRawText(text);
-  let after: LexicalNode = code;
-  let run: ElementNode | undefined;
-  for (const image of images) {
-    if ($isCmsImageNode(image)) {
-      if (run === undefined) {
-        run = $createParagraphNode();
-        after.insertAfter(run);
-        after = run;
-      }
-      run.append(image);
-      continue;
-    }
-    run = undefined;
-    after.insertAfter(image);
-    after = image;
-  }
+  $placeAfterCode(code, images);
   return true;
 };
 
@@ -2481,9 +2725,61 @@ const $pointIntoAdjacentBlock = (point: PointType) => {
   }
 };
 
+/**
+ * An element point on an inline element (a link) moves out of it, to a text
+ * point where one is beside it: before the element, the end of the text
+ * before it; after it, the start of the text after it. An offset past an
+ * element's children comes back to its end.
+ */
+const $pointOutOfInline = (point: PointType) => {
+  for (;;) {
+    if (point.type !== "element") {
+      return;
+    }
+    const node = point.getNode();
+    if ($isElementNode(node) === false) {
+      return;
+    }
+    const size = node.getChildrenSize();
+    if (point.offset > size) {
+      point.set(node.getKey(), size, "element");
+    }
+    if (node.isInline() === false) {
+      return;
+    }
+    const at = node.getChildAtIndex(point.offset);
+    const before =
+      point.offset > 0 ? node.getChildAtIndex(point.offset - 1) : null;
+    if ($isTextNode(at)) {
+      point.set(at.getKey(), 0, "text");
+      return;
+    }
+    if ($isTextNode(before)) {
+      point.set(before.getKey(), before.getTextContentSize(), "text");
+      return;
+    }
+    // the place before or after the inline element, in its parent
+    const parent = node.getParentOrThrow();
+    const index = node.getIndexWithinParent() + (point.offset === 0 ? 0 : 1);
+    const outside =
+      point.offset === 0 ? node.getPreviousSibling() : node.getNextSibling();
+    if ($isTextNode(outside)) {
+      point.set(
+        outside.getKey(),
+        point.offset === 0 ? outside.getTextContentSize() : 0,
+        "text"
+      );
+      return;
+    }
+    point.set(parent.getKey(), index, "element");
+  }
+};
+
 const $selectionIntoAdjacentBlocks = () => {
   const selection = $getSelection();
   if ($isRangeSelection(selection)) {
+    $pointOutOfInline(selection.anchor);
+    $pointOutOfInline(selection.focus);
     $pointIntoAdjacentBlock(selection.anchor);
     $pointIntoAdjacentBlock(selection.focus);
   }
@@ -2518,6 +2814,11 @@ const PasteRulesPlugin = () => {
             $selectionIntoAdjacentBlocks,
             COMMAND_PRIORITY_CRITICAL
           )
+        ),
+        editor.registerCommand(
+          SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
+          ({ nodes, selection }) => $insertClipboardNodes(nodes, selection),
+          COMMAND_PRIORITY_NORMAL
         ),
         // above LinkRulePlugin's paste handler
         editor.registerCommand(

@@ -31,6 +31,7 @@ import {
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
 import { $isLinkNode, LinkNode } from "@lexical/link";
 import {
+  $createListItemNode,
   $createListNode,
   $isListItemNode,
   $isListNode,
@@ -454,6 +455,65 @@ const $leaveCode = (node: LexicalNode) => {
 };
 
 /**
+ * A figure in a list item leaves the outermost list around it, which splits
+ * at every level between: what followed the figure keeps its place and
+ * level in a tail of the same list types, each inner level held in an item
+ * at the start of the level around it. An item or level left empty goes.
+ */
+const $liftFigureOutOfLists = (figure: CmsFigureNode, item: ListItemNode) => {
+  const rest = figure.getNextSiblings();
+  let top: ListItemNode = item;
+  let topList = item.getParent();
+  const levels: ListNode[] = [];
+  for (;;) {
+    if ($isListNode(topList) === false) {
+      // an item outside a list: the plain split
+      item.insertAfter(figure);
+      return;
+    }
+    const level = $createListNode(topList.getListType());
+    const inner = levels.at(-1);
+    if (inner === undefined) {
+      if (rest.length > 0) {
+        const tail = $createListItemNode();
+        tail.append(...rest);
+        level.append(tail);
+      }
+    } else if (inner.getChildrenSize() > 0) {
+      const holder = $createListItemNode();
+      holder.append(inner);
+      level.append(holder);
+    }
+    level.append(...top.getNextSiblings());
+    levels.push(level);
+    const parent = topList.getParent();
+    if (
+      $isListItemNode(parent) === false ||
+      $isListNode(parent.getParent()) === false
+    ) {
+      break;
+    }
+    top = parent;
+    topList = parent.getParent();
+  }
+  topList.insertAfter(figure);
+  const outer = levels[levels.length - 1];
+  if (outer.getChildrenSize() > 0) {
+    figure.insertAfter(outer);
+  }
+  // an emptied item goes, and each list and holder item it leaves empty
+  for (
+    let node: LexicalNode | null = item;
+    ($isListItemNode(node) || $isListNode(node)) &&
+    node.getChildrenSize() === 0;
+  ) {
+    const parent: LexicalNode | null = node.getParent();
+    node.remove();
+    node = parent;
+  }
+};
+
+/**
  * A figure stands at the top level only: each block around it splits, the
  * part after the figure following it, and a block left empty goes.
  */
@@ -467,6 +527,10 @@ const $liftFigure = (figure: CmsFigureNode) => {
     parent !== null && $isRootOrShadowRoot(parent) === false;
     parent = figure.getParent()
   ) {
+    if ($isListItemNode(parent)) {
+      $liftFigureOutOfLists(figure, parent);
+      continue;
+    }
     const rest = figure.getNextSiblings();
     parent.insertAfter(figure);
     if (rest.length > 0) {
