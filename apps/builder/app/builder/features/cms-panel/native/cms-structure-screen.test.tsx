@@ -1219,6 +1219,64 @@ describe("the focus as views and dialogs close (review)", () => {
     await settleFrame();
     expect(document.activeElement).toBe(byLabel("People menu"));
   });
+
+  test("Cancel in Remove field returns the focus to the field's menu (round 4)", async () => {
+    mount();
+    await settle();
+    await click(tab("Fields"));
+    await click(fieldRow("summary")!.querySelector("button"));
+    await click(byLabel("Field menu"));
+    await click(menuItem("Remove field"));
+    await click(buttonByText("Cancel", dialog()!));
+    await settleFrame();
+    expect(document.activeElement).toBe(byLabel("Field menu"));
+  });
+
+  test('Escape on a row\'s menu returns the focus to its "..." (round 4)', async () => {
+    answerBoth();
+    mount();
+    await settle();
+    await click(byLabel("People menu"));
+    expect(menuItem("Settings")).toBeDefined();
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await settleFrame();
+    expect(document.activeElement).toBe(byLabel("People menu"));
+  });
+
+  test('Cancel in New collection returns the focus to "+" (round 4)', async () => {
+    mount();
+    await settle();
+    await openNewCollection();
+    await click(buttonByText("Cancel", dialog()!));
+    await settleFrame();
+    expect(document.activeElement).toBe(byLabel("New collection"));
+  });
+
+  test("Create gives the focus to the new row, or to Add field for Custom (round 4)", async () => {
+    createSpeakers();
+    mount();
+    await settle();
+    await openNewCollection();
+    await click(radio("cms-new-collection", "blog"));
+    await click(createButton());
+    await settleFrame();
+    await settleFrame();
+    expect(document.activeElement).toBe(
+      document.querySelector('[data-cms-collection="speakers"] button')
+    );
+    unmount();
+    resetHarness();
+    createSpeakers();
+    mount();
+    await settle();
+    await openNewCollection();
+    await click(radio("cms-new-collection", "custom"));
+    await typeInto(nameInput(), "Speakers");
+    await click(createButton());
+    await settleFrame();
+    await settleFrame();
+    expect(document.activeElement).toBe(byLabel("Add field"));
+  });
 });
 
 test("the Fields list fills its tab's width (review)", async () => {

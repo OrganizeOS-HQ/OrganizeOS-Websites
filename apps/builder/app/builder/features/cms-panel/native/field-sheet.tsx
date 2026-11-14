@@ -771,6 +771,17 @@ export const FieldSheet = ({
             event.preventDefault();
             cancelRef.current?.focus();
           }}
+          // the "..." it was opened from; a removal closes the sheet, which
+          // returns the focus itself
+          onCloseAutoFocus={(event) => {
+            const menu = document.querySelector<HTMLElement>(
+              '[data-cms-field-sheet] [aria-label="Field menu"]'
+            );
+            if (menu !== null) {
+              event.preventDefault();
+              menu.focus();
+            }
+          }}
         >
           <DialogActions>
             <Button

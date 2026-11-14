@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { useStore } from "@nanostores/react";
 import {
   theme,
@@ -234,6 +234,8 @@ export const CollectionActionsMenu = ({
 }) => {
   const { allowDynamicData } = useStore($permissions);
   const [isListOpen, setIsListOpen] = useState(false);
+  // Escape gives the focus back to "..."; a chosen item places it itself
+  const escaped = useRef(false);
   const [isBusy, setIsBusy] = useState(false);
   const gated = allowDynamicData === false;
 
@@ -288,7 +290,15 @@ export const CollectionActionsMenu = ({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          onCloseAutoFocus={(event) => event.preventDefault()}
+          onEscapeKeyDown={() => {
+            escaped.current = true;
+          }}
+          onCloseAutoFocus={(event) => {
+            if (escaped.current === false) {
+              event.preventDefault();
+            }
+            escaped.current = false;
+          }}
         >
           {leadingItems}
           {itemPage === undefined ? (

@@ -244,8 +244,10 @@ export const NewCollectionDialog = ({
   initialType,
   onRetryTemplates,
   templatesPending,
+  onCloseAutoFocus,
   ...callbacks
 }: NewCollectionCallbacks & {
+  onCloseAutoFocus?: (event: Event) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   structure: CmsStructureSource;
@@ -286,6 +288,7 @@ export const NewCollectionDialog = ({
       <DialogContent
         width={420}
         aria-describedby={undefined}
+        onCloseAutoFocus={onCloseAutoFocus}
         // the name, not the first option, takes the focus
         onOpenAutoFocus={(event) => {
           const name =

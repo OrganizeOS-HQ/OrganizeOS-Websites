@@ -596,6 +596,10 @@ export const useCmsStructure = ({
     }
   }, [view, viewCollectionId, collectionId, closeView]);
 
+  // the collection New collection created, for the focus once it closes
+  const createdFocus = useRef<{ slug: string; custom: boolean } | undefined>(
+    undefined
+  );
   // The focus: a view that opens takes it on Back, unless the view already
   // holds it; a view that closes gives it to the row it was opened from
   const shownView = useRef<
@@ -628,18 +632,37 @@ export const useCmsStructure = ({
       if (previous === undefined || lost === false) {
         return;
       }
+      // the row the view was opened from; when it is gone (an address
+      // change, another tab), the nearest control that is drawn
       const target =
         previous.view.type === "field" ? previous.view.target : undefined;
-      const selector =
+      const selectors =
         target === undefined
-          ? previous.slug === undefined
-            ? undefined
-            : `[data-cms-collection="${CSS.escape(previous.slug)}"] button`
-          : "key" in target
-            ? `[data-cms-field-row="${CSS.escape(target.key)}"] button`
-            : '[aria-label="Add field"]';
-      if (selector !== undefined) {
-        document.querySelector<HTMLElement>(selector)?.focus();
+          ? [
+              previous.slug === undefined
+                ? undefined
+                : `[data-cms-collection="${CSS.escape(previous.slug)}"] button`,
+              "[data-cms-collection][data-current] button",
+              "[data-cms-collection] button",
+              '[aria-label="New collection"]',
+            ]
+          : [
+              "key" in target
+                ? `[data-cms-field-row="${CSS.escape(target.key)}"] button`
+                : undefined,
+              "[data-cms-field-row] button",
+              '[aria-label="Add field"]',
+              "[data-cms-collection][data-current] button",
+            ];
+      for (const selector of selectors) {
+        const element =
+          selector === undefined
+            ? null
+            : document.querySelector<HTMLElement>(selector);
+        if (element !== null && element.closest("[hidden]") === null) {
+          element.focus();
+          return;
+        }
       }
     });
     return () => cancelAnimationFrame(frame);
@@ -1068,6 +1091,10 @@ export const useCmsStructure = ({
 
   const onCreated = (created: CmsCollectionSummary, type: string) => {
     pendingCreate.current = undefined;
+    createdFocus.current = {
+      slug: created.slug,
+      custom: type === CUSTOM_COLLECTION_TYPE,
+    };
     setIsNewOpen(false);
     written({ kind: "created", collection: created });
     setStructureVersion((current) => current + 1);
@@ -1083,6 +1110,46 @@ export const useCmsStructure = ({
   };
 
   foundCreated.current = onCreated;
+
+  // Cancel returns to "+"; a create, to the new row (Add field for Custom)
+  const focusAfterNewCollection = (event: Event) => {
+    event.preventDefault();
+    const created = createdFocus.current;
+    createdFocus.current = undefined;
+    const selectors =
+      created === undefined
+        ? ['[aria-label="New collection"]']
+        : created.custom
+          ? [
+              '[aria-label="Add field"]',
+              `[data-cms-collection="${CSS.escape(created.slug)}"] button`,
+            ]
+          : [`[data-cms-collection="${CSS.escape(created.slug)}"] button`];
+    let frames = 0;
+    const attempt = () => {
+      const active = document.activeElement;
+      // a guard dialog or another view took the focus
+      if (active !== null && active !== document.body) {
+        return;
+      }
+      for (const selector of selectors) {
+        const element = document.querySelector<HTMLElement>(selector);
+        if (element !== null && element.closest("[hidden]") === null) {
+          element.focus();
+          return;
+        }
+      }
+      frames += 1;
+      if (frames < 30) {
+        requestAnimationFrame(attempt);
+      } else {
+        document
+          .querySelector<HTMLElement>('[aria-label="New collection"]')
+          ?.focus();
+      }
+    };
+    attempt();
+  };
 
   const createCallbacks = {
     onCreated,
@@ -1240,6 +1307,7 @@ export const useCmsStructure = ({
         limits={limits}
         initialType={initial?.newCollectionType}
         templatesPending={templates === undefined && structureFailed === false}
+        onCloseAutoFocus={focusAfterNewCollection}
         onRetryTemplates={
           templates === undefined && structureFailed
             ? retryStructure

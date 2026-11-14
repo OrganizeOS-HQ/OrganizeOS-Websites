@@ -12,6 +12,7 @@ import {
   SmallIconButton,
 } from "@webstudio-is/design-system";
 import { EllipsesIcon } from "@webstudio-is/icons";
+import { useRef } from "react";
 import type { CmsCollectionSummary } from "./cms-source";
 
 export const StructureRowMenu = ({
@@ -22,23 +23,35 @@ export const StructureRowMenu = ({
   collection: CmsCollectionSummary;
   onSettings: () => void;
   onDelete: () => void;
-}) => (
-  <DropdownMenu modal={false}>
-    <DropdownMenuTrigger asChild>
-      <SmallIconButton
-        aria-label={`${collection.name} menu`}
-        icon={<EllipsesIcon />}
-      />
-    </DropdownMenuTrigger>
-    <DropdownMenuContent
-      align="end"
-      onCloseAutoFocus={(event) => event.preventDefault()}
-    >
-      <DropdownMenuItem onSelect={onSettings}>Settings</DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem destructive onSelect={onDelete}>
-        Delete
-      </DropdownMenuItem>
-    </DropdownMenuContent>
-  </DropdownMenu>
-);
+}) => {
+  // Escape gives the focus back to "..."; a chosen item places it itself
+  const escaped = useRef(false);
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <SmallIconButton
+          aria-label={`${collection.name} menu`}
+          icon={<EllipsesIcon />}
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        onEscapeKeyDown={() => {
+          escaped.current = true;
+        }}
+        onCloseAutoFocus={(event) => {
+          if (escaped.current === false) {
+            event.preventDefault();
+          }
+          escaped.current = false;
+        }}
+      >
+        <DropdownMenuItem onSelect={onSettings}>Settings</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem destructive onSelect={onDelete}>
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};

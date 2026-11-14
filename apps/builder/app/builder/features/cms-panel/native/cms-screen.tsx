@@ -774,8 +774,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
      * `movesFocus`: after Discard, the action runs once the dialog has
      * closed.
      */
+    // what had the focus when the guard asked: Keep editing gives it back
+    const guardOpener = useRef<Element | null>(null);
     const guard = (run: () => void, { movesFocus = false } = {}) => {
       if (isEditorDirty) {
+        guardOpener.current = document.activeElement;
         setPending({ run, movesFocus });
         return;
       }
@@ -1232,10 +1235,17 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
             }}
             onCloseAutoFocus={(event) => {
               const run = runOnDialogClose.current;
+              const opener = guardOpener.current;
+              guardOpener.current = null;
               if (run !== undefined) {
                 runOnDialogClose.current = undefined;
                 event.preventDefault();
                 run();
+                return;
+              }
+              if (opener instanceof HTMLElement && opener.isConnected) {
+                event.preventDefault();
+                opener.focus();
               }
             }}
           >

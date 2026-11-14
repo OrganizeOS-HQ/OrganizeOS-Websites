@@ -79,7 +79,7 @@ describe("collection settings", () => {
     expect(input("name")?.value).toBe("Posts");
     expect(input("singular")?.value).toBe("Post");
     expect(input("slug")?.value).toBe("posts");
-    expect(saveButton()?.disabled).toBe(true);
+    expect(saveButton()).toHaveProperty("disabled", true);
     await act(async () => userEvent.hover(byLabel("Collection menu")!));
     await vi.waitFor(() =>
       expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
@@ -93,7 +93,7 @@ describe("collection settings", () => {
     await typeInto(input("name"), "Articles");
     expect(saveButton()?.disabled).toBe(false);
     await typeInto(input("name"), "Posts");
-    expect(saveButton()?.disabled).toBe(true);
+    expect(saveButton()).toHaveProperty("disabled", true);
   });
 
   test("errors under their controls: Required, Lower-case letters, digits, hyphens, Address in use (slug_taken)", async () => {
@@ -193,7 +193,7 @@ describe("collection settings", () => {
     });
     await click(saveButton());
     expect(input("name")?.value).toBe("Articles");
-    expect(saveButton()?.disabled).toBe(true);
+    expect(saveButton()).toHaveProperty("disabled", true);
     expect($cmsNativeDirty.get()).toBe(false);
 
     await typeInto(input("name"), "Stories");
@@ -247,7 +247,7 @@ describe("collection settings", () => {
     await click(saveButton());
     expect(error).not.toHaveBeenCalled();
     expect(success).not.toHaveBeenCalled();
-    expect(saveButton()?.disabled).toBe(true);
+    expect(saveButton()).toHaveProperty("disabled", true);
     expect(crumb()[0]).toBe("Articles");
     expect(harness.structure.updateCollection).toHaveBeenLastCalledWith(
       POSTS.id,
@@ -435,4 +435,32 @@ test("a Save answered unavailable, then a failed reread: every toast shares one 
   for (const call of error.mock.calls) {
     expect(call[1]).toEqual(STRUCTURE_FAILURE_TOAST);
   }
+});
+
+describe("the focus in the settings view (round 4)", () => {
+  const settleFrame = async () => {
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    await settle();
+  };
+
+  test("a delete cancelled from the view's Collection menu returns the focus to that menu", async () => {
+    await openSettings();
+    await click(byLabel("Collection menu"));
+    await click(menuItem("Delete collection"));
+    await click(buttonByText("Cancel", dialog()!));
+    await settleFrame();
+    expect(document.activeElement).toBe(byLabel("Collection menu"));
+  });
+
+  test("Save keeps the focus in the view: on the first setting once Save disables", async () => {
+    answerSaves();
+    await openSettings();
+    await typeInto(input("name"), "Articles");
+    await click(saveButton());
+    await settleFrame();
+    expect(saveButton()).toHaveProperty("disabled", true);
+    expect(document.activeElement).toBe(input("name"));
+  });
 });

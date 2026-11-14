@@ -172,15 +172,26 @@ export const DeleteCollectionDialog = ({
         // focus, while the row is listed
         onCloseAutoFocus={(event) => {
           const slug = lastSlug.current;
-          const trigger =
+          // the menu it was opened from: the settings view's own, else the
+          // row's; after a delete, the first row or New collection
+          const candidates = [
+            '[data-cms-collection-settings] [aria-label="Collection menu"]',
             slug === undefined
-              ? null
-              : document.querySelector<HTMLElement>(
-                  `[data-cms-collection="${CSS.escape(slug)}"] [data-cms-row-menu] button`
-                );
-          if (trigger !== null) {
-            event.preventDefault();
-            trigger.focus();
+              ? undefined
+              : `[data-cms-collection="${CSS.escape(slug)}"] [data-cms-row-menu] button`,
+            "[data-cms-collection] button",
+            '[aria-label="New collection"]',
+          ];
+          for (const selector of candidates) {
+            const target =
+              selector === undefined
+                ? null
+                : document.querySelector<HTMLElement>(selector);
+            if (target !== null) {
+              event.preventDefault();
+              target.focus();
+              return;
+            }
           }
         }}
       >
@@ -344,6 +355,17 @@ export const CollectionSettings = ({
     setValues(saved);
     setIsConflict(false);
     onSaved(baseline, { ...saved, updatedAt: result.collection.updatedAt });
+    // Save disables itself once saved: the focus goes to the first setting
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (
+        active === null ||
+        active === document.body ||
+        active.matches(":disabled")
+      ) {
+        document.querySelector<HTMLElement>("#cms-settings-name")?.focus();
+      }
+    });
   };
 
   const disabled = canManage === false || busy;
