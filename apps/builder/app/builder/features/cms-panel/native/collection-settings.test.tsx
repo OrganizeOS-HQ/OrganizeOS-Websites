@@ -296,7 +296,8 @@ describe("collection settings", () => {
     expect(buttonByText("Close", dialog()!)).toBeDefined();
   });
 
-  test("referenced after opening rereads E21 and shows the in-use state", async () => {
+  test("referenced after opening rereads E21 and shows the in-use state, with no toast", async () => {
+    const error = vi.spyOn(toast, "error");
     await openSettings();
     await click(byLabel("Collection menu"));
     await click(menuItem("Delete collection"));
@@ -312,6 +313,7 @@ describe("collection settings", () => {
     await click(buttonByText("Delete", dialog()!));
     expect(dialog()?.textContent).toContain("Posts is in use");
     expect(dialog()?.textContent).toContain("Used by Events");
+    expect(error).not.toHaveBeenCalled();
   });
 
   test("deleting the open collection closes its view, clears $cmsNativeDirty, and slice 1 opens the first listed", async () => {

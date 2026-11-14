@@ -158,6 +158,16 @@ describe("the tabs and the structure reads", () => {
     mount();
     await settle();
     expect(hasText("Signed out of OrganizeOS")).toBe(true);
+    // a refresh whose other reads answer, with E20 still unauthorized: the
+    // line is E20's, so it stays
+    harness.structure.getStructure.mockResolvedValueOnce({
+      error: "unauthorized",
+    });
+    act(() => refreshCmsNative());
+    await settle();
+    expect(harness.fake.listCollections.mock.calls.length).toBeGreaterThan(1);
+    expect(harness.structure.getStructure).toHaveBeenCalledTimes(2);
+    expect(hasText("Signed out of OrganizeOS")).toBe(true);
     await reopen();
     expect(hasText("Signed out of OrganizeOS")).toBe(false);
   });
