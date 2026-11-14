@@ -110,7 +110,10 @@ describe("the forms door client", () => {
     >[1];
     expect(await createSiteForm(projectId, body)).toEqual({
       ok: true,
-      value: { id: "{form id}" },
+      value: {
+        id: "{form id}",
+        fields: createFixture.answer.form.fields,
+      },
     });
     expect(sent()).toMatchObject({
       path: `${base}${createFixture.request.path}`,

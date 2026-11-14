@@ -141,7 +141,20 @@ const doorFormSchema: z.ZodType<DoorForm> = z.object({
 
 const formsSchema = z.object({ forms: z.array(doorFormSchema) });
 
-const createdSchema = z.object({ form: z.object({ id: z.string() }) });
+const doorFormFieldSchema: z.ZodType<DoorFormField> = z.object({
+  name: z.string(),
+  label: z.string(),
+  type: z.string(),
+  required: z.boolean(),
+  options: z.array(z.string()).optional(),
+});
+
+/** F3's answer: the new form's id and its fields as the platform resolved them. */
+export type CreatedSiteForm = { id: string; fields: DoorFormField[] };
+
+const createdSchema = z.object({
+  form: z.object({ id: z.string(), fields: z.array(doorFormFieldSchema) }),
+});
 
 const savedSchema = z.object({ ok: z.literal(true) });
 
@@ -228,7 +241,7 @@ export const createSiteForm = (projectId: string, body: CreateSiteFormBody) =>
     formsDoorPath(projectId, "forms"),
     createdSchema,
     { method: "POST", json: body },
-    ({ form }) => ({ id: form.id })
+    ({ form }): CreatedSiteForm => ({ id: form.id, fields: form.fields })
   );
 
 export const saveFormSettings = (

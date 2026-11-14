@@ -45,6 +45,25 @@ type Section = {
 };
 
 /**
+ * The site forms (docs/ORGANIZEOS-FORK.md section 9, "Site forms"; builder
+ * forms spec 5.1): with `ORGANIZEOS_SITE_FORMS` on, the "Signups" section is
+ * "Forms", listing the cards and the Email bar under the insert names, and the
+ * stacked Signup Form is not offered; with it off, the cards are not offered.
+ */
+const formsSection: Section = {
+  label: "Forms",
+  blocks: ["SignupFormCard", "SignupFormInline", "ContactFormCard"],
+};
+
+const formsLabels: Record<string, string> = {
+  SignupFormCard: "Email & SMS updates",
+  SignupFormInline: "Email bar",
+  ContactFormCard: "Contact us",
+};
+
+const siteFormCards = ["SignupFormCard", "ContactFormCard"];
+
+/**
  * The Shop blocks, by name without the namespace. They are offered only while
  * the deployment's switch is on (`shopBlocksEnabled`, `ORGANIZEOS_SHOP_BLOCKS`).
  */
@@ -73,6 +92,8 @@ const sections: Section[] = [
     label: "Events",
     blocks: ["EventList", "EventCard", "RsvpForm"],
   },
+  // the forms section: "Signups" here, or "Forms" with the site forms switch
+  // on (formsSection)
   {
     label: "Signups",
     blocks: ["SignupForm", "SignupFormInline"],
@@ -98,13 +119,28 @@ export type BlockSection = {
 };
 
 export const groupOrganizeosBlocks = (
-  templates: Map<string, GeneratedTemplateMeta>,
-  metas: Map<string, WsComponentMeta>
+  allTemplates: Map<string, GeneratedTemplateMeta>,
+  metas: Map<string, WsComponentMeta>,
+  { siteForms = false }: { siteForms?: boolean } = {}
 ): BlockSection[] => {
   const prefix = `${organizeosNamespace}:`;
+  const hidden = new Set(
+    (siteForms ? ["SignupForm"] : siteFormCards).map(
+      (block) => `${prefix}${block}`
+    )
+  );
+  const templates = new Map(
+    [...allTemplates].filter(([name]) => hidden.has(name) === false)
+  );
+  const sectionsOffered = siteForms
+    ? sections.map((section) =>
+        section.label === "Signups" ? formsSection : section
+      )
+    : sections;
   const toBlock = (name: string, meta: GeneratedTemplateMeta): Block => ({
     name,
     label:
+      (siteForms ? formsLabels[name.slice(prefix.length)] : undefined) ??
       meta.label ??
       metas.get(name)?.label ??
       getInstanceLabel({ component: name }),
@@ -113,7 +149,7 @@ export const groupOrganizeosBlocks = (
     firstInstance: meta.template.instances[0],
   });
   const listed = new Set<string>();
-  const grouped: BlockSection[] = sections.map(({ label, blocks }) => {
+  const grouped: BlockSection[] = sectionsOffered.map(({ label, blocks }) => {
     const sectionBlocks: Block[] = [];
     for (const block of blocks) {
       const name = `${prefix}${block}`;
@@ -164,7 +200,9 @@ export const $organizeosComponentGroups = computed(
         : new Map(
             [...templates].filter(([name]) => isShopBlock(name) === false)
           );
-    const blockSections = groupOrganizeosBlocks(offered, metas);
+    const blockSections = groupOrganizeosBlocks(offered, metas, {
+      siteForms: site.siteFormsEnabled === true,
+    });
     if (blockSections.length === 0) {
       return [];
     }

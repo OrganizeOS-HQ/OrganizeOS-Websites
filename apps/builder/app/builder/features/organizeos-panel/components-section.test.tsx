@@ -409,6 +409,49 @@ describe("$organizeosComponentGroups", () => {
     }
   );
 
+  // builder forms spec 5.1; plan 2026-11-13-builder-forms-fork-p2, Task 8, P9
+  test("with the site forms switch on, a Forms group lists Email & SMS updates, Email bar and Contact us, and not the stacked Signup Form", () => {
+    registerLibrary(organizeosTemplates);
+    $organizeosSite.set({ ...site, siteFormsEnabled: true });
+    const metasOf = $organizeosComponentGroups.get()[0].metas;
+    const forms = metasOf.filter((meta) =>
+      [
+        `${namespace}:SignupFormCard`,
+        `${namespace}:SignupFormInline`,
+        `${namespace}:ContactFormCard`,
+      ].includes(meta.name)
+    );
+    expect(forms.map((meta) => [meta.name, meta.label])).toEqual([
+      [`${namespace}:SignupFormCard`, "Email & SMS updates"],
+      [`${namespace}:SignupFormInline`, "Email bar"],
+      [`${namespace}:ContactFormCard`, "Contact us"],
+    ]);
+    expect(metasOf.map((meta) => meta.name)).not.toContain(
+      `${namespace}:SignupForm`
+    );
+    const blocks = groupOrganizeosBlocks($registeredTemplates.get(), metas, {
+      siteForms: true,
+    });
+    expect(
+      blocks.find((section) => section.label === "Forms")?.blocks.length
+    ).toBe(3);
+    expect(blocks.map((section) => section.label)).not.toContain("Signups");
+  });
+
+  test.each([undefined, false])(
+    "with the site forms switch %s, Signups as today and neither card offered, More included",
+    (siteFormsEnabled) => {
+      registerLibrary(organizeosTemplates);
+      $organizeosSite.set({ ...site, siteFormsEnabled });
+      const names = $organizeosComponentGroups
+        .get()
+        .flatMap((group) => group.metas.map((meta) => meta.name));
+      expect(names).not.toContain(`${namespace}:SignupFormCard`);
+      expect(names).not.toContain(`${namespace}:ContactFormCard`);
+      expect(names).toContain(`${namespace}:SignupForm`);
+    }
+  );
+
   test("a denied org gets no shop block whatever the switch", () => {
     registerLibrary(organizeosTemplates);
     $organizeosSite.set({
