@@ -2364,3 +2364,294 @@ describe("the Item menu's actions (verification)", () => {
     });
   });
 });
+
+describe("the editor's exits wait on what it shows (W3g)", () => {
+  const STAGED = itemOf({
+    status: "published",
+    hasStagedChanges: true,
+    updatedAt: VERSION,
+  });
+
+  test.each([
+    ["Publish changes", "slug_taken", "Address in use"],
+    ["Publish changes", "conflict", "Changed by someone else"],
+    ["Discard changes", "conflict", "Changed by someone else"],
+  ] as const)(
+    "Back during %s answered %s keeps the editor with %s",
+    async (action, code, text) => {
+      const held = deferred<CmsResult<{ item: CmsItem }>>();
+      fake.publishItem.mockReturnValue(held.promise);
+      fake.discardItemChanges.mockReturnValue(held.promise);
+      await openItem(STAGED);
+      await click(buttonByText(action));
+      if (action === "Discard changes") {
+        await click(dialogButton("Discard"));
+      }
+      await click(byLabel("Back"));
+      expect(titleInput()).not.toBeNull();
+      await act(async () => held.resolve({ error: code }));
+      await settle();
+      expect(titleInput()).not.toBeNull();
+      expect(hasText(text)).toBe(true);
+    }
+  );
+
+  test("Back waiting on Publish is dropped when the overlay is hidden", async () => {
+    const held = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.publishItem.mockReturnValue(held.promise);
+    const draft = itemOf({ updatedAt: VERSION });
+    await openItem(draft);
+    await click(buttonByText("Publish"));
+    await click(byLabel("Back"));
+    expect(titleInput()).not.toBeNull();
+    act(() => {
+      root?.render(
+        createElement(
+          TooltipProvider,
+          null,
+          createElement(CmsScreen, {
+            source: fake,
+            hidden: true,
+            isVisible: false,
+            onClose: vi.fn(),
+            onShowClassic: vi.fn(),
+          })
+        )
+      );
+    });
+    await act(async () =>
+      held.resolve({
+        item: { ...draft, status: "published", updatedAt: V2 },
+      })
+    );
+    await settle();
+    expect(titleInput()).not.toBeNull();
+  });
+
+  test("Discard confirmed from the wide header puts the focus on the Item menu while E10 runs", async () => {
+    const held = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.discardItemChanges.mockReturnValue(held.promise);
+    await openItem(STAGED);
+    await click(buttonByText("Discard changes"));
+    expect(hasText("Discard staged changes?")).toBe(true);
+    await click(dialogButton("Discard"));
+    await vi.waitFor(() =>
+      expect(hasText("Discard staged changes?")).toBe(false)
+    );
+    expect(document.activeElement).toBe(byLabel("Item menu"));
+    await act(async () =>
+      held.resolve({ item: { ...STAGED, hasStagedChanges: false } })
+    );
+    await settle();
+    expect(document.activeElement).toBe(byLabel("Item menu"));
+  });
+
+  test("Back during an upload waits for it, then asks to discard the uploaded image", async () => {
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "cover", label: "Cover", kind: "image" },
+    ]);
+    await openItem(
+      itemOf({
+        data: { title: "Hello", summary: null, author: null, cover: null },
+      })
+    );
+    const held = deferred<CmsResult<{ url: string; path: string }>>();
+    fake.uploadImage.mockReturnValueOnce(held.promise);
+    const input = document
+      .querySelector<HTMLElement>('[data-cms-field="cms-field-cover"]')
+      ?.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).toBeTruthy();
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" })
+    );
+    await act(async () => {
+      input!.files = transfer.files;
+      input!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    expect(fake.uploadImage).toHaveBeenCalledTimes(1);
+    await click(byLabel("Back"));
+    expect(titleInput()).not.toBeNull();
+    await act(async () => {
+      held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
+    });
+    await vi.waitFor(() =>
+      expect(hasText("Discard unsaved changes?")).toBe(true)
+    );
+    expect(titleInput()).not.toBeNull();
+  });
+});
+
+describe("an upload's end and the exits (W3g round 3)", () => {
+  /** Opens an item with an image field and starts an upload held until resolved. */
+  const startUpload = async (item: CmsItem) => {
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "cover", label: "Cover", kind: "image" },
+    ]);
+    await openItem({
+      ...item,
+      data: { title: "Hello", summary: null, author: null, cover: null },
+    });
+    const held = deferred<CmsResult<{ url: string; path: string }>>();
+    fake.uploadImage.mockReturnValueOnce(held.promise);
+    const input = document
+      .querySelector<HTMLElement>('[data-cms-field="cms-field-cover"]')
+      ?.querySelector<HTMLInputElement>('input[type="file"]');
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" })
+    );
+    await act(async () => {
+      input!.files = transfer.files;
+      input!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    expect(fake.uploadImage).toHaveBeenCalledTimes(1);
+    return held;
+  };
+
+  test("Back during an upload answered unavailable keeps the editor with Not uploaded", async () => {
+    const held = await startUpload(itemOf());
+    await click(byLabel("Back"));
+    expect(titleInput()).not.toBeNull();
+    await act(async () => held.resolve({ error: "unavailable" }));
+    await vi.waitFor(() => expect(hasText("Not uploaded")).toBe(true));
+    await settle();
+    expect(titleInput()).not.toBeNull();
+    expect(hasText("Not uploaded")).toBe(true);
+  });
+
+  test("Back chosen after a Discard error shown during an upload runs once the upload lands", async () => {
+    const staged = itemOf({
+      status: "published",
+      hasStagedChanges: true,
+      updatedAt: VERSION,
+    });
+    const held = await startUpload(staged);
+    fake.discardItemChanges.mockResolvedValue({ error: "conflict" });
+    await click(buttonByText("Discard changes"));
+    await click(dialogButton("Discard"));
+    expect(hasText("Changed by someone else")).toBe(true);
+    // Back, chosen after the error showed, waits for the upload
+    await click(byLabel("Back"));
+    expect(titleInput()).not.toBeNull();
+    await act(async () => {
+      held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
+    });
+    await vi.waitFor(() =>
+      expect(hasText("Discard unsaved changes?")).toBe(true)
+    );
+  });
+});
+
+describe("each upload's error is reported as it ends (W3g round 4)", () => {
+  const STAGED = itemOf({
+    status: "published",
+    hasStagedChanges: true,
+    updatedAt: VERSION,
+  });
+
+  /** Opens `item` with Cover and Hero image fields. */
+  const openWithImages = async (item: CmsItem) => {
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "cover", label: "Cover", kind: "image" },
+      { key: "hero", label: "Hero", kind: "image" },
+    ]);
+    await openItem({
+      ...item,
+      data: {
+        title: "Hello",
+        summary: null,
+        author: null,
+        cover: null,
+        hero: null,
+      },
+    });
+  };
+
+  /** Starts an upload into `key`, held until resolved. */
+  const upload = async (key: string) => {
+    const held = deferred<CmsResult<{ url: string; path: string }>>();
+    fake.uploadImage.mockReturnValueOnce(held.promise);
+    const input = document
+      .querySelector<HTMLElement>(`[data-cms-field="cms-field-${key}"]`)
+      ?.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).toBeTruthy();
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([1, 2, 3])], `${key}.png`, {
+        type: "image/png",
+      })
+    );
+    await act(async () => {
+      input!.files = transfer.files;
+      input!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    return held;
+  };
+
+  test("two uploads, Cover fails, then Back: once Hero lands the guard asks", async () => {
+    await openWithImages(itemOf());
+    const cover = await upload("cover");
+    const hero = await upload("hero");
+    await act(async () => cover.resolve({ error: "unavailable" }));
+    await vi.waitFor(() => expect(hasText("Not uploaded")).toBe(true));
+    await settle();
+    await click(byLabel("Back"));
+    expect(titleInput()).not.toBeNull();
+    await act(async () => {
+      hero.resolve({ url: "https://cdn.example.org/h.png", path: "h.png" });
+    });
+    await vi.waitFor(() =>
+      expect(hasText("Discard unsaved changes?")).toBe(true)
+    );
+  });
+
+  test("an upload error during a held Discard, then Back: Back runs once the Discard succeeds", async () => {
+    await openWithImages(STAGED);
+    const cover = await upload("cover");
+    const discarded = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.discardItemChanges.mockReturnValue(discarded.promise);
+    await click(buttonByText("Discard changes"));
+    await click(dialogButton("Discard"));
+    await act(async () => cover.resolve({ error: "unavailable" }));
+    await vi.waitFor(() => expect(hasText("Not uploaded")).toBe(true));
+    await settle();
+    await click(byLabel("Back"));
+    expect(titleInput()).not.toBeNull();
+    await act(async () =>
+      discarded.resolve({
+        item: { ...STAGED, hasStagedChanges: false, updatedAt: V2 },
+      })
+    );
+    await settle();
+    expect(titleInput()).toBeNull();
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+  });
+
+  test("Back chosen before an error shown while an upload still runs is dropped, and no guard opens when it lands", async () => {
+    await openWithImages(STAGED);
+    const cover = await upload("cover");
+    const discarded = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.discardItemChanges.mockReturnValue(discarded.promise);
+    await click(buttonByText("Discard changes"));
+    await click(dialogButton("Discard"));
+    await click(byLabel("Back"));
+    await act(async () => discarded.resolve({ error: "conflict" }));
+    await settle();
+    expect(hasText("Changed by someone else")).toBe(true);
+    await act(async () => {
+      cover.resolve({ url: "https://cdn.example.org/c.png", path: "c.png" });
+    });
+    await settle();
+    await vi.waitFor(() => expect($cmsNativeDirty.get()).toBe(true));
+    await settle();
+    expect(titleInput()).not.toBeNull();
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+  });
+});
