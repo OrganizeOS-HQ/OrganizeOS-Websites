@@ -227,12 +227,16 @@ describe("matchCmsPath", () => {
     });
   });
 
-  test.each(["optionKey=kind", "status=live", "sort=field:Bad-key", "zz=1"])(
-    "E3 with %s is no match",
-    (search) =>
-      expect(
-        match("GET", `collections/${c}/items`, `?${search}`)
-      ).toBeUndefined()
+  test.each([
+    "optionKey=kind",
+    "optionValue=x",
+    "direction=up",
+    `optionKey=kind&optionValue=${"x".repeat(81)}`,
+    "status=live",
+    "sort=field:Bad-key",
+    "zz=1",
+  ])("E3 with %s is no match", (search) =>
+    expect(match("GET", `collections/${c}/items`, `?${search}`)).toBeUndefined()
   );
 
   test.each(["Q&A night", "Café", "a+b %2F c"])(

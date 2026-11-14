@@ -58,10 +58,17 @@ export const FilterMenu = ({
   onChange: (next: CmsListState) => void;
 }) => {
   const count = filterCount(list);
+  // an applied option filter whose field is not loaded keeps a group, so it
+  // shows and clears
+  const optionField: Pick<CmsField, "key" | "label" | "options"> | null =
+    filterField ??
+    (list.option === null
+      ? null
+      : { key: list.option.key, label: list.option.key, options: [] });
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button color="ghost" data-cms-filter>
+        <Button color="ghost" data-cms-filter css={{ flexShrink: 0 }}>
           Filter
           {count > 0 && (
             <Text
@@ -98,24 +105,24 @@ export const FilterMenu = ({
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
-        {filterField !== null && (
+        {optionField !== null && (
           <>
             <DropdownMenuLabel>
-              <RadioLabel>{filterField.label}</RadioLabel>
+              <RadioLabel>{optionField.label}</RadioLabel>
             </DropdownMenuLabel>
             <DropdownMenuRadioGroup
               value={list.option?.value ?? ""}
               onValueChange={(value) =>
                 onChange({
                   ...list,
-                  option: value === "" ? null : { key: filterField.key, value },
+                  option: value === "" ? null : { key: optionField.key, value },
                 })
               }
             >
               <DropdownMenuRadioItem value="" icon={<MenuCheckedIcon />}>
-                <RadioLabel>{`Any ${filterField.label.toLowerCase()}`}</RadioLabel>
+                <RadioLabel>{`Any ${optionField.label.toLowerCase()}`}</RadioLabel>
               </DropdownMenuRadioItem>
-              {(filterField.options ?? []).map((option) => (
+              {(optionField.options ?? []).map((option) => (
                 <DropdownMenuRadioItem
                   key={option.value}
                   value={option.value}
@@ -146,7 +153,7 @@ export const SortMenu = ({
 }) => (
   <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <Button color="ghost" data-cms-sort>
+      <Button color="ghost" data-cms-sort css={{ flexShrink: 0 }}>
         Sort
       </Button>
     </DropdownMenuTrigger>
