@@ -14,7 +14,14 @@ import {
   type CanonicalValues,
   BLANK_CANONICAL_VALUES,
 } from "./canonical-variables";
-import { LOOK_FIELDS, NEUTRALITY_DENY_LIST, checkSiteTemplate } from "./check";
+import {
+  LOOK_FIELDS,
+  NEUTRALITY_DENY_LIST,
+  checkPageRules,
+  checkSiteTemplate,
+  findPagePathProblem,
+} from "./check";
+import { renderSiteTemplate } from "./render";
 import { section } from "./kit";
 import { PLATFORM_PATHS, isPlatformServedPath } from "./platform-paths";
 import type { BlockKey } from "./place-block";
@@ -2314,5 +2321,53 @@ describe("checkSiteTemplate", () => {
         "text"
       );
     });
+  });
+});
+
+describe("the per-page rules, shared with the starter pages", () => {
+  const renderAbout = () => {
+    const template = fixture();
+    const pages = renderSiteTemplate(template, {
+      assetIds: new Map(
+        Object.keys(template.images).map((file) => [file, `asset:${file}`])
+      ),
+      generatePageId: () => "page:about",
+    });
+    const about = pages.find((page) => page.key === "about");
+    if (about === undefined) {
+      throw new Error("No About page");
+    }
+    return about;
+  };
+
+  test("checkPageRules without pageIds skips the page-link rule", () => {
+    const about = renderAbout();
+    expect(
+      checkPageRules(about).filter((line) => line.includes("links to a page"))
+    ).toEqual([]);
+    expectOneViolation(
+      checkPageRules(about, new Set()).filter((line) =>
+        line.includes("links to a page")
+      ),
+      'Page "about"',
+      "links to a page the template does not have"
+    );
+  });
+
+  test("findPagePathProblem names the path's problem, or none", () => {
+    expect(findPagePathProblem("x", "/newsletter")).toBe(
+      `Page "x" is at /newsletter, which belongs to the org's sign-up page`
+    );
+    expect(findPagePathProblem("x", "/*")).toBe(
+      `Page "x" is at /*, which belongs to the 404 page`
+    );
+    expect(findPagePathProblem("x", "/join")).toBe(
+      `Page "x" is at /join, which the platform serves on the site's own host, so the page would never show`
+    );
+    expect(findPagePathProblem("x", "/a//b")).toContain(
+      `Page "x" has the path "/a//b", which is not a page path (`
+    );
+    expect(findPagePathProblem("x", "")).toBeUndefined();
+    expect(findPagePathProblem("x", "/about")).toBeUndefined();
   });
 });

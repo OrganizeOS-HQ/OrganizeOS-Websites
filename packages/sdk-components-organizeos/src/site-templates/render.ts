@@ -7,7 +7,11 @@ import {
 import { camelCaseProperty, parseMediaQuery } from "@webstudio-is/css-data";
 import { AssetValue, renderTemplate } from "@webstudio-is/template";
 import { localStylesFirst } from "../shared/style-order";
-import { createBlockPlacer, type BlockPlacement } from "./place-block";
+import {
+  createBlockPlacer,
+  type BlockPlacement,
+  type PlaceBlock,
+} from "./place-block";
 import type {
   BlockStyle,
   BlockTokenName,
@@ -28,6 +32,37 @@ export type RenderedPage = {
   fragment: WebstudioFragment;
   /** The platform blocks the page placed, for the apply routine to bind. */
   placements: BlockPlacement[];
+};
+
+/**
+ * One page's body, rendered: `draw` is given the page's own block placer,
+ * `inspectBody` sees the body as JSX and its placements before the render,
+ * and the fragment has local styles before tokens, so a template's block
+ * token restyles a block (shared/style-order.ts), then `blockTokens` merged.
+ * Ids are renderTemplate's counters. A body's error is rethrown naming the
+ * page. Shared by renderSiteTemplate and the starter pages' render.
+ */
+export const renderPageBody = (
+  key: string,
+  draw: (placeBlock: PlaceBlock) => JSX.Element,
+  options: {
+    blockTokens?: SiteTemplate["blockTokens"];
+    inspectBody?: (body: JSX.Element, placements: BlockPlacement[]) => void;
+  } = {}
+): { fragment: WebstudioFragment; placements: BlockPlacement[] } => {
+  const { placeBlock, placements } = createBlockPlacer();
+  try {
+    const body = draw(placeBlock);
+    options.inspectBody?.(body, placements);
+    const fragment = mergeBlockTokens(
+      localStylesFirst(renderTemplate(body)),
+      options.blockTokens
+    );
+    return { fragment, placements };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Page "${key}": ${message}`, { cause: error });
+  }
 };
 
 /**
@@ -192,38 +227,35 @@ export const renderSiteTemplate = (
   };
 
   return template.pages.map((page) => {
-    const { placeBlock, placements } = createBlockPlacer();
-    const context: PageContext = {
-      pageIds,
-      placeBlock,
-      image: (file) => new AssetValue(assetId(file)),
-      backgroundImage: (file) => [
-        {
-          property: "background-image",
-          value: {
-            type: "layers",
-            value: [
-              { type: "image", value: { type: "asset", value: assetId(file) } },
-            ],
-          },
-        },
-      ],
-      imageAlt: (file) => imageEntry(file).alt,
-    };
-    let fragment: WebstudioFragment;
-    try {
-      const body = page.body(context);
-      options.inspectBody?.(page, body, placements);
-      // local styles before tokens, so a template's block token restyles a
-      // block (shared/style-order.ts)
-      fragment = mergeBlockTokens(
-        localStylesFirst(renderTemplate(body)),
-        template.blockTokens
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Page "${page.key}": ${message}`, { cause: error });
-    }
+    const { fragment, placements } = renderPageBody(
+      page.key,
+      (placeBlock) =>
+        page.body({
+          pageIds,
+          placeBlock,
+          image: (file) => new AssetValue(assetId(file)),
+          backgroundImage: (file) => [
+            {
+              property: "background-image",
+              value: {
+                type: "layers",
+                value: [
+                  {
+                    type: "image",
+                    value: { type: "asset", value: assetId(file) },
+                  },
+                ],
+              },
+            },
+          ],
+          imageAlt: (file) => imageEntry(file).alt,
+        } satisfies PageContext),
+      {
+        blockTokens: template.blockTokens,
+        inspectBody: (body, placements) =>
+          options.inspectBody?.(page, body, placements),
+      }
+    );
     return {
       key: page.key,
       pageId: pageIds[page.key],
