@@ -13,6 +13,9 @@
 import { useEffect, useId, useState } from "react";
 import {
   $applyNodeReplacement,
+  COMMAND_PRIORITY_LOW,
+  KEY_BACKSPACE_COMMAND,
+  KEY_DELETE_COMMAND,
   $getNodeByKey,
   $getSelection,
   $isNodeSelection,
@@ -30,6 +33,7 @@ import {
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { useLexicalEditable } from "@lexical/react/useLexicalEditable";
 import { useLexicalNodeSelection } from "@lexical/react/useLexicalNodeSelection";
+import { mergeRegister } from "@lexical/utils";
 import {
   Button,
   css,
@@ -163,17 +167,47 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
   const altId = useId();
   const captionId = useId();
 
-  // the image's own selection opens its settings; a text selection that
-  // runs over it (select all, a drag) does not take the keyboard from the text
+  // the settings open on a click only: a keyboard selection of the image
+  // (an arrow key, Backspace beside it) keeps the keyboard in the text
+  // With the image selected, Backspace and Delete remove it.
+  useEffect(
+    () =>
+      mergeRegister(
+        ...[KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND].map((command) =>
+          editor.registerCommand(
+            command,
+            (event: KeyboardEvent | null) => {
+              const selection = $getSelection();
+              if (
+                isSelected === false ||
+                $isNodeSelection(selection) === false ||
+                selection.has(nodeKey) === false
+              ) {
+                return false;
+              }
+              event?.preventDefault();
+              $getNodeByKey(nodeKey)?.remove();
+              return true;
+            },
+            COMMAND_PRIORITY_LOW
+          )
+        )
+      ),
+    [editor, isSelected, nodeKey]
+  );
+
+  // Alt and Caption keep their text here while typed, so the caret stays
+  // where it is; each change is written to the node as it is made
+  const [alt, setAlt] = useState(attributes.alt ?? "");
+  const [captionText, setCaptionText] = useState(caption ?? "");
   useEffect(() => {
-    if (
-      isSelected &&
-      isEditable &&
-      editor.getEditorState().read(() => $isNodeSelection($getSelection()))
-    ) {
-      setIsOpen(true);
+    if (isOpen) {
+      setAlt(attributes.alt ?? "");
+      setCaptionText(caption ?? "");
     }
-  }, [editor, isSelected, isEditable]);
+    // the node's values are read when the settings open, not on each write
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const edit = (change: (node: CmsImageNode | CmsFigureNode) => void) => {
     editor.update(() => {
@@ -228,10 +262,11 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
             <InputField
               id={altId}
               autoFocus
-              value={attributes.alt ?? ""}
+              value={alt}
               onChange={(event) => {
-                const alt = event.currentTarget.value;
-                edit((node) => node.setAlt(alt));
+                const next = event.currentTarget.value;
+                setAlt(next);
+                edit((node) => node.setAlt(next));
               }}
             />
             {caption !== undefined && (
@@ -239,9 +274,10 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
                 <Label htmlFor={captionId}>Caption</Label>
                 <InputField
                   id={captionId}
-                  value={caption ?? ""}
+                  value={captionText}
                   onChange={(event) => {
                     const text = event.currentTarget.value;
+                    setCaptionText(text);
                     edit((node) => {
                       if ($isCmsFigureNode(node)) {
                         node.setCaption(text);

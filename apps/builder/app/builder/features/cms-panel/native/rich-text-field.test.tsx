@@ -8,8 +8,12 @@ import { userEvent } from "@vitest/browser/context";
 import {
   $createParagraphNode,
   $createTextNode,
+  $createNodeSelection,
   $getRoot,
+  $setSelection,
+  type ElementNode,
   type LexicalEditor,
+  type TextNode,
 } from "lexical";
 import { $createLinkNode, $isLinkNode } from "@lexical/link";
 import { TooltipProvider } from "@webstudio-is/design-system";
@@ -752,6 +756,66 @@ test("selecting an image opens Alt, Caption for a figure, and Remove; Remove tak
   await click(buttonByText("Remove"));
   expect(lastHtml(figure.onChange)).not.toContain("<figure");
   expect(lastHtml(figure.onChange)).not.toContain("<img");
+});
+
+test("Backspace beside an image removes it and keeps the keyboard in the text", async () => {
+  const { onChange } = mountField({
+    value: { html: `<p>See ${IMAGE}here</p>` },
+  });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await act(async () => {
+    editorOf()!.update(() => {
+      const paragraph = $getRoot().getFirstChild() as ElementNode;
+      (paragraph.getLastChild() as TextNode).select(0, 0);
+    });
+  });
+  await settle();
+  await userEvent.keyboard("{Backspace}");
+  await settle();
+  expect(inputByLabel("Alt")).toBeNull();
+  expect(document.activeElement).toBe(editable());
+  expect(lastHtml(onChange)).not.toContain("<img");
+  expect(editable()!.textContent).toBe("See here");
+});
+
+for (const key of ["Backspace", "Delete"]) {
+  test(`${key} on a selected image removes it, and the selection opens no settings`, async () => {
+    const { onChange } = mountField({
+      value: { html: `<p>See ${IMAGE}here</p>` },
+    });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>("p"));
+    await act(async () => {
+      editorOf()!.update(() => {
+        const paragraph = $getRoot().getFirstChild() as ElementNode;
+        const selection = $createNodeSelection();
+        selection.add(paragraph.getChildAtIndex(1)!.getKey());
+        $setSelection(selection);
+      });
+    });
+    await settle();
+    expect(inputByLabel("Alt")).toBeNull();
+    await userEvent.keyboard(`{${key}}`);
+    await settle();
+    expect(lastHtml(onChange)).not.toContain("<img");
+    expect(editable()!.textContent).toBe("See here");
+  });
+}
+
+test("typing in the middle of Alt keeps the caret where it is", async () => {
+  const { onChange } = mountField({
+    value: { html: fixtureCase("image").input },
+  });
+  await settle();
+  await click(editable()!.querySelector("img"));
+  const alt = inputByLabel("Alt")!;
+  alt.setSelectionRange(0, 0);
+  await userEvent.keyboard("Big ");
+  await settle();
+  expect(alt.value).toBe("Big A");
+  expect(alt.selectionStart).toBe(4);
+  expect(lastHtml(onChange)).toContain('alt="Big A"');
 });
 
 test("pasted HTML with an img keeps no image", async () => {
