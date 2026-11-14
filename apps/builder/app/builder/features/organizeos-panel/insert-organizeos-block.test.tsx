@@ -65,8 +65,10 @@ import {
   $resourcesCache,
   computeResourceRequest,
   getResourceKey,
+  invalidateResource,
 } from "~/shared/resources";
 import {
+  findClosestInsertable,
   getComponentTemplateData,
   insertWebstudioComponentAt,
 } from "~/shared/instance-utils/insert";
@@ -105,6 +107,13 @@ vi.mock("~/shared/builder-api", () => ({
   builderApi: { toast: { error: toastError, info: toastInfo } },
 }));
 vi.mock("~/shared/fetch.client", () => ({ fetch: loaderFetch }));
+// The forms door client: a forms insert creates its site form first (Task 8)
+const { getFormsAccess, createSiteForm } = vi.hoisted(() => ({
+  getFormsAccess: vi.fn(),
+  createSiteForm: vi.fn(),
+}));
+vi.mock("./forms-api", () => ({ getFormsAccess, createSiteForm }));
+vi.mock("~/shared/resources", { spy: true });
 // Spied, not replaced: a factory that imports the original module waits on
 // itself in the browser runner (the module is in an import cycle).
 vi.mock("~/shared/instance-utils/data", { spy: true });
@@ -279,7 +288,12 @@ const setProject = (
   {
     blocksEnabled = true,
     shopBlocksEnabled = true,
-  }: { blocksEnabled?: boolean; shopBlocksEnabled?: boolean } = {}
+    siteFormsEnabled = false,
+  }: {
+    blocksEnabled?: boolean;
+    shopBlocksEnabled?: boolean;
+    siteFormsEnabled?: boolean;
+  } = {}
 ) => {
   const data = renderData(<$.Body ws:id="bodyId"></$.Body>);
   $instances.set(data.instances);
@@ -308,6 +322,7 @@ const setProject = (
     platformUrl: "https://app.example.org",
     blocksEnabled,
     shopBlocksEnabled,
+    siteFormsEnabled,
   });
 };
 
@@ -3399,5 +3414,238 @@ describe("an insert with the catalog's :root bindings present", () => {
     emitCommand("undo");
     expect(getStores()).toEqual(before);
     expect($resources.get().has(forms.resourceId)).toBe(false);
+  });
+});
+
+// Builder forms spec 5.1 and 5.3 (plan 2026-11-13-builder-forms-fork-p2,
+// Task 8, P11, P12): with the site forms switch on, a forms insert creates
+// its own site form first, then writes the block pointing at it and marked
+// as a site form, then reloads the Forms Resource so the canvas has the form.
+describe("a forms insert with the site forms switch on", () => {
+  const card = "@organizeos/site-components:SignupFormCard";
+  const contactCard = "@organizeos/site-components:ContactFormCard";
+  const inline = "@organizeos/site-components:SignupFormInline";
+  const formId = "51000000-0000-4000-8000-000000000001";
+  const created = {
+    ok: true,
+    value: {
+      id: formId,
+      fields: [
+        { name: "email", label: "Email", type: "email", required: true },
+      ],
+    },
+  };
+  const access = {
+    ok: true,
+    value: {
+      orgName: "Riverside Tenants",
+      canEditPrivate: true,
+      smsAvailable: false,
+    },
+  };
+  const rootProps = (root: { id: string }) =>
+    Object.fromEntries(
+      [...$props.get().values()]
+        .filter((prop) => prop.instanceId === root.id)
+        .map((prop) => [prop.name, prop])
+    );
+  const rootsOf = (component: string) =>
+    [...$instances.get().values()].filter(
+      (instance) => instance.component === component
+    );
+  const introText = () =>
+    [...$instances.get().values()]
+      .find((instance) => instance.label === "Intro")
+      ?.children.flatMap((child) =>
+        child.type === "text" ? [child.value] : []
+      );
+
+  beforeEach(() => {
+    getFormsAccess.mockReset();
+    createSiteForm.mockReset();
+    vi.mocked(invalidateResource).mockClear();
+    getFormsAccess.mockResolvedValue(access);
+    createSiteForm.mockResolvedValue(created);
+  });
+
+  test("Email & SMS updates creates its form once, then marks the root, fills the org's name and reloads Forms", async () => {
+    setProject(withForms, { siteFormsEnabled: true });
+
+    expect(await insertOrganizeosBlock(card)).toBe(true);
+
+    expect(getFormsAccess).toHaveBeenCalledWith(projectId);
+    expect(createSiteForm).toHaveBeenCalledTimes(1);
+    const [calledProject, body] = createSiteForm.mock.calls[0];
+    expect(calledProject).toBe(projectId);
+    expect(body).toEqual({
+      kind: "contact-signup",
+      title: "Home: Email & SMS updates",
+      fields: [
+        { key: "first_name", required: false },
+        { key: "last_name", required: false },
+        { key: "email", required: true },
+      ],
+      clientId: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+      ),
+    });
+    const [root] = rootsOf(signupForm);
+    expect(root.label).toBe("Email & SMS updates");
+    expect(rootProps(root).record).toMatchObject({
+      type: "string",
+      value: formId,
+    });
+    expect(rootProps(root).siteForm).toMatchObject({
+      type: "string",
+      value: "contact-signup",
+    });
+    expect(introText()).toEqual(["News and actions from Riverside Tenants."]);
+    expect(invalidateResource).toHaveBeenCalledWith(
+      expect.objectContaining({ url: JSON.parse(formsResource.url) })
+    );
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test("Contact us creates a contact form", async () => {
+    setProject(withForms, { siteFormsEnabled: true });
+    expect(await insertOrganizeosBlock(contactCard)).toBe(true);
+    expect(createSiteForm.mock.calls[0][1]).toMatchObject({
+      kind: "contact-form",
+      title: "Home: Contact us",
+    });
+    expect(rootProps(rootsOf(signupForm)[0]).siteForm).toMatchObject({
+      value: "contact-form",
+    });
+  });
+
+  test("the Email bar creates a contact-signup form with Email only, named Email bar", async () => {
+    setProject(withForms, { siteFormsEnabled: true });
+    expect(await insertOrganizeosBlock(inline)).toBe(true);
+    expect(createSiteForm.mock.calls[0][1]).toMatchObject({
+      kind: "contact-signup",
+      title: "Home: Email bar",
+      fields: [{ key: "email", required: false }],
+    });
+    expect(rootsOf(signupForm)[0].label).toBe("Email bar");
+  });
+
+  test("a lost F3 answer is retried once with the same clientId", async () => {
+    setProject(withForms, { siteFormsEnabled: true });
+    createSiteForm
+      .mockResolvedValueOnce({ ok: false, error: "lost" })
+      .mockResolvedValueOnce(created);
+    expect(await insertOrganizeosBlock(card)).toBe(true);
+    expect(createSiteForm).toHaveBeenCalledTimes(2);
+    expect(createSiteForm.mock.calls[1][1].clientId).toBe(
+      createSiteForm.mock.calls[0][1].clientId
+    );
+  });
+
+  test("a failed create writes nothing and toasts", async () => {
+    setProject(withForms, { siteFormsEnabled: true });
+    const before = getStores();
+    createSiteForm.mockResolvedValue({ ok: false, error: "forbidden" });
+    expect(await insertOrganizeosBlock(card)).toBe(false);
+    expect(getStores()).toEqual(before);
+    expect(toastError).toHaveBeenCalledWith(
+      "Couldn't create the form. Try again."
+    );
+    expect(invalidateResource).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["a failed F0", { ok: false, error: "unavailable" }],
+    ["a blank name", { ...access, value: { ...access.value, orgName: " " } }],
+  ])(
+    "%s keeps 'News and actions from us.' and still creates the form",
+    async (_case, answer) => {
+      setProject(withForms, { siteFormsEnabled: true });
+      getFormsAccess.mockResolvedValue(answer);
+      expect(await insertOrganizeosBlock(card)).toBe(true);
+      expect(introText()).toEqual(["News and actions from us."]);
+      expect(createSiteForm).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test("a locally refused insert calls no F3", async () => {
+    // the project's link to its data was removed: no Events Resource
+    setProject({ resources: [], dataSources: [] }, { siteFormsEnabled: true });
+    expect(await insertOrganizeosBlock(card)).toBe(false);
+    // the org denied the blocks
+    setProject(withForms, { siteFormsEnabled: true, blocksEnabled: false });
+    expect(await insertOrganizeosBlock(card)).toBe(false);
+    expect(createSiteForm).not.toHaveBeenCalled();
+  });
+
+  // final review M5: every local check runs before F3 (P11)
+  test("no place to insert, or preset ids that fail, call no F3", async () => {
+    setProject(withForms, { siteFormsEnabled: true });
+    vi.mocked(findClosestInsertable).mockReturnValueOnce(undefined);
+    expect(await insertOrganizeosBlock(card)).toBe(false);
+    setProject(withForms, { siteFormsEnabled: true });
+    const digest = vi
+      .spyOn(crypto.subtle, "digest")
+      .mockRejectedValueOnce(new Error("no digest"));
+    try {
+      expect(await insertOrganizeosBlock(card)).toBe(false);
+    } finally {
+      digest.mockRestore();
+    }
+    expect(createSiteForm).not.toHaveBeenCalled();
+  });
+
+  // final review M6: a selection changed while F3 answers moves nothing
+  test("the block goes where it had its place before F3, whatever is selected when F3 answers", async () => {
+    setProject(withForms, { siteFormsEnabled: true });
+    const data = renderData(
+      <$.Body ws:id="bodyId">
+        <$.Box ws:id="firstBox"></$.Box>
+        <$.Box ws:id="secondBox"></$.Box>
+      </$.Body>
+    );
+    $instances.set(data.instances);
+    selectInstance(["firstBox", "bodyId"]);
+    createSiteForm.mockImplementation(async () => {
+      selectInstance(["secondBox", "bodyId"]);
+      return created;
+    });
+    expect(await insertOrganizeosBlock(card)).toBe(true);
+    const [root] = rootsOf(signupForm);
+    const parentOf = (id: string) =>
+      [...$instances.get().values()].find((instance) =>
+        instance.children.some((child) => child.value === id)
+      )?.id;
+    expect(parentOf(root.id)).toBe("firstBox");
+  });
+
+  test("with the switch off, a card is refused and the Email bar inserts as today, creating nothing", async () => {
+    setProject(withForms);
+    expect(await insertOrganizeosBlock(card)).toBe(false);
+    expect(await insertOrganizeosBlock(contactCard)).toBe(false);
+    expect(await insertOrganizeosBlock(inline)).toBe(true);
+    expect(getFormsAccess).not.toHaveBeenCalled();
+    expect(createSiteForm).not.toHaveBeenCalled();
+    expect(rootProps(rootsOf(signupForm)[0])).not.toHaveProperty("siteForm");
+  });
+
+  test("the card keeps its 44px inputs in a project whose OS Input token already exists", async () => {
+    setProject(withForms, { siteFormsEnabled: true });
+    expect(await insertOrganizeosBlock(signupForm)).toBe(true);
+    selectInstance(["bodyId"]);
+    expect(await insertOrganizeosBlock(card)).toBe(true);
+    const inputs = [...$instances.get().values()].filter(
+      (instance) =>
+        instance.component === "@organizeos/site-components:FieldInput"
+    );
+    const minHeights = inputs.map((input) => {
+      const selection = $styleSourceSelections.get().get(input.id);
+      return [...$styles.get().values()].some(
+        (decl) =>
+          selection?.values.includes(decl.styleSourceId) === true &&
+          decl.property === "minHeight"
+      );
+    });
+    // the stacked form's two inputs have none; the card's three do
+    expect(minHeights.filter(Boolean)).toHaveLength(3);
   });
 });

@@ -1,0 +1,13 @@
+{
+  "description": "F0: what the builder shows the person (owner). Paths are relative to /api/internal/websites2/forms/{organizationId}.",
+  "request": {
+    "method": "GET",
+    "path": "/access"
+  },
+  "status": 200,
+  "answer": {
+    "orgName": "Riverside Tenants",
+    "canEditPrivate": true,
+    "smsAvailable": false
+  }
+}

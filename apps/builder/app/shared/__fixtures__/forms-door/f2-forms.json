@@ -1,0 +1,50 @@
+{
+  "description": "F2: the project's site forms, then the published CRM forms (the built-in form), with lists to an owner or admin. Paths are relative to /api/internal/websites2/forms/{organizationId}.",
+  "request": {
+    "method": "GET",
+    "path": "/forms?kind=contact-signup"
+  },
+  "status": 200,
+  "answer": {
+    "forms": [
+      {
+        "id": "51000000-0000-4000-8000-000000000001",
+        "title": "Home: Email updates",
+        "site": true,
+        "published": true,
+        "fields": [
+          {
+            "name": "email",
+            "label": "Email",
+            "type": "email",
+            "required": true
+          },
+          {
+            "name": "phone",
+            "label": "Phone",
+            "type": "phone",
+            "required": false
+          }
+        ],
+        "opt_in": "single",
+        "lists": []
+      },
+      {
+        "id": "b0000000-0000-4000-8000-000000000001",
+        "title": "Get updates",
+        "site": false,
+        "published": true,
+        "fields": [
+          {
+            "name": "email",
+            "label": "Email",
+            "type": "email",
+            "required": true
+          }
+        ],
+        "opt_in": "single",
+        "lists": []
+      }
+    ]
+  }
+}

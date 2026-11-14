@@ -1,0 +1,15 @@
+{
+  "description": "F4: Confirm by email and Lists on a site form (owner). Paths are relative to /api/internal/websites2/forms/{organizationId}.",
+  "request": {
+    "method": "PUT",
+    "path": "/forms/51000000-0000-4000-8000-000000000001/settings",
+    "body": {
+      "optIn": "double",
+      "lists": ["a0000000-0000-4000-8000-000000000001"]
+    }
+  },
+  "status": 200,
+  "answer": {
+    "ok": true
+  }
+}

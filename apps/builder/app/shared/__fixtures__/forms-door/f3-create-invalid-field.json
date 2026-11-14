@@ -1,0 +1,23 @@
+{
+  "description": "F3: a key the catalog does not have for the kind. Paths are relative to /api/internal/websites2/forms/{organizationId}.",
+  "request": {
+    "method": "POST",
+    "path": "/forms",
+    "body": {
+      "kind": "contact-signup",
+      "title": "Home: Email updates",
+      "fields": [
+        {
+          "key": "favourite",
+          "required": false
+        }
+      ],
+      "clientId": "0c000000-0000-4000-8000-000000000002"
+    }
+  },
+  "status": 422,
+  "answer": {
+    "error": "invalid_field",
+    "field": "favourite"
+  }
+}

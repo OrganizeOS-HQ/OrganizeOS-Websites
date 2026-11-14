@@ -128,3 +128,18 @@ done
 ```
 
 and update this note's commit when it changes.
+
+`forms-door/` holds byte-for-byte copies of the OrganizeOS repo's
+`client/tests/fixtures/site-components/forms-door/` (every `.json` file), at
+commit `1995258f6767c18d7ced17ebf3af2646ae2b7d46` (the merge into `master` that
+brought them). Each is one forms door call, its request (paths relative to
+`/api/internal/websites2/forms/{organizationId}`), status and answer.
+`../builder/features/organizeos-panel/forms-api.ts` parses F0 to F4
+(`forms-api.test.ts` replays each); F5 is the publish route's alone. Compare
+them before a fork PR that touches the forms client or its shapes:
+
+```sh
+for f in ../OrganizeOS/client/tests/fixtures/site-components/forms-door/*; do
+  diff "$f" "apps/builder/app/shared/__fixtures__/forms-door/$(basename "$f")"
+done
+```

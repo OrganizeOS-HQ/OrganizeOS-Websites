@@ -309,6 +309,9 @@ export const getSignupWarning = ({
   resolution,
   rootFields,
   failedLoads,
+  siteForm = false,
+  notSaved = false,
+  differsElsewhere = false,
 }: {
   nested: boolean;
   /** Whether the root's `data` is bound (isSignupDataBound). */
@@ -319,6 +322,16 @@ export const getSignupWarning = ({
   rootFields: ReturnType<typeof listRootFields>;
   /** A load the root's `data` reads failed: the record picker says so. */
   failedLoads: boolean;
+  /**
+   * The root is marked as a site form (fork doc section 9, "Site forms"): its
+   * live definition follows the publish, so a field it lacks or requires is
+   * not named (Email excepted, which every form has).
+   */
+  siteForm?: boolean;
+  /** The form's last Lists, Confirm by email or Notify write failed. */
+  notSaved?: boolean;
+  /** Another site-form root on the same form sends another list. */
+  differsElsewhere?: boolean;
 }): undefined | string => {
   // nothing while the forms load
   if (dataBound && data === undefined) {
@@ -335,8 +348,14 @@ export const getSignupWarning = ({
     }
     return failedLoads ? undefined : "Form not found";
   }
+  if (notSaved) {
+    return "Not saved";
+  }
   const missing = fields.find(
-    (field) => isRequiredField(field) && byName.has(field.name) === false
+    (field) =>
+      isRequiredField(field) &&
+      byName.has(field.name) === false &&
+      (siteForm === false || field.name === "email")
   );
   if (missing !== undefined) {
     return `Missing: ${missing.label}`;
@@ -351,9 +370,14 @@ export const getSignupWarning = ({
     return "No Submit Button";
   }
   const known = new Set(fields.map((field) => field.name));
-  const unknown = order.find((name) => known.has(name) === false);
+  const unknown = order.find(
+    (name) => known.has(name) === false && (siteForm === false || name === "")
+  );
   if (unknown !== undefined) {
     return `Not in form: ${unknown === "" ? "(blank)" : unknown}`;
+  }
+  if (differsElsewhere) {
+    return "Fields differ on another page";
   }
 };
 
@@ -367,7 +391,8 @@ const toTemplateField = (field: FormField): FieldTemplateField => ({
 /** A bound `field`'s computed value, as listRootFields takes it. */
 export type ComputedFieldName = (fieldId: Instance["id"]) => string | undefined;
 
-const getState = (accumulator: RuntimeMutationAccumulator) => ({
+// exported for the site forms' writes (site-forms.ts)
+export const getState = (accumulator: RuntimeMutationAccumulator) => ({
   instances: accumulator.state.instances ?? new Map(),
   props: accumulator.state.props ?? new Map(),
 });
@@ -379,7 +404,7 @@ const getState = (accumulator: RuntimeMutationAccumulator) => ({
  * a Field whose bound `field` computes to it (`computedName`) included.
  * A Field brings no block data: no Resource, DataSource or binding.
  */
-const insertFieldsMutable = (
+export const insertFieldsMutable = (
   accumulator: RuntimeMutationAccumulator,
   rootId: Instance["id"],
   fields: readonly FormField[],
@@ -555,7 +580,7 @@ export const restoreSignupFormData = async (
  * false, after a toast, when refused; the runtime's own refusal of the commit
  * is toasted by the commit itself and not again.
  */
-const runStaged = async (
+export const runStaged = async (
   fallback: string,
   stage: (accumulator: RuntimeMutationAccumulator) => void
 ): Promise<boolean> => {
@@ -619,6 +644,17 @@ export const changeSignupForm = (
         ],
       },
     });
+    // A form chosen here is not a site form (those are chosen through
+    // matchFieldsToSiteForm): the root loses its site form mark.
+    const marked = [...getState(accumulator).props.values()].some(
+      (prop) => prop.instanceId === rootId && prop.name === "siteForm"
+    );
+    if (marked) {
+      accumulator.execute({
+        id: "instances.deleteProps",
+        input: { deletions: [{ instanceId: rootId, name: "siteForm" }] },
+      });
+    }
     insertFieldsMutable(
       accumulator,
       rootId,

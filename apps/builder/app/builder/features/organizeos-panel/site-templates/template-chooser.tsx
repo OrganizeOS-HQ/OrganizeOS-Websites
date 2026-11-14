@@ -41,6 +41,7 @@ import {
 import { $dataLoadingState } from "~/builder/shared/nano-states";
 import { isOrganizeosBlocksEnabled } from "../insert-organizeos-block";
 import { updateWebstudioDataStaged } from "../staged-data";
+import { SITE_FORM_CREATE_FAILED } from "../site-form-insert";
 import {
   type ApplyResult,
   applySiteTemplate,
@@ -136,6 +137,8 @@ const refusalMessages: Record<
   "path-taken": "Its pages clash with this site's pages.",
   resources: "This template cannot be applied.",
   "no-project": "This template cannot be applied.",
+  // a Signup Form placement's site form (fork doc section 9, "Site forms")
+  form: SITE_FORM_CREATE_FAILED,
 };
 
 /** Write the blank-start variables, which ends the offer. */
