@@ -692,15 +692,18 @@ export const sameRichTextContent = (left: string, right: string) => {
 export const settleRichTextHtml = (
   html: string
 ): { html: string; outcome: "unchanged" | "settled" | "kept" } => {
-  if (getRichTextReadOnlyReason(sanitizeRichTextHtml(html)) === undefined) {
+  // as the platform stores it: the field's own markup carries styles that
+  // would change how a load reads its spaces
+  const stored = sanitizeRichTextHtml(html);
+  if (getRichTextReadOnlyReason(stored) === undefined) {
     return { html, outcome: "unchanged" };
   }
   try {
-    const { written } = inspect(html);
+    const { written } = inspect(stored);
     if (
       written !== undefined &&
       getRichTextReadOnlyReason(written) === undefined &&
-      sameRichTextContent(html, written)
+      sameRichTextContent(stored, written)
     ) {
       return { html: written, outcome: "settled" };
     }

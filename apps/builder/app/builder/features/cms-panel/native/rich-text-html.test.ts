@@ -627,6 +627,16 @@ describe("settleRichTextHtml", () => {
     }
   );
 
+  test("the field's own markup (its pre-wrap spans) settles as the platform stores it", () => {
+    const html =
+      '<p class="x" dir="ltr"><a href="tel:+15550100" target="_blank" rel="noopener noreferrer"><span style="white-space: pre-wrap;"> b</span></a></p>';
+    const settled = settleRichTextHtml(html);
+    expect(settled.outcome).toBe("settled");
+    expect(settled.html).toBe(
+      '<p><a href="tel:+15550100" target="_blank" rel="noopener noreferrer">b</a></p>'
+    );
+  });
+
   test("the content comparison sees a removed space between words, a removed non-breaking space and changed code whitespace", () => {
     expect(sameRichTextContent("<p>a b</p>", "<p>a  b</p>")).toBe(true);
     expect(sameRichTextContent("<p>a b</p>", "<p>ab</p>")).toBe(false);
