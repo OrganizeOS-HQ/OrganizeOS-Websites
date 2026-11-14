@@ -1356,6 +1356,11 @@ const EditablePlugin = ({ editable }: { editable: boolean }) => {
 
 export type RichTextFieldProps = {
   id: string;
+  /**
+   * The field's own clipboard data's name, kept by its holder across
+   * remounts; a field without one names its own.
+   */
+  namespace?: string;
   /** The field's label: a contenteditable takes its name from it. */
   labelId: string;
   describedBy?: string;
@@ -1390,10 +1395,12 @@ export const RichTextField = ({
   onError,
   onBusyChange,
   onRefusal,
+  namespace: namespaceProp,
 }: RichTextFieldProps) => {
   // read once: a new value remounts the field (FieldControl's remountKey)
   const [initial] = useState(() => readRichTextValue(value));
-  const [namespace] = useState(() => `cms-rich-text-${crypto.randomUUID()}`);
+  const [ownNamespace] = useState(() => `cms-rich-text-${crypto.randomUUID()}`);
+  const namespace = namespaceProp ?? ownNamespace;
   const [readOnlyReason] = useState(() =>
     getRichTextReadOnlyReason(initial?.html ?? "")
   );

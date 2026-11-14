@@ -1558,3 +1558,37 @@ describe("the keyboard beside an inline image (round 4)", () => {
     expect(editable()!.textContent).toBe("See here");
   });
 });
+
+// Round 4, item 8: a field's clipboard data survives its remount (a Save,
+// Reload or "Use my edit"), so an image cut before one pastes back
+test("an image copied before the field remounts pastes back whole", async () => {
+  const onChange = vi.fn();
+  const control = (remountKey: string) =>
+    createElement(FieldControl, {
+      id: "cms-field-body",
+      field: { key: "body", label: "Body", kind: "richtext" },
+      value: { html: "<p>Text</p>", text: "Text" },
+      source: createFakeCmsSource(),
+      disabled: false,
+      invalid: false,
+      remountKey,
+      onChange,
+      onError: () => {},
+    });
+  mount(control("1"));
+  await vi.waitFor(() => expect(editable()?.textContent).toBe("Text"));
+  const before = editorOf()!._config.namespace;
+  act(() => {
+    root?.render(createElement(TooltipProvider, null, control("2")));
+  });
+  await vi.waitFor(() => expect(editorOf()?._config.namespace).toBeDefined());
+  await settle();
+  expect(editorOf()!._config.namespace).toBe(before);
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  paste(editable()!, {
+    "application/x-lexical-editor": copiedImage(before),
+    "text/html": `<p>${IMAGE}</p>`,
+  });
+  await settle();
+  expect(lastHtml(onChange)).toContain('src="https://example.org/a.png"');
+});
