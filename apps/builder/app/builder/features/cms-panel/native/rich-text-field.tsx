@@ -50,6 +50,7 @@ import {
   FORMAT_TEXT_COMMAND,
   PASTE_COMMAND,
   SELECTION_CHANGE_COMMAND,
+  SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
   type LexicalEditor,
   type LexicalNode,
   type NodeKey,
@@ -2336,7 +2337,133 @@ const $codeTextOf = (nodes: LexicalNode[], images: LexicalNode[]) => {
   if (open) {
     lines.push(line);
   }
+  return lines.filter((each) => each !== "").join("\n");
+};
+
+/** Pasted HTML as a code block's text: each block its own line. */
+const htmlCodeText = (html: string) => {
+  const body = new DOMParser().parseFromString(html, "text/html").body;
+  const lines: string[] = [];
+  let line = "";
+  const walk = (node: Node) => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child instanceof Element) {
+        if (child.tagName === "BR") {
+          lines.push(line);
+          line = "";
+          continue;
+        }
+        const isBlock =
+          /^(P|DIV|H[1-6]|LI|UL|OL|BLOCKQUOTE|PRE|FIGURE|FIGCAPTION|TABLE|TR|SECTION|ARTICLE)$/.test(
+            child.tagName
+          );
+        if (isBlock && line !== "") {
+          lines.push(line);
+          line = "";
+        }
+        walk(child);
+        if (isBlock && line !== "") {
+          lines.push(line);
+          line = "";
+        }
+        continue;
+      }
+      line += child.textContent ?? "";
+    }
+  };
+  walk(body);
+  if (line !== "") {
+    lines.push(line);
+  }
   return lines.join("\n");
+};
+
+/** Images and figures after a code block, an image run in a paragraph. */
+const $placeAfterCode = (code: LexicalNode, images: LexicalNode[]) => {
+  let after: LexicalNode = code;
+  let run: ElementNode | undefined;
+  for (const image of images) {
+    if ($isCmsImageNode(image)) {
+      if (run === undefined) {
+        run = $createParagraphNode();
+        after.insertAfter(run);
+        after = run;
+      }
+      run.append(image);
+      continue;
+    }
+    run = undefined;
+    after.insertAfter(image);
+    after = image;
+  }
+};
+
+/**
+ * Nodes a paste or drop inserts (`SELECTION_INSERT_CLIPBOARD_NODES_COMMAND`)
+ * where the selection starts in a code block: the selected content goes,
+ * the nodes' text goes into the block, and their images and figures after
+ * it. Where it starts at a heading's start, blocks go before the heading.
+ */
+const $insertClipboardNodes = (
+  nodes: LexicalNode[],
+  selection: BaseSelection
+) => {
+  if ($isRangeSelection(selection) === false) {
+    return false;
+  }
+  const start = selection.isBackward() ? selection.focus : selection.anchor;
+  const code = $findMatchingParent(start.getNode(), $isCodeNode);
+  if (code !== null) {
+    selection.removeText();
+    const images: LexicalNode[] = [];
+    selection.insertRawText($codeTextOf(nodes, images));
+    const block =
+      $findMatchingParent(selection.anchor.getNode(), $isCodeNode) ?? code;
+    $placeAfterCode(block, images);
+    return true;
+  }
+  const heading = $findMatchingParent(start.getNode(), $isHeadingNode);
+  const first = $isHeadingNode(heading) ? heading.getFirstDescendant() : null;
+  const atStart =
+    $isHeadingNode(heading) &&
+    start.offset === 0 &&
+    (start.key === heading.getKey() ||
+      (first !== null && start.key === first.getKey()));
+  if (
+    atStart === false ||
+    nodes.some(
+      (node) =>
+        ($isElementNode(node) || $isDecoratorNode(node)) &&
+        node.isInline() === false
+    ) === false
+  ) {
+    return false;
+  }
+  selection.removeText();
+  const target = $findMatchingParent(
+    selection.anchor.getNode(),
+    $isHeadingNode
+  );
+  if ($isHeadingNode(target) === false) {
+    return false;
+  }
+  let run: ElementNode | undefined;
+  for (const node of nodes) {
+    if (
+      ($isElementNode(node) || $isDecoratorNode(node)) &&
+      node.isInline() === false
+    ) {
+      run = undefined;
+      target.insertBefore(node);
+      continue;
+    }
+    if (run === undefined) {
+      run = $createParagraphNode();
+      target.insertBefore(run);
+    }
+    run.append(node);
+  }
+  return true;
 };
 
 /**
@@ -2364,27 +2491,10 @@ const $pasteIntoCode = (editor: LexicalEditor, data: DataTransfer) => {
       ? clean.getData("text/plain")
       : $codeTextOf(nodes, images);
   if (nodes === undefined && text === "") {
-    const html = clean.getData("text/html");
-    text =
-      new DOMParser().parseFromString(html, "text/html").body.textContent ?? "";
+    text = htmlCodeText(clean.getData("text/html"));
   }
   selection.insertRawText(text);
-  let after: LexicalNode = code;
-  let run: ElementNode | undefined;
-  for (const image of images) {
-    if ($isCmsImageNode(image)) {
-      if (run === undefined) {
-        run = $createParagraphNode();
-        after.insertAfter(run);
-        after = run;
-      }
-      run.append(image);
-      continue;
-    }
-    run = undefined;
-    after.insertAfter(image);
-    after = image;
-  }
+  $placeAfterCode(code, images);
   return true;
 };
 
@@ -2574,6 +2684,11 @@ const PasteRulesPlugin = () => {
             $selectionIntoAdjacentBlocks,
             COMMAND_PRIORITY_CRITICAL
           )
+        ),
+        editor.registerCommand(
+          SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
+          ({ nodes, selection }) => $insertClipboardNodes(nodes, selection),
+          COMMAND_PRIORITY_NORMAL
         ),
         // above LinkRulePlugin's paste handler
         editor.registerCommand(

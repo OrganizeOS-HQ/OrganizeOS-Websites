@@ -616,3 +616,164 @@ describe("a figure pasted into a heading stands beside it (B14)", () => {
     expect(reopenReason(written)).toBeUndefined();
   });
 });
+
+const drop = async (data: Record<string, string>) => {
+  const dataTransfer = new DataTransfer();
+  for (const [format, text] of Object.entries(data)) {
+    dataTransfer.setData(format, text);
+  }
+  await act(async () => {
+    editable()!.dispatchEvent(
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        inputType: "insertFromDrop",
+        dataTransfer,
+      })
+    );
+  });
+  await settle();
+};
+
+const codeText = (html: string) =>
+  [
+    ...new DOMParser()
+      .parseFromString(html, "text/html")
+      .querySelectorAll("code"),
+  ].map((code) => code.textContent);
+
+describe("pastes and drops that start in code or at a heading's start (K3, K14, K16)", () => {
+  test("a cut from code across an image paragraph, pasted over a range from code into the next block, keeps it all", async () => {
+    const onChange = mountField(
+      `<pre><code>src</code></pre><p>one ${IMG_A} two</p><pre><code>dst</code></pre><p>after</p>`
+    );
+    await settle();
+    await focus();
+    await update(() => {
+      const selection = $createRangeSelection();
+      selection.anchor.set(textNode("src").getKey(), 0, "text");
+      selection.focus.set(textNode(" two").getKey(), 4, "text");
+      $setSelection(selection);
+    });
+    const data = await clipboard("cut");
+    await update(() => {
+      const selection = $createRangeSelection();
+      selection.anchor.set(textNode("dst").getKey(), 1, "text");
+      selection.focus.set(textNode("after").getKey(), 2, "text");
+      $setSelection(selection);
+    });
+    await paste(data);
+    const written = lastHtml(onChange);
+    expect(imagesIn(written)).toHaveLength(1);
+    expect(codeText(written).filter(Boolean)).toEqual(["dsrc\none  twoter"]);
+    expect(written.indexOf("<img")).toBeGreaterThan(written.indexOf("</pre>"));
+    expect(reopenReason(written)).toBeUndefined();
+  });
+
+  test("a drop of the field's own blocks into code keeps the text in the block and the image after it", async () => {
+    const onChange = mountField(
+      `<p>one ${IMG_A} two</p><p>p2</p><pre><code>abc</code></pre>`
+    );
+    await settle();
+    await focus();
+    await update(() => {
+      const selection = $createRangeSelection();
+      selection.anchor.set(textNode("one ").getKey(), 0, "text");
+      selection.focus.set(textNode("p2").getKey(), 2, "text");
+      $setSelection(selection);
+    });
+    const data = await clipboard("copy");
+    await update(caretAtEnd("abc"));
+    await drop(data);
+    const written = lastHtml(onChange);
+    expect(codeText(written)).toEqual(["abcone  two\np2"]);
+    expect(imagesIn(written)).toHaveLength(2);
+    expect(written.lastIndexOf("<img")).toBeGreaterThan(
+      written.indexOf("</pre>")
+    );
+    expect(reopenReason(written)).toBeUndefined();
+  });
+
+  test("a paragraph and a figure pasted at a heading's start stand before it", async () => {
+    const onChange = mountField(`<p>xx</p>${FIGURE}<h2>hh</h2>`);
+    await settle();
+    await focus();
+    await update(() => {
+      const selection = $createRangeSelection();
+      selection.anchor.set(textNode("xx").getKey(), 0, "text");
+      selection.focus.set($getRoot().getKey(), 2, "element");
+      $setSelection(selection);
+    });
+    const data = await clipboard("copy");
+    await update(caretAtStart("hh"));
+    await paste(data);
+    const written = lastHtml(onChange);
+    expect(imagesIn(written)).toHaveLength(2);
+    // the copy reaches the heading's start: a copied empty-to-start heading
+    expect(sanitizeRichTextHtml(written)).toMatch(
+      /^<p>xx<\/p><figure>.*<\/figure><p>xx<\/p><figure>.*<\/figure><h2>hh<\/h2><h2>hh<\/h2>$/
+    );
+    expect(reopenReason(written)).toBeUndefined();
+  });
+
+  test("a figure pasted over a range at a heading's start stands before it", async () => {
+    const onChange = mountField(`${FIGURE}<h2>hh</h2>`);
+    await settle();
+    await focus();
+    await update(selectNode("cms-figure"));
+    const data = await clipboard("copy");
+    await update(() => {
+      textNode("hh").select(0, 1);
+    });
+    await paste(data);
+    const written = lastHtml(onChange);
+    expect(imagesIn(written)).toHaveLength(2);
+    expect(sanitizeRichTextHtml(written)).toMatch(/<\/figure><h2>h<\/h2>$/);
+  });
+
+  test("own nested blocks pasted into code add no blank lines; HTML-only blocks keep their lines", async () => {
+    const onChange = mountField(
+      "<blockquote><p>q1</p><p>q2</p></blockquote><pre><code>abc</code></pre>"
+    );
+    await settle();
+    await focus();
+    const text = (value: string) => ({
+      type: "text",
+      version: 1,
+      text: value,
+      format: 0,
+      detail: 0,
+      mode: "normal",
+      style: "",
+    });
+    const block = (type: string, children: unknown[]) => ({
+      type,
+      version: 1,
+      children,
+      direction: null,
+      format: "",
+      indent: 0,
+      textFormat: 0,
+      textStyle: "",
+    });
+    await update(caretAtEnd("abc"));
+    await paste({
+      "application/x-lexical-editor": JSON.stringify({
+        namespace: editorOf()!._config.namespace,
+        nodes: [
+          block("quote", [
+            block("paragraph", [text("q1")]),
+            block("paragraph", [text("q2")]),
+          ]),
+        ],
+      }),
+      "text/plain": "q1\n\nq2",
+    });
+    expect(codeText(lastHtml(onChange))).toEqual(["abcq1\nq2"]);
+    await update(() => {
+      ($getRoot().getLastChild() as ElementNode).selectEnd();
+    });
+    await paste({ "text/html": "<p>one</p><p>two</p>" });
+    expect(codeText(lastHtml(onChange))).toEqual(["abcq1\nq2one\ntwo"]);
+  });
+});
