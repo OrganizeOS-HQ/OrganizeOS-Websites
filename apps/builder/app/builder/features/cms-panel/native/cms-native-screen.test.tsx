@@ -37,6 +37,7 @@ import {
   $styles,
 } from "~/shared/sync/data-stores";
 import { getResourceKey, invalidateResource } from "~/shared/resources";
+import { addCollectionCatalogResource } from "./cms-catalog-add";
 import {
   buildCollectionResourcePresets,
   buildOrgResourcePresets,
@@ -58,6 +59,7 @@ import {
   rowOf,
   type FakeCmsSource,
 } from "./fake-cms-source";
+import { createFakeCmsStructureSource } from "./fake-cms-structure-source";
 import { CmsNativeScreen } from "./cms-native-screen";
 import hostSource from "./cms-native-screen.tsx?raw";
 
@@ -69,6 +71,19 @@ vi.mock("./cms-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./cms-api")>()),
   createCmsApi: cmsApi.createCmsApi,
 }));
+
+vi.mock("./cms-structure-api", () => ({
+  createCmsStructureApi: () => createFakeCmsStructureSource(),
+}));
+
+// the add on use, failed by a test on its own
+vi.mock("./cms-catalog-add", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./cms-catalog-add")>();
+  return {
+    ...actual,
+    addCollectionCatalogResource: vi.fn(actual.addCollectionCatalogResource),
+  };
+});
 
 vi.mock("~/shared/resources", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/shared/resources")>()),
@@ -184,6 +199,8 @@ const site = {
 let root: Root | undefined;
 let container: HTMLElement | undefined;
 let platformCollections: CmsCollectionSummary[];
+// slice 1's tests read the collection actions alone; slice 3's set it
+let canManageSettings: boolean;
 const onClose = vi.fn();
 const onHide = vi.fn();
 const onShowClassic = vi.fn();
@@ -346,9 +363,15 @@ beforeEach(() => {
   loaderFetch.mockReset();
   loaderFetch.mockImplementation(answerLoader);
   platformCollections = [NEWS, EVENTS, MEMBERS];
+  canManageSettings = false;
   cmsApi.createCmsApi.mockReset();
   cmsApi.createCmsApi.mockImplementation(() => {
     const fake = createFakeCmsSource();
+    fake.getAccess.mockImplementation(async () => ({
+      canEdit: true,
+      canPublish: true,
+      canManageSettings,
+    }));
     fake.listCollections.mockImplementation(async () => ({
       collections: platformCollections,
     }));
@@ -511,6 +534,23 @@ describe("the collection actions in the CMS column", () => {
     expect(success).toHaveBeenCalledTimes(1);
     expect(onHide).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  // R5-10: the focus after Remove from sitemap
+  test("Remove from sitemap leaves the focus on the screen's nearest control", async () => {
+    await addToSitemap("news", "News");
+    await render();
+    await choose(menuItem(await openMenu("News menu"), "Remove from sitemap"));
+    await until(() => expect(listSitemapCollections()).toEqual([]));
+    for (let frame = 0; frame < 4; frame += 1) {
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
+    }
+    await settle();
+    expect(document.activeElement).toBe(
+      document.querySelector("[data-cms-new-item]")
+    );
   });
 
   test("a row whose item page reads an old address shows Item page uses an old address", async () => {
@@ -868,4 +908,220 @@ describe("the canvas after a write", () => {
       expect(vi.mocked(invalidateResource).mock.calls).toEqual([[news]]);
     }
   );
+});
+
+describe("one row menu (slice 3)", () => {
+  const menuTexts = (items: HTMLElement[]) =>
+    items.map((item) => item.textContent);
+  // the catalog resolves after the column draws: until it does, the row
+  // holds the structure menu under the same name
+  const untilCatalogMenu = (slug: string) =>
+    until(() =>
+      expect(
+        row(slug)?.querySelector("[data-organizeos-collection-menu]")
+      ).not.toBeNull()
+    );
+
+  beforeEach(() => {
+    canManageSettings = true;
+  });
+
+  test("one menu: Settings, Create item page, Add list, Delete", async () => {
+    await render();
+    await untilCatalogMenu("news");
+    expect(menuTexts(await openMenu("News menu"))).toEqual([
+      "Settings",
+      "Create item page",
+      "Add list",
+      "Delete",
+    ]);
+  });
+
+  test("a sitemap orphan keeps Remove from sitemap after Delete", async () => {
+    await addToSitemap("news", "News");
+    await render();
+    await untilCatalogMenu("news");
+    expect(menuTexts(await openMenu("News menu"))).toEqual([
+      "Settings",
+      "Create item page",
+      "Add list",
+      "Delete",
+      "Remove from sitemap",
+    ]);
+  });
+
+  test("a private collection whose catalog Resource exists gets Settings and Delete only", async () => {
+    setProject(
+      await collectionCatalog([
+        { slug: "news", name: "News" },
+        { slug: "events", name: "Events" },
+        { slug: "members", name: "Members" },
+      ])
+    );
+    await render("members");
+    await untilCatalogMenu("news");
+    expect(menuTexts(await openMenu("Members menu"))).toEqual([
+      "Settings",
+      "Delete",
+    ]);
+    expect(
+      row("members")?.querySelector("[data-organizeos-collection-menu]")
+    ).toBeNull();
+  });
+
+  test.each([
+    ["Content mode", () => $builderMode.set("content")],
+    [
+      "a denied org",
+      () => $organizeosSite.set({ ...site, blocksEnabled: false }),
+    ],
+  ])("%s: Settings and Delete", async (_, gate) => {
+    act(() => {
+      gate();
+    });
+    await render();
+    expect(menuTexts(await openMenu("News menu"))).toEqual([
+      "Settings",
+      "Delete",
+    ]);
+    expect(
+      document.querySelectorAll("[data-organizeos-collection-menu]")
+    ).toHaveLength(0);
+  });
+
+  test("without canManageSettings: the actions alone, and no menu where there are none", async () => {
+    canManageSettings = false;
+    await render();
+    expect(menuTexts(await openMenu("News menu"))).toEqual([
+      "Create item page",
+      "Add list",
+    ]);
+    expect(byLabel("Members menu")).toBeNull();
+  });
+});
+
+describe("the catalog add on use (slice 3)", () => {
+  const PROGRAMS: CmsCollectionSummary = {
+    id: "77777777-7777-4777-8777-777777777777",
+    slug: "programs",
+    name: "Programs",
+    singularName: "Program",
+    isPublic: true,
+    total: 1,
+  };
+
+  const programsResource = async () =>
+    (await collectionCatalog([{ slug: "programs", name: "Programs" }]))[0];
+
+  const rootBindings = () =>
+    [...$dataSources.get().values()].filter(
+      (dataSource) => dataSource.type === "resource"
+    );
+
+  const programsSchema = {
+    slug: "programs",
+    name: "Programs",
+    singularName: "Program",
+    fields: [{ key: "title", label: "Title", kind: "text", isTitle: true }],
+  };
+
+  beforeEach(() => {
+    platformCollections = [NEWS, EVENTS, MEMBERS, PROGRAMS];
+    schemas.push(programsSchema);
+  });
+
+  afterEach(() => {
+    schemas.splice(schemas.indexOf(programsSchema), 1);
+  });
+
+  test("a public collection with no catalog Resource and a seed gets the actions; Create item page adds the Resource, then runs", async () => {
+    const resource = await programsResource();
+    expect($resources.get().has(resource.id)).toBe(false);
+    await render("programs");
+    const items = await openMenu("Programs menu");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Create item page",
+      "Add list",
+    ]);
+    await choose(menuItem(items, "Create item page"));
+    await until(() => expect(findCollectionItemPage("programs")).toBeDefined());
+    expect($resources.get().get(resource.id)).toEqual(resource);
+  });
+
+  test("without a seed, in Content mode or for a denied org, nothing is added and no actions show", async () => {
+    // no static /v1 preset to copy from
+    $resources.set(
+      new Map(newsAndEvents.map((resource) => [resource.id, resource]))
+    );
+    await render("programs");
+    await until(() => expect(byLabel("News menu")).not.toBeNull());
+    expect(byLabel("Programs menu")).toBeNull();
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+    setProject();
+    for (const gate of [
+      () => $builderMode.set("content"),
+      () => $organizeosSite.set({ ...site, blocksEnabled: false }),
+    ]) {
+      act(() => {
+        gate();
+      });
+      await render("programs");
+      await settle();
+      expect(byLabel("Programs menu")).toBeNull();
+      act(() => {
+        root?.unmount();
+      });
+      container?.remove();
+      $builderMode.set("design");
+      $organizeosSite.set(site);
+    }
+    expect($resources.get().has((await programsResource()).id)).toBe(false);
+  });
+
+  test.each(["Create item page", "Add list"])(
+    "a refused add toasts, and %s never runs",
+    async (action) => {
+      const error = vi.spyOn(toast, "error");
+      await render("programs");
+      vi.mocked(addCollectionCatalogResource).mockClear();
+      // the add refuses as it does on a failed write: a toast, then false
+      vi.mocked(addCollectionCatalogResource).mockImplementationOnce(
+        async () => {
+          toast.error("Not saved");
+          return false;
+        }
+      );
+      await choose(menuItem(await openMenu("Programs menu"), action));
+      await until(() => expect(error).toHaveBeenCalledWith("Not saved"));
+      await settle();
+      expect(addCollectionCatalogResource).toHaveBeenCalledTimes(1);
+      // the action's own refusal would toast too
+      expect(error.mock.calls).toEqual([["Not saved"]]);
+      expect(findCollectionItemPage("programs")).toBeUndefined();
+      expect($resources.get().has((await programsResource()).id)).toBe(false);
+      expect(
+        document.querySelector("[data-organizeos-add-list-submit]")
+      ).toBeNull();
+    }
+  );
+
+  test("no :root binding is ever added", async () => {
+    const before = rootBindings().length;
+    await render("programs");
+    await choose(menuItem(await openMenu("Programs menu"), "Create item page"));
+    await until(() => expect(findCollectionItemPage("programs")).toBeDefined());
+    const resource = await programsResource();
+    expect(
+      rootBindings().filter(
+        (dataSource) =>
+          dataSource.type === "resource" &&
+          dataSource.resourceId === resource.id &&
+          dataSource.scopeInstanceId === ":root"
+      )
+    ).toEqual([]);
+    expect(rootBindings().length).toBeGreaterThanOrEqual(before);
+  });
 });

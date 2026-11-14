@@ -20,6 +20,8 @@
     "unicorn/prefer-node-protocol": "error"
   },
   "ignorePatterns": [
+    "apps/builder/app/builder/features/cms-panel/native/rich-text-nodes.ts",
+    "apps/builder/app/builder/features/cms-panel/native/rich-text-sanitize.ts",
     "**/*.js",
     "**/*.d.ts",
     "**/__generated__/**",

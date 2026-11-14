@@ -4,6 +4,8 @@
   "printWidth": 80,
   "sortPackageJson": false,
   "ignorePatterns": [
+    "apps/builder/app/builder/features/cms-panel/native/rich-text-nodes.ts",
+    "apps/builder/app/builder/features/cms-panel/native/rich-text-sanitize.ts",
     "pnpm-lock.yaml",
     "packages/prisma-client/prisma/migrations/*/client",
     "packages/prisma-client/**/*.d.ts",

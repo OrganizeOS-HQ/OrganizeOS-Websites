@@ -276,6 +276,8 @@ How an org admin's session is wired end to end, and which side owns each step. T
 
 **The CMS door's list actions.** E10 to E13 are each a `POST` to `collections/{collectionId}/items/publish`, `/status`, `/delete` and `/order`, with a JSON body of 1 to 50 ids (E10 each with its version), under the same route, permit (`edit`) and 2 MB cap. E3 (`GET collections/{collectionId}/items`) also takes `status`, `sort`, `direction`, `optionKey` and `optionValue`, each optional, parsed with the endpoint's strict schema (`sort` `order`, `updated`, `name`, `status` or `field:{key}`; `optionKey` and `optionValue` together or not at all) and rebuilt with the other keys in sorted key order. The client sends a filter or sort key only when it differs from its default, and reads every answer key the platform added for these actions as optional, with a default.
 
+**The CMS door's structure endpoints.** The structure screens (§9) add E20 to E25 to the same route, with the same checks and the same forward: E20 `GET structure` (the org's limits and templates), E21 `GET collections/{c}/structure` (one collection's schema, settings and the collections that reference it), E22 `POST collections` (create, with a `clientId` so a repeat answers the collection already made: 201 when made, 200 for a repeat, `created` true or false), E23 `PUT collections/{c}` (settings, with `expectedUpdatedAt`), E24 `PUT collections/{c}/schema` (the fields, with `expectedUpdatedAt` and the keys removed named in `removeKeys`) and E25 `POST collections/{c}/delete`. Each write is a `POST` or `PUT`, so it needs the project's `edit` permit, and OrganizeOS checks `pages.manage_settings` again. A delete of a collection another references answers 409 `referenced`. The client is `features/cms-panel/native/cms-structure-api.ts`, through `cms-api.ts`'s `request`; its schemas are pinned against the platform's fixtures beside the door's.
+
 **Project settings.** Since 0.309.0 a build's project settings (custom code, the contact email, the site's authentication, headers and the rest) live in their own column, `"Build"."projectSettings"`, which a platform migration adds, and the builder and the CLI read it first. A build saved before keeps a copy of its old settings in `pages`, which the builder strips only in memory and writes back on a save, so the column is the live value and that copy goes stale. The platform's `websites2_builder_resync_project_settings` repairs the column from a build the old builder wrote last, and `websites2_builder_restore_legacy_settings` writes the column back into `pages` for a rollback. When they run at the cutover is owner decision D9, still open, in the OrganizeOS plan for this merge (`docs/superpowers/plans/2026-11-01-builder-upstream-merge.md`).
 
 Backward compatibility: every new claim and body field (`subdomain`, the status report) is optional on the builder side, so either repo can deploy first. A project provisioned before OrganizeOS sent a subdomain keeps its `org-<id>` placeholder domain (Back to OrganizeOS then opens the app's dashboard; the Publish dialog takes the subdomain from OrganizeOS's answer and is unaffected) until the next SSO entry or re-provision. The dialog reads `launchable` only when `websites2_site_addresses` sends it: a missing or `null` field shows no warning, so either side can add it first. Publish targets are not "either repo first": a builder without the Publish dialog's rows publishes with no `targets`, and OrganizeOS records the build at no address; this builder needs the platform's `targets` and refuses to publish without them ("Addresses unavailable.", the route's 503 `targets_unavailable`). The builder and the workflow ship from this repository together, and a revert reverts both: the publisher always dispatches on `main`, so a builder that sends `targets` to a workflow that does not declare it gets a 422, a setup failure that marks the build FAILED. `guardLevel` is the exception to "either repo first": OrganizeOS's callback refuses a key it does not know, so it accepted the field before this workflow sends it. Unpublish and the replace are not either repo first either: this builder reads `actions`, `serving` and `old_site_key` only when the platform sends them (without them: no Unpublish, the row word follows `live`, no row is marked and no replace is offered); OrganizeOS's callback refuses `replacePages` until it knows it, and the dialog offers the replace only from a platform that sends `old_site_key`, so the platform ships first. The action route needs the platform's endpoint and the secret pair; until then it answers `unavailable` and the dialog hides Unpublish.
@@ -335,7 +337,8 @@ can be merged with minimal conflict.
   nano-staged's `oxfmt --no-error-on-unmatched-pattern`, so a commit that stages
   only files the formatter ignores (this doc, under `docs/**`) passes the hook.
   `.github/workflows/main.yml`: one workflow, a `checks` job and a `tests` job
-  of nine legs (the packages, the CLI, and one per builder Vitest project), with
+  of ten legs (the packages, the CLI, and one per builder Vitest project, the
+  CMS panels' `core-browser-builder-cms` among them), with
   no secret, environment or checkout ref, and checkouts that keep no token in
   the clone (`persist-credentials: false`); only its cli leg builds the blocks
   package. The typecheck covers every package and fixture but two fixtures the
@@ -586,16 +589,29 @@ can be merged with minimal conflict.
   marked lines; and
   the app's origin in that route's `frame-src`,
   through `builderFrameSrcPolicy` in `shared/frame-protection.ts`. The native
-  screen also adds the four `@lexical/*` packages `code`, `html`, `list` and
-  `rich-text` as direct dependencies in `apps/builder/package.json`, and so in
-  `pnpm-lock.yaml` (neither can carry a mark); the rich-text
-  round-trip fixture
-  `features/cms-panel/native/__fixtures__/rich-text-roundtrip.json`, a byte
-  copy of the platform's at a recorded commit and hash, with its README
-  beside it; `$cmsFrameDirty` and `$cmsDirty`, computed from it and
+  screen also adds the five `@lexical/*` packages `clipboard`, `code`, `html`,
+  `list` and `rich-text` as direct dependencies in `apps/builder/package.json`, and so in
+  `pnpm-lock.yaml` (neither can carry a mark), and `htmlparser2` (12.0.0) and
+  `sanitize-html` (2.17.7, with `@types/sanitize-html`) for the rich-text
+  read-only check (about 150 kB minified, 57 kB gzipped, with what they pull
+  in, postcss and dayjs among it, all in the rich-text field's lazy chunk,
+  loaded only once a rich-text field shows); `native/rich-text-nodes.ts` and `native/rich-text-sanitize.ts`,
+  copies of the platform's `client/lib/collections/rich-text-nodes.ts` and of
+  its sanitiser (`rich-text.ts`, comment lines left out; owner approval
+  2026-11-14), kept exact by the round-trip fixture's pins
+  (`native/rich-text-pins.node.test.ts`) and listed in `.oxfmtrc.json` and
+  `.oxlintrc.json` so neither tool rewrites them; the rich-text
+  round-trip fixture and corpus
+  `features/cms-panel/native/__fixtures__/rich-text-roundtrip.json` and
+  `rich-text-corpus.json`, byte copies of the platform's at a recorded commit
+  and hash, with their README beside them; `$cmsFrameDirty` and `$cmsDirty`, computed from it and
   `$cmsNativeDirty` (`native/cms-native-stores.ts`); the stories and the
   sample data they run on, `native/cms-screen.stories.tsx`,
-  `native/sample-cms-source.ts` and `native/sample-collection-actions.tsx`;
+  `native/sample-cms-source.ts` and `native/sample-collection-actions.tsx`,
+  and the structure screens' `native/cms-structure.stories.tsx` and
+  `native/sample-cms-structure-source.ts`; the catalog Resource's shape,
+  `shared/organizeos-collection-resource.ts`, shared by provisioning
+  (`shared/db/resource-presets.server.ts`) and the add on first use;
   and, in `apps/builder/vitest.config.ts`, the `OrganizeOS fork:` line above
   the `@lexical/react/LexicalListPlugin` and `@lexical/selection` entries of
   `optimizeDeps.include`.
@@ -1802,9 +1818,66 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     edit" on each field the person changed. The item's "..." menu holds Discard
     changes below 600 px of header, and the item actions. Each field type has its control.
     Rich text is a Lexical editor, loaded with the first rich-text field. It
-    is read-only for a value with images ("Read only", with no Classic CMS button)
-    and when the editor would not keep the value's blocks or links whole
-    ("Edit in Classic CMS"). A refusal is one line each, with the "Not in
+    keeps a value's images whole: an `img` (its `src`, `alt`, `width`,
+    `height` and `title`) in its place in the line with the spaces beside it,
+    or a top-level `figure` with a plain-text `figcaption` (a figure inside
+    another block keeps its image, and is read-only where the page would
+    change). A click on an image, or Enter with it selected, opens its
+    settings (Alt, Caption for a figure, Remove); an arrow onto an image
+    selects it; typing, a composition, a paste or a drop then lands beside
+    it, on the side the arrow was moving toward (after it when no arrow
+    selected it). Closing the settings by Escape, or with the focus lost,
+    puts a text caret right after the image (the start of the next block,
+    for a figure) and gives the editor the focus; a click elsewhere keeps
+    the focus where it went. Its Image button uploads one through E9 with the
+    image field's checks; pasted HTML brings no image, and a cut, copy or
+    drag inside the same field keeps its images. It is read-only when
+    the editor would change the value on a load and save: the stored value,
+    run through the platform's sanitiser, against the editor's own write of
+    it, through the same sanitiser, by the platform's /v1 nodes, by each link
+    with every attribute and by each image with every attribute; a value the
+    platform cuts at its node limit or flattens at its depth limit, one the
+    editor cannot load (a list item with no list around it among them), and
+    any value where no DOM parser exists are read-only too. "Read only" for a
+    value with images, else with "Edit in Classic CMS". The live editor and
+    this check load with the same nodes and node rules
+    (`registerRichTextTransforms`). A stored value's load keeps every line
+    break and its save writes them back as they were, so a block ending in a
+    line break shows one more blank line in the editor than on the page
+    (owner decision, 2026-11-14); a block that holds nothing saves empty; a
+    paste moves a link or mark inside the blocks it wraps, and so does a
+    stored value's load. A stored link keeps its address as stored, and an
+    emptied parent bullet keeps its sub-bullets, with no item added on a
+    load and save. Of two collapsible spaces meeting at a link's edge the
+    second goes, and so does a link's last space before a line break or its
+    line's end. A list made over part of a quote takes out only the blocks
+    from the one holding the selection's start to the one holding its end,
+    each its own item, at every level of nested quotes, in one undo step; a
+    quote inside a list item is left alone. These hold on every update,
+    from typing, a command or a paste of any source (HTML, plain text or the
+    field's own clipboard): no list or quote nests past the depth limit (one
+    past it moves up a level); a list item is always in a list; a figure is
+    never in a quote; blocks pasted into a nested item keep every untouched
+    item in its order and at its level; and Code holds plain text (its
+    images and figures move to a paragraph after the block, its paragraphs
+    become lines, no format or link applies inside it, a paste into it
+    inserts plain text, and the marks and Link are disabled there). A paste
+    or drop that starts in code inserts plain text, its images after the
+    block; blocks pasted at a heading's start go before it. A figure pasted
+    into a nested list item splits every list level, each keeping its type.
+    A paragraph or heading never holds a block. A list type change inside a
+    quote stays in the quote. An edit from a caret on a link first moves the
+    caret into the text. Newlines sent as text (dictation, an input method)
+    become line breaks, and a delete from a soft keyboard with an image
+    selected removes the image. A link never holds an image the Link control
+    adds. Save sends each changed
+    rich-text value as written, unless it would reopen read-only: then it
+    sends the editor's own write of it, only when that write reopens
+    editable and differs from the value only by collapsible whitespace,
+    paragraphs holding nothing visible and no line break, links or marks
+    holding only spaces, or a list item's paragraphs becoming line breaks
+    (`settleRichTextHtml`); any other value is sent as written. "Use my
+    edit" restores a rich-text value the same way. A refusal is one line each, with the "Not in
     plan" chip for the plan. The unsaved guard stands before Back, another
     collection, Classic CMS and "Open OrganizeOS". Every open reads the
     access (E0) again. The lists refetch after each write, on reopen and on
@@ -1836,6 +1909,35 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     differ from the live copy. A multireference's chosen items move by drag
     or Alt+Arrow. Every list write refetches the lists and invalidates the
     canvas's requests for the collection.
+  - **The structure screens** (`features/cms-panel/native/`). The column has
+    Collections and Fields tabs. Without `pages.manage_settings` (E0's
+    `canManageSettings`) they are read-only: no "+", no Settings, Delete,
+    Save or Remove. A row's one "..." menu puts Settings and Delete with the
+    build's actions; a private collection has no collection actions. New collection offers the platform's templates and a custom
+    collection, created once (`clientId`); an org with no collection opens on
+    the same options (the first run). Settings edits Name, Singular name,
+    Address and Public, and on a conflict rebases the edit on the current
+    settings; Delete asks first, with a fresh count, and is refused while
+    another collection references this one. The Fields tab lists the fields in order,
+    reordered by drag or Alt+Arrow, the writes queued per collection; the
+    field sheet edits one field under the platform's schema rules (the plan's
+    field cap, at most 60), and on a conflict rebases the edit on the
+    collection's current schema. A saved field keeps its kind and, for a
+    reference, its collection. A template's field cannot be removed and its
+    reference keeps its collection. Removing a field asks first, with a fresh
+    count. An open sheet or settings view saves against the version it was
+    built from, so another person's change in between answers a conflict. After a
+    structure write the lists refetch, with no reload; a field removal, a
+    change to a field's options or to the title field, an Address or Public
+    change and a delete also invalidate the canvas's requests for the
+    collection. Opening a structure view clears the list's
+    selection, and keyboard moves still in their pause are sent. A structure view, Settings and New collection wait for the
+    editor's running write, then the guard.
+  - **The catalog Resource on first use** (`native/cms-catalog-add.ts`). A
+    public collection with no catalog Resource gets one, in provisioning's
+    shape (`shared/organizeos-collection-resource.ts`), the first time its
+    row menu creates an item page or adds a list, in a staged transaction of
+    its own before the action.
   - **Messages, frame to builder only** (`cms-messages.ts`). The listener
     accepts a message only when `event.origin` is the platform URL's origin
     and `event.source` is the frame's `contentWindow`, and parses it with
