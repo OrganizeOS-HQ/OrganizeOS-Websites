@@ -80,9 +80,6 @@ import {
 } from "./apply-site-template";
 
 const { uploadAssets } = vi.hoisted(() => ({ uploadAssets: vi.fn() }));
-// the forms door client: a Signup Form placement's site form (Task 8, P10)
-const { createSiteForm } = vi.hoisted(() => ({ createSiteForm: vi.fn() }));
-vi.mock("../forms-api", () => ({ createSiteForm, getFormsAccess: vi.fn() }));
 // every name the builder's modules import from it (builder-api.ts imports
 // importAssets), so the suite links
 vi.mock("~/builder/shared/assets/upload-assets", () => ({
@@ -99,6 +96,10 @@ vi.mock(
   "@webstudio-is/project-build/server",
   () => import("../../../../../../../packages/project-build/src/db/pages")
 );
+
+// the forms door client: a Signup Form placement's site form (Task 8, P10)
+const { createSiteForm } = vi.hoisted(() => ({ createSiteForm: vi.fn() }));
+vi.mock("../forms-api", () => ({ createSiteForm, getFormsAccess: vi.fn() }));
 
 enableMapSet();
 registerContainers();
