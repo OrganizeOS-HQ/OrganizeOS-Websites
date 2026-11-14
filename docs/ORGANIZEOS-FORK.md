@@ -590,11 +590,18 @@ can be merged with minimal conflict.
   through `builderFrameSrcPolicy` in `shared/frame-protection.ts`. The native
   screen also adds the four `@lexical/*` packages `code`, `html`, `list` and
   `rich-text` as direct dependencies in `apps/builder/package.json`, and so in
-  `pnpm-lock.yaml` (neither can carry a mark); the rich-text
-  round-trip fixture
-  `features/cms-panel/native/__fixtures__/rich-text-roundtrip.json`, a byte
-  copy of the platform's at a recorded commit and hash, with its README
-  beside it; `$cmsFrameDirty` and `$cmsDirty`, computed from it and
+  `pnpm-lock.yaml` (neither can carry a mark), and `htmlparser2` (12.0.0) and
+  `sanitize-html` (2.17.7, with `@types/sanitize-html`) for the rich-text
+  read-only check; `native/rich-text-nodes.ts` and `native/rich-text-sanitize.ts`,
+  copies of the platform's `client/lib/collections/rich-text-nodes.ts` and of
+  its sanitiser (`rich-text.ts`, comment lines left out; owner approval
+  2026-11-14), kept exact by the round-trip fixture's pins
+  (`native/rich-text-pins.node.test.ts`) and listed in `.oxfmtrc.json` and
+  `.oxlintrc.json` so neither tool rewrites them; the rich-text
+  round-trip fixture and corpus
+  `features/cms-panel/native/__fixtures__/rich-text-roundtrip.json` and
+  `rich-text-corpus.json`, byte copies of the platform's at a recorded commit
+  and hash, with their README beside them; `$cmsFrameDirty` and `$cmsDirty`, computed from it and
   `$cmsNativeDirty` (`native/cms-native-stores.ts`); the stories and the
   sample data they run on, `native/cms-screen.stories.tsx`,
   `native/sample-cms-source.ts` and `native/sample-collection-actions.tsx`,
@@ -1800,25 +1807,24 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     Rich text is a Lexical editor, loaded with the first rich-text field. It
     keeps a value's images whole: an `img` (its `src`, `alt`, `width`,
     `height` and `title`) in its place in the line with the spaces beside it,
-    or a top-level `figure` with a plain-text `figcaption` (a nested one reads
-    lossy). Its Image button uploads one through E9 with the
+    or a top-level `figure` with a plain-text `figcaption` (a figure inside
+    another block keeps its image, and is read-only where the page would
+    change). Its Image button uploads one through E9 with the
     image field's checks; pasted HTML brings no image. It is read-only when
-    the editor would not keep the value's blocks or links whole: "Read only"
-    for a value with images, else with "Edit in Classic CMS". A link with no
-    text and no image is dropped on save; one holding only a space opens
-    read-only where the editor would drop that space (at a line's edge or
-    beside another space). A value whose tags a browser would rearrange, or
-    with a block inside a link or a mark, opens read-only; a paste moves a
-    link or mark inside the blocks it wraps. A line break ending its block
-    inside a link or mark, or before an empty mark or link at its block's
-    end, opens read-only, as does a carriage return, a NUL or a line break
-    outside any block. A paragraph, heading, quote or list item that holds
-    nothing saves empty; one holding only line breaks, or only a space that
-    shows (a non-breaking space), saves them as they are; one ending in a
-    line break saves one break more, so a blank line at its end reloads
-    whole. A load and save may move collapsible whitespace at a link or
-    mark boundary, and drops a block's single last line break, which shows
-    nothing; the page and its text are unchanged. A link never holds an image the Link control
+    the editor would change the value on a load and save: the stored value,
+    run through the platform's sanitiser, against the editor's own write of
+    it, through the same sanitiser, by the platform's /v1 nodes, by each link
+    with every attribute and by each image with every attribute; a value at
+    the platform's node or depth limit, one the editor cannot load, and any
+    value where no DOM parser exists are read-only too. "Read only" for a
+    value with images, else with "Edit in Classic CMS". The live editor and
+    this check load with the same nodes and node rules
+    (`registerRichTextTransforms`). A stored value's load keeps every line
+    break and its save writes them back as they were, so a block ending in a
+    line break shows one more blank line in the editor than on the page
+    (owner decision, 2026-11-14); a block that holds nothing saves empty; a
+    paste moves a link or mark inside the blocks it wraps, and so does a
+    stored value's load. A link never holds an image the Link control
     adds, and Code moves a line's images to a paragraph after the block. A refusal is one line each, with the "Not in
     plan" chip for the plan. The unsaved guard stands before Back, another
     collection, Classic CMS and "Open OrganizeOS". Every open reads the
