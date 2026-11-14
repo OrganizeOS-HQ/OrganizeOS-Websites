@@ -2204,8 +2204,8 @@ describe("drag is offered only on the order the table draws", () => {
     expect(itemSlugs()).toEqual(["a", "c"]);
   });
 
-  test("a pending keyboard order is dropped when the list's key changes", async () => {
-    reorderWorld();
+  test("a pending keyboard order is sent when a column header changes the sort", async () => {
+    const world = reorderWorld();
     const gate = holdListItems();
     mount();
     await settle();
@@ -2222,11 +2222,63 @@ describe("drag is offered only on the order the table draws", () => {
       name.click();
     });
     await settle();
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]]);
     await wait(600);
-    expect(fake.reorderItems).not.toHaveBeenCalled();
     await gate.release();
     await wait(600);
-    expect(fake.reorderItems).not.toHaveBeenCalled();
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]]);
+    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
+  });
+
+  test("an order queued behind an E13 in flight is sent after it when a column header changes the sort", async () => {
+    const world = reorderWorld();
+    const held = deferred<CmsResult<{ changed: number }>>();
+    const store = fake.reorderItems.getMockImplementation()!;
+    fake.reorderItems
+      .mockImplementationOnce(async (c, body) => {
+        const answer = await held.promise;
+        await store(c, body);
+        return answer;
+      })
+      .mockImplementation(store);
+    const base = fake.listItems.getMockImplementation()!;
+    fake.listItems.mockImplementation(async (c, q) => {
+      const answer = await base(c, q);
+      if (q.sort !== "name" || isCmsFailure(answer)) {
+        return answer;
+      }
+      const items = [...answer.items].sort((left, right) =>
+        left.slug.localeCompare(right.slug)
+      );
+      return { ...answer, items };
+    });
+    mount();
+    await settle();
+    await dragBelow("a", "b");
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]]);
+    // b, a, c is in flight: a keyboard move, then the Name header at once
+    focusRow("c");
+    await altMove("ArrowUp");
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+    const name = [
+      ...document.querySelectorAll<HTMLElement>('[role="columnheader"] button'),
+    ].find((button) => button.textContent?.startsWith("Name"))!;
+    act(() => {
+      name.click();
+    });
+    await settle();
+    await wait(600);
+    expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+    await act(async () => held.resolve({ changed: 2 }));
+    await settle();
+    await wait(600);
+    expect(reorderCalls()).toEqual([
+      [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]],
+      [ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]],
+    ]);
+    expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]);
+    // the Name order is drawn
+    expect(itemSlugs()).toEqual(["a", "b", "c"]);
   });
 });
 
@@ -2375,6 +2427,36 @@ describe("the order E13 accepted is provisional", () => {
     await click(buttonByText("Sort"));
     await click(menuItemByText("Manual order"));
     expect(itemSlugs()).toEqual(["b", "a", "c"]);
+  });
+
+  test("after E13 200 and a failed refetch, a successful refresh draws the newer order, and Alt+Arrow moves from it", async () => {
+    const world = reorderWorld();
+    mount();
+    await settle();
+    focusRow("a");
+    await altMove("ArrowDown");
+    await altMove("ArrowDown");
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+    fake.listItems.mockResolvedValueOnce({ error: "rate_limited" });
+    await wait(600);
+    expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]]);
+    // the refetch failed: the accepted order shows
+    expect(itemSlugs()).toEqual(["b", "c", "a"]);
+    // another person reorders to c, b, a; a refresh answers it
+    world.ids = [ROW_IDS[2], ROW_IDS[1], ROW_IDS[0]];
+    refreshCmsNative();
+    await settle();
+    expect(itemSlugs()).toEqual(["c", "b", "a"]);
+    // a move starts from the order drawn
+    focusRow("a");
+    await altMove("ArrowUp");
+    expect(itemSlugs()).toEqual(["c", "a", "b"]);
+    await wait(600);
+    expect(reorderCalls()).toEqual([
+      [ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]],
+      [ROW_IDS[2], ROW_IDS[0], ROW_IDS[1]],
+    ]);
+    expect(world.ids).toEqual([ROW_IDS[2], ROW_IDS[0], ROW_IDS[1]]);
   });
 });
 

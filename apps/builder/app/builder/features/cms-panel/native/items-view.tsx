@@ -269,12 +269,23 @@ export const ItemsView = ({
   const noMatches =
     page !== undefined && page.total === 0 && emptyNew === false;
 
+  // A list change made inside the table (a header, a checkbox) keeps the
+  // focus there: moves made on the drawn page are sent first.
+  const changeListInTable = (next: CmsListState) => {
+    reorder.flush();
+    onListChange(next);
+  };
+
   const onSortChange = (clicked: CmsSortKey) => {
     const next = nextSort(
       { sort: list.sort, direction: list.direction },
       clicked
     );
-    onListChange({ ...list, sort: next.sort, direction: next.direction });
+    changeListInTable({
+      ...list,
+      sort: next.sort,
+      direction: next.direction,
+    });
   };
 
   const onToggle = (id: string) => {
@@ -284,7 +295,7 @@ export const ItemsView = ({
     } else {
       selected.add(id);
     }
-    onListChange({ ...list, selected });
+    changeListInTable({ ...list, selected });
   };
 
   const onToggleAll = () => {
@@ -301,7 +312,7 @@ export const ItemsView = ({
         selected.add(id);
       }
     }
-    onListChange({ ...list, selected });
+    changeListInTable({ ...list, selected });
   };
 
   // E3's field columns, resolved; the Filter's option field and the Sort's
