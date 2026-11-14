@@ -888,6 +888,39 @@ describe("after a structure write", () => {
     expect(stale).toHaveBeenCalledTimes(4);
   });
 
+  test("a change to a field's options invalidates the canvas", async () => {
+    answerSchema();
+    harness.structure.getCollectionStructure.mockResolvedValue({
+      collection: {
+        ...POSTS_STRUCTURE,
+        fields: [
+          ...POSTS_STRUCTURE.fields,
+          {
+            key: "kind",
+            label: "Kind",
+            kind: "option",
+            options: [
+              { value: "News", label: "News" },
+              { value: "Story", label: "Story" },
+            ],
+          },
+        ],
+      },
+    });
+    const stale = vi.fn();
+    mount({ onCollectionCanvasStale: stale });
+    await settle();
+    await click(tab("Fields"));
+    await click(fieldRow("kind")!.querySelector("button"));
+    await typeInto(
+      document.querySelector<HTMLInputElement>('[aria-label="Option 2"]'),
+      "Feature"
+    );
+    await click(buttonByText("Save", header()!));
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
+    expect(stale).toHaveBeenLastCalledWith("posts");
+  });
+
   test("a new field made the title invalidates the canvas (review)", async () => {
     answerSchema();
     const stale = vi.fn();
