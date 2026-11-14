@@ -356,7 +356,7 @@ export const useRowReorder = (input: {
       return;
     }
     if (
-      moved.rows === rowsSignature &&
+      moved.rows === signatures.current.rows &&
       timer.current === undefined &&
       inFlight.current
     ) {
