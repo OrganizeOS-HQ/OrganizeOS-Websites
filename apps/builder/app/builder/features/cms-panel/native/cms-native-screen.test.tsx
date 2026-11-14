@@ -536,6 +536,23 @@ describe("the collection actions in the CMS column", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  // R5-10: the focus after Remove from sitemap
+  test("Remove from sitemap leaves the focus on the screen's nearest control", async () => {
+    await addToSitemap("news", "News");
+    await render();
+    await choose(menuItem(await openMenu("News menu"), "Remove from sitemap"));
+    await until(() => expect(listSitemapCollections()).toEqual([]));
+    for (let frame = 0; frame < 4; frame += 1) {
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
+    }
+    await settle();
+    expect(document.activeElement).toBe(
+      document.querySelector("[data-cms-new-item]")
+    );
+  });
+
   test("a row whose item page reads an old address shows Item page uses an old address", async () => {
     // the collection now answers at "news": a new catalog Resource, same name
     await leaveStaleItemPage("oldnews", "News");
