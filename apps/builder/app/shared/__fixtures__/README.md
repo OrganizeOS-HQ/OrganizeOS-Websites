@@ -98,6 +98,19 @@ diff ../OrganizeOS/client/tests/fixtures/site-components/cms-actor-assertion.jso
 
 and update this note's commit when it changes.
 
+`forms-actor-assertion.json` is a byte-for-byte copy of the OrganizeOS repo's
+`client/tests/fixtures/site-components/forms-actor-assertion.json`, at commit
+`1995258f6767c18d7ced17ebf3af2646ae2b7d46` (the merge into `master` that brought
+it). It is the same `X-OOS-Actor` v1 format with `aud: "forms"`, the assertion
+the forms door (`/api/internal/websites2/forms/{organizationId}/...`) verifies
+and `../organizeos-cms.server.ts` mints for the forms relay and the publish
+step. Compare it the same way before a fork PR that touches either:
+
+```sh
+diff ../OrganizeOS/client/tests/fixtures/site-components/forms-actor-assertion.json \
+  apps/builder/app/shared/__fixtures__/forms-actor-assertion.json
+```
+
 `cms-door/` holds byte-for-byte copies of the OrganizeOS repo's
 `client/tests/fixtures/cms-door/` (every `.json` file and its README), at
 commit `06c7eb46340c3d9f523ff3e589be993c8e886df8` (the merge into `master` that

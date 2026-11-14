@@ -14,6 +14,7 @@ test("reads every form in the forms.json fixture", () => {
     forms.data.map((form) => ({
       id: form.id,
       kind: form.kind,
+      site: (form as { site?: boolean }).site === true,
       fields: form.fields,
     }))
   );
@@ -24,6 +25,7 @@ test("an empty record uses the org defaults", () => {
     formId: undefined,
     fields: orgDefaultFields,
     unavailable: undefined,
+    site: false,
   });
   expect(resolveSignupForm("  ", forms).formId).toBeUndefined();
   expect(
@@ -38,6 +40,7 @@ test("a record resolves to its form's fields", () => {
     formId: newsletter.id,
     fields: newsletter.fields,
     unavailable: undefined,
+    site: false,
   });
   expect(resolveSignupForm(contactForm.id, forms).fields).toEqual(
     contactForm.fields
@@ -51,6 +54,7 @@ test("a record missing from data is unavailable", () => {
     formId: "00000000-0000-4000-8000-000000000000",
     fields: undefined,
     unavailable: "record",
+    site: false,
   });
 });
 
@@ -65,6 +69,7 @@ test("with no record, data is ignored: missing or malformed data still gives the
         formId: undefined,
         fields: orgDefaultFields,
         unavailable: undefined,
+        site: false,
       });
     }
   }
@@ -76,6 +81,7 @@ test("with a record, missing or malformed data is unavailable", () => {
       formId: newsletter.id,
       fields: undefined,
       unavailable: "data",
+      site: false,
     });
   }
 });
@@ -117,6 +123,7 @@ test("reads leniently: unknown keys are ignored and unreadable entries skipped",
       },
     ],
     unavailable: undefined,
+    site: false,
   });
 });
 
@@ -191,4 +198,18 @@ test("isRequiredField: a required field is required, a consent field never is", 
   expect(isRequiredField({ ...base, required: false, consent: "sms" })).toBe(
     false
   );
+});
+
+// Builder forms spec 9 and 6.3: the DTO's `site: true` marks a form a site
+// created; the runtime reads it to let a site form's Fields render from their
+// own props on the canvas (plan 2026-11-13-builder-forms-fork-p2, Task 5).
+test("reads site from the fixture's site form, false elsewhere", () => {
+  const siteForm = forms.data.find(
+    (form) => (form as { site?: boolean }).site === true
+  );
+  expect(siteForm).toBeDefined();
+  expect(resolveSignupForm(siteForm?.id, forms).site).toBe(true);
+  expect(resolveSignupForm(forms.data[0].id, forms).site).toBe(false);
+  expect(resolveSignupForm(undefined, forms).site).toBe(false);
+  expect(resolveSignupForm(forms.data[0].id, undefined).site).toBe(false);
 });

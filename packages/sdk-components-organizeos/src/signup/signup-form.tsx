@@ -232,6 +232,17 @@ const getProblems = ({
   if (hasSubmit === false) {
     problems.push("Add a Submit Button.");
   }
+  // A site form's live definition follows the site's publish (builder forms
+  // spec D6): a Field added or removed since is the normal state, not a
+  // problem, until the next publish brings the definition in step.
+  if (resolution.site) {
+    for (const name of fieldNames) {
+      if (name === "") {
+        problems.push("A Field has no form field. Set one in its settings.");
+      }
+    }
+    return problems;
+  }
   for (const field of missing) {
     if (field.name !== "email") {
       problems.push(
@@ -255,6 +266,8 @@ const getProblems = ({
 type SignupFormProps = Omit<ComponentProps<"form">, "action" | "onSubmit"> & {
   /** The form's id, from the Forms data. Empty for the org defaults. */
   record?: string;
+  /** The builder-only mark of a site form's block, its form's kind. */
+  siteForm?: string;
   /** The `GET /v1/forms` body, `{ data: Form[] }`: the project's Forms preset. */
   data?: unknown;
   /** Reveals a state on the canvas; bound to the template's `formState` variable. */
@@ -282,6 +295,9 @@ export const SignupForm = forwardRef<ElementRef<"form">, SignupFormProps>(
       onStateChange,
       action = "state",
       actionPage,
+      // builder-only: marks a site form's block for the publish step, and
+      // never reaches the DOM (builder forms spec 7.4)
+      siteForm: _siteForm,
       children,
       ...props
     },
@@ -410,10 +426,11 @@ export const SignupForm = forwardRef<ElementRef<"form">, SignupFormProps>(
       () => ({
         register,
         fields: resolution.fields,
+        site: resolution.site,
         fieldErrors,
         state: current,
       }),
-      [register, resolution.fields, fieldErrors, current]
+      [register, resolution.fields, resolution.site, fieldErrors, current]
     );
 
     return (

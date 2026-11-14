@@ -93,6 +93,80 @@
         }
       ],
       "opt_in": "single"
+    },
+    {
+      "id": "e2a7c4b9-1f3d-4e8a-9c6b-7d5e3f1a2b04",
+      "kind": "contact-signup",
+      "name": "Get updates",
+      "fields": [
+        {
+          "name": "email",
+          "label": "Email",
+          "type": "email",
+          "required": true,
+          "options": null
+        },
+        {
+          "name": "first_name",
+          "label": "First name",
+          "type": "text",
+          "required": false,
+          "options": null
+        },
+        {
+          "name": "phone",
+          "label": "Mobile phone",
+          "type": "phone",
+          "required": false,
+          "options": null
+        }
+      ],
+      "opt_in": "double",
+      "consent_label": "By signing up you agree to receive emails from Riverside Tenants Union. You can unsubscribe at any time using the link in any email."
+    },
+    {
+      "id": "5a9e3c71-2f4b-4d8a-b6c0-7e1f9d2a3b45",
+      "kind": "contact-signup",
+      "name": "Home: Email & SMS updates",
+      "fields": [
+        {
+          "name": "email",
+          "label": "Email",
+          "type": "email",
+          "required": true,
+          "options": null
+        },
+        {
+          "name": "cf_3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+          "label": "Household size",
+          "type": "number",
+          "required": false,
+          "options": null
+        },
+        {
+          "name": "cf_7b8c9d0e-1f2a-4b3c-9d4e-5f6a7b8c9d0e",
+          "label": "Moved in",
+          "type": "date",
+          "required": false,
+          "options": null
+        },
+        {
+          "name": "cf_a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "label": "Website",
+          "type": "url",
+          "required": false,
+          "options": null
+        },
+        {
+          "name": "cf_d4c3b2a1-f6e5-4b7a-9c8d-5d4c3b2a1f0e",
+          "label": "Building",
+          "type": "select",
+          "required": false,
+          "options": ["1200 Maple St", "1240 Maple St"]
+        }
+      ],
+      "opt_in": "single",
+      "site": true
     }
   ]
 }

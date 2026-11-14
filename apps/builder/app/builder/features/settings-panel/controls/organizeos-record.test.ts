@@ -135,6 +135,25 @@ const contactOption = {
   label: "Get in touch",
   description: "Contact",
 };
+// The platform's fixture also carries the built-in Get updates form and a
+// site form (builder forms spec 6.3): both are newsletter forms the picker
+// lists after the first two.
+const builtinOption = {
+  value: formsBody.data[3].id,
+  label: "Get updates",
+  description: "Newsletter",
+};
+const siteFormOption = {
+  value: formsBody.data[4].id,
+  label: "Home: Email & SMS updates",
+  description: "Newsletter",
+};
+const formOptions = [
+  newsletterOption,
+  contactOption,
+  builtinOption,
+  siteFormOption,
+];
 const unavailable = (value: string) => ({ value, label: "Unavailable form" });
 
 describe("isOrganizeosRecordProp", () => {
@@ -223,7 +242,7 @@ describe("getOrganizeosRecordOptions", () => {
       undefined
     );
 
-    expect(options).toEqual([none, newsletterOption, contactOption]);
+    expect(options).toEqual([none, ...formOptions]);
     expect(options.some((option) => option.value === membershipForm.id)).toBe(
       false
     );
@@ -235,7 +254,7 @@ describe("getOrganizeosRecordOptions", () => {
     expect(
       getOrganizeosRecordOptions(signupForm, formsBody, contactForm.id)
     ).toEqual({
-      options: [none, newsletterOption, contactOption],
+      options: [none, ...formOptions],
       selected: contactOption,
       hasData: true,
     });
@@ -245,7 +264,7 @@ describe("getOrganizeosRecordOptions", () => {
     for (const record of [undefined, null, "", "  ", 42, { id: "x" }]) {
       expect(getOrganizeosRecordOptions(signupForm, formsBody, record)).toEqual(
         {
-          options: [none, newsletterOption, contactOption],
+          options: [none, ...formOptions],
           selected: none,
           hasData: true,
         }
@@ -262,7 +281,7 @@ describe("getOrganizeosRecordOptions", () => {
     ["is a kind the block does not take", membershipForm.id],
   ])("keeps a record that %s as Unavailable form", (_case, record) => {
     expect(getOrganizeosRecordOptions(signupForm, formsBody, record)).toEqual({
-      options: [none, unavailable(record), newsletterOption, contactOption],
+      options: [none, unavailable(record), ...formOptions],
       selected: unavailable(record),
       hasData: true,
     });
@@ -674,7 +693,7 @@ describe("getOrganizeosRecordOptions for the RSVP Form", () => {
   test("leaves the Signup Form's options as they were: forms handed to it, events handed to it", () => {
     expect(
       getOrganizeosRecordOptions(signupForm, formsBody, undefined, now).options
-    ).toEqual([none, newsletterOption, contactOption]);
+    ).toEqual([none, ...formOptions]);
     // events are not forms: none has fields and a kind
     expect(
       getOrganizeosRecordOptions(signupForm, eventsBody, undefined, now)
@@ -804,7 +823,7 @@ describe("an inserted Signup Form", () => {
         ""
       )
     ).toEqual({
-      options: [none, newsletterOption, contactOption],
+      options: [none, ...formOptions],
       selected: none,
       hasData: true,
     });

@@ -120,9 +120,20 @@ export const getOrganizeosControl = ({
       case "action":
         return "signup-after-submit";
       case "actionPage":
+      // the site form's mark (docs/ORGANIZEOS-FORK.md section 9, "Site forms")
+      case "siteForm":
         return "hidden";
     }
     return;
+  }
+  // A site form's Field definition: the forms panel writes it, no row draws it.
+  if (
+    component === fieldComponent &&
+    (propName === "fieldType" ||
+      propName === "options" ||
+      propName === "required")
+  ) {
+    return "hidden";
   }
   if (component === productGridComponent && propName === "show") {
     return "product-show";
@@ -143,6 +154,20 @@ export const getOrganizeosControl = ({
     return "field-name";
   }
 };
+
+/**
+ * Whether no row draws this prop of an OrganizeOS component, so the Settings
+ * panel's "Properties & attributes" + leaves it out too: a prop added there
+ * would sit under a hidden row, unseen and unremovable (a site form's mark and
+ * its Fields' definition, docs/ORGANIZEOS-FORK.md section 9, "Site forms").
+ */
+export const isOrganizeosHiddenProp = (
+  component: undefined | string,
+  propName: string
+) =>
+  component !== undefined &&
+  getOrganizeosControl({ component, propName, instanceSelector: undefined }) ===
+    "hidden";
 
 /** The props logic's write of another prop of the instance. */
 type ChangeByPropName = (propName: string, value: PropValue) => void;

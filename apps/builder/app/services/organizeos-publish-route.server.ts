@@ -9,6 +9,22 @@ import { privateNoStoreResponseHeaders } from "~/services/cache-control.server";
 import { preventCrossOriginCookie } from "~/services/no-cross-origin-cookie";
 import { allowedDestinations } from "~/services/destinations.server";
 import type { ProjectOrganization } from "~/shared/db/organizeos-project-org.server";
+import type { BuildForms } from "~/shared/db/organizeos-build-forms.server";
+import {
+  CMS_ACTOR_LIFETIME_SECONDS,
+  FORMS_PLATFORM_BASE_PATH,
+  cmsCanonicalTarget,
+  hashCmsBytes,
+  mintCmsActorAssertion,
+  readCmsActorIp,
+  type CmsForwardAnswer,
+  type CmsForwardRequest,
+} from "~/shared/organizeos-cms.server";
+import {
+  agreeFormRoots,
+  collectFormRoots,
+  type CollectedRoot,
+} from "~/shared/organizeos-site-forms";
 import {
   BUILTIN_TARGET_KEY,
   HOST_PATTERN,
@@ -98,6 +114,20 @@ export type PublishRouteDeps = {
   getPublisher: () => OrganizeosPublisher | undefined;
   publisherHost: string;
   platformUrl: string;
+  /** The build's instances, props and pages, or undefined when unreadable. */
+  loadBuildForms: (
+    buildId: string,
+    context: AppContext
+  ) => Promise<BuildForms | undefined>;
+  /** Best effort: a refused build is marked FAILED, as a failed dispatch is. */
+  markBuildFailed: (buildId: string) => Promise<void>;
+  /** The builder door secret (`WEBSITES2_CMS_SECRET`). */
+  formsSecret: string | undefined;
+  /** Milliseconds. */
+  now: () => number;
+  /** The assertion's `jti`. */
+  randomId: () => string;
+  stageForms: (request: CmsForwardRequest) => Promise<CmsForwardAnswer>;
 };
 
 type LogCode =
@@ -113,7 +143,8 @@ type LogCode =
   | "project_read_failed"
   | "build_refused"
   | "organization_mismatch"
-  | "dispatch_failed";
+  | "dispatch_failed"
+  | "forms_refused";
 
 const log = (code: LogCode, detail?: string) => {
   console.error(
@@ -152,6 +183,201 @@ const readBody = async (request: Request): Promise<unknown> => {
 /** The kind of a thrown value, for a log line: never its message. */
 const errorKind = (error: unknown) =>
   error instanceof Error ? error.constructor.name : typeof error;
+
+/**
+ * The publish step (docs/ORGANIZEOS-FORK.md section 9, "Site forms"; builder
+ * forms spec 7.4). After the build row is written and before the dispatch,
+ * the build's marked site-form roots (shared/organizeos-site-forms.ts) are
+ * collected, checked to agree per form, and staged with the forms door's F5
+ * (`PUT .../builds/{buildId}/fields`) under an `aud: "forms"` assertion for
+ * the person's OrganizeOS session. A build with no marked root stages
+ * nothing; an unmarked root (a CRM form, the org defaults) is never sent. A
+ * refusal names the block and its page where it can, and the build is not
+ * dispatched.
+ */
+
+type FormsRefusal = { code: string; status: number; line: string };
+
+const FORMS_TIMEOUT_MS = 8_000;
+const NAME_MAX = 60;
+
+const GENERIC_FORMS_LINE = "Forms could not be saved. Try again.";
+
+const cut = (text: string) => text.slice(0, NAME_MAX);
+
+const where = (root: Pick<CollectedRoot, "name" | "page">) =>
+  `${cut(root.name)} on ${cut(root.page)}`;
+
+const generic = (code: string): FormsRefusal => ({
+  code,
+  status: 502,
+  line: GENERIC_FORMS_LINE,
+});
+
+const STAGE_LINES: Record<string, { status: number; line: string }> = {
+  mfa_required: {
+    status: 403,
+    line: "Turn on two-step verification to publish forms.",
+  },
+  forbidden: { status: 403, line: "You can't publish forms." },
+  // stage two's dead OrganizeOS session: signing in again is the way out
+  unauthorized: {
+    status: 403,
+    line: "Sign in through OrganizeOS to publish forms.",
+  },
+  plan: { status: 403, line: "Your plan doesn't include forms." },
+  rate_limited: {
+    status: 429,
+    line: "Too many publishes. Try again in a minute.",
+  },
+};
+
+const readStageError = (bytes: Uint8Array) => {
+  try {
+    const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (typeof value !== "object" || value === null) {
+      return {};
+    }
+    const { error, formId } = value as { error?: unknown; formId?: unknown };
+    return {
+      error: typeof error === "string" ? error : undefined,
+      formId: typeof formId === "string" ? formId.toLowerCase() : undefined,
+    };
+  } catch {
+    return {};
+  }
+};
+
+const stageSiteForms = async ({
+  buildId,
+  organizationId,
+  session,
+  outcome,
+  request,
+  context,
+  deps,
+}: {
+  buildId: string;
+  organizationId: string;
+  session: SessionData;
+  outcome: OrganizeosBindingOutcome;
+  request: Request;
+  context: AppContext;
+  deps: PublishRouteDeps;
+}): Promise<FormsRefusal | undefined> => {
+  const build = await deps.loadBuildForms(buildId, context);
+  if (build === undefined) {
+    return generic("build_unreadable");
+  }
+  const collected = collectFormRoots(build);
+  if (collected.ok === false) {
+    if (collected.error === "too_many") {
+      return {
+        code: "too_many",
+        status: 409,
+        line: "Too many forms on this site to publish.",
+      };
+    }
+    return {
+      code: collected.error,
+      status: 409,
+      line:
+        collected.error === "no_form"
+          ? `Pick a form for ${where(collected)}.`
+          : `Pick a field in ${where(collected)}.`,
+    };
+  }
+  if (collected.roots.length === 0) {
+    return;
+  }
+  const agreed = agreeFormRoots(collected.roots);
+  if (agreed.ok === false) {
+    return {
+      code: "disagree",
+      status: 409,
+      line: `${where(agreed.first)} and ${where(agreed.second)} share a form. Make their fields match or give one a new form.`,
+    };
+  }
+
+  const sub = session.organizeosUserId;
+  const sid = session.organizeosSid;
+  if (
+    outcome !== "live" ||
+    sub === undefined ||
+    sub === "" ||
+    sid === undefined ||
+    sid === ""
+  ) {
+    return {
+      code: "sign_in",
+      status: 403,
+      line: "Sign in through OrganizeOS to publish forms.",
+    };
+  }
+  const secret = deps.formsSecret;
+  if (secret === undefined || secret.trim() === "") {
+    return generic("no_secret");
+  }
+
+  const org = organizationId.toLowerCase();
+  const target = cmsCanonicalTarget(
+    `${FORMS_PLATFORM_BASE_PATH}/${org}/builds/${encodeURIComponent(buildId)}/fields`,
+    []
+  );
+  const body = new TextEncoder().encode(
+    JSON.stringify({ forms: agreed.forms })
+  );
+  const iat = Math.floor(deps.now() / 1000);
+  const header = mintCmsActorAssertion(
+    {
+      aud: "forms",
+      org,
+      sub,
+      sid,
+      m: "PUT",
+      p: hashCmsBytes(target),
+      h: hashCmsBytes(body),
+      jti: deps.randomId(),
+      iat,
+      exp: iat + CMS_ACTOR_LIFETIME_SECONDS,
+      ip: readCmsActorIp(request.headers),
+    },
+    secret
+  );
+  const staged = await deps.stageForms({
+    method: "PUT",
+    target,
+    header,
+    body,
+    contentType: "application/json",
+    timeoutMs: FORMS_TIMEOUT_MS,
+  });
+  if (staged.kind !== "answer") {
+    return generic(staged.kind);
+  }
+  if (staged.status >= 200 && staged.status < 300) {
+    return;
+  }
+  const { error, formId } = readStageError(staged.bytes);
+  if (error === undefined) {
+    return generic(`status_${staged.status}`);
+  }
+  const known = STAGE_LINES[error];
+  if (known !== undefined) {
+    return { code: error, ...known };
+  }
+  if (error === "invalid_field" || error === "conflict") {
+    const root = collected.roots.find((item) => item.formId === formId);
+    if (root !== undefined) {
+      return {
+        code: error,
+        status: 409,
+        line: `Forms could not be saved: ${where(root)}.`,
+      };
+    }
+  }
+  return generic(error);
+};
 
 export const handlePublishRequest = async (
   request: Request,
@@ -284,6 +510,24 @@ export const handlePublishRequest = async (
   } catch (error) {
     log("build_refused", errorKind(error));
     return answer({ ok: false, error: "build_refused" }, 422);
+  }
+
+  const forms = await stageSiteForms({
+    buildId,
+    organizationId,
+    session,
+    outcome,
+    request,
+    context,
+    deps,
+  });
+  if (forms !== undefined) {
+    log("forms_refused", forms.code);
+    await deps.markBuildFailed(buildId);
+    return answer(
+      { ok: false, error: "forms", message: forms.line },
+      forms.status
+    );
   }
 
   let result: Awaited<ReturnType<OrganizeosPublisher["publish"]["mutate"]>>;
