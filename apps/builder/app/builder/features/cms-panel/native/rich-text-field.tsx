@@ -504,8 +504,12 @@ const $liftBlocksAfterNestedList = (item: ListItemNode) => {
         child.remove();
         continue;
       }
+      // a nested list stands in its own item, after the last item made
       if (anchor !== item && $isListItemNode(anchor)) {
-        anchor.append(child);
+        const holder = $createListItemNode();
+        holder.append(child);
+        anchor.insertAfter(holder);
+        anchor = holder;
         continue;
       }
       const before = child.getPreviousSibling();
@@ -2481,9 +2485,61 @@ const $pointIntoAdjacentBlock = (point: PointType) => {
   }
 };
 
+/**
+ * An element point on an inline element (a link) moves out of it, to a text
+ * point where one is beside it: before the element, the end of the text
+ * before it; after it, the start of the text after it. An offset past an
+ * element's children comes back to its end.
+ */
+const $pointOutOfInline = (point: PointType) => {
+  for (;;) {
+    if (point.type !== "element") {
+      return;
+    }
+    const node = point.getNode();
+    if ($isElementNode(node) === false) {
+      return;
+    }
+    const size = node.getChildrenSize();
+    if (point.offset > size) {
+      point.set(node.getKey(), size, "element");
+    }
+    if (node.isInline() === false) {
+      return;
+    }
+    const at = node.getChildAtIndex(point.offset);
+    const before =
+      point.offset > 0 ? node.getChildAtIndex(point.offset - 1) : null;
+    if ($isTextNode(at)) {
+      point.set(at.getKey(), 0, "text");
+      return;
+    }
+    if ($isTextNode(before)) {
+      point.set(before.getKey(), before.getTextContentSize(), "text");
+      return;
+    }
+    // the place before or after the inline element, in its parent
+    const parent = node.getParentOrThrow();
+    const index = node.getIndexWithinParent() + (point.offset === 0 ? 0 : 1);
+    const outside =
+      point.offset === 0 ? node.getPreviousSibling() : node.getNextSibling();
+    if ($isTextNode(outside)) {
+      point.set(
+        outside.getKey(),
+        point.offset === 0 ? outside.getTextContentSize() : 0,
+        "text"
+      );
+      return;
+    }
+    point.set(parent.getKey(), index, "element");
+  }
+};
+
 const $selectionIntoAdjacentBlocks = () => {
   const selection = $getSelection();
   if ($isRangeSelection(selection)) {
+    $pointOutOfInline(selection.anchor);
+    $pointOutOfInline(selection.focus);
     $pointIntoAdjacentBlock(selection.anchor);
     $pointIntoAdjacentBlock(selection.focus);
   }

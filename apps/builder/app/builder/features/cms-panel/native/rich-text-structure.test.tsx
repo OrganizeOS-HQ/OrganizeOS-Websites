@@ -9,11 +9,15 @@ import { act } from "react-dom/test-utils";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { userEvent } from "@vitest/browser/context";
 import {
+  $createRangeSelection,
   $getRoot,
   $getSelection,
   $isRangeSelection,
+  $setSelection,
   type LexicalEditor,
 } from "lexical";
+import { $isLinkNode } from "@lexical/link";
+import { $findMatchingParent } from "@lexical/utils";
 import { $generateJSONFromSelectedNodes } from "@lexical/clipboard";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { RichTextField, type RichTextFieldProps } from "./rich-text-field";
@@ -445,5 +449,157 @@ describe("a list over part of a quote", () => {
     expectFixedPoint(written);
     await undo();
     expect(drawn()).toEqual(before);
+  });
+});
+
+// Round 6
+/** Puts the anchor on the first link as an element point at its start. */
+const anchorOnLink = (to: string) => async () => {
+  await act(async () => {
+    editorOf()!.update(() => {
+      const link = $getRoot()
+        .getAllTextNodes()
+        .find((node) => node.getTextContent() === to)!;
+      const linkNode = $findMatchingParent(
+        $getRoot()
+          .getAllTextNodes()
+          .find((node) => $isLinkNode(node.getParent()))!,
+        $isLinkNode
+      )!;
+      const selection = $createRangeSelection();
+      selection.anchor.set(linkNode.getKey(), 0, "element");
+      selection.focus.set(link.getKey(), link.getTextContentSize(), "text");
+      $setSelection(selection);
+    });
+  });
+  await settle();
+};
+
+const cut = async () => {
+  await act(async () => {
+    editable()!.dispatchEvent(
+      new ClipboardEvent("cut", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: new DataTransfer(),
+      })
+    );
+  });
+  await settle();
+};
+
+describe("an edit from an element point on a link (K1)", () => {
+  const STORED =
+    '<p>Keep before</p><p>Read more:<a href="https://example.org/"><br />our site</a></p><p>Next para</p><p>Keep after</p>';
+  test.each([
+    ["Backspace", () => userEvent.keyboard("{Backspace}")],
+    ["Delete", () => userEvent.keyboard("{Delete}")],
+    ["Cut", cut],
+    ["Enter", () => userEvent.keyboard("{Enter}")],
+    [
+      "a paste",
+      async () => {
+        paste({ "text/html": "<p>z</p>", "text/plain": "z" });
+      },
+    ],
+  ])(
+    "%s keeps the text outside the selection and finishes within a second",
+    async (_name, run) => {
+      const onChange = await mountAt(STORED, "Keep before");
+      await anchorOnLink("Next para")();
+      const start = performance.now();
+      await run();
+      await settle();
+      expect(performance.now() - start).toBeLessThan(1000);
+      const text = editable()!.textContent ?? "";
+      expect(text).toContain("Keep before");
+      expect(text).toContain("Read more:");
+      expect(text).toContain("Keep after");
+      expect(text).not.toContain("our site");
+      const written = lastHtml(onChange);
+      expect(written).toContain("Read more:");
+      expectFixedPoint(written);
+    },
+    60_000
+  );
+
+  test("Backspace over a link holding a line break and the next block keeps the text before it", async () => {
+    const onChange = await mountAt(
+      '<p>x<a href="https://example.org/"><br />yy</a></p><p>stray</p>',
+      "x"
+    );
+    await anchorOnLink("stray")();
+    await userEvent.keyboard("{Backspace}");
+    await settle();
+    expect(editable()!.textContent).toBe("x");
+    expect(lastHtml(onChange)).toContain("x");
+  });
+});
+
+describe("the rest of a split list nests in its own item (K2)", () => {
+  /** Whether a drawn item holding text also holds a list. */
+  const itemWithTextAndList = () =>
+    [...editable()!.querySelectorAll("li")].some(
+      (item) =>
+        item.querySelector(":scope > ul, :scope > ol") !== null &&
+        [...item.childNodes].some(
+          (child) =>
+            child instanceof Element &&
+            ["UL", "OL"].includes(child.tagName) === false &&
+            (child.textContent ?? "") !== ""
+        )
+    );
+  const placeCaret = async (text: string, offset: number) => {
+    await act(async () => {
+      editorOf()!.update(() => {
+        $getRoot()
+          .getAllTextNodes()
+          .find((node) => node.getTextContent() === text)!
+          .select(offset, offset);
+      });
+    });
+    await settle();
+  };
+
+  test.each([
+    ["Backspace at d's start", "d", 0, "{Backspace}"],
+    ["Backspace twice at d's end", "d", 1, "{Backspace}{Backspace}"],
+  ])(
+    "depth 3, then %s, keeps the pasted text",
+    async (_name, at, offset, keys) => {
+      const onChange = await mountAt(
+        "<ul><li>a<ul><li>b<ul><li>c</li><li>d</li></ul></li><li>e</li></ul></li></ul>",
+        "c"
+      );
+      paste({ "text/html": "<p>one</p><p>two</p>", "text/plain": "x" });
+      await settle();
+      expect(itemWithTextAndList()).toBe(false);
+      await placeCaret(at, offset);
+      await userEvent.keyboard(keys);
+      await settle();
+      const written = lastHtml(onChange);
+      expect(written).toContain("two");
+      expectFixedPoint(written);
+    }
+  );
+
+  test("depth 2, then Heading 2 on the next item, keeps the pasted text", async () => {
+    const onChange = await mountAt(
+      "<ul><li>a<ul><li>b</li><li>c</li></ul></li></ul>",
+      "b"
+    );
+    paste({ "text/html": "<p>one</p><p>two</p>", "text/plain": "x" });
+    await settle();
+    expect(itemWithTextAndList()).toBe(false);
+    await placeCaret("c", 1);
+    await click(byLabel("Block type"));
+    await click(
+      [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+        (option) => option.textContent === "Heading 2"
+      )
+    );
+    const written = lastHtml(onChange);
+    expect(written).toContain("two");
+    expect(written).toContain("c");
   });
 });
