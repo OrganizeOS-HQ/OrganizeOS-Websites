@@ -187,11 +187,22 @@ describe("the items view", () => {
   test("Escape clears the search", async () => {
     mount();
     await settle();
-    await act(async () => userEvent.type(searchInput()!, "new"));
-    await wait(300);
-    expect(lastListItemsCall()).toEqual([POSTS.id, { q: "new", page: 1 }]);
-    await act(async () => userEvent.keyboard("{Escape}"));
-    await wait(50);
+    // the debounce runs on a clock the test moves
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => userEvent.type(searchInput()!, "new"));
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+      expect(lastListItemsCall()).toEqual([POSTS.id, { q: "new", page: 1 }]);
+      await act(async () => userEvent.keyboard("{Escape}"));
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
     expect(searchInput()?.value).toBe("");
     expect(lastListItemsCall()).toEqual([POSTS.id, { q: undefined, page: 1 }]);
   });
