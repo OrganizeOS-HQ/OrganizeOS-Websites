@@ -729,6 +729,29 @@ test("a move made while a sheet's Save is in flight stays drawn when the Save an
   expect(harness.structure.updateSchema).toHaveBeenCalledTimes(2);
 });
 
+// Round 5, item 10: a reorder answered conflict whose reread fails
+test("a reorder answered conflict whose reread fails puts the order back with the read's one toast (round 5)", async () => {
+  const error = vi.spyOn(toast, "error");
+  await openFields();
+  harness.structure.updateSchema.mockResolvedValueOnce({ error: "conflict" });
+  harness.structure.getCollectionStructure.mockResolvedValueOnce({
+    error: "unavailable",
+  });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await moveRow("title", "ArrowDown");
+  await pass(600);
+  await pass(0);
+  vi.useRealTimers();
+  await settle();
+  expect(fieldKeys()).toEqual(["title", "summary", "author"]);
+  expect(error).toHaveBeenCalledTimes(1);
+  expect(error).toHaveBeenCalledWith(
+    "Try again in a minute",
+    STRUCTURE_FAILURE_TOAST
+  );
+  expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
+});
+
 // Round 5, item 7: a Save that carried an earlier move leaves a later move
 // pending, drawn until its own answer
 test("a move made after a Save that carried an earlier one stays drawn when the Save answers (round 5)", async () => {

@@ -512,6 +512,51 @@ describe("the field sheet", () => {
     expect(errorOf("reference")).toBe("Collection not found");
   });
 
+  test("reference_invalid naming another field: the toast Not saved, E21 once more, and nothing under Collection (round 5)", async () => {
+    const error = vi.spyOn(toast, "error");
+    withFields();
+    await openField("author");
+    await typeInto(control("label"), "Writer");
+    const reads = harness.structure.getCollectionStructure.mock.calls.length;
+    harness.structure.updateSchema.mockResolvedValueOnce({
+      error: "reference_invalid",
+      field: "team",
+    });
+    await click(primary());
+    expect(error).toHaveBeenLastCalledWith(
+      "Not saved",
+      STRUCTURE_FAILURE_TOAST
+    );
+    expect(harness.structure.getCollectionStructure.mock.calls.length).toBe(
+      reads + 1
+    );
+    expect(errorOf("reference")).toBeFalsy();
+  });
+
+  test("the conflict line stays while Reload's reread is in flight, and goes when it lands (round 5)", async () => {
+    withFields();
+    await openField("summary");
+    await typeInto(control<HTMLTextAreaElement>("help"), "Mine");
+    harness.structure.updateSchema.mockResolvedValueOnce({ error: "conflict" });
+    await click(primary());
+    const line = () => document.querySelector("[data-cms-structure-conflict]");
+    expect(line()).not.toBeNull();
+    const read =
+      harness.structure.getCollectionStructure.getMockImplementation()!;
+    const gate = deferred<void>();
+    harness.structure.getCollectionStructure.mockImplementationOnce(
+      async (id) => {
+        await gate.promise;
+        return read(id);
+      }
+    );
+    await click(buttonByText("Reload"));
+    expect(line()).not.toBeNull();
+    await act(async () => gate.resolve());
+    await settle();
+    expect(line()).toBeNull();
+  });
+
   test("invalid with no field, or naming a field the sheet does not show: the toast Not saved, and E21 refetched", async () => {
     const error = vi.spyOn(toast, "error");
     withFields();
