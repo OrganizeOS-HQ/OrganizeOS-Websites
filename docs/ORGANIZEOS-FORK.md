@@ -644,7 +644,10 @@ can be merged with minimal conflict.
   `sanitize-html` (2.17.7, with `@types/sanitize-html`) for the rich-text
   read-only check (about 150 kB minified, 57 kB gzipped, with what they pull
   in, postcss and dayjs among it, all in the rich-text field's lazy chunk,
-  loaded only once a rich-text field shows); `native/rich-text-nodes.ts` and `native/rich-text-sanitize.ts`,
+  loaded only once a rich-text field shows; the server build bundles
+  `sanitize-html` and `htmlparser2`, by one marked `ssr.noExternal` line in
+  `apps/builder/vite.config.ts`, because htmlparser2 ships only as an ES
+  module and the server runtime does not load one through `require`); `native/rich-text-nodes.ts` and `native/rich-text-sanitize.ts`,
   copies of the platform's `client/lib/collections/rich-text-nodes.ts` and of
   its sanitiser (`rich-text.ts`, comment lines left out; owner approval
   2026-11-14), kept exact by the round-trip fixture's pins
