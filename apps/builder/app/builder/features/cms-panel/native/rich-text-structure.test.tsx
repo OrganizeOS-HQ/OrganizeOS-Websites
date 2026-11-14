@@ -603,3 +603,115 @@ describe("the rest of a split list nests in its own item (K2)", () => {
     expect(written).toContain("c");
   });
 });
+
+describe("a figure pasted into a nested list item (K4)", () => {
+  const figureNode = (alt: string) => ({
+    type: "cms-figure",
+    version: 1,
+    attributes: {
+      src: `https://example.org/${alt}.png`,
+      alt,
+      width: null,
+      height: null,
+      title: null,
+    },
+    caption: `Cap${alt}`,
+  });
+  const pasteNodes = (nodes: unknown[]) =>
+    paste({
+      "application/x-lexical-editor": JSON.stringify({
+        namespace: editorOf()!._config.namespace,
+        nodes,
+      }),
+      "text/plain": "x",
+    });
+  const nested = (outer: string, middle: string, inner: string) =>
+    `<${outer}><li>aa<${middle}><li>bb<${inner}><li>qqrr</li><li>dd</li></${inner}></li><li>ee</li></${middle}></li><li>ff</li></${outer}>`;
+
+  test.each([
+    ["ul", "ul", "ul"],
+    ["ol", "ol", "ol"],
+    ["ol", "ul", "ol"],
+  ])(
+    "one figure in a %s/%s/%s list keeps each untouched item's level and type",
+    async (outer, middle, inner) => {
+      const html = nested(outer, middle, inner);
+      const onChange = await mountAt(html, "qqrr", 2);
+      pasteNodes([figureNode("F")]);
+      await settle();
+      const written = sanitizeRichTextHtml(lastHtml(onChange));
+      expect(outline(written)).toEqual([
+        "1:aa",
+        "2:bb",
+        "3:qq",
+        "0:CapF",
+        "3:rr",
+        "3:dd",
+        "2:ee",
+        "1:ff",
+      ]);
+      // the list types, outermost first, of each untouched item
+      const typesOf = (text: string) => {
+        const template = document.createElement("template");
+        template.innerHTML = written;
+        const item = [...template.content.querySelectorAll("li")].find(
+          (li) => li.firstChild?.textContent === text
+        )!;
+        const types: string[] = [];
+        for (let at: Element | null = item; at; at = at.parentElement) {
+          if (at.tagName === "UL" || at.tagName === "OL") {
+            types.unshift(at.tagName.toLowerCase());
+          }
+        }
+        return types.join("/");
+      };
+      expect(typesOf("dd")).toBe(`${outer}/${middle}/${inner}`);
+      expect(typesOf("ee")).toBe(`${outer}/${middle}`);
+      expect(typesOf("ff")).toBe(outer);
+      expectFixedPoint(lastHtml(onChange));
+    }
+  );
+
+  test.each([
+    ["two figures", [figureNode("F"), figureNode("G")]],
+    [
+      "a figure, a paragraph and a figure",
+      [
+        figureNode("F"),
+        {
+          type: "paragraph",
+          version: 1,
+          children: [
+            {
+              type: "text",
+              version: 1,
+              text: "mid",
+              format: 0,
+              detail: 0,
+              mode: "normal",
+              style: "",
+            },
+          ],
+          direction: null,
+          format: "",
+          indent: 0,
+          textFormat: 0,
+          textStyle: "",
+        },
+        figureNode("G"),
+      ],
+    ],
+  ])("%s pasted into a level-2 item keep every image", async (_name, nodes) => {
+    const onChange = await mountAt(
+      "<ul><li>aa<ul><li>bb</li><li>cc</li></ul></li><li>ff</li></ul>",
+      "bb"
+    );
+    pasteNodes(nodes);
+    await settle();
+    const written = lastHtml(onChange);
+    expect(written.match(/<figure/g)).toHaveLength(2);
+    expect(written).toContain("cc");
+    expect(written).toContain("ff");
+    expectFixedPoint(written);
+  });
+});
