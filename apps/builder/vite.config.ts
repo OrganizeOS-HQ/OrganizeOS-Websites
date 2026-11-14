@@ -126,6 +126,11 @@ export default defineConfig(({ mode }) => {
       resolve: {
         conditions: [...conditions, "node", "development|production"],
       },
+      // OrganizeOS fork: sanitize-html (the native CMS's copy of the platform
+      // sanitiser) requires htmlparser2, which ships only as an ES module.
+      // Bundling both keeps that require out of the server's runtime, which
+      // does not load an ES module through require (fork doc section 7).
+      noExternal: ["sanitize-html", "htmlparser2"],
     },
     define: {
       "process.env.NODE_ENV": JSON.stringify(mode),
