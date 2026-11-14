@@ -38,6 +38,7 @@ import {
   unmount,
   keepEditing,
   discardChanges,
+  draw,
 } from "./structure-test-harness";
 
 beforeEach(resetHarness);
@@ -626,8 +627,10 @@ describe("New collection and the first run", () => {
     });
   });
 
+  // W3g: an upload in flight counts as the editor's write, so "+" waits for
+  // it, and the guard then asks about the values it left
   test.each(["Keep editing", "Discard"])(
-    "a Create answered after the item editor gained unsaved values asks first: %s",
+    '"+" during the item editor\'s upload waits for it, then asks first: %s',
     async (choice) => {
       harness.fake.getCollection.mockResolvedValue({
         collection: {
@@ -658,24 +661,33 @@ describe("New collection and the first run", () => {
       });
       await settle();
       expect($cmsNativeDirty.get()).toBe(false);
-      await openNewCollection();
-      await click(radio("cms-new-collection", "custom"));
-      await typeInto(nameInput(), "Speakers");
+      await click(tab("Collections"));
+      await click(byLabel("New collection"));
+      // the upload is the editor's write: nothing opens while it runs
+      expect(dialog()).toBeNull();
+      expect(hasText("Discard unsaved changes?")).toBe(false);
       await act(async () => {
         upload.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
       });
       await vi.waitFor(() => expect($cmsNativeDirty.get()).toBe(true));
-      await click(createButton());
-      expect(hasText("Discard unsaved changes?")).toBe(true);
+      await vi.waitFor(() =>
+        expect(hasText("Discard unsaved changes?")).toBe(true)
+      );
       if (choice === "Keep editing") {
         await keepEditing();
         expect(
           document.querySelector('[data-cms-field="cms-field-cover"] img')
         ).not.toBeNull();
+        expect(dialog()?.textContent ?? "").not.toContain("New collection");
         expect(await openSlug()).toBe("posts");
-        expect(rowOf("speakers")).not.toBeNull();
       } else {
         await discardChanges();
+        await vi.waitFor(() =>
+          expect(dialog()?.textContent).toContain("New collection")
+        );
+        await click(radio("cms-new-collection", "custom"));
+        await typeInto(nameInput(), "Speakers");
+        await click(createButton());
         await vi.waitFor(async () => expect(await openSlug()).toBe("speakers"));
       }
     }
@@ -1588,6 +1600,26 @@ describe("structure entries wait for the editor's running write (merge round)", 
       await act(async () => held.resolve());
       await settle();
       await vi.waitFor(() => expect(opened()).not.toBeNull());
+      expect(hasText("Discard unsaved changes?")).toBe(false);
+    }
+  );
+
+  // item 23 (W3g merge): a structure entry shares the editor's exit path, so
+  // a hidden overlay drops one that waited
+  test.each(entries)(
+    "%s waiting for a held Save is dropped when the overlay hides",
+    async (_entry, enter, opened) => {
+      mount();
+      await settle();
+      const held = await starts[0][1]();
+      await enter();
+      draw({ isVisible: false });
+      await settle();
+      await act(async () => held.resolve());
+      await settle();
+      draw({ isVisible: true });
+      await settle();
+      expect(opened()).toBeNull();
       expect(hasText("Discard unsaved changes?")).toBe(false);
     }
   );

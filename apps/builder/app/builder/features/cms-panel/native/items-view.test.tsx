@@ -20,6 +20,7 @@ import {
   type FakeCmsSource,
 } from "./fake-cms-source";
 import { fitFieldColumns } from "./cms-list-logic";
+import { createFakeCmsStructureSource } from "./fake-cms-structure-source";
 import type { CmsItemRow } from "./cms-source";
 
 (
@@ -3032,6 +3033,68 @@ describe("the reorder's state outlives the table (W3g)", () => {
     expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
     expect(fake.getItem).toHaveBeenCalledWith(POSTS.id, ROW_IDS[1]);
   });
+});
+
+// M14 (slice 3): a structure view replaces the items table, which mounts
+// again on Back; the reorder's shared state carries the moved order across
+describe("a structure view while E13 is in flight (M14)", () => {
+  const openSettingsAndBack = async () => {
+    await click(
+      [...document.querySelectorAll<HTMLElement>('[role="tab"]')].find(
+        (tab) => tab.textContent === "Collections"
+      )
+    );
+    await click(byLabel("Posts menu"));
+    await click(
+      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (item) => item.textContent === "Settings"
+      )
+    );
+    expect(
+      document.querySelector("[data-cms-collection-settings]")
+    ).not.toBeNull();
+    expect(itemRows()).toHaveLength(0);
+    await click(byLabel("Back"));
+  };
+
+  test.each(["keyboard", "drag"] as const)(
+    "%s: the moved order is drawn again at once, a later move waits for the E13, and nothing undoes the first",
+    async (how) => {
+      const world = reorderWorld();
+      const held = holdFirstReorder();
+      mount({ structure: createFakeCmsStructureSource() });
+      await settle();
+      if (how === "drag") {
+        await dragBelow("a", "c");
+      } else {
+        focusRow("a");
+        await altMove("ArrowDown");
+        await altMove("ArrowDown");
+        await wait(600);
+      }
+      expect(itemSlugs()).toEqual(["b", "c", "a"]);
+      expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+
+      await openSettingsAndBack();
+      expect(itemSlugs()).toEqual(["b", "c", "a"]);
+
+      focusRow("a");
+      await altMove("ArrowUp");
+      expect(itemSlugs()).toEqual(["b", "a", "c"]);
+      await wait(600);
+      expect(fake.reorderItems).toHaveBeenCalledTimes(1);
+
+      await act(async () => held.resolve({ changed: 3 }));
+      await settle();
+      await wait(600);
+      expect(reorderCalls()).toEqual([
+        [ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]],
+        [ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]],
+      ]);
+      expect(world.ids).toEqual([ROW_IDS[1], ROW_IDS[0], ROW_IDS[2]]);
+      expect(itemSlugs()).toEqual(["b", "a", "c"]);
+    }
+  );
 });
 
 describe("the reorder's state across visits (W3g round 3)", () => {
