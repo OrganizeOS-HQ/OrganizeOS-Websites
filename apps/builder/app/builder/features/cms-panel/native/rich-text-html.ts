@@ -414,11 +414,16 @@ const sameList = (left: string[], right: string[]) =>
   left.every((entry, index) => entry === right[index]);
 
 /**
- * Whether the platform cuts the tree at its node limit: an `hr` added at the
- * end stays the last node exactly when the tree has room for it.
+ * Whether the platform cuts the tree at its node limit: a code block holding
+ * text, added at the end, comes back whole as the last node only when the
+ * tree has room for it. A tree of exactly the limit reads as cut too.
  */
-const isCutAtNodeLimit = (stored: string) =>
-  toRichTextNodes(`${stored}<hr />`).children.at(-1)?.t !== "hr";
+const isCutAtNodeLimit = (stored: string) => {
+  const last = toRichTextNodes(
+    `${stored}<pre><code>x</code></pre>`
+  ).children.at(-1);
+  return !(last?.t === "code" && last.text === "x");
+};
 
 /**
  * Whether the platform flattens a list or quote past its depth limit to

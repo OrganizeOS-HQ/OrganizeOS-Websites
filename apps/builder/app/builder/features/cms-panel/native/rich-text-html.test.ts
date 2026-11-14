@@ -14,6 +14,7 @@ import {
   richTextNodes,
   writeRichTextHeadless,
 } from "./rich-text-html";
+import { toRichTextNodes } from "./rich-text-nodes";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 
 /**
@@ -515,6 +516,25 @@ describe("the platform's node and depth limits (exact-guard round)", () => {
 
   test("a tree cut at the node limit reads lossy, even when the cut empties containers", () => {
     const html = `<p>${lines(4994)}</p><blockquote><ul><li><p>t</p></li></ul></blockquote><ul><li><p>a</p><p>b</p></li></ul>`;
+    expect(getRichTextReadOnlyReason(html)).toBe("lossy");
+  });
+
+  test.each([
+    [
+      "a root hr then textless lists",
+      "<hr /><ol><li><hr /></li></ol><ol><li><br /></li></ol>",
+    ],
+    [
+      "a root hr then figures",
+      `<hr />${'<figure><img src="https://example.org/a.png" alt="" /><figcaption></figcaption></figure>'.repeat(6)}`,
+    ],
+    ["a list item ending in an hr", "<ul><li><p><br /></p><hr /></li></ul>"],
+  ])("a cut in %s, with no text after it, reads lossy", (_, tail) => {
+    const html = `<p>${lines(4996)}</p>${tail}`;
+    // the platform does cut it: its last node is not the tail's
+    expect(toRichTextNodes(html).children.at(-1)).not.toEqual(
+      toRichTextNodes(tail).children.at(-1)
+    );
     expect(getRichTextReadOnlyReason(html)).toBe("lossy");
   });
 
