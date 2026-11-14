@@ -1811,7 +1811,10 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     `height` and `title`) in its place in the line with the spaces beside it,
     or a top-level `figure` with a plain-text `figcaption` (a figure inside
     another block keeps its image, and is read-only where the page would
-    change). Its Image button uploads one through E9 with the
+    change). A click on an image, or Enter with it selected, opens its
+    settings (Alt, Caption for a figure, Remove); an arrow onto an image
+    selects it, typing then lands beside it, and closing the settings puts
+    the caret right after it. Its Image button uploads one through E9 with the
     image field's checks; pasted HTML brings no image, and a cut, copy or
     drag inside the same field keeps its images. It is read-only when
     the editor would change the value on a load and save: the stored value,
