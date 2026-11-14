@@ -1230,3 +1230,143 @@ test("Alt+Arrow keeps the moved field's row focused, for the next move (review)"
   ].map((row) => row.dataset.cmsFieldRow);
   expect(keys).toEqual(["summary", "author", "title"]);
 });
+
+// I11: the structure entries wait for the editor's running Save, Publish or
+// create, then run the guard on what it left (fork #103's chain)
+describe("structure entries wait for the editor's running write (merge round)", () => {
+  const editor = () => document.querySelector("[data-cms-editor]");
+
+  type Held = { resolve: () => void };
+  const starts: Array<[string, () => Promise<Held>]> = [
+    [
+      "Save",
+      async () => {
+        await editItemTitle();
+        const held =
+          deferred<Awaited<ReturnType<typeof harness.fake.updateItem>>>();
+        harness.fake.updateItem.mockReturnValueOnce(held.promise);
+        await click(buttonByText("Save"));
+        expect(harness.fake.updateItem).toHaveBeenCalledTimes(1);
+        return {
+          resolve: () =>
+            held.resolve({
+              item: itemOf({
+                data: { title: "Mine", summary: null, author: null },
+                updatedAt: "2026-11-14T05:00:00.000000+00:00",
+              }),
+            }),
+        };
+      },
+    ],
+    [
+      "Publish",
+      async () => {
+        await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+        const held =
+          deferred<Awaited<ReturnType<typeof harness.fake.publishItem>>>();
+        harness.fake.publishItem.mockReturnValueOnce(held.promise);
+        await click(buttonByText("Publish"));
+        expect(harness.fake.publishItem).toHaveBeenCalledTimes(1);
+        return {
+          resolve: () =>
+            held.resolve({
+              item: itemOf({
+                status: "published",
+                updatedAt: "2026-11-14T05:00:00.000000+00:00",
+              }),
+            }),
+        };
+      },
+    ],
+    [
+      "create",
+      async () => {
+        await click(buttonByText("New item"));
+        await typeInto(
+          document.querySelector<HTMLInputElement>("#cms-field-title"),
+          "Fresh"
+        );
+        const held =
+          deferred<Awaited<ReturnType<typeof harness.fake.createItem>>>();
+        harness.fake.createItem.mockReturnValueOnce(held.promise);
+        await click(buttonByText("Save"));
+        expect(harness.fake.createItem).toHaveBeenCalledTimes(1);
+        return {
+          resolve: () =>
+            held.resolve({
+              item: itemOf({
+                id: "55555555-5555-4555-8555-555555555555",
+                slug: "fresh",
+                data: { title: "Fresh", summary: null, author: null },
+              }),
+              created: true,
+            }),
+        };
+      },
+    ],
+  ];
+
+  const entries: Array<[string, () => Promise<void>, () => Element | null]> = [
+    [
+      "a field row",
+      async () => {
+        await click(tab("Fields"));
+        await click(fieldRow("summary")!.querySelector("button"));
+      },
+      () => document.querySelector("[data-cms-field-sheet]"),
+    ],
+    [
+      "Add field",
+      async () => {
+        await click(tab("Fields"));
+        await click(byLabel("Add field"));
+        await click(menuItem("Email"));
+      },
+      () => document.querySelector("[data-cms-field-sheet]"),
+    ],
+    [
+      "Settings",
+      async () => {
+        await click(tab("Collections"));
+        await click(byLabel("Posts menu"));
+        await click(menuItem("Settings"));
+      },
+      () => document.querySelector("[data-cms-collection-settings]"),
+    ],
+    [
+      '"+"',
+      async () => {
+        await click(tab("Collections"));
+        await click(byLabel("New collection"));
+      },
+      () =>
+        [...document.querySelectorAll('[role="dialog"]')].find((dialog) =>
+          dialog.textContent?.includes("New collection")
+        ) ?? null,
+    ],
+  ];
+
+  const cases = starts.flatMap(([write, start]) =>
+    entries.map(
+      ([entry, enter, opened]) => [write, entry, start, enter, opened] as const
+    )
+  );
+
+  test.each(cases)(
+    "during a held %s, %s waits for it, then opens without asking",
+    async (_write, _entry, start, enter, opened) => {
+      mount();
+      await settle();
+      const held = await start();
+      await enter();
+      // the editor stays while the write runs, and nothing opens or asks
+      expect(editor()).not.toBeNull();
+      expect(opened()).toBeNull();
+      expect(hasText("Discard unsaved changes?")).toBe(false);
+      await act(async () => held.resolve());
+      await settle();
+      await vi.waitFor(() => expect(opened()).not.toBeNull());
+      expect(hasText("Discard unsaved changes?")).toBe(false);
+    }
+  );
+});
