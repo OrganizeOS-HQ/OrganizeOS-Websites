@@ -958,10 +958,10 @@ const liftListsPastDepthLimit = (body: HTMLElement) => {
     if (list === undefined) {
       return lifted;
     }
-    let anchor: Element = list.parentElement!;
+    const holder = list.parentElement!;
+    const next = holder.nextSibling;
     for (const item of Array.from(list.children)) {
-      anchor.after(item);
-      anchor = item;
+      holder.parentNode?.insertBefore(item, next);
     }
     list.remove();
     lifted = true;
