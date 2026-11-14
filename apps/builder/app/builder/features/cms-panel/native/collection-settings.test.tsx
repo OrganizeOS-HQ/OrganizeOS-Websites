@@ -15,6 +15,7 @@ import {
   currentSlug,
   harness,
   hasText,
+  keepEditing,
   menuItem,
   mount,
   resetHarness,
@@ -378,4 +379,32 @@ describe("collection settings", () => {
     );
     expect(dialog()!.scrollWidth).toBeLessThanOrEqual(dialog()!.clientWidth);
   });
+});
+
+test("dirty settings set $cmsNativeDirty; Back, another collection and Classic CMS ask first (review)", async () => {
+  await openSettings();
+  const leaves: Array<() => Promise<void>> = [
+    () => click(byLabel("Back")),
+    () =>
+      click(
+        document.querySelector<HTMLElement>(
+          '[data-cms-collection="people"] button'
+        )
+      ),
+    async () => {
+      await click(byLabel("CMS menu"));
+      await click(menuItem("Classic CMS"));
+    },
+  ];
+  for (const leave of leaves) {
+    await typeInto(input("name"), "Articles");
+    expect($cmsNativeDirty.get()).toBe(true);
+    await leave();
+    expect(hasText("Discard unsaved changes?")).toBe(true);
+    await keepEditing();
+    expect(settingsView()).not.toBeNull();
+    expect(input("name")?.value).toBe("Articles");
+    expect(currentSlug()).toBe("posts");
+  }
+  expect(harness.props.onShowClassic).not.toHaveBeenCalled();
 });

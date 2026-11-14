@@ -494,6 +494,38 @@ describe("New collection and the first run", () => {
     expect(await openSlug()).toBe("speakers");
   });
 
+  test.each(["replayed", "unavailable"] as const)(
+    "after %s, the new row of that name opens, not an older one of the same name (review)",
+    async (error) => {
+      vi.spyOn(toast, "error");
+      const older = {
+        ...PEOPLE,
+        id: "older-speakers",
+        slug: "older-speakers",
+        name: "Speakers",
+      };
+      harness.fake.listCollections.mockResolvedValue({
+        collections: [POSTS, PEOPLE, older],
+      });
+      createSpeakers();
+      harness.structure.createCollection.mockImplementation(async () => {
+        harness.fake.listCollections.mockResolvedValue({
+          collections: [POSTS, PEOPLE, older, SPEAKERS],
+        });
+        return { error };
+      });
+      mount();
+      await settle();
+      await openNewCollection();
+      await click(radio("cms-new-collection", "custom"));
+      await typeInto(nameInput(), "Speakers");
+      await click(createButton());
+      await settle();
+      expect(dialog()).toBeNull();
+      expect(await openSlug()).toBe("speakers");
+    }
+  );
+
   test("not_found on E22 resets the form with a new clientId", async () => {
     vi.spyOn(toast, "error");
     harness.structure.createCollection.mockResolvedValueOnce({
