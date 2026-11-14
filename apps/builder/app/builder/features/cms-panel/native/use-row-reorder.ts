@@ -38,7 +38,8 @@ const sameRows = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length && left.every((id) => right.includes(id));
 
 export const useRowReorder = (input: {
-  source: CmsSource;
+  /** None until the door is known: nothing is drawn to move then. */
+  source: CmsSource | undefined;
   collectionId: string;
   /** The open search, filter and sort: moves belong to the key they were made on. */
   listKey: string;
@@ -253,6 +254,10 @@ export const useRowReorder = (input: {
       }
       return;
     }
+    const { source } = current;
+    if (source === undefined) {
+      return;
+    }
     inFlight.current = true;
     bump();
     const { collectionId, onReordered, onFailed } = current;
@@ -262,7 +267,7 @@ export const useRowReorder = (input: {
       collectionId,
       (sending.current.get(collectionId) ?? 0) + 1
     );
-    void current.source
+    void source
       .reorderItems(collectionId, { ids: [...ids] })
       .catch((): CmsResult<{ changed: number }> => ({ error: "unavailable" }))
       .then((result) => {

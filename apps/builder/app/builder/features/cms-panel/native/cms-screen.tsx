@@ -60,7 +60,7 @@ import {
 } from "./cms-source";
 import { CollectionsColumn } from "./collections-column";
 import { ItemEditor } from "./item-editor";
-import { ItemsView } from "./items-view";
+import { ItemsView, useItemsReorder } from "./items-view";
 import { RefusalLine, type CmsLineKind } from "./refusal-line";
 import type { CmsStructureSource } from "./cms-structure-source";
 import {
@@ -993,6 +993,20 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
     };
 
+    // The table's reorder, held here above the view: a structure view
+    // opened while it runs leaves it running, and the table drawn again
+    // shows its order and waits for it (slice 3, W4 verification M14)
+    const itemsReorder = useItemsReorder({
+      source,
+      collectionId: collectionId ?? "",
+      list,
+      query,
+      page: itemsPage,
+      pageAnswer,
+      onListWritten: onWritten,
+      onRefusal: onEditorRefusal,
+    });
+
     // The editor's Delete: the editor closes without the guard, the lists
     // refetch under the open filter, and the canvas invalidates. The deleted
     // row no longer takes the focus back: the table's first row does.
@@ -1123,6 +1137,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
       return (
         <ItemsView
+          reorder={itemsReorder}
           collection={collection}
           page={itemsPage}
           query={query}

@@ -1370,3 +1370,76 @@ describe("structure entries wait for the editor's running write (merge round)", 
     }
   );
 });
+
+// M14: the table's reorder is held above the view, so a structure view
+// opened while its E13 runs leaves it running
+test("a reorder in flight across a structure view keeps its order, and a further move waits for it (merge round)", async () => {
+  const ids = ["a", "b", "c"].map(
+    (letter) =>
+      `${letter.repeat(8)}-${letter.repeat(4)}-4${letter.repeat(3)}-8${letter.repeat(3)}-${letter.repeat(12)}`
+  );
+  let order = [...ids];
+  const rows = () =>
+    order.map((id) =>
+      itemRowOf(
+        itemOf({
+          id,
+          slug: `item-${id[0]}`,
+          data: { title: id[0].toUpperCase(), summary: null, author: null },
+        })
+      )
+    );
+  harness.fake.listItems.mockImplementation(async () =>
+    itemsPageOf(rows(), 3, 1)
+  );
+  const held = deferred<{ changed: number }>();
+  harness.fake.reorderItems.mockImplementationOnce(async (_c, body) => {
+    const answer = await held.promise;
+    order = [...body.ids];
+    return answer;
+  });
+  mount();
+  await settle();
+  const slugs = () =>
+    [...document.querySelectorAll<HTMLElement>("[data-cms-item]")].map(
+      (row) => row.dataset.cmsItem
+    );
+  expect(slugs()).toEqual(["item-a", "item-b", "item-c"]);
+  act(() => {
+    document.querySelector<HTMLElement>('[data-cms-item="item-a"]')!.focus();
+  });
+  await act(async () => userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}"));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+  });
+  await settle();
+  expect(harness.fake.reorderItems).toHaveBeenCalledTimes(1);
+  // a structure view and back while E13 runs
+  await click(byLabel("Posts menu"));
+  await click(menuItem("Settings"));
+  expect(
+    document.querySelector("[data-cms-collection-settings]")
+  ).not.toBeNull();
+  await click(byLabel("Back"));
+  await settle();
+  expect(slugs()).toEqual(["item-b", "item-a", "item-c"]);
+  // a further move waits for the E13 in flight, then goes after it
+  act(() => {
+    document.querySelector<HTMLElement>('[data-cms-item="item-c"]')!.focus();
+  });
+  await act(async () => userEvent.keyboard("{Alt>}{ArrowUp}{/Alt}"));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+  });
+  await settle();
+  expect(harness.fake.reorderItems).toHaveBeenCalledTimes(1);
+  await act(async () => held.resolve({ changed: 2 }));
+  await vi.waitFor(() =>
+    expect(harness.fake.reorderItems).toHaveBeenCalledTimes(2)
+  );
+  expect(harness.fake.reorderItems.mock.calls[1][1].ids).toEqual([
+    ids[1],
+    ids[2],
+    ids[0],
+  ]);
+});
