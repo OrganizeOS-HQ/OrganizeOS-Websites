@@ -1555,13 +1555,13 @@ const $isAfterLineBreak = (point: PointType) => {
   );
 };
 
-/** A key that inserts text: a printable one, or one an IME or dead key sends. */
+/**
+ * A key that inserts text: a printable one, an IME's or a dead key's. A
+ * soft keyboard's key (Unidentified) may delete instead: its beforeinput
+ * says which.
+ */
 const isTextInputKey = (event: KeyboardEvent) =>
-  event.key.length === 1 ||
-  event.key === "Process" ||
-  event.key === "Dead" ||
-  event.key === "Unidentified" ||
-  event.keyCode === 229;
+  event.key.length === 1 || event.key === "Process" || event.key === "Dead";
 
 const $caretBesideSelectedImage = (lastArrow: {
   current: "back" | "forward" | undefined;
@@ -1856,8 +1856,27 @@ const ImageEditingPlugin = () => {
         typeof event.data === "string"
           ? event.data
           : undefined;
+      const deletes =
+        event instanceof InputEvent && event.inputType.startsWith("delete");
+      if (deletes && where === "image") {
+        // a delete with an image selected takes the image
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        editor.update(
+          () => {
+            const image = $selectedImage($getSelection());
+            if (image !== undefined) {
+              $caretBeside(image, false, true);
+              image.remove();
+            }
+          },
+          { discrete: true }
+        );
+        return;
+      }
       if (
         where === undefined ||
+        deletes ||
         (where === "after break" && text === undefined)
       ) {
         return;
@@ -1870,8 +1889,18 @@ const ImageEditingPlugin = () => {
         () => {
           $caretBesideSelectedImage(lastArrow);
           const selection = $getSelection();
-          if (text !== undefined && $isRangeSelection(selection)) {
-            selection.insertText(text);
+          if (text === undefined || $isRangeSelection(selection) === false) {
+            return;
+          }
+          // a newline sent as text is a line break, two a new paragraph
+          for (const part of text.split(/(\r?\n\r?\n|\r?\n)/)) {
+            if (/^(\r?\n){2}$/.test(part)) {
+              selection.insertParagraph();
+            } else if (/^\r?\n$/.test(part)) {
+              selection.insertLineBreak();
+            } else if (part !== "") {
+              selection.insertText(part);
+            }
           }
         },
         { discrete: true }
@@ -1966,6 +1995,19 @@ const ImageEditingPlugin = () => {
               const point = { key: to.key, offset: to.offset, type: to.type };
               selection.anchor.set(point.key, point.offset, point.type);
               selection.focus.set(point.key, point.offset, point.type);
+              lastArrow.current = undefined;
+              return true;
+            }
+            // a line break beside the caret: the caret steps just past it,
+            // so the next arrow reaches what starts the next line
+            const beside = $getAdjacentNode(selection.focus, isBackward);
+            if ($isLineBreakNode(beside)) {
+              event.preventDefault();
+              const parent = beside.getParentOrThrow().getKey();
+              const offset =
+                beside.getIndexWithinParent() + (isBackward ? 0 : 1);
+              selection.anchor.set(parent, offset, "element");
+              selection.focus.set(parent, offset, "element");
               lastArrow.current = undefined;
               return true;
             }

@@ -288,7 +288,7 @@ const compose = async (text: string) => {
 };
 
 describe("text input with an image selected lands beside it (R5-3)", () => {
-  test.each(["Dead", "Process", "Unidentified"])(
+  test.each(["Dead", "Process"])(
     "a %s key down with an inline image selected by ArrowLeft puts the caret before it",
     async (key) => {
       await caretAfter(`<p>See ${A}here</p>`, "here", 0);
@@ -644,16 +644,88 @@ describe("Up, Down, Home and End with an image selected (R5-8)", () => {
 });
 
 describe("an edit after Shift+End ends the extension (K11)", () => {
-  test("Home, Shift+End, then typing with Shift held keeps every character", async () => {
-    const onChange = await caretAfter(`<p>Some text ${A}</p>`, "Some text ");
-    await type("{Home}{Shift>}{End}{/Shift}{Shift>}H{/Shift}ello");
+  test("Shift+End, then typing with Shift held keeps every character", async () => {
+    const onChange = await caretAfter(`<p>Some text ${A}</p>`, "Some text ", 0);
+    await type("{Shift>}{End}{/Shift}{Shift>}H{/Shift}ello");
     expect(editable()!.textContent).toBe("Hello");
     expect(lastHtml(onChange)).toMatch(/>Hello</);
   });
 
-  test("Home, Shift+End, Shift+Enter, then typing keeps the line break", async () => {
-    const onChange = await caretAfter(`<p>Some text ${A}</p>`, "Some text ");
-    await type("{Home}{Shift>}{End}{Enter}{/Shift}xy");
+  test("Shift+End, Shift+Enter, then typing keeps the line break", async () => {
+    const onChange = await caretAfter(`<p>Some text ${A}</p>`, "Some text ", 0);
+    await type("{Shift>}{End}{Enter}{/Shift}xy");
     expect(lastHtml(onChange)).toMatch(/<br>(<[^>]+>)*xy/);
+  });
+});
+
+describe("text input and arrows beside line breaks and images (K23, K25, K26)", () => {
+  test.each([
+    ["an inline image selected", `<p>See ${A}here</p>`, "See ", "{ArrowRight}"],
+  ])(
+    "a newline inserted as text with %s is a line break",
+    async (_name, html, word, keys) => {
+      const onChange = await caretAfter(html, word);
+      await type(keys);
+      await insertText("\n");
+      const written = lastHtml(onChange);
+      expect(written).not.toMatch(/\n/);
+      expect(written).toMatch(/<br>|<\/p><p/);
+    }
+  );
+
+  test("a newline in a text beforeinput with an inline image selected is a line break", async () => {
+    const onChange = await caretAfter(`<p>See ${A}here</p>`, "See ");
+    await type("{ArrowRight}");
+    await act(async () => {
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", {
+          inputType: "insertText",
+          data: "x\ny",
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+    });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(written).not.toMatch(/\n/);
+    expect(written).toMatch(/x(<[^>]+>)*<br>(<[^>]+>)*y/);
+  });
+
+  test("ArrowRight at a line's end across a line break selects the image starting the next line", async () => {
+    const onChange = await caretAfter(`<p>aa<br>${B} cc</p>`, "aa");
+    await type("{ArrowRight}{ArrowRight}");
+    expect(
+      editorOf()!
+        .getEditorState()
+        .read(() => $isNodeSelection($getSelection()))
+    ).toBe(true);
+    await type("xy");
+    expect(lastHtml(onChange)).toMatch(/b\.png[^>]*>(<[^>]+>)*xy cc/);
+  });
+
+  test("a soft-keyboard Backspace with an image selected by ArrowLeft takes the image", async () => {
+    const onChange = await caretAfter(`<p>See ${A}here</p>`, "here", 0);
+    await type("{ArrowLeft}");
+    await act(async () => {
+      editable()!.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Unidentified",
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+      editable()!.dispatchEvent(
+        new InputEvent("beforeinput", {
+          inputType: "deleteContentBackward",
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+    });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(written).toContain("See ");
+    expect(written).not.toContain("a.png");
   });
 });
