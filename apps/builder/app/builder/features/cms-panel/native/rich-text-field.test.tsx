@@ -1921,3 +1921,60 @@ describe("the keyboard reaches an image (round 5)", () => {
     }
   );
 });
+
+// round 5, item 4: End from an element caret after a line break
+describe("End from a caret right after a line break (round 5)", () => {
+  const A = '<img src="https://example.org/a.png" alt="A">';
+  const B = '<img src="https://example.org/b.png" alt="B">';
+  /** Mounts `html`, with an element caret right after its line break. */
+  const caretAfterBreak = async (html: string) => {
+    const field = mountField({ value: { html } });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>("p"));
+    await act(async () => {
+      editorOf()!.update(() => {
+        const paragraph = $getRoot().getFirstChild() as ElementNode;
+        const index = paragraph
+          .getChildren()
+          .findIndex((child) => child.getType() === "linebreak");
+        paragraph.select(index + 1, index + 1);
+      });
+    });
+    await settle();
+    return field;
+  };
+  const shapes = [
+    { html: `<p>${A}<br>${B}</p>`, before: "", after: "" },
+    { html: `<p>aa ${A}<br>${B} cc</p>`, before: "aa ", after: " cc" },
+  ];
+
+  test.each(shapes)(
+    "End, then typing, lands at the line's end: $html",
+    async ({ html, after }) => {
+      const { onChange } = await caretAfterBreak(html);
+      await type("{End}x");
+      const written = lastHtml(onChange) ?? "";
+      expect(written.match(/<img/g)?.length).toBe(2);
+      expect(written).toMatch(
+        new RegExp(
+          `a\\.png[^>]*>[\\s\\S]*<br>[\\s\\S]*b\\.png[^>]*>[\\s\\S]*${after.trim()}x`
+        )
+      );
+    }
+  );
+
+  test.each(shapes)(
+    "Shift+End, then Backspace, keeps the line above and its image: $html",
+    async ({ html, before }) => {
+      const { onChange } = await caretAfterBreak(html);
+      await type("{Shift>}{End}{/Shift}{Backspace}");
+      const written = lastHtml(onChange) ?? editable()!.innerHTML;
+      expect(written).toContain("a.png");
+      expect(written).toContain("<br>");
+      if (before !== "") {
+        expect(written).toContain(before.trim());
+      }
+      expect(written).not.toContain("b.png");
+    }
+  );
+});

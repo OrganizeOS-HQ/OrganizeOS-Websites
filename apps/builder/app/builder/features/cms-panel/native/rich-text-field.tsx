@@ -1394,6 +1394,60 @@ const $caretBesideSelectedImage = (lastArrow: {
   }
 };
 
+/**
+ * Where End takes an element caret: the end of its line, which runs from
+ * the child at the caret to the next line break, or, where that run wraps,
+ * to the last node on the caret's own visual line (measured from the node
+ * after the caret).
+ */
+const $elementCaretLineEnd = (
+  editor: LexicalEditor,
+  focus: PointType
+): { key: string; offset: number; type: "text" | "element" } | undefined => {
+  const parent = focus.getNode();
+  if ($isElementNode(parent) === false) {
+    return;
+  }
+  const line: LexicalNode[] = [];
+  for (const child of parent.getChildren().slice(focus.offset)) {
+    if ($isLineBreakNode(child)) {
+      break;
+    }
+    line.push(child);
+  }
+  if (line.length === 0) {
+    return { key: parent.getKey(), offset: focus.offset, type: "element" };
+  }
+  const boxOf = (node: LexicalNode) =>
+    editor.getElementByKey(node.getKey())?.getBoundingClientRect();
+  const first = boxOf(line[0]);
+  let last = line[0];
+  for (const node of line.slice(1)) {
+    const box = boxOf(node);
+    if (
+      first !== undefined &&
+      box !== undefined &&
+      first.height > 0 &&
+      box.top >= first.bottom
+    ) {
+      break;
+    }
+    last = node;
+  }
+  if ($isTextNode(last)) {
+    return {
+      key: last.getKey(),
+      offset: last.getTextContentSize(),
+      type: "text",
+    };
+  }
+  return {
+    key: parent.getKey(),
+    offset: last.getIndexWithinParent() + 1,
+    type: "element",
+  };
+};
+
 const ImageEditingPlugin = () => {
   const [editor] = useLexicalComposerContext();
   const lastArrow = useRef<"back" | "forward" | undefined>(undefined);
@@ -1537,6 +1591,20 @@ const ImageEditingPlugin = () => {
             const selection = $getSelection();
             if ($isRangeSelection(selection) === false) {
               return false;
+            }
+            // an element caret is never handed to the browser, which
+            // measures it by the node before it (a line break's box is on
+            // the line above)
+            if (selection.focus.type === "element") {
+              const end = $elementCaretLineEnd(editor, selection.focus);
+              if (end !== undefined) {
+                event.preventDefault();
+                selection.focus.set(end.key, end.offset, end.type);
+                if (event.shiftKey === false) {
+                  selection.anchor.set(end.key, end.offset, end.type);
+                }
+                return true;
+              }
             }
             const image = $imageEndingLine(editor, selection.focus);
             if (image === undefined) {
