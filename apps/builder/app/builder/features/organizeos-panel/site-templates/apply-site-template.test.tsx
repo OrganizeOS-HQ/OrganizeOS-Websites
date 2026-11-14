@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { enableMapSet } from "immer";
 import type { Project } from "@webstudio-is/project";
+import type { ProjectSettings } from "@webstudio-is/project-build";
 import { parseCssValue } from "@webstudio-is/css-data";
 import {
   type Asset,
@@ -73,6 +74,8 @@ import {
   applySiteTemplateMutable,
   hasCanonicalVariables,
   isProjectUntouched,
+  readSiteTemplateRecord,
+  recordSiteTemplateMutable,
   startBlankMutable,
   writeCanonicalVariablesMutable,
 } from "./apply-site-template";
@@ -361,6 +364,49 @@ const withBlackBase = async () => {
   data.styles.set(getStyleDeclKey(decl), decl);
   return data;
 };
+
+describe("the record of the applied template", () => {
+  const settings = (organizeos?: unknown) =>
+    ({ meta: {}, compiler: {}, organizeos }) as ProjectSettings;
+
+  test("adds organizeos when it has none", () => {
+    const projectSettings = settings();
+    recordSiteTemplateMutable(projectSettings, "t");
+    expect(projectSettings.organizeos).toEqual({ siteTemplate: { id: "t" } });
+    expect(readSiteTemplateRecord(projectSettings)).toBe("t");
+  });
+
+  test("keeps organizeos's other keys", () => {
+    const variables = { collections: [], variables: [] };
+    const projectSettings = settings({ variables });
+    recordSiteTemplateMutable(projectSettings, "t");
+    expect(projectSettings.organizeos).toEqual({
+      variables,
+      siteTemplate: { id: "t" },
+    });
+  });
+
+  test.each([["x"], [[]], [null]])(
+    "leaves an organizeos that is not a plain object (%o) as it is",
+    (organizeos) => {
+      const projectSettings = settings(organizeos);
+      recordSiteTemplateMutable(projectSettings, "t");
+      expect(projectSettings.organizeos).toEqual(organizeos);
+      expect(readSiteTemplateRecord(projectSettings)).toBe(undefined);
+    }
+  );
+
+  test("reads no record from settings without one", () => {
+    expect(readSiteTemplateRecord(undefined)).toBe(undefined);
+    expect(readSiteTemplateRecord(settings())).toBe(undefined);
+    expect(readSiteTemplateRecord(settings({ siteTemplate: "t" }))).toBe(
+      undefined
+    );
+    expect(readSiteTemplateRecord(settings({ siteTemplate: { id: 7 } }))).toBe(
+      undefined
+    );
+  });
+});
 
 describe("isProjectUntouched", () => {
   test("a provisioned project (Home, 404, /newsletter) is untouched", async () => {
@@ -1200,7 +1246,8 @@ describe("applySiteTemplate", () => {
     $styleSources.set(data.styleSources);
     $styles.set(data.styles);
     $assets.set(data.assets);
-    $projectSettings.set(undefined);
+    // as the builder always loads it
+    $projectSettings.set({ meta: {}, compiler: {} });
     $selectedPageId.set(data.pages.homePageId);
     $builderMode.set("design");
     $authPermit.set("build");
@@ -1607,12 +1654,29 @@ describe("applySiteTemplate", () => {
     });
 
     expect(getWebstudioData().pages.pages.size).toBeGreaterThan(3);
+    // the record is written in the apply's own step
+    expect(readSiteTemplateRecord($projectSettings.get())).toBe(template.id);
     // the apply, hero.jpg's upload, team.jpg's upload, the rewrite
     expect(serverSyncStore.transactionManager.currentStack).toHaveLength(4);
     for (let step = 0; step < 4; step += 1) {
       serverSyncStore.undo();
     }
+    // the record went with the apply
     expect(getWebstudioData()).toEqual(before);
+    expect(readSiteTemplateRecord($projectSettings.get())).toBe(undefined);
+  });
+
+  test("with no project settings loaded, the apply still applies, with no record", async () => {
+    setStores(await createProvisionedProject(provisioning));
+    $projectSettings.set(undefined);
+
+    expect(await applySiteTemplate(template)).toEqual({
+      status: "applied",
+      unboundBlocks: [],
+      missingImages: 0,
+    });
+    expect($projectSettings.get()).toBe(undefined);
+    expect(getWebstudioData().pages.pages.size).toBeGreaterThan(3);
   });
 
   test("without build access, it is refused with the runtime's message, writing and uploading nothing", async () => {
