@@ -899,18 +899,25 @@ export const useCmsStructure = ({
     fields: <Flex css={{ flexGrow: 1, minHeight: 0 }}>{renderFields()}</Flex>,
   };
 
+  // a create answers later than its click: its opening goes through the
+  // guard as the screen holds it then
+  const latestGuard = useRef(guard);
+  latestGuard.current = guard;
+
   const onCreated = (created: CmsCollectionSummary, type: string) => {
     pendingCreate.current = undefined;
     setIsNewOpen(false);
     written({ kind: "created", collection: created });
-    clearViewDirty();
-    setView(undefined);
-    onOpenCollection(created.id);
-    // a custom collection starts with Name alone: its fields come next
-    if (type === CUSTOM_COLLECTION_TYPE) {
-      setTab("fields");
-    }
     setStructureVersion((current) => current + 1);
+    latestGuard.current(() => {
+      clearViewDirty();
+      setView(undefined);
+      onOpenCollection(created.id);
+      // a custom collection starts with Name alone: its fields come next
+      if (type === CUSTOM_COLLECTION_TYPE) {
+        setTab("fields");
+      }
+    });
   };
 
   foundCreated.current = onCreated;

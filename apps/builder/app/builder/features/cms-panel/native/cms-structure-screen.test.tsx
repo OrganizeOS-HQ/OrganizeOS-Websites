@@ -542,6 +542,61 @@ describe("New collection and the first run", () => {
     });
   });
 
+  test.each(["Keep editing", "Discard"])(
+    "a Create answered after the item editor gained unsaved values asks first: %s",
+    async (choice) => {
+      harness.fake.getCollection.mockResolvedValue({
+        collection: {
+          ...POSTS_DETAIL,
+          fields: [
+            ...POSTS_DETAIL.fields,
+            { key: "cover", label: "Cover", kind: "image" },
+          ],
+        },
+      });
+      createSpeakers();
+      mount();
+      await settle();
+      await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+      await settle();
+      const upload = deferred<{ url: string; path: string }>();
+      harness.fake.uploadImage.mockReturnValueOnce(upload.promise);
+      const file = document
+        .querySelector<HTMLElement>('[data-cms-field="cms-field-cover"]')
+        ?.querySelector<HTMLInputElement>('input[type="file"]');
+      const transfer = new DataTransfer();
+      transfer.items.add(
+        new File([new Uint8Array([1, 2, 3])], "a.png", { type: "image/png" })
+      );
+      await act(async () => {
+        file!.files = transfer.files;
+        file!.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await settle();
+      expect($cmsNativeDirty.get()).toBe(false);
+      await openNewCollection();
+      await click(radio("cms-new-collection", "custom"));
+      await typeInto(nameInput(), "Speakers");
+      await act(async () => {
+        upload.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
+      });
+      await vi.waitFor(() => expect($cmsNativeDirty.get()).toBe(true));
+      await click(createButton());
+      expect(hasText("Discard unsaved changes?")).toBe(true);
+      if (choice === "Keep editing") {
+        await keepEditing();
+        expect(
+          document.querySelector('[data-cms-field="cms-field-cover"] img')
+        ).not.toBeNull();
+        expect(await openSlug()).toBe("posts");
+        expect(rowOf("speakers")).not.toBeNull();
+      } else {
+        await discardChanges();
+        await vi.waitFor(async () => expect(await openSlug()).toBe("speakers"));
+      }
+    }
+  );
+
   test("after Create, the new row is listed and stays open while the E1 refetch is held", async () => {
     mount();
     await settle();
