@@ -3,6 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { enableMapSet } from "immer";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { userEvent } from "@vitest/browser/context";
+import { TooltipProvider } from "@webstudio-is/design-system";
 import { defaultPlanFeatures } from "@webstudio-is/plans";
 import { ROOT_INSTANCE_ID, type WebstudioData } from "@webstudio-is/sdk";
 import {
@@ -41,7 +43,7 @@ import {
   applySiteTemplate,
   writeCanonicalVariablesMutable,
 } from "./apply-site-template";
-import { $isTemplateChooserOffered, TemplateChooser } from "./template-chooser";
+import { $isTemplatesScreenOffered, TemplatesScreen } from "./templates-screen";
 
 // The catalog is empty until a template is written; the tests fill it.
 const { catalog, toastError } = vi.hoisted(() => ({
@@ -75,12 +77,43 @@ registerContainers();
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-// The dialog observes its boundary, and jsdom 20 has no ResizeObserver.
-class FakeResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
+// Every ResizeObserver the screen, the dialog and Radix make, with the
+// elements each observes; none calls back unless a test triggers the ones
+// observing an element.
+const observers: {
+  callback: ResizeObserverCallback;
+  elements: Set<Element>;
+}[] = [];
+class RecordingResizeObserver {
+  #record: (typeof observers)[number];
+  constructor(callback: ResizeObserverCallback) {
+    this.#record = { callback, elements: new Set() };
+    observers.push(this.#record);
+  }
+  observe(element: Element) {
+    this.#record.elements.add(element);
+  }
+  unobserve(element: Element) {
+    this.#record.elements.delete(element);
+  }
+  disconnect() {
+    this.#record.elements.clear();
+  }
 }
+const triggerResize = (element: Element) => {
+  for (const { callback, elements } of observers) {
+    if (elements.has(element)) {
+      callback([], {} as ResizeObserver);
+    }
+  }
+};
+
+/** The builder's dialog boundary, as builder.tsx places it, sized. */
+let boundary: HTMLElement;
+const setBoundary = (width: number, height: number) => {
+  boundary.style.width = `${width}px`;
+  boundary.style.height = `${height}px`;
+};
 
 const entry = (
   id: string,
@@ -95,6 +128,7 @@ const entry = (
   status,
   dependsOn: [],
   thumbnail: "thumbnail.jpg",
+  pagePictures: { about: "page-about.jpg" },
   look: {
     buttonRadius: "6px",
     buttonWeight: 600,
@@ -107,11 +141,34 @@ const entry = (
     "thumbnail.jpg": {
       url: `/site-templates/${id}/thumbnail.jpg`,
       sourceUrl: "https://example.org/thumbnail",
-      alt: "Replace with a photo",
+      alt: "A picture of the template's Home page",
+    },
+    "page-about.jpg": {
+      url: `/site-templates/${id}/page-about.jpg`,
+      sourceUrl: "https://example.org/page-about",
+      alt: "A picture of the template's About page",
     },
   },
   fonts: {},
-  pages: [],
+  // applySiteTemplate is mocked, so no body renders
+  pages: [
+    {
+      key: "home",
+      name: "Home",
+      path: "",
+      title: "Home",
+      description: "",
+      body: () => <></>,
+    },
+    {
+      key: "about",
+      name: "About",
+      path: "/about",
+      title: "About",
+      description: "",
+      body: () => <></>,
+    },
+  ],
 });
 
 const union = entry("union", "union", "listed");
@@ -154,7 +211,9 @@ const render = () => {
   document.body.appendChild(container);
   root = createRoot(container);
   act(() => {
-    root?.render(createElement(TemplateChooser));
+    root?.render(
+      createElement(TooltipProvider, null, createElement(TemplatesScreen))
+    );
   });
 };
 
@@ -181,10 +240,21 @@ const settle = async () => {
 
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
 
-const startBlankButton = () =>
+const dialogButton = (text: string) =>
   Array.from(dialog()?.querySelectorAll("button") ?? []).find(
-    (button) => button.textContent === "Start blank"
+    (button) => button.textContent === text
   );
+
+const startBlankButton = () => dialogButton("Start blank");
+
+// pending, the button also draws its loading dots
+const applyButton = () =>
+  Array.from(dialog()?.querySelectorAll("button") ?? []).find((button) =>
+    button.textContent?.includes("Use template")
+  );
+
+const backButton = () =>
+  dialog()?.querySelector<HTMLButtonElement>('[aria-label="Back"]');
 
 const card = (id: string) =>
   document.querySelector<HTMLButtonElement>(`[data-site-template="${id}"]`);
@@ -195,18 +265,71 @@ const cardIds = () =>
     (element) => element.dataset.siteTemplate
   );
 
-const headings = () =>
+const categories = () =>
   Array.from(
-    document.querySelectorAll<HTMLElement>("[data-site-template-category]"),
+    document.querySelectorAll<HTMLElement>("[data-template-category]"),
     (element) => element.textContent
   );
 
-const choose = async (id: string) => {
+const category = (label: string) =>
+  Array.from(
+    document.querySelectorAll<HTMLButtonElement>("[data-template-category]")
+  ).find((element) => element.textContent === label);
+
+const currentCategory = () =>
+  document.querySelector<HTMLElement>(
+    '[data-template-category][aria-current="true"]'
+  )?.textContent;
+
+const chooseCategory = async (label: string) => {
+  await act(async () => {
+    category(label)?.click();
+  });
+  await settle();
+};
+
+const openTemplate = async (id: string) => {
   await act(async () => {
     card(id)?.click();
   });
   await settle();
 };
+
+const pageFigures = () =>
+  Array.from(
+    document.querySelectorAll<HTMLElement>("[data-site-template-page]")
+  );
+
+const pageNames = () =>
+  pageFigures().map(
+    (figure) => figure.querySelector("figcaption")?.textContent
+  );
+
+const pageSrcs = () =>
+  pageFigures().map(
+    (figure) => figure.querySelector("img")?.getAttribute("src") ?? null
+  );
+
+/** Opens a template's page view, then chooses Use template. */
+const applyTemplate = async (id: string) => {
+  await openTemplate(id);
+  await act(async () => {
+    applyButton()?.click();
+  });
+  await settle();
+};
+
+const pressEscape = async () => {
+  act(() => {
+    dialog()?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+    );
+  });
+  await settle();
+};
+
+const isDisabled = (element: Element | null | undefined) =>
+  element?.matches(":disabled") ?? false;
 
 /** The custom properties declared on Global Root. */
 const rootVariables = () => {
@@ -227,7 +350,15 @@ const applied = async (template: SiteTemplate): Promise<ApplyOutcome> => {
 };
 
 beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  observers.length = 0;
+  vi.stubGlobal("ResizeObserver", RecordingResizeObserver);
+  boundary = document.createElement("div");
+  boundary.setAttribute("data-dialog-boundary", "");
+  boundary.style.position = "fixed";
+  boundary.style.left = "0";
+  boundary.style.top = "40px";
+  setBoundary(1240, 840);
+  document.body.appendChild(boundary);
   history.replaceState(null, "", "/");
   setCatalog([union, nonprofit]);
   setProject();
@@ -261,13 +392,13 @@ describe("the offer", () => {
   test("not offered before data is loaded", async () => {
     $dataLoadingState.set("loading");
     render();
-    expect($isTemplateChooserOffered.get()).toBe(false);
+    expect($isTemplatesScreenOffered.get()).toBe(false);
     expect(dialog()).toBeNull();
 
     act(() => {
       $dataLoadingState.set("loaded");
     });
-    expect($isTemplateChooserOffered.get()).toBe(true);
+    expect($isTemplatesScreenOffered.get()).toBe(true);
     expect(dialog()).not.toBeNull();
   });
 
@@ -275,27 +406,27 @@ describe("the offer", () => {
     setCatalog([draft]);
     setProject();
     render();
-    expect($isTemplateChooserOffered.get()).toBe(false);
+    expect($isTemplatesScreenOffered.get()).toBe(false);
     expect(dialog()).toBeNull();
   });
 
   test("offered on an untouched project with a listed template", () => {
     render();
-    expect($isTemplateChooserOffered.get()).toBe(true);
+    expect($isTemplatesScreenOffered.get()).toBe(true);
     expect(dialog()).not.toBeNull();
   });
 
   test("not offered to a viewer", () => {
     $authPermit.set("view");
     render();
-    expect($isTemplateChooserOffered.get()).toBe(false);
+    expect($isTemplatesScreenOffered.get()).toBe(false);
     expect(dialog()).toBeNull();
   });
 
   test("not offered to a content editor (edit)", () => {
     $authPermit.set("edit");
     render();
-    expect($isTemplateChooserOffered.get()).toBe(false);
+    expect($isTemplatesScreenOffered.get()).toBe(false);
     expect(dialog()).toBeNull();
   });
 
@@ -316,7 +447,7 @@ describe("the offer", () => {
   test("not offered to an org denied the blocks", () => {
     $organizeosSite.set({ ...$organizeosSite.get()!, blocksEnabled: false });
     render();
-    expect($isTemplateChooserOffered.get()).toBe(false);
+    expect($isTemplatesScreenOffered.get()).toBe(false);
     expect(dialog()).toBeNull();
   });
 
@@ -329,7 +460,7 @@ describe("the offer", () => {
       });
     });
     render();
-    expect($isTemplateChooserOffered.get()).toBe(false);
+    expect($isTemplatesScreenOffered.get()).toBe(false);
   });
 
   const imageAsset = (id: string) => ({
@@ -348,7 +479,7 @@ describe("the offer", () => {
       data.assets.set("asset-hero", imageAsset("asset-hero"));
     });
     render();
-    expect($isTemplateChooserOffered.get()).toBe(true);
+    expect($isTemplatesScreenOffered.get()).toBe(true);
     expect(dialog()).not.toBeNull();
   });
 
@@ -364,7 +495,7 @@ describe("the offer", () => {
       });
     });
     render();
-    expect($isTemplateChooserOffered.get()).toBe(false);
+    expect($isTemplatesScreenOffered.get()).toBe(false);
   });
 
   test("not offered with an asset the favicon uses", () => {
@@ -376,7 +507,7 @@ describe("the offer", () => {
       compiler: {},
     });
     render();
-    expect($isTemplateChooserOffered.get()).toBe(false);
+    expect($isTemplatesScreenOffered.get()).toBe(false);
     $projectSettings.set(undefined);
   });
 
@@ -388,7 +519,7 @@ describe("the offer", () => {
         writeCanonicalVariablesMutable(data, BLANK_CANONICAL_VALUES, "fill");
       });
     });
-    expect($isTemplateChooserOffered.get()).toBe(false);
+    expect($isTemplatesScreenOffered.get()).toBe(false);
     expect(dialog()).toBeNull();
   });
 
@@ -407,19 +538,34 @@ describe("the offer", () => {
     setCatalog([draft]);
     setProject();
     render();
-    expect($isTemplateChooserOffered.get()).toBe(true);
+    expect($isTemplatesScreenOffered.get()).toBe(true);
     expect(cardIds()).toEqual(["draft"]);
   });
 });
 
-describe("the dialog", () => {
-  test("Start blank, then the categories in order, each with its cards", () => {
+describe("the screen", () => {
+  test("the left column lists All, then each category with an offered template, in order; All is current", () => {
     setCatalog([union, draft, nonprofit]);
     setProject();
     render();
-    expect(startBlankButton()).toBeDefined();
-    expect(headings()).toEqual(["Nonprofit", "Union"]);
-    expect(cardIds()).toEqual(["nonprofit", "union"]);
+    expect(categories()).toEqual(["All", "Nonprofit", "Union"]);
+    expect(currentCategory()).toBe("All");
+  });
+
+  test("All shows every offered template in category order; a category shows its own", async () => {
+    history.replaceState(null, "", "/?templateDrafts=1");
+    setCatalog([union, draft, nonprofit]);
+    setProject();
+    render();
+    expect(categories()).toEqual(["All", "Nonprofit", "Community", "Union"]);
+    expect(cardIds()).toEqual(["nonprofit", "draft", "union"]);
+    await chooseCategory("Union");
+    expect(currentCategory()).toBe("Union");
+    expect(cardIds()).toEqual(["union"]);
+  });
+
+  test("a card shows its thumbnail and name, and nothing else", () => {
+    render();
     expect(card("nonprofit")?.textContent).toBe("nonprofit name");
     expect(card("nonprofit")?.querySelector("img")?.getAttribute("src")).toBe(
       "/site-templates/nonprofit/thumbnail.jpg"
@@ -430,31 +576,197 @@ describe("the dialog", () => {
     render();
     const buttons = Array.from(dialog()?.querySelectorAll("button") ?? []);
     expect(buttons.map((button) => button.textContent)).toEqual([
-      "Start blank",
+      "All",
+      "Nonprofit",
+      "Union",
       "nonprofit name",
       "union name",
+      "Start blank",
     ]);
     expect(dialog()?.textContent).toBe(
       [
+        "All",
+        "Nonprofit",
+        "Union",
+        "nonprofit name",
+        "union name",
         "Start from a template",
         "Start blank",
-        "Nonprofit",
-        "nonprofit name",
-        "Union",
-        "union name",
       ].join("")
     );
   });
 
-  test("Escape does not close it", async () => {
+  test("a long name truncates, with the full name in a tooltip", async () => {
+    // the first card in All order, whose name is inside the test's viewport
+    const name = "N".repeat(120);
+    setCatalog([{ ...nonprofit, name }, union]);
+    setProject();
     render();
-    act(() => {
-      dialog()?.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+    const nameElement = Array.from(
+      card("nonprofit")?.querySelectorAll<HTMLElement>("*") ?? []
+    ).find(
+      (element) =>
+        element.childElementCount === 0 && element.textContent === name
+    )!;
+    expect(nameElement).toBeDefined();
+    expect(nameElement.scrollWidth).toBeGreaterThan(nameElement.clientWidth);
+    await act(async () => userEvent.hover(nameElement));
+    await vi.waitFor(
+      () => {
+        const tooltip = document.querySelector('[role="tooltip"]');
+        expect(tooltip?.textContent).toBe(name);
+      },
+      { timeout: 3000 }
+    );
+    const right = dialog()!.getBoundingClientRect().right;
+    for (const id of cardIds()) {
+      expect(card(id!)!.getBoundingClientRect().right).toBeLessThanOrEqual(
+        right
       );
+    }
+  });
+
+  test("a card opens its page view, and nothing is applied until Use template", async () => {
+    render();
+    await openTemplate("union");
+    expect(applySiteTemplate).not.toHaveBeenCalled();
+    expect(cardIds()).toEqual([]);
+    expect(pageNames()).toEqual(["Home", "About"]);
+    expect(pageSrcs()).toEqual([
+      "/site-templates/union/thumbnail.jpg",
+      "/site-templates/union/page-about.jpg",
+    ]);
+    expect(dialog()?.textContent).toContain("union name");
+    expect(applyButton()).toBeDefined();
+    expect(document.activeElement).toBe(backButton());
+  });
+
+  test("a page without a picture shows an empty frame", async () => {
+    setCatalog([{ ...union, pagePictures: {} }, nonprofit]);
+    setProject();
+    render();
+    await openTemplate("union");
+    expect(pageNames()).toEqual(["Home", "About"]);
+    expect(pageSrcs()).toEqual(["/site-templates/union/thumbnail.jpg", null]);
+  });
+
+  test("Back and Escape return to the grid, and the focus to the card", async () => {
+    render();
+    await openTemplate("union");
+    await act(async () => {
+      backButton()?.click();
+    });
+    await settle();
+    expect(cardIds()).toEqual(["nonprofit", "union"]);
+    expect(document.activeElement).toBe(card("union"));
+
+    await openTemplate("union");
+    await pressEscape();
+    expect(dialog()).not.toBeNull();
+    expect(cardIds()).toEqual(["nonprofit", "union"]);
+    expect(document.activeElement).toBe(card("union"));
+  });
+
+  test("Escape at the grid does nothing", async () => {
+    render();
+    await pressEscape();
+    expect(dialog()).not.toBeNull();
+    expect(cardIds()).toEqual(["nonprofit", "union"]);
+  });
+
+  test("choosing a category from the page view returns to that category's grid", async () => {
+    render();
+    await openTemplate("union");
+    await chooseCategory("Nonprofit");
+    expect(pageFigures()).toEqual([]);
+    expect(cardIds()).toEqual(["nonprofit"]);
+  });
+
+  test("opens at the grid each time it is offered", async () => {
+    render();
+    await chooseCategory("Union");
+    await openTemplate("union");
+    // a Home child ends the offer; taking it away offers it again
+    act(() => {
+      setProject((data) => {
+        const home = data.pages.pages.get(data.pages.homePageId)!;
+        data.instances.get(home.rootInstanceId)!.children.push({
+          type: "text",
+          value: "Hello",
+        });
+      });
+    });
+    expect(dialog()).toBeNull();
+    act(() => {
+      setProject();
     });
     await settle();
     expect(dialog()).not.toBeNull();
+    expect(currentCategory()).toBe("All");
+    expect(cardIds()).toEqual(["nonprofit", "union"]);
+  });
+
+  test("the size follows the boundary", async () => {
+    render();
+    expect(dialog()?.style.width).toBe("1200px");
+    expect(dialog()?.style.height).toBe("800px");
+    setBoundary(1040, 840);
+    act(() => {
+      triggerResize(boundary);
+    });
+    await settle();
+    expect(dialog()?.style.width).toBe("1000px");
+  });
+
+  test("sizes from the window when the boundary is hidden or missing", async () => {
+    boundary.style.display = "none";
+    render();
+    await settle();
+    let rect = dialog()!.getBoundingClientRect();
+    expect(rect.width).toBe(window.innerWidth - 40);
+    expect(rect.height).toBe(window.innerHeight - 40);
+    unmount();
+
+    boundary.remove();
+    render();
+    await settle();
+    rect = dialog()!.getBoundingClientRect();
+    expect(rect.width).toBe(window.innerWidth - 40);
+    expect(rect.height).toBe(window.innerHeight - 40);
+  });
+
+  test("never smaller than 240px each way", async () => {
+    setBoundary(200, 200);
+    render();
+    await settle();
+    const rect = dialog()!.getBoundingClientRect();
+    expect(rect.width).toBe(240);
+    expect(rect.height).toBe(240);
+  });
+
+  test("a narrow dialog shows a Category select in place of the column", async () => {
+    // 360 wide: the main area is under 600, and the controls fit the
+    // test's 414px viewport
+    setBoundary(400, 800);
+    render();
+    await settle();
+    expect(categories()).toEqual([]);
+    const trigger = dialog()?.querySelector<HTMLElement>(
+      '[aria-label="Category"]'
+    );
+    expect(trigger?.textContent).toBe("All");
+    await act(async () => userEvent.click(trigger!));
+    await settle();
+    const union = Array.from(
+      document.querySelectorAll<HTMLElement>('[role="option"]')
+    ).find((option) => option.textContent === "Union");
+    await act(async () => userEvent.click(union!));
+    await settle();
+    expect(cardIds()).toEqual(["union"]);
+    const right = dialog()!.getBoundingClientRect().right;
+    expect(card("union")!.getBoundingClientRect().right).toBeLessThanOrEqual(
+      right
+    );
   });
 });
 
@@ -472,7 +784,7 @@ describe("choosing", () => {
           .sort()
       )
     );
-    expect($isTemplateChooserOffered.get()).toBe(false);
+    expect($isTemplatesScreenOffered.get()).toBe(false);
     await settle();
     expect(dialog()).toBeNull();
     expect(applySiteTemplate).not.toHaveBeenCalled();
@@ -516,14 +828,14 @@ describe("choosing", () => {
     );
     expect(consoleError).toHaveBeenCalledTimes(1);
     expect(rootVariables()).toEqual([]);
-    expect($isTemplateChooserOffered.get()).toBe(true);
+    expect($isTemplatesScreenOffered.get()).toBe(true);
     expect(dialog()).not.toBeNull();
   });
 
   test("choosing a template applies it and switches to Simple mode when allowed", async () => {
     $selectedPageId.set(findNotFoundPageId());
     render();
-    await choose("union");
+    await applyTemplate("union");
     expect(applySiteTemplate).toHaveBeenCalledTimes(1);
     expect(applySiteTemplate).toHaveBeenCalledWith(union);
     expect(dialog()).toBeNull();
@@ -538,7 +850,7 @@ describe("choosing", () => {
     $authPermit.set("build");
     $planFeatures.set({ ...defaultPlanFeatures, allowContentMode: false });
     render();
-    await choose("union");
+    await applyTemplate("union");
     expect(dialog()).toBeNull();
     expect($selectedPageId.get()).toBe($pages.get()?.homePageId);
     expect(setBuilderMode).not.toHaveBeenCalled();
@@ -550,7 +862,7 @@ describe("choosing", () => {
       unboundBlocks: ["Event List", "Event Card", "Event List"],
     }));
     render();
-    await choose("union");
+    await applyTemplate("union");
     expect(dialog()).toBeNull();
     expect(toastError).toHaveBeenCalledTimes(1);
     expect(toastError).toHaveBeenCalledWith(
@@ -570,7 +882,7 @@ describe("choosing", () => {
         missingImages,
       }));
       render();
-      await choose("union");
+      await applyTemplate("union");
       expect(dialog()).toBeNull();
       expect(toastError).toHaveBeenCalledTimes(1);
       expect(toastError).toHaveBeenCalledWith(message);
@@ -589,9 +901,11 @@ describe("choosing", () => {
     const notFoundPageId = findNotFoundPageId();
     $selectedPageId.set(notFoundPageId);
     render();
-    await choose("union");
-    expect($isTemplateChooserOffered.get()).toBe(true);
+    await applyTemplate("union");
+    expect($isTemplatesScreenOffered.get()).toBe(true);
     expect(dialog()).not.toBeNull();
+    // offered again: at the grid
+    expect(cardIds()).toEqual(["nonprofit", "union"]);
     expect(toastError).not.toHaveBeenCalled();
     expect(setBuilderMode).not.toHaveBeenCalled();
     expect($selectedPageId.get()).toBe(notFoundPageId);
@@ -613,7 +927,7 @@ describe("choosing", () => {
         reason,
       });
       render();
-      await choose("union");
+      await applyTemplate("union");
       expect(toastError).toHaveBeenCalledTimes(1);
       expect(toastError).toHaveBeenCalledWith(message);
       expect(setBuilderMode).not.toHaveBeenCalled();
@@ -629,7 +943,7 @@ describe("choosing", () => {
       message,
     });
     render();
-    await choose("union");
+    await applyTemplate("union");
     expect(toastError).toHaveBeenCalledTimes(1);
     expect(toastError).toHaveBeenCalledWith(message);
     expect(dialog()).not.toBeNull();
@@ -643,17 +957,17 @@ describe("choosing", () => {
     const failure = new Error("render failed");
     vi.mocked(applySiteTemplate).mockRejectedValue(failure);
     render();
-    await choose("union");
+    await applyTemplate("union");
     expect(consoleError).toHaveBeenCalledWith(failure);
     expect(toastError).toHaveBeenCalledTimes(1);
     expect(toastError).toHaveBeenCalledWith("Cannot apply union name.");
     expect(dialog()).not.toBeNull();
-    expect(card("union")?.disabled).toBe(false);
-    expect(startBlankButton()?.disabled).toBe(false);
+    expect(isDisabled(applyButton())).toBe(false);
+    expect(isDisabled(startBlankButton())).toBe(false);
     expect(setBuilderMode).not.toHaveBeenCalled();
   });
 
-  test("cards are disabled while applying", async () => {
+  test("while applying, one apply and nothing else answers", async () => {
     let finish: (result: ApplyOutcome) => void = () => {};
     vi.mocked(applySiteTemplate).mockImplementation(
       (template) =>
@@ -662,15 +976,21 @@ describe("choosing", () => {
         })
     );
     render();
-    await choose("union");
-    expect(card("union")?.disabled).toBe(true);
-    expect(card("nonprofit")?.disabled).toBe(true);
-    expect(startBlankButton()?.disabled).toBe(true);
+    await applyTemplate("union");
+    expect(applyButton()?.dataset.state).toBe("pending");
+    expect(isDisabled(backButton())).toBe(true);
+    expect(isDisabled(category("Union"))).toBe(true);
+    expect(isDisabled(startBlankButton())).toBe(true);
 
     await act(async () => {
-      card("nonprofit")?.click();
+      applyButton()?.click();
     });
+    await pressEscape();
+    // a real pointer reaches react-aria's press handler on a disabled item
+    await act(async () => userEvent.click(category("Union")!, { force: true }));
+    await settle();
     expect(applySiteTemplate).toHaveBeenCalledTimes(1);
+    expect(pageNames()).toEqual(["Home", "About"]);
 
     await act(async () => {
       finish({ status: "applied", unboundBlocks: [], missingImages: 0 });

@@ -76,8 +76,8 @@ import { TokenConflictDialog } from "~/shared/token-conflict-dialog";
 import { RootStyleConflictDialog } from "~/shared/root-style-conflict-dialog";
 import { DesignTokenImportDialog } from "~/shared/design-token-import-dialog";
 import { TemplateNameConfirmationDialog } from "./features/template-name-confirmation-dialog";
-// OrganizeOS fork: the site-template chooser (organizeos-panel/site-templates/template-chooser.tsx)
-import { TemplateChooser } from "./features/organizeos-panel/site-templates/template-chooser";
+// OrganizeOS fork: the Templates screen (organizeos-panel/site-templates/templates-screen.tsx)
+import { TemplatesScreen } from "./features/organizeos-panel/site-templates/templates-screen";
 import type { User } from "~/shared/db/user.server";
 
 import {
@@ -538,8 +538,8 @@ export const Builder = (props: BuilderProps) => {
         <TokenConflictDialog />
         <RootStyleConflictDialog />
         <TemplateNameConfirmationDialog />
-        {/* OrganizeOS fork: the site-template chooser, at first entry to an untouched project */}
-        <TemplateChooser />
+        {/* OrganizeOS fork: the Templates screen, at first entry to an untouched project */}
+        <TemplatesScreen />
         <Toaster />
       </div>
     </TooltipProvider>

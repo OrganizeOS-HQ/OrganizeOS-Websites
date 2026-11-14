@@ -831,8 +831,8 @@ can be merged with minimal conflict.
     block tokens read the site variables in `shared/form-tokens.ts` and
     `events/event-card.template.tsx` (`shared/form-tokens.test.ts`). In the
     builder, `features/organizeos-panel/site-templates/`
-    (`apply-site-template.ts`, `template-chooser.tsx` and
-    `provisioned-project.ts`, with their tests, `bundled-fonts.node.test.ts`,
+    (`apply-site-template.ts`, `templates-screen.tsx`,
+    `use-dialog-boundary.ts` and `provisioned-project.ts`, with their tests, `bundled-fonts.node.test.ts`,
     and the preview tool's half, `preview/`: `dump.preview.tsx`,
     `vitest.preview.config.ts`, `stub-api.mjs`, `preview-arguments.mjs` and
     `thumbnail.mjs`, with `stub-api.node.test.ts` and
@@ -846,7 +846,7 @@ can be merged with minimal conflict.
     take from a font's family the instance its legacy name carries
     (`dropInstanceNames` in `organizeos-font-family.ts` beside it, with
     `organizeos-font-family.test.ts`); one marked import and one marked
-    `<TemplateChooser />` mount in `builder/builder.tsx`, pinned by
+    `<TemplatesScreen />` mount in `builder/builder.tsx`, pinned by
     `overlay.wiring.node.test.ts`; the `instanceIdPrefix` option of
     `completeOrganizeosFragment` in `insert-organizeos-block.ts`;
     `deleteSubtreeMutable` exported from `collection-pages.ts`; and
@@ -2429,7 +2429,7 @@ OrganizeOS repo). Part 1's data layer, the manager and the Style panel's "+".
   delete from the Variables operations or Cmd+K, no other variable renamed to
   one, and "Delete unused" never offers them; Cmd+K still labels them unused
   when nothing reads them. A missing canonical variable is restored only while another of
-  the six exists, so the template chooser's gate is unchanged.
+  the six exists, so the Templates screen's offer is unchanged.
 - Cmd+K rename and delete of a listed root variable (Global Root's local
   source, base breakpoint) go through the Variables operations, keeping the
   registry in step; any other name keeps upstream's behaviour.
@@ -3110,9 +3110,18 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
 
 - **The module format** (`types.ts`). A template is a folder under
   `src/site-templates/` whose `index.tsx` exports one `SiteTemplate`: `id`,
-  `category` (one of nine; `CATEGORY_ORDER` is the chooser's order), `name`,
+  `category` (one of nine; `CATEGORY_ORDER` is the Templates screen's
+  order), `name`,
   `oneLine`, `styleTags`, `status` (`draft` or `listed`), `dependsOn`,
-  `thumbnail` (a file name in `images`), `previewEventCover` (a file name in
+  `thumbnail` (a file name in `images`: the Templates screen's card, and Home's
+  picture in its page view), `pagePictures` (by page key, a file name in
+  `images` for every page but Home, path `""`, which the page view shows and
+  no page shows, so applying never uploads it; `checkPagePictures` holds each
+  non-Home page to one, each to an image, and refuses a key that is no such
+  page), `look` (a `CompleteKitStyle`: the template's `LOOK` with what it
+  leaves unset filled with what the kit draws then, so nothing renders
+  differently, which page templates draw with; `checkLook` holds it to
+  `LOOK_FIELDS`, `headingCase` optional), `previewEventCover` (a file name in
   `images` that only the preview tool reads, as its sample events' first cover:
   a photo no page with an events block shows, which a template that places the
   cover card names; never applied to a site), `variables` (the six canonical
@@ -3135,7 +3144,7 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   Journal in `nonprofit/field-journal/`, Porch Light in
   `community/porch-light/`, Workwear in `union/workwear/`, Marigold Marquee in
   `campaign/marigold-marquee/` and Riso Broadside in
-  `single-issue/riso-broadside/`, all listed), and the chooser offers
+  `single-issue/riso-broadside/`, all listed), and the Templates screen offers
   `listedTemplates()`, the `listed` ones in category order. Listing is the
   owner's call, made by changing `status` in a PR. Nothing the published site's
   copy reaches (`components.ts`, `metas.ts`) imports the folder
@@ -3154,7 +3163,7 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   feature (`names.ts`, `variables-toolbar.tsx`) and the server's
   canonical-fonts reader (`organizeos-canonical-fonts.server.ts`) import it
   alone, so they never load the templates and their images (the builder's
-  client bundle carries the catalog anyway, through the template chooser).
+  client bundle carries the catalog anyway, through the Templates screen).
   The Variables manager's Brand collection takes the six by these
   names. It also names the two band
   variables (`BAND_VARIABLES`), which a band sets for what sits inside it, each
@@ -3337,9 +3346,9 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   and the staged recipe's data carries the project settings). Re-applying after
   an undo uploads the images again by URL, with no content hash, so each cycle
   leaves another unused copy; fonts deduplicate, with an "Asset already exists"
-  toast each. The chooser checks this before
+  toast each. The Templates screen checks this before
   it opens and the routine decides it again inside the transaction, since two
-  admins can apply at once and a chooser left open goes stale (colours set after
+  admins can apply at once and a screen left open goes stale (colours set after
   "Start blank" are never overwritten); it also refuses, writing nothing, when a
   template page's path is taken or a rendered page holds a Resource. It writes
   the template's six values over Global Root's, each page's body with its
@@ -3353,36 +3362,64 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   insert runs (`completeOrganizeosFragment` with `instanceIdPrefix`
   `${rootId}:`, then `completeOrganizeosInsertMutable`), which binds the block
   to the org's data; a block it cannot bind (its Events Resource is gone) stays
-  in place, unbound, and the chooser names it in an error toast. Where the
+  in place, unbound, and the Templates screen names it in an error toast. Where the
   runtime layer refuses the commit before it begins (a page template selected
   without build access), the apply is refused with the runtime's message
   (`reason: "runtime"`), writing and uploading nothing. "Start blank"
   (`startBlankMutable`) writes the blank-start values for any of the six that
   Global Root lacks and overwrites none, in one staged commit too.
-- **The chooser** (`template-chooser.tsx`, mounted by one marked import and one
-  marked `<TemplateChooser />` in `builder/builder.tsx`): "Start from a
-  template", the offered templates under their category headings with a
-  thumbnail and name each (no caption; `oneLine` stays in the data), and "Start blank". It is offered only when the
-  data is loaded, the permit is `build`, `admin` or `own` (a viewer's or content
-  editor's writes would not save), the project belongs to an OrganizeOS org not
-  on the blocks deny list (§4; a template places blocks), the project is
-  untouched with none of the six variables on Global Root, and at least one
-  template is offered. Both choices write the variables, which ends the offer
-  for every admin on every browser, so it keeps no per-browser state. Only a
-  choice closes it: Escape and an outside click do nothing. It has no help text
-  (`CLAUDE.md`, "Builder UI: options, not explanations"). A chosen template
+- **The Templates screen** (`templates-screen.tsx`, mounted by one marked
+  import and one marked `<TemplatesScreen />` in `builder/builder.tsx`;
+  OrganizeOS spec `2026-11-13-builder-templates-screen-and-page-templates-design.md`
+  section 5) replaces the 640px chooser. It is a design-system `Dialog` sized by
+  `useDialogBoundarySize` (`use-dialog-boundary.ts`): the builder's
+  `[data-dialog-boundary]` less 20px each side, at least 240px each way,
+  measured as it mounts and followed with a ResizeObserver, the window's size
+  when the boundary is missing or has none (the UI hidden). It passes the size
+  as `width`, `height`, `minWidth` and `minHeight`, since the design system's
+  own boundary measure would cap a hidden UI's dialog at 0. Left, a 192px
+  column (`theme.spacing[27]`) of All and each category that has an offered
+  template, in `CATEGORY_ORDER`; under a 600px main area it becomes a
+  "Category" `Select` above the grid. Right, a grid of cards (thumbnail and
+  name, the name truncated with a tooltip, no caption; `oneLine` stays in the
+  data), All listing the templates grouped in category order. A card opens the
+  template's page view: Back (an icon button), the name, "Use template", and a
+  picture of each page labelled with its name (Home's the thumbnail, the
+  others' from `pagePictures`, an empty frame where one is missing). Escape and
+  Back return to the grid and the focus to the card; Escape at the grid does
+  nothing; choosing a category returns to its grid. "Start from a template" and
+  "Start blank" are its title. It is offered (`$isTemplatesScreenOffered`) only
+  when the data is loaded, the permit is `build`, `admin` or `own` (a viewer's
+  or content editor's writes would not save), the project belongs to an
+  OrganizeOS org not on the blocks deny list (§4; a template places blocks),
+  the project is untouched with none of the six variables on Global Root, and
+  at least one template is offered; each offer opens at the grid with All.
+  Both choices write the variables, which ends the offer for every admin on
+  every browser, so it keeps no per-browser state. Only a choice closes it: an
+  outside click does nothing. While Use template runs, its button is pending,
+  a fieldset disables the rest, and the category choice, Back and Escape
+  return at once; the busy state lives in the screen, so a screen offered
+  again while a first apply uploads stays disabled. It has no help text
+  (`CLAUDE.md`, "Builder UI: options, not explanations"). An applied template
   opens its Home, in Simple mode (the builder's Content mode) when the plan
   allows it (`$isContentModeAllowed`), in Design mode otherwise; an apply undone
-  while its images uploaded leaves the chooser offered again, and none of this
-  follows it. A refused apply
-  says why in one error toast: the site already has content (touched, or one of
-  the variables set), "Its pages clash with this site's pages.", the runtime's
-  own message when it refuses the write, or, for a template holding a Resource
-  or with no project open, that the template cannot be applied. **Drafts** are
-  offered beside the listed templates only when the builder's URL carries
-  `templateDrafts=1`, read once as the chooser mounts (the builder rewrites its
-  URL on a page or mode change and drops it); that is how the owner reviews a
-  draft in a test org.
+  while its images uploaded leaves the screen offered again, and none of this
+  follows it. A refused apply says why in one error toast: the site already
+  has content (touched, or one of the variables set), "Its pages clash with
+  this site's pages.", the runtime's own message when it refuses the write, or,
+  for a template holding a Resource or with no project open, that the template
+  cannot be applied. **Drafts** are offered beside the listed templates only
+  when the builder's URL carries `templateDrafts=1`, read once as the screen
+  mounts into `$showTemplateDrafts` (the builder rewrites its URL on a page or
+  mode change and drops it); that is how the owner reviews a draft in a test
+  org.
+- **The record.** Applying writes `projectSettings.organizeos.siteTemplate =
+  { id }` (`recordSiteTemplateMutable`, read with `readSiteTemplateRecord`) in
+  its own staged recipe, outside `applySiteTemplateMutable`, so it is part of
+  the apply's undo step: the patch's `projectSettings` namespace. It adds
+  `organizeos` when it has none, keeps its other keys (the variables
+  registry), and writes nothing into an `organizeos` that is not a plain object
+  or when no settings are loaded. Page templates read it for the look.
 - **Images.** A template's images are imported with `?url&no-inline`, so the
   builder's build bundles each one at a URL on the builder's own origin, never
   inlined as a `data:` URL (`assets.d.ts` declares only that form, for images
@@ -3400,7 +3437,7 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   its own undo step, above the uploads' own steps (each landed upload is one,
   as `safeSetAsset` makes it). The placeholders still in use afterwards are
   the photos that could not be added (`missingImages`): an Image shows the
-  builder's placeholder, a background nothing, and the chooser toasts "1 photo
+  builder's placeholder, a background nothing, and the Templates screen toasts "1 photo
   could not be added." or "{n} photos could not be added."; an undone apply
   uses none, so it writes and counts nothing. Where the runtime refuses the
   rewrite, the placeholders are counted from the current data. It uploads only the images a rendered
@@ -3481,7 +3518,7 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   asked for a bold the browser would synthesize.
 - **The preview tool**, `scripts/preview-site-template.mjs`
   (`corepack pnpm preview:template <id> [--palette <file>] [--no-events]`, or
-  `<id> --thumbnail`), with its builder half in
+  `<id> [--thumbnail] [--pages]`), with its builder half in
   `features/organizeos-panel/site-templates/preview/`: it renders a template
   through the publish path and checks it against the phone bar (OrganizeOS spec
   section 2, rule 9). It is a local tool: CI runs the tests of its modules
@@ -3530,18 +3567,25 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   - `--thumbnail` takes neither `--palette` nor `--no-events`: it runs the same
     build with the template's own palette and the sample events and, in place of
     the checks, writes `images/thumbnail.jpg` into the template's folder, the
-    chooser's picture of the template: the top of Home at 1440 wide, cropped to
-    the chooser's 16:10 frame, drawn at 1600 by 1000 and saved as a JPEG under
+    Templates screen's picture of the template: the top of Home at 1440 wide, cropped to
+    the Templates screen's 16:10 frame, drawn at 1600 by 1000 and saved as a JPEG under
     400 KB at the highest quality that fits (`THUMBNAIL` in `thumbnail.mjs`, a
     module that imports nothing, so a browser suite can read it, and which
     `preview-arguments.mjs` re-exports). Two runs write the same bytes, and
     nothing under `previews/` changes. Applying uploads only the images a page
-    shows, so the thumbnail stays the chooser's alone.
+    shows, so the thumbnail stays the Templates screen's alone.
+  - `--pages`, alone or with `--thumbnail`, likewise takes neither: it draws
+    the top of every page but Home in the same frame, 1200 by 750 (5/6 of a
+    device pixel a CSS pixel) and under 150 KB (`PAGE_PICTURE`), as
+    `images/page-<key>.jpg` (`pagePictureFile`), for the page view; alone, it
+    leaves the thumbnail as it is. A change to a page reruns it, and a new
+    page's picture is drawn before its `?url&no-inline` import is added: the
+    dump imports the template, so a missing file stops the tool.
 - **Not yet run in a deployed builder.** The spike (OrganizeOS spec, section
   7, step 2) is `spike`, a Hero, two Events sections (one with an Event Card,
   one with an Event List), and a Sign-up section with a Signup Form, with
   Source Sans 3 as its bundled body font. It is a fixture, not in the catalog,
-  so the chooser no longer offers it, even with `templateDrafts=1`. The run
+  so the Templates screen no longer offers it, even with `templateDrafts=1`. The run
   (apply a listed template to a test org, edit in Simple mode) follows the
   deploy. Until that report is in, the design's rules 3 and 4 (editable
   content in Content Blocks; platform blocks placed, never bound) are unproven
