@@ -1813,8 +1813,12 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     another block keeps its image, and is read-only where the page would
     change). A click on an image, or Enter with it selected, opens its
     settings (Alt, Caption for a figure, Remove); an arrow onto an image
-    selects it, typing then lands beside it, and closing the settings puts
-    the caret right after it. Its Image button uploads one through E9 with the
+    selects it; typing, a composition, a paste or a drop then lands beside
+    it, on the side the arrow was moving toward (after it when no arrow
+    selected it). Closing the settings by Escape, or with the focus lost,
+    puts a text caret right after the image (the start of the next block,
+    for a figure) and gives the editor the focus; a click elsewhere keeps
+    the focus where it went. Its Image button uploads one through E9 with the
     image field's checks; pasted HTML brings no image, and a cut, copy or
     drag inside the same field keeps its images. It is read-only when
     the editor would change the value on a load and save: the stored value,

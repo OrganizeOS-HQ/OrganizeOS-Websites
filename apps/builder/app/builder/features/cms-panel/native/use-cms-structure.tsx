@@ -581,6 +581,8 @@ export const useCmsStructure = ({
     },
     [onDirtyChange]
   );
+  // a frozen view's report: Discard has already cleared the flag
+  const ignoreDirty = useCallback((_dirty: boolean) => undefined, []);
   const clearViewDirty = useCallback(() => {
     if (viewDirty.current) {
       viewDirty.current = false;
@@ -689,21 +691,58 @@ export const useCmsStructure = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
-  /** Discard ran an action that leaves the view open: it shows saved values. */
+  // Each view session's own writes under way, and the session Discard left
+  // waiting for one: it stays frozen until it is drawn again
+  const viewWrites = useRef(new Map<number, number>());
+  const [frozenSession, setFrozenSession] = useState<number | undefined>();
+  /** A view's write, counted for its session until it answers. */
+  const ownedBy =
+    (
+      viewSession: number,
+      enqueueWrite: CmsStructureEnqueue
+    ): CmsStructureEnqueue =>
+    (id, write) => {
+      viewWrites.current.set(
+        viewSession,
+        (viewWrites.current.get(viewSession) ?? 0) + 1
+      );
+      return enqueueWrite(id, write).finally(() => {
+        viewWrites.current.set(
+          viewSession,
+          (viewWrites.current.get(viewSession) ?? 1) - 1
+        );
+      });
+    };
+
+  /**
+   * Discard ran an action that leaves the view open: it shows saved values.
+   * While only a reorder or another view's write is under way it is drawn
+   * again at once: those never change its values. While its own write is,
+   * it stays frozen; once the collection's queue settles, whatever the
+   * answer, E21 is read again and the view is drawn from that read, which
+   * takes the version (from the values it held when the read fails, so the
+   * next Save meets conflict). Only the view Discard was for is drawn again,
+   * and never over values typed since.
+   */
   const resetView = useCallback(() => {
     clearViewDirty();
     const id = collectionIdRef.current;
-    if (id === undefined || (inFlight.current.get(id) ?? 0) === 0) {
+    const asked = sessionRef.current;
+    if (id === undefined || (viewWrites.current.get(asked) ?? 0) === 0) {
       setSession((current) => current + 1);
       return;
     }
-    // a write of this collection is under way: drawn again now, the view
-    // would show the values from before it. It is drawn again once that
-    // collection's queue settles, whatever the answer, if it is still open
-    const asked = sessionRef.current;
-    void queues.current.get(id)?.then(() => {
-      // only the view Discard was for: not one opened since
-      if (collectionIdRef.current === id && sessionRef.current === asked) {
+    setFrozenSession(asked);
+    const isAsked = () =>
+      collectionIdRef.current === id &&
+      sessionRef.current === asked &&
+      viewDirty.current === false;
+    void queues.current.get(id)?.then(async () => {
+      if (isAsked() === false) {
+        return;
+      }
+      await fetchStructureRef.current(id, true, isAsked);
+      if (isAsked()) {
         setSession((current) => current + 1);
       }
     });
@@ -731,13 +770,24 @@ export const useCmsStructure = ({
     }
   }, [collections]);
 
-  /** E21 now; `forView`: the open view's reread, which takes the version. */
-  const fetchStructure = async (id: string, forView = false) => {
+  /**
+   * E21 now; `forView`: the open view's reread, which takes the version.
+   * `isCurrent`: the asking view, whose answer acts on nothing once that
+   * view is replaced.
+   */
+  const fetchStructure = async (
+    id: string,
+    forView = false,
+    isCurrent?: () => boolean
+  ) => {
     if (structure === undefined) {
       return undefined;
     }
     const mark = readMark(id);
     const result = await structure.getCollectionStructure(id);
+    if (isCurrent !== undefined && isCurrent() === false) {
+      return undefined;
+    }
     if (isCmsFailure(result)) {
       const refusal = mapStructureRead(result.error);
       if (refusal !== undefined && refusal !== "toast") {
@@ -761,6 +811,9 @@ export const useCmsStructure = ({
     }
     return result.collection;
   };
+
+  const fetchStructureRef = useRef(fetchStructure);
+  fetchStructureRef.current = fetchStructure;
 
   // A view opens on the collection it was asked for in: an entry that
   // waited for the editor opens nothing if another collection is open by
@@ -1296,10 +1349,13 @@ export const useCmsStructure = ({
           structure={structure}
           collection={openDetail}
           canManage={canManage}
-          enqueue={enqueue}
-          reread={() => fetchStructure(openDetail.id, true)}
+          enqueue={ownedBy(viewSession, enqueue)}
+          reread={() => fetchStructure(openDetail.id, true, isSameView)}
+          frozen={frozenSession === viewSession}
           onBack={() => guard(closeView)}
-          onDirtyChange={reportViewDirty}
+          onDirtyChange={
+            frozenSession === viewSession ? ignoreDirty : reportViewDirty
+          }
           onSaved={(before, after) => {
             setDetail((current) =>
               current?.id === openDetail.id ? { ...current, ...after } : current
@@ -1324,8 +1380,9 @@ export const useCmsStructure = ({
         target={view.target}
         targets={targets}
         canManage={canManage}
-        enqueue={enqueueSchema}
-        reread={() => fetchStructure(openDetail.id, true)}
+        enqueue={ownedBy(viewSession, enqueueSchema)}
+        reread={() => fetchStructure(openDetail.id, true, isSameView)}
+        frozen={frozenSession === viewSession}
         readCount={() => fetchStructure(openDetail.id)}
         onBack={() => guard(closeView)}
         onClose={() => {
@@ -1333,7 +1390,9 @@ export const useCmsStructure = ({
             closeView();
           }
         }}
-        onDirtyChange={reportViewDirty}
+        onDirtyChange={
+          frozenSession === viewSession ? ignoreDirty : reportViewDirty
+        }
         onRefusal={showLine}
         onStale={(stale) => {
           if (stale === "structure") {

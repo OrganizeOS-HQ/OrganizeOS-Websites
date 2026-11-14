@@ -251,6 +251,7 @@ export const CollectionSettings = ({
   onDelete,
   onRefusal,
   onNotFound,
+  frozen = false,
 }: {
   structure: CmsStructureSource;
   collection: CmsStructureCollection;
@@ -269,6 +270,8 @@ export const CollectionSettings = ({
   onRefusal: (line: CmsLineKind) => void;
   /** The collection is gone: E1 again. */
   onNotFound: () => void;
+  /** Discarded during its own write: nothing can change until it is redrawn. */
+  frozen?: boolean;
 }) => {
   const [baseline, setBaseline] = useState(() => settingsOf(collection));
   const [values, setValues] = useState(baseline);
@@ -376,7 +379,7 @@ export const CollectionSettings = ({
     });
   };
 
-  const disabled = canManage === false || busy;
+  const disabled = canManage === false || busy || frozen;
   const errorProps = (id: string, error: string | undefined) => ({
     color: error === undefined ? undefined : ("error" as const),
     "aria-invalid": error !== undefined || undefined,
@@ -406,7 +409,7 @@ export const CollectionSettings = ({
           canManage && (
             <Button
               color="primary"
-              disabled={isDirty === false || busy}
+              disabled={isDirty === false || busy || frozen}
               state={busy ? "pending" : undefined}
               onClick={() => void save()}
             >
@@ -472,7 +475,12 @@ export const CollectionSettings = ({
             onChange={(event) => set({ slug: event.currentTarget.value })}
             onBlur={slugifyAddress}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && isDirty && busy === false) {
+              if (
+                event.key === "Enter" &&
+                isDirty &&
+                busy === false &&
+                frozen === false
+              ) {
                 event.preventDefault();
                 void save();
               }

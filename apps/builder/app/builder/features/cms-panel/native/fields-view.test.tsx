@@ -1392,3 +1392,191 @@ describe("Discard during a structure view's own Save", () => {
     expect($cmsNativeDirty.get()).toBe(false);
   });
 });
+
+// round 5 verification, R5-1: a replaced view never acts on the screen's
+// state, and a view Discarded during its own write stays frozen until it is
+// drawn again from a fresh read
+describe("Discard during a view's own write keeps another person's change", () => {
+  const header = () =>
+    document.querySelector<HTMLElement>("[data-cms-structure-header]")!;
+  const plusThenCancel = async () => {
+    await click(tab("Collections"));
+    await click(byLabel("New collection"));
+    if (hasText("Discard unsaved changes?")) {
+      await discardChanges();
+    }
+    const cancel = [
+      ...document.querySelectorAll<HTMLElement>('[role="dialog"] button'),
+    ].find((button) => button.textContent === "Cancel");
+    if (cancel !== undefined) {
+      await click(cancel);
+    }
+  };
+  const drain = async () => {
+    for (let round = 0; round < 3; round += 1) {
+      await settle();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+    await settle();
+  };
+  const input = (id: string) =>
+    document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`#${id}`);
+  /**
+   * E21 from now on answers `collection` once `gate` opens: the rereads land
+   * after the write's answer, as on a network.
+   */
+  const rereadsAfter = (collection: typeof POSTS_STRUCTURE) => {
+    const gate = deferred<void>();
+    harness.structure.getCollectionStructure.mockImplementation(async () => {
+      await gate.promise;
+      return { collection };
+    });
+    return gate;
+  };
+  /** Summary as another person left it: with a help text, at LATER. */
+  const theirs = (label = "Summary") =>
+    rereadsAfter({
+      ...POSTS_STRUCTURE,
+      fields: POSTS_DETAIL.fields.map((field) =>
+        field.key === "summary" ? { ...field, label, help: "Theirs" } : field
+      ),
+      updatedAt: LATER,
+    });
+  const sentSummary = () =>
+    (
+      harness.structure.updateSchema.mock.lastCall?.[1].fields as
+        | CmsStructureField[]
+        | undefined
+    )?.find((field) => field.key === "summary");
+
+  test("a sheet's Save answered unavailable: the view is frozen, then drawn with the other person's help, and the next Save keeps it", async () => {
+    await openFields();
+    await click(fieldRow("summary")!.querySelector("button"));
+    await typeInto(input("cms-field-sheet-label"), "Teaser");
+    const gate = theirs();
+    const held =
+      deferred<CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>>();
+    harness.structure.updateSchema.mockImplementationOnce(() => held.promise);
+    await click(buttonByText("Save", header()));
+    await plusThenCancel();
+    expect(sheet()).not.toBeNull();
+    await act(async () => held.resolve({ error: "unavailable" }));
+    await drain();
+    // answered, and the reread not yet: nothing can be typed
+    expect(input("cms-field-sheet-label")?.disabled).toBe(true);
+    await act(async () => gate.resolve());
+    await drain();
+    expect(input("cms-field-sheet-label")?.disabled).toBe(false);
+    expect(input("cms-field-sheet-label")?.value).toBe("Summary");
+    expect(input("cms-field-sheet-help")?.value).toBe("Theirs");
+    await typeInto(input("cms-field-sheet-label"), "Excerpt mine");
+    answerSchema(NEXT);
+    await click(buttonByText("Save", header()));
+    await drain();
+    expect(harness.structure.updateSchema.mock.lastCall?.[1]).toMatchObject({
+      expectedUpdatedAt: LATER,
+    });
+    expect(sentSummary()?.help).toBe("Theirs");
+  });
+
+  test("a sheet's Save answered unavailable that landed: the view is drawn with what landed", async () => {
+    await openFields();
+    await click(fieldRow("summary")!.querySelector("button"));
+    await typeInto(input("cms-field-sheet-label"), "Teaser");
+    const gate = theirs("Teaser");
+    const held =
+      deferred<CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>>();
+    harness.structure.updateSchema.mockImplementationOnce(() => held.promise);
+    await click(buttonByText("Save", header()));
+    await plusThenCancel();
+    await act(async () => held.resolve({ error: "unavailable" }));
+    await drain();
+    await act(async () => gate.resolve());
+    await drain();
+    expect(input("cms-field-sheet-label")?.value).toBe("Teaser");
+    expect($cmsNativeDirty.get()).toBe(false);
+  });
+
+  test("a settings view's Save answered unavailable: drawn with the other person's address, and the next Save keeps it", async () => {
+    await openFields();
+    await click(tab("Collections"));
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+    await typeInto(input("cms-settings-name"), "Articles");
+    const gate = rereadsAfter({
+      ...POSTS_STRUCTURE,
+      slug: "news",
+      updatedAt: LATER,
+    });
+    const held =
+      deferred<
+        Awaited<ReturnType<typeof harness.structure.updateCollection>>
+      >();
+    harness.structure.updateCollection.mockImplementationOnce(
+      () => held.promise
+    );
+    await click(buttonByText("Save", header()));
+    await plusThenCancel();
+    await act(async () => held.resolve({ error: "unavailable" }));
+    await drain();
+    expect(input("cms-settings-name")?.disabled).toBe(true);
+    await act(async () => gate.resolve());
+    await drain();
+    expect(input("cms-settings-name")?.value).toBe("Posts");
+    expect(input("cms-settings-slug")?.value).toBe("news");
+    await typeInto(input("cms-settings-singular"), "Story");
+    let sent: Record<string, unknown> = {};
+    harness.structure.updateCollection.mockImplementationOnce(
+      async (_id, body) => {
+        sent = body;
+        return { error: "conflict" };
+      }
+    );
+    await click(buttonByText("Save", header()));
+    await drain();
+    expect(sent).toMatchObject({ expectedUpdatedAt: LATER, slug: "news" });
+  });
+
+  test.each(["ok", "conflict", "unavailable"] as const)(
+    "a dirty sheet with a reorder's E24 in flight (%s), after Discard: drawn at once, and text typed then stays",
+    async (answer) => {
+      await openFields();
+      await click(fieldRow("summary")!.querySelector("button"));
+      await typeInto(input("cms-field-sheet-label"), "Teaser");
+      const held =
+        deferred<
+          CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>
+        >();
+      let sent: CmsStructureField[] = [];
+      harness.structure.updateSchema.mockImplementationOnce(
+        async (_id, body) => {
+          sent = body.fields;
+          return held.promise;
+        }
+      );
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      await moveRow("title", "ArrowDown");
+      await pass(600);
+      await pass(0);
+      vi.useRealTimers();
+      await settle();
+      expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
+      await plusThenCancel();
+      expect(input("cms-field-sheet-label")?.value).toBe("Summary");
+      expect($cmsNativeDirty.get()).toBe(false);
+      await typeInto(input("cms-field-sheet-label"), "Mine");
+      await act(async () =>
+        held.resolve(
+          answer === "ok"
+            ? { fields: sent, updatedAt: NEXT }
+            : { error: answer }
+        )
+      );
+      await drain();
+      expect(input("cms-field-sheet-label")?.value).toBe("Mine");
+      expect($cmsNativeDirty.get()).toBe(true);
+    }
+  );
+});

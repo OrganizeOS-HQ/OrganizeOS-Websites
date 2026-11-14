@@ -378,6 +378,7 @@ export const FieldSheet = ({
   onRemoved,
   onRefusal,
   onStale,
+  frozen = false,
 }: {
   structure: CmsStructureSource;
   collection: CmsStructureCollection;
@@ -405,6 +406,8 @@ export const FieldSheet = ({
   onRemoved: (fields: CmsStructureField[], updatedAt: string) => void;
   onRefusal: (line: CmsLineKind) => void;
   onStale: (stale: FieldSheetStale) => void;
+  /** Discarded during its own write: nothing can change until it is redrawn. */
+  frozen?: boolean;
 }) => {
   const [saved, setSaved] = useState<CmsStructureField | undefined>(() =>
     "key" in target
@@ -639,7 +642,7 @@ export const FieldSheet = ({
   const targetName = (id: string) =>
     targets.find((entry) => entry.id === id)?.name ?? "";
 
-  const disabled = canManage === false || busy !== undefined;
+  const disabled = canManage === false || busy !== undefined || frozen;
   const columnEnabled = canShowInTable(collection.fields, draft, originalKey);
   const isCurrentTitle = saved?.isTitle === true;
   const removable = saved !== undefined && canRemoveField(saved);
@@ -673,7 +676,9 @@ export const FieldSheet = ({
             <Button
               color="primary"
               disabled={
-                (isDirty === false && isNew === false) || busy !== undefined
+                (isDirty === false && isNew === false) ||
+                busy !== undefined ||
+                frozen
               }
               state={busy === "save" ? "pending" : undefined}
               onClick={() => void save()}
