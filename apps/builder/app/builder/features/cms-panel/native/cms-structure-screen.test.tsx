@@ -1629,3 +1629,112 @@ describe("the focus after an item's Back, then a structure view (round 4)", () =
     );
   });
 });
+
+// round 5, item 5: one focus keeper for the screen
+describe("a focus lost to the page comes back to the screen (round 5)", () => {
+  const twoFrames = async () => {
+    for (let frame = 0; frame < 3; frame += 1) {
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
+    }
+    await settle();
+  };
+  const header = () =>
+    document.querySelector<HTMLElement>("[data-cms-structure-header]")!;
+  const openSettings = async () => {
+    await click(tab("Collections"));
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+  };
+  const cases: Array<[string, () => Promise<void>]> = [
+    [
+      "Settings' Back after the column switched to Fields",
+      async () => {
+        await openSettings();
+        await click(tab("Fields"));
+        await click(byLabel("Back"));
+      },
+    ],
+    [
+      "Keep editing, when a menu item opened the guard",
+      async () => {
+        answerBoth();
+        await editItemTitle();
+        await click(byLabel("People menu"));
+        await click(menuItem("Settings"));
+        await keepEditing();
+      },
+    ],
+    [
+      "a failed Save in the field sheet",
+      async () => {
+        await click(tab("Fields"));
+        await click(fieldRow("summary")!.querySelector("button"));
+        await typeInto(
+          document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+          "Teaser"
+        );
+        harness.structure.updateSchema.mockResolvedValueOnce({
+          error: "unavailable",
+        });
+        await click(buttonByText("Save", header()));
+      },
+    ],
+    [
+      "a failed Save in Settings",
+      async () => {
+        await openSettings();
+        await typeInto(
+          document.querySelector<HTMLInputElement>("#cms-settings-name"),
+          "Articles"
+        );
+        harness.structure.updateCollection.mockResolvedValueOnce({
+          error: "unavailable",
+        });
+        await click(buttonByText("Save", header()));
+      },
+    ],
+    [
+      "a successful Reload in the field sheet",
+      async () => {
+        await click(tab("Fields"));
+        await click(fieldRow("summary")!.querySelector("button"));
+        await typeInto(
+          document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+          "Teaser"
+        );
+        harness.structure.updateSchema.mockResolvedValueOnce({
+          error: "conflict",
+        });
+        await click(buttonByText("Save", header()));
+        await click(buttonByText("Reload"));
+      },
+    ],
+    [
+      "a Delete whose count read fails",
+      async () => {
+        answerBoth();
+        harness.structure.getCollectionStructure.mockResolvedValueOnce({
+          error: "unavailable",
+        });
+        await click(tab("Collections"));
+        await click(byLabel("People menu"));
+        await click(menuItem("Delete"));
+      },
+    ],
+  ];
+
+  test.each(cases)("%s", async (_name, run) => {
+    mount();
+    await settle();
+    await run();
+    await twoFrames();
+    const active = document.activeElement;
+    expect(active).not.toBe(document.body);
+    expect(active?.isConnected).toBe(true);
+    expect(
+      active?.closest("[data-cms-native-screen], [role='dialog']")
+    ).not.toBeNull();
+  });
+});
