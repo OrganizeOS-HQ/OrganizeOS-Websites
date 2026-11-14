@@ -51,6 +51,7 @@ import { renderControl } from "./combined";
 import {
   getOrganizeosControl,
   getStateVariableId,
+  isOrganizeosHiddenProp,
 } from "./organizeos-controls";
 
 vi.mock("~/shared/builder-api", () => ({
@@ -235,6 +236,19 @@ describe("getOrganizeosControl", () => {
     }
     // the Field's own row is untouched outside a form
     expect(kind(`${ns}:Field`, "field")).toBeUndefined();
+  });
+
+  test("isOrganizeosHiddenProp names the props no row draws, for the + menu to leave out", () => {
+    expect(isOrganizeosHiddenProp(signupForm, "siteForm")).toBe(true);
+    for (const propName of ["fieldType", "options", "required"]) {
+      expect(isOrganizeosHiddenProp(`${ns}:Field`, propName), propName).toBe(
+        true
+      );
+    }
+    expect(isOrganizeosHiddenProp(signupForm, "record")).toBe(false);
+    expect(isOrganizeosHiddenProp(`${ns}:Field`, "field")).toBe(false);
+    expect(isOrganizeosHiddenProp("Box", "required")).toBe(false);
+    expect(isOrganizeosHiddenProp(undefined, "siteForm")).toBe(false);
   });
 
   test("the RSVP Form keeps its record picker and upstream's other controls", () => {

@@ -1,9 +1,10 @@
-import type {
-  Instance,
-  Instances,
-  Pages,
-  Prop,
-  Props,
+import {
+  isPageDraft,
+  type Instance,
+  type Instances,
+  type Pages,
+  type Prop,
+  type Props,
 } from "@webstudio-is/sdk";
 
 /**
@@ -13,10 +14,12 @@ import type {
  * the publish route, the publisher and the builder's panel all read it.
  *
  * - **The mark.** A form root that uses a site form carries the builder-only
- *   prop `siteForm` (its form's kind), written with its `record` by the
- *   insert, a template placement or the Form row. Only marked roots are
- *   collected; an unmarked root (a CRM form, or the org defaults) is neither
- *   sent nor checked, so it publishes as it always has (spec 15).
+ *   prop `siteForm`, its form's kind (`contact-signup`, `contact-form` or
+ *   `membership`), written with its `record` by the insert, a template
+ *   placement or the Form row. Only roots so marked are collected; an
+ *   unmarked root (a CRM form, or the org defaults), or one whose `siteForm`
+ *   is any other value, is neither sent nor checked, so it publishes as it
+ *   always has (spec 15).
  * - **A marked root's form** is its `record`, a string literal that is an RFC
  *   4122 UUID, sent lower-cased. Blank, an expression, another type or
  *   another shape refuses (`no_form`): the platform cannot compute a bound
@@ -26,8 +29,9 @@ import type {
  *   sent once, at its first place, required when any of them is. A key over
  *   60 characters is never a catalog key and is dropped. An expression
  *   `field` refuses (`no_field`), and so does a root with no keyed Field.
- * - **On a page.** A root is collected only when a page's body holds it, so a
- *   page template's body is not; its name and its page name the refusals.
+ * - **On a published page.** A root is collected only when a page that is
+ *   not a draft holds it, so a draft page's or a page template's body is
+ *   not: neither goes live. Its name and its page name the refusals.
  * - F5 takes at most 50 forms of at most 50 fields: past either, `too_many`.
  */
 
@@ -43,6 +47,16 @@ const RSVP_FORM_COMPONENT = `${NAMESPACE}:RsvpForm`;
 
 /** The builder-only root prop that marks a site form's block. */
 export const SITE_FORM_PROP = "siteForm";
+
+/** The kinds a mark names; any other value (a blank one included) marks nothing. */
+const SITE_FORM_KINDS: ReadonlySet<string> = new Set([
+  "contact-signup",
+  "contact-form",
+  "membership",
+]);
+
+const isMark = (prop: Prop | undefined) =>
+  prop?.type === "string" && SITE_FORM_KINDS.has(prop.value);
 
 const MAX_FORMS = 50;
 const MAX_FIELDS = 50;
@@ -86,10 +100,16 @@ const nameOf = (instance: Instance) =>
     ? instance.label
     : "Signup Form";
 
-/** The page holding each instance, the first page's when several share it. */
+/**
+ * The published page holding each instance, the first page's when several
+ * share it. A draft page is never published, so its body is not walked.
+ */
 const pageOfInstances = (instances: Instances, pages: Pages) => {
   const pageOf = new Map<string, string>();
   for (const page of pages.pages.values()) {
+    if (isPageDraft(page)) {
+      continue;
+    }
     const stack = [page.rootInstanceId];
     while (stack.length > 0) {
       const id = stack.pop() as string;
@@ -199,7 +219,10 @@ export const collectFormRoots = ({
       continue;
     }
     const rootProps = propsOf.get(instance.id);
-    if (rootProps?.has(SITE_FORM_PROP) !== true) {
+    if (
+      rootProps === undefined ||
+      isMark(rootProps.get(SITE_FORM_PROP)) === false
+    ) {
       continue;
     }
     const page = pageOf.get(instance.id);

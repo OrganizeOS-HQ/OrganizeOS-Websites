@@ -1350,6 +1350,28 @@ describe("a site form's Fields", () => {
     expect(names).not.toContain("required");
   });
 
+  test.each(["canvas", undefined] as const)(
+    "the root's siteForm mark never reaches the DOM (%s)",
+    (renderer) => {
+      const { container } = render(
+        <Sdk renderer={renderer}>
+          <SignupForm
+            record={siteFormId}
+            data={forms}
+            {...({ siteForm: "contact-signup" } as Record<string, unknown>)}
+          >
+            <Field field="email">
+              <FieldInput />
+            </Field>
+          </SignupForm>
+        </Sdk>
+      );
+      const form = container.querySelector("form");
+      expect(form).not.toBeNull();
+      expect(form?.getAttributeNames()).not.toContain("siteform");
+    }
+  );
+
   test("the canvas check of a site form names no missing or extra field", () => {
     const { container } = render(
       <SiteBlock renderer="canvas" record={siteFormId} name="first_name" />

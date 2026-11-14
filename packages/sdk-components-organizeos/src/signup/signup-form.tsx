@@ -266,6 +266,8 @@ const getProblems = ({
 type SignupFormProps = Omit<ComponentProps<"form">, "action" | "onSubmit"> & {
   /** The form's id, from the Forms data. Empty for the org defaults. */
   record?: string;
+  /** The builder-only mark of a site form's block, its form's kind. */
+  siteForm?: string;
   /** The `GET /v1/forms` body, `{ data: Form[] }`: the project's Forms preset. */
   data?: unknown;
   /** Reveals a state on the canvas; bound to the template's `formState` variable. */
@@ -293,6 +295,9 @@ export const SignupForm = forwardRef<ElementRef<"form">, SignupFormProps>(
       onStateChange,
       action = "state",
       actionPage,
+      // builder-only: marks a site form's block for the publish step, and
+      // never reaches the DOM (builder forms spec 7.4)
+      siteForm: _siteForm,
       children,
       ...props
     },

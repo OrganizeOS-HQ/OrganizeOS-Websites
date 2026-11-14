@@ -220,7 +220,11 @@ const STAGE_LINES: Record<string, { status: number; line: string }> = {
     line: "Turn on two-step verification to publish forms.",
   },
   forbidden: { status: 403, line: "You can't publish forms." },
-  unauthorized: { status: 403, line: "You can't publish forms." },
+  // stage two's dead OrganizeOS session: signing in again is the way out
+  unauthorized: {
+    status: 403,
+    line: "Sign in through OrganizeOS to publish forms.",
+  },
   plan: { status: 403, line: "Your plan doesn't include forms." },
   rate_limited: {
     status: 429,

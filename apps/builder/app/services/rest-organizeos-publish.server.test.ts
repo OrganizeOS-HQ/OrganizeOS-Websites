@@ -969,7 +969,8 @@ describe("rest.organizeos-publish: staging site forms", () => {
       "Turn on two-step verification to publish forms.",
     ],
     ["forbidden", 403, 403, "You can't publish forms."],
-    ["unauthorized", 401, 403, "You can't publish forms."],
+    // stage two's dead OrganizeOS session, not a permission
+    ["unauthorized", 401, 403, "Sign in through OrganizeOS to publish forms."],
     ["plan", 403, 403, "Your plan doesn't include forms."],
     ["rate_limited", 429, 429, "Too many publishes. Try again in a minute."],
     ["replayed", 409, 502, "Forms could not be saved. Try again."],

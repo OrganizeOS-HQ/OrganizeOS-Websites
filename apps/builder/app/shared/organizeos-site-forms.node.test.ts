@@ -27,7 +27,7 @@ type Spec = {
 const build = (
   specs: Spec[],
   props: Array<[string, string, Prop["type"], unknown]>,
-  pageRoots: Array<[string, string]> = [["Home", "body"]]
+  pageRoots: Array<[string, string, boolean?]> = [["Home", "body"]]
 ) => {
   const instances = new Map<string, Instance>(
     specs.map(({ id, component = "Box", label, children = [] }) => [
@@ -52,7 +52,7 @@ const build = (
     rootFolderId: "root",
     folders: new Map(),
     pages: new Map(
-      pageRoots.map(([name, rootInstanceId], index) => [
+      pageRoots.map(([name, rootInstanceId, isDraft], index) => [
         `page-${index}`,
         {
           id: `page-${index}`,
@@ -61,6 +61,7 @@ const build = (
           title: `"${name}"`,
           rootInstanceId,
           meta: {},
+          ...(isDraft === undefined ? {} : { isDraft }),
         },
       ])
     ),
@@ -315,6 +316,80 @@ describe("collectFormRoots", () => {
     expect(roots(collectFormRoots(data))[0].fields).toEqual([
       { key: "email", required: false },
     ]);
+  });
+
+  test.each([
+    ["blank", "string", ""],
+    ["an unknown kind", "string", "newsletter"],
+    ["an expression", "expression", "$ws$x"],
+    ["a boolean", "boolean", true],
+  ] as const)(
+    "a siteForm prop that is %s does not mark the root",
+    (_case, type, value) => {
+      // e.g. "Site form" picked from Properties & attributes +, which writes ""
+      const data = oneRoot(
+        ["email"],
+        [
+          ["root", SITE_FORM_PROP, type, value],
+          ["root", "record", "expression", "$ws$y"],
+        ]
+      );
+      expect(collectFormRoots(data)).toEqual({ ok: true, roots: [] });
+    }
+  );
+
+  test.each(["contact-signup", "contact-form", "membership"])(
+    "a siteForm of the kind %s marks the root",
+    (kind) => {
+      const data = oneRoot(
+        ["email"],
+        [["root", SITE_FORM_PROP, "string", kind]]
+      );
+      expect(roots(collectFormRoots(data))).toHaveLength(1);
+    }
+  );
+
+  test("a marked root on a draft page only is not collected: drafts are never published", () => {
+    const data = build(
+      [
+        { id: "body", children: [] },
+        { id: "draft-body", children: ["root"] },
+        { id: "root", component: form, children: ["f0"] },
+        { id: "f0", component: field },
+      ],
+      [
+        ["root", SITE_FORM_PROP, "string", "contact-signup"],
+        ["root", "record", "string", FORM],
+        ["f0", "field", "string", "email"],
+      ],
+      [
+        ["Home", "body"],
+        ["Next", "draft-body", true],
+      ]
+    );
+    expect(collectFormRoots(data)).toEqual({ ok: true, roots: [] });
+  });
+
+  test("a root on a draft page and a published one is named with the published page", () => {
+    const data = build(
+      [
+        { id: "draft-body", children: ["slot"] },
+        { id: "body", children: ["slot"] },
+        { id: "slot", component: "Slot", children: ["root"] },
+        { id: "root", component: form, children: ["f0"] },
+        { id: "f0", component: field },
+      ],
+      [
+        ["root", SITE_FORM_PROP, "string", "contact-signup"],
+        ["root", "record", "string", FORM],
+        ["f0", "field", "string", "email"],
+      ],
+      [
+        ["Draft", "draft-body", true],
+        ["Home", "body"],
+      ]
+    );
+    expect(roots(collectFormRoots(data))[0].page).toBe("Home");
   });
 
   test("a marked root on no page (a page template's body) is not collected", () => {
