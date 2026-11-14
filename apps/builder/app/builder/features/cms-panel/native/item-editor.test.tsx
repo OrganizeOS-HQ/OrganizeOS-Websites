@@ -1934,6 +1934,10 @@ describe("the Item menu waits for an upload (review)", () => {
     await act(async () => {
       held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
     });
+    await settle();
+    for (const label of ["Unpublish", "Archive"]) {
+      expect(menuItem(label)?.hasAttribute("data-disabled")).toBe(false);
+    }
   });
 
   test("Restore is disabled while an upload is in flight", async () => {
@@ -1966,6 +1970,8 @@ describe("the Item menu waits for an upload (review)", () => {
     await act(async () => {
       held.resolve({ url: "https://cdn.example.org/a.png", path: "a.png" });
     });
+    await settle();
+    expect(menuItem("Restore")?.hasAttribute("data-disabled")).toBe(false);
   });
 });
 
@@ -2128,6 +2134,97 @@ describe("the Item menu's actions (verification)", () => {
     expect(titleInput()).toBeNull();
     expect(hasText("Discard unsaved changes?")).toBe(false);
     expect($cmsNativeDirty.get()).toBe(false);
+  });
+
+  test("Back while Restore runs, answered slug_taken: the editor stays with Address in use", async () => {
+    const held = deferred<CmsResult<{ changed: string[] }>>();
+    fake.setItemsStatus.mockReturnValue(held.promise);
+    await openItem(itemOf({ status: "archived" }));
+    await click(byLabel("Item menu"));
+    await click(menuItem("Restore"));
+    await click(byLabel("Back"));
+    expect(titleInput()).not.toBeNull();
+    await act(async () => held.resolve({ error: "slug_taken" }));
+    await settle();
+    expect(titleInput()).not.toBeNull();
+    expect(hasText("Address in use")).toBe(true);
+  });
+
+  test("Back during Unpublish's save, answered unavailable: no dialog while the read runs, then the editor closes", async () => {
+    fake.updateItem.mockResolvedValue({ error: "unavailable" });
+    fake.setItemsStatus.mockResolvedValue({ changed: [PUBLISHED.id] });
+    await openItem(PUBLISHED);
+    await retype(titleInput(), "Edited");
+    const read = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.getItem.mockReturnValue(read.promise);
+    await click(byLabel("Item menu"));
+    await click(menuItem("Unpublish"));
+    await click(byLabel("Back"));
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+    expect(titleInput()).not.toBeNull();
+    // the save landed
+    await act(async () =>
+      read.resolve({
+        item: {
+          ...PUBLISHED,
+          slug: "edited",
+          data: { ...PUBLISHED.data, title: "Edited" },
+          updatedAt: V2,
+        },
+      })
+    );
+    await settle();
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+    expect(titleInput()).toBeNull();
+  });
+
+  test("Back during Publish's save asks nothing, and closes once the save and the publish have landed", async () => {
+    const draft = itemOf({ updatedAt: VERSION });
+    const saved = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.updateItem.mockReturnValue(saved.promise);
+    fake.publishItem.mockResolvedValue({
+      item: {
+        ...draft,
+        status: "published",
+        data: { ...draft.data, title: "Edited" },
+        updatedAt: V3,
+      },
+    });
+    await openItem(draft);
+    await retype(titleInput(), "Edited");
+    await click(buttonByText("Publish"));
+    await click(byLabel("Back"));
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+    expect(titleInput()).not.toBeNull();
+    await act(async () =>
+      saved.resolve({
+        item: {
+          ...draft,
+          data: { ...draft.data, title: "Edited" },
+          updatedAt: V2,
+        },
+      })
+    );
+    await settle();
+    expect(fake.publishItem).toHaveBeenCalledTimes(1);
+    expect(titleInput()).toBeNull();
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+    expect($cmsNativeDirty.get()).toBe(false);
+  });
+
+  test("Cancel in the compact Item menu's Discard changes dialog puts the focus on the Item menu", async () => {
+    await openItem(
+      itemOf({ status: "published", hasStagedChanges: true }),
+      800
+    );
+    await click(byLabel("Item menu"));
+    await click(menuItem("Discard changes"));
+    expect(hasText("Discard staged changes?")).toBe(true);
+    await click(buttonByText("Cancel"));
+    await vi.waitFor(() =>
+      expect(hasText("Discard staged changes?")).toBe(false)
+    );
+    expect(document.activeElement).toBe(byLabel("Item menu"));
   });
 
   test("E11 answered slug_taken after the editor has gone toasts Address in use", async () => {

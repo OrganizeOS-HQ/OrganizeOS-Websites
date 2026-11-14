@@ -1123,7 +1123,7 @@ describe("answers that arrive after the screen moved on", () => {
       "people",
     ],
   ] as const)(
-    "a create that answers after %s and Discard leaves the items view open",
+    "%s during a create's Save waits for it, then leaves without asking",
     async (_name, leave, slug) => {
       mount();
       await settle();
@@ -1135,8 +1135,9 @@ describe("answers that arrive after the screen moved on", () => {
       await click(buttonByText("Save"));
       expect(fake.createItem).toHaveBeenCalledTimes(1);
       await leave();
-      await click(buttonByText("Discard"));
-      expect(titleInput()).toBeNull();
+      // the editor stays while the create runs, and asks nothing
+      expect(titleInput()).not.toBeNull();
+      expect(hasText("Discard unsaved changes?")).toBe(false);
       const reads = fake.getItem.mock.calls.length;
       await act(async () =>
         held.resolve({
@@ -1150,6 +1151,7 @@ describe("answers that arrive after the screen moved on", () => {
       );
       await settle();
       expect(document.querySelector("[data-cms-editor]")).toBeNull();
+      expect(hasText("Discard unsaved changes?")).toBe(false);
       expect(fake.getItem).toHaveBeenCalledTimes(reads);
       expect(currentSlug()).toBe(slug);
     }

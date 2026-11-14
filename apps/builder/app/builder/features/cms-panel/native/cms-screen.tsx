@@ -774,9 +774,10 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         ? lastCollection.current
         : undefined);
 
-    // While the editor's Unpublish, Archive or Restore runs (its save, E11
-    // and the read after), Back, another collection and Classic CMS wait for
-    // it to end, then run the guard on what it left.
+    // While the editor's Save, Publish, Discard changes, Unpublish, Archive
+    // or Restore runs (every call and the read after), Back, another
+    // collection and Classic CMS wait for it to end, then run the guard on
+    // what it left.
     const [isEditorBusy, setIsEditorBusy] = useState(false);
     const isEditorBusyRef = useRef(false);
     isEditorBusyRef.current = isEditorBusy;
@@ -796,7 +797,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       afterEditorBusy.current = undefined;
       run();
     }, [isEditorBusy]);
-    const onEditorBusyChange = useCallback((busy: boolean) => {
+    const onEditorBusyChange = useCallback((busy: boolean, stay?: boolean) => {
+      // an error the editor shows keeps it open: what waited is dropped
+      if (busy === false && stay === true) {
+        afterEditorBusy.current = undefined;
+      }
       setIsEditorBusy(busy);
     }, []);
 

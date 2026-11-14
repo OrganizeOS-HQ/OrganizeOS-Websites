@@ -164,8 +164,12 @@ export const ItemEditor = ({
    * are fetched again before the toast.
    */
   onSchemaStale: () => Promise<void>;
-  /** Unpublish, Archive or Restore runs: its save, E11 and the read after. */
-  onBusyChange?: (busy: boolean) => void;
+  /**
+   * Save, Publish, Discard changes, Unpublish, Archive or Restore runs:
+   * every call it makes and the read after. `stay`: it ended with an error
+   * the editor shows, so what waited on it is dropped.
+   */
+  onBusyChange?: (busy: boolean, stay?: boolean) => void;
   /**
    * A call answered `unauthorized` or `mfa_required` (any call), or
    * `forbidden` or `plan` on the item's load: the screen shows the line
@@ -212,9 +216,14 @@ export const ItemEditor = ({
   const [clientId, setClientId] = useState(() => crypto.randomUUID());
   const backRef = useRef<HTMLButtonElement>(null);
   const itemMenuRef = useRef<HTMLButtonElement>(null);
-  // Unpublish, Archive or Restore from its first call to its last answer
-  const [isStatusRunning, setIsStatusRunning] = useState(false);
+  // Save, Publish, Discard changes, Unpublish, Archive or Restore, from its
+  // first call to its last answer
+  const [isChainRunning, setIsChainRunning] = useState(false);
+  // the running chain ended with an error the editor shows
+  const chainStays = useRef(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // what had the focus when the Discard changes dialog opened
+  const discardOpener = useRef<Element | null>(null);
   // Per reference field, its chosen ids whose items E5 no longer finds.
   const unresolved = useRef<Record<string, readonly string[]>>({});
   // Discard changes or Delete chosen in the Item menu: its dialog takes the
@@ -381,8 +390,9 @@ export const ItemEditor = ({
     onDirtyChange(isDirty);
   }, [isDirty, onDirtyChange]);
   useEffect(() => {
-    onBusyChange?.(isStatusRunning);
-  }, [isStatusRunning, onBusyChange]);
+    onBusyChange?.(isChainRunning, chainStays.current);
+    chainStays.current = false;
+  }, [isChainRunning, onBusyChange]);
   useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
@@ -435,11 +445,12 @@ export const ItemEditor = ({
     onWritten(result.item);
   };
 
+  /** Answers the read an unknown outcome runs, for the chain to wait on. */
   const fail = (
     failure: CmsFailure,
     settleWith?: Settle,
     on: "load" | "write" = "write"
-  ) => {
+  ): Promise<void> | undefined => {
     if (failure.error === "conflict") {
       setConflict(true);
       return;
@@ -497,8 +508,7 @@ export const ItemEditor = ({
       return;
     }
     if (failure.error === "unavailable" && settleWith !== undefined) {
-      void settle(settleWith);
-      return;
+      return settle(settleWith);
     }
     toast.error(getToastText(failure.error));
   };
@@ -533,7 +543,7 @@ export const ItemEditor = ({
       setBusy(undefined);
     }
     if (isCmsFailure(result)) {
-      fail(result, settleWith);
+      await fail(result, settleWith);
       return;
     }
     setLine(undefined);
@@ -628,14 +638,30 @@ export const ItemEditor = ({
     return { saved, differs };
   };
 
-  const save = async () => {
-    if (item === undefined) {
-      return;
+  /** Runs one chain of calls; Back and the other exits wait for its end. */
+  const runChain = async (run: () => Promise<void>) => {
+    chainStays.current = false;
+    setIsChainRunning(true);
+    try {
+      await run();
+    } finally {
+      if (isMounted.current) {
+        setIsChainRunning(false);
+      }
     }
-    await saveFrom(item);
   };
 
-  const publish = async () => {
+  const save = () =>
+    runChain(async () => {
+      if (item === undefined) {
+        return;
+      }
+      await saveFrom(item);
+    });
+
+  const publish = () => runChain(publishNow);
+
+  const publishNow = async () => {
     let current = item;
     if (current === undefined) {
       return;
@@ -668,7 +694,9 @@ export const ItemEditor = ({
     );
   };
 
-  const discard = async () => {
+  const discard = () => runChain(discardNow);
+
+  const discardNow = async () => {
     setConfirmDiscard(false);
     if (item === undefined || item === null) {
       return;
@@ -735,14 +763,8 @@ export const ItemEditor = ({
     if (item === undefined || item === null) {
       return;
     }
-    setIsStatusRunning(true);
-    try {
-      await runStatus(status, item);
-    } finally {
-      if (isMounted.current) {
-        setIsStatusRunning(false);
-      }
-    }
+    const from = item;
+    await runChain(() => runStatus(status, from));
   };
 
   const runStatus = async (status: "draft" | "archived", from: CmsItem) => {
@@ -785,6 +807,7 @@ export const ItemEditor = ({
           return;
         }
         setErrors((current) => ({ ...current, slug: "Address in use" }));
+        chainStays.current = true;
         return;
       }
       toast.error(
@@ -863,7 +886,7 @@ export const ItemEditor = ({
     if (isCmsFailure(result)) {
       // the editor holds the person's values: refused as a write is, so the
       // view and the conflict line with its Reload stay
-      fail(result);
+      void fail(result);
       return false;
     }
     setKept(keepAside({ fields, kept, baseline, baselineSlug, values, slug }));
@@ -1244,7 +1267,23 @@ export const ItemEditor = ({
           // the safe choice takes the first focus; Discard stays right
           onOpenAutoFocus={(event) => {
             event.preventDefault();
+            discardOpener.current = document.activeElement;
             cancelRef.current?.focus();
+          }}
+          // the focus goes back to its opener, else to the Item menu
+          onCloseAutoFocus={(event) => {
+            const element = discardOpener.current;
+            discardOpener.current = null;
+            event.preventDefault();
+            if (
+              element instanceof HTMLElement &&
+              element !== document.body &&
+              element.isConnected
+            ) {
+              element.focus();
+            } else {
+              itemMenuRef.current?.focus();
+            }
           }}
         >
           <DialogActions>
