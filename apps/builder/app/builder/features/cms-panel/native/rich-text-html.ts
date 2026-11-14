@@ -543,8 +543,8 @@ type ContentToken =
 
 const COLLAPSIBLE_CHAR_RE = /[ \t\n\r\f]/;
 
-/** An inline run as visible characters, collapsed spaces and line breaks. */
-const inlineTokens = (
+/** Each character of an inline run, with its marks and its link. */
+const rawTokens = (
   inlines: RichTextInline[],
   link?: { href: string; newTab?: true }
 ): ContentToken[] => {
@@ -554,7 +554,7 @@ const inlineTokens = (
       tokens.push({ k: "br" });
     } else if (inline.t === "a") {
       tokens.push(
-        ...inlineTokens(inline.c, { href: inline.href, newTab: inline.newTab })
+        ...rawTokens(inline.c, { href: inline.href, newTab: inline.newTab })
       );
     } else {
       const marks = (inline.marks ?? []).join(",");
@@ -572,9 +572,17 @@ const inlineTokens = (
       }
     }
   }
+  return tokens;
+};
+
+/**
+ * A block's whole inline run as visible characters, collapsed spaces and
+ * line breaks, collapsed once across its links and marks.
+ */
+const inlineTokens = (inlines: RichTextInline[]): ContentToken[] => {
   // one space for a run; none at an edge or beside a line break
   const kept: ContentToken[] = [];
-  for (const token of tokens) {
+  for (const token of rawTokens(inlines)) {
     if (token.k === "space") {
       const last = kept.at(-1);
       if (last === undefined || last.k !== "char") {
@@ -591,19 +599,38 @@ const inlineTokens = (
   return kept;
 };
 
-const BREAK: RichTextInline = { t: "br" };
+const BREAK: ContentToken = { k: "br" };
+
+type TokenBlock =
+  | Exclude<RichTextBlock, { t: "p" }>
+  | { t: "p"; tokens: ContentToken[] };
 
 /** A block list as the content comparison sees it. */
 const normaliseBlocks = (
   blocks: RichTextBlock[],
   inItem = false
 ): unknown[] => {
-  // inside one list item, consecutive paragraphs read as one with breaks
-  const merged: RichTextBlock[] = [];
+  // a paragraph with nothing in it counts as nothing
+  const tokenised: TokenBlock[] = [];
   for (const block of blocks) {
+    if (block.t === "p") {
+      const tokens = inlineTokens(block.c);
+      if (tokens.length > 0) {
+        tokenised.push({ t: "p", tokens });
+      }
+    } else {
+      tokenised.push(block);
+    }
+  }
+  // inside one list item, consecutive paragraphs read as one with breaks
+  const merged: TokenBlock[] = [];
+  for (const block of tokenised) {
     const last = merged.at(-1);
     if (inItem && block.t === "p" && last?.t === "p") {
-      merged[merged.length - 1] = { t: "p", c: [...last.c, BREAK, ...block.c] };
+      merged[merged.length - 1] = {
+        t: "p",
+        tokens: [...last.tokens, BREAK, ...block.tokens],
+      };
     } else {
       merged.push(block);
     }
@@ -611,13 +638,9 @@ const normaliseBlocks = (
   const out: unknown[] = [];
   for (const block of merged) {
     switch (block.t) {
-      case "p": {
-        const tokens = inlineTokens(block.c);
-        if (tokens.some((token) => token.k === "char")) {
-          out.push({ t: "p", tokens });
-        }
+      case "p":
+        out.push(block);
         break;
-      }
       case "h":
         out.push({ t: "h", level: block.level, tokens: inlineTokens(block.c) });
         break;
@@ -666,10 +689,12 @@ const visibleLinksOf = (html: string) =>
  * exactly), images with every attribute and their captions, and the same
  * visible characters in order with their marks and links, and line breaks.
  * Collapsible whitespace reads as one space, none at a block's edge or
- * beside a line break, and carries no mark or link; a non-breaking space is
- * visible. A paragraph with nothing visible, and a link with no visible text
- * and no image, count as nothing; a list item's consecutive paragraphs read
- * as one joined by line breaks.
+ * beside a line break, and carries no mark or link; it collapses once over
+ * the block's whole inline run, across its links and marks. A non-breaking
+ * space is visible. A paragraph with no visible character and no line break,
+ * and a link with no visible text and no image, count as nothing; once those
+ * paragraphs are dropped, a list item's consecutive paragraphs read as one
+ * joined by line breaks.
  */
 export const sameRichTextContent = (left: string, right: string) => {
   const a = sanitizeRichTextHtml(left);

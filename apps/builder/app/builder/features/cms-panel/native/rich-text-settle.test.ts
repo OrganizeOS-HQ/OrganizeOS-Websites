@@ -49,6 +49,11 @@ const SETTLED: Record<string, string> = {
   X30a: "<ol><li><p>Step one</p><p>Step two</p></li></ol>",
   X30b: "<ul><li><p>Step one</p><p>Step two</p></li></ul><p>after</p>",
   X30c: "<ul><li><p>Said</p><p>Quoted</p></li></ul>",
+  // B3: a space beside a link, kept once across the link's edge
+  B3a: '<p>go <a href="https://e.org/">here </a><b><strong></strong></b> now</p>',
+  B3b: '<p>go <a href="https://e.org/">here </a> now</p>',
+  B3c: '<p>go<a href="https://e.org/"> here </a> now</p>',
+  B3d: '<p>go <a href="https://e.org/x">here</a><a href="https://e.org/y"> </a> now</p>',
 };
 
 // The editor no longer writes these (the emptied-parent import, and a list
@@ -89,6 +94,13 @@ const KEPT: Record<string, string> = {
   L4a3: '<ul><li>a</li><li><ul><li>b</li></ul><p></p><p><img src="https://example.org/a.png" alt="A" /></p></li></ul>',
   L4a4: '<ul><li>a</li><li><ul><li>bone</li></ul><figure><img src="https://example.org/a.png" alt="A" /><figcaption>Cap</figcaption></figure><ul><li></li></ul></li></ul>',
   L4a5: '<ul><li>a</li><li><ul><li>bone</li></ul><blockquote><img src="https://example.org/a.png" alt="A" /></blockquote></li></ul>',
+  // B2: a settle would fold these images' line breaks together
+  B2a: '<ul><li><p><img src="https://example.org/a.png" alt="A" /></p><p><img src="https://example.org/b.png" alt="B" /></p></li></ul>',
+  B2b: '<blockquote><figure><img src="https://example.org/a.png" alt="A" /></figure><hr /></blockquote>',
+  B2c: "<ul><li><ul><li>a</li></ul><p><br /></p></li></ul>",
+  B2d: "<ol><li><ol><li>a</li></ol><br /></li></ol>",
+  // B11: a settle would put an empty line beside the bullet
+  B11a: '<ul><li>x</li><li><a href="https://e.org/"> </a><p>one</p><p>two</p></li></ul>',
 };
 
 describe("the save backstop over the recorded self-locks", () => {

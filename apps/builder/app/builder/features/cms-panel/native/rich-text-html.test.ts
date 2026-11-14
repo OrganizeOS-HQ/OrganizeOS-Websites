@@ -672,6 +672,39 @@ describe("settleRichTextHtml", () => {
       sameRichTextContent("<ul><li>a</li><li></li></ul>", "<ul><li>a</li></ul>")
     ).toBe(false);
   });
+
+  // B2: a paragraph holding only line breaks keeps them
+  test("a paragraph that holds only line breaks is content", () => {
+    const a = '<img src="https://example.org/a.png" alt="A" />';
+    const b = '<img src="https://example.org/b.png" alt="B" />';
+    expect(
+      sameRichTextContent(
+        `<ul><li><p>${a}</p><p><br /></p><p>${b}</p></li></ul>`,
+        `<ul><li>${a}<br /><br /><br />${b}</li></ul>`
+      )
+    ).toBe(false);
+    expect(sameRichTextContent("<p>a</p><p><br /></p>", "<p>a</p>")).toBe(
+      false
+    );
+  });
+
+  // B3: spaces collapse once over the block, across its links
+  test.each([
+    [
+      '<p>foo<a href="https://e.org/"> bar</a></p>',
+      '<p>foo<a href="https://e.org/">bar</a></p>',
+    ],
+    [
+      '<p><a href="https://e.org/">foo </a>bar</p>',
+      '<p><a href="https://e.org/">foo</a>bar</p>',
+    ],
+    [
+      '<p><a href="https://e.org/x">foo </a><a href="https://e.org/y">bar</a></p>',
+      '<p><a href="https://e.org/x">foo</a><a href="https://e.org/y">bar</a></p>',
+    ],
+  ])("%s and %s are not the same content", (left, right) => {
+    expect(sameRichTextContent(left, right)).toBe(false);
+  });
 });
 
 // self-lock decision, 4b: an emptied parent never grows on a load and save

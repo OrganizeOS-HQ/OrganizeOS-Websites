@@ -25,6 +25,7 @@ import fixture from "./__fixtures__/rich-text-roundtrip.json";
 import corpus from "./__fixtures__/rich-text-corpus.json";
 import {
   getRichTextReadOnlyReason,
+  settleRichTextHtml,
   writeRichTextHeadless,
 } from "./rich-text-html";
 
@@ -1997,5 +1998,25 @@ test.each(["//cdn.example.org/a.png", "/media/a.png"])(
     });
     await settle();
     expect(lastHtml(onChange)).toContain(`src="${src}"`);
+  }
+);
+
+// B2: a list made over quoted images and blank lines writes line breaks
+// the save backstop must not fold into each other
+test.each([
+  '<blockquote><p>Sounds good</p><p><br></p><blockquote><p><img src="https://example.org/a.png" alt="A"></p><p><br></p><p><img src="https://example.org/b.png" alt="B"></p></blockquote></blockquote>',
+  '<blockquote><blockquote><p><img src="https://example.org/a.png" alt="A"></p><p><img src="https://example.org/b.png" alt="B"></p></blockquote></blockquote>',
+  "<blockquote><blockquote><hr><p><br></p><ul><li>one</li></ul></blockquote></blockquote>",
+])(
+  "Bulleted list over all of %s writes a value a save does not settle",
+  async (html) => {
+    expect(reopenReason(html)).toBeUndefined();
+    const { onChange } = mountField({ value: { html } });
+    await settle();
+    await focusEditor();
+    await selectAll();
+    await click(byLabel("Bulleted list"));
+    const written = lastHtml(onChange);
+    expect(settleRichTextHtml(written).outcome).not.toBe("settled");
   }
 );
