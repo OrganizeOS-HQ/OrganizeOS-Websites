@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { userEvent } from "@vitest/browser/context";
 import { toast } from "@webstudio-is/design-system";
 import type { CmsResult } from "./cms-source";
-import { POSTS, POSTS_DETAIL, VERSION } from "./fake-cms-source";
+import { PEOPLE, POSTS, POSTS_DETAIL, VERSION } from "./fake-cms-source";
 import { POSTS_STRUCTURE } from "./fake-cms-structure-source";
 import type { CmsStructureField } from "./cms-structure-source";
 import {
@@ -23,6 +23,7 @@ import {
   mount,
   reopen,
   resetHarness,
+  rowOf,
   settle,
   tab,
   typeInto,
@@ -683,4 +684,194 @@ test("a move made while a sheet's Save is in flight keeps that Save's edit in it
     "title",
     "author",
   ]);
+});
+
+// Round 4, item 1: a reorder's conflict retry never takes the version from
+// under a view with unsaved values; a clean view is drawn again from the
+// fresh read, so its next Save keeps another person's change
+describe("a reorder conflict beside an open view", () => {
+  /** A platform that answers conflict on any write at a stale version. */
+  const world = () => {
+    const state = {
+      version: 1,
+      fields: structuredClone(POSTS_STRUCTURE.fields),
+      settings: {
+        name: POSTS_STRUCTURE.name,
+        singularName: POSTS_STRUCTURE.singularName,
+        slug: POSTS_STRUCTURE.slug,
+        isPublic: POSTS_STRUCTURE.isPublic,
+      },
+    };
+    const at = () => `2026-11-14T10:00:0${state.version}.000000+00:00`;
+    harness.structure.getCollectionStructure.mockImplementation(async () => ({
+      collection: {
+        ...POSTS_STRUCTURE,
+        ...state.settings,
+        fields: structuredClone(state.fields),
+        updatedAt: at(),
+      },
+    }));
+    harness.structure.updateSchema.mockImplementation(
+      async (_id, { fields: sent, expectedUpdatedAt }) => {
+        if (expectedUpdatedAt !== at()) {
+          return { error: "conflict" };
+        }
+        state.fields = structuredClone(sent);
+        state.version += 1;
+        return { fields: sent, updatedAt: at() };
+      }
+    );
+    harness.structure.updateCollection.mockImplementation(
+      async (id, { expectedUpdatedAt, ...settings }) => {
+        if (expectedUpdatedAt !== at()) {
+          return { error: "conflict" };
+        }
+        state.settings = { ...state.settings, ...settings };
+        state.version += 1;
+        return { collection: { id, ...settings, updatedAt: at() } };
+      }
+    );
+    return {
+      state,
+      /** Another person's change, straight on the platform. */
+      other: (change: () => void) => {
+        change();
+        state.version += 1;
+      },
+    };
+  };
+  const labelOf = (fields: CmsStructureField[], key: string) =>
+    fields.find((field) => field.key === key)?.label;
+
+  test("a clean sheet is drawn again from the retry's read, and its Save keeps the other person's rename", async () => {
+    const platform = world();
+    await openFields();
+    await click(fieldRow("summary")!.querySelector("button"));
+    expect(sheet()).not.toBeNull();
+    platform.other(() => {
+      platform.state.fields[1].label = "Excerpt";
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await moveRow("title", "ArrowDown");
+    await pass(600);
+    await pass(0);
+    vi.useRealTimers();
+    await settle();
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(2);
+    expect(labelOf(platform.state.fields, "summary")).toBe("Excerpt");
+    expect(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-label")?.value
+    ).toBe("Excerpt");
+    await typeInto(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-help"),
+      "Shown under the title"
+    );
+    await click(buttonByText("Save", sheet()!));
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(3);
+    expect(labelOf(platform.state.fields, "summary")).toBe("Excerpt");
+    expect(
+      platform.state.fields.find((field) => field.key === "summary")?.help
+    ).toBe("Shown under the title");
+  });
+
+  test("clean settings are drawn again from the retry's read, and their Save keeps the other person's name", async () => {
+    const platform = world();
+    await openFields();
+    await click(tab("Collections"));
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+    platform.other(() => {
+      platform.state.settings.name = "Articles";
+      platform.state.settings.isPublic = false;
+    });
+    await click(tab("Fields"));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await moveRow("title", "ArrowDown");
+    await pass(600);
+    await pass(0);
+    vi.useRealTimers();
+    await settle();
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(2);
+    const singular = document.querySelector<HTMLInputElement>(
+      "#cms-settings-singular"
+    );
+    expect(singular).not.toBeNull();
+    await typeInto(singular, "Article");
+    await click(
+      buttonByText(
+        "Save",
+        document.querySelector<HTMLElement>("[data-cms-structure-header]")!
+      )
+    );
+    expect(harness.structure.updateCollection).toHaveBeenCalledTimes(1);
+    expect(platform.state.settings.name).toBe("Articles");
+    expect(platform.state.settings.isPublic).toBe(false);
+    expect(platform.state.settings.singularName).toBe("Article");
+  });
+
+  test("a sheet with unsaved values keeps its version: the reorder is put back and toasts, and its Save conflicts rather than revert the rename", async () => {
+    const error = vi.spyOn(toast, "error");
+    const platform = world();
+    await openFields();
+    await click(fieldRow("summary")!.querySelector("button"));
+    await typeInto(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-help"),
+      "Mine"
+    );
+    platform.other(() => {
+      platform.state.fields[1].label = "Excerpt";
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await moveRow("title", "ArrowDown");
+    await pass(600);
+    await pass(0);
+    vi.useRealTimers();
+    await settle();
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith("Changed by someone else");
+    expect(fieldKeys()).toEqual(["title", "summary", "author"]);
+    await click(buttonByText("Save", sheet()!));
+    expect(
+      document.querySelector("[data-cms-structure-conflict]")
+    ).not.toBeNull();
+    expect(labelOf(platform.state.fields, "summary")).toBe("Excerpt");
+  });
+
+  test("a move flushed by opening another collection, answered conflict, is sent again with the other writer's change (item 2)", async () => {
+    const platform = world();
+    const posts =
+      harness.structure.getCollectionStructure.getMockImplementation()!;
+    harness.structure.getCollectionStructure.mockImplementation(async (id) =>
+      id === PEOPLE.id
+        ? {
+            collection: {
+              ...POSTS_STRUCTURE,
+              id: PEOPLE.id,
+              slug: PEOPLE.slug,
+              name: PEOPLE.name,
+            },
+          }
+        : posts(id)
+    );
+    await openFields();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await moveRow("title", "ArrowDown");
+    platform.other(() => {
+      platform.state.fields[1].label = "Excerpt";
+    });
+    // another collection opens inside the pause: the move is sent then
+    await click(tab("Collections"));
+    await click(rowOf("people")?.querySelector("button"));
+    await pass(0);
+    await pass(0);
+    vi.useRealTimers();
+    await settle();
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(2);
+    expect(platform.state.fields.map((field) => field.key)).toEqual([
+      "summary",
+      "title",
+      "author",
+    ]);
+    expect(labelOf(platform.state.fields, "summary")).toBe("Excerpt");
+  });
 });

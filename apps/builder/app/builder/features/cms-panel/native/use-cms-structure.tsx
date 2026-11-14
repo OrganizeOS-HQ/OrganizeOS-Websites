@@ -676,6 +676,11 @@ export const useCmsStructure = ({
       return undefined;
     }
     takeVersion(result.collection, mark, forView);
+    // the schema a reorder's turn builds on, whichever collection is open
+    if (isCurrentMark(result.collection.id, mark)) {
+      acceptedOrder.current.set(result.collection.id, result.collection.fields);
+      lastSchema.current.set(result.collection.id, result.collection.fields);
+    }
     if (result.collection.id === collectionIdRef.current) {
       setDetail((current) => withLocalOrder(current, result.collection));
     }
@@ -765,14 +770,26 @@ export const useCmsStructure = ({
         }, RATE_LIMIT_RETRY_MS);
         return;
       }
-      // another person's change while a view held the version: read it
-      // again, taking its version, and send the moved order once more
-      if (result.error === "conflict" && isRetry === false) {
-        const fresh = await fetchStructure(id, true);
+      // another person's change: read it again and send the moved order
+      // once more, unless a view with unsaved values holds the collection.
+      // A clean view holding it is drawn again from the fresh read, so its
+      // next Save carries the other person's change.
+      const held = (holds.current.get(id) ?? 0) > 0;
+      const heldDirty = held && viewDirty.current;
+      if (result.error === "conflict" && isRetry === false && !heldDirty) {
+        const fresh = await fetchStructure(id, held);
         if (fresh !== undefined) {
+          if (held) {
+            setSession((current) => current + 1);
+          }
           void sendReorder(id, true);
           return;
         }
+        // the reread's own failure has spoken: no second toast
+        reorderPending.current = undefined;
+        pendingOrder.current = undefined;
+        putBackOrder(id);
+        return;
       }
       reorderPending.current = undefined;
       pendingOrder.current = undefined;
