@@ -27971,6 +27971,653 @@
         ]
       },
       "verdict": "lossy"
+    },
+    {
+      "input": "<blockquote><li>x</li></blockquote>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "p",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "x"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<h2><li>x</li></h2>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "x"
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<blockquote><p>a</p><li><p>b</p></li></blockquote>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "p",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "a"
+                  }
+                ]
+              },
+              {
+                "t": "p",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "b"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<ul><li>a<blockquote><li>b</li></blockquote></li></ul>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "a"
+                    }
+                  ]
+                },
+                {
+                  "t": "quote",
+                  "children": [
+                    {
+                      "t": "p",
+                      "c": [
+                        {
+                          "t": "text",
+                          "text": "b"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<ul><li><ul><li>a</li></ul><ol><li>b</li></ol></li></ul>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "ul",
+                  "items": [
+                    [
+                      {
+                        "t": "p",
+                        "c": [
+                          {
+                            "t": "text",
+                            "text": "a"
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "t": "ol",
+                  "items": [
+                    [
+                      {
+                        "t": "p",
+                        "c": [
+                          {
+                            "t": "text",
+                            "text": "b"
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "verdict": "editable"
+    },
+    {
+      "input": "<ul><li>x<ul><li>a</li></ul><ul><li>b</li></ul></li></ul>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "x"
+                    }
+                  ]
+                },
+                {
+                  "t": "ul",
+                  "items": [
+                    [
+                      {
+                        "t": "p",
+                        "c": [
+                          {
+                            "t": "text",
+                            "text": "a"
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "t": "ul",
+                  "items": [
+                    [
+                      {
+                        "t": "p",
+                        "c": [
+                          {
+                            "t": "text",
+                            "text": "b"
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "verdict": "editable"
+    },
+    {
+      "input": "<pre><code><strong>a</strong>b</code></pre>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "code",
+            "text": "ab"
+          }
+        ]
+      },
+      "verdict": "editable"
+    },
+    {
+      "input": "<pre><code><a href=\"https://example.org/\">a</a>b</code></pre>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "code",
+            "text": "ab"
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<ul><li><p><img src=\"https://example.org/a.png\" alt=\"A\" /></p><p><img src=\"https://example.org/b.png\" alt=\"B\" /></p></li></ul>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "img",
+                  "src": "https://example.org/a.png",
+                  "alt": "A"
+                },
+                {
+                  "t": "img",
+                  "src": "https://example.org/b.png",
+                  "alt": "B"
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<blockquote><figure><img src=\"https://example.org/a.png\" alt=\"A\" /></figure><hr /></blockquote>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "img",
+                "src": "https://example.org/a.png",
+                "alt": "A"
+              },
+              {
+                "t": "hr"
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<ul><li><ul><li>a</li></ul><p><br /></p></li></ul>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "ul",
+                  "items": [
+                    [
+                      {
+                        "t": "p",
+                        "c": [
+                          {
+                            "t": "text",
+                            "text": "a"
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "br"
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<ol><li><ol><li>a</li></ol><br /></li></ol>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ol",
+            "items": [
+              [
+                {
+                  "t": "ol",
+                  "items": [
+                    [
+                      {
+                        "t": "p",
+                        "c": [
+                          {
+                            "t": "text",
+                            "text": "a"
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "br"
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<blockquote><p>Sounds good</p><p><br /></p><blockquote><p><img src=\"https://example.org/a.png\" alt=\"A\" /></p><p><br /></p><p><img src=\"https://example.org/b.png\" alt=\"B\" /></p></blockquote></blockquote>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "p",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "Sounds good"
+                  }
+                ]
+              },
+              {
+                "t": "p",
+                "c": [
+                  {
+                    "t": "br"
+                  }
+                ]
+              },
+              {
+                "t": "quote",
+                "children": [
+                  {
+                    "t": "img",
+                    "src": "https://example.org/a.png",
+                    "alt": "A"
+                  },
+                  {
+                    "t": "p",
+                    "c": [
+                      {
+                        "t": "br"
+                      }
+                    ]
+                  },
+                  {
+                    "t": "img",
+                    "src": "https://example.org/b.png",
+                    "alt": "B"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "editable"
+    },
+    {
+      "input": "<ul><li>x</li><li><a href=\"https://example.org/\"> </a><p>one</p><p>two</p></li></ul>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "x"
+                    }
+                  ]
+                }
+              ],
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "a",
+                      "href": "https://example.org/",
+                      "c": [
+                        {
+                          "t": "text",
+                          "text": " "
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "one"
+                    }
+                  ]
+                },
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "two"
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<p>foo<a href=\"https://example.org/\"> bar</a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "foo"
+              },
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": " bar"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "editable"
+    },
+    {
+      "input": "<p><a href=\"https://example.org/\">foo </a>bar</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "foo "
+                  }
+                ]
+              },
+              {
+                "t": "text",
+                "text": "bar"
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "editable"
+    },
+    {
+      "input": "<p>go <a href=\"https://example.org/\">here </a> now</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "go "
+              },
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "here "
+                  }
+                ]
+              },
+              {
+                "t": "text",
+                "text": " now"
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<p>go<a href=\"https://example.org/\"> here </a> now</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "go"
+              },
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": " here "
+                  }
+                ]
+              },
+              {
+                "t": "text",
+                "text": " now"
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<p>go <a href=\"https://example.org/\">here </a><a href=\"https://example.org/y\"> </a>now</p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "go "
+              },
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "here "
+                  }
+                ]
+              },
+              {
+                "t": "a",
+                "href": "https://example.org/y",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": " "
+                  }
+                ]
+              },
+              {
+                "t": "text",
+                "text": "now"
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
     }
   ]
 }
