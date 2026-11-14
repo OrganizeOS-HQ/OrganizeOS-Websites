@@ -758,6 +758,21 @@ export const useCmsStructure = ({
     }
   };
 
+  /**
+   * A write's answered fields, in the order on screen while a move made
+   * meanwhile waits: the move shows until its own answer.
+   */
+  const inShownOrder = (
+    current: CmsStructureCollection,
+    fields: CmsStructureField[]
+  ) =>
+    reorderPending.current.has(current.id)
+      ? orderByKeys(
+          fields,
+          current.fields.map((field) => field.key)
+        )
+      : fields;
+
   /** Puts back the order the platform last accepted. */
   const putBackOrder = (id: string) => {
     const accepted = acceptedOrder.current.get(id);
@@ -910,8 +925,13 @@ export const useCmsStructure = ({
       cancelReorderTimer(id);
     }
     return enqueue(id, write).then((result) => {
-      if (reorderPending.current.has(id) && !reorderTimers.current.has(id)) {
-        if (carried && isCmsFailure(result)) {
+      // a move made after the Save started is its own write: left to it
+      if (
+        carried &&
+        reorderPending.current.has(id) &&
+        !reorderTimers.current.has(id)
+      ) {
+        if (isCmsFailure(result)) {
           // the Save that carried the moved order was refused: send it alone
           startReorderTimer(id, REORDER_PAUSE_MS, false);
         } else {
@@ -1162,7 +1182,7 @@ export const useCmsStructure = ({
           acceptedOrder.current.set(openDetail.id, fields);
           setDetail((current) =>
             current?.id === openDetail.id
-              ? { ...current, fields, updatedAt }
+              ? { ...current, fields: inShownOrder(current, fields), updatedAt }
               : current
           );
           if (isSameView()) {
@@ -1183,7 +1203,7 @@ export const useCmsStructure = ({
           acceptedOrder.current.set(openDetail.id, fields);
           setDetail((current) =>
             current?.id === openDetail.id
-              ? { ...current, fields, updatedAt }
+              ? { ...current, fields: inShownOrder(current, fields), updatedAt }
               : current
           );
           if (isSameView()) {

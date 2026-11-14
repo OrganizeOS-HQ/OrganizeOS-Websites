@@ -686,6 +686,41 @@ test("a move made while a sheet's Save is in flight keeps that Save's edit in it
   ]);
 });
 
+// Round 4, item 12: a move made during a sheet's Save stays drawn when that
+// Save answers, until the move's own answer
+test("a move made while a sheet's Save is in flight stays drawn when the Save answers", async () => {
+  const saveAnswer =
+    deferred<CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>>();
+  const moveAnswer =
+    deferred<CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>>();
+  let saved: CmsStructureField[] = [];
+  harness.structure.updateSchema
+    .mockImplementationOnce(async (_id, body) => {
+      saved = body.fields;
+      return saveAnswer.promise;
+    })
+    .mockImplementationOnce(async () => moveAnswer.promise);
+  await openFields();
+  await click(fieldRow("summary")!.querySelector("button"));
+  await typeInto(
+    document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+    "Teaser"
+  );
+  await click(
+    [...sheet()!.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "Save"
+    )
+  );
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await moveRow("title", "ArrowDown");
+  await pass(600);
+  expect(fieldKeys()).toEqual(["summary", "title", "author"]);
+  await act(async () => saveAnswer.resolve({ fields: saved, updatedAt: NEXT }));
+  await settle();
+  expect(fieldKeys()).toEqual(["summary", "title", "author"]);
+  expect(harness.structure.updateSchema).toHaveBeenCalledTimes(2);
+});
+
 // Round 4, item 1: a reorder's conflict retry never takes the version from
 // under a view with unsaved values; a clean view is drawn again from the
 // fresh read, so its next Save keeps another person's change
