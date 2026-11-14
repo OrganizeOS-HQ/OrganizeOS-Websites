@@ -487,7 +487,11 @@ export const FieldSheet = ({
       case "reference_invalid":
         // another field's reference: not this sheet's control, so a toast
         // and the schema again (spec 9)
-        if (field !== undefined && field !== (originalKey ?? draft.key)) {
+        // the key as the Save sent it: trimmed
+        if (
+          field !== undefined &&
+          field !== (originalKey ?? draft.key.trim())
+        ) {
           toast.error("Not saved", STRUCTURE_FAILURE_TOAST);
           onStale("structure");
           return;

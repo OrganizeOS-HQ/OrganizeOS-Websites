@@ -436,6 +436,19 @@ describe("the field sheet", () => {
     expect(harness.fake.listCollections.mock.calls.length).toBe(lists + 1);
   });
 
+  test("a new reference field typed with spaces around its key takes its own reference_invalid under Collection (round 4)", async () => {
+    withFields();
+    await openNew("reference");
+    await typeInto(control("label"), "Editor");
+    await typeInto(control("key"), " editor ");
+    harness.structure.updateSchema.mockResolvedValueOnce({
+      error: "reference_invalid",
+      field: "editor",
+    });
+    await click(primary());
+    expect(errorOf("reference")).toBe("Collection not found");
+  });
+
   test("invalid with no field, or naming a field the sheet does not show: the toast Not saved, and E21 refetched", async () => {
     const error = vi.spyOn(toast, "error");
     withFields();
