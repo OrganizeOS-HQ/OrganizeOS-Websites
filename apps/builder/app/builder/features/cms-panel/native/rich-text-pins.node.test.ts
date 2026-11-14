@@ -36,13 +36,17 @@ const resolveFrom = (from: string, name: string) => {
   throw new Error(`${name} does not resolve from ${from}`);
 };
 
-test("sanitize-html, htmlparser2 and entities resolve to the pinned versions", () => {
+test("sanitize-html, htmlparser2, entities, domhandler and launder resolve to the pinned versions", () => {
   const sanitize = resolveFrom(here, "sanitize-html");
   const parser = resolveFrom(sanitize.directory, "htmlparser2");
   expect(sanitize.version).toBe(pins["sanitize-html"]);
   expect(parser.version).toBe(pins.htmlparser2);
   expect(resolveFrom(here, "htmlparser2").version).toBe(pins.htmlparser2);
   expect(resolveFrom(parser.directory, "entities").version).toBe(pins.entities);
+  expect(resolveFrom(parser.directory, "domhandler").version).toBe(
+    pins.domhandler
+  );
+  expect(resolveFrom(sanitize.directory, "launder").version).toBe(pins.launder);
 });
 
 test("the copies of rich-text-nodes.ts and the sanitiser are the platform's", () => {

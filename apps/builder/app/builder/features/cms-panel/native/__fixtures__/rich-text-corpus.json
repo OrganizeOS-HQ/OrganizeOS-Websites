@@ -27484,7 +27484,7 @@
           }
         ]
       },
-      "verdict": "editable"
+      "verdict": "lossy"
     },
     {
       "input": "<p>x<strong>a<ul><li>u</li></ul>b</strong>y</p>",
@@ -27724,6 +27724,253 @@
         ]
       },
       "verdict": "editable"
+    },
+    {
+      "input": "<ul><li><p>a</p></li><li><ul><li><p>child</p></li></ul></li></ul>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "text",
+                      "text": "a"
+                    }
+                  ]
+                }
+              ],
+              [
+                {
+                  "t": "ul",
+                  "items": [
+                    [
+                      {
+                        "t": "p",
+                        "c": [
+                          {
+                            "t": "text",
+                            "text": "child"
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "verdict": "editable"
+    },
+    {
+      "input": "<p><a href=\" https://example.org/ \">x</a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "x"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "editable"
+    },
+    {
+      "input": "<p>a <a href=\"https://example.org/\"> b</a></p>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "a "
+              },
+              {
+                "t": "a",
+                "href": "https://example.org/",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": " b"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<li><p>stray</p></li>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "p",
+            "c": [
+              {
+                "t": "text",
+                "text": "stray"
+              }
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
+    },
+    {
+      "input": "<ul><li><ul><li><ul><li><ul><li><ul><li><ul><li><ul><li><p>deepest</p></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "ul",
+                  "items": [
+                    [
+                      {
+                        "t": "ul",
+                        "items": [
+                          [
+                            {
+                              "t": "ul",
+                              "items": [
+                                [
+                                  {
+                                    "t": "ul",
+                                    "items": [
+                                      [
+                                        {
+                                          "t": "ul",
+                                          "items": [
+                                            [
+                                              {
+                                                "t": "ul",
+                                                "items": [
+                                                  [
+                                                    {
+                                                      "t": "p",
+                                                      "c": [
+                                                        {
+                                                          "t": "text",
+                                                          "text": "deepest"
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                ]
+                                              }
+                                            ]
+                                          ]
+                                        }
+                                      ]
+                                    ]
+                                  }
+                                ]
+                              ]
+                            }
+                          ]
+                        ]
+                      }
+                    ]
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "verdict": "editable"
+    },
+    {
+      "input": "<ul><li><ul><li><ul><li><ul><li><ul><li><ul><li><ul><li><ul><li><p>deepest</p></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "ul",
+                  "items": [
+                    [
+                      {
+                        "t": "ul",
+                        "items": [
+                          [
+                            {
+                              "t": "ul",
+                              "items": [
+                                [
+                                  {
+                                    "t": "ul",
+                                    "items": [
+                                      [
+                                        {
+                                          "t": "ul",
+                                          "items": [
+                                            [
+                                              {
+                                                "t": "ul",
+                                                "items": [
+                                                  [
+                                                    {
+                                                      "t": "p",
+                                                      "c": [
+                                                        {
+                                                          "t": "text",
+                                                          "text": "deepest"
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                ]
+                                              }
+                                            ]
+                                          ]
+                                        }
+                                      ]
+                                    ]
+                                  }
+                                ]
+                              ]
+                            }
+                          ]
+                        ]
+                      }
+                    ]
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
     }
   ]
 }

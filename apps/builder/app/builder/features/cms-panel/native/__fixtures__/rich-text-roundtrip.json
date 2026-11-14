@@ -4,6 +4,8 @@
     "sanitize-html": "2.17.7",
     "htmlparser2": "12.0.0",
     "entities": "8.1.0",
+    "domhandler": "6.0.1",
+    "launder": "1.7.1",
     "rich-text-nodes.ts": "66a1dd5cebb7a6971b79f3f8d444f30843cf36b0a848835c1f77a6dcb246429b",
     "sanitizer": "394ce43f23cda608bc179dec1aa178bf87b2afd3b4ee7d713668aa634b3872aa"
   },

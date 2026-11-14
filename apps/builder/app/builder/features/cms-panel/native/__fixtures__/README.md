@@ -3,9 +3,9 @@
 `rich-text-roundtrip.json` and `rich-text-corpus.json` are byte-for-byte
 copies of the OrganizeOS repo's files of the same names in
 `client/tests/fixtures/site-components/`, at commit
-`b98987ff1d2431329f875bc8fd468dce9a31826d` (PR RT6), sha256
-`0f03a155a9b91ba736daf5ab4e94d896b3dfd6773c62311b175a2bcb70ac7e44` and
-`aaa223f6cfcdb9cad032f9f875df5d695009ae84865657ed4ffe66e3f006ec38`.
+`c0588a21f65874b2837fd49ba258ecdeca18080e` (PR RT6), sha256
+`3718283a37851f3b8af86b73affbc9321986c62e42fee4ddaf9ee63af30d731f` and
+`c81061c296e6cf7ba4199a1a37d6afe52162fd7d057d9285b1d7db5a6b2c12a3`.
 
 The round-trip fixture pins the native CMS editor's rich-text output
 (`../rich-text-html.ts`) against the platform's sanitiser (OrganizeOS spec
@@ -13,10 +13,10 @@ The round-trip fixture pins the native CMS editor's rich-text output
 `input`, `stored` what the platform keeps of it, and `nodes` the platform's
 /v1 nodes of that; `readOnly` lists the stored values the editor opens
 read-only, each with its `reason` and `nodes`. Its `pins` hold the resolved
-sanitize-html, htmlparser2 and entities versions and the sha256 of the
+sanitize-html, htmlparser2, entities, domhandler and launder versions and the sha256 of the
 platform's `rich-text-nodes.ts` and sanitiser, of which `../rich-text-nodes.ts`
 and `../rich-text-sanitize.ts` are copies (`../rich-text-pins.node.test.ts`).
-The corpus holds 890 stored values with their platform nodes and the
+The corpus holds 896 stored values with their platform nodes and the
 read-only result this editor gives each (`../rich-text-corpus.test.ts`).
 
 Before each fork PR that touches the editor's import or export, compare both
