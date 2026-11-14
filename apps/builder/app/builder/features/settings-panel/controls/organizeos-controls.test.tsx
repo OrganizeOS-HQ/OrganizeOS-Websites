@@ -587,6 +587,28 @@ describe("the Signup Form's Settings", () => {
     expect(toggle?.getAttribute("aria-checked")).toBe("true");
   });
 
+  // final review I3
+  test("a marked root with data unbound says so in a line with Reconnect", async () => {
+    const rootId = withSiteForms();
+    const props = new Map($props.get());
+    props.delete("data-prop");
+    props.set("mark", {
+      id: "mark",
+      instanceId: rootId,
+      name: "siteForm",
+      type: "string",
+      value: "contact-signup",
+    });
+    $props.set(props);
+    const host = await renderPanel(rootId);
+    expect(host.querySelectorAll("[data-site-field]").length).toBeGreaterThan(
+      0
+    );
+    expect(host.querySelector("[data-signup-data-unbound]")?.textContent).toBe(
+      "No forms data. Reconnect"
+    );
+  });
+
   test("an unmarked root keeps the shipped Fields list", async () => {
     const host = await renderPanel(withSiteForms());
     expect(host.querySelectorAll("[data-site-field]")).toHaveLength(0);

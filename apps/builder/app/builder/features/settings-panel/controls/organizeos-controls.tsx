@@ -538,21 +538,43 @@ const SignupFieldsControl = ({
       record={record}
     />
   );
+  // an unbound `data`: a line with Reconnect, marked or not
+  const unboundLine = dataBound === false && (
+    <Text
+      truncate
+      css={{ color: cssVar("--foreground-warning") }}
+      data-signup-data-unbound
+    >
+      No forms data.{" "}
+      <button
+        type="button"
+        className={linkButtonClass}
+        onClick={() => {
+          void restoreSignupFormData(rootId);
+        }}
+      >
+        Reconnect
+      </button>
+    </Text>
+  );
   if (marked) {
     return (
       <Flex direction="column" gap="1">
         <SiteFieldsControl
           rootId={rootId}
           warning={
-            warning === undefined ? undefined : (
-              <Text
-                truncate
-                css={{ color: cssVar("--foreground-warning") }}
-                data-signup-warning
-              >
-                {warning}
-              </Text>
-            )
+            <>
+              {unboundLine}
+              {warning !== undefined && (
+                <Text
+                  truncate
+                  css={{ color: cssVar("--foreground-warning") }}
+                  data-signup-warning
+                >
+                  {warning}
+                </Text>
+              )}
+            </>
           }
         />
         {settings}
@@ -588,24 +610,7 @@ const SignupFieldsControl = ({
               </CheckboxAndLabel>
             );
           })}
-          {dataBound === false && (
-            <Text
-              truncate
-              css={{ color: cssVar("--foreground-warning") }}
-              data-signup-data-unbound
-            >
-              No forms data.{" "}
-              <button
-                type="button"
-                className={linkButtonClass}
-                onClick={() => {
-                  void restoreSignupFormData(rootId);
-                }}
-              >
-                Reconnect
-              </button>
-            </Text>
-          )}
+          {unboundLine}
           {warning !== undefined && (
             <Text
               truncate

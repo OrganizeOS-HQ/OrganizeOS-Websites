@@ -684,17 +684,18 @@ export const insertOrganizeosBlock = async (
   // the write, P11); F0's org name fills the intro, asked at the same time.
   // A failed create writes nothing.
   let fragment = completion.fragment;
+  let place = insertable;
   const siteForm = siteFormInserts.get(component);
   if (siteForm !== undefined && isSiteFormsEnabled()) {
     const rootId = fragment.children.find(
       (child) => child.type === "id"
     )?.value;
-    if (
-      rootId === undefined ||
-      findClosestInsertable(fragment, insertable, {
-        allowContentModelWarnings: true,
-      }) === undefined
-    ) {
+    // the place is found once, before F3, and kept: a selection changed
+    // while F3 answers neither moves the block nor refuses it
+    place = findClosestInsertable(fragment, insertable, {
+      allowContentModelWarnings: true,
+    });
+    if (rootId === undefined || place === undefined) {
       return false;
     }
     const pageName = $selectedPage.get()?.name ?? "Page";
@@ -727,7 +728,7 @@ export const insertOrganizeosBlock = async (
   // stands, never added again as "OS Input-1".
   const inserted = await insertCompletedFragment({
     fragment,
-    insertable,
+    insertable: place,
     conflictResolution: "ours",
     // the runtime's registry has no OrganizeOS metas (ruling data OQ1)
     allowContentModelWarnings: true,

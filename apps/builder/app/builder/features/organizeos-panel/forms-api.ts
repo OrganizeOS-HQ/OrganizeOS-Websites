@@ -197,8 +197,13 @@ const request = async <Value, Answer>(
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
-    return unavailable;
+  } catch (error) {
+    // the timeout can land while the body is read: the answer, an F3 that
+    // made its form among them, is lost, not refused
+    return error instanceof DOMException &&
+      (error.name === "TimeoutError" || error.name === "AbortError")
+      ? { ok: false, error: "lost" }
+      : unavailable;
   }
   if (response.ok) {
     const parsed = schema.safeParse(body);

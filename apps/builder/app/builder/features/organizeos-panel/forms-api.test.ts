@@ -209,6 +209,26 @@ describe("the forms door client", () => {
     expect(FORMS_REQUEST_TIMEOUT_MS).toBe(15_000);
   });
 
+  // final review M8: F3's answer cut off mid-body may have made the form
+  test("the timeout landing while the body is read is lost too", async () => {
+    routeFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.reject(
+          new DOMException("The operation timed out.", "TimeoutError")
+        ),
+    });
+    expect(
+      await createSiteForm(projectId, {
+        kind: "contact-signup",
+        title: "Home: Email bar",
+        fields: [{ key: "email", required: true }],
+        clientId: "c0000000-0000-4000-8000-000000000001",
+      })
+    ).toEqual({ ok: false, error: "lost" });
+  });
+
   test("reads leniently: a key the door adds later is ignored", async () => {
     routeFetch.mockResolvedValueOnce(
       answer({ ...accessFixture.answer, laterKey: true })

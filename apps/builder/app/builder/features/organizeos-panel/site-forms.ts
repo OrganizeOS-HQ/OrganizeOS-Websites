@@ -214,18 +214,21 @@ const rootFieldsOf = (rootId: Instance["id"]) => {
   const instances = $instances.get();
   const props = $props.get();
   const { byName, order } = listRootFields(rootId, instances, props);
-  return order.map((key) => ({
-    key,
-    required: (byName.get(key) ?? []).some((fieldId) =>
-      [...props.values()].some(
-        (prop) =>
-          prop.instanceId === fieldId &&
-          prop.name === "required" &&
-          prop.type === "boolean" &&
-          prop.value
-      )
-    ),
-  }));
+  // a blank Field is no key (F3 refuses one)
+  return order
+    .filter((key) => key !== "")
+    .map((key) => ({
+      key,
+      required: (byName.get(key) ?? []).some((fieldId) =>
+        [...props.values()].some(
+          (prop) =>
+            prop.instanceId === fieldId &&
+            prop.name === "required" &&
+            prop.type === "boolean" &&
+            prop.value
+        )
+      ),
+    }));
 };
 
 /**
@@ -312,14 +315,31 @@ const isRequiredFieldOf = (fieldId: Instance["id"]) =>
   );
 
 /**
+ * The keys a kind always locks (spec 6.2), so a row is locked before F1
+ * answers, or when it fails: Email on every kind, Message on Contact us
+ * (a contact form without it refuses every submit), Full name on Member
+ * signup.
+ */
+const lockedKeysOf = (kind: FormsKind): ReadonlySet<string> =>
+  new Set(
+    kind === "contact-form"
+      ? ["email", "message"]
+      : kind === "membership"
+        ? ["email", "name"]
+        : ["email"]
+  );
+
+/**
  * The Fields list of a site form (spec 9): one row per key under the root,
  * in tree order, its catalog label (else its key), required when any of its
- * Fields is, locked as the catalog says (Email always).
+ * Fields is, locked as the catalog says or the kind always locks.
  */
 export const siteFieldRows = (
   rootId: Instance["id"],
-  catalog: FormsCatalog | undefined
+  catalog: FormsCatalog | undefined,
+  kind: FormsKind = "contact-signup"
 ): SiteFieldRow[] => {
+  const kindLocks = lockedKeysOf(kind);
   const { byName, order } = listRootFields(
     rootId,
     $instances.get(),
@@ -333,7 +353,7 @@ export const siteFieldRows = (
         key,
         label: entry?.label ?? key,
         required: (byName.get(key) ?? []).some(isRequiredFieldOf),
-        locked: entry?.locked ?? key === "email",
+        locked: entry?.locked === true || kindLocks.has(key),
       };
     });
 };
@@ -375,7 +395,9 @@ export const moveSiteField = (
 ) =>
   runStaged("Cannot move the field.", (accumulator) => {
     const { instances, props } = getState(accumulator);
-    const { byName, order } = listRootFields(rootId, instances, props);
+    const { byName, order: keys } = listRootFields(rootId, instances, props);
+    // the list's own indexes: a blank Field has no row
+    const order = keys.filter((name) => name !== "");
     const from = order.indexOf(key);
     const targetKey = order[toIndex];
     if (from === -1 || targetKey === undefined || from === toIndex) {
@@ -488,16 +510,25 @@ const rootListOf = (rootId: Instance["id"]) =>
     .map(({ key, required }) => `${key}:${required}`)
     .join(",");
 
-/**
- * Another root marked as a site form on the same form sends another list
- * (spec 9's "Fields differ on another page"); never for an unmarked root.
- */
 /** The root carries a site form mark of a known kind (fork doc section 9). */
 export const isMarkedSiteForm = (rootId: Instance["id"]) => {
   const mark = rootProp(rootId, SITE_FORM_PROP);
   return mark?.type === "string" && KINDS.has(mark.value);
 };
 
+/** Some root in the project carries a site form mark of a known kind. */
+export const projectHasSiteForms = () =>
+  [...$props.get().values()].some(
+    (prop) =>
+      prop.name === SITE_FORM_PROP &&
+      prop.type === "string" &&
+      KINDS.has(prop.value)
+  );
+
+/**
+ * Another root marked as a site form on the same form sends another list
+ * (spec 9's "Fields differ on another page"); never for an unmarked root.
+ */
 export const fieldsDifferElsewhere = (rootId: Instance["id"]) => {
   const isMarked = isMarkedSiteForm;
   const recordOf = (id: Instance["id"]) => {

@@ -298,6 +298,16 @@ describe("pointAtNewSiteForm", () => {
     ]);
   });
 
+  test("a blank Field is not sent as a key", async () => {
+    const rootId = setSignupForm();
+    blankField("first_name");
+    createSiteForm.mockResolvedValue({ ok: false, error: "plan" });
+    await pointAtNewSiteForm(rootId, "contact-signup");
+    expect(createSiteForm.mock.calls[0][1].fields).toEqual([
+      { key: "email", required: false },
+    ]);
+  });
+
   test("a failed create writes nothing and toasts", async () => {
     const rootId = setSignupForm();
     const before = structuredClone($props.get());
@@ -431,7 +441,28 @@ describe("siteFieldRows", () => {
       false,
     ]);
   });
+
+  // final review I1: a removed Message makes every Contact us submit fail
+  test("without the catalog, a Contact us block's Message is locked too", () => {
+    const rootId = setSignupForm(organizeosTemplates.ContactFormCard.template);
+    const rows = siteFieldRows(rootId, undefined, "contact-form");
+    expect(rows.filter((row) => row.locked).map((row) => row.key)).toEqual([
+      "email",
+      "message",
+    ]);
+  });
 });
+
+// a Field whose `field` is blank (final review M1, M2)
+const blankField = (key: string) => {
+  const props = new Map($props.get());
+  for (const [id, prop] of props) {
+    if (prop.name === "field" && prop.value === key) {
+      props.set(id, { ...prop, value: "" });
+    }
+  }
+  $props.set(props);
+};
 
 describe("the Fields list's writes", () => {
   test("required writes every Field of the key, in one undo", async () => {
@@ -462,6 +493,28 @@ describe("the Fields list's writes", () => {
     emitCommand("undo");
     emitCommand("undo");
     expect($instances.get()).toEqual(before);
+  });
+
+  test("a drag lands where the list shows, with a blank Field in the root", async () => {
+    const rootId = setSignupForm();
+    blankField("email");
+    expect(await addCatalogField(rootId, catalog.fields[0])).toBe(true);
+    expect(fieldProps(rootId).map(([key]) => key)).toEqual([
+      "",
+      "first_name",
+      "email",
+    ]);
+    expect(siteFieldRows(rootId, catalog).map((row) => row.key)).toEqual([
+      "first_name",
+      "email",
+    ]);
+    // First name dragged below Email: the list's index 1
+    expect(await moveSiteField(rootId, "first_name", 1)).toBe(true);
+    expect(fieldProps(rootId).map(([key]) => key)).toEqual([
+      "",
+      "email",
+      "first_name",
+    ]);
   });
 
   test("Add inserts a Field with the catalog's type and options, not required", async () => {

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { useStore } from "@nanostores/react";
 import {
   DropdownMenu,
@@ -24,10 +24,11 @@ import {
 } from "@webstudio-is/icons";
 import { $instances, $project, $props } from "~/shared/sync/data-stores";
 import {
-  getFormsAccess,
-  getFormsCatalog,
-  type FormsCatalog,
-} from "~/builder/features/organizeos-panel/forms-api";
+  $formsAccess,
+  $formsCatalogs,
+  loadFormsAccess,
+  loadFormsCatalog,
+} from "~/builder/features/organizeos-panel/form-settings";
 import { removeSignupField } from "~/builder/features/organizeos-panel/signup-fields";
 import {
   addCatalogField,
@@ -75,30 +76,26 @@ export const SiteFieldsControl = ({
   const project = useStore($project);
   const data = useStore($selectedInstanceDataProp);
   const kind = formKindOf(rootId, data);
-  const [catalog, setCatalog] = useState<FormsCatalog>();
-  const [smsAvailable, setSmsAvailable] = useState(false);
+  const projectId = project?.id;
+  // F1 and F0, read once per project (and kind) and kept (form-settings.ts)
+  const catalogs = useStore($formsCatalogs);
+  const access = useStore($formsAccess);
+  const catalog =
+    projectId === undefined ? undefined : catalogs.get(`${projectId}:${kind}`);
+  const smsAvailable =
+    projectId !== undefined && access.get(projectId)?.smsAvailable === true;
 
   useEffect(() => {
-    if (project === undefined) {
+    if (projectId === undefined) {
       return;
     }
-    let current = true;
-    void getFormsCatalog(project.id, kind).then((result) => {
-      if (current && result.ok) {
-        setCatalog(result.value);
-      }
-    });
-    void getFormsAccess(project.id).then((result) => {
-      if (current && result.ok) {
-        setSmsAvailable(result.value.smsAvailable);
-      }
-    });
-    return () => {
-      current = false;
-    };
-  }, [project, kind]);
+    void loadFormsCatalog(projectId, kind);
+    void loadFormsAccess(projectId);
+  }, [projectId, kind]);
 
-  const rows = siteFieldRows(rootId, catalog);
+  // until F1 answers, the kind's own locks hold (Email, and Message on
+  // Contact us)
+  const rows = siteFieldRows(rootId, catalog, kind);
   const { sortableRefCallback, dragItemId, placementIndicator } = useSortable({
     items: rows.map((row) => ({ id: row.key })),
     onSort: (newIndex, oldIndex) => {

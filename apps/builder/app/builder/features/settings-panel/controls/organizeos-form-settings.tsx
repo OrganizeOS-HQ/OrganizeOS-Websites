@@ -22,7 +22,7 @@ import type { FormsKind } from "~/builder/features/organizeos-panel/forms-api";
 import {
   $doorForms,
   $formsAccess,
-  $formsLists,
+  $formsCatalogs,
   $optInLocked,
   FORM_LISTS_LIMIT,
   FORM_NOTIFY_LIMIT,
@@ -30,7 +30,7 @@ import {
   formSettingsRowsOf,
   loadDoorForms,
   loadFormsAccess,
-  loadFormsLists,
+  loadFormsCatalog,
   parseNotifyAddress,
   saveFormSetting,
 } from "~/builder/features/organizeos-panel/form-settings";
@@ -112,7 +112,7 @@ export const FormSettingsRows = ({
   const project = useStore($project);
   const doorForms = useStore($doorForms);
   const access = useStore($formsAccess);
-  const allLists = useStore($formsLists);
+  const catalogs = useStore($formsCatalogs);
   const optInLocked = useStore($optInLocked);
   const [address, setAddress] = useState("");
   const [invalid, setInvalid] = useState(false);
@@ -133,7 +133,7 @@ export const FormSettingsRows = ({
     }
     void loadDoorForms(projectId, kind);
     void loadFormsAccess(projectId);
-    void loadFormsLists(projectId, kind);
+    void loadFormsCatalog(projectId, kind);
   }, [projectId, kind]);
 
   // a form made since F2 was read (New form's): read it again once
@@ -161,7 +161,7 @@ export const FormSettingsRows = ({
 
   if (part === "fields") {
     const lists = form.lists ?? [];
-    const orgLists = allLists.get(`${projectId}:${kind}`) ?? [];
+    const orgLists = catalogs.get(`${projectId}:${kind}`)?.lists ?? [];
     const nameOf = (listId: string) =>
       orgLists.find((list) => list.id === listId)?.name ?? listId;
     const addable = orgLists.filter(

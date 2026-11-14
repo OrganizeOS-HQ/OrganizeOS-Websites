@@ -57,9 +57,9 @@ const keyOf = (projectId: string, kind: FormsKind) => `${projectId}:${kind}`;
 export const $unsavedForms = atom<ReadonlySet<string>>(new Set());
 /** Form ids whose opt-in the platform keeps (the built-in form, F4 `locked`). */
 export const $optInLocked = atom<ReadonlySet<string>>(new Set());
-/** F0 by project, and F1's lists by project and kind, read once. */
+/** F0 by project, and F1 by project and kind, read once. */
 export const $formsAccess = atom<ReadonlyMap<string, FormsAccess>>(new Map());
-export const $formsLists = atom<ReadonlyMap<string, FormsCatalog["lists"]>>(
+export const $formsCatalogs = atom<ReadonlyMap<string, FormsCatalog>>(
   new Map()
 );
 
@@ -69,8 +69,14 @@ const saved = new Map<string, DoorForm>();
 const queues = new Map<string, Promise<unknown>>();
 /** How many saves each form has queued. */
 const pending = new Map<string, number>();
+/** How many saves each form has finished, so a read can tell it is stale. */
+const finished = new Map<string, number>();
 /** Reads in flight, so a second caller waits for the first. */
 const reads = new Map<string, Promise<void>>();
+/** A read asked for again while one was in flight: it follows that one. */
+const rereads = new Map<string, Promise<void>>();
+/** F0 and F1 reads in flight. */
+const lookups = new Map<string, Promise<void>>();
 
 const withId = (set: ReadonlySet<string>, id: string, present: boolean) => {
   if (set.has(id) === present) {
@@ -124,7 +130,18 @@ export const loadDoorForms = (
   const key = keyOf(projectId, kind);
   const inFlight = reads.get(key);
   if (inFlight !== undefined) {
-    return inFlight;
+    if (reload === false) {
+      return inFlight;
+    }
+    // that read may have left before the form asked for existed
+    const queued =
+      rereads.get(key) ??
+      inFlight.then(() => {
+        rereads.delete(key);
+        return loadDoorForms(projectId, kind, { reload: true });
+      });
+    rereads.set(key, queued);
+    return queued;
   }
   const current = $doorForms.get().get(key);
   if (
@@ -137,6 +154,7 @@ export const loadDoorForms = (
   if (current?.status !== "ready") {
     setEntry(key, { status: "loading" });
   }
+  const finishedBefore = new Map(finished);
   const read = (async () => {
     // done before the store changes, so a reader it wakes can read again
     const result = await listDoorForms(projectId, kind).finally(() =>
@@ -151,13 +169,20 @@ export const loadDoorForms = (
     const shown = $doorForms.get().get(key);
     const forms = result.value.map((form) => {
       const formKey = `${key}:${form.id}`;
-      saved.set(formKey, form);
-      // a form with saves still queued keeps what it shows
+      // a form with a save queued, or one that finished while the read was
+      // out, keeps what it shows and its saved value: the read may predate it
+      const busy =
+        (pending.get(formKey) ?? 0) > 0 ||
+        (finished.get(formKey) ?? 0) !== (finishedBefore.get(formKey) ?? 0);
+      if (busy === false) {
+        saved.set(formKey, form);
+        return form;
+      }
       const kept =
-        (pending.get(formKey) ?? 0) > 0 && shown?.status === "ready"
+        shown?.status === "ready"
           ? shown.forms.find((item) => item.id === form.id)
           : undefined;
-      return kept ?? form;
+      return kept ?? saved.get(formKey) ?? form;
     });
     setEntry(key, { status: "ready", forms });
   })();
@@ -165,26 +190,44 @@ export const loadDoorForms = (
   return read;
 };
 
-/** F0 and F1's lists, read once per project (and kind); a failure is retried. */
-export const loadFormsAccess = async (projectId: string) => {
-  if ($formsAccess.get().has(projectId)) {
-    return;
+/** One F0 or F1 read at a time per key; a failure is read again next time. */
+const lookUp = (key: string, read: () => Promise<void>): Promise<void> => {
+  const inFlight = lookups.get(key);
+  if (inFlight !== undefined) {
+    return inFlight;
   }
-  const result = await getFormsAccess(projectId);
-  if (result.ok) {
-    $formsAccess.set(new Map($formsAccess.get()).set(projectId, result.value));
-  }
+  const lookup = read().finally(() => lookups.delete(key));
+  lookups.set(key, lookup);
+  return lookup;
 };
 
-export const loadFormsLists = async (projectId: string, kind: FormsKind) => {
+/** F0, read once per project. */
+export const loadFormsAccess = (projectId: string) => {
+  if ($formsAccess.get().has(projectId)) {
+    return Promise.resolve();
+  }
+  return lookUp(`access:${projectId}`, async () => {
+    const result = await getFormsAccess(projectId);
+    if (result.ok) {
+      $formsAccess.set(
+        new Map($formsAccess.get()).set(projectId, result.value)
+      );
+    }
+  });
+};
+
+/** F1 (the catalog's fields and the org's lists), read once per kind. */
+export const loadFormsCatalog = (projectId: string, kind: FormsKind) => {
   const key = keyOf(projectId, kind);
-  if ($formsLists.get().has(key)) {
-    return;
+  if ($formsCatalogs.get().has(key)) {
+    return Promise.resolve();
   }
-  const result = await getFormsCatalog(projectId, kind);
-  if (result.ok) {
-    $formsLists.set(new Map($formsLists.get()).set(key, result.value.lists));
-  }
+  return lookUp(`catalog:${key}`, async () => {
+    const result = await getFormsCatalog(projectId, kind);
+    if (result.ok) {
+      $formsCatalogs.set(new Map($formsCatalogs.get()).set(key, result.value));
+    }
+  });
 };
 
 const applied = (form: DoorForm, change: FormSettingsBody): DoorForm => ({
@@ -217,6 +260,7 @@ export const saveFormSetting = (
     const result = await saveFormSettings(projectId, formId, change);
     const left = (pending.get(formKey) ?? 1) - 1;
     pending.set(formKey, left);
+    finished.set(formKey, (finished.get(formKey) ?? 0) + 1);
     const last = saved.get(formKey);
     if (result.ok) {
       const now = last === undefined ? undefined : applied(last, change);
@@ -251,9 +295,12 @@ export const resetDoorForms = () => {
   $unsavedForms.set(new Set());
   $optInLocked.set(new Set());
   $formsAccess.set(new Map());
-  $formsLists.set(new Map());
+  $formsCatalogs.set(new Map());
   saved.clear();
   queues.clear();
   pending.clear();
+  finished.clear();
   reads.clear();
+  rereads.clear();
+  lookups.clear();
 };

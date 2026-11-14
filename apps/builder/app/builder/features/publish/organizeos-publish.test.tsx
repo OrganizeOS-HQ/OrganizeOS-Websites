@@ -566,6 +566,21 @@ describe("the OrganizeOS Publish dialog", () => {
     vi.mocked(reloadFormsResource).mockResolvedValue(undefined);
     vi.mocked(reloadFormsResource).mockClear();
     setProject({ createdAt: minutesAgo(1), publishStatus: "PENDING" });
+    // the project holds a site form (a marked root)
+    $props.set(
+      new Map([
+        [
+          "mark",
+          {
+            id: "mark",
+            instanceId: "root",
+            name: "siteForm",
+            type: "string",
+            value: "contact-signup",
+          },
+        ],
+      ])
+    );
     await render();
     act(() => {
       setProject({ createdAt: minutesAgo(1), publishStatus: "FAILED" });
@@ -580,6 +595,19 @@ describe("the OrganizeOS Publish dialog", () => {
     });
     await settle();
     expect(reloadFormsResource).toHaveBeenCalledTimes(1);
+  });
+
+  // final review M4: a site with no site form publishes as before
+  test("a project with no site form reloads nothing after a publish", async () => {
+    vi.mocked(reloadFormsResource).mockResolvedValue(undefined);
+    vi.mocked(reloadFormsResource).mockClear();
+    setProject({ createdAt: minutesAgo(1), publishStatus: "PENDING" });
+    await render();
+    act(() => {
+      setProject({ createdAt: minutesAgo(1), publishStatus: "PUBLISHED" });
+    });
+    await settle();
+    expect(reloadFormsResource).not.toHaveBeenCalled();
   });
 
   test("a newer build by someone else replaces the status row's build, and the next read's rows show what is live", async () => {

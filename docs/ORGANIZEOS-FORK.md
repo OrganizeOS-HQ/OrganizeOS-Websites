@@ -573,8 +573,8 @@ can be merged with minimal conflict.
   form rule in `signup/signup-form.tsx`. The builder's half (with
   `ORGANIZEOS_SITE_FORMS` on): the forms door client
   `features/organizeos-panel/forms-api.ts`, with its test and the copied
-  response fixtures `shared/__fixtures__/forms-door/*.json` (README in that
-  folder); the inserts' and placements' site forms
+  response fixtures `shared/__fixtures__/forms-door/*.json` (described in
+  `shared/__fixtures__/README.md`); the inserts' and placements' site forms
   `features/organizeos-panel/site-form-insert.ts`, with its test; in
   `features/organizeos-panel/insert-organizeos-block.ts`, the card keys, the
   site-form step and the Forms Resource reload, and in
@@ -1454,9 +1454,10 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     leaves out "Add a Field for ..." (except email) and "A Field is set to
     ...": its live definition follows the publish, so a Field added or
     removed since is the normal state. A field of type `number`, `date` or
-    `url` renders an input of that type. After a publish goes live the
-    builder reloads the Forms Resource (`organizeos-publish.tsx`), so the
-    Form row and the canvas read the fields the publish staged. The
+    `url` renders an input of that type. After a publish goes live, on a project holding a marked
+    root, the builder reloads the Forms Resource (`organizeos-publish.tsx`),
+    so the Form row and the canvas read the fields the publish staged; any
+    other project publishes as before. The
     builder's site forms half (the Forms group, the inserts, the template
     placements and the rows under "The Signup Form's Settings") shows only
     with `ORGANIZEOS_SITE_FORMS` on (§3); OrganizeOS's
@@ -1778,10 +1779,12 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     - **State** drops Check email for a contact form.
     - **Fields**, for a marked root, is the site form's list
       (`organizeos-site-fields.tsx`): one row per key under the root in tree
-      order, with a drag handle, the catalog's label, a required toggle (an
-      asterisk, `aria-pressed`) and Remove; a locked row (Email always, and
-      what the catalog locks) shows a lock, no Remove, and its toggle pressed
-      and disabled. Drag moves the key's first Field to the target's place;
+      order (a blank Field has none, and is never sent as a key), with a
+      drag handle, the catalog's label, a required toggle (an asterisk,
+      `aria-pressed`) and Remove; a locked row (what the catalog locks, and
+      what the kind always locks, held before F1 answers or when it fails:
+      Email, Message on Contact us, Full name on Member signup) shows a lock,
+      no Remove, and its toggle pressed and disabled. Drag moves the key's first Field to the target's place;
       required writes every Field of the key; Remove deletes them; each is
       one transaction and one undo. Add (+) lists the catalog's fields (F1)
       the root has none of, standard first, then Custom, a consent field only
@@ -1789,8 +1792,10 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
       20 Fields, or with nothing left. The warning line leaves out "Missing"
       (but Email) and "Not in form" (but a blank Field), and adds, after
       "Form not found", "Not saved" and, last, "Fields differ on another
-      page" (another marked root on the form sends another list). An
-      unmarked root keeps the shipped list.
+      page" (another marked root on the form sends another list); an
+      unbound `data` shows the "No forms data. Reconnect" line as below. An
+      unmarked root keeps the shipped list. F0 and F1 are read once per
+      project (and kind) and kept (`form-settings.ts`).
     - **Lists** and **Confirm by email** follow Fields, and **Notify**
       follows After submit (`organizeos-form-settings.tsx`), for whatever
       form the block points at, site or CRM, by kind: Lists on updates and
@@ -1806,7 +1811,9 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
       They are the form's own settings on OrganizeOS, not build edits: never
       in the undo, written at once with F4. The value shown is the store
       `$doorForms` (F2, read once per project and kind, and again once for a
-      form it lacks, as New form's); a change shows at once, and a form's
+      form it lacks, as New form's, after any read already out); a read leaves
+      a form with a write queued or finished meanwhile as it shows; a change
+      shows at once, and a form's
       writes run one after another, each sending the whole set as it then
       stands, so two quick changes end with both and two blocks on one form
       show the same. A failed write puts back the last saved value and the
@@ -2215,10 +2222,12 @@ collection }` invalidates, through `invalidateResource`, every current
     F3 in parallel, F3 with the insert's kind, the title "{page name}:
     {insert name}" cut to 200 characters, the template's Fields as keys, and
     a `clientId` made once per insert, so one retry after a lost answer
-    returns the form already made. The block is then written pointing at it
-    (`record`), marked (`siteForm`), its Fields given the form's resolved
-    definition, the intro's org name filled in ("News and actions from us."
-    without one), and the Forms Resource reloaded. A failed create writes
+    returns the form already made. The block's place is found once, before
+    F3, and kept, so a selection changed while F3 answers moves nothing. The
+    block is then written at that place pointing at the form (`record`) and
+    marked (`siteForm`), its Fields carrying the template's definition, the
+    intro's org name filled in ("News and actions from us." without one), and
+    the Forms Resource reloaded. A failed create writes
     nothing and shows "Couldn't create the form. Try again.". With the
     switch off a card key is refused as an unknown block.
   - The Event List's entry is Upcoming Events under "OrganizeOS Upcoming

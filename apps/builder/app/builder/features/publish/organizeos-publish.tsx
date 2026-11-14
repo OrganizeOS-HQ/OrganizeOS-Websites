@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { reloadFormsResource } from "~/builder/features/organizeos-panel/insert-organizeos-block";
+import { projectHasSiteForms } from "~/builder/features/organizeos-panel/site-forms";
 import { computed } from "nanostores";
 import { useStore } from "@nanostores/react";
 import {
@@ -543,7 +544,8 @@ export const OrganizeosPublishContent = ({
       readAddresses(projectId, { reset: true });
       // a site form's live fields changed with the publish (fork doc
       // section 9, "Site forms"): the canvas reads them again
-      if (state.status === "published") {
+      // only on a project with a site form: any other publishes as before
+      if (state.status === "published" && projectHasSiteForms()) {
         void reloadFormsResource();
       }
     }

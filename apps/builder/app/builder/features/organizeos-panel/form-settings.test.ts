@@ -5,24 +5,27 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 // a change shows at once, is saved with F4 one after another per form, and
 // reverts to the last saved value when its save fails.
 
-const { listDoorForms, saveFormSettings } = vi.hoisted(() => ({
+const { listDoorForms, saveFormSettings, getFormsCatalog } = vi.hoisted(() => ({
   listDoorForms: vi.fn(),
   saveFormSettings: vi.fn(),
+  getFormsCatalog: vi.fn(),
 }));
 vi.mock("./forms-api", () => ({
   listDoorForms,
   saveFormSettings,
   getFormsAccess: vi.fn(),
-  getFormsCatalog: vi.fn(),
+  getFormsCatalog,
 }));
 
 import {
   $doorForms,
+  $formsCatalogs,
   $optInLocked,
   $unsavedForms,
   doorFormOf,
   formSettingsRowsOf,
   loadDoorForms,
+  loadFormsCatalog,
   parseNotifyAddress,
   resetDoorForms,
   saveFormSetting,
@@ -47,8 +50,17 @@ beforeEach(() => {
   resetDoorForms();
   listDoorForms.mockReset();
   saveFormSettings.mockReset();
+  getFormsCatalog.mockReset();
   listDoorForms.mockResolvedValue({ ok: true, value: [form] });
 });
+
+const deferred = <Value>() => {
+  let resolve = (_value: Value) => {};
+  const promise = new Promise<Value>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+};
 
 describe("loadDoorForms", () => {
   test("reads F2 once per project and kind", async () => {
@@ -56,6 +68,20 @@ describe("loadDoorForms", () => {
     await loadDoorForms(project, "contact-signup");
     expect(listDoorForms).toHaveBeenCalledTimes(1);
     expect(listDoorForms).toHaveBeenCalledWith(project, "contact-signup");
+    expect(current()).toEqual(form);
+  });
+
+  // final review M7
+  test("a reload asked during a read reads again after it", async () => {
+    const first = deferred<unknown>();
+    listDoorForms.mockReturnValueOnce(first.promise);
+    const reading = loadDoorForms(project, "contact-signup");
+    const reloading = loadDoorForms(project, "contact-signup", {
+      reload: true,
+    });
+    first.resolve({ ok: true, value: [] });
+    await Promise.all([reading, reloading]);
+    expect(listDoorForms).toHaveBeenCalledTimes(2);
     expect(current()).toEqual(form);
   });
 
@@ -135,6 +161,31 @@ describe("saveFormSetting", () => {
     expect(current()?.lists).toEqual(["a"]);
   });
 
+  // final review I2
+  test("a read sent before a save finished does not undo that save", async () => {
+    await loadDoorForms(project, "contact-signup");
+    const write = deferred<unknown>();
+    saveFormSettings.mockReturnValueOnce(write.promise);
+    const saving = saveFormSetting(project, "contact-signup", "form-1", {
+      lists: ["a"],
+    });
+    const read = deferred<unknown>();
+    listDoorForms.mockReturnValueOnce(read.promise);
+    const reading = loadDoorForms(project, "contact-signup", { reload: true });
+    write.resolve({ ok: true, value: null });
+    expect(await saving).toBe("saved");
+    // the read left before the write landed: it still holds no list
+    read.resolve({ ok: true, value: [form] });
+    await reading;
+    expect(current()?.lists).toEqual(["a"]);
+    // and the saved value it keeps is the one a failed write goes back to
+    saveFormSettings.mockResolvedValueOnce({ ok: false, error: "unavailable" });
+    await saveFormSetting(project, "contact-signup", "form-1", {
+      lists: ["a", "b"],
+    });
+    expect(current()?.lists).toEqual(["a"]);
+  });
+
   test("a failed save reverts to the last saved value", async () => {
     await loadDoorForms(project, "contact-signup");
     saveFormSettings.mockResolvedValueOnce({ ok: true, value: null });
@@ -161,6 +212,23 @@ describe("saveFormSetting", () => {
     expect(current()?.opt_in).toBe("single");
     expect($optInLocked.get().has("form-1")).toBe(true);
     expect($unsavedForms.get().has("form-1")).toBe(false);
+  });
+});
+
+describe("loadFormsCatalog", () => {
+  // final review I1: the Fields list's locks need F1 at hand
+  test("reads F1 once per project and kind, and again after a failure", async () => {
+    const catalog = { fields: [], lists: [{ id: "l1", name: "List" }] };
+    getFormsCatalog.mockResolvedValueOnce({ ok: false, error: "unavailable" });
+    getFormsCatalog.mockResolvedValue({ ok: true, value: catalog });
+    await loadFormsCatalog(project, "contact-form");
+    expect($formsCatalogs.get().get(`${project}:contact-form`)).toBeUndefined();
+    await loadFormsCatalog(project, "contact-form");
+    await loadFormsCatalog(project, "contact-form");
+    expect(getFormsCatalog).toHaveBeenCalledTimes(2);
+    expect($formsCatalogs.get().get(`${project}:contact-form`)).toEqual(
+      catalog
+    );
   });
 });
 

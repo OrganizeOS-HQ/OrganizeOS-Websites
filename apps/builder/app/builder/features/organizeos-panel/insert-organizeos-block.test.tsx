@@ -68,6 +68,7 @@ import {
   invalidateResource,
 } from "~/shared/resources";
 import {
+  findClosestInsertable,
   getComponentTemplateData,
   insertWebstudioComponentAt,
 } from "~/shared/instance-utils/insert";
@@ -3574,6 +3575,47 @@ describe("a forms insert with the site forms switch on", () => {
     setProject(withForms, { siteFormsEnabled: true, blocksEnabled: false });
     expect(await insertOrganizeosBlock(card)).toBe(false);
     expect(createSiteForm).not.toHaveBeenCalled();
+  });
+
+  // final review M5: every local check runs before F3 (P11)
+  test("no place to insert, or preset ids that fail, call no F3", async () => {
+    setProject(withForms, { siteFormsEnabled: true });
+    vi.mocked(findClosestInsertable).mockReturnValueOnce(undefined);
+    expect(await insertOrganizeosBlock(card)).toBe(false);
+    setProject(withForms, { siteFormsEnabled: true });
+    const digest = vi
+      .spyOn(crypto.subtle, "digest")
+      .mockRejectedValueOnce(new Error("no digest"));
+    try {
+      expect(await insertOrganizeosBlock(card)).toBe(false);
+    } finally {
+      digest.mockRestore();
+    }
+    expect(createSiteForm).not.toHaveBeenCalled();
+  });
+
+  // final review M6: a selection changed while F3 answers moves nothing
+  test("the block goes where it had its place before F3, whatever is selected when F3 answers", async () => {
+    setProject(withForms, { siteFormsEnabled: true });
+    const data = renderData(
+      <$.Body ws:id="bodyId">
+        <$.Box ws:id="firstBox"></$.Box>
+        <$.Box ws:id="secondBox"></$.Box>
+      </$.Body>
+    );
+    $instances.set(data.instances);
+    selectInstance(["firstBox", "bodyId"]);
+    createSiteForm.mockImplementation(async () => {
+      selectInstance(["secondBox", "bodyId"]);
+      return created;
+    });
+    expect(await insertOrganizeosBlock(card)).toBe(true);
+    const [root] = rootsOf(signupForm);
+    const parentOf = (id: string) =>
+      [...$instances.get().values()].find((instance) =>
+        instance.children.some((child) => child.value === id)
+      )?.id;
+    expect(parentOf(root.id)).toBe("firstBox");
   });
 
   test("with the switch off, a card is refused and the Email bar inserts as today, creating nothing", async () => {
