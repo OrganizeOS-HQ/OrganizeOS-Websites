@@ -875,3 +875,131 @@ describe("a reorder conflict beside an open view", () => {
     expect(labelOf(platform.state.fields, "summary")).toBe("Excerpt");
   });
 });
+
+// Round 4, item 3: Discard while a view's own Save is under way never draws
+// the view on the values from before that Save
+describe("Discard during a structure view's own Save", () => {
+  const header = () =>
+    document.querySelector<HTMLElement>("[data-cms-structure-header]")!;
+  /** The New collection dialog "+" opened, closed again. */
+  const closeNewCollection = async () => {
+    const cancel = [
+      ...document.querySelectorAll<HTMLElement>('[role="dialog"] button'),
+    ].find((button) => button.textContent === "Cancel");
+    if (cancel !== undefined) {
+      await click(cancel);
+    }
+  };
+  const leaves: Array<[string, () => Promise<void>]> = [
+    [
+      "Classic CMS",
+      async () => {
+        await click(byLabel("CMS menu"));
+        await click(menuItem("Classic CMS"));
+      },
+    ],
+    [
+      '"+"',
+      async () => {
+        await click(tab("Collections"));
+        await click(byLabel("New collection"));
+      },
+    ],
+  ];
+
+  test.each(leaves)(
+    "a sheet's held Save, then Discard through %s: the sheet shows the saved name",
+    async (_name, leave) => {
+      await openFields();
+      await click(fieldRow("summary")!.querySelector("button"));
+      await typeInto(
+        document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+        "Teaser"
+      );
+      const held = deferred<{
+        fields: CmsStructureField[];
+        updatedAt: string;
+      }>();
+      let sent: CmsStructureField[] = [];
+      harness.structure.updateSchema.mockImplementationOnce(
+        async (_id, body) => {
+          sent = body.fields;
+          return held.promise;
+        }
+      );
+      await click(buttonByText("Save", header()));
+      await leave();
+      if (hasText("Discard unsaved changes?")) {
+        await discardChanges();
+      }
+      await act(async () => held.resolve({ fields: sent, updatedAt: NEXT }));
+      await settle();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      await settle();
+      await closeNewCollection();
+      if (sheet() === null) {
+        await click(tab("Fields"));
+        await click(fieldRow("summary")!.querySelector("button"));
+      }
+      expect(
+        document.querySelector<HTMLInputElement>("#cms-field-sheet-label")
+          ?.value
+      ).toBe("Teaser");
+    }
+  );
+
+  test.each(leaves)(
+    "a settings view's held Save, then Discard through %s: the view shows the saved name",
+    async (_name, leave) => {
+      await openFields();
+      await click(tab("Collections"));
+      await click(byLabel("Posts menu"));
+      await click(menuItem("Settings"));
+      await typeInto(
+        document.querySelector<HTMLInputElement>("#cms-settings-name"),
+        "Articles"
+      );
+      const held =
+        deferred<
+          Awaited<ReturnType<typeof harness.structure.updateCollection>>
+        >();
+      let sent: Record<string, unknown> = {};
+      harness.structure.updateCollection.mockImplementationOnce(
+        async (id, { expectedUpdatedAt: _, ...settings }) => {
+          sent = { id, ...settings };
+          return held.promise;
+        }
+      );
+      await click(buttonByText("Save", header()));
+      await leave();
+      if (hasText("Discard unsaved changes?")) {
+        await discardChanges();
+      }
+      await act(async () =>
+        held.resolve({
+          collection: {
+            ...(sent as { id: string }),
+            ...sent,
+            updatedAt: NEXT,
+          } as never,
+        })
+      );
+      await settle();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      await settle();
+      await closeNewCollection();
+      if (document.querySelector("[data-cms-collection-settings]") === null) {
+        await click(tab("Collections"));
+        await click(byLabel("Posts menu"));
+        await click(menuItem("Settings"));
+      }
+      expect(
+        document.querySelector<HTMLInputElement>("#cms-settings-name")?.value
+      ).toBe("Articles");
+    }
+  );
+});

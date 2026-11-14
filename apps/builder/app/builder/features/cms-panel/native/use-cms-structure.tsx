@@ -631,7 +631,13 @@ export const useCmsStructure = ({
   /** Discard ran an action that leaves the view open: it shows saved values. */
   const resetView = useCallback(() => {
     clearViewDirty();
-    setSession((current) => current + 1);
+    const id = collectionIdRef.current;
+    if (id === undefined || (inFlight.current.get(id) ?? 0) === 0) {
+      setSession((current) => current + 1);
+      return;
+    }
+    // the view's own write is under way: drawn again now, the view would
+    // show the values from before it; its answer draws the saved ones
   }, [clearViewDirty]);
 
   // A Create whose outcome is unknown: the next E1 holding a new collection
