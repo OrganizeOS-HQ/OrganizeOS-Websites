@@ -1843,3 +1843,81 @@ describe("blocks pasted into a nested list item (self-lock decision, 4a)", () =>
     expectFixedPoint(written);
   });
 });
+
+// round 5, item 3: the keyboard model for images (keys only, from a caret)
+describe("the keyboard reaches an image (round 5)", () => {
+  const FIGURE =
+    '<figure><img src="https://example.org/a.png" alt="A" /><figcaption>Caption</figcaption></figure>';
+  /** Mounts `html` with a text caret at the end of the text `word`. */
+  const caretAfter = async (html: string, word: string) => {
+    const field = mountField({ value: { html } });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>("p"));
+    await act(async () => {
+      editorOf()!.update(() => {
+        const text = $getRoot()
+          .getAllTextNodes()
+          .find((node) => node.getTextContent() === word)!;
+        text.select(text.getTextContentSize(), text.getTextContentSize());
+      });
+    });
+    await settle();
+    return field;
+  };
+  const inEditor = () => editable()?.contains(document.activeElement) === true;
+  const cases = [
+    {
+      name: "an inline image",
+      html: `<p>See ${IMAGE}here</p>`,
+      word: "See ",
+      typed: /See (<[^>]+>)*<img[^>]*>(<[^>]+>)*xy/,
+    },
+    {
+      name: "a figure",
+      html: `<p>Before</p>${FIGURE}<p>After</p>`,
+      word: "Before",
+      typed: /<figure[\s\S]*<\/figure>[\s\S]*xy[\s\S]*After/,
+    },
+  ];
+
+  test.each(cases)(
+    "$name: an arrow selects it, Enter opens its settings, and Alt takes what is typed",
+    async ({ html, word }) => {
+      const { onChange } = await caretAfter(html, word);
+      await type("{ArrowRight}");
+      expect(inputByLabel("Alt")).toBeNull();
+      await type("{Enter}");
+      const alt = inputByLabel("Alt")!;
+      expect(alt).not.toBeNull();
+      expect(document.activeElement).toBe(alt);
+      await userEvent.keyboard("{Control>}a{/Control}Lake");
+      await settle();
+      expect(lastHtml(onChange)).toContain('alt="Lake"');
+    }
+  );
+
+  test.each(cases)(
+    "$name: an arrow onto it, then typing, lands beside it with Alt closed",
+    async ({ html, word, typed }) => {
+      const { onChange } = await caretAfter(html, word);
+      await type("{ArrowRight}xy");
+      expect(inputByLabel("Alt")).toBeNull();
+      expect(lastHtml(onChange)).toMatch(typed);
+    }
+  );
+
+  test.each(cases)(
+    "$name: Enter, then Escape, gives the editor the focus, and typing lands beside it",
+    async ({ html, word, typed }) => {
+      const { onChange } = await caretAfter(html, word);
+      await type("{ArrowRight}{Enter}");
+      expect(inputByLabel("Alt")).not.toBeNull();
+      await userEvent.keyboard("{Escape}");
+      await settle();
+      expect(inputByLabel("Alt")).toBeNull();
+      expect(inEditor()).toBe(true);
+      await type("xy");
+      expect(lastHtml(onChange)).toMatch(typed);
+    }
+  );
+});

@@ -10,9 +10,11 @@
  * field's own cut, copy or drag: the HTML import keeps one only while a
  * stored value loads (`importStoredImages`), so pasted HTML keeps none.
  */
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   $applyNodeReplacement,
+  $createParagraphNode,
+  $isElementNode,
   COMMAND_PRIORITY_LOW,
   KEY_BACKSPACE_COMMAND,
   KEY_DELETE_COMMAND,
@@ -159,18 +161,60 @@ type ImageViewProps = {
   caption?: string | null;
 };
 
+/**
+ * A text caret beside an image or figure: before it or after it. For a
+ * figure, the end of the block before it or the start of the block after
+ * it; with no such block, a new empty paragraph when `make` asks for one,
+ * else the root beside it.
+ */
+export const $caretBeside = (
+  node: LexicalNode,
+  before: boolean,
+  make = false
+) => {
+  if ($isCmsFigureNode(node)) {
+    const sibling = before ? node.getPreviousSibling() : node.getNextSibling();
+    if ($isElementNode(sibling)) {
+      if (before) {
+        sibling.selectEnd();
+      } else {
+        sibling.selectStart();
+      }
+      return;
+    }
+    if (make) {
+      const paragraph = $createParagraphNode();
+      if (before) {
+        node.insertBefore(paragraph);
+      } else {
+        node.insertAfter(paragraph);
+      }
+      paragraph.select();
+      return;
+    }
+  }
+  if (before) {
+    node.selectPrevious();
+  } else {
+    // the start of what follows, not its end
+    node.selectNext(0, 0);
+  }
+};
+
 const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
   const [editor] = useLexicalComposerContext();
   const isEditable = useLexicalEditable();
   const [isSelected, setSelected, clearSelection] =
     useLexicalNodeSelection(nodeKey);
   const [isOpen, setIsOpen] = useState(false);
+  // the settings closed by Escape, or with the focus left in them
+  const closedByKey = useRef(false);
   const altId = useId();
   const captionId = useId();
 
-  // the settings open on a click, or on Enter with the image selected; a
-  // keyboard selection alone keeps the keyboard in the text. With the image
-  // selected, Backspace and Delete remove it.
+  // the settings open on a click, or on Enter with the image selected (an
+  // arrow selects it). With the image selected, Backspace and Delete remove
+  // it.
   useEffect(
     () =>
       mergeRegister(
@@ -265,8 +309,26 @@ const ImageView = ({ nodeKey, attributes, caption }: ImageViewProps) => {
       <PopoverContent
         align="start"
         css={{ width: theme.spacing[33], padding: theme.panel.padding }}
+        onEscapeKeyDown={() => {
+          closedByKey.current = true;
+        }}
+        // the keyboard goes back to the text, a caret right after the image
         onCloseAutoFocus={(event) => {
           event.preventDefault();
+          const active = document.activeElement;
+          const lost =
+            active === null ||
+            active === document.body ||
+            active.isConnected === false;
+          if (closedByKey.current || lost) {
+            editor.update(() => {
+              const node = $getNodeByKey(nodeKey);
+              if (node !== null) {
+                $caretBeside(node, false);
+              }
+            });
+          }
+          closedByKey.current = false;
           editor.focus();
         }}
       >

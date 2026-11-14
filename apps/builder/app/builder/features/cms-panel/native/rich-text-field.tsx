@@ -9,10 +9,13 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  $createNodeSelection,
   $createParagraphNode,
+  $getAdjacentNode,
   $getRoot,
   $getNodeByKey,
   $getSelection,
+  $isNodeSelection,
   $isRangeSelection,
   $isTextNode,
   $setSelection,
@@ -25,6 +28,7 @@ import {
   KEY_ARROW_LEFT_COMMAND,
   KEY_ARROW_RIGHT_COMMAND,
   KEY_DOWN_COMMAND,
+  type BaseSelection,
   type ElementNode,
   COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_NORMAL,
@@ -123,6 +127,7 @@ import {
   uploadCmsImage,
 } from "./cms-image-upload";
 import {
+  $caretBeside,
   $createCmsImageNode,
   $isCmsFigureNode,
   $isCmsImageNode,
@@ -1307,60 +1312,91 @@ const $imageEndingLine = (
   return last;
 };
 
+/** The one image or figure a node selection holds. */
+const $selectedImage = (selection: BaseSelection | null) => {
+  if ($isNodeSelection(selection) === false) {
+    return;
+  }
+  const nodes = selection.getNodes();
+  return nodes.length === 1 &&
+    ($isCmsImageNode(nodes[0]) || $isCmsFigureNode(nodes[0]))
+    ? nodes[0]
+    : undefined;
+};
+
 /**
- * The inline image right beside a collapsed caret in an arrow's direction:
- * the caret steps past it as a text caret, never onto it as a selection.
+ * The image an arrow from a collapsed caret reaches: an inline image beside
+ * it (a link's edge counts too), or a figure beside its block's edge.
  */
-const $inlineImageBeside = (
+const $imageBeside = (
   selection: RangeSelection,
   isBackward: boolean
 ): LexicalNode | undefined => {
   const focus = selection.focus;
-  const node = focus.getNode();
-  let beside: LexicalNode | null = null;
-  if (focus.type === "text") {
-    const size = node.getTextContentSize();
-    if (isBackward ? focus.offset !== 0 : focus.offset !== size) {
-      return;
+  let beside = $getAdjacentNode(focus, isBackward);
+  if (beside === null && focus.type === "text") {
+    // at a link's edge: the node beside the link
+    let node: LexicalNode = focus.getNode();
+    for (
+      let parent = node.getParent();
+      $isElementNode(parent) && parent.isInline();
+      parent = parent.getParent()
+    ) {
+      const edge = isBackward
+        ? node.getPreviousSibling() === null
+        : node.getNextSibling() === null;
+      if (edge === false) {
+        break;
+      }
+      node = parent;
+      beside = isBackward
+        ? parent.getPreviousSibling()
+        : parent.getNextSibling();
+      if (beside !== null) {
+        break;
+      }
     }
-    beside = isBackward ? node.getPreviousSibling() : node.getNextSibling();
-  } else if ($isElementNode(node)) {
-    beside = node.getChildAtIndex(isBackward ? focus.offset - 1 : focus.offset);
   }
-  return $isCmsImageNode(beside) ? beside : undefined;
+  if ($isCmsImageNode(beside)) {
+    return beside;
+  }
+  const block = focus.getNode().getTopLevelElement();
+  if (block === null || $isElementNode(block) === false) {
+    return;
+  }
+  const edgeNode = isBackward
+    ? block.getFirstDescendant()
+    : block.getLastDescendant();
+  const atEdge =
+    (focus.type === "element" &&
+      focus.key === block.getKey() &&
+      focus.offset === (isBackward ? 0 : block.getChildrenSize())) ||
+    (focus.type === "text" &&
+      edgeNode !== null &&
+      focus.key === edgeNode.getKey() &&
+      focus.offset === (isBackward ? 0 : edgeNode.getTextContentSize()));
+  if (atEdge === false) {
+    return;
+  }
+  const sibling = isBackward
+    ? block.getPreviousSibling()
+    : block.getNextSibling();
+  return $isCmsFigureNode(sibling) ? sibling : undefined;
 };
 
-/** Moves the selection's focus (and, without Shift, its anchor) past `image`. */
-const $stepPast = (
-  selection: RangeSelection,
-  image: LexicalNode,
-  isBackward: boolean,
-  extend: boolean
-) => {
-  const parent = image.getParentOrThrow();
-  const index = image.getIndexWithinParent();
-  const neighbour = isBackward
-    ? image.getPreviousSibling()
-    : image.getNextSibling();
-  const point = $isTextNode(neighbour)
-    ? {
-        key: neighbour.getKey(),
-        offset: isBackward ? neighbour.getTextContentSize() : 0,
-        type: "text" as const,
-      }
-    : {
-        key: parent.getKey(),
-        offset: isBackward ? index : index + 1,
-        type: "element" as const,
-      };
-  selection.focus.set(point.key, point.offset, point.type);
-  if (extend === false) {
-    selection.anchor.set(point.key, point.offset, point.type);
+const $caretBesideSelectedImage = (lastArrow: {
+  current: "back" | "forward" | undefined;
+}) => {
+  const image = $selectedImage($getSelection());
+  if (image !== undefined) {
+    $caretBeside(image, lastArrow.current === "back", true);
+    lastArrow.current = undefined;
   }
 };
 
 const ImageEditingPlugin = () => {
   const [editor] = useLexicalComposerContext();
+  const lastArrow = useRef<"back" | "forward" | undefined>(undefined);
   useEffect(
     () =>
       mergeRegister(
@@ -1413,8 +1449,9 @@ const ImageEditingPlugin = () => {
           },
           COMMAND_PRIORITY_NORMAL
         ),
-        // an arrow beside an inline image steps past it, keeping a text
-        // caret, so typing lands beside the image
+        // an arrow onto an image selects it (an inline image beside the
+        // caret, or a figure beside the block's edge); the next arrow moves
+        // past it as a text caret
         ...(
           [
             [KEY_ARROW_LEFT_COMMAND, true],
@@ -1424,26 +1461,66 @@ const ImageEditingPlugin = () => {
           editor.registerCommand(
             command,
             (event: KeyboardEvent) => {
+              if (event.altKey || event.ctrlKey || event.metaKey) {
+                return false;
+              }
               const selection = $getSelection();
+              if ($isNodeSelection(selection)) {
+                const image = $selectedImage(selection);
+                if (image === undefined || event.shiftKey) {
+                  return false;
+                }
+                event.preventDefault();
+                $caretBeside(image, isBackward);
+                lastArrow.current = undefined;
+                return true;
+              }
               if (
                 $isRangeSelection(selection) === false ||
-                event.altKey ||
-                event.ctrlKey ||
-                event.metaKey ||
-                (selection.isCollapsed() === false && event.shiftKey === false)
+                selection.isCollapsed() === false ||
+                event.shiftKey
               ) {
                 return false;
               }
-              const image = $inlineImageBeside(selection, isBackward);
+              const image = $imageBeside(selection, isBackward);
               if (image === undefined) {
                 return false;
               }
               event.preventDefault();
-              $stepPast(selection, image, isBackward, event.shiftKey);
+              const next = $createNodeSelection();
+              next.add(image.getKey());
+              $setSelection(next);
+              lastArrow.current = isBackward ? "back" : "forward";
               return true;
             },
             COMMAND_PRIORITY_LOW
           )
+        ),
+        // typing with an image selected first puts a caret beside it: on
+        // the side the arrow came from, else after it
+        editor.registerCommand(
+          KEY_DOWN_COMMAND,
+          (event) => {
+            if (
+              event.key.length !== 1 ||
+              event.ctrlKey ||
+              event.metaKey ||
+              event.altKey
+            ) {
+              return false;
+            }
+            $caretBesideSelectedImage(lastArrow);
+            return false;
+          },
+          COMMAND_PRIORITY_CRITICAL
+        ),
+        editor.registerCommand(
+          CONTROLLED_TEXT_INSERTION_COMMAND,
+          () => {
+            $caretBesideSelectedImage(lastArrow);
+            return false;
+          },
+          COMMAND_PRIORITY_CRITICAL
         ),
         // End and Shift+End on a line ending in an image go past it
         editor.registerCommand(
