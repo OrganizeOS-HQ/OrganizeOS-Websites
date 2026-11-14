@@ -8,6 +8,7 @@ import { toast } from "@webstudio-is/design-system";
 import type { CmsResult } from "./cms-source";
 import { PEOPLE, POSTS, POSTS_DETAIL, VERSION } from "./fake-cms-source";
 import { POSTS_STRUCTURE } from "./fake-cms-structure-source";
+import { $cmsNativeDirty } from "./cms-native-stores";
 import type { CmsStructureField } from "./cms-structure-source";
 import {
   buttonByText,
@@ -1214,4 +1215,111 @@ describe("Discard during a structure view's own Save", () => {
       ).toBe("Articles");
     }
   );
+
+  // round 5, item 2: whatever the answer, the view is drawn again once the
+  // collection's queue settles
+  const plus = async () => {
+    await click(tab("Collections"));
+    await click(byLabel("New collection"));
+    if (hasText("Discard unsaved changes?")) {
+      await discardChanges();
+    }
+  };
+  const afterAnswer = async () => {
+    await settle();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await settle();
+    await closeNewCollection();
+  };
+
+  test('a sheet\'s held Save answered conflict, after Discard through "+": the sheet shows the saved name, and nothing is unsaved (round 5)', async () => {
+    await openFields();
+    await click(fieldRow("summary")!.querySelector("button"));
+    await typeInto(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+      "Teaser"
+    );
+    const held =
+      deferred<CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>>();
+    harness.structure.updateSchema.mockImplementationOnce(() => held.promise);
+    await click(buttonByText("Save", header()));
+    await plus();
+    await act(async () => held.resolve({ error: "conflict" }));
+    await afterAnswer();
+    if (sheet() === null) {
+      await click(tab("Fields"));
+      await click(fieldRow("summary")!.querySelector("button"));
+    }
+    expect(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-label")?.value
+    ).toBe("Summary");
+    expect($cmsNativeDirty.get()).toBe(false);
+  });
+
+  test('a settings view\'s held Save answered conflict, after Discard through "+": the view shows the saved name (round 5)', async () => {
+    await openFields();
+    await click(tab("Collections"));
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+    await typeInto(
+      document.querySelector<HTMLInputElement>("#cms-settings-name"),
+      "Articles"
+    );
+    const held =
+      deferred<
+        Awaited<ReturnType<typeof harness.structure.updateCollection>>
+      >();
+    harness.structure.updateCollection.mockImplementationOnce(
+      () => held.promise
+    );
+    await click(buttonByText("Save", header()));
+    await plus();
+    await act(async () => held.resolve({ error: "conflict" }));
+    await afterAnswer();
+    if (document.querySelector("[data-cms-collection-settings]") === null) {
+      await click(tab("Collections"));
+      await click(byLabel("Posts menu"));
+      await click(menuItem("Settings"));
+    }
+    expect(
+      document.querySelector<HTMLInputElement>("#cms-settings-name")?.value
+    ).toBe("Posts");
+    expect($cmsNativeDirty.get()).toBe(false);
+  });
+
+  test('a dirty sheet with a reorder\'s E24 in flight, after Discard through "+": the sheet shows the saved name once it answers (round 5)', async () => {
+    await openFields();
+    await click(fieldRow("summary")!.querySelector("button"));
+    await typeInto(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+      "Teaser"
+    );
+    const held =
+      deferred<CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>>();
+    let sent: CmsStructureField[] = [];
+    harness.structure.updateSchema.mockImplementationOnce(async (_id, body) => {
+      sent = body.fields;
+      return held.promise;
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await moveRow("title", "ArrowDown");
+    await pass(600);
+    await pass(0);
+    vi.useRealTimers();
+    await settle();
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
+    await plus();
+    await act(async () => held.resolve({ fields: sent, updatedAt: NEXT }));
+    await afterAnswer();
+    if (sheet() === null) {
+      await click(tab("Fields"));
+      await click(fieldRow("summary")!.querySelector("button"));
+    }
+    expect(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-label")?.value
+    ).toBe("Summary");
+    expect($cmsNativeDirty.get()).toBe(false);
+  });
 });

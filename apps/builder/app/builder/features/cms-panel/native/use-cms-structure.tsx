@@ -678,8 +678,14 @@ export const useCmsStructure = ({
       setSession((current) => current + 1);
       return;
     }
-    // the view's own write is under way: drawn again now, the view would
-    // show the values from before it; its answer draws the saved ones
+    // a write of this collection is under way: drawn again now, the view
+    // would show the values from before it. It is drawn again once that
+    // collection's queue settles, whatever the answer
+    void queues.current.get(id)?.then(() => {
+      if (collectionIdRef.current === id) {
+        setSession((current) => current + 1);
+      }
+    });
   }, [clearViewDirty]);
 
   // A Create whose outcome is unknown: the next E1 holding a new collection
