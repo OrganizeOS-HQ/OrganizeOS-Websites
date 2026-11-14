@@ -37,7 +37,6 @@ import {
   selectPage,
   setBuilderMode,
 } from "~/shared/nano-states";
-import { platformName } from "~/shared/branding";
 import { builderApi } from "~/shared/builder-api";
 import { useMount } from "~/shared/hook-utils/use-mount";
 import {
@@ -53,6 +52,7 @@ import { $dataLoadingState } from "~/builder/shared/nano-states";
 import { TruncatedText } from "../../cms-panel/native/truncated-text";
 import { isOrganizeosBlocksEnabled } from "../insert-organizeos-block";
 import { updateWebstudioDataStaged } from "../staged-data";
+import { unboundBlocksMessage } from "../unbound-blocks";
 import {
   type ApplyOutcome,
   type ApplyResult,
@@ -211,10 +211,7 @@ const chooseTemplate = async (template: SiteTemplate) => {
     setBuilderMode("content");
   }
   if (result.unboundBlocks.length > 0) {
-    const blocks = Array.from(new Set(result.unboundBlocks)).join(", ");
-    builderApi.toast.error(
-      `Not linked to your organization's data: ${blocks}. Contact ${platformName} support to restore the link.`
-    );
+    builderApi.toast.error(unboundBlocksMessage(result.unboundBlocks));
   }
   if (result.missingImages > 0) {
     builderApi.toast.error(
