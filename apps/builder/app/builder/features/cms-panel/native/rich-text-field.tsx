@@ -1039,6 +1039,10 @@ const $unwrapQuotedBlocks = () => {
     if (last < first) {
       continue;
     }
+    // a list the selection is in changes its type in place
+    if (children.slice(first, last + 1).every($isListNode)) {
+      continue;
+    }
     let anchor: LexicalNode = quote;
     // inline content between blocks keeps one paragraph per run
     let run: ElementNode | undefined;

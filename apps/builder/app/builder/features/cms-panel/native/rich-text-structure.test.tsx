@@ -759,3 +759,17 @@ describe("a list never stays in a heading or paragraph (K6)", () => {
     expectFixedPoint(written);
   });
 });
+
+describe("a list's type changes in place inside a quote (K8)", () => {
+  test("Numbered list on a bulleted list in a quote keeps it in the quote", async () => {
+    const onChange = await mountAt(
+      "<blockquote><p>Steps:</p><ul><li>one</li><li>two</li></ul><p>end</p></blockquote>",
+      "one",
+      1
+    );
+    await click(byLabel("Numbered list"));
+    expect(sanitizeRichTextHtml(lastHtml(onChange))).toBe(
+      '<blockquote><p>Steps:</p><ol><li>one</li><li>two</li></ol><p>end</p></blockquote>'
+    );
+  });
+});
