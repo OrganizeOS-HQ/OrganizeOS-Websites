@@ -7,9 +7,9 @@ import fixture from "./__fixtures__/rich-text-roundtrip.json";
 
 /**
  * The read-only check runs copies of the platform's rich-text-nodes.ts and
- * sanitiser on the platform's sanitize-html, htmlparser2 and entities. The
- * shared round-trip fixture pins all of them; the platform checks its own
- * against the same pins.
+ * sanitiser on the platform's sanitize-html, htmlparser2, entities,
+ * domhandler and launder. The shared round-trip fixture pins all five; the
+ * platform checks its own against the same pins.
  *
  * A package is looked up in the node_modules folders above a directory, as
  * Node does, never through NODE_PATH (which holds every workspace package).
