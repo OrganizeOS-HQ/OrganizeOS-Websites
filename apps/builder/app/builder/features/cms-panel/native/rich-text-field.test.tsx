@@ -3,7 +3,7 @@ import "@webstudio-is/design-system/global.css";
 import { createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { userEvent } from "@vitest/browser/context";
 import {
   $createParagraphNode,
@@ -18,9 +18,11 @@ import {
 import { $createLinkNode, $isLinkNode } from "@lexical/link";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import { RichTextField, type RichTextFieldProps } from "./rich-text-field";
+import { sanitizeRichTextHtml } from "./rich-text-sanitize";
 import { createLazyRichTextField, FieldControl } from "./field-controls";
 import { createFakeCmsSource } from "./fake-cms-source";
 import fixture from "./__fixtures__/rich-text-roundtrip.json";
+import corpus from "./__fixtures__/rich-text-corpus.json";
 import {
   getRichTextReadOnlyReason,
   writeRichTextHeadless,
@@ -94,6 +96,10 @@ const lastValue = (onChange: ReturnType<typeof vi.fn>) =>
 
 const lastHtml = (onChange: ReturnType<typeof vi.fn>) =>
   lastValue(onChange)?.html ?? "";
+
+/** The read-only reason of a written value as the platform stores it. */
+const reopenReason = (html: string) =>
+  getRichTextReadOnlyReason(sanitizeRichTextHtml(html));
 
 const focusEditor = async () => {
   await userEvent.click(editable()!);
@@ -603,7 +609,7 @@ test("deleting a nested bullet's text keeps it nested, and the value reopens edi
   await type("{End}{Backspace}");
   const html = withoutClassAndDir(lastHtml(onChange));
   expect(html).toMatch(/<ul><li[^>]*>.*a.*<ul><li[^>]*><\/li><\/ul>/);
-  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+  expect(reopenReason(html)).toBeUndefined();
 });
 
 // B5: what the editor writes after ordinary edits always reopens editable
@@ -650,7 +656,7 @@ test.each([
     await type(keys);
     const written = lastHtml(onChange);
     expect(written).not.toBe("");
-    expect(getRichTextReadOnlyReason(written)).toBeUndefined();
+    expect(reopenReason(written)).toBeUndefined();
   }
 );
 
@@ -665,7 +671,7 @@ test("Link over a line ending in Shift+Enter saves a value that reopens editable
   await applyLink("https://example.org/");
   const written = lastHtml(onChange);
   expect(written).toContain('href="https://example.org/"');
-  expect(getRichTextReadOnlyReason(written)).toBeUndefined();
+  expect(reopenReason(written)).toBeUndefined();
 });
 
 test.each([
@@ -685,8 +691,78 @@ test.each([
   await settle();
   const written = lastHtml(onChange);
   expect(written).toContain("pasted");
-  expect(getRichTextReadOnlyReason(written)).toBeUndefined();
+  expect(reopenReason(written)).toBeUndefined();
 });
+
+// exact-guard round, item 3: spaces at a link's edges
+test.each([
+  ["a space at a link's start after a space", 2, 4],
+  ["a space at a link's end before a space", 0, 2],
+])(
+  "Link over %s saves a value that reopens editable",
+  async (_name, from, to) => {
+    const { onChange } = mountField({ value: { html: "<p>x</p>" } });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>("p"));
+    await act(async () => {
+      editorOf()!.update(() => {
+        const text = $getRoot().getAllTextNodes()[0];
+        text.setTextContent("a  b");
+        text.select(from, to);
+      });
+    });
+    await settle();
+    await applyLink("https://example.org/");
+    const written = lastHtml(onChange);
+    expect(written).toContain("<a ");
+    expect(reopenReason(written)).toBeUndefined();
+  }
+);
+
+test("a space typed at a link's end, then Shift+Enter, saves a value that reopens editable", async () => {
+  const { onChange } = mountField({
+    value: { html: '<p><a href="https://example.org/">link</a></p>' },
+  });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("a"));
+  await act(async () => {
+    editorOf()!.update(() => {
+      const link = $getRoot().getAllTextNodes()[0];
+      link.setTextContent("link ");
+      link.select(5, 5);
+    });
+  });
+  await settle();
+  await type("{Shift>}{Enter}{/Shift}x");
+  const written = lastHtml(onChange);
+  expect(reopenReason(written)).toBeUndefined();
+});
+
+// exact-guard round, item 2: a list made from a quote of several paragraphs
+test.each(["Bulleted list", "Numbered list"])(
+  "%s over a quote of two paragraphs gives each its own item, and the value reopens editable",
+  async (label) => {
+    const html = "<blockquote><p>one</p><p>two</p></blockquote><p>after</p>";
+    expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+    const { onChange } = mountField({ value: { html } });
+    await settle();
+    await click(editable()!.querySelector<HTMLElement>("blockquote"));
+    await act(async () => {
+      editorOf()!.update(() => {
+        const texts = $getRoot().getAllTextNodes();
+        const one = texts.find((node) => node.getTextContent() === "one")!;
+        const two = texts.find((node) => node.getTextContent() === "two")!;
+        const selection = one.select(0, 0);
+        selection.focus.set(two.getKey(), 3, "text");
+      });
+    });
+    await settle();
+    await click(byLabel(label));
+    const written = lastHtml(onChange);
+    expect(editable()!.querySelectorAll("li").length).toBe(2);
+    expect(reopenReason(written)).toBeUndefined();
+  }
+);
 
 test("the toolbar wraps within 240 px", async () => {
   mountField({ id: "narrow" });
@@ -927,7 +1003,7 @@ test("an image this field copied pastes back whole", async () => {
   });
   await settle();
   expect(lastHtml(onChange)).toContain('src="https://example.org/a.png"');
-  expect(getRichTextReadOnlyReason(lastHtml(onChange))).toBeUndefined();
+  expect(reopenReason(lastHtml(onChange))).toBeUndefined();
 });
 
 test("an image in another editor's Lexical data pastes as nothing", async () => {
@@ -1117,7 +1193,7 @@ test("Link over a selection reaching a figure leaves no link around it", async (
   expect(html).toContain("<figure>");
   expect(html).not.toMatch(/<a\b[^>]*>\s*<figure/);
   expect(imagesInLinks(html)).toEqual([false]);
-  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+  expect(reopenReason(html)).toBeUndefined();
 });
 
 test("Link over a line holding an image links its text and leaves the image outside", async () => {
@@ -1186,7 +1262,7 @@ test("pasting a linked image keeps the words around it and leaves no empty link"
   expect(lastValue(onChange)?.text).toContain("I love this");
   expect(html).not.toContain("<a");
   expect(html).not.toContain("<img");
-  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+  expect(reopenReason(html)).toBeUndefined();
 });
 
 test("select all over an image keeps the keyboard in the text", async () => {
@@ -1234,7 +1310,7 @@ test("pasting a link around a heading writes the link inside the heading, and th
   await settle();
   const html = lastHtml(onChange);
   expect(html).not.toMatch(/<a\b[^>]*>\s*<h2/);
-  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+  expect(reopenReason(html)).toBeUndefined();
 });
 
 test.each(fixture.readOnly.map((entry) => [entry.name, entry] as const))(
@@ -1255,7 +1331,7 @@ test("Shift+Enter in an empty paragraph saves its line break, and the value stil
   await type("{Shift>}{Enter}{/Shift}");
   const html = lastHtml(onChange);
   expect(withoutClassAndDir(html)).toMatch(/<p><br><\/p>$/);
-  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+  expect(reopenReason(html)).toBeUndefined();
 });
 
 const textOf = (html: string) =>
@@ -1269,7 +1345,7 @@ test("Shift+Enter in an empty bullet saves a value that still opens editable", a
   await type("{Shift>}{Enter}{/Shift}");
   const html = lastHtml(onChange);
   expect(withoutClassAndDir(html)).toMatch(/<li[^>]*><br><\/li><\/ul>/);
-  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+  expect(reopenReason(html)).toBeUndefined();
 });
 
 test.each([
@@ -1286,7 +1362,7 @@ test.each([
     const html = lastHtml(onChange);
     // V11: a stored value's load keeps every line break, so one is written
     expect(textOf(html)).toMatch(new RegExp(`one<br></${tag}>`));
-    expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+    expect(reopenReason(html)).toBeUndefined();
   }
 );
 
@@ -1303,7 +1379,7 @@ test("pasting a link around an article moves the link into its blocks", async ()
   await settle();
   const html = lastHtml(onChange);
   expect(html).not.toMatch(/<a\b[^>]*>\s*<(h3|p|article)/);
-  expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+  expect(reopenReason(html)).toBeUndefined();
 });
 
 test.each([
@@ -1314,4 +1390,57 @@ test.each([
   await settle();
   expect(editable()).toBeNull();
   expect(onChange).not.toHaveBeenCalled();
+});
+
+// exact-guard round, item 2: every toolbar command over a whole editable
+// corpus value saves a value that reopens editable, on every twentieth one (the
+// corpus orders its matrix by shape, so this spans every shape it crosses)
+const corpusSample = corpus.entries
+  .filter((entry) => entry.verdict === "editable")
+  .filter((_entry, index) => index % 20 === 0)
+  .map((entry) => entry.input);
+
+const toolbarActions: Array<[string, () => Promise<void>]> = [
+  ["Bold", () => click(byLabel("Bold"))],
+  ["Italic", () => click(byLabel("Italic"))],
+  ["Bulleted list", () => click(byLabel("Bulleted list"))],
+  ["Numbered list", () => click(byLabel("Numbered list"))],
+  ["Quote", () => chooseBlock("Quote")],
+  ["Heading 2", () => chooseBlock("Heading 2")],
+  ["Code", () => chooseBlock("Code")],
+  ["Paragraph", () => chooseBlock("Paragraph")],
+  ["Link", () => applyLink("https://example.org/")],
+];
+
+describe("every toolbar command over a corpus value reopens editable", () => {
+  test.each(toolbarActions)(
+    "%s",
+    async (_name, run) => {
+      const locked: string[] = [];
+      for (const html of corpusSample) {
+        const { onChange } = mountField({ value: { html } });
+        await settle();
+        const first = editable()?.querySelector<HTMLElement>(
+          "p, li, h2, h3, h4, blockquote, code"
+        );
+        if (first !== null && first !== undefined) {
+          await click(first);
+          await selectAll();
+          await run();
+          const written = lastHtml(onChange);
+          if (written !== "" && reopenReason(written) !== undefined) {
+            locked.push(html);
+          }
+        }
+        act(() => {
+          root?.unmount();
+        });
+        container?.remove();
+        root = undefined;
+        container = undefined;
+      }
+      expect(locked).toEqual([]);
+    },
+    600_000
+  );
 });

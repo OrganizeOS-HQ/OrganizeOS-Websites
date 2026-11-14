@@ -53,6 +53,7 @@ import {
   $createQuoteNode,
   $isHeadingNode,
   $isQuoteNode,
+  type QuoteNode,
 } from "@lexical/rich-text";
 import { $getLexicalContent } from "@lexical/clipboard";
 import { $createCodeNode, $isCodeNode } from "@lexical/code";
@@ -685,6 +686,45 @@ const ImageButton = ({
 };
 
 /** One `role="toolbar"` row, on upstream's `MarkdownToolbar` pattern. */
+/** Each selected quote that holds blocks is replaced by those blocks. */
+const $unwrapQuotedBlocks = () => {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) === false) {
+    return;
+  }
+  const quotes = new Set<QuoteNode>();
+  for (const node of selection.getNodes()) {
+    const quote = $isQuoteNode(node)
+      ? node
+      : $findMatchingParent(node, $isQuoteNode);
+    if (
+      $isQuoteNode(quote) &&
+      quote
+        .getChildren()
+        .some((child) => $isElementNode(child) && child.isInline() === false)
+    ) {
+      quotes.add(quote);
+    }
+  }
+  for (const quote of quotes) {
+    // inline content between blocks keeps one paragraph per run
+    let run: ElementNode | undefined;
+    for (const child of quote.getChildren()) {
+      if ($isElementNode(child) && child.isInline() === false) {
+        run = undefined;
+        quote.insertBefore(child);
+      } else {
+        if (run === undefined) {
+          run = $createParagraphNode();
+          quote.insertBefore(run);
+        }
+        run.append(child);
+      }
+    }
+    quote.remove();
+  }
+};
+
 const Toolbar = ({
   id,
   disabled,
@@ -703,6 +743,10 @@ const Toolbar = ({
       editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
       return;
     }
+    // a quote holding paragraphs gives them up first, so each becomes its
+    // own item: one item holding several paragraphs is no list the editor
+    // can write back
+    editor.update(() => $unwrapQuotedBlocks(), { discrete: true });
     editor.dispatchCommand(
       type === "bullet"
         ? INSERT_UNORDERED_LIST_COMMAND

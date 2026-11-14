@@ -24,7 +24,12 @@ import {
 } from "lexical";
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
 import { $isLinkNode, LinkNode } from "@lexical/link";
-import { $isListNode, ListItemNode, ListNode } from "@lexical/list";
+import {
+  $isListItemNode,
+  $isListNode,
+  ListItemNode,
+  ListNode,
+} from "@lexical/list";
 import {
   $createHeadingNode,
   HeadingNode,
@@ -36,13 +41,7 @@ import { mergeRegister } from "@lexical/utils";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import type { CmsRichTextValue } from "./cms-source";
 import { sanitizeRichTextHtml } from "./rich-text-sanitize";
-import {
-  RICH_TEXT_MAX_DEPTH,
-  RICH_TEXT_MAX_NODES,
-  toRichTextNodes,
-  type RichTextBlock,
-  type RichTextInline,
-} from "./rich-text-nodes";
+import { RICH_TEXT_MAX_DEPTH, toRichTextNodes } from "./rich-text-nodes";
 import {
   CmsFigureNode,
   CmsImageNode,
@@ -416,49 +415,33 @@ const sameList = (left: string[], right: string[]) =>
   left.length === right.length &&
   left.every((entry, index) => entry === right[index]);
 
-/** Blocks and inlines, as the platform counts them, and the deepest nesting. */
-const measureInlines = (nodes: RichTextInline[]): number =>
-  nodes.reduce(
-    (count, node) => count + 1 + (node.t === "a" ? measureInlines(node.c) : 0),
-    0
-  );
+/**
+ * Whether the platform cuts the tree at its node limit: an `hr` added at the
+ * end stays the last node exactly when the tree has room for it.
+ */
+const isCutAtNodeLimit = (stored: string) =>
+  toRichTextNodes(`${stored}<hr />`).children.at(-1)?.t !== "hr";
 
-const measureBlocks = (
-  nodes: RichTextBlock[],
-  depth: number
-): { count: number; depth: number } =>
-  nodes.reduce(
-    (total, node) => {
-      let count = 1;
-      let deepest = depth;
-      if (node.t === "p" || node.t === "h") {
-        count += measureInlines(node.c);
-      } else if (node.t === "img" && node.caption !== undefined) {
-        count += measureInlines(node.caption);
-      } else if (node.t === "quote") {
-        const inner = measureBlocks(node.children, depth + 1);
-        count += inner.count;
-        deepest = inner.depth;
-      } else if (node.t === "ul" || node.t === "ol") {
-        for (const item of node.items) {
-          const inner = measureBlocks(item, depth + 1);
-          count += inner.count;
-          deepest = Math.max(deepest, inner.depth);
-        }
+/**
+ * Whether the platform flattens a list or quote past its depth limit to
+ * plain text: one with RICH_TEXT_MAX_DEPTH - 1 lists or quotes around it.
+ */
+const isFlattenedAtDepthLimit = (stored: string) =>
+  Array.from(
+    parseHtml(stored).body.querySelectorAll("ul, ol, blockquote")
+  ).some((element) => {
+    let around = 0;
+    for (
+      let parent = element.parentElement;
+      parent !== null;
+      parent = parent.parentElement
+    ) {
+      if (/^(UL|OL|BLOCKQUOTE)$/.test(parent.tagName)) {
+        around += 1;
       }
-      return {
-        count: total.count + count,
-        depth: Math.max(total.depth, deepest),
-      };
-    },
-    { count: 0, depth }
-  );
-
-/** A tree at the platform's node or depth limit: its tail is plain text. */
-const atNodeLimit = (nodes: RichTextBlock[]) => {
-  const { count, depth } = measureBlocks(nodes, 1);
-  return count >= RICH_TEXT_MAX_NODES - 2 || depth >= RICH_TEXT_MAX_DEPTH - 1;
-};
+    }
+    return around >= RICH_TEXT_MAX_DEPTH - 1;
+  });
 
 const readOnlyMemo = new Map<string, RichTextReadOnlyReason | undefined>();
 const READ_ONLY_MEMO_SIZE = 8;
@@ -484,11 +467,13 @@ const readOnlyReasonOf = (html: string): RichTextReadOnlyReason | undefined => {
     ) {
       return "lossy";
     }
-    const written = sanitizeRichTextHtml(writeRichTextHeadless(html));
-    const before = toRichTextNodes(stored).children;
-    if (atNodeLimit(before)) {
+    // at a limit the platform serves a tail of plain text, which hides
+    // what the editor would change there
+    if (isCutAtNodeLimit(stored) || isFlattenedAtDepthLimit(stored)) {
       return "lossy";
     }
+    const written = sanitizeRichTextHtml(writeRichTextHeadless(html));
+    const before = toRichTextNodes(stored).children;
     const after = toRichTextNodes(written).children;
     if (
       JSON.stringify(before) !== JSON.stringify(after) ||
@@ -710,12 +695,26 @@ export const pushMarksIntoBlocks = (body: HTMLElement) => {
  */
 export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
   const dom = parseHtml(html);
+  // a link the rule refuses becomes its text; a kept one keeps its stored
+  // address as it is, so the save writes it back unchanged
   for (const anchor of Array.from(dom.body.querySelectorAll("a"))) {
-    const href = richTextImportHref(anchor.getAttribute("href") ?? undefined);
-    if (href === null) {
+    if (richTextImportHref(anchor.getAttribute("href") ?? undefined) === null) {
       anchor.replaceWith(...Array.from(anchor.childNodes));
-    } else {
-      anchor.setAttribute("href", href);
+    }
+  }
+  // an item holding only a nested list, after another item, is an emptied
+  // parent: an empty item before it keeps the list its own on the save
+  for (const item of Array.from(dom.body.querySelectorAll("li"))) {
+    if (
+      item.previousElementSibling?.tagName === "LI" &&
+      item.children.length > 0 &&
+      Array.from(item.childNodes).every((child) =>
+        child instanceof Element
+          ? isListElement(child)
+          : (child.textContent ?? "").trim() === ""
+      )
+    ) {
+      item.parentNode?.insertBefore(dom.createElement("li"), item);
     }
   }
   pushMarksIntoBlocks(dom.body);
@@ -742,6 +741,11 @@ export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
       nodes.push(node);
     }
   }
+  // a list item with no list around it holds no block type or list
+  // command: such a value is not the editor's to load
+  if (nodes.some($isListItemNode)) {
+    throw new Error("A list item outside a list");
+  }
   const root = $getRoot();
   root.clear();
   if (nodes.length === 0) {
@@ -750,13 +754,79 @@ export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
   root.append(...nodes);
 };
 
+const linkEdgeBlocks = "p, li, h1, h2, h3, h4, h5, h6, blockquote, figcaption";
+
+/**
+ * The spaces at a link's edges, written as a load reads them, so the save is
+ * a fixed point: of two collapsible spaces meeting at a link's edge the
+ * second goes, and a link's last space before a line break or the end of its
+ * line goes too.
+ */
+const fixLinkEdgeSpaces = (html: string) => {
+  if (html.includes("<a ") === false || typeof DOMParser === "undefined") {
+    return html;
+  }
+  const dom = parseHtml(html);
+  let changed = false;
+  for (const block of Array.from(dom.body.querySelectorAll(linkEdgeBlocks))) {
+    // the block's own line: its text, line breaks and images, in order
+    const tokens: Array<Text | "break" | "image"> = [];
+    const walk = (node: Node) => {
+      for (const child of Array.from(node.childNodes)) {
+        if (child instanceof Text) {
+          tokens.push(child);
+        } else if (child instanceof Element) {
+          if (child.matches(linkEdgeBlocks) || child.matches("ul, ol")) {
+            continue;
+          }
+          if (child.tagName === "BR") {
+            tokens.push("break");
+          } else if (child.tagName === "IMG") {
+            tokens.push("image");
+          } else {
+            walk(child);
+          }
+        }
+      }
+    };
+    walk(block);
+    tokens.push("break");
+    const linkOf = (text: Text) => text.parentElement?.closest("a") ?? null;
+    tokens.forEach((token, index) => {
+      if (token === "break" || token === "image") {
+        return;
+      }
+      const next = tokens[index + 1];
+      if (next === "image") {
+        return;
+      }
+      if (next === "break") {
+        if (linkOf(token) !== null && / +$/.test(token.data)) {
+          token.data = token.data.replace(/ +$/, "");
+          changed = true;
+        }
+        return;
+      }
+      if (
+        linkOf(token) !== linkOf(next) &&
+        / $/.test(token.data) &&
+        /^ /.test(next.data)
+      ) {
+        next.data = next.data.replace(/^ +/, "");
+        changed = true;
+      }
+    });
+  }
+  return changed ? dom.body.innerHTML : html;
+};
+
 /** The editor's HTML, under its current state. */
 export const exportRichTextHtml = (editor: LexicalEditor) => {
   // a save writes every code block whole, whatever a copy left marked
   copying = null;
-  return editor
-    .getEditorState()
-    .read(() => $generateHtmlFromNodes(editor, null));
+  return fixLinkEdgeSpaces(
+    editor.getEditorState().read(() => $generateHtmlFromNodes(editor, null))
+  );
 };
 
 const blockEnds = new Set([

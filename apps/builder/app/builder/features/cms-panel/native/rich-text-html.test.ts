@@ -378,7 +378,6 @@ describe("what the editor cannot read as the platform does (W4 verification)", (
       '<p><a href="https://example.org/">News<h3>Title</h3></a></p>',
       "heading in a link after its text",
     ],
-    ["<p><li>x</li></p>", "list item the parser moves"],
     ["<p>x<em><h2>u</h2></em>y</p>", "heading in a mark between words"],
     ["<p>x<strong>a<ul><li>u</li></ul>b</strong>y</p>", "list in a mark"],
     ["<p><strong><br /></strong></p><p>x</p>", "a marked line break alone"],
@@ -394,6 +393,31 @@ describe("what the editor cannot read as the platform does (W4 verification)", (
     ["x<br />y", "a line break outside any block"],
   ])("%s loads, and saves stably when editable (%s)", (html) => {
     expect(() => roundTrip(html)).not.toThrow();
+    expectStableIfEditable(html);
+  });
+
+  // exact-guard round, item 10: a list item the parser leaves with no list
+  // around it holds no block or list command
+  test.each(["<p><li>x</li></p>", "<li><p>stray</p></li>"])(
+    "a list item with no list around it reads lossy: %s",
+    (html) => {
+      expect(getRichTextReadOnlyReason(html)).toBe("lossy");
+    }
+  );
+
+  // item 11: a stored address with spaces around it is the same link
+  test("a stored href with spaces around it stays editable and is written back as stored", () => {
+    const html = '<p><a href=" https://example.org/ ">x</a></p>';
+    expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+    expect(roundTrip(html)).toContain('href=" https://example.org/ "');
+  });
+
+  // item 12: an emptied parent bullet keeps its sub-bullets its own
+  test.each([
+    "<ul><li><p>a</p></li><li><ul><li><p>child</p></li></ul></li></ul>",
+    "<ol><li><p>a</p></li><li><ol><li><p>child</p></li></ol></li><li><p>b</p></li></ol>",
+  ])("an emptied parent bullet stays editable and saves stably: %s", (html) => {
+    expect(getRichTextReadOnlyReason(html)).toBeUndefined();
     expectStableIfEditable(html);
   });
 
@@ -480,5 +504,48 @@ describe("a block holding only line breaks, or only a space that shows", () => {
   ])("%s writes %s, editable", (html, written) => {
     expect(plain(html)).toBe(written);
     expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+  });
+});
+
+describe("the platform's node and depth limits (exact-guard round)", () => {
+  const lines = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      index % 2 === 0 ? "x" : "<br />"
+    ).join("");
+
+  test("a tree cut at the node limit reads lossy, even when the cut empties containers", () => {
+    const html = `<p>${lines(4994)}</p><blockquote><ul><li><p>t</p></li></ul></blockquote><ul><li><p>a</p><p>b</p></li></ul>`;
+    expect(getRichTextReadOnlyReason(html)).toBe("lossy");
+  });
+
+  test("a cut inside a nested sub-list's link reads lossy", () => {
+    const html = `<p>${lines(4994)}</p><ul><li><p>a</p><ul><li><p><a href="https://example.org/">deep link</a> and more</p></li></ul></li></ul>`;
+    expect(getRichTextReadOnlyReason(html)).toBe("lossy");
+  });
+
+  test("a tree under the node limit reads as its round trip does", () => {
+    const html = `<p>${lines(3000)}</p><ul><li><p>a</p></li></ul>`;
+    expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+    expectStableIfEditable(html);
+  });
+
+  const nested = (levels: number) => {
+    let html = "<p>deepest</p>";
+    for (let level = 0; level < levels; level += 1) {
+      html = `<ul><li>${html}</li></ul>`;
+    }
+    return html;
+  };
+
+  test.each([6, 7])("%i nested lists open editable", (levels) => {
+    expect(getRichTextReadOnlyReason(nested(levels))).toBeUndefined();
+    expectStableIfEditable(nested(levels));
+  });
+
+  test("a list past the depth limit, which the platform flattens, reads lossy", () => {
+    expect(getRichTextReadOnlyReason(nested(8))).toBe("lossy");
+    expect(
+      getRichTextReadOnlyReason(`<blockquote>${nested(7)}</blockquote>`)
+    ).toBe("lossy");
   });
 });
