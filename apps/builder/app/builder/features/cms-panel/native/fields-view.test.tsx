@@ -882,6 +882,96 @@ describe("a reorder conflict beside an open view", () => {
     expect(labelOf(platform.state.fields, "summary")).toBe("Excerpt");
   });
 
+  // round 5, item 1: the view counts as clean only once the reread lands
+  /** Holds the next E21 until `release`. */
+  const holdNextRead = () => {
+    const real =
+      harness.structure.getCollectionStructure.getMockImplementation()!;
+    const gate = deferred<void>();
+    harness.structure.getCollectionStructure.mockImplementationOnce(
+      async (id) => {
+        await gate.promise;
+        return real(id);
+      }
+    );
+    return () => gate.resolve();
+  };
+
+  test("text typed in a clean sheet while the conflict's reread runs stays; the order goes back and the sheet's Save meets conflict (round 5)", async () => {
+    const error = vi.spyOn(toast, "error");
+    const platform = world();
+    await openFields();
+    await click(fieldRow("summary")!.querySelector("button"));
+    platform.other(() => {
+      platform.state.fields[1].label = "Excerpt";
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await moveRow("title", "ArrowDown");
+    const release = holdNextRead();
+    await pass(600);
+    await pass(0);
+    vi.useRealTimers();
+    await settle();
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
+    await typeInto(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-help"),
+      "Typed meanwhile"
+    );
+    await act(async () => release());
+    await settle();
+    expect(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-help")?.value
+    ).toBe("Typed meanwhile");
+    expect(fieldKeys()).toEqual(["title", "summary", "author"]);
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledWith(
+      "Changed by someone else",
+      STRUCTURE_FAILURE_TOAST
+    );
+    await click(buttonByText("Save", sheet()!));
+    expect(
+      document.querySelector("[data-cms-structure-conflict]")
+    ).not.toBeNull();
+    expect(labelOf(platform.state.fields, "summary")).toBe("Excerpt");
+  });
+
+  test("text typed in clean settings while the conflict's reread runs stays; their Save meets conflict (round 5)", async () => {
+    const platform = world();
+    await openFields();
+    await click(tab("Collections"));
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+    platform.other(() => {
+      platform.state.settings.name = "Articles";
+    });
+    await click(tab("Fields"));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await moveRow("title", "ArrowDown");
+    const release = holdNextRead();
+    await pass(600);
+    await pass(0);
+    vi.useRealTimers();
+    await settle();
+    const singular = () =>
+      document.querySelector<HTMLInputElement>("#cms-settings-singular");
+    await typeInto(singular(), "Typed meanwhile");
+    await act(async () => release());
+    await settle();
+    expect(singular()?.value).toBe("Typed meanwhile");
+    expect(fieldKeys()).toEqual(["title", "summary", "author"]);
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
+    await click(
+      buttonByText(
+        "Save",
+        document.querySelector<HTMLElement>("[data-cms-structure-header]")!
+      )
+    );
+    expect(harness.structure.updateCollection).toHaveBeenCalledTimes(1);
+    expect(platform.state.settings.singularName).not.toBe("Typed meanwhile");
+    expect(platform.state.settings.name).toBe("Articles");
+  });
+
   test("a move flushed by opening another collection, answered conflict, is sent again with the other writer's change (item 2)", async () => {
     const platform = world();
     const posts =

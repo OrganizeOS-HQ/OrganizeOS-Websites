@@ -852,12 +852,26 @@ export const useCmsStructure = ({
       // once more, unless a view with unsaved values holds the collection.
       // A clean view holding it is drawn again from the fresh read, so its
       // next Save carries the other person's change.
-      const held = (holds.current.get(id) ?? 0) > 0;
-      const heldDirty = held && viewDirty.current;
+      const heldDirty = (holds.current.get(id) ?? 0) > 0 && viewDirty.current;
       if (result.error === "conflict" && isRetry === false && !heldDirty) {
-        const fresh = await fetchStructure(id, held);
+        // the view's version is taken only once the read lands, and only if
+        // the view is still clean then: values typed meanwhile stay
+        const fresh = await fetchStructure(id);
         if (fresh !== undefined) {
+          const held = (holds.current.get(id) ?? 0) > 0;
+          if (held && viewDirty.current) {
+            reorderPending.current.delete(id);
+            pendingOrder.current.delete(id);
+            putBackOrder(id);
+            toast.error("Changed by someone else", STRUCTURE_FAILURE_TOAST);
+            return;
+          }
           if (held) {
+            const waiting = deferred.current.get(id);
+            if (waiting !== undefined && isCurrentMark(id, waiting.mark)) {
+              deferred.current.delete(id);
+              versions.current.set(id, waiting.updatedAt);
+            }
             setSession((current) => current + 1);
           }
           void sendReorder(id, true);
