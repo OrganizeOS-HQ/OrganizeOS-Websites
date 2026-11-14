@@ -308,12 +308,26 @@ const SPEAKERS_STRUCTURE = {
   ],
 };
 
-/** E22 makes Speakers, and E1 and E21 list it from then on. */
+/** E22 makes Speakers, and E1, E2 and E21 serve it from then on. */
 const createSpeakers = (status: "created" | "found" = "created") => {
+  const read = harness.fake.getCollection.getMockImplementation();
   harness.structure.createCollection.mockImplementation(async () => {
     harness.fake.listCollections.mockResolvedValue({
       collections: [POSTS, PEOPLE, SPEAKERS],
     });
+    harness.fake.getCollection.mockImplementation(async (id) =>
+      id === SPEAKERS.id
+        ? {
+            collection: {
+              ...structuredClone(POSTS_DETAIL),
+              id: SPEAKERS.id,
+              slug: SPEAKERS.slug,
+              name: SPEAKERS.name,
+              fields: structuredClone(SPEAKERS_STRUCTURE.fields),
+            },
+          }
+        : read!(id)
+    );
     return { collection: SPEAKERS, created: status === "created" };
   });
   harness.structure.getCollectionStructure.mockImplementation(async (id) =>

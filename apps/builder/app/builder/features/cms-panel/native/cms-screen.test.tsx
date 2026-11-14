@@ -1123,7 +1123,7 @@ describe("answers that arrive after the screen moved on", () => {
       "people",
     ],
   ] as const)(
-    "a create that answers after %s and Discard leaves the items view open",
+    "%s during a create's Save waits for it, then leaves without asking",
     async (_name, leave, slug) => {
       mount();
       await settle();
@@ -1135,8 +1135,9 @@ describe("answers that arrive after the screen moved on", () => {
       await click(buttonByText("Save"));
       expect(fake.createItem).toHaveBeenCalledTimes(1);
       await leave();
-      await click(buttonByText("Discard"));
-      expect(titleInput()).toBeNull();
+      // the editor stays while the create runs, and asks nothing
+      expect(titleInput()).not.toBeNull();
+      expect(hasText("Discard unsaved changes?")).toBe(false);
       const reads = fake.getItem.mock.calls.length;
       await act(async () =>
         held.resolve({
@@ -1150,6 +1151,7 @@ describe("answers that arrive after the screen moved on", () => {
       );
       await settle();
       expect(document.querySelector("[data-cms-editor]")).toBeNull();
+      expect(hasText("Discard unsaved changes?")).toBe(false);
       expect(fake.getItem).toHaveBeenCalledTimes(reads);
       expect(currentSlug()).toBe(slug);
     }
@@ -1551,5 +1553,433 @@ describe("the list state per collection (Task 14)", () => {
     await settle();
     expect(fake.listItems.mock.calls.length).toBeGreaterThan(calls);
     expect(document.querySelector("[data-cms-item-id]")).not.toBeNull();
+  });
+});
+
+/**
+ * A Posts world of `count` items, all of `status`: E3 filters by status,
+ * sorts by name and pages 50 at a time (a page past the end answers the
+ * last); E11 and E12 change it.
+ */
+const listWorld = (count: number, status: CmsItem["status"]) => {
+  const world = {
+    items: Array.from({ length: count }, (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      title: `Row ${String(index + 1).padStart(3, "0")}`,
+      status,
+    })),
+  };
+  const toItem = (entry: (typeof world.items)[number]) =>
+    itemOf({
+      id: entry.id,
+      slug: entry.title.toLowerCase().replace(" ", "-"),
+      status: entry.status,
+      data: { title: entry.title, summary: null, author: null },
+    });
+  fake.listItems.mockImplementation(async (_c, q) => {
+    let items = world.items.filter(
+      (entry) =>
+        q.status === undefined ||
+        q.status === "all" ||
+        entry.status === q.status
+    );
+    if (q.sort === "name") {
+      items = [...items].sort((left, right) =>
+        q.direction === "desc"
+          ? right.title.localeCompare(left.title)
+          : left.title.localeCompare(right.title)
+      );
+    }
+    const pages = Math.max(1, Math.ceil(items.length / 50));
+    const page = Math.min(q.page ?? 1, pages);
+    return echoPage(
+      { ...q, page },
+      items
+        .slice((page - 1) * 50, page * 50)
+        .map((entry) => itemRowOf(toItem(entry))),
+      items.length
+    );
+  });
+  fake.getItem.mockImplementation(async (_c, id) => {
+    const entry = world.items.find((candidate) => candidate.id === id);
+    return entry === undefined
+      ? { error: "not_found" }
+      : { item: toItem(entry) };
+  });
+  fake.setItemsStatus.mockImplementation(async (_c, body) => {
+    for (const entry of world.items) {
+      if (body.ids.includes(entry.id)) {
+        entry.status = body.status;
+      }
+    }
+    return { changed: body.ids };
+  });
+  fake.deleteItems.mockImplementation(async (_c, body) => {
+    world.items = world.items.filter(
+      (entry) => body.ids.includes(entry.id) === false
+    );
+    return { deleted: body.ids };
+  });
+  return world;
+};
+
+describe("the focus after Back (Review Focus 2)", () => {
+  const lastListItems = () =>
+    fake.listItems.mock.calls.at(-1) as [string, CmsItemsQuery] | undefined;
+  const pager = () =>
+    document.querySelector<HTMLElement>("[data-cms-pager]")?.textContent;
+  const firstRow = () =>
+    document.querySelector<HTMLElement>("[data-cms-item-id]");
+  const filterLabel = () =>
+    [...document.querySelectorAll("button")].find((button) =>
+      button.textContent?.startsWith("Filter")
+    )?.textContent;
+  const runFromMenu = async (label: string) => {
+    await click(byLabel("Item menu"));
+    await click(menuRadioOrItem(label));
+    await settle();
+  };
+  const menuRadioOrItem = (text: string) =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (item) => item.textContent === text
+    );
+
+  test.each([
+    ["Archive", "published"],
+    ["Unpublish", "published"],
+    ["Restore", "archived"],
+  ] as const)(
+    "%s of the only row on page 2 under the %s filter, then Back: the filter stays, the last page shows and its first row has the focus",
+    async (label, status) => {
+      listWorld(51, status);
+      mount({
+        initialView: {
+          collectionId: POSTS.id,
+          page: 2,
+          list: listView({ status }),
+        },
+      });
+      await settle();
+      expect(pager()).toBe("51-51 of 51");
+      await click(firstRow());
+      await runFromMenu(label);
+      await click(byLabel("Back"));
+      await settle();
+      expect(lastListItems()?.[1]).toMatchObject({ status });
+      expect(filterLabel()).toBe("Filter 1");
+      expect(pager()).toBe("1-50 of 50");
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement).toBe(firstRow());
+    }
+  );
+
+  test("Archive on a filtered, sorted page 2, then Back: page 2 under the filter and sort, the focus on its first row", async () => {
+    listWorld(61, "draft");
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        page: 2,
+        list: listView({ status: "draft", sort: "name", direction: "desc" }),
+      },
+    });
+    await settle();
+    expect(pager()).toBe("51-61 of 61");
+    await click(firstRow());
+    await runFromMenu("Archive");
+    await click(byLabel("Back"));
+    await settle();
+    expect(lastListItems()).toEqual([
+      POSTS.id,
+      {
+        q: undefined,
+        page: 2,
+        status: "draft",
+        sort: "name",
+        direction: "desc",
+      },
+    ]);
+    expect(pager()).toBe("51-60 of 60");
+    expect(document.activeElement).toBe(firstRow());
+  });
+
+  test("Delete on a filtered, sorted page 2: page 2 under the filter and sort, the focus on its first row", async () => {
+    listWorld(61, "draft");
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        page: 2,
+        list: listView({ status: "draft", sort: "name", direction: "desc" }),
+      },
+    });
+    await settle();
+    await click(firstRow());
+    await click(byLabel("Item menu"));
+    await click(menuRadioOrItem("Delete"));
+    await click(
+      [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          '[role="dialog"] button'
+        ),
+      ].find((button) => button.textContent === "Delete")
+    );
+    await settle();
+    expect(lastListItems()).toEqual([
+      POSTS.id,
+      {
+        q: undefined,
+        page: 2,
+        status: "draft",
+        sort: "name",
+        direction: "desc",
+      },
+    ]);
+    expect(pager()).toBe("51-60 of 60");
+    expect(document.activeElement).toBe(firstRow());
+  });
+
+  test("Delete of the only row on page 2: page 1 shows, the focus on its first row", async () => {
+    listWorld(51, "draft");
+    mount({ initialView: { collectionId: POSTS.id, page: 2 } });
+    await settle();
+    expect(pager()).toBe("51-51 of 51");
+    await click(firstRow());
+    await click(byLabel("Item menu"));
+    await click(menuRadioOrItem("Delete"));
+    await click(
+      [
+        ...document.querySelectorAll<HTMLButtonElement>(
+          '[role="dialog"] button'
+        ),
+      ].find((button) => button.textContent === "Delete")
+    );
+    await settle();
+    expect(pager()).toBe("1-50 of 50");
+    expect(document.activeElement).toBe(firstRow());
+  });
+
+  test("Back before the refetch after Archive answers: the focus moves to the first row once the row leaves", async () => {
+    const world = listWorld(3, "published");
+    mount({
+      initialView: {
+        collectionId: POSTS.id,
+        list: listView({ status: "published" }),
+      },
+    });
+    await settle();
+    const archivedId = world.items[0].id;
+    await click(firstRow());
+    // the refetch after the write is held
+    const held = deferred<void>();
+    const answer = fake.listItems.getMockImplementation()!;
+    fake.listItems.mockImplementation(async (c, q) => {
+      await held.promise;
+      return answer(c, q);
+    });
+    await runFromMenu("Archive");
+    await click(byLabel("Back"));
+    await settle();
+    // the drawn page is the one before the write: its row has the focus
+    expect(document.activeElement).toBe(
+      document.querySelector(`[data-cms-item-id="${archivedId}"]`)
+    );
+    await act(async () => held.resolve());
+    await settle();
+    expect(
+      document.querySelector(`[data-cms-item-id="${archivedId}"]`)
+    ).toBeNull();
+    expect(document.activeElement).toBe(firstRow());
+  });
+});
+
+describe("a failed E2 (verification)", () => {
+  test("E2 unavailable on the list: the toast, no field columns, then one refresh on E3's answer draws them", async () => {
+    const error = vi.spyOn(toast, "error");
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+    const base = fake.getCollection.getMockImplementation()!;
+    const refresh = deferred<void>();
+    let calls = 0;
+    fake.getCollection.mockImplementation(async (id) => {
+      calls += 1;
+      if (calls === 1) {
+        return { error: "unavailable" };
+      }
+      await refresh.promise;
+      return base(id);
+    });
+    fake.listItems.mockImplementation(async (_c, q) =>
+      itemsPageOf([itemRowOf(itemOf())], 1, 1, {
+        ...echoPage(q),
+        columns: ["online"],
+      })
+    );
+    mount({ initialView: { collectionId: EVENTS.id } });
+    await settle();
+    expect(error).toHaveBeenCalledWith("Try again in a minute", {
+      id: "cms-read-unavailable",
+    });
+    expect(document.querySelector('[data-cms-column-key="online"]')).toBeNull();
+    expect(fake.getCollection).toHaveBeenCalledTimes(2);
+    await act(async () => refresh.resolve());
+    await settle();
+    expect(fake.getCollection).toHaveBeenCalledTimes(2);
+    expect(
+      document.querySelector('[data-cms-column-key="online"]')
+    ).not.toBeNull();
+    // the refresh clears the failure: the item opens in the editor
+    await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+    expect(titleInput()).not.toBeNull();
+    expect(hasText("Try again in a minute")).toBe(false);
+  });
+
+  test.each(["E3 first", "E2 first"])(
+    "E2 and E3 failing together (%s) show the line and no toast",
+    async (order) => {
+      const error = vi.spyOn(toast, "error");
+      const dismiss = vi.spyOn(toast, "dismiss");
+      fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+      const e2 = deferred<void>();
+      const e3 = deferred<void>();
+      fake.getCollection.mockImplementation(async () => {
+        await e2.promise;
+        return { error: "unavailable" };
+      });
+      fake.listItems.mockImplementation(async () => {
+        await e3.promise;
+        return { error: "unavailable" };
+      });
+      mount({ initialView: { collectionId: EVENTS.id } });
+      await settle();
+      const [first, second] = order === "E3 first" ? [e3, e2] : [e2, e3];
+      await act(async () => first.resolve());
+      await settle();
+      await act(async () => second.resolve());
+      await settle();
+      expect(buttonByText("Retry")).toBeTruthy();
+      const shown = error.mock.calls.filter(
+        ([text]) => text === "Try again in a minute"
+      ).length;
+      const dismissed = dismiss.mock.calls.filter(
+        ([id]) => id === "cms-read-unavailable"
+      ).length;
+      expect(shown - Math.min(shown, dismissed)).toBe(0);
+    }
+  );
+
+  test("E2 failing after E3 has answered asks the fields once more, and draws the field columns once that answers", async () => {
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS] });
+    const base = fake.getCollection.getMockImplementation()!;
+    const first = deferred<void>();
+    const refresh = deferred<void>();
+    let calls = 0;
+    fake.getCollection.mockImplementation(async (id) => {
+      calls += 1;
+      if (calls === 1) {
+        await first.promise;
+        return { error: "unavailable" };
+      }
+      await refresh.promise;
+      return base(id);
+    });
+    fake.listItems.mockImplementation(async (_c, q) =>
+      itemsPageOf([itemRowOf(itemOf())], 1, 1, {
+        ...echoPage(q),
+        columns: ["online"],
+      })
+    );
+    mount({ initialView: { collectionId: EVENTS.id } });
+    await settle();
+    // E3 has answered; E2 now fails
+    expect(fake.listItems).toHaveBeenCalled();
+    await act(async () => first.resolve());
+    await settle();
+    expect(fake.getCollection).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('[data-cms-column-key="online"]')).toBeNull();
+    await act(async () => refresh.resolve());
+    await settle();
+    expect(fake.getCollection).toHaveBeenCalledTimes(2);
+    expect(
+      document.querySelector('[data-cms-column-key="online"]')
+    ).not.toBeNull();
+  });
+
+  test("back on a collection whose fields loaded before, a failed E2 still asks them once more", async () => {
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS, POSTS] });
+    const base = fake.getCollection.getMockImplementation()!;
+    let eventsCalls = 0;
+    let failEvents = false;
+    fake.getCollection.mockImplementation(async (id) => {
+      if (id === POSTS.id) {
+        return { error: "unavailable" };
+      }
+      eventsCalls += 1;
+      if (failEvents) {
+        failEvents = false;
+        return { error: "unavailable" };
+      }
+      return base(id);
+    });
+    fake.listItems.mockImplementation(async (c, q) =>
+      itemsPageOf([itemRowOf(itemOf())], 1, 1, {
+        ...echoPage(q),
+        columns: c === EVENTS.id ? ["online"] : [],
+      })
+    );
+    mount({ initialView: { collectionId: EVENTS.id } });
+    await settle();
+    expect(eventsCalls).toBe(1);
+    expect(
+      document.querySelector('[data-cms-column-key="online"]')
+    ).not.toBeNull();
+    await click(rowOf(POSTS.slug));
+    failEvents = true;
+    await click(rowOf(EVENTS.slug));
+    expect(eventsCalls).toBe(3);
+    expect(
+      document.querySelector('[data-cms-column-key="online"]')
+    ).not.toBeNull();
+  });
+
+  test("a schema refresh answering after another collection opened leaves that collection's fields", async () => {
+    fake.listCollections.mockResolvedValue({ collections: [EVENTS, POSTS] });
+    const base = fake.getCollection.getMockImplementation()!;
+    const held = deferred<void>();
+    let eventsCalls = 0;
+    fake.getCollection.mockImplementation(async (id) => {
+      if (id === EVENTS.id) {
+        eventsCalls += 1;
+        if (eventsCalls === 2) {
+          await held.promise;
+        }
+      }
+      return base(id);
+    });
+    let postsMissing = false;
+    // E3 answers after E2, so the fields are loaded when it lands
+    fake.listItems.mockImplementation(async (c, q) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return itemsPageOf([itemRowOf(itemOf())], 1, 1, {
+        ...echoPage(q),
+        columns:
+          c === EVENTS.id ? ["added"] : postsMissing ? ["gone"] : ["title"],
+      });
+    });
+    mount({ initialView: { collectionId: EVENTS.id } });
+    await settle();
+    // the missing "added" asked the Events refresh, held
+    expect(eventsCalls).toBe(2);
+    await click(rowOf(POSTS.slug));
+    const postsCalls = () =>
+      fake.getCollection.mock.calls.filter(([id]) => id === POSTS.id).length;
+    expect(postsCalls()).toBe(1);
+    await act(async () => held.resolve());
+    await settle();
+    // a Posts answer naming a key its fields lack still refreshes Posts
+    postsMissing = true;
+    await act(async () => userEvent.type(byLabel("Search Posts")!, "a"));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+    await settle();
+    expect(postsCalls()).toBe(2);
   });
 });

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -90,14 +91,25 @@ type Busy = "save" | "publish" | "discard" | "reload" | "status" | "delete";
  */
 type Settle = { sent: CmsItem; afterSave?: boolean };
 
-/** Whether an element is narrower than `width`, kept current on resize. */
+/**
+ * Whether an element is narrower than `width`, kept current on resize. The
+ * width is measured as the element is attached, so the first layout drawn
+ * is already right; the observer follows later resizes.
+ */
 const useIsNarrow = (width: number) => {
   const [element, setElement] = useState<HTMLElement | null>(null);
   const [isNarrow, setIsNarrow] = useState(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (element === null) {
       return;
     }
+    // the content box, as the observer's contentRect measures it
+    const style = getComputedStyle(element);
+    const contentWidth =
+      element.clientWidth -
+      parseFloat(style.paddingLeft) -
+      parseFloat(style.paddingRight);
+    setIsNarrow(contentWidth < width);
     const observer = new ResizeObserver(([entry]) => {
       setIsNarrow(entry.contentRect.width < width);
     });
@@ -121,6 +133,7 @@ export const ItemEditor = ({
   onDeleted,
   onCreated,
   onSchemaStale,
+  onBusyChange,
   onRefusal,
   onOpenHome,
   onOpenClassic,
@@ -151,6 +164,12 @@ export const ItemEditor = ({
    * are fetched again before the toast.
    */
   onSchemaStale: () => Promise<void>;
+  /**
+   * Save, Publish, Discard changes, Unpublish, Archive or Restore runs:
+   * every call it makes and the read after. `stay`: it ended with an error
+   * the editor shows, so what waited on it is dropped.
+   */
+  onBusyChange?: (busy: boolean, stay?: boolean) => void;
   /**
    * A call answered `unauthorized` or `mfa_required` (any call), or
    * `forbidden` or `plan` on the item's load: the screen shows the line
@@ -196,7 +215,15 @@ export const ItemEditor = ({
   // one after E6 answers not_found.
   const [clientId, setClientId] = useState(() => crypto.randomUUID());
   const backRef = useRef<HTMLButtonElement>(null);
+  const itemMenuRef = useRef<HTMLButtonElement>(null);
+  // Save, Publish, Discard changes, Unpublish, Archive or Restore, from its
+  // first call to its last answer
+  const [isChainRunning, setIsChainRunning] = useState(false);
+  // the running chain ended with an error the editor shows
+  const chainStays = useRef(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // what had the focus when the Discard changes dialog opened
+  const discardOpener = useRef<Element | null>(null);
   // Per reference field, its chosen ids whose items E5 no longer finds.
   const unresolved = useRef<Record<string, readonly string[]>>({});
   // Discard changes or Delete chosen in the Item menu: its dialog takes the
@@ -362,6 +389,11 @@ export const ItemEditor = ({
   useEffect(() => {
     onDirtyChange(isDirty);
   }, [isDirty, onDirtyChange]);
+  useEffect(() => {
+    onBusyChange?.(isChainRunning, chainStays.current);
+    chainStays.current = false;
+  }, [isChainRunning, onBusyChange]);
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   /**
@@ -413,11 +445,12 @@ export const ItemEditor = ({
     onWritten(result.item);
   };
 
+  /** Answers the read an unknown outcome runs, for the chain to wait on. */
   const fail = (
     failure: CmsFailure,
     settleWith?: Settle,
     on: "load" | "write" = "write"
-  ) => {
+  ): Promise<void> | undefined => {
     if (failure.error === "conflict") {
       setConflict(true);
       return;
@@ -475,8 +508,7 @@ export const ItemEditor = ({
       return;
     }
     if (failure.error === "unavailable" && settleWith !== undefined) {
-      void settle(settleWith);
-      return;
+      return settle(settleWith);
     }
     toast.error(getToastText(failure.error));
   };
@@ -511,7 +543,7 @@ export const ItemEditor = ({
       setBusy(undefined);
     }
     if (isCmsFailure(result)) {
-      fail(result, settleWith);
+      await fail(result, settleWith);
       return;
     }
     setLine(undefined);
@@ -606,14 +638,30 @@ export const ItemEditor = ({
     return { saved, differs };
   };
 
-  const save = async () => {
-    if (item === undefined) {
-      return;
+  /** Runs one chain of calls; Back and the other exits wait for its end. */
+  const runChain = async (run: () => Promise<void>) => {
+    chainStays.current = false;
+    setIsChainRunning(true);
+    try {
+      await run();
+    } finally {
+      if (isMounted.current) {
+        setIsChainRunning(false);
+      }
     }
-    await saveFrom(item);
   };
 
-  const publish = async () => {
+  const save = () =>
+    runChain(async () => {
+      if (item === undefined) {
+        return;
+      }
+      await saveFrom(item);
+    });
+
+  const publish = () => runChain(publishNow);
+
+  const publishNow = async () => {
     let current = item;
     if (current === undefined) {
       return;
@@ -646,7 +694,9 @@ export const ItemEditor = ({
     );
   };
 
-  const discard = async () => {
+  const discard = () => runChain(discardNow);
+
+  const discardNow = async () => {
     setConfirmDiscard(false);
     if (item === undefined || item === null) {
       return;
@@ -685,12 +735,16 @@ export const ItemEditor = ({
         onRefusal(refusal);
         return;
       }
+      // Retry reads the item as Reload does: an edit made meanwhile is
+      // kept aside
       setLine({
         kind: "unavailable",
         retry: () => {
-          loadedId.current = undefined;
-          setLine(undefined);
-          setLoadAttempt((current) => current + 1);
+          void reloadRef.current().then((read) => {
+            if (read && isMounted.current) {
+              setLine(undefined);
+            }
+          });
         },
       });
       return;
@@ -706,10 +760,15 @@ export const ItemEditor = ({
    * stopping on its failure; then E11; then the item is read.
    */
   const changeStatus = async (status: "draft" | "archived") => {
-    let current = item;
-    if (current === undefined || current === null) {
+    if (item === undefined || item === null) {
       return;
     }
+    const from = item;
+    await runChain(() => runStatus(status, from));
+  };
+
+  const runStatus = async (status: "draft" | "archived", from: CmsItem) => {
+    let current = from;
     if (isDirty) {
       const first = await saveFrom(current);
       if (first === undefined) {
@@ -743,7 +802,12 @@ export const ItemEditor = ({
         return;
       }
       if (result.error === "slug_taken") {
+        if (isMounted.current === false) {
+          toast.error(getListFailureText("status", result.error));
+          return;
+        }
         setErrors((current) => ({ ...current, slug: "Address in use" }));
+        chainStays.current = true;
         return;
       }
       toast.error(
@@ -802,10 +866,13 @@ export const ItemEditor = ({
     );
   };
 
-  /** Reload keeps the person's unsaved values aside (4.3.2). */
-  const reload = async () => {
+  /**
+   * Reload keeps the person's unsaved values aside (4.3.2). Answers whether
+   * the item was read.
+   */
+  const reload = async (): Promise<boolean> => {
     if (item === undefined || item === null) {
-      return;
+      return false;
     }
     setBusy("reload");
     let result: CmsResult<{ item: CmsItem }>;
@@ -819,13 +886,16 @@ export const ItemEditor = ({
     if (isCmsFailure(result)) {
       // the editor holds the person's values: refused as a write is, so the
       // view and the conflict line with its Reload stay
-      fail(result);
-      return;
+      void fail(result);
+      return false;
     }
     setKept(keepAside({ fields, kept, baseline, baselineSlug, values, slug }));
     applyItem(result.item);
     setLive(result.item.live);
+    return true;
   };
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
 
   const setField = (key: string, value: unknown) => {
     setValues((current) => ({ ...current, [key]: value }));
@@ -954,7 +1024,7 @@ export const ItemEditor = ({
         <DropdownMenu modal={false}>
           <Tooltip content="Item menu" side="bottom">
             <DropdownMenuTrigger asChild>
-              <IconButton aria-label="Item menu">
+              <IconButton ref={itemMenuRef} aria-label="Item menu">
                 <EllipsesIcon />
               </IconButton>
             </DropdownMenuTrigger>
@@ -1199,7 +1269,23 @@ export const ItemEditor = ({
           // the safe choice takes the first focus; Discard stays right
           onOpenAutoFocus={(event) => {
             event.preventDefault();
+            discardOpener.current = document.activeElement;
             cancelRef.current?.focus();
+          }}
+          // the focus goes back to its opener, else to the Item menu
+          onCloseAutoFocus={(event) => {
+            const element = discardOpener.current;
+            discardOpener.current = null;
+            event.preventDefault();
+            if (
+              element instanceof HTMLElement &&
+              element !== document.body &&
+              element.isConnected
+            ) {
+              element.focus();
+            } else {
+              itemMenuRef.current?.focus();
+            }
           }}
         >
           <DialogActions>
@@ -1221,6 +1307,7 @@ export const ItemEditor = ({
         title={getDeleteTitle(1, collection)}
         busy={busy === "delete"}
         onCancel={() => setConfirmDelete(false)}
+        onFocusLost={() => itemMenuRef.current?.focus()}
         onConfirm={() => void remove()}
       />
     </Flex>
