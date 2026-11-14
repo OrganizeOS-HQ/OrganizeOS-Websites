@@ -92,7 +92,13 @@ export const CssPreview = () => {
     return null;
   }
   return (
-    <CollapsibleSection label="CSS preview" fullWidth showSeparator={false}>
+    // OrganizeOS fork: closed until the person opens it
+    <CollapsibleSection
+      label="CSS preview"
+      defaultOpen={false}
+      fullWidth
+      showSeparator={false}
+    >
       <PanelContent as={ScrollArea}>
         <pre tabIndex={0} className={preStyle()}>
           <div
