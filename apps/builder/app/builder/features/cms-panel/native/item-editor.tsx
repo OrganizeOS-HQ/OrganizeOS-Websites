@@ -35,6 +35,7 @@ import { ChevronLeftIcon, EllipsesIcon } from "@webstudio-is/icons";
 import {
   emptyItemData,
   differsFromStored,
+  getChangedFieldKeys,
   emptyValueFor,
   getFieldErrorText,
   getItemTitle,
@@ -64,6 +65,7 @@ import {
   type CmsFailure,
   type CmsItem,
   type CmsItemData,
+  type CmsRichTextValue,
   type CmsResult,
   type CmsSource,
 } from "./cms-source";
@@ -89,7 +91,12 @@ type Busy = "save" | "publish" | "discard" | "reload" | "status" | "delete";
  * write followed a save in the same action, so `sent` is the saved item and
  * nothing set aside before that save is kept.
  */
-type Settle = { sent: CmsItem; afterSave?: boolean };
+type Settle = {
+  sent: CmsItem;
+  afterSave?: boolean;
+  /** The values the write sent, when a Save settled some of them. */
+  values?: CmsItemData;
+};
 
 /**
  * Whether an element is narrower than `width`, kept current on resize. The
@@ -402,7 +409,11 @@ export const ItemEditor = ({
    * baseline, with the person's values kept aside, so a write that landed
    * leaves the editor clean and one that did not shows "Use my edit".
    */
-  const settle = async ({ sent, afterSave = false }: Settle) => {
+  const settle = async ({
+    sent,
+    afterSave = false,
+    values: sentValues,
+  }: Settle) => {
     setBusy("reload");
     let result: CmsResult<{ item: CmsItem }>;
     try {
@@ -435,10 +446,17 @@ export const ItemEditor = ({
             kept: undefined,
             baseline: { ...emptyItemData(fields), ...sent.data },
             baselineSlug: sent.slug,
-            values,
+            values: sentValues ?? values,
             slug,
           })
-        : keepAside({ fields, kept, baseline, baselineSlug, values, slug })
+        : keepAside({
+            fields,
+            kept,
+            baseline,
+            baselineSlug,
+            values: sentValues ?? values,
+            slug,
+          })
     );
     applyItem(result.item);
     setLive(result.item.live);
@@ -567,11 +585,14 @@ export const ItemEditor = ({
    * E6 replay leaves.
    */
   const saveFrom = async (
-    from: CmsItem | null
-  ): Promise<{ saved: CmsItem; differs: boolean } | undefined> => {
+    from: CmsItem | null,
+    drafted: CmsItemData = values
+  ): Promise<
+    { saved: CmsItem; differs: boolean; values: CmsItemData } | undefined
+  > => {
     const clientErrors = validateItem({
       fields,
-      values,
+      values: drafted,
       slug,
       isNew: from === null,
     });
@@ -579,7 +600,9 @@ export const ItemEditor = ({
     if (Object.keys(clientErrors).length > 0) {
       return;
     }
-    const data = toItemData(fields, values);
+    setBusy("save");
+    const sent = await settleRichText(drafted);
+    const data = toItemData(fields, sent);
     let replayed = false;
     const saved = await write(
       "save",
@@ -608,7 +631,7 @@ export const ItemEditor = ({
         return result;
       },
       // E6's repeat is the same clientId; E7 reads the item back
-      from === null ? undefined : { sent: from }
+      from === null ? undefined : { sent: from, values: sent }
     );
     if (saved === undefined) {
       return;
@@ -626,7 +649,7 @@ export const ItemEditor = ({
       differsFromStored({
         fields,
         stored: { ...emptyItemData(fields), ...saved.data },
-        values,
+        values: sent,
         storedSlug: saved.slug,
         slug,
       });
@@ -635,7 +658,46 @@ export const ItemEditor = ({
     if (replayed && differs === false) {
       applyItem(saved);
     }
-    return { saved, differs };
+    return { saved, differs, values: sent };
+  };
+
+  /**
+   * Each changed rich-text field whose value would reopen read-only is sent
+   * as the editor's own write of it when that write holds the same content
+   * (`settleRichTextHtml`); every other value is sent as drafted.
+   */
+  const settleRichText = async (drafted: CmsItemData) => {
+    const changed = getChangedFieldKeys(fields, baseline, drafted);
+    const richText = fields.filter(
+      (field) => field.kind === "richtext" && changed.includes(field.key)
+    );
+    if (richText.length === 0) {
+      return drafted;
+    }
+    try {
+      const { settleRichTextHtml } = await import("./rich-text-html");
+      let sent = drafted;
+      for (const field of richText) {
+        const value = drafted[field.key];
+        if (
+          typeof value !== "object" ||
+          value === null ||
+          typeof (value as CmsRichTextValue).html !== "string"
+        ) {
+          continue;
+        }
+        const settled = settleRichTextHtml((value as CmsRichTextValue).html);
+        if (settled.outcome === "settled") {
+          sent = {
+            ...sent,
+            [field.key]: { ...(value as CmsRichTextValue), html: settled.html },
+          };
+        }
+      }
+      return sent;
+    } catch {
+      return drafted;
+    }
   };
 
   /** Runs one chain of calls; Back and the other exits wait for its end. */
@@ -676,7 +738,7 @@ export const ItemEditor = ({
       current = first.saved;
       // an E6 replay of older values: they are saved before publishing
       if (first.differs) {
-        const second = await saveFrom(current);
+        const second = await saveFrom(current, first.values);
         if (second === undefined) {
           return;
         }
