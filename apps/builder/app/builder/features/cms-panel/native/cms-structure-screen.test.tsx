@@ -1137,3 +1137,22 @@ test("the Fields list fills its tab's width (review)", async () => {
     )
   ).toBeLessThanOrEqual(1);
 });
+
+test("Alt+Arrow keeps the moved field's row focused, for the next move (review)", async () => {
+  mount();
+  await settle();
+  await click(tab("Fields"));
+  const titleButton = () => fieldRow("title")!.querySelector("button")!;
+  titleButton().focus();
+  for (let move = 0; move < 2; move += 1) {
+    await act(async () => userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}"));
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    expect(document.activeElement).toBe(titleButton());
+  }
+  const keys = [
+    ...document.querySelectorAll<HTMLElement>("[data-cms-field-row]"),
+  ].map((row) => row.dataset.cmsFieldRow);
+  expect(keys).toEqual(["summary", "author", "title"]);
+});
