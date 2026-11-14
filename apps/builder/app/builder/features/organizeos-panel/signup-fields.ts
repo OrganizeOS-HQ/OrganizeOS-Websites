@@ -310,6 +310,7 @@ export const getSignupWarning = ({
   rootFields,
   failedLoads,
   siteForm = false,
+  notSaved = false,
   differsElsewhere = false,
 }: {
   nested: boolean;
@@ -327,6 +328,8 @@ export const getSignupWarning = ({
    * not named (Email excepted, which every form has).
    */
   siteForm?: boolean;
+  /** The form's last Lists, Confirm by email or Notify write failed. */
+  notSaved?: boolean;
   /** Another site-form root on the same form sends another list. */
   differsElsewhere?: boolean;
 }): undefined | string => {
@@ -344,6 +347,9 @@ export const getSignupWarning = ({
       return hasSubmit ? undefined : "No Submit Button";
     }
     return failedLoads ? undefined : "Form not found";
+  }
+  if (notSaved) {
+    return "Not saved";
   }
   const missing = fields.find(
     (field) =>

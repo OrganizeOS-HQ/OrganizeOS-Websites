@@ -49,17 +49,21 @@ import {
 import { PropsSectionContainer } from "../props-section/props-section";
 
 // the forms door client: the site form rows read the catalog (Task 10)
-const { getFormsCatalog, getFormsAccess } = vi.hoisted(() => ({
-  getFormsCatalog: vi.fn(),
-  getFormsAccess: vi.fn(),
-}));
+const { getFormsCatalog, getFormsAccess, listDoorForms, saveFormSettings } =
+  vi.hoisted(() => ({
+    getFormsCatalog: vi.fn(),
+    getFormsAccess: vi.fn(),
+    listDoorForms: vi.fn(),
+    saveFormSettings: vi.fn(),
+  }));
 vi.mock("~/builder/features/organizeos-panel/forms-api", () => ({
   getFormsCatalog,
   getFormsAccess,
   createSiteForm: vi.fn(),
-  listDoorForms: vi.fn(),
-  saveFormSettings: vi.fn(),
+  listDoorForms,
+  saveFormSettings,
 }));
+import { resetDoorForms } from "~/builder/features/organizeos-panel/form-settings";
 import { renderControl } from "./combined";
 import {
   getOrganizeosControl,
@@ -219,6 +223,19 @@ const checkbox = (host: HTMLElement, label: string) => {
 
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  // the form's own settings rows (Task 11) read F0, F1 and F2
+  resetDoorForms();
+  listDoorForms.mockReset();
+  saveFormSettings.mockReset();
+  listDoorForms.mockResolvedValue({ ok: false, error: "unavailable" });
+  getFormsCatalog.mockResolvedValue({
+    ok: true,
+    value: { fields: [], lists: [] },
+  });
+  getFormsAccess.mockResolvedValue({
+    ok: true,
+    value: { orgName: "Org", canEditPrivate: true, smsAvailable: false },
+  });
 });
 
 afterEach(() => {
@@ -487,6 +504,87 @@ describe("the Signup Form's Settings", () => {
     await settle();
     expect(fieldNames()).toEqual(["email"]);
     expect(host.querySelector('button[aria-label="Add field"]')).not.toBeNull();
+  });
+
+  const doorForm = (id: string) => ({
+    id,
+    title: "Form",
+    site: false,
+    published: true,
+    fields: [],
+    opt_in: "single" as const,
+    lists: [] as string[],
+    notify: ["staff@example.org"],
+  });
+  const settingsLabels = (host: HTMLElement) =>
+    Array.from(
+      host.querySelectorAll("label"),
+      (label) => label.textContent
+    ).filter(
+      (label) =>
+        label === "Lists" || label === "Confirm by email" || label === "Notify"
+    );
+
+  test("with the switch on, Fields is followed by Lists and Confirm by email; a contact form's After submit by Notify", async () => {
+    listDoorForms.mockImplementation(async (_project, kind) => ({
+      ok: true,
+      value:
+        kind === "contact-form"
+          ? [doorForm(contactForm.id)]
+          : [doorForm(newsletter.id)],
+    }));
+    let host = await renderPanel(withSiteForms());
+    expect(settingsLabels(host)).toEqual(["Lists", "Confirm by email"]);
+    act(() => root?.unmount());
+    container?.remove();
+    host = await renderPanel(withSiteForms(contactForm.id));
+    expect(settingsLabels(host)).toEqual(["Lists", "Notify"]);
+    // Lists under Fields, Notify under After submit
+    const controls = Array.from(
+      host.querySelectorAll("[data-organizeos-control]")
+    );
+    const kindOf = (label: string) =>
+      controls
+        .find((control) =>
+          Array.from(control.querySelectorAll("label")).some(
+            (item) => item.textContent === label
+          )
+        )
+        ?.getAttribute("data-organizeos-control");
+    expect(kindOf("Lists")).toBe("signup-fields");
+    expect(kindOf("Notify")).toBe("signup-after-submit");
+  });
+
+  test("with the switch off, no Lists, Confirm by email or Notify", async () => {
+    listDoorForms.mockResolvedValue({
+      ok: true,
+      value: [doorForm(newsletter.id)],
+    });
+    const host = await renderPanel(setProject());
+    expect(settingsLabels(host)).toEqual([]);
+    expect(listDoorForms).not.toHaveBeenCalled();
+  });
+
+  test("a failed settings save reads Not saved in the warning line; the next success clears it", async () => {
+    listDoorForms.mockResolvedValue({
+      ok: true,
+      value: [doorForm(newsletter.id)],
+    });
+    saveFormSettings.mockResolvedValueOnce({ ok: false, error: "unavailable" });
+    const host = await renderPanel(withSiteForms());
+    const toggle = checkbox(host, "Confirm by email");
+    expect(toggle?.getAttribute("role")).toBe("switch");
+    await act(async () => toggle?.click());
+    await settle();
+    expect(host.querySelector("[data-signup-warning]")?.textContent).toBe(
+      "Not saved"
+    );
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+    saveFormSettings.mockResolvedValueOnce({ ok: true, value: null });
+    await act(async () => toggle?.click());
+    await settle();
+    expect(host.querySelector("[data-signup-warning]")).toBeNull();
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
   });
 
   test("an unmarked root keeps the shipped Fields list", async () => {

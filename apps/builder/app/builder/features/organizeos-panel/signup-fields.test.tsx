@@ -1284,4 +1284,26 @@ describe("getSignupWarning for a site form", () => {
       "Fields differ on another page"
     );
   });
+
+  // Task 11: a failed Lists, Confirm by email or Notify write
+  test("Not saved follows Form not found and comes before the field lines", () => {
+    const fields = [field("email", "Email", { type: "email", required: true })];
+    expect(
+      warnFor(fields, ["first_name"], {
+        notSaved: true,
+        differsElsewhere: true,
+      })
+    ).toBe("Not saved");
+    expect(
+      warnFor(fields, ["email"], {
+        notSaved: true,
+        resolution: {
+          formId: "f",
+          fields: undefined,
+          unavailable: undefined,
+          site: true,
+        },
+      } as Partial<Parameters<typeof getSignupWarning>[0]>)
+    ).toBe("Form not found");
+  });
 });

@@ -80,6 +80,8 @@ import {
 import { BasePage } from "./url";
 import { FieldNameControl } from "./organizeos-field-control";
 import { SiteFieldsControl } from "./organizeos-site-fields";
+import { FormSettingsRows } from "./organizeos-form-settings";
+import { $unsavedForms } from "~/builder/features/organizeos-panel/form-settings";
 import {
   ProductCardControl,
   ProductShowControl,
@@ -512,7 +514,10 @@ const SignupFieldsControl = ({
       : getFieldRows(resolution.fields, rootFields.byName);
   // a block marked as a site form draws its own list (fork doc section 9)
   const site = useStore($organizeosSite);
-  const marked = site?.siteFormsEnabled === true && isMarkedSiteForm(rootId);
+  const siteForms = site?.siteFormsEnabled === true;
+  const marked = siteForms && isMarkedSiteForm(rootId);
+  const unsaved = useStore($unsavedForms);
+  const record = computedProps?.get("record");
   const warning = getSignupWarning({
     nested: isNestedInForm(rootSelector, instanceTags),
     dataBound,
@@ -521,14 +526,87 @@ const SignupFieldsControl = ({
     rootFields,
     failedLoads: failedLoads.length > 0,
     siteForm: marked,
+    notSaved:
+      siteForms && typeof record === "string" && unsaved.has(record.trim()),
     differsElsewhere: marked && fieldsDifferElsewhere(rootId),
   });
+  // with the switch on, the form's Lists and Confirm by email follow
+  const settings = siteForms && (
+    <FormSettingsRows
+      part="fields"
+      kind={formKindOf(rootId, data)}
+      record={record}
+    />
+  );
   if (marked) {
     return (
-      <SiteFieldsControl
-        rootId={rootId}
-        warning={
-          warning === undefined ? undefined : (
+      <Flex direction="column" gap="1">
+        <SiteFieldsControl
+          rootId={rootId}
+          warning={
+            warning === undefined ? undefined : (
+              <Text
+                truncate
+                css={{ color: cssVar("--foreground-warning") }}
+                data-signup-warning
+              >
+                {warning}
+              </Text>
+            )
+          }
+        />
+        {settings}
+      </Flex>
+    );
+  }
+
+  return (
+    <Flex direction="column" gap="1">
+      <VerticalLayout label={<BaseLabel>Fields</BaseLabel>}>
+        <Flex direction="column" css={{ gap: theme.spacing[3], minWidth: 0 }}>
+          {rows.map((row) => {
+            const field = resolution.fields?.find(
+              (item) => item.name === row.name
+            );
+            return (
+              <CheckboxAndLabel key={row.name} css={{ minWidth: 0 }}>
+                <Checkbox
+                  id={`${id}:${row.name}`}
+                  checked={row.checked}
+                  disabled={row.locked}
+                  onCheckedChange={(checked) => {
+                    if (checked === true && field !== undefined) {
+                      void addSignupField(rootId, field, computedName);
+                    } else if (checked === false) {
+                      void removeSignupField(rootId, row.name);
+                    }
+                  }}
+                />
+                <TruncatedLabel htmlFor={`${id}:${row.name}`}>
+                  {row.label}
+                </TruncatedLabel>
+              </CheckboxAndLabel>
+            );
+          })}
+          {dataBound === false && (
+            <Text
+              truncate
+              css={{ color: cssVar("--foreground-warning") }}
+              data-signup-data-unbound
+            >
+              No forms data.{" "}
+              <button
+                type="button"
+                className={linkButtonClass}
+                onClick={() => {
+                  void restoreSignupFormData(rootId);
+                }}
+              >
+                Reconnect
+              </button>
+            </Text>
+          )}
+          {warning !== undefined && (
             <Text
               truncate
               css={{ color: cssVar("--foreground-warning") }}
@@ -536,68 +614,11 @@ const SignupFieldsControl = ({
             >
               {warning}
             </Text>
-          )
-        }
-      />
-    );
-  }
-
-  return (
-    <VerticalLayout label={<BaseLabel>Fields</BaseLabel>}>
-      <Flex direction="column" css={{ gap: theme.spacing[3], minWidth: 0 }}>
-        {rows.map((row) => {
-          const field = resolution.fields?.find(
-            (item) => item.name === row.name
-          );
-          return (
-            <CheckboxAndLabel key={row.name} css={{ minWidth: 0 }}>
-              <Checkbox
-                id={`${id}:${row.name}`}
-                checked={row.checked}
-                disabled={row.locked}
-                onCheckedChange={(checked) => {
-                  if (checked === true && field !== undefined) {
-                    void addSignupField(rootId, field, computedName);
-                  } else if (checked === false) {
-                    void removeSignupField(rootId, row.name);
-                  }
-                }}
-              />
-              <TruncatedLabel htmlFor={`${id}:${row.name}`}>
-                {row.label}
-              </TruncatedLabel>
-            </CheckboxAndLabel>
-          );
-        })}
-        {dataBound === false && (
-          <Text
-            truncate
-            css={{ color: cssVar("--foreground-warning") }}
-            data-signup-data-unbound
-          >
-            No forms data.{" "}
-            <button
-              type="button"
-              className={linkButtonClass}
-              onClick={() => {
-                void restoreSignupFormData(rootId);
-              }}
-            >
-              Reconnect
-            </button>
-          </Text>
-        )}
-        {warning !== undefined && (
-          <Text
-            truncate
-            css={{ color: cssVar("--foreground-warning") }}
-            data-signup-warning
-          >
-            {warning}
-          </Text>
-        )}
-      </Flex>
-    </VerticalLayout>
+          )}
+        </Flex>
+      </VerticalLayout>
+      {settings}
+    </Flex>
   );
 };
 
@@ -618,11 +639,14 @@ const SignupAfterSubmitControl = ({
   prop,
   propName,
   computedValue,
+  computedProps,
   onChange,
   onChangeByPropName,
 }: ControlProps<"text"> & { onChangeByPropName?: ChangeByPropName }) => {
   const id = useId();
   const props = useStore($props);
+  const site = useStore($organizeosSite);
+  const data = useStore($selectedInstanceDataProp);
   const readOnly = prop !== undefined && prop.type !== "string";
   const value = computedValue === "page" ? "page" : "state";
   let actionPage: undefined | Prop;
@@ -639,42 +663,52 @@ const SignupAfterSubmitControl = ({
       : undefined;
 
   return (
-    <VerticalLayout
-      label={<PropertyLabel name={propName} readOnly={readOnly} />}
-    >
-      <Flex direction="column" css={{ gap: theme.spacing[3] }}>
-        <RadioGroup
-          disabled={readOnly}
-          name={`${id}:after-submit`}
-          value={value}
-          onValueChange={(next) => onChange({ type: "string", value: next })}
-        >
-          {afterSubmitOptions.map((option) => (
-            <RadioAndLabel key={option.value}>
-              <Radio value={option.value} id={`${id}:${option.value}`} />
-              <BaseLabel htmlFor={`${id}:${option.value}`}>
-                {option.label}
-              </BaseLabel>
-            </RadioAndLabel>
-          ))}
-        </RadioGroup>
-        {value === "page" && (
-          <Flex direction="column" data-after-submit-page>
-            <BasePage
-              id={`${id}:page`}
-              instanceId={instanceId}
-              readOnly={readOnly}
-              prop={pageProp as ComponentProps<typeof BasePage>["prop"]}
-              value=""
-              onChange={(page) => {
-                if (readOnly === false) {
-                  onChangeByPropName?.("actionPage", page);
-                }
-              }}
-            />
-          </Flex>
-        )}
-      </Flex>
-    </VerticalLayout>
+    <Flex direction="column" gap="1">
+      <VerticalLayout
+        label={<PropertyLabel name={propName} readOnly={readOnly} />}
+      >
+        <Flex direction="column" css={{ gap: theme.spacing[3] }}>
+          <RadioGroup
+            disabled={readOnly}
+            name={`${id}:after-submit`}
+            value={value}
+            onValueChange={(next) => onChange({ type: "string", value: next })}
+          >
+            {afterSubmitOptions.map((option) => (
+              <RadioAndLabel key={option.value}>
+                <Radio value={option.value} id={`${id}:${option.value}`} />
+                <BaseLabel htmlFor={`${id}:${option.value}`}>
+                  {option.label}
+                </BaseLabel>
+              </RadioAndLabel>
+            ))}
+          </RadioGroup>
+          {value === "page" && (
+            <Flex direction="column" data-after-submit-page>
+              <BasePage
+                id={`${id}:page`}
+                instanceId={instanceId}
+                readOnly={readOnly}
+                prop={pageProp as ComponentProps<typeof BasePage>["prop"]}
+                value=""
+                onChange={(page) => {
+                  if (readOnly === false) {
+                    onChangeByPropName?.("actionPage", page);
+                  }
+                }}
+              />
+            </Flex>
+          )}
+        </Flex>
+      </VerticalLayout>
+      {/* with the switch on, a contact form's Notify follows (spec 9) */}
+      {site?.siteFormsEnabled === true && (
+        <FormSettingsRows
+          part="after-submit"
+          kind={formKindOf(instanceId, data)}
+          record={computedProps?.get("record")}
+        />
+      )}
+    </Flex>
   );
 };
