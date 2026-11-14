@@ -234,6 +234,11 @@ export const useCmsStructure = ({
 
   // One queue per collection (4.4, W4-D4): its E23 and E24 run one at a
   // time, each with the version the last answer, or E21, gave.
+  // a create answers later than its click: its opening goes through the
+  // guard as the screen holds it then
+  const latestGuard = useRef(guard);
+  latestGuard.current = guard;
+
   const queues = useRef(new Map<string, Promise<unknown>>());
   const versions = useRef(new Map<string, string>());
   const inFlight = useRef(new Map<string, number>());
@@ -965,11 +970,6 @@ export const useCmsStructure = ({
       </Flex>
     ),
   };
-
-  // a create answers later than its click: its opening goes through the
-  // guard as the screen holds it then
-  const latestGuard = useRef(guard);
-  latestGuard.current = guard;
 
   const onCreated = (created: CmsCollectionSummary, type: string) => {
     pendingCreate.current = undefined;
