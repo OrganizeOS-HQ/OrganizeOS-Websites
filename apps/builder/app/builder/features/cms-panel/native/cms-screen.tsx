@@ -871,6 +871,15 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           />
         );
       }
+      // the drawn page is the one the open search, filter and sort asked for,
+      // and its search is empty
+      const drawn = drawnPage.current;
+      const drawnQueryEmpty =
+        drawn !== undefined &&
+        drawn.collectionId === collection.id &&
+        drawn.query === query &&
+        drawn.listKey === openListKey &&
+        query.trim() === "";
       if (pageFailed && itemsPage === undefined) {
         return (
           <RefusalLine
@@ -884,6 +893,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           collection={collection}
           page={itemsPage}
           query={query}
+          drawnQueryEmpty={drawnQueryEmpty}
           canEdit={access.canEdit}
           canPublish={access.canPublish}
           focusItemId={returnFocusItemId}

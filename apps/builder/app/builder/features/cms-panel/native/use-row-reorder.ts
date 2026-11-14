@@ -34,9 +34,14 @@ const sameOrder = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&
   left.every((id, index) => right[index] === id);
 
+const sameRows = (left: readonly string[], right: readonly string[]) =>
+  left.length === right.length && left.every((id) => right.includes(id));
+
 export const useRowReorder = (input: {
   source: CmsSource;
   collectionId: string;
+  /** The open search, filter and sort: moves belong to the key they were made on. */
+  listKey: string;
   page: CmsItemsPage | undefined;
   pageAnswer: { count: number; ok: boolean };
   onReordered: () => void;
@@ -74,6 +79,13 @@ export const useRowReorder = (input: {
   const waiting = useRef<Waiting>({});
   // The order the last successful E13 sent, until a drawn page shows it.
   const accepted = useRef<readonly string[] | undefined>(undefined);
+  // The key, page number and rows the pending moves were made on.
+  const movedOn = useRef<string | undefined>(undefined);
+  const pageSignature = JSON.stringify([
+    input.listKey,
+    input.page?.page,
+    [...pageIds].sort(),
+  ]);
   // Re-renders when a ref-held phase changes.
   const [, setPhase] = useState(0);
   const bump = () => setPhase((current) => current + 1);
@@ -92,6 +104,7 @@ export const useRowReorder = (input: {
     queued.current = undefined;
     awaitingAfter.current = undefined;
     accepted.current = undefined;
+    movedOn.current = undefined;
     waiting.current = {};
     setPending(undefined);
   }, [input.collectionId]);
@@ -130,8 +143,32 @@ export const useRowReorder = (input: {
     runWaiting(ok);
   };
 
+  /** Moves made on rows or a key no longer drawn are never sent. */
+  const dropPending = () => {
+    clearTimeout(timer.current);
+    timer.current = undefined;
+    queued.current = undefined;
+    movedOn.current = undefined;
+    pendingRef.current = undefined;
+    setPending(undefined);
+    bump();
+    if (inFlight.current) {
+      return;
+    }
+    if (awaitingAfter.current === undefined) {
+      runWaiting(true);
+    } else {
+      trySettle();
+    }
+  };
+
   const send = (ids: readonly string[]) => {
     const current = latest.current;
+    const currentIds = (current.page?.items ?? []).map((row) => row.id);
+    if (sameRows(ids, currentIds) === false) {
+      dropPending();
+      return;
+    }
     if (inFlight.current) {
       queued.current = ids;
       return;
@@ -207,6 +244,18 @@ export const useRowReorder = (input: {
     trySettle();
   }, [input.pageAnswer]);
 
+  // another key, page or set of rows drops the moves made on the last
+  useEffect(() => {
+    if (movedOn.current === undefined || movedOn.current === pageSignature) {
+      return;
+    }
+    if (pendingRef.current !== undefined || timer.current !== undefined) {
+      dropPending();
+      return;
+    }
+    movedOn.current = undefined;
+  }, [pageSignature]);
+
   const flush = () => {
     if (timer.current === undefined) {
       return;
@@ -241,6 +290,7 @@ export const useRowReorder = (input: {
       return;
     }
     const next = moveRow(order, from, to);
+    movedOn.current = pageSignature;
     pendingRef.current = next;
     setPending(next);
     clearTimeout(timer.current);
@@ -258,6 +308,7 @@ export const useRowReorder = (input: {
     clearTimeout(timer.current);
     timer.current = undefined;
     const next = moveRow(order, oldIndex, newIndex);
+    movedOn.current = pageSignature;
     pendingRef.current = next;
     setPending(next);
     send(next);
