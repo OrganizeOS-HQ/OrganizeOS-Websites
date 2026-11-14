@@ -11,11 +11,16 @@ import {
 import {
   buttonToken,
   errorMessageToken,
+  formCardToken,
   formHeadingToken,
+  formIntroToken,
   successMessageToken,
 } from "./shared/form-tokens";
 import { organizeos } from "./shared/proxy";
-import { fieldTemplate } from "./signup/field.template";
+import {
+  fieldTemplate,
+  type SiteFieldTemplateField,
+} from "./signup/field.template";
 
 // Functions, not constants: a site template places the form once per
 // placement, and `renderTemplate` keys a data source by its Variable, so each
@@ -236,4 +241,202 @@ export const inlineMeta: TemplateMeta = {
   label: "Signup Form, inline",
   description: "Email and a button in one row",
   template: signupFormInlineTemplate(),
+};
+
+/**
+ * Look A (builder forms spec 5.2 and 5.3): the forms inserts land as a card.
+ * The root wears "OS Form Card"; a heading and one line of intro sit above
+ * Form Content, so the state boxes that replace it keep them and the card
+ * keeps its size. Form Content is a wrapping row: every Field takes the full
+ * row, except First name and Last name, which share one until the card is
+ * narrow. Its Fields are a site form's, carrying their definition as props;
+ * the insert creates their form and marks the root (`siteForm`, `record`).
+ * The inputs' size, corners and softened edge, and the button's width and
+ * height, are local styles, so a project whose "OS Input" or "OS Button"
+ * token already exists still gets them ("ours" keeps an existing token).
+ */
+type CardKind = "updates" | "contact";
+
+type CardField = SiteFieldTemplateField & { half?: boolean };
+
+const cardCopy: Record<
+  CardKind,
+  {
+    label: string;
+    heading: string;
+    intro: string;
+    submit: string;
+    success: string;
+    confirm?: string;
+    unavailable: string;
+    fields: CardField[];
+  }
+> = {
+  updates: {
+    label: "Email & SMS updates",
+    heading: "Get updates",
+    // the insert fills the org's name in (fillOrgName)
+    intro: "News and actions from us.",
+    submit: "Sign up",
+    success: "You're signed up.",
+    confirm: "Check your email to confirm.",
+    unavailable: "Signups are not available right now.",
+    fields: [
+      { name: "first_name", label: "First name", type: "text", half: true },
+      { name: "last_name", label: "Last name", type: "text", half: true },
+      { name: "email", label: "Email", type: "email", required: true },
+    ],
+  },
+  contact: {
+    label: "Contact us",
+    heading: "Get in touch",
+    intro: "Send us a message and we'll reply.",
+    submit: "Send message",
+    success: "Message sent.",
+    unavailable: "This form is not available right now.",
+    fields: [
+      { name: "name", label: "Full name", type: "text" },
+      { name: "email", label: "Email", type: "email", required: true },
+      { name: "message", label: "Message", type: "textarea", required: true },
+    ],
+  },
+};
+
+/** The card input's resting edge: --text mixed 70% into --base (spec 5.2). */
+const softenedEdge =
+  "color-mix(in srgb, var(--text, #18181b) 70%, var(--base, #ffffff))";
+
+const cardInputStyle = css`
+  min-height: 44px;
+  border-radius: 8px;
+  border-top-color: ${softenedEdge};
+  border-right-color: ${softenedEdge};
+  border-bottom-color: ${softenedEdge};
+  border-left-color: ${softenedEdge};
+`;
+
+const cardField = ({ half = false, ...field }: CardField) => {
+  const element = fieldTemplate({ ...field, siteForm: true });
+  const parts = Children.map(element.props.children, (part) =>
+    isValidElement(part) && part.type === organizeos.FieldInput
+      ? cloneElement(part, { "ws:style": cardInputStyle } as Record<
+          string,
+          unknown
+        >)
+      : part
+  );
+  return cloneElement(
+    element,
+    {
+      "ws:style": half
+        ? css`
+            flex: 1 1 calc(50% - 6px);
+            min-width: 12rem;
+          `
+        : css`
+            flex: 1 1 100%;
+          `,
+    } as Record<string, unknown>,
+    ...(parts ?? [])
+  );
+};
+
+const box = (
+  show: ReturnType<typeof expression>,
+  label: string,
+  text: string,
+  tokenOf: typeof successMessageToken
+) => (
+  <ws.element
+    key={label}
+    ws:tag="div"
+    ws:label={label}
+    ws:show={show}
+    ws:tokens={[tokenOf]}
+  >
+    {new PlaceholderValue(text)}
+  </ws.element>
+);
+
+export const signupFormCardTemplate = (kind: CardKind) => {
+  const copy = cardCopy[kind];
+  const formState = new Variable("formState", "initial");
+  return (
+    <organizeos.SignupForm
+      ws:label={copy.label}
+      state={expression`${formState}`}
+      onStateChange={
+        new ActionValue(["state"], expression`${formState} = state`)
+      }
+      ws:tokens={[formCardToken]}
+      ws:style={css`
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      `}
+    >
+      <ws.element ws:tag="h2" ws:tokens={[formHeadingToken]}>
+        {new PlaceholderValue(copy.heading)}
+      </ws.element>
+      <ws.element ws:tag="p" ws:label="Intro" ws:tokens={[formIntroToken]}>
+        {new PlaceholderValue(copy.intro)}
+      </ws.element>
+      <ws.element
+        ws:tag="div"
+        ws:label="Form Content"
+        ws:show={contentShow(formState)}
+        ws:style={css`
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+        `}
+      >
+        {copy.fields.map((field) => cardField(field))}
+        {errorBox(formState, { inline: true })}
+        <organizeos.SubmitButton
+          ws:tokens={[buttonToken]}
+          ws:style={css`
+            width: 100%;
+            min-height: 48px;
+          `}
+        >
+          {new PlaceholderValue(copy.submit)}
+        </organizeos.SubmitButton>
+      </ws.element>
+      {box(
+        expression`${formState} === 'success'`,
+        "Success",
+        copy.success,
+        successMessageToken
+      )}
+      {copy.confirm === undefined
+        ? undefined
+        : box(
+            expression`${formState} === 'confirm-email'`,
+            "Check your email",
+            copy.confirm,
+            successMessageToken
+          )}
+      {box(
+        expression`${formState} === 'unavailable'`,
+        "Unavailable",
+        copy.unavailable,
+        errorMessageToken
+      )}
+    </organizeos.SignupForm>
+  );
+};
+
+export const cardMeta: TemplateMeta = {
+  category: "hidden",
+  label: "Signup Form, card",
+  description: "Email updates, in a card",
+  template: signupFormCardTemplate("updates"),
+};
+
+export const contactCardMeta: TemplateMeta = {
+  category: "hidden",
+  label: "Signup Form, contact",
+  description: "Name, email and message, in a card",
+  template: signupFormCardTemplate("contact"),
 };

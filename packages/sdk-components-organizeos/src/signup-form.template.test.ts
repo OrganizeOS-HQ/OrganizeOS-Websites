@@ -8,7 +8,12 @@ import { showAttribute } from "@webstudio-is/react-sdk";
 import { renderTemplate } from "@webstudio-is/template";
 import { toValue } from "@webstudio-is/css-engine";
 import * as metas from "./metas";
-import { inlineMeta, meta } from "./signup-form.template";
+import {
+  cardMeta,
+  contactCardMeta,
+  inlineMeta,
+  meta,
+} from "./signup-form.template";
 
 const namespace = "@organizeos/site-components";
 
@@ -464,5 +469,155 @@ describe("the inline template", () => {
       false
     );
     expect(localStylesOf(root)).toEqual({});
+  });
+});
+
+// Look A (builder forms spec 5.2 and 5.3; plan 2026-11-13-builder-forms-fork-p2,
+// Task 8, P8, P9): the forms inserts land as a card. The heading and the intro
+// sit above Form Content, so the state boxes that replace it keep them; the
+// Fields carry their site form definition as props.
+describe("the card templates", () => {
+  const updates = read(renderTemplate(cardMeta.template));
+  const contact = read(renderTemplate(contactCardMeta.template));
+  const cardOf = (card: typeof updates) => {
+    const [heading, intro, content, ...boxes] = card.childInstances(card.root);
+    const fields = card
+      .childInstances(content)
+      .filter((instance) => instance.component === `${namespace}:Field`);
+    const button = card
+      .childInstances(content)
+      .find((instance) => instance.component === `${namespace}:SubmitButton`);
+    return { heading, intro, content, boxes, fields, button };
+  };
+  const textOf = (_card: typeof updates, instance: Instance) =>
+    instance.children.flatMap((child) =>
+      child.type === "text" ? [child.value] : []
+    );
+  const inputOf = (card: typeof updates, field: Instance) =>
+    card
+      .childInstances(field)
+      .find((instance) => instance.component === `${namespace}:FieldInput`);
+
+  test("each card's root is labelled with its insert name; the stacked template is unchanged", () => {
+    expect(updates.root.label).toBe("Email & SMS updates");
+    expect(contact.root.label).toBe("Contact us");
+    expect(stacked.root.label).toBeUndefined();
+    expect(cardMeta.label).toBe("Signup Form, card");
+    expect(contactCardMeta.label).toBe("Signup Form, contact");
+  });
+
+  test.each([
+    ["updates", updates, "Get updates", "News and actions from us."],
+    ["contact", contact, "Get in touch", "Send us a message and we'll reply."],
+  ] as const)(
+    "the %s card: OS Form Card, then heading, intro, Form Content, then the state boxes",
+    (_kind, card, heading, intro) => {
+      const parts = cardOf(card);
+      expect(card.tokensOf(card.root)).toEqual(["OS Form Card"]);
+      expect(card.tokensOf(parts.heading)).toEqual(["OS Form Heading"]);
+      expect(textOf(card, parts.heading)).toEqual([heading]);
+      expect(parts.intro.label).toBe("Intro");
+      expect(card.tokensOf(parts.intro)).toEqual(["OS Form Intro"]);
+      expect(textOf(card, parts.intro)).toEqual([intro]);
+      expect(parts.content.label).toBe("Form Content");
+      expect(card.localStylesOf(parts.content)).toMatchObject({
+        display: "flex",
+        flexWrap: "wrap",
+        rowGap: "12px",
+        columnGap: "12px",
+      });
+      expect(parts.boxes.length).toBeGreaterThan(0);
+    }
+  );
+
+  test("Email & SMS updates holds First name, Last name and Email, Email required, as a site form's Fields", () => {
+    const { fields } = cardOf(updates);
+    expect(
+      fields.map((field) => [
+        updates.propOf(field, "field"),
+        updates.propOf(field, "fieldType"),
+        updates.propOf(field, "required"),
+      ])
+    ).toEqual([
+      ["first_name", "text", false],
+      ["last_name", "text", false],
+      ["email", "email", true],
+    ]);
+    const [first, last, email] = fields;
+    for (const half of [first, last]) {
+      expect(updates.localStylesOf(half)).toMatchObject({
+        flexGrow: "1",
+        flexShrink: "1",
+        flexBasis: "calc(50% - 6px)",
+        minWidth: "12rem",
+      });
+    }
+    expect(updates.localStylesOf(email)).toMatchObject({
+      flexGrow: "1",
+      flexShrink: "1",
+      flexBasis: "100%",
+    });
+  });
+
+  test("Contact us holds Full name, Email and Message, Email and Message required", () => {
+    const { fields } = cardOf(contact);
+    expect(
+      fields.map((field) => [
+        contact.propOf(field, "field"),
+        contact.propOf(field, "fieldType"),
+        contact.propOf(field, "required"),
+      ])
+    ).toEqual([
+      ["name", "text", false],
+      ["email", "email", true],
+      ["message", "textarea", true],
+    ]);
+  });
+
+  test("every card Field Input is at least 44px tall, 8px round, its resting border the softened mix", () => {
+    for (const card of [updates, contact]) {
+      for (const field of cardOf(card).fields) {
+        const input = inputOf(card, field);
+        expect(input).toBeDefined();
+        const styles = card.localStylesOf(input as Instance);
+        expect(styles).toMatchObject({
+          minHeight: "44px",
+          borderTopLeftRadius: "8px",
+          borderBottomRightRadius: "8px",
+        });
+        expect(styles.borderTopColor).toBe(
+          "color-mix(in srgb,var(--text, #18181b) 70%,var(--base, #ffffff))"
+        );
+      }
+    }
+  });
+
+  test("the card's Submit Button is full width and 48px tall, with its kind's label", () => {
+    for (const [card, label] of [
+      [updates, "Sign up"],
+      [contact, "Send message"],
+    ] as const) {
+      const { button } = cardOf(card);
+      expect(button).toBeDefined();
+      expect(card.tokensOf(button as Instance)).toEqual(["OS Button"]);
+      expect(card.localStylesOf(button as Instance)).toMatchObject({
+        width: "100%",
+        minHeight: "48px",
+      });
+      expect(textOf(card, button as Instance)).toEqual([label]);
+    }
+  });
+
+  test("the states' words per kind; Contact us has no Check your email box", () => {
+    const words = (card: typeof updates) =>
+      Object.fromEntries(
+        cardOf(card).boxes.map((box) => [box.label, textOf(card, box)[0]])
+      );
+    expect(words(updates)).toMatchObject({
+      Success: "You're signed up.",
+      "Check your email": "Check your email to confirm.",
+    });
+    expect(words(contact)).toMatchObject({ Success: "Message sent." });
+    expect(words(contact)).not.toHaveProperty("Check your email");
   });
 });

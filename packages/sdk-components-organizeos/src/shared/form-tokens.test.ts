@@ -23,7 +23,9 @@ import {
   buttonToken,
   errorMessageToken,
   fieldToken,
+  formCardToken,
   formHeadingToken,
+  formIntroToken,
   inputToken,
   messageToken,
   successMessageToken,
@@ -239,6 +241,8 @@ const tokens = [
   ["OS Button", buttonToken],
   ["OS Message", messageToken],
   ["OS Card", cardToken],
+  ["OS Form Card", formCardToken],
+  ["OS Form Intro", formIntroToken],
   ["OS Event Date", eventDateToken],
   ["OS Event Day", eventDayToken],
   ["OS Event Link", eventLinkToken],
@@ -298,6 +302,8 @@ test("the colours the contrast test reads are the ones the blocks read from vari
     ["OS Message color", "text", "base"],
     ["OS Message color[data-invalid]", "text", "base"],
     ["OS Card color", "text", "base"],
+    ["OS Form Card color", "text", "base"],
+    ["OS Form Intro color", "text", "base"],
     ["OS Event Date color", "text", "base"],
     ["OS Event Day color", "text", "base"],
     ["OS Event Link color", "text", "base"],
@@ -444,3 +450,70 @@ test("the state boxes' text keeps 4.5:1 on its tint with the fallbacks", () => {
     contrastRatio("#18181b", mix("#18181b", "#ffffff", 10))
   ).toBeGreaterThanOrEqual(4.5);
 });
+
+// Look A's card (builder forms spec 5.2; plan 2026-11-13-builder-forms-fork-p2,
+// Task 8): the site's base with its text, a quiet decorative edge (a mix, so
+// not held to 3:1), 12px round, and padding that shrinks on a narrow card.
+test("OS Form Card: the base, the text, a 15% mixed 1px edge, 12px round, min() padding, 32rem wide at most", () => {
+  expect(valueOf(formCardToken, "backgroundColor")).toEqual(
+    variable("base", "#ffffff")
+  );
+  expect(valueOf(formCardToken, "color")).toEqual(variable("text", "#18181b"));
+  for (const side of sides) {
+    expect(valueOf(formCardToken, `border${side}Width`)).toEqual({
+      type: "unit",
+      unit: "px",
+      value: 1,
+    });
+    expect(valueOf(formCardToken, `border${side}Style`)).toEqual({
+      type: "keyword",
+      value: "solid",
+    });
+    expect(valueOf(formCardToken, `border${side}Color`)).toEqual({
+      type: "unparsed",
+      value: "color-mix(in srgb,var(--text, #18181b) 15%,var(--base, #ffffff))",
+    });
+  }
+  expect(toValue(valueOf(formCardToken, "borderTopLeftRadius"))).toBe("12px");
+  for (const side of sides) {
+    expect(valueOf(formCardToken, `padding${side}`)).toEqual({
+      type: "unparsed",
+      value: "min(32px,7%)",
+    });
+  }
+  expect(toValue(valueOf(formCardToken, "maxWidth"))).toBe("32rem");
+  expect(toValue(valueOf(formCardToken, "width"))).toBe("100%");
+});
+
+test("OS Form Intro: the body font, 15px, the text colour", () => {
+  expect(toValue(valueOf(formIntroToken, "fontFamily"))).toBe(
+    "var(--font-body)"
+  );
+  expect(toValue(valueOf(formIntroToken, "fontSize"))).toBe("15px");
+  expect(valueOf(formIntroToken, "color")).toEqual(variable("text", "#18181b"));
+});
+
+/** `color-mix(in srgb, a p%, b)` of two #rrggbb colours, as #rrggbb. */
+const mixSrgb = (a: string, b: string, share: number) => {
+  const channel = (hex: string, at: number) =>
+    Number.parseInt(hex.slice(at, at + 2), 16);
+  return `#${[1, 3, 5]
+    .map((at) =>
+      Math.round(channel(a, at) * share + channel(b, at) * (1 - share))
+        .toString(16)
+        .padStart(2, "0")
+    )
+    .join("")}`;
+};
+
+// Spec 5.2: a card input's resting edge is softened to --text mixed 70% into
+// --base only if that keeps 3:1 against --base on every palette (WCAG 1.4.11).
+test.each(approvedPalettes.map((palette) => [palette.name, palette] as const))(
+  "a 70%% mix of the text into the base keeps 3:1 against the base on the %s palette",
+  (_name, palette) => {
+    const { base, text } = palette.colors;
+    expect(
+      contrastRatio(mixSrgb(text, base, 0.7), base)
+    ).toBeGreaterThanOrEqual(3);
+  }
+);
