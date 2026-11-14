@@ -274,7 +274,12 @@ describe("the Fields tab", () => {
   });
 
   test("a settings Save after a reorder sends the reorder's updatedAt; no conflict", async () => {
-    answerSchema(NEXT);
+    // E24 answers at NEXT; no E21 answers from the move on, so the version
+    // can come only from E24's answer, through the queue
+    harness.structure.updateSchema.mockImplementation(async (_id, body) => ({
+      fields: body.fields,
+      updatedAt: NEXT,
+    }));
     harness.structure.updateCollection.mockImplementation(
       async (id, { expectedUpdatedAt, ...settings }) =>
         expectedUpdatedAt === NEXT
@@ -282,6 +287,8 @@ describe("the Fields tab", () => {
           : { error: "conflict" }
     );
     await openFields();
+    const held = deferred<never>();
+    harness.structure.getCollectionStructure.mockReturnValue(held.promise);
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     await moveRow("title", "ArrowDown");
     await pass(600);
@@ -534,10 +541,33 @@ describe("the Fields tab", () => {
     expect(document.querySelector("[data-cms-field-cap]")?.textContent).toBe(
       "45 of 30 fieldsNot in plan"
     );
+    expect((byLabel("Add field") as HTMLButtonElement).disabled).toBe(true);
     expect(fieldRow("f3")!.hasAttribute("data-movable")).toBe(true);
     await click(fieldRow("f3")!.querySelector("button"));
+    // a rename saves above the cap: no field is added
+    await typeInto(
+      document.querySelector<HTMLInputElement>("#cms-field-sheet-label"),
+      "Renamed"
+    );
+    const header = () =>
+      document.querySelector<HTMLElement>("[data-cms-structure-header]")!;
+    await click(buttonByText("Save", header()));
+    const renamed = harness.structure.updateSchema.mock.lastCall?.[1].fields;
+    expect(renamed).toHaveLength(45);
+    expect(renamed?.find((field) => field.key === "f3")?.label).toBe("Renamed");
+    // and so does a removal
     await click(byLabel("Field menu"));
-    expect(menuItem("Remove field")).toBeDefined();
+    await click(menuItem("Remove field"));
+    await click(
+      buttonByText(
+        "Remove",
+        document.querySelector<HTMLElement>('[role="dialog"]')!
+      )
+    );
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(2);
+    const removed = harness.structure.updateSchema.mock.lastCall?.[1].fields;
+    expect(removed).toHaveLength(44);
+    expect(removed?.some((field) => field.key === "f3")).toBe(false);
   });
 
   test("without canManageSettings the rows open read-only and do not move", async () => {
