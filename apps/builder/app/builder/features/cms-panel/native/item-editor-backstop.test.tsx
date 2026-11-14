@@ -330,5 +330,7 @@ describe("Save's rich-text backstop", () => {
         "Two, as the editor writes it"
       );
     });
+    // round 6, K13: what was restored is no longer offered
+    expect(byLabel("Use my edit: Body")).toBeNull();
   });
 });

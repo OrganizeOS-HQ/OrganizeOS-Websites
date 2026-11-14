@@ -675,7 +675,8 @@ export const FieldSheet = ({
         onBack={onBack}
         menu={
           canManage &&
-          removable && (
+          removable &&
+          frozen === false && (
             <DropdownMenuItem destructive onSelect={() => void askRemove()}>
               Remove field
             </DropdownMenuItem>
@@ -868,7 +869,7 @@ export const FieldSheet = ({
             <Button
               color="destructive"
               state={busy === "remove" ? "pending" : undefined}
-              disabled={busy !== undefined}
+              disabled={busy !== undefined || frozen}
               onClick={() => void remove()}
             >
               Remove

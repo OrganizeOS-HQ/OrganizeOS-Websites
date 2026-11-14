@@ -4,6 +4,21 @@
  */
 
 let placing = 0;
+// the control the keeper last gave the focus to, a fallback a placement of
+// the screen's own may still replace
+let lastPlaced: Element | null = null;
+
+/** Whether the focus is on the page, or only on the keeper's fallback. */
+export const isFocusLost = () => {
+  const active = document.activeElement;
+  return (
+    active === null ||
+    active === document.body ||
+    active.isConnected === false ||
+    active.matches(":disabled") ||
+    active === lastPlaced
+  );
+};
 
 /**
  * A focus placement that takes more than a frame (it waits for a row to be
@@ -116,6 +131,7 @@ export const keepFocusInScreen = () => {
     ) {
       candidate.focus();
       if (document.activeElement === candidate) {
+        lastPlaced = candidate;
         return;
       }
     }

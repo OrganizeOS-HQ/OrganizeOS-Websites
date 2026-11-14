@@ -46,7 +46,11 @@ import {
   RATE_LIMIT_RETRY_MS,
   REORDER_PAUSE_MS,
 } from "./cms-structure-logic";
-import { holdFocusKeeper, keepFocusInScreen } from "./focus-keeper";
+import {
+  holdFocusKeeper,
+  isFocusLost,
+  keepFocusInScreen,
+} from "./focus-keeper";
 import {
   CUSTOM_COLLECTION_TYPE,
   type CmsStructureCollection,
@@ -206,6 +210,15 @@ export const useCmsStructure = ({
   collectionIdRef.current = collectionId;
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  // the last session number given out: a view's session moves on when it
+  // opens, closes or is drawn again
+  const sessionCounter = useRef(session);
+  const bumpSession = () => {
+    sessionCounter.current += 1;
+    const next = sessionCounter.current;
+    setSession(next);
+    return next;
+  };
   const [detail, setDetail] = useState<CmsStructureCollection | undefined>();
   const [detailFailed, setDetailFailed] = useState<
     "unavailable" | "not_found" | undefined
@@ -590,9 +603,12 @@ export const useCmsStructure = ({
     }
   }, [onDirtyChange]);
 
+  // a closed view's late answers never act on the screen: its session ends
   const closeView = useCallback(() => {
     clearViewDirty();
+    bumpSession();
     setView(undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clearViewDirty]);
 
   // the open collection changed other than by its own Settings: its view
@@ -694,14 +710,20 @@ export const useCmsStructure = ({
   // Each view session's own writes under way, and the session Discard left
   // waiting for one: it stays frozen until it is drawn again
   const viewWrites = useRef(new Map<number, number>());
+  // the collection and view type each session's writes went to
+  const viewWriteTarget = useRef(
+    new Map<number, { id: string; type: CmsStructureView["type"] }>()
+  );
   const [frozenSession, setFrozenSession] = useState<number | undefined>();
   /** A view's write, counted for its session until it answers. */
   const ownedBy =
     (
       viewSession: number,
+      type: CmsStructureView["type"],
       enqueueWrite: CmsStructureEnqueue
     ): CmsStructureEnqueue =>
     (id, write) => {
+      viewWriteTarget.current.set(viewSession, { id, type });
       viewWrites.current.set(
         viewSession,
         (viewWrites.current.get(viewSession) ?? 0) + 1
@@ -729,9 +751,20 @@ export const useCmsStructure = ({
     const id = collectionIdRef.current;
     const asked = sessionRef.current;
     if (id === undefined || (viewWrites.current.get(asked) ?? 0) === 0) {
-      setSession((current) => current + 1);
+      bumpSession();
       return;
     }
+    freezeUntilFresh(id, asked);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clearViewDirty]);
+
+  /**
+   * The view of session `asked` stays frozen until the collection's queue
+   * settles and E21 is read again; it is then drawn from that read (from the
+   * values it held when the read fails), unless it was replaced or has
+   * unsaved values by then.
+   */
+  const freezeUntilFresh = (id: string, asked: number) => {
     setFrozenSession(asked);
     const isAsked = () =>
       collectionIdRef.current === id &&
@@ -743,10 +776,30 @@ export const useCmsStructure = ({
       }
       await fetchStructureRef.current(id, true, isAsked);
       if (isAsked()) {
-        setSession((current) => current + 1);
+        bumpSession();
       }
     });
-  }, [clearViewDirty]);
+  };
+
+  /**
+   * Whether an earlier view of the same type has its own write to the
+   * collection under way (a field sheet's schema write never changes the
+   * settings, nor the other way round).
+   */
+  const hasEarlierViewWrite = (
+    id: string,
+    type: CmsStructureView["type"],
+    current: number
+  ) =>
+    [...viewWrites.current].some(([viewSession, count]) => {
+      const target = viewWriteTarget.current.get(viewSession);
+      return (
+        count > 0 &&
+        viewSession !== current &&
+        target?.id === id &&
+        target.type === type
+      );
+    });
 
   // A Create whose outcome is unknown: the next E1 holding a new collection
   // of that name is the one it made.
@@ -833,9 +886,14 @@ export const useCmsStructure = ({
       }
       clearViewDirty();
       onViewOpen();
-      setSession((current) => current + 1);
+      const opened = bumpSession();
       setViewCollectionId(id);
       setView(next);
+      // drawn while an earlier view's write is under way, it would show the
+      // values from before it: it waits frozen for a fresh read
+      if (hasEarlierViewWrite(id, next.type, opened)) {
+        freezeUntilFresh(id, opened);
+      }
     });
   };
 
@@ -849,9 +907,12 @@ export const useCmsStructure = ({
       if (id !== collectionId) {
         onOpenCollection(id);
       }
-      setSession((current) => current + 1);
+      const opened = bumpSession();
       setViewCollectionId(id);
       setView({ type: "settings" });
+      if (hasEarlierViewWrite(id, "settings", opened)) {
+        freezeUntilFresh(id, opened);
+      }
     });
 
   // always read again: the count and the references change with item writes
@@ -953,7 +1014,7 @@ export const useCmsStructure = ({
               deferred.current.delete(id);
               versions.current.set(id, waiting.updatedAt);
             }
-            setSession((current) => current + 1);
+            bumpSession();
           }
           void sendReorder(id, true);
           return;
@@ -1224,13 +1285,14 @@ export const useCmsStructure = ({
       keepFocusInScreen();
     };
     let frames = 0;
+    let waitingForEnabled = false;
     const attempt = () => {
       const active = document.activeElement;
-      // a guard dialog or another view took the focus
+      // a guard dialog or another view took the focus; the keeper's own
+      // fallback is replaced once a target can take it
       if (
+        isFocusLost() === false &&
         active !== null &&
-        active !== document.body &&
-        active.isConnected &&
         (from === undefined || active.closest(from) === null)
       ) {
         release();
@@ -1240,9 +1302,30 @@ export const useCmsStructure = ({
         release();
         return;
       }
+      // a target drawn but disabled (its read still running): the keeper
+      // places its fallback meanwhile, and the target takes the focus once
+      // it is enabled
+      if (
+        selectors.some((selector) => {
+          const element = document.querySelector<HTMLElement>(selector);
+          return (
+            element !== null &&
+            element.closest("[hidden]") === null &&
+            element.matches(":disabled")
+          );
+        })
+      ) {
+        if (waitingForEnabled === false) {
+          waitingForEnabled = true;
+          release();
+          keepFocusInScreen();
+        }
+      }
       frames += 1;
-      if (frames < 30) {
+      if (frames < (waitingForEnabled ? 1200 : 30)) {
         requestAnimationFrame(attempt);
+      } else if (waitingForEnabled) {
+        return;
       } else {
         focusFirst(['[aria-label="New collection"]']);
         done();
@@ -1349,7 +1432,7 @@ export const useCmsStructure = ({
           structure={structure}
           collection={openDetail}
           canManage={canManage}
-          enqueue={ownedBy(viewSession, enqueue)}
+          enqueue={ownedBy(viewSession, "settings", enqueue)}
           reread={() => fetchStructure(openDetail.id, true, isSameView)}
           frozen={frozenSession === viewSession}
           onBack={() => guard(closeView)}
@@ -1380,7 +1463,7 @@ export const useCmsStructure = ({
         target={view.target}
         targets={targets}
         canManage={canManage}
-        enqueue={ownedBy(viewSession, enqueueSchema)}
+        enqueue={ownedBy(viewSession, "field", enqueueSchema)}
         reread={() => fetchStructure(openDetail.id, true, isSameView)}
         frozen={frozenSession === viewSession}
         readCount={() => fetchStructure(openDetail.id)}
@@ -1411,7 +1494,7 @@ export const useCmsStructure = ({
               : current
           );
           if (isSameView()) {
-            setSession((current) => current + 1);
+            bumpSession();
             setView({ type: "field", target: { key } });
           }
           written({

@@ -1936,6 +1936,27 @@ describe("a focus lost to the page comes back to the screen (round 5)", () => {
       newItem,
     ],
     [
+      "Custom Create whose E21 answers after the keeper's fallback",
+      async () => {
+        const held = createCustomHeld();
+        await createCustom();
+        // longer than a placement's own wait of 30 frames
+        await act(() => new Promise((done) => setTimeout(done, 900)));
+        await act(async () =>
+          (held.resolve as (value: unknown) => void)({
+            collection: {
+              ...POSTS_STRUCTURE,
+              id: SPEAKERS_ROW.id,
+              slug: SPEAKERS_ROW.slug,
+              name: SPEAKERS_ROW.name,
+              fields: [],
+            },
+          })
+        );
+      },
+      () => byLabel("Add field"),
+    ],
+    [
       "Custom Create whose E21 fails",
       async () => {
         const held = createCustomHeld();

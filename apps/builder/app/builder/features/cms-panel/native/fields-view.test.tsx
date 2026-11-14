@@ -1539,6 +1539,83 @@ describe("Discard during a view's own write keeps another person's change", () =
     expect(sent).toMatchObject({ expectedUpdatedAt: LATER, slug: "news" });
   });
 
+  /** Back from the open view, through the guard's Discard. */
+  const backDiscarding = async () => {
+    await click(header().querySelector<HTMLElement>('[aria-label="Back"]'));
+    if (hasText("Discard unsaved changes?")) {
+      await discardChanges();
+    }
+  };
+
+  // round 6, K9: a view closed during its own Save never opens again
+  test("a sheet closed with Back during its own Save stays closed when the Save lands", async () => {
+    await openFields();
+    await click(fieldRow("summary")!.querySelector("button"));
+    await typeInto(input("cms-field-sheet-label"), "Teaser");
+    const held =
+      deferred<CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>>();
+    let sent: CmsStructureField[] = [];
+    harness.structure.updateSchema.mockImplementationOnce(async (_id, body) => {
+      sent = body.fields;
+      return held.promise;
+    });
+    await click(buttonByText("Save", header()));
+    await backDiscarding();
+    expect(sheet()).toBeNull();
+    await act(async () => held.resolve({ fields: sent, updatedAt: NEXT }));
+    await drain();
+    expect(sheet()).toBeNull();
+  });
+
+  // round 6, K10: a sheet reopened while its earlier Save runs waits for it
+  test("a sheet reopened while its earlier Save runs is drawn from what landed, and its next Save keeps it", async () => {
+    await openFields();
+    await click(fieldRow("summary")!.querySelector("button"));
+    await typeInto(input("cms-field-sheet-label"), "Teaser");
+    const held =
+      deferred<CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>>();
+    let sent: CmsStructureField[] = [];
+    harness.structure.updateSchema.mockImplementationOnce(async (_id, body) => {
+      sent = body.fields;
+      return held.promise;
+    });
+    await click(buttonByText("Save", header()));
+    await backDiscarding();
+    await click(fieldRow("summary")!.querySelector("button"));
+    expect(sheet()).not.toBeNull();
+    harness.structure.getCollectionStructure.mockResolvedValue({
+      collection: { ...POSTS_STRUCTURE, fields: sent, updatedAt: NEXT },
+    });
+    await act(async () => held.resolve({ fields: sent, updatedAt: NEXT }));
+    await drain();
+    expect(input("cms-field-sheet-label")?.value).toBe("Teaser");
+    await typeInto(input("cms-field-sheet-help"), "Help mine");
+    answerSchema(LATER);
+    await click(buttonByText("Save", header()));
+    await drain();
+    expect(sentSummary()?.label).toBe("Teaser");
+  });
+
+  // round 6, K22: a frozen sheet offers no Remove
+  test("a sheet frozen by Discard during its own Save offers no Remove field", async () => {
+    await openFields();
+    await click(fieldRow("summary")!.querySelector("button"));
+    await typeInto(input("cms-field-sheet-label"), "Teaser");
+    const gate = theirs();
+    const held =
+      deferred<CmsResult<{ fields: CmsStructureField[]; updatedAt: string }>>();
+    harness.structure.updateSchema.mockImplementationOnce(() => held.promise);
+    await click(buttonByText("Save", header()));
+    await plusThenCancel();
+    await act(async () => held.resolve({ error: "unavailable" }));
+    await drain();
+    expect(input("cms-field-sheet-label")?.disabled).toBe(true);
+    expect(header().querySelector('[aria-label="Field menu"]')).toBeNull();
+    await act(async () => gate.resolve());
+    await drain();
+    expect(header().querySelector('[aria-label="Field menu"]')).not.toBeNull();
+  });
+
   test.each(["ok", "conflict", "unavailable"] as const)(
     "a dirty sheet with a reorder's E24 in flight (%s), after Discard: drawn at once, and text typed then stays",
     async (answer) => {

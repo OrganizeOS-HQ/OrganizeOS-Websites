@@ -1027,6 +1027,8 @@ export const ItemEditor = ({
       ...current,
       [key]: restored,
     }));
+    // what is set aside is what was restored, so it is no longer offered
+    setKept({ ...kept, values: { ...kept.values, [key]: restored } });
     setFieldEpochs((current) => ({
       ...current,
       [key]: (current[key] ?? 0) + 1,

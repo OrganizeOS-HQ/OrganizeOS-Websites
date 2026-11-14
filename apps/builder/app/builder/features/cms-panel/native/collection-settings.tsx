@@ -409,7 +409,8 @@ export const CollectionSettings = ({
         menuLabel="Collection menu"
         onBack={onBack}
         menu={
-          canManage && (
+          canManage &&
+          frozen === false && (
             <DropdownMenuItem destructive onSelect={onDelete}>
               Delete collection
             </DropdownMenuItem>
