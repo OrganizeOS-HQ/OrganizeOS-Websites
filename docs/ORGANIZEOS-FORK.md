@@ -1889,7 +1889,8 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     change to a field's options or to the title field, an Address or Public
     change and a delete also invalidate the canvas's requests for the
     collection. Opening a structure view clears the list's
-    selection, and keyboard moves still in their pause are sent.
+    selection, and keyboard moves still in their pause are sent. A structure view, Settings and New collection wait for the
+    editor's running write, then the guard.
   - **The catalog Resource on first use** (`native/cms-catalog-add.ts`). A
     public collection with no catalog Resource gets one, in provisioning's
     shape (`shared/organizeos-collection-resource.ts`), the first time its
