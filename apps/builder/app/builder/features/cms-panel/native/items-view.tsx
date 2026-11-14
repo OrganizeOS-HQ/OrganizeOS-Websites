@@ -48,6 +48,7 @@ import { FilterMenu, SortMenu } from "./items-menus";
 import { ItemsTable } from "./items-table";
 import { TruncatedText } from "./truncated-text";
 import { useBulkActions } from "./use-bulk-actions";
+import type { ReorderState } from "./reorder-state";
 import { useRowReorder } from "./use-row-reorder";
 
 const TopBar = ({
@@ -80,15 +81,26 @@ const TopBar = ({
 }) => {
   const [draft, setDraft] = useState(query);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // The last query this field sent: its echo never rewrites the field, so a
+  // key typed before the echo arrives is kept, and so is a trailing space.
+  const sent = useRef(query);
   useEffect(() => {
-    // the trimmed query comes back: keep what the person typed
-    setDraft((current) => (current.trim() === query ? current : query));
+    if (query === sent.current) {
+      return;
+    }
+    // a query set from elsewhere replaces what is typed
+    sent.current = query;
+    clearTimeout(timer.current);
+    setDraft(query);
   }, [query]);
   useEffect(() => () => clearTimeout(timer.current), []);
   const change = (value: string, delay: number) => {
     setDraft(value);
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => onQueryChange(value.trim()), delay);
+    timer.current = setTimeout(() => {
+      sent.current = value.trim();
+      onQueryChange(value.trim());
+    }, delay);
   };
   return (
     <Flex
@@ -220,6 +232,7 @@ export const ItemsView = ({
   fields,
   list,
   pageAnswer,
+  reorderState,
   onListChange,
   onListWritten,
   onRefusal,
@@ -248,6 +261,8 @@ export const ItemsView = ({
   list: CmsListState;
   /** The last E3 answer's counter, for the reorder wait (Task 18). */
   pageAnswer: { count: number; ok: boolean };
+  /** The screen's reorder state, kept while this view remounts. */
+  reorderState: ReorderState;
   /** A filter, sort or selection change (Tasks 16 to 18). */
   onListChange: (next: CmsListState) => void;
   /** After a bulk or reorder write: the lists and canvas refetch (Task 17). */
@@ -259,12 +274,13 @@ export const ItemsView = ({
   onOpenItem: (itemId: string) => void;
   onNewItem: () => void;
 }) => {
-  // The empty collection (New item alone) reads E3, not E1: no search, no
-  // filter and a total of 0 (spec 5.1.8). Any other empty page is "No matches".
+  // The empty collection (New item alone) reads E3, not E1: a total of 0
+  // drawn for no search and no filter (spec 5.1.8). Any other empty page is
+  // "No matches", until the page for the open search and filter is drawn.
   const emptyNew =
     page !== undefined &&
     page.total === 0 &&
-    query.trim() === "" &&
+    drawnQueryEmpty &&
     filterCount(list) === 0;
   const noMatches =
     page !== undefined && page.total === 0 && emptyNew === false;
@@ -344,6 +360,7 @@ export const ItemsView = ({
     listKey: JSON.stringify([listKey(list), query]),
     page,
     pageAnswer,
+    state: reorderState,
     onReordered: onListWritten,
     onFailed: (code) => {
       // the refetch shows the server's order

@@ -165,9 +165,10 @@ export const ItemEditor = ({
    */
   onSchemaStale: () => Promise<void>;
   /**
-   * Save, Publish, Discard changes, Unpublish, Archive or Restore runs:
-   * every call it makes and the read after. `stay`: it ended with an error
-   * the editor shows, so what waited on it is dropped.
+   * Save, Publish, Discard changes, Unpublish, Archive or Restore runs
+   * (every call it makes and the read after), or a field's upload is in
+   * flight. `stay`: a chain or upload that just ended shows an error in the
+   * editor, so what waited on it is dropped, even while an upload runs on.
    */
   onBusyChange?: (busy: boolean, stay?: boolean) => void;
   /**
@@ -219,8 +220,10 @@ export const ItemEditor = ({
   // Save, Publish, Discard changes, Unpublish, Archive or Restore, from its
   // first call to its last answer
   const [isChainRunning, setIsChainRunning] = useState(false);
-  // the running chain ended with an error the editor shows
+  // the chain or upload that just ended showed an error in the editor
   const chainStays = useRef(false);
+  // the field whose upload just ended: an error it shows keeps the editor
+  const uploadEnded = useRef<string | undefined>(undefined);
   const cancelRef = useRef<HTMLButtonElement>(null);
   // what had the focus when the Discard changes dialog opened
   const discardOpener = useRef<Element | null>(null);
@@ -389,12 +392,24 @@ export const ItemEditor = ({
   useEffect(() => {
     onDirtyChange(isDirty);
   }, [isDirty, onDirtyChange]);
+  // an upload's value lands after it answers: what waits sees it
+  const isEditorBusy = isChainRunning || busyFields.size > 0;
+  // a stay is reported once, as the chain or upload that ended with it ends
+  // (each upload's start and end makes a new busyFields)
   useEffect(() => {
-    onBusyChange?.(isChainRunning, chainStays.current);
+    onBusyChange?.(isEditorBusy, chainStays.current);
     chainStays.current = false;
-  }, [isChainRunning, onBusyChange]);
+    uploadEnded.current = undefined;
+  }, [isEditorBusy, isChainRunning, busyFields, onBusyChange]);
   useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+
+  /** An error shows in the editor: what waited on the chain is dropped. */
+  const showsInPlace = () => {
+    if (isMounted.current) {
+      chainStays.current = true;
+    }
+  };
 
   /**
    * An unknown outcome (4.3.2): read the item before the buttons enable
@@ -416,6 +431,7 @@ export const ItemEditor = ({
       // Reload is the way on; a refusal is answered as on a write, so the
       // view stays unless the session itself needs the person
       setConflict(true);
+      showsInPlace();
       const refusal = getRefusal(result.error, "write");
       if (refusal !== undefined) {
         onRefusal(refusal);
@@ -453,11 +469,13 @@ export const ItemEditor = ({
   ): Promise<void> | undefined => {
     if (failure.error === "conflict") {
       setConflict(true);
+      showsInPlace();
       return;
     }
     // the address clash never carries a field (5.7)
     if (failure.error === "slug_taken") {
       setErrors((current) => ({ ...current, slug: "Address in use" }));
+      showsInPlace();
       return;
     }
     // a field the editor draws, or the address, shows its error in place
@@ -494,12 +512,14 @@ export const ItemEditor = ({
         ...current,
         ...Object.fromEntries(keys.map((key) => [key, text])),
       }));
+      showsInPlace();
       return;
     }
     const fieldText = getFieldErrorText(failure.error);
     const fieldKey = failure.field;
     if (fieldText !== undefined && fieldKey !== undefined) {
       setErrors((current) => ({ ...current, [fieldKey]: fieldText }));
+      showsInPlace();
       return;
     }
     const refusal = getRefusal(failure.error, on);
@@ -1184,14 +1204,23 @@ export const ItemEditor = ({
                       disabled={disabled}
                       invalid={errors[field.key] !== undefined}
                       onChange={(value) => setField(field.key, value)}
-                      onError={(error) =>
+                      onError={(error) => {
+                        if (
+                          error !== undefined &&
+                          uploadEnded.current === field.key
+                        ) {
+                          showsInPlace();
+                        }
                         setErrors(({ [field.key]: _, ...rest }) =>
                           error === undefined
                             ? rest
                             : { ...rest, [field.key]: error }
-                        )
-                      }
-                      onBusyChange={(isBusy) =>
+                        );
+                      }}
+                      onBusyChange={(isBusy) => {
+                        if (isBusy === false) {
+                          uploadEnded.current = field.key;
+                        }
                         setBusyFields((current) => {
                           const next = new Set(current);
                           if (isBusy) {
@@ -1200,8 +1229,8 @@ export const ItemEditor = ({
                             next.delete(field.key);
                           }
                           return next;
-                        })
-                      }
+                        });
+                      }}
                       onRefusal={onRefusal}
                       onOpenClassic={onOpenClassic}
                       onUnresolvedChange={(ids) => {
@@ -1270,7 +1299,8 @@ export const ItemEditor = ({
             discardOpener.current = document.activeElement;
             cancelRef.current?.focus();
           }}
-          // the focus goes back to its opener, else to the Item menu
+          // the focus goes back to its opener, else (gone, or disabled
+          // while Discard runs) to the Item menu
           onCloseAutoFocus={(event) => {
             const element = discardOpener.current;
             discardOpener.current = null;
@@ -1281,7 +1311,12 @@ export const ItemEditor = ({
               element.isConnected
             ) {
               element.focus();
-            } else {
+            }
+            if (
+              element === null ||
+              element === document.body ||
+              document.activeElement !== element
+            ) {
               itemMenuRef.current?.focus();
             }
           }}

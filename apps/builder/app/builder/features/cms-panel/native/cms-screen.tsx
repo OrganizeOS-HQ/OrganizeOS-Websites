@@ -62,6 +62,7 @@ import { CollectionsColumn } from "./collections-column";
 import { ItemEditor } from "./item-editor";
 import { ItemsView } from "./items-view";
 import { RefusalLine, type CmsLineKind } from "./refusal-line";
+import { createReorderState } from "./reorder-state";
 
 export type CmsScreenView = {
   collectionId?: string;
@@ -240,6 +241,11 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
     // Bumped on every E3 answer for the current key, success or failure; a
     // reorder's wait reads it (Task 18).
     const [pageAnswer, setPageAnswer] = useState({ count: 0, ok: true });
+    // The items table's reorder state, kept while the table remounts (an
+    // item visit, the page line); other views read whether an E13 is in
+    // flight from it.
+    const [reorderState] = useState(createReorderState);
+    reorderState.notePageAnswer(pageAnswer.count);
     const [itemsPage, setItemsPage] = useState<CmsItemsPage | undefined>(
       undefined
     );
@@ -775,9 +781,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         : undefined);
 
     // While the editor's Save, Publish, Discard changes, Unpublish, Archive
-    // or Restore runs (every call and the read after), Back, another
-    // collection and Classic CMS wait for it to end, then run the guard on
-    // what it left.
+    // or Restore runs (every call and the read after), or a field's upload
+    // is in flight, Back, another collection and Classic CMS wait for it to
+    // end, then run the guard on what it left.
     const [isEditorBusy, setIsEditorBusy] = useState(false);
     const isEditorBusyRef = useRef(false);
     isEditorBusyRef.current = isEditorBusy;
@@ -797,9 +803,17 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       afterEditorBusy.current = undefined;
       run();
     }, [isEditorBusy]);
+    // a hidden overlay runs no exit that waited: its guard would open over
+    // the canvas
+    useEffect(() => {
+      if (isVisible === false) {
+        afterEditorBusy.current = undefined;
+      }
+    }, [isVisible]);
     const onEditorBusyChange = useCallback((busy: boolean, stay?: boolean) => {
-      // an error the editor shows keeps it open: what waited is dropped
-      if (busy === false && stay === true) {
+      // an error the editor shows keeps it open: what waited is dropped,
+      // even while an upload still runs
+      if (stay === true) {
         afterEditorBusy.current = undefined;
       }
       setIsEditorBusy(busy);
@@ -1034,6 +1048,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           fields={detail?.id === collection.id ? detail.fields : undefined}
           list={list}
           pageAnswer={pageAnswer}
+          reorderState={reorderState}
           onListChange={onListChange}
           onListWritten={onWritten}
           onRefusal={onEditorRefusal}
