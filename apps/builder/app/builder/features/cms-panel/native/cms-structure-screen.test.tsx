@@ -796,6 +796,33 @@ describe("after a structure write", () => {
   const settingsInput = (id: string) =>
     document.querySelector<HTMLInputElement>(`#cms-settings-${id}`);
 
+  test("a settings rename shows in the item editor behind the view after Back, from one E2 refetch (M18, round 4)", async () => {
+    answerSettings();
+    const save = harness.structure.updateCollection.getMockImplementation()!;
+    harness.structure.updateCollection.mockImplementation(async (...args) => {
+      harness.fake.getCollection.mockResolvedValue({
+        collection: { ...POSTS_DETAIL, name: "Articles" },
+      });
+      return save(...args);
+    });
+    mount();
+    await settle();
+    await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+    expect(document.querySelector("#cms-field-title")).not.toBeNull();
+    await openSettings();
+    await typeInto(settingsInput("name"), "Articles");
+    const reads = harness.fake.getCollection.mock.calls.length;
+    await click(buttonByText("Save", header()!));
+    await settle();
+    await click(byLabel("Back"));
+    await settle();
+    expect(document.querySelector("#cms-field-title")).not.toBeNull();
+    const crumb = document.querySelector("[data-cms-crumb]")?.textContent;
+    expect(crumb).toContain("Articles");
+    expect(crumb).not.toContain("Posts");
+    expect(harness.fake.getCollection.mock.calls.length - reads).toBe(1);
+  });
+
   // the review focus line on removals
   test("after a field removal an open item editor saves without the removed key", async () => {
     answerSchema();
