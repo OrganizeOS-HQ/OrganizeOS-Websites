@@ -255,32 +255,92 @@ describe("the field sheet", () => {
     );
   });
 
-  test("a long collection name truncates in Collection within the sheet, whole in its tooltip", async () => {
-    const long = `Speakers ${"and their sessions ".repeat(8)}`.trim();
-    harness.fake.listCollections.mockResolvedValue({
-      collections: [{ ...POSTS, name: long }, PEOPLE],
+  describe("a 120-character collection name in Collection (RF5, round 4)", () => {
+    const long = `Speakers ${"and sessions ".repeat(10)}`.slice(0, 120);
+    const tooltipText = () =>
+      [...document.querySelectorAll('[role="tooltip"]')]
+        .map((element) => element.textContent)
+        .join("");
+    const showsWhole = () =>
+      vi.waitFor(() => expect(tooltipText()).toContain(long), {
+        timeout: 3000,
+      });
+    const nameIn = (root: Element) =>
+      root.querySelector<HTMLElement>("[data-cms-collection-name]")!;
+    const openWithLong = async () => {
+      expect(long).toHaveLength(120);
+      harness.fake.listCollections.mockResolvedValue({
+        collections: [{ ...POSTS, name: long }, PEOPLE],
+      });
+      withFields();
+      await openNew("reference");
+      const trigger = control<HTMLButtonElement>("reference")!;
+      expect(trigger.disabled).toBe(false);
+      expect(nameIn(trigger).textContent).toBe(long);
+      return trigger;
+    };
+
+    test("the trigger truncates within the sheet; real hover shows it whole", async () => {
+      const trigger = await openWithLong();
+      expect(trigger.getBoundingClientRect().right).toBeLessThanOrEqual(
+        sheet()!.getBoundingClientRect().right
+      );
+      expect(nameIn(trigger).scrollWidth).toBeGreaterThan(
+        nameIn(trigger).clientWidth
+      );
+      await act(async () => userEvent.hover(trigger));
+      await showsWhole();
     });
+
+    test("an open option stays within the list, truncates, and shows whole on hover", async () => {
+      const trigger = await openWithLong();
+      await act(async () => userEvent.click(trigger));
+      const option = await vi.waitFor(() => {
+        const found = [
+          ...document.querySelectorAll<HTMLElement>('[role="option"]'),
+        ].find((element) => element.textContent?.includes(long));
+        expect(found).toBeDefined();
+        return found!;
+      });
+      const listbox = option.closest<HTMLElement>('[role="listbox"]')!;
+      expect(nameIn(option).getBoundingClientRect().right).toBeLessThanOrEqual(
+        listbox.getBoundingClientRect().right
+      );
+      expect(nameIn(option).scrollWidth).toBeGreaterThan(
+        nameIn(option).clientWidth
+      );
+      await act(async () => userEvent.hover(nameIn(option)));
+      await showsWhole();
+    });
+
+    test("a saved reference's disabled trigger still shows it whole on hover", async () => {
+      harness.fake.listCollections.mockResolvedValue({
+        collections: [POSTS, { ...PEOPLE, name: long }],
+      });
+      withFields();
+      await openField("author");
+      const disabled = control<HTMLButtonElement>("reference")!;
+      expect(disabled.disabled).toBe(true);
+      expect(nameIn(disabled).textContent).toBe(long);
+      await act(async () => userEvent.hover(disabled.parentElement!));
+      await showsWhole();
+    });
+  });
+
+  test("a short collection name opens no tooltip on hover (RF5, round 4)", async () => {
     withFields();
     await openNew("reference");
     const trigger = control<HTMLButtonElement>("reference")!;
-    expect(trigger.textContent).toContain(long);
-    expect(trigger.getBoundingClientRect().right).toBeLessThanOrEqual(
-      sheet()!.getBoundingClientRect().right
-    );
-    const text = [...trigger.querySelectorAll<HTMLElement>("*")].find(
-      (element) => element.textContent === long && element.children.length === 0
-    )!;
-    expect(text.scrollWidth).toBeGreaterThan(text.clientWidth);
-    await act(async () => {
-      text.dispatchEvent(
-        new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })
-      );
+    await act(async () => userEvent.click(trigger));
+    const option = await vi.waitFor(() => {
+      const found = document.querySelector<HTMLElement>('[role="option"]');
+      expect(found).not.toBeNull();
+      return found!;
     });
-    await vi.waitFor(() =>
-      expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
-        long
-      )
-    );
+    await act(async () => userEvent.click(option));
+    await act(async () => userEvent.hover(trigger));
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
   });
 
   test("Collection: disabled for a template reference and for any saved reference, as Kind is; enabled for a new one", async () => {

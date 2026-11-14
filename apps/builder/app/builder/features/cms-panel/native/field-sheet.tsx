@@ -35,6 +35,7 @@ import {
   TextArea,
   theme,
   toast,
+  Tooltip,
   useSortable,
 } from "@webstudio-is/design-system";
 import { DragHandleIcon, PlusIcon, XIcon } from "@webstudio-is/icons";
@@ -289,6 +290,75 @@ const OptionsEditor = ({
         </Flex>
       </Grid>
     </FieldRow>
+  );
+};
+
+/**
+ * Collection: a long name truncates, in the trigger and in each option, and
+ * shows whole in a tooltip only while it is cut off.
+ */
+const CollectionSelect = ({
+  id,
+  options,
+  value,
+  disabled,
+  getName,
+  onChange,
+}: {
+  id: string;
+  options: string[];
+  value: string | undefined;
+  disabled: boolean;
+  getName: (id: string) => string;
+  onChange: (id: string) => void;
+}) => {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  return (
+    <Tooltip
+      content={value === undefined ? "" : getName(value)}
+      delayDuration={600}
+      open={open}
+      onOpenChange={(next) => {
+        const text = triggerRef.current?.querySelector<HTMLElement>(
+          "[data-cms-collection-name]"
+        );
+        setOpen(
+          next &&
+            text !== null &&
+            text !== undefined &&
+            text.scrollWidth > text.clientWidth
+        );
+      }}
+    >
+      <Flex
+        direction="column"
+        // a disabled trigger takes no pointer events; its wrapper does
+        css={{ minWidth: 0, "& button:disabled": { pointerEvents: "none" } }}
+      >
+        <Select
+          ref={triggerRef}
+          id={id}
+          options={options}
+          value={value}
+          placeholder="Choose"
+          disabled={disabled}
+          getLabel={(option: string) => (
+            <TruncatedText
+              data-cms-collection-name=""
+              // an option is no wider than the trigger
+              css={{
+                display: "block",
+                maxWidth: "calc(var(--radix-select-trigger-width) - 48px)",
+              }}
+            >
+              {getName(option)}
+            </TruncatedText>
+          )}
+          onChange={onChange}
+        />
+      </Flex>
+    </Tooltip>
   );
 };
 
@@ -693,16 +763,12 @@ export const FieldSheet = ({
             required
             error={errors.reference}
           >
-            <Select
+            <CollectionSelect
               id={ids.reference}
               options={referenceTargets}
               value={draft.referenceId === "" ? undefined : draft.referenceId}
-              placeholder="Choose"
               disabled={disabled || draft.locked || isNew === false}
-              // a long name truncates, whole in its tooltip
-              getLabel={(id: string) => (
-                <TruncatedText>{targetName(id)}</TruncatedText>
-              )}
+              getName={targetName}
               onChange={(referenceId) => update({ ...draft, referenceId })}
             />
           </FieldRow>
