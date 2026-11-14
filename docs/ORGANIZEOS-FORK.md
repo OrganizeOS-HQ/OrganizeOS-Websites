@@ -588,8 +588,8 @@ can be merged with minimal conflict.
   marked lines; and
   the app's origin in that route's `frame-src`,
   through `builderFrameSrcPolicy` in `shared/frame-protection.ts`. The native
-  screen also adds the four `@lexical/*` packages `code`, `html`, `list` and
-  `rich-text` as direct dependencies in `apps/builder/package.json`, and so in
+  screen also adds the five `@lexical/*` packages `clipboard`, `code`, `html`,
+  `list` and `rich-text` as direct dependencies in `apps/builder/package.json`, and so in
   `pnpm-lock.yaml` (neither can carry a mark), and `htmlparser2` (12.0.0) and
   `sanitize-html` (2.17.7, with `@types/sanitize-html`) for the rich-text
   read-only check; `native/rich-text-nodes.ts` and `native/rich-text-sanitize.ts`,
@@ -1810,7 +1810,8 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     or a top-level `figure` with a plain-text `figcaption` (a figure inside
     another block keeps its image, and is read-only where the page would
     change). Its Image button uploads one through E9 with the
-    image field's checks; pasted HTML brings no image. It is read-only when
+    image field's checks; pasted HTML brings no image, and a cut, copy or
+    drag inside the same field keeps its images. It is read-only when
     the editor would change the value on a load and save: the stored value,
     run through the platform's sanitiser, against the editor's own write of
     it, through the same sanitiser, by the platform's /v1 nodes, by each link

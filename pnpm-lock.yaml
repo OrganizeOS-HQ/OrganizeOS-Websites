@@ -164,6 +164,9 @@ importers:
       '@floating-ui/dom':
         specifier: ^1.6.13
         version: 1.6.13
+      '@lexical/clipboard':
+        specifier: ^0.21.0
+        version: 0.21.0
       '@lexical/code':
         specifier: ^0.21.0
         version: 0.21.0

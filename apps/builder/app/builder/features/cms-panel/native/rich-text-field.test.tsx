@@ -393,7 +393,7 @@ test("a link copied from a Lexical editor takes the same rule when pasted", asyn
   };
   paste(editable()!, {
     "application/x-lexical-editor": JSON.stringify({
-      namespace: "cms-rich-text",
+      namespace: editorOf()!._config.namespace,
       nodes: [
         {
           type: "link",
@@ -816,6 +816,83 @@ test("typing in the middle of Alt keeps the caret where it is", async () => {
   expect(alt.value).toBe("Big A");
   expect(alt.selectionStart).toBe(4);
   expect(lastHtml(onChange)).toContain('alt="Big A"');
+});
+
+/** An image as Lexical's clipboard data carries it. */
+const copiedImage = (namespace: string) =>
+  JSON.stringify({
+    namespace,
+    nodes: [
+      {
+        type: "cms-image",
+        version: 1,
+        attributes: {
+          src: "https://example.org/a.png",
+          alt: "A",
+          width: null,
+          height: null,
+          title: null,
+        },
+      },
+    ],
+  });
+
+test("an image this field copied pastes back whole", async () => {
+  const { onChange } = mountField({ value: { html: "<p>Text</p>" } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  paste(editable()!, {
+    "application/x-lexical-editor": copiedImage(editorOf()!._config.namespace),
+    "text/html": `<p>${IMAGE}</p>`,
+  });
+  await settle();
+  expect(lastHtml(onChange)).toContain('src="https://example.org/a.png"');
+  expect(getRichTextReadOnlyReason(lastHtml(onChange))).toBeUndefined();
+});
+
+test("an image in another editor's Lexical data pastes as nothing", async () => {
+  const { onChange } = mountField({ value: { html: "<p>Text</p>" } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  for (const namespace of ["cms-rich-text", "elsewhere"]) {
+    paste(editable()!, {
+      "application/x-lexical-editor": copiedImage(namespace),
+      "text/html": `<p>${IMAGE}</p>`,
+      "text/plain": "",
+    });
+    await settle();
+  }
+  expect(editable()!.querySelector("img")).toBeNull();
+  expect(lastHtml(onChange) ?? "").not.toContain("<img");
+});
+
+test("a drag inside the field carries its nodes, images included", async () => {
+  mountField({ value: { html: `<p>See ${IMAGE}here</p>` } });
+  await settle();
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  await selectAll();
+  const dataTransfer = new DataTransfer();
+  act(() => {
+    editable()!.dispatchEvent(
+      new DragEvent("dragstart", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+      })
+    );
+  });
+  const copied = JSON.parse(
+    dataTransfer.getData("application/x-lexical-editor")
+  ) as { namespace: string };
+  expect(copied.namespace).toBe(editorOf()!._config.namespace);
+  expect(JSON.stringify(copied)).toContain('"type":"cms-image"');
+  await click(editable()!.querySelector<HTMLElement>("p"));
+  drop(editable()!, {
+    "application/x-lexical-editor": JSON.stringify(copied),
+    "text/html": `<p>See ${IMAGE}here</p>`,
+  });
+  await settle();
+  expect(editable()!.querySelectorAll("img").length).toBeGreaterThan(1);
 });
 
 test("pasted HTML with an img keeps no image", async () => {

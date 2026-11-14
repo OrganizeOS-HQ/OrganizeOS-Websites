@@ -17,6 +17,7 @@ import {
   $setSelection,
   $isElementNode,
   COMMAND_PRIORITY_CRITICAL,
+  DRAGSTART_COMMAND,
   COMMAND_PRIORITY_LOW,
   COMMAND_PRIORITY_NORMAL,
   CONTROLLED_TEXT_INSERTION_COMMAND,
@@ -50,6 +51,7 @@ import {
   $isHeadingNode,
   $isQuoteNode,
 } from "@lexical/rich-text";
+import { $getLexicalContent } from "@lexical/clipboard";
 import { $createCodeNode, $isCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
 import {
@@ -783,12 +785,10 @@ const Toolbar = ({
 /** The clipboard type of Lexical's own copy, whose nodes carry their links. */
 const LEXICAL_CLIPBOARD_TYPE = "application/x-lexical-editor";
 
-const imageNodeTypes = new Set(["cms-image", "cms-figure"]);
-
 /**
- * Whether copied Lexical nodes hold a link the Link control's rule refuses,
- * or an image: an image enters a value only from its stored HTML or an
- * upload.
+ * Whether copied Lexical nodes hold a link the Link control's rule refuses.
+ * Lexical reads copied nodes only from its own namespace, one per field, so
+ * an image in them came from this field's own copy, cut or drag.
  */
 const hasRefusedNode = (value: unknown): boolean => {
   if (Array.isArray(value)) {
@@ -803,9 +803,6 @@ const hasRefusedNode = (value: unknown): boolean => {
     children?: unknown;
     nodes?: unknown;
   };
-  if (typeof node.type === "string" && imageNodeTypes.has(node.type)) {
-    return true;
-  }
   if (
     (node.type === "link" || node.type === "autolink") &&
     richTextHref(typeof node.url === "string" ? node.url : undefined) === null
@@ -1039,6 +1036,21 @@ const LinkRulePlugin = () => {
           },
           COMMAND_PRIORITY_LOW
         ),
+        // a drag inside the editor carries its nodes, as a copy does
+        editor.registerCommand(
+          DRAGSTART_COMMAND,
+          (event) => {
+            const selection = $getSelection();
+            if (event.dataTransfer !== null && selection !== null) {
+              const content = $getLexicalContent(editor, selection);
+              if (content !== null) {
+                event.dataTransfer.setData(LEXICAL_CLIPBOARD_TYPE, content);
+              }
+            }
+            return false;
+          },
+          COMMAND_PRIORITY_CRITICAL
+        ),
         editor.registerCommand(
           PASTE_COMMAND,
           (event) => {
@@ -1117,6 +1129,7 @@ export const RichTextField = ({
 }: RichTextFieldProps) => {
   // read once: a new value remounts the field (FieldControl's remountKey)
   const [initial] = useState(() => readRichTextValue(value));
+  const [namespace] = useState(() => `cms-rich-text-${crypto.randomUUID()}`);
   const [readOnlyReason] = useState(() =>
     getRichTextReadOnlyReason(initial?.html ?? "")
   );
@@ -1157,7 +1170,9 @@ export const RichTextField = ({
   return (
     <LexicalComposer
       initialConfig={{
-        namespace: "cms-rich-text",
+        // one per field: Lexical reads copied nodes, images included, only
+        // from this field's own copy, cut or drag
+        namespace,
         theme: editorTheme,
         nodes: editorNodes,
         html: richTextHtmlConfig,

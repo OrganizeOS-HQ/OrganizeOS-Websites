@@ -48,6 +48,7 @@ const added = [
   "@lexical/list",
   "@lexical/html",
   "@lexical/code",
+  "@lexical/clipboard",
 ];
 
 test.each(added)("%s resolves to lexical's version", (name) => {
@@ -55,7 +56,7 @@ test.each(added)("%s resolves to lexical's version", (name) => {
   expect(versionOf(name)).toBe(versionOf("lexical"));
 });
 
-test("the builder lists the four as ^0.21.0, as lexical", () => {
+test("the builder lists each as ^0.21.0, as lexical", () => {
   const builder = readManifest(
     fileURLToPath(new URL("../../../../../package.json", import.meta.url))
   );
