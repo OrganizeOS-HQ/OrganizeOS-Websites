@@ -1,5 +1,11 @@
 import { nanoid } from "nanoid";
-import type { Instance, WebstudioFragment } from "@webstudio-is/sdk";
+import {
+  findTreeInstanceIds,
+  type Instance,
+  type Prop,
+  type WebstudioData,
+  type WebstudioFragment,
+} from "@webstudio-is/sdk";
 import {
   SITE_FORM_PROP,
   formRootComponents,
@@ -246,4 +252,55 @@ export const createSiteFormsForPlacements = async (
     forms.set(rootId, created.value);
   }
   return { ok: true, forms };
+};
+
+/**
+ * A template placement's root, once in the build, pointed at its site form
+ * and marked (P10): `record` and `siteForm` on the root, and each Field under
+ * it given its definition, `fieldType`, `required` and `options`, from the
+ * form the platform resolved (F3's answer), so a Field the live form lacks
+ * still renders on the canvas and its required reaches the next publish.
+ */
+export const markPlacementMutable = (
+  data: Pick<WebstudioData, "instances" | "props">,
+  rootId: string,
+  form: CreatedSiteForm & { kind: FormsKind }
+) => {
+  const setProp = (
+    instanceId: string,
+    name: string,
+    prop:
+      | { type: "string"; value: string }
+      | { type: "boolean"; value: boolean }
+      | { type: "json"; value: unknown }
+  ) => {
+    for (const existing of data.props.values()) {
+      if (existing.instanceId === instanceId && existing.name === name) {
+        data.props.delete(existing.id);
+      }
+    }
+    const id = nanoid();
+    data.props.set(id, { id, instanceId, name, ...prop } as Prop);
+  };
+  setProp(rootId, "record", { type: "string", value: form.id });
+  setProp(rootId, SITE_FORM_PROP, { type: "string", value: form.kind });
+  const byName = new Map(form.fields.map((field) => [field.name, field]));
+  for (const id of findTreeInstanceIds(data.instances, rootId)) {
+    if (data.instances.get(id)?.component !== FIELD) {
+      continue;
+    }
+    const key = [...data.props.values()].find(
+      (prop) => prop.instanceId === id && prop.name === "field"
+    );
+    const definition =
+      key?.type === "string" ? byName.get(key.value.trim()) : undefined;
+    if (definition === undefined) {
+      continue;
+    }
+    setProp(id, "fieldType", { type: "string", value: definition.type });
+    setProp(id, "required", { type: "boolean", value: definition.required });
+    if (definition.options !== undefined) {
+      setProp(id, "options", { type: "json", value: definition.options });
+    }
+  }
 };

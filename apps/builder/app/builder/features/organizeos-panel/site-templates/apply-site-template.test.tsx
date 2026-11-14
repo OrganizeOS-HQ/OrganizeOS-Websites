@@ -51,6 +51,7 @@ import {
 import { $selectedPageId } from "~/shared/nano-states/pages";
 import { $authPermit, $builderMode } from "~/shared/nano-states/misc";
 import {
+  $organizeosSite,
   $selectedInstanceSelector,
   selectInstance,
 } from "~/shared/nano-states";
@@ -70,6 +71,8 @@ import { THUMBNAIL } from "./preview/thumbnail.mjs";
 import {
   applySiteTemplate,
   applySiteTemplateMutable,
+  siteFormPlacementKey,
+  siteFormPlacementsOf,
   hasCanonicalVariables,
   isProjectUntouched,
   startBlankMutable,
@@ -77,6 +80,9 @@ import {
 } from "./apply-site-template";
 
 const { uploadAssets } = vi.hoisted(() => ({ uploadAssets: vi.fn() }));
+// the forms door client: a Signup Form placement's site form (Task 8, P10)
+const { createSiteForm } = vi.hoisted(() => ({ createSiteForm: vi.fn() }));
+vi.mock("../forms-api", () => ({ createSiteForm, getFormsAccess: vi.fn() }));
 // every name the builder's modules import from it (builder-api.ts imports
 // importAssets), so the suite links
 vi.mock("~/builder/shared/assets/upload-assets", () => ({
@@ -1625,5 +1631,212 @@ describe("applySiteTemplate", () => {
     expect(fetchFont).not.toHaveBeenCalled();
     expect(uploadAssets).not.toHaveBeenCalled();
     expect(getWebstudioData().pages.pages.size).toBe(3);
+  });
+});
+
+// Builder forms P10 and P11 (plan 2026-11-13-builder-forms-fork-p2, Task 8):
+// with the site forms switch on, each Signup Form placement gets its own site
+// form before the write, and keeps its template's look.
+describe("a template's Signup Form as a site form", () => {
+  const SignupForm: BlockKey = "@organizeos/site-components:SignupForm";
+  const FORM = "51000000-0000-4000-8000-000000000001";
+  const resolved = [
+    { name: "email", label: "Email", type: "email", required: true },
+    { name: "first_name", label: "First name", type: "text", required: false },
+  ];
+  const formsTemplate: SiteTemplate = {
+    ...template,
+    id: "forms-fixture",
+    pages: [
+      {
+        ...template.pages[0],
+        body: ({ placeBlock }) => (
+          <ws.element ws:tag="body">
+            <ws.element ws:tag="h1">{"Join us"}</ws.element>
+            {placeBlock(SignupForm, "signup")}
+          </ws.element>
+        ),
+      },
+    ],
+  };
+  const renderForms = () =>
+    renderSiteTemplate(formsTemplate, {
+      assetIds: new Map(),
+      generatePageId: () => `page-${++pageCount}`,
+    });
+  const propOf = (data: WebstudioData, instanceId: string, name: string) =>
+    [...data.props.values()].find(
+      (prop) => prop.instanceId === instanceId && prop.name === name
+    )?.value;
+  const formRoots = (data: WebstudioData) =>
+    [...data.instances.values()].filter(
+      (instance) => instance.component === SignupForm
+    );
+  const fieldsUnder = (data: WebstudioData, rootId: string) =>
+    [...findTreeInstanceIds(data.instances, rootId)]
+      .map((id) => data.instances.get(id)!)
+      .filter(
+        (instance) => instance.component === "@organizeos/site-components:Field"
+      );
+
+  beforeEach(() => {
+    uploadAssets.mockClear();
+    createSiteForm.mockReset();
+    createSiteForm.mockResolvedValue({
+      ok: true,
+      value: { id: FORM, fields: resolved },
+    });
+  });
+
+  test("the placements to create: one per Signup Form, its fields, a stable client id", async () => {
+    const pages = renderForms();
+    const placements = await siteFormPlacementsOf(
+      pages,
+      projectId,
+      "forms-fixture"
+    );
+    expect(placements).toEqual([
+      {
+        rootId: siteFormPlacementKey(pages[0], pages[0].placements[0].rootId),
+        kind: "contact-signup",
+        title: "Home: Signup Form",
+        fields: [
+          { key: "email", required: false },
+          { key: "first_name", required: false },
+        ],
+        clientId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      },
+    ]);
+    const again = await siteFormPlacementsOf(
+      renderForms(),
+      projectId,
+      "forms-fixture"
+    );
+    expect(again[0].clientId).toBe(placements[0].clientId);
+    const elsewhere = await siteFormPlacementsOf(
+      pages,
+      "project-2",
+      "forms-fixture"
+    );
+    expect(elsewhere[0].clientId).not.toBe(placements[0].clientId);
+  });
+
+  test("with its form, a placement's root is marked and its Fields defined, in its template's look", async () => {
+    const data = await createProvisionedProject(provisioning);
+    const pages = renderForms();
+    const key = siteFormPlacementKey(pages[0], pages[0].placements[0].rootId);
+    const result = applySiteTemplateMutable(data, pages, {
+      ...context,
+      siteForms: new Map([
+        [key, { id: FORM, kind: "contact-signup", fields: resolved }],
+      ]),
+    });
+    expect(result).toEqual({ status: "applied", unboundBlocks: [] });
+    const [root] = formRoots(data);
+    expect(propOf(data, root.id, "record")).toBe(FORM);
+    expect(propOf(data, root.id, "siteForm")).toBe("contact-signup");
+    expect(
+      fieldsUnder(data, root.id).map((field) => [
+        propOf(data, field.id, "field"),
+        propOf(data, field.id, "fieldType"),
+        propOf(data, field.id, "required"),
+      ])
+    ).toEqual([
+      ["email", "email", true],
+      ["first_name", "text", false],
+    ]);
+    // its template's look: no card
+    const selection = data.styleSourceSelections.get(root.id)?.values ?? [];
+    expect(
+      selection
+        .map((id) => data.styleSources.get(id))
+        .filter(
+          (source) => source?.type === "token" && source.name === "OS Form Card"
+        )
+    ).toEqual([]);
+  });
+
+  test("without forms, placements are unchanged", async () => {
+    const data = await createProvisionedProject(provisioning);
+    applySiteTemplateMutable(data, renderForms(), context);
+    const [root] = formRoots(data);
+    expect(propOf(data, root.id, "siteForm")).toBeUndefined();
+  });
+
+  describe("applySiteTemplate", () => {
+    const setSite = (siteFormsEnabled: boolean) =>
+      $organizeosSite.set({
+        organizationId: "org-1",
+        manageUrl: "https://app.example.org/dashboard",
+        platformUrl: "https://app.example.org",
+        blocksEnabled: true,
+        siteFormsEnabled,
+      });
+    const setStores = async () => {
+      const data = await createProvisionedProject(provisioning);
+      $pages.set(data.pages);
+      $instances.set(data.instances);
+      $props.set(data.props);
+      $dataSources.set(data.dataSources);
+      $resources.set(data.resources);
+      $breakpoints.set(data.breakpoints);
+      $styleSourceSelections.set(data.styleSourceSelections);
+      $styleSources.set(data.styleSources);
+      $styles.set(data.styles);
+      $assets.set(data.assets);
+      $selectedPageId.set(data.pages.homePageId);
+      $builderMode.set("design");
+      $authPermit.set("build");
+      $project.set({ id: projectId } as Project);
+      serverSyncStore.transactionManager.currentStack = [];
+      serverSyncStore.transactionManager.undoneStack = [];
+    };
+
+    afterEach(() => {
+      $organizeosSite.set(undefined);
+    });
+
+    test("with the switch on, creates the placement's form before the write, then marks it", async () => {
+      await setStores();
+      setSite(true);
+      let pagesAtCreate = 0;
+      createSiteForm.mockImplementationOnce(async () => {
+        pagesAtCreate = $pages.get()?.pages.size ?? 0;
+        return { ok: true, value: { id: FORM, fields: resolved } };
+      });
+      const before = $pages.get()?.pages.size ?? 0;
+      const result = await applySiteTemplate(formsTemplate);
+      expect(result.status).toBe("applied");
+      expect(createSiteForm).toHaveBeenCalledTimes(1);
+      expect(createSiteForm.mock.calls[0][1]).toMatchObject({
+        kind: "contact-signup",
+        title: "Home: Signup Form",
+      });
+      expect(pagesAtCreate).toBe(before);
+      const [root] = formRoots(getWebstudioData());
+      expect(propOf(getWebstudioData(), root.id, "record")).toBe(FORM);
+    });
+
+    test("one failed create refuses the whole apply with reason form, writing nothing", async () => {
+      await setStores();
+      setSite(true);
+      createSiteForm.mockResolvedValueOnce({ ok: false, error: "forbidden" });
+      const before = structuredClone(getWebstudioData().instances);
+      expect(await applySiteTemplate(formsTemplate)).toEqual({
+        status: "refused",
+        reason: "form",
+      });
+      expect(getWebstudioData().instances).toEqual(before);
+      expect(uploadAssets).not.toHaveBeenCalled();
+    });
+
+    test("with the switch off, creates nothing", async () => {
+      await setStores();
+      setSite(false);
+      expect((await applySiteTemplate(formsTemplate)).status).toBe("applied");
+      expect(createSiteForm).not.toHaveBeenCalled();
+      const [root] = formRoots(getWebstudioData());
+      expect(propOf(getWebstudioData(), root.id, "siteForm")).toBeUndefined();
+    });
   });
 });
