@@ -34,6 +34,7 @@ import { isCmsFailure, type CmsCollectionSummary } from "./cms-source";
 import {
   COLLECTION_NAME_MAX,
   getStructureToastText,
+  STRUCTURE_FAILURE_TOAST,
 } from "./cms-structure-logic";
 import {
   CUSTOM_COLLECTION_TYPE,
@@ -213,7 +214,10 @@ const useCreate = ({
         onRefusal(refusal);
         return false;
       }
-      toast.error(getStructureToastText(result.error, "collection"));
+      toast.error(
+        getStructureToastText(result.error, "collection"),
+        STRUCTURE_FAILURE_TOAST
+      );
       if (
         result.error === "replayed" ||
         result.error === "unavailable" ||

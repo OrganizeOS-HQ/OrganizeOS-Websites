@@ -670,8 +670,10 @@ export const isSameSettings = (
   left.isPublic === right.isPublic;
 
 /**
- * The id the structure screens give their failure toasts, so a write's
- * failure and a reread it leads to that fails too show one toast.
+ * The id the structure screens give their write failure toasts and a
+ * structure reread's own failure toast, so those show as one toast. A read
+ * refused while a view holds unsaved values raises its own toast (id
+ * `cms-read-<code>`) beside it.
  */
 export const STRUCTURE_FAILURE_TOAST = { id: "cms-structure-failure" };
 

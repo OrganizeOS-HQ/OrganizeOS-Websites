@@ -716,10 +716,15 @@ describe("New collection and the first run", () => {
     await click(radio("cms-new-collection", "custom"));
     await typeInto(nameInput(), "Speakers");
     await click(createButton());
-    expect(error).toHaveBeenLastCalledWith("Collection limit reached");
+    // R5-16: one toast with the structure screens' other failures
+    expect(error).toHaveBeenLastCalledWith("Collection limit reached", {
+      id: "cms-structure-failure",
+    });
     expect(harness.structure.getStructure).toHaveBeenCalledTimes(reads + 1);
     await click(createButton());
-    expect(error).toHaveBeenLastCalledWith("Try again in a minute");
+    expect(error).toHaveBeenLastCalledWith("Try again in a minute", {
+      id: "cms-structure-failure",
+    });
   });
 
   // Review Focus 5
