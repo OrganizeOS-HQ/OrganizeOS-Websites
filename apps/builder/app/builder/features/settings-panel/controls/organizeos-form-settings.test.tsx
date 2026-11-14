@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { userEvent } from "@vitest/browser/context";
 import { TooltipProvider } from "@webstudio-is/design-system";
 import type { Project } from "@webstudio-is/project";
 import { $project } from "~/shared/sync/data-stores";
@@ -66,6 +65,46 @@ const settle = () =>
     for (let turn = 0; turn < 5; turn += 1) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
+  });
+
+// DOM events, not Playwright actions: an action can wait forever on an
+// iframe it shares the page with (the settings project runs files together)
+const typeInto = (input: HTMLInputElement, value: string) =>
+  act(() => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value"
+    )?.set?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+const pressEnter = (input: HTMLInputElement) =>
+  act(() => {
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+      })
+    );
+  });
+
+const addEmail = async (input: HTMLInputElement, value: string) => {
+  typeInto(input, value);
+  pressEnter(input);
+  await settle();
+};
+
+const openMenu = (trigger: Element | null) =>
+  act(() => {
+    trigger?.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        pointerId: 1,
+        pointerType: "mouse",
+      })
+    );
   });
 
 type Rows = Parameters<typeof FormSettingsRows>[0];
@@ -171,9 +210,7 @@ describe("FormSettingsRows", () => {
       { part: "fields", kind: "contact-signup", record: updates.id },
     ]);
     expect(chips(host)).toEqual(["List 1"]);
-    await userEvent.click(
-      host.querySelector('button[aria-label="Add list"]') as HTMLElement
-    );
+    openMenu(host.querySelector('button[aria-label="Add list"]'));
     const item = Array.from(
       document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')
     ).find((candidate) => candidate.textContent === "List 3");
@@ -234,16 +271,13 @@ describe("FormSettingsRows", () => {
     const input = host.querySelector<HTMLInputElement>(
       'input[aria-label="Add email"]'
     ) as HTMLInputElement;
-    await userEvent.type(input, "not an address{Enter}");
-    await settle();
+    await addEmail(input, "not an address");
     expect(saveFormSettings).not.toHaveBeenCalled();
     expect(
       input.closest("[data-color=error], input[data-color=error]")
     ).not.toBeNull();
 
-    await userEvent.clear(input);
-    await userEvent.type(input, "  desk@example.org {Enter}");
-    await settle();
+    await addEmail(input, "  desk@example.org ");
     expect(saveFormSettings).toHaveBeenLastCalledWith("project-1", contact.id, {
       notify: ["staff@example.org", "desk@example.org"],
     });
@@ -251,11 +285,7 @@ describe("FormSettingsRows", () => {
     expect(chips(host)).toEqual(["staff@example.org", "desk@example.org"]);
 
     // an address over 254 characters is not taken
-    await userEvent.type(
-      input,
-      `${"a".repeat(64)}@${"b".repeat(186)}.org{Enter}`
-    );
-    await settle();
+    await addEmail(input, `${"a".repeat(64)}@${"b".repeat(186)}.org`);
     expect(saveFormSettings).toHaveBeenCalledTimes(1);
     unmount();
 
@@ -327,8 +357,11 @@ describe("FormSettingsRows", () => {
     const input = host.querySelector<HTMLInputElement>(
       'input[aria-label="Add email"]'
     ) as HTMLInputElement;
-    await userEvent.type(input, "a@example.org{Enter}");
-    await userEvent.type(input, "b@example.org{Enter}");
+    // the second before the first save answers
+    typeInto(input, "a@example.org");
+    pressEnter(input);
+    typeInto(input, "b@example.org");
+    pressEnter(input);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 80));
     });
