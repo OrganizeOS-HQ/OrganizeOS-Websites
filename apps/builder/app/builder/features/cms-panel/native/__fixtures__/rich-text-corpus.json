@@ -28618,6 +28618,60 @@
         ]
       },
       "verdict": "lossy"
+    },
+    {
+      "input": "<blockquote>x<a href=\"https://example.org/\"><br /></a></blockquote><ul><li><a href=\"https://example.org/\">stray</a></li></ul>",
+      "nodes": {
+        "v": 1,
+        "children": [
+          {
+            "t": "quote",
+            "children": [
+              {
+                "t": "p",
+                "c": [
+                  {
+                    "t": "text",
+                    "text": "x"
+                  },
+                  {
+                    "t": "a",
+                    "href": "https://example.org/",
+                    "c": [
+                      {
+                        "t": "br"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "t": "ul",
+            "items": [
+              [
+                {
+                  "t": "p",
+                  "c": [
+                    {
+                      "t": "a",
+                      "href": "https://example.org/",
+                      "c": [
+                        {
+                          "t": "text",
+                          "text": "stray"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        ]
+      },
+      "verdict": "lossy"
     }
   ]
 }
