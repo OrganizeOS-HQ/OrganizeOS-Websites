@@ -40,6 +40,7 @@ import {
   changesCanvas,
   getFieldCap,
   getStructureToastText,
+  STRUCTURE_FAILURE_TOAST,
   moveField,
   orderByKeys,
   RATE_LIMIT_RETRY_MS,
@@ -692,10 +693,10 @@ export const useCmsStructure = ({
       if (refusal !== undefined && refusal !== "toast") {
         showLine(refusal);
       } else if (refusal === undefined && result.error === "not_found") {
-        toast.error("Collection not found");
+        toast.error("Collection not found", STRUCTURE_FAILURE_TOAST);
         refetchCollections();
       } else if (refusal === undefined) {
-        toast.error(getToastText(result.error));
+        toast.error(getToastText(result.error), STRUCTURE_FAILURE_TOAST);
       }
       return undefined;
     }
@@ -855,9 +856,12 @@ export const useCmsStructure = ({
         return;
       }
       if (result.error === "conflict") {
-        toast.error("Changed by someone else");
+        toast.error("Changed by someone else", STRUCTURE_FAILURE_TOAST);
       } else {
-        toast.error(getStructureToastText(result.error, "field"));
+        toast.error(
+          getStructureToastText(result.error, "field"),
+          STRUCTURE_FAILURE_TOAST
+        );
       }
       if (result.error === "not_found") {
         refetchCollections();

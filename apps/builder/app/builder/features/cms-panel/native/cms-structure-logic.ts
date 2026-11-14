@@ -670,6 +670,12 @@ export const isSameSettings = (
   left.isPublic === right.isPublic;
 
 /** A structure write's failure in a few words, for a toast. */
+/**
+ * Every structure failure's toast takes this id: a failure that leads to a
+ * read that fails too shows one toast, not two.
+ */
+export const STRUCTURE_FAILURE_TOAST = { id: "cms-structure-failure" };
+
 export const getStructureToastText = (
   code: CmsErrorCode,
   what: "field" | "collection"

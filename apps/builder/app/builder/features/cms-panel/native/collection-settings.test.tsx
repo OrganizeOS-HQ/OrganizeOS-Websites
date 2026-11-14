@@ -2,6 +2,7 @@
 import "@webstudio-is/design-system/global.css";
 import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { STRUCTURE_FAILURE_TOAST } from "./cms-structure-logic";
 import { userEvent } from "@vitest/browser/context";
 import { toast } from "@webstudio-is/design-system";
 import { $cmsNativeDirty } from "./cms-native-stores";
@@ -221,12 +222,18 @@ describe("collection settings", () => {
       error: "forbidden",
     });
     await click(saveButton());
-    expect(error).toHaveBeenLastCalledWith("No access");
+    expect(error).toHaveBeenLastCalledWith(
+      "No access",
+      STRUCTURE_FAILURE_TOAST
+    );
     harness.structure.updateCollection.mockResolvedValueOnce({
       error: "plan",
     });
     await click(saveButton());
-    expect(error).toHaveBeenLastCalledWith("Not in plan");
+    expect(error).toHaveBeenLastCalledWith(
+      "Not in plan",
+      STRUCTURE_FAILURE_TOAST
+    );
     expect(input("name")?.value).toBe("Articles");
     expect(settingsView()).not.toBeNull();
   });
@@ -409,4 +416,23 @@ test("dirty settings set $cmsNativeDirty; Back, another collection and Classic C
     expect(currentSlug()).toBe("posts");
   }
   expect(harness.props.onShowClassic).not.toHaveBeenCalled();
+});
+
+// Round 4, item 13: a Save failure whose reread fails too shows one toast
+test("a Save answered unavailable, then a failed reread: every toast shares one id, so one shows", async () => {
+  const error = vi.spyOn(toast, "error");
+  await openSettings();
+  await typeInto(input("name"), "Articles");
+  harness.structure.updateCollection.mockResolvedValueOnce({
+    error: "unavailable",
+  });
+  harness.structure.getCollectionStructure.mockResolvedValue({
+    error: "unavailable",
+  });
+  await click(saveButton());
+  await settle();
+  expect(error.mock.calls.length).toBeGreaterThan(0);
+  for (const call of error.mock.calls) {
+    expect(call[1]).toEqual(STRUCTURE_FAILURE_TOAST);
+  }
 });

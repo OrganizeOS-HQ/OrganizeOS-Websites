@@ -6,7 +6,11 @@ import { userEvent } from "@vitest/browser/context";
 import { toast } from "@webstudio-is/design-system";
 import { $cmsNativeDirty } from "./cms-native-stores";
 import type { CmsFieldKind } from "./cms-source";
-import { FIELD_KIND_LABELS, FIELD_KINDS } from "./cms-structure-logic";
+import {
+  FIELD_KIND_LABELS,
+  FIELD_KINDS,
+  STRUCTURE_FAILURE_TOAST,
+} from "./cms-structure-logic";
 import type { CmsStructureField } from "./cms-structure-source";
 import { PEOPLE, POSTS, VERSION } from "./fake-cms-source";
 import { POSTS_STRUCTURE } from "./fake-cms-structure-source";
@@ -444,7 +448,10 @@ describe("the field sheet", () => {
         ...(field === undefined ? {} : { field }),
       });
       await click(primary());
-      expect(error).toHaveBeenLastCalledWith("Not saved");
+      expect(error).toHaveBeenLastCalledWith(
+        "Not saved",
+        STRUCTURE_FAILURE_TOAST
+      );
       expect(harness.structure.getCollectionStructure.mock.calls.length).toBe(
         reads + 1
       );
@@ -459,7 +466,10 @@ describe("the field sheet", () => {
     const structures = harness.structure.getStructure.mock.calls.length;
     harness.structure.updateSchema.mockResolvedValueOnce({ error: "limit" });
     await click(primary());
-    expect(error).toHaveBeenLastCalledWith("Field limit reached");
+    expect(error).toHaveBeenLastCalledWith(
+      "Field limit reached",
+      STRUCTURE_FAILURE_TOAST
+    );
     expect(harness.structure.getStructure.mock.calls.length).toBe(
       structures + 1
     );
@@ -468,7 +478,10 @@ describe("the field sheet", () => {
       error: "not_found",
     });
     await click(primary());
-    expect(error).toHaveBeenLastCalledWith("Collection not found");
+    expect(error).toHaveBeenLastCalledWith(
+      "Collection not found",
+      STRUCTURE_FAILURE_TOAST
+    );
     expect(harness.fake.listCollections.mock.calls.length).toBe(lists + 1);
   });
 
@@ -509,7 +522,10 @@ describe("the field sheet", () => {
     await click(primary());
     withFields(FIELDS.filter((field) => field.key !== "summary"));
     await click(buttonByText("Reload"));
-    expect(error).toHaveBeenLastCalledWith("Field not found");
+    expect(error).toHaveBeenLastCalledWith(
+      "Field not found",
+      STRUCTURE_FAILURE_TOAST
+    );
     expect(sheet()).toBeNull();
   });
 
@@ -613,4 +629,23 @@ describe("the field sheet", () => {
       kind: "email",
     });
   });
+});
+
+// Round 4, item 13: one toast per failure
+test("a Remove whose count read fails shows its toast and no dialog", async () => {
+  const error = vi.spyOn(toast, "error");
+  withFields();
+  await openField("summary");
+  harness.structure.getCollectionStructure.mockResolvedValueOnce({
+    error: "unavailable",
+  });
+  await click(byLabel("Field menu"));
+  await click(menuItem("Remove field"));
+  await settle();
+  expect(error).toHaveBeenCalledTimes(1);
+  expect(error).toHaveBeenLastCalledWith(
+    "Try again in a minute",
+    STRUCTURE_FAILURE_TOAST
+  );
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
 });

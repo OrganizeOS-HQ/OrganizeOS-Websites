@@ -56,6 +56,7 @@ import {
   FIELD_LABEL_MAX,
   getFieldDraftErrors,
   getStructureToastText,
+  STRUCTURE_FAILURE_TOAST,
   isFieldDraftDirty,
   isReferenceKind,
   isSameField,
@@ -355,7 +356,11 @@ export const FieldSheet = ({
   const [removeTotal, setRemoveTotal] = useState(collection.total);
   const askRemove = async () => {
     const fresh = await readCount();
-    setRemoveTotal(fresh?.total ?? collection.total);
+    // a failed read has shown its own toast: no dialog beside it
+    if (fresh === undefined) {
+      return;
+    }
+    setRemoveTotal(fresh.total);
     setConfirmRemove(true);
   };
   const labelRef = useRef<HTMLInputElement>(null);
@@ -398,7 +403,7 @@ export const FieldSheet = ({
     }
     const freshField = fresh.fields.find((field) => field.key === originalKey);
     if (freshField === undefined) {
-      toast.error("Field not found");
+      toast.error("Field not found", STRUCTURE_FAILURE_TOAST);
       onClose();
       return;
     }
@@ -436,7 +441,7 @@ export const FieldSheet = ({
       setDraft((current) => rebaseFieldDraft(saved, freshField, current));
       setSaved(freshField);
     } else if (saved !== undefined) {
-      toast.error("Field not found");
+      toast.error("Field not found", STRUCTURE_FAILURE_TOAST);
       onClose();
     }
   };
@@ -458,7 +463,7 @@ export const FieldSheet = ({
         return;
       case "invalid": {
         if (field === undefined || field !== openKey) {
-          toast.error(getToastText(code));
+          toast.error(getToastText(code), STRUCTURE_FAILURE_TOAST);
           onStale("structure");
           return;
         }
@@ -479,7 +484,7 @@ export const FieldSheet = ({
         // another field's reference: not this sheet's control, so a toast
         // and the schema again (spec 9)
         if (field !== undefined && field !== (originalKey ?? draft.key)) {
-          toast.error("Not saved");
+          toast.error("Not saved", STRUCTURE_FAILURE_TOAST);
           onStale("structure");
           return;
         }
@@ -487,15 +492,21 @@ export const FieldSheet = ({
         onStale("collections");
         return;
       case "limit":
-        toast.error(getStructureToastText(code, "field"));
+        toast.error(
+          getStructureToastText(code, "field"),
+          STRUCTURE_FAILURE_TOAST
+        );
         onStale("limits");
         return;
       case "not_found":
-        toast.error(getStructureToastText(code, "collection"));
+        toast.error(
+          getStructureToastText(code, "collection"),
+          STRUCTURE_FAILURE_TOAST
+        );
         onStale("collections");
         return;
       default:
-        toast.error(getToastText(code));
+        toast.error(getToastText(code), STRUCTURE_FAILURE_TOAST);
         if (code === "unavailable" || code === "updating") {
           await settleUnknown(removing);
         }

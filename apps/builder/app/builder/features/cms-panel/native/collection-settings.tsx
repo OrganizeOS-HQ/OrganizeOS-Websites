@@ -31,6 +31,7 @@ import {
   COLLECTION_SLUG_MAX,
   getSettingsErrors,
   getStructureToastText,
+  STRUCTURE_FAILURE_TOAST,
   isSameSettings,
   rebaseSettings,
   toSettingsToSave,
@@ -132,7 +133,10 @@ export const DeleteCollectionDialog = ({
         onDeleted(collection.id);
         return;
       }
-      toast.error(getStructureToastText(result.error, "collection"));
+      toast.error(
+        getStructureToastText(result.error, "collection"),
+        STRUCTURE_FAILURE_TOAST
+      );
       if (result.error === "unavailable" || result.error === "updating") {
         unknownOutcome.current = true;
       }
@@ -322,10 +326,13 @@ export const CollectionSettings = ({
       ) {
         setErrors({ [result.field]: "Required" });
       } else if (result.error === "not_found") {
-        toast.error(getStructureToastText(result.error, "collection"));
+        toast.error(
+          getStructureToastText(result.error, "collection"),
+          STRUCTURE_FAILURE_TOAST
+        );
         onNotFound();
       } else {
-        toast.error(getToastText(result.error));
+        toast.error(getToastText(result.error), STRUCTURE_FAILURE_TOAST);
         if (result.error === "unavailable" || result.error === "updating") {
           await rebase(next);
         }

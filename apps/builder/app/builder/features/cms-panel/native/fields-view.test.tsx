@@ -2,6 +2,7 @@
 import "@webstudio-is/design-system/global.css";
 import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { STRUCTURE_FAILURE_TOAST } from "./cms-structure-logic";
 import { userEvent } from "@vitest/browser/context";
 import { toast } from "@webstudio-is/design-system";
 import type { CmsResult } from "./cms-source";
@@ -454,7 +455,10 @@ describe("the Fields tab", () => {
     await moveRow("title", "ArrowDown");
     await pass(600);
     expect(fieldKeys()).toEqual(["title", "summary", "author"]);
-    expect(error).toHaveBeenLastCalledWith("Not saved");
+    expect(error).toHaveBeenLastCalledWith(
+      "Not saved",
+      STRUCTURE_FAILURE_TOAST
+    );
     // a conflict rereads E21, takes its version and sends the order once
     // more; a second conflict puts the order back and toasts
     const reads = harness.structure.getCollectionStructure.mock.calls.length;
@@ -466,7 +470,10 @@ describe("the Fields tab", () => {
     await pass(0);
     expect(harness.structure.updateSchema).toHaveBeenCalledTimes(3);
     expect(fieldKeys()).toEqual(["title", "summary", "author"]);
-    expect(error).toHaveBeenLastCalledWith("Changed by someone else");
+    expect(error).toHaveBeenLastCalledWith(
+      "Changed by someone else",
+      STRUCTURE_FAILURE_TOAST
+    );
     expect(harness.structure.getCollectionStructure).toHaveBeenCalledTimes(
       reads + 2
     );
@@ -863,7 +870,10 @@ describe("a reorder conflict beside an open view", () => {
     vi.useRealTimers();
     await settle();
     expect(harness.structure.updateSchema).toHaveBeenCalledTimes(1);
-    expect(error).toHaveBeenCalledWith("Changed by someone else");
+    expect(error).toHaveBeenCalledWith(
+      "Changed by someone else",
+      STRUCTURE_FAILURE_TOAST
+    );
     expect(fieldKeys()).toEqual(["title", "summary", "author"]);
     await click(buttonByText("Save", sheet()!));
     expect(
