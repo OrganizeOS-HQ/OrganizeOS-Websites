@@ -3098,6 +3098,34 @@ describe("the reorder's state across visits (W3g round 3)", () => {
   });
 });
 
+describe("a bulk call waiting on the reorder when the table unmounts (W3g round 4)", () => {
+  test("an item visit drops it with one toast, and it never runs", async () => {
+    reorderWorld();
+    const held = holdFirstReorder();
+    const error = vi.spyOn(toast, "error");
+    mount();
+    await settle();
+    await dragBelow("a", "b");
+    await click(checkbox("Select C"));
+    await click(toolbarButton("Publish"));
+    // Escape clears the selection; the call still waits
+    act(() => {
+      rowEl("a")!.focus();
+    });
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await settle();
+    expect(error).not.toHaveBeenCalled();
+    await click(buttonByText("New item"));
+    expect(itemRows()).toHaveLength(0);
+    expect(
+      error.mock.calls.filter(([text]) => text === "Try again in a minute")
+    ).toHaveLength(1);
+    await act(async () => held.resolve({ changed: 2 }));
+    await settle();
+    expect(fake.publishItems).not.toHaveBeenCalled();
+  });
+});
+
 describe("the search box stays while a cleared search reads (W3g round 3)", () => {
   /** "zzz" matches nothing; the next read waits until released. */
   const searchNothing = async () => {

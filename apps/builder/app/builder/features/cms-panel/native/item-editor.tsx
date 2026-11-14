@@ -394,12 +394,13 @@ export const ItemEditor = ({
   }, [isDirty, onDirtyChange]);
   // an upload's value lands after it answers: what waits sees it
   const isEditorBusy = isChainRunning || busyFields.size > 0;
-  // a stay is reported once, by the chain or upload that ended with it
+  // a stay is reported once, as the chain or upload that ended with it ends
+  // (each upload's start and end makes a new busyFields)
   useEffect(() => {
     onBusyChange?.(isEditorBusy, chainStays.current);
     chainStays.current = false;
     uploadEnded.current = undefined;
-  }, [isEditorBusy, isChainRunning, onBusyChange]);
+  }, [isEditorBusy, isChainRunning, busyFields, onBusyChange]);
   useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 

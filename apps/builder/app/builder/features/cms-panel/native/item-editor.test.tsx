@@ -2462,3 +2462,112 @@ describe("an upload's end and the exits (W3g round 3)", () => {
     );
   });
 });
+
+describe("each upload's error is reported as it ends (W3g round 4)", () => {
+  const STAGED = itemOf({
+    status: "published",
+    hasStagedChanges: true,
+    updatedAt: VERSION,
+  });
+
+  /** Opens `item` with Cover and Hero image fields. */
+  const openWithImages = async (item: CmsItem) => {
+    setFields([
+      ...POSTS_DETAIL.fields,
+      { key: "cover", label: "Cover", kind: "image" },
+      { key: "hero", label: "Hero", kind: "image" },
+    ]);
+    await openItem({
+      ...item,
+      data: {
+        title: "Hello",
+        summary: null,
+        author: null,
+        cover: null,
+        hero: null,
+      },
+    });
+  };
+
+  /** Starts an upload into `key`, held until resolved. */
+  const upload = async (key: string) => {
+    const held = deferred<CmsResult<{ url: string; path: string }>>();
+    fake.uploadImage.mockReturnValueOnce(held.promise);
+    const input = document
+      .querySelector<HTMLElement>(`[data-cms-field="cms-field-${key}"]`)
+      ?.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).toBeTruthy();
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([new Uint8Array([1, 2, 3])], `${key}.png`, {
+        type: "image/png",
+      })
+    );
+    await act(async () => {
+      input!.files = transfer.files;
+      input!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    return held;
+  };
+
+  test("two uploads, Cover fails, then Back: once Hero lands the guard asks", async () => {
+    await openWithImages(itemOf());
+    const cover = await upload("cover");
+    const hero = await upload("hero");
+    await act(async () => cover.resolve({ error: "unavailable" }));
+    await vi.waitFor(() => expect(hasText("Not uploaded")).toBe(true));
+    await settle();
+    await click(byLabel("Back"));
+    expect(titleInput()).not.toBeNull();
+    await act(async () => {
+      hero.resolve({ url: "https://cdn.example.org/h.png", path: "h.png" });
+    });
+    await vi.waitFor(() =>
+      expect(hasText("Discard unsaved changes?")).toBe(true)
+    );
+  });
+
+  test("an upload error during a held Discard, then Back: Back runs once the Discard succeeds", async () => {
+    await openWithImages(STAGED);
+    const cover = await upload("cover");
+    const discarded = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.discardItemChanges.mockReturnValue(discarded.promise);
+    await click(buttonByText("Discard changes"));
+    await click(dialogButton("Discard"));
+    await act(async () => cover.resolve({ error: "unavailable" }));
+    await vi.waitFor(() => expect(hasText("Not uploaded")).toBe(true));
+    await settle();
+    await click(byLabel("Back"));
+    expect(titleInput()).not.toBeNull();
+    await act(async () =>
+      discarded.resolve({
+        item: { ...STAGED, hasStagedChanges: false, updatedAt: V2 },
+      })
+    );
+    await settle();
+    expect(titleInput()).toBeNull();
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+  });
+
+  test("Back chosen before an error shown while an upload still runs is dropped, and no guard opens when it lands", async () => {
+    await openWithImages(STAGED);
+    const cover = await upload("cover");
+    const discarded = deferred<CmsResult<{ item: CmsItem }>>();
+    fake.discardItemChanges.mockReturnValue(discarded.promise);
+    await click(buttonByText("Discard changes"));
+    await click(dialogButton("Discard"));
+    await click(byLabel("Back"));
+    await act(async () => discarded.resolve({ error: "conflict" }));
+    await settle();
+    expect(hasText("Changed by someone else")).toBe(true);
+    await act(async () => {
+      cover.resolve({ url: "https://cdn.example.org/c.png", path: "c.png" });
+    });
+    await settle();
+    await vi.waitFor(() => expect($cmsNativeDirty.get()).toBe(true));
+    await settle();
+    expect(titleInput()).not.toBeNull();
+    expect(hasText("Discard unsaved changes?")).toBe(false);
+  });
+});
