@@ -8,7 +8,6 @@ import {
   $getRoot,
   $isDecoratorNode,
   $isElementNode,
-  $isLineBreakNode,
   $isRangeSelection,
   $isTextNode,
   createEditor,
@@ -24,24 +23,37 @@ import {
 } from "lexical";
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
 import { $isLinkNode, LinkNode } from "@lexical/link";
+import { ListItemNode, ListNode } from "@lexical/list";
 import {
-  $isListItemNode,
-  $isListNode,
-  ListItemNode,
-  ListNode,
-} from "@lexical/list";
-import { HeadingNode, QuoteNode } from "@lexical/rich-text";
-import { CodeNode } from "@lexical/code";
+  $createHeadingNode,
+  HeadingNode,
+  QuoteNode,
+  type HeadingTagType,
+} from "@lexical/rich-text";
+import { CodeHighlightNode, CodeNode } from "@lexical/code";
+import { mergeRegister } from "@lexical/utils";
 import { HorizontalRuleNode } from "@lexical/react/LexicalHorizontalRuleNode";
 import type { CmsRichTextValue } from "./cms-source";
+import { sanitizeRichTextHtml } from "./rich-text-sanitize";
+import {
+  RICH_TEXT_MAX_DEPTH,
+  RICH_TEXT_MAX_NODES,
+  toRichTextNodes,
+  type RichTextBlock,
+  type RichTextInline,
+} from "./rich-text-nodes";
 import {
   CmsFigureNode,
   CmsImageNode,
   importStoredImages,
 } from "./rich-text-image-node";
 
-/** One node for each tag of the platform's allowlist. */
+/**
+ * One node for each tag of the platform's allowlist, and the code block's
+ * highlight: the live editor and the read-only check load with the same set.
+ */
 export const richTextNodes: ReadonlyArray<Klass<LexicalNode>> = [
+  CodeHighlightNode,
   HeadingNode,
   QuoteNode,
   ListNode,
@@ -72,44 +84,21 @@ const holdsNothing = (node: LexicalNode): boolean =>
   ($isTextNode(node) && isCollapsible(node.getTextContent())) ||
   ($isElementNode(node) && node.getChildren().every(holdsNothing));
 
-/** Line breaks and collapsible whitespace only, with a break among them. */
-const holdsOnlyBreaks = (node: LexicalNode): boolean =>
-  $isElementNode(node) &&
-  node.getChildren().some($isLineBreakNode) &&
-  node
-    .getChildren()
-    .every((child) => $isLineBreakNode(child) || holdsNothing(child));
-
 /**
- * A paragraph, heading, quote or list item. One holding nothing writes
- * `<p></p>` (or its tag). One holding only line breaks writes them as they
- * are: its import keeps them (`keepBreakOnlyBreaks`). One ending in a line
- * break after other content writes one break more: the import drops a
- * block's last break (a browser shows none for it), so the value reloads as
- * it was and shows its blank line on the page as in the editor.
+ * A paragraph, heading, quote or list item holding nothing writes `<p></p>`
+ * (or its tag). Anything else, line breaks included, is written as it is: a
+ * stored value's import keeps every line break (`loadingStored`), so a load
+ * and save keeps them all.
  */
 const exportBlock = (
   editor: LexicalEditor,
   node: LexicalNode
 ): DOMExportOutput => {
   const output = node.exportDOM(editor);
-  if ($isElementNode(node) === false) {
+  if ($isElementNode(node) === false || holdsNothing(node) === false) {
     return output;
   }
-  const empty = holdsNothing(node);
-  // a list item's nested list is written into it after its break, so that
-  // break is not its last and the import keeps it
-  const next = node.getNextSibling();
-  const nestedNext = $isListItemNode(next) && $isListNode(next.getFirstChild());
-  const endsInBreak =
-    empty === false &&
-    holdsOnlyBreaks(node) === false &&
-    nestedNext === false &&
-    $isLineBreakNode(node.getLastChild());
-  if (empty === false && endsInBreak === false) {
-    return output;
-  }
-  // the children are written after this export: changed once they are in
+  // the children are written after this export: cleared once they are in
   const after = output.after;
   return {
     ...output,
@@ -117,11 +106,7 @@ const exportBlock = (
       const element =
         after === undefined ? generated : after.call(node, generated);
       if (isHtmlElement(element)) {
-        if (empty) {
-          element.replaceChildren();
-        } else {
-          element.appendChild(element.ownerDocument.createElement("br"));
-        }
+        element.replaceChildren();
         return element;
       }
       // an export map's after never returns a fragment: anything else stands
@@ -241,23 +226,16 @@ const exportList = (
  * A `code` element outside a `pre` is the inline code format, even across a
  * line break; `CodeNode` would read that one as a code block.
  */
-const BREAK_BLOCK_TAGS = new Set(["P", "H2", "H3", "H4", "BLOCKQUOTE", "LI"]);
-
-/** A block holding only line breaks and collapsible whitespace. */
-const isBreakOnlyBlock = (element: Element) =>
-  BREAK_BLOCK_TAGS.has(element.tagName) &&
-  Array.from(element.childNodes).every(
-    (child) =>
-      (child instanceof Element && child.tagName === "BR") ||
-      (child.nodeType === Node.TEXT_NODE &&
-        isCollapsible(child.textContent ?? ""))
-  );
+/**
+ * Whether a stored value is loading. Lexical drops a block's only or last
+ * line break; a stored value's load keeps every one, so its save writes them
+ * back as they were. Pasted HTML keeps Lexical's rule.
+ */
+let loadingStored = false;
 
 const inlineCodeImport: DOMConversionMap = {
-  // Lexical drops a block's only or last line break; one holding only
-  // breaks keeps them all, as the page shows them (a blank line)
-  br: (domNode) =>
-    domNode.parentElement !== null && isBreakOnlyBlock(domNode.parentElement)
+  br: () =>
+    loadingStored
       ? {
           conversion: () => ({ node: $createLineBreakNode() }),
           priority: 1,
@@ -345,339 +323,48 @@ export const richTextImportHref = (raw: string | undefined): string | null => {
   return scheme === undefined || linkSchemes.has(scheme) ? href : null;
 };
 
-const signatureTags = new Set([
-  "H2",
-  "H3",
-  "H4",
-  "BLOCKQUOTE",
-  "UL",
-  "OL",
-  "LI",
-  "PRE",
-  "HR",
-  "IMG",
-  "FIGURE",
-]);
-
-/** Elements that end the paragraph they stand in, as the site reads them. */
-const paragraphBreakTags = new Set([
-  ...signatureTags,
-  "P",
-  "IMG",
-  "FIGURE",
-  "FIGCAPTION",
-]);
-
-const hasContent = (node: Node): boolean =>
-  node.nodeType === Node.TEXT_NODE
-    ? isCollapsible(node.textContent ?? "") === false
-    : node instanceof Element &&
-      (node.tagName === "BR" || Array.from(node.childNodes).some(hasContent));
-
-/**
- * The paragraphs a list item holds, as the site counts them: each `p` with
- * content is one, and each run of inline content between blocks is one.
- */
-const countListItemParagraphs = (item: Element) => {
-  let count = 0;
-  let inRun = false;
-  const endRun = () => {
-    if (inRun) {
-      count += 1;
-      inRun = false;
-    }
-  };
-  const walk = (parent: Element) => {
-    for (const child of Array.from(parent.childNodes)) {
-      if (child instanceof Element && paragraphBreakTags.has(child.tagName)) {
-        endRun();
-        if (child.tagName === "P") {
-          // a paragraph's images end the runs within it
-          walk(child);
-          endRun();
-        }
-        continue;
-      }
-      if (hasContent(child)) {
-        inRun = true;
-      }
-    }
-  };
-  walk(item);
-  endRun();
-  return count;
-};
-
-const isBlankText = (node: ChildNode | null) =>
-  node !== null &&
-  node.nodeType === Node.TEXT_NODE &&
-  /^( |\t|\r?\n)+$/.test(node.textContent ?? "");
-
-/**
- * A break the editor's import drops: its block's last child (blank text
- * after it aside) and not its first. A browser shows none for it.
- */
-const isDroppedBreak = (br: Element) => {
-  const parent = br.parentElement;
-  if (parent === null) {
-    return false;
-  }
-  const first = parent.firstChild;
-  if (first === br || (first?.nextSibling === br && isBlankText(first))) {
-    return false;
-  }
-  const last = parent.lastChild;
-  return last === br || (last?.previousSibling === br && isBlankText(last));
-};
-
-/**
- * The line breaks a list item holds itself, outside its nested lists, but
- * for a last one the editor's import drops (it shows nothing).
- */
-const countOwnBreaks = (item: Element) =>
-  Array.from(item.querySelectorAll("br")).filter(
-    (br) =>
-      br.parentElement?.closest("li") === item &&
-      (br.parentElement !== item || isDroppedBreak(br) === false)
-  ).length;
-
-/**
- * The nesting of the value's headings, quotes, lists, list items (each with
- * its count of paragraphs), code blocks, rules, images and figures, in document order, and
- * the number of its kept links.
- */
-export const richTextBlockSignature = (html: string) => {
-  const body = parseHtml(html).body;
-  const tokens: string[] = [];
-  let links = 0;
-  for (const element of Array.from(body.querySelectorAll("*"))) {
-    if (signatureTags.has(element.tagName)) {
-      let depth = 0;
-      for (
-        let parent = element.parentElement;
-        parent !== null && parent !== body;
-        parent = parent.parentElement
-      ) {
-        if (signatureTags.has(parent.tagName)) {
-          depth += 1;
-        }
-      }
-      const token = `${element.tagName.toLowerCase()}@${depth}`;
-      tokens.push(
-        element.tagName === "LI"
-          ? `${token}:p${countListItemParagraphs(element)}:br${countOwnBreaks(element)}`
-          : token
-      );
-    }
-    // a link with nothing in it (no text, no image) shows nothing and is
-    // dropped on load, on both sides alike; one holding only a space counts
-    if (
-      element.tagName === "A" &&
-      richTextImportHref(element.getAttribute("href") ?? undefined) !== null &&
-      ((element.textContent ?? "") !== "" ||
-        element.querySelector("img") !== null)
-    ) {
-      links += 1;
-    }
-  }
-  tokens.push(`links=${links}`);
-  return tokens.join(" ");
-};
-
 export type RichTextReadOnlyReason = "lossy";
 
-const VOID_TAGS = new Set(["img", "br", "hr"]);
-const BLOCK_TAGS = new Set([
-  "p",
-  "h2",
-  "h3",
-  "h4",
-  "ul",
-  "ol",
-  "li",
-  "blockquote",
-  "pre",
-  "hr",
-  "figure",
-  "figcaption",
-]);
-const MARK_TAGS = new Set(["a", "b", "strong", "i", "em", "u", "s", "code"]);
-// a tag, its attributes read whole, so a `>` inside a quoted value is no end
-const TAG_RE =
-  /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:\s+[^\s=>/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*)\s*(\/?)>/g;
+/** The heading tags the site keeps: h1 becomes h2, h5 and h6 become h4. */
+const allowedHeadingTag = (tag: HeadingTagType): HeadingTagType =>
+  tag === "h1" ? "h2" : tag === "h5" || tag === "h6" ? "h4" : tag;
 
 /**
- * The stored HTML's element paths as its tags nest, and whether a block
- * opens inside a link or a mark. The platform reads the value as written;
- * the browser's parser may move elements, so the two are compared.
+ * The node rules the live editor and the read-only check both run: a heading
+ * the site does not keep takes the nearest kept tag, an empty link goes, and
+ * a link whose address the editor refuses gives way to its text.
  */
-const scanStoredTags = (html: string) => {
-  const stack: string[] = [];
-  const paths: string[] = [];
-  let blockInMark = false;
-  for (const match of html.matchAll(TAG_RE)) {
-    const tag = match[2].toLowerCase();
-    if (match[1] === "/") {
-      const at = stack.lastIndexOf(tag);
-      if (at !== -1) {
-        stack.length = at;
+export const registerRichTextTransforms = (editor: LexicalEditor) =>
+  mergeRegister(
+    editor.registerNodeTransform(HeadingNode, (node) => {
+      const tag = allowedHeadingTag(node.getTag());
+      if (tag === node.getTag()) {
+        return;
       }
-      continue;
-    }
-    if (BLOCK_TAGS.has(tag) && stack.some((open) => MARK_TAGS.has(open))) {
-      blockInMark = true;
-    }
-    paths.push([...stack, tag].join(">"));
-    if (VOID_TAGS.has(tag) === false && match[4] !== "/") {
-      stack.push(tag);
-    }
-  }
-  return { paths, blockInMark };
-};
-
-const parsedPaths = (body: HTMLElement) =>
-  Array.from(body.querySelectorAll("*")).map((element) => {
-    const path: string[] = [];
-    for (
-      let at: Element | null = element;
-      at !== null && at !== body;
-      at = at.parentElement
-    ) {
-      path.unshift(at.tagName.toLowerCase());
-    }
-    return path.join(">");
-  });
-
-const INLINE_BLOCK_TAGS = new Set([
-  "P",
-  "H2",
-  "H3",
-  "H4",
-  "LI",
-  "BLOCKQUOTE",
-  "FIGCAPTION",
-]);
-
-/** Nothing shows after it: blank text, or an inline holding nothing. */
-const showsNothing = (node: ChildNode): boolean =>
-  node.nodeType === Node.TEXT_NODE
-    ? isCollapsible(node.textContent ?? "")
-    : node instanceof Element &&
-      node.tagName !== "BR" &&
-      node.tagName !== "IMG" &&
-      Array.from(node.childNodes).every(showsNothing);
-
-/**
- * A break inside a link or mark with nothing shown after it up to the end of
- * its paragraph, heading, quote, list item or caption.
- */
-const endsBlockInInline = (br: Element) => {
-  let node: Element = br;
-  let parent = br.parentElement;
-  if (parent === null || INLINE_BLOCK_TAGS.has(parent.tagName)) {
-    return false;
-  }
-  while (parent !== null && INLINE_BLOCK_TAGS.has(parent.tagName) === false) {
-    if (BLOCK_TAGS.has(parent.tagName.toLowerCase())) {
-      return false;
-    }
-    for (
-      let after = node.nextSibling;
-      after !== null;
-      after = after.nextSibling
-    ) {
-      if (showsNothing(after) === false) {
-        return false;
+      const heading = $createHeadingNode(tag);
+      heading.setFormat(node.getFormatType());
+      heading.setIndent(node.getIndent());
+      heading.setDirection(node.getDirection());
+      node.replace(heading, true);
+    }),
+    editor.registerNodeTransform(LinkNode, (node) => {
+      // a link with nothing in it is not kept: the next load drops it
+      if (node.isEmpty()) {
+        node.remove();
+        return;
       }
-    }
-    node = parent;
-    parent = parent.parentElement;
-  }
-  if (parent === null) {
-    return false;
-  }
-  for (
-    let after = node.nextSibling;
-    after !== null;
-    after = after.nextSibling
-  ) {
-    if (showsNothing(after) === false) {
-      return false;
-    }
-  }
-  return true;
-};
-
-/**
- * A line break in its block after content, followed by an element that shows
- * nothing (an empty mark or link): the editor's import keeps the break (it is
- * not the block's last node) and drops the element, so its export would add
- * a break for a blank line the page never showed.
- */
-const endsBlockBeforeEmptyInline = (br: Element) => {
-  const parent = br.parentElement;
-  if (parent === null || INLINE_BLOCK_TAGS.has(parent.tagName) === false) {
-    return false;
-  }
-  const after: ChildNode[] = [];
-  for (let node = br.nextSibling; node !== null; node = node.nextSibling) {
-    after.push(node);
-  }
-  if (
-    after.some((node) => node instanceof Element) === false ||
-    after.every(showsNothing) === false
-  ) {
-    return false;
-  }
-  for (
-    let node = br.previousSibling;
-    node !== null;
-    node = node.previousSibling
-  ) {
-    if (showsNothing(node) === false) {
-      return true;
-    }
-  }
-  return false;
-};
-
-/**
- * A value the editor cannot read as the platform does: the parser rewrote
- * it (a carriage return, a NUL, a line break outside any block, an element
- * moved), a block sits inside a link or a mark, or a line break ends its
- * block where the editor would keep and show it and the page shows nothing.
- */
-const isRestructured = (html: string, body: HTMLElement) => {
-  // eslint-disable-next-line no-control-regex
-  if (/[\r\u0000]/.test(html)) {
-    return true;
-  }
-  if (
-    Array.from(body.childNodes).some(
-      (node) => node instanceof Element && node.tagName === "BR"
-    )
-  ) {
-    return true;
-  }
-  const { paths, blockInMark } = scanStoredTags(html);
-  if (blockInMark) {
-    return true;
-  }
-  const parsed = parsedPaths(body);
-  if (
-    paths.length !== parsed.length ||
-    paths.some((path, index) => path !== parsed[index])
-  ) {
-    return true;
-  }
-  // a break ending its block inside a link or mark, or before one that
-  // shows nothing: the editor keeps and shows it, the page shows nothing
-  return Array.from(body.querySelectorAll("br")).some(
-    (br) => endsBlockInInline(br) || endsBlockBeforeEmptyInline(br)
+      if (richTextImportHref(node.getURL()) !== null) {
+        return;
+      }
+      for (const child of node.getChildren()) {
+        node.insertBefore(child);
+      }
+      node.remove();
+    })
   );
-};
 
-const writeHeadless = (html: string) => {
+/** The editor's load and save of a stored value, with no view. */
+export const writeRichTextHeadless = (html: string) => {
   const editor = createEditor({
     namespace: "cms-rich-text-check",
     nodes: [...richTextNodes],
@@ -686,6 +373,7 @@ const writeHeadless = (html: string) => {
       throw error;
     },
   });
+  registerRichTextTransforms(editor);
   editor.update(() => importRichTextHtml(editor, html), { discrete: true });
   return exportRichTextHtml(editor);
 };
@@ -696,45 +384,134 @@ export const richTextHasImage = (html: string) =>
   typeof DOMParser !== "undefined" &&
   parseHtml(html).body.querySelector("img, figure, figcaption") !== null;
 
+/** Each attribute of a tag, sorted, so attribute order is no difference. */
+const attributesOf = (tag: string) =>
+  (tag.match(/\s[a-z-]+="[^"]*"/g) ?? []).sort().join("");
+
 /**
- * "lossy" for a value whose block signature the editor's own export of it
- * does not reproduce.
+ * The links the page shows, in order, each with every attribute: an anchor
+ * with no address is no link, and a link with no text and no image shows
+ * nothing, so both sides drop it.
  */
-export const getRichTextReadOnlyReason = (
-  html: string
-): RichTextReadOnlyReason | undefined => {
-  if (html === "" || typeof DOMParser === "undefined") {
-    return;
-  }
-  const body = parseHtml(html).body;
-  if (isRestructured(html, body)) {
+const linksOf = (html: string) =>
+  [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)]
+    .filter(
+      (match) =>
+        /\shref="/.test(match[1]) &&
+        (/<img\b/.test(match[2]) || match[2].replace(/<[^>]*>/g, "") !== "")
+    )
+    .map((match) => attributesOf(match[1]));
+
+/** The images, in order, each with every attribute. */
+const imagesOf = (html: string) =>
+  [...html.matchAll(/<img\b[^>]*>/g)].map((match) => attributesOf(match[0]));
+
+const sameList = (left: string[], right: string[]) =>
+  left.length === right.length &&
+  left.every((entry, index) => entry === right[index]);
+
+/** Blocks and inlines, as the platform counts them, and the deepest nesting. */
+const measureInlines = (nodes: RichTextInline[]): number =>
+  nodes.reduce(
+    (count, node) => count + 1 + (node.t === "a" ? measureInlines(node.c) : 0),
+    0
+  );
+
+const measureBlocks = (
+  nodes: RichTextBlock[],
+  depth: number
+): { count: number; depth: number } =>
+  nodes.reduce(
+    (total, node) => {
+      let count = 1;
+      let deepest = depth;
+      if (node.t === "p" || node.t === "h") {
+        count += measureInlines(node.c);
+      } else if (node.t === "img" && node.caption !== undefined) {
+        count += measureInlines(node.caption);
+      } else if (node.t === "quote") {
+        const inner = measureBlocks(node.children, depth + 1);
+        count += inner.count;
+        deepest = inner.depth;
+      } else if (node.t === "ul" || node.t === "ol") {
+        for (const item of node.items) {
+          const inner = measureBlocks(item, depth + 1);
+          count += inner.count;
+          deepest = Math.max(deepest, inner.depth);
+        }
+      }
+      return {
+        count: total.count + count,
+        depth: Math.max(total.depth, deepest),
+      };
+    },
+    { count: 0, depth }
+  );
+
+/** A tree at the platform's node or depth limit: its tail is plain text. */
+const atNodeLimit = (nodes: RichTextBlock[]) => {
+  const { count, depth } = measureBlocks(nodes, 1);
+  return count >= RICH_TEXT_MAX_NODES - 2 || depth >= RICH_TEXT_MAX_DEPTH - 1;
+};
+
+const readOnlyMemo = new Map<string, RichTextReadOnlyReason | undefined>();
+const READ_ONLY_MEMO_SIZE = 8;
+
+/**
+ * "lossy" for a value the editor would change on a load and save: the value
+ * as the platform stores and serves it (sanitised, its /v1 nodes, its links
+ * and images with every attribute) against the editor's own write of it, run
+ * through the same sanitiser. A value the editor cannot load, one at the
+ * platform's node or depth limit, and any value where no DOM parser exists
+ * open read-only too.
+ */
+const readOnlyReasonOf = (html: string): RichTextReadOnlyReason | undefined => {
+  if (typeof DOMParser === "undefined") {
     return "lossy";
   }
-  if (body.querySelector("img") !== null) {
+  try {
+    const stored = sanitizeRichTextHtml(html);
     // no free mark: the spaces beside its images would not be kept
-    if (pickImageEdgeMark(body.textContent ?? "") === undefined) {
+    if (
+      /<img\b/.test(stored) &&
+      pickImageEdgeMark(parseHtml(html).body.textContent ?? "") === undefined
+    ) {
       return "lossy";
     }
-    // an image in a link the editor unwraps would join the line it hides from
-    for (const anchor of Array.from(body.querySelectorAll("a"))) {
-      if (
-        richTextImportHref(anchor.getAttribute("href") ?? undefined) === null &&
-        anchor.querySelector("img") !== null
-      ) {
-        return "lossy";
-      }
+    const written = sanitizeRichTextHtml(writeRichTextHeadless(html));
+    const before = toRichTextNodes(stored).children;
+    if (atNodeLimit(before)) {
+      return "lossy";
     }
-  }
-  let written: string;
-  try {
-    written = writeHeadless(html);
+    const after = toRichTextNodes(written).children;
+    if (
+      JSON.stringify(before) !== JSON.stringify(after) ||
+      sameList(linksOf(stored), linksOf(written)) === false ||
+      sameList(imagesOf(stored), imagesOf(written)) === false
+    ) {
+      return "lossy";
+    }
   } catch {
     // a value the editor cannot load opens read-only, never as a failure
     return "lossy";
   }
-  if (richTextBlockSignature(html) !== richTextBlockSignature(written)) {
-    return "lossy";
+};
+
+export const getRichTextReadOnlyReason = (
+  html: string
+): RichTextReadOnlyReason | undefined => {
+  if (html === "") {
+    return;
   }
+  if (readOnlyMemo.has(html)) {
+    return readOnlyMemo.get(html);
+  }
+  const reason = readOnlyReasonOf(html);
+  if (readOnlyMemo.size >= READ_ONLY_MEMO_SIZE) {
+    readOnlyMemo.delete(readOnlyMemo.keys().next().value as string);
+  }
+  readOnlyMemo.set(html, reason);
+  return reason;
 };
 
 /**
@@ -872,6 +649,55 @@ const tidyImported = (
 const isInlineNode = (node: LexicalNode) =>
   $isElementNode(node) || $isDecoratorNode(node) ? node.isInline() : true;
 
+const PASTE_BLOCKS =
+  "p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, hr, figure, figcaption, div";
+const PASTE_MARKS = "a, b, strong, i, em, u, s, code, span";
+
+/**
+ * A link or mark around blocks moves inside them: each run of its inline
+ * content, block by block, gets its own copy, so the editor never writes a
+ * block inside a link or mark (which the site reads differently). Runs on a
+ * paste and on a stored value's load.
+ */
+export const pushMarksIntoBlocks = (body: HTMLElement) => {
+  let moved = false;
+  for (const mark of Array.from(body.querySelectorAll(PASTE_MARKS)).reverse()) {
+    if (mark.querySelector(PASTE_BLOCKS) === null) {
+      continue;
+    }
+    const wrapRuns = (parent: Element) => {
+      let run: Element | null = null;
+      for (const child of Array.from(parent.childNodes)) {
+        // a figure stays whole; a block, or a wrapper holding blocks
+        // (article, section, table), takes the mark inside
+        if (child instanceof Element && child.matches("figure")) {
+          run = null;
+          continue;
+        }
+        if (
+          child instanceof Element &&
+          (child.matches(PASTE_BLOCKS) ||
+            (child.matches(PASTE_MARKS) === false &&
+              child.querySelector(PASTE_BLOCKS) !== null))
+        ) {
+          run = null;
+          wrapRuns(child);
+          continue;
+        }
+        if (run === null) {
+          run = mark.cloneNode(false) as Element;
+          parent.insertBefore(run, child);
+        }
+        run.appendChild(child);
+      }
+    };
+    wrapRuns(mark);
+    mark.replaceWith(...Array.from(mark.childNodes));
+    moved = true;
+  }
+  return moved;
+};
+
 /**
  * Loads stored HTML into the editor. Runs inside an editor update: the root
  * is cleared and filled with the value's nodes.
@@ -886,8 +712,16 @@ export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
       anchor.setAttribute("href", href);
     }
   }
+  pushMarksIntoBlocks(dom.body);
   const mark = markImageEdges(dom.body);
-  const imported = importStoredImages(() => $generateNodesFromDOM(editor, dom));
+  const imported = importStoredImages(() => {
+    loadingStored = true;
+    try {
+      return $generateNodesFromDOM(editor, dom);
+    } finally {
+      loadingStored = false;
+    }
+  });
   const nodes: LexicalNode[] = [];
   let run: ParagraphNode | undefined;
   for (const node of tidyImported(imported, mark)) {

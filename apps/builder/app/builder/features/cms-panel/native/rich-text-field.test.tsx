@@ -17,7 +17,10 @@ import { RichTextField, type RichTextFieldProps } from "./rich-text-field";
 import { createLazyRichTextField, FieldControl } from "./field-controls";
 import { createFakeCmsSource } from "./fake-cms-source";
 import fixture from "./__fixtures__/rich-text-roundtrip.json";
-import { getRichTextReadOnlyReason } from "./rich-text-html";
+import {
+  getRichTextReadOnlyReason,
+  writeRichTextHeadless,
+} from "./rich-text-html";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -548,6 +551,44 @@ test.each(fixture.cases.map((entry) => [entry.name, entry] as const))(
   }
 );
 
+// the read-only check runs the editor headless: the live field, with its
+// plugins and transforms, must write exactly what the headless editor writes
+test.each([
+  ...fixture.cases
+    .filter((entry) => entry.stored !== null)
+    .map((entry) => entry.input),
+  "<h1>Title</h1><p>x</p>",
+  "<h5>Title</h5><p>x</p>",
+  '<p>a <a href="javascript:alert(1)">b</a> c</p>',
+  '<a href="https://e.org/"><h2>Title</h2></a><p>b</p>',
+  "<p>one<br></p><p>two<br><br></p>",
+  "<ul><li>one<br></li><li><br></li></ul><p>x</p>",
+])(
+  "the live field writes what the headless editor writes for %s",
+  async (html) => {
+    const { onChange } = mountField({ value: { html } });
+    await settle();
+    const editor = (
+      editable() as (HTMLElement & { __lexicalEditor?: LexicalEditor }) | null
+    )?.__lexicalEditor;
+    if (editor === undefined) {
+      // read-only: nothing is written, so nothing to compare
+      expect(getRichTextReadOnlyReason(html)).toBe("lossy");
+      return;
+    }
+    await act(async () => {
+      editor.update(() => {
+        $getRoot().markDirty();
+      });
+    });
+    await settle();
+    const written = lastValue(onChange);
+    expect(withoutClassAndDir(written?.html ?? "")).toBe(
+      withoutClassAndDir(writeRichTextHeadless(html))
+    );
+  }
+);
+
 test("the toolbar wraps within 240 px", async () => {
   mountField({ id: "narrow" });
   await settle();
@@ -953,7 +994,7 @@ test.each([
   ["a bullet", "<ul><li>one</li></ul>", "li"],
   ["a paragraph", "<p>one</p>", "p"],
 ])(
-  "Shift+Enter at the end of %s writes its blank line so that it reloads, still editable",
+  "Shift+Enter at the end of %s writes its line break, and the value reloads editable",
   async (_name, value, tag) => {
     const { onChange } = mountField({ value: { html: value } });
     await settle();
@@ -961,8 +1002,8 @@ test.each([
     await type("{End}");
     await type("{Shift>}{Enter}{/Shift}");
     const html = lastHtml(onChange);
-    // the import drops a block's last break, so the blank line takes two
-    expect(textOf(html)).toMatch(new RegExp(`one<br><br></${tag}>`));
+    // V11: a stored value's load keeps every line break, so one is written
+    expect(textOf(html)).toMatch(new RegExp(`one<br></${tag}>`));
     expect(getRichTextReadOnlyReason(html)).toBeUndefined();
   }
 );
@@ -986,7 +1027,6 @@ test("pasting a link around an article moves the link into its blocks", async ()
 test.each([
   '<p><a href="https://e.org/"><h2>Title</h2></a></p>',
   "<strong><p>Bold</p></strong>",
-  "<p>one<br /><strong></strong></p>",
 ])("the live field opens %s read-only, writing nothing", async (html) => {
   const { onChange } = mountField({ value: { html } });
   await settle();

@@ -8,12 +8,28 @@ import {
   importRichTextHtml,
   markRichTextCopy,
   readRichTextValue,
-  richTextBlockSignature,
   richTextHref,
   richTextHtmlConfig,
   richTextImportHref,
   richTextNodes,
+  writeRichTextHeadless,
 } from "./rich-text-html";
+import { sanitizeRichTextHtml } from "./rich-text-sanitize";
+
+/**
+ * A value the editor opens editable saves a value that opens editable too,
+ * and saves the same again: the read-only rule never locks the editor's own
+ * write, and a second save changes nothing.
+ */
+const expectStableIfEditable = (html: string) => {
+  if (getRichTextReadOnlyReason(html) !== undefined) {
+    return;
+  }
+  const saved = sanitizeRichTextHtml(writeRichTextHeadless(html));
+  expect(sanitizeRichTextHtml(saved)).toBe(saved);
+  expect(getRichTextReadOnlyReason(saved)).toBeUndefined();
+  expect(sanitizeRichTextHtml(writeRichTextHeadless(saved))).toBe(saved);
+};
 
 /** Loads stored HTML into the editor's node set, then writes it back. */
 const roundTrip = (html: string) => {
@@ -95,10 +111,10 @@ describe("the round trip (spec 8)", () => {
       `<blockquote><a href="https://example.org/">${inner}</a></blockquote>`,
   ];
   test.each(nestings.flatMap((nest) => figures.map((figure) => nest(figure))))(
-    "a nested figure loads without failing and reads lossy: %s",
+    "a nested figure loads without failing, and an editable one saves stably: %s",
     (html) => {
       expect(() => roundTrip(html)).not.toThrow();
-      expect(getRichTextReadOnlyReason(html)).toBe("lossy");
+      expectStableIfEditable(html);
     }
   );
 
@@ -275,45 +291,6 @@ describe("link addresses", () => {
   });
 });
 
-describe("the block signature", () => {
-  test.each([
-    ["<p>a</p><p></p>", "links=0"],
-    [
-      '<ul><li><p>a</p><ul><li><p>b</p></li></ul></li></ul><p><a href="/x">x</a></p>',
-      "ul@0 li@1:p1:br0 ul@2 li@3:p1:br0 links=1",
-    ],
-    ["<ul><li><p>a</p><p>b</p></li></ul>", "ul@0 li@1:p2:br0 links=0"],
-    ["<ul><li>a<br>b</li></ul>", "ul@0 li@1:p1:br1 links=0"],
-    [
-      "<ul><li><p>One</p></li><li>Two</li></ul>",
-      "ul@0 li@1:p1:br0 li@1:p1:br0 links=0",
-    ],
-    [
-      "<ul><li>a<ul><li>b</li></ul>c</li></ul>",
-      "ul@0 li@1:p2:br0 ul@2 li@3:p1:br0 links=0",
-    ],
-    ["<ul><li><p></p></li></ul>", "ul@0 li@1:p0:br0 links=0"],
-    [
-      '<blockquote><h2>A</h2></blockquote><p><a href="javascript:x">y</a></p>',
-      "blockquote@0 h2@1 links=0",
-    ],
-    [
-      '<ul><li><p>a<img src="https://a.org/x.png" />b</p></li></ul>',
-      "ul@0 li@1:p2:br0 img@2 links=0",
-    ],
-    [
-      '<ul><li>a<img src="https://a.org/x.png">b</li></ul>',
-      "ul@0 li@1:p2:br0 img@2 links=0",
-    ],
-    [
-      '<figure><img src="https://a.org/x.png" /><figcaption>c</figcaption></figure>',
-      "figure@0 img@1 links=0",
-    ],
-  ])("richTextBlockSignature(%j) is %j", (html, signature) => {
-    expect(richTextBlockSignature(html)).toBe(signature);
-  });
-});
-
 describe("readRichTextValue", () => {
   test.each([null, 42, {}, { html: 1 }])(
     "readRichTextValue(%j) is null",
@@ -415,8 +392,9 @@ describe("what the editor cannot read as the platform does (W4 verification)", (
     ["<pre><code>a\r\nb</code></pre>", "a carriage return"],
     ["<p>a\u0000b</p>", "a NUL"],
     ["x<br />y", "a line break outside any block"],
-  ])("%s reads lossy (%s)", (html) => {
-    expect(getRichTextReadOnlyReason(html)).toBe("lossy");
+  ])("%s loads, and saves stably when editable (%s)", (html) => {
+    expect(() => roundTrip(html)).not.toThrow();
+    expectStableIfEditable(html);
   });
 
   test("a > inside an attribute does not end the tag", () => {
@@ -436,6 +414,8 @@ describe("what the editor cannot read as the platform does (W4 verification)", (
   });
 });
 
+// V11: a stored value's load keeps every line break, and its save writes
+// them back as they were (owner decision, 2026-11-14)
 describe("a block's last line break", () => {
   const plain = (html: string) =>
     roundTrip(html)
@@ -444,37 +424,28 @@ describe("a block's last line break", () => {
       .replace(/ value="\d+"/g, "");
 
   test.each([
+    "<p>one<br></p>",
     "<p>one<br><br></p>",
     "<p>one<br><br><br></p>",
+    "<h2>one<br></h2>",
+    "<blockquote>one<br></blockquote>",
+    "<ul><li>one<br></li></ul>",
     "<ul><li>one<br><br></li></ul>",
+    "<ol><li>a<br>b<br></li></ol>",
     "<ul><li>one<br><ul><li>two</li></ul></li></ul>",
   ])("%s reloads as it was, editable", (html) => {
     expect(plain(html)).toBe(html);
     expect(getRichTextReadOnlyReason(html)).toBeUndefined();
   });
 
-  // a single last break shows nothing on the page: dropped, still editable
-  test.each([
-    ["<p>one<br></p>", "<p>one</p>"],
-    ["<h2>one<br></h2>", "<h2>one</h2>"],
-    ["<ul><li>one<br></li></ul>", "<ul><li>one</li></ul>"],
-    ["<ol><li>a<br>b<br></li></ol>", "<ol><li>a<br>b</li></ol>"],
-  ])("%s writes %s, editable", (html, written) => {
-    expect(plain(html)).toBe(written);
-    expect(getRichTextReadOnlyReason(html)).toBeUndefined();
-  });
-
   test.each([
     "<p><strong>one<br></strong></p>",
+    "<p><strong>one<br></strong>two</p>",
+    "<p>one<br><strong></strong></p>",
     '<p><a href="https://example.org/">one<br></a></p>',
-  ])("%s reads lossy", (html) => {
-    expect(getRichTextReadOnlyReason(html)).toBe("lossy");
-  });
-
-  test("a break inside a mark with text after it stays editable", () => {
-    expect(
-      getRichTextReadOnlyReason("<p><strong>one<br></strong>two</p>")
-    ).toBeUndefined();
+  ])("%s keeps its nodes, editable", (html) => {
+    expect(getRichTextReadOnlyReason(html)).toBeUndefined();
+    expectStableIfEditable(html);
   });
 });
 

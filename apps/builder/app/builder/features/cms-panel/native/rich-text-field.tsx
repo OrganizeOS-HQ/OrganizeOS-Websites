@@ -49,10 +49,8 @@ import {
   $createQuoteNode,
   $isHeadingNode,
   $isQuoteNode,
-  HeadingNode,
-  type HeadingTagType,
 } from "@lexical/rich-text";
-import { $createCodeNode, $isCodeNode, CodeHighlightNode } from "@lexical/code";
+import { $createCodeNode, $isCodeNode } from "@lexical/code";
 import { $setBlocksType } from "@lexical/selection";
 import {
   $findMatchingParent,
@@ -122,7 +120,8 @@ import {
   richTextHasImage,
   richTextHref,
   richTextHtmlConfig,
-  richTextImportHref,
+  pushMarksIntoBlocks,
+  registerRichTextTransforms,
   richTextNodes,
 } from "./rich-text-html";
 
@@ -417,27 +416,10 @@ const setBlockType = (editor: LexicalEditor, block: BlockType) => {
   editor.focus();
 };
 
-/** The heading tags the site keeps: h1 becomes h2, h5 and h6 become h4. */
-const allowedHeadingTag = (tag: HeadingTagType): HeadingTagType =>
-  tag === "h1" ? "h2" : tag === "h5" || tag === "h6" ? "h4" : tag;
-
-const HeadingTagPlugin = () => {
+/** The node rules the read-only check runs too (`registerRichTextTransforms`). */
+const TransformsPlugin = () => {
   const [editor] = useLexicalComposerContext();
-  useEffect(
-    () =>
-      editor.registerNodeTransform(HeadingNode, (node) => {
-        const tag = allowedHeadingTag(node.getTag());
-        if (tag === node.getTag()) {
-          return;
-        }
-        const heading = $createHeadingNode(tag);
-        heading.setFormat(node.getFormatType());
-        heading.setIndent(node.getIndent());
-        heading.setDirection(node.getDirection());
-        node.replace(heading, true);
-      }),
-    [editor]
-  );
+  useEffect(() => registerRichTextTransforms(editor), [editor]);
   return null;
 };
 
@@ -833,54 +815,6 @@ const hasRefusedNode = (value: unknown): boolean => {
   return hasRefusedNode(node.children) || hasRefusedNode(node.nodes);
 };
 
-const PASTE_BLOCKS =
-  "p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, pre, hr, figure, figcaption, div";
-const PASTE_MARKS = "a, b, strong, i, em, u, s, code, span";
-
-/**
- * A link or mark around blocks moves inside them: each run of its inline
- * content, block by block, gets its own copy, so a value never holds a
- * block inside a link or mark (which the site reads differently).
- */
-const pushMarksIntoBlocks = (body: HTMLElement) => {
-  let moved = false;
-  for (const mark of Array.from(body.querySelectorAll(PASTE_MARKS)).reverse()) {
-    if (mark.querySelector(PASTE_BLOCKS) === null) {
-      continue;
-    }
-    const wrapRuns = (parent: Element) => {
-      let run: Element | null = null;
-      for (const child of Array.from(parent.childNodes)) {
-        // a figure stays whole; a block, or a wrapper holding blocks
-        // (article, section, table), takes the mark inside
-        if (child instanceof Element && child.matches("figure")) {
-          run = null;
-          continue;
-        }
-        if (
-          child instanceof Element &&
-          (child.matches(PASTE_BLOCKS) ||
-            (child.matches(PASTE_MARKS) === false &&
-              child.querySelector(PASTE_BLOCKS) !== null))
-        ) {
-          run = null;
-          wrapRuns(child);
-          continue;
-        }
-        if (run === null) {
-          run = mark.cloneNode(false) as Element;
-          parent.insertBefore(run, child);
-        }
-        run.appendChild(child);
-      }
-    };
-    wrapRuns(mark);
-    mark.replaceWith(...Array.from(mark.childNodes));
-    moved = true;
-  }
-  return moved;
-};
-
 /**
  * The pasted data with each link the Link control's rule (`richTextHref`)
  * refuses unwrapped to its text, and links and marks moved inside the
@@ -1083,20 +1017,6 @@ const LinkRulePlugin = () => {
   useEffect(
     () =>
       mergeRegister(
-        editor.registerNodeTransform(LinkNode, (node) => {
-          // a link with nothing in it is not kept: the next load drops it
-          if (node.isEmpty()) {
-            node.remove();
-            return;
-          }
-          if (richTextImportHref(node.getURL()) !== null) {
-            return;
-          }
-          for (const child of node.getChildren()) {
-            node.insertBefore(child);
-          }
-          node.remove();
-        }),
         editor.registerCommand(
           CONTROLLED_TEXT_INSERTION_COMMAND,
           (payload) => {
@@ -1179,7 +1099,7 @@ export type RichTextFieldProps = {
  * The live editor's nodes: the value's, and the code block's line indent,
  * which Enter in a code block can create.
  */
-const editorNodes = [...richTextNodes, CodeHighlightNode];
+const editorNodes = [...richTextNodes];
 
 export const RichTextField = ({
   id,
@@ -1291,7 +1211,7 @@ export const RichTextField = ({
         <LinkRulePlugin />
         <ImageEditingPlugin />
         <HorizontalRulePlugin />
-        <HeadingTagPlugin />
+        <TransformsPlugin />
         <OnChangePlugin
           ignoreSelectionChange
           ignoreHistoryMergeTagChange
