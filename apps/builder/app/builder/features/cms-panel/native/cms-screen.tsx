@@ -811,8 +811,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       }
     }, [isVisible]);
     const onEditorBusyChange = useCallback((busy: boolean, stay?: boolean) => {
-      // an error the editor shows keeps it open: what waited is dropped
-      if (busy === false && stay === true) {
+      // an error the editor shows keeps it open: what waited is dropped,
+      // even while an upload still runs
+      if (stay === true) {
         afterEditorBusy.current = undefined;
       }
       setIsEditorBusy(busy);

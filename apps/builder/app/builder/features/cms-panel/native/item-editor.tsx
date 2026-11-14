@@ -167,8 +167,8 @@ export const ItemEditor = ({
   /**
    * Save, Publish, Discard changes, Unpublish, Archive or Restore runs
    * (every call it makes and the read after), or a field's upload is in
-   * flight. `stay`: it ended with an error the editor shows, so what waited
-   * on it is dropped.
+   * flight. `stay`: a chain or upload that just ended shows an error in the
+   * editor, so what waited on it is dropped, even while an upload runs on.
    */
   onBusyChange?: (busy: boolean, stay?: boolean) => void;
   /**
@@ -220,8 +220,10 @@ export const ItemEditor = ({
   // Save, Publish, Discard changes, Unpublish, Archive or Restore, from its
   // first call to its last answer
   const [isChainRunning, setIsChainRunning] = useState(false);
-  // the running chain ended with an error the editor shows
+  // the chain or upload that just ended showed an error in the editor
   const chainStays = useRef(false);
+  // the field whose upload just ended: an error it shows keeps the editor
+  const uploadEnded = useRef<string | undefined>(undefined);
   const cancelRef = useRef<HTMLButtonElement>(null);
   // what had the focus when the Discard changes dialog opened
   const discardOpener = useRef<Element | null>(null);
@@ -392,12 +394,12 @@ export const ItemEditor = ({
   }, [isDirty, onDirtyChange]);
   // an upload's value lands after it answers: what waits sees it
   const isEditorBusy = isChainRunning || busyFields.size > 0;
+  // a stay is reported once, by the chain or upload that ended with it
   useEffect(() => {
     onBusyChange?.(isEditorBusy, chainStays.current);
-    if (isEditorBusy === false) {
-      chainStays.current = false;
-    }
-  }, [isEditorBusy, onBusyChange]);
+    chainStays.current = false;
+    uploadEnded.current = undefined;
+  }, [isEditorBusy, isChainRunning, onBusyChange]);
   useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
@@ -1201,14 +1203,23 @@ export const ItemEditor = ({
                       disabled={disabled}
                       invalid={errors[field.key] !== undefined}
                       onChange={(value) => setField(field.key, value)}
-                      onError={(error) =>
+                      onError={(error) => {
+                        if (
+                          error !== undefined &&
+                          uploadEnded.current === field.key
+                        ) {
+                          showsInPlace();
+                        }
                         setErrors(({ [field.key]: _, ...rest }) =>
                           error === undefined
                             ? rest
                             : { ...rest, [field.key]: error }
-                        )
-                      }
-                      onBusyChange={(isBusy) =>
+                        );
+                      }}
+                      onBusyChange={(isBusy) => {
+                        if (isBusy === false) {
+                          uploadEnded.current = field.key;
+                        }
                         setBusyFields((current) => {
                           const next = new Set(current);
                           if (isBusy) {
@@ -1217,8 +1228,8 @@ export const ItemEditor = ({
                             next.delete(field.key);
                           }
                           return next;
-                        })
-                      }
+                        });
+                      }}
                       onRefusal={onRefusal}
                       onOpenClassic={onOpenClassic}
                       onUnresolvedChange={(ids) => {
