@@ -140,6 +140,7 @@ const template: SiteTemplate = {
   status: "draft",
   dependsOn: [],
   thumbnail: "/thumbnail.jpg",
+  pagePictures: {},
   look: {
     buttonRadius: "6px",
     buttonWeight: 600,
@@ -1414,7 +1415,7 @@ describe("applySiteTemplate", () => {
   // The thumbnail is only the chooser's picture (the file the preview tool's
   // --thumbnail writes), and the preview event cover only the preview's:
   // shown on no page, either would be an asset the site never uses.
-  test("uploads only the images the pages show, never the preview tool's thumbnail", async () => {
+  test("uploads only the images the pages show, never the thumbnail or a page's picture", async () => {
     setStores(await createProvisionedProject(provisioning));
     const unused = (file: string) => ({
       url: `/site-templates/fixture/${file}`,
@@ -1426,10 +1427,12 @@ describe("applySiteTemplate", () => {
       ...template,
       thumbnail: THUMBNAIL.file,
       previewEventCover: "cover.jpg",
+      pagePictures: { about: "page-about.jpg" },
       images: {
         ...template.images,
         [THUMBNAIL.file]: unused(THUMBNAIL.file),
         "cover.jpg": unused("cover.jpg"),
+        "page-about.jpg": unused("page-about.jpg"),
       },
     });
 

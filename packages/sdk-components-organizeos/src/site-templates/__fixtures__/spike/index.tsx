@@ -171,6 +171,8 @@ export const spikeTemplate: SiteTemplate = {
   // its Event Card and Event List show the cover card, and Home shows
   // hero.jpg: the preview's sample cover is an image of its own
   previewEventCover: "cover.jpg",
+  // one page, Home, whose picture is the thumbnail
+  pagePictures: {},
   look: {
     buttonRadius: "6px",
     buttonWeight: 600,

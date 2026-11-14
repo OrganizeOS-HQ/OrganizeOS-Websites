@@ -123,10 +123,18 @@ export type SiteTemplate = {
   /** The PRs the template needs merged first. */
   dependsOn: string[];
   /**
-   * The chooser's picture of the template: a file name in `images`. Applying
-   * uploads it only when a page shows it.
+   * The Templates screen's picture of the template, its card and Home's
+   * picture in the page view: a file name in `images`. Applying uploads it
+   * only when a page shows it.
    */
   thumbnail: string;
+  /**
+   * The picture of every page but Home, by page key: a file name in `images`
+   * (the preview tool's `--pages` draws it as `page-<key>.jpg`), which the
+   * Templates screen's page view shows and applying never uploads, since no
+   * page shows it.
+   */
+  pagePictures: Record<string, string>;
   /**
    * A file name in `images` that the preview tool's sample events show as
    * the first event's cover (scripts/preview-site-template.mjs): one that no

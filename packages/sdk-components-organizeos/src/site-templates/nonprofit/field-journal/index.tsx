@@ -8,6 +8,11 @@ import heroUrl from "./images/hero.jpg?url&no-inline";
 import programOneUrl from "./images/program-one.jpg?url&no-inline";
 import programThreeUrl from "./images/program-three.jpg?url&no-inline";
 import programTwoUrl from "./images/program-two.jpg?url&no-inline";
+import aboutPictureUrl from "./images/page-about.jpg?url&no-inline";
+import programsPictureUrl from "./images/page-programs.jpg?url&no-inline";
+import getInvolvedPictureUrl from "./images/page-get-involved.jpg?url&no-inline";
+import eventsPictureUrl from "./images/page-events.jpg?url&no-inline";
+import contactPictureUrl from "./images/page-contact.jpg?url&no-inline";
 import thumbnailUrl from "./images/thumbnail.jpg?url&no-inline";
 import { about } from "./pages/about";
 import { contact } from "./pages/contact";
@@ -49,6 +54,13 @@ export const fieldJournalTemplate: SiteTemplate = {
   // the preview's sample event cover: a photo on no page with events, so
   // Home never shows one twice
   previewEventCover: "about.jpg",
+  pagePictures: {
+    about: "page-about.jpg",
+    programs: "page-programs.jpg",
+    "get-involved": "page-get-involved.jpg",
+    events: "page-events.jpg",
+    contact: "page-contact.jpg",
+  },
   // the kit look page templates draw with: LOOK, with what it leaves unset
   // filled with what the kit draws then, so nothing here renders differently
   look: { ...LOOK, navNameSize: "20px", footerNameSize: "20px" },
@@ -99,7 +111,37 @@ export const fieldJournalTemplate: SiteTemplate = {
       url: thumbnailUrl,
       sourceUrl:
         "organizeos:generated/../../../../scripts/preview-site-template.mjs",
-      alt: "A picture of the template's Home page, for the template chooser",
+      alt: "A picture of the template's Home page, for the Templates screen",
+    },
+    "page-about.jpg": {
+      url: aboutPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's About page, for the Templates screen",
+    },
+    "page-programs.jpg": {
+      url: programsPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Programs page, for the Templates screen",
+    },
+    "page-get-involved.jpg": {
+      url: getInvolvedPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Get involved page, for the Templates screen",
+    },
+    "page-events.jpg": {
+      url: eventsPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Events page, for the Templates screen",
+    },
+    "page-contact.jpg": {
+      url: contactPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Contact page, for the Templates screen",
     },
   },
   fonts: {

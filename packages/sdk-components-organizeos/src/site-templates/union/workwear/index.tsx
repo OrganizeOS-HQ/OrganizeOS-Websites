@@ -7,6 +7,11 @@ import type { SiteTemplate } from "../../types";
 import { LOOK } from "./styles";
 import aboutUrl from "./images/about.jpg?url&no-inline";
 import heroUrl from "./images/hero.jpg?url&no-inline";
+import aboutPictureUrl from "./images/page-about.jpg?url&no-inline";
+import knowYourRightsPictureUrl from "./images/page-know-your-rights.jpg?url&no-inline";
+import joinPictureUrl from "./images/page-join.jpg?url&no-inline";
+import eventsPictureUrl from "./images/page-events.jpg?url&no-inline";
+import contactPictureUrl from "./images/page-contact.jpg?url&no-inline";
 import thumbnailUrl from "./images/thumbnail.jpg?url&no-inline";
 import { about } from "./pages/about";
 import { contactPage } from "./pages/contact";
@@ -59,6 +64,13 @@ export const workwearTemplate: SiteTemplate = {
   status: "listed",
   dependsOn: [],
   thumbnail: "thumbnail.jpg",
+  pagePictures: {
+    about: "page-about.jpg",
+    "know-your-rights": "page-know-your-rights.jpg",
+    join: "page-join.jpg",
+    events: "page-events.jpg",
+    contact: "page-contact.jpg",
+  },
   // the kit look page templates draw with: LOOK, with what it leaves unset
   // filled with what the kit draws then, so nothing here renders differently
   look: {
@@ -96,7 +108,37 @@ export const workwearTemplate: SiteTemplate = {
       url: thumbnailUrl,
       sourceUrl:
         "organizeos:generated/../../../../scripts/preview-site-template.mjs",
-      alt: "A picture of the template's Home page, for the template chooser",
+      alt: "A picture of the template's Home page, for the Templates screen",
+    },
+    "page-about.jpg": {
+      url: aboutPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's About page, for the Templates screen",
+    },
+    "page-know-your-rights.jpg": {
+      url: knowYourRightsPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Know your rights page, for the Templates screen",
+    },
+    "page-join.jpg": {
+      url: joinPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Join page, for the Templates screen",
+    },
+    "page-events.jpg": {
+      url: eventsPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Events page, for the Templates screen",
+    },
+    "page-contact.jpg": {
+      url: contactPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Contact page, for the Templates screen",
     },
   },
   fonts: {

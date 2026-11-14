@@ -71,6 +71,7 @@ const template: SiteTemplate = {
   status: "draft",
   dependsOn: [],
   thumbnail: "/thumbnail.jpg",
+  pagePictures: {},
   look: {
     buttonRadius: "6px",
     buttonWeight: 600,

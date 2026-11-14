@@ -5,6 +5,11 @@ import { LOOK } from "./styles";
 import { blockTokens } from "./block-tokens";
 import aboutUrl from "./images/about.jpg?url&no-inline";
 import heroUrl from "./images/hero.jpg?url&no-inline";
+import issuesPictureUrl from "./images/page-issues.jpg?url&no-inline";
+import aboutPictureUrl from "./images/page-about.jpg?url&no-inline";
+import endorsementsPictureUrl from "./images/page-endorsements.jpg?url&no-inline";
+import volunteerPictureUrl from "./images/page-volunteer.jpg?url&no-inline";
+import eventsPictureUrl from "./images/page-events.jpg?url&no-inline";
 import thumbnailUrl from "./images/thumbnail.jpg?url&no-inline";
 import volunteerUrl from "./images/volunteer.jpg?url&no-inline";
 import { about } from "./pages/about";
@@ -71,6 +76,13 @@ export const marigoldMarqueeTemplate: SiteTemplate = {
   // the preview's sample event cover: a photo on no page with events, so
   // Home never shows one twice
   previewEventCover: "volunteer.jpg",
+  pagePictures: {
+    issues: "page-issues.jpg",
+    about: "page-about.jpg",
+    endorsements: "page-endorsements.jpg",
+    volunteer: "page-volunteer.jpg",
+    events: "page-events.jpg",
+  },
   // the kit look page templates draw with: LOOK, with what it leaves unset
   // filled with what the kit draws then, so nothing here renders differently
   look: { ...LOOK, navNameSize: "20px", footerNameSize: "20px" },
@@ -105,7 +117,37 @@ export const marigoldMarqueeTemplate: SiteTemplate = {
       url: thumbnailUrl,
       sourceUrl:
         "organizeos:generated/../../../../scripts/preview-site-template.mjs",
-      alt: "A picture of the template's Home page, for the template chooser",
+      alt: "A picture of the template's Home page, for the Templates screen",
+    },
+    "page-issues.jpg": {
+      url: issuesPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Issues page, for the Templates screen",
+    },
+    "page-about.jpg": {
+      url: aboutPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's About page, for the Templates screen",
+    },
+    "page-endorsements.jpg": {
+      url: endorsementsPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Endorsements page, for the Templates screen",
+    },
+    "page-volunteer.jpg": {
+      url: volunteerPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Volunteer page, for the Templates screen",
+    },
+    "page-events.jpg": {
+      url: eventsPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Events page, for the Templates screen",
     },
   },
   fonts: {

@@ -47,6 +47,8 @@ export const risoBroadsideTemplate: SiteTemplate = {
   thumbnail: "thumbnail.jpg",
   // the kit look page templates draw with: LOOK, with what it leaves unset
   // filled with what the kit draws then, so nothing here renders differently
+  // one page, Home, whose picture is the thumbnail
+  pagePictures: {},
   look: { ...LOOK, buttonRadius: "0px", headingWeight: 400 },
   variables: {
     base: "#FFFFFF",
@@ -67,7 +69,7 @@ export const risoBroadsideTemplate: SiteTemplate = {
       url: thumbnailUrl,
       sourceUrl:
         "organizeos:generated/../../../../scripts/preview-site-template.mjs",
-      alt: "A picture of the template's Home page, for the template chooser",
+      alt: "A picture of the template's Home page, for the Templates screen",
     },
   },
   fonts: {

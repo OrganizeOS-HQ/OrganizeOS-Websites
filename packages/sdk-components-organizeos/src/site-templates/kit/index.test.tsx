@@ -115,7 +115,18 @@ const template: SiteTemplate = {
       sourceUrl: "https://example.org/hero",
       alt: "Replace with a photo of your members",
     },
+    "page-about.jpg": {
+      url: "/site-templates/kit-fixture/page-about.jpg",
+      sourceUrl: "https://example.org/page-about",
+      alt: "A picture of the template's About page",
+    },
+    "page-events.jpg": {
+      url: "/site-templates/kit-fixture/page-events.jpg",
+      sourceUrl: "https://example.org/page-events",
+      alt: "A picture of the template's Events page",
+    },
   },
+  pagePictures: { about: "page-about.jpg", events: "page-events.jpg" },
   fonts: {},
   pages: [
     page("home", "", "base", "split"),

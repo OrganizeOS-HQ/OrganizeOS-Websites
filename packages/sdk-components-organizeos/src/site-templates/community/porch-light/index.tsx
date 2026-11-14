@@ -9,6 +9,10 @@ import snapshotBlockPartyUrl from "./images/snapshot-block-party.jpg?url&no-inli
 import snapshotGardenUrl from "./images/snapshot-garden.jpg?url&no-inline";
 import snapshotMeetingUrl from "./images/snapshot-meeting.jpg?url&no-inline";
 import storyUrl from "./images/story.jpg?url&no-inline";
+import aboutPictureUrl from "./images/page-about.jpg?url&no-inline";
+import eventsPictureUrl from "./images/page-events.jpg?url&no-inline";
+import getInvolvedPictureUrl from "./images/page-get-involved.jpg?url&no-inline";
+import contactPictureUrl from "./images/page-contact.jpg?url&no-inline";
 import thumbnailUrl from "./images/thumbnail.jpg?url&no-inline";
 import { about } from "./pages/about";
 import { contact } from "./pages/contact";
@@ -71,6 +75,12 @@ export const porchLightTemplate: SiteTemplate = {
   status: "listed",
   dependsOn: [],
   thumbnail: "thumbnail.jpg",
+  pagePictures: {
+    about: "page-about.jpg",
+    events: "page-events.jpg",
+    "get-involved": "page-get-involved.jpg",
+    contact: "page-contact.jpg",
+  },
   // the kit look page templates draw with: LOOK, with what it leaves unset
   // filled with what the kit draws then, so nothing here renders differently
   look: { ...LOOK, navNameSize: "20px", footerNameSize: "20px" },
@@ -117,7 +127,31 @@ export const porchLightTemplate: SiteTemplate = {
       url: thumbnailUrl,
       sourceUrl:
         "organizeos:generated/../../../../scripts/preview-site-template.mjs",
-      alt: "A picture of the template's Home page, for the template chooser",
+      alt: "A picture of the template's Home page, for the Templates screen",
+    },
+    "page-about.jpg": {
+      url: aboutPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's About page, for the Templates screen",
+    },
+    "page-events.jpg": {
+      url: eventsPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Events page, for the Templates screen",
+    },
+    "page-get-involved.jpg": {
+      url: getInvolvedPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Get involved page, for the Templates screen",
+    },
+    "page-contact.jpg": {
+      url: contactPictureUrl,
+      sourceUrl:
+        "organizeos:generated/../../../../scripts/preview-site-template.mjs",
+      alt: "A picture of the template's Contact page, for the Templates screen",
     },
   },
   fonts: {
