@@ -337,7 +337,8 @@ can be merged with minimal conflict.
   nano-staged's `oxfmt --no-error-on-unmatched-pattern`, so a commit that stages
   only files the formatter ignores (this doc, under `docs/**`) passes the hook.
   `.github/workflows/main.yml`: one workflow, a `checks` job and a `tests` job
-  of nine legs (the packages, the CLI, and one per builder Vitest project), with
+  of ten legs (the packages, the CLI, and one per builder Vitest project, the
+  CMS panels' `core-browser-builder-cms` among them), with
   no secret, environment or checkout ref, and checkouts that keep no token in
   the clone (`persist-credentials: false`); only its cli leg builds the blocks
   package. The typecheck covers every package and fixture but two fixtures the
