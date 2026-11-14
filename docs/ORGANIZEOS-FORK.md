@@ -570,7 +570,30 @@ can be merged with minimal conflict.
   (`signup/field.tsx`, `signup/field.ws.ts`, `signup/field.template.tsx`),
   the root's `siteForm` prop (`signup/signup-form.ws.ts`), `site` in
   `signup/forms-data.ts` and `form/context.ts`, and the canvas check's site
-  form rule in `signup/signup-form.tsx`.
+  form rule in `signup/signup-form.tsx`. The builder's half (with
+  `ORGANIZEOS_SITE_FORMS` on): the forms door client
+  `features/organizeos-panel/forms-api.ts`, with its test and the copied
+  response fixtures `shared/__fixtures__/forms-door/*.json` (README in that
+  folder); the inserts' and placements' site forms
+  `features/organizeos-panel/site-form-insert.ts`, with its test; in
+  `features/organizeos-panel/insert-organizeos-block.ts`, the card keys, the
+  site-form step and the Forms Resource reload, and in
+  `features/organizeos-panel/components-section.tsx` the Forms group; in
+  `features/organizeos-panel/site-templates/apply-site-template.ts`, the
+  placements' forms and the `form` refusal, with its line in
+  `template-chooser.tsx`; the Form row's and the Fields list's logic
+  `features/organizeos-panel/site-forms.ts`, with `site-forms.test.tsx`; the
+  settings' store and writes `features/organizeos-panel/form-settings.ts`,
+  with its test; in `features/organizeos-panel/signup-fields.ts`, the shared
+  helpers it exports, the mark `changeSignupForm` deletes and the site-form
+  warning lines; the rows `settings-panel/controls/organizeos-site-fields.tsx`
+  and `settings-panel/controls/organizeos-form-settings.tsx` (with its test),
+  the Form row and the settings' places in `organizeos-controls.tsx`, and
+  `transformOptions` and `after` in `organizeos-record.tsx`; and the Forms
+  Resource reload after a publish in `features/publish/organizeos-publish.tsx`.
+  In the package: look A, the cards `SignupFormCard` and `ContactFormCard` in
+  `signup-form.template.tsx` (exported from `templates.ts`) and their tokens
+  "OS Form Card" and "OS Form Intro" in `shared/form-tokens.ts`.
 - **Asset storage and serving (§4).** `shared/asset-response.server.ts`, with
   `shared/asset-response.server.test.ts` and `shared/cgi-routes.server.test.ts`;
   the three `routes/cgi.*` loaders; the content route's marked block in
@@ -1431,7 +1454,28 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     leaves out "Add a Field for ..." (except email) and "A Field is set to
     ...": its live definition follows the publish, so a Field added or
     removed since is the normal state. A field of type `number`, `date` or
-    `url` renders an input of that type.
+    `url` renders an input of that type. After a publish goes live the
+    builder reloads the Forms Resource (`organizeos-publish.tsx`), so the
+    Form row and the canvas read the fields the publish staged. The
+    builder's site forms half (the Forms group, the inserts, the template
+    placements and the rows under "The Signup Form's Settings") shows only
+    with `ORGANIZEOS_SITE_FORMS` on (§3); OrganizeOS's
+    `WEBSITES2_FORMS_DOOR=on` comes first.
+  - **Look A, the cards** (builder forms spec 5.2 and 5.3): the templates
+    `SignupFormCard` ("Signup Form, card") and `ContactFormCard` ("Signup
+    Form, contact") are new keys beside the stacked and inline templates,
+    which stay as they were, so a site template's placement keeps its look.
+    The root wears "OS Form Card" (a bordered, rounded box of the site's
+    `--base` and `--text`, at most 32rem wide, padded `min(32px, 7%)`); an
+    `h2` with "OS Form Heading" and one line of intro with "OS Form Intro" (the
+    body font) sit above Form Content, so the state boxes keep them. Form
+    Content is a wrapping row: each Field takes the row, but First name and
+    Last name share one until the card is narrow. The inputs' 44px minimum
+    height, 8px corners and edge (`--text` 70% into `--base`, 3:1 or better
+    on every palette) and the button's full width and 48px height are local
+    styles, so a project whose "OS Input" or "OS Button" exists keeps its
+    token and still gets them. The card's Fields carry `fieldType`,
+    `options` and `required`.
 - **Event List** and **Event Card** are templates over native elements and a
   collection under a Share Code Carrier root, with no component of their own
   (the package registers no component for them, and `components.ts` never
@@ -1634,7 +1678,12 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
   the project's data. There is no section on an XML page, where the panel
   shows only the XML and data categories. The Sections blocks and Rich Text
   read no platform data of their own, so their inserts bind nothing (Rich
-  Text has no entry in `organizeosBlockData`).
+  Text has no entry in `organizeosBlockData`). With the site forms switch on
+  (§9, "Site forms"), Signups gives way to a **Forms** group of three
+  inserts, named as people ask for them: "Email & SMS updates"
+  (`SignupFormCard`), "Email bar" (`SignupFormInline`) and "Contact us"
+  (`ContactFormCard`); off, the section is as above and the card keys are
+  neither listed nor inserted.
 - **The Signup Form's Settings** (`settings-panel/controls/organizeos-controls.tsx`,
   behind the one marked branch in `combined.tsx`, before the json control,
   which asks `getOrganizeosControl` for a control by component and prop and
@@ -1711,6 +1760,59 @@ phase 2b (RSVP) the RSVP Form. Design and plans are in the OrganizeOS repo
     other rows are. A bound `action` is read-only, its page select included. An
     `actionPage` left as a plain URL by the old control still works on the
     live page; the select reads "Choose page" until a page is picked.
+  - **With the site forms switch on** (`siteFormsEnabled`, §9 "Site forms";
+    builder forms spec 9). Off, every row above is as shipped.
+    - **Form** lists the no-form choice, the block's kind's site forms
+      first, then its other forms, then "New form" (`siteFormRecordOptions`
+      over the block's own Forms data; the kind is `formKindOf`: the mark,
+      else the picked form's kind, else updates). An icon link, "Open in
+      CRM", opens the form's CRM editor in a new tab. A site form chosen
+      makes the block's Fields that form's, in one write and one undo
+      (`matchFieldsToSiteForm`: Fields of keys it lacks removed, missing ones
+      added where Add puts them, every Field given its `fieldType`,
+      `required` and `options`) and marks the root. "New form" makes a site
+      form from the block's Fields (F3) and chooses it the same way; a
+      failed create writes nothing and shows "Couldn't create the form. Try
+      again.". A CRM form chosen goes through `changeSignupForm`, which also
+      deletes the mark. Each change reloads the Forms Resource.
+    - **State** drops Check email for a contact form.
+    - **Fields**, for a marked root, is the site form's list
+      (`organizeos-site-fields.tsx`): one row per key under the root in tree
+      order, with a drag handle, the catalog's label, a required toggle (an
+      asterisk, `aria-pressed`) and Remove; a locked row (Email always, and
+      what the catalog locks) shows a lock, no Remove, and its toggle pressed
+      and disabled. Drag moves the key's first Field to the target's place;
+      required writes every Field of the key; Remove deletes them; each is
+      one transaction and one undo. Add (+) lists the catalog's fields (F1)
+      the root has none of, standard first, then Custom, a consent field only
+      when the org can text (F0); it is disabled until the catalog loads, at
+      20 Fields, or with nothing left. The warning line leaves out "Missing"
+      (but Email) and "Not in form" (but a blank Field), and adds, after
+      "Form not found", "Not saved" and, last, "Fields differ on another
+      page" (another marked root on the form sends another list). An
+      unmarked root keeps the shipped list.
+    - **Lists** and **Confirm by email** follow Fields, and **Notify**
+      follows After submit (`organizeos-form-settings.tsx`), for whatever
+      form the block points at, site or CRM, by kind: Lists on updates and
+      Contact us, Confirm by email on updates, Notify on Contact us, none
+      on Member signup or with no form. Lists is chips of the form's lists
+      with Remove, and + opening the org's lists (F1), disabled at 10;
+      Confirm by email is a switch (`opt_in` double or single); Notify is
+      chips of addresses with Remove and an "Add email" input that takes a
+      valid address of at most 254 characters on Enter, disabled at 20.
+      Without `canEditPrivate` (F0), Lists and Notify have no Remove and no
+      add ("None" when empty); Confirm by email stays editable.
+    - **Saving the settings** (`features/organizeos-panel/form-settings.ts`).
+      They are the form's own settings on OrganizeOS, not build edits: never
+      in the undo, written at once with F4. The value shown is the store
+      `$doorForms` (F2, read once per project and kind, and again once for a
+      form it lacks, as New form's); a change shows at once, and a form's
+      writes run one after another, each sending the whole set as it then
+      stands, so two quick changes end with both and two blocks on one form
+      show the same. A failed write puts back the last saved value and the
+      Fields warning reads "Not saved" until the form's next write succeeds;
+      the built-in form's `locked` answer reverts Confirm by email and
+      disables it.
   - **A Field's Form field**, for a Field under a Signup Form
     (`organizeos-field-control.tsx`), is a select of that root's resolved
     fields, each named by its label with its name for the highlighted option;
@@ -2105,7 +2207,20 @@ collection }` invalidates, through `invalidateResource`, every current
   - The Signup Form's entry is the Forms Resource under "OrganizeOS Forms", and
     the root's `data` = `<v>.data`. The inline Signup Form's key
     (`SignupFormInline`) shares that entry: the same catalog, binding name and
-    bind, so it too brings a fresh binding scoped to its own root.
+    bind, so it too brings a fresh binding scoped to its own root. The card
+    keys (`SignupFormCard`, `ContactFormCard`) share it too.
+  - **A forms insert's site form** (`site-form-insert.ts`; builder forms
+    spec 5.1, P11, P12). With the switch on, inserting one of the Forms
+    group first creates the block's own site form: F0 (the org's name) and
+    F3 in parallel, F3 with the insert's kind, the title "{page name}:
+    {insert name}" cut to 200 characters, the template's Fields as keys, and
+    a `clientId` made once per insert, so one retry after a lost answer
+    returns the form already made. The block is then written pointing at it
+    (`record`), marked (`siteForm`), its Fields given the form's resolved
+    definition, the intro's org name filled in ("News and actions from us."
+    without one), and the Forms Resource reloaded. A failed create writes
+    nothing and shows "Couldn't create the form. Try again.". With the
+    switch off a card key is refused as an unknown block.
   - The Event List's entry is Upcoming Events under "OrganizeOS Upcoming
     Events", with three binds: the collection's (`events`) `data` =
     `(<v>.ok === true ? <v>.data.data : [])`, the empty box's (`empty`)
@@ -3389,7 +3504,17 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   in place, unbound, and the chooser names it in an error toast. Where the
   runtime layer refuses the commit before it begins (a page template selected
   without build access), the apply is refused with the runtime's message
-  (`reason: "runtime"`), writing and uploading nothing. "Start blank"
+  (`reason: "runtime"`), writing and uploading nothing. With the site forms
+  switch on (§9, "Site forms"; builder forms P10), each Signup Form placement
+  becomes a site form before the staged write, keeping its template's look:
+  one F3 per placement, one after another, with the placement's kind, the
+  title "{page name}: Signup Form" and its Fields' keys, and a `clientId`
+  hashed from the project, the template and the placement's key ("{page
+  path}#{root id}"), so applying again returns the same forms; then each
+  placement is written with `record`, `siteForm` and its Fields'
+  definitions. A failed create refuses the apply (`reason: "form"`), writing
+  and uploading nothing, and the chooser's toast reads "Couldn't create the
+  form. Try again.". "Start blank"
   (`startBlankMutable`) writes the blank-start values for any of the six that
   Global Root lacks and overwrites none, in one staged commit too.
 - **The chooser** (`template-chooser.tsx`, mounted by one marked import and one
