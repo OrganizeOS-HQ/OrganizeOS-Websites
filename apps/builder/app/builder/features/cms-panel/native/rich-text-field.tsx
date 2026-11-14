@@ -584,6 +584,45 @@ const $nestingOf = (node: LexicalNode) => {
 };
 
 /**
+ * A quote at the depth limit in a list item gives way to items at that
+ * item's level, in order: each block's content becomes an item after it, a
+ * list's items join that level, and what followed the quote in its item
+ * follows them.
+ */
+const $liftQuoteOutOfItem = (quote: QuoteNode, item: ListItemNode) => {
+  const rest = quote.getNextSiblings();
+  let at: LexicalNode = item;
+  for (const child of quote.getChildren()) {
+    if ($isListNode(child)) {
+      for (const entry of child.getChildren()) {
+        at.insertAfter(entry);
+        at = entry;
+      }
+      child.remove();
+      continue;
+    }
+    const next = $createListItemNode();
+    if ($isElementNode(child) && child.isInline() === false) {
+      next.append(...child.getChildren());
+      child.remove();
+    } else {
+      next.append(child);
+    }
+    at.insertAfter(next);
+    at = next;
+  }
+  quote.remove();
+  if (rest.length > 0) {
+    const tail = $createListItemNode();
+    tail.append(...rest);
+    at.insertAfter(tail);
+  }
+  if (item.getChildrenSize() === 0) {
+    item.remove();
+  }
+};
+
+/**
  * No list or quote nests past the platform's depth limit, whatever made the
  * nesting (a paste from any source, at any depth): one past it moves up a
  * level, keeping the reading order, until it is within the limit. A list in
@@ -598,6 +637,10 @@ const $liftPastDepthLimit = (node: ListNode | QuoteNode) => {
     return;
   }
   const parent = node.getParent();
+  if ($isQuoteNode(node) && $isListItemNode(parent)) {
+    $liftQuoteOutOfItem(node, parent);
+    return;
+  }
   if ($isQuoteNode(node)) {
     for (const child of node.getChildren()) {
       node.insertBefore(child);

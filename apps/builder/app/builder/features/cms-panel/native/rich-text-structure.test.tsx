@@ -715,3 +715,20 @@ describe("a figure pasted into a nested list item (K4)", () => {
     expectFixedPoint(written);
   });
 });
+
+describe("the depth lift keeps the reading order (K5)", () => {
+  test("a quote holding a list, pasted at the end of a 7-level list", async () => {
+    const onChange = await mountAt(nestedList(7), "L7");
+    paste({
+      "text/html":
+        "<ul><li>a<blockquote><p>q</p><ul><li>x</li></ul><p>z</p></blockquote></li></ul>",
+      "text/plain": "x",
+    });
+    await settle();
+    const written = lastHtml(onChange);
+    expect(texts(sanitizeRichTextHtml(written)).join("|")).toBe(
+      "L1|L2|L3|L4|L5|L6|L7|a|q|x|z"
+    );
+    expectFixedPoint(written);
+  });
+});
