@@ -205,42 +205,6 @@ const Pager = ({
   );
 };
 
-/**
- * The table's drag and keyboard reorder (5.1.7). The screen holds it above
- * the view, so a structure view opened while a reorder is in flight leaves
- * it running, and the table drawn again after shows its order and waits.
- */
-export const useItemsReorder = (input: {
-  source: CmsSource | undefined;
-  collectionId: string;
-  list: CmsListState;
-  query: string;
-  page: CmsItemsPage | undefined;
-  pageAnswer: { count: number; ok: boolean };
-  onListWritten: () => void;
-  onRefusal: (refusal: CmsRefusal) => void;
-}) =>
-  useRowReorder({
-    source: input.source,
-    collectionId: input.collectionId,
-    listKey: JSON.stringify([listKey(input.list), input.query]),
-    page: input.page,
-    pageAnswer: input.pageAnswer,
-    onReordered: input.onListWritten,
-    onFailed: (code) => {
-      // the refetch shows the server's order
-      input.onListWritten();
-      const refusal = getRefusal(code, "write");
-      if (refusal !== undefined) {
-        input.onRefusal(refusal);
-        return;
-      }
-      toast.error(getListFailureText("order", code));
-    },
-  });
-
-export type ItemsReorder = ReturnType<typeof useItemsReorder>;
-
 /** The items view: top bar, table and paging (4.3). */
 export const ItemsView = ({
   collection,
@@ -263,10 +227,7 @@ export const ItemsView = ({
   onPageChange,
   onOpenItem,
   onNewItem,
-  reorder: heldReorder,
 }: {
-  /** The screen's reorder, held above the view; else the view's own. */
-  reorder?: ItemsReorder;
   collection: CmsCollectionSummary;
   page: CmsItemsPage | undefined;
   query: string;
@@ -392,17 +353,24 @@ export const ItemsView = ({
     undefined
   );
   // drag reorder (5.1.7): an open and a bulk call wait until it settles
-  const ownReorder = useItemsReorder({
+  const reorder = useRowReorder({
     source,
     collectionId: collection.id,
-    list,
-    query,
+    listKey: JSON.stringify([listKey(list), query]),
     page,
     pageAnswer,
-    onListWritten,
-    onRefusal,
+    onReordered: onListWritten,
+    onFailed: (code) => {
+      // the refetch shows the server's order
+      onListWritten();
+      const refusal = getRefusal(code, "write");
+      if (refusal !== undefined) {
+        onRefusal(refusal);
+        return;
+      }
+      toast.error(getListFailureText("order", code));
+    },
   });
-  const reorder = heldReorder ?? ownReorder;
   // drag is offered only on a drawn page in Manual order with no search and
   // no filter, read from the page's own applied filter and sort
   const showHandle =
