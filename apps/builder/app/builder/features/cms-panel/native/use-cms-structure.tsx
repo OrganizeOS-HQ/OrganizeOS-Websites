@@ -40,6 +40,7 @@ import {
   getFieldCap,
   getStructureToastText,
   moveField,
+  orderByKeys,
   RATE_LIMIT_RETRY_MS,
   REORDER_PAUSE_MS,
 } from "./cms-structure-logic";
@@ -139,6 +140,7 @@ export const useCmsStructure = ({
   collectionId,
   opens,
   refresh,
+  attempt,
   initial,
   guard,
   onDirtyChange,
@@ -157,6 +159,8 @@ export const useCmsStructure = ({
   /** The screen's reopen count and `$cmsNativeRefresh`: E20 and E21 read again. */
   opens: number;
   refresh: number;
+  /** The screen line's Retry: E20 and E21 read again, in the foreground. */
+  attempt: number;
   initial?: CmsStructureInitial;
   /** The unsaved guard. */
   guard: (run: () => void) => void;
@@ -184,7 +188,15 @@ export const useCmsStructure = ({
     initial?.tab ?? "collections"
   );
   const [view, setView] = useState<CmsStructureView | undefined>(initial?.view);
+  // the collection the open view belongs to: when the open collection
+  // changes any other way, the view closes (it never moves to another one)
+  const [viewCollectionId, setViewCollectionId] = useState(collectionId);
   const [session, setSession] = useState(0);
+  // the open collection and view session now, for answers that land later
+  const collectionIdRef = useRef(collectionId);
+  collectionIdRef.current = collectionId;
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
   const [detail, setDetail] = useState<CmsStructureCollection | undefined>();
   const [detailFailed, setDetailFailed] = useState<
     "unavailable" | "not_found" | undefined
@@ -193,6 +205,10 @@ export const useCmsStructure = ({
   const [detailVersion, setDetailVersion] = useState(0);
   const [limits, setLimits] = useState<CmsStructureLimits | undefined>();
   const [templates, setTemplates] = useState<CmsTemplate[] | undefined>();
+  // a foreground E20 failed: its line and Retry stand where the options go
+  const [structureFailed, setStructureFailed] = useState(false);
+  const [structureAttempt, setStructureAttempt] = useState(0);
+  const isStructureBackground = useIsBackground();
   const [structureVersion, setStructureVersion] = useState(0);
   const [isNewOpen, setIsNewOpen] = useState(
     initial?.dialog === "new-collection"
@@ -350,6 +366,8 @@ export const useCmsStructure = ({
           return found === undefined ? [] : [found];
         });
         if (ordered.length === fresh.fields.length) {
+          // the platform's order now is the read's, not the moved one
+          acceptedOrder.current.set(fresh.id, fresh.fields);
           return { ...fresh, fields: ordered };
         }
         cancelReorderTimer();
@@ -370,6 +388,10 @@ export const useCmsStructure = ({
     if (canManage === false) {
       return;
     }
+    const isBackground = isStructureBackground(
+      structure,
+      JSON.stringify([structureAttempt, attempt])
+    );
     let isCurrent = true;
     void structure.getStructure().then((result) => {
       if (isCurrent === false) {
@@ -379,10 +401,17 @@ export const useCmsStructure = ({
         const refusal = mapStructureRead(result.error);
         if (refusal !== undefined && refusal !== "toast") {
           showLineFrom("e20", refusal);
+          return;
+        }
+        // any other failure: a foreground read shows its line and Retry; a
+        // background one changes nothing
+        if (refusal === undefined && isBackground === false) {
+          setStructureFailed(true);
         }
         return;
       }
       clearLineFrom("e20");
+      setStructureFailed(false);
       setLimits(result.limits);
       setTemplates(result.templates);
     });
@@ -395,7 +424,10 @@ export const useCmsStructure = ({
     canManage,
     opens,
     refresh,
+    attempt,
+    structureAttempt,
     structureVersion,
+    isStructureBackground,
     showLineFrom,
     clearLineFrom,
   ]);
@@ -412,7 +444,7 @@ export const useCmsStructure = ({
     }
     const isBackground = isDetailBackground(
       structure,
-      JSON.stringify([collectionId, detailAttempt])
+      JSON.stringify([collectionId, detailAttempt, attempt])
     );
     let isCurrent = true;
     if (isBackground === false) {
@@ -458,6 +490,7 @@ export const useCmsStructure = ({
     refresh,
     collectionId,
     detailAttempt,
+    attempt,
     detailVersion,
     isDetailBackground,
     readMark,
@@ -507,6 +540,20 @@ export const useCmsStructure = ({
     setView(undefined);
   }, [clearViewDirty]);
 
+  // the open collection changed other than by its own Settings: its view
+  // closes, and so does its unsaved report
+  useEffect(() => {
+    if (view !== undefined && viewCollectionId !== collectionId) {
+      closeView();
+    }
+  }, [view, viewCollectionId, collectionId, closeView]);
+
+  /** Discard ran an action that leaves the view open: it shows saved values. */
+  const resetView = useCallback(() => {
+    clearViewDirty();
+    setSession((current) => current + 1);
+  }, [clearViewDirty]);
+
   // A Create whose outcome is unknown: the next E1 holding a new collection
   // of that name is the one it made.
   const pendingCreate = useRef<
@@ -540,11 +587,16 @@ export const useCmsStructure = ({
       const refusal = mapStructureRead(result.error);
       if (refusal !== undefined && refusal !== "toast") {
         showLine(refusal);
+      } else if (refusal === undefined && result.error === "not_found") {
+        toast.error("Collection not found");
+        refetchCollections();
+      } else if (refusal === undefined) {
+        toast.error(getToastText(result.error));
       }
       return undefined;
     }
     takeVersion(result.collection, mark, forView);
-    if (result.collection.id === collectionId) {
+    if (result.collection.id === collectionIdRef.current) {
       setDetail((current) => withLocalOrder(current, result.collection));
     }
     return result.collection;
@@ -555,6 +607,7 @@ export const useCmsStructure = ({
       clearViewDirty();
       onViewOpen();
       setSession((current) => current + 1);
+      setViewCollectionId(collectionIdRef.current);
       setView(next);
     });
 
@@ -566,6 +619,7 @@ export const useCmsStructure = ({
         onOpenCollection(id);
       }
       setSession((current) => current + 1);
+      setViewCollectionId(id);
       setView({ type: "settings" });
     });
 
@@ -582,22 +636,40 @@ export const useCmsStructure = ({
     const accepted = acceptedOrder.current.get(id);
     setDetail((current) =>
       current?.id === id && accepted !== undefined
-        ? { ...current, fields: accepted }
+        ? {
+            ...current,
+            fields: orderByKeys(
+              current.fields,
+              accepted.map((field) => field.key)
+            ),
+          }
         : current
     );
   };
 
-  /** E24 with the order on screen, through the collection's queue. */
+  // the order a move made, kept for its E24 even if another collection opens
+  const pendingOrder = useRef<
+    { id: string; slug: string; fields: CmsStructureField[] } | undefined
+  >(undefined);
+
+  /**
+   * E24 with the moved order, through the collection's queue. Its fields are
+   * built when its turn comes: the last answered schema (a sheet's Save may
+   * have landed meanwhile) in the moved order.
+   */
   const sendReorder = async (id: string, isRetry: boolean) => {
-    const current = latestDetail.current;
-    if (structure === undefined || current === undefined || current.id !== id) {
+    const moved = pendingOrder.current;
+    if (structure === undefined || moved === undefined || moved.id !== id) {
       reorderPending.current = undefined;
       return;
     }
-    const fields = current.fields;
-    const result = await enqueue(id, (expectedUpdatedAt) =>
-      structure.updateSchema(id, { fields, expectedUpdatedAt })
-    );
+    const keys = moved.fields.map((field) => field.key);
+    let fields = moved.fields;
+    const result = await enqueue(id, (expectedUpdatedAt) => {
+      const live = latestDetail.current;
+      fields = live?.id === id ? orderByKeys(live.fields, keys) : moved.fields;
+      return structure.updateSchema(id, { fields, expectedUpdatedAt });
+    });
     // a later move restarted the pause: that write carries the order
     if (reorderTimer.current !== undefined) {
       return;
@@ -610,26 +682,43 @@ export const useCmsStructure = ({
         }, RATE_LIMIT_RETRY_MS);
         return;
       }
+      // another person's change while a view held the version: read it
+      // again, taking its version, and send the moved order once more
+      if (result.error === "conflict" && isRetry === false) {
+        const fresh = await fetchStructure(id, true);
+        if (fresh !== undefined) {
+          void sendReorder(id, true);
+          return;
+        }
+      }
       reorderPending.current = undefined;
+      pendingOrder.current = undefined;
       putBackOrder(id);
       const refusal = getRefusal(result.error, "write");
       if (refusal !== undefined) {
+        // the line stands; the order put back is already the last accepted
         showLine(refusal);
-      } else if (result.error === "conflict") {
+        return;
+      }
+      if (result.error === "conflict") {
         toast.error("Changed by someone else");
       } else {
         toast.error(getStructureToastText(result.error, "field"));
+      }
+      if (result.error === "not_found") {
+        refetchCollections();
       }
       // the order put back is the last accepted: E21 again for the rest
       setDetailVersion((version) => version + 1);
       return;
     }
     reorderPending.current = undefined;
+    pendingOrder.current = undefined;
     acceptedOrder.current.set(id, fields);
     setDetail((latest) =>
       latest?.id === id ? { ...latest, updatedAt: result.updatedAt } : latest
     );
-    written({ kind: "schema", slug: current.slug, removed: [] });
+    written({ kind: "schema", slug: moved.slug, removed: [] });
   };
 
   /** A move shows at once; E24 goes after a pause, with the latest order. */
@@ -645,6 +734,7 @@ export const useCmsStructure = ({
     const fields = moveField(before.fields, key, toIndex);
     latestDetail.current = { ...before, fields };
     setDetail(latestDetail.current);
+    pendingOrder.current = { id: before.id, slug: before.slug, fields };
     // the moved row keeps the focus, for the next Alt+Arrow
     requestAnimationFrame(() => {
       document
@@ -661,16 +751,44 @@ export const useCmsStructure = ({
 
   /** A sheet's Save carries the order on screen: no reorder of its own. */
   const enqueueSchema: CmsStructureEnqueue = (id, write) => {
-    if (reorderPending.current === id && reorderTimer.current !== undefined) {
+    const carried =
+      reorderPending.current === id && reorderTimer.current !== undefined;
+    if (carried) {
       cancelReorderTimer();
     }
     return enqueue(id, write).then((result) => {
       if (reorderPending.current === id && reorderTimer.current === undefined) {
-        reorderPending.current = undefined;
+        if (carried && isCmsFailure(result)) {
+          // the Save that carried the moved order was refused: send it alone
+          reorderTimer.current = setTimeout(() => {
+            reorderTimer.current = undefined;
+            void sendReorder(id, false);
+          }, REORDER_PAUSE_MS);
+        } else {
+          reorderPending.current = undefined;
+          pendingOrder.current = undefined;
+        }
       }
       return result;
     });
   };
+
+  // a move still in its pause is sent when another collection opens
+  const lastCollectionId = useRef(collectionId);
+  useEffect(() => {
+    const previous = lastCollectionId.current;
+    lastCollectionId.current = collectionId;
+    if (
+      previous !== undefined &&
+      previous !== collectionId &&
+      reorderPending.current === previous &&
+      reorderTimer.current !== undefined
+    ) {
+      cancelReorderTimer();
+      void sendReorder(previous, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collectionId]);
 
   // an open view holds its collection's version (see `holdVersion`); each
   // view session holds afresh, so a read that waited applies between them
@@ -690,11 +808,16 @@ export const useCmsStructure = ({
       renderRowMenu: undefined,
       dialogs: null,
       closeView,
+      resetView,
     };
   }
 
   const openDetail =
     detail !== undefined && detail.id === collectionId ? detail : undefined;
+  const retryStructure = () => {
+    setStructureFailed(false);
+    setStructureAttempt((current) => current + 1);
+  };
   const cap = getFieldCap(limits?.fields ?? Number.POSITIVE_INFINITY);
   const targets = collections.map(({ id, name }) => ({ id, name }));
   const openFieldKey =
@@ -747,6 +870,8 @@ export const useCmsStructure = ({
         <Tooltip content="New collection" side="bottom">
           <IconButton
             aria-label="New collection"
+            // held until E20 has answered once, so the options are the plan's
+            disabled={templates === undefined && structureFailed === false}
             onClick={() => guard(() => setIsNewOpen(true))}
           >
             <PlusIcon />
@@ -796,6 +921,9 @@ export const useCmsStructure = ({
     if (isReady === false) {
       return undefined;
     }
+    if (collections.length === 0 && canManage && structureFailed) {
+      return <RefusalLine kind="unavailable" onRetry={retryStructure} />;
+    }
     if (collections.length === 0 && canManage && templates !== undefined) {
       return (
         <NewCollectionPage
@@ -806,9 +934,19 @@ export const useCmsStructure = ({
         />
       );
     }
-    if (view === undefined || openDetail === undefined) {
+    if (
+      view === undefined ||
+      openDetail === undefined ||
+      viewCollectionId !== openDetail.id
+    ) {
       return undefined;
     }
+    // a view's answer acts on the view only while it is the same session of
+    // the same collection; otherwise it updates that collection's data alone
+    const viewSession = session;
+    const isSameView = () =>
+      sessionRef.current === viewSession &&
+      collectionIdRef.current === openDetail.id;
     if (view.type === "settings") {
       return (
         <CollectionSettings
@@ -848,7 +986,11 @@ export const useCmsStructure = ({
         reread={() => fetchStructure(openDetail.id, true)}
         readCount={() => fetchStructure(openDetail.id)}
         onBack={() => guard(closeView)}
-        onClose={closeView}
+        onClose={() => {
+          if (isSameView()) {
+            closeView();
+          }
+        }}
         onDirtyChange={reportViewDirty}
         onRefusal={showLine}
         onStale={(stale) => {
@@ -867,8 +1009,10 @@ export const useCmsStructure = ({
               ? { ...current, fields, updatedAt }
               : current
           );
-          setSession((current) => current + 1);
-          setView({ type: "field", target: { key } });
+          if (isSameView()) {
+            setSession((current) => current + 1);
+            setView({ type: "field", target: { key } });
+          }
           written({ kind: "schema", slug: openDetail.slug, removed: [] });
         }}
         onRemoved={(fields, updatedAt) => {
@@ -881,7 +1025,9 @@ export const useCmsStructure = ({
               ? { ...current, fields, updatedAt }
               : current
           );
-          closeView();
+          if (isSameView()) {
+            closeView();
+          }
           written({ kind: "schema", slug: openDetail.slug, removed });
         }}
       />
@@ -903,6 +1049,11 @@ export const useCmsStructure = ({
         templates={templates ?? []}
         limits={limits}
         initialType={initial?.newCollectionType}
+        onRetryTemplates={
+          templates === undefined && structureFailed
+            ? retryStructure
+            : undefined
+        }
         {...createCallbacks}
       />
       <DeleteCollectionDialog
@@ -984,5 +1135,6 @@ export const useCmsStructure = ({
     renderRowMenu,
     dialogs,
     closeView,
+    resetView,
   };
 };

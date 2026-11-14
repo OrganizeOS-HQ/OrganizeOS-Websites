@@ -447,14 +447,48 @@ describe("the Fields tab", () => {
     await pass(600);
     expect(fieldKeys()).toEqual(["title", "summary", "author"]);
     expect(error).toHaveBeenLastCalledWith("Not saved");
+    // a conflict rereads E21, takes its version and sends the order once
+    // more; a second conflict puts the order back and toasts
     const reads = harness.structure.getCollectionStructure.mock.calls.length;
-    harness.structure.updateSchema.mockResolvedValueOnce({ error: "conflict" });
+    harness.structure.updateSchema
+      .mockResolvedValueOnce({ error: "conflict" })
+      .mockResolvedValueOnce({ error: "conflict" });
     await moveRow("title", "ArrowDown");
     await pass(600);
+    await pass(0);
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(3);
     expect(fieldKeys()).toEqual(["title", "summary", "author"]);
     expect(error).toHaveBeenLastCalledWith("Changed by someone else");
     expect(harness.structure.getCollectionStructure).toHaveBeenCalledTimes(
-      reads + 1
+      reads + 2
+    );
+  });
+
+  test("a reorder answered conflict once is sent again on the reread version, and the moved order stays", async () => {
+    answerSchema();
+    await openFields();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    harness.structure.updateSchema.mockResolvedValueOnce({ error: "conflict" });
+    await moveRow("title", "ArrowDown");
+    await pass(600);
+    await pass(0);
+    expect(harness.structure.updateSchema).toHaveBeenCalledTimes(2);
+    expect(fieldKeys()).toEqual(["summary", "title", "author"]);
+  });
+
+  test("a reorder refused for sign-in shows its line and reads nothing more", async () => {
+    await openFields();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const reads = harness.structure.getCollectionStructure.mock.calls.length;
+    harness.structure.updateSchema.mockResolvedValueOnce({
+      error: "mfa_required",
+    });
+    await moveRow("title", "ArrowDown");
+    await pass(600);
+    expect(fieldKeys()).toEqual(["title", "summary", "author"]);
+    expect(hasText("Two-step sign-in required")).toBe(true);
+    expect(harness.structure.getCollectionStructure).toHaveBeenCalledTimes(
+      reads
     );
   });
 

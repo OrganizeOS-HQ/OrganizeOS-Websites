@@ -42,7 +42,7 @@ import {
   type CmsTemplate,
 } from "./cms-structure-source";
 import { FieldRow } from "./field-controls";
-import type { CmsLineKind } from "./refusal-line";
+import { RefusalLine, type CmsLineKind } from "./refusal-line";
 import { StructureBody } from "./structure-header";
 import { TruncatedText } from "./truncated-text";
 
@@ -242,6 +242,7 @@ export const NewCollectionDialog = ({
   templates,
   limits,
   initialType,
+  onRetryTemplates,
   ...callbacks
 }: NewCollectionCallbacks & {
   open: boolean;
@@ -251,6 +252,8 @@ export const NewCollectionDialog = ({
   limits: CmsStructureLimits | undefined;
   /** A story's preselection. */
   initialType?: string;
+  /** E20 failed: the options give way to its line and Retry. */
+  onRetryTemplates?: () => void;
 }) => {
   const { values, setValues, busy, canCreate, create, reset } = useCreate({
     structure,
@@ -301,20 +304,24 @@ export const NewCollectionDialog = ({
             gridTemplateColumns: "minmax(0, 1fr)",
           }}
         >
-          <NewCollectionFields
-            idPrefix="cms-new-collection"
-            templates={templates}
-            limits={limits}
-            values={values}
-            disabled={busy}
-            onChange={setValues}
-            onSubmit={() => void submit()}
-          />
+          {onRetryTemplates === undefined ? (
+            <NewCollectionFields
+              idPrefix="cms-new-collection"
+              templates={templates}
+              limits={limits}
+              values={values}
+              disabled={busy}
+              onChange={setValues}
+              onSubmit={() => void submit()}
+            />
+          ) : (
+            <RefusalLine kind="unavailable" onRetry={onRetryTemplates} />
+          )}
         </Grid>
         <DialogActions>
           <Button
             color="primary"
-            disabled={canCreate === false}
+            disabled={canCreate === false || onRetryTemplates !== undefined}
             state={busy ? "pending" : undefined}
             onClick={() => void submit()}
           >

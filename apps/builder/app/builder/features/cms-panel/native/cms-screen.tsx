@@ -814,12 +814,15 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
           onCollectionCanvasStale?.(effect.slug);
         }
       }
-      if (
-        effect.kind === "settings" &&
-        (effect.before.slug !== effect.after.slug ||
-          effect.before.isPublic !== effect.after.isPublic)
-      ) {
-        onCollectionCanvasStale?.(effect.before.slug);
+      if (effect.kind === "settings") {
+        // the item editor behind the view shows the new names
+        void refetchFields();
+        if (
+          effect.before.slug !== effect.after.slug ||
+          effect.before.isPublic !== effect.after.isPublic
+        ) {
+          onCollectionCanvasStale?.(effect.before.slug);
+        }
       }
     };
     const structureScreens = useCmsStructure({
@@ -829,6 +832,7 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
       collectionId,
       opens,
       refresh,
+      attempt,
       initial: initialView?.structure,
       guard: (run) => guard(run),
       onDirtyChange,
@@ -1102,6 +1106,9 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
                   // editor only hidden by the action keeps no discarded edit
                   setFocusBack(false);
                   setEditorSession((current) => current + 1);
+                  // an open settings view or field sheet shows its saved
+                  // values again, so nothing discarded stays on screen
+                  structureScreens.resetView();
                   if (next?.movesFocus) {
                     runOnDialogClose.current = next.run;
                   } else {

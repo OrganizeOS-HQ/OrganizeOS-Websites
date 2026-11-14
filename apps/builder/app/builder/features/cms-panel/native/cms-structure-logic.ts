@@ -330,6 +330,25 @@ export const moveField = (
   return next;
 };
 
+/**
+ * The fields in the order of `keys`: a field `keys` does not name keeps its
+ * place after those it does, so a field another person added stays.
+ */
+export const orderByKeys = (
+  fields: readonly CmsStructureField[],
+  keys: readonly string[]
+): CmsStructureField[] => {
+  const rank = new Map(keys.map((key, index) => [key, index]));
+  return fields
+    .map((field, index) => ({ field, index }))
+    .sort(
+      (left, right) =>
+        (rank.get(left.field.key) ?? keys.length + left.index) -
+        (rank.get(right.field.key) ?? keys.length + right.index)
+    )
+    .map(({ field }) => field);
+};
+
 /** A positive whole number as typed, or undefined. */
 const parseMaxLength = (typed: string) => {
   const trimmed = typed.trim();
