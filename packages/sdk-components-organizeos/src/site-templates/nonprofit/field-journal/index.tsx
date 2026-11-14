@@ -1,6 +1,7 @@
 import newsreaderUrl from "@fontsource-variable/newsreader/files/newsreader-latin-wght-normal.woff2?url&no-inline";
 import sourceSans3Url from "@fontsource-variable/source-sans-3/files/source-sans-3-latin-wght-normal.woff2?url&no-inline";
 import type { SiteTemplate } from "../../types";
+import { LOOK } from "./styles";
 import { blockTokens } from "./block-tokens";
 import aboutUrl from "./images/about.jpg?url&no-inline";
 import heroUrl from "./images/hero.jpg?url&no-inline";
@@ -48,6 +49,9 @@ export const fieldJournalTemplate: SiteTemplate = {
   // the preview's sample event cover: a photo on no page with events, so
   // Home never shows one twice
   previewEventCover: "about.jpg",
+  // the kit look page templates draw with: LOOK, with what it leaves unset
+  // filled with what the kit draws then, so nothing here renders differently
+  look: { ...LOOK, navNameSize: "20px", footerNameSize: "20px" },
   variables: {
     base: "#F6F2E9",
     "accent-1": "#23533D",

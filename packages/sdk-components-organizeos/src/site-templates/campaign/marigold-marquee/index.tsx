@@ -1,6 +1,7 @@
 import archivoBlackUrl from "@fontsource/archivo-black/files/archivo-black-latin-400-normal.woff2?url&no-inline";
 import publicSansUrl from "@fontsource-variable/public-sans/files/public-sans-latin-wght-normal.woff2?url&no-inline";
 import type { SiteTemplate } from "../../types";
+import { LOOK } from "./styles";
 import { blockTokens } from "./block-tokens";
 import aboutUrl from "./images/about.jpg?url&no-inline";
 import heroUrl from "./images/hero.jpg?url&no-inline";
@@ -70,6 +71,9 @@ export const marigoldMarqueeTemplate: SiteTemplate = {
   // the preview's sample event cover: a photo on no page with events, so
   // Home never shows one twice
   previewEventCover: "volunteer.jpg",
+  // the kit look page templates draw with: LOOK, with what it leaves unset
+  // filled with what the kit draws then, so nothing here renders differently
+  look: { ...LOOK, navNameSize: "20px", footerNameSize: "20px" },
   variables: {
     base: "#12151A",
     "accent-1": "#F2B230",

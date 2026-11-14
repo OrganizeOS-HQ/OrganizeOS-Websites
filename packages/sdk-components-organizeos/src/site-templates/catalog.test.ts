@@ -62,6 +62,13 @@ describe("the catalog", () => {
       status,
       dependsOn: [],
       thumbnail: `/${id}.jpg`,
+      look: {
+        buttonRadius: "6px",
+        buttonWeight: 600,
+        headingWeight: 700,
+        navNameSize: "20px",
+        footerNameSize: "20px",
+      },
       variables: BLANK_CANONICAL_VALUES,
       images: {},
       fonts: {},

@@ -1,5 +1,6 @@
 import type { AssetValue, TemplateStyleDecl } from "@webstudio-is/template";
 import type { CanonicalValues } from "./canonical-variables";
+import type { KitStyle } from "./kit/layout";
 import type { PlaceBlock } from "./place-block";
 
 // The site-template format (spec 6.1): a template is a module that exports one
@@ -102,6 +103,15 @@ export type SiteTemplatePage = {
   body: (context: PageContext) => JSX.Element;
 };
 
+/**
+ * A template's choices for the kit with every one set (headingCase stays
+ * optional: unset means as typed), so page templates draw with the look of
+ * the site template a project was made from (OrganizeOS design
+ * `2026-11-13-builder-templates-screen-and-page-templates-design.md` 5.3).
+ */
+export type CompleteKitStyle = Required<Omit<KitStyle, "headingCase">> &
+  Pick<KitStyle, "headingCase">;
+
 export type SiteTemplate = {
   id: string;
   category: TemplateCategory;
@@ -128,6 +138,8 @@ export type SiteTemplate = {
    */
   previewEventCover?: string;
   variables: CanonicalValues;
+  /** The template's choices for the kit, which page templates draw with. */
+  look: CompleteKitStyle;
   /**
    * What the template sets in `--accent-2` on the base besides the focus
    * ring: any text when unset, so the check holds accent-2 on base to 4.5:1

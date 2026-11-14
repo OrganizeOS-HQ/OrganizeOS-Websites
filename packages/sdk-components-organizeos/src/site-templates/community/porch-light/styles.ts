@@ -17,11 +17,11 @@ import {
 // and page draws with.
 
 /** The template's corners and weights, for the kit's nav, footer and buttons. */
-export const LOOK: KitStyle = {
+export const LOOK = {
   buttonRadius: "999px",
   buttonWeight: 700,
   headingWeight: 800,
-};
+} satisfies KitStyle;
 
 /** The corners of a photo or a card. */
 export const RADIUS = "20px";

@@ -95,6 +95,13 @@ const entry = (
   status,
   dependsOn: [],
   thumbnail: "thumbnail.jpg",
+  look: {
+    buttonRadius: "6px",
+    buttonWeight: 600,
+    headingWeight: 700,
+    navNameSize: "20px",
+    footerNameSize: "20px",
+  },
   variables: { ...BLANK_CANONICAL_VALUES, base: "#0f172a" },
   images: {
     "thumbnail.jpg": {

@@ -171,6 +171,13 @@ export const spikeTemplate: SiteTemplate = {
   // its Event Card and Event List show the cover card, and Home shows
   // hero.jpg: the preview's sample cover is an image of its own
   previewEventCover: "cover.jpg",
+  look: {
+    buttonRadius: "6px",
+    buttonWeight: 600,
+    headingWeight: 700,
+    navNameSize: "20px",
+    footerNameSize: "20px",
+  },
   variables: {
     ...BLANK_CANONICAL_VALUES,
     "font-body": `"Source Sans 3", ${BLANK_CANONICAL_VALUES["font-body"]}`,

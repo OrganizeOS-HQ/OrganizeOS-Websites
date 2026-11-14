@@ -982,6 +982,23 @@ const checkFragmentText = (page: RenderedPage): string[] => {
  * empty list when it passes, otherwise one readable line per violation.
  * Renders every page with stand-in asset and page ids.
  */
+/**
+ * The kit choices every template's look sets (`CompleteKitStyle`); the
+ * starter pages' check holds their looks to the same list.
+ */
+export const LOOK_FIELDS = [
+  "buttonRadius",
+  "buttonWeight",
+  "headingWeight",
+  "navNameSize",
+  "footerNameSize",
+] as const;
+
+const checkLook = (template: SiteTemplate): string[] =>
+  LOOK_FIELDS.flatMap((field) =>
+    template.look?.[field] === undefined ? [`Look: ${field} is not set`] : []
+  );
+
 export const checkSiteTemplate = (template: SiteTemplate): string[] => {
   const violations = [
     ...checkPagePaths(template),
@@ -991,6 +1008,7 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
     ...checkContrast(template),
     ...checkFontVariables(template),
     ...checkBlockTokenStyles(template),
+    ...checkLook(template),
   ];
   let pages: RenderedPage[];
   const mediaQueryViolations: string[] = [];

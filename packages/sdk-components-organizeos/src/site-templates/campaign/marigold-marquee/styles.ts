@@ -21,11 +21,11 @@ import {
 // page draws with.
 
 /** The template's corners and weights, for the kit. */
-export const LOOK: KitStyle = {
+export const LOOK = {
   buttonRadius: "6px",
   buttonWeight: 600,
   headingWeight: 400,
-};
+} satisfies KitStyle;
 
 /** The corners of buttons, cards, photos and panels. */
 export const RADIUS = "6px";

@@ -23,11 +23,11 @@ import {
  * The template's corners (square: none set), weights and heading case, for
  * the kit: its name and footer titles are set as the headings are.
  */
-export const LOOK: KitStyle = {
+export const LOOK = {
   buttonWeight: 500,
   headingWeight: 700,
   headingCase: "uppercase",
-};
+} satisfies KitStyle;
 
 /** The page's own type and colours, which every section inherits. */
 export const bodyStyles = (): TemplateStyleDecl[] => css`

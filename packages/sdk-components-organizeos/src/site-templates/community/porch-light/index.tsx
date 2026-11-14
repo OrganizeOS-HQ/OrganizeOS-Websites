@@ -2,6 +2,7 @@ import atkinson400Url from "@fontsource/atkinson-hyperlegible/files/atkinson-hyp
 import atkinson700Url from "@fontsource/atkinson-hyperlegible/files/atkinson-hyperlegible-latin-700-normal.woff2?url&no-inline";
 import bricolageUrl from "@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wght-normal.woff2?url&no-inline";
 import type { SiteTemplate } from "../../types";
+import { LOOK } from "./styles";
 import { blockTokens } from "./block-tokens";
 import aboutUrl from "./images/about.jpg?url&no-inline";
 import snapshotBlockPartyUrl from "./images/snapshot-block-party.jpg?url&no-inline";
@@ -70,6 +71,9 @@ export const porchLightTemplate: SiteTemplate = {
   status: "listed",
   dependsOn: [],
   thumbnail: "thumbnail.jpg",
+  // the kit look page templates draw with: LOOK, with what it leaves unset
+  // filled with what the kit draws then, so nothing here renders differently
+  look: { ...LOOK, navNameSize: "20px", footerNameSize: "20px" },
   variables: {
     base: "#FFF3D6",
     "accent-1": "#7B2352",

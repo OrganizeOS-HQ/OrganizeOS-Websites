@@ -4,6 +4,7 @@ import barlowCondensed700Url from "@fontsource/barlow-condensed/files/barlow-con
 import { css } from "@webstudio-is/template";
 import { ACCENT_TEXT, BREAKPOINT } from "../../kit";
 import type { SiteTemplate } from "../../types";
+import { LOOK } from "./styles";
 import aboutUrl from "./images/about.jpg?url&no-inline";
 import heroUrl from "./images/hero.jpg?url&no-inline";
 import thumbnailUrl from "./images/thumbnail.jpg?url&no-inline";
@@ -58,6 +59,14 @@ export const workwearTemplate: SiteTemplate = {
   status: "listed",
   dependsOn: [],
   thumbnail: "thumbnail.jpg",
+  // the kit look page templates draw with: LOOK, with what it leaves unset
+  // filled with what the kit draws then, so nothing here renders differently
+  look: {
+    ...LOOK,
+    buttonRadius: "0px",
+    navNameSize: "20px",
+    footerNameSize: "20px",
+  },
   variables: {
     base: "#E8EAEC",
     "accent-1": "#1F3557",

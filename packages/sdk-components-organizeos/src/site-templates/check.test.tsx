@@ -14,11 +14,12 @@ import {
   type CanonicalValues,
   BLANK_CANONICAL_VALUES,
 } from "./canonical-variables";
-import { NEUTRALITY_DENY_LIST, checkSiteTemplate } from "./check";
+import { LOOK_FIELDS, NEUTRALITY_DENY_LIST, checkSiteTemplate } from "./check";
 import { section } from "./kit";
 import { PLATFORM_PATHS, isPlatformServedPath } from "./platform-paths";
 import type { BlockKey } from "./place-block";
 import type {
+  CompleteKitStyle,
   FontEntry,
   PageContext,
   SiteTemplate,
@@ -134,6 +135,13 @@ const fixture = (overrides: Partial<SiteTemplate> = {}): SiteTemplate => ({
   previewEventCover: "cover.jpg",
   fonts: {},
   pages: [home, aboutPage()],
+  look: {
+    buttonRadius: "6px",
+    buttonWeight: 600,
+    headingWeight: 700,
+    navNameSize: "20px",
+    footerNameSize: "20px",
+  },
   ...overrides,
 });
 
@@ -1843,6 +1851,25 @@ describe("checkSiteTemplate", () => {
         checkAbout(({ image, imageAlt }) => (
           <$.Image src={image("cover.jpg")} alt={imageAlt("cover.jpg")} />
         ))
+      ).toEqual([]);
+    });
+
+    test.each(LOOK_FIELDS)("a look without %s is a violation", (field) => {
+      const look: Record<string, unknown> = { ...fixture().look };
+      delete look[field];
+      expectOneViolation(
+        checkSiteTemplate(
+          fixture({ look: look as unknown as CompleteKitStyle })
+        ),
+        `Look: ${field} is not set`
+      );
+    });
+
+    test("a look without headingCase is fine", () => {
+      expect(
+        checkSiteTemplate(fixture()).filter((violation) =>
+          violation.includes("headingCase")
+        )
       ).toEqual([]);
     });
 
