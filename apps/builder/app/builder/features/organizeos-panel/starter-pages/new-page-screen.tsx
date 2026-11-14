@@ -158,6 +158,7 @@ const createBlank = ({ name, path }: Fields): boolean => {
     path,
     title: JSON.stringify(name),
   };
+  let pageId: Page["id"] | undefined;
   try {
     const created = executeRuntimeMutation({
       id: "pages.create",
@@ -169,22 +170,26 @@ const createBlank = ({ name, path }: Fields): boolean => {
         meta: getInitialPageSettingsMeta(values),
       },
     });
-    const pageId = created?.result.pageId as Page["id"] | undefined;
-    if (pageId === undefined) {
-      builderApi.toast.error("Cannot create the page.");
-      return false;
-    }
+    pageId = created?.result.pageId as Page["id"] | undefined;
+  } catch (error) {
+    console.error(error);
+  }
+  if (pageId === undefined) {
+    builderApi.toast.error("Cannot create the page.");
+    return false;
+  }
+  // The page exists from here: a refused settings step leaves it with
+  // pages.create's own settings, and it is still the page made.
+  try {
     executeRuntimeMutation({
       id: "pages.updateSettings",
       input: { pageId, values },
     });
-    selectPage(pageId);
-    return true;
   } catch (error) {
     console.error(error);
-    builderApi.toast.error("Cannot create the page.");
-    return false;
   }
+  selectPage(pageId);
+  return true;
 };
 
 /** A page template added (and selected), or why not, toasted. */

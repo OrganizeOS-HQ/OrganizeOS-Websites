@@ -33,7 +33,10 @@ import { $builderMode } from "~/shared/nano-states/misc";
 import { $dataLoadingState } from "~/builder/shared/nano-states";
 import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import { writeCanonicalVariablesMutable } from "../site-templates/apply-site-template";
-import { $showTemplateDrafts } from "../site-templates/templates-screen-state";
+import {
+  $isTemplatesScreenOffered,
+  $showTemplateDrafts,
+} from "../site-templates/templates-screen-state";
 import { insertStarterPage } from "./insert-starter-page";
 import { $newPageScreenOpen } from "./new-page-screen-state";
 import { NewPageScreen, pathProblem } from "./new-page-screen";
@@ -355,6 +358,36 @@ describe("opening", () => {
     expect(cardIds()).toEqual(["blank", "events", "give"]);
   });
 
+  test("closes when the Templates screen is offered, and opens fresh", async () => {
+    render();
+    await open();
+    await clickCard("events");
+    expect(field("Name")).not.toBeNull();
+
+    // another admin undoes everything: the project is untouched again, with
+    // none of the canonical variables, so the Templates screen is offered
+    await act(async () => {
+      const untouched = createPages();
+      $pages.set(untouched.pages);
+      $instances.set(untouched.instances);
+      $props.set(untouched.props);
+      $styleSourceSelections.set(untouched.styleSourceSelections);
+      $styleSources.set(untouched.styleSources);
+      $styles.set(untouched.styles);
+      $assets.set(untouched.assets);
+    });
+    await settle();
+    expect($isTemplatesScreenOffered.get()).toBe(true);
+    expect(dialog()).toBeNull();
+    expect($newPageScreenOpen.get()).toBe(false);
+
+    await act(async () => {
+      setProject();
+    });
+    await open();
+    expect(cardIds()).toEqual(["blank", "events", "give"]);
+  });
+
   test("with only Blank, opens straight into Blank's create view, compact", async () => {
     setCatalog([]);
     render();
@@ -627,6 +660,35 @@ describe("creating", () => {
     await submit();
     expect(toastError).toHaveBeenCalledWith("Cannot create the page.");
     expect(field("Name")).not.toBeNull();
+  });
+
+  test("Blank selects and closes when the page is made but its settings fail", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const actual = await vi.importActual<
+      typeof import("~/shared/instance-utils/data")
+    >("~/shared/instance-utils/data");
+    vi.mocked(executeRuntimeMutation).mockImplementation(((
+      mutation: Parameters<typeof executeRuntimeMutation>[0]
+    ) => {
+      if (mutation.id === "pages.updateSettings") {
+        throw new Error("settings refused");
+      }
+      return actual.executeRuntimeMutation(mutation);
+    }) as typeof executeRuntimeMutation);
+    render();
+    await open();
+    await clickCard("blank");
+    await setValue(field("Name"), "About");
+    await submit();
+
+    const [created] = pagesAt("/about");
+    expect(created).toBeDefined();
+    expect($selectedPageId.get()).toBe(created.id);
+    expect(dialog()).toBeNull();
+    expect(toastError).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalled();
   });
 
   test("Create page creates one page however often it is pressed", async () => {
