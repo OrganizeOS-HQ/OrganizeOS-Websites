@@ -663,3 +663,20 @@ describe("settleRichTextHtml", () => {
     ).toBe(false);
   });
 });
+
+// self-lock decision, 4b: an emptied parent never grows on a load and save
+describe("an emptied parent item (self-lock decision, 4b)", () => {
+  test.each([
+    "<ul><li>a</li><li>&nbsp;<ul><li>n</li></ul></li></ul>",
+    "<ul><li>a</li><li><ul><li>x</li></ul><ul><li>y</li></ul></li></ul>",
+    "<ul><li>a</li><li> <ul><li>n</li></ul></li></ul>",
+    "<ol><li>a<ol><li>b</li><li><ol><li>c</li></ol></li></ol></li></ol>",
+  ])("%s writes a fixed point", (html) => {
+    const once = sanitizeRichTextHtml(writeRichTextHeadless(html));
+    const twice = sanitizeRichTextHtml(writeRichTextHeadless(once));
+    const thrice = sanitizeRichTextHtml(writeRichTextHeadless(twice));
+    expect(twice).toBe(once);
+    expect(thrice).toBe(once);
+    expect(getRichTextReadOnlyReason(once)).toBeUndefined();
+  });
+});

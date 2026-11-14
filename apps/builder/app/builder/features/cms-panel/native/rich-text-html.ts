@@ -200,15 +200,21 @@ const isListElement = (node: Element) =>
 const nestListItems = (list: HTMLElement) => {
   for (const item of Array.from(list.children)) {
     const previous = item.previousElementSibling;
-    const nested = item.firstElementChild;
+    // an item holding only lists (and collapsible whitespace)
+    const lists = Array.from(item.children);
     if (
       item.tagName === "LI" &&
       previous?.tagName === "LI" &&
-      nested !== null &&
-      item.childNodes.length === 1 &&
-      isListElement(nested)
+      lists.length > 0 &&
+      lists.every(isListElement) &&
+      Array.from(item.childNodes).every(
+        (child) =>
+          child instanceof Element || isCollapsible(child.textContent ?? "")
+      )
     ) {
-      previous.appendChild(nested);
+      for (const nested of lists) {
+        previous.appendChild(nested);
+      }
       item.remove();
     }
   }
@@ -902,15 +908,16 @@ export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
     }
   }
   // an item holding only a nested list, after another item, is an emptied
-  // parent: an empty item before it keeps the list its own on the save
+  // parent: an empty item before it keeps the list its own on the save.
+  // Lexical makes that empty item itself for an item holding several lists
   for (const item of Array.from(dom.body.querySelectorAll("li"))) {
     if (
       item.previousElementSibling?.tagName === "LI" &&
-      item.children.length > 0 &&
+      item.children.length === 1 &&
       Array.from(item.childNodes).every((child) =>
         child instanceof Element
           ? isListElement(child)
-          : (child.textContent ?? "").trim() === ""
+          : isCollapsible(child.textContent ?? "")
       )
     ) {
       item.parentNode?.insertBefore(dom.createElement("li"), item);
