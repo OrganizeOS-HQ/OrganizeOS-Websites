@@ -172,6 +172,34 @@ describe("the tabs and the structure reads", () => {
     expect(hasText("Signed out of OrganizeOS")).toBe(false);
   });
 
+  test("E20's line is its own: a refresh whose list reads answer while E20 is still in flight keeps it; E20's answer clears it (M12(f), round 4)", async () => {
+    harness.structure.getStructure.mockResolvedValueOnce({
+      error: "unauthorized",
+    });
+    mount();
+    await settle();
+    expect(hasText("Signed out of OrganizeOS")).toBe(true);
+    const answer =
+      deferred<Awaited<ReturnType<typeof harness.structure.getStructure>>>();
+    harness.structure.getStructure.mockReturnValueOnce(answer.promise);
+    const listed = harness.fake.listCollections.mock.calls.length;
+    act(() => refreshCmsNative());
+    await settle();
+    // the list's reads answered; a line of theirs would be gone
+    expect(harness.fake.listCollections.mock.calls.length).toBeGreaterThan(
+      listed
+    );
+    expect(hasText("Signed out of OrganizeOS")).toBe(true);
+    await act(async () =>
+      answer.resolve({
+        templates: [],
+        limits: { fields: 30, customCollections: 5, customCount: 0 },
+      })
+    );
+    await settle();
+    expect(hasText("Signed out of OrganizeOS")).toBe(false);
+  });
+
   test('the column stays 240 px with both tabs and the "+"', async () => {
     mount();
     await settle();

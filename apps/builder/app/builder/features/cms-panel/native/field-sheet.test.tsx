@@ -722,3 +722,22 @@ test("a Remove whose count read fails shows its toast and no dialog", async () =
   );
   expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
+
+test("a Save answered mfa_required, then Retry: the line clears, E21 is read again and the sheet shows again (I9, round 4)", async () => {
+  withFields();
+  await openField("summary");
+  await typeInto(control("label")!, "Abstract");
+  harness.structure.updateSchema.mockResolvedValueOnce({
+    error: "mfa_required",
+  });
+  await click(buttonByText("Save", header()!));
+  expect(hasText("Two-step sign-in required")).toBe(true);
+  const reads = harness.structure.getCollectionStructure.mock.calls.length;
+  await click(buttonByText("Retry"));
+  await settle();
+  expect(hasText("Two-step sign-in required")).toBe(false);
+  expect(
+    harness.structure.getCollectionStructure.mock.calls.length
+  ).toBeGreaterThan(reads);
+  expect(sheet()).not.toBeNull();
+});

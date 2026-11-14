@@ -464,3 +464,21 @@ describe("the focus in the settings view (round 4)", () => {
     expect(document.activeElement).toBe(input("name"));
   });
 });
+
+test("a Save answered mfa_required, then Retry: the line clears, E21 is read again and the view shows again (I9, round 4)", async () => {
+  await openSettings();
+  await typeInto(input("name"), "Articles");
+  harness.structure.updateCollection.mockResolvedValueOnce({
+    error: "mfa_required",
+  });
+  await click(saveButton());
+  expect(hasText("Two-step sign-in required")).toBe(true);
+  const reads = harness.structure.getCollectionStructure.mock.calls.length;
+  await click(buttonByText("Retry"));
+  await settle();
+  expect(hasText("Two-step sign-in required")).toBe(false);
+  expect(
+    harness.structure.getCollectionStructure.mock.calls.length
+  ).toBeGreaterThan(reads);
+  expect(settingsView()).not.toBeNull();
+});
