@@ -360,22 +360,40 @@ export const useCmsStructure = ({
     [showLineFrom]
   );
 
-  // A reorder waiting for its pause, or sent: the order on screen is the
-  // person's, and a read keeps it until the platform answers.
-  const reorderTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined
+  // A reorder waiting for its pause, or sent, per collection: the order on
+  // screen is the person's, and a read keeps it until the platform answers.
+  // A move in one collection never stops another collection's reorder.
+  const reorderTimers = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>()
   );
-  const reorderPending = useRef<string | undefined>(undefined);
+  const reorderPending = useRef(new Set<string>());
   /** The order the platform last accepted, per collection. */
   const acceptedOrder = useRef(new Map<string, CmsStructureField[]>());
   const latestDetail = useRef<CmsStructureCollection | undefined>(undefined);
   latestDetail.current = detail;
-  const cancelReorderTimer = useCallback(() => {
-    if (reorderTimer.current !== undefined) {
-      clearTimeout(reorderTimer.current);
-      reorderTimer.current = undefined;
+  /** Stops a collection's pause; with no id, every collection's. */
+  const cancelReorderTimer = useCallback((id?: string) => {
+    for (const [key, timer] of reorderTimers.current) {
+      if (id === undefined || key === id) {
+        clearTimeout(timer);
+        reorderTimers.current.delete(key);
+      }
     }
   }, []);
+  /** Sends a collection's reorder after `delay`. */
+  const startReorderTimer = (id: string, delay: number, isRetry: boolean) => {
+    cancelReorderTimer(id);
+    reorderTimers.current.set(
+      id,
+      setTimeout(() => {
+        reorderTimers.current.delete(id);
+        void sendReorderRef.current(id, isRetry);
+      }, delay)
+    );
+  };
+  const sendReorderRef = useRef<
+    (id: string, isRetry: boolean) => Promise<void>
+  >(async () => {});
   /**
    * A read while a reorder waits: the read's fields in the person's order.
    * When the read adds or removes a field, the reorder is dropped and the
@@ -386,7 +404,7 @@ export const useCmsStructure = ({
       current: CmsStructureCollection | undefined,
       fresh: CmsStructureCollection
     ): CmsStructureCollection => {
-      if (reorderPending.current === fresh.id && current?.id === fresh.id) {
+      if (reorderPending.current.has(fresh.id) && current?.id === fresh.id) {
         const byKey = new Map(fresh.fields.map((field) => [field.key, field]));
         const ordered = current.fields.flatMap((field) => {
           const found = byKey.get(field.key);
@@ -398,8 +416,8 @@ export const useCmsStructure = ({
           lastSchema.current.set(fresh.id, fresh.fields);
           return { ...fresh, fields: ordered };
         }
-        cancelReorderTimer();
-        reorderPending.current = undefined;
+        cancelReorderTimer(fresh.id);
+        reorderPending.current.delete(fresh.id);
       }
       acceptedOrder.current.set(fresh.id, fresh.fields);
       lastSchema.current.set(fresh.id, fresh.fields);
@@ -407,7 +425,7 @@ export const useCmsStructure = ({
     },
     [cancelReorderTimer]
   );
-  useEffect(() => cancelReorderTimer, [cancelReorderTimer]);
+  useEffect(() => () => cancelReorderTimer(), [cancelReorderTimer]);
 
   // E20: the templates and the plan's caps, for a person who can manage.
   useEffect(() => {
@@ -757,9 +775,9 @@ export const useCmsStructure = ({
   };
 
   // the order a move made, kept for its E24 even if another collection opens
-  const pendingOrder = useRef<
-    { id: string; slug: string; fields: CmsStructureField[] } | undefined
-  >(undefined);
+  const pendingOrder = useRef(
+    new Map<string, { slug: string; fields: CmsStructureField[] }>()
+  );
 
   /**
    * E24 with the moved order, through the collection's queue. Its fields are
@@ -767,9 +785,9 @@ export const useCmsStructure = ({
    * have landed meanwhile) in the moved order.
    */
   const sendReorder = async (id: string, isRetry: boolean) => {
-    const moved = pendingOrder.current;
-    if (structure === undefined || moved === undefined || moved.id !== id) {
-      reorderPending.current = undefined;
+    const moved = pendingOrder.current.get(id);
+    if (structure === undefined || moved === undefined) {
+      reorderPending.current.delete(id);
       return;
     }
     const keys = moved.fields.map((field) => field.key);
@@ -783,15 +801,12 @@ export const useCmsStructure = ({
       return structure.updateSchema(id, { fields, expectedUpdatedAt });
     });
     // a later move restarted the pause: that write carries the order
-    if (reorderTimer.current !== undefined) {
+    if (reorderTimers.current.has(id)) {
       return;
     }
     if (isCmsFailure(result)) {
       if (result.error === "rate_limited" && isRetry === false) {
-        reorderTimer.current = setTimeout(() => {
-          reorderTimer.current = undefined;
-          void sendReorder(id, true);
-        }, RATE_LIMIT_RETRY_MS);
+        startReorderTimer(id, RATE_LIMIT_RETRY_MS, true);
         return;
       }
       // another person's change: read it again and send the moved order
@@ -810,13 +825,13 @@ export const useCmsStructure = ({
           return;
         }
         // the reread's own failure has spoken: no second toast
-        reorderPending.current = undefined;
-        pendingOrder.current = undefined;
+        reorderPending.current.delete(id);
+        pendingOrder.current.delete(id);
         putBackOrder(id);
         return;
       }
-      reorderPending.current = undefined;
-      pendingOrder.current = undefined;
+      reorderPending.current.delete(id);
+      pendingOrder.current.delete(id);
       putBackOrder(id);
       const refusal = getRefusal(result.error, "write");
       if (refusal !== undefined) {
@@ -836,8 +851,8 @@ export const useCmsStructure = ({
       setDetailVersion((version) => version + 1);
       return;
     }
-    reorderPending.current = undefined;
-    pendingOrder.current = undefined;
+    reorderPending.current.delete(id);
+    pendingOrder.current.delete(id);
     acceptedOrder.current.set(id, fields);
     setDetail((latest) =>
       latest?.id === id ? { ...latest, updatedAt: result.updatedAt } : latest
@@ -849,6 +864,8 @@ export const useCmsStructure = ({
       changesCanvas: false,
     });
   };
+
+  sendReorderRef.current = sendReorder;
 
   /** A move shows at once; E24 goes after a pause, with the latest order. */
   const reorder = (key: string, toIndex: number) => {
@@ -863,7 +880,7 @@ export const useCmsStructure = ({
     const fields = moveField(before.fields, key, toIndex);
     latestDetail.current = { ...before, fields };
     setDetail(latestDetail.current);
-    pendingOrder.current = { id: before.id, slug: before.slug, fields };
+    pendingOrder.current.set(before.id, { slug: before.slug, fields });
     // the moved row keeps the focus, for the next Alt+Arrow: once the new
     // order is drawn, and only when the move lost it; a later move replaces
     // a refocus still waiting
@@ -881,32 +898,25 @@ export const useCmsStructure = ({
           ?.focus();
       }
     });
-    reorderPending.current = before.id;
-    cancelReorderTimer();
-    reorderTimer.current = setTimeout(() => {
-      reorderTimer.current = undefined;
-      void sendReorder(before.id, false);
-    }, REORDER_PAUSE_MS);
+    reorderPending.current.add(before.id);
+    startReorderTimer(before.id, REORDER_PAUSE_MS, false);
   };
 
   /** A sheet's Save carries the order on screen: no reorder of its own. */
   const enqueueSchema: CmsStructureEnqueue = (id, write) => {
     const carried =
-      reorderPending.current === id && reorderTimer.current !== undefined;
+      reorderPending.current.has(id) && reorderTimers.current.has(id);
     if (carried) {
-      cancelReorderTimer();
+      cancelReorderTimer(id);
     }
     return enqueue(id, write).then((result) => {
-      if (reorderPending.current === id && reorderTimer.current === undefined) {
+      if (reorderPending.current.has(id) && !reorderTimers.current.has(id)) {
         if (carried && isCmsFailure(result)) {
           // the Save that carried the moved order was refused: send it alone
-          reorderTimer.current = setTimeout(() => {
-            reorderTimer.current = undefined;
-            void sendReorder(id, false);
-          }, REORDER_PAUSE_MS);
+          startReorderTimer(id, REORDER_PAUSE_MS, false);
         } else {
-          reorderPending.current = undefined;
-          pendingOrder.current = undefined;
+          reorderPending.current.delete(id);
+          pendingOrder.current.delete(id);
         }
       }
       return result;
@@ -921,10 +931,10 @@ export const useCmsStructure = ({
     if (
       previous !== undefined &&
       previous !== collectionId &&
-      reorderPending.current === previous &&
-      reorderTimer.current !== undefined
+      reorderPending.current.has(previous) &&
+      reorderTimers.current.has(previous)
     ) {
-      cancelReorderTimer();
+      cancelReorderTimer(previous);
       void sendReorder(previous, false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

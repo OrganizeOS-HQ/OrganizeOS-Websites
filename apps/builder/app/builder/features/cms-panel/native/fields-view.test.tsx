@@ -876,6 +876,52 @@ describe("a reorder conflict beside an open view", () => {
   });
 });
 
+// Round 4, item 10: each collection's reorder has its own pause, so a move
+// in another collection never drops the first one's answer
+test("a move in Posts, then another in People: Posts' refused reorder still puts its order back and toasts", async () => {
+  const error = vi.spyOn(toast, "error");
+  const posts =
+    harness.structure.getCollectionStructure.getMockImplementation();
+  harness.structure.getCollectionStructure.mockImplementation(async (id) =>
+    id === PEOPLE.id
+      ? {
+          collection: {
+            ...POSTS_STRUCTURE,
+            id: PEOPLE.id,
+            slug: PEOPLE.slug,
+            name: PEOPLE.name,
+          },
+        }
+      : posts!(id)
+  );
+  // Posts' answer is held until People's move has started its pause
+  const postsAnswer = deferred<void>();
+  harness.structure.updateSchema.mockImplementation(async (id, body) => {
+    if (id === POSTS.id) {
+      await postsAnswer.promise;
+      return { error: "invalid" };
+    }
+    return { fields: body.fields, updatedAt: NEXT };
+  });
+  await openFields();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  await moveRow("title", "ArrowDown");
+  await click(tab("Collections"));
+  await click(rowOf("people")?.querySelector("button"));
+  await click(tab("Fields"));
+  await moveRow("title", "ArrowDown");
+  await act(async () => postsAnswer.resolve());
+  await pass(0);
+  await pass(600);
+  await pass(0);
+  vi.useRealTimers();
+  await settle();
+  const sentTo = harness.structure.updateSchema.mock.calls.map(([id]) => id);
+  expect(sentTo).toContain(POSTS.id);
+  expect(sentTo).toContain(PEOPLE.id);
+  expect(error).toHaveBeenCalled();
+});
+
 // Round 4, item 3: Discard while a view's own Save is under way never draws
 // the view on the values from before that Save
 describe("Discard during a structure view's own Save", () => {
