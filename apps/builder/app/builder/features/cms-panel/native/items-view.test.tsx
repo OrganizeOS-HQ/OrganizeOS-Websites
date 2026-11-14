@@ -175,8 +175,17 @@ describe("the items view", () => {
     // never lets an earlier one's timer fire
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
-      await act(async () => userEvent.type(searchInput()!, "new"));
+      // each keystroke restarts the pause
+      await act(async () => userEvent.type(searchInput()!, "n"));
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      await act(async () => userEvent.type(searchInput()!, "e"));
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
       expect(fake.listItems).not.toHaveBeenCalled();
+      await act(async () => userEvent.type(searchInput()!, "w"));
       act(() => {
         vi.advanceTimersByTime(249);
       });
@@ -3086,5 +3095,51 @@ describe("the reorder's state across visits (W3g round 3)", () => {
     await act(async () => held.resolve({ changed: 2 }));
     await settle();
     expect(fake.publishItems).not.toHaveBeenCalled();
+  });
+});
+
+describe("the search box stays while a cleared search reads (W3g round 3)", () => {
+  /** "zzz" matches nothing; the next read waits until released. */
+  const searchNothing = async () => {
+    fake.listItems.mockImplementation(async (_c, q) =>
+      q.q === "zzz" ? itemsPageOf([], 0, 1) : pageOf(1, 3)
+    );
+    const gate = holdListItems();
+    mount();
+    await settle();
+    await act(async () => userEvent.type(searchInput()!, "zzz"));
+    await wait(300);
+    expect(itemRows()).toHaveLength(0);
+    expect(hasNoMatches()).toBe(true);
+    gate.hold();
+    return gate;
+  };
+  const hasNoMatches = () =>
+    document.querySelector("[data-cms-no-matches]") !== null;
+
+  test("erasing a search with no match keeps the search box and its focus", async () => {
+    const gate = await searchNothing();
+    const field = searchInput()!;
+    await act(async () => userEvent.clear(field));
+    await wait(300);
+    expect(searchInput()).toBe(field);
+    expect(document.activeElement).toBe(field);
+    await gate.release();
+    expect(itemRows()).toHaveLength(3);
+    expect(document.activeElement).toBe(field);
+  });
+
+  test("Escape on a search with no match keeps the search box and its focus", async () => {
+    const gate = await searchNothing();
+    const field = searchInput()!;
+    act(() => {
+      field.focus();
+    });
+    await act(async () => userEvent.keyboard("{Escape}"));
+    await wait(50);
+    expect(searchInput()).toBe(field);
+    expect(document.activeElement).toBe(field);
+    await gate.release();
+    expect(itemRows()).toHaveLength(3);
   });
 });

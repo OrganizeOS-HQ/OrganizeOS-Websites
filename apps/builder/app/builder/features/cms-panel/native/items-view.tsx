@@ -274,12 +274,13 @@ export const ItemsView = ({
   onOpenItem: (itemId: string) => void;
   onNewItem: () => void;
 }) => {
-  // The empty collection (New item alone) reads E3, not E1: no search, no
-  // filter and a total of 0 (spec 5.1.8). Any other empty page is "No matches".
+  // The empty collection (New item alone) reads E3, not E1: a total of 0
+  // drawn for no search and no filter (spec 5.1.8). Any other empty page is
+  // "No matches", until the page for the open search and filter is drawn.
   const emptyNew =
     page !== undefined &&
     page.total === 0 &&
-    query.trim() === "" &&
+    drawnQueryEmpty &&
     filterCount(list) === 0;
   const noMatches =
     page !== undefined && page.total === 0 && emptyNew === false;
