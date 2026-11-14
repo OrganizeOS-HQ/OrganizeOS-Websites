@@ -24,11 +24,11 @@ import {
  * Instrument Serif has one weight, so the kit's name and footer titles in
  * the heading face are asked for none (the browser would synthesize a bold).
  */
-export const LOOK: KitStyle = {
+export const LOOK = {
   buttonWeight: 600,
   navNameSize: "28px",
   footerNameSize: "28px",
-};
+} satisfies KitStyle;
 
 /** A rule's or an outline's weight: 2px, as printed. */
 export const RULE = "2px";

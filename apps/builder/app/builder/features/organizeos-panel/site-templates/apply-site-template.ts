@@ -37,7 +37,7 @@ import {
 import { SIGNUP_PAGE_PATH } from "~/shared/organizeos-preset-ids";
 import { getWebstudioData } from "~/shared/instance-utils/data";
 import { selectInstance } from "~/shared/nano-states";
-import { $project } from "~/shared/sync/data-stores";
+import { $project, $projectSettings } from "~/shared/sync/data-stores";
 import { getInstanceLabel } from "~/builder/shared/instance-label";
 import {
   uploadAssets,
@@ -210,6 +210,45 @@ export type ApplyResult =
     }
   // the runtime layer refused the write, and says why
   | { status: "refused"; reason: "runtime"; message: string };
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && Array.isArray(value) === false;
+
+/**
+ * Record the site template a project was made from, in
+ * `projectSettings.organizeos.siteTemplate` beside the variables registry
+ * (OrganizeOS design
+ * `2026-11-13-builder-templates-screen-and-page-templates-design.md` 5.4), so
+ * page templates draw with its look. Adds `organizeos` when it has none and
+ * keeps its other keys; writes nothing into an `organizeos` that is not a
+ * plain object (the registry's "unreadable" case).
+ */
+export const recordSiteTemplateMutable = (
+  projectSettings: ProjectSettings,
+  id: string
+) => {
+  if (projectSettings.organizeos === undefined) {
+    projectSettings.organizeos = { siteTemplate: { id } };
+    return;
+  }
+  if (isPlainObject(projectSettings.organizeos)) {
+    projectSettings.organizeos.siteTemplate = { id };
+  }
+};
+
+/** The id of the site template a project was made from, if it records one. */
+export const readSiteTemplateRecord = (
+  projectSettings: ProjectSettings | undefined
+): string | undefined => {
+  const organizeos = projectSettings?.organizeos;
+  if (isPlainObject(organizeos) === false) {
+    return;
+  }
+  const record = organizeos.siteTemplate;
+  return isPlainObject(record) && typeof record.id === "string"
+    ? record.id
+    : undefined;
+};
 
 /**
  * What applySiteTemplate returns: an applied result also counts the photos
@@ -595,14 +634,27 @@ export const applySiteTemplate = async (
   let staged = false;
   let result: ApplyResult;
   try {
+    // getWebstudioData() stands in empty settings for a store that holds
+    // none, and a patch cannot be applied to a store that holds none
+    const hasSettings = $projectSettings.get() !== undefined;
     result = await updateWebstudioDataStaged((data) => {
       staged = true;
-      return applySiteTemplateMutable(data, pages, {
+      const applied = applySiteTemplateMutable(data, pages, {
         projectId: project.id,
         presetIds,
         variables: template.variables,
         blockTokens: template.blockTokens,
       });
+      // in the apply's own step: the patch's projectSettings namespace
+      // (createBuilderPatchPayloadFromImmerPatches splits by namespace)
+      if (applied.status === "applied" && hasSettings) {
+        recordSiteTemplateMutable(
+          (data as WebstudioData & { projectSettings: ProjectSettings })
+            .projectSettings,
+          template.id
+        );
+      }
+      return applied;
     });
   } catch (error) {
     if (staged) {

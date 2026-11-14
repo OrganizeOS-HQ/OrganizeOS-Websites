@@ -1,5 +1,6 @@
 import type { AssetValue, TemplateStyleDecl } from "@webstudio-is/template";
 import type { CanonicalValues } from "./canonical-variables";
+import type { KitStyle } from "./kit/layout";
 import type { PlaceBlock } from "./place-block";
 
 // The site-template format (spec 6.1): a template is a module that exports one
@@ -102,6 +103,15 @@ export type SiteTemplatePage = {
   body: (context: PageContext) => JSX.Element;
 };
 
+/**
+ * A template's choices for the kit with every one set (headingCase stays
+ * optional: unset means as typed), so page templates draw with the look of
+ * the site template a project was made from (OrganizeOS design
+ * `2026-11-13-builder-templates-screen-and-page-templates-design.md` 5.3).
+ */
+export type CompleteKitStyle = Required<Omit<KitStyle, "headingCase">> &
+  Pick<KitStyle, "headingCase">;
+
 export type SiteTemplate = {
   id: string;
   category: TemplateCategory;
@@ -113,10 +123,18 @@ export type SiteTemplate = {
   /** The PRs the template needs merged first. */
   dependsOn: string[];
   /**
-   * The chooser's picture of the template: a file name in `images`. Applying
-   * uploads it only when a page shows it.
+   * The Templates screen's picture of the template, its card and Home's
+   * picture in the page view: a file name in `images`. Applying uploads it
+   * only when a page shows it.
    */
   thumbnail: string;
+  /**
+   * The picture of every page but Home, by page key: a file name in `images`
+   * (the preview tool's `--pages` draws it as `page-<key>.jpg`), which the
+   * Templates screen's page view shows and applying never uploads, since no
+   * page shows it.
+   */
+  pagePictures: Record<string, string>;
   /**
    * A file name in `images` that the preview tool's sample events show as
    * the first event's cover (scripts/preview-site-template.mjs): one that no
@@ -128,6 +146,8 @@ export type SiteTemplate = {
    */
   previewEventCover?: string;
   variables: CanonicalValues;
+  /** The template's choices for the kit, which page templates draw with. */
+  look: CompleteKitStyle;
   /**
    * What the template sets in `--accent-2` on the base besides the focus
    * ring: any text when unset, so the check holds accent-2 on base to 4.5:1

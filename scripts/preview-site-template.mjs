@@ -4,7 +4,7 @@
 // 2026-10-30-website-template-inventory-design.md, section 2, rule 9):
 //
 //   corepack pnpm preview:template <template-id> [--palette <file>] [--no-events]
-//   corepack pnpm preview:template <template-id> --thumbnail
+//   corepack pnpm preview:template <template-id> [--thumbnail] [--pages]
 //
 // 1. A stub of the OrganizeOS public API on a fixed port
 //    (site-templates/preview/stub-api.mjs in the builder) answers the events
@@ -53,7 +53,14 @@
 // uploads only the images its pages show, so the thumbnail stays the
 // chooser's alone.
 //
-// Exits 1 when a check fails (or no JPEG quality fits a thumbnail under its
+// With --pages, alone or with --thumbnail, step 5 also draws the top of every
+// page but Home in the same frame, for the Templates screen's page view,
+// written as images/page-<key>.jpg (1200 by 750, a JPEG under 150 KB;
+// PAGE_PICTURE). Without --thumbnail the thumbnail is left as it is. A new
+// page's picture is drawn before its import is added to the template: the
+// dump imports the template, so a missing file stops the tool.
+//
+// Exits 1 when a check fails (or no JPEG quality fits a picture under its
 // limit), 2 when the tool cannot run, 130 or 143 when SIGINT or SIGTERM stops
 // it. The temp folder, the servers, the browser and every command still
 // running are stopped however the tool ends (short of SIGKILL).
@@ -69,7 +76,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import {
+  PAGE_PICTURE,
   THUMBNAIL,
+  pagePictureFile,
   parsePreviewArguments,
   readJpegSize,
 } from "../apps/builder/app/builder/features/organizeos-panel/site-templates/preview/preview-arguments.mjs";
@@ -537,30 +546,30 @@ const inspectPage = async (browser, url, width, screenshotPath) => {
 };
 
 /**
- * The template's thumbnail (THUMBNAIL): Home's top at 1440 wide, drawn at
- * 1600 by 1000 and written as a JPEG at the highest quality that fits under
- * the limit, into `imagesDir`. Animations are finished and the caret hidden,
- * so a run with the same template draws the same picture. Its file, or
- * undefined when no quality fits.
+ * A picture of a page's top (`spec`: THUMBNAIL for Home, PAGE_PICTURE for
+ * the other pages), drawn at the spec's size and written as a JPEG at the
+ * highest quality that fits under its limit, as `file`. Animations are
+ * finished and the caret hidden, so a run with the same template draws the
+ * same picture. Its file, or undefined when no quality fits.
  */
-const writeThumbnail = async (browser, url, imagesDir) => {
+const writePicture = async (browser, url, spec, file) => {
   const context = await browser.newContext({
-    viewport: THUMBNAIL.viewport,
-    deviceScaleFactor: THUMBNAIL.deviceScaleFactor,
+    viewport: spec.viewport,
+    deviceScaleFactor: spec.deviceScaleFactor,
   });
   const page = await context.newPage();
   await page.goto(url, { waitUntil: "networkidle" });
   await page.evaluate(loadEverything);
   await page.waitForLoadState("networkidle");
   let picture;
-  for (const quality of THUMBNAIL.qualities) {
+  for (const quality of spec.qualities) {
     const bytes = await page.screenshot({
       type: "jpeg",
       quality,
       animations: "disabled",
       caret: "hide",
     });
-    if (bytes.byteLength <= THUMBNAIL.maxBytes) {
+    if (bytes.byteLength <= spec.maxBytes) {
       picture = { bytes, quality };
       break;
     }
@@ -570,12 +579,11 @@ const writeThumbnail = async (browser, url, imagesDir) => {
     return;
   }
   const size = readJpegSize(picture.bytes);
-  if (size?.width !== THUMBNAIL.width || size?.height !== THUMBNAIL.height) {
+  if (size?.width !== spec.width || size?.height !== spec.height) {
     throw new Error(
-      `The thumbnail came out ${size?.width}x${size?.height}, not ${THUMBNAIL.width}x${THUMBNAIL.height}`
+      `${file} came out ${size?.width}x${size?.height}, not ${spec.width}x${spec.height}`
     );
   }
-  const file = join(imagesDir, THUMBNAIL.file);
   await writeFile(file, picture.bytes);
   return { file, quality: picture.quality, bytes: picture.bytes.byteLength };
 };
@@ -583,11 +591,18 @@ const writeThumbnail = async (browser, url, imagesDir) => {
 const main = async () => {
   // pnpm runs the script from the repository root; a relative palette path
   // is the caller's
-  const { templateId, paletteFile, paletteName, runName, events, thumbnail } =
-    parsePreviewArguments(
-      process.argv.slice(2),
-      process.env.INIT_CWD ?? process.cwd()
-    );
+  const {
+    templateId,
+    paletteFile,
+    paletteName,
+    runName,
+    events,
+    thumbnail,
+    pages: drawPages,
+  } = parsePreviewArguments(
+    process.argv.slice(2),
+    process.env.INIT_CWD ?? process.cwd()
+  );
   const outDir = join(repoRoot, "previews", templateId, runName);
   const siteDir = await mkdtemp(join(tmpdir(), `preview-${templateId}-`));
   stopping.push(
@@ -668,26 +683,56 @@ const main = async () => {
     const browser = await launchChromium();
     stopping.push(() => browser.close());
 
-    if (thumbnail) {
+    if (thumbnail || drawPages) {
       if (files.imagesDir === null) {
         throw new Error(`${templateId} has no images folder`);
       }
-      console.info(`Drawing ${templateId}'s thumbnail`);
-      const written = await writeThumbnail(
-        browser,
-        new URL("/", origin).href,
-        files.imagesDir
-      );
-      if (written === undefined) {
-        console.error(
-          `No JPEG quality fits the thumbnail under ${THUMBNAIL.maxBytes} bytes`
-        );
-        return 1;
+      // [label, path, spec, file] for each picture to draw
+      const pictures = [];
+      if (thumbnail) {
+        pictures.push([
+          "Thumbnail",
+          "/",
+          THUMBNAIL,
+          join(files.imagesDir, THUMBNAIL.file),
+        ]);
       }
-      console.info(
-        `Thumbnail: ${written.file} (${THUMBNAIL.width}x${THUMBNAIL.height}, quality ${written.quality}, ${written.bytes} bytes)`
-      );
-      return 0;
+      if (drawPages) {
+        const sitePages = JSON.parse(
+          await readFile(join(siteDir, "preview-pages.json"), "utf8")
+        );
+        for (const { key, path } of sitePages) {
+          if (path !== "/") {
+            pictures.push([
+              `Page "${key}"`,
+              path,
+              PAGE_PICTURE,
+              join(files.imagesDir, pagePictureFile(key)),
+            ]);
+          }
+        }
+      }
+      let unfit = 0;
+      for (const [label, path, spec, file] of pictures) {
+        console.info(`Drawing ${templateId}'s ${label.toLowerCase()}`);
+        const written = await writePicture(
+          browser,
+          new URL(path, origin).href,
+          spec,
+          file
+        );
+        if (written === undefined) {
+          console.error(
+            `${label}: no JPEG quality fits under ${spec.maxBytes} bytes`
+          );
+          unfit += 1;
+          continue;
+        }
+        console.info(
+          `${label}: ${written.file} (${spec.width}x${spec.height}, quality ${written.quality}, ${written.bytes} bytes)`
+        );
+      }
+      return unfit === 0 ? 0 : 1;
     }
 
     await rm(outDir, { recursive: true, force: true });
