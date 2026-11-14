@@ -746,7 +746,7 @@ export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
   }
   // a list item with no list around it holds no block type or list
   // command: such a value is not the editor's to load
-  if (nodes.some($isListItemNode)) {
+  if (nodes.some((node) => $isListItemNode(node) || hasStrayListItem(node))) {
     throw new Error("A list item outside a list");
   }
   const root = $getRoot();
@@ -756,6 +756,17 @@ export const importRichTextHtml = (editor: LexicalEditor, html: string) => {
   }
   root.append(...nodes);
 };
+
+/** Whether a list item sits in anything but a list, at any depth. */
+const hasStrayListItem = (node: LexicalNode): boolean =>
+  $isElementNode(node) &&
+  node
+    .getChildren()
+    .some(
+      (child) =>
+        ($isListItemNode(child) && $isListNode(node) === false) ||
+        hasStrayListItem(child)
+    );
 
 const linkEdgeBlocks = "p, li, h1, h2, h3, h4, h5, h6, blockquote, figcaption";
 

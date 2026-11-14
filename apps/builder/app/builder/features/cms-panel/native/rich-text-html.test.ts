@@ -399,12 +399,16 @@ describe("what the editor cannot read as the platform does (W4 verification)", (
 
   // exact-guard round, item 10: a list item the parser leaves with no list
   // around it holds no block or list command
-  test.each(["<p><li>x</li></p>", "<li><p>stray</p></li>"])(
-    "a list item with no list around it reads lossy: %s",
-    (html) => {
-      expect(getRichTextReadOnlyReason(html)).toBe("lossy");
-    }
-  );
+  test.each([
+    "<p><li>x</li></p>",
+    "<li><p>stray</p></li>",
+    // and at any depth (part 3, item 2)
+    "<blockquote><li>x</li></blockquote>",
+    "<h2><li>x</li></h2>",
+    "<ul><li><blockquote><li>x</li></blockquote></li></ul>",
+  ])("a list item with no list around it reads lossy: %s", (html) => {
+    expect(getRichTextReadOnlyReason(html)).toBe("lossy");
+  });
 
   // item 11: a stored address with spaces around it is the same link
   test("a stored href with spaces around it stays editable and is written back as stored", () => {
