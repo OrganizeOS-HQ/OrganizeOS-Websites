@@ -1,7 +1,8 @@
 /**
  * The rich text value's HTML, in and out of the editor (4.3.3.1), with no
- * React: the node set, the export map, the link rules, the read-only rule,
- * the import and the export.
+ * React: the node set, the export map, the node rules, the link rules, the
+ * read-only rule (an exact round trip against the platform's sanitiser and
+ * /v1 nodes, spec V12), the import and the export.
  */
 import {
   $createParagraphNode,
@@ -616,8 +617,8 @@ const markImageEdges = (body: HTMLElement) => {
 
 /**
  * After the import: drops the edge mark from the text, and drops a link left
- * with no children, which Lexical would not load again (so such a value
- * reads lossy rather than locking itself after a save).
+ * with no children, which shows nothing and which the platform's nodes drop
+ * too.
  */
 const tidyImported = (
   nodes: LexicalNode[],
