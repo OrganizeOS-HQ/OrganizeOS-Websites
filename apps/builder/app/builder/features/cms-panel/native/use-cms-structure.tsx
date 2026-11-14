@@ -451,6 +451,9 @@ export const useCmsStructure = ({
         const refusal = mapStructureRead(result.error);
         if (refusal !== undefined && refusal !== "toast") {
           showLineFrom("e20", refusal);
+          // the line is the screen's: New collection closes, so it shows
+          setIsNewOpen(false);
+          pendingCreate.current = undefined;
           return;
         }
         // any other failure: a foreground read shows its line and Retry; a

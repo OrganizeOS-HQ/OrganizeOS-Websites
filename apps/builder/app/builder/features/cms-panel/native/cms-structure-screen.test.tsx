@@ -1152,6 +1152,22 @@ describe("the structure reads and views, from W4's review", () => {
     expect(radio("cms-new-collection", "blog")).not.toBeNull();
   });
 
+  test("a Retry in New collection answered with a refusal closes the dialog, and the screen shows the line (round 5)", async () => {
+    harness.structure.getStructure.mockResolvedValueOnce({
+      error: "unavailable",
+    });
+    mount();
+    await settle();
+    await openNewCollection();
+    harness.structure.getStructure.mockResolvedValueOnce({
+      error: "unauthorized",
+    });
+    await click(buttonByText("Retry", dialog()!));
+    await settle();
+    expect(dialog()).toBeNull();
+    expect(hasText("Signed out of OrganizeOS")).toBe(true);
+  });
+
   test("while Retry's E20 is in flight, New collection shows no options and Create stays disabled (round 4)", async () => {
     harness.structure.getStructure.mockResolvedValueOnce({
       error: "unavailable",
