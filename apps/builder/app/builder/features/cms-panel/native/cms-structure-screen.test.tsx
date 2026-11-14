@@ -1123,3 +1123,17 @@ describe("the focus as views and dialogs close (review)", () => {
     expect(document.activeElement).toBe(byLabel("People menu"));
   });
 });
+
+test("the Fields list fills its tab's width (review)", async () => {
+  mount();
+  await settle();
+  await click(tab("Fields"));
+  const list = document.querySelector<HTMLElement>('[aria-label="Fields"]')!;
+  const panel = list.closest<HTMLElement>('[role="tabpanel"]')!;
+  expect(panel).not.toBeNull();
+  expect(
+    Math.abs(
+      list.getBoundingClientRect().width - panel.getBoundingClientRect().width
+    )
+  ).toBeLessThanOrEqual(1);
+});

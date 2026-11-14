@@ -947,7 +947,11 @@ export const useCmsStructure = ({
           }
         />
       ),
-    fields: <Flex css={{ flexGrow: 1, minHeight: 0 }}>{renderFields()}</Flex>,
+    fields: (
+      <Flex direction="column" css={{ flexGrow: 1, minHeight: 0 }}>
+        {renderFields()}
+      </Flex>
+    ),
   };
 
   // a create answers later than its click: its opening goes through the
