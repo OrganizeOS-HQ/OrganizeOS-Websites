@@ -900,7 +900,13 @@ can be merged with minimal conflict.
     and `localStylesFirst` from `src/shared/style-order.ts`, which the block
     insert imports alone, as `@organizeos/site-components/style-order`) and,
     alone, as `@organizeos/site-components/site-templates/canonical-variables`;
-    neither `components.ts` nor `metas.ts` imports it. The block templates are
+    neither `components.ts` nor `metas.ts` imports it. The guard against a
+    page at a path the platform serves, `PLATFORM_SERVED_PATHS` and
+    `isPlatformServedPath`, is `src/platform-paths.ts` (with
+    `platform-paths.test.ts`), exported alone as
+    `@organizeos/site-components/platform-paths` and listed in
+    `tsconfig.dts.json`; it imports nothing, and `site-templates/platform-paths.ts`
+    re-exports it beside `PLATFORM_PATHS`. The block templates are
     factories, `signupFormTemplate` and `signupFormInlineTemplate` in
     `signup-form.template.tsx`, `fieldTemplate` in
     `signup/field.template.tsx`,
@@ -910,6 +916,7 @@ can be merged with minimal conflict.
     `events/event-card.template.tsx` (`shared/form-tokens.test.ts`). In the
     builder, `features/organizeos-panel/site-templates/`
     (`apply-site-template.ts`, `templates-screen.tsx`,
+    `templates-screen-state.ts`, `screen-parts.tsx`,
     `use-dialog-boundary.ts` and `provisioned-project.ts`, with their tests, `bundled-fonts.node.test.ts`,
     and the preview tool's half, `preview/`: `dump.preview.tsx`,
     `vitest.preview.config.ts`, `stub-api.mjs`, `preview-arguments.mjs` and
@@ -925,7 +932,21 @@ can be merged with minimal conflict.
     (`dropInstanceNames` in `organizeos-font-family.ts` beside it, with
     `organizeos-font-family.test.ts`); one marked import and one marked
     `<TemplatesScreen />` mount in `builder/builder.tsx`, pinned by
-    `overlay.wiring.node.test.ts`; the `instanceIdPrefix` option of
+    `overlay.wiring.node.test.ts`; **the page templates (§9, "Starter
+    pages")**: in the blocks package, `src/starter-pages/` (`types.ts`,
+    `look.ts`, `render.ts`, `check.ts`, `catalog.ts`, `index.ts`, the
+    fixture `__fixtures__/sample/` and their tests), exported as
+    `@organizeos/site-components/starter-pages`, which neither
+    `components.ts` nor `metas.ts` imports (pinned); in the builder,
+    `features/organizeos-panel/starter-pages/` (`insert-starter-page.ts`,
+    `new-page-screen.tsx`, `new-page-screen-state.ts`, with their tests),
+    rendered beside the Templates screen's dialog by `templates-screen.tsx`,
+    and `features/organizeos-panel/unbound-blocks.ts`, the unbound-blocks toast
+    both share; and in `builder/features/pages/pages.tsx` one marked import of
+    `$newPageScreenOpen` and one marked block in New page's `onSelect`, which
+    opens the New page screen instead of setting `$editingPageId` to the
+    new-page sentinel (upstream's `NewPageSettings` stays, unreached), pinned
+    by `overlay.wiring.node.test.ts`; the `instanceIdPrefix` option of
     `completeOrganizeosFragment` in `insert-organizeos-block.ts`;
     `deleteSubtreeMutable` exported from `collection-pages.ts`; and
     `SIGNUP_PAGE_PATH` in `shared/organizeos-preset-ids.ts`, so the browser
@@ -1121,7 +1142,17 @@ can be merged with minimal conflict.
   `project-settings.organizeos.test.ts` beside it), so the Redirects form, an
   import (`redirect-parsers.organizeos.test.ts`) and the runtime operations
   share one rule, for which `packages/project-build/package.json` lists
-  `@organizeos/site-components`.
+  `@organizeos/site-components`; and
+  `packages/project-build/src/runtime/pages.ts`, one marked import of
+  `isPlatformServedPath` from `@organizeos/site-components/platform-paths` and
+  one marked check in `validatePageSettingsGeneralSection`: a page's computed
+  full path that the platform serves gets "The platform uses this path",
+  unless it is the page's own stored path, so a page made there before the
+  guard still saves its other settings (`pages.organizeos.test.ts` beside it;
+  the page settings panel and upstream's create-from-page-template form share
+  the check). `packages/project-build` imports the package only as
+  `./org-script` and `./platform-paths`, which `overlay.wiring.node.test.ts`
+  pins with the import.
   The HTML Embed code check needs no change since 0.309.0: upstream's
   `validateHtmlEmbedCode` (`packages/project-build/src/runtime/html-embed.ts`)
   reads the code with parse5, and
@@ -3542,7 +3573,7 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   passes. It is a backstop to review, not a replacement. It fails a template
   for: a page at `/newsletter` or at `/*` (the 404 page's), a page at a path the
   platform answers itself on the site's host (`PLATFORM_SERVED_PATHS` in
-  `platform-paths.ts`, mirrored from the OrganizeOS repository's
+  `src/platform-paths.ts`, mirrored from the OrganizeOS repository's
   `public-route-allowlist.ts`, `org-host-route.ts` and `middleware.ts`: `/join`,
   `/donate`, `/events/<slug>`, `/auth`, `/org-profile` and the rest, prefixes by
   whole segment; below `/.well-known/`; and the static paths the middleware's
@@ -3880,6 +3911,93 @@ starter templates, listed 2026-11-01 (OrganizeOS plan
   deploy. Until that report is in, the design's rules 3 and 4 (editable
   content in Content Blocks; platform blocks placed, never bound) are unproven
   in a real builder.
+
+**Starter pages** (the builder UI and the help centre call them page
+templates), `src/starter-pages/` in the package and
+`features/organizeos-panel/starter-pages/` in the builder (OrganizeOS design
+`docs/superpowers/specs/2026-11-13-builder-templates-screen-and-page-templates-design.md`
+section 6; plan `docs/superpowers/plans/2026-11-14-builder-templates-c1-new-page.md`):
+one page, written as code, that New page adds to a site with content. The
+catalog (`STARTER_PAGES`) is empty until the first page templates join as
+drafts.
+
+- **New page.** The Pages panel's + menu item sets `$newPageScreenOpen`
+  (one marked block in `pages.tsx`, §7), which opens the **New page screen**
+  (`new-page-screen.tsx`, rendered beside the Templates screen's dialog). It
+  opens only in Design mode, with the pages loaded and the Templates screen
+  not offered; anything else closes it, and it opens fresh. Cards: Blank (an
+  empty 16:10 frame), the listed page templates in catalog order, then drafts
+  with `templateDrafts=1` (`$showTemplateDrafts`, now in
+  `site-templates/templates-screen-state.ts` with the offer, so neither
+  screen imports the other); a page template whose `blocks` is not empty is
+  not offered to an org on the blocks deny list. The screen is 880 by 640
+  with page templates offered, and 448 by 320 with Blank alone, which opens
+  straight into Blank's create view; each is capped by
+  `useDialogBoundarySize`. A card's create view has Back and the card's name
+  (none with Blank alone), Name and Path, one warning line under Path, and
+  Create page, disabled while the path has a problem, the trimmed name is
+  empty, or a create runs. The warnings are upstream's own for a path that is
+  not one, "Another page uses this path" and "The platform uses this path".
+  Escape in a create view returns to the grid; at the grid, or with Blank
+  alone, it closes, as do the close button and an outside click, except while
+  a create runs, when nothing closes it but a mode switch. A second submit in
+  the same tick is ignored (a ref, not the pending state). **Blank** runs
+  upstream's New page form's two runtime operations, `pages.create` then
+  `pages.updateSettings`, with upstream's form defaults, the name, the path,
+  and the name as its title (upstream's form means the title to follow the
+  name, but its check compares a quoted title with a bare name and never
+  fires); its path follows its name until edited, by upstream's rule. A page
+  template's fields are prefilled with its default name and path, or
+  `nameToPath` after the path when it is taken. Upstream's `NewPageSettings`
+  panel is no longer reached.
+- **The format** (`types.ts`): `id`, `name` (the card), `pageName`, `path`,
+  `title`, `description`, `status`, `picture` (a file of `images`, which holds
+  only it), `blocks` (the platform blocks it places, so the screen can hide
+  it without rendering it) and `body(context)`, given `placeBlock`, `look`
+  (the site's kit style) and `image()`, an Image's props with the alt text
+  only, so the canvas draws the builder's placeholder. A body carries no
+  style and no nav or footer.
+- **The look** (`look.ts`): `NEUTRAL_LOOK` (6px buttons at 600, headings at
+  700, the kit's name sizes) and `neutralBodyStyles()`. A page template is
+  drawn in the recorded site template's `look` (`starterLook`, from
+  `projectSettings.organizeos.siteTemplate`), else `NEUTRAL_LOOK`.
+- **The render and the check** share the site templates' per-page code,
+  exported from `site-templates/render.ts` (`renderPageBody`) and `check.ts`
+  (`checkPageRules`, `checkMediaQueries`, `findPagePathProblem`,
+  `findPageTextProblems` and the describe helpers). `checkStarterPage` runs
+  those rules under `NEUTRAL_LOOK` and every catalog template's `look`
+  (`catalog.test.ts`), and its own: no section labelled Nav or Footer, no page
+  link, a default path that is not empty, `/newsletter`, `/*` or platform
+  served, the picture in `images` and nothing else there, no style on the
+  body, `blocks` equal to what the body places, and no asset on the page.
+  `starter-pages/` imports the site-templates folder by module, never its
+  barrel or catalog (pinned).
+- **Adding a page template** (`insert-starter-page.ts`): `insertStarterPage`
+  renders it, then writes `insertStarterPageMutable` in one staged commit, one
+  undo step, and selects the page. `findStarterInsertRefusal` refuses, writing
+  nothing, an invalid path or empty name (the row is written directly, so
+  `pages.create`'s checks are made here), a path taken in the root folder, a
+  platform-served path, or a page template holding a Resource; the runtime's
+  refusal is surfaced as the apply surfaces it. The write: the blank canonical
+  values in fill mode when the site has none; the body by
+  `insertWebstudioFragmentCopy` with `conflictResolution: "ours"`, so the
+  site's tokens win and no block token is written; copies of Home's nav (its
+  body's first child, labelled `Nav` or `Nav: …`, tagged `nav` or `header`, or
+  a Slot whose shared content starts with one) and footer (the last child, by
+  the same rules, never the nav again), by `extractWebstudioFragment` and
+  `copyWebstudioFragmentMutable` scoped to the new body, first and last; the
+  copies' `#` links rewritten to Home (`/#why`) on a new fragment, never on
+  Home's own props, and never inside a Slot's shared content, so a Slot nav's
+  in-page links on the new page point at anchors it lacks (a known limit); a
+  copied platform block as the builder's paste copies it; Home body's local
+  declarations on the new body, or `neutralBodyStyles()`, Home body's tokens
+  staying Home's; the row (name, path, the page template's title and
+  description, `excludePageFromSearch: "false"`) last in the root folder; and
+  the placed blocks bound as a site template's, one unbound-blocks toast
+  (`unbound-blocks.ts`) naming any that could not be. The page is never added
+  to a nav or footer. Forms placed by a page template get their site forms
+  with the forms work (fork PR 2b's helper), wired in with the first page
+  templates.
 
 **Shipping in published sites**, `packages/cli/src/organizeos-components.ts`:
 

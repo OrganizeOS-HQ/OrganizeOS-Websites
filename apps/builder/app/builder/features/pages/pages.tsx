@@ -79,6 +79,9 @@ import { isPathnamePattern } from "@webstudio-is/project-build/runtime";
 import { executeRuntimeMutation } from "~/shared/instance-utils/data";
 import { $selectedPage } from "~/shared/nano-states";
 import { selectPage } from "~/shared/nano-states";
+// OrganizeOS fork: New page opens the New page screen (docs/ORGANIZEOS-FORK.md
+// section 7; organizeos-panel/starter-pages/new-page-screen.tsx)
+import { $newPageScreenOpen } from "~/builder/features/organizeos-panel/starter-pages/new-page-screen-state";
 
 const ItemSuffix = ({
   itemId,
@@ -604,9 +607,11 @@ const CreateItemMenu = ({
             event.preventDefault();
             selectMenuItem(() => {
               $editingTemplateId.set(undefined);
-              $editingPageId.set(
-                editingItemId === newPageId ? undefined : newPageId
-              );
+              // OrganizeOS fork: the New page screen (Blank and the page
+              // templates) in place of the new-page settings panel
+              // (docs/ORGANIZEOS-FORK.md section 7)
+              $editingPageId.set(undefined);
+              $newPageScreenOpen.set(true);
             });
           }}
         >

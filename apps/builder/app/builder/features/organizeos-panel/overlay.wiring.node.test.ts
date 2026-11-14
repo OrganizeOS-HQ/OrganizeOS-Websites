@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 
@@ -353,6 +353,115 @@ describe("the Variables edits in project-build", () => {
       /record\.type === "fontFamily" && Array\.isArray\(record\.value\)/
     );
     expect(styles).toMatch(/export const getCssVariableUsageCounts = /);
+  });
+});
+
+describe("the path guard in project-build", () => {
+  test("pages.ts takes isPlatformServedPath from the narrow export and refuses with the message", () => {
+    const pages = projectBuild("runtime/pages.ts");
+    expect(pages).toMatch(
+      /import \{ isPlatformServedPath \} from "@organizeos\/site-components\/platform-paths";/
+    );
+    expect(pages).toContain('"The platform uses this path"');
+  });
+
+  test("project-build imports the package only as ./org-script or ./platform-paths", () => {
+    const root = fileURLToPath(
+      new URL("../../../../../../packages/project-build/src/", import.meta.url)
+    );
+    const files = readdirSync(root, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.tsx?$/.test(file))
+      .filter((file) => /\.test\.tsx?$/.test(file) === false);
+    const specifiers = new Set(
+      files.flatMap((file) =>
+        Array.from(
+          readFileSync(`${root}${file}`, "utf8").matchAll(
+            /["'](@organizeos\/site-components(?:\/[^"']*)?)["']/g
+          ),
+          (match) => match[1]
+        )
+      )
+    );
+    expect(specifiers.size).toBeGreaterThan(0);
+    for (const specifier of specifiers) {
+      expect([
+        "@organizeos/site-components/org-script",
+        "@organizeos/site-components/platform-paths",
+      ]).toContain(specifier);
+    }
+  });
+});
+
+const siteComponents = (path: string) =>
+  read(`../../../../../../packages/sdk-components-organizeos/src/${path}`);
+
+describe("the starter pages stay out of published sites", () => {
+  test("components.ts and metas.ts import neither site-templates nor starter-pages", () => {
+    for (const file of ["components.ts", "metas.ts"]) {
+      expect(siteComponents(file)).not.toMatch(/site-templates|starter-pages/);
+    }
+  });
+
+  test("starter-pages imports the site-templates folder only by module, never its barrel or catalog", () => {
+    const root = fileURLToPath(
+      new URL(
+        "../../../../../../packages/sdk-components-organizeos/src/starter-pages/",
+        import.meta.url
+      )
+    );
+    const files = readdirSync(root, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.tsx?$/.test(file))
+      .filter((file) => /\.test\.tsx?$/.test(file) === false);
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const source = readFileSync(`${root}${file}`, "utf8");
+      for (const barrel of [
+        'from "../site-templates"',
+        'from "../site-templates/index"',
+        'from "../site-templates/catalog"',
+      ]) {
+        expect(source, file).not.toContain(barrel);
+      }
+    }
+  });
+});
+
+describe("the Pages panel's New page", () => {
+  const pagesPanel = read("../pages/pages.tsx");
+
+  test("pages.tsx imports $newPageScreenOpen from its own module", () => {
+    expect(pagesPanel).toMatch(
+      /import\s*\{\s*\$newPageScreenOpen\s*\}\s*from\s*"~\/builder\/features\/organizeos-panel\/starter-pages\/new-page-screen-state";/
+    );
+  });
+
+  test("New page opens the New page screen, not the new-page settings panel", () => {
+    expect(pagesPanel).toMatch(
+      /selectMenuItem\(\(\) => \{\s*\$editingTemplateId\.set\(undefined\);\s*\$editingPageId\.set\(undefined\);\s*\$newPageScreenOpen\.set\(true\);\s*\}\);\s*\}\}\s*>\s*New page\s*<\/DropdownMenuItem>/
+    );
+    expect(pagesPanel.match(/\$newPageScreenOpen\.set\(true\)/g)).toHaveLength(
+      1
+    );
+    expect(pagesPanel).not.toMatch(
+      /editingItemId === newPageId \? undefined : newPageId/
+    );
+  });
+
+  test("the Templates screen renders the New page screen once", () => {
+    const screen = read("./site-templates/templates-screen.tsx");
+    expect(screen.match(/<NewPageScreen \/>/g)).toHaveLength(1);
+  });
+
+  test("the starter pages never import the Templates screen itself", () => {
+    const root = fileURLToPath(new URL("./starter-pages/", import.meta.url));
+    const files = readdirSync(root, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.tsx?$/.test(file))
+      .filter((file) => /\.test\.tsx?$/.test(file) === false);
+    for (const file of files) {
+      expect(readFileSync(`${root}${file}`, "utf8"), file).not.toMatch(
+        /site-templates\/templates-screen"/
+      );
+    }
   });
 });
 

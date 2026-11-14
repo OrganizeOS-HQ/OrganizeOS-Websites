@@ -8,6 +8,7 @@ import { BLANK_CANONICAL_VALUES } from "./canonical-variables";
 import type { BlockKey } from "./place-block";
 import {
   findPageAssetIds,
+  renderPageBody,
   renderSiteTemplate,
   type RenderedPage,
 } from "./render";
@@ -627,5 +628,24 @@ describe("findPageAssetIds", () => {
     expect(findPageAssetIds(pages)).toEqual(
       new Set(["asset-hero", "asset-team"])
     );
+  });
+});
+
+describe("renderPageBody", () => {
+  test("renderPageBody names the page in a body's error", () => {
+    expect(() =>
+      renderPageBody("x", () => {
+        throw new Error("boom");
+      })
+    ).toThrow('Page "x": boom');
+  });
+
+  test("renderPageBody returns the placements", () => {
+    const SignupForm: BlockKey = "@organizeos/site-components:SignupForm";
+    const { fragment, placements } = renderPageBody("x", (placeBlock) => (
+      <ws.element ws:tag="body">{placeBlock(SignupForm, "signup")}</ws.element>
+    ));
+    expect(placements).toEqual([{ key: SignupForm, rootId: "signup" }]);
+    expect(fragment.instances.some((item) => item.id === "signup")).toBe(true);
   });
 });

@@ -174,12 +174,12 @@ const findMediaQueryProblem = (
     : findBreakpointProblem(media);
 };
 
-const pageName = (key: string) => `Page "${key}"`;
+export const pageName = (key: string) => `Page "${key}"`;
 
 // "@organizeos/site-components:SignupForm" reads as "SignupForm".
-const componentName = (component: string) => component.split(":").pop();
+export const componentName = (component: string) => component.split(":").pop();
 
-const describeInstance = (instance: Instance) => {
+export const describeInstance = (instance: Instance) => {
   if (instance.label) {
     return `"${instance.label}"`;
   }
@@ -190,7 +190,7 @@ const describeInstance = (instance: Instance) => {
 };
 
 /** The instance a prop is on, or its id when the fragment lacks it. */
-const describePropOwner = (
+export const describePropOwner = (
   fragment: WebstudioFragment,
   instanceId: Instance["id"]
 ) => {
@@ -201,32 +201,44 @@ const describePropOwner = (
 const deniedWords = (text: string) =>
   denyPatterns.flatMap((pattern) => pattern.exec(text)?.[0] ?? []);
 
+/**
+ * What is wrong with page `key` sitting at `path`, or nothing: the sign-up
+ * page's path, the 404 page's, one the platform serves, or not a page path
+ * by the builder's page settings' rules. Home's `""` is fine here. Shared
+ * with the starter pages' check.
+ */
+export const findPagePathProblem = (
+  key: string,
+  path: string
+): string | undefined => {
+  if (path === signupPagePath) {
+    return `${pageName(key)} is at ${signupPagePath}, which belongs to the org's sign-up page`;
+  }
+  if (path === notFoundPagePath) {
+    return `${pageName(key)} is at ${notFoundPagePath}, which belongs to the 404 page`;
+  }
+  if (isPlatformServedPath(path)) {
+    return `${pageName(key)} is at ${path}, which the platform serves on the site's own host, so the page would never show`;
+  }
+  if (path !== "") {
+    // the rules the builder's page settings hold a path to
+    const parsed = pagePath.safeParse(path);
+    if (parsed.success === false) {
+      const reasons = parsed.error.issues.map((issue) => issue.message);
+      return `${pageName(key)} has the path "${path}", which is not a page path (${reasons.join("; ")})`;
+    }
+  }
+  return undefined;
+};
+
 const checkPagePaths = (template: SiteTemplate): string[] => {
   const violations: string[] = [];
   const keysByPath = new Map<string, string[]>();
   for (const page of template.pages) {
     keysByPath.set(page.path, [...(keysByPath.get(page.path) ?? []), page.key]);
-    if (page.path === signupPagePath) {
-      violations.push(
-        `${pageName(page.key)} is at ${signupPagePath}, which belongs to the org's sign-up page`
-      );
-    } else if (page.path === notFoundPagePath) {
-      violations.push(
-        `${pageName(page.key)} is at ${notFoundPagePath}, which belongs to the 404 page`
-      );
-    } else if (isPlatformServedPath(page.path)) {
-      violations.push(
-        `${pageName(page.key)} is at ${page.path}, which the platform serves on the site's own host, so the page would never show`
-      );
-    } else if (page.path !== "") {
-      // the rules the builder's page settings hold a path to
-      const parsed = pagePath.safeParse(page.path);
-      if (parsed.success === false) {
-        const reasons = parsed.error.issues.map((issue) => issue.message);
-        violations.push(
-          `${pageName(page.key)} has the path "${page.path}", which is not a page path (${reasons.join("; ")})`
-        );
-      }
+    const problem = findPagePathProblem(page.key, page.path);
+    if (problem !== undefined) {
+      violations.push(problem);
     }
   }
   for (const [path, keys] of keysByPath) {
@@ -241,17 +253,22 @@ const checkPagePaths = (template: SiteTemplate): string[] => {
   return violations;
 };
 
+/** A page's title and description against the neutrality deny list. */
+export const findPageTextProblems = (
+  page: Pick<SiteTemplatePage, "key" | "title" | "description">
+): string[] => [
+  ...deniedWords(page.title).map(
+    (word) =>
+      `${pageName(page.key)}: the title says "${word}", which is on the neutrality deny list`
+  ),
+  ...deniedWords(page.description).map(
+    (word) =>
+      `${pageName(page.key)}: the description says "${word}", which is on the neutrality deny list`
+  ),
+];
+
 const checkPageText = (template: SiteTemplate): string[] =>
-  template.pages.flatMap((page) => [
-    ...deniedWords(page.title).map(
-      (word) =>
-        `${pageName(page.key)}: the title says "${word}", which is on the neutrality deny list`
-    ),
-    ...deniedWords(page.description).map(
-      (word) =>
-        `${pageName(page.key)}: the description says "${word}", which is on the neutrality deny list`
-    ),
-  ]);
+  template.pages.flatMap(findPageTextProblems);
 
 // The apply routine uploads an image by its URL, and fetches a font from
 // its URL, resolved against the builder's origin. A file small enough for
@@ -399,7 +416,7 @@ const placedBlockIds = (page: RenderedPage) =>
   );
 
 /** The page's body: the fragment's one root, when it is a <body>. */
-const bodyOf = (fragment: WebstudioFragment) => {
+export const bodyOf = (fragment: WebstudioFragment) => {
   const [root, ...otherRoots] = fragment.children;
   const instance =
     root?.type === "id" && otherRoots.length === 0
@@ -474,8 +491,8 @@ const describeElement = (element: JSX.Element) => {
 // kit section's `styles` among them, and their tokens') and in a placed
 // block's root style, where placeBlock's `style` goes. A placed block's
 // subtree is its own.
-const checkMediaQueries = (
-  page: SiteTemplatePage,
+export const checkMediaQueries = (
+  page: Pick<SiteTemplatePage, "key">,
   body: JSX.Element,
   placements: BlockPlacement[]
 ): string[] => {
@@ -1030,6 +1047,32 @@ const checkLook = (template: SiteTemplate): string[] =>
     template.look?.[field] === undefined ? [`Look: ${field} is not set`] : []
   );
 
+/**
+ * The rules one rendered page is held to on its own: blocks only through
+ * placeBlock, links, canonical styles, band resets, images, one body with one
+ * h1 and no Resources, section labels, one events block per section and the
+ * deny list. The page-link rule runs only with the template's `pageIds`;
+ * the starter pages, which have none, hold links by their own rule.
+ */
+export const checkPageRules = (
+  page: RenderedPage,
+  pageIds?: Set<string>
+): string[] => {
+  const blockIds = placedBlockIds(page);
+  return [
+    ...checkBlocks(page),
+    ...(pageIds === undefined ? [] : checkPageLinks(page, pageIds)),
+    ...checkPathLinks(page, blockIds),
+    ...checkStyles(page, blockIds),
+    ...checkBandResets(page, blockIds),
+    ...checkImageInstances(page, blockIds),
+    ...checkFragment(page),
+    ...checkSectionLabels(page),
+    ...checkEventBlocks(page),
+    ...checkFragmentText(page),
+  ];
+};
+
 export const checkSiteTemplate = (template: SiteTemplate): string[] => {
   const violations = [
     ...checkPagePaths(template),
@@ -1069,19 +1112,7 @@ export const checkSiteTemplate = (template: SiteTemplate): string[] => {
     ...checkPreviewEventCover(template, pages)
   );
   for (const page of pages) {
-    const blockIds = placedBlockIds(page);
-    violations.push(
-      ...checkBlocks(page),
-      ...checkPageLinks(page, pageIds),
-      ...checkPathLinks(page, blockIds),
-      ...checkStyles(page, blockIds),
-      ...checkBandResets(page, blockIds),
-      ...checkImageInstances(page, blockIds),
-      ...checkFragment(page),
-      ...checkSectionLabels(page),
-      ...checkEventBlocks(page),
-      ...checkFragmentText(page)
-    );
+    violations.push(...checkPageRules(page, pageIds));
   }
   return violations;
 };
