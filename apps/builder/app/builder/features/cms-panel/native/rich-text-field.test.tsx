@@ -11,6 +11,7 @@ import {
   $createNodeSelection,
   $getRoot,
   $setSelection,
+  FORMAT_TEXT_COMMAND,
   type ElementNode,
   type LexicalEditor,
   type TextNode,
@@ -291,7 +292,11 @@ test("Bold and a link applied inside a code block do not stay: the block shows a
     });
   });
   await settle();
-  await click(byLabel("Bold"));
+  expect(byLabel("Bold")?.hasAttribute("disabled")).toBe(true);
+  // the keyboard's Bold
+  await act(async () => {
+    editorOf()!.dispatchCommand(FORMAT_TEXT_COMMAND, "bold");
+  });
   await settle();
   expect(
     editable()!.querySelector("code strong, code b, pre strong, pre b")
