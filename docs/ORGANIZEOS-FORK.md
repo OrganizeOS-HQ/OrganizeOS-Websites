@@ -838,6 +838,7 @@ can be merged with minimal conflict.
     `events/event-card.template.tsx` (`shared/form-tokens.test.ts`). In the
     builder, `features/organizeos-panel/site-templates/`
     (`apply-site-template.ts`, `templates-screen.tsx`,
+    `templates-screen-state.ts`, `screen-parts.tsx`,
     `use-dialog-boundary.ts` and `provisioned-project.ts`, with their tests, `bundled-fonts.node.test.ts`,
     and the preview tool's half, `preview/`: `dump.preview.tsx`,
     `vitest.preview.config.ts`, `stub-api.mjs`, `preview-arguments.mjs` and
@@ -853,7 +854,21 @@ can be merged with minimal conflict.
     (`dropInstanceNames` in `organizeos-font-family.ts` beside it, with
     `organizeos-font-family.test.ts`); one marked import and one marked
     `<TemplatesScreen />` mount in `builder/builder.tsx`, pinned by
-    `overlay.wiring.node.test.ts`; the `instanceIdPrefix` option of
+    `overlay.wiring.node.test.ts`; **the page templates (§9, "Starter
+    pages")**: in the blocks package, `src/starter-pages/` (`types.ts`,
+    `look.ts`, `render.ts`, `check.ts`, `catalog.ts`, `index.ts`, the
+    fixture `__fixtures__/sample/` and their tests), exported as
+    `@organizeos/site-components/starter-pages`, which neither
+    `components.ts` nor `metas.ts` imports (pinned); in the builder,
+    `features/organizeos-panel/starter-pages/` (`insert-starter-page.ts`,
+    `new-page-screen.tsx`, `new-page-screen-state.ts`, with their tests),
+    rendered beside the Templates screen's dialog by `templates-screen.tsx`,
+    and `features/organizeos-panel/unbound-blocks.ts`, the unbound-blocks toast
+    both share; and in `builder/features/pages/pages.tsx` one marked import of
+    `$newPageScreenOpen` and one marked block in New page's `onSelect`, which
+    opens the New page screen instead of setting `$editingPageId` to the
+    new-page sentinel (upstream's `NewPageSettings` stays, unreached), pinned
+    by `overlay.wiring.node.test.ts`; the `instanceIdPrefix` option of
     `completeOrganizeosFragment` in `insert-organizeos-block.ts`;
     `deleteSubtreeMutable` exported from `collection-pages.ts`; and
     `SIGNUP_PAGE_PATH` in `shared/organizeos-preset-ids.ts`, so the browser

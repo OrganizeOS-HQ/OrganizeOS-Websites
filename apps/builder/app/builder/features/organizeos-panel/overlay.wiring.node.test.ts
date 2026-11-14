@@ -425,6 +425,45 @@ describe("the starter pages stay out of published sites", () => {
   });
 });
 
+describe("the Pages panel's New page", () => {
+  const pagesPanel = read("../pages/pages.tsx");
+
+  test("pages.tsx imports $newPageScreenOpen from its own module", () => {
+    expect(pagesPanel).toMatch(
+      /import\s*\{\s*\$newPageScreenOpen\s*\}\s*from\s*"~\/builder\/features\/organizeos-panel\/starter-pages\/new-page-screen-state";/
+    );
+  });
+
+  test("New page opens the New page screen, not the new-page settings panel", () => {
+    expect(pagesPanel).toMatch(
+      /selectMenuItem\(\(\) => \{\s*\$editingTemplateId\.set\(undefined\);\s*\$editingPageId\.set\(undefined\);\s*\$newPageScreenOpen\.set\(true\);\s*\}\);\s*\}\}\s*>\s*New page\s*<\/DropdownMenuItem>/
+    );
+    expect(pagesPanel.match(/\$newPageScreenOpen\.set\(true\)/g)).toHaveLength(
+      1
+    );
+    expect(pagesPanel).not.toMatch(
+      /editingItemId === newPageId \? undefined : newPageId/
+    );
+  });
+
+  test("the Templates screen renders the New page screen once", () => {
+    const screen = read("./site-templates/templates-screen.tsx");
+    expect(screen.match(/<NewPageScreen \/>/g)).toHaveLength(1);
+  });
+
+  test("the starter pages never import the Templates screen itself", () => {
+    const root = fileURLToPath(new URL("./starter-pages/", import.meta.url));
+    const files = readdirSync(root, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.tsx?$/.test(file))
+      .filter((file) => /\.test\.tsx?$/.test(file) === false);
+    for (const file of files) {
+      expect(readFileSync(`${root}${file}`, "utf8"), file).not.toMatch(
+        /site-templates\/templates-screen"/
+      );
+    }
+  });
+});
+
 describe("the Variables export in shared/instance-utils/data.ts", () => {
   test("canCommitWebstudioData is exported", () => {
     expect(read("../../../shared/instance-utils/data.ts")).toMatch(

@@ -41,6 +41,7 @@ import {
   startBlankMutable,
 } from "./apply-site-template";
 import { useDialogBoundarySize } from "./use-dialog-boundary";
+import { NewPageScreen } from "../starter-pages/new-page-screen";
 import {
   $isTemplatesScreenOffered,
   $showTemplateDrafts,
@@ -443,6 +444,8 @@ export const TemplatesScreen = () => {
           </DialogTitle>
         </DialogContent>
       </Dialog>
+      {/* the Pages panel's New page, beside it (starter-pages/) */}
+      <NewPageScreen />
     </>
   );
 };

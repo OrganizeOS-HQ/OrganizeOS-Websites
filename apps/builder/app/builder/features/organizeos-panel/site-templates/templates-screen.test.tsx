@@ -44,6 +44,7 @@ import {
   writeCanonicalVariablesMutable,
 } from "./apply-site-template";
 import { $isTemplatesScreenOffered, TemplatesScreen } from "./templates-screen";
+import { $newPageScreenOpen } from "../starter-pages/new-page-screen-state";
 
 // The catalog is empty until a template is written; the tests fill it.
 const { catalog, toastError } = vi.hoisted(() => ({
@@ -372,6 +373,8 @@ beforeEach(() => {
   $builderMode.set("design");
   $planFeatures.set({ ...defaultPlanFeatures, allowContentMode: true });
   $dataLoadingState.set("loaded");
+  // the New page screen beside it stays closed: dialog() reads the first
+  $newPageScreenOpen.set(false);
   vi.mocked(applySiteTemplate).mockReset();
   vi.mocked(applySiteTemplate).mockImplementation(async (template) =>
     applied(template)
