@@ -758,6 +758,16 @@ can be merged with minimal conflict.
   `features/publish/organizeos-publish-targets.ts` for both. The Recipients
   validation error is the contract message above, with no pointer sentence. Upstream's e2e spec `project-settings-runtime.[shard-8].e2e.ts`
   still names "Project settings"; it is not run (D14).
+- **Sections closed by default (2026-11-14).** The Navigator's "CSS
+  preview" and the style panel's "Advanced" section start closed; the person
+  opens them when needed. Marked: `defaultOpen` in
+  `builder/shared/collapsible-section.tsx` (a section that starts closed keeps
+  its own state when the style panel opens every section), with
+  `builder/shared/collapsible-section.organizeos.test.tsx`; one prop in
+  `features/navigator/css-preview.tsx`; in
+  `features/style-panel/sections/advanced/advanced.tsx`, open by default only
+  in Advanced mode; and `features/style-panel/style-panel.tsx`, whose Advanced
+  mode opens the Advanced section.
 - **The OrganizeOS blocks (§9).** The `packages/sdk-components-organizeos`
   package, `@organizeos/site-components`, a `workspace:*` dependency in
   `apps/builder/package.json` and `packages/cli/package.json`, and so in

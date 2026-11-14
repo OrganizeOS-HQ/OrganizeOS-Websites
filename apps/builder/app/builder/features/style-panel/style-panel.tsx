@@ -182,7 +182,14 @@ export const StylePanel = () => {
       <ScrollArea>
         <CollapsibleProvider
           accordion={stylePanelMode === "focus"}
-          initialOpen={stylePanelMode === "focus" ? "Layout" : "*"}
+          initialOpen={
+            stylePanelMode === "focus"
+              ? "Layout"
+              : // OrganizeOS fork: Advanced mode opens the Advanced section
+                stylePanelMode === "advanced"
+                ? "Advanced"
+                : "*"
+          }
         >
           {all}
         </CollapsibleProvider>

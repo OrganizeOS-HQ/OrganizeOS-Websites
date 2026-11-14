@@ -23,6 +23,7 @@ import { CssEditor } from "../../../../shared/css-editor";
 import { $advancedStyleDeclarations } from "./stores";
 import { $selectedInstanceKey } from "~/shared/nano-states";
 import { useReadonly } from "../../shared/readonly";
+import { $settings } from "~/builder/shared/client-settings";
 
 // Only here to keep the same section module interface
 export const properties = [];
@@ -35,7 +36,13 @@ const AdvancedStyleSection = (props: {
   children: ReactNode;
 }) => {
   const { label, readonly, children, properties, onAdd } = props;
-  const [isOpen, setIsOpen] = useOpenState(label);
+  // OrganizeOS fork: closed until the person opens it, except in Advanced mode
+  const { stylePanelMode } = useStore($settings);
+  const [isOpen, setIsOpen] = useOpenState(
+    label,
+    undefined,
+    stylePanelMode === "advanced"
+  );
   const styles = useComputedStyles(properties);
   return (
     <CollapsibleSectionRoot
