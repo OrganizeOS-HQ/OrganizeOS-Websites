@@ -33,7 +33,6 @@ import { useMount } from "~/shared/hook-utils/use-mount";
 import { $pages } from "~/shared/sync/data-stores";
 import { TruncatedText } from "../../cms-panel/native/truncated-text";
 import { updateWebstudioDataStaged } from "../staged-data";
-import { unboundBlocksMessage } from "../unbound-blocks";
 import {
   type ApplyOutcome,
   type ApplyResult,
@@ -42,6 +41,8 @@ import {
 } from "./apply-site-template";
 import { useDialogBoundarySize } from "./use-dialog-boundary";
 import { NewPageScreen } from "../starter-pages/new-page-screen";
+// the unbound-blocks toast, shared with the page templates
+import { unboundBlocksMessage } from "../unbound-blocks";
 import {
   $isTemplatesScreenOffered,
   $showTemplateDrafts,
