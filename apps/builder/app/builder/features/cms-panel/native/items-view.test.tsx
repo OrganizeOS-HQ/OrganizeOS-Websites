@@ -1492,12 +1492,22 @@ describe("drag reorder (Task 18)", () => {
     mount();
     await settle();
     focusRow("a");
-    await altMove("ArrowDown");
-    await altMove("ArrowDown");
-    expect(itemSlugs()).toEqual(["b", "c", "a"]);
-    await wait(300);
-    expect(fake.reorderItems).not.toHaveBeenCalled();
-    await wait(400);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await altMove("ArrowDown");
+      await altMove("ArrowDown");
+      expect(itemSlugs()).toEqual(["b", "c", "a"]);
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(fake.reorderItems).not.toHaveBeenCalled();
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
     expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]]);
   });
 
@@ -1506,13 +1516,26 @@ describe("drag reorder (Task 18)", () => {
     mount();
     await settle();
     focusRow("a");
-    await altMove("ArrowDown");
-    await wait(300);
-    await altMove("ArrowDown");
-    await wait(300);
-    // 600 ms after the first move, 300 ms after the last: nothing yet
-    expect(fake.reorderItems).not.toHaveBeenCalled();
-    await wait(300);
+    // the pause's clock alone is faked, so a slow runner cannot stretch it
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await altMove("ArrowDown");
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      await altMove("ArrowDown");
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      // 600 ms after the first move, 300 ms after the last: nothing yet
+      expect(fake.reorderItems).not.toHaveBeenCalled();
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
     expect(reorderCalls()).toEqual([[ROW_IDS[1], ROW_IDS[2], ROW_IDS[0]]]);
   });
 
