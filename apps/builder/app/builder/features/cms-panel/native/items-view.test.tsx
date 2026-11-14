@@ -909,6 +909,15 @@ describe("Filter and Sort (Task 16)", () => {
     );
     expect(heading).not.toBeUndefined();
     expect(truncated(filterMenu, `Any ${longKey}`)).not.toBeUndefined();
+    await act(async () => userEvent.hover(heading!));
+    await vi.waitFor(
+      () => {
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+          longKey
+        );
+      },
+      { timeout: 3000 }
+    );
   });
 });
 
