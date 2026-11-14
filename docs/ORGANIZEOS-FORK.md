@@ -1850,8 +1850,16 @@ allow-top-navigation-by-user-activation"` (`allow-modals` so the frame's
     item in its order and at its level; and Code holds plain text (its
     images and figures move to a paragraph after the block, its paragraphs
     become lines, no format or link applies inside it, a paste into it
-    inserts plain text, and the marks and Link are disabled there). A link
-    never holds an image the Link control adds. Save sends each changed
+    inserts plain text, and the marks and Link are disabled there). A paste
+    or drop that starts in code inserts plain text, its images after the
+    block; blocks pasted at a heading's start go before it. A figure pasted
+    into a nested list item splits every list level, each keeping its type.
+    A paragraph or heading never holds a block. A list type change inside a
+    quote stays in the quote. An edit from a caret on a link first moves the
+    caret into the text. Newlines sent as text (dictation, an input method)
+    become line breaks, and a delete from a soft keyboard with an image
+    selected removes the image. A link never holds an image the Link control
+    adds. Save sends each changed
     rich-text value as written, unless it would reopen read-only: then it
     sends the editor's own write of it, only when that write reopens
     editable and differs from the value only by collapsible whitespace,
