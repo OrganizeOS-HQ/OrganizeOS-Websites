@@ -100,6 +100,11 @@ export const DeleteCollectionDialog = ({
   // a Delete whose outcome is unknown: a later not_found is that delete
   const unknownOutcome = useRef(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // the row whose menu opened the dialog, for the focus on close
+  const lastSlug = useRef<string | undefined>(undefined);
+  if (collection !== undefined) {
+    lastSlug.current = collection.slug;
+  }
   const blockedBy = collection?.referencedBy ?? [];
   useEffect(() => {
     unknownOutcome.current = false;
@@ -158,6 +163,21 @@ export const DeleteCollectionDialog = ({
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           cancelRef.current?.focus();
+        }}
+        // the opener was a menu item, gone by now: its row's menu takes the
+        // focus, while the row is listed
+        onCloseAutoFocus={(event) => {
+          const slug = lastSlug.current;
+          const trigger =
+            slug === undefined
+              ? null
+              : document.querySelector<HTMLElement>(
+                  `[data-cms-collection="${CSS.escape(slug)}"] [data-cms-row-menu] button`
+                );
+          if (trigger !== null) {
+            event.preventDefault();
+            trigger.focus();
+          }
         }}
       >
         {blockedBy.length > 0 && (

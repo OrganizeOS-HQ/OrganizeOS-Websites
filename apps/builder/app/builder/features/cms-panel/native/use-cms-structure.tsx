@@ -556,6 +556,57 @@ export const useCmsStructure = ({
     }
   }, [view, viewCollectionId, collectionId, closeView]);
 
+  // The focus: a view that opens takes it on Back, unless the view already
+  // holds it; a view that closes gives it to the row it was opened from
+  const shownView = useRef<
+    { view: CmsStructureView; slug?: string } | undefined
+  >(undefined);
+  useEffect(() => {
+    const previous = shownView.current;
+    if (previous?.view === view) {
+      return;
+    }
+    shownView.current =
+      view === undefined
+        ? undefined
+        : {
+            view,
+            slug: collections.find((entry) => entry.id === viewCollectionId)
+              ?.slug,
+          };
+    const frame = requestAnimationFrame(() => {
+      const active = document.activeElement;
+      const lost = active === null || active === document.body;
+      if (view !== undefined) {
+        const header = document.querySelector("[data-cms-structure-header]");
+        const holder = header?.parentElement;
+        if (header !== null && (lost || holder?.contains(active) === false)) {
+          header.querySelector<HTMLElement>('[aria-label="Back"]')?.focus();
+        }
+        return;
+      }
+      if (previous === undefined || lost === false) {
+        return;
+      }
+      const target =
+        previous.view.type === "field" ? previous.view.target : undefined;
+      const selector =
+        target === undefined
+          ? previous.slug === undefined
+            ? undefined
+            : `[data-cms-collection="${CSS.escape(previous.slug)}"] button`
+          : "key" in target
+            ? `[data-cms-field-row="${CSS.escape(target.key)}"] button`
+            : '[aria-label="Add field"]';
+      if (selector !== undefined) {
+        document.querySelector<HTMLElement>(selector)?.focus();
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+    // the list and the open collection are read as they are on the change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+
   /** Discard ran an action that leaves the view open: it shows saved values. */
   const resetView = useCallback(() => {
     clearViewDirty();

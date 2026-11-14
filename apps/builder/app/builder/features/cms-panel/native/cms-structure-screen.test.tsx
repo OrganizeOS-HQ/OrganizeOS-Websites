@@ -1070,3 +1070,56 @@ describe("the structure reads and views, from W4's review", () => {
     expect(hasText("No access to the CMS")).toBe(false);
   });
 });
+
+describe("the focus as views and dialogs close (review)", () => {
+  const settleFrame = async () => {
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    await settle();
+  };
+
+  test("a field's view takes the focus; Back gives it to that field's row", async () => {
+    mount();
+    await settle();
+    await click(tab("Fields"));
+    await click(fieldRow("summary")!.querySelector("button"));
+    await settleFrame();
+    const header = document.querySelector("[data-cms-structure-header]");
+    expect(header).not.toBeNull();
+    expect(header!.parentElement!.contains(document.activeElement)).toBe(true);
+    await click(byLabel("Back"));
+    await settleFrame();
+    expect(document.activeElement).toBe(
+      fieldRow("summary")!.querySelector("button")
+    );
+  });
+
+  test("the settings' Back gives the focus to the collection's row", async () => {
+    mount();
+    await settle();
+    await click(tab("Collections"));
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+    await settleFrame();
+    expect(document.activeElement).toBe(byLabel("Back"));
+    await click(byLabel("Back"));
+    await settleFrame();
+    expect(document.activeElement).toBe(
+      document.querySelector('[data-cms-collection="posts"] button')
+    );
+  });
+
+  test("Cancel in the delete dialog gives the focus to the row's menu", async () => {
+    answerBoth();
+    mount();
+    await settle();
+    await click(byLabel("People menu"));
+    await click(menuItem("Delete"));
+    await click(
+      buttonByText("Cancel", document.querySelector('[role="dialog"]')!)
+    );
+    await settleFrame();
+    expect(document.activeElement).toBe(byLabel("People menu"));
+  });
+});
