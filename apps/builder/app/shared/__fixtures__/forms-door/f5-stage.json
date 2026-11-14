@@ -1,0 +1,46 @@
+{
+  "description": "F5: a publish stages its site forms; a CRM form is not_site_form. Paths are relative to /api/internal/websites2/forms/{organizationId}.",
+  "request": {
+    "method": "PUT",
+    "path": "/builds/build-1/fields",
+    "body": {
+      "forms": [
+        {
+          "formId": "51000000-0000-4000-8000-000000000001",
+          "fields": [
+            {
+              "key": "email",
+              "required": true
+            },
+            {
+              "key": "phone",
+              "required": false
+            }
+          ]
+        },
+        {
+          "formId": "b0000000-0000-4000-8000-000000000001",
+          "fields": [
+            {
+              "key": "email",
+              "required": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "status": 200,
+  "answer": {
+    "forms": [
+      {
+        "formId": "51000000-0000-4000-8000-000000000001",
+        "outcome": "staged"
+      },
+      {
+        "formId": "b0000000-0000-4000-8000-000000000001",
+        "outcome": "not_site_form"
+      }
+    ]
+  }
+}

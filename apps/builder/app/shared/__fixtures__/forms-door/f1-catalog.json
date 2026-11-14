@@ -1,0 +1,78 @@
+{
+  "description": "F1: the membership catalog and, to an owner or admin, the org lists. Paths are relative to /api/internal/websites2/forms/{organizationId}.",
+  "request": {
+    "method": "GET",
+    "path": "/catalog?kind=membership"
+  },
+  "status": 200,
+  "answer": {
+    "fields": [
+      {
+        "key": "email",
+        "label": "Email",
+        "type": "email",
+        "locked": true,
+        "custom": false
+      },
+      {
+        "key": "name",
+        "label": "Full name",
+        "type": "text",
+        "locked": true,
+        "custom": false
+      },
+      {
+        "key": "phone",
+        "label": "Phone",
+        "type": "phone",
+        "locked": false,
+        "custom": false
+      },
+      {
+        "key": "address_line1",
+        "label": "Address",
+        "type": "text",
+        "locked": false,
+        "custom": false
+      },
+      {
+        "key": "address_line2",
+        "label": "Address line 2",
+        "type": "text",
+        "locked": false,
+        "custom": false
+      },
+      {
+        "key": "city",
+        "label": "City",
+        "type": "text",
+        "locked": false,
+        "custom": false
+      },
+      {
+        "key": "state",
+        "label": "State",
+        "type": "text",
+        "locked": false,
+        "custom": false
+      },
+      {
+        "key": "zip_code",
+        "label": "ZIP code",
+        "type": "text",
+        "locked": false,
+        "custom": false
+      }
+    ],
+    "lists": [
+      {
+        "id": "a0000000-0000-4000-8000-000000000001",
+        "name": "Donors"
+      },
+      {
+        "id": "a0000000-0000-4000-8000-000000000002",
+        "name": "Volunteers"
+      }
+    ]
+  }
+}
