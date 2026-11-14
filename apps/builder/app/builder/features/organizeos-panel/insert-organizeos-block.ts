@@ -618,6 +618,16 @@ const invalidateFormsResource = async (resourceId: string) => {
   }
 };
 
+/** Reload the project's Forms catalog Resource (the Form row's writes). */
+export const reloadFormsResource = async () => {
+  const project = $project.get();
+  if (project === undefined) {
+    return;
+  }
+  const { forms } = await getOrganizeosPresetIds(project.id);
+  await invalidateFormsResource(forms.resourceId);
+};
+
 /**
  * Insert a block at the selection, or at `insertable` (a drop), the way the
  * Components panel inserts a template, after completing it, in one

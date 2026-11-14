@@ -367,7 +367,8 @@ const toTemplateField = (field: FormField): FieldTemplateField => ({
 /** A bound `field`'s computed value, as listRootFields takes it. */
 export type ComputedFieldName = (fieldId: Instance["id"]) => string | undefined;
 
-const getState = (accumulator: RuntimeMutationAccumulator) => ({
+// exported for the site forms' writes (site-forms.ts)
+export const getState = (accumulator: RuntimeMutationAccumulator) => ({
   instances: accumulator.state.instances ?? new Map(),
   props: accumulator.state.props ?? new Map(),
 });
@@ -379,7 +380,7 @@ const getState = (accumulator: RuntimeMutationAccumulator) => ({
  * a Field whose bound `field` computes to it (`computedName`) included.
  * A Field brings no block data: no Resource, DataSource or binding.
  */
-const insertFieldsMutable = (
+export const insertFieldsMutable = (
   accumulator: RuntimeMutationAccumulator,
   rootId: Instance["id"],
   fields: readonly FormField[],
@@ -555,7 +556,7 @@ export const restoreSignupFormData = async (
  * false, after a toast, when refused; the runtime's own refusal of the commit
  * is toasted by the commit itself and not again.
  */
-const runStaged = async (
+export const runStaged = async (
   fallback: string,
   stage: (accumulator: RuntimeMutationAccumulator) => void
 ): Promise<boolean> => {
@@ -619,6 +620,17 @@ export const changeSignupForm = (
         ],
       },
     });
+    // A form chosen here is not a site form (those are chosen through
+    // matchFieldsToSiteForm): the root loses its site form mark.
+    const marked = [...getState(accumulator).props.values()].some(
+      (prop) => prop.instanceId === rootId && prop.name === "siteForm"
+    );
+    if (marked) {
+      accumulator.execute({
+        id: "instances.deleteProps",
+        input: { deletions: [{ instanceId: rootId, name: "siteForm" }] },
+      });
+    }
     insertFieldsMutable(
       accumulator,
       rootId,

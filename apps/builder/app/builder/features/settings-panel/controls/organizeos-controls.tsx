@@ -24,16 +24,30 @@ import {
   AlertCircleIcon,
   CheckCircleIcon,
   EmailIcon,
+  ExternalLinkIcon,
   FormTextFieldIcon,
   LoadingDotsIcon,
   XCircledFilledIcon,
 } from "@webstudio-is/icons";
-import { resolveSignupForm } from "@organizeos/site-components/forms-data";
 import {
+  parseFormsData,
+  resolveSignupForm,
+} from "@organizeos/site-components/forms-data";
+import {
+  $organizeosSite,
   $propValuesByInstanceSelector,
   $selectedInstanceSelector,
   getInstanceKey,
 } from "~/shared/nano-states";
+import {
+  NEW_SITE_FORM,
+  crmFormUrl,
+  formKindOf,
+  formStatesFor,
+  matchFieldsToSiteForm,
+  pointAtNewSiteForm,
+  siteFormRecordOptions,
+} from "~/builder/features/organizeos-panel/site-forms";
 import { $dataSourceVariables } from "~/shared/nano-states/variables";
 import { $dataSources, $instances, $props } from "~/shared/sync/data-stores";
 import {
@@ -244,28 +258,97 @@ const TruncatedLabel = ({
  * Form: the record picker. Choosing a form also adds the new form's missing
  * required Fields, in the same transaction (changeSignupForm).
  */
-const SignupFormRecordControl = (props: ControlProps<"text">) => (
-  <OrganizeosRecordControl
-    {...props}
-    onChangeRecord={(record) => {
-      const { fields } = resolveSignupForm(
-        record,
-        $selectedInstanceDataProp.get()
-      );
-      void changeSignupForm(
-        props.instanceId,
-        record,
-        fields,
-        getComputedFieldName(
-          props.instanceId,
-          $selectedInstanceSelector.get(),
-          $instances.get(),
-          $propValuesByInstanceSelector.get()
+/** The shipped Form change: `record`, and the new form's missing required Fields. */
+const changeToForm = (instanceId: Instance["id"], record: string) => {
+  const { fields } = resolveSignupForm(record, $selectedInstanceDataProp.get());
+  void changeSignupForm(
+    instanceId,
+    record,
+    fields,
+    getComputedFieldName(
+      instanceId,
+      $selectedInstanceSelector.get(),
+      $instances.get(),
+      $propValuesByInstanceSelector.get()
+    )
+  );
+};
+
+/**
+ * With the site forms switch on (fork doc section 9, "Site forms"; spec 9):
+ * the block's kind's forms, site forms first, then New form; a site form
+ * chosen makes the block's Fields the form's; and an icon link opens the
+ * form's CRM editor in a new tab.
+ */
+const SiteFormRecordControl = (props: ControlProps<"text">) => {
+  const data = useStore($selectedInstanceDataProp);
+  useStore($props);
+  const kind = formKindOf(props.instanceId, data);
+  const record =
+    typeof props.computedValue === "string" ? props.computedValue.trim() : "";
+  const url = record === "" ? undefined : crmFormUrl(record);
+  return (
+    <OrganizeosRecordControl
+      {...props}
+      transformOptions={(options) => siteFormRecordOptions(options, data, kind)}
+      after={
+        url === undefined ? undefined : (
+          <Tooltip content="Open in CRM">
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open in CRM"
+              className={linkButtonClass}
+            >
+              <ExternalLinkIcon />
+            </a>
+          </Tooltip>
         )
-      );
-    }}
-  />
-);
+      }
+      onChangeRecord={(value) => {
+        if (value === NEW_SITE_FORM.value) {
+          void pointAtNewSiteForm(props.instanceId, kind);
+          return;
+        }
+        const form = parseFormsData(data)?.find((item) => item.id === value);
+        if (form?.site === true) {
+          void matchFieldsToSiteForm(
+            props.instanceId,
+            {
+              id: form.id,
+              fields: form.fields.map((field) => ({
+                name: field.name,
+                label: field.label,
+                type: field.type,
+                required: field.required,
+                ...(field.options === null
+                  ? {}
+                  : { options: [...field.options] }),
+              })),
+            },
+            kind
+          );
+          return;
+        }
+        changeToForm(props.instanceId, value);
+      }}
+    />
+  );
+};
+
+const SignupFormRecordControl = (props: ControlProps<"text">) => {
+  const site = useStore($organizeosSite);
+  if (site?.siteFormsEnabled === true) {
+    return <SiteFormRecordControl {...props} />;
+  }
+  return (
+    <OrganizeosRecordControl
+      {...props}
+      onChangeRecord={(record) => changeToForm(props.instanceId, record)}
+    />
+  );
+};
 
 const states = [
   { value: "initial", label: "Initial", icon: <FormTextFieldIcon /> },
@@ -294,7 +377,19 @@ export const getStateVariableId = (expression: string) => {
  * undo. Anything else (an unbound `state`, any other expression) has no
  * variable to set, so the buttons are read-only and write nothing.
  */
-const SignupStateControl = ({ prop, computedValue }: ControlProps<"text">) => {
+const SignupStateControl = ({
+  instanceId,
+  prop,
+  computedValue,
+}: ControlProps<"text">) => {
+  // a contact form has no Check email (spec 9), with the site forms switch on
+  const site = useStore($organizeosSite);
+  const data = useStore($selectedInstanceDataProp);
+  useStore($props);
+  const shown =
+    site?.siteFormsEnabled === true
+      ? formStatesFor(formKindOf(instanceId, data))
+      : undefined;
   const variableId =
     prop?.type === "expression" ? getStateVariableId(prop.value) : undefined;
   const readOnly = variableId === undefined;
@@ -314,13 +409,15 @@ const SignupStateControl = ({ prop, computedValue }: ControlProps<"text">) => {
           }
         }}
       >
-        {states.map((state) => (
-          <Tooltip key={state.value} content={state.label}>
-            <ToggleGroupButton value={state.value} aria-label={state.label}>
-              {state.icon}
-            </ToggleGroupButton>
-          </Tooltip>
-        ))}
+        {states
+          .filter((state) => shown === undefined || shown.includes(state.value))
+          .map((state) => (
+            <Tooltip key={state.value} content={state.label}>
+              <ToggleGroupButton value={state.value} aria-label={state.label}>
+                {state.icon}
+              </ToggleGroupButton>
+            </Tooltip>
+          ))}
       </ToggleGroup>
     </VerticalLayout>
   );

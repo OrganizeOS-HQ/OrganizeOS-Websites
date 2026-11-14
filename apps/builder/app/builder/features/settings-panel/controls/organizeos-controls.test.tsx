@@ -342,6 +342,67 @@ describe("the Signup Form's Settings", () => {
     );
   });
 
+  // builder forms spec 9 (plan 2026-11-13-builder-forms-fork-p2, Task 9)
+  const withSiteForms = (record?: string) => {
+    const rootId = setProject();
+    if (record !== undefined) {
+      const props = new Map($props.get());
+      props.set("record-prop", {
+        id: "record-prop",
+        instanceId: rootId,
+        name: "record",
+        type: "string",
+        value: record,
+      });
+      $props.set(props);
+    }
+    $organizeosSite.set({
+      ...$organizeosSite.get()!,
+      subdomain: "riverside",
+      siteFormsEnabled: true,
+    });
+    return rootId;
+  };
+  const stateLabels = (host: HTMLElement) =>
+    Array.from(
+      host.querySelectorAll(
+        '[role="radio"][aria-label], [role="group"] button'
+      ),
+      (button) => button.getAttribute("aria-label")
+    ).filter((label) => label !== null);
+
+  test("with the site forms switch on, a contact form's State has no Check email", async () => {
+    const contact = formsBody.data.find(
+      (form) => form.kind === "contact-form"
+    )!;
+    const host = await renderPanel(withSiteForms(contact.id));
+    expect(stateLabels(host)).toEqual([
+      "Initial",
+      "Submitting",
+      "Success",
+      "Error",
+      "Unavailable",
+    ]);
+  });
+
+  test("with the site forms switch on, the Form row links its form's CRM editor in a new tab", async () => {
+    const host = await renderPanel(withSiteForms());
+    const link = host.querySelector<HTMLAnchorElement>(
+      'a[aria-label="Open in CRM"]'
+    );
+    expect(link?.href).toBe(
+      `https://app.example.org/riverside/pages/signup/${newsletter.id}`
+    );
+    expect(link?.target).toBe("_blank");
+    expect(link?.rel).toBe("noopener noreferrer");
+  });
+
+  test("with the switch off, the Form row has no CRM link and State keeps six buttons", async () => {
+    const host = await renderPanel(setProject());
+    expect(host.querySelector('a[aria-label="Open in CRM"]')).toBeNull();
+    expect(stateLabels(host)).toHaveLength(6);
+  });
+
   test("State shows six buttons, Submitting among them", async () => {
     const host = await renderPanel(setProject());
     const labels = Array.from(
