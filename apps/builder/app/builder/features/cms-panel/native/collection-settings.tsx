@@ -85,10 +85,13 @@ export const DeleteCollectionDialog = ({
   onRefusal,
   onRefresh,
   onNotFound,
+  opener = "row",
 }: {
   structure: CmsStructureSource;
   /** The collection to delete; undefined closes the dialog. */
   collection: CmsStructureCollection | undefined;
+  /** The menu it was opened from, which takes the focus back. */
+  opener?: "row" | "settings";
   onOpenChange: (open: boolean) => void;
   onDeleted: (collectionId: string) => void;
   onRefusal: (line: CmsLineKind) => void;
@@ -174,11 +177,16 @@ export const DeleteCollectionDialog = ({
           const slug = lastSlug.current;
           // the menu it was opened from: the settings view's own, else the
           // row's; after a delete, the first row or New collection
-          const candidates = [
-            '[data-cms-collection-settings] [aria-label="Collection menu"]',
+          const settingsMenu =
+            '[data-cms-collection-settings] [aria-label="Collection menu"]';
+          const rowMenu =
             slug === undefined
               ? undefined
-              : `[data-cms-collection="${CSS.escape(slug)}"] [data-cms-row-menu] button`,
+              : `[data-cms-collection="${CSS.escape(slug)}"] [data-cms-row-menu] button`;
+          const candidates = [
+            ...(opener === "settings"
+              ? [settingsMenu, rowMenu]
+              : [rowMenu, settingsMenu]),
             "[data-cms-collection] button",
             '[aria-label="New collection"]',
           ];

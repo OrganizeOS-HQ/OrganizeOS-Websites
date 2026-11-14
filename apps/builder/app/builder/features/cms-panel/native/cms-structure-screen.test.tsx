@@ -1738,3 +1738,59 @@ describe("a focus lost to the page comes back to the screen (round 5)", () => {
     ).not.toBeNull();
   });
 });
+
+// round 5, item 6: the focus goes back to what opened the view or dialog
+describe("the focus returns to its opener (round 5)", () => {
+  const settleFrame = async () => {
+    for (let frame = 0; frame < 3; frame += 1) {
+      await act(async () => {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
+    }
+    await settle();
+  };
+
+  test("Back from a new field's sheet focuses Add field", async () => {
+    mount();
+    await settle();
+    await click(tab("Fields"));
+    await click(byLabel("Add field"));
+    await click(menuItem("Plain text"));
+    await settleFrame();
+    await click(byLabel("Back"));
+    await settleFrame();
+    expect(document.activeElement).toBe(byLabel("Add field"));
+  });
+
+  test("with the item editor open, a field view's Back focuses that field's row, not the editor's Back", async () => {
+    mount();
+    await settle();
+    await click(document.querySelector<HTMLElement>("[data-cms-item-id]"));
+    expect(document.querySelector("#cms-field-title")).not.toBeNull();
+    await click(tab("Fields"));
+    await click(fieldRow("summary")!.querySelector("button"));
+    await settleFrame();
+    await click(byLabel("Back"));
+    await settleFrame();
+    expect(document.activeElement).toBe(
+      fieldRow("summary")!.querySelector("button")
+    );
+  });
+
+  test("with Settings open, a delete cancelled from another row's menu returns the focus to that menu", async () => {
+    answerBoth();
+    mount();
+    await settle();
+    await click(tab("Collections"));
+    await click(byLabel("Posts menu"));
+    await click(menuItem("Settings"));
+    await click(tab("Collections"));
+    await click(byLabel("People menu"));
+    await click(menuItem("Delete"));
+    await click(
+      buttonByText("Cancel", document.querySelector('[role="dialog"]')!)
+    );
+    await settleFrame();
+    expect(document.activeElement).toBe(byLabel("People menu"));
+  });
+});

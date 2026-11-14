@@ -978,6 +978,8 @@ export const CmsScreen = forwardRef<HTMLDivElement, CmsScreenProps>(
         clearSelection();
         setReturnFocusItemId(undefined);
         setDeletedItemId(undefined);
+        // nor to the item editor's Back
+        setFocusBack(false);
       },
       refetchCollections,
       showLine: showStructureLine,

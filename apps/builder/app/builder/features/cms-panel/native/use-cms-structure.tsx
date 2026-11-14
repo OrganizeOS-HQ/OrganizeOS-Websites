@@ -225,6 +225,7 @@ export const useCmsStructure = ({
   const [deleteTarget, setDeleteTarget] = useState<
     CmsStructureCollection | undefined
   >();
+  const [deleteOpener, setDeleteOpener] = useState<"row" | "settings">("row");
   const isDetailBackground = useIsBackground();
   /** After a write: the screen's refetches, and E21 again for the open one. */
   const written = (effect: CmsStructureEffect) => {
@@ -647,14 +648,19 @@ export const useCmsStructure = ({
               "[data-cms-collection] button",
               '[aria-label="New collection"]',
             ]
-          : [
-              "key" in target
-                ? `[data-cms-field-row="${CSS.escape(target.key)}"] button`
-                : undefined,
-              "[data-cms-field-row] button",
-              '[aria-label="Add field"]',
-              "[data-cms-collection][data-current] button",
-            ];
+          : "key" in target
+            ? [
+                `[data-cms-field-row="${CSS.escape(target.key)}"] button`,
+                "[data-cms-field-row] button",
+                '[aria-label="Add field"]',
+                "[data-cms-collection][data-current] button",
+              ]
+            : // a new field's sheet was opened from Add field
+              [
+                '[aria-label="Add field"]',
+                "[data-cms-field-row] button",
+                "[data-cms-collection][data-current] button",
+              ];
       for (const selector of selectors) {
         const element =
           selector === undefined
@@ -784,9 +790,10 @@ export const useCmsStructure = ({
     });
 
   // always read again: the count and the references change with item writes
-  const requestDelete = async (id: string) => {
+  const requestDelete = async (id: string, from: "row" | "settings") => {
     const found = await fetchStructure(id);
     if (found !== undefined) {
+      setDeleteOpener(from);
       setDeleteTarget(found);
     }
   };
@@ -1245,7 +1252,7 @@ export const useCmsStructure = ({
               after: { slug: after.slug, isPublic: after.isPublic },
             });
           }}
-          onDelete={() => void requestDelete(openDetail.id)}
+          onDelete={() => void requestDelete(openDetail.id, "settings")}
           onRefusal={showLine}
           onNotFound={refetchCollections}
         />
@@ -1348,6 +1355,7 @@ export const useCmsStructure = ({
       <DeleteCollectionDialog
         structure={structure}
         collection={deleteTarget}
+        opener={deleteOpener}
         onRefusal={showLine}
         onRefresh={async (id) => {
           const found = await fetchStructure(id);
@@ -1381,7 +1389,7 @@ export const useCmsStructure = ({
 
   const renderRowMenu = (collection: CmsCollectionSummary): ReactNode => {
     const onSettings = () => openSettings(collection.id);
-    const onDelete = () => void requestDelete(collection.id);
+    const onDelete = () => void requestDelete(collection.id, "row");
     const items = canManage
       ? {
           leading: (
