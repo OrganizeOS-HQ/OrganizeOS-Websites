@@ -1042,7 +1042,9 @@ export const ItemEditor = ({
             <Button
               color="neutral"
               state={busy === "reload" ? "pending" : undefined}
-              disabled={busy !== undefined && busy !== "reload"}
+              disabled={
+                (busy !== undefined && busy !== "reload") || isFieldBusy
+              }
               onClick={() => void reload()}
             >
               Reload
